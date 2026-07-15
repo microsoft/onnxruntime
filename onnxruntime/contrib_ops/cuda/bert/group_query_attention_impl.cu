@@ -641,13 +641,18 @@ __global__ void GetSequenceLengths(const int* total_seq_lens_minus_one,
                                    const bool is_first_prompt) {
   int i = threadIdx.x + blockIdx.x * blockDim.x;
   if (i < batch_size) {
-    const int total_len = total_seq_lens_minus_one[i] + 1;
+    // total_seq_lens_minus_one is the seqlens_k input and is not range-checked on the device.
+    // Clamp the negative case at the source so the derived lengths below stay non-negative and
+    // cannot flow as negative offsets into KV-cache or attention index computations.
+    const int seqlens_k = total_seq_lens_minus_one[i];
+    const int total_len = (seqlens_k > 0 ? seqlens_k : 0) + 1;
     total_seq_lens[i] = total_len;
     if (is_first_prompt) {
       past_seq_lens[i] = 0;
       padded_seq_lens[i] = sequence_length;
     } else {
-      past_seq_lens[i] = total_len - sequence_length;
+      const int past_len = total_len - sequence_length;
+      past_seq_lens[i] = past_len > 0 ? past_len : 0;
       padded_seq_lens[i] = 0;
     }
   }
@@ -1181,8 +1186,10 @@ Status EfficientAttention(
 //
 // Not supported (caller falls through elsewhere):
 //   - Quantized KV cache (U != T): hit by the original NOT_IMPLEMENTED path.
-//   - attention_bias input: rejected by op-level ComputeInternal.
 //   - Smooth softmax / head_sink: Flash-only feature.
+//
+// attention_bias (with dim-0/dim-1 broadcast) is supported here; this is the path
+// bias-carrying GQA nodes are dispatched to, since Flash/XQA/cuDNN don't take a bias.
 // ============================================================================
 template <typename T, typename U>
 Status UnfusedGqaAttention(
@@ -1247,8 +1254,8 @@ Status UnfusedGqaAttention(
   // seqlens to the softmax so positions beyond the valid length are masked.
   p.total_kv_length = parameters.total_sequence_length;
   p.max_kv_length = max_kv;
-  p.broadcast_attn_bias_dim_0 = false;
-  p.broadcast_attn_bias_dim_1 = false;
+  p.broadcast_attn_bias_dim_0 = parameters.broadcast_attn_bias_dim_0;
+  p.broadcast_attn_bias_dim_1 = parameters.broadcast_attn_bias_dim_1;
   p.is_causal = parameters.is_unidirectional;
   p.local_window_size = parameters.local_window_size;  // -1 disables
   p.past_kv_length = parameters.total_sequence_length - parameters.sequence_length;
@@ -1261,7 +1268,7 @@ Status UnfusedGqaAttention(
       data.unfused_q_bnsh,
       reinterpret_cast<const T*>(data.present_key),
       reinterpret_cast<const T*>(data.present_value),
-      /*attn_bias=*/nullptr,
+      data.attention_bias,
       data.unfused_y_bnsh,
       data.unfused_workspace,
       /*output_qk=*/nullptr)));

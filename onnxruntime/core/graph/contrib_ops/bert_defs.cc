@@ -29,7 +29,7 @@ namespace contrib {
 void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-  if (ctx.getNumOutputs() > 1) {
+  if (ctx.getNumOutputs() > 2) {  // has new_key_cache and new_value_cache outputs; a pair, so present only when > 2
     ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
     ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 2);
   }
@@ -38,7 +38,7 @@ void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx
     auto& query_shape = getInputShape(ctx, 0);
     updateOutputShape(ctx, 0, query_shape);
   }
-  if (ctx.getNumOutputs() > 1) {
+  if (ctx.getNumOutputs() > 2) {  // has new_key_cache and new_value_cache outputs; a pair, so present only when > 2
     if (hasInputShape(ctx, 6) && hasInputShape(ctx, 7)) {
       auto& cache_shape = getInputShape(ctx, 6);
       auto& cache_dims = cache_shape.dim();
@@ -199,7 +199,7 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
     }
   }
 
-  if (ctx.getNumOutputs() > 1) {  // has present output
+  if (ctx.getNumOutputs() > 2) {  // has present_key and present_value outputs; a pair, so present only when > 2
     if (hasInputShape(ctx, past_key_index)) {
       auto& past_shape = getInputShape(ctx, past_key_index);
       auto& past_dims = past_shape.dim();

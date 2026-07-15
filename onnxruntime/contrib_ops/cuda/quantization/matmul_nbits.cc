@@ -40,6 +40,22 @@ constexpr auto kScaleAndZeros = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AN
 constexpr auto kScaleOnly = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY;
 
 template <typename T>
+int MatMulNBits<T>::FpAIntBPackingSmForKernel() const {
+  // Select the native SM90 (Hopper) mixed-weight layout only when the weights were prepacked for it
+  // (weight_prepacked_ == 2) AND the device is SM90. Otherwise use the SM80 layout, which is also
+  // used as the SM90 compatibility path for runtime-prepacked (or SM80-prepacked) weights.
+  if (sm_ == 90 && weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90) {
+    return 90;
+  }
+  return 80;
+}
+
+template <typename T>
+int64_t MatMulNBits<T>::RequiredWeightPrepackedFormat() const {
+  return FpAIntBPackingSmForKernel() == 90 ? kMatMulNBitsWeightPrepackedSm90 : kMatMulNBitsWeightPrepackedSm80;
+}
+
+template <typename T>
 void MatMulNBits<T>::InitGemmProfiler(int sm) {
   gemmProfiler_ = s_profilerManager.createGemmPluginProfiler(/*inference*/ false);
 
@@ -77,6 +93,21 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
     }
   }
 
+  // On SM90 the half/bf16 weight-only path can run either the native Hopper (SM90 TMA/WGMMA) kernel
+  // or the SM80 (Ampere) mixed-GEMM kernel (which also runs on Hopper via GemmFpAIntB::operator()).
+  //   - Native SM90 (sm == 90): keep the runner targeting SM90 so getConfigs() enumerates Hopper
+  //     tactics (tile_config_sm90) and getWorkspaceSize() reserves the stream-K workspace; opt in to
+  //     the native kernel via setUseSm90Native(true).
+  //   - SM80 compat (sm == 80 while the device is SM90): force the runner to SM80 so tactic
+  //     enumeration and workspace sizing stay consistent with the dispatched SM80 kernel (the runner
+  //     otherwise defaults to the detected device SM and would enumerate Hopper tactics the SM80
+  //     dispatch cannot consume, leaving no CUTLASS GEMM tactic for M>=16).
+  if (sm == 90) {
+    weightOnlyGemmRunner_->setUseSm90Native(true);
+  } else if (sm_ == 90) {
+    weightOnlyGemmRunner_->setArch(sm);
+  }
+
   gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm);
   gemmProfiler_->setQuant(nbits_, has_bias_, has_zero_points_);
   gemmProfiler_->setGroupSize(block_size_);
@@ -90,10 +121,13 @@ void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int
   // Number of 16-bit elements after casting int8/int4 to fp16.
   int n_16b = N_ / (nbits_ == 8 ? 2 : 4);
 
+  // Include the packing/kernel SM in the GEMM id so the SM80-compatibility and native SM90 kernels
+  // (which need different tactics) do not share profiled configs for the same (N, K, dtype).
+  const int kernel_sm = FpAIntBPackingSmForKernel();
   if constexpr (std::is_same_v<T, MLFloat16>) {
-    gemmId_ = GemmIdCore(n_16b, K_, onnxruntime::llm::nvinfer::DataType::kHALF);
+    gemmId_ = GemmIdCore(n_16b, K_, onnxruntime::llm::nvinfer::DataType::kHALF, kernel_sm);
   } else if constexpr (std::is_same_v<T, BFloat16>) {
-    gemmId_ = GemmIdCore(n_16b, K_, onnxruntime::llm::nvinfer::DataType::kBF16);
+    gemmId_ = GemmIdCore(n_16b, K_, onnxruntime::llm::nvinfer::DataType::kBF16, kernel_sm);
   }
 
   GemmDims dims = {min_m, max_m, n_16b, K_};
@@ -109,9 +143,8 @@ Status MatMulNBits<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr
     if (has_fpA_intB_gemm_) {
       cudaStream_t stream = cudaStreamLegacy;  // Use default stream for prepacking.
       if (input_idx == MatMulNBits_Input_B) {
-        ORT_RETURN_IF_ERROR(PrePack_B(tensor, alloc, stream));
-        is_prepacked_weight_ = true;
-        is_packed = true;
+        ORT_RETURN_IF_ERROR(PrePack_B(tensor, alloc, stream, is_packed));
+        is_prepacked_weight_ = is_packed;
       } else if (input_idx == MatMulNBits_Input_Scale) {
         ORT_RETURN_IF_ERROR(PrePack_Scale(tensor, alloc, stream));
         is_prepacked_scale_ = true;
@@ -132,22 +165,43 @@ Status MatMulNBits<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr
 template <typename T>
 Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
                                  [[maybe_unused]] AllocatorPtr alloc,
-                                 [[maybe_unused]] cudaStream_t stream) {
+                                 [[maybe_unused]] cudaStream_t stream,
+                                 [[maybe_unused]] bool& is_packed) {
   if constexpr (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) {
     size_t n = static_cast<size_t>(N_);
     size_t k = static_cast<size_t>(K_);
 
     size_t packed_weight_bytes = n * k / (8 / nbits_);
 
+    const uint8_t* blob_data = tensor.Data<uint8_t>();
+    if (weight_prepacked_ != kMatMulNBitsWeightNotPrepacked) {
+      ORT_ENFORCE(tensor.SizeInBytes() == packed_weight_bytes,
+                  "Prepacked MatMulNBits weight size mismatch. Expected ", packed_weight_bytes,
+                  " bytes, got ", tensor.SizeInBytes());
+
+      // Keep device-resident prepacked weights as the original input to avoid a second GPU copy.
+      if (tensor.Location().device.Type() == OrtDevice::GPU) {
+        is_packed = false;
+        return Status::OK();
+      }
+
+      fpA_intB_weight_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, packed_weight_bytes, true);
+      int8_t* preprocessed_weight = reinterpret_cast<int8_t*>(fpA_intB_weight_buffer_.get());
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(preprocessed_weight, blob_data, packed_weight_bytes, cudaMemcpyDefault, stream));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+      DUMP_TENSOR_INIT();
+      DUMP_TENSOR_D("preprocessed_weight", reinterpret_cast<uint8_t*>(preprocessed_weight), k, n * nbits_ / 8);
+      is_packed = true;
+      return Status::OK();
+    }
+
     // uint8 does not need to be packed so we do not need to allocate extra space.
     IAllocatorUniquePtr<void> packed_transposed_weight_space = this->GetTransientScratchBuffer<void>(packed_weight_bytes);
     int8_t* packed_transposed_weight = reinterpret_cast<int8_t*>(packed_transposed_weight_space.get());
 
-    fpA_intB_weight_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, packed_weight_bytes, true);  // Transient buffer.
-
+    fpA_intB_weight_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, packed_weight_bytes, true);
     int8_t* preprocessed_weight = reinterpret_cast<int8_t*>(fpA_intB_weight_buffer_.get());
 
-    const uint8_t* blob_data = tensor.Data<uint8_t>();
     if (nbits_ == 4) {
       // Transpose the weight and add default zero point.
       onnxruntime::llm::kernels::fpA_intB_gemv::unpack_uint4_transposed_to_int8_direct_cuda(
@@ -163,7 +217,7 @@ Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
     auto permutation_map_buffer = this->GetTransientScratchBuffer<int32_t>(32);
     onnxruntime::llm::kernels::weight_only::preprocess_weights_for_mixed_gemm_cuda(
         stream,
-        sm_,
+        FpAIntBPackingSmForKernel(),
         preprocessed_weight,
         packed_transposed_weight,
         permutation_map_buffer.get(),
@@ -174,6 +228,7 @@ Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
     DUMP_TENSOR_INIT();
     DUMP_TENSOR_D("packed transposed_weight in GPU", packed_transposed_weight, k, n * nbits_ / 8);
     DUMP_TENSOR_D("preprocessed_weight", reinterpret_cast<uint8_t*>(preprocessed_weight), k, n * nbits_ / 8);
+    is_packed = true;
   }
 
   return Status::OK();
@@ -272,7 +327,6 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   const uint8_t* blob_data = is_prepacked_weight_ ? nullptr : b->Data<uint8_t>();
   const auto* scales_data = is_prepacked_scale_ ? nullptr : scales->Data<T>();
   const auto* zero_points_data = (is_prepacked_zero_point_ || zero_points == nullptr) ? nullptr : zero_points->DataRaw();
-  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
 #else
   const Tensor* b = ctx->Input<Tensor>(1);
   const Tensor* scales = ctx->Input<Tensor>(2);
@@ -281,10 +335,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto* scales_data = scales->Data<T>();
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
 #endif
-
-  if (bias != nullptr) {
-    ORT_THROW("MatMulNBits does not support bias in CUDA kernel");
-  }
+  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
 
   ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckInputs<Tensor>(
       a, b, scales, zero_points, reorder_idx, bias, N_, K_, block_size_, nbits_));
@@ -321,10 +372,40 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
     if (has_fpA_intB_gemm_) {
       // We expect weight/scale/zero_point(optional) inputs are initializers and have been prepacked.
       // User could disable it by setting ORT_FPA_INTB_GEMM=0 if those tensors cannot be prepacked (It is rare).
-      ORT_ENFORCE(is_prepacked_weight_ && is_prepacked_scale_ && (is_prepacked_zero_point_ || !has_zero_points_),
+      const bool has_fpA_intB_weight = is_prepacked_weight_ || weight_prepacked_ != kMatMulNBitsWeightNotPrepacked;
+      ORT_ENFORCE(has_fpA_intB_weight && is_prepacked_scale_ && (is_prepacked_zero_point_ || !has_zero_points_),
                   "To use fpA_intB_gemm, prepacking must be done on weight, scale and zero point.");
 
-      auto const& bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
+      const void* fpA_intB_weight = is_prepacked_weight_ ? fpA_intB_weight_buffer_.get() : static_cast<const void*>(blob_data);
+
+      auto const bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
+      if (!bestTactic.has_value()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "No valid fpA_intB MatMulNBits tactic for M=", m,
+                               ", N=", n, ", K=", k);
+      }
+
+      // Env-gated diagnostics (ORT_FPA_INTB_DEBUG=1): dump the selected tactic, the kernel path
+      // (GEMV CUDA kernel vs CUTLASS GEMM), the weight format, and the device/packing SM so that
+      // SM90 correctness issues (e.g. running the SM80 kernel on Hopper) can be traced.
+      static const bool fpA_intB_debug =
+          ParseEnvironmentVariableWithDefault<int>("ORT_FPA_INTB_DEBUG", 0) != 0;
+      if (fpA_intB_debug) {
+        const char* weight_fmt = is_prepacked_weight_ ? "runtime-prepacked(SM80 layout)"
+                                                      : (weight_prepacked_ == kMatMulNBitsWeightPrepackedSm80 ? "offline-prepacked-SM80"
+                                                                                                              : (weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90 ? "offline-prepacked-SM90"
+                                                                                                                                                                      : "raw"));
+        std::cout << "[fpA_intB_debug] M=" << m << " N=" << n << " K=" << k
+                  << " nbits=" << nbits_ << " block_size=" << block_size_
+                  << " device_sm=" << sm_
+                  << " packing_sm=" << FpAIntBPackingSmForKernel()
+                  << " has_bias=" << (bias_data != nullptr ? 1 : 0)
+                  << " has_zero_points=" << (has_zero_points_ ? 1 : 0)
+                  << " weight_format=" << weight_fmt
+                  << " kernel=" << (bestTactic->enableCudaKernel ? "GEMV(cuda)" : (FpAIntBPackingSmForKernel() == 90 ? "CUTLASS(sm90 gemm)" : "CUTLASS(sm80 gemm)"))
+                  << " tactic=" << bestTactic->toString()
+                  << std::endl;
+      }
 
 #if ORT_LLM_VERBOSE > 1
       std::cout << "Best tactic for m=" << m << ", n=" << n << ", k=" << k << "group_size=" << block_size_
@@ -344,19 +425,25 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         bool apply_alpha_in_advance = false;
         float alpha = 1.0f;
         onnxruntime::llm::kernels::fpA_intB_gemv::Params params(
-            a_data, pre_quant_scale_ptr, fpA_intB_weight_buffer_.get(),
+            a_data, pre_quant_scale_ptr, fpA_intB_weight,
             fpA_intB_scale_buffer_.get(), has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr,
             bias_data, out_data,
             alpha, m, n, k, block_size_, cuda_kernel_type, apply_alpha_in_advance);
 
-        onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(sm_, params, stream);
+        // Launch the GEMV with the arch the weights were PACKED for (FpAIntBPackingSmForKernel),
+        // not the raw device SM. The GEMV interleave layout is arch-dependent: arch in [90,100)
+        // uses ColumnMajorInterleavedForHopper while the SM80 packing uses ColumnMajorInterleaved.
+        // PrePack_B packs the SM80 layout, and the tactic profiler also profiles with the packing
+        // arch, so passing the device SM (e.g. 90) here would read the SM80-packed weights with the
+        // Hopper interleave and produce wrong results.
+        onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(FpAIntBPackingSmForKernel(), params, stream);
       } else {
         const size_t workspace_size = weightOnlyGemmRunner_->getWorkspaceSize(m, n, k);
         auto workspace_buffer = this->template GetScratchBuffer<void>(workspace_size, this->GetComputeStream(ctx));
 
         weightOnlyGemmRunner_->gemm(
             a_data,
-            fpA_intB_weight_buffer_.get(),
+            fpA_intB_weight,
             fpA_intB_scale_buffer_.get(),
             has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr,
             bias_data,
@@ -376,6 +463,8 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 #endif
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<T>())) {
+    // First, try the fused fast path. It handles bias only for the GPT-OSS router GEMV
+    // specialization; for other shapes it fails when bias is present.
     if (TryMatMulNBits(
             static_cast<int>(nbits_),
             reinterpret_cast<CudaT*>(Y->MutableData<T>()),
@@ -383,6 +472,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             blob_data,
             reinterpret_cast<const CudaT*>(scales_data),
             static_cast<const uint8_t*>(zero_points_data),
+            reinterpret_cast<const CudaT*>(bias_data),
             m,
             n,
             k,
@@ -391,7 +481,38 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             stream)) {
       return Status::OK();
     }
+
+    // If bias prevented the fused path from running, retry the fast path without bias and
+    // add the bias with a separate kernel. This keeps the lightweight GEMV path for cases
+    // (e.g. 8-bit, or 4-bit non-router shapes) where only the bias was unsupported.
+    if (bias_data != nullptr &&
+        TryMatMulNBits(
+            static_cast<int>(nbits_),
+            reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+            reinterpret_cast<const CudaT*>(a_data),
+            blob_data,
+            reinterpret_cast<const CudaT*>(scales_data),
+            static_cast<const uint8_t*>(zero_points_data),
+            /*bias_data*/ static_cast<const CudaT*>(nullptr),
+            m,
+            n,
+            k,
+            SafeInt<int>(block_size_),
+            GetDeviceProp().sharedMemPerBlock,
+            stream)) {
+      LaunchMatMulNBitsBiasAdd<CudaT>(
+          reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+          reinterpret_cast<const CudaT*>(bias_data),
+          m,
+          n,
+          stream);
+      return Status::OK();
+    }
   }
+
+  // When bias is present but the fused router GEMV specialization above did not apply,
+  // fall back to the generic dequantize + GEMM path (which ignores bias) and add the
+  // bias with a separate kernel after the GEMM completes.
 
   int64_t K_padded = (K_ + block_size_ - 1) / block_size_ * block_size_;
 
@@ -576,6 +697,16 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           helper.Ldc(),
           GetDeviceProp(),
           UseTF32()));
+    }
+
+    // Fallback bias handling: the generic dequant + GEMM path above ignores bias, so add it here.
+    if (bias_data != nullptr) {
+      LaunchMatMulNBitsBiasAdd<CudaT>(
+          reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+          reinterpret_cast<const CudaT*>(bias_data),
+          m,
+          n,
+          stream);
     }
   }
 

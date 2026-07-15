@@ -91,7 +91,7 @@ CudaDeviceAllocator::CudaDeviceAllocator(const OrtMemoryInfo* memory_info, int d
 
 CudaExternalDeviceAllocator::CudaExternalDeviceAllocator(const OrtMemoryInfo* memory_info, int device_id,
                                                          void* alloc_fn, void* free_fn, void* empty_cache_fn)
-    : CudaAllocatorBase(CudaAllocatorKind::kDevice, memory_info),
+    : CudaAllocatorBase(CudaAllocatorKind::kDevice, memory_info, true),
       device_id_(device_id),
       alloc_fn_(reinterpret_cast<ExternalAlloc>(alloc_fn)),
       free_fn_(reinterpret_cast<ExternalFree>(free_fn)),

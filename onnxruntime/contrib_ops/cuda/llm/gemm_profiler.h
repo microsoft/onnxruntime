@@ -57,20 +57,22 @@ struct GemmDims {
 };
 
 // Unique ID of GEMM
-// In our case GEMM is uniqly identified by N and K
+// In our case GEMM is uniquely identified by N and K, plus the target SM architecture (so the
+// SM80-compatibility and native SM90 kernels for the same shape do not share profiled configs).
 class GemmIdCore {
  public:
   int n;
   int k;
   nvinfer::DataType dtype;
+  int sm;
 
-  GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_)
-      : n(n_), k(k_), dtype(dtype_) {
+  GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_, int sm_ = 0)
+      : n(n_), k(k_), dtype(dtype_), sm(sm_) {
   }
 
   GemmIdCore()
-      : n(-1), k(-1), dtype(nvinfer::DataType::kFLOAT)  // dtype does not matter here
-  {
+      : n(-1), k(-1), dtype(nvinfer::DataType::kFLOAT),  // dtype does not matter here
+        sm(0) {
   }
 
   bool operator==(GemmIdCore const& id) const {
@@ -80,12 +82,13 @@ class GemmIdCore {
   friend std::ostream& operator<<(std::ostream& out, GemmIdCore const& id) {
     out << "(N;K)=(" << id.n << ";" << id.k << "),";
     out << " type=" << static_cast<int>(id.dtype);
+    out << " sm=" << id.sm;
     return out;
   }
 
  protected:
   bool isEqual(GemmIdCore const& id) const {
-    return n == id.n && k == id.k && dtype == id.dtype;
+    return n == id.n && k == id.k && dtype == id.dtype && sm == id.sm;
   }
 };
 
@@ -95,7 +98,8 @@ struct GemmIdCoreHash {
     auto h1 = std::hash<int>{}(id.n);
     auto h2 = std::hash<int>{}(id.k);
     auto h3 = std::hash<int>{}(static_cast<int>(id.dtype));
-    return h1 ^ h2 ^ h3;
+    auto h4 = std::hash<int>{}(id.sm);
+    return h1 ^ h2 ^ h3 ^ h4;
   }
 };
 

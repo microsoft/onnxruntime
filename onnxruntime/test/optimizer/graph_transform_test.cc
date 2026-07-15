@@ -19,6 +19,7 @@
 
 #include "core/common/span_utils.h"
 #include "core/framework/data_types.h"
+#include "core/framework/int4.h"
 #include "core/framework/ort_value.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
@@ -95,6 +96,7 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "test/util/include/temp_dir.h"
 #include "test/util/include/test_utils.h"
 #ifdef ENABLE_TRAINING
@@ -1750,6 +1752,76 @@ TEST_F(GraphTransformationTests, ConstantFoldingConstantOfShapeBlockedWhenOutput
                                         std::make_unique<ConstantFolding>(*e.get(), false, config_options),
                                         TransformerLevel::Level1, 1,
                                         pre_graph_checker, post_graph_checker));
+}
+
+// The constant-folding output-size estimate must be packing-aware for sub-byte types.
+// A QuantizeLinear node that produces a packed int4 output stores 2 elements per byte, so its
+// real storage size is ceil(num_elements / 2) bytes. The pre-execution size estimate previously
+// used num_elements * 1 byte, over-counting by ~2x and needlessly blocking folding of sub-byte
+// outputs that actually fit within the configured limit.
+TEST_F(GraphTransformationTests, ConstantFoldingSubByteOutputSizeIsPacked) {
+  // 20000 int4 elements -> 10000 packed bytes of real storage (the old estimate was 20000 bytes).
+  constexpr int64_t kNumElements = 20000;
+
+  auto build_model = [&](ModelTestBuilder& builder) {
+    auto* input_data = builder.MakeInitializer<float>({kNumElements}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+    builder.AddQuantizeLinearNode<Int4x2>(input_data, 1.0f, Int4x2(0, 0), output_arg);
+  };
+
+  // Case 1: limit (15000 bytes) sits between the packed size (10000) and the old over-estimate
+  // (20000). With the packing-aware estimate the node SHOULD be folded. Under the old estimate
+  // it would have been (incorrectly) skipped.
+  {
+    auto pre_graph_checker = [](Graph& graph) -> Status {
+      auto op_to_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_to_count["QuantizeLinear"] == 1);
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [](Graph& graph) -> Status {
+      auto op_to_count = CountOpsInGraph(graph);
+      // Real packed size (10000 bytes) is within the 15000 byte limit, so folding proceeds.
+      TEST_RETURN_IF_NOT(op_to_count["QuantizeLinear"] == 0);
+      return Status::OK();
+    };
+
+    std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    ConfigOptions config_options;
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(
+        kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes, "15000"));
+
+    ASSERT_STATUS_OK(TestGraphTransformer(build_model, 21, *logger_,
+                                          std::make_unique<ConstantFolding>(*e.get(), false, config_options),
+                                          TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
+  }
+
+  // Case 2: limit (5000 bytes) is below even the packed size (10000), so folding is blocked.
+  {
+    auto pre_graph_checker = [](Graph& graph) -> Status {
+      auto op_to_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_to_count["QuantizeLinear"] == 1);
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [](Graph& graph) -> Status {
+      auto op_to_count = CountOpsInGraph(graph);
+      // Real packed size (10000 bytes) exceeds the 5000 byte limit, so the node is not folded.
+      TEST_RETURN_IF_NOT(op_to_count["QuantizeLinear"] == 1);
+      return Status::OK();
+    };
+
+    std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    ConfigOptions config_options;
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(
+        kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes, "5000"));
+
+    ASSERT_STATUS_OK(TestGraphTransformer(build_model, 21, *logger_,
+                                          std::make_unique<ConstantFolding>(*e.get(), false, config_options),
+                                          TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
+  }
 }
 
 // Test that small constant folding still works with the size limit.
@@ -10792,26 +10864,32 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
   struct TestOptions {
     bool bias_is_first_add_input{false};
     bool add_produces_graph_output{false};
+    bool use_cuda_ep{false};
+    bool use_gpt_oss_router_shape{false};
   };
 
   auto run_test = [&logger = *logger_](const TestOptions& opts) {
     SCOPED_TRACE(MakeString("bias_is_first_add_input:", opts.bias_is_first_add_input,
-                            ", add_produces_graph_output:", opts.add_produces_graph_output));
+                            ", add_produces_graph_output:", opts.add_produces_graph_output,
+                            ", use_cuda_ep:", opts.use_cuda_ep,
+                            ", use_gpt_oss_router_shape:", opts.use_gpt_oss_router_shape));
 
     auto build_test_case = [&](ModelTestBuilder& builder) {
       constexpr size_t qbits = 4;
       constexpr size_t block_size = 32;
 
-      constexpr int64_t M = 2, K = 4, N = 8;
+      const int64_t M = opts.use_gpt_oss_router_shape ? 1 : 2;
+      const int64_t K = opts.use_gpt_oss_router_shape ? 2880 : 4;
+      const int64_t N = opts.use_gpt_oss_router_shape ? 32 : 8;
 
       int q_rows, q_cols;
       MlasBlockwiseQuantizedShape<float, qbits>(block_size, /* columnwise */ true,
-                                                K, N,
+                                                static_cast<int>(K), static_cast<int>(N),
                                                 q_rows, q_cols);
 
       size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
       MlasBlockwiseQuantizedBufferSizes<qbits>(block_size, /* columnwise */ true,
-                                               K, N,
+                                               static_cast<int>(K), static_cast<int>(N),
                                                q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
       auto* A = builder.MakeInput<float>(std::vector{M, K}, "A");
@@ -10820,8 +10898,10 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
                                                       uint8_t{0}, uint8_t{255});
       auto* B_scales = builder.MakeInitializer<float>({static_cast<int64_t>(q_scale_size)},
                                                       1.0f, 2.0f);
-      auto* B_zero_points = builder.MakeInitializer<uint8_t>({static_cast<int64_t>(q_zp_size_in_bytes)},
-                                                             uint8_t{0}, uint8_t{255});
+      NodeArg* B_zero_points = opts.use_gpt_oss_router_shape
+                                   ? builder.MakeEmptyInput()
+                                   : builder.MakeInitializer<uint8_t>({static_cast<int64_t>(q_zp_size_in_bytes)},
+                                                                      uint8_t{0}, uint8_t{255});
 
       auto* matmul_output = builder.MakeIntermediate();
 
@@ -10833,6 +10913,9 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
       matmul.AddAttribute("K", K);
       matmul.AddAttribute("block_size", static_cast<int64_t>(block_size));
       matmul.AddAttribute("bits", static_cast<int64_t>(qbits));
+      if (opts.use_cuda_ep) {
+        matmul.SetExecutionProviderType(kCudaExecutionProvider);
+      }
 
       auto* Bias = builder.MakeInput<float>(std::vector{N}, "Bias");
 
@@ -10840,15 +10923,21 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
 
       auto* add_output = opts.add_produces_graph_output ? graph_output : builder.MakeIntermediate();
 
-      builder.AddNode("Add",
-                      {opts.bias_is_first_add_input ? Bias : matmul_output,
-                       opts.bias_is_first_add_input ? matmul_output : Bias},
-                      {add_output});
+      auto& add = builder.AddNode("Add",
+                                  {opts.bias_is_first_add_input ? Bias : matmul_output,
+                                   opts.bias_is_first_add_input ? matmul_output : Bias},
+                                  {add_output});
+      if (opts.use_cuda_ep) {
+        add.SetExecutionProviderType(kCudaExecutionProvider);
+      }
 
       if (!opts.add_produces_graph_output) {
-        builder.AddNode("Identity",
-                        {add_output},
-                        {graph_output});
+        auto& identity = builder.AddNode("Identity",
+                                         {add_output},
+                                         {graph_output});
+        if (opts.use_cuda_ep) {
+          identity.SetExecutionProviderType(kCudaExecutionProvider);
+        }
       }
     };
 
@@ -10873,6 +10962,14 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
       TestOptions opts{};
       opts.bias_is_first_add_input = bias_is_first_add_input;
       opts.add_produces_graph_output = add_produces_graph_output;
+      run_test(opts);
+
+      // CUDA now fuses bias generically for any shape (the kernel adds the bias with a
+      // separate kernel when the fused GEMV fast path does not apply).
+      opts.use_cuda_ep = true;
+      run_test(opts);
+
+      opts.use_gpt_oss_router_shape = true;
       run_test(opts);
     }
   }

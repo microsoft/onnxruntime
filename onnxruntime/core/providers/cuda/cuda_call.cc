@@ -9,6 +9,11 @@
 #else
 #include <core/platform/env.h>
 #endif
+#ifndef USE_CUDA_MINIMAL
+#include "core/providers/cuda/cudnn_loader.h"
+#endif
+
+#include <type_traits>
 
 #ifdef _WIN32
 #else  // POSIX
@@ -89,6 +94,20 @@ std::conditional_t<THRW, void, Status> CudaCall(
     ERRTYPE retCode, const char* exprString, const char* libName, SUCCTYPE successCode, const char* msg,
     const char* file, const int line) {
   if (retCode != successCode) {
+#ifndef USE_CUDA_MINIMAL
+    if constexpr (std::is_same_v<ERRTYPE, cudnnStatus_t>) {
+      if (!cuda::CudnnLibrary::Get().Available()) {
+        auto status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                                      "cuDNN is unavailable for CUDA Execution Provider: ",
+                                      cuda::CudnnLibrary::Get().Error());
+        if constexpr (THRW) {
+          ORT_THROW(status.ErrorMessage());
+        } else {
+          return status;
+        }
+      }
+    }
+#endif
     try {
 #ifdef _WIN32
       std::string hostname_str = GetEnvironmentVar("COMPUTERNAME");

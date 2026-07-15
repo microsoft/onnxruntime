@@ -40,7 +40,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 28
+#define ORT_API_VERSION 29
 
 #ifdef __cplusplus
 extern "C" {
@@ -5767,9 +5767,13 @@ struct OrtApi {
 
   /** \brief Compute total size in bytes of the tensor data contained in an OrtValue.
    *
-   * Returns the total number of bytes used to store the tensor data. For numeric tensors,
-   * this is sizeof(element_type) * total_element_count. OrtValues that are not tensors or
-   * that are tensors that contain strings will cause an error to be returned.
+   * Returns the total number of bytes used to store the tensor data. For numeric tensors of a
+   * type that occupies at least one byte per element, this is sizeof(element_type) *
+   * total_element_count. For packed sub-byte types (e.g. int4/uint4, which store multiple
+   * elements per byte) it is the actual packed storage size, which is smaller than
+   * sizeof(element_type) * total_element_count. Use this value (not the element count) when
+   * copying or bounds-checking the raw tensor buffer. OrtValues that are not tensors or that are
+   * tensors that contain strings will cause an error to be returned.
    *
    * \param[in] ort_value OrtValue instance containing a tensor
    * \param[out] size The total size of the tensor data in bytes
@@ -7496,6 +7500,27 @@ struct OrtApi {
    * \since Version 1.28.
    */
   ORT_API_T(OrtExperimentalFnPtr, GetExperimentalFunction, _In_ const char* name);
+
+  /** \brief Get the framework synchronization stream associated with a kernel context.
+   *
+   * This returns the framework stream wrapper for the execution provider stream used by this kernel invocation.
+   * It is intended for APIs that need a stable framework stream object for stream-aware allocation and
+   * synchronization bookkeeping. Use KernelContext_GetGPUComputeStream when launching native GPU work.
+   *
+   * \param[in] context OrtKernelContext instance.
+   * \param[out] out Returns the framework synchronization stream, or nullptr if the kernel has no stream.
+   *                 Do not free or mutate the returned pointer. It is owned by the underlying session.
+   *                 The pointer may be stored and used for stream-aware allocation and synchronization
+   *                 bookkeeping beyond the Compute call (e.g. an allocator may persist it in arena
+   *                 chunks); it remains valid until the owning Session::Run() completes its teardown.
+   *                 Do not retain or dereference it after the run that produced this kernel context ends.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.28.
+   */
+  ORT_API2_STATUS(KernelContext_GetSyncStream, _In_ const OrtKernelContext* context,
+                  _Outptr_result_maybenull_ OrtSyncStream** out);
 };
 
 /*
@@ -7524,7 +7549,10 @@ typedef enum OrtCustomOpInputOutputCharacteristic {
  * the implementor of the custom op.
  */
 struct OrtCustomOp {
-  uint32_t version;  // Must be initialized to ORT_API_VERSION
+  uint32_t version;  // Initialize to ORT_API_VERSION. ORT will cap the API version used to select the OrtApi passed
+                     // to CreateKernel/CreateKernelV2 callbacks, so custom ops compiled against a newer ORT can load
+                     // on an older runtime if they only use APIs available at the runtime version. Newer OrtCustomOp
+                     // function pointers are gated by per-function version checks within ORT.
 
   // This callback creates the kernel, which is a user defined
   // parameter that is passed to the Kernel* callbacks below. It is

@@ -14,7 +14,6 @@
 #include "core/session/model_package/model_package_context.h"
 #include "core/session/model_package/model_package_options.h"
 #include "core/session/utils.h"
-
 #endif
 
 using namespace onnxruntime;
@@ -356,7 +355,31 @@ ORT_API_STATUS_IMPL(OrtModelPackageApi_CreateSession_SinceV28,
 
     effective_options = &*effective_options_storage;
   } else {
-    effective_options = session_options;
+    // Advanced path: use the caller-supplied options. Still carry over the variant's path-valued
+    // session options (e.g. the external initializers folder the model needs to load), but only
+    // for keys the caller did not set, so an explicit user value wins.
+    gsl::span<const std::string> session_option_keys;
+    gsl::span<const std::string> session_option_values;
+    ORT_API_RETURN_IF_STATUS_NOT_OK(
+        mp_ctx.GetSelectedVariantFileSessionOptions(session_option_keys, session_option_values));
+    ORT_API_RETURN_IF(session_option_keys.size() != session_option_values.size(),
+                      ORT_FAIL, "Session option keys/values size mismatch.");
+
+    effective_options_storage.emplace(*session_options);
+    const auto& existing = effective_options_storage->value.config_options.GetConfigOptionsMap();
+    for (size_t i = 0; i < session_option_keys.size(); ++i) {
+      if (!onnxruntime::IsModelPackagePathSessionOption(session_option_keys[i]) ||
+          existing.count(session_option_keys[i]) != 0) {
+        continue;
+      }
+      OrtStatus* st = OrtApis::AddSessionConfigEntry(&*effective_options_storage,
+                                                     session_option_keys[i].c_str(),
+                                                     session_option_values[i].c_str());
+      if (st != nullptr) {
+        return st;
+      }
+    }
+    effective_options = &*effective_options_storage;
   }
 
   // 3) Create session with the resolved file and effective session options.
@@ -400,13 +423,13 @@ ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetVariantEpName_SinceV28,
   const onnxruntime::VariantEpCompatibilityInfo* info = nullptr;
   auto status = reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetVariantEpCompatibility(
       component_name, variant_name, info);
+  if (!status.IsOK()) {
+    if (out_ep != nullptr) *out_ep = nullptr;
+    return onnxruntime::ToOrtStatus(status);
+  }
 
   if (out_ep != nullptr) {
-    if (status.IsOK() && info != nullptr && info->ep.has_value()) {
-      *out_ep = info->ep->c_str();
-    } else {
-      *out_ep = nullptr;
-    }
+    *out_ep = (info != nullptr && info->ep.has_value()) ? info->ep->c_str() : nullptr;
   }
   return nullptr;
 #else
@@ -414,6 +437,39 @@ ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetVariantEpName_SinceV28,
   ORT_UNUSED_PARAMETER(component_name);
   ORT_UNUSED_PARAMETER(variant_name);
   ORT_UNUSED_PARAMETER(out_ep);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_ResolveStringRef_SinceV28,
+                    _In_ const OrtModelPackageContext* ctx,
+                    _In_opt_ const char* base_dir,
+                    _In_ const char* input,
+                    _In_ int must_exist,
+                    _Outptr_ const char** out_path) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ctx == nullptr || input == nullptr || out_path == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx, input, and out_path must be non-null");
+  }
+  *out_path = nullptr;
+
+  const char* resolved = nullptr;
+  auto status = reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->ResolveStringRef(
+      base_dir != nullptr ? std::string(base_dir) : std::string{}, std::string(input),
+      must_exist != 0, resolved);
+  if (!status.IsOK()) {
+    return onnxruntime::ToOrtStatus(status);
+  }
+  *out_path = resolved;
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ctx);
+  ORT_UNUSED_PARAMETER(base_dir);
+  ORT_UNUSED_PARAMETER(input);
+  ORT_UNUSED_PARAMETER(must_exist);
+  ORT_UNUSED_PARAMETER(out_path);
   RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
 #endif
   API_IMPL_END

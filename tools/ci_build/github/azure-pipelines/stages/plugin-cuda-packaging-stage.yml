@@ -252,6 +252,11 @@ stages:
                 $outputDir = '$(Build.ArtifactStagingDirectory)/cuda-deps-package'
                 New-Item -ItemType Directory -Path $outputDir -Force
 
+                # CUDA major version (e.g. '12' or '13'). Embedded into zip filenames so that
+                # CUDA 12 and CUDA 13 packages (which share the same VERSION_NUMBER) do not
+                # collide when published to a shared location downstream.
+                $cudaMajor = '${{ parameters.cuda_version }}'.Split('.')[0]
+
                 # Add new platforms here as they are implemented.
                 # NOTE: macOS arm64 (Apple Silicon) is excluded — no CUDA support since Apple devices do not use Nvidia GPUs.
                 $platforms = @(
@@ -318,7 +323,7 @@ stages:
                     $_.Extension -in '.dll', '.so', '.dylib' -or $_.Name -eq 'version.json'
                   }
 
-                  $zipPath = Join-Path $outputDir "cuda_ep_${filenameVersion}_${platformName}.zip"
+                  $zipPath = Join-Path $outputDir "cuda_ep_cuda${cudaMajor}_${filenameVersion}_${platformName}.zip"
                   if ($filesToZip) {
                     $filesToZip | Compress-Archive -DestinationPath $zipPath -Force
                     Write-Host "Created zip: $zipPath ($((Get-Item $zipPath).Length) bytes)"

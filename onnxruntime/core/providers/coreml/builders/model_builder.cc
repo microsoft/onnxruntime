@@ -814,7 +814,7 @@ Status ModelBuilder::RegisterInitializers() {
                        [](int64_t dim) -> uint64_t { return SafeInt<uint64_t>(dim); });
       }
 
-      ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*constant_tensor->mutable_data(), tensor));
+      ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*constant_tensor->mutable_data(), tensor, *this));
       *layer->mutable_output()->Add() = name;
       AddLayer(std::move(layer));
     }
@@ -1189,7 +1189,7 @@ std::string_view ModelBuilder::AddConstant(std::string_view op_type, std::string
                                            const ONNX_NAMESPACE::TensorProto& tensor,
                                            std::optional<gsl::span<const int64_t>> shape) {
   const auto data_type = tensor.data_type();
-  Initializer unpacked_tensor(tensor);
+  const Initializer unpacked_tensor(graph_viewer_.GetGraph(), tensor, graph_viewer_.ModelPath());
   std::string_view ret;
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
@@ -1297,5 +1297,6 @@ const std::string& ModelBuilder::GetUniqueName(const Node& node, std::string_vie
     return GetUniqueName(node.Name() + std::string(suffix));
   }
 }
+
 }  // namespace coreml
 }  // namespace onnxruntime
