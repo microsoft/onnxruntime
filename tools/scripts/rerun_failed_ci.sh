@@ -2,10 +2,10 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 #
-# rerun_failed_ci.sh - Re-run failed/cancelled GitHub Actions CI for a pull request.
+# rerun_failed_ci.sh - Re-run failed/canceled GitHub Actions CI for a pull request.
 #
 # For the PR's current head commit, this finds every GitHub Actions workflow run
-# whose latest attempt ended in a non-success state (failure, cancelled, timed out,
+# whose latest attempt ended in a non-success state (failure, canceled, timed out,
 # etc.) and re-runs it -- but ONLY when no newer run for that same workflow is
 # already queued or in progress. This avoids piling duplicate runs on a workflow
 # that someone (or a previous invocation of this script) has already re-triggered.
@@ -21,6 +21,9 @@
 # Requirements: gh (GitHub CLI), authenticated. (Uses gh's built-in --jq; no
 # external jq binary required.)
 #
+# Note: "cancelled" (double l) below is the literal value GitHub's API returns
+# for a canceled run's `conclusion`; it must match the API and is not a typo.
+# cspell:ignore cancelled
 set -euo pipefail
 
 usage() {
@@ -65,6 +68,7 @@ echo
 #
 # Output: one "<databaseId>\t<workflowName>\t<conclusion>" line per run to rerun.
 # gh embeds jq (--jq), so no external jq binary is required.
+# shellcheck disable=SC2016  # the single-quoted jq program is intentional; $s/\(...) are jq, not shell
 TO_RERUN="$(gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
   --json databaseId,workflowName,name,status,conclusion,createdAt \
   --jq '
@@ -100,7 +104,7 @@ fail_count=0
 while IFS=$'\t' read -r id name conclusion; do
   [[ -n "$id" ]] || continue
   # Prefer re-running only the failed jobs; fall back to a full rerun for runs
-  # (e.g. fully cancelled ones) that have no discrete "failed" jobs to target.
+  # (e.g. fully canceled ones) that have no discrete "failed" jobs to target.
   if gh run rerun "$id" --repo "$REPO" --failed >/dev/null 2>&1 \
      || gh run rerun "$id" --repo "$REPO" >/dev/null 2>&1; then
     echo "  re-ran: $name (run $id)"

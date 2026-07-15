@@ -69,7 +69,7 @@ HEAD_SHA=$(gh api repos/microsoft/onnxruntime/pulls/<number> --jq .head.sha)
 # Map failed checks to their workflow run IDs
 gh run list --repo microsoft/onnxruntime --commit "$HEAD_SHA" --limit 100 \
   --json databaseId,workflowName,status,conclusion,url \
-  --jq '.[] | select(.conclusion=="failure" or .conclusion=="cancelled")'
+  --jq '.[] | select(.conclusion=="failure" or .conclusion=="cancelled")'  # cspell:ignore cancelled -- literal GitHub API value
 
 # Dump just the failed steps of a run (grep for the real error)
 gh run view <run_id> --repo microsoft/onnxruntime --log-failed > /tmp/ci_<run_id>.log
@@ -102,7 +102,7 @@ Rules of thumb:
 ## 1. Re-run Failed GitHub Actions (transient failures only)
 
 The repo ships a helper that re-runs **only** the GitHub Actions workflows whose latest run
-for the PR's current head commit failed/cancelled — and skips any workflow that already has a
+for the PR's current head commit failed/canceled — and skips any workflow that already has a
 newer run queued or in progress. Use it **only after triage** confirms the failures are
 transient (network/disk/agent) — see [Triage](#triage-diagnose-before-re-running). It is the
 safest way to retry those without piling on duplicates.
@@ -113,7 +113,7 @@ Script: [tools/scripts/rerun_failed_ci.sh](../../../tools/scripts/rerun_failed_c
 # Dry run first — shows what would be re-run, triggers nothing
 ./tools/scripts/rerun_failed_ci.sh <number> --dry-run
 
-# Actually re-run the failed/cancelled workflows for the PR's head commit
+# Actually re-run the failed/canceled workflows for the PR's head commit
 ./tools/scripts/rerun_failed_ci.sh <number>
 
 # Explicit repo (auto-detected from cwd when omitted)
@@ -121,7 +121,7 @@ Script: [tools/scripts/rerun_failed_ci.sh](../../../tools/scripts/rerun_failed_c
 ```
 
 It prefers `gh run rerun <id> --failed` (retry only failed jobs) and falls back to a full
-rerun for fully cancelled runs that have no discrete failed jobs. Requires an authenticated
+rerun for fully canceled runs that have no discrete failed jobs. Requires an authenticated
 `gh`. Always run `--dry-run` first and confirm the list looks right before the real run.
 
 To re-run one specific workflow manually:
