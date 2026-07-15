@@ -801,11 +801,10 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
     context_.StartProfiling();
   }
 
-  // Deferred dispatch is disabled for graph-capture sessions because combining the two paths
-  // causes incorrect execution. Enable it for every regular run so cache misses introduced by
-  // different input shapes can also compile asynchronously.
-  defer_dispatch_active_ = !IsGraphCaptureEnabled();
-  if (defer_dispatch_active_) {
+  defer_dispatch_active_ = false;
+  if (!IsGraphCaptureEnabled()) {
+    // Regular sessions defer every run so pipeline cache misses compile asynchronously.
+    defer_dispatch_active_ = true;
     context_.SetDeferDispatch(true);
     return Status::OK();
   }
@@ -840,6 +839,10 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
       if (IsGraphCaptureAllowed() && !IsGraphCaptured(graph_annotation_id)) {
         auto& commands = captured_graphs_[graph_annotation_id];
         context_.CaptureBegin(&commands, *it->second);
+        // Defer only a run that is actually being captured. Runs with annotation ID -1
+        // retain the regular graph-capture-session execution path.
+        defer_dispatch_active_ = true;
+        context_.SetDeferDispatch(true);
       }
     }
   }
@@ -848,28 +851,32 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
 }
 
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
-  // Drain the remaining deferred window before submitting any encoded work below.
+  Status deferred_status = Status::OK();
   if (defer_dispatch_active_) {
-    Status flush_status = context_.FlushDeferred();
+    // When capturing, draining creates the replay-ready CapturedCommandInfo entries before
+    // CaptureEnd() detaches their external storage.
+    deferred_status = context_.FlushDeferred();
     context_.SetDeferDispatch(false);
     defer_dispatch_active_ = false;
-    // Submit any remaining encoder work.
-    context_.Flush(BufferManager());
-
-    if (session_profiler_ && session_profiler_->Enabled()) {
-      context_.CollectProfilingData(session_profiler_->GpuEvents());
-    } else if (run_options.enable_profiling) {
-      context_.CollectProfilingData();
-    }
-
-    if (context_.ValidationMode() >= ValidationMode::Basic) {
-      Status pop_status = context_.PopErrorScope();
-      return flush_status.IsOK() ? pop_status : flush_status;
-    }
-    return flush_status;
   }
 
   context_.Flush(BufferManager());
+
+  if (!deferred_status.IsOK()) {
+    if (IsGraphCaptureEnabled()) {
+      context_.CaptureEnd();
+      auto commands_it = captured_graphs_.find(current_graph_annotation_id_);
+      if (commands_it != captured_graphs_.end()) {
+        context_.ReleaseGraphResources(commands_it->second);
+        commands_it->second.clear();
+      }
+    }
+    graph_buffer_mgr_active_ = false;
+    if (context_.ValidationMode() >= ValidationMode::Basic) {
+      context_.PopErrorScope();
+    }
+    return deferred_status;
+  }
 
   if (IsGraphCaptureEnabled() && !IsGraphCaptured(current_graph_annotation_id_)) {
     if (current_graph_annotation_id_ != -1 && IsGraphCaptureAllowed()) {

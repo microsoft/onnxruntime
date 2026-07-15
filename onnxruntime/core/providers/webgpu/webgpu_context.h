@@ -61,8 +61,17 @@ struct PendingKernelInfo {
   std::vector<TensorShape> output_shapes;
 };
 
-// Definition for CapturedCommandInfo in the webgpu namespace
+// Represents either an asynchronous pipeline build or replay-ready captured resources.
+// `compute_pipeline` stays at a stable address while its build callback is pending.
 struct CapturedCommandInfo {
+  struct AsyncPipelineBuildInfo {
+    std::string key;
+    std::string name;
+    std::vector<int> shape_uniform_ranks;
+    std::unique_ptr<PipelineCallbackContext> callback_context;
+    wgpu::Future future;
+  };
+
   wgpu::ComputePipeline compute_pipeline;
   WGPUBindGroup bind_group;
   WGPUBindGroupLayout bind_group_layout;
@@ -71,6 +80,8 @@ struct CapturedCommandInfo {
   WGPUBuffer indirect_buffer;
   // Optional profiling data
   std::optional<PendingKernelInfo> pending_kernel_info;
+  // Present only while asynchronous pipeline creation is in flight.
+  std::unique_ptr<AsyncPipelineBuildInfo> async_pipeline_build;
 };
 
 struct WebGpuBufferCacheConfig {
@@ -324,7 +335,7 @@ class WebGpuContext final {
                              const std::vector<uint32_t>& bind_buffers_segments,
                              const ProgramArtifact& program_artifact,
                              uint32_t x, uint32_t y, uint32_t z,
-                             const Tensor* indirect_dispatch_tensor = nullptr);
+                             WGPUBuffer indirect_buffer = nullptr);
 
   std::vector<const char*> GetEnabledAdapterToggles() const;
   std::vector<const char*> GetEnabledDeviceToggles() const;
@@ -345,28 +356,18 @@ class WebGpuContext final {
     wgpu::Buffer query_buffer;
   };
 
-  // State for a pending pipeline build. It is heap-allocated so `pipeline`, which is referenced by
-  // `cb_ctx`, remains at a stable address while recorded dispatches move.
-  struct PendingPipelineBuild {
-    std::string key;
-    std::string name;
-    std::vector<int> shape_uniform_ranks;
-    wgpu::ComputePipeline pipeline;
-    std::unique_ptr<PipelineCallbackContext> cb_ctx;
-    wgpu::Future future;
-  };
-
   // A recorded deferred dispatch. Its bind group is created only after any pending pipeline build
-  // completes. The first cache miss for a key owns `pending_build`; later occurrences before that
-  // build is cached resolve the artifact from the program cache while draining the window.
+  // completes. The first cache miss for a key owns `pending_command`; later occurrences before that
+  // build is cached resolve the artifact from the program cache while draining the window. The
+  // command is heap-allocated to keep its callback-referenced compute pipeline at a stable address.
   struct DeferredDispatch {
     std::string key;
-    std::unique_ptr<PendingPipelineBuild> pending_build;
+    std::unique_ptr<CapturedCommandInfo> pending_command;
     std::vector<WGPUBuffer> bind_buffers;
     std::vector<uint32_t> bind_buffers_segments;
     WGPUBuffer uniform_buffer = nullptr;
     uint32_t x = 1, y = 1, z = 1;
-    const Tensor* indirect_dispatch_tensor = nullptr;
+    WGPUBuffer indirect_buffer = nullptr;
     // Profiling info captured at record time (shapes must be read while the tensors are alive);
     // replayed into pending_kernels_ during FlushDeferredWindow so GPU profiling stays consistent.
     std::optional<PendingKernelInfo> pending_kernel_info;

@@ -250,18 +250,20 @@ Status WebGpuContext::FlushDeferredWindow(std::vector<DeferredDispatch>& window)
   // Wait for pending pipeline builds and add the completed artifacts to the cache.
   Status result = Status::OK();
   for (auto& d : window) {
-    if (d.pending_build) {
-      Status ws = Wait(d.pending_build->future);
+    if (d.pending_command) {
+      auto& command = *d.pending_command;
+      auto& build = *command.async_pipeline_build;
+      Status ws = Wait(build.future);
       if (!ws.IsOK()) {
         result = ws;
         continue;
       }
-      if (d.pending_build->cb_ctx && !d.pending_build->cb_ctx->status.IsOK()) {
-        result = d.pending_build->cb_ctx->status;
+      if (build.callback_context && !build.callback_context->status.IsOK()) {
+        result = build.callback_context->status;
         continue;
       }
-      auto& build = *d.pending_build;
-      ProgramArtifact artifact{std::move(build.name), std::move(build.pipeline), std::move(build.shape_uniform_ranks)};
+      ProgramArtifact artifact{std::move(build.name), std::move(command.compute_pipeline),
+                               std::move(build.shape_uniform_ranks)};
       program_mgr_->Set(build.key, std::move(artifact));
     }
   }
@@ -284,16 +286,21 @@ Status WebGpuContext::FlushDeferredWindow(std::vector<DeferredDispatch>& window)
     const auto& compute_pass_encoder = GetComputePassEncoder();
     WriteTimestamp(num_pending_dispatches_ * 2);
     LaunchComputePipeline(compute_pass_encoder, d.bind_buffers, d.bind_buffers_segments,
-                          *artifact, d.x, d.y, d.z, d.indirect_dispatch_tensor);
+                          *artifact, d.x, d.y, d.z, d.indirect_buffer);
     if (d.uniform_buffer) {
       deferred_buffer_mgr_->Release(d.uniform_buffer);
     }
     WriteTimestamp(num_pending_dispatches_ * 2 + 1);
     ++num_pending_dispatches_;
-    // Replay the profiling info captured at record time so pending_kernels_ stays in sync with
-    // num_pending_dispatches_ (Flush asserts they match when profiling is enabled).
+    // Preserve profiling info in a captured command for future replays. Otherwise, replay it into
+    // the current batch so pending_kernels_ stays in sync with num_pending_dispatches_.
     if (is_profiling_ && d.pending_kernel_info.has_value()) {
-      pending_kernels_.emplace_back(std::move(*d.pending_kernel_info));
+      if (graph_capture_state_ == GraphCaptureState::Capturing) {
+        ORT_ENFORCE(external_captured_commands_ && !external_captured_commands_->empty());
+        external_captured_commands_->back().pending_kernel_info = std::move(d.pending_kernel_info);
+      } else {
+        pending_kernels_.emplace_back(std::move(*d.pending_kernel_info));
+      }
     }
     if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||
         (is_profiling_ && query_type_ == TimestampQueryType::AtPasses)) {
@@ -441,21 +448,23 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   // For cache misses within the active window, `deferred_inflight_builds_` prevents duplicate builds
   // and retains shape-uniform ranks for repeated keys. Record each dispatch for later encoding after
   // the pending pipeline is ready.
-  std::unique_ptr<PendingPipelineBuild> deferred_pending;
+  std::unique_ptr<CapturedCommandInfo> deferred_pending;
   const std::vector<int>* deferred_ranks = nullptr;
   if (defer_dispatch_ && program_artifact == nullptr) {
     auto [it, inserted] = deferred_inflight_builds_.try_emplace(key);
     if (inserted) {
-      deferred_pending = std::make_unique<PendingPipelineBuild>();
-      deferred_pending->key = key;
-      deferred_pending->name = program.Name();
+      deferred_pending = std::make_unique<CapturedCommandInfo>();
+      deferred_pending->async_pipeline_build = std::make_unique<CapturedCommandInfo::AsyncPipelineBuildInfo>();
+      auto& build = *deferred_pending->async_pipeline_build;
+      build.key = key;
+      build.name = program.Name();
       ORT_RETURN_IF_ERROR(program_mgr_->Build(program, metadata, inputs_segments, outputs_segments,
                                               key, x, y, z,
-                                              deferred_pending->pipeline,
-                                              deferred_pending->shape_uniform_ranks,
-                                              &deferred_pending->future,
-                                              &deferred_pending->cb_ctx));
-      it->second = deferred_pending->shape_uniform_ranks;
+                                              deferred_pending->compute_pipeline,
+                                              build.shape_uniform_ranks,
+                                              &build.future,
+                                              &build.callback_context));
+      it->second = build.shape_uniform_ranks;
     }
     deferred_ranks = &it->second;
   }
@@ -639,16 +648,19 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   if (defer_dispatch_) {
     DeferredDispatch d;
     d.key = key;
-    d.pending_build = std::move(deferred_pending);
+    d.pending_command = std::move(deferred_pending);
     d.bind_buffers = std::move(bind_buffers);
     d.bind_buffers_segments = std::move(bind_buffers_segments);
     d.uniform_buffer = uniform_buffer;
     d.x = x;
     d.y = y;
     d.z = z;
-    d.indirect_dispatch_tensor = program.IndirectDispatchTensor();
+    if (program.IndirectDispatchTensor() != nullptr) {
+      d.indirect_buffer = reinterpret_cast<WGPUBuffer>(
+          const_cast<void*>(program.IndirectDispatchTensor()->DataRaw()));
+    }
     // Capture profiling info now (shapes must be read while tensors are alive); replayed in flush.
-    if (is_profiling_ && graph_capture_state_ != GraphCaptureState::Capturing) {
+    if (is_profiling_) {
       d.pending_kernel_info.emplace(context.NodeName(), context.OpType(), program.Name(),
                                     key, inputs, outputs);
     }
@@ -666,7 +678,13 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
   WriteTimestamp(num_pending_dispatches_ * 2);
 
-  LaunchComputePipeline(compute_pass_encoder, bind_buffers, bind_buffers_segments, *program_artifact, x, y, z, program.IndirectDispatchTensor());
+  WGPUBuffer indirect_buffer = nullptr;
+  if (program.IndirectDispatchTensor() != nullptr) {
+    indirect_buffer = reinterpret_cast<WGPUBuffer>(
+        const_cast<void*>(program.IndirectDispatchTensor()->DataRaw()));
+  }
+  LaunchComputePipeline(compute_pass_encoder, bind_buffers, bind_buffers_segments,
+                        *program_artifact, x, y, z, indirect_buffer);
   if (uniform_buffer) {
     buffer_mgr.Release(uniform_buffer);
   }
@@ -1027,7 +1045,7 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
                                           const std::vector<uint32_t>& bind_buffers_segments,
                                           const ProgramArtifact& program_artifact,
                                           uint32_t x, uint32_t y, uint32_t z,
-                                          const Tensor* indirect_dispatch_tensor) {
+                                          WGPUBuffer indirect_buffer) {
   uint32_t entry_index = 0;
   std::vector<WGPUBindGroupEntry> bind_group_entries;
 
@@ -1064,11 +1082,6 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
 
   auto bind_group = wgpuDeviceCreateBindGroup(Device().Get(), &bind_group_desc);
   if (graph_capture_state_ == GraphCaptureState::Capturing) {
-    WGPUBuffer indirect_buffer = nullptr;
-    if (indirect_dispatch_tensor != nullptr) {
-      indirect_buffer = reinterpret_cast<WGPUBuffer>(const_cast<void*>(indirect_dispatch_tensor->DataRaw()));
-    }
-
     // Profiling data will be populated in Run() after this call returns.
     external_captured_commands_->push_back({program_artifact.compute_pipeline,
                                             bind_group,
@@ -1080,9 +1093,8 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
     compute_pass_encoder.SetPipeline(program_artifact.compute_pipeline);
     wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, bind_group, 0, nullptr);
 
-    if (indirect_dispatch_tensor != nullptr) {
+    if (indirect_buffer != nullptr) {
       // Use indirect dispatch
-      WGPUBuffer indirect_buffer = reinterpret_cast<WGPUBuffer>(const_cast<void*>(indirect_dispatch_tensor->DataRaw()));
       compute_pass_encoder.DispatchWorkgroupsIndirect(indirect_buffer, 0);
     } else {
       // Use direct dispatch
