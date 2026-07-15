@@ -9,7 +9,7 @@
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
-#include "core/mlas/inc/mlas.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 
 namespace onnxruntime {
 
@@ -20,6 +20,7 @@ class QLinearConv : public OpKernel {
  public:
   explicit QLinearConv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
     channels_last_ = (info.GetAttrOrDefault<int64_t>("channels_last", static_cast<int64_t>(0)) != 0);
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -29,10 +30,13 @@ class QLinearConv : public OpKernel {
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
  private:
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
+
   enum InputTensors : int {
     IN_X = 0,
     IN_X_SCALE = 1,
@@ -55,31 +59,17 @@ class QLinearConv : public OpKernel {
   }
 
   static void ComputeOffset(OpKernelContext* context,
-                            int64_t M,
                             ActType& X_zero_point_value,
-                            ActType& Y_zero_point_value,
-                            uint8_t& W_zero_point_value) {
+                            ActType& Y_zero_point_value) {
     const Tensor* X_zero_point = context->Input<Tensor>(InputTensors::IN_X_ZERO_POINT);
-    const Tensor* W_zero_point = context->Input<Tensor>(InputTensors::IN_W_ZERO_POINT);
     const Tensor* Y_zero_point = context->Input<Tensor>(InputTensors::IN_Y_ZERO_POINT);
     ORT_ENFORCE(IsScalarOr1ElementVector(X_zero_point),
                 "QLinearConv : input zero point must be a scalar or 1D tensor of size 1");
     ORT_ENFORCE(IsScalarOr1ElementVector(Y_zero_point),
                 "QLinearConv : result zero point must be a scalar or 1D tensor of size 1");
-    ORT_ENFORCE(IsValidQuantParam(W_zero_point, M),
-                "QLinearConv : filter zero point shape invalid");
 
     X_zero_point_value = *(X_zero_point->Data<ActType>());
     Y_zero_point_value = *(Y_zero_point->Data<ActType>());
-
-    const int64_t W_zero_point_size = W_zero_point->Shape().Size();
-    const auto* W_zero_point_data = static_cast<const uint8_t*>(W_zero_point->DataRaw());
-    W_zero_point_value = W_zero_point_data[0];
-    for (int64_t i = 1; i < W_zero_point_size; i++) {
-      ORT_ENFORCE(W_zero_point_data[i] == W_zero_point_value,
-                  "QLinearConv : zero point of per-channel filter must be same. "
-                  "This happens by design if the quantization is symmetric.");
-    }
   }
 
   static std::vector<float> ComputeOutputScale(OpKernelContext* context,
@@ -247,7 +237,8 @@ class QLinearConv : public OpKernel {
         //
         // Note: The size of this buffer is less than or equal to the size of the original
         // weight tensor, so the allocation size is guaranteed to fit inside size_t.
-        auto* group_reordered_W = static_cast<int8_t*>(alloc->Alloc(group_output_channels * group_input_channels * kernel_size));
+        auto* group_reordered_W = static_cast<int8_t*>(alloc->Alloc(
+            static_cast<size_t>(SafeInt<size_t>(group_output_channels) * group_input_channels * kernel_size)));
         BufferUniquePtr group_reordered_W_buffer(group_reordered_W, BufferDeleter(alloc));
 
         const size_t W_offset = group_output_channels * kernel_dim;
@@ -419,7 +410,7 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
     packed_W_size_ = MlasGemmPackBSize(group_output_channels,
                                        kernel_dim,
                                        std::is_same<ActType, int8_t>::value,
-                                       is_W_signed_);
+                                       is_W_signed_, &mlas_backend_kernel_selector_config_);
     if (packed_W_size_ != 0) {
       size_t packed_W_data_size = SafeInt<size_t>(group_count) * packed_W_size_;
       packed_W_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, packed_W_data_size, true);
@@ -435,7 +426,9 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
       //
       // Note: The size of this buffer is less than or equal to the size of the original
       // weight tensor, so the allocation size is guaranteed to fit inside size_t.
-      auto group_reordered_W_buffer = IAllocator::MakeUniquePtr<void>(alloc, group_output_channels * group_input_channels * kernel_size, true);
+      auto group_reordered_W_buffer = IAllocator::MakeUniquePtr<void>(
+          alloc, static_cast<size_t>(SafeInt<size_t>(group_output_channels) * group_input_channels * kernel_size),
+          true);
       auto* group_reordered_W = static_cast<uint8_t*>(group_reordered_W_buffer.get());
 
       const size_t W_offset = group_output_channels * kernel_dim;
@@ -492,6 +485,7 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
 
 template <typename ActType>
 Status QLinearConv<ActType>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                       gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                                        int input_idx,
                                                        /*out*/ bool& used_shared_buffers) {
   if (input_idx != 3) {
@@ -523,9 +517,27 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
 
   ActType X_zero_point_value;
   ActType Y_zero_point_value;
-  uint8_t W_zero_point_value;
-  ComputeOffset(context, M, X_zero_point_value, Y_zero_point_value, W_zero_point_value);
+  ComputeOffset(context, X_zero_point_value, Y_zero_point_value);
   std::vector<float> output_scales = ComputeOutputScale(context, M);
+
+  // Read weight zero points (may be scalar or per-channel).
+  const Tensor* W_zero_point = context->Input<Tensor>(InputTensors::IN_W_ZERO_POINT);
+  ORT_ENFORCE(IsValidQuantParam(W_zero_point, M), "QLinearConv : filter zero point shape invalid");
+  const int64_t W_zero_point_size = W_zero_point->Shape().Size();
+  // MLAS ZeroPointB is typed as uint8_t*; it reinterprets the bits based on BIsSigned.
+  const auto* W_zero_point_data = static_cast<const uint8_t*>(W_zero_point->DataRaw());
+  // Per-channel zero points are uniform when size == 1 or all values match.
+  const bool W_zero_point_is_uniform =
+      (W_zero_point_size <= 1) ||
+      std::all_of(W_zero_point_data + 1, W_zero_point_data + W_zero_point_size,
+                  [W_zero_point_data](uint8_t v) { return v == W_zero_point_data[0]; });
+  // When non-uniform, w_zero_point must be a full per-channel tensor of size M
+  // so that group_id * group_output_channels indexing is in bounds.
+  ORT_ENFORCE(W_zero_point_is_uniform || W_zero_point_size == M,
+              "QLinearConv : non-uniform weight zero point tensor size (", W_zero_point_size,
+              ") must equal number of output channels (", M, ")");
+  // Single representative value used for paths that require a scalar zero point.
+  const uint8_t W_zero_point_value = W_zero_point_data[0];
 
   const Tensor* B = context->Input<Tensor>(InputTensors::IN_BIAS);
 
@@ -602,7 +614,14 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
   int64_t group_output_channels = M / group_count;
 
   // Test for depthwise convolution.
-  const bool is_depthwise_conv = ((is_symmetric_conv_ || reordered_W != nullptr) && group_input_channels == 1 && group_output_channels == 1);
+  // Depthwise path requires a single (uniform) filter zero point because
+  // MlasConvDepthwise accepts only a scalar FilterZeroPoint.
+  // Note: is_symmetric_conv_ already implies uniform-zero (TryConvSymPrepack rejects
+  // non-zero ZP elements), so the W_zero_point_is_uniform check is defense-in-depth
+  // in case future prepack paths admit non-zero uniform ZPs.
+  const bool is_depthwise_conv = (W_zero_point_is_uniform &&
+                                  (is_symmetric_conv_ || reordered_W != nullptr) &&
+                                  group_input_channels == 1 && group_output_channels == 1);
   if (is_depthwise_conv) {
     // Update the input and output channels to the number of groups in order to
     // reuse as much of the below standard convolution path.
@@ -787,7 +806,8 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
           Xdata,
           static_cast<ActType*>(transpose_input_buffer.get()),
           static_cast<size_t>(C),
-          static_cast<size_t>(input_image_size));
+          static_cast<size_t>(input_image_size),
+          thread_pool);
       input_data = static_cast<ActType*>(transpose_input_buffer.get());
       output_data = static_cast<ActType*>(transpose_output_buffer.get());
     }
@@ -965,7 +985,10 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
               gemm_params.B = reordered_W + group_id * group_output_channels,
               gemm_params.ldb = static_cast<size_t>(M);
             }
-            gemm_params.ZeroPointB = &W_zero_point_value;
+            gemm_params.ZeroPointB = !W_zero_point_is_uniform
+                                         ? W_zero_point_data + group_id * group_output_channels
+                                         : &W_zero_point_value;
+            gemm_params.PerColumnZeroPoints = !W_zero_point_is_uniform;
             gemm_params.C = worker_gemm_output + group_id * group_output_channels;
             gemm_params.ldc = static_cast<size_t>(M);
 
@@ -997,7 +1020,8 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
           output_data,
           Ydata,
           static_cast<size_t>(output_image_size),
-          static_cast<size_t>(M));
+          static_cast<size_t>(M),
+          thread_pool);
     }
 
     Xdata += X_offset;

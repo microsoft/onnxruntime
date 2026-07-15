@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/math/element_wise_ops.h"
-
 #include "core/common/narrow.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/math.h"
@@ -21,14 +20,16 @@ namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Max, 8, Input, 0, float, double);
 
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Max, 12, Input, 0,
-                                        float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
+                                        float, double, MLFloat16, int8_t, int32_t, uint32_t,
+                                        int64_t, uint8_t, uint64_t);
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(kCpuExecutionProvider, kOnnxDomain, Max, 12, Input, 0,
                                          int32_t, int64_t);
 
 // Min
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Min, 8, Input, 0, float, double);
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Min, 12, Input, 0,
-                                        float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
+                                        float, double, MLFloat16, int8_t, int32_t, uint32_t,
+                                        int64_t, uint8_t, uint64_t);
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(kCpuExecutionProvider, kOnnxDomain, Min, 12, Input, 0,
                                          int32_t, int64_t);
 
@@ -175,6 +176,7 @@ REG_ELEMENTWISE_TYPED_KERNEL(Add, 14, uint8_t, Add);
 REG_ELEMENTWISE_TYPED_KERNEL(Add, 14, uint16_t, Add);
 REG_ELEMENTWISE_TYPED_KERNEL(Add, 14, uint32_t, Add);
 REG_ELEMENTWISE_TYPED_KERNEL(Add, 14, uint64_t, Add);
+REG_ELEMENTWISE_TYPED_KERNEL(Add, 14, MLFloat16, Add);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sub, 7, 12, float, Sub);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sub, 7, 12, double, Sub);
@@ -198,6 +200,7 @@ REG_ELEMENTWISE_TYPED_KERNEL(Sub, 14, uint8_t, Sub);
 REG_ELEMENTWISE_TYPED_KERNEL(Sub, 14, uint16_t, Sub);
 REG_ELEMENTWISE_TYPED_KERNEL(Sub, 14, uint32_t, Sub);
 REG_ELEMENTWISE_TYPED_KERNEL(Sub, 14, uint64_t, Sub);
+REG_ELEMENTWISE_TYPED_KERNEL(Sub, 14, MLFloat16, Sub);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mul, 7, 12, float, Mul);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mul, 7, 12, double, Mul);
@@ -221,6 +224,7 @@ REG_ELEMENTWISE_TYPED_KERNEL(Mul, 14, uint8_t, Mul);
 REG_ELEMENTWISE_TYPED_KERNEL(Mul, 14, uint16_t, Mul);
 REG_ELEMENTWISE_TYPED_KERNEL(Mul, 14, uint32_t, Mul);
 REG_ELEMENTWISE_TYPED_KERNEL(Mul, 14, uint64_t, Mul);
+REG_ELEMENTWISE_TYPED_KERNEL(Mul, 14, MLFloat16, Mul);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Div, 7, 12, float, Div);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Div, 7, 12, double, Div);
@@ -244,6 +248,7 @@ REG_ELEMENTWISE_TYPED_KERNEL(Div, 14, uint8_t, Div);
 REG_ELEMENTWISE_TYPED_KERNEL(Div, 14, uint16_t, Div);
 REG_ELEMENTWISE_TYPED_KERNEL(Div, 14, uint32_t, Div);
 REG_ELEMENTWISE_TYPED_KERNEL(Div, 14, uint64_t, Div);
+REG_ELEMENTWISE_TYPED_KERNEL(Div, 14, MLFloat16, Div);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Abs, 6, 12, float, Abs);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Abs, 6, 12, double, Abs);
@@ -350,23 +355,47 @@ REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 8, float, Less);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 8, double, Less);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 9, 12, float, Less);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 9, 12, double, Less);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 9, 12, int8_t, Less);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 9, 12, int16_t, Less);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 9, 12, int32_t, Less);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 9, 12, int64_t, Less);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 9, 12, uint8_t, Less);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 9, 12, uint16_t, Less);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 9, 12, uint32_t, Less);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 9, 12, uint64_t, Less);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 13, float, Less);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 13, double, Less);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 13, int8_t, Less);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 13, int16_t, Less);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 13, int32_t, Less);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 13, int64_t, Less);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 13, uint8_t, Less);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 13, uint16_t, Less);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 13, uint32_t, Less);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 13, uint64_t, Less);
 
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 7, 8, float, Greater);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 7, 8, double, Greater);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 9, 12, float, Greater);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 9, 12, double, Greater);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 9, 12, int8_t, Greater);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 9, 12, int16_t, Greater);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 9, 12, int32_t, Greater);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 9, 12, int64_t, Greater);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 9, 12, uint8_t, Greater);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 9, 12, uint16_t, Greater);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 9, 12, uint32_t, Greater);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 9, 12, uint64_t, Greater);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 13, float, Greater);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 13, double, Greater);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 13, int8_t, Greater);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 13, int16_t, Greater);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 13, int32_t, Greater);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 13, int64_t, Greater);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 13, uint8_t, Greater);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 13, uint16_t, Greater);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 13, uint32_t, Greater);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 13, uint64_t, Greater);
 
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, bool, Equal);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, int32_t, Equal);
@@ -374,18 +403,36 @@ REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, int64_t, Equal);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, float, Equal);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, double, Equal);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, bool, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, int8_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, int16_t, Equal);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, int32_t, Equal);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, int64_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, uint8_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, uint16_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, uint32_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, uint64_t, Equal);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, float, Equal);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 11, 12, double, Equal);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 13, 18, bool, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 13, 18, int8_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 13, 18, int16_t, Equal);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 13, 18, int32_t, Equal);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 13, 18, int64_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 13, 18, uint8_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 13, 18, uint16_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 13, 18, uint32_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 13, 18, uint64_t, Equal);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 13, 18, float, Equal);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 13, 18, double, Equal);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 19, bool, Equal);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 19, int8_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 19, int16_t, Equal);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 19, int32_t, Equal);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 19, int64_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 19, uint8_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 19, uint16_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 19, uint32_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 19, uint64_t, Equal);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 19, float, Equal);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 19, double, Equal);
 using string = std::string;
@@ -393,25 +440,49 @@ REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 19, string, Equal);
 
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(LessOrEqual, 12, 15, float, LessOrEqual);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(LessOrEqual, 12, 15, double, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(LessOrEqual, 12, 15, int8_t, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(LessOrEqual, 12, 15, int16_t, LessOrEqual);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(LessOrEqual, 12, 15, int32_t, LessOrEqual);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(LessOrEqual, 12, 15, int64_t, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(LessOrEqual, 12, 15, uint8_t, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(LessOrEqual, 12, 15, uint16_t, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(LessOrEqual, 12, 15, uint32_t, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(LessOrEqual, 12, 15, uint64_t, LessOrEqual);
 
 // Opset-16 adds BFloat16 to allowed types for the LessOrEqual operator
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 16, float, LessOrEqual);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 16, double, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 16, int8_t, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 16, int16_t, LessOrEqual);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 16, int32_t, LessOrEqual);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 16, int64_t, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 16, uint8_t, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 16, uint16_t, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 16, uint32_t, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 16, uint64_t, LessOrEqual);
 
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(GreaterOrEqual, 12, 15, float, GreaterOrEqual);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(GreaterOrEqual, 12, 15, double, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(GreaterOrEqual, 12, 15, int8_t, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(GreaterOrEqual, 12, 15, int16_t, GreaterOrEqual);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(GreaterOrEqual, 12, 15, int32_t, GreaterOrEqual);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(GreaterOrEqual, 12, 15, int64_t, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(GreaterOrEqual, 12, 15, uint8_t, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(GreaterOrEqual, 12, 15, uint16_t, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(GreaterOrEqual, 12, 15, uint32_t, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(GreaterOrEqual, 12, 15, uint64_t, GreaterOrEqual);
 
 // Opset-16 adds BFloat16 to allowed types for the GreaterOrEqual operator
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 16, float, GreaterOrEqual);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 16, double, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 16, int8_t, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 16, int16_t, GreaterOrEqual);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 16, int32_t, GreaterOrEqual);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 16, int64_t, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 16, uint8_t, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 16, uint16_t, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 16, uint32_t, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 16, uint64_t, GreaterOrEqual);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mean, 6, 7, float, Mean_6);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mean, 8, 12, float, Mean_8);
@@ -462,6 +533,7 @@ REG_ELEMENTWISE_TYPED_KERNEL(BitwiseXor, 18, uint64_t, BitwiseXor);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Erf, 9, 12, float, Erf);
 // Supposed to add BFloat16 but we are not supporting now, however, separate registration
 REG_ELEMENTWISE_TYPED_KERNEL(Erf, 13, float, Erf);
+REG_ELEMENTWISE_TYPED_KERNEL(Erf, 13, MLFloat16, Erf);
 
 // REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Not, 1, bool, Not);
 // REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(And, 7, bool, And);
@@ -524,6 +596,22 @@ Status Add<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+template <>
+Status Add<MLFloat16>::Compute(OpKernelContext* context) const {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.ScalarInput0<Eigen::half>() + per_iter_bh.EigenInput1<Eigen::half>().array();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>().array() + per_iter_bh.ScalarInput1<Eigen::half>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>() + per_iter_bh.EigenInput1<Eigen::half>();
+      }};
+  UntypedBroadcastTwo(*context, funcs, 1.0f);
+  return Status::OK();
+}
+
 template <typename T>
 Status Sub<T>::Compute(OpKernelContext* context) const {
   ProcessBroadcastSpanFuncs funcs{
@@ -537,6 +625,22 @@ Status Sub<T>::Compute(OpKernelContext* context) const {
         per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>() - per_iter_bh.EigenInput1<T>();
       }};
 
+  UntypedBroadcastTwo(*context, funcs, 1.0);
+  return Status::OK();
+}
+
+template <>
+Status Sub<MLFloat16>::Compute(OpKernelContext* context) const {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.ScalarInput0<Eigen::half>() - per_iter_bh.EigenInput1<Eigen::half>().array();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>().array() - per_iter_bh.ScalarInput1<Eigen::half>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>() - per_iter_bh.EigenInput1<Eigen::half>();
+      }};
   UntypedBroadcastTwo(*context, funcs, 1.0);
   return Status::OK();
 }
@@ -558,8 +662,38 @@ Status Mul<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+template <>
+Status Mul<MLFloat16>::Compute(OpKernelContext* context) const {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.ScalarInput0<Eigen::half>() * per_iter_bh.EigenInput1<Eigen::half>().array();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>().array() * per_iter_bh.ScalarInput1<Eigen::half>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>().cwiseProduct(per_iter_bh.EigenInput1<Eigen::half>());
+      }};
+  UntypedBroadcastTwo(*context, funcs, 1.0);
+  return Status::OK();
+}
+
 template <typename T>
 Status Div<T>::Compute(OpKernelContext* context) const {
+  // Integer division by zero is undefined behavior in C++ and causes a hardware exception.
+  // Check for zeros in the divisor before performing the division.
+  // Skip the check if the divisor was already validated as a constant initializer during kernel creation.
+  if constexpr (std::is_integral<T>::value) {
+    if (!divisor_is_validated_constant_) {
+      const Tensor& B = *context->Input<Tensor>(1);
+      const T* b_data = B.Data<T>();
+      const int64_t b_size = B.Shape().Size();
+      for (int64_t i = 0; i < b_size; ++i) {
+        ORT_RETURN_IF(b_data[i] == T{0}, "Integer division by zero");
+      }
+    }
+  }
+
   ProcessBroadcastSpanFuncs funcs{
       [](BroadcastHelper& per_iter_bh) {
         per_iter_bh.OutputEigen<T>() = per_iter_bh.ScalarInput0<T>() / per_iter_bh.EigenInput1<T>().array();
@@ -571,6 +705,21 @@ Status Div<T>::Compute(OpKernelContext* context) const {
         per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>().cwiseQuotient(per_iter_bh.EigenInput1<T>());
       }};
 
+  UntypedBroadcastTwo(*context, funcs, 1.0);
+  return Status::OK();
+}
+template <>
+Status Div<MLFloat16>::Compute(OpKernelContext* context) const {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.ScalarInput0<Eigen::half>() / per_iter_bh.EigenInput1<Eigen::half>().array();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>().array() / per_iter_bh.ScalarInput1<Eigen::half>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>().cwiseQuotient(per_iter_bh.EigenInput1<Eigen::half>());
+      }};
   UntypedBroadcastTwo(*context, funcs, 1.0);
   return Status::OK();
 }
@@ -856,7 +1005,8 @@ Status Min_8::Compute(OpKernelContext* context) const {
       return MinMaxMLFloat16<true>(*this, context);
       break;
     default:
-      utils::MLTypeCallDispatcher<float, double, int32_t, uint32_t, int64_t, uint64_t>
+      utils::MLTypeCallDispatcher<float, double, int8_t, int32_t, uint32_t,
+                                  int64_t, uint8_t, uint64_t>
           t_disp(dt_type);
       return t_disp.InvokeRet<Status, ComputeImpl>(*this, context);
   }
@@ -922,7 +1072,8 @@ Status Max_8::Compute(OpKernelContext* context) const {
       return MinMaxMLFloat16<false>(*this, context);
       break;
     default:
-      utils::MLTypeCallDispatcher<float, double, int32_t, uint32_t, int64_t, uint64_t>
+      utils::MLTypeCallDispatcher<float, double, int8_t, int32_t, uint32_t,
+                                  int64_t, uint8_t, uint64_t>
           t_disp(dt_type);
       return t_disp.InvokeRet<Status, ComputeImpl>(*this, context);
   }
@@ -1183,6 +1334,19 @@ BitShift<T>::BitShift(const OpKernelInfo& info) : OpKernel(info) {
     ORT_THROW("Invalid direction value of '", direction, "'. Valid values are 'LEFT' or 'RIGHT'.");
 }
 
+// Shifting by >= the bit width of an unsigned type is undefined behavior in C++.
+// On x86, 64-bit shifts mask the shift amount to 6 bits, so shift by 64 acts like shift by 0.
+// Guard against this by returning 0 when the shift amount >= the bit width.
+template <typename T>
+inline T SafeShiftLeft(T value, T shift) {
+  return shift >= sizeof(T) * 8 ? T{0} : value << shift;
+}
+
+template <typename T>
+inline T SafeShiftRight(T value, T shift) {
+  return shift >= sizeof(T) * 8 ? T{0} : value >> shift;
+}
+
 template <typename T>
 Status BitShift<T>::Compute(OpKernelContext* context) const {
   ProcessBroadcastSpanFuncs funcs{
@@ -1194,11 +1358,11 @@ Status BitShift<T>::Compute(OpKernelContext* context) const {
         ptrdiff_t i = 0;
         if (shift_left) {
           for (const auto& input : input1.array()) {
-            output[i++] = input0 << input;
+            output[i++] = SafeShiftLeft(input0, input);
           }
         } else {
           for (const auto& input : input1.array()) {
-            output[i++] = input0 >> input;
+            output[i++] = SafeShiftRight(input0, input);
           }
         }
       },
@@ -1210,11 +1374,11 @@ Status BitShift<T>::Compute(OpKernelContext* context) const {
         ptrdiff_t i = 0;
         if (shift_left) {
           for (const auto& input : input0.array()) {
-            output[i++] = input << input1;
+            output[i++] = SafeShiftLeft(input, input1);
           }
         } else {
           for (const auto& input : input0.array()) {
-            output[i++] = input >> input1;
+            output[i++] = SafeShiftRight(input, input1);
           }
         }
       },
@@ -1229,11 +1393,11 @@ Status BitShift<T>::Compute(OpKernelContext* context) const {
         auto cur_out = output.begin(), end_out = output.end();
         if (shift_left) {
           for (; cur0 != end0; ++cur0, ++cur1, ++cur_out) {
-            *cur_out = *cur0 << *cur1;
+            *cur_out = SafeShiftLeft(*cur0, *cur1);
           }
         } else {
           for (; cur0 != end0; ++cur0, ++cur1, ++cur_out) {
-            *cur_out = *cur0 >> *cur1;
+            *cur_out = SafeShiftRight(*cur0, *cur1);
           }
         }
 
@@ -1726,7 +1890,7 @@ Status PRelu<float>::Compute(OpKernelContext* context) const {
   ProcessBroadcastSpanFuncs funcs{
       [](BroadcastHelper& per_iter_bh) {
         float input0 = per_iter_bh.ScalarInput0<float>();
-        if (input0 > 0)
+        if (input0 >= 0)
           per_iter_bh.OutputEigen<float>().array() = input0;
         else
           per_iter_bh.OutputEigen<float>() = input0 * per_iter_bh.EigenInput1<float>().array();
@@ -1737,8 +1901,7 @@ Status PRelu<float>::Compute(OpKernelContext* context) const {
         float* output = per_iter_bh.OutputEigen<float>().data();
         size_t size = per_iter_bh.OutputEigen<float>().size();
         for (size_t i = 0; i < size; i++) {
-          output[i] = static_cast<float>(input0[i] > 0) * input0[i] +
-                      (1.0f - static_cast<float>(input0[i] > 0)) * input0[i] * input1;
+          output[i] = (input0[i] >= 0) ? input0[i] : input0[i] * input1;
         }
       },
       [](BroadcastHelper& per_iter_bh) {
@@ -1747,8 +1910,7 @@ Status PRelu<float>::Compute(OpKernelContext* context) const {
         float* output = per_iter_bh.OutputEigen<float>().data();
         size_t size = per_iter_bh.OutputEigen<float>().size();
         for (size_t i = 0; i < size; i++) {
-          output[i] = static_cast<float>(input0[i] > 0) * input0[i] +
-                      (1.0f - static_cast<float>(input0[i] > 0)) * input0[i] * input1[i];
+          output[i] = (input0[i] >= 0) ? input0[i] : input0[i] * input1[i];
         }
       }};
 
@@ -1857,28 +2019,71 @@ Status Erf<float>::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
   const auto& x_shape = X->Shape();
   auto* Y = context->Output(0, x_shape);
-  const size_t N = static_cast<size_t>(x_shape.Size());
+  const float* input_data = X->Data<float>();
+  float* output_data = Y->MutableData<float>();
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
 
-  MlasComputeErf(X->Data<float>(), Y->MutableData<float>(), N);
+  const std::ptrdiff_t elem_count = onnxruntime::narrow<std::ptrdiff_t>(X->Shape().Size());
+  constexpr std::ptrdiff_t length_per_task = 4096;  // this number comes from FastGelu.
+  const std::ptrdiff_t task_count = (elem_count + length_per_task - 1) / length_per_task;
+
+  concurrency::ThreadPool::TryBatchParallelFor(
+      tp, task_count,
+      [&](ptrdiff_t task_idx) {
+        const std::ptrdiff_t start = task_idx * length_per_task;
+        const float* p_input = input_data + start;
+        float* p_output = output_data + start;
+        const std::ptrdiff_t count = std::min(length_per_task, elem_count - start);
+        MlasComputeErf(p_input, p_output, static_cast<size_t>(count));
+      },
+      0);
+
+  return Status::OK();
+}
+
+template <>
+Status Erf<MLFloat16>::Compute(OpKernelContext* context) const {
+  const auto* X = context->Input<Tensor>(0);
+  const auto& x_shape = X->Shape();
+  auto* Y = context->Output(0, x_shape);
+  const auto* input_data = X->Data<MLFloat16>();
+  auto* output_data = Y->MutableData<MLFloat16>();
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
+  int64_t elem_count = X->Shape().Size();
+  constexpr int64_t length_per_task = 4096;
+  int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
+  const auto narrow_task_count = onnxruntime::narrow<std::ptrdiff_t>(task_count);
+
+  // get allocator for temporary buffers
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+
+  concurrency::ThreadPool::TryBatchParallelFor(
+      tp, narrow_task_count,
+      [&](ptrdiff_t task_idx) {
+        const auto start = task_idx * length_per_task;
+        const int64_t count = std::min(length_per_task, elem_count - start);
+        const MLFloat16* p_input = input_data + start;
+        MLFloat16* p_output = output_data + start;
+        // allocate temp buffers for fp32 input and output
+        IAllocatorUniquePtr<float> input_tmp_fp32 = IAllocator::MakeUniquePtr<float>(alloc, static_cast<size_t>(count));
+        IAllocatorUniquePtr<float> output_tmp_fp32 = IAllocator::MakeUniquePtr<float>(alloc, static_cast<size_t>(count));
+        MlasComputeFP16Erf(p_input, p_output, input_tmp_fp32.get(), output_tmp_fp32.get(), static_cast<size_t>(count));
+      },
+      0);
 
   return Status::OK();
 }
 
 class Mod final : public OpKernel {
  public:
-  Mod(const OpKernelInfo& info) : OpKernel(info) {
-    int64_t fmod = 0;
-    Status s = info.GetAttr<int64_t>("fmod", &fmod);
-    if (s.IsOK()) {
-      ORT_ENFORCE((fmod == 0) || (fmod == 1), "fmod must have value either 0 or 1");
-      fmod_ = (fmod == 1);
-    }
-  }
+  Mod(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
   bool fmod_{false};
+  bool divisor_is_validated_constant_{false};
 };
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -2026,6 +2231,21 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
 template <class T, typename Enable = void>
 struct CallModImpl;
 
+// Check for zero values in the divisor tensor for integral types.
+template <class T>
+struct CheckZeroDivisorImpl {
+  Status operator()(const Tensor& B) const {
+    if constexpr (std::is_integral<T>::value) {
+      const T* b_data = B.Data<T>();
+      const int64_t b_size = B.Shape().Size();
+      for (int64_t i = 0; i < b_size; ++i) {
+        ORT_RETURN_IF(b_data[i] == T{0}, "Integer modulo by zero");
+      }
+    }
+    return Status::OK();
+  }
+};
+
 // Generic implementation of Mod kernel, non-floating point types
 template <class T>
 struct CallModImpl<T, typename std::enable_if<!std::is_floating_point<T>::value>::type> {
@@ -2058,9 +2278,39 @@ struct CallModImpl<MLFloat16> {
 
 }  // namespace mod_internal
 
+Mod::Mod(const OpKernelInfo& info) : OpKernel(info) {
+  int64_t fmod = 0;
+  Status s = info.GetAttr<int64_t>("fmod", &fmod);
+  if (s.IsOK()) {
+    ORT_ENFORCE((fmod == 0) || (fmod == 1), "fmod must have value either 0 or 1");
+    fmod_ = (fmod == 1);
+  }
+
+  // If the divisor is a constant initializer, validate for integer modulo by zero once
+  // during kernel creation instead of on every Compute call.
+  const Tensor* constant_divisor = nullptr;
+  if (info.TryGetConstantInput(1, &constant_divisor)) {
+    const auto dt_type = constant_divisor->GetElementType();
+    utils::MLTypeCallDispatcherFromTypeList<EnabledModTypes> check_disp(dt_type);
+    Status check_status = check_disp.InvokeRet<Status, mod_internal::CheckZeroDivisorImpl>(*constant_divisor);
+    ORT_THROW_IF_ERROR(check_status);
+    divisor_is_validated_constant_ = true;
+  }
+}
+
 Status Mod::Compute(OpKernelContext* context) const {
   const auto& X = *context->Input<Tensor>(0);
   const auto dt_type = X.GetElementType();
+
+  // Integer modulo by zero is undefined behavior in C++ and causes a hardware exception.
+  // Check for zeros in the divisor before performing the mod.
+  // Skip the check if the divisor was already validated as a constant initializer during kernel creation.
+  if (!divisor_is_validated_constant_) {
+    const Tensor& B = *context->Input<Tensor>(1);
+    utils::MLTypeCallDispatcherFromTypeList<EnabledModTypes> check_disp(dt_type);
+    Status check_status = check_disp.InvokeRet<Status, mod_internal::CheckZeroDivisorImpl>(B);
+    ORT_RETURN_IF_ERROR(check_status);
+  }
 
   utils::MLTypeCallDispatcherFromTypeList<EnabledModTypes> t_disp(dt_type);
   t_disp.Invoke<mod_internal::CallModImpl>(fmod_, context);

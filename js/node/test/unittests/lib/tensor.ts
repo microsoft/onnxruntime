@@ -72,7 +72,11 @@ describe('UnitTests - tensor', () => {
     assert.throws(
       () => {
         const badDims = {};
-        passtypeParam ? new TensorAny(type, data, badDims) : new TensorAny(data, badDims);
+        if (passtypeParam) {
+          new TensorAny(type, data, badDims);
+        } else {
+          new TensorAny(data, badDims);
+        }
       },
       { name: 'TypeError', message: /must be a number array/ },
     );
@@ -82,7 +86,11 @@ describe('UnitTests - tensor', () => {
     assert.throws(
       () => {
         const badDims = [1, 2, ''];
-        passtypeParam ? new TensorAny(type, data, badDims) : new TensorAny(data, badDims);
+        if (passtypeParam) {
+          new TensorAny(type, data, badDims);
+        } else {
+          new TensorAny(data, badDims);
+        }
       },
       { name: 'TypeError', message: /must be an integer/ },
     );
@@ -92,7 +100,11 @@ describe('UnitTests - tensor', () => {
     assert.throws(
       () => {
         const badDims = [1, 2, -1];
-        passtypeParam ? new TensorAny(type, data, badDims) : new TensorAny(data, badDims);
+        if (passtypeParam) {
+          new TensorAny(type, data, badDims);
+        } else {
+          new TensorAny(data, badDims);
+        }
       },
       { name: 'RangeError', message: /must be a non-negative integer/ },
     );
@@ -102,7 +114,11 @@ describe('UnitTests - tensor', () => {
     assert.throws(
       () => {
         const badDims = [1, 2, 1.5];
-        passtypeParam ? new TensorAny(type, data, badDims) : new TensorAny(data, badDims);
+        if (passtypeParam) {
+          new TensorAny(type, data, badDims);
+        } else {
+          new TensorAny(data, badDims);
+        }
       },
       { name: 'TypeError', message: /must be an integer/ },
     );
@@ -113,7 +129,11 @@ describe('UnitTests - tensor', () => {
     assert.throws(
       () => {
         const badDims = [10, 8];
-        passtypeParam ? new TensorAny(type, data, badDims) : new TensorAny(data, badDims);
+        if (passtypeParam) {
+          new TensorAny(type, data, badDims);
+        } else {
+          new TensorAny(data, badDims);
+        }
       },
       { name: 'Error', message: /does not match data length/ },
     );

@@ -126,6 +126,8 @@ const pixelAtGrid = (input: IndicesHelper, dataType: string, attributes: GridSam
           if (r >= 0 && r < H && c >=0 && c < W) {
             indices[${idxH}] = u32(r);
             indices[${idxW}] = u32(c);
+          } else {
+            return ${dataType}(0);
           }
         `;
       case 'border':

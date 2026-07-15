@@ -28,7 +28,9 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   ~VitisAIExecutionProvider() = default;
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                                                const IKernelLookup& /*kernel_lookup*/) const override;
+                                                                const IKernelLookup& /*kernel_lookup*/,
+                                                                const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+                                                                IResourceAccountant* /* resource_accountant */) const override;
 
   int GetDeviceId() const { return 0; }
   common::Status OnRunStart(const onnxruntime::RunOptions& /*run_options*/) override;
@@ -43,6 +45,22 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   const InlinedVector<const Node*> GetEpContextNodes() const override;
   virtual common::Status SetEpDynamicOptions(gsl::span<const char* const> /*keys*/,
                                              gsl::span<const char* const> /*values*/) override;
+
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
+
+  /**
+   * Get compiled model compatibility information.
+   * This method collects compatibility info from all vaip_core execution providers
+   * and returns it as a JSON string.
+   */
+  std::string GetCompiledModelCompatibilityInfo(const onnxruntime::GraphViewer& graph_viewer) const override;
+
+  /**
+   * Validate compiled model compatibility information.
+   * This method validates the compatibility info against the current runtime environment.
+   */
+  common::Status ValidateCompiledModelCompatibilityInfo(const std::string& compatibility_info,
+                                                        OrtCompiledModelCompatibility& model_compatibility) const override;
 
  private:
   using my_ep_t = vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>>;

@@ -40,7 +40,8 @@ Status CheckBatchDimensionsMatch(
 
 template <typename TIndex>
 Status GatherNDBase::PrepareCompute(
-    onnxruntime::Stream* stream,
+    void* alloc_stream,
+    cudaStream_t cuda_stream,
     const int64_t batch_dims,
     const TensorShape& input_shape,
     const TensorShape& indices_shape,
@@ -54,7 +55,6 @@ Status GatherNDBase::PrepareCompute(
   const auto num_batches = input_shape.SizeToDimension(batch_dims);
   const auto input_batch_stride = input_shape.SizeFromDimension(batch_dims);
   const auto num_slices_per_batch = num_slices / num_batches;
-  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
 
   const TIndex* const indices_data = indices_tensor->Data<TIndex>();
 
@@ -67,14 +67,14 @@ Status GatherNDBase::PrepareCompute(
     }
   }
 
-  auto sizes_from_slice_dims_buffer = GetScratchBuffer<int64_t>(sizes_from_slice_dims.size(), stream);
+  auto sizes_from_slice_dims_buffer = GetScratchBuffer<int64_t>(sizes_from_slice_dims.size(), alloc_stream);
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
       sizes_from_slice_dims_buffer.get(),
       sizes_from_slice_dims.data(),
       sizes_from_slice_dims.size() * sizeof(int64_t),
       cudaMemcpyHostToDevice, cuda_stream));
 
-  input_slice_offsets_buffer = GetScratchBuffer<int64_t>(num_slices, stream);
+  input_slice_offsets_buffer = GetScratchBuffer<int64_t>(num_slices, alloc_stream);
 
   TArray<int64_t> input_dims(input_shape.GetDims());
 
@@ -180,7 +180,7 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
   int64_t num_slices;
   int64_t slice_size;
   IAllocatorUniquePtr<int64_t> input_slice_offsets_buffer;
-  ORT_RETURN_IF_ERROR(PrepareCompute<TIndex>(context->GetComputeStream(),
+  ORT_RETURN_IF_ERROR(PrepareCompute<TIndex>(GetComputeStream(context), Stream(context),
                                              batch_dims_, input_shape, indices_shape, indices_tensor,
                                              num_slices, slice_size, input_slice_offsets_buffer));
 

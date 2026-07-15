@@ -7,8 +7,8 @@
 #include "core/graph/graph.h"
 #include "core/graph/node_attr_utils.h"
 
-#include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 
 #include "gtest/gtest.h"
 
@@ -65,11 +65,8 @@ static void RunTransposeQDQTest(const TestInputDef<float>& input_def,
                                 const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                                 ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   // Runs model with DQ-> Transpose -> Q and compares the outputs of the CPU and QNN EPs.
   TestQDQModelAccuracy(BuildTransposeTestCase<float>(input_def, attrs),
@@ -91,25 +88,15 @@ template <typename DataType>
 static void RunTransposeNonQDQOnHTP(const TestInputDef<DataType>& input_def,
                                     const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                                     ExpectedEPNodeAssignment expected_ep_assignment,
-                                    bool enable_fp16_precision = true) {
+                                    float fp32_abs_err = 1e-5f) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-
-  if (enable_fp16_precision) {
-    provider_options["enable_htp_fp16_precision"] = "1";
-  } else {
-    provider_options["enable_htp_fp16_precision"] = "0";
-  }
+  provider_options["backend_type"] = "htp";
 
   RunQnnModelTest(BuildTransposeTestCase<DataType>(input_def, attrs),
                   provider_options,
                   13,
                   expected_ep_assignment,
-                  1e-5f);
+                  fp32_abs_err);
 }
 
 // Check that QNN compiles DQ -> Transpose -> Q as a single unit.
@@ -127,10 +114,14 @@ TEST_F(QnnHTPBackendTests, TransposeInt32OnHTP) {
 }
 
 // Check that QNN supports Transpose with float32 data input on HTP
-TEST_F(QnnHTPBackendTests, TransposeFloatOnHTP) {
+// Since QAIRT 2.35, default float precision on QNN HTP became FP16.
+// Converting FP32 -> FP16 -> FP32 may introduce minor accuracy loss.
+// For example, a value of 7.64300251 could become 7.64453173 after the conversion.
+// The expected difference is approximately 0.00152922, so the tolerance is adjusted to 5e-3f.
+TEST_F(QnnHTPBackendTests, TransposeFloat32OnHTP) {
   RunTransposeNonQDQOnHTP<float>(TestInputDef<float>({1, 3, 224, 128}, false, 0, 10.0f),
                                  {utils::MakeAttribute("perm", std::vector<int64_t>{0, 2, 3, 1})},
-                                 ExpectedEPNodeAssignment::All, false);
+                                 ExpectedEPNodeAssignment::All, 5e-3f);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

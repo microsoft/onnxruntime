@@ -15,18 +15,6 @@ CoreMLOptions::CoreMLOptions(uint32_t coreml_flags) {
   create_mlprogram_ = (coreml_flags & COREML_FLAG_CREATE_MLPROGRAM) != 0;
   enable_on_subgraph_ = (coreml_flags & COREML_FLAG_ENABLE_ON_SUBGRAPH) != 0;
 
-#if defined(COREML_ENABLE_MLPROGRAM)
-  if (coreml::util::CoreMLVersion() < MINIMUM_COREML_MLPROGRAM_VERSION && create_mlprogram_ != 0) {
-    LOGS_DEFAULT(WARNING) << "ML Program is not supported on this OS version. Falling back to NeuralNetwork.";
-    create_mlprogram_ = false;
-  }
-#else
-  if (create_mlprogram_ != 0) {
-    LOGS_DEFAULT(WARNING) << "ML Program is not supported in this build. Falling back to NeuralNetwork.";
-    create_mlprogram_ = false;
-  }
-#endif
-
   compute_units_ = 0;  // 0 for all
 
   if (coreml_flags & COREML_FLAG_USE_CPU_ONLY) {

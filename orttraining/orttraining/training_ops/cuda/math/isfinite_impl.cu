@@ -6,7 +6,6 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/math/isfinite.cuh"
 
-
 namespace onnxruntime {
 namespace cuda {
 

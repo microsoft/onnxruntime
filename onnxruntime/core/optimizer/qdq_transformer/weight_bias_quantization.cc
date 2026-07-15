@@ -4,6 +4,7 @@
 #include "core/optimizer/qdq_transformer/weight_bias_quantization.h"
 
 #include "core/common/common.h"
+#include "core/providers/common.h"
 #include "core/util/qmath.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
@@ -12,6 +13,39 @@
 #include "core/optimizer/qdq_transformer/qdq_util.h"
 
 namespace onnxruntime {
+
+/**
+ * Checks whether or not the output path from a given node leads to a QuantizeLinear op, optionally, with no
+ * branching ReLU or Clip op in between. See also: NodeGroupSelector::GetQDQSelection() in qdq_selectors.cc.
+ *
+ * @param node The starting node to check the output path from.
+ * @param graph The graph containing the nodes.
+ *
+ * @return true if the path exist, false otherwise.
+ */
+static bool IsNoBranchPathToQuantizeLinear(const Node& node, const Graph& graph) {
+  const Node* current = &node;
+  while (true) {
+    // Conv / ConvTranspose / Gemm produces single output
+    if (current->OutputDefs().size() != 1) {
+      return false;
+    }
+    const std::vector<const Node*>& consumers = graph.GetConsumerNodes(current->OutputDefs()[0]->Name());
+    // Branching or no consumer: not eligible
+    if (consumers.size() != 1) {
+      return false;
+    }
+    const Node* consumer = consumers[0];
+    if (consumer->OpType() == QDQ::QOpName) {
+      return true;
+    }
+    // Allow ReLU or Clip, see also: NodeGroupSelector::GetQDQSelection() in qdq_selectors.cc.
+    if (consumer->OpType() != "Relu" && consumer->OpType() != "Clip") {
+      return false;
+    }
+    current = consumer;
+  }
+}
 
 Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                          const logging::Logger& logger) const {
@@ -40,6 +74,11 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
     // Currently we require input is Dequantized with per-tensor scale.
     if (!parent_node_0 || parent_node_0->OpType() != QDQ::DQOpName ||
         !optimizer_utils::IsScalar(*parent_node_0->InputDefs()[1])) {
+      continue;
+    }
+
+    // Check if the output path leads to QuantizeLinear with optionally ReLU or Clip op in between.
+    if (!IsNoBranchPathToQuantizeLinear(node, graph)) {
       continue;
     }
 
@@ -81,13 +120,23 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
       }
 
       const auto& dq_attrs = dq_1->GetAttributes();
-      if (dq_attrs.find("block_size") != dq_attrs.end()) {
+      auto attr_it = dq_attrs.find("block_size");
+      // Default value of block_size=0 has no significance. Don't skip weight_bias_quantization.
+      if (attr_it != dq_attrs.end() && attr_it->second.i() != 0) {
         continue;
       }
 
       int64_t axis = 1;
       if (auto axis_iter = dq_attrs.find("axis"); axis_iter != dq_attrs.end()) {
         axis = axis_iter->second.i();
+        const ONNX_NAMESPACE::TensorShapeProto* weight_shape = weight_arg->Shape();
+        if (!weight_shape && dq_1->InputDefs()[0]) {
+          weight_shape = dq_1->InputDefs()[0]->Shape();
+        }
+        if (axis < 0 && !weight_shape) {
+          continue;
+        }
+        axis = HandleNegativeAxis(axis, weight_shape->dim_size());
       }
 
       int64_t expected_axis = 0;
@@ -98,6 +147,8 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
           transB = trans_b_iter->second.i();
         }
         expected_axis = transB == 0 ? 1 : 0;
+      } else if (node.OpType() == "ConvTranspose") {
+        expected_axis = 1;
       }
 
       if (axis != expected_axis) {
@@ -107,28 +158,28 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
 
     NodeArg* weight_scale_arg = nullptr;
     if (!dq_1) {
-      auto initializer = std::make_unique<Initializer>(*weight_proto, graph.ModelPath());
-      const float* weight_data = initializer->data<float>();
+      Initializer initializer(graph, *weight_proto, graph.ModelPath());
+      const float* weight_data = initializer.data<float>();
 
       // Quantize float32 weight to int8_t (per-tensor, symmetric).
       // int8_t quantization of input[1] works with input[0] of all types.
       float scale;
       int8_t zp;
-      GetQuantizationParameter(weight_data, static_cast<int64_t>(initializer->size()), scale, zp, nullptr);
+      GetQuantizationParameter(weight_data, static_cast<int64_t>(initializer.size()), scale, zp, nullptr);
 
       // Weight scale initializer.
       ONNX_NAMESPACE::TensorProto weight_scale_proto;
       weight_scale_proto.set_name(graph.GenerateNodeArgName(node.Name() + "_weight_scale"));
       weight_scale_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
       weight_scale_proto.mutable_float_data()->Add(scale);
-      weight_scale_arg = &graph_utils::AddInitializer(graph, weight_scale_proto);
+      weight_scale_arg = &graph_utils::AddInitializerWithOrtValue(graph, weight_scale_proto);
 
       // Weight zero point initializer.
       ONNX_NAMESPACE::TensorProto weight_zp_proto;
       weight_zp_proto.set_name(graph.GenerateNodeArgName(node.Name() + "_weight_zp"));
       weight_zp_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
       weight_zp_proto.mutable_int32_data()->Add(static_cast<int32_t>(zp));
-      NodeArg& weight_zp_arg = graph_utils::AddInitializer(graph, weight_zp_proto);
+      NodeArg& weight_zp_arg = graph_utils::AddInitializerWithOrtValue(graph, weight_zp_proto);
 
       // Q from float32 to int8.
       ONNX_NAMESPACE::TypeProto weight_q_type_proto;
@@ -138,14 +189,14 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
           graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node.Name() + "_weight_q"), &weight_q_type_proto);
       Node& weight_q_node = graph.AddNode(
           graph.GenerateNodeArgName(node.Name() + "_weight_q"), QDQ::QOpName, "Weight Q node",
-          {node.MutableInputDefs()[1], weight_scale_arg, &weight_zp_arg}, {&weight_q_arg}, nullptr, node.Domain());
+          {node.MutableInputDefs()[1], weight_scale_arg, &weight_zp_arg}, {&weight_q_arg}, node, nullptr, node.Domain());
 
       // DQ from int8 to float32.
       NodeArg& weight_dq_arg =
           graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node.Name() + "_weight_dq"), weight_arg->TypeAsProto());
       Node& weight_dq_node =
           graph.AddNode(graph.GenerateNodeArgName(node.Name() + "_weight_dq"), QDQ::DQOpName, "Weight DQ node",
-                        {&weight_q_arg, weight_scale_arg, &weight_zp_arg}, {&weight_dq_arg}, nullptr, node.Domain());
+                        {&weight_q_arg, weight_scale_arg, &weight_zp_arg}, {&weight_dq_arg}, node, nullptr, node.Domain());
       graph.AddEdge(weight_q_node.Index(), weight_dq_node.Index(), 0, 0);
       node.MutableInputDefs()[1] = &weight_dq_arg;
       graph.AddEdge(weight_dq_node.Index(), node.Index(), 0, 1);
@@ -160,14 +211,14 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
                                                          weight_scale_arg->TypeAsProto());
       Node& mul_node =
           graph.AddNode(graph.GenerateNodeName(node.Name() + "_scale"), "Mul", "Bias scale node",
-                        {dq_0.MutableInputDefs()[1], weight_scale_arg}, {&bias_scale_arg}, nullptr, node.Domain());
+                        {dq_0.MutableInputDefs()[1], weight_scale_arg}, {&bias_scale_arg}, node, nullptr, node.Domain());
 
       // fp_bias / scale.
       NodeArg& bias_div_arg =
           graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node.Name() + "_bias_div"), bias_arg->TypeAsProto());
       Node& div_node =
           graph.AddNode(graph.GenerateNodeName(node.Name() + "_bias_div"), "Div", "Bias div node",
-                        {node.MutableInputDefs()[2], &bias_scale_arg}, {&bias_div_arg}, nullptr, node.Domain());
+                        {node.MutableInputDefs()[2], &bias_scale_arg}, {&bias_div_arg}, node, nullptr, node.Domain());
       graph.AddEdge(mul_node.Index(), div_node.Index(), 0, 1);
 
       // Round(fp_bias / scale).
@@ -175,7 +226,7 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
           graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node.Name() + "_bias_div_round"), bias_arg->TypeAsProto());
       Node& round_node =
           graph.AddNode(graph.GenerateNodeName(node.Name() + "_bias_div_round"), "Round", "Bias div round node",
-                        {&bias_div_arg}, {&bias_div_round_arg}, nullptr, node.Domain());
+                        {&bias_div_arg}, {&bias_div_round_arg}, node, nullptr, node.Domain());
       graph.AddEdge(div_node.Index(), round_node.Index(), 0, 0);
 
       // Cast(Round(fp_bias / scale)) to int32.
@@ -185,7 +236,7 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
       NodeArg& bias_int32_arg =
           graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node.Name() + "_bias_int32"), &bias_int32_type_proto);
       Node& cast_node = graph.AddNode(graph.GenerateNodeName(node.Name() + "_bias_int32"), "Cast", "Bias INT32 node",
-                                      {&bias_div_round_arg}, {&bias_int32_arg}, nullptr, node.Domain());
+                                      {&bias_div_round_arg}, {&bias_int32_arg}, node, nullptr, node.Domain());
       cast_node.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32));
       graph.AddEdge(round_node.Index(), cast_node.Index(), 0, 0);
 
@@ -194,7 +245,7 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
           graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node.Name() + "_bias_dq"), bias_arg->TypeAsProto());
       Node& bias_dq_node =
           graph.AddNode(graph.GenerateNodeName(node.Name() + "_bias_dq"), QDQ::DQOpName, "Bias DQ node",
-                        {&bias_int32_arg, &bias_scale_arg}, {&bias_dq_arg}, nullptr, node.Domain());
+                        {&bias_int32_arg, &bias_scale_arg}, {&bias_dq_arg}, node, nullptr, node.Domain());
       if (!is_per_tensor_scale) {
         bias_dq_node.AddAttribute("axis", static_cast<int64_t>(0));
       }

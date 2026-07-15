@@ -1,0 +1,151 @@
+parameters:
+- name: CudaVersion
+  type: string
+  default: '12.8'
+
+- name: IsReleaseBuild
+  displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
+  type: boolean
+  default: false
+
+- name: PreReleaseVersionSuffixString
+  displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
+  type: string
+  values:
+  - alpha
+  - beta
+  - rc
+  - none
+  default: none
+
+- name: PreReleaseVersionSuffixNumber
+  displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
+  type: number
+  default: 0
+
+variables:
+  - template: templates/common-variables.yml
+  - name: ReleaseVersionSuffix
+    value: ''
+  - name: win_cuda_home
+    ${{ if eq(parameters.CudaVersion, '12.8') }}:
+      value: $(Agent.TempDirectory)\v12.8
+    ${{ if eq(parameters.CudaVersion, '13.0') }}:
+      value: $(Agent.TempDirectory)\v13.0
+  - name: CmakeCudaArchitectures
+    ${{ if eq(parameters.CudaVersion, '12.8') }}:
+      value: 52-real;61-real;75-real;86-real;89-real;90-virtual
+    ${{ if eq(parameters.CudaVersion, '13.0') }}:
+      value: 75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual
+
+resources:
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
+extends:
+  # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
+  # For non-production pipelines, use "Unofficial" as defined below.
+  # For productions pipelines, use "Official".
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
+  parameters:
+    featureFlags:
+      binskimScanAllExtensions: true
+    sdl:
+      binskim:
+        enabled: true
+        scanOutputDirectoryOnly: true
+      sourceAnalysisPool:
+        name: onnxruntime-Win-CPU-VS2022-Latest
+        os: windows
+      componentgovernance:
+        ignoreDirectories: '$(Build.Repository.LocalPath)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/benchmark,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11/tests,$(Build.Repository.LocalPath)/cmake/external/onnxruntime-extensions,$(Build.Repository.LocalPath)/js/react_native/e2e/node_modules,$(Build.Repository.LocalPath)/js/node_modules,$(Build.Repository.LocalPath)/onnxruntime-inference-examples,$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/benchmark,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11/tests,$(Build.SourcesDirectory)/cmake/external/onnxruntime-extensions,$(Build.SourcesDirectory)/js/react_native/e2e/node_modules,$(Build.SourcesDirectory)/js/node_modules,$(Build.SourcesDirectory)/onnxruntime-inference-examples,$(Build.BinariesDirectory)'
+      spotBugs:
+        enabled: false
+        justificationForDisabling: "Getting ##[error]1. SpotBugs Error gdn.unknownFormatResult - File: spotbugs.xml, which indicates that SpotBugs found one or more errors, which are not handled by the Guardian right now."
+      codeql:
+        compiled:
+          enabled: false
+          justificationForDisabling: 'CodeQL is taking nearly 6 hours resulting in timeouts in our production pipelines'
+      tsa:
+        enabled: true
+      codeSignValidation:
+        enabled: true
+        break: true
+        additionalTargetsGlobPattern: -|**\QnnCpu.dll;-|**\QnnGpu.dll;-|**\QnnHtp*.dll;-|**\QnnSystem.dll
+      policheck:
+        enabled: true
+        exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'
+
+    stages:
+      - template: stages/set_packaging_variables_stage.yml
+        parameters:
+          IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+          PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+          PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+
+      - template: templates/win-ci.yml
+        parameters:
+          PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+          PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+          ort_build_pool_name: 'onnxruntime-Win2022-GPU-A10'
+          DoCompliance: false
+          DoEsrp: true
+          stage_name_suffix: CUDA
+          buildArch: x64
+          msbuildPlatform: x64
+          packageName: x64-cuda
+          CudaVersion: ${{ parameters.CudaVersion }}
+          buildparameter: --use_cuda --cuda_home=${{ variables.win_cuda_home }} --enable_onnx_tests --nvcc_threads 1 --flash_nvcc_threads 1 --caller_framework WinAI --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ variables.CmakeCudaArchitectures }}"
+          runTests: false
+          buildJava: false
+          java_artifact_id: onnxruntime_gpu
+          UseIncreasedTimeoutForTests: false
+          SpecificArtifact: false
+          BuildId: '0'
+
+      - template: templates/win-ci.yml
+        parameters:
+          PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+          PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+          ort_build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
+          DoCompliance: false
+          DoEsrp: true
+          stage_name_suffix: CPU_arm64
+          buildArch: x64
+          msbuildPlatform: arm64
+          packageName: arm64
+          buildparameter: --arm64 --buildasx --caller_framework WinAI
+          runTests: false
+          buildJava: false
+          buildNodejs: false
+
+      - template: templates/managed-nuget-for-foundry-local.yml
+        parameters:
+          IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+          DoEsrp: true
+
+      - template: templates/mac-cpu-packaging-pipeline.yml
+        parameters:
+          AllowReleasedOpsetOnly: 1
+          AdditionalBuildFlags: '--skip_tests'
+          DoEsrp: true
+
+      - stage: Linux_C_API_Packaging_CPU_aarch64
+        dependsOn: []
+        jobs:
+        - template: tools/ci_build/github/azure-pipelines/templates/c-api-linux-cpu.yml@self
+          parameters:
+            AdditionalBuildFlags: '--skip_tests'
+            OnnxruntimeArch: 'aarch64'
+            OnnxruntimeNodejsBindingArch: 'arm64'
+            PoolName: 'onnxruntime-linux-ARM64-CPU-2019'
+            PackageJava: false
+            PackageNodejs: false
+
+      - template: templates/foundry-local-nuget-packaging.yml
+        parameters:
+          DependsOn: [Setup, Windows_Packaging_CUDA, Windows_Packaging_CPU_arm64, ManagedNugetPackaging, MacOS_C_API_Package_Publish, Linux_C_API_Packaging_CPU_aarch64]
+          DoEsrp: true
+          PackageName: 'Microsoft.ML.OnnxRuntime.Foundry'

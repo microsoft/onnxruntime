@@ -32,7 +32,6 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const int64_t keepdims = helper.Get("keepdims", 1);
   const bool removedim = keepdims != 1;
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
     // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#module-coremltools.converters.mil.mil.ops.defs.iOS15.reduction
@@ -42,13 +41,9 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     AddOperationInput(*op, "axis", model_builder.AddScalarConstant(op->type(), "axis", axis));
     AddOperationInput(*op, "keep_dims", model_builder.AddScalarConstant(op->type(), "keep_dims", bool(keepdims)));
 
-    int32_t output_datatype = ONNX_NAMESPACE::TensorProto_DataType_INT32;
-    // the output of ArgMax must be int32
-    AddOperationOutput(*op, *node.OutputDefs()[0], output_datatype);
+    AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
-  } else
-#endif  // (COREML_ENABLE_MLPROGRAM)
-  {
+  } else {
     auto* coreml_argmax = layer->mutable_argmax();
     coreml_argmax->set_axis(axis);
     coreml_argmax->set_removedim(removedim);
@@ -91,11 +86,9 @@ bool ArgMaxOpBuilder::IsOpSupportedImpl(const Node& node,
     return false;
   }
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (input_params.create_mlprogram) {
     return true;
   }
-#endif
 
   // If there are multiple downstream nodes and cast (toint32) is one of them
   // not supported, exit here

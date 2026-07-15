@@ -89,9 +89,11 @@ Status HandleAutoPad(const std::vector<int64_t> input_shape,
 }
 
 Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
-                          const ONNX_NAMESPACE::TensorProto& tensor) {
+                          const ONNX_NAMESPACE::TensorProto& tensor,
+                          const ModelBuilder& model_builder) {
   const auto data_type = tensor.data_type();
-  Initializer unpacked_tensor(tensor);
+  const Initializer unpacked_tensor(model_builder.GetGraphViewer().GetGraph(), tensor,
+                                    model_builder.GetGraphViewer().ModelPath());
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       CreateCoreMLWeight(weight, unpacked_tensor.DataAsSpan<float>());
@@ -150,7 +152,6 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<c
   CreateCoreMLWeightConvertingDataToFloats(weight, data);
 }
 
-#if defined(COREML_ENABLE_MLPROGRAM)
 //
 // ML Program Utils
 //
@@ -262,9 +263,10 @@ MILSpec::DataType OnnxDataTypeToMILSpec(int onnx_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT16:
       return MILSpec::DataType::INT16;
     case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      return MILSpec::DataType::INT32;
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      return MILSpec::DataType::INT64;
+      // CoreML only supports int32 for its operations and can only produce int32 values so
+      // we convert any int64 to int32.
+      return MILSpec::DataType::INT32;
 
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
       return MILSpec::DataType::UINT8;
@@ -368,8 +370,7 @@ void AddIntermediateOperationOutput(COREML_SPEC::MILSpec::Operation& op, std::st
   SetTensorTypeInfo(tensor_type, OnnxDataTypeToMILSpec(element_type), shape, /*convert_scalar*/ true);
 }
 
-void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output,
-                        std::optional<int32_t> override_element_type) {
+void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output) {
   auto& outputs = *op.mutable_outputs();
   auto& output_arg = *outputs.Add();
   output_arg.set_name(output.Name());
@@ -377,10 +378,7 @@ void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& outp
   MILSpec::ValueType& value = *output_arg.mutable_type();
   MILSpec::TensorType& tensor_type = *value.mutable_tensortype();
 
-  auto elem_type = override_element_type ? *override_element_type
-                                         : output.TypeAsProto()->tensor_type().elem_type();
-
-  SetTensorTypeInfo(tensor_type, OnnxDataTypeToMILSpec(elem_type), output.Shape(), /*convert_scalar*/ true);
+  SetTensorTypeInfo(tensor_type, OnnxDataTypeToMILSpec(output.TypeAsProto()->tensor_type().elem_type()), output.Shape(), /*convert_scalar*/ true);
 }
 
 void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_builder, std::string_view op_type,
@@ -448,6 +446,5 @@ void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_
     }
   }
 }
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
 }  // namespace coreml
 }  // namespace onnxruntime

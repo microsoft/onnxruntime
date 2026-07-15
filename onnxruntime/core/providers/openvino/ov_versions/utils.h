@@ -40,6 +40,10 @@ void IdentifyConnectedNodes(
 std::vector<std::vector<NodeIndex>>
 GetConnectedClusters(const GraphViewer& graph_viewer, const std::vector<std::vector<NodeIndex>>& clusters);
 
+bool AddTrivialClusterToNextClusterIfConnected(const GraphViewer& graph_viewer,
+                                               const NodeIndex index,
+                                               const std::vector<NodeIndex>& search_cluster);
+
 void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
                                const std::vector<NodeIndex>& cluster,
                                const std::unordered_set<std::string>& ng_required_initializers,

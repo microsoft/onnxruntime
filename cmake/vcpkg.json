@@ -8,6 +8,10 @@
   "dependencies": [
     "abseil",
     {
+      "name": "benchmark",
+      "platform": "!android"
+    },
+    {
       "name": "boost-config",
       "version>=": "1.82.0"
     },
@@ -15,10 +19,14 @@
       "name": "boost-mp11",
       "version>=": "1.82.0"
     },
-    "cpuinfo",
+    {
+      "name": "cpuinfo",
+      "platform": "!osx"
+    },
     "cxxopts",
     "date",
     "dlpack",
+    "eigen3",
     {
       "name": "flatbuffers",
       "host": true,
@@ -28,13 +36,16 @@
       "name": "flatbuffers",
       "version>=": "23.5.26"
     },
-    "ms-gsl",
+    {
+      "name": "mimalloc",
+      "platform": "windows"
+    },
+    {
+      "name": "ms-gsl",
+      "version>=": "4.2.1"
+    },
     "nlohmann-json",
-    {
-      "name": "onnx",
-      "version>=": "1.17.0"
-    },
-    "optional-lite",
+    "onnx",
     {
       "name": "protobuf",
       "version>=": "3.21.12"
@@ -44,6 +55,7 @@
       "host": true,
       "version>=": "3.21.12"
     },
+    "pybind11",
     "re2",
     "safeint",
     "utf8-range",
@@ -55,7 +67,10 @@
       "name": "vcpkg-cmake-config",
       "host": true
     },
-    "wil",
+    {
+      "name": "wil",
+      "platform": "windows"
+    },
     {
       "name": "zlib",
       "platform": "windows"
@@ -64,10 +79,23 @@
   "features": {
     "tests": {
       "description": "Build ONNXRuntime unit tests",
-      "dependencies": [
-        "benchmark",
-        "gtest"
-      ]
+      "dependencies": ["gtest"]
+    },
+    "xnnpack-ep": {
+      "description": "Build with XNNPack EP",
+      "dependencies": ["xnnpack"]
+    },
+    "coreml-ep": {
+      "description": "Build with CoreML EP",
+      "dependencies": ["fp16"]
+    },
+    "dml-ep": {
+      "description": "Build with DirectML EP",
+      "dependencies": ["directx-headers"]
+    },
+    "webgpu-ep": {
+      "description": "Build with WebGPU EP",
+      "dependencies": []
     }
   },
   "overrides": [
@@ -77,7 +105,7 @@
     },
     {
       "name": "flatbuffers",
-      "version": "23.5.26#1"
+      "version": "23.5.26"
     }
   ]
 }

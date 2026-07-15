@@ -55,6 +55,7 @@ QLinearOpsRegistry = {
     "Reshape": Direct8BitOp,
     "Squeeze": Direct8BitOp,
     "Unsqueeze": Direct8BitOp,
+    "Flatten": Direct8BitOp,
     "Resize": QResize,
     "AveragePool": QLinearPool,
     "Concat": QLinearConcat,
@@ -73,6 +74,7 @@ QDQRegistry = {
     "Transpose": QDQDirect8BitOp,
     "Squeeze": QDQDirect8BitOp,
     "Unsqueeze": QDQDirect8BitOp,
+    "Flatten": QDQDirect8BitOp,
     "Resize": QDQResize,
     "MaxPool": QDQMaxPool,
     "AveragePool": QDQDirect8BitOp,
@@ -86,6 +88,8 @@ QDQRegistry = {
     "InstanceNormalization": QDQNormalization,
     "LayerNormalization": QDQNormalization,
     "BatchNormalization": QDQNormalization,
+    "TopK": QDQDirect8BitOp,
+    "CumSum": QDQOperatorBase,
 }
 
 

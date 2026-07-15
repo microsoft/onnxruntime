@@ -5,8 +5,6 @@ import re
 import subprocess
 import sys
 
-import coloredlogs  # noqa: F401
-
 debug = False
 debug_verbose = False
 
@@ -69,6 +67,7 @@ table_headers = [model_title, *provider_list]
 disable = "disable"
 basic = "basic"
 extended = "extended"
+layout = "layout"
 enable_all = "all"
 
 
@@ -107,7 +106,7 @@ def get_output(command):
 
 
 def find(regex_string):
-    import glob
+    import glob  # noqa: PLC0415
 
     results = glob.glob(regex_string)
     results.sort()

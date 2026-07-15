@@ -48,8 +48,8 @@ _winml::GetDXGIHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE preference, _CO
     winrt::com_ptr<IDXGIFactory6> spFactory;
     RETURN_IF_FAILED(CreateDXGIFactory1(IID_PPV_ARGS(spFactory.put())));
 
-    while (spFactory->EnumAdapterByGpuPreference(i, preference, IID_PPV_ARGS(spAdapter.put())) != DXGI_ERROR_NOT_FOUND
-    ) {
+    while (spFactory->EnumAdapterByGpuPreference(i, preference, IID_PPV_ARGS(spAdapter.put())) !=
+           DXGI_ERROR_NOT_FOUND) {
       bool isWarpAdapter = false;
       RETURN_IF_FAILED(IsWarpAdapter(spAdapter.get(), &isWarpAdapter));
       if (!isWarpAdapter) {

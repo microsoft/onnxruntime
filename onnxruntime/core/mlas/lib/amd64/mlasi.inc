@@ -93,6 +93,15 @@ ENDIF
 
         ENDM
 
+EmitIfCount2EQ MACRO Count1, Value1, Count2, Value2, Statement
+
+IF (Count1 EQ Value1) AND (Count2 EQ Value2)
+        Statement
+ENDIF
+
+        ENDM
+
+
 ;
 ; Macro Description:
 ;

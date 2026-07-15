@@ -14,7 +14,6 @@ import {
   ShaderHelper,
   tensorTypeToWsglStorageType,
   tensorTypeToWsglValueType,
-  UniformDataElementType,
   UniformsArrayType,
 } from './common';
 
@@ -360,7 +359,7 @@ const createInPlaceSoftmaxProgramInfo = (
     let local_offset = local_idx * uniforms.elements_per_thread;
     let offset = (global_idx / ${WG}) * uniforms.total_sequence_length + local_offset;
     let seq_causal_length = ${seqLens ? 'u32(past_sequence_length + workgroup_id.y + 1)' : 'total_sequence_length'};
-    var thread_max_vector = ${f32Type}(-3.402823e+38f);
+    var thread_max_vector = ${f32Type}(-3.4028234663852886e+38f);
     for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {
       thread_max_vector = max(${f32Type}(x[offset + i]), thread_max_vector);
     }
@@ -378,7 +377,7 @@ const createInPlaceSoftmaxProgramInfo = (
     })()};
     workgroupBarrier();
 
-    var max_value =  f32(-3.402823e+38f);
+    var max_value =  f32(-3.4028234663852886e+38f);
     for (var i = 0u; i < ${WG}; i++) {
       max_value = max(thread_max[i], max_value);
     }
@@ -433,7 +432,7 @@ const createInPlaceSoftmaxProgramInfo = (
     getShaderSource,
     getRunData: () => ({
       outputs: [],
-      dispatchGroup: { x: Math.ceil(totalSequenceLength / WG), y: sequenceLength, z: batchSize * numHeads },
+      dispatchGroup: { x: 1, y: sequenceLength, z: batchSize * numHeads },
       programUniforms,
     }),
   };
@@ -533,7 +532,7 @@ const createAttentionProbsProgramInfo = (
       { name: 'N', type: 'u32' },
       { name: 'num_heads', type: 'u32' },
       { name: 'head_size', type: 'u32' },
-      { name: 'alpha', type: 'f32' as UniformDataElementType },
+      { name: 'alpha', type: 'f32' },
       { name: 'past_sequence_length', type: 'u32' },
       { name: 'kv_sequence_length', type: 'u32' },
       { name: 'n_reps', type: 'u32' },
@@ -809,14 +808,17 @@ export const applyAttention = (
 ) => {
   // Assumption is that presentKey/presentValue exists only if pastKey/pastValue exists.
   const outputCount = Math.min(context.outputCount, 1 + (pastKey ? 1 : 0) + (pastValue ? 1 : 0));
+  // When there are no present key/value outputs (outputCount <= 1), ignore past to match CPU EP semantics.
+  const effectivePastKey = outputCount > 1 ? pastKey : undefined;
+  const effectivePastValue = outputCount > 1 ? pastValue : undefined;
   const pastSequenceLength = outputCount > 1 ? parameters.pastSequenceLength : 0;
   const totalSequenceLength = pastSequenceLength + parameters.kvSequenceLength;
   const attentionBias =
     attentionBiasInput && ShapeUtil.size(attentionBiasInput.dims) > 0 ? attentionBiasInput : undefined;
 
   const inputsK = [q, k];
-  if (outputCount > 1 && pastKey && ShapeUtil.size(pastKey.dims) > 0) {
-    inputsK.push(pastKey);
+  if (effectivePastKey && ShapeUtil.size(effectivePastKey.dims) > 0) {
+    inputsK.push(effectivePastKey);
   }
   if (attentionBias) {
     inputsK.push(attentionBias);
@@ -833,7 +835,7 @@ export const applyAttention = (
       outputCount,
       q,
       k,
-      pastKey,
+      effectivePastKey,
       attentionBias,
       parameters,
       pastSequenceLength,
@@ -860,8 +862,8 @@ export const applyAttention = (
 
   // Run AttentionScore
   const inputsV = [probs, v];
-  if (outputCount > 1 && pastValue && ShapeUtil.size(pastValue.dims) > 0) {
-    inputsV.push(pastValue);
+  if (effectivePastValue && ShapeUtil.size(effectivePastValue.dims) > 0) {
+    inputsV.push(effectivePastValue);
   }
   if (seqLens) {
     inputsV.push(seqLens);
@@ -874,7 +876,7 @@ export const applyAttention = (
       outputCount,
       probs,
       v,
-      pastValue,
+      effectivePastValue,
       parameters,
       pastSequenceLength,
       seqLens,

@@ -20,10 +20,11 @@ class ScatterElementsOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer& graph_viewer, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
+  mutable bool can_fallback_int64_to_int32_ = false;
 };
 
 // Add operator related.
@@ -35,7 +36,13 @@ Status ScatterElementsOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   emscripten::val indices = model_builder.GetOperand(input_defs[1]->Name());
   emscripten::val updates = model_builder.GetOperand(input_defs[2]->Name());
   emscripten::val options = emscripten::val::object();
-  options.set("label", node.Name());
+
+  // ONNX specifies that indices must use int64, but some WebNN backends only support int32.
+  // As a workaround for such backends, we can insert a Cast operation to convert the data type.
+  if (can_fallback_int64_to_int32_) {
+    options.set("label", node.Name() + "_cast_indices_to_int32");
+    indices = model_builder.GetBuilder().call<emscripten::val>("cast", indices, emscripten::val("int32"), options);
+  }
 
   std::vector<int64_t> input_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
@@ -43,6 +50,7 @@ Status ScatterElementsOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   NodeAttrHelper helper(node);
   const uint32_t axis = static_cast<uint32_t>(HandleNegativeAxis(helper.Get("axis", 0), rank));
   options.set("axis", axis);
+  options.set("label", node.Name());
 
   emscripten::val output =
       model_builder.GetBuilder().call<emscripten::val>("scatterElements", data, indices, updates, options);
@@ -53,7 +61,7 @@ Status ScatterElementsOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
 
 // Operator support related.
 
-bool ScatterElementsOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool ScatterElementsOpBuilder::IsOpSupportedImpl(const GraphViewer&, const Node& node,
                                                  const WebnnDeviceType /* device_type */,
                                                  const logging::Logger& logger) const {
   NodeAttrHelper helper(node);
@@ -65,13 +73,12 @@ bool ScatterElementsOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* 
   return true;
 }
 
-bool ScatterElementsOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool ScatterElementsOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                                       const emscripten::val& wnn_limits,
                                                       const logging::Logger& logger) const {
   const auto& data = *node.InputDefs()[0];
   const auto& indices = *node.InputDefs()[1];
   const auto& updates = *node.InputDefs()[2];
-  const auto& op_type = node.OpType();
 
   int32_t data_type;
   int32_t indices_type;
@@ -85,7 +92,17 @@ bool ScatterElementsOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet
     return false;
   }
 
-  return IsDataTypeSupportedByOp(op_type, data_type, wnn_limits, "input", "data", logger) &&
+  const std::string_view op_type = node.OpType();
+
+  if (!IsDataTypeSupportedByOp(op_type, data_type, wnn_limits, "input", "data", logger) ||
+      !IsInputRankSupportedByOp(node, wnn_limits, logger)) {
+    return false;
+  }
+
+  // ONNX specifies that indices must use int64, but some WebNN backends only support int32.
+  // Allows to use int32 as a workaround for such backends.
+  can_fallback_int64_to_int32_ = CanFallbackInt64ToInt32(wnn_limits, "scatterElements", "indices");
+  return can_fallback_int64_to_int32_ ||
          IsDataTypeSupportedByOp(op_type, indices_type, wnn_limits, "indices", "indices", logger);
 }
 

@@ -21,6 +21,11 @@
         "name": "quantize_axis",
         "data": 2,
         "type": "int"
+      },
+      {
+        "name": "bits",
+        "data": 4,
+        "type": "int"
       }
     ],
     "cases": [

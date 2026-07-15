@@ -19,7 +19,8 @@ DEFINE_KERNEL(float);
 DEFINE_KERNEL(double);
 
 template <typename T>
-static void CalculateSqeuclidean(const Tensor& a, const Tensor& b, Tensor& c, concurrency::ThreadPool* threadpool) {
+static void CalculateSqeuclidean(const Tensor& a, const Tensor& b, Tensor& c, concurrency::ThreadPool* threadpool,
+                                 const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
   // input shapes have already been validated
   const auto& shape_a = a.Shape().GetDims();  // {m, k}
   const auto& shape_b = b.Shape().GetDims();  // {n, k}
@@ -64,12 +65,14 @@ static void CalculateSqeuclidean(const Tensor& a, const Tensor& b, Tensor& c, co
                 m, n, k,
                 static_cast<T>(-2.), a_data, b_data, static_cast<T>(0.),
                 c_data,
-                threadpool);
+                threadpool,
+                mlas_backend_kernel_selector_config);
 #else
   // the performance of this isn't great as the eigen matmul is single threaded by default
   // if you're on x86 and care about performance try MKL first. if there's a good enough argument for optimizing this
   // we can look into it in the future.
   ORT_UNUSED_PARAMETER(threadpool);
+  ORT_UNUSED_PARAMETER(mlas_backend_kernel_selector_config);
 
   // https://eigen.tuxfamily.org/dox/TopicWritingEfficientProductExpression.html
   auto out_map = EigenMatrixMapRowMajor<T>(c_data, SafeInt<size_t>(m), SafeInt<size_t>(n));
@@ -114,7 +117,7 @@ common::Status CDist<T>::Compute(OpKernelContext* context) const {
   Tensor* C = context->Output(0, output_shape);
   T* output = C->MutableData<T>();
 
-  CalculateSqeuclidean<T>(*A, *B, *C, tp);
+  CalculateSqeuclidean<T>(*A, *B, *C, tp, &mlas_backend_kernel_selector_config_);
   auto map_out = EigenVectorArrayMap<T>(output, narrow<size_t>(output_shape.Size()));
 
   // because we use GEMM in CalculateSqeuclidean there's a slight chance a number extremely close to zero

@@ -44,7 +44,7 @@ void QGEMM(benchmark::State& state, bool pack_b, bool a_is_signed) {
 
   size_t packed_b_size = 0;
   if (pack_b) {
-    packed_b_size = MlasGemmPackBSize(N, K, a_is_signed, b_is_signed);
+    packed_b_size = MlasGemmPackBSize(N, K, a_is_signed, b_is_signed, nullptr);
     pack_b_holder.resize(packed_b_size * batch);
   }
 
@@ -82,6 +82,9 @@ static void QGemmSize(benchmark::internal::Benchmark* b) {
   b->ArgNames(qgemm_arg_names);
   // Args for  "M", "N", "K", "Batch", "Threads"
 
+  b->Args({1, 512, 512, 1, 1});
+  b->Args({1, 512, 1024, 1, 1});
+  b->Args({1, 1024, 1024, 1, 1});
   b->Args({384, 1024, 1024, 1, 4});
   b->Args({384, 1024, 3072, 1, 4});
   b->Args({384, 1024, 4096, 1, 4});

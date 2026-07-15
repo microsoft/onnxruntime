@@ -47,7 +47,7 @@ def numpy_to_pb(name, np_data, out_filename):
 def image_to_numpy(filename, shape, channels_last, add_batch_dim):
     """Convert an image file into a numpy array."""
 
-    import PIL.Image  # from 'Pillow' package
+    import PIL.Image  # from 'Pillow' package  # noqa: PLC0415
 
     img = PIL.Image.open(filename)
     if shape:

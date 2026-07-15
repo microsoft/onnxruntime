@@ -11,14 +11,18 @@ from pathlib import Path
 
 import numpy
 import onnx
+from ml_dtypes import int4, uint4
 from onnx import TensorProto, helper, numpy_helper
 
 from onnxruntime.quantization.quant_utils import (
+    QuantType,
     compute_scale_zp,
+    compute_scale_zp_float8,
     load_model_with_shape_infer,
     model_has_infer_metadata,
     pack_bytes_to_4bit,
     quantize_data,
+    update_opset_version,
 )
 
 
@@ -80,6 +84,16 @@ class TestQuantUtil(unittest.TestCase):
             [0, 0.0002 / 65535],
         )
 
+    def test_compute_scale_zp_float8(self):
+        # The FLOAT8E4M3FN reference distribution must be the 254 finite float8
+        # values (std ~= 100.0577), not the integers 0..255 (std ~= 73.9). With
+        # std=1 the scale is therefore 1 / 100.0577, not 1 / 73.9.
+        zero, scale = compute_scale_zp_float8(TensorProto.FLOAT8E4M3FN, numpy.float32(1.0))
+        numpy.testing.assert_allclose(float(scale), 1.0 / 100.05772, rtol=1e-5)
+        # Scale is linear in the input std.
+        _, scale2 = compute_scale_zp_float8(TensorProto.FLOAT8E4M3FN, numpy.float32(2.0))
+        numpy.testing.assert_allclose(float(scale2), 2.0 / 100.05772, rtol=1e-5)
+
     def test_load_external_model(self):
         input_name = "input"
         output_name = "output"
@@ -127,7 +141,8 @@ class TestQuantUtil(unittest.TestCase):
                 src_int = src_float.astype(numpy.int8 if signed else numpy.uint8)
 
                 actual_packed_vals = bytes(pack_bytes_to_4bit(src_int.tobytes()))
-                expected_packed_vals = onnx.helper.pack_float32_to_4bit(src_float, signed).tobytes()
+                src_4bit = src_float.astype(int4 if signed else uint4)
+                expected_packed_vals = bytes(pack_bytes_to_4bit(src_4bit.tobytes()))
                 self.assertEqual(actual_packed_vals, expected_packed_vals)
 
     def test_quantize_data_4bit(self):
@@ -147,10 +162,9 @@ class TestQuantUtil(unittest.TestCase):
             with self.subTest(onnx_type=onnx_type, symmetric=symmetric):
                 zero_point, scale, data_quant = quantize_data(data_float, onnx_type, symmetric)
                 is_signed = onnx_type == onnx.TensorProto.INT4
-                np_int_type = numpy.int8 if is_signed else numpy.uint8
+                np_int_type = int4 if is_signed else uint4
                 qmin = numpy.array(-8 if is_signed else 0, dtype=np_int_type)
                 qmax = numpy.array(7 if is_signed else 15, dtype=np_int_type)
-
                 self.assertEqual(zero_point.dtype, np_int_type)
                 self.assertEqual(scale.dtype, data_float.dtype)
 
@@ -171,6 +185,49 @@ class TestQuantUtil(unittest.TestCase):
                     numpy.clip(expected_quant_val, qmin, qmax, out=expected_quant_val)
 
                     self.assertEqual(numpy.array(actual_quant_val), expected_quant_val)
+
+    def test_update_opset_version_16bit(self):
+        graph = helper.make_graph([], "test_graph", [], [])
+
+        # 16-bit weight type alone should auto-bump opset < 21 -> 21
+        for weight_type, label in (
+            (QuantType.QUInt16, "QUInt16"),
+            (QuantType.QInt16, "QInt16"),
+        ):
+            with self.subTest(weight_type=label, opset=20):
+                model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 20)])
+                result = update_opset_version(model, weight_type)
+                result_opset = result.opset_import[0].version
+                self.assertEqual(result_opset, 21)
+
+        # Already at opset 21 - should stay at 21
+        for weight_type, label in (
+            (QuantType.QUInt16, "QUInt16"),
+            (QuantType.QInt16, "QInt16"),
+        ):
+            with self.subTest(weight_type=label, opset=21):
+                model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
+                result = update_opset_version(model, weight_type)
+                result_opset = result.opset_import[0].version
+                self.assertEqual(result_opset, 21)
+
+        # 16-bit activation type with 8-bit weight should also bump opset < 21 -> 21
+        for activation_type, label in (
+            (QuantType.QUInt16, "QUInt16"),
+            (QuantType.QInt16, "QInt16"),
+        ):
+            with self.subTest(activation_type=label, weight_type="QInt8", opset=20):
+                model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 20)])
+                result = update_opset_version(model, QuantType.QInt8, activation_type)
+                result_opset = result.opset_import[0].version
+                self.assertEqual(result_opset, 21)
+
+        # Both 8-bit should NOT bump to 21; opset stays at 20
+        with self.subTest(weight_type="QInt8", activation_type="QUInt8", opset=20):
+            model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 20)])
+            result = update_opset_version(model, QuantType.QInt8, QuantType.QUInt8)
+            result_opset = result.opset_import[0].version
+            self.assertEqual(result_opset, 20)
 
 
 if __name__ == "__main__":

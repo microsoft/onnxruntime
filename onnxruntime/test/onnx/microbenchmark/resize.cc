@@ -30,7 +30,7 @@ static void BM_NhwcUpsampleBilinear(benchmark::State& state) {
   const T* const XdataBase = GenerateArrayWithRandomValue<T>(XdataBaseSize, std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
   const size_t YdataBaseSize = batch_size * num_channels * output_height * output_width;
   T* const YdataBase = (T*)aligned_alloc(sizeof(T) * YdataBaseSize, 64);
-  AllocatorPtr alloc = std::make_shared<CPUAllocator>();
+  AllocatorPtr alloc = CPUAllocator::DefaultInstance();
   const GetOriginalCoordinateFunc& get_original_coordinate =
       [](float x_resized, float x_scale, float, float, float, float) {
         return x_resized / x_scale;

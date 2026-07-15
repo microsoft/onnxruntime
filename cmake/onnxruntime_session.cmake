@@ -5,7 +5,22 @@ file(GLOB onnxruntime_session_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_INCLUDE_DIR}/core/session/*.h"
     "${ONNXRUNTIME_ROOT}/core/session/*.h"
     "${ONNXRUNTIME_ROOT}/core/session/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/session/plugin_ep/*.h"
+    "${ONNXRUNTIME_ROOT}/core/session/plugin_ep/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/session/model_package/*.h"
+    "${ONNXRUNTIME_ROOT}/core/session/model_package/*.cc"
     )
+
+# Standalone model package library (parsing/inspection with no ORT dependency).
+# Compiled as a static library and linked into onnxruntime_session.
+# ORT uses the standalone library's public C API (model_package.h) and translates
+# the C handles into ORT-internal C++ types inside core/session/model_package/.
+set(MODEL_PACKAGE_LIB_DIR "${REPO_ROOT}/model_package")
+if(NOT onnxruntime_MINIMAL_BUILD)
+  set(MODEL_PACKAGE_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+  set(MODEL_PACKAGE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  add_subdirectory(${MODEL_PACKAGE_LIB_DIR} ${CMAKE_CURRENT_BINARY_DIR}/model_package EXCLUDE_FROM_ALL)
+endif()
 
 if (onnxruntime_ENABLE_TRAINING_APIS)
   file(GLOB_RECURSE training_api_srcs CONFIGURE_DEPENDS
@@ -18,10 +33,18 @@ if (onnxruntime_ENABLE_TRAINING_APIS)
   list(APPEND onnxruntime_session_srcs ${training_api_srcs})
 endif()
 
-
+# disable for all minimal builds. enabling this pulls in all the provider bridge stuff,
+# which is not enabled for any minimal builds.
 if (onnxruntime_MINIMAL_BUILD)
+  file(GLOB autoep_srcs
+    "${ONNXRUNTIME_ROOT}/core/session/plugin_ep/*.*"
+    "${ONNXRUNTIME_ROOT}/core/session/model_package/*.*"
+  )
+
   set(onnxruntime_session_src_exclude
     "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc"
+    "${ONNXRUNTIME_ROOT}/core/session/model_builder_c_api.cc"
+    ${autoep_srcs}
   )
 
   list(REMOVE_ITEM onnxruntime_session_srcs ${onnxruntime_session_src_exclude})
@@ -30,8 +53,12 @@ endif()
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_session_srcs})
 
 onnxruntime_add_static_library(onnxruntime_session ${onnxruntime_session_srcs})
-onnxruntime_add_include_to_target(onnxruntime_session onnxruntime_common onnxruntime_framework onnxruntime_lora onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface nlohmann_json::nlohmann_json)
+onnxruntime_add_include_to_target(onnxruntime_session onnxruntime_common onnxruntime_framework onnxruntime_lora onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface nlohmann_json::nlohmann_json Eigen3::Eigen)
 target_link_libraries(onnxruntime_session PRIVATE onnxruntime_lora)
+if(TARGET model_package)
+  target_link_libraries(onnxruntime_session PRIVATE model_package)
+  target_include_directories(onnxruntime_session PRIVATE ${MODEL_PACKAGE_LIB_DIR}/include)
+endif()
 if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_session PUBLIC ONNXRUNTIME_ENABLE_INSTRUMENT)
 endif()
@@ -39,19 +66,14 @@ endif()
 if(NOT MSVC)
   set_source_files_properties(${ONNXRUNTIME_ROOT}/core/session/environment.cc PROPERTIES COMPILE_FLAGS  "-Wno-parentheses")
 endif()
-target_include_directories(onnxruntime_session PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
+target_include_directories(onnxruntime_session PRIVATE ${ONNXRUNTIME_ROOT})
 if (onnxruntime_USE_EXTENSIONS)
   target_link_libraries(onnxruntime_session PRIVATE onnxruntime_extensions)
 endif()
 add_dependencies(onnxruntime_session ${onnxruntime_EXTERNAL_DEPENDENCIES})
 set_target_properties(onnxruntime_session PROPERTIES FOLDER "ONNXRuntime")
 
-if (onnxruntime_USE_ROCM)
-  target_compile_options(onnxruntime_session PRIVATE -Wno-sign-compare -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1)
-  target_include_directories(onnxruntime_session PRIVATE ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hipcub/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include)
-# ROCM provider sources are generated, need to add include directory for generated headers
-  target_include_directories(onnxruntime_session PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
-endif()
+
 if (onnxruntime_ENABLE_TRAINING_OPS)
   target_include_directories(onnxruntime_session PRIVATE ${ORTTRAINING_ROOT})
 endif()
@@ -62,13 +84,15 @@ endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
     install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/session  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
-    install(TARGETS onnxruntime_session
+    install(TARGETS onnxruntime_session EXPORT ${PROJECT_NAME}Targets
             ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
-endif()
-
-if (onnxruntime_USE_NCCL AND onnxruntime_USE_ROCM)
-  add_dependencies(onnxruntime_session generate_hipified_files)
+    if(TARGET model_package)
+      install(TARGETS model_package EXPORT ${PROJECT_NAME}Targets
+              ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+              LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+              RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR})
+    endif()
 endif()

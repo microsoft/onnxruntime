@@ -84,7 +84,7 @@ def parse_args():
 
 
 def create_existing_data_map(pb_files: list[Path]):
-    import onnx_test_data_utils as data_utils
+    import onnx_test_data_utils as data_utils  # noqa: PLC0415
 
     data_map = {}
     for file in pb_files:
@@ -101,7 +101,7 @@ def add_model_and_test_data_to_app(
     input_map: dict[str, np.ndarray] | None = None,
     output_map: dict[str, np.ndarray] | None = None,
 ):
-    import ort_test_dir_utils as utils
+    import ort_test_dir_utils as utils  # noqa: PLC0415
 
     output_path = SOLUTION_DIR / "Resources" / "Raw"
     test_name = "test_data"

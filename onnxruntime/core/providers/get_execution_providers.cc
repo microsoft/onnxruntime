@@ -21,6 +21,14 @@ struct ProviderInfo {
 constexpr ProviderInfo kProvidersInPriorityOrder[] =
     {
         {
+            kNvTensorRTRTXExecutionProvider,
+#ifdef USE_NV
+            true,
+#else
+            false,
+#endif
+        },
+        {
             kTensorrtExecutionProvider,
 #ifdef USE_TENSORRT
             true,
@@ -39,14 +47,6 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
         {
             kMIGraphXExecutionProvider,
 #ifdef USE_MIGRAPHX
-            true,
-#else
-            false,
-#endif
-        },
-        {
-            kRocmExecutionProvider,
-#ifdef USE_ROCM
             true,
 #else
             false,
@@ -117,14 +117,6 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
-            kArmNNExecutionProvider,
-#ifdef USE_ARMNN
-            true,
-#else
-            false,
-#endif
-        },
-        {
             kAclExecutionProvider,
 #ifdef USE_ACL
             true,
@@ -158,7 +150,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
         },
         {
             kWebGpuExecutionProvider,
-#ifdef USE_WEBGPU
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
             true,
 #else
             false,

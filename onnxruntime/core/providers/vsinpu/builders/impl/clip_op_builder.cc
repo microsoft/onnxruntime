@@ -78,8 +78,8 @@ bool ClipOpBuilder::HandleBuildOp(vsi::npu::GraphEP* graph_ep,
   LOGS_DEFAULT(INFO) << "Creating Clip Op.";
   if (node_unit.SinceVersion() <= 6) {
     NodeAttrHelper helper(node_unit.GetNode());
-    auto min = helper.Get("min", -3.402e+38f);
-    auto max = helper.Get("max", 3.402e+38f);
+    auto min = helper.Get("min", -3.4028234663852886e+38f);
+    auto max = helper.Get("max", 3.4028234663852886e+38f);
     auto op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Clip>(min, max);
     (*op).BindInputs(inputs).BindOutputs(outputs);
     graph_ep->GetOps().push_back(std::move(op));

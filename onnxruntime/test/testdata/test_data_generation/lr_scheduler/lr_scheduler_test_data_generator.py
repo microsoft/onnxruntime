@@ -4,8 +4,27 @@
 """This file is used to generate test data for LR scheduler optimizer tests in
 orttraining/orttraining/test/training_api/core/training_api_tests.cc."""
 
+import inspect
+import logging
+
 import torch
 from torch.optim.lr_scheduler import LambdaLR
+
+logger = logging.getLogger(__name__)
+
+_TORCH_LOAD_HAS_WEIGHTS_ONLY = "weights_only" in inspect.signature(torch.load).parameters
+
+
+def _torch_load_weights_only(path: str, **kwargs):
+    if _TORCH_LOAD_HAS_WEIGHTS_ONLY:
+        return torch.load(path, weights_only=True, **kwargs)
+
+    logger.warning(
+        "Current PyTorch version does not support torch.load(..., weights_only=True); "
+        "falling back to default torch.load behavior for %s.",
+        path,
+    )
+    return torch.load(path, **kwargs)
 
 
 class SingleParameterModule(torch.nn.Module):
@@ -58,7 +77,7 @@ def main():
     for warmup_name, num_warmup_steps in num_warmup_step_data_dict.items():
         pt_model = SingleParameterModule(dimension_in, dimension_hidden).to(device)
 
-        import tempfile
+        import tempfile  # noqa: PLC0415
 
         fp = tempfile.NamedTemporaryFile()  # noqa: SIM115
 
@@ -83,14 +102,14 @@ def main():
                     fp.name,
                 )
 
-        import json
+        import json  # noqa: PLC0415
 
         json_file_name = f"warmup_linear_scheduler_warmupstep-{warmup_name}.json"
         with open(json_file_name, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
 
         data = []
-        state_dict = torch.load(fp.name)
+        state_dict = _torch_load_weights_only(fp.name)
         new_adamw_optimizer = torch.optim.AdamW(pt_model.parameters(), lr=1e-3)
         new_adamw_optimizer.load_state_dict(state_dict["optimizer"])
 
@@ -105,7 +124,7 @@ def main():
             new_adamw_optimizer.zero_grad()
             new_scheduler.step()
 
-        import json
+        import json  # noqa: PLC0415
 
         json_file_name = f"warmup_linear_scheduler_warmupstep-{warmup_name}_restored.json"
         with open(json_file_name, "w", encoding="utf-8") as f:

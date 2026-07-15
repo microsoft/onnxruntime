@@ -2,6 +2,8 @@
 VERS_1.0 {
   global:
     GetProvider;
+    CreateEpFactories;
+    ReleaseEpFactory;
     _binary_*;
 
   # Hide everything else.

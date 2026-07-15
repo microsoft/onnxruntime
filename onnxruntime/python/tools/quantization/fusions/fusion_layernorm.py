@@ -33,6 +33,16 @@ class FusionLayerNormalization(Fusion):
                                      |                                                 |
                                      +-------------------------------------------------+
 
+         Or, using Mul instead of Pow:
+
+              +----------------------+
+              |                      |
+              |                      v
+          [Root] --> ReduceMean -->  Sub  --> Mul --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add
+                     (axis=2 or -1)  |     (in0=in1)   (axis=2 or -1)  (E-6 or E-12 or 0) ^
+                                     |                                                 |
+                                     +-------------------------------------------------+
+
          It also handles cases of duplicated sub nodes exported from older version of PyTorch:
 
               +----------------------+
@@ -40,7 +50,7 @@ class FusionLayerNormalization(Fusion):
               |           +-------> Sub-----------------------------------------------+
               |           |                                                           |
               |           |                                                           v
-          [Root] --> ReduceMean -->  Sub  --> Pow --> ReduceMean --> Add --> Sqrt --> Div  --> Mul --> Add
+          [Root] --> ReduceMean -->  Sub  --> (Pow or Mul) --> ReduceMean --> Add --> Sqrt --> Div  --> Mul --> Add
               |                      ^
               |                      |
               +----------------------+
@@ -70,10 +80,9 @@ class FusionLayerNormalization(Fusion):
             div_node,
             [
                 (["Sqrt", "Add", "ReduceMean", "Pow", "Sub"], [1, 0, 0, 0, 0]),
-                (
-                    ["Sqrt", "Add", "ReduceMean", "Pow", "Cast", "Sub"],
-                    [1, 0, 0, 0, 0, 0],
-                ),
+                (["Sqrt", "Add", "ReduceMean", "Pow", "Cast", "Sub"], [1, 0, 0, 0, 0, 0]),
+                (["Sqrt", "Add", "ReduceMean", "Mul", "Sub"], [1, 0, 0, 0, 0]),
+                (["Sqrt", "Add", "ReduceMean", "Mul", "Cast", "Sub"], [1, 0, 0, 0, 0, 0]),
             ],
             output_name_to_node,
         )
@@ -90,8 +99,10 @@ class FusionLayerNormalization(Fusion):
             # Skip fusion since epsilon value is not expected.
             return
 
-        pow_node = parent_nodes[3]
-        if self.find_constant_input(pow_node, 2.0) != 1:
+        pow_or_mul_node = parent_nodes[3]
+        if pow_or_mul_node.op_type == "Pow" and self.find_constant_input(pow_or_mul_node, 2.0) != 1:
+            return
+        elif pow_or_mul_node.op_type == "Mul" and pow_or_mul_node.input[0] != pow_or_mul_node.input[1]:
             return
 
         mul_node = input_name_to_nodes[div_node.output[0]][0]

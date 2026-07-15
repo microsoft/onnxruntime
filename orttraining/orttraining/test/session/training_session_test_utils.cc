@@ -100,7 +100,7 @@ void VerifyState(const DataTransferManager& data_transfer_mgr, const NameMLValMa
     const auto& e_state_it = expected_state.find(key);
     ORT_ENFORCE(e_state_it != expected_state.end());
     auto& expected_tensor = e_state_it->second.Get<Tensor>();
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
     auto& actual_gpu_tensor = a_state_it.second.Get<Tensor>();
 
     // Copying tensor to CPU when cuda is enabled.
@@ -181,8 +181,6 @@ std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
 
 #ifdef USE_CUDA
   ORT_THROW_IF_ERROR(training_session->RegisterExecutionProvider(DefaultCudaExecutionProvider()));
-#elif USE_ROCM
-  ORT_THROW_IF_ERROR(training_session->RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
   ORT_THROW_IF_ERROR(training_session->Initialize());
 

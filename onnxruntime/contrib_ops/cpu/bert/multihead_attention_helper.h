@@ -6,6 +6,8 @@
 #include "core/common/common.h"
 #include "core/providers/common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cpu/bert/attention_parameters.h"
+#include "contrib_ops/cpu/utils/dump_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -153,7 +155,7 @@ Status CheckPast(const T* past_key, const T* past_value, const T* past_seq_len,
   }
   if (past_key_dims[2] != past_value_dims[2]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_key' and 'past_value' shall have same dim 2 (past_sequence_length). ",
+                           "Input 'past_key' and 'past_value' shall have same dim 2 (past_sequence_length or max_sequence_length). ",
                            past_key_dims[2], " vs ", past_value_dims[2]);
   }
   if (past_key_dims[3] != head_size) {
@@ -175,6 +177,12 @@ Status CheckPast(const T* past_key, const T* past_value, const T* past_seq_len,
           "past_sequence_length tensor must be of one element when past_present_share_buffer is set");
     }
     past_sequence_length = *((*past_seq_len).template Data<int32_t>());
+    if (past_sequence_length < 0 || past_sequence_length >= max_sequence_length) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT,
+          "past_sequence_length must be non-negative and less than max_sequence_length (",
+          max_sequence_length, "), got ", past_sequence_length);
+    }
   }
   return Status::OK();
 }
@@ -233,6 +241,35 @@ AttentionMaskType GetMaskType(const T* key_padding_mask, int batch_size, int seq
   return mask_type;
 }
 
+inline Status CheckCacheIndirection(
+    const gsl::span<const int64_t>& cache_indir_dims, int batch_beam_size, int& num_beams, int max_sequence_length) {
+  if (cache_indir_dims.size() != 3) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'cache_indirection' is expected to have 3 dimensions, got ",
+                           cache_indir_dims.size());
+  }
+  num_beams = static_cast<int>(cache_indir_dims[1]);
+  if (cache_indir_dims[1] == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'cache_indirection' dimension 1 should be num_beams, got ",
+                           cache_indir_dims[1]);
+  }
+  if (cache_indir_dims[0] != static_cast<int64_t>(batch_beam_size / num_beams)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'cache_indirection' dimension 0 should be batch_size, got ",
+                           cache_indir_dims[0]);
+  }
+  if (max_sequence_length > 0 && cache_indir_dims[2] != static_cast<int64_t>(max_sequence_length)) {
+    // First condition is to avoid this check for cross attention layers where
+    // past key/past value are passed directly into key/value (which means
+    // that max_sequence_length = 0)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'cache_indirection' dimension 2 should be same as (or less than) max_sequence_length, got ",
+                           cache_indir_dims[2]);
+  }
+  return Status::OK();
+}
+
 template <typename T>
 Status CheckInputs(const T* query,
                    const T* key,
@@ -242,6 +279,7 @@ Status CheckInputs(const T* query,
                    const T* attention_bias,
                    const T* past_key,
                    const T* past_value,
+                   const T* cache_indirection,
                    const T* past_seq_len,
                    void* parameters,
                    int num_heads,
@@ -263,6 +301,7 @@ Status CheckInputs(const T* query,
   //    L: kv_sequence_length
   //    T: total_sequence_length = P + L
   //    M: max_sequence_length of kv cache when past and present share buffer
+  //    W: beam_width
   // ---------------------------------------------------------------
   // MultiHeadAttention inputs:
   // ---------------------------------------------------------------
@@ -308,16 +347,16 @@ Status CheckInputs(const T* query,
   //  Other inputs:
   //     bias             (Q/K/V)   : None or (3 * D)
   //     key_padding_mask (K/V)     : None or (B, T)
-  //     attention_bias     : (1, N, S, T), or (B, N, S, T) where only 1 x N x S x T data is used in CUDA.
+  //     attention_bias             : (B, N, S, T), (1, N, S, T), (B, 1, S, T) or (1, 1, S, T)
+  //     cache_indirection          : (B, W, M)
   //
   //  The following inputs are not used in cross attention (so they are None for cross attention):
   //     past_key                   : (B, N, P, H), or (B, N, M, H) when past_present_share_buffer is True.
-  //                                  For CUDA, past_present_share_buffer is always True. ROCm supports both.
+  //                                  For CUDA, past_present_share_buffer is always True.
   //     past_value                 : (B, N, P, H), or (B, N, M, H) when past_present_share_buffer is True.
-  //                                  For CUDA, past_present_share_buffer is always True. ROCm supports both.
+  //                                  For CUDA, past_present_share_buffer is always True.
   //     past_sequence_length       : scalar (1) when past_present_share_buffer is True.
   //  CUDA version has extra inputs (beam_width, cache_indirection) that are not checked in the class.
-  //  For ROCm, see contrib_ops/rocm/bert/batched_gemm_softmax_gemm_permute_pipelines.cuh for more details.
   // ---------------------------------------------------------------
   AttentionQkvFormat qkv_format = UNKNOWN;
 
@@ -408,6 +447,13 @@ Status CheckInputs(const T* query,
 
   assert(qkv_format != UNKNOWN);
 
+  gsl::span<const int64_t> cache_indir_dims;
+  int num_beams = 0;
+  if (cache_indirection != nullptr) {
+    cache_indir_dims = cache_indirection->Shape().GetDims();
+    ORT_RETURN_IF_ERROR(CheckCacheIndirection(cache_indir_dims, batch_size, num_beams, max_sequence_length));
+  }
+
   if (parameters != nullptr) {
     AttentionParameters* output_parameters = reinterpret_cast<AttentionParameters*>(parameters);
     output_parameters->batch_size = batch_size;
@@ -430,6 +476,7 @@ Status CheckInputs(const T* query,
     output_parameters->broadcast_attn_bias_dim_0 = attention_bias_dims.size() > 0 && attention_bias_dims[0] == 1;
     output_parameters->broadcast_attn_bias_dim_1 = attention_bias_dims.size() > 1 && attention_bias_dims[1] == 1;
     output_parameters->qkv_format = qkv_format;
+    output_parameters->beam_width = num_beams;
   }
 
   return Status::OK();
@@ -444,6 +491,7 @@ Status CheckInputs(const T* query,
                    const T* attention_bias,
                    const T* past_key,
                    const T* past_value,
+                   const T* cache_indirection,
                    const T* past_seq_len,
                    void* parameters,
                    int num_heads,
@@ -457,7 +505,7 @@ Status CheckInputs(const T* query,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, bias, key_padding_mask, attention_bias, past_key, past_value,
+  return CheckInputs(query, key, value, bias, key_padding_mask, attention_bias, past_key, past_value, cache_indirection,
                      past_seq_len, parameters, num_heads, mask_filter_value, scale, is_unidirectional,
                      past_present_share_buffer, operator_type);
 }

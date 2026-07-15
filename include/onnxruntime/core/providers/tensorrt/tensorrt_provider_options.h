@@ -21,6 +21,7 @@ struct OrtTensorRTProviderOptionsV2 {
   int trt_min_subgraph_size{1};                          // minimum size of TensorRT subgraphs
   size_t trt_max_workspace_size{0};                      // maximum workspace size for TensorRT. Default is 0 means max device memory size
   int trt_fp16_enable{0};                                // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
+  int trt_bf16_enable{0};                                // enable TensorRT BF16 precision. Default 0 = false, nonzero = true
   int trt_int8_enable{0};                                // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
   const char* trt_int8_calibration_table_name{nullptr};  // TensorRT INT8 calibration table name.
   int trt_int8_use_native_calibration_table{0};          // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
@@ -42,13 +43,15 @@ struct OrtTensorRTProviderOptionsV2 {
   int trt_sparsity_enable{0};                            // Control if sparsity can be used by TRT. Default 0 = false, 1 = true
   int trt_builder_optimization_level{3};                 // Set the builder optimization level. WARNING: levels below 3 do not guarantee good engine performance, but greatly improve build time.  Default 3, valid range [0-5]
   int trt_auxiliary_streams{-1};                         // Set maximum number of auxiliary streams per inference stream. Setting this value to 0 will lead to optimal memory usage. Default -1 = heuristics
-  const char* trt_tactic_sources{nullptr};               // pecify the tactics to be used by adding (+) or removing (-) tactics from the default
+  const char* trt_tactic_sources{nullptr};               // Specify the tactics to be used by adding (+) or removing (-) tactics from the default
                                                          // tactic sources (default = all available tactics) e.g. "-CUDNN,+CUBLAS" available keys: "CUBLAS"|"CUBLAS_LT"|"CUDNN"|"EDGE_MASK_CONVOLUTIONS"
-  const char* trt_extra_plugin_lib_paths{nullptr};       // specify extra TensorRT plugin library paths
+  const char* trt_extra_plugin_lib_paths{nullptr};       // Specify extra TensorRT plugin library paths
   const char* trt_profile_min_shapes{nullptr};           // Specify the range of the input shapes to build the engine with
   const char* trt_profile_max_shapes{nullptr};           // Specify the range of the input shapes to build the engine with
   const char* trt_profile_opt_shapes{nullptr};           // Specify the range of the input shapes to build the engine with
   int trt_cuda_graph_enable{0};                          // Enable CUDA graph in ORT TRT
+  const char* trt_preview_features{nullptr};             // Specify the preview features to be enabled, features should be separated by comma
+                                                         // available keys: "ALIASED_PLUGIN_IO_10_03"
 
   /*
    * Please note that there are rules for using following context model related provider options:
@@ -86,6 +89,12 @@ struct OrtTensorRTProviderOptionsV2 {
   size_t trt_onnx_bytestream_size{0};               // size of the byte stream provided as "trt_onnx_bytestream"
                                                     // can be updated using: UpdateTensorRTProviderOptionsWithValue
 
-  const char* trt_engine_cache_prefix{nullptr};  // specify engine cache prefix
-  int trt_engine_hw_compatible{0};               // Enable hardware compatibility. Default 0 = false, nonzero = true
+  const void* trt_external_data_bytestream{nullptr};  // The byte stream containing the weights to override the ones provided in the ONNX model.
+                                                      // can be updated using: UpdateTensorRTProviderOptionsWithValue
+  size_t trt_external_data_bytestream_size{0};        // size of the byte stream provided as "trt_external_data_bytestream"
+                                                      // can be updated using: UpdateTensorRTProviderOptionsWithValue
+  const char* trt_engine_cache_prefix{nullptr};       // specify engine cache prefix
+  int trt_engine_hw_compatible{0};                    // Enable hardware compatibility. Default 0 = false, nonzero = true
+  const char* trt_op_types_to_exclude{};              // Exclude specific ops from running on TRT.
+  int trt_load_user_initializer{0};                   // Save initializers locally instead of to disk. Default 0 = false, nonzero = true
 };

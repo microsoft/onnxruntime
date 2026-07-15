@@ -3,6 +3,7 @@
 #include "core/providers/cuda/cuda_resource.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cudnn_loader.h"
 #include "core/common/spin_pause.h"
 
 namespace onnxruntime {
@@ -24,6 +25,10 @@ DeferredCpuAllocator::DeferredCpuAllocator(CudaStream& cuda_stream) : cuda_strea
         auto self = reinterpret_cast<const DeferredCpuAllocator*>(this_);
         return &self->cuda_stream_.GetCpuAllocator()->Info();
       };
+  OrtAllocator::Reserve = nullptr;
+  OrtAllocator::GetStats = nullptr;
+  OrtAllocator::AllocOnStream = nullptr;
+  OrtAllocator::Shrink = nullptr;
 }
 
 struct CudaNotification : public synchronize::Notification {
@@ -38,7 +43,7 @@ struct CudaNotification : public synchronize::Notification {
 
   void Activate() override {
     // record event with cudaEventBlockingSync so we can support sync on host without busy wait.
-    CUDA_CALL_THROW(cudaEventRecord(event_, static_cast<cudaStream_t>(stream_.GetHandle())));
+    CUDA_CALL_THROW(cudaEventRecord(event_, static_cast<cudaStream_t>(GetStream().GetHandle())));
   }
 
   void wait_on_device(Stream& device_stream) {
@@ -73,13 +78,17 @@ CudaStream::CudaStream(cudaStream_t stream,
   if (own_flag) {
     CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
     CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
-    CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
-    CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
+    if (ep_info_.enable_cudnn && cuda::CudnnLibrary::Get().Available()) {
+      CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
+      CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
+    }
   } else {
     cublas_handle_ = external_cublas_handle;
     CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
     cudnn_handle_ = external_cudnn_handle;
-    CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
+    if (cudnn_handle_ != nullptr) {
+      CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
+    }
   }
 #else
   (void)(external_cudnn_handle);
@@ -92,7 +101,9 @@ CudaStream::~CudaStream() {
 #ifndef USE_CUDA_MINIMAL
   if (own_stream_) {
     cublasDestroy(cublas_handle_);
-    cudnnDestroy(cudnn_handle_);
+    if (cudnn_handle_ != nullptr) {
+      cudnnDestroy(cudnn_handle_);
+    }
     auto* handle = GetHandle();
     if (handle)
       cudaStreamDestroy(static_cast<cudaStream_t>(handle));
@@ -210,7 +221,9 @@ void* CudaStream::GetResource(int version, int id) const {
       return reinterpret_cast<void*>(ep_info_.cudnn_conv1d_pad_to_nc1d);
       break;
     case CudaResource::enable_skip_layer_norm_strict_mode_t:
-      return reinterpret_cast<void*>(ep_info_.enable_skip_layer_norm_strict_mode);
+      // [Deprecated] SkipLayerNorm always accumulates in fp32; the strict-mode option no longer
+      // affects computation. Kept for backward compatibility and always reported as false.
+      return reinterpret_cast<void*>(false);
       break;
     case CudaResource::prefer_nhwc_t:
       return reinterpret_cast<void*>(ep_info_.prefer_nhwc);
@@ -228,11 +241,12 @@ void* CudaStream::GetResource(int version, int id) const {
 }
 
 // CPU Stream command handles
-void WaitCudaNotificationOnDevice(Stream& stream, synchronize::Notification& notification) {
-  static_cast<CudaNotification*>(&notification)->wait_on_device(stream);
+void WaitCudaNotificationOnDevice(Stream* stream, synchronize::Notification& notification) {
+  assert(stream != nullptr);  // should never happen
+  static_cast<CudaNotification*>(&notification)->wait_on_device(*stream);
 }
 
-void WaitCudaNotificationOnHost(Stream& /*stream*/, synchronize::Notification& notification) {
+void WaitCudaNotificationOnHost(Stream* /*stream*/, synchronize::Notification& notification) {
   static_cast<CudaNotification*>(&notification)->wait_on_host();
 }
 
@@ -249,7 +263,7 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
   stream_handle_registry.RegisterWaitFn(device_type, device_type, WaitCudaNotificationOnDevice);
   // wait cuda notification on cpu ep
   stream_handle_registry.RegisterWaitFn(device_type, OrtDevice::CPU, WaitCudaNotificationOnHost);
-  if (!use_existing_stream)
+  if (!use_existing_stream) {
     stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator, release_cpu_buffer_on_cuda_stream, ep_info](const OrtDevice& device) {
       CUDA_CALL_THROW(cudaSetDevice(device.Id()));
       cudaStream_t stream = nullptr;
@@ -257,7 +271,8 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
       // CUDA_CALL_THROW(cudaStreamCreate(&stream));
       return std::make_unique<CudaStream>(stream, device, cpu_allocator, release_cpu_buffer_on_cuda_stream, true, nullptr, nullptr, ep_info);
     });
-  else
+    stream_handle_registry.RegisterSetDeviceFn(device_type, [](OrtDevice::DeviceId id) { CUDA_CALL_THROW(cudaSetDevice(id)); });
+  } else {
     stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator,
                                                                 release_cpu_buffer_on_cuda_stream,
                                                                 external_stream,
@@ -266,6 +281,7 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
                                                                 ep_info](const OrtDevice& device) {
       return std::make_unique<CudaStream>(external_stream, device, cpu_allocator, release_cpu_buffer_on_cuda_stream, false, external_cudnn_handle, external_cublas_handle, ep_info);
     });
+  }
 }
 
 }  // namespace onnxruntime

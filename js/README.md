@@ -24,14 +24,12 @@ Please follow the steps described below to setup development environment.
 
 ### Prerequisites
 
-- Node.js (16.0+): https://nodejs.org/ - (Optional) Use nvm ([Windows](https://github.com/coreybutler/nvm-windows) / [Mac/Linux](https://github.com/creationix/nvm)) to install Node.js
+- Node.js (20.0+): https://nodejs.org/ - (Optional) Use nvm ([Windows](https://github.com/coreybutler/nvm-windows) / [Mac/Linux](https://github.com/creationix/nvm)) to install Node.js
 
-- Python (2.7 or 3.6+): https://www.python.org/downloads/
-
+- Python (3.9+): https://www.python.org/downloads/
   - python should be added to the PATH environment variable
 
 - Visual Studio Code: https://code.visualstudio.com/
-
   - **required** extension: [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint)
   - **required** extension: [Prettier](https://marketplace.visualstudio.com/items?itemName=SimonSiefke.prettier-vscode)
   - **required** extension: [JavaScript Debugger](https://marketplace.visualstudio.com/items?itemName=ms-vscode.js-debug-nightly)
@@ -72,7 +70,7 @@ This project is designed to include all "common" code, which are pure javascript
 
 ### Requirements
 
-Node.js v12+ (recommended v14+)
+Node.js v20+
 
 ### Build
 
@@ -108,7 +106,7 @@ Document will be generated in folder `<ORT_ROOT>/js/common/docs`.
 
 > language: typescript/C++
 
-> dependency: onnxruntime-common, ONNXRuntime.dll
+> dependency: onnxruntime-common, ONNXRuntime shared library(.so/dll/dylib)
 
 > folder: <ORT_ROOT>/js/node
 
@@ -116,7 +114,7 @@ This project is designed to be used as a NPM package to enable Node.js users to 
 
 ### Requirements
 
-Node.js v12+ (recommended v14+)
+Node.js v20+
 
 ### Build
 
@@ -294,20 +292,18 @@ From ORT v1.19 onwards, the ONNX Runtime Mobile packages are no longer published
 ### Build
 
 1. Install NPM packages for ONNX Runtime common JavaScript library and required React Native JavaScript libraries
-
    - in `<ORT_ROOT>/js/`, run `npm ci`.
    - in `<ORT_ROOT>/js/common/`, run `npm ci`.
    - in `<ORT_ROOT>/js/react_native/`, run `yarn`.
 
 2. Acquire or build the Android ONNX Runtime package
-
    1. To use a published Android ONNX Runtime package from Maven, go to step 5.
 
    2. Set up an Android build environment using these [instructions](https://onnxruntime.ai/docs/build/android.html). Note that the dependencies are quite convoluted, so using the specified JDK and Gradle versions is important.
 
    3. In `<ORT_ROOT>`, run the below python script to build the ONNX Runtime Android archive file. On a Windows machine, this requires an admin account to build.
 
-   You can build a 'full' package that supports all operators and types, or a reduced size package that supports a limited set of operators and types based on your model/s to miminize the binary size.
+   You can build a 'full' package that supports all operators and types, or a reduced size package that supports a limited set of operators and types based on your model/s to minimize the binary size.
    See [here](https://onnxruntime.ai/docs/build/custom.html) for information about how the reduced build works, including creating the configuration file using your model/s.
    The instructions here show how to build a 'full' package.
 
@@ -326,7 +322,6 @@ From ORT v1.19 onwards, the ONNX Runtime Mobile packages are no longer published
       ```
 
 3. Build iOS ONNX Runtime package
-
    1. To use the published C/C++ ONNX Runtime package from CocoaPods, skip all steps below.
 
    2. Set up iOS build environment using these [instructions](https://onnxruntime.ai/docs/build/ios.html).
@@ -361,7 +356,7 @@ From ORT v1.19 onwards, the ONNX Runtime Mobile packages are no longer published
    From `<ORT_ROOT>/js/react_native,
 
    ```sh
-   yarn bootstrap
+   npm run bootstrap
    ```
 
    When testing with a custom built ONNX Runtime Android package, copy `<BUILD_DIRECTORY>/aar_out/MinSizeRel/com/microsoft/onnxruntime/onnxruntime-android/<version>/onnxruntime-android-<version>.aar` into the `<ORT_ROOT>/js/react_native/e2e/android/app/libs` directory.
@@ -371,13 +366,12 @@ From ORT v1.19 onwards, the ONNX Runtime Mobile packages are no longer published
 - Run E2E Testing with Detox framework
 
   When testing with integrated [Detox](https://wix.github.io/Detox/docs/next/introduction/getting-started) framework for Android and iOS e2e apps:
-
   - Detox prerequisites:
 
     Install detox command line tools:
 
     ```
-    yarn global add detox-cli
+    npm install -g detox-cli
     ```
 
     Install applesimutils which is required by Detox to work with iOS simulators. (Requires a MacOS device)
@@ -388,7 +382,6 @@ From ORT v1.19 onwards, the ONNX Runtime Mobile packages are no longer published
     ```
 
     Main Detox project files:
-
     - `.detoxrc.js` -Detox config file;
     - `e2e/jest.config.js` -Jest configuration;
     - `e2e/OnnxruntimeModuleExample.test.js` - initial react native onnxruntimemodule e2e detox test.
@@ -439,13 +432,13 @@ From ORT v1.19 onwards, the ONNX Runtime Mobile packages are no longer published
     To record logs for testing results, add `--record-logs`. Output logs and test results will be produced in the `e2e/artifacts/` folder.
     See: [Detox/logger#artifacts](https://wix.github.io/Detox/docs/api/logger#artifacts)
 
-    **_`yarn bootstrap` changes `packages.json` and `yarn.lock` files. Once testing is done, restore changes to avoid unwanted commit._**
+    **_`npm run bootstrap` changes `packages.json` and `package-lock.json` files. Once testing is done, restore changes to avoid unwanted commit._**
 
 5. Run Android and iOS apps.
 
    ```sh
-   yarn e2e android
-   yarn e2e ios
+   npm run e2e:android
+   npm run e2e:ios
    ```
 
 ### NPM Packaging
@@ -460,4 +453,4 @@ From ORT v1.19 onwards, the ONNX Runtime Mobile packages are no longer published
 
 ### Distribution
 
-It should be able to consumed by React Native projects that uses Yarn packages through `yarn add onnxruntime-react-native`.
+It should be able to consumed by React Native projects that uses npm packages through `npm install onnxruntime-react-native`.

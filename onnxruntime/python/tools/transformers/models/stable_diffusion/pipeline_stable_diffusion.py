@@ -136,7 +136,7 @@ class StableDiffusionPipeline:
 
         self.control_image_processor = None
         if self.pipeline_info.is_xl() and self.pipeline_info.controlnet:
-            from diffusers.image_processor import VaeImageProcessor
+            from diffusers.image_processor import VaeImageProcessor  # noqa: PLC0415
 
             self.control_image_processor = VaeImageProcessor(
                 vae_scale_factor=8, do_convert_rgb=True, do_normalize=False
@@ -570,7 +570,7 @@ class StableDiffusionPipeline:
             image_path = os.path.join(self.output_dir, "-".join(parts) + ".png")
             print(f"Saving image {i + 1} / {len(images)} to: {image_path}")
 
-            from PIL import PngImagePlugin
+            from PIL import PngImagePlugin  # noqa: PLC0415
 
             info = PngImagePlugin.PngInfo()
             for k, v in metadata.items():
@@ -794,8 +794,8 @@ class StableDiffusionPipeline:
             torch.use_deterministic_algorithms(True)
 
         if self.is_backend_tensorrt():
-            import tensorrt as trt
-            from trt_utilities import TRT_LOGGER
+            import tensorrt as trt  # noqa: PLC0415
+            from trt_utilities import TRT_LOGGER  # noqa: PLC0415
 
             with trt.Runtime(TRT_LOGGER):
                 return self._infer(

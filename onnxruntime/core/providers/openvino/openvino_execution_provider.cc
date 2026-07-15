@@ -5,195 +5,216 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <cerrno>
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/openvino_execution_provider.h"
 #include "core/providers/openvino/contexts.h"
 #include "core/providers/openvino/backend_manager.h"
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
 #include "core/providers/openvino/ov_versions/capability.h"
+#include "core/providers/openvino/qdq_transformations/qdq_stripping.h"
+#include "core/providers/openvino/exceptions.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "openvino/core/version.hpp"
 #ifdef USE_OVEP_NPU_MEMORY
 #include "core/providers/openvino/ov_allocator.h"
 #endif
-
-#define MEMCPY_S(dest, src, destsz, srcsz) memcpy(dest, src, std::min(destsz, srcsz))
+#include "ov_interface.h"
 
 namespace onnxruntime {
+namespace openvino_ep {
 
-OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider} {
-  InitProviderOrtApi();
+std::atomic<uint32_t> OpenVINOExecutionProvider::global_session_counter_{0};
 
-  global_context_ = std::make_unique<openvino_ep::GlobalContext>();
-  global_context_->device_type = info.device_type_;
-  global_context_->precision_str = info.precision_;
-  global_context_->cache_dir = info.cache_dir_;
-  global_context_->load_config = info.load_config_;
-  global_context_->model_priority = info.model_priority_;
-  global_context_->num_streams = info.num_streams_;
-  global_context_->context = info.context_;
-  global_context_->enable_opencl_throttling = info.enable_opencl_throttling_;
-  global_context_->disable_dynamic_shapes = info.disable_dynamic_shapes_;
-  global_context_->num_of_threads = info.num_of_threads_;
-  global_context_->OpenVINO_Version = {OPENVINO_VERSION_MAJOR, OPENVINO_VERSION_MINOR};
-  global_context_->export_ep_ctx_blob = info.export_ep_ctx_blob_;
-  global_context_->enable_qdq_optimizer = info.enable_qdq_optimizer_;
-  global_context_->disable_cpu_fallback = info.disable_cpu_fallback_;
-  global_context_->ep_context_embed_mode = info.so_epctx_embed_mode_;
+// Parking this code here for now before it's moved to the factory
+#if defined OPENVINO_CONFIG_HETERO || defined OPENVINO_CONFIG_MULTI || defined OPENVINO_CONFIG_AUTO
+static std::vector<std::string> parseDevices(const std::string& device_string,
+                                             const std::vector<std::string>& available_devices) {
+  std::string comma_separated_devices = device_string;
+  if (comma_separated_devices.find(":") != std::string::npos) {
+    comma_separated_devices = comma_separated_devices.substr(comma_separated_devices.find(":") + 1);
+  }
+  auto devices = split(comma_separated_devices, ',');
+  if (devices.size() < 2) {
+    print_build_options();
+    ORT_THROW("Invalid device string: " + device_string);
+  }
+  std::set<std::string> dev_options = {"CPU", "GPU", "NPU"};
 
-  // to check if target device is available
-  // using ie_core capability GetAvailableDevices to fetch list of devices plugged in
-  if (info.cache_dir_.empty()) {
-    bool device_found = false;
-    std::vector<std::string> available_devices = global_context_->ie_core.GetAvailableDevices();
-    // Checking for device_type configuration
-    if (info.device_type_ != "") {
-      if (info.device_type_.find("HETERO") != std::string::npos ||
-          info.device_type_.find("MULTI") != std::string::npos ||
-          info.device_type_.find("AUTO") != std::string::npos) {
-        device_found = true;
-      } else {
-        for (const std::string& device : available_devices) {
-          if (device.rfind(info.device_type_, 0) == 0) {
-            if (info.device_type_.find("GPU") != std::string::npos && (info.precision_ == "FP32" ||
-                                                                       info.precision_ == "FP16" ||
-                                                                       info.precision_ == "ACCURACY")) {
-              device_found = true;
-              break;
-            }
-            if (info.device_type_ == "CPU" && (info.precision_ == "FP32")) {
-              device_found = true;
-              break;
-            }
-            if (info.device_type_.find("NPU") != std::string::npos) {
-              device_found = true;
-              break;
-            }
-          }
-        }
-      }
-    }
-    if (!device_found) {
-      ORT_THROW("[ERROR] [OpenVINO] Specified device - " + info.device_type_ + " is not available");
+  for (auto& device : available_devices) {
+    if (dev_options.find(device) == dev_options.end()) {
+      auto dev_options_update = dev_options.emplace(device);
     }
   }
+
+  for (const std::string& dev : devices) {
+    if (!std::count(dev_options.begin(), dev_options.end(), dev)) {
+      print_build_options();
+      ORT_THROW("Invalid device string: " + device_string);
+    }
+  }
+  return devices;
+}
+#endif
+
+OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info)
+    : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider},
+      session_context_(info),
+      ov_core_(OVCore::Get()),
+      shared_context_manager_(SharedContextManager::Get()),
+      ep_ctx_handle_{session_context_.openvino_sdk_version, *GetLogger(), shared_context_manager_} {
+  InitProviderOrtApi();
+#ifdef _WIN32
+  session_id_ = global_session_counter_.fetch_add(1) + 1;
+  // Trace all runtime options (includes both session and provider options)
+  OVTracing::Instance().LogAllRuntimeOptions(session_id_, session_context_);
+#endif
+}
+
+OpenVINOExecutionProvider::~OpenVINOExecutionProvider() {
+  for (auto& backend_manager : backend_managers_) {
+    backend_manager.ShutdownBackendManager();
+  }
+  backend_managers_.clear();
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
 OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
-                                         const IKernelLookup& /*kernel_lookup*/) const {
+                                         const IKernelLookup& /*kernel_lookup*/,
+                                         const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+                                         IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
-
-  std::string openvino_sdk_version = std::to_string(global_context_->OpenVINO_Version.at(0)) + "." +
-                                     std::to_string(global_context_->OpenVINO_Version.at(1));
-
-  // Check for valid ctx node and maintain state for validity
-  if (ep_ctx_handle_.CheckForOVEPCtxNode(graph_viewer, std::move(openvino_sdk_version)))
-    ORT_ENFORCE(graph_viewer.NumberOfNodes() == 1,
-                "[Invalid Graph] EPContext Model with OpenVINO compiled blob should not have more than one node.");
 
   // Enable CI Logs
   if (!(GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG").empty())) {
     std::cout << "In the OpenVINO EP" << std::endl;
   }
-  global_context_->onnx_model_path_name = graph_viewer.ModelPath().string();
-
-  global_context_->onnx_opset_version =
-      graph_viewer.DomainToVersionMap().at(kOnnxDomain);
-
-  global_context_->model_precision = [&](const GraphViewer& graph_viewer) {
-    // return empty if graph has no inputs or if types are not one of FP32/FP16
-    // else assume the type of the first input
-    if (graph_viewer.GetInputs().empty()) {
-      return "";
-    } else {
-      auto input_type = graph_viewer.GetInputs()[0]->TypeAsProto()->tensor_type().elem_type();
-      if (global_context_->precision_str == "ACCURACY" &&
-          global_context_->device_type.find("GPU") != std::string::npos) {
-        if (input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
-          return "FP32";
-        } else if (input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
-          return "FP16";
-        }
-      }
-    }
-    return "";
-  }(graph_viewer);
-
-  openvino_ep::GetCapability obj(graph_viewer,
-                                 global_context_->device_type,
-                                 global_context_->enable_qdq_optimizer);
+  openvino_ep::GetCapability obj(ep_ctx_handle_,
+                                 graph_viewer,
+                                 session_context_.device_type,
+                                 session_context_.enable_qdq_optimizer);
   result = obj.Execute();
-
-  global_context_->is_wholly_supported_graph = obj.IsWhollySupportedGraph();
-  global_context_->has_external_weights = obj.HasExternalWeights();
-
+  session_context_.is_wholly_supported_graph = obj.IsWhollySupportedGraph();
+  session_context_.has_external_weights = obj.HasExternalWeights();
   return result;
 }
 
 common::Status OpenVINOExecutionProvider::Compile(
     const std::vector<FusedNodeAndGraph>& fused_nodes,
     std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (const FusedNodeAndGraph& fused_node_graph : fused_nodes) {
-    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
-    const Node& fused_node = fused_node_graph.fused_node;
+  auto& logger = *GetLogger();
+  Status status = Status::OK();
 
-    NodeComputeInfo compute_info;
+  try {
+    if (session_context_.so_context_enable && session_context_.so_context_embed_mode && session_context_.so_share_ep_contexts) {
+      return Status(common::StatusCategory::ONNXRUNTIME, common::EP_FAIL,
+                    std::string("Invalid EP context configuration: ") + kOrtSessionOptionEpContextEmbedMode + " must be 0 if " + kOrtSessionOptionShareEpContexts + " is 1.");
+    }
 
-    global_context_->use_api_2 = true;
+    if (!fused_nodes.empty()) {
+      // Assume these properties are constant for all the model subgraphs, otherwise move to SubGraphContext
+      const auto& graph_body_viewer_0 = fused_nodes[0].filtered_graph.get();
+      session_context_.onnx_model_path_name = graph_body_viewer_0.ModelPath().string();
+      session_context_.onnx_opset_version =
+          graph_body_viewer_0.DomainToVersionMap().at(kOnnxDomain);
+    }
 
-    // During backend creation, we check if user wants to use precompiled blob onnx model or the original model
-    // For precompiled blob, directly load the model instead of compiling the model
-    // For original model, check if the user wants to export a model with pre-compiled blob
+    shared_context_ = ep_ctx_handle_.Initialize(fused_nodes, session_context_);
+    ORT_ENFORCE(shared_context_,
+                "Failed to create or retrieve SharedContext");
 
-    std::shared_ptr<openvino_ep::BackendManager> backend_manager =
-        std::make_shared<openvino_ep::BackendManager>(*global_context_,
-                                                      fused_node,
-                                                      graph_body_viewer,
-                                                      *GetLogger(),
-                                                      ep_ctx_handle_);
-    backend_manager_ = backend_manager;
-    compute_info.create_state_func =
-        [backend_manager](ComputeContext* context, FunctionState* state) {
-          OpenVINOEPFunctionState* p = new OpenVINOEPFunctionState();
-          p->allocate_func = context->allocate_func;
-          p->destroy_func = context->release_func;
-          p->allocator_handle = context->allocator_handle;
-          p->backend_manager = backend_manager;
-          *state = static_cast<FunctionState>(p);
-          return 0;
-        };
-    compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
-      auto function_state = static_cast<OpenVINOEPFunctionState*>(state);
-      try {
-        function_state->backend_manager->Compute(context);
-      } catch (const std::exception& ex) {
-        return common::Status(common::ONNXRUNTIME, common::FAIL, ex.what());
-      }
-      return Status::OK();
+    struct OpenVINOEPFunctionState {
+      AllocateFunc allocate_func = nullptr;
+      DestroyFunc destroy_func = nullptr;
+      AllocatorHandle allocator_handle = nullptr;
+      BackendManager& backend_manager;
     };
 
-    compute_info.release_state_func =
-        [](FunctionState state) {
-          if (state) {
-            OpenVINOEPFunctionState* function_state = static_cast<OpenVINOEPFunctionState*>(state);
-            delete function_state;
-          }
-        };
-    node_compute_funcs.push_back(compute_info);
+    for (const FusedNodeAndGraph& fused_node_graph : fused_nodes) {
+      const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
+      const Node& fused_node = fused_node_graph.fused_node;
+
+      NodeComputeInfo compute_info;
+
+      // During backend creation, we check if user wants to use precompiled blob onnx model or the original model
+      // For precompiled blob, directly load the model instead of compiling the model
+      // For original model, check if the user wants to export a model with pre-compiled blob
+
+      auto& backend_manager = backend_managers_.emplace_back(session_context_,
+                                                             *shared_context_,
+                                                             fused_node,
+                                                             graph_body_viewer,
+                                                             logger,
+                                                             ep_ctx_handle_);
+      compute_info.create_state_func =
+          [&backend_manager](ComputeContext* context, FunctionState* state) {
+            OpenVINOEPFunctionState* p = new OpenVINOEPFunctionState{
+                .allocate_func = context->allocate_func,
+                .destroy_func = context->release_func,
+                .allocator_handle = context->allocator_handle,
+                .backend_manager = backend_manager};
+            *state = static_cast<FunctionState>(p);
+            return 0;
+          };
+
+      compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
+        auto function_state = static_cast<OpenVINOEPFunctionState*>(state);
+        try {
+          function_state->backend_manager.Compute(context);
+        } catch (const std::exception& ex) {
+          return common::Status(common::ONNXRUNTIME, common::FAIL, ex.what());
+        }
+        return Status::OK();
+      };
+
+      compute_info.release_state_func =
+          [](FunctionState state) {
+            if (state) {
+              OpenVINOEPFunctionState* function_state = static_cast<OpenVINOEPFunctionState*>(state);
+              delete function_state;
+            }
+          };
+
+      node_compute_funcs.push_back(std::move(compute_info));
+    }
+
+    // Export compiled blobs as EPContext nodes if context enable is set
+    if (session_context_.so_context_enable) {
+      auto backend_it = backend_managers_.begin();
+      bool is_first = true;
+
+      for (const auto& fused_node_graph : fused_nodes) {
+        const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
+
+        // Set include_embed_data to true only for the first backend manager
+        backend_it->TryExportCompiledBlobAsEPCtxNode(graph_body_viewer, is_first);
+
+        is_first = false;
+        ++backend_it;
+      }
+
+      // bit clunky ideally we should try to fold this into ep context handler
+      if (!session_context_.so_context_embed_mode) {
+        shared_context_->Serialize();
+        if (session_context_.so_stop_share_ep_contexts) {
+          shared_context_manager_->ClearActiveSharedContext();
+        }
+      }
+    }
+  } catch (const ovep_exception& ex) {
+    status = ex;
   }
 
-  return Status::OK();
+  return status;
 }
 
 #ifdef USE_OVEP_NPU_MEMORY
 std::vector<AllocatorPtr> OpenVINOExecutionProvider::CreatePreferredAllocators() {
-  if (global_context_->device_type.find("NPU") != std::string::npos) {
+  if (session_context_.device_type.find("NPU") != std::string::npos) {
     AllocatorCreationInfo npu_allocator_info{
         [this](OrtDevice::DeviceId device_id) {
           return std::make_unique<OVRTAllocator>(
-              global_context_->ie_core.Get(),
+              OVCore::Get()->core,
               OrtDevice::NPU,
               device_id,
               OpenVINO_RT_NPU);
@@ -231,9 +252,98 @@ common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const ch
         LOGS_DEFAULT(WARNING) << "Supported types are 'Efficient' and 'Default' \n";
       }
       if (workload_type != "") {
-        LOGS_DEFAULT(INFO) << "SetEpDynamicOptions - modifying: " << key << "/" << value;
-        ov::CompiledModel& ov_compiled_model = backend_manager_->GetOVCompiledModel();
-        ov_compiled_model.set_property(ov::workload_type(workload_type));
+        LOGS_DEFAULT(VERBOSE) << "SetEpDynamicOptions - modifying: " << key << "/" << value;
+        for (auto& backend : backend_managers_) {
+          ov::CompiledModel ov_compiled_model = backend.GetOVCompiledModel();
+          if (ov_compiled_model) {
+            ov_compiled_model.set_property(ov::workload_type(workload_type));
+          } else {
+            LOGS_DEFAULT(VERBOSE) << "Model is not compiled in OV as its dynamic";
+            ov::AnyMap map;
+            map["WORKLOAD_TYPE"] = workload_type;
+            if (session_context_.device_type == "NPU")
+              session_context_.load_config["NPU"] = std::move(map);
+            else
+              ORT_THROW(" WORKLOAD_TYPE property is supported only for NPU");
+          }
+        }
+      }
+    } else if (key == "kvcache_rewind") {
+      // Convert kvcache_rewind value to int64_t
+      int64_t index;
+      try {
+        index = std::stoll(value);
+      } catch (const std::exception& e) {
+        LOGS_DEFAULT(WARNING) << "Conversion for kvcache_rewind string value to int64_t index failed."
+                              << "Exception:" + std::string(e.what());
+        return Status::OK();
+      }
+
+      // Trigger KVCache Rewind for target Backend
+      for (auto& backend : backend_managers_) {
+        if (index >= 0) {
+          backend.RewindKVCache(static_cast<size_t>(index));
+        } else {
+          LOGS_DEFAULT(WARNING) << "kvcache_rewind index is < 0:\t" << index;
+        }
+      }
+    } else if (key == "kvcache_reorder") {
+      // Convert kvcache_reorder value format "1,2,3;4,5,6" into two vectors
+      // src_indices = [1,2,3], dst_indices = [4,5,6]
+      size_t delimiter_pos = value.find(';');
+      if (delimiter_pos == std::string::npos) {
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                      "kvcache_reorder value format is incorrect, expected format is 'x1,x2,x3;y1,y2,y3' where x and y are comma-separated int64_t lists");
+      }
+
+      std::string_view src_string(value.begin(), value.begin() + delimiter_pos);
+      std::string_view dst_string(value.begin() + delimiter_pos + 1, value.end());
+
+      constexpr auto parse_indices = [](std::string_view input, const std::string& index_type) -> std::variant<Status, std::vector<int32_t>> {
+        std::vector<int32_t> indices;
+        while (!input.empty()) {
+          const auto delimiter_pos = input.find(',');
+          const auto part = input.substr(0, delimiter_pos);
+          errno = 0;
+          char* parse_end = nullptr;
+          // strtol/stol already skips whitespaces
+          const auto index = std::strtol(part.data(), &parse_end, 10);
+          if (parse_end == part.data()) {
+            return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                          "Failed to parse kvcache_reorder " + index_type + ": " + std::string(part));
+          }
+          if (index < 0) {
+            return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                          "kvcache_reorder " + index_type + " cannot be negative: " + std::string(part));
+          }
+          if (index > std::numeric_limits<int32_t>::max() || errno == ERANGE) {
+            return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                          "kvcache_reorder " + index_type + " exceed INT32_MAX: " + std::string(part));
+          }
+          indices.push_back(static_cast<int32_t>(index));
+          if (delimiter_pos != std::string_view::npos) {
+            // ignore any trailing chars after the number, can do further checking if needed
+            input.remove_prefix(part.size() + 1);
+          } else {
+            break;
+          }
+        }
+        return indices;
+      };
+
+      const auto src_indices = parse_indices(src_string, "src_index");
+      if (std::holds_alternative<Status>(src_indices)) {
+        return std::get<Status>(src_indices);
+      }
+
+      const auto dst_indices = parse_indices(dst_string, "dst_index");
+      if (std::holds_alternative<Status>(dst_indices)) {
+        return std::get<Status>(dst_indices);
+      }
+
+      // Trigger KVCache Reorder for target Backend with vector arguments
+      for (auto& backend : backend_managers_) {
+        backend.SetReorderKVCacheStatus(std::get<std::vector<int32_t>>(src_indices), std::get<std::vector<int32_t>>(dst_indices));
       }
     } else {
       // Handle unknown options
@@ -242,4 +352,10 @@ common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const ch
   }
   return Status::OK();
 }
+
+const InlinedVector<const Node*> OpenVINOExecutionProvider::GetEpContextNodes() const {
+  return ep_ctx_handle_.GetEPCtxNodes();
+}
+
+}  // namespace openvino_ep
 }  // namespace onnxruntime

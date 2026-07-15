@@ -9,6 +9,7 @@ if (onnxruntime_MINIMAL_BUILD)
   list(APPEND onnxruntime_optimizer_src_patterns
     "${ONNXRUNTIME_INCLUDE_DIR}/core/optimizer/graph_transformer.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/graph_transformer.cc"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/graph_optimizer_registry.cc"
   )
 
   if (onnxruntime_EXTENDED_MINIMAL_BUILD)
@@ -44,6 +45,8 @@ if (onnxruntime_MINIMAL_BUILD)
       "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/selector_action_transformer.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/selector_action_transformer.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/slice_concat_to_space_to_depth_fusion.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/slice_concat_to_space_to_depth_fusion.h"
       # files required for layout transformation
       "${ONNXRUNTIME_ROOT}/core/optimizer/layout_transformation/layout_transformation.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/layout_transformation/layout_transformation.cc"
@@ -130,13 +133,9 @@ set_target_properties(onnxruntime_optimizer PROPERTIES FOLDER "ONNXRuntime")
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/optimizer  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
-  install(TARGETS onnxruntime_optimizer
+  install(TARGETS onnxruntime_optimizer EXPORT ${PROJECT_NAME}Targets
             ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
-endif()
-
-if (onnxruntime_USE_ROCM)
-  add_dependencies(onnxruntime_optimizer generate_hipified_files)
 endif()

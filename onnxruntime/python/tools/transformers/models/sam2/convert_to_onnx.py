@@ -114,6 +114,14 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--dynamo",
+        required=False,
+        default=False,
+        action="store_true",
+        help="Use dynamo for exporting onnx model. Only image_encoder supports dynamo right now.",
+    )
+
+    parser.add_argument(
         "--verbose",
         required=False,
         default=False,
@@ -132,7 +140,7 @@ def optimize_sam2_model(onnx_model_path, optimized_model_path, float16: bool, us
     transformers_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
     if transformers_dir not in sys.path:
         sys.path.insert(0, transformers_dir)
-    from optimizer import optimize_model
+    from optimizer import optimize_model  # noqa: PLC0415
 
     optimized_model = optimize_model(onnx_model_path, model_type="sam2", opt_level=1, use_gpu=use_gpu)
     if float16:
@@ -151,8 +159,10 @@ def main():
         onnx_model_path = sam2_onnx_path(args.output_dir, args.model_type, component, args.multimask_output)
         if component == "image_encoder":
             if args.overwrite or not os.path.exists(onnx_model_path):
-                export_image_encoder_onnx(sam2_model, onnx_model_path, args.dynamic_batch_axes, args.verbose)
-                test_image_encoder_onnx(sam2_model, onnx_model_path, dynamic_batch_axes=False)
+                export_image_encoder_onnx(
+                    sam2_model, onnx_model_path, args.dynamic_batch_axes, args.verbose, args.dynamo
+                )
+                test_image_encoder_onnx(sam2_model, onnx_model_path, dynamic_batch_axes=args.dynamic_batch_axes)
 
         elif component == "mask_decoder":
             if args.overwrite or not os.path.exists(onnx_model_path):

@@ -1,0 +1,346 @@
+parameters:
+- name: build_windows_x64
+  displayName: 'Build Windows x64'
+  type: boolean
+  default: true
+
+- name: build_linux_x64
+  displayName: 'Build Linux x64'
+  type: boolean
+  default: true
+
+- name: build_linux_aarch64
+  displayName: 'Build Linux aarch64'
+  type: boolean
+  default: false
+
+- name: cuda_version
+  type: string
+  displayName: 'CUDA Version'
+  default: '12.8'
+
+- name: package_type
+  displayName: 'Package Type'
+  type: string
+  default: dev
+  values:
+  - dev
+  - release
+  - RC
+
+- name: version_file
+  type: string
+
+- name: cmake_build_type
+  type: string
+  displayName: 'CMake build type'
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+- name: docker_base_image
+  type: string
+  displayName: 'Linux x86_64 docker base image'
+  default: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
+
+- name: docker_base_image_aarch64
+  type: string
+  displayName: 'Linux aarch64 docker base image'
+  default: ''
+
+- name: cmake_cuda_archs
+  type: string
+  displayName: 'CMAKE_CUDA_ARCHITECTURES'
+  default: '52-real;61-real;75-real;86-real;89-real;90-virtual'
+
+- name: python_version
+  type: string
+  displayName: 'Python version'
+  default: '3.12'
+
+- name: docker_python_exe_path
+  type: string
+  displayName: 'Docker Python executable path'
+  default: '/opt/python/cp312-cp312/bin/python3.12'
+
+- name: python_package_name
+  type: string
+  displayName: 'Python package distribution name'
+  default: ''
+
+stages:
+    # Publish a stable metadata artifact so downstream test pipelines can discover
+    # the CUDA version and artifact names from the selected packaging run.
+    - stage: CUDA_Plugin_Metadata
+      displayName: 'CUDA Plugin Metadata'
+      dependsOn: []
+      jobs:
+      - job: Publish_CUDA_Plugin_Metadata
+        displayName: 'Publish CUDA plugin metadata'
+        timeoutInMinutes: 15
+        workspace:
+          clean: all
+        templateContext:
+          outputs:
+          - output: pipelineArtifact
+            targetPath: '$(Build.ArtifactStagingDirectory)/metadata'
+            artifactName: cuda_plugin_metadata
+        steps:
+        - checkout: none
+
+        - pwsh: |
+            $ErrorActionPreference = 'Stop'
+
+            $tsaConfigDir = Join-Path '$(Build.SourcesDirectory)' '.config'
+            $tsaConfigPath = Join-Path $tsaConfigDir 'tsaoptions.json'
+            $tsaConfigUrl = 'https://raw.githubusercontent.com/microsoft/onnxruntime/$(Build.SourceVersion)/.config/tsaoptions.json'
+            $metadataDir = Join-Path '$(Build.ArtifactStagingDirectory)' 'metadata'
+            $metadataPath = Join-Path $metadataDir 'metadata.json'
+
+            New-Item -ItemType Directory -Path $tsaConfigDir -Force | Out-Null
+            New-Item -ItemType Directory -Path $metadataDir -Force | Out-Null
+
+            # Guardian's TSA upload step still runs for this job, so fetch the exact config
+            # file from the commit being packaged instead of doing a source checkout.
+            Invoke-WebRequest -Uri $tsaConfigUrl -OutFile $tsaConfigPath
+
+            $metadata = [ordered]@{
+              cuda_version = '${{ parameters.cuda_version }}'
+              cuda_version_no_dot = '${{ replace(parameters.cuda_version, '.', '') }}'
+              docker_base_image_linux_x64 = '${{ parameters.docker_base_image }}'
+              python_artifact_linux_x64 = 'cuda_plugin_python_linux_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}'
+              python_artifact_win_x64 = 'cuda_plugin_python_win_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}'
+              nuget_artifact = 'cuda_plugin_nuget'
+            }
+
+            $metadata | ConvertTo-Json | Set-Content -Path $metadataPath -Encoding UTF8
+            Get-Content $tsaConfigPath
+            Get-Content $metadataPath
+          displayName: 'Fetch TSA config and create metadata.json'
+
+    # Windows x64
+    - ${{ if eq(parameters.build_windows_x64, true) }}:
+      - template: plugin-win-cuda-stage.yml
+        parameters:
+          cuda_version: ${{ parameters.cuda_version }}
+          cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
+          package_version: ${{ parameters.package_type }}
+          version_file: ${{ parameters.version_file }}
+          python_package_name: ${{ parameters.python_package_name }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    # Linux x64
+    - ${{ if eq(parameters.build_linux_x64, true) }}:
+      - template: plugin-linux-cuda-stage.yml
+        parameters:
+          stage_name: Linux_plugin_cuda_x64
+          arch: 'x64'
+          machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
+          cuda_version: ${{ parameters.cuda_version }}
+          cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
+          package_version: ${{ parameters.package_type }}
+          version_file: ${{ parameters.version_file }}
+          python_package_name: ${{ parameters.python_package_name }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          docker_base_image: ${{ parameters.docker_base_image }}
+          python_version: ${{ parameters.python_version }}
+          docker_python_exe_path: ${{ parameters.docker_python_exe_path }}
+          artifact_name: cuda_plugin_linux_x64
+
+    # Linux aarch64 (CUDA 13.0 only)
+    - ${{ if eq(parameters.build_linux_aarch64, true) }}:
+      - template: plugin-linux-cuda-stage.yml
+        parameters:
+          stage_name: Linux_plugin_cuda_aarch64
+          arch: 'aarch64'
+          machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
+          cuda_version: ${{ parameters.cuda_version }}
+          cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
+          package_version: ${{ parameters.package_type }}
+          version_file: ${{ parameters.version_file }}
+          python_package_name: ${{ parameters.python_package_name }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          docker_base_image: ${{ parameters.docker_base_image_aarch64 }}
+          python_version: ${{ parameters.python_version }}
+          docker_python_exe_path: ${{ parameters.docker_python_exe_path }}
+          artifact_name: cuda_plugin_linux_aarch64
+
+    # NuGet packaging (runs after all platform builds)
+    - template: plugin-cuda-nuget-packaging-stage.yml
+      parameters:
+        package_version: ${{ parameters.package_type }}
+        version_file: ${{ parameters.version_file }}
+        DoEsrp: true
+        platforms:
+          win_x64: ${{ parameters.build_windows_x64 }}
+          linux_x64: ${{ parameters.build_linux_x64 }}
+          linux_aarch64: ${{ parameters.build_linux_aarch64 }}
+
+    # Create zip packages for Foundry Local consumption.
+    - ${{ if or(eq(parameters.build_windows_x64, true), eq(parameters.build_linux_x64, true)) }}:
+      - stage: Package_Foundry_Local_CUDA_Zips
+        displayName: 'Package Foundry Local CUDA Plugin-EP Zips'
+        dependsOn:
+          - ${{ if eq(parameters.build_windows_x64, true) }}:
+            - Win_plugin_cuda_x64_Build
+          - ${{ if eq(parameters.build_linux_x64, true) }}:
+            - Linux_plugin_cuda_x64
+          # TODO: win-arm64 and linux-aarch64 are still being developed.
+          # - ${{ if eq(parameters.build_windows_arm64, true) }}:
+          #   - Win_plugin_cuda_arm64_Build
+          # - ${{ if eq(parameters.build_linux_aarch64, true) }}:
+          #   - Linux_plugin_cuda_aarch64
+          # NOTE: macOS arm64 (Apple Silicon) does not have CUDA support since
+          # Apple devices do not use Nvidia GPUs.
+        jobs:
+        - job: CreateZipPackages
+          displayName: 'Create Foundry Local CUDA Plugin-EP Zip Packages'
+          pool:
+            name: 'onnxruntime-Win-CPU-VS2022-Latest'
+            os: windows
+          templateContext:
+            outputs:
+            - output: pipelineArtifact
+              targetPath: $(Build.ArtifactStagingDirectory)/cuda-deps-package
+              artifactName: foundry-local-cuda-plugin-ep-zips
+          steps:
+          # The 1ES TSA SDL task expects .config/tsaoptions.json in the source directory.
+          # Use a sparse checkout to pull only the .config directory (avoids full repo clone).
+          - checkout: self
+            fetchDepth: 1
+            lfs: false
+            submodules: false
+            sparseCheckoutDirectories: .config
+
+          - ${{ if eq(parameters.build_windows_x64, true) }}:
+            - task: DownloadPipelineArtifact@2
+              displayName: 'Download cuda_plugin_win_x64'
+              inputs:
+                artifactName: cuda_plugin_win_x64
+                targetPath: $(Build.SourcesDirectory)/cuda-plugin-win-x64
+
+          - ${{ if eq(parameters.build_linux_x64, true) }}:
+            - task: DownloadPipelineArtifact@2
+              displayName: 'Download cuda_plugin_linux_x64'
+              inputs:
+                artifactName: cuda_plugin_linux_x64
+                targetPath: $(Build.SourcesDirectory)/cuda-plugin-linux-x64
+
+          # TODO: win-arm64 and linux-aarch64 are still being developed.
+          # - ${{ if eq(parameters.build_windows_arm64, true) }}:
+          #   - task: DownloadPipelineArtifact@2
+          #     displayName: 'Download cuda_plugin_win_arm64'
+          #     inputs:
+          #       artifactName: cuda_plugin_win_arm64
+          #       targetPath: $(Build.SourcesDirectory)/cuda-plugin-win-arm64
+
+          # - ${{ if eq(parameters.build_linux_aarch64, true) }}:
+          #   - task: DownloadPipelineArtifact@2
+          #     displayName: 'Download cuda_plugin_linux_aarch64'
+          #     inputs:
+          #       artifactName: cuda_plugin_linux_aarch64
+          #       targetPath: $(Build.SourcesDirectory)/cuda-plugin-linux-aarch64
+
+          - task: PowerShell@2
+            displayName: 'Create version.json and zip packages for each platform'
+            inputs:
+              targetType: inline
+              script: |
+                $outputDir = '$(Build.ArtifactStagingDirectory)/cuda-deps-package'
+                New-Item -ItemType Directory -Path $outputDir -Force
+
+                # CUDA major version (e.g. '12' or '13'). Embedded into zip filenames so that
+                # CUDA 12 and CUDA 13 packages (which share the same VERSION_NUMBER) do not
+                # collide when published to a shared location downstream.
+                $cudaMajor = '${{ parameters.cuda_version }}'.Split('.')[0]
+
+                # Add new platforms here as they are implemented.
+                # NOTE: macOS arm64 (Apple Silicon) is excluded — no CUDA support since Apple devices do not use Nvidia GPUs.
+                $platforms = @(
+                  @{ name = 'win-x64';        dir = '$(Build.SourcesDirectory)/cuda-plugin-win-x64' },
+                  @{ name = 'linux-x64';      dir = '$(Build.SourcesDirectory)/cuda-plugin-linux-x64' }
+                  # TODO: win-arm64 and linux-aarch64 are still being developed.
+                  # @{ name = 'win-arm64';      dir = '$(Build.SourcesDirectory)/cuda-plugin-win-arm64' },
+                  # @{ name = 'linux-aarch64';  dir = '$(Build.SourcesDirectory)/cuda-plugin-linux-aarch64' }
+                )
+
+                $resolvedVersion = $null
+
+                foreach ($platform in $platforms) {
+                  $depsDir = $platform.dir
+                  $platformName = $platform.name
+
+                  if (-not (Test-Path $depsDir)) {
+                    Write-Host "Skipping $platformName (not built)"
+                    continue
+                  }
+
+                  $binDir = Join-Path $depsDir "bin"
+                  $versionDir = Join-Path $depsDir "version"
+
+                  if (-not (Test-Path $binDir)) {
+                    throw "Bin directory not found for $platformName $binDir"
+                  }
+
+                  Write-Host "--- Processing $platformName ---"
+
+                  $versionString = "Unknown"
+                  if (Test-Path $versionDir) {
+                     $versionFile = Get-ChildItem -Path $versionDir -File | Select-Object -First 1
+                     if ($versionFile) {
+                         $versionString = $versionFile.Name.Trim()
+                     }
+                  }
+
+                  # Track the resolved version (all platforms must agree)
+                  # Version formats (full -> filename):
+                  #   release: 0.1.0 -> 0.1.0
+                  #   dev:     0.1.0-dev.20260401+2a1ffff2 -> 0.1.0.dev.20260401.2a1ffff2
+                  # Dev versions have - and + replaced with . for filename compatibility.
+                  # Full version string is preserved in version.json.
+                  $filenameVersion = $versionString -replace '[-+]', '.'
+                  if ($null -eq $resolvedVersion) {
+                    $resolvedVersion = $filenameVersion
+                  } elseif ($resolvedVersion -ne $filenameVersion) {
+                    throw "Version mismatch across platforms: expected '$resolvedVersion' but $platformName has '$filenameVersion'"
+                  }
+
+                  $versionInfo = @{
+                    version = $versionString
+                  }
+
+                  $json = $versionInfo | ConvertTo-Json
+                  $versionPath = Join-Path $binDir "version.json"
+                  Set-Content -Path $versionPath -Value $json -Encoding UTF8
+                  Write-Host "Created version.json:"
+                  Write-Host $json
+
+                  # Collect only native binaries (.dll, .so, .dylib) and version.json
+                  $filesToZip = Get-ChildItem -Path $binDir -File | Where-Object {
+                    $_.Extension -in '.dll', '.so', '.dylib' -or $_.Name -eq 'version.json'
+                  }
+
+                  $zipPath = Join-Path $outputDir "cuda_ep_cuda${cudaMajor}_${filenameVersion}_${platformName}.zip"
+                  if ($filesToZip) {
+                    $filesToZip | Compress-Archive -DestinationPath $zipPath -Force
+                    Write-Host "Created zip: $zipPath ($((Get-Item $zipPath).Length) bytes)"
+                  } else {
+                    throw "No files found to zip for $platformName in $binDir"
+                  }
+                  Write-Host ""
+                }
+
+                if ($null -eq $resolvedVersion) {
+                  throw "No platforms were processed — cannot determine version."
+                }
+
+                # Create a version folder in the output artifact with a file whose name is the version string.
+                # This follows the same convention as the per-platform artifacts (e.g. cuda_plugin_win_x64/version/)
+                # and allows downstream pipelines to read the version without parsing zip filenames.
+                $versionOutputDir = Join-Path $outputDir "version"
+                New-Item -ItemType Directory -Path $versionOutputDir -Force
+                New-Item -ItemType File -Path (Join-Path $versionOutputDir $resolvedVersion) -Force | Out-Null
+                Write-Host "Created version marker: $versionOutputDir/$resolvedVersion"

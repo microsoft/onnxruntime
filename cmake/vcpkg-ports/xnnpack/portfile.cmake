@@ -5,18 +5,18 @@ endif()
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO google/XNNPACK
-    REF 854b343f9cad36bd596e4390959ca3648208e048
-    SHA512 f37384b43022cb74bf87bd99c2e82e51d48fe4e0e4642611fcbc10cbb86ff2468b67964027f13f82a715dc7201c490d88d5020fb565ad236187b9dd219f3f644
+    REF 3cf85e705098622d59056dcb8f5f963ea7bb0a00
+    SHA512 af10afde80def08dc3b20a35bd38e84f9f749865ecc4bc9733b5d99d8a2f0f30c19c3f23472d65462a907b3a58226e3b254354a92a6baa31031824f68012a055
     HEAD_REF master
     PATCHES
         fix-build.patch
-	disable_gcc_warning.patch
+        disable_gcc_warning.patch
 )
 vcpkg_find_acquire_program(PYTHON3)
 
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
-	WINDOWS_USE_MSBUILD
+    WINDOWS_USE_MSBUILD
     OPTIONS
         "-DPython3_EXECUTABLE=${PYTHON3}"
         "-DPython_EXECUTABLE=${PYTHON3}"

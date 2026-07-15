@@ -1,9 +1,10 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "onnxruntime_cxx_api.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "gtest/gtest.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
@@ -17,6 +18,8 @@
 using namespace std;
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
+
+extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
 
@@ -299,7 +302,9 @@ void RunWithOneSessionMultiThreadsInference(PathString model_name, std::string s
   ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_engine_cache_prefix));
 }
 
-TEST(TensorrtExecutionProviderTest, SessionCreationWithMultiThreadsAndInferenceWithMultiThreads) {
+// The test is disabled due to the issue described at
+// https://github.com/microsoft/onnxruntime/issues/26366
+TEST(TensorrtExecutionProviderTest, DISABLED_SessionCreationWithMultiThreadsAndInferenceWithMultiThreads) {
   std::vector<std::thread> threads;
   PathString model_name = ORT_TSTR("trt_execution_provider_multithreading_test.onnx");
   std::string graph_name = "multithreading_test";
@@ -571,6 +576,8 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   params7.trt_dump_ep_context_model = 1;
   params7.trt_ep_context_embed_mode = 1;
   params7.trt_weight_stripped_engine_enable = 1;
+  params7.trt_onnx_bytestream = model_bytes.data();
+  params7.trt_onnx_bytestream_size = model_bytes.size();
   params7.trt_ep_context_file_path = ctx_model_name_str.c_str();
   execution_provider = TensorrtExecutionProviderWithOptions(&params7);
   EXPECT_TRUE(session_object7.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
@@ -616,6 +623,63 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   RunSession(session_object9, run_options, feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
 }
 
+TEST(TensorrtExecutionProviderTest, ExcludeOpsTest) {
+  /* The mnist.onnx looks like this:
+   *        Conv
+   *         |
+   *        Add
+   *         .
+   *         .
+   *         |
+   *      MaxPool
+   *         |
+   *         .
+   *         .
+   *      MaxPool
+   *         |
+   *      Reshape
+   *         |
+   *      MatMul
+   *         .
+   *         .
+   *
+   */
+  PathString model_name = ORT_TSTR("testdata/mnist.onnx");
+  SessionOptions so;
+  so.session_logid = "TensorrtExecutionProviderExcludeOpsTest";
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  InferenceSession session_object{so, GetEnvironment()};
+  auto cuda_provider = DefaultCudaExecutionProvider();
+  auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
+  std::vector<int64_t> dims_op_x = {1, 1, 28, 28};
+  std::vector<float> values_op_x(784, 1.0f);  // 784=1*1*28*28
+  OrtValue ml_value_x;
+  CreateMLValue<float>(cpu_allocator, dims_op_x, values_op_x, &ml_value_x);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("Input3", ml_value_x));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("Plus214_Output_0");
+  std::vector<OrtValue> fetches;
+
+  RemoveCachesByType("./", ".engine");
+  OrtTensorRTProviderOptionsV2 params;
+  params.trt_engine_cache_enable = 1;
+  params.trt_op_types_to_exclude = "MaxPool";
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
+  ASSERT_STATUS_OK(session_object.Load(model_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
+
+  std::vector<fs::path> engine_files;
+  engine_files = GetCachesByType("./", ".engine");
+  // The whole graph should be partitioned into 3 TRT subgraphs and 2 cpu nodes
+  ASSERT_EQ(engine_files.size(), 3);
+}
+
 TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   PathString model_name = ORT_TSTR("testdata/trt_plugin_custom_op_test.onnx");
   SessionOptions so;
@@ -626,7 +690,7 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   auto cuda_provider = DefaultCudaExecutionProvider();
   auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
   std::vector<int64_t> dims_op_x = {12, 256, 256};
-  std::vector<float> values_op_x(1.0f, 786432);  // 786432=12*256*256
+  std::vector<float> values_op_x(786432, 1.0f);  // 786432=12*256*256
   OrtValue ml_value_x;
   CreateMLValue<float>(cpu_allocator, dims_op_x, values_op_x, &ml_value_x);
   OrtValue ml_value_y;
@@ -650,6 +714,52 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   ASSERT_TRUE(status.IsOK());
   status = session_object.Initialize();
   ASSERT_TRUE(status.IsOK());
+  status = session_object.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(status.IsOK());
+}
+
+TEST(TensorrtExecutionProviderTest, DDSOutputTest) {
+  PathString model_name = ORT_TSTR("testdata/ort_github_issue_26272_dds.onnx");
+  SessionOptions so;
+  so.session_logid = "TensorrtExecutionProviderRunWithDDSOutput";
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  InferenceSession session_object{so, GetEnvironment()};
+  auto cuda_provider = DefaultCudaExecutionProvider();
+  auto cuda_allocator = cuda_provider->CreatePreferredAllocators()[1];
+  std::vector<int64_t> dims_op_x = {3, 4};
+  std::vector<float> values_op_x(12, 0.f);  // 12=3*4
+  OrtValue ml_value_x;
+  CreateMLValue<float>(cuda_allocator, dims_op_x, values_op_x, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("data", ml_value_x));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("output");
+  std::vector<OrtValue> fetches;
+
+  OrtTensorRTProviderOptionsV2 params;
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+  auto status = session_object.Load(model_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session_object.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  // First pass run
+  status = session_object.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(status.IsOK());
+
+  // Second pass run with new shape
+  dims_op_x = {6, 4};
+  values_op_x.resize(24, 0.f);  // 24=6*4
+  CreateMLValue<float>(cuda_allocator, dims_op_x, values_op_x, &ml_value_x);
+  feeds.clear();
+
+  feeds.insert(std::make_pair("data", ml_value_x));
+
   status = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
 }
@@ -1253,5 +1363,218 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleTest) {
   ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
   VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
 }
+
+TEST(TensorrtExecutionProviderTest, TestSessionOutputs) {
+  /*
+   * Model #1:
+   *
+   * "input" ---> TopK ---
+   *                     |---> "scores"
+   *                     |--- Less ---> "Less_output_0"
+   *                     |--- Div ---> "Div_output_0"
+   *                     |--- Mod ---> "labels"
+   */
+  {
+    OrtTensorRTProviderOptionsV2 provider_options;
+    Ort::SessionOptions session_options;
+    session_options.AppendExecutionProvider_TensorRT_V2(provider_options);
+
+    auto model_path = ORT_TSTR("testdata/topk_and_multiple_graph_outputs.onnx");
+    Ort::Session session(*ort_env, model_path, session_options);
+
+    size_t output_count = session.GetOutputCount();
+    ASSERT_TRUE(output_count == 4);
+  }
+
+  /*
+   * Model #2:
+   *
+   * "X" ---> Dropout ---> MatMul ---> "Y"
+   *          ^     |
+   *          |     |
+   * "W" ------     ----> Can't be graph's output
+   *
+   */
+  {
+    OrtTensorRTProviderOptionsV2 provider_options;
+    Ort::SessionOptions session_options;
+    session_options.AppendExecutionProvider_TensorRT_V2(provider_options);
+
+    auto model_path = ORT_TSTR("testdata/node_output_not_used.onnx");
+    Ort::Session session(*ort_env, model_path, session_options);
+
+    size_t output_count = session.GetOutputCount();
+    ASSERT_TRUE(output_count == 1);
+  }
+}
+
+/*
+ * Helper to create a synthetic EPContext ONNX model with a specific "source" attribute.
+ * Uses raw ONNX protobuf to bypass schema validation (EPContext is a contrib op).
+ */
+void CreateSyntheticEPContextModel(const std::string& model_path_str,
+                                   const std::string& source_attr,
+                                   bool include_source_attr = true) {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(11);
+  auto* ms_opset = model.add_opset_import();
+  ms_opset->set_domain("com.microsoft");
+  ms_opset->set_version(1);
+
+  auto* graph = model.mutable_graph();
+  graph->set_name("EPContextSourceTest");
+
+  // Input
+  auto* input = graph->add_input();
+  input->set_name("input");
+  auto* input_type = input->mutable_type()->mutable_tensor_type();
+  input_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  input_type->mutable_shape()->add_dim()->set_dim_value(1);
+  input_type->mutable_shape()->add_dim()->set_dim_value(3);
+
+  // Output
+  auto* output = graph->add_output();
+  output->set_name("output");
+  auto* output_type = output->mutable_type()->mutable_tensor_type();
+  output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  output_type->mutable_shape()->add_dim()->set_dim_value(1);
+  output_type->mutable_shape()->add_dim()->set_dim_value(3);
+
+  // EPContext node
+  auto* node = graph->add_node();
+  node->set_op_type("EPContext");
+  node->set_domain("com.microsoft");
+  node->set_name("ep_context_node");
+  node->add_input("input");
+  node->add_output("output");
+
+  // embed_mode attribute
+  auto* attr_embed = node->add_attribute();
+  attr_embed->set_name("embed_mode");
+  attr_embed->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  attr_embed->set_i(1);
+
+  // ep_cache_context attribute (dummy data)
+  auto* attr_cache = node->add_attribute();
+  attr_cache->set_name("ep_cache_context");
+  attr_cache->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+  attr_cache->set_s("dummy_context_data");
+
+  // source attribute (conditionally added)
+  if (include_source_attr) {
+    auto* attr_source = node->add_attribute();
+    attr_source->set_name("source");
+    attr_source->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+    attr_source->set_s(source_attr);
+  }
+
+  // Save to file
+  PathString model_path = ToPathString(model_path_str);
+  std::ofstream ofs(model_path, std::ios::binary);
+  ASSERT_TRUE(ofs.is_open());
+  ASSERT_TRUE(model.SerializeToOstream(&ofs));
+}
+
+/*
+ * Test: Classic TensorRT EP should NOT claim an EPContext node whose "source"
+ * attribute belongs to a different EP (e.g., OpenVINO).
+ *
+ * Expected: Session initialization fails because no EP claims the node.
+ */
+TEST(TensorrtExecutionProviderTest, EPContextNode_ForeignSourceSkipped) {
+  std::string model_path_str = "ep_context_foreign_source_trt.onnx";
+  PathString model_path = ToPathString(model_path_str);
+  CreateSyntheticEPContextModel(model_path_str, "OpenVINOExecutionProvider");
+
+  SessionOptions so;
+  so.session_logid = "EPContextNode_ForeignSourceSkipped";
+  InferenceSession session{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params;
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  EXPECT_TRUE(session.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+
+  auto status = session.Load(model_path);
+  ASSERT_TRUE(status.IsOK());
+
+  // Initialization should fail because TRT EP correctly skips the foreign EPContext node
+  // and no other EP can handle it.
+  status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_TRUE(status.ErrorMessage().find("EPContext") != std::string::npos)
+      << "Error should mention EPContext. Actual: " << status.ErrorMessage();
+
+  // Clean up
+  std::filesystem::remove(model_path);
+}
+
+/*
+ * Test: Classic TensorRT EP should NOT claim an EPContext node whose "source"
+ * attribute is set to the NvTensorRTRTX EP name.
+ */
+TEST(TensorrtExecutionProviderTest, EPContextNode_NvRtxSourceSkipped) {
+  std::string model_path_str = "ep_context_nv_rtx_source_trt.onnx";
+  PathString model_path = ToPathString(model_path_str);
+  CreateSyntheticEPContextModel(model_path_str, "NvTensorRTRTXExecutionProvider");
+
+  SessionOptions so;
+  so.session_logid = "EPContextNode_NvRtxSourceSkipped";
+  InferenceSession session{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params;
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  EXPECT_TRUE(session.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+
+  auto status = session.Load(model_path);
+  ASSERT_TRUE(status.IsOK());
+
+  // Initialization should fail because TRT EP correctly skips the foreign EPContext node.
+  status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_TRUE(status.ErrorMessage().find("EPContext") != std::string::npos)
+      << "Error should mention EPContext. Actual: " << status.ErrorMessage();
+
+  // Clean up
+  std::filesystem::remove(model_path);
+}
+
+/*
+ * Test: Classic TensorRT EP should still claim an EPContext node that has NO
+ * "source" attribute (backward compatibility with legacy context models).
+ *
+ * Expected: The EP claims the node. It may fail later during engine
+ * deserialization (since context data is synthetic), but the error must NOT
+ * be "is not compatible with any execution provider", which would indicate
+ * the node was not claimed at all.
+ */
+TEST(TensorrtExecutionProviderTest, EPContextNode_NoSourceAttribute_BackwardCompat) {
+  std::string model_path_str = "ep_context_no_source_trt.onnx";
+  PathString model_path = ToPathString(model_path_str);
+  CreateSyntheticEPContextModel(model_path_str, "", /*include_source_attr=*/false);
+
+  SessionOptions so;
+  so.session_logid = "EPContextNode_NoSourceAttribute_BackwardCompat";
+  InferenceSession session{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params;
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  EXPECT_TRUE(session.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+
+  auto status = session.Load(model_path);
+  ASSERT_TRUE(status.IsOK());
+
+  // The EP should claim the node. It may fail during engine deserialization
+  // (since context data is synthetic), but the error must NOT be the
+  // "not compatible" error that indicates no EP claimed the node.
+  status = session.Initialize();
+  if (!status.IsOK()) {
+    EXPECT_TRUE(status.ErrorMessage().find("is not compatible with any execution provider") == std::string::npos)
+        << "Legacy EPContext node without source should still be claimed by EP. Error: " << status.ErrorMessage();
+  }
+
+  // Clean up
+  std::filesystem::remove(model_path);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

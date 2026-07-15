@@ -30,7 +30,7 @@ class QDQSelectorActionTransformer : public SelectorActionTransformer {
                                const SatApplyContextVariant& apply_context = {},
                                int64_t qdq_matmulnbits_accuracy_level = 4,
                                concurrency::ThreadPool* intra_op_thread_pool = nullptr,
-                               std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors = nullptr);
+                               int64_t qdq_matmulnbits_block_size = 0);
 };
 
 }  // namespace onnxruntime

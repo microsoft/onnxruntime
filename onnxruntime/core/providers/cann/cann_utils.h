@@ -9,6 +9,8 @@
 #include <iomanip>
 #include <string>
 #include <memory>
+#include <filesystem>
+#include <regex>
 
 #include "core/framework/murmurhash3.h"
 #include "core/providers/cann/cann_common.h"
@@ -124,8 +126,10 @@ Status aclrtblasGemmEx(aclTransType transA,
 
 bool FileExist(const std::string& file_name);
 void GenerateHashValue(const std::string string, HashValue& hash_value);
-
+bool is_dynamic_shape(const aclmdlIODims& dims);
+std::string MatchFile(const std::string& file_name);
 std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger);
-
+bool GetRepeatInitFlag();
+void SetRepeatInitFlag(bool val);
 }  // namespace cann
 }  // namespace onnxruntime

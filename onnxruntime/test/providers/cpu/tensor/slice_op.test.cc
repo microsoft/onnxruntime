@@ -54,6 +54,7 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
 
   if (onnx_shape_disagreement) {
     excluded_providers.insert(kCoreMLExecutionProvider);
+    excluded_providers.insert(kOpenVINOExecutionProvider);
   }
 
   if (!v10_only) {
@@ -539,9 +540,6 @@ TEST(SliceTest, Slice1D_ReverseAllAxes_1) {
   if (DefaultVSINPUExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{4}] did not match run output shape [{0}] for output";
   }
-  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Not covered by WebGPU test suite";
-  }
 
   RunSliceTest<float>({4},
                       {1.0f, 2.0f, 3.0f, 4.0f},
@@ -556,9 +554,6 @@ TEST(SliceTest, Slice1D_ReverseAllAxes_1) {
 
 // With numeric_limit_min, the end value should be clamped to -1
 TEST(SliceTest, Slice1D_ReverseAllAxes_2) {
-  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Not covered by WebGPU test suite";
-  }
   RunSliceTest<float>({4},
                       {1.0f, 2.0f, 3.0f, 4.0f},
                       {-1},
@@ -572,9 +567,6 @@ TEST(SliceTest, Slice1D_ReverseAllAxes_2) {
 
 // giving an end value < -{dim_value} should also clamp it to -1
 TEST(SliceTest, Slice1D_ReverseAllAxes_3) {
-  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Not covered by WebGPU test suite";
-  }
   RunSliceTest<float>({4},
                       {1.0f, 2.0f, 3.0f, 4.0f},
                       {-1},
@@ -590,9 +582,6 @@ TEST(SliceTest, Slice2D_ReverseAllAxes) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{4}] did not match run output shape [{0}] for output";
-  }
-  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Not covered by WebGPU test suite";
   }
 
   RunSliceTest<float>({2, 2},
@@ -611,9 +600,6 @@ TEST(SliceTest, Slice2D_ReverseSubsetOfAxes_1) {
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
   }
-  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Not covered by WebGPU test suite";
-  }
 
   RunSliceTest<float>({2, 2},
                       {1.0f, 2.0f, 3.0f, 4.0f},
@@ -630,9 +616,6 @@ TEST(SliceTest, Slice2D_ReverseSubsetOfAxes_2) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,2}] did not match run output shape [{0,2}] for output";
-  }
-  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Not covered by WebGPU test suite";
   }
 
   RunSliceTest<float>({2, 2},
@@ -683,13 +666,34 @@ TEST(SliceTest, OptionalAxesInputAloneMissing) {
   testv10.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(SliceTest, InvalidAxesOutOfBounds) {
+  OpTester testv10("Slice", 10);
+  testv10.AddInput<float>("data", {2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
+  testv10.AddInput<int64_t>("starts", {1}, {0});
+  testv10.AddInput<int64_t>("ends", {1}, {1});
+  testv10.AddInput<int64_t>("axes", {1}, {2});
+  testv10.AddOutput<float>("output", {1, 2}, {1.0f, 2.0f});
+  testv10.Run(OpTester::ExpectResult::kExpectFailure,
+              "axis outside of the tensor dimension count",
+              {kTensorrtExecutionProvider, kDmlExecutionProvider});
+}
+
+TEST(SliceTest, InvalidAxesDuplicates) {
+  OpTester testv10("Slice", 10);
+  testv10.AddInput<float>("data", {2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
+  testv10.AddInput<int64_t>("starts", {2}, {0, 0});
+  testv10.AddInput<int64_t>("ends", {2}, {1, 1});
+  testv10.AddInput<int64_t>("axes", {2}, {0, 0});
+  testv10.AddOutput<float>("output", {1, 2}, {1.0f, 2.0f});
+  testv10.Run(OpTester::ExpectResult::kExpectFailure,
+              "'axes' has duplicates",
+              {kTensorrtExecutionProvider, kDmlExecutionProvider});
+}
+
 TEST(SliceTest, Slice2D_ReverseSubsetOfNegAxes_1) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,2}] did not match run output shape [{2,0}] for output";
-  }
-  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Not covered by WebGPU test suite";
   }
 
   RunSliceTest<float>({2, 2},

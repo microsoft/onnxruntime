@@ -40,13 +40,24 @@ Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                            SafeInt<size_t>& tensor_byte_size,
                            ExternalDataInfo::PrepackedInfos* prepacked_infos = nullptr);
 /**
- * This function is used to convert the endianess of Tensor data.
+ * This function is used to convert the endianess of TensorProto data.
+ *
  * Mostly, will be used in big endian system to support the model file
  * generated on little endian system.
- * @param initializer       given initializer tensor
- * @returns                 None
+ * @param tensor_proto given initializer tensor
  */
-void ConvertRawDataInTensorProto(ONNX_NAMESPACE::TensorProto* initializer);
+void ConvertRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto);
+
+/**
+ * This function is used to get element size of tensor data.
+ *
+ * For complex types it returns size of one of elements of complex value.
+ *
+ * It will be used mostly to convert data on big endian systems
+ * after unpacking data.
+ * @param tensor_data_type tensor data type to get element size from
+ */
+size_t GetElementSizeOfTensor(ONNX_NAMESPACE::TensorProto_DataType tensor_data_type);
 
 /**
  * Wrapper function for set_raw_data.
@@ -62,7 +73,7 @@ void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, T1* raw_
   using namespace ONNX_NAMESPACE;
   tensor_proto.set_raw_data(raw_data, raw_data_len);
   if constexpr (endian::native != endian::little) {
-    utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto*)&tensor_proto);
+    utils::ConvertRawDataInTensorProto(tensor_proto);
   }
 }
 
@@ -86,7 +97,7 @@ bool operator==(const TensorShapeProto_Dimension& l, const TensorShapeProto_Dime
 bool operator!=(const TensorShapeProto_Dimension& l, const TensorShapeProto_Dimension& r);
 
 }  // namespace ONNX_NAMESPACE
-#endif
+#endif  // !defined(SHARED_PROVIDER)
 
 namespace onnxruntime {
 namespace utils {
@@ -95,6 +106,17 @@ namespace utils {
 TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto);
 
 TensorShape GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto);
+
+/// <summary>
+/// This function checks if the tensor_proto has external data in memory.
+/// If it does, it converts it to a result with data inline, otherwise it does nothing.
+/// The function returns a unique_ptr to make it compatible with EPs code.
+/// </summary>
+/// <param name="tensor_proto">source proto</param>
+/// <param name="result">result, can be nullptr if no data in memory, still a success</param>
+/// <returns>Status</returns>
+Status GetTensorProtoWithDataIfInMemory(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                        std::unique_ptr<ONNX_NAMESPACE::TensorProto>& result);
 
 /**
  * deserialize a TensorProto into a preallocated memory buffer on CPU.
@@ -132,11 +154,41 @@ common::Status TensorProtoToTensor(const Env& env, const std::filesystem::path& 
                                    Tensor& tensor);
 
 /**
+ * @brief Pre-allocates empty tensor and deserializes a TensorProto into it
+ * @param env
+ * @param model_path
+ * @param tensor_proto  source data
+ * @param tensor       destination empty tensor
+ * @return
+ */
+common::Status CreateTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
+                                           const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                           Tensor& tensor);
+
+/// The threshold for small tensors. If the size of the tensor is LE to this value,
+/// The data will stay in the TensorProto. Otherwise, the data will be moved to a Tensor instance
+/// and TensorProto will contain a kTensorProtoNativeEndianMemoryAddressTag reference as a result of
+/// TensorToTensorProto() below. This is because shape inferencing code in onnx for
+/// like Reshape parses weights data and it needs to be in the TensorProto.
+/// The value of 127 was chosen empirically to be the smallest value that is required
+/// for onnx shape inference to work correctly. The value also takes into account the overhead
+/// imposed by having external data. The external data requires location/offset/filename so for
+/// small values it is better to keep the data inline in the TensorProto, even if they are not used
+/// in shape inferencing, it is cheaper to inline them.
+constexpr const size_t kSmallTensorExternalDataThreshold = 127;  // 127 bytes
+
+/// Max in-memory tensor size (from shape × dtype) allowed for embedded (non-external) initializers.
+/// This is an allocation guard to prevent a malicious model from triggering excessive memory allocation.
+/// 2 GiB is chosen as a practical upper bound: valid ONNX protobuf messages cannot exceed ~2 GiB of serialized data,
+/// so any embedded initializer whose in-memory representation exceeds this is highly suspect.
+constexpr const size_t kMaxEmbeddedInitializerSizeInBytes = size_t{2} * 1024 * 1024 * 1024;  // 2 GiB
+
+/**
  * @brief Creates a TensorProto from a Tensor.
  * @param[in] tensor the Tensor whose data and shape will be used to create the TensorProto.
  * @param[in] tensor_proto_name the name of the TensorProto.
  * @param[in] use_tensor_buffer the tensor proto is set to use external location, with
- *                              'location' set to onnxruntime::utils::kTensorProtoMemoryAddressTag
+ *                              'location' set to onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag
  *                              'offset' set to tensor's memory location, and 'length' set to tensor's
  *                              memory size. The caller is responsible to maintain the lifetime of
  *                              the allocated memory buffer. Use with caution.
@@ -151,31 +203,57 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor,
 ONNXTensorElementDataType CApiElementTypeFromProtoType(int type);
 ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
+// Creates a TypeProto from a TensorProto.
+ONNX_NAMESPACE::TypeProto TypeProtoFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto);
+
 // How much memory it will need for putting the content of this tensor into a plain array
 // complex64/complex128 tensors are not supported.
 // The output value could be zero or -1.
 template <size_t alignment>
 common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out);
 
+template <size_t alignment>
+Status GetSizeInBytesFromTensorTypeProto(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_proto, size_t* out);
+
+/// Validates that the size of the actual data content in a non-external TensorProto is consistent with its
+/// declared shape and data type. This prevents allocating memory based on a maliciously large
+/// declared shape when the actual data is absent or much smaller.
+/// The caller must ensure that the TensorProto does not use external data; if it does, this function will
+/// return an error status.
+common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE::TensorProto& tensor_proto);
+
 /**
 Special marker used to indicate an existing memory buffer contains the TensorProto external data.
 If the 'location' field of the external data info is set to this marker, the 'offset' field should contain the
 address of the memory containing the data.
-*/
-constexpr const ORTCHAR_T* kTensorProtoMemoryAddressTag = ORT_TSTR("*/_ORT_MEM_ADDR_/*");
 
-// Given a tensor proto with external data obtain a pointer to the data and its length.
-// The ext_data_deleter argument is updated with a callback that owns/releases the data.
-// If tensor_proto's external file path is kTensorProtoMemoryAddressTag, and
-// buffered_tensor is not null, buffered_tensor holds the real buffer pointed
-// by tensor_proto. buffered_tensor must be the owner of the buffer and deleter
-// should release the buffer when tensor_proto is released.
+This marker is used when data is always in little endian format.
+*/
+constexpr const ORTCHAR_T* kTensorProtoLittleEndianMemoryAddressTag = ORT_TSTR("*/_ORT_MEM_ADDR_/*");
+
+/**
+Special marker used to indicate an existing memory buffer contains the TensorProto external data.
+If the 'location' field of the external data info is set to this marker, the 'offset' field should contain the
+address of the memory containing the data.
+
+This marker is used when data is in native endian format, i.e. big endian on big endian systems.
+*/
+constexpr const ORTCHAR_T* kTensorProtoNativeEndianMemoryAddressTag = ORT_TSTR("*/_ORT_NATIVE_ENDIAN_MEM_ADDR_/*");
+
+/// <summary>
+/// Creates a OrtValue with a tensor on top of the external data.
+/// If tensor_proto points to a memory address, the OrtValue will be created with a tensor
+/// that does not own the memory since the memory is already owned by some other entity.
+/// </summary>
+/// <param name="env"></param>
+/// <param name="model_path">model path</param>
+/// <param name="tensor_proto">tensor proto containing external data</param>
+/// <param name="ort_value">output ort value</param>
+/// <param name="prepacked_info">optional pre-packed weight data output container</param>
+/// <returns>Status</returns>
 common::Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& model_path,
                                          const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                         void*& ext_data_buf, SafeInt<size_t>& ext_data_len,
-                                         OrtCallback& ext_data_deleter,
-                                         Tensor* buffered_tensor = nullptr,
-                                         PrepackedWeightsForGraph* prepacked_for_graph = nullptr);
+                                         OrtValue& ort_value, PrepackedWeightsForGraph* prepacked_info = nullptr);
 
 // Given a tensor proto with external data obtain a tensor using the specified custom external data loader.
 common::Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
@@ -198,11 +276,31 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
                                               const std::filesystem::path& model_path,
                                               ONNX_NAMESPACE::TensorProto& tensor);
 
+/// <summary>
+/// Creates a new CPU based tensor and copies the data from the source tensor.
+/// </summary>
+/// <param name="src_tensor"></param>
+/// <param name="dst_tensor"></param>
+void MakeCpuTensorCopy(const Tensor& src_tensor, Tensor& dst_tensor);
+
+/// <summary>
+/// Normalizes the bytes of a CPU bool tensor to the canonical {0, 1} set (any non-zero byte -> 1).
+/// Bool data sourced from raw_data or external files is copied verbatim and may contain other
+/// non-zero bytes; normalizing ensures every consumer observes a single, consistent value.
+/// No-op for non-bool tensors. The tensor must reside in writable CPU memory.
+/// </summary>
+/// <param name="tensor">The CPU tensor to normalize in place.</param>
+void NormalizeBoolTensorIfNeeded(Tensor& tensor);
+
 #if !defined(DISABLE_SPARSE_TENSORS)
-// Convert a SparseTensorProto to a dense TensorProto
-// If the SparseTensorProto contains external data then it loads the data and converts to dense tensor proto
-// The resulting TensorProto will contain the data as raw data.
-// model_path is used for constructing full path for external_data
+/// <summary>
+// The function supports only COO format with 1D or 2D indices. Values shape is expected to be 1D.
+// The function does not support sparse tensors of other formats like CSR/CSC.
+/// </summary>
+/// <param name="sparse"></param>
+/// <param name="model_path">model path is only used if there are references to external data.</param>
+/// <param name="dense">The resulting dense tensor proto.</param>
+/// <returns>Status</returns>
 common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseTensorProto& sparse,
                                                    const std::filesystem::path& model_path,
                                                    ONNX_NAMESPACE::TensorProto& dense);
@@ -217,7 +315,7 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
                                               ONNX_NAMESPACE::SparseTensorProto& sparse);
 #endif  // !ORT_MINIMAL_BUILD
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
-#endif
+#endif  // !defined(SHARED_PROVIDER)
 
 inline bool HasDimValue(const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim) {
   return dim.value_case() == ONNX_NAMESPACE::TensorShapeProto_Dimension::kDimValue;
@@ -426,7 +524,7 @@ inline bool HasKeyType(const ONNX_NAMESPACE::TypeProto_Map& map_proto) {
 inline bool HasValueType(const ONNX_NAMESPACE::TypeProto_Map& map_proto) {
   return map_proto.value_type().value_case() != ONNX_NAMESPACE::TypeProto::VALUE_NOT_SET;
 }
-#endif
+#endif  // !defined(SHARED_PROVIDER)
 
 inline bool HasType(const ONNX_NAMESPACE::ValueInfoProto& vi_proto) {
   return vi_proto.type().value_case() != ONNX_NAMESPACE::TypeProto::VALUE_NOT_SET;
@@ -445,7 +543,75 @@ inline bool HasName(const ONNX_NAMESPACE::TypeProto_Opaque& op_proto) {
   return !op_proto.name().empty();
 }
 
-#endif
+/// <summary>
+/// Quick check if the this tensor proto has external data in memory.
+/// </summary>
+/// <param name="tensor_proto">tensor_proto</param>
+/// <returns>true if ten_proto has external data and it is in memory</returns>
+[[nodiscard]] bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& tensor_proto);
+
+/// <summary>
+/// Check if the given tensor proto has external data store in a file (not in memory).
+/// </summary>
+/// <param name="tensor_proto"></param>
+/// <returns></returns>
+[[nodiscard]] bool HasExternalDataInFile(const ONNX_NAMESPACE::TensorProto& tensor_proto);
+
+/// <summary>
+/// This function converts TensorProto with external data to TensorProto with inline data.
+/// </summary>
+/// <param name="tensor_proto">source</param>
+/// <param name="model_path">model_path, can be empty if data is in memory</param>
+/// <param name="new_tensor_proto">result</param>
+/// <returns>Status</returns>
+Status TensorProtoWithExternalDataToTensorProto(
+    const ONNX_NAMESPACE::TensorProto& tensor_proto,
+    const std::filesystem::path& model_path,
+    ONNX_NAMESPACE::TensorProto& new_tensor_proto);
+
+/// <summary>
+/// Validates that the given external data path is not an absolute path, is under the model directory
+/// (after resolving symlinks), and exists.
+///
+/// The model path can be empty if the model is loaded from bytes and the application did not specify a directory
+/// for external data files. In this case, the external data path must be contained under the current working
+/// directory.
+///
+/// The model path can point to a non-existing model file if the model is loaded from bytes and the application
+/// specified a directory for external data files via the session config entry
+/// `kOrtSessionOptionsModelExternalInitializersFileFolderPath`. In this case, the model_path is set to
+/// "<kOrtSessionOptionsModelExternalInitializersFileFolderPath> / virtual_model.onnx" and the external data path
+/// must be contained under `kOrtSessionOptionsModelExternalInitializersFileFolderPath`.
+///
+/// If the model itself is a symlink, this function checks against both the directory containing the symlink
+/// and the real/canonical directory of the model after resolving all symlinks.
+///
+/// On WASM builds, this function skips most validation (except checks for non-empty/non-absolute path) if we are
+/// unable to query the current working directory, as this indicates that the WASM environment does not have
+/// a valid filesystem. If skipped, an ExternalDataLoader will validate the location and contents of the
+/// external data file at the time of access.
+/// </summary>
+/// <param name="model_path">Path to the model file. Can be empty or point to a virtual file.</param>
+/// <param name="external_data_path">External data file path to be validated.
+/// Retrieved from TensorProto external data info</param>
+/// <returns>The function will fail if the resolved `external_data_path` path is not under the model directory</returns>
+Status ValidateExternalDataPath(const std::filesystem::path& model_path,
+                                const std::filesystem::path& external_data_path);
+
+/// <summary>
+/// Validates that the given external data path is not an absolute path, is under the given directory
+/// (after resolving symlinks), and exists.
+///
+/// Use this overload when you already have the directory that should contain the external data
+/// (e.g., EP context model directories). Use ValidateExternalDataPath() when you have a model file path.
+/// </summary>
+/// <param name="model_dir">Directory that should contain the external data. Falls back to "." if empty.</param>
+/// <param name="external_data_path">External data file path to be validated (must be relative).</param>
+/// <returns>The function will fail if the resolved `external_data_path` path is not under model_dir</returns>
+Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
+                                       const std::filesystem::path& external_data_path);
+
+#endif  // !defined(SHARED_PROVIDER)
 
 inline bool HasType(const ONNX_NAMESPACE::AttributeProto& at_proto) {
   return at_proto.type() != ONNX_NAMESPACE::AttributeProto::AttributeType::AttributeProto_AttributeType_UNDEFINED;
@@ -512,7 +678,7 @@ inline bool HasName(const ONNX_NAMESPACE::NodeProto& node_proto) {
   // XXX: Figure out proto3 style
   return node_proto.has_name();
 }
-#endif
+#endif  // !defined(SHARED_PROVIDER)
 
 // UnpackTensor from raw data or the type specific data field. Does not handle external data.
 // If the tensor does not contain raw data then raw_data should be nullptr and raw_data_len should be 0.
@@ -549,5 +715,15 @@ common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initiali
  */
 common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
                                      std::vector<uint8_t>& unpacked_tensor);
+
+constexpr const char* kNodeProtoLayerAnnotation = "layer_ann";
+
+/**
+ * This function examines the given node proto and looks into its metadata_props.
+ * It returns the first non-empty value found for the key kNodeProtoLayerAnnotation.
+ * A node is expected to have only one such annotation.
+ * If no non-empty annotation is found, std::nullopt is returned.
+ */
+std::optional<std::string> GetNodeProtoLayeringAnnotation(const ONNX_NAMESPACE::NodeProto& node_proto);
 }  // namespace utils
 }  // namespace onnxruntime

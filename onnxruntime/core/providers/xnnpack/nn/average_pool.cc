@@ -17,17 +17,16 @@ namespace {
 Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
                            const std::optional<std::pair<float, float>>& clip_min_max,
                            struct xnn_operator*& p,
-                           const OpQuantParam& quant_param,
                            OpComputeType avgpool_type) {
-  uint32_t input_padding_top = gsl::narrow<uint32_t>(pool_attrs.pads[0]);
-  uint32_t input_padding_left = gsl::narrow<uint32_t>(pool_attrs.pads[1]);
-  uint32_t input_padding_bottom = gsl::narrow<uint32_t>(pool_attrs.pads[2]);
-  uint32_t input_padding_right = gsl::narrow<uint32_t>(pool_attrs.pads[3]);
+  uint32_t input_padding_top = narrow<uint32_t>(pool_attrs.pads[0]);
+  uint32_t input_padding_left = narrow<uint32_t>(pool_attrs.pads[1]);
+  uint32_t input_padding_bottom = narrow<uint32_t>(pool_attrs.pads[2]);
+  uint32_t input_padding_right = narrow<uint32_t>(pool_attrs.pads[3]);
 
-  uint32_t pooling_height = gsl::narrow<uint32_t>(pool_attrs.kernel_shape[0]);
-  uint32_t pooling_width = gsl::narrow<uint32_t>(pool_attrs.kernel_shape[1]);
-  uint32_t stride_height = gsl::narrow<uint32_t>(pool_attrs.strides[0]);
-  uint32_t stride_width = gsl::narrow<uint32_t>(pool_attrs.strides[1]);
+  uint32_t pooling_height = narrow<uint32_t>(pool_attrs.kernel_shape[0]);
+  uint32_t pooling_width = narrow<uint32_t>(pool_attrs.kernel_shape[1]);
+  uint32_t stride_height = narrow<uint32_t>(pool_attrs.strides[0]);
+  uint32_t stride_width = narrow<uint32_t>(pool_attrs.strides[1]);
 
   uint32_t flags = 0;
   if (pool_attrs.auto_pad == AutoPadType::SAME_UPPER) {
@@ -48,20 +47,6 @@ Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
                                                    pooling_height, pooling_width,
                                                    stride_height, stride_width,
                                                    foutput_min, foutput_max, flags, &p);
-  } else if (avgpool_type == OpComputeType::op_compute_type_qu8) {
-    const float output_scale = quant_param[1].first[0];
-    const uint8_t output_zero_point = quant_param[1].second;
-    const uint8_t output_min = xnn_u8s8_quantize<uint8_t>(foutput_min, output_scale, output_zero_point);
-    const uint8_t output_max = xnn_u8s8_quantize<uint8_t>(foutput_max, output_scale, output_zero_point);
-    status = xnn_create_average_pooling2d_nhwc_qu8(input_padding_top, input_padding_right,
-                                                   input_padding_bottom, input_padding_left,
-                                                   pooling_height, pooling_width,
-                                                   stride_height, stride_width,
-                                                   quant_param[0].second,
-                                                   quant_param[0].first[0],
-                                                   quant_param[1].second,
-                                                   quant_param[1].first[0],
-                                                   output_min, output_max, flags, &p);
   }
 
   if (status != xnn_status_success) {
@@ -72,9 +57,9 @@ Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
 }
 
 bool IsQuantAvgPoolSupported(const NodeUnit& node_unit, const GraphViewer& graph) {
-  TensorQuantType x_input_type = GetTensorQuantType(node_unit, 0, false, graph);
-  TensorQuantType output_type = GetTensorQuantType(node_unit, 0, true, graph);
-  return (x_input_type == TensorTypeUint8 && output_type == TensorTypeUint8);
+  (void)node_unit;
+  (void)graph;
+  return false;
 }
 
 bool IsQuantizedAvgPool(QuantizedOpType quant_op_type) {
@@ -209,14 +194,10 @@ AveragePool::AveragePool(const OpKernelInfo& info)
     avgpool_type_ = OpComputeType::op_compute_type_fp32;
   } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
     avgpool_type_ = OpComputeType::op_compute_type_fp16;
-  } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-    // the order of input tensor, x,x_scale, x_zp, y_scale, y_zp
-    quant_param = ParseQuantParamForOp(info, input_dtype, 1);
-    avgpool_type_ = OpComputeType::op_compute_type_qu8;
   }
   struct xnn_operator* p;
   auto ret = CreateXnnpackKernel(pool_attrs_, clip_min_max_, p,
-                                 quant_param, avgpool_type_);
+                                 avgpool_type_);
   ORT_ENFORCE(ret.IsOK(), ret.ErrorMessage());
   op0_.reset(p);
 }
@@ -242,23 +223,12 @@ Status AveragePool::Compute(OpKernelContext* context) const {
 
   pthreadpool_t threadpool = GetThreadPool();
 
-  // setup allocator/automated dellocate for workspace
-  size_t workspace_size = 0;
-  size_t workspace_alignment = 0;
-  xnn_allocator* allocator = GetStoredAllocator().second;
-  auto deallocator = [allocator](void* ptr) { allocator->aligned_deallocate(allocator->context, ptr); };
-
-  std::unique_ptr<void, decltype(deallocator)> workspace(nullptr, deallocator);
-
   auto reshape_fn = xnn_reshape_average_pooling2d_nhwc_f32;
   if (avgpool_type_ == OpComputeType::op_compute_type_fp16) {
     reshape_fn = xnn_reshape_average_pooling2d_nhwc_f16;
-  } else if (avgpool_type_ == OpComputeType::op_compute_type_qu8) {
-    reshape_fn = xnn_reshape_average_pooling2d_nhwc_qu8;
   }
 
   auto status = reshape_fn(op0_.get(), N, H, W, C, C, C,
-                           &workspace_size, &workspace_alignment,
                            /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
                            threadpool);
 
@@ -267,17 +237,12 @@ Status AveragePool::Compute(OpKernelContext* context) const {
                            " returned ", status);
   }
 
-  workspace.reset(allocator->aligned_allocate(allocator->context, XNN_ALLOCATION_ALIGNMENT, workspace_size));
-
   if (avgpool_type_ == OpComputeType::op_compute_type_fp32) {
-    status = xnn_setup_average_pooling2d_nhwc_f32(op0_.get(), workspace.get(),
-                                                  X.Data<float>(), Y.MutableData<float>());
+    status = xnn_setup_average_pooling2d_nhwc_f32(op0_.get(), X.Data<float>(),
+                                                  Y.MutableData<float>());
   } else if (avgpool_type_ == OpComputeType::op_compute_type_fp16) {
-    status = xnn_setup_average_pooling2d_nhwc_f16(op0_.get(), workspace.get(),
-                                                  X.Data<MLFloat16>(), Y.MutableData<MLFloat16>());
-  } else if (avgpool_type_ == OpComputeType::op_compute_type_qu8) {
-    status = xnn_setup_average_pooling2d_nhwc_qu8(op0_.get(), workspace.get(),
-                                                  X.Data<uint8_t>(), Y.MutableData<uint8_t>());
+    status = xnn_setup_average_pooling2d_nhwc_f16(op0_.get(), X.Data<MLFloat16>(),
+                                                  Y.MutableData<MLFloat16>());
   }
 
   if (status != xnn_status_success) {

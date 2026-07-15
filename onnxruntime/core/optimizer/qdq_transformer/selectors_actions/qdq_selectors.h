@@ -92,6 +92,20 @@ class UnaryNodeGroupSelector : public NodeGroupSelector {
   bool allow_4bit_;
 };
 
+class ClipNodeGroupSelector : public NodeGroupSelector {
+ public:
+  explicit ClipNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true)
+      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
+
+ private:
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+
+  bool allow_16bit_;
+  bool allow_4bit_;
+};
+
 // 2 DQ nodes providing input -> node -> Q
 class BinaryNodeGroupSelector : public NodeGroupSelector {
  public:
@@ -182,6 +196,37 @@ class PadNodeGroupSelector : public NodeGroupSelector {
              const std::vector<const Node*>& q_nodes) const override;
 };
 
+// one ore more DQ nodes for each input -> node -> Q
+class EinsumNodeGroupSelector : public NodeGroupSelector {
+ public:
+  explicit EinsumNodeGroupSelector(bool allow_int8 = true, bool allow_16bit = true, bool allow_4bit = true)
+      : allow_int8_(allow_int8), allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
+
+ private:
+  bool Check(const GraphViewer& graph_viewer,
+             const Node& node, const Node* redundant_clip_node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+  bool allow_int8_;
+  bool allow_16bit_;
+  bool allow_4bit_;
+};
+
+class ReciprocalNodeGroupSelector : public NodeGroupSelector {
+ public:
+  explicit ReciprocalNodeGroupSelector(bool allow_int8 = true, bool allow_16bit = true, bool allow_4bit = true)
+      : allow_int8_(allow_int8), allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
+
+ private:
+  bool Check(const GraphViewer& graph_viewer,
+             const Node& node, const Node* redundant_clip_node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+  bool allow_int8_;
+  bool allow_16bit_;
+  bool allow_4bit_;
+};
+
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
 // The lack of a trailing Q isn't really a QDQ node group, so we default support for that to off.
 class MatMulNodeGroupSelector : public NodeGroupSelector {
@@ -264,6 +309,32 @@ class LogicalComparisonNodeGroupSelector : public NodeGroupSelector {
 // TopK has 1 DQ input node and 1 Q output node.
 // Zero point and scale are constant scalars and must match
 class TopKNodeGroupSelector : public NodeGroupSelector {
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+};
+
+// one DQ node for first input -> node -> Q
+class CumSumNodeGroupSelector : public NodeGroupSelector {
+  bool Check(const GraphViewer& graph_viewer,
+             const Node& node, const Node* redundant_clip_node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+};
+
+// Input: DQ nodes for Data, and Update
+// Output: Q node for output
+class ScatterElementsNodeGroupSelector : public NodeGroupSelector {
+  bool Check(const GraphViewer& graph_viewer,
+             const Node& node, const Node* redundant_clip_node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+};
+
+// Input: DQ nodes for input, scale
+// Output: Q node for output
+class RMSNormalizationNodeGroupSelector : public NodeGroupSelector {
+ private:
   bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
@@ -383,11 +454,15 @@ class MatMulSelector : public BaseSelector {
                      compatible_providers) {}
 };
 
-// Convert "1 DQ node for input B -> MatMul" to "MatMulNBits"
+// Convert "1 DQ node for input B -> MatMul/Gemm" to "MatMulNBits"
 class DQMatMulToMatMulNBitsSelector : public BaseSelector {
  public:
   explicit DQMatMulToMatMulNBitsSelector(gsl::span<const char*> compatible_providers = {})
       : BaseSelector(std::make_unique<DQMatMulNodeGroupSelector>(), compatible_providers) {}
+
+  // Only keep the weight DQ in the selection. Any bias DQ (for Gemm) is excluded
+  // so that RemoveNodes does not remove it — its output is wired through to MatMulNBits.
+  void UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const override;
 };
 
 // Input: DQ nodes for A, B and optional C

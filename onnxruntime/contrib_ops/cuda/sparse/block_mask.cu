@@ -44,7 +44,7 @@ __global__ void MaskToCSR(const int* mask, int* csr_row_indices, int* csr_col_in
   }
   __syncthreads();
 
-    // The starting index of current row in csr_col_indices
+  // The starting index of current row in csr_col_indices
   int offset = shared_row_indices[row];
 
   // Output row indices.

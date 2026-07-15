@@ -1,0 +1,10 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+
+$MAIN {
+    if (global_idx >= uniforms.size) {
+        return;
+    };
+    tensor[global_idx] = vec4<tensor_element_t>(0.0);
+} // MAIN

@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include <atomic>
 #include <core/common/safeint.h>
 #include "gather_nd.h"
 #include "core/platform/threadpool.h"
@@ -66,6 +67,18 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
   const auto num_slices = indices_shape.SizeToDimension(indices_shape.NumDimensions() - 1);
   const auto slice_size = input_shape.SizeFromDimension(SafeInt<size_t>(batch_dims_) + num_slice_dims);
   const auto num_batches = input_shape.SizeToDimension(SafeInt<size_t>(batch_dims_));
+
+  // Validate batch dimensions to prevent division by zero
+  if (num_batches == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "GatherND: input tensor batch dimensions cannot be zero");
+  }
+  if (num_slices % num_batches != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "GatherND: indices batch size (", num_slices,
+                           ") is not divisible by input batch size (", num_batches, ")");
+  }
+
   const auto input_batch_stride = input_shape.SizeFromDimension(SafeInt<size_t>(batch_dims_));
   const auto num_slices_per_batch = num_slices / num_batches;
   std::vector<int64_t> sizes_from_slice_dims(onnxruntime::narrow<size_t>(num_slice_dims));
@@ -73,7 +86,7 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
     sizes_from_slice_dims[onnxruntime::narrow<size_t>(i)] = input_shape.SizeFromDimension(SafeInt<size_t>(batch_dims_) + i + 1);
   }
 
-  int64_t err_index = 0;
+  std::atomic<const Tind*> invalid_index{nullptr};
   p.element_bytes = bytes_per_value;
   p.element_count_per_slice = slice_size;
   p.bytes_per_slice = p.element_bytes * p.element_count_per_slice;
@@ -81,18 +94,20 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
   p.slice_offsets.assign(onnxruntime::narrow<size_t>(num_slices), 0LL);
 
   // Compute the element_offset
-  auto lambda = [&](int64_t slice_idx) {
+  auto lambda = [&](ptrdiff_t slice_idx) {
+    if (invalid_index.load(std::memory_order_relaxed)) return;
+
     const size_t batch_idx = onnxruntime::narrow<size_t>(slice_idx / num_slices_per_batch);
     const size_t input_base_offset = batch_idx * SafeInt<size_t>(input_batch_stride);
 
-    const auto* const slice_indices = indices_data + slice_idx * num_slice_dims;
+    const auto* const slice_indices = indices_data + static_cast<int64_t>(slice_idx) * num_slice_dims;
     size_t relative_slice_offset = 0;
     for (int64_t dim_idx = 0; dim_idx < num_slice_dims; ++dim_idx) {
       int64_t index = static_cast<int64_t>(slice_indices[dim_idx]);
       const auto upper_limit = input_shape[SafeInt<size_t>(batch_dims_) + dim_idx];
       const auto lower_limit = -upper_limit;
       if (index < lower_limit || index >= upper_limit) {
-        err_index = index;
+        invalid_index.store(&slice_indices[dim_idx], std::memory_order_relaxed);
         break;
       }
       if (index < 0) index += upper_limit;
@@ -106,13 +121,17 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
   concurrency::ThreadPool::TryParallelFor(
       tp, onnxruntime::narrow<size_t>(num_slices), static_cast<double>(num_slice_dims),
       [&lambda](ptrdiff_t first, ptrdiff_t last) {
-        for (int slice_idx = static_cast<int>(first), end = static_cast<int>(last); slice_idx < end; ++slice_idx) {
+        for (ptrdiff_t slice_idx = first, end = last; slice_idx < end; ++slice_idx) {
           lambda(slice_idx);
         }
       });
 
-  return err_index == 0 ? Status::OK()
-                        : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index found, index = ", err_index);
+  if (const Tind* bad = invalid_index.load(std::memory_order_relaxed); bad != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "invalid index found, index = ", static_cast<int64_t>(*bad));
+  }
+
+  return Status::OK();
 }
 
 template Status GatherNDBase::PrepareForCompute<int32_t>(const TensorShape&,
@@ -177,14 +196,14 @@ Status GatherND::Compute(OpKernelContext* context) const {
 }
 
 Status GatherND::GatherNumber(const Prepare& p, concurrency::ThreadPool* tp) const {
-  auto lambda = [&](int64_t slice_idx) {
-    memcpy(p.output_base + slice_idx * p.bytes_per_slice, p.input_base + p.slice_offsets[onnxruntime::narrow<size_t>(slice_idx)] * p.element_bytes,
+  auto lambda = [&](ptrdiff_t slice_idx) {
+    memcpy(p.output_base + static_cast<int64_t>(slice_idx) * p.bytes_per_slice, p.input_base + p.slice_offsets[onnxruntime::narrow<size_t>(slice_idx)] * p.element_bytes,
            onnxruntime::narrow<size_t>(p.bytes_per_slice));
   };
   concurrency::ThreadPool::TryParallelFor(
       tp, p.slice_offsets.size(), static_cast<double>(p.bytes_per_slice),
       [&lambda](ptrdiff_t first, ptrdiff_t last) {
-        for (int slice_idx = static_cast<int>(first), end = static_cast<int>(last); slice_idx < end; ++slice_idx) {
+        for (ptrdiff_t slice_idx = first, end = last; slice_idx < end; ++slice_idx) {
           lambda(slice_idx);
         }
       });
@@ -192,8 +211,8 @@ Status GatherND::GatherNumber(const Prepare& p, concurrency::ThreadPool* tp) con
 }
 
 Status GatherND::GatherString(const Prepare& p, concurrency::ThreadPool* tp) const {
-  auto lambda = [&](int64_t slice_idx) {
-    const int64_t slice_base_offset = slice_idx * p.element_count_per_slice;
+  auto lambda = [&](ptrdiff_t slice_idx) {
+    const int64_t slice_base_offset = static_cast<int64_t>(slice_idx) * p.element_count_per_slice;
     for (int64_t j = 0; j < static_cast<int64_t>(p.element_count_per_slice); ++j) {
       p.output_str_base[slice_base_offset + j] = p.input_str_base[p.slice_offsets[onnxruntime::narrow<size_t>(slice_idx)] + j];
     }
@@ -201,7 +220,7 @@ Status GatherND::GatherString(const Prepare& p, concurrency::ThreadPool* tp) con
   concurrency::ThreadPool::TryParallelFor(
       tp, p.slice_offsets.size(), static_cast<double>(p.element_count_per_slice),
       [&lambda](ptrdiff_t first, ptrdiff_t last) {
-        for (int slice_idx = static_cast<int>(first), end = static_cast<int>(last); slice_idx < end; ++slice_idx) {
+        for (ptrdiff_t slice_idx = first, end = last; slice_idx < end; ++slice_idx) {
           lambda(slice_idx);
         }
       });

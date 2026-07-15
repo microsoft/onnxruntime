@@ -1,0 +1,59 @@
+diff --git a/src/cmake/DawnCompilerPlatformFlags.cmake b/src/cmake/DawnCompilerPlatformFlags.cmake
+index 50638e2456..efa42711e6 100644
+--- a/src/cmake/DawnCompilerPlatformFlags.cmake
++++ b/src/cmake/DawnCompilerPlatformFlags.cmake
+@@ -63,7 +63,3 @@ endif ()
+ if (MSVC AND NOT COMPILER_IS_CLANG_CL)
+   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
+ endif ()
+-
+-if (TARGET_MACOS)
+-    set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version" FORCE)
+-endif ()
+\ No newline at end of file
+diff --git a/third_party/emdawnwebgpu/webgpu.cpp b/third_party/emdawnwebgpu/webgpu.cpp
+index 5bfac41dcc..71a153daaa 100644
+--- a/third_party/emdawnwebgpu/webgpu.cpp
++++ b/third_party/emdawnwebgpu/webgpu.cpp
+@@ -692,6 +692,7 @@ struct WGPUBufferImpl final : public EventSource,
+   WGPUBufferImpl(const EventSource* source, bool mappedAtCreation);
+   // Injection constructor used when we already have a backing Buffer.
+   WGPUBufferImpl(const EventSource* source, WGPUBufferMapState mapState);
++  ~WGPUBufferImpl();
+ 
+   void Destroy();
+   const void* GetConstMappedRange(size_t offset, size_t size);
+@@ -1361,6 +1362,12 @@ WGPUBufferImpl::WGPUBufferImpl(const EventSource* source,
+       RefCountedWithExternalCount(kImportedFromJS),
+       mMapState(mapState) {}
+ 
++WGPUBufferImpl::~WGPUBufferImpl() {
++  if (!IsImported()) {
++    Destroy();
++  }
++}
++
+ void WGPUBufferImpl::Destroy() {
+   emwgpuBufferDestroy(this);
+   AbortPendingMap("Buffer was destroyed before mapping was resolved.");
+diff --git a/src/tint/utils/memory/aligned_storage.h b/src/tint/utils/memory/aligned_storage.h
+index c532c4fc38..19c950af4c 100644
+--- a/src/tint/utils/memory/aligned_storage.h
++++ b/src/tint/utils/memory/aligned_storage.h
+@@ -31,6 +31,9 @@
+ #include <cstddef>
+ 
+ #include "src/tint/utils/memory/bitcast.h"
++#include "src/tint/utils/macros/compiler.h"
++
++TINT_BEGIN_DISABLE_WARNING(UNSAFE_BUFFER_USAGE);
+ 
+ namespace tint {
+ 
+@@ -50,4 +53,6 @@ struct alignas(alignof(T)) AlignedStorage {
+ 
+ }  // namespace tint
+ 
++TINT_END_DISABLE_WARNING(UNSAFE_BUFFER_USAGE);
++
+ #endif  // SRC_TINT_UTILS_MEMORY_ALIGNED_STORAGE_H_

@@ -18,7 +18,6 @@ limitations under the License.
 // It uses two temporary matrix of BxNxSxS, and consumes more memory when sequence length is large.
 // Its logic is simpler with less constraints (like number of global tokens could be larger than attention windows).
 
-#include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
@@ -111,7 +110,12 @@ __launch_bounds__(blockSize)
     }
   }
 
+#if CUDART_VERSION >= 12090
+  float max_block = BlockReduce(block_reduce_temp).Reduce(max_input, ::cuda::maximum());
+#else
   float max_block = BlockReduce(block_reduce_temp).Reduce(max_input, cub::Max());
+#endif
+
   if (tid == 0) {
     max_shared = max_block;
   }
@@ -136,7 +140,12 @@ __launch_bounds__(blockSize)
     }
   }
 
+#if CUDART_VERSION >= 12090
+  float sum_block = BlockReduce(block_reduce_temp).Reduce(sum_input, ::cuda::std::plus());
+#else
   float sum_block = BlockReduce(block_reduce_temp).Reduce(sum_input, cub::Sum());
+#endif
+
   if (tid == 0) {
     sum_shared = sum_block;
   }

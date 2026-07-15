@@ -7,8 +7,8 @@
 #include "core/graph/graph.h"
 #include "core/graph/node_attr_utils.h"
 
-#include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 
 #include "gtest/gtest.h"
 
@@ -74,11 +74,8 @@ static void RunWhereQDQTest(const TestInputDef<bool>& condition_def,
                             const TestInputDef<float>& y_def,
                             ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   // Runs model with DQ-> Where -> Q and compares the outputs of the CPU and QNN EPs.
   TestQDQModelAccuracy(BuildWhereTestCase(condition_def, x_def, y_def),
@@ -89,7 +86,8 @@ static void RunWhereQDQTest(const TestInputDef<bool>& condition_def,
 }
 
 // Check that QNN compiles DQ -> Where -> Q as a single unit.
-TEST_F(QnnHTPBackendTests, WhereQDQU8) {
+// Fails since QNN 2.37.1: Failed to finalize QNN graph. Error code: 1002
+TEST_F(QnnHTPBackendTests, DISABLED_WhereQDQU8) {
   RunWhereQDQTest(TestInputDef<bool>({4, 3, 2}, false,
                                      {true, false, true, false, true, false,
                                       true, false, true, false, true, false,
@@ -102,7 +100,8 @@ TEST_F(QnnHTPBackendTests, WhereQDQU8) {
 
 // Check that QNN compiles DQ -> Where -> Q as a single unit.
 // Check QNN Where works with broadcast
-TEST_F(QnnHTPBackendTests, WhereBroadcastU8) {
+// Fails since QNN 2.37.1: Failed to finalize QNN graph. Error code: 1002
+TEST_F(QnnHTPBackendTests, DISABLED_WhereBroadcastU8) {
   RunWhereQDQTest(TestInputDef<bool>({2}, false, {true, false}),
                   TestInputDef<float>({4, 3, 2}, true, -2.0f, 2.0f),
                   TestInputDef<float>({1}, true, {3.0f}),

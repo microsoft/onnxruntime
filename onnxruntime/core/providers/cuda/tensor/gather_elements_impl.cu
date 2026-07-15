@@ -14,11 +14,7 @@ namespace onnxruntime {
 namespace cuda {
 
 namespace {
-#ifdef USE_ROCM
-constexpr int kThreadsPerBlock = 256;
-#else
 constexpr int kThreadsPerBlock = GPU_WARP_SIZE * 4;
-#endif
 constexpr int kThreadWorkSize = 4;
 
 // General case to compute the input(for Gather)/output(for Scatter) and indices data offset given the thread ID
@@ -269,22 +265,22 @@ template <typename T, typename TIndex>
 Status ScatterElementsImpl(cudaStream_t stream, const T* input_data, const TIndex* indices_data, const T* updates_data,
                            T* output_data, const GatherScatterElementsArgs& args) {
   if (args.operation == GatherScatterElementsArgs::Operation::NONE) {
-      return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
-                                        FuncAssignment<T>());
+    return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
+                                       FuncAssignment<T>());
   } else if (args.operation == GatherScatterElementsArgs::Operation::ADD) {
-      return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
-                                        FuncAdd<T>());
+    return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
+                                       FuncAdd<T>());
   } else if (args.operation == GatherScatterElementsArgs::Operation::MUL) {
-      return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
-                                        FuncMul<T>());
+    return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
+                                       FuncMul<T>());
   } else if (args.operation == GatherScatterElementsArgs::Operation::MAX) {
-      return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
-                                        FuncMax<T>());
+    return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
+                                       FuncMax<T>());
   } else if (args.operation == GatherScatterElementsArgs::Operation::MIN) {
-      return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
-                                        FuncMin<T>());
+    return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
+                                       FuncMin<T>());
   } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported reduction operator.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported reduction operator.");
   }
 }
 

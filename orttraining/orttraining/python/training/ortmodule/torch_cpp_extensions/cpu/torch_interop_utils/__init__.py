@@ -1,5 +1,5 @@
 def clear_all_grad_fns():
-    from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils
+    from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils  # noqa: PLC0415
 
     torch_interop_utils.clear_all_grad_fns()
 

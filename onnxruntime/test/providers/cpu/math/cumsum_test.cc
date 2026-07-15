@@ -9,6 +9,19 @@
 namespace onnxruntime {
 namespace test {
 
+namespace {
+
+void RunEmptyAxisFailureTest(std::vector<std::unique_ptr<IExecutionProvider>> execution_providers) {
+  OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
+  test.AddInput<float>("x", {5}, {1., 2., 3., 4., 5.});
+  test.AddInput<int32_t>("axis", {0}, {});
+  test.AddOutput<float>("y", {5}, {1., 3., 6., 10., 15.});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "", {}, nullptr, &execution_providers);
+}
+
+}  // namespace
+
 TEST(CumSumTest, _1DTest) {
   OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
   test.AddInput<float>("x", {5}, {1., 2., 3., 4., 5.});
@@ -37,6 +50,19 @@ TEST(CumSumTest, _1DTestInvalidAxis) {
   test.AddOutput<float>("y", {5}, {1., 3., 6., 10., 15.});
   test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
 }
+
+TEST(CumSumTest, _1DTestEmptyAxis) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+
+  auto cuda_execution_provider = DefaultCudaExecutionProvider();
+  if (cuda_execution_provider) {
+    execution_providers.push_back(std::move(cuda_execution_provider));
+  }
+
+  RunEmptyAxisFailureTest(std::move(execution_providers));
+}
+
 TEST(CumSumTest, _1DTestNegAxis) {
   OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
   test.AddInput<float>("x", {5}, {1., 2., 3., 4., 5.});

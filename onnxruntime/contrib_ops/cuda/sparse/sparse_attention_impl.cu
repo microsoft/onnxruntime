@@ -7,6 +7,7 @@
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
+#include "contrib_ops/cuda/bert/attention_kv_cache.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_v1/sparse_attention_common.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_v1/sparse_attention_v1_api.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_v2/sparse_attention_v2_api.h"
@@ -177,14 +178,14 @@ Status QkvToContext(
 
     // Launch rotary embedding kernel. This requires separated Q, K and V
     ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<T>(stream, q_buffer, reinterpret_cast<const T*>(query),
-                                                       position_ids_buff, data.cos_cache, data.sin_cache,
+                                                       position_ids_buff, nullptr, data.cos_cache, data.sin_cache,
                                                        parameters.batch_size, parameters.sequence_length,
                                                        parameters.num_heads, parameters.head_size,
                                                        parameters.rotary_dim, parameters.max_rotary_sequence_length,
                                                        /*position_ids_format*/ 1, parameters.rotary_interleaved,
                                                        max_threads_per_block, q_layout));
     ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<T>(stream, k_buffer, reinterpret_cast<const T*>(key),
-                                                       position_ids_buff, data.cos_cache, data.sin_cache,
+                                                       position_ids_buff, nullptr, data.cos_cache, data.sin_cache,
                                                        parameters.batch_size, parameters.sequence_length,
                                                        parameters.kv_num_heads, parameters.head_size,
                                                        parameters.rotary_dim, parameters.max_rotary_sequence_length,
@@ -331,6 +332,120 @@ template Status QkvToContext<BFloat16>(
     Stream* ort_stream,
     contrib::SparseAttentionParameters& parameters,
     SparseAttentionData<BFloat16>& data);
+
+// Validation kernel for CSR sparse layout indices and key sequence lengths.
+// Each block handles one layout (blocks [0, num_layout)) or key lengths (block num_layout).
+// All threads in a warp cooperate via strided iteration over elements.
+// Writes a CSRValidationError code to *error_flag if any check fails.
+__global__ void ValidateCSRIndicesKernel(
+    const int32_t* csr_row_indices,
+    const int32_t* csr_col_indices,
+    const int32_t* seqlens_k_total,
+    int max_blocks,
+    int col_count,
+    int num_layout,
+    int batch_size,
+    int sequence_length,
+    int total_sequence_length,
+    int32_t* error_flag) {
+  int block_id = blockIdx.x;
+  int tid = threadIdx.x;
+  int num_threads = blockDim.x;
+
+  if (block_id < num_layout) {
+    // Validate CSR indices for this layout.
+    const int stride_row = max_blocks + 1;
+    const int32_t* r = csr_row_indices + block_id * stride_row;
+
+    // Phase 1: thread 0 validates all row pointers sequentially.
+    // Row arrays are small (max_blocks+1 elements), so single-thread scan is sufficient.
+    // All threads must reach __syncthreads before proceeding to col validation.
+    __shared__ int row_valid;
+    if (tid == 0) {
+      row_valid = 1;
+      if (r[0] != 0) {
+        atomicCAS(error_flag, kCSRValidationOk, kCSRValidationRowFirstNotZero);
+        row_valid = 0;
+      } else {
+        for (int i = 0; i < max_blocks; ++i) {
+          if (r[i] < 0 || r[i] > r[i + 1] || r[i + 1] > col_count) {
+            atomicCAS(error_flag, kCSRValidationOk, kCSRValidationRowNonMonotonic);
+            row_valid = 0;
+            break;
+          }
+        }
+      }
+    }
+    __syncthreads();
+    if (!row_valid) return;
+
+    // Phase 2: row pointers are validated, r[max_blocks] is safe to use as NNZ bound.
+    // All threads cooperate on the potentially larger col-index array.
+    const int nnz = r[max_blocks];
+    const int32_t* c = csr_col_indices + block_id * col_count;
+    for (int i = tid; i < nnz; i += num_threads) {
+      if (c[i] < 0 || c[i] >= max_blocks) {
+        atomicCAS(error_flag, kCSRValidationOk, kCSRValidationColOutOfRange);
+        return;
+      }
+    }
+  } else if (block_id == num_layout) {
+    // Validate key lengths. All threads cooperate in strided fashion.
+    bool is_prompt = (sequence_length == total_sequence_length);
+    int min_key_length = is_prompt ? 1 : sequence_length;
+    for (int i = tid; i < batch_size; i += num_threads) {
+      int key_length = seqlens_k_total[i];
+      if (key_length < min_key_length || key_length > total_sequence_length) {
+        atomicCAS(error_flag, kCSRValidationOk, kCSRValidationKeyLengthOutOfRange);
+        return;
+      }
+    }
+  }
+}
+
+Status ValidateCSRIndicesOnDevice(
+    cudaStream_t stream,
+    const int32_t* csr_row_indices,
+    const int32_t* csr_col_indices,
+    const int32_t* seqlens_k_total,
+    int num_layout,
+    int max_blocks,
+    int col_count,
+    int batch_size,
+    int sequence_length,
+    int total_sequence_length,
+    int32_t* d_error_flag) {
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(d_error_flag, 0, sizeof(int32_t), stream));
+
+  // Launch num_layout blocks for CSR validation + 1 block for key-length validation.
+  // Each block uses a full warp (32 threads) with strided iteration over elements.
+  ValidateCSRIndicesKernel<<<num_layout + 1, 32, 0, stream>>>(
+      csr_row_indices, csr_col_indices, seqlens_k_total,
+      max_blocks, col_count, num_layout,
+      batch_size, sequence_length, total_sequence_length,
+      d_error_flag);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+  // Copy error flag back to host.
+  int32_t h_error_flag = 0;
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(&h_error_flag, d_error_flag, sizeof(int32_t),
+                                       cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+
+  if (h_error_flag != kCSRValidationOk) {
+    const char* msg = (h_error_flag == kCSRValidationRowFirstNotZero)
+                          ? "block_row_indices first element must be 0 for all layouts"
+                      : (h_error_flag == kCSRValidationRowNonMonotonic)
+                          ? "block_row_indices values are not monotonically non-decreasing or exceed "
+                            "block_col_indices columns"
+                      : (h_error_flag == kCSRValidationColOutOfRange)
+                          ? "block_col_indices value is out of valid range"
+                          : "key_total_sequence_lengths value is out of valid range";
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, msg);
+  }
+
+  return Status::OK();
+}
 
 }  // namespace cuda
 }  // namespace contrib

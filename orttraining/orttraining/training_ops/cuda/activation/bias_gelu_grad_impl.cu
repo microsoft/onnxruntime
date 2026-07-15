@@ -97,12 +97,7 @@ void LaunchBiasGeluGradDxKernel(
 
   const int num_elements_per_thread = GridDim::maxElementsPerThread;
 
-#ifdef USE_ROCM
-  // Optimization for ROCm MI100
-  const int max_threads_per_block = 512;
-#else
   const int max_threads_per_block = GridDim::maxThreadsPerBlock;
-#endif
 
   int num_threads_per_block =
       std::min<int>(static_cast<int>(CeilDiv(bias_size, num_elements_per_thread)), max_threads_per_block);

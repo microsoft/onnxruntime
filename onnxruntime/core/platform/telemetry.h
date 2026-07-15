@@ -48,26 +48,96 @@ class Telemetry {
 
   virtual void LogProcessInfo() const;
 
-  virtual void LogSessionCreationStart() const;
+  virtual void LogSessionCreationStart(uint32_t session_id) const;
 
-  virtual void LogEvaluationStop() const;
+  virtual void LogEvaluationStop(uint32_t session_id) const;
 
-  virtual void LogEvaluationStart() const;
+  virtual void LogEvaluationStart(uint32_t session_id) const;
 
   virtual void LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
                                   const std::string& model_producer_version, const std::string& model_domain,
                                   const std::unordered_map<std::string, int>& domain_to_version_map,
+                                  const std::string& model_file_name,
                                   const std::string& model_graph_name,
+                                  const std::string& model_weight_type,
+                                  const std::string& model_graph_hash,
+                                  const std::string& model_weight_hash,
                                   const std::unordered_map<std::string, std::string>& model_metadata,
                                   const std::string& loadedFrom, const std::vector<std::string>& execution_provider_ids,
+                                  const std::string& hardware_device_types,
+                                  const std::string& hardware_vendor_ids,
+                                  const std::string& ep_versions,
                                   bool use_fp16, bool captureState) const;
+
+  virtual void LogCompileModelStart(uint32_t session_id,
+                                    const std::string& input_source,
+                                    const std::string& output_target,
+                                    uint32_t flags,
+                                    int graph_optimization_level,
+                                    bool embed_ep_context,
+                                    bool has_external_initializers_file,
+                                    const std::vector<std::string>& execution_provider_ids) const;
+
+  virtual void LogCompileModelComplete(uint32_t session_id,
+                                       bool success,
+                                       uint32_t error_code,
+                                       uint32_t error_category,
+                                       const std::string& error_message) const;
 
   virtual void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
                                const char* function, uint32_t line) const;
 
-  virtual void LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last) const;
+  virtual void LogRuntimeInferenceError(uint32_t session_id, const common::Status& status,
+                                        const std::string& ep_versions,
+                                        const std::string& ep_device_types) const;
+
+  virtual void LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last,
+                              const std::unordered_map<int64_t, long long>& duration_per_batch_size) const;
+
+  // Emits one event per (Execution Provider, hardware device) pairing in use by a session.
+  // Designed for downstream `GROUP BY executionProviderType, hardwareDeviceType` analytics
+  // and is fully self-contained (no joins to SessionCreation required) so it works for
+  // long-lived sessions that span beyond the telemetry pipeline's join window.
+  virtual void LogEpDeviceUsage(uint32_t session_id,
+                                const std::string& ep_type,
+                                const std::string& hardware_device_type,
+                                uint32_t hardware_vendor_id,
+                                uint32_t hardware_device_id,
+                                const std::string& hardware_vendor,
+                                const std::string& ep_vendor,
+                                const std::string& ep_version,
+                                int assigned_node_count,
+                                uint32_t total_runs_since_last,
+                                int64_t total_run_duration_since_last) const;
 
   virtual void LogExecutionProviderEvent(LUID* adapterLuid) const;
+
+  virtual void LogDriverInfoEvent(const std::string_view device_class,
+                                  const std::wstring_view& driver_names,
+                                  const std::wstring_view& driver_versions) const;
+
+  virtual void LogAutoEpSelection(uint32_t session_id, const std::string& selection_policy,
+                                  const std::vector<std::string>& requested_execution_provider_ids,
+                                  const std::vector<std::string>& available_execution_provider_ids) const;
+
+  virtual void LogProviderOptions(const std::string& provider_id,
+                                  const std::string& provider_options_string,
+                                  bool captureState) const;
+
+  virtual void LogModelLoadStart(uint32_t session_id) const;
+
+  virtual void LogModelLoadEnd(uint32_t session_id, const common::Status& status) const;
+
+  virtual void LogSessionCreationEnd(uint32_t session_id,
+                                     const common::Status& status) const;
+
+  virtual void LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
+                                               const std::string& lib_path) const;
+
+  virtual void LogRegisterEpLibraryStart(const std::string& registration_name) const;
+
+  virtual void LogRegisterEpLibraryEnd(const std::string& registration_name,
+                                       const common::Status& status) const;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Telemetry);

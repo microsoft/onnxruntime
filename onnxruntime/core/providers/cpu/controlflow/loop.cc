@@ -142,9 +142,42 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
 
 // Opset 21 added int4 and uint4 support.
 // TODO(adrianlizarraga): Implement int4 and uint4 support.
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Loop,
     21,
+    22,
+    KernelDefBuilder()
+        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9()),
+    Loop);
+
+// Opset 23 added support for float4e2m1.
+// TODO: Add support for float4e2m1.
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    Loop,
+    23,
+    23,
+    KernelDefBuilder()
+        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9()),
+    Loop);
+
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    Loop,
+    24,
+    24,
+    KernelDefBuilder()
+        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9()),
+    Loop);
+
+// Opset 25
+ONNX_CPU_OPERATOR_KERNEL(
+    Loop,
+    25,
     KernelDefBuilder()
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
@@ -240,12 +273,15 @@ static Status ConcatenateCpuOutput(void* /*stream*/,
                                    void* output, size_t output_size_in_bytes) {
   const auto& first_output = per_iteration_output.front().Get<Tensor>();
   const auto& per_iteration_shape = first_output.Shape();
-  size_t bytes_per_iteration = first_output.SizeInBytes();
+  const bool is_string = first_output.IsDataTypeString();
+  const size_t bytes_per_iteration = first_output.SizeInBytes();
+  const int64_t elements_per_iteration = first_output.Shape().Size();
 
-  // we can't easily use a C++ template for the tensor element type,
-  // so use a span for some protection but work in bytes
-  gsl::span<gsl::byte> output_span = gsl::make_span<gsl::byte>(static_cast<gsl::byte*>(output),
-                                                               output_size_in_bytes);
+  // for the non-string path, create the output span once outside the loop
+  gsl::span<std::byte> output_span;
+  if (!is_string) {
+    output_span = gsl::make_span<std::byte>(static_cast<std::byte*>(output), output_size_in_bytes);
+  }
 
   for (size_t i = 0, num_iterations = per_iteration_output.size(); i < num_iterations; ++i) {
     auto& ort_value = per_iteration_output[i];
@@ -257,10 +293,18 @@ static Status ConcatenateCpuOutput(void* /*stream*/,
                              " Expected:", per_iteration_shape, " Got:", iteration_data.Shape());
     }
 
-    auto src = gsl::make_span<const gsl::byte>(static_cast<const gsl::byte*>(iteration_data.DataRaw()),
-                                               bytes_per_iteration);
-    auto dst = output_span.subspan(i * bytes_per_iteration, bytes_per_iteration);
-    gsl::copy(src, dst);
+    if (is_string) {
+      // std::string is not trivially copyable — move from the per-iteration tensors since they are
+      // discarded after concatenation
+      auto src = ort_value.GetMutable<Tensor>()->MutableDataAsSpan<std::string>();
+      auto* dst_begin = static_cast<std::string*>(output) + i * elements_per_iteration;
+      std::move(src.begin(), src.end(), dst_begin);
+    } else {
+      auto src = gsl::make_span<const std::byte>(static_cast<const std::byte*>(iteration_data.DataRaw()),
+                                                 bytes_per_iteration);
+      auto dst = output_span.subspan(i * bytes_per_iteration, bytes_per_iteration);
+      gsl::copy(src, dst);
+    }
   }
 
   return Status::OK();
@@ -513,7 +557,8 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
                                     context_.GetComputeStream(),
                                     // because the fetch[0] is the loop condition which we need to access on CPU,
                                     // have to perofrm a stream sync to make sure the data arrived.
-                                    true);
+                                    true,
+                                    context_.GetRunProfiler());
     ORT_RETURN_IF_ERROR(status);
 
     condition_mlvalue_ = fetches[0];

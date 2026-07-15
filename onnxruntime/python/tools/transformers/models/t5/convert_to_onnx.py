@@ -10,8 +10,15 @@ import logging
 import os
 
 import torch
-from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger
+from benchmark_helper import (
+    Precision,
+    create_onnxruntime_session,
+    prepare_environment,
+    setup_logger,
+)
+from onnx.shape_inference import infer_shapes_path
 from t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS, T5Helper
+from transformers import MT5Config, T5Config
 
 logger = logging.getLogger("")
 
@@ -70,9 +77,9 @@ def parse_arguments():
         "-p",
         "--precision",
         required=False,
-        type=Precision,
-        default=Precision.FLOAT32,
-        choices=[Precision.FLOAT32, Precision.FLOAT16],
+        type=str,
+        default=Precision.FLOAT32.value,
+        choices=[Precision.FLOAT32.value, Precision.FLOAT16.value],
         help="Precision of model to run. fp32 for full precision, fp16 for half precision",
     )
 
@@ -104,17 +111,17 @@ def parse_arguments():
         "--disable_auto_mixed_precision",
         required=False,
         action="store_true",
-        help="use pure fp16 instead of mixed precision",
+        help="do not use auto mixed precision conversion",
     )
     parser.set_defaults(disable_auto_mixed_precision=False)
 
     parser.add_argument(
-        "--separate_encoder_and_decoder_init",
+        "--force_fp16_io",
         required=False,
         action="store_true",
-        help="Do not merge encode and decoder init. Output 3 instead of 2 onnx models.",
+        help="Force to convert all float inputs and outputs to fp16 when precision is fp16.",
     )
-    parser.set_defaults(separate_encoder_and_decoder_init=False)
+    parser.set_defaults(force_fp16_io=False)
 
     parser.add_argument(
         "--use_int64_inputs",
@@ -131,34 +138,52 @@ def parse_arguments():
         help="filepath to load pre-trained model with custom state dictionary (e.g. pytorch_model.bin)",
     )
 
+    parser.add_argument(
+        "--encoder_decoder_init",
+        required=False,
+        action="store_true",
+        help="Combine encoder and decoder kv cache initialization into one model. It is legacy format that will be deprecated.",
+    )
+    parser.set_defaults(encoder_decoder_init=False)
+
     args = parser.parse_args()
 
     return args
 
 
 def export_onnx_models(
-    model_name_or_path,
-    cache_dir,
-    output_dir,
-    use_gpu,
-    use_external_data_format,
-    optimize_onnx,
-    precision,
-    verbose,
+    model_name_or_path: str,
+    cache_dir: str,
+    output_dir: str,
+    use_gpu: bool = False,
+    use_external_data_format: bool = False,
+    optimize_onnx: bool = False,
+    precision: str = Precision.FLOAT32.value,
+    verbose: bool = False,
     use_decoder_start_token: bool = False,
-    merge_encoder_and_decoder_init: bool = True,
     overwrite: bool = False,
     disable_auto_mixed_precision: bool = False,
     use_int32_inputs: bool = True,
     model_type: str = "t5",
     state_dict_path: str = "",
+    encoder_decoder_init: bool = False,
+    force_fp16_io: bool = False,
+    shape_infer_before_optimization: bool = False,
 ):
+    assert precision in [Precision.FLOAT32.value, Precision.FLOAT16.value], (
+        f"Invalid precision: {precision}. Use 'fp32' or 'fp16'."
+    )
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
     models = T5Helper.load_model(
-        model_name_or_path, cache_dir, device, merge_encoder_and_decoder_init, model_type, state_dict_path
+        model_name_or_path,
+        cache_dir,
+        device,
+        model_type,
+        state_dict_path,
+        encoder_decoder_init=encoder_decoder_init,
     )
-    config = models["decoder"].config
+    config: T5Config | MT5Config = models["decoder"].config
 
     if (not use_external_data_format) and (config.num_layers > 24):
         logger.info("Try use_external_data_format when model size > 2GB")
@@ -191,8 +216,20 @@ def export_onnx_models(
         else:
             logger.info(f"Skip exporting: existed ONNX model {onnx_path}")
 
-        # Optimize ONNX graph. Note that we have not implemented graph optimization for T5 yet.
-        if optimize_onnx or precision != Precision.FLOAT32:
+        # Optimize ONNX graph.
+        # The precision shall be compared with string value. It is because the Precision enum loaded from local file
+        # (like by transformers test in CI pipeline) are not same as Precision enum from package.
+        if optimize_onnx or precision != Precision.FLOAT32.value:
+            onnx_shape_path = None
+            if shape_infer_before_optimization:
+                onnx_shape_path = T5Helper.get_onnx_path(
+                    output_dir,
+                    model_name_or_path,
+                    suffix=filename_suffix + "_shape",
+                    new_folder=False,
+                )
+                infer_shapes_path(onnx_path, onnx_shape_path)
+
             output_path = T5Helper.get_onnx_path(
                 output_dir,
                 model_name_or_path,
@@ -203,30 +240,35 @@ def export_onnx_models(
             if overwrite or not os.path.exists(output_path):
                 logger.info(f"Optimizing model to {output_path}")
                 T5Helper.optimize_onnx(
-                    onnx_path,
+                    onnx_shape_path or onnx_path,
                     output_path,
-                    precision == Precision.FLOAT16,
+                    precision == Precision.FLOAT16.value,
                     config.num_heads,
                     config.hidden_size,
                     use_external_data_format,
                     auto_mixed_precision=not disable_auto_mixed_precision,
                     use_gpu=use_gpu,
+                    force_fp16_io=force_fp16_io,
                 )
             else:
-                logger.info(f"Skip optimizing: existed ONNX model {onnx_path}")
+                logger.info(f"Skip optimizing: existed ONNX model {output_path}")
         else:
             output_path = onnx_path
 
         ort_session = create_onnxruntime_session(
             output_path,
             use_gpu=use_gpu,
-            provider=["CUDAExecutionProvider", "CPUExecutionProvider"] if use_gpu else ["CPUExecutionProvider"],
+            verbose=verbose,
         )
+        if ort_session is None:
+            break
 
         with torch.no_grad():
             max_diff = T5Helper.verify_onnx(model, ort_session, device, use_int32_inputs)
         logger.info(f"PyTorch and OnnxRuntime results max difference = {max_diff}")
-        if max_diff > 1e-4:
+
+        # The threshold cannot apply to fp16 model, which need a larger threshold.
+        if precision == Precision.FLOAT32.value and max_diff > 1e-4:
             logger.warning("PyTorch and OnnxRuntime results are NOT close")
 
         output_paths.append(output_path)
@@ -245,14 +287,11 @@ def main():
     output_dir = args.output if not args.output.endswith(".onnx") else os.path.dirname(args.output)
     prepare_environment(cache_dir, output_dir, args.use_gpu)
 
-    if args.precision != Precision.FLOAT32:
+    if args.precision != Precision.FLOAT32.value:
         assert args.optimize_onnx, "fp16/int8 requires --optimize_onnx"
 
-    if args.precision == Precision.FLOAT16:
+    if args.precision == Precision.FLOAT16.value:
         assert args.use_gpu, "fp16 requires --use_gpu"
-
-    if args.optimize_onnx:
-        logger.warning("Graph optimization for T5 is not implemented yet.")
 
     output_paths = export_onnx_models(
         args.model_name_or_path,
@@ -264,11 +303,12 @@ def main():
         args.precision,
         args.verbose,
         args.use_decoder_start_token,
-        not args.separate_encoder_and_decoder_init,
         args.overwrite,
         args.disable_auto_mixed_precision,
         not args.use_int64_inputs,
         args.model_type,
+        encoder_decoder_init=args.encoder_decoder_init,
+        force_fp16_io=args.force_fp16_io,
     )
 
     logger.info(f"Done! Outputs: {output_paths}")

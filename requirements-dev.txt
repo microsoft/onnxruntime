@@ -2,13 +2,14 @@
 cerberus
 flatbuffers
 jinja2
+markupsafe
 numpy
 onnx
 onnxmltools
 packaging
 pandas
 parameterized>=0.8.1
-protobuf
+protobuf>=4.25.8
 pydocstyle[toml]
 pytest
 pytest-cov

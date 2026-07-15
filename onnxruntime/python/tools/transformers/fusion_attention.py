@@ -541,6 +541,7 @@ class FusionAttention(Fusion):
         output: str,
         key_padding_mask: str = "",
         add_qk: str = "",
+        unidirectional: bool = False,
         past_k: str = "",
         past_v: str = "",
         present_k: str = "",
@@ -561,6 +562,7 @@ class FusionAttention(Fusion):
             output (str): output name of MHA
             key_padding_mask (str): name of key padding mask
             add_qk (str): name of add after Q x K'
+            unidirectional (bool): whether to apply causal attention mask automatically or not
             past_k (str): name of past K value - (batch_size, num_heads, past_sequence_length, head_size)
             past_v (str): name of past V value - (batch_size, num_heads, past_sequence_length, head_size)
             present_k (str): name of present K value - (batch_size, num_heads, sequence_length, head_size)
@@ -623,7 +625,6 @@ class FusionAttention(Fusion):
             mha_inputs.append("")
 
         # Add optional inputs for MHA
-
         if past_k and past_v:
             mha_inputs.extend([key_padding_mask, add_qk, past_k, past_v])
         elif key_padding_mask or add_qk:
@@ -641,7 +642,11 @@ class FusionAttention(Fusion):
             name=mha_node_name,
         )
         mha_node.domain = "com.microsoft"
-        mha_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
+        mha_node.attribute.append(helper.make_attribute("num_heads", num_heads))
+        if unidirectional:
+            mha_node.attribute.append(helper.make_attribute("unidirectional", int(unidirectional)))
+
+        self.increase_counter("MultiHeadAttention")
         return mha_node
 
     def create_attention_node(
@@ -658,12 +663,12 @@ class FusionAttention(Fusion):
         first_input: str,
         output: str,
         add_qk_str: str = "",
+        causal: bool = False,
         past_k: str = "",
         past_v: str = "",
         present_k: str = "",
         present_v: str = "",
         scale: float | None = None,
-        causal: bool = False,
     ) -> NodeProto | None:
         """Create an Attention node.
 
@@ -680,12 +685,12 @@ class FusionAttention(Fusion):
             first_input (str): first input name
             output (str): output name
             add_qk_str (str): name of Add node after Q x K'
+            causal: whether it is uni-directional mask.
             past_k (str): name of input for past K value
             past_v (str): name of input for past V value
             present_k (str): name of output to store present K value
             present_v (str): name of output to store present V value
             scale: scale before softmax
-            causal: whether it is uni-directional mask.
 
         Returns:
             Union[NodeProto, None]: the node created or None if failed.
@@ -821,6 +826,8 @@ class FusionAttention(Fusion):
                 outputs=[output],
                 name=attention_node_name,
             )
+            self.increase_counter("MultiHeadAttention")
+
         else:
             attention_inputs = [
                 first_input,
@@ -855,6 +862,7 @@ class FusionAttention(Fusion):
                 outputs=attention_outputs,
                 name=attention_node_name,
             )
+            self.increase_counter("Attention")
 
         attention_node.domain = "com.microsoft"
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
@@ -884,6 +892,13 @@ class FusionAttention(Fusion):
             add_before_layernorm = self.model.match_parent(normalize_node, "Add", 0)
             if add_before_layernorm is not None:
                 start_node = add_before_layernorm
+            elif self.model.find_graph_input(normalize_node.input[0]) is not None:
+                # Pre-LN first block: LN fed directly by graph input.  QKV matching will
+                # still fail from this (first) LN anchor because its inputs are weights, not
+                # the QKV projection path.  The real fusion happens when fuse() is called
+                # again from the second LN/SkipLN anchor after the residual Add, where the
+                # other_inputs and root_input changes (#2-#4) take effect.
+                start_node = normalize_node
             else:
                 return
 
@@ -909,7 +924,8 @@ class FusionAttention(Fusion):
         other_inputs = []
         for _i, node_input in enumerate(start_node.input):
             if node_input not in output_name_to_node:
-                continue
+                if self.model.find_graph_input(node_input) is None:
+                    continue
 
             if node_input == qkv_nodes[0].output[0]:
                 continue
@@ -938,7 +954,7 @@ class FusionAttention(Fusion):
                 root_input = mul_before_layernorm.output[0]
             else:
                 return
-        elif normalize_node.op_type == "LayerNormalization":
+        elif normalize_node.op_type in ("LayerNormalization", "SkipLayerNormalization"):
             children = input_name_to_nodes[root_input]
             for child in children:
                 if child.op_type == "LayerNormalization":
@@ -953,9 +969,10 @@ class FusionAttention(Fusion):
         #  |                                                                     |
         #  |                                                                     |
         #  +---------------------------------------------------------------------+
-        parent_node = output_name_to_node[root_input]
-        if parent_node.op_type == "SkipLayerNormalization" and len(parent_node.output) == 4:
-            root_input = parent_node.output[0]
+        if root_input in output_name_to_node:
+            parent_node = output_name_to_node[root_input]
+            if parent_node.op_type == "SkipLayerNormalization" and len(parent_node.output) == 4:
+                root_input = parent_node.output[0]
 
         children = input_name_to_nodes[root_input]
         children_types = [child.op_type for child in children]
@@ -1104,11 +1121,11 @@ class FusionAttention(Fusion):
             if (
                 (mul_val is None)
                 or not (isinstance(mul_val, np.ndarray) and mul_val.size == 1)
-                or (float(mul_val) >= 0)
+                or (mul_val.item() >= 0)
             ):
                 return
-            if float(mul_val) != -10000:
-                self.mask_filter_value = float(mul_val)
+            if mul_val.item() != -10000:
+                self.mask_filter_value = mul_val.item()
 
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_k.input[0] == root_input:
             mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0]) if not is_no_mask_attention else None

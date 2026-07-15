@@ -31,6 +31,21 @@ void SwapByteOrderCopy(size_t element_size_in_bytes,
                        gsl::span<const unsigned char> source_bytes,
                        gsl::span<unsigned char> destination_bytes);
 
+/**
+ * Swaps the byte order of the elements in the given byte span in place.
+ *
+ * This is a low-level function - please be sure to pass in valid arguments.
+ * In particular:
+ * - bytes should have a size that is a multiple of element_size_in_bytes.
+ * - element_size_in_bytes should be greater than zero.
+ * - bytes should not overlap with itself.
+ *
+ * @param element_size_in_bytes The size of an individual element, in bytes.
+ * @param source_bytes The source byte span.
+ */
+void SwapByteOrderInplace(size_t element_size_in_bytes,
+                          gsl::span<std::byte> bytes);
+
 namespace detail {
 
 /**
@@ -64,11 +79,18 @@ common::Status ReadLittleEndian(gsl::span<const unsigned char> source_bytes, gsl
 /**
  * Writes to a little-endian destination.
  */
+common::Status WriteLittleEndian(size_t element_size,
+                                 gsl::span<const unsigned char> source_bytes,
+                                 gsl::span<unsigned char> destination_bytes);
+
+/**
+ * Writes to a little-endian destination.
+ */
 template <typename T>
 common::Status WriteLittleEndian(gsl::span<const T> source, gsl::span<unsigned char> destination_bytes) {
   static_assert(std::is_trivially_copyable<T>::value, "T must be trivially copyable");
   const auto source_bytes = gsl::make_span(reinterpret_cast<const unsigned char*>(source.data()), source.size_bytes());
-  return detail::CopyLittleEndian(sizeof(T), source_bytes, destination_bytes);
+  return WriteLittleEndian(sizeof(T), source_bytes, destination_bytes);
 }
 
 }  // namespace utils

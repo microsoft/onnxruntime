@@ -1,23 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import { Env } from 'onnxruntime-common';
+import type { Env } from 'onnxruntime-common';
 
 import { calculateTensorSizeInBytes, DataType } from '../wasm-common';
 
 import type { OrtWasmModule } from '../wasm-types';
 
-import { WebGpuBackend } from './backend-webgpu';
+import type { WebGpuBackend } from './backend-webgpu';
 import { LOG_DEBUG } from './log';
-import { TensorView } from './tensor-view';
+import type { TensorView } from './tensor-view';
 import { ShapeUtil } from './util';
-import {
-  AdapterInfo,
-  ComputeContext,
-  ComputeContextInputsOutputsMapping,
-  DeviceInfo,
-  ProgramInfo,
-} from './webgpu/types';
+import type { AdapterInfo, ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo } from './webgpu/types';
 import { WebNNBackend } from './backend-webnn';
 
 /* eslint-disable no-bitwise */
@@ -76,7 +70,6 @@ class TensorViewImpl implements TensorView {
 
 class ComputeContextImpl implements ComputeContext {
   readonly adapterInfo: AdapterInfo;
-  readonly deviceInfo: DeviceInfo;
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
   readonly outputCount: number;
@@ -94,7 +87,6 @@ class ComputeContextImpl implements ComputeContext {
     contextDataOffset: number,
   ) {
     this.adapterInfo = backend.adapterInfo;
-    this.deviceInfo = backend.deviceInfo;
 
     // extract context data
     const ptrSize = module.PTR_SIZE;
@@ -205,7 +197,9 @@ export const init = async (
   }
 
   if (name === 'webgpu') {
-    const backend = new WebGpuBackend();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+    const webGpuBackendImpl = require('./backend-webgpu').WebGpuBackend;
+    const backend = new webGpuBackendImpl();
     await backend.initialize(env, gpuAdapter!);
 
     jsepInit('webgpu', [
@@ -282,19 +276,28 @@ export const init = async (
     const backend = new WebNNBackend(env);
     jsepInit('webnn', [
       backend,
-      // jsepReserveTensorId
+      // webnnReserveTensorId
       () => backend.reserveTensorId(),
-      // jsepReleaseTensorId,
+      // webnnReleaseTensorId
       (tensorId: number) => backend.releaseTensorId(tensorId),
-      // jsepEnsureTensor
-      async (tensorId: number, onnxDataType: number, shape: number[], copyOld) =>
-        backend.ensureTensor(tensorId, onnxDataType, shape, copyOld),
-      // jsepUploadTensor
+      // webnnEnsureTensor
+      async (
+        sessionId: number | undefined,
+        tensorId: number,
+        onnxDataType: number,
+        shape: number[],
+        copyOld: boolean,
+      ) => backend.ensureTensor(sessionId, tensorId, onnxDataType, shape, copyOld),
+      // webnnUploadTensor
       (tensorId: number, data: Uint8Array) => {
         backend.uploadTensor(tensorId, data);
       },
-      // jsepDownloadTensor
+      // webnnDownloadTensor
       async (tensorId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => backend.downloadTensor(tensorId, dstBuffer),
+      // webnnRegisterMLContext
+      (sessionId: number, mlContext: MLContext) => backend.registerMLContext(sessionId, mlContext),
+      // webnnEnableTraceEvent
+      !!env.trace,
     ]);
   }
 };

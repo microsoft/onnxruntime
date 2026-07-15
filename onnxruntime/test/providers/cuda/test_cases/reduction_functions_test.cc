@@ -177,6 +177,35 @@ void TestReduceColumnsToColumn(int m, int n, float relative_error_tolerance = 1e
 
   CheckDeviceValues(m, d_out.get(), expected_column.data(), relative_error_tolerance);
 }
+
+void TestReduceColumnsToColumnRepeated(int m, int n, int iterations, float relative_error_tolerance = 1e-4f) {
+  SCOPED_TRACE(MakeString("m: ", m, ", n:", n, ", iterations: ", iterations));
+
+  const TensorShape shape{m, n};
+  RandomValueGenerator random{};
+  const auto values = random.Uniform<float>(shape.GetDims(), 1.0f, 10.0f);
+  const auto expected_column = ExpectedReduceMatrixColumnsOutput(m, n, values);
+
+  auto d_in = AllocateDeviceMemory<float>(m * n);
+  auto d_out = AllocateDeviceMemory<float>(m);
+
+  cudaMemcpy(d_in.get(), values.data(), m * n * sizeof(float), cudaMemcpyHostToDevice);
+
+  size_t buffer_size_in_bytes =
+      compute_reduce_matrix_columns_buffer_size<float>(m, n);
+  auto d_buffer = AllocateDeviceMemory<char>(buffer_size_in_bytes);
+
+  for (int i = 0; i < iterations; ++i) {
+    ASSERT_STATUS_OK(reduce_matrix_columns(
+        0,
+        d_in.get(), d_out.get(),
+        m, n,
+        d_buffer.get(), buffer_size_in_bytes));
+
+    ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()).IsOK());
+    CheckDeviceValues(m, d_out.get(), expected_column.data(), relative_error_tolerance);
+  }
+}
 }  // namespace
 
 TEST(ReductionFunctionsTest, ReduceRowToScalar) {
@@ -203,6 +232,10 @@ TEST(ReductionFunctionsTest, ReduceColumnsToColumn) {
       TestReduceColumnsToColumn(m, n);
     }
   }
+}
+
+TEST(ReductionFunctionsTest, ReduceColumnsToColumnRepeated) {
+  TestReduceColumnsToColumnRepeated(17, 8192, 100, 2e-4f);
 }
 
 TEST(ReductionFunctionsTest, BufferOffsets) {

@@ -19,6 +19,7 @@ constexpr const char* kMaxPartitionIterations = "trt_max_partition_iterations";
 constexpr const char* kMinSubgraphSize = "trt_min_subgraph_size";
 constexpr const char* kMaxWorkspaceSize = "trt_max_workspace_size";
 constexpr const char* kFp16Enable = "trt_fp16_enable";
+constexpr const char* kBf16Enable = "trt_bf16_enable";
 constexpr const char* kInt8Enable = "trt_int8_enable";
 constexpr const char* kInt8CalibTable = "trt_int8_calibration_table_name";
 constexpr const char* kInt8UseNativeCalibTable = "trt_int8_use_native_calibration_table";
@@ -56,6 +57,11 @@ constexpr const char* kDumpEpContextModel = "trt_dump_ep_context_model";
 constexpr const char* kEngineHwCompatible = "trt_engine_hw_compatible";
 constexpr const char* kONNXBytestream = "trt_onnx_bytestream";
 constexpr const char* kONNXBytestreamSize = "trt_onnx_bytestream_size";
+constexpr const char* kExternalDataBytestream = "trt_external_data_bytestream";
+constexpr const char* kExternalDataBytestreamSize = "trt_external_data_bytestream_size";
+constexpr const char* kOpTypesToExclude = "trt_op_types_to_exclude";
+constexpr const char* kPreviewFeatures = "trt_preview_features";
+constexpr const char* kGraphIncludeInitializer = "trt_load_user_initializer";
 
 }  // namespace provider_option_names
 }  // namespace tensorrt
@@ -64,6 +70,7 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
   TensorrtExecutionProviderInfo info{};
   void* user_compute_stream = nullptr;
   void* onnx_bytestream = nullptr;
+  void* external_data_bytestream = nullptr;
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddValueParser(
@@ -91,6 +98,7 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kMinSubgraphSize, info.min_subgraph_size)
           .AddAssignmentToReference(tensorrt::provider_option_names::kMaxWorkspaceSize, info.max_workspace_size)
           .AddAssignmentToReference(tensorrt::provider_option_names::kFp16Enable, info.fp16_enable)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kBf16Enable, info.bf16_enable)
           .AddAssignmentToReference(tensorrt::provider_option_names::kInt8Enable, info.int8_enable)
           .AddAssignmentToReference(tensorrt::provider_option_names::kInt8CalibTable, info.int8_calibration_table_name)
           .AddAssignmentToReference(tensorrt::provider_option_names::kInt8UseNativeCalibTable, info.int8_use_native_calibration_table)
@@ -134,11 +142,24 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
                 return Status::OK();
               })
           .AddAssignmentToReference(tensorrt::provider_option_names::kONNXBytestreamSize, info.onnx_bytestream_size)
+          .AddValueParser(
+              tensorrt::provider_option_names::kExternalDataBytestream,
+              [&external_data_bytestream](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                external_data_bytestream = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
+          .AddAssignmentToReference(tensorrt::provider_option_names::kExternalDataBytestreamSize, info.external_data_bytestream_size)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kOpTypesToExclude, info.op_types_to_exclude)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kPreviewFeatures, info.preview_features)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kGraphIncludeInitializer, info.load_user_initializer)
           .Parse(options));  // add new provider option here.
 
   info.user_compute_stream = user_compute_stream;
   info.has_user_compute_stream = (user_compute_stream != nullptr);
   info.onnx_bytestream = onnx_bytestream;
+  info.external_data_bytestream = external_data_bytestream;
   return info;
 }
 
@@ -151,6 +172,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kMinSubgraphSize, MakeStringWithClassicLocale(info.min_subgraph_size)},
       {tensorrt::provider_option_names::kMaxWorkspaceSize, MakeStringWithClassicLocale(info.max_workspace_size)},
       {tensorrt::provider_option_names::kFp16Enable, MakeStringWithClassicLocale(info.fp16_enable)},
+      {tensorrt::provider_option_names::kBf16Enable, MakeStringWithClassicLocale(info.bf16_enable)},
       {tensorrt::provider_option_names::kInt8Enable, MakeStringWithClassicLocale(info.int8_enable)},
       {tensorrt::provider_option_names::kInt8CalibTable, MakeStringWithClassicLocale(info.int8_calibration_table_name)},
       {tensorrt::provider_option_names::kInt8UseNativeCalibTable, MakeStringWithClassicLocale(info.int8_use_native_calibration_table)},
@@ -188,6 +210,11 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kEngineHwCompatible, MakeStringWithClassicLocale(info.engine_hw_compatible)},
       {tensorrt::provider_option_names::kONNXBytestream, MakeStringWithClassicLocale(info.onnx_bytestream)},
       {tensorrt::provider_option_names::kONNXBytestreamSize, MakeStringWithClassicLocale(info.onnx_bytestream_size)},
+      {tensorrt::provider_option_names::kExternalDataBytestream, MakeStringWithClassicLocale(info.external_data_bytestream)},
+      {tensorrt::provider_option_names::kExternalDataBytestreamSize, MakeStringWithClassicLocale(info.external_data_bytestream_size)},
+      {tensorrt::provider_option_names::kOpTypesToExclude, MakeStringWithClassicLocale(info.op_types_to_exclude)},
+      {tensorrt::provider_option_names::kPreviewFeatures, MakeStringWithClassicLocale(info.preview_features)},
+      {tensorrt::provider_option_names::kGraphIncludeInitializer, MakeStringWithClassicLocale(info.load_user_initializer)},
   };
   return options;
 }
@@ -206,6 +233,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
   const std::string kProfilesOptShapes_ = empty_if_null(info.trt_profile_opt_shapes);
   const std::string kEpContextFilePath_ = empty_if_null(info.trt_ep_context_file_path);
   const std::string kOnnxModelFolderPath_ = empty_if_null(info.trt_onnx_model_folder_path);
+  const std::string kOpTypesToExclude_ = empty_if_null(info.trt_op_types_to_exclude);
 
   const ProviderOptions options{
       {tensorrt::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
@@ -215,6 +243,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
       {tensorrt::provider_option_names::kMinSubgraphSize, MakeStringWithClassicLocale(info.trt_min_subgraph_size)},
       {tensorrt::provider_option_names::kMaxWorkspaceSize, MakeStringWithClassicLocale(info.trt_max_workspace_size)},
       {tensorrt::provider_option_names::kFp16Enable, MakeStringWithClassicLocale(info.trt_fp16_enable)},
+      {tensorrt::provider_option_names::kBf16Enable, MakeStringWithClassicLocale(info.trt_bf16_enable)},
       {tensorrt::provider_option_names::kInt8Enable, MakeStringWithClassicLocale(info.trt_int8_enable)},
       {tensorrt::provider_option_names::kInt8CalibTable, kInt8CalibTable_},
       {tensorrt::provider_option_names::kInt8UseNativeCalibTable, MakeStringWithClassicLocale(info.trt_int8_use_native_calibration_table)},
@@ -251,6 +280,10 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
       {tensorrt::provider_option_names::kEngineHwCompatible, MakeStringWithClassicLocale(info.trt_engine_hw_compatible)},
       {tensorrt::provider_option_names::kONNXBytestream, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.trt_onnx_bytestream))},
       {tensorrt::provider_option_names::kONNXBytestreamSize, MakeStringWithClassicLocale(info.trt_onnx_bytestream_size)},
+      {tensorrt::provider_option_names::kExternalDataBytestream, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.trt_external_data_bytestream))},
+      {tensorrt::provider_option_names::kExternalDataBytestreamSize, MakeStringWithClassicLocale(info.trt_external_data_bytestream_size)},
+      {tensorrt::provider_option_names::kOpTypesToExclude, kOpTypesToExclude_},
+      {tensorrt::provider_option_names::kGraphIncludeInitializer, MakeStringWithClassicLocale(info.trt_load_user_initializer)},
   };
   return options;
 }
@@ -311,6 +344,7 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.trt_min_subgraph_size = internal_options.min_subgraph_size;
   trt_provider_options_v2.trt_max_workspace_size = internal_options.max_workspace_size;
   trt_provider_options_v2.trt_fp16_enable = internal_options.fp16_enable;
+  trt_provider_options_v2.trt_bf16_enable = internal_options.bf16_enable;
   trt_provider_options_v2.trt_int8_enable = internal_options.int8_enable;
 
   trt_provider_options_v2.trt_int8_calibration_table_name = copy_string_if_needed(internal_options.int8_calibration_table_name);
@@ -355,5 +389,10 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.trt_engine_hw_compatible = internal_options.engine_hw_compatible;
   trt_provider_options_v2.trt_onnx_bytestream = internal_options.onnx_bytestream;
   trt_provider_options_v2.trt_onnx_bytestream_size = internal_options.onnx_bytestream_size;
+  trt_provider_options_v2.trt_external_data_bytestream = internal_options.external_data_bytestream;
+  trt_provider_options_v2.trt_external_data_bytestream_size = internal_options.external_data_bytestream_size;
+  trt_provider_options_v2.trt_op_types_to_exclude = copy_string_if_needed(internal_options.op_types_to_exclude);
+  trt_provider_options_v2.trt_preview_features = copy_string_if_needed(internal_options.preview_features);
+  trt_provider_options_v2.trt_load_user_initializer = internal_options.load_user_initializer;
 }
 }  // namespace onnxruntime

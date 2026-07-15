@@ -102,10 +102,12 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
 
 bool GemmPackBFp32(AllocatorPtr& alloc,
                    const Tensor& tensor_b,
+                   bool trans_a,
                    bool trans_b,
                    IAllocatorUniquePtr<void>& packed_b,
                    size_t& packed_b_size,
-                   TensorShape& b_shape) {
+                   TensorShape& b_shape,
+                   const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
   // Only handle the common case of a 2D weight matrix. Additional matrices
   // could be handled by stacking the packed buffers.
   if (tensor_b.Shape().NumDimensions() != 2) {
@@ -116,7 +118,7 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
   const size_t K = trans_b ? static_cast<size_t>(b_shape[1]) : static_cast<size_t>(b_shape[0]);
   const size_t N = trans_b ? static_cast<size_t>(b_shape[0]) : static_cast<size_t>(b_shape[1]);
 
-  packed_b_size = MlasGemmPackBSize(N, K);
+  packed_b_size = MlasGemmPackBSize(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans, N, K, mlas_backend_kernel_selector_config);
   if (packed_b_size == 0) {
     return false;
   }
@@ -129,12 +131,14 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
   // if and when we try to cache this pre-packed buffer for sharing between sessions.
   memset(packed_b_data, 0, packed_b_size);
 
-  MlasGemmPackB(trans_b ? CblasTrans : CblasNoTrans,
+  MlasGemmPackB(trans_a ? CblasTrans : CblasNoTrans,
+                trans_b ? CblasTrans : CblasNoTrans,
                 N,
                 K,
                 tensor_b.Data<float>(),
                 trans_b ? K : N,
-                packed_b_data);
+                packed_b_data,
+                mlas_backend_kernel_selector_config);
   return true;
 }
 
@@ -146,7 +150,8 @@ void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
                           T beta,
                           const T* c_data, const TensorShape* c_shape,
                           T* y_data,
-                          concurrency::ThreadPool* thread_pool) {
+                          concurrency::ThreadPool* thread_pool,
+                          const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
   // if input is empty tensor, return directly as nothing need to be calculated.
   if (M == 0 || N == 0)
     return;
@@ -171,18 +176,19 @@ void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
                 // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer
                 c_data != nullptr ? beta : 0,
                 y_data,
-                thread_pool);
+                thread_pool,
+                mlas_backend_kernel_selector_config);
 }
 
-template <>
-void Gemm<MLFloat16>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
-                                  ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
-                                  MLFloat16 alpha,
-                                  const MLFloat16* a_data, const MLFloat16* b_data,
-                                  MLFloat16 beta,
-                                  const MLFloat16* c_data, const TensorShape* c_shape,
-                                  MLFloat16* y_data,
-                                  concurrency::ThreadPool* thread_pool) {
+void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
+                    ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
+                    MLFloat16 alpha,
+                    const MLFloat16* a_data, const MLFloat16* b_data,
+                    MLFloat16 beta,
+                    const MLFloat16* c_data, const TensorShape* c_shape,
+                    MLFloat16* y_data,
+                    concurrency::ThreadPool* thread_pool,
+                    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
   // if input is empty tensor, return directly as nothing need to be calculated.
   if (M == 0 || N == 0)
     return;
@@ -231,10 +237,24 @@ void Gemm<MLFloat16>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
 #endif
   math::Gemm<Eigen::half>(trans_a, trans_b, M, N, K, *reinterpret_cast<Eigen::half*>(&alpha),
-                          reinterpret_cast<const Eigen::half*>(a_data), reinterpret_cast<const Eigen::half*>(b_data), *reinterpret_cast<Eigen::half*>(&beta), reinterpret_cast<Eigen::half*>(y_data), thread_pool);
+                          reinterpret_cast<const Eigen::half*>(a_data), reinterpret_cast<const Eigen::half*>(b_data), *reinterpret_cast<Eigen::half*>(&beta),
+                          reinterpret_cast<Eigen::half*>(y_data), thread_pool, mlas_backend_kernel_selector_config);
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
+}
+
+template <>
+void Gemm<MLFloat16>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
+                                  ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
+                                  MLFloat16 alpha,
+                                  const MLFloat16* a_data, const MLFloat16* b_data,
+                                  MLFloat16 beta,
+                                  const MLFloat16* c_data, const TensorShape* c_shape,
+                                  MLFloat16* y_data,
+                                  concurrency::ThreadPool* thread_pool,
+                                  const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  Gemm_MLFloat16(trans_a, trans_b, M, N, K, alpha, a_data, b_data, beta, c_data, c_shape, y_data, thread_pool, mlas_backend_kernel_selector_config);
 }
 
 template void Gemm<float>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
@@ -244,7 +264,8 @@ template void Gemm<float>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE 
                                        float beta,
                                        const float* c_data, const TensorShape* c_shape,
                                        float* y_data,
-                                       concurrency::ThreadPool* thread_pool);
+                                       concurrency::ThreadPool* thread_pool,
+                                       const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);
 
 template <typename T>
 Status Gemm<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, AllocatorPtr /*alloc_for_caching*/,
@@ -263,7 +284,7 @@ Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx,
   // only pack Matrix B
   if (input_idx == 1) {
     size_t packed_b_size;
-    is_packed = GemmPackBFp32(alloc, tensor, trans_B_ != CblasNoTrans, packed_b_, packed_b_size, b_shape_);
+    is_packed = GemmPackBFp32(alloc, tensor, trans_A_ != CblasNoTrans, trans_B_ != CblasNoTrans, packed_b_, packed_b_size, b_shape_, &mlas_backend_kernel_selector_config_);
     bool share_prepacked_weights = (prepacked_weights != nullptr);
     if (is_packed && share_prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
@@ -275,6 +296,7 @@ Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx,
 
 template <typename T>
 Status Gemm<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& /*prepacked_buffers*/,
+                                          gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                           int /*input_idx*/,
                                           /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
@@ -283,6 +305,7 @@ Status Gemm<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& /*prepac
 
 template <>
 Status Gemm<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                              gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                               int input_idx,
                                               /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
@@ -339,7 +362,7 @@ Status Gemm<T>::Compute(OpKernelContext* context) const {
   const TensorShape* c_shape = C != nullptr ? &C->Shape() : nullptr;
 
   ComputeGemm(trans_A_, trans_B_, M, N, K, alpha_, A->Data<T>(), B->Data<T>(), beta_,
-              c_data, c_shape, y_data, thread_pool);
+              c_data, c_shape, y_data, thread_pool, &mlas_backend_kernel_selector_config_);
 
   ComputeActivation(y_data, SafeInt<ptrdiff_t>(M) * N, thread_pool);
 
@@ -378,7 +401,7 @@ Status Gemm<MLFloat16>::Compute(OpKernelContext* context) const {
 
   if (B) {
     ComputeGemm(trans_A_, trans_B_, M, N, K, static_cast<MLFloat16>(alpha_), A->Data<MLFloat16>(), B->Data<MLFloat16>(), static_cast<MLFloat16>(beta_),
-                c_data, c_shape, y_data, thread_pool);
+                c_data, c_shape, y_data, thread_pool, &mlas_backend_kernel_selector_config_);
   } else {
     ORT_NOT_IMPLEMENTED("Prepacking of B is supported by MLAS half gemm API, but not implemented by this kernel yet");
   }
@@ -420,7 +443,7 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
 
   if (B) {
     ComputeGemm(trans_A_, trans_B_, M, N, K, alpha_, A->Data<float>(), B->Data<float>(), beta_,
-                c_data, c_shape, y_data, thread_pool);
+                c_data, c_shape, y_data, thread_pool, &mlas_backend_kernel_selector_config_);
   } else {
     GemmBroadcastBias(M, N, beta_, c_data, c_shape, y_data);
     if (K > 0) {
@@ -436,7 +459,8 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
           c_data != nullptr ? beta_ : 0.0f,
           y_data,
           static_cast<size_t>(N),
-          thread_pool);
+          thread_pool,
+          &mlas_backend_kernel_selector_config_);
     } else if (beta_ == 0 || c_data == nullptr) {
       EigenMatrixMapRowMajor<float> dest(y_data, narrow<Eigen::Index>(M), narrow<Eigen::Index>(N));
       dest.setZero();

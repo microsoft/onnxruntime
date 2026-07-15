@@ -18,10 +18,6 @@ class ArgMaxMinOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
-
-  // Operator support related.
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         WebnnDeviceType device_type, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -43,36 +39,26 @@ Status ArgMaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   emscripten::val options = emscripten::val::object();
   options.set("keepDimensions", keep_dims == 1);
-  // TODO(Honry): check whether int64 output data type is supported by WebNN opSupportLimits() API.
-  options.set("outputDataType", "int64");
+  std::string output_data_type = "int64";
+  if (!model_builder.IsInt64Supported()) {
+    // Int64 is not supported by current context, use int32 instead.
+    output_data_type = "int32";
+  }
+  options.set("outputDataType", output_data_type);
   options.set("label", node.Name());
   emscripten::val output = emscripten::val::object();
 
   const auto& op_type = node.OpType();
   if (op_type == "ArgMax") {
-    output = model_builder.GetBuilder().call<emscripten::val>("argMax", input, narrow<uint32_t>(axis), options);
+    output = model_builder.GetBuilder().call<emscripten::val>("argMax", input, SafeInt<uint32_t>(axis).Ref(), options);
   } else if (op_type == "ArgMin") {
-    output = model_builder.GetBuilder().call<emscripten::val>("argMin", input, narrow<uint32_t>(axis), options);
+    output = model_builder.GetBuilder().call<emscripten::val>("argMin", input, SafeInt<uint32_t>(axis).Ref(), options);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ArgMaxMinOpBuilder, unknown op: ", op_type);
   }
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
-}
-
-// Operator support related.
-bool ArgMaxMinOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
-                                           const Node& node,
-                                           WebnnDeviceType device_type,
-                                           const logging::Logger& logger) const {
-  const auto& input_defs = node.InputDefs();
-
-  std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger))
-    return false;
-
-  return true;
 }
 
 void CreateArgMaxMinOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

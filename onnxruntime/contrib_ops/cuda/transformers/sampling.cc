@@ -7,6 +7,7 @@
 #include "contrib_ops/cuda/transformers/generation_device_helper.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 
+#if !defined(DISABLE_GENERATION_OPS)
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -40,21 +41,17 @@ Sampling::Sampling(const OpKernelInfo& info)
                    GenerationCudaDeviceHelper::InitGreedyState<float>,
                    GenerationCudaDeviceHelper::InitGreedyState<MLFloat16>);
 
-#ifndef USE_ROCM
   SetDeviceHelpers_Cuda(GenerationCudaDeviceHelper::ReorderPastState);
-#endif
 
   SetDeviceHelpers_Gpt(GenerationCudaDeviceHelper::UpdateGptFeeds<float>,
                        GenerationCudaDeviceHelper::UpdateGptFeeds<MLFloat16>);
 
   SetConsoleDumper(&g_cuda_dumper_sampling);
 
-#ifndef USE_ROCM
   gpu_device_prop_ = &reinterpret_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider())->GetDeviceProp();
 
   gpu_device_arch_ = static_cast<const cudaDeviceProp*>(gpu_device_prop_)->major * 100 +
                      static_cast<const cudaDeviceProp*>(gpu_device_prop_)->minor * 10;
-#endif
 }
 
 Status Sampling::ComputeInternal(OpKernelContext* context) const {
@@ -77,3 +74,4 @@ Status Sampling::Compute(OpKernelContext* context) const {
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
+#endif  // !defined(DISABLE_GENERATION_OPS)

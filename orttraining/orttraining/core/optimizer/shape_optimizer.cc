@@ -222,7 +222,7 @@ void UpdateNodeArgToConstant(Graph& graph, NodeArg* arg_to_update, const TensorS
   if (!is_scalar) {
     constant_tensor_proto.add_dims(length);
   }
-  constant_tensor_proto.set_raw_data(values.data(), length * sizeof(int64_t));
+  onnxruntime::utils::SetRawDataInTensorProto(constant_tensor_proto, values.data(), length * sizeof(int64_t));
 
   // Add initializer into Graph.
   graph.AddInitializedTensor(constant_tensor_proto);

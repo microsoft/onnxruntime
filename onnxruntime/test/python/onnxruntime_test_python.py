@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import ctypes
 import gc
+import importlib.util
 import os
 import pathlib
 import platform
@@ -24,7 +25,15 @@ from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, Ru
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
     os.add_dll_directory(os.getcwd())
 
-available_providers = list(onnxrt.get_available_providers())
+available_providers = [
+    (
+        ep,
+        {"enable_cann_subgraph": True},
+    )
+    if ep == "CANNExecutionProvider"
+    else ep
+    for ep in onnxrt.get_available_providers()
+]
 
 # TVM EP doesn't support:
 # * calling Run() on different threads using the same session object
@@ -38,13 +47,13 @@ available_providers = list(onnxrt.get_available_providers())
 # * testSequenceInsert
 # * testSequenceLength
 available_providers_without_tvm = [
-    provider for provider in onnxrt.get_available_providers() if provider not in {"TvmExecutionProvider"}
+    ep for ep in available_providers if (ep[0] if isinstance(ep, tuple) else ep) not in {"TvmExecutionProvider"}
 ]
 
 available_providers_without_tvm_and_tensorrt = [
-    provider
-    for provider in onnxrt.get_available_providers()
-    if provider not in {"TvmExecutionProvider", "TensorrtExecutionProvider"}
+    ep
+    for ep in available_providers_without_tvm
+    if (ep[0] if isinstance(ep, tuple) else ep) not in {"TensorrtExecutionProvider"}
 ]
 
 
@@ -54,7 +63,7 @@ class TestInferenceSession(unittest.TestCase):
         input_name = session_object.get_inputs()[0].name
         res = session_object.run([], {input_name: x}, run_options=run_options)
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def run_model_with_input(self, session_object, input_name, input_value, iter_num, queue):
         for _ in range(iter_num):
@@ -93,7 +102,7 @@ class TestInferenceSession(unittest.TestCase):
     def test_tvm_imported(self):
         if "TvmExecutionProvider" not in onnxrt.get_available_providers():
             return
-        import tvm
+        import tvm  # noqa: PLC0415
 
         self.assertTrue(tvm is not None)
 
@@ -352,7 +361,7 @@ class TestInferenceSession(unittest.TestCase):
             """
 
             try:
-                import torch
+                import torch  # noqa: PLC0415
 
                 if torch.cuda.is_available():
                     s = torch.cuda.Stream()
@@ -430,6 +439,8 @@ class TestInferenceSession(unittest.TestCase):
 
                 test_get_and_set_option_with_values("cudnn_conv_algo_search", ["DEFAULT", "EXHAUSTIVE", "HEURISTIC"])
 
+                test_get_and_set_option_with_values("enable_cudnn", ["1", "0"])
+
                 test_get_and_set_option_with_values("do_copy_in_default_stream", [0, 1])
 
                 test_get_and_set_option_with_values("tunable_op_enable", ["1", "0"])
@@ -457,7 +468,7 @@ class TestInferenceSession(unittest.TestCase):
                 self.assertEqual(options["CUDAExecutionProvider"]["user_compute_stream"], "0")
 
                 try:
-                    import torch
+                    import torch  # noqa: PLC0415
 
                     if torch.cuda.is_available():
                         s = torch.cuda.Stream()
@@ -541,47 +552,6 @@ class TestInferenceSession(unittest.TestCase):
             if cuda is not None:
                 print("run advanced_test")
                 run_advanced_test(cuda)
-
-        if "ROCMExecutionProvider" in onnxrt.get_available_providers():
-
-            def run_rocm_options_test():
-                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["ROCMExecutionProvider"])
-                self.assertIn("ROCMExecutionProvider", sess.get_providers())
-                options = sess.get_provider_options()
-
-                def test_get_and_set_option_with_values(option_name, option_values):
-                    provider_options = sess.get_provider_options()
-                    self.assertIn("ROCMExecutionProvider", provider_options)
-                    rocm_options = options["ROCMExecutionProvider"]
-                    self.assertIn(option_name, rocm_options)
-                    for option_value in option_values:
-                        rocm_options[option_name] = option_value
-                        sess.set_providers(["ROCMExecutionProvider"], [rocm_options])
-                        new_provider_options = sess.get_provider_options()
-                        self.assertEqual(
-                            new_provider_options.get("ROCMExecutionProvider", {}).get(option_name),
-                            str(option_value),
-                        )
-
-                test_get_and_set_option_with_values("tunable_op_enable", ["1", "0"])
-
-                test_get_and_set_option_with_values("tunable_op_tuning_enable", ["1", "0"])
-
-                test_get_and_set_option_with_values("tunable_op_max_tuning_duration_ms", ["-1", "1"])
-
-                test_get_and_set_option_with_values("enable_hip_graph", ["1", "0"])
-
-                # test for user_compute_stream
-                option = options["ROCMExecutionProvider"]
-                option["user_compute_stream"] = "1"
-                sess.set_providers(["ROCMExecutionProvider"], [option])
-                new_options = sess.get_provider_options()
-                new_option = new_options["ROCMExecutionProvider"]
-                self.assertEqual(new_option["user_compute_stream"], "1")
-                # set user_compute_stream will set has_user_compute_stream to 1 too
-                self.assertEqual(new_option["has_user_compute_stream"], "1")
-
-            run_rocm_options_test()
 
     def test_invalid_set_providers(self):
         with self.assertRaises(RuntimeError) as context:
@@ -675,9 +645,6 @@ class TestInferenceSession(unittest.TestCase):
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
             do_test_get_and_set_tuning_results("CUDAExecutionProvider")
 
-        if "ROCMExecutionProvider" in onnxrt.get_available_providers():
-            do_test_get_and_set_tuning_results("ROCMExecutionProvider")
-
     def test_run_model_with_optional_sequence_input(self):
         sess = onnxrt.InferenceSession(get_name("identity_opt.onnx"))
         x = [np.array([1, 2, 3, 4, 5]).astype(np.float32)]
@@ -689,17 +656,32 @@ class TestInferenceSession(unittest.TestCase):
     def test_run_model(self):
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=available_providers)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
-        input_name = sess.get_inputs()[0].name
-        self.assertEqual(input_name, "X")
-        input_shape = sess.get_inputs()[0].shape
-        self.assertEqual(input_shape, [3, 2])
-        output_name = sess.get_outputs()[0].name
-        self.assertEqual(output_name, "Y")
-        output_shape = sess.get_outputs()[0].shape
-        self.assertEqual(output_shape, [3, 2])
-        res = sess.run([output_name], {input_name: x})
+
+        inputs = sess.get_inputs()
+        self.assertEqual(len(inputs), 1)
+        self.assertEqual(inputs[0].name, "X")
+        self.assertEqual(inputs[0].shape, [3, 2])
+
+        input_meminfos = sess.get_input_memory_infos()
+        self.assertEqual(len(input_meminfos), 1)
+        self.assertIsNotNone(input_meminfos[0])
+
+        input_epdevices = sess.get_input_epdevices()
+        # The entry my be None (null) but it should be present
+        self.assertEqual(len(input_epdevices), 1)
+
+        outputs = sess.get_outputs()
+        self.assertEqual(len(outputs), 1)
+        self.assertEqual(outputs[0].name, "Y")
+        self.assertEqual(outputs[0].shape, [3, 2])
+
+        output_meminfos = sess.get_output_memory_infos()
+        self.assertEqual(len(output_meminfos), 1)
+        self.assertIsNotNone(output_meminfos[0])
+
+        res = sess.run([outputs[0].name], {inputs[0].name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_run_async(self):
         event = threading.Event()
@@ -718,7 +700,7 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(len(err), 0)
             self.assertEqual(len(res), 1)
             self.assertEqual(data.get_id(), 123456)
-            np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+            np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
             event.set()
 
         so = onnxrt.SessionOptions()
@@ -735,7 +717,7 @@ class TestInferenceSession(unittest.TestCase):
     def test_run_model_from_bytes(self):
         with open(get_name("mul_1.onnx"), "rb") as f:
             content = f.read()
-        sess = onnxrt.InferenceSession(content, providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(content, providers=available_providers)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -747,10 +729,10 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_shape, [3, 2])
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_run_model2(self):
-        sess = onnxrt.InferenceSession(get_name("matmul_1.onnx"), providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(get_name("matmul_1.onnx"), providers=available_providers)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -762,10 +744,10 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_shape, [3, 1])
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_run_model2_contiguous(self):
-        sess = onnxrt.InferenceSession(get_name("matmul_1.onnx"), providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(get_name("matmul_1.onnx"), providers=available_providers)
         x = np.array([[2.0, 1.0], [4.0, 3.0], [6.0, 5.0]], dtype=np.float32)[:, [1, 0]]
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -777,10 +759,10 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_shape, [3, 1])
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
         xcontiguous = np.ascontiguousarray(x)
         rescontiguous = sess.run([output_name], {input_name: xcontiguous})
-        np.testing.assert_allclose(output_expected, rescontiguous[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(rescontiguous[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_run_model_multiple_threads(self):
         # Skip this test for a "pure" DML onnxruntime python wheel.
@@ -840,19 +822,19 @@ class TestInferenceSession(unittest.TestCase):
                 self.assertEqual(result, q.get())
 
     def test_list_as_input(self):
-        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=available_providers)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         res = sess.run([], {input_name: x.tolist()})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_string_list_as_input(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
         x = np.array(["this", "is", "identity", "test"], dtype=str).reshape((2, 2))
         x_name = sess.get_inputs()[0].name
         res = sess.run([], {x_name: x.tolist()})
-        np.testing.assert_equal(x, res[0])
+        np.testing.assert_equal(res[0], x)
 
     def test_run_device(self):
         device = onnxrt.get_device()
@@ -873,7 +855,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_shape, ["None", 1])
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_boolean_inputs(self):
         sess = onnxrt.InferenceSession(get_name("logicaland.onnx"), providers=available_providers)
@@ -905,7 +887,7 @@ class TestInferenceSession(unittest.TestCase):
 
         output_expected = np.array([[True, False], [False, False]], dtype=bool)
         res = sess.run([output_name], {a_name: a, b_name: b})
-        np.testing.assert_equal(output_expected, res[0])
+        np.testing.assert_equal(res[0], output_expected)
 
     def test_string_input1(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
@@ -926,7 +908,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_type, "tensor(string)")
 
         res = sess.run([output_name], {x_name: x})
-        np.testing.assert_equal(x, res[0])
+        np.testing.assert_equal(res[0], x)
 
     def test_string_input2(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
@@ -947,7 +929,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_type, "tensor(string)")
 
         res = sess.run([output_name], {x_name: x})
-        np.testing.assert_equal(x, res[0])
+        np.testing.assert_equal(res[0], x)
 
     def test_input_bytes(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
@@ -968,7 +950,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_type, "tensor(string)")
 
         res = sess.run([output_name], {x_name: x})
-        np.testing.assert_equal(x, res[0].astype("|S8"))
+        np.testing.assert_equal(res[0].astype("|S8"), x)
 
     def test_input_object(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
@@ -989,7 +971,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_type, "tensor(string)")
 
         res = sess.run([output_name], {x_name: x})
-        np.testing.assert_equal(x, res[0])
+        np.testing.assert_equal(res[0], x)
 
     def test_input_void(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
@@ -1014,7 +996,7 @@ class TestInferenceSession(unittest.TestCase):
         res = sess.run([output_name], {x_name: x})
 
         expr = np.array([["must", "have"], ["same", "size"]], dtype=object)
-        np.testing.assert_equal(expr, res[0])
+        np.testing.assert_equal(res[0], expr)
 
     def test_raise_wrong_num_inputs(self):
         with self.assertRaises(ValueError) as context:
@@ -1043,7 +1025,7 @@ class TestInferenceSession(unittest.TestCase):
         sess = onnxrt.InferenceSession(
             get_name("mul_1.onnx"),
             sess_options=so,
-            providers=onnxrt.get_available_providers(),
+            providers=available_providers,
         )
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         sess.run([], {"X": x})
@@ -1149,7 +1131,7 @@ class TestInferenceSession(unittest.TestCase):
             },
         )
 
-        np.testing.assert_array_equal(output_expected, res[0])
+        np.testing.assert_array_equal(res[0], output_expected)
 
     def test_sequence_insert(self):
         opt = onnxrt.SessionOptions()
@@ -1179,7 +1161,7 @@ class TestInferenceSession(unittest.TestCase):
                 "input_seq": [],
             },
         )
-        np.testing.assert_array_equal(output_expected, res[0])
+        np.testing.assert_array_equal(res[0], output_expected)
 
     def test_ort_execution_mode(self):
         opt = onnxrt.SessionOptions()
@@ -1305,9 +1287,28 @@ class TestInferenceSession(unittest.TestCase):
             providers=["CPUExecutionProvider"],
         )
 
+    def test_session_options_add_external_initializers_from_files_in_memory(self):
+        # Provide external initializer file content directly from memory
+        # The model references an external file named "Pads_not_on_disk.bin" for the initializer
+        pads_bytes = np.array([0, 0, 1, 1], dtype=np.int64).tobytes()
+
+        so = onnxrt.SessionOptions()
+        so.add_external_initializers_from_files_in_memory(
+            ["Pads_not_on_disk.bin"],
+            [pads_bytes],
+            [len(pads_bytes)],
+        )
+
+        # This should not throw
+        onnxrt.InferenceSession(
+            get_name("model_with_external_initializer_come_from_user.onnx"),
+            sess_options=so,
+            providers=["CPUExecutionProvider"],
+        )
+
     def test_register_custom_ops_library(self):
         if sys.platform.startswith("win"):
-            shared_library = "custom_op_library.dll"
+            shared_library = os.path.abspath("custom_op_library.dll")
             if not os.path.exists(shared_library):
                 raise FileNotFoundError(f"Unable to find '{shared_library}'")
 
@@ -1341,7 +1342,7 @@ class TestInferenceSession(unittest.TestCase):
         input_1 = np.zeros((3, 5)).astype(np.float32)
         res = sess1.run([output_name], {input_name_0: input_0, input_name_1: input_1})
         output_expected = np.ones((3, 5)).astype(np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
         # Create an alias of SessionOptions instance
         # We will use this alias to construct another InferenceSession
@@ -1360,13 +1361,20 @@ class TestInferenceSession(unittest.TestCase):
         )
 
     def test_ort_value(self):
+        providers_to_test = available_providers
         numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         numpy_arr_output = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
 
-        def test_session_with_ortvalue_input(ortvalue):
-            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
+        def test_session_with_ortvalue_input(ortvalue, providers):
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=providers)
             res = sess.run(["Y"], {"X": ortvalue})
-            self.assertTrue(np.array_equal(res[0], numpy_arr_output))
+
+            if "QNNExecutionProvider" in providers:
+                # QNN runs float32 with fp16 precision, so relax accuracy expectations
+                np.testing.assert_allclose(numpy_arr_output, res[0], rtol=1e-04, atol=1e-06)
+            else:
+                self.assertTrue(np.array_equal(res[0], numpy_arr_output))
+
             vect = sess._sess.run_with_ort_values({"X": ortvalue._get_c_value()}, ["Y"], RunOptions())
             self.assertIsInstance(vect, OrtValueVector)
 
@@ -1375,10 +1383,12 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(ortvalue1.shape(), [3, 2])
         self.assertEqual(ortvalue1.data_type(), "tensor(float)")
         self.assertEqual(ortvalue1.is_tensor(), True)
+        # Assumes float32 and shape {3, 2} as above
+        self.assertEqual(ortvalue1.tensor_size_in_bytes(), 4 * 2 * 3)
         self.assertTrue(np.array_equal(ortvalue1.numpy(), numpy_arr_input))
 
         # Pass in the constructed OrtValue to a session via Run() and check results
-        test_session_with_ortvalue_input(ortvalue1)
+        test_session_with_ortvalue_input(ortvalue1, providers_to_test)
 
         # The constructed OrtValue should still be valid after being used in a session
         self.assertTrue(np.array_equal(ortvalue1.numpy(), numpy_arr_input))
@@ -1392,7 +1402,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(float_tensor_data_type, ort_value_with_type.element_type())
         self.assertEqual([3, 2], ort_value_with_type.shape())
 
-        if "CUDAExecutionProvider" in onnxrt.get_available_providers():
+        if "CUDAExecutionProvider" in providers_to_test:
             ortvalue2 = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input, "cuda", 0)
             self.assertEqual(ortvalue2.device_name(), "cuda")
             self.assertEqual(ortvalue2.shape(), [3, 2])
@@ -1401,7 +1411,7 @@ class TestInferenceSession(unittest.TestCase):
             self.assertTrue(np.array_equal(ortvalue2.numpy(), numpy_arr_input))
 
             # Pass in the constructed OrtValue to a session via Run() and check results
-            test_session_with_ortvalue_input(ortvalue2)
+            test_session_with_ortvalue_input(ortvalue2, providers_to_test)
 
             # The constructed OrtValue should still be valid after being used in a session
             self.assertTrue(np.array_equal(ortvalue2.numpy(), numpy_arr_input))
@@ -1444,6 +1454,208 @@ class TestInferenceSession(unittest.TestCase):
 
         device = ortvalue._ortvalue.__dlpack_device__()
         self.assertEqual((1, 0), device)
+
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ort_value_dlpack_zero_size(self):
+        # Zero-size tensors are vacuously contiguous; from_dlpack must accept them.
+        # Regression test: OrtValue.from_dlpack was incorrectly rejecting zero-size tensors.
+        zero_size_shapes = [
+            (1, 8, 0, 128),  # zero in the middle (KV-cache use case)
+            (0,),  # 1-D zero-size
+            (0, 4),  # zero leading dimension
+            (4, 0),  # zero trailing dimension
+        ]
+        for shape in zero_size_shapes:
+            with self.subTest(shape=shape):
+                arr = np.zeros(shape, dtype=np.float32)
+                # Test via numpy __dlpack__ protocol
+                dlp = arr.__dlpack__()
+                ortvalue = C.OrtValue.from_dlpack(dlp, False)
+                self.assertEqual(list(shape), list(ortvalue.shape()))
+                # Test round-trip: OrtValue -> dlpack -> OrtValue
+                ort_input = onnxrt.OrtValue.ortvalue_from_numpy(arr)
+                dlp2 = ort_input._ortvalue.to_dlpack()
+                ortvalue2 = C.OrtValue.from_dlpack(dlp2, False)
+                self.assertEqual(list(shape), list(ortvalue2.shape()))
+
+    def test_ort_value_array_protocol(self):
+        """Test that OrtValue supports numpy's __array__ protocol."""
+        numpy_arr = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+
+        # np.asarray should work via __array__ and share memory (zero-copy)
+        result = np.asarray(ortvalue)
+        np.testing.assert_equal(numpy_arr, result)
+        self.assertEqual(result.dtype, np.float32)
+        self.assertEqual(ortvalue.data_ptr(), result.ctypes.data)
+
+        # np.array should also work
+        result2 = np.array(ortvalue)
+        np.testing.assert_equal(numpy_arr, result2)
+
+        # same dtype should still share memory (no unnecessary copy)
+        result_same = np.asarray(ortvalue, dtype=np.float32)
+        np.testing.assert_equal(numpy_arr, result_same)
+        self.assertEqual(ortvalue.data_ptr(), result_same.ctypes.data)
+
+        # dtype conversion via __array__
+        result_f64 = np.asarray(ortvalue, dtype=np.float64)
+        np.testing.assert_equal(numpy_arr.astype(np.float64), result_f64)
+        self.assertEqual(result_f64.dtype, np.float64)
+
+        # Integer tensor
+        int_arr = np.array([1, 2, 3], dtype=np.int64)
+        ortvalue_int = onnxrt.OrtValue.ortvalue_from_numpy(int_arr)
+        result_int = np.asarray(ortvalue_int)
+        np.testing.assert_equal(int_arr, result_int)
+        self.assertEqual(result_int.dtype, np.int64)
+
+        # Boolean tensor
+        bool_arr = np.array([True, False, True], dtype=np.bool_)
+        ortvalue_bool = onnxrt.OrtValue.ortvalue_from_numpy(bool_arr)
+        result_bool = np.asarray(ortvalue_bool)
+        np.testing.assert_equal(bool_arr, result_bool)
+        self.assertEqual(result_bool.dtype, np.bool_)
+
+    @unittest.skipUnless(
+        importlib.util.find_spec("onnx") is not None,
+        "onnx package is required to build the test model",
+    )
+    def test_run_output_does_not_alias_input_passthrough(self):
+        """Test that session.run() returns independent numpy arrays when a model
+        input passes through as a model output. Reproduces the dangling-pointer
+        corruption described in https://github.com/microsoft/onnxruntime/issues/21922
+        """
+        import onnx  # noqa: PLC0415
+
+        # Build a model where 'input_0' is both a graph input and a graph output,
+        # plus a computed output (input_0 + 10).
+        inp_shape = [1, 2, 2, 2]
+        input_0 = onnx.helper.make_tensor_value_info("input_0", onnx.TensorProto.FLOAT, inp_shape)
+        output_plus10 = onnx.helper.make_tensor_value_info("plus_10", onnx.TensorProto.FLOAT, inp_shape)
+        ten_const = onnx.numpy_helper.from_array(np.array(10, dtype=np.float32), "ten_const")
+        add_node = onnx.helper.make_node("Add", ["input_0", "ten_const"], ["plus_10"], name="Add0")
+        graph = onnx.helper.make_graph(
+            [add_node],
+            "PassthroughTest",
+            [input_0],
+            [output_plus10, input_0],
+            initializer=[ten_const],
+        )
+        model = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 21)])
+        model = onnx.shape_inference.infer_shapes(model)
+
+        sess_options = onnxrt.SessionOptions()
+        sess_options.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_DISABLE_ALL
+        session = onnxrt.InferenceSession(
+            model.SerializeToString(),
+            sess_options=sess_options,
+            providers=["CPUExecutionProvider"],
+        )
+
+        num_runs = 7
+        all_run_outputs = []
+        for run_index in range(num_runs):
+            input_data = np.full(inp_shape, float(run_index), dtype=np.float32)
+            outputs = session.run(None, {"input_0": input_data})
+
+            # Immediately after run, outputs must be correct
+            np.testing.assert_array_equal(
+                outputs[0],
+                np.full(inp_shape, run_index + 10.0, dtype=np.float32),
+                err_msg=f"Run {run_index}: 'plus_10' wrong immediately after run",
+            )
+            np.testing.assert_array_equal(
+                outputs[1],
+                np.full(inp_shape, float(run_index), dtype=np.float32),
+                err_msg=f"Run {run_index}: 'input_0' wrong immediately after run",
+            )
+
+            # The pass-through output must NOT alias the input buffer —
+            # it must be an independent copy so it survives across runs.
+            self.assertFalse(
+                np.shares_memory(outputs[1], input_data),
+                f"Run {run_index}: 'input_0' unexpectedly aliases the input buffer",
+            )
+            all_run_outputs.append(outputs)
+
+        # After all runs, every saved output must still hold its original value.
+        for run_index, outputs in enumerate(all_run_outputs):
+            np.testing.assert_array_equal(
+                outputs[0],
+                np.full(inp_shape, run_index + 10.0, dtype=np.float32),
+                err_msg=f"Run {run_index}: 'plus_10' corrupted after loop",
+            )
+            np.testing.assert_array_equal(
+                outputs[1],
+                np.full(inp_shape, float(run_index), dtype=np.float32),
+                err_msg=f"Run {run_index}: 'input_0' corrupted after loop (issue #21922)",
+            )
+
+    def test_run_session_owned_output_is_zero_copy(self):
+        """Verify that session-allocated CPU outputs (the common case) expose
+        a backing base object instead of owning a separate numpy buffer."""
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        input_name = sess.get_inputs()[0].name
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        result = sess.run(None, {input_name: x})
+        # The output should be a numpy array; for a session-owned buffer
+        # it should not be a separately-allocated copy.  We verify that by
+        # checking the array is backed by another object via ``output.base``.
+        output = result[0]
+        self.assertIsNotNone(output.base, "Session-owned output should have a backing base object")
+
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ort_value_dlpack_protocol(self):
+        """Test that OrtValue exposes __dlpack__ and __dlpack_device__ protocols."""
+        numpy_arr = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+
+        # __dlpack_device__ should return (device_type, device_id) for CPU
+        device = ortvalue.__dlpack_device__()
+        self.assertEqual((1, 0), device)
+
+        # __dlpack__ should return a capsule that can be consumed by from_dlpack
+        dlp = ortvalue.__dlpack__()
+        ortvalue2 = onnxrt.OrtValue.from_dlpack(dlp)
+        np.testing.assert_equal(numpy_arr, ortvalue2.numpy())
+
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ort_value_from_dlpack_protocol_object(self):
+        """Test OrtValue.from_dlpack with objects implementing __dlpack__ protocol."""
+        numpy_arr = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32)
+
+        # numpy arrays support __dlpack__ protocol since numpy 1.22
+        if hasattr(numpy_arr, "__dlpack__"):
+            ortvalue = onnxrt.OrtValue.from_dlpack(numpy_arr)
+            np.testing.assert_equal(numpy_arr, ortvalue.numpy())
+            self.assertEqual(list(numpy_arr.shape), list(ortvalue.shape()))
+
+        # Round-trip: numpy -> OrtValue -> OrtValue (via __dlpack__)
+        ortvalue_src = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+        ortvalue_dst = onnxrt.OrtValue.from_dlpack(ortvalue_src)
+        np.testing.assert_equal(numpy_arr, ortvalue_dst.numpy())
+        # Verify shared memory (no copy)
+        self.assertEqual(ortvalue_src.data_ptr(), ortvalue_dst.data_ptr())
+
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ort_value_from_dlpack_bool(self):
+        """Test that from_dlpack auto-detects boolean tensors."""
+        bool_arr = np.array([True, False, True, False], dtype=np.bool_)
+        ortvalue_src = onnxrt.OrtValue.ortvalue_from_numpy(bool_arr)
+
+        # Round-trip through DLPack should preserve bool dtype
+        ortvalue_dst = onnxrt.OrtValue.from_dlpack(ortvalue_src)
+        result = ortvalue_dst.numpy()
+        np.testing.assert_equal(bool_arr, result)
+
+        # Ensure uint8 is NOT falsely detected as bool
+        uint8_arr = np.array([1, 2, 255], dtype=np.uint8)
+        ortvalue_uint8 = onnxrt.OrtValue.ortvalue_from_numpy(uint8_arr)
+        ortvalue_uint8_dst = onnxrt.OrtValue.from_dlpack(ortvalue_uint8)
+        result_uint8 = ortvalue_uint8_dst.numpy()
+        np.testing.assert_equal(uint8_arr, result_uint8)
+        self.assertEqual(result_uint8.dtype, np.uint8)
 
     def test_sparse_tensor_coo_format(self):
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)
@@ -1575,6 +1787,48 @@ class TestInferenceSession(unittest.TestCase):
             for _iteration in range(100000):
                 session.run(output_names=["output"], input_feed={"shape": shape})
 
+    def test_ort_device(self):
+        cpu_device = onnxrt.OrtDevice.make("cpu", 0)
+        self.assertEqual(cpu_device.device_id(), 0)
+        self.assertEqual(cpu_device.device_type(), 0)
+        self.assertEqual(cpu_device.device_vendor_id(), onnxrt.OrtDeviceVendorId.NONE)
+        self.assertEqual(cpu_device.device_mem_type(), 0)
+
+        cuda_device = onnxrt.OrtDevice.make("cuda", 0)
+        self.assertEqual(cuda_device.device_vendor_id(), onnxrt.OrtDeviceVendorId.NVIDIA)
+        self.assertEqual(onnxrt.OrtDeviceVendorId.NVIDIA, 0x10DE)
+
+    def test_ort_memory_info(self):
+        cpu_memory_info = onnxrt.OrtMemoryInfo(
+            "Cpu",
+            onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR,
+            0,
+            onnxrt.OrtMemType.DEFAULT,
+        )
+        self.assertEqual(cpu_memory_info.name, "Cpu")
+        self.assertEqual(cpu_memory_info.device_id, 0)
+        self.assertEqual(cpu_memory_info.mem_type, onnxrt.OrtMemType.DEFAULT)
+        self.assertEqual(cpu_memory_info.allocator_type, onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR)
+        self.assertEqual(cpu_memory_info.device_mem_type, onnxrt.OrtDeviceMemoryType.DEFAULT)
+        self.assertEqual(cpu_memory_info.device_vendor_id, 0)
+
+    def test_ort_memory_info_create_v2(self):
+        cpu_memory_info = onnxrt.OrtMemoryInfo.create_v2(
+            "Test",
+            onnxrt.OrtMemoryInfoDeviceType.CPU,
+            0,  # vendor_id
+            0,  # device_id
+            onnxrt.OrtDeviceMemoryType.DEFAULT,
+            128,  # alignment
+            onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR,
+        )
+        self.assertEqual(cpu_memory_info.name, "Test")
+        self.assertEqual(cpu_memory_info.device_id, 0)
+        self.assertEqual(cpu_memory_info.mem_type, onnxrt.OrtMemType.DEFAULT)
+        self.assertEqual(cpu_memory_info.allocator_type, onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR)
+        self.assertEqual(cpu_memory_info.device_mem_type, onnxrt.OrtDeviceMemoryType.DEFAULT)
+        self.assertEqual(cpu_memory_info.device_vendor_id, 0)
+
     def test_shared_allocator_using_create_and_register_allocator(self):
         # Create and register an arena based allocator
 
@@ -1666,7 +1920,7 @@ class TestInferenceSession(unittest.TestCase):
                 sess2.run([], {input_name: x}, ro2)
 
     def test_check_and_normalize_provider_args(self):
-        from onnxruntime.capi.onnxruntime_inference_collection import check_and_normalize_provider_args
+        from onnxruntime.capi.onnxruntime_inference_collection import check_and_normalize_provider_args  # noqa: PLC0415
 
         valid_providers = ["a", "b", "c"]
 
@@ -1716,45 +1970,6 @@ class TestInferenceSession(unittest.TestCase):
 
         # provider options unsupported mixed specification
         check_failure([("a", {1: 2})], [{3: 4}])
-
-    def test_register_custom_e_ps_library(self):
-        available_eps = C.get_available_providers()
-        # skip amd gpu build
-        if "ROCMExecutionProvider" in available_eps:
-            return
-
-        if sys.platform.startswith("win"):
-            shared_library = "test_execution_provider.dll"
-
-        elif sys.platform.startswith("darwin"):
-            # exclude for macos
-            return
-
-        else:
-            shared_library = "./libtest_execution_provider.so"
-
-        if not os.path.exists(shared_library):
-            raise FileNotFoundError(f"Unable to find '{shared_library}'")
-
-        this = os.path.dirname(__file__)
-        custom_op_model = os.path.join(this, "testdata", "custom_execution_provider_library", "test_model.onnx")
-        if not os.path.exists(custom_op_model):
-            raise FileNotFoundError(f"Unable to find '{custom_op_model}'")
-
-        session_options = C.get_default_session_options()
-        sess = C.InferenceSession(session_options, custom_op_model, True, True)
-        sess.initialize_session(
-            ["my_ep"],
-            [
-                {
-                    "shared_lib_path": shared_library,
-                    "device_id": "1",
-                    "some_config": "val",
-                }
-            ],
-            set(),
-        )
-        print("Create session with customize execution provider successfully!")
 
     def test_create_allocator(self):
         def verify_allocator(allocator, expected_config):
@@ -1888,7 +2103,144 @@ class TestInferenceSession(unittest.TestCase):
             self.assertTrue(value.is_tensor())
             self.assertEqual(expected_val.element_type(), value.element_type())
             self.assertEqual(expected_val.shape(), value.shape())
-            np.testing.assert_allclose(expected_val.numpy(), value.numpy())
+            np.testing.assert_allclose(value.numpy(), expected_val.numpy())
+
+    def test_adapter_read_modify_export(self):
+        # Verify that an instance created by read_adapter can have its
+        # parameters replaced and re-exported (single-source architecture).
+        adapter_version = 1
+        model_version = 1
+        file_path = pathlib.Path(os.path.realpath(__file__)).parent
+        original_path = str(file_path / "test_adapter_read_modify_original.onnx_adapter")
+        modified_path = str(file_path / "test_adapter_read_modify_new.onnx_adapter")
+
+        float_data_type = 1
+        original_data = np.array([1, 2, 3, 4]).astype(np.float32).reshape(2, 2)
+        modified_data = np.array([10, 20, 30, 40, 50, 60]).astype(np.float32).reshape(3, 2)
+
+        ort_original = onnxrt.OrtValue.ortvalue_from_numpy_with_onnx_type(original_data, float_data_type)
+        ort_modified = onnxrt.OrtValue.ortvalue_from_numpy_with_onnx_type(modified_data, float_data_type)
+
+        # Write original adapter
+        adapter_format = onnxrt.AdapterFormat()
+        adapter_format.set_adapter_version(adapter_version)
+        adapter_format.set_model_version(model_version)
+        adapter_format.set_parameters({"param": ort_original})
+        adapter_format.export_adapter(original_path)
+
+        try:
+            # Read, replace parameters, and re-export.
+            adapter_read = onnxrt.AdapterFormat.read_adapter(original_path)
+            adapter_read.set_parameters({"new_param": ort_modified})
+            adapter_read.export_adapter(modified_path)
+
+            # Verify the re-exported file has the NEW parameters.
+            adapter_verify = onnxrt.AdapterFormat.read_adapter(modified_path)
+            params = adapter_verify.get_parameters()
+            self.assertIn("new_param", params)
+            self.assertNotIn("param", params)
+            self.assertEqual(params["new_param"].shape(), [3, 2])
+            np.testing.assert_allclose(params["new_param"].numpy(), modified_data)
+        finally:
+            if os.path.exists(original_path):
+                os.remove(original_path)
+            if os.path.exists(modified_path):
+                os.remove(modified_path)
+
+    def test_adapter_parameters_keep_alive(self):
+        # Regression test: AdapterFormat.read_adapter returned OrtValue views
+        # over storage owned by the C AdapterFormat with nothing keeping the
+        # parent alive. The natural pattern below dropped the parent and left
+        # the dict with dangling pointers, causing a use-after-free on the
+        # next access. read_adapter now pins the owning C AdapterFormat on
+        # every OrtValue it produces (pybind11 add_patient via
+        # keep_alive_impl), so the dict and any individual value keep the
+        # backing adapter alive on their own. Mirrors the strong-ref pattern
+        # used by the SparseTensor view bindings.
+        adapter_version = 1
+        model_version = 1
+        file_path = pathlib.Path(os.path.realpath(__file__)).parent
+        file_path = str(file_path / "test_adapter_keep_alive.onnx_adapter")
+
+        float_data_type = 1
+        val = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        param_1 = np.array(val).astype(np.float32).reshape(5, 2)
+
+        ort_val_1 = onnxrt.OrtValue.ortvalue_from_numpy_with_onnx_type(param_1, float_data_type)
+
+        adapter_format = onnxrt.AdapterFormat()
+        adapter_format.set_adapter_version(adapter_version)
+        adapter_format.set_model_version(model_version)
+        adapter_format.set_parameters({"param_1": ort_val_1})
+        adapter_format.export_adapter(file_path)
+
+        try:
+            # Drop the AdapterFormat temporary; only `params` keeps a reference.
+            params = onnxrt.AdapterFormat.read_adapter(file_path).get_parameters()
+            gc.collect()
+
+            self.assertIn("param_1", params)
+            value = params["param_1"]
+            self.assertTrue(value.is_tensor())
+            self.assertEqual(value.shape(), [5, 2])
+            np.testing.assert_allclose(value.numpy(), param_1)
+
+            # Also drop the dict; an individual OrtValue must keep the adapter
+            # alive on its own (we pin it on every value in get_parameters()).
+            single_value = params["param_1"]
+            del params
+            gc.collect()
+            np.testing.assert_allclose(single_value.numpy(), param_1)
+        finally:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
+    def test_adapter_export_rejects_string_tensors(self):
+        # Regression test: export_adapter previously serialized Tensor::DataRaw()
+        # for SizeInBytes() bytes regardless of element type. For string tensors
+        # that copied the std::string object representation (heap pointers and
+        # uninitialized padding) into the adapter file, leaking runtime addresses
+        # (ASLR bypass) and producing an unloadable adapter. Export must reject
+        # string-typed parameters.
+        #
+        # There is no public Python API to construct a string-typed OrtValue
+        # directly (ortvalue_from_numpy rejects non-numeric arrays), so we
+        # obtain one by running a tiny Constant model whose only output is a
+        # string tensor.
+        from onnx import TensorProto, helper  # noqa: PLC0415
+
+        const_node = helper.make_node(
+            "Constant",
+            inputs=[],
+            outputs=["str_out"],
+            value=helper.make_tensor("v", TensorProto.STRING, dims=[2], vals=[b"hello", b"world"]),
+        )
+        graph = helper.make_graph(
+            [const_node],
+            "string_const",
+            inputs=[],
+            outputs=[helper.make_tensor_value_info("str_out", TensorProto.STRING, [2])],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+        sess = onnxrt.InferenceSession(model.SerializeToString(), providers=onnxrt.get_available_providers())
+        ort_val_str = sess.run_with_ort_values(["str_out"], {})[0]
+
+        adapter_format = onnxrt.AdapterFormat()
+        adapter_format.set_adapter_version(1)
+        adapter_format.set_model_version(1)
+        adapter_format.set_parameters({"str_param": ort_val_str})
+
+        file_path = pathlib.Path(os.path.realpath(__file__)).parent
+        file_path = str(file_path / "test_adapter_string_reject.onnx_adapter")
+
+        try:
+            with self.assertRaises(Exception) as ctx:
+                adapter_format.export_adapter(file_path)
+            self.assertIn("STRING", str(ctx.exception))
+            self.assertFalse(os.path.exists(file_path), "adapter file must not be created when export is rejected")
+        finally:
+            if os.path.exists(file_path):
+                os.remove(file_path)
 
     def test_run_with_adapter(self):
         model_path = get_name("lora/two_params_lora_model.onnx")
@@ -1934,6 +2286,160 @@ class TestInferenceSession(unittest.TestCase):
         outputs = session.run(None, inputs, run_options)
         self.assertEqual(len(outputs), 1)
         self.assertTrue(np.allclose(outputs[0], expected_output))
+
+    def test_get_graph_provider_assignment_info(self):
+        """
+        Tests querying for information about the nodes assigned to the CPU EP.
+        """
+
+        # Create session options that enables recording EP graph partitioning info.
+        session_options = onnxrt.SessionOptions()
+        session_options.add_session_config_entry("session.record_ep_graph_assignment_info", "1")
+
+        session = onnxrt.InferenceSession(get_name("add_mul_add.onnx"), sess_options=session_options)
+
+        # Query session for information on each subgraph assigned to an EP.
+        ep_subgraphs = session.get_provider_graph_assignment_info()
+
+        # Check that all 3 nodes are assigned to CPU EP (each in its own subgraph)
+        self.assertEqual(len(ep_subgraphs), 3)
+        for ep_subgraph in ep_subgraphs:
+            self.assertEqual(ep_subgraph.ep_name, "CPUExecutionProvider")
+            self.assertEqual(len(ep_subgraph.get_nodes()), 1)
+
+        # Serialize each node to an identifier (concatenates domain, operator type, and node name)
+        node_ids: list[str] = [f"{n.domain}:{n.op_type}/{n.name}" for s in ep_subgraphs for n in s.get_nodes()]
+
+        # Should have 1 Mul and 2 Adds.
+        self.assertEqual(len(node_ids), 3)
+        self.assertIn(":Add/add_0", node_ids)
+        self.assertIn(":Add/add_1", node_ids)
+        self.assertIn(":Mul/mul_0", node_ids)
+
+    def test_get_graph_provider_assignment_info_not_enabled(self):
+        """
+        Tests querying for information about the nodes assigned to the CPU EP when
+        the corresponding config entry is disabled.
+        """
+
+        # Do not enable "session.record_ep_graph_assignment_info"
+        session = onnxrt.InferenceSession(get_name("add_mul_add.onnx"))
+
+        # Expect failure
+        with self.assertRaises(Fail) as context:
+            session.get_provider_graph_assignment_info()
+        self.assertIn(
+            "Session configuration entry 'session.record_ep_graph_assignment_info' must be set to \"1\"",
+            str(context.exception),
+        )
+
+    def test_tree_ensemble_logistic(self):
+        try:
+            import onnx  # noqa: PLC0415
+        except ImportError:
+            # onnx is not installed on ARM build.
+            self.skipTest("onnx is not installed")
+        # issue https://github.com/microsoft/onnxruntime/issues/27533
+        x = onnx.helper.make_tensor_value_info("X", onnx.TensorProto.FLOAT, [None, 3])
+        label_out = onnx.helper.make_tensor_value_info("label", onnx.TensorProto.INT64, [None])
+        prob_out = onnx.helper.make_tensor_value_info("probs", onnx.TensorProto.FLOAT, [None, 2])
+
+        def make_model(
+            nodes_modes,
+            nodes_values,
+            nodes_truenodeids,
+            nodes_falsenodeids,
+            class_treeids,
+            class_nodeids,
+            class_weights,
+            **node_kwargs,
+        ):
+            """Build a minimal TreeEnsembleClassifier ONNX model."""
+            n_nodes = len(nodes_modes)
+            if "base_values" not in node_kwargs:
+                node_kwargs["base_values"] = [-0.405]  # logit(0.4)
+            node = onnx.helper.make_node(
+                "TreeEnsembleClassifier",
+                inputs=["X"],
+                outputs=["label", "probs"],
+                domain="ai.onnx.ml",
+                nodes_treeids=[0] * n_nodes,
+                nodes_nodeids=list(range(n_nodes)),
+                nodes_featureids=[0] * n_nodes,
+                nodes_values=nodes_values,
+                nodes_modes=nodes_modes,
+                nodes_truenodeids=nodes_truenodeids,
+                nodes_falsenodeids=nodes_falsenodeids,
+                nodes_missing_value_tracks_true=[0] * n_nodes,
+                nodes_hitrates=[1.0] * n_nodes,
+                class_treeids=class_treeids,
+                class_nodeids=class_nodeids,
+                class_ids=[0] * len(class_weights),
+                class_weights=class_weights,
+                classlabels_int64s=[0, 1],
+                post_transform="LOGISTIC",
+                **node_kwargs,
+            )
+            graph = onnx.helper.make_graph([node], "test", [x], [label_out, prob_out])
+            return onnx.helper.make_model(
+                graph,
+                opset_imports=[
+                    onnx.helper.make_opsetid("", 15),
+                    onnx.helper.make_opsetid("ai.onnx.ml", 3),
+                ],
+            )
+
+        test_input = {"X": np.array([[0.1, 0.0, 0.0]], dtype=np.float32)}
+
+        # Case 1: Tree with a real split (root splits on feature 0 at 0.5)
+        model_split = make_model(
+            nodes_modes=["BRANCH_LT", "LEAF", "LEAF"],
+            nodes_values=[0.5, 0.0, 0.0],
+            nodes_truenodeids=[1, 0, 0],
+            nodes_falsenodeids=[2, 0, 0],
+            class_treeids=[0, 0],
+            class_nodeids=[1, 2],
+            class_weights=[0.3, -0.3],  # mixed positive/negative
+        )
+        sess_split = onnxrt.InferenceSession(model_split.SerializeToString())
+        result_split = sess_split.run(None, test_input)
+        # x[0]=0.1 < 0.5, so left leaf (weight=0.3), aggregate = -0.405 + 0.3 = -0.105
+        expected_p1 = 1 / (1 + np.exp(0.105))  # sigmoid(-0.105)
+        with self.subTest(case="Case 1: Tree with a real split"):
+            np.testing.assert_allclose(result_split[1][0][1], expected_p1, atol=1e-5)
+
+        # Case 2: Leaf-only tree (single LEAF node, no splits)
+        model_leaf = make_model(
+            nodes_modes=["LEAF"],
+            nodes_values=[0.0],
+            nodes_truenodeids=[0],
+            nodes_falsenodeids=[0],
+            class_treeids=[0],
+            class_nodeids=[0],
+            class_weights=[0.0],  # non-negative weight
+        )
+        sess_leaf = onnxrt.InferenceSession(model_leaf.SerializeToString())
+        result_leaf = sess_leaf.run(None, test_input)
+        # aggregate = -0.405 + 0 = -0.405
+        expected_p1_leaf = 1 / (1 + np.exp(0.405))  # sigmoid(-0.405) ≈ 0.400
+        with self.subTest(case="Case 2: Leaf-only tree (single LEAF node, no splits)"):
+            np.testing.assert_allclose(result_leaf[1][0][1], expected_p1_leaf, atol=1e-5)
+
+        # Case 3: Same leaf-only tree but with a negative weight (workaround)
+        model_leaf_neg = make_model(
+            nodes_modes=["LEAF"],
+            nodes_values=[0.0],
+            nodes_truenodeids=[0],
+            nodes_falsenodeids=[0],
+            class_treeids=[0],
+            class_nodeids=[0],
+            class_weights=[-0.405],  # negative weight (move base_values into weight)
+            base_values=[0.0],  # zero base
+        )
+        sess_leaf_neg = onnxrt.InferenceSession(model_leaf_neg.SerializeToString())
+        result_leaf_neg = sess_leaf_neg.run(None, test_input)
+        with self.subTest(case="Case 3: Same leaf-only tree but with a negative weight"):
+            np.testing.assert_allclose(result_leaf_neg[1][0][1], expected_p1_leaf, atol=1e-5)
 
 
 if __name__ == "__main__":

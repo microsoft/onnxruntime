@@ -45,7 +45,8 @@ Status LSTMTraining<T>::Compute(OpKernelContext* context) const {
                                    attributes_.activation_funcs.Entries()[2],
                                    attributes_.clip,
                                    context->GetOperatorThreadPool(),
-                                   true);
+                                   &mlas_backend_kernel_selector_config_,  // mlas_backend_kernel_selector_config
+                                   true);                                  // training_mode
 
   lstm.Compute(lstm_inputs.input,
                lstm_inputs.sequence_lengths,

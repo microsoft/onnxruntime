@@ -34,9 +34,6 @@ class Logger;
 }
 
 namespace utils {
-void* DefaultAlloc(size_t size);
-void DefaultFree(void* p);
-
 /// <summary>
 // Do the placement new for strings on pre-allocated buffer
 // `elements` times.
@@ -55,12 +52,15 @@ void DestroyStrings(void* p_data, int64_t elements);
 
 const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info);
 
-// EP used for internal testing. We define it here as it's used in ProviderIsCpuBased, but we don't want
-// it to be in the public header include/onnxruntime/core/graph/constants.h as it's purely internal.
-constexpr const char* kInternalTestingExecutionProvider = "InternalTestingExecutionProvider";
-
 // return true if the execution provider is CPU based (meaning no copies to device are required)
-bool ProviderIsCpuBased(const std::string& provider_type);
+bool ProviderIsCpuBased(const IExecutionProvider& provider);
+
+bool IsMemcpyNode(const Node& node);
+
+// Returns true if src memory can satisfy tgt's requirements without a data copy.
+// HOST_ACCESSIBLE -> DEFAULT is valid (device can access HOST_ACCESSIBLE memory directly).
+// DEFAULT -> HOST_ACCESSIBLE is NOT valid (CPU cannot read device-only memory).
+bool CanSourceSatisfyTarget(const OrtDevice& src, const OrtDevice& tgt);
 
 common::Status CopyOneInputAcrossDevices(const SessionState& session_state, const std::string& input_name,
                                          const OrtValue& orig_mlvalue, OrtValue& new_mlvalue);
@@ -88,7 +88,8 @@ common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManag
                             DeviceStreamCollectionHolder& device_stream_collection_holder,
 #endif
                             bool only_execute_path_to_fetches = false,
-                            Stream* parent_stream = nullptr);
+                            Stream* parent_stream = nullptr,
+                            profiling::Profiler* run_profiler = nullptr);
 
 common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                             gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
@@ -96,7 +97,8 @@ common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManag
 #ifdef ORT_ENABLE_STREAM
                             DeviceStreamCollectionHolder& device_stream_collection_holder,
 #endif
-                            const logging::Logger& logger);
+                            const logging::Logger& logger,
+                            profiling::Profiler* run_profiler = nullptr);
 
 #ifdef ENABLE_TRAINING
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
@@ -118,7 +120,8 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
                                /*when this is enabled, we will sync the parent stream to make sure the subgraph fetches
                                is complete. this is mainly used when the parent kernel depends on the CPU value of the
                                subgraph fetches, i.e. the loop condition*/
-                               bool sync_subgraph_fetches = false);
+                               bool sync_subgraph_fetches = false,
+                               profiling::Profiler* run_profiler = nullptr);
 
 bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index);
 bool IsOutputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index);
@@ -220,6 +223,11 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2FNUZ>
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ;
 }
 
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E8M0>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0;
+}
+
 #endif
 
 template <>
@@ -231,6 +239,23 @@ template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt4x2>() {
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4;
 }
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Int2x4>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt2x4>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2;
+}
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float4E2M1x2>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1;
+}
+#endif
 
 int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType);
 

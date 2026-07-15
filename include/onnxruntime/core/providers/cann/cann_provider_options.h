@@ -15,6 +15,8 @@ struct OrtCANNProviderOptions {
   onnxruntime::ArenaExtendStrategy arena_extend_strategy;  // Strategy used to grow the memory arena
   int enable_cann_graph;                                   // Flag indicating if prioritizing the use of
                                                            // CANN's graph-running capabilities
+  int enable_cann_subgraph;                                // Flag indicating whether to generate subgraph
+                                                           // automaticly
   int dump_graphs;                                         // Flag indicating if dumping graphs
   int dump_om_model;                                       // Flag indicating if dumping om model
   std::string precision_mode;                              // Operator Precision Mode

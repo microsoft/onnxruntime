@@ -7,14 +7,22 @@
 #include "core/providers/common.h"
 
 namespace onnxruntime {
+#define REGISTER_LPNORMALISATION_VERSIONED_KERNEL(type, sinceVersion, endVersion)  \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                        \
+      LpNormalization, sinceVersion, endVersion, type,                             \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
+      LpNorm<type>);
+
 #define REGISTER_LPNORMALISATION_KERNEL(type, sinceVersion)                        \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
       LpNormalization, sinceVersion, type,                                         \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
       LpNorm<type>);
 
-REGISTER_LPNORMALISATION_KERNEL(float, 1)
-REGISTER_LPNORMALISATION_KERNEL(double, 1)
+REGISTER_LPNORMALISATION_VERSIONED_KERNEL(float, 1, 21)
+REGISTER_LPNORMALISATION_VERSIONED_KERNEL(double, 1, 21)
+REGISTER_LPNORMALISATION_KERNEL(float, 22)
+REGISTER_LPNORMALISATION_KERNEL(double, 22)
 
 using InnerStride = Eigen::InnerStride<Eigen::Dynamic>;
 

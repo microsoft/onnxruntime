@@ -5,23 +5,29 @@
 # --------------------------------------------------------------------------
 
 import argparse
-import copy
 import logging
 import os
+import re
+import warnings
 
+import onnx
 import torch
 from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger
 from whisper_chain import chain_model
+from whisper_encoder import WhisperEncoder
 from whisper_helper import PRETRAINED_WHISPER_MODELS, WhisperHelper
 
-from onnxruntime import quantization
+from onnxruntime.quantization.matmul_nbits_quantizer import (
+    KQuantWeightOnlyQuantConfig,
+    MatMulNBitsQuantizer,
+    QuantFormat,
+)
 
 logger = logging.getLogger("")
 
 PROVIDERS = {
     "cpu": "CPUExecutionProvider",
     "cuda": "CUDAExecutionProvider",
-    "rocm": "ROCMExecutionProvider",
 }
 
 
@@ -94,8 +100,8 @@ def parse_arguments(argv=None):
         required=False,
         type=Precision,
         default=Precision.FLOAT32,
-        choices=[Precision.FLOAT32, Precision.FLOAT16, Precision.INT8],
-        help="Precision of model to run. fp32 for full precision, fp16 for half precision, int8 for quantization",
+        choices=[Precision.FLOAT32, Precision.FLOAT16, Precision.INT8, Precision.INT4],
+        help="Precision of model to run. fp32 for full precision, fp16 for half precision, int8/int4 for quantization",
     )
 
     conversion_args.add_argument(
@@ -105,14 +111,6 @@ def parse_arguments(argv=None):
         help="Use int64 instead of int32 for input_ids and attention_mask.",
     )
     conversion_args.set_defaults(use_int64_inputs=False)
-
-    conversion_args.add_argument(
-        "--disable_auto_mixed_precision",
-        required=False,
-        action="store_true",
-        help="Use pure fp16 instead of mixed precision",
-    )
-    conversion_args.set_defaults(disable_auto_mixed_precision=False)
 
     conversion_args.add_argument(
         "-r",
@@ -167,11 +165,12 @@ def parse_arguments(argv=None):
     conversion_args.set_defaults(no_beam_search_op=False)
 
     conversion_args.add_argument(
-        "--state_dict_path",
-        type=str,
-        default="",
-        help="Filepath to load pre-trained model with custom state dictionary (e.g. pytorch_model.bin)",
+        "--use_decoder_masked_mha",
+        required=False,
+        action="store_true",
+        help="Use DecoderMaskedMultiHeadAttention kernel for improved performance. This is currently an experimental feature.",
     )
+    conversion_args.set_defaults(use_decoder_masked_mha=False)
 
     #############################################################
     # Optional inputs for Whisper
@@ -296,33 +295,159 @@ def parse_arguments(argv=None):
     ###################################
 
     quant_args.add_argument(
-        "--quantize_embedding_layer",
+        "--accuracy_level",
+        default=0,
         required=False,
-        action="store_true",
-        help="Quantize MatMul, GEMM, and Gather.",
+        type=int,
+        help="Accuracy level of the 4-bit quantized MatMul computation.",
     )
-    quant_args.set_defaults(quantize_embedding_layer=False)
 
     quant_args.add_argument(
-        "--quantize_per_channel",
+        "--quantize_symmetric",
         required=False,
         action="store_true",
-        help="Quantize weights per each channel.",
+        help="Quantize weights symmetrically",
     )
-    quant_args.set_defaults(quantize_per_channel=False)
+    quant_args.set_defaults(quantize_symmetric=False)
 
     quant_args.add_argument(
-        "--quantize_reduce_range",
+        "--quant_method",
         required=False,
-        action="store_true",
-        help="Quantize weights with 7 bits.",
+        type=str,
+        default="k_quant",
+        choices=["k_quant", "k_quant_mixed"],
+        help="Quantization method for INT4 precision. "
+        "k_quant = k_quant algorithm with all nodes at INT4. "
+        "k_quant_mixed = k_quant with mixed precision (sensitive layers at INT8, rest at INT4). "
+        "Inspired by llama.cpp k-quant mixed strategy.",
     )
-    quant_args.set_defaults(quantize_reduce_range=False)
 
     args = parser.parse_args(argv)
+
+    # Collect cross QKs if either flag is enabled
     args.collect_cross_qk = args.collect_cross_qk or args.output_cross_qk
 
+    # FP32 CPU can be supported here once the DMMHA CPU kernel bugs are fixed
+    args.use_decoder_masked_mha = args.use_decoder_masked_mha and args.provider == "cuda"
+
     return args
+
+
+def get_sensitive_node_names(matmul_nodes: list[str], encoder_layers: int, decoder_layers: int):
+    """Identify sensitive MatMul nodes that should use INT8 in k_quant_mixed.
+
+    Follows the llama.cpp k-quant mixed strategy adapted for Whisper encoder-decoder:
+      - First/last ~12.5% of layers + every 3rd layer in between are "sensitive layers"
+      - Within sensitive layers: attention Q/K/V projections and FFN fc2 (down projection) get INT8
+      - proj_out (LM head) always gets INT8
+
+    Reference: llama.cpp/src/llama-quant.cpp#L136
+
+    Args:
+        matmul_nodes: list of MatMul node names from the ONNX graph.
+        encoder_layers: number of encoder layers in the model.
+        decoder_layers: number of decoder layers in the model.
+
+    Returns:
+        list of node names that should be quantized to INT8.
+    """
+
+    def get_sensitive_layer_indices(num_layers):
+        return [
+            i
+            for i in range(num_layers)
+            if i < num_layers / 8 or i >= 7 * num_layers / 8 or (i - round(num_layers / 8)) % 3 == 2
+        ]
+
+    enc_sensitive_layers = set(get_sensitive_layer_indices(encoder_layers))
+    dec_sensitive_layers = set(get_sensitive_layer_indices(decoder_layers))
+
+    # Patterns for sensitive MatMul types within a sensitive layer:
+    # - Attention projections: q_proj, k_proj, v_proj (most sensitive to quantization)
+    # - FFN fc2 / out_proj equivalent (the down projection)
+    # - Cross-attention k_proj (sensitive based on weight distribution analysis)
+    sensitive_matmul_patterns = [
+        "/self_attn/q_proj/",
+        "/self_attn/k_proj/",
+        "/self_attn/v_proj/",
+        "/self_attn/out_proj/",
+        "/encoder_attn/q_proj/",
+        "/encoder_attn/k_proj/",
+        "/encoder_attn/v_proj/",
+        "/encoder_attn/out_proj/",
+        "/fc2/",
+    ]
+
+    sensitive = []
+    for name in matmul_nodes:
+        # proj_out (LM head equivalent) is always sensitive
+        if "proj_out" in name:
+            sensitive.append(name)
+            continue
+
+        # Determine if this is an encoder or decoder node, and extract layer index
+        layer_match = re.search(r"layers\.(\d+)", name)
+        if not layer_match:
+            # Cross-attention KV projections outside layer hierarchy (e.g. /k_proj/MatMul)
+            # These are always run once; keep them at INT8 for accuracy
+            if any(p.strip("/") in name for p in ["/k_proj/", "/v_proj/"]):
+                sensitive.append(name)
+            continue
+
+        layer_idx = int(layer_match.group(1))
+
+        is_encoder = "/encoder/" in name
+        is_decoder = "/decoder/" in name
+
+        # Check if this layer is in the sensitive set
+        if is_encoder and layer_idx in enc_sensitive_layers:
+            if any(pat in name for pat in sensitive_matmul_patterns):
+                sensitive.append(name)
+        elif is_decoder and layer_idx in dec_sensitive_layers:
+            if any(pat in name for pat in sensitive_matmul_patterns):
+                sensitive.append(name)
+
+    return sensitive
+
+
+def make_quant_algo_config(
+    precision: Precision,
+    quant_method: str,
+    matmul_nodes: list[str] | None = None,
+    encoder_layers: int = 0,
+    decoder_layers: int = 0,
+):
+    """Create quantization algorithm config for Whisper models.
+
+    Args:
+        precision: Precision enum (INT4 or INT8).
+        quant_method: "k_quant" or "k_quant_mixed".
+        matmul_nodes: list of MatMul node names from the ONNX graph.
+        encoder_layers: number of encoder layers (needed for k_quant_mixed).
+        decoder_layers: number of decoder layers (needed for k_quant_mixed).
+
+    Returns:
+        KQuantWeightOnlyQuantConfig with appropriate customized_weight_config.
+    """
+    customized_weight_config = {}
+
+    if precision == Precision.INT8:
+        # INT8: set every MatMul to 8-bit
+        for node_name in matmul_nodes:
+            customized_weight_config[node_name] = {"bits": 8}
+    elif precision == Precision.INT4 and quant_method == "k_quant_mixed":
+        # k_quant_mixed: sensitive layers at INT8, rest at INT4
+        sensitive_names = get_sensitive_node_names(matmul_nodes, encoder_layers, decoder_layers)
+        for node_name in sensitive_names:
+            customized_weight_config[node_name] = {"bits": 8}
+        logger.info(
+            f"k_quant_mixed: {len(sensitive_names)} sensitive nodes (INT8) "
+            f"out of {len(matmul_nodes)} total MatMul nodes"
+        )
+        for name in sensitive_names:
+            logger.info(f"  INT8: {name}")
+
+    return KQuantWeightOnlyQuantConfig(customized_weight_config=customized_weight_config)
 
 
 def export_onnx_models(
@@ -337,29 +462,40 @@ def export_onnx_models(
     verbose,
     use_forced_decoder_ids: bool = False,
     merge_encoder_and_decoder_init: bool = True,
+    no_beam_search_op: bool = False,
+    use_decoder_masked_mha: bool = False,
+    output_qk: bool = False,
     overwrite: bool = False,
-    disable_auto_mixed_precision: bool = False,
     use_int32_inputs: bool = True,
-    quantize_embedding_layer: bool = False,
-    quantize_per_channel: bool = False,
-    quantize_reduce_range: bool = False,
-    state_dict_path: str = "",
+    accuracy_level: int = 0,
+    quantize_symmetric: bool = False,
     provider: str = "cpu",
+    quant_method: str = "k_quant",
 ):
-    device = torch.device("cuda:0" if use_gpu else "cpu")
+    device = torch.device("cuda" if use_gpu else "cpu")
+    if not use_gpu:
+        accuracy_level = 4  # change to 4 for CPU EP
+    use_fp16_inputs = precision == Precision.FLOAT16 or (precision in (Precision.INT8, Precision.INT4) and use_gpu)
 
     models = WhisperHelper.load_model(
-        model_name_or_path, model_impl, cache_dir, device, merge_encoder_and_decoder_init, state_dict_path
+        model_name_or_path,
+        model_impl,
+        cache_dir,
+        device,
+        torch.float16 if use_fp16_inputs else torch.float32,
+        merge_encoder_and_decoder_init,
+        no_beam_search_op,
+        output_qk,
     )
     config = models["decoder"].config
 
     if (not use_external_data_format) and (config.num_hidden_layers > 24):
-        logger.info("Try use_external_data_format when model size > 2GB")
+        logger.warning("You MUST pass `--use_external_data_format` because model size > 2GB")
+        raise Exception("Please pass `--use_external_data_format` for this model.")
 
     output_paths = []
     for name, model in models.items():
         print(f"========> Handling {name} model......")
-        model.to(device)
         filename_suffix = "_" + name
 
         onnx_path = WhisperHelper.get_onnx_path(
@@ -369,23 +505,24 @@ def export_onnx_models(
             new_folder=False,
         )
 
+        # Export to ONNX
         if overwrite or not os.path.exists(onnx_path):
             logger.info(f"Exporting ONNX model to {onnx_path}")
-            # We have to clone model before exporting onnx, otherwise verify_onnx will report large difference.
-            device_to_export = torch.device("cpu")
-            cloned_model = copy.deepcopy(model).to(device_to_export)
             WhisperHelper.export_onnx(
-                cloned_model,
-                device_to_export,
+                model,
                 onnx_path,
+                PROVIDERS[provider],
                 verbose,
                 use_external_data_format,
+                use_fp16_inputs=use_fp16_inputs,
                 use_int32_inputs=use_int32_inputs,
+                use_encoder_hidden_states=(name == "decoder_init"),
+                use_kv_cache_inputs=(name == "decoder"),
             )
         else:
-            logger.info(f"Skip exporting: existed ONNX model {onnx_path}")
+            logger.info(f"Skip exporting: existing ONNX model {onnx_path}")
 
-        # Optimize ONNX graph. Note that we have not implemented graph optimization for Whisper yet.
+        # Optimize ONNX model
         if optimize_onnx or precision != Precision.FLOAT32:
             output_path = WhisperHelper.get_onnx_path(
                 output_dir,
@@ -401,38 +538,76 @@ def export_onnx_models(
                         onnx_path,
                         output_path,
                         precision == Precision.FLOAT16,
-                        config.encoder_attention_heads,
-                        config.d_model,
+                        model.config.encoder_attention_heads,
+                        model.config.d_model,
+                        model.config.decoder_layers,
                         use_external_data_format,
-                        auto_mixed_precision=not disable_auto_mixed_precision,
                         use_gpu=use_gpu,
                         provider=provider,
+                        is_decoder=(name == "decoder"),
+                        no_beam_search_op=no_beam_search_op,
+                        use_decoder_masked_mha=use_decoder_masked_mha,
+                        output_qk=output_qk,
                     )
+                    # Remove old ONNX model and old data file
+                    if os.path.exists(onnx_path):
+                        os.remove(onnx_path)
+                    if os.path.exists(onnx_path + ".data"):
+                        os.remove(onnx_path + ".data")
                     onnx_path = output_path
 
-                if precision == Precision.INT8:
-                    quantization.quantize_dynamic(
-                        onnx_path,
+                    if isinstance(model, WhisperEncoder):
+                        model.verify_onnx(
+                            onnx_path,
+                            PROVIDERS[provider],
+                            use_fp16_inputs=use_fp16_inputs,
+                        )
+                    else:
+                        model.verify_onnx(
+                            onnx_path,
+                            PROVIDERS[provider],
+                            use_fp16_inputs=use_fp16_inputs,
+                            use_int32_inputs=use_int32_inputs,
+                        )
+
+                if precision in (Precision.INT8, Precision.INT4):
+                    onnx_model = onnx.load(onnx_path, load_external_data=True)
+                    matmul_nodes = [node.name for node in onnx_model.graph.node if node.op_type == "MatMul"]
+                    quant_algo_config = make_quant_algo_config(
+                        precision,
+                        quant_method,
+                        matmul_nodes,
+                        encoder_layers=config.encoder_layers,
+                        decoder_layers=config.decoder_layers,
+                    )
+
+                    quant = MatMulNBitsQuantizer(
+                        model=onnx_model,
+                        block_size=32,
+                        is_symmetric=quantize_symmetric,
+                        accuracy_level=accuracy_level,
+                        quant_format=QuantFormat.QOperator,
+                        op_types_to_quantize=("MatMul",),
+                        algo_config=quant_algo_config,
+                    )
+                    quant.process()
+                    if os.path.exists(output_path):
+                        os.remove(output_path)
+                    if os.path.exists(output_path + ".data"):
+                        os.remove(output_path + ".data")
+                    onnx.save_model(
+                        quant.model.model,
                         output_path,
-                        op_types_to_quantize=(
-                            ["MatMul", "Gemm", "Gather"] if quantize_embedding_layer else ["MatMul", "Gemm"]
-                        ),
-                        use_external_data_format=use_external_data_format,
-                        per_channel=quantize_per_channel,
-                        reduce_range=quantize_reduce_range,
-                        extra_options={"MatMulConstBOnly": True},
+                        save_as_external_data=True,
+                        all_tensors_to_one_file=True,
+                        location=os.path.basename(output_path) + ".data",
+                        size_threshold=0,
+                        convert_attribute=False,
                     )
             else:
                 logger.info(f"Skip optimizing: existing ONNX model {onnx_path}")
         else:
             output_path = onnx_path
-
-        ort_session = create_onnxruntime_session(
-            output_path,
-            use_gpu=use_gpu,
-            provider=provider,
-        )
-        assert ort_session is not None
 
         output_paths.append(output_path)
 
@@ -440,6 +615,12 @@ def export_onnx_models(
 
 
 def main(argv=None):
+    warnings.warn(
+        "This example is deprecated. Use the Olive recipe instead: "
+        "https://github.com/microsoft/olive-recipes/tree/main",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     args = parse_arguments(argv)
 
     setup_logger(args.verbose)
@@ -453,9 +634,6 @@ def main(argv=None):
     if args.precision == Precision.FLOAT16:
         assert args.use_gpu, "fp16 requires --use_gpu"
 
-    if args.optimize_onnx:
-        logger.warning("Applying graph optimization for Whisper...")
-
     output_paths = export_onnx_models(
         args.model_name_or_path,
         args.model_impl,
@@ -468,14 +646,15 @@ def main(argv=None):
         args.verbose,
         args.use_forced_decoder_ids,
         not args.separate_encoder_and_decoder_init,
+        args.no_beam_search_op,
+        args.use_decoder_masked_mha,
+        args.output_cross_qk,
         args.overwrite,
-        args.disable_auto_mixed_precision,
         not args.use_int64_inputs,
-        args.quantize_embedding_layer,
-        args.quantize_per_channel,
-        args.quantize_reduce_range,
-        args.state_dict_path,
+        args.accuracy_level,
+        args.quantize_symmetric,
         args.provider,
+        args.quant_method,
     )
 
     max_diff = 0
@@ -488,7 +667,7 @@ def main(argv=None):
             new_folder=False,
         )
         for path in output_paths:
-            if "encoder_decoder" in path:
+            if "encoder_decoder" in path or "encoder" in path:
                 args.encoder_path = path
             elif "decoder" in path:
                 args.decoder_path = path
@@ -501,12 +680,12 @@ def main(argv=None):
             use_gpu=args.use_gpu,
             provider=args.provider,
         )
-        device = torch.device("cuda:0" if args.use_gpu else "cpu")
+        device = torch.device("cuda" if args.use_gpu else "cpu")
 
         # Wrap parity check in try-except to allow export to continue in case this produces an error
         try:
             with torch.no_grad():
-                # Verify batched decoding with prompts for whisper openai implementation
+                # Verify batched decoding with prompts for OpenAI implementation
                 if args.model_impl == "openai" and args.use_forced_decoder_ids:
                     max_diff = WhisperHelper.verify_onnx(
                         args.model_name_or_path, cache_dir, ort_session, device, batch_size=2, prompt_mode=True
@@ -523,10 +702,26 @@ def main(argv=None):
             )
 
         # Remove extra ONNX models saved in output directory
-        for fle in os.listdir(output_dir):
-            if "_beamsearch" not in fle:
-                os.remove(os.path.join(output_dir, fle))
-        output_paths = [args.beam_model_output_dir]
+        for _file in os.listdir(output_dir):
+            if "_beamsearch" not in _file and "_jump_times" not in _file:
+                path = os.path.join(output_dir, _file)
+                os.remove(path)
+                if path in output_paths:
+                    output_paths.remove(path)
+
+    else:
+        # Create ancillary JSON files for ONNX Runtime GenAI and/or Hugging Face's Optimum
+        WhisperHelper.save_processing(
+            args.model_name_or_path,
+            args.provider,
+            args.separate_encoder_and_decoder_init,
+            args.use_decoder_masked_mha,
+            args.output_cross_qk,
+            next(iter(filter(lambda path: "encoder" in path, output_paths))),
+            next(iter(filter(lambda path: "decoder" in path, output_paths))),
+            output_dir,
+            cache_dir,
+        )
 
     logger.info(f"Done! Outputs: {output_paths}")
     return max_diff

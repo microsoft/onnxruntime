@@ -4,7 +4,7 @@
 #ifndef MNISTDataHandler_h
 #define MNISTDataHandler_h
 
-#import <react/RCTBridgeModule.h>
+#import <React/RCTBridgeModule.h>
 
 @interface MNISTDataHandler : NSObject <RCTBridgeModule>
 @end

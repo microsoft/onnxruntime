@@ -29,12 +29,20 @@ Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto rank = static_cast<int32_t>(input_shape.size());
 
   emscripten::val desc = emscripten::val::object();
-  ORT_RETURN_IF_NOT(SetWebnnDataType(desc, ONNX_NAMESPACE::TensorProto_DataType_INT64), "Unsupported data type");
   emscripten::val dims = emscripten::val::array();
   dims.call<void>("push", rank);
   desc.set("dimensions", dims);
   desc.set("shape", dims);
-  emscripten::val shape_buffer = emscripten::val::global("BigInt64Array").new_(emscripten::val::array(input_shape));
+  int data_type = ONNX_NAMESPACE::TensorProto_DataType_INT64;
+  std::string typed_array_name = "BigInt64Array";
+  if (!model_builder.IsInt64Supported()) {
+    // Int64 is not supported by current context, use int32 instead.
+    data_type = ONNX_NAMESPACE::TensorProto_DataType_INT32;
+    typed_array_name = "Int32Array";
+  }
+  ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "WebNN backend does not support data type: ", data_type);
+  emscripten::val shape_buffer =
+      emscripten::val::global(typed_array_name.c_str()).new_(emscripten::val::array(input_shape));
   emscripten::val shape_constant = model_builder.GetBuilder().call<emscripten::val>("constant", desc, shape_buffer);
 
   NodeAttrHelper helper(node);

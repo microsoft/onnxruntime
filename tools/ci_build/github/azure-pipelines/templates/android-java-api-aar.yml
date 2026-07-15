@@ -33,7 +33,7 @@ parameters:
 - name: pool_name
   displayName: Pool name
   type: string
-  default: 'onnxruntime-Ubuntu2204-AMD-CPU'
+  default: 'onnxruntime-Ubuntu2404-AMD-CPU'
 
 - name: packageName
   displayName: Package Name
@@ -48,21 +48,37 @@ parameters:
   type: string
   default: ''
 
+# Do not update this to a version that does not exist for the qnn-runtime Maven package:
+# https://mvnrepository.com/artifact/com.qualcomm.qti/qnn-runtime
 - name: QnnSDKVersion
   displayName: QNN SDK Version
   type: string
-  default: '2.30.0.250109'
+  default: '2.42.0.251225'
+
+- name: is1ES
+  displayName: Is 1ES pipeline
+  type: boolean
+  default: false
 
 jobs:
 - job: Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}
   timeoutInMinutes: 120
   workspace:
     clean: all
-  pool: ${{parameters.pool_name}}
+  pool:
+    name: ${{ parameters.pool_name }}
+    ${{ if or(contains(parameters.pool_name, 'ubuntu'), contains(parameters.PoolName, 'linux')) }}:
+      os: linux
+    ${{ if contains(parameters.pool_name, 'win')}}:
+      os: windows
+    ${{ if contains(parameters.pool_name, 'mac')}}:
+      os: macOS
 
-  variables:
-    artifacts_directory: $(Build.BinariesDirectory)/.artifacts
-
+  templateContext:        
+    outputs:
+    - output: pipelineArtifact
+      targetPath: $(Build.BinariesDirectory)/.artifacts
+      artifactName: ${{parameters.artifactName}}
   steps:
   - checkout: self
     clean: true
@@ -73,7 +89,7 @@ jobs:
     inputs:
       script: |
         # Create a folder for artifacts
-        mkdir -p $(artifacts_directory)
+        mkdir -p $(Build.BinariesDirectory)/.artifacts
       workingDirectory: $(Build.BinariesDirectory)
 
   - template: get-docker-image-steps.yml
@@ -88,7 +104,7 @@ jobs:
   - template: use-android-ndk.yml
 
   - ${{ if contains(parameters.packageName, 'qnn') }}:
-    - template: jobs/download_linux_qnn_sdk.yml
+    - template: jobs/init_linux_qnn_sdk_x64.yml
       parameters:
         QnnSDKVersion: '${{parameters.QnnSDKVersion}}'
 
@@ -111,12 +127,12 @@ jobs:
           QNN_VOLUME=""
           USE_QNN="0"
         fi
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $ANDROID_HOME:/android_home \
           --volume $NDK_HOME:/ndk_home \
-          --volume $(artifacts_directory):/home/onnxruntimedev/.artifacts \
+          --volume $(Build.BinariesDirectory)/.artifacts:/home/onnxruntimedev/.artifacts \
           --volume $(Build.BinariesDirectory)/.build_settings:/home/onnxruntimedev/.build_settings \
           $QNN_VOLUME \
           -e NIGHTLY_BUILD \
@@ -130,13 +146,6 @@ jobs:
             /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh $USE_QNN
       workingDirectory: $(Build.SourcesDirectory)
 
-
-  - ${{ if eq(parameters['enable_code_sign'], 'true') }}:
-    - template: jar-maven-signing-linux.yml
-      parameters:
-        JarFileDirectory: '$(artifacts_directory)'
-
-  - task: PublishBuildArtifacts@1
-    inputs:
-      pathtoPublish: '$(artifacts_directory)'
-      artifactName: '${{parameters.artifactName}}'
+  - template: jar-maven-signing-linux.yml
+    parameters:
+      JarFileDirectory: $(Build.BinariesDirectory)/.artifacts

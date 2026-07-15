@@ -7,7 +7,7 @@
 
 #include "core/platform/env.h"
 #include "core/platform/path_lib.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 
 namespace onnxruntime {
 namespace test {

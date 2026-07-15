@@ -7,4 +7,5 @@
 
 namespace vaip {
 void register_xir_ops(const std::vector<OrtCustomOpDomain*>& domains);
-}
+void deregister_xir_ops(const std::vector<OrtCustomOpDomain*>& domains);
+}  // namespace vaip

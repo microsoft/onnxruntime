@@ -174,5 +174,16 @@ class ThresholdedRelu final : public UnaryElementwise {
   float alpha_;
 };
 
+template <typename T>
+class HardSwish final : public UnaryElementwise {
+ public:
+  HardSwish(const OpKernelInfo& info) : UnaryElementwise(info) {}
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  MAKE_FUNC_CTX_NULL()
+};
+
 }  // namespace cuda
 }  // namespace onnxruntime

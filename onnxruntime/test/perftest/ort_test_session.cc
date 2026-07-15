@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Copyright (c) 2023 NVIDIA Corporation.
-// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
+// SPDX-FileCopyrightText: Copyright 2024-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include "ort_test_session.h"
@@ -10,14 +10,19 @@
 #include <set>
 #include <list>
 #include <type_traits>
+#include <core/framework/allocator.h>
+#include <core/platform/threadpool_config.h>
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
+#include "core/providers/cuda/cuda_provider_options.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/dnnl/dnnl_provider_options.h"
 #include <assert.h>
 #include "providers.h"
 #include "TestCase.h"
 #include "strings_helper.h"
+#include "utils.h"
 
 #ifdef USE_OPENVINO
 #include "nlohmann/json.hpp"
@@ -36,30 +41,87 @@ extern const OrtApi* g_ort;
 namespace onnxruntime {
 namespace perftest {
 
-std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
-  // Randomly pick one OrtValueArray from test_inputs_. (NOT ThreadSafe)
-  const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(test_inputs_.size() - 1));
-  const size_t id = static_cast<size_t>(dist_(rand_engine_, p));
+RunTiming OnnxRuntimeTestSession::Run() {
+  // Select input set: round-robin for multi-shape mode, random otherwise.
+  size_t id;
+  if (use_round_robin_ && test_inputs_.size() > 1) {
+    id = round_robin_counter_.fetch_add(1, std::memory_order_relaxed) % test_inputs_.size();
+  } else {
+    // Random selection (not thread-safe).
+    const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(test_inputs_.size() - 1));
+    id = static_cast<size_t>(dist_(rand_engine_, p));
+  }
 
   auto& input = test_inputs_.at(id);
   auto start = std::chrono::high_resolution_clock::now();
+  Ort::RunOptions run_options;
+  for (const auto& kv : run_config_entries_) {
+    run_options.AddConfigEntry(kv.first.c_str(), kv.second.c_str());
+  }
 
-  session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
-               output_names_raw_ptr.data(), outputs_.data(), output_names_raw_ptr.size());
+  RunTiming timing;
+  if (CUDA == device_memory_name_) {
+    Ort::IoBinding io_binding(session_);
+    auto mem_info = allocator_.GetInfo();
 
-  auto end = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double> duration_seconds = end - start;
-  return duration_seconds;
+    for (size_t i = 0; i < input_names_.size(); ++i) {
+      io_binding.BindInput(input_names_[i], input[i]);
+    }
+    for (auto& name : output_names_) {
+      io_binding.BindOutput(name.c_str(), mem_info);
+    }
+
+    // Use async execution and rely on IO binding's SynchronizeOutputs to synchronize.
+    run_options.AddConfigEntry(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "1");
+
+    // do not time IO binding creation
+    start = std::chrono::high_resolution_clock::now();
+    session_.Run(run_options, io_binding);
+    timing.submit_timing = std::chrono::high_resolution_clock::now() - start;
+    io_binding.SynchronizeOutputs();
+    timing.total_timing = std::chrono::high_resolution_clock::now() - start;
+  } else {
+    // For outputs with data-dependent shapes (e.g. NonZero), the shape changes
+    // between runs. ORT caches the allocated tensor and fails shape verification
+    // on the next run. Reset outputs so ORT always allocates fresh buffers.
+    // Only do this for models with dynamic output shapes to avoid the allocation
+    // overhead on fixed-shape models.
+    if (has_dynamic_output_shapes_) {
+      for (auto& output : outputs_) output = Ort::Value(nullptr);
+    }
+    session_.Run(run_options, input_names_.data(), input.data(), input_names_.size(),
+                 output_names_raw_ptr.data(), outputs_.data(), output_names_raw_ptr.size());
+    timing.submit_timing = std::chrono::high_resolution_clock::now() - start;
+    timing.total_timing = timing.submit_timing;
+  }
+  timing.test_input_index = id;
+  return timing;
 }
 
 OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device& rd,
                                                const PerformanceTestConfig& performance_test_config,
                                                const TestModelInfo& m)
-    : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
+    : rand_engine_(rd()),
+      input_names_(m.GetInputCount()),
+      input_names_str_(m.GetInputCount()),
+      input_length_(m.GetInputCount()),
+      run_config_entries_(performance_test_config.run_config.run_config_entries) {
   Ort::SessionOptions session_options;
+
+  // Add EP devices if any (created by plugin EP)
+  if (!performance_test_config.registered_plugin_eps.empty()) {
+    perftest::utils::AppendPluginExecutionProviders(env, session_options, performance_test_config);
+
+    if (performance_test_config.run_config.enable_cuda_io_binding &&
+        perftest::utils::UsesNvidiaDevice(env, performance_test_config) &&
+        device_memory_name_.empty()) {
+      device_memory_name_ = CUDA;
+    }
+  }
 
   provider_name_ = performance_test_config.machine_config.provider_type_name;
   std::unordered_map<std::string, std::string> provider_options;
+
   if (provider_name_ == onnxruntime::kDnnlExecutionProvider) {
 #ifdef USE_DNNL
     // Generate provider options
@@ -97,99 +159,117 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name_ == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
-    const auto& api = Ort::GetApi();
-    OrtCUDAProviderOptionsV2* cuda_options;
-    Ort::ThrowOnError(api.CreateCUDAProviderOptions(&cuda_options));
-    std::vector<const char*> option_keys, option_values;
-    // used to keep all option keys and value strings alive
-    std::list<std::string> buffer;
-    buffer.emplace_back("cudnn_conv_algo_search");
-    option_keys.push_back(buffer.back().c_str());
+
+    Ort::CUDAProviderOptions cuda_options;
+    const char* config_val = nullptr;
     switch (performance_test_config.run_config.cudnn_conv_algo) {
       case 0:
-        buffer.emplace_back("EXHAUSTIVE");
+        config_val = "EXHAUSTIVE";
         break;
       case 1:
-        buffer.emplace_back("HEURISTIC");
+        config_val = "HEURISTIC";
         break;
       default:
-        buffer.emplace_back("DEFAULT");
+        config_val = "DEFAULT";
         break;
     }
-    option_values.push_back(buffer.back().c_str());
+    provider_options.emplace("cudnn_conv_algo_search", config_val);
+    provider_options.emplace("do_copy_in_default_stream",
+                             (!performance_test_config.run_config.do_cuda_copy_in_separate_stream ? "1" : "0"));
 
-    buffer.emplace_back("do_copy_in_default_stream");
-    option_keys.push_back(buffer.back().c_str());
-    buffer.emplace_back(!performance_test_config.run_config.do_cuda_copy_in_separate_stream ? "1" : "0");
-    option_values.push_back(buffer.back().c_str());
-
-#ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-#else
-    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
-#endif
+
     ParseSessionConfigs(ov_string, provider_options);
-    for (const auto& provider_option : provider_options) {
-      option_keys.push_back(provider_option.first.c_str());
-      option_values.push_back(provider_option.second.c_str());
+    if (performance_test_config.run_config.enable_cuda_io_binding) {
+      device_memory_name_ = CUDA;
+      if (cudaStreamCreate(&stream_) != cudaError_t::cudaSuccess) {
+        ORT_THROW("Unable to create CUDA stream for IOBinding");
+      }
+      auto stream_str = std::to_string(reinterpret_cast<uintptr_t>(stream_));
+      provider_options["user_compute_stream"] = stream_str;
+    }
+    cuda_options.Update(provider_options);
+
+    if (performance_test_config.run_config.cuda_mempool_arena_config) {
+      // Enable and configure cuda_mempool arena
+      const size_t release_threshold =
+          static_cast<size_t>(std::atoll(performance_test_config.run_config.cuda_mempool_arena_config->release_threshold.c_str()));
+      const size_t bytes_to_keep_on_shrink =
+          static_cast<size_t>(std::atoll(performance_test_config.run_config.cuda_mempool_arena_config->bytes_to_keep.c_str()));
+      // Create a map of properties for the arena configuration
+      std::unordered_map<std::string, size_t> arena_config_map = {
+          {"use_cuda_mempool", 1U},
+          {"cuda_mempool_bytes_to_keep_on_shrink", bytes_to_keep_on_shrink},
+          {"cuda_mempool_release_threshold", release_threshold},
+      };
+      // Must be kept alive while session is alive
+      Ort::ArenaCfg cuda_arena_cfg(arena_config_map);
+      cuda_mempool_arena_cfg_ = std::move(cuda_arena_cfg);
+      (*cuda_options).default_memory_arena_cfg = cuda_mempool_arena_cfg_;
     }
 
-    Ort::Status status(api.UpdateCUDAProviderOptions(cuda_options,
-                                                     option_keys.data(), option_values.data(), option_keys.size()));
-    if (!status.IsOK()) {
-      OrtAllocator* allocator;
-      char* options;
-      Ort::ThrowOnError(api.GetAllocatorWithDefaultOptions(&allocator));
-      Ort::ThrowOnError(api.GetCUDAProviderOptionsAsString(cuda_options, allocator, &options));
-      ORT_THROW("[ERROR] [CUDA] Configuring the CUDA options failed with message: ", status.GetErrorMessage(),
-                "\nSupported options are:\n", options);
-    }
     session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
 #else
     ORT_THROW("CUDA is not supported in this build\n");
 #endif
   } else if (provider_name_ == onnxruntime::kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
-    const auto& api = Ort::GetApi();
-    OrtTensorRTProviderOptionsV2* tensorrt_options;
-    Ort::ThrowOnError(api.CreateTensorRTProviderOptions(&tensorrt_options));
-    std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(
-        tensorrt_options, api.ReleaseTensorRTProviderOptions);
-    std::vector<const char*> option_keys, option_values;
+    Ort::TensorRTProviderOptions tensorrt_options;
     // used to keep all option keys and value strings alive
     std::list<std::string> buffer;
-
+    OrtCUDAProviderOptions cuda_options;
+    if (performance_test_config.run_config.enable_cuda_io_binding) {
+      device_memory_name_ = CUDA;
+      if (cudaStreamCreate(&stream_) != cudaError_t::cudaSuccess) {
+        ORT_THROW("Unable to create CUDA stream for IOBinding");
+      }
+      auto stream_str = std::to_string(reinterpret_cast<uintptr_t>(stream_));
+      cuda_options.has_user_compute_stream = 1;
+      cuda_options.user_compute_stream = reinterpret_cast<void*>(stream_);
+      provider_options["user_compute_stream"] = stream_str;
+    }
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
 #else
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
     ParseSessionConfigs(ov_string, provider_options);
-    for (const auto& provider_option : provider_options) {
-      option_keys.push_back(provider_option.first.c_str());
-      option_values.push_back(provider_option.second.c_str());
-    }
-    Ort::Status status(api.UpdateTensorRTProviderOptions(tensorrt_options,
-                                                         option_keys.data(), option_values.data(), option_keys.size()));
-    if (!status.IsOK()) {
-      OrtAllocator* allocator;
-      char* options;
-      Ort::ThrowOnError(api.GetAllocatorWithDefaultOptions(&allocator));
-      Ort::ThrowOnError(api.GetTensorRTProviderOptionsAsString(tensorrt_options, allocator, &options));
-      ORT_THROW("[ERROR] [TensorRT] Configuring the CUDA options failed with message: ", status.GetErrorMessage(),
-                "\nSupported options are:\n", options);
-    }
-
+    tensorrt_options.Update(provider_options);
     session_options.AppendExecutionProvider_TensorRT_V2(*tensorrt_options);
 
-    OrtCUDAProviderOptions cuda_options;
-    cuda_options.device_id = tensorrt_options->device_id;
+    cuda_options.device_id = static_cast<OrtTensorRTProviderOptionsV2*>(tensorrt_options)->device_id;
     cuda_options.cudnn_conv_algo_search = static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo);
     cuda_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
     // TODO: Support arena configuration for users of perf test
     session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
+#endif
+  } else if (provider_name_ == onnxruntime::kNvTensorRTRTXExecutionProvider) {
+#ifdef USE_NV
+#ifdef _MSC_VER
+    std::string opt_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string opt_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+    ParseSessionConfigs(opt_string, provider_options);
+    if (!provider_options.empty()) {
+      std::cout << "Setting NV TensorRT RTX provider options to:\n";
+      for (const auto& provider_option : provider_options) {
+        std::cout << "\t" << provider_option.first << ":" << provider_option.second << "\n";
+      }
+    }
+    if (performance_test_config.run_config.enable_cuda_io_binding) {
+      device_memory_name_ = CUDA;
+      if (cudaStreamCreate(&stream_) != cudaError_t::cudaSuccess) {
+        ORT_THROW("Unable to create CUDA stream for IOBinding");
+      }
+      auto stream_str = std::to_string(reinterpret_cast<uintptr_t>(stream_));
+      provider_options["user_compute_stream"] = stream_str;
+    }
+    session_options.AppendExecutionProvider("NvTensorRtRtx", provider_options);
+#else
+    ORT_THROW("NV TensorRT RTX is not supported in this build\n");
 #endif
   } else if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
 #ifdef USE_QNN
@@ -199,24 +279,31 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
     ParseSessionConfigs(option_string, provider_options,
-                        {"backend_path", "profiling_file_path", "profiling_level", "rpc_control_latency",
-                         "vtcm_mb", "soc_model", "device_id", "htp_performance_mode", "qnn_saver_path",
-                         "htp_graph_finalization_optimization_mode", "qnn_context_priority", "htp_arch",
-                         "enable_htp_fp16_precision", "offload_graph_io_quantization", "enable_htp_spill_fill_buffer",
-                         "enable_htp_shared_memory_allocator"});
+                        {"backend_type", "backend_path", "profiling_file_path", "profiling_level",
+                         "rpc_control_latency", "vtcm_mb", "soc_model", "device_id", "htp_performance_mode", "op_packages",
+                         "qnn_saver_path", "htp_graph_finalization_optimization_mode", "qnn_context_priority",
+                         "htp_arch", "enable_htp_fp16_precision", "offload_graph_io_quantization",
+                         "enable_htp_spill_fill_buffer", "enable_htp_shared_memory_allocator", "dump_json_qnn_graph",
+                         "json_qnn_graph_dir", "disable_file_mapped_weights", "htp_bf16_enable", "enable_vtcm_backup_buffer_sharing", "extended_udma"});
+
     for (const auto& provider_option : provider_options) {
       const std::string& key = provider_option.first;
       const std::string& value = provider_option.second;
-      if (key == "backend_path" || key == "profiling_file_path") {
+      if (key == "backend_path" || key == "profiling_file_path" || key == "json_qnn_graph_dir") {
         if (value.empty()) {
           ORT_THROW("Please provide the valid file path.");
         }
       } else if (key == "profiling_level") {
-        std::set<std::string> supported_profiling_level = {"off", "basic", "detailed"};
+        std::set<std::string> supported_profiling_level = {"off", "basic", "detailed", "optrace"};
         if (supported_profiling_level.find(value) == supported_profiling_level.end()) {
-          ORT_THROW("Supported profiling_level: off, basic, detailed");
+          std::ostringstream str_stream;
+          std::copy(supported_profiling_level.begin(), supported_profiling_level.end(),
+                    std::ostream_iterator<std::string>(str_stream, ","));
+          std::string str = str_stream.str();
+          ORT_THROW("Supported profiling_level: " + str);
         }
-      } else if (key == "rpc_control_latency" || key == "vtcm_mb" || key == "soc_model" || key == "device_id") {
+      } else if (key == "backend_type" || key == "rpc_control_latency" || key == "vtcm_mb" || key == "soc_model" ||
+                 key == "device_id") {
         // no validation
       } else if (key == "htp_performance_mode") {
         std::set<std::string> supported_htp_perf_mode = {"burst", "balanced", "default", "high_performance",
@@ -228,6 +315,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                     std::ostream_iterator<std::string>(str_stream, ","));
           std::string str = str_stream.str();
           ORT_THROW("Supported htp_performance_mode: " + str);
+        }
+      } else if (key == "op_packages") {
+        if (value.empty()) {
+          ORT_THROW("Please provide the valid op_packages.");
         }
       } else if (key == "qnn_saver_path") {
         // no validation
@@ -246,7 +337,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW("Supported qnn_context_priority: low, normal, normal_high, high");
         }
       } else if (key == "htp_arch") {
-        std::set<std::string> supported_htp_archs = {"0", "68", "69", "73", "75"};
+        std::set<std::string> supported_htp_archs = {"0", "68", "69", "73", "75", "81"};
         if (supported_htp_archs.find(value) == supported_htp_archs.end()) {
           std::ostringstream str_stream;
           std::copy(supported_htp_archs.begin(), supported_htp_archs.end(),
@@ -257,7 +348,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       } else if (key == "enable_htp_fp16_precision" ||
                  key == "offload_graph_io_quantization" ||
                  key == "enable_htp_spill_fill_buffer" ||
-                 key == "enable_htp_shared_memory_allocator") {
+                 key == "enable_htp_shared_memory_allocator" ||
+                 key == "dump_json_qnn_graph" ||
+                 key == "extended_udma" ||
+                 key == "disable_file_mapped_weights" ||
+                 key == "enable_vtcm_backup_buffer_sharing") {
         std::set<std::string> supported_options = {"0", "1"};
         if (supported_options.find(value) == supported_options.end()) {
           std::ostringstream str_stream;
@@ -418,12 +513,12 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
               "Select from 'gpu', or 'npu' \n");
         }
       } else if (key == "performance_preference") {
-        std::set<std::string> ov_supported_values = {"default", "high_performance", "minimal_power"};
+        std::set<std::string> ov_supported_values = {"default", "high_performance", "minimum_power"};
         if (ov_supported_values.find(value) != ov_supported_values.end()) {
         } else {
           ORT_THROW(
               "[ERROR] [DML] You have selected a wrong configuration value for the key 'performance_preference'. "
-              "Select from 'default', 'high_performance' or 'minimal_power' \n");
+              "Select from 'default', 'high_performance' or 'minimum_power' \n");
         }
       } else if (key == "disable_metacommands") {
         std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
@@ -478,6 +573,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     bool enable_fast_math = false;
     ParseSessionConfigs(ov_string, provider_options, {"enable_fast_math"});
     for (const auto& provider_option : provider_options) {
+      const std::string& key = provider_option.first;
+      const std::string& value = provider_option.second;
       if (key == "enable_fast_math") {
         std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
         if (ov_supported_values.find(value) != ov_supported_values.end()) {
@@ -493,23 +590,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         OrtSessionOptionsAppendExecutionProvider_ACL(session_options, enable_fast_math));
 #else
     ORT_THROW("Acl is not supported in this build\n");
-#endif
-  } else if (provider_name_ == onnxruntime::kArmNNExecutionProvider) {
-#ifdef USE_ARMNN
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(session_options,
-                                                                     performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
-#else
-    ORT_THROW("ArmNN is not supported in this build\n");
-#endif
-  } else if (provider_name_ == onnxruntime::kRocmExecutionProvider) {
-#ifdef USE_ROCM
-    OrtROCMProviderOptions rocm_options;
-    rocm_options.miopen_conv_exhaustive_search = performance_test_config.run_config.cudnn_conv_algo;
-    rocm_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
-    // TODO: Support arena configuration for users of perf test
-    session_options.AppendExecutionProvider_ROCM(rocm_options);
-#else
-    ORT_THROW("ROCM is not supported in this build\n");
 #endif
   } else if (provider_name_ == onnxruntime::kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
@@ -594,6 +674,43 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     session_options.AddConfigEntry(kOrtSessionOptionsConfigAllowIntraOpSpinning, "0");
   }
 
+  if (performance_test_config.run_config.spin_duration_us >= 0) {
+    if (performance_test_config.run_config.disable_spinning) {
+      fprintf(stdout, "Ignoring intra-op spin duration because spinning is disabled\n");
+    } else {
+      warn_dup_config_entry(kOrtSessionOptionsConfigIntraOpSpinDurationUs);
+      auto val = std::to_string(performance_test_config.run_config.spin_duration_us);
+      fprintf(stdout, "Setting intra-op spin duration to %s us\n", val.c_str());
+      session_options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpSpinDurationUs, val.c_str());
+    }
+  }
+
+  if (performance_test_config.run_config.spin_backoff_max_set &&
+      performance_test_config.run_config.spin_backoff_max >= 1) {
+    if (performance_test_config.run_config.disable_spinning) {
+      fprintf(stdout, "Ignoring intra-op spin backoff max because spinning is disabled\n");
+    } else {
+      warn_dup_config_entry(kOrtSessionOptionsConfigIntraOpSpinBackoffMax);
+      const auto requested_spin_backoff_max = performance_test_config.run_config.spin_backoff_max;
+      const auto effective_spin_backoff_max =
+          std::min(static_cast<unsigned int>(requested_spin_backoff_max), concurrency::kSpinBackoffMaxLimit);
+      if (effective_spin_backoff_max != static_cast<unsigned int>(requested_spin_backoff_max)) {
+        fprintf(stdout,
+                "Requested intra-op spin backoff max %d exceeds the runtime limit %u; clamping to %u\n",
+                requested_spin_backoff_max,
+                concurrency::kSpinBackoffMaxLimit,
+                effective_spin_backoff_max);
+      }
+      auto val = std::to_string(effective_spin_backoff_max);
+      fprintf(stdout, "Setting intra-op spin backoff max to %s\n", val.c_str());
+      session_options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpSpinBackoffMax, val.c_str());
+    }
+  } else if (performance_test_config.run_config.spin_backoff_max_set) {
+    fprintf(stderr,
+            "Warning: --spin_backoff_max must be >= 1; got %d. Ignoring (using default).\n",
+            performance_test_config.run_config.spin_backoff_max);
+  }
+
   if (performance_test_config.run_config.disable_spinning_between_run) {
     warn_dup_config_entry(kOrtSessionOptionsConfigForceSpinningStop);
     fprintf(stdout, "Disabling intra-op thread spinning between runs\n");
@@ -616,6 +733,17 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   }
   if (!performance_test_config.run_config.optimized_model_path.empty()) {
     session_options.SetOptimizedModelFilePath(performance_test_config.run_config.optimized_model_path.c_str());
+    if (!performance_test_config.run_config.optimized_model_data_path.empty()) {
+      session_options.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersFileName,
+                                     performance_test_config.run_config.optimized_model_data_path.c_str());
+      if (!performance_test_config.run_config.optimized_model_weight_min_size.empty()) {
+        session_options.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes,
+                                       performance_test_config.run_config.optimized_model_weight_min_size.c_str());
+      }
+      if (performance_test_config.run_config.optimized_save_optimized_prepacks) {
+        session_options.AddConfigEntry(kOrtSessionOptionsSavePrePackedConstantInitializers, "1");
+      }
+    }
   }
   if (performance_test_config.run_config.set_denormal_as_zero) {
     warn_dup_config_entry(kOrtSessionOptionsConfigSetDenormalAsZero);
@@ -675,11 +803,11 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           ov_options[key] = value;
         } else if (deprecated_device_types.find(value) != deprecated_device_types.end()) {
           ov_options[key] = value;
-        } else if (value.find("HETERO:") == 0) {
+        } else if (value.find("HETERO") == 0) {
           ov_options[key] = value;
-        } else if (value.find("MULTI:") == 0) {
+        } else if (value.find("MULTI") == 0) {
           ov_options[key] = value;
-        } else if (value.find("AUTO:") == 0) {
+        } else if (value.find("AUTO") == 0) {
           ov_options[key] = value;
         } else {
           ORT_THROW(
@@ -736,6 +864,15 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         } else {
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_qdq_optimizer' should be a boolean i.e. true or false. Default value is false.\n");
         }
+      } else if (key == "enable_causallm") {
+        if (value == "true" || value == "True" ||
+            value == "false" || value == "False") {
+          ov_options[key] = value;
+        } else {
+          ORT_THROW(
+              "[ERROR] [OpenVINO] The value for the key 'enable_causallm' should be a boolean i.e. true or false."
+              " Default value is false. This provider option must be used with CausalLM Models viz. LLMs & SLMs only.\n");
+        }
       } else if (key == "disable_dynamic_shapes") {
         if (value == "true" || value == "True" ||
             value == "false" || value == "False") {
@@ -787,17 +924,28 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         }
       } else if (key == "device_memory_name") {
         device_memory_name_ = std::move(value);
+      } else if (key == "device_luid") {
+        ov_options[key] = value;
+      } else if (key == "reshape_input") {
+        ov_options[key] = value;
+      } else if (key == "layout") {
+        ov_options[key] = value;
       } else {
         ORT_THROW(
             "[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO."
             " ['device_type', 'device_id', 'num_of_threads', 'load_config', 'cache_dir', 'num_streams', "
-            "'enable_opencl_throttling', 'disable_dynamic_shapes', 'enable_qdq_optimizer', 'model_priority'] \n");
+            "'enable_opencl_throttling', 'disable_dynamic_shapes', 'enable_qdq_optimizer',"
+            " 'enable_causallm', 'reshape_input', 'layout', 'model_priority'] \n");
       }
     }
     session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif
+  }
+
+  if (performance_test_config.run_config.use_extensions) {
+    session_options.EnableOrtCustomOps();
   }
 
   if (!performance_test_config.model_info.load_via_path) {
@@ -834,31 +982,31 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     input_names_[i] = input_names_str_[i].c_str();
   }
 
-  auto transform_fcn = std::function<int64_t(int64_t)>();
-  auto new_value = std::function<Ort::Value(OrtAllocator*, const std::vector<int64_t>&, Ort::ConstTensorTypeAndShapeInfo&)>();
-  if (device_memory_name_.empty()) {
-    transform_fcn = [](int64_t input) { return input; };
-    new_value = [](OrtAllocator*, const std::vector<int64_t>&, Ort::ConstTensorTypeAndShapeInfo&) {
-      return Ort::Value(nullptr);
-    };
-  } else {
-    Ort::MemoryInfo memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
+  if (!device_memory_name_.empty()) {
+    Ort::MemoryInfo memory_info(nullptr);  // Default initialize, will be overwritten
+    if (device_memory_name_ == CUDA) {
+      memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeDefault);
+    } else {
+      memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
+    }
     custom_allocator_ = Ort::Allocator(session_, memory_info);
-    allocator_ = custom_allocator_;
-
-    // free dimensions are treated as 1 if not overridden
-    transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };
-    new_value = [](OrtAllocator* allocator, const std::vector<int64_t>& output_shape, Ort::ConstTensorTypeAndShapeInfo& tensor_info) {
-      return Ort::Value::CreateTensor(allocator, output_shape.data(), output_shape.size(), tensor_info.GetElementType());
-    };
+    // Switch to custom allocator
+    allocator_ = Ort::UnownedAllocator(custom_allocator_);
   }
-
   for (size_t i = 0; i < output_names_raw_ptr.size(); i++) {
     Ort::TypeInfo type_info = session_.GetOutputTypeInfo(i);
     auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
     std::vector<int64_t> output_shape = tensor_info.GetShape();
-    std::transform(output_shape.begin(), output_shape.end(), output_shape.begin(), transform_fcn);
-    outputs_.emplace_back(new_value(allocator_, output_shape, tensor_info));
+    auto is_dynamic = std::find(output_shape.begin(), output_shape.end(), -1) != output_shape.end();
+    if (is_dynamic) {
+      has_dynamic_output_shapes_ = true;
+    }
+    if (is_dynamic || device_memory_name_.empty()) {
+      outputs_.emplace_back(Ort::Value(nullptr));
+    } else {
+      auto new_value = Ort::Value::CreateTensor(allocator_, output_shape.data(), output_shape.size(), tensor_info.GetElementType());
+      outputs_.emplace_back(std::move(new_value));
+    }
   }
 }
 
@@ -942,25 +1090,151 @@ static void InitializeTensorWithSeed(int32_t seed, Ort::Value& tensor) {
 #undef CASE_FOR_TYPE
 }
 
+void OnnxRuntimeTestSession::CreateAndStoreGeneratedInput(size_t test_data_id, size_t input_idx,
+                                                          const std::vector<int64_t>& dims,
+                                                          ONNXTensorElementDataType element_type, int32_t seed) {
+  if (device_memory_name_ != CUDA) {
+    Ort::Value input_tensor = Ort::Value::CreateTensor(allocator_, (const int64_t*)dims.data(),
+                                                       dims.size(), element_type);
+    InitializeTensorWithSeed(seed, input_tensor);
+    PreLoadTestData(test_data_id, input_idx, std::move(input_tensor));
+  }
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
+  else {
+    Ort::AllocatorWithDefaultOptions default_allocator;
+    Ort::Value default_tensor = Ort::Value::CreateTensor(default_allocator, (const int64_t*)dims.data(),
+                                                         dims.size(), element_type);
+    InitializeTensorWithSeed(seed, default_tensor);
+
+    const void* default_ptr = default_tensor.GetTensorRawData();
+    size_t total_bytes = default_tensor.GetTensorSizeInBytes();
+
+    Ort::Value cuda_tensor = Ort::Value::CreateTensor(allocator_, dims.data(),
+                                                      dims.size(), element_type);
+    void* cuda_ptr = cuda_tensor.GetTensorMutableData<void>();
+
+    cudaError_t cuda_err = cudaMemcpy(cuda_ptr, default_ptr, total_bytes, cudaMemcpyHostToDevice);
+    if (cuda_err != cudaSuccess) {
+      ORT_THROW("Failed to copy tensor data from CPU to CUDA device. CUDA Error: ", cudaGetErrorString(cuda_err));
+    }
+    PreLoadTestData(test_data_id, input_idx, std::move(cuda_tensor));
+  }
+#endif
+}
+
 bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
-  // iterate over all input nodes
   for (size_t i = 0; i < static_cast<size_t>(input_length_); i++) {
     Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
-    if (type_info.GetONNXType() == ONNX_TYPE_TENSOR) {
-      auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-      std::vector<int64_t> input_node_dim = tensor_info.GetShape();
-
-      // free dimensions are treated as 1 if not overridden
-      auto transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };
-      std::transform(input_node_dim.begin(), input_node_dim.end(), input_node_dim.begin(), transform_fcn);
-
-      Ort::Value input_tensor = Ort::Value::CreateTensor(allocator_, (const int64_t*)input_node_dim.data(),
-                                                         input_node_dim.size(), tensor_info.GetElementType());
-      InitializeTensorWithSeed(seed, input_tensor);
-      PreLoadTestData(0, i, std::move(input_tensor));
+    if (type_info.GetONNXType() != ONNX_TYPE_TENSOR) {
+      continue;
     }
+
+    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+    std::vector<int64_t> input_node_dim = tensor_info.GetShape();
+
+    // free dimensions are treated as 1 if not overridden
+    auto transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };
+    std::transform(input_node_dim.begin(), input_node_dim.end(), input_node_dim.begin(), transform_fcn);
+
+    CreateAndStoreGeneratedInput(0, i, input_node_dim, tensor_info.GetElementType(), seed);
   }
   return true;
+}
+
+bool OnnxRuntimeTestSession::PopulateGeneratedMultiShapeInputTestData(
+    int32_t seed,
+    const std::map<std::string, std::vector<std::vector<int64_t>>>& data_shape_groups) {
+  // Validate that all input names in data_shape_groups exist in the model
+  for (const auto& [name, groups] : data_shape_groups) {
+    bool found = false;
+    for (int i = 0; i < input_length_; i++) {
+      if (input_names_str_[i] == name) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      std::cerr << "Error: --data_shape specifies unknown input '" << name << "'." << std::endl;
+      return false;
+    }
+  }
+
+  const size_t num_groups = data_shape_groups.begin()->second.size();
+
+  for (size_t g = 0; g < num_groups; g++) {
+    for (size_t i = 0; i < static_cast<size_t>(input_length_); i++) {
+      Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
+      if (type_info.GetONNXType() != ONNX_TYPE_TENSOR) {
+        continue;
+      }
+
+      auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+      std::vector<int64_t> input_node_dim;
+
+      // Use user-specified shape if available, otherwise fall back to model metadata
+      auto it = data_shape_groups.find(input_names_str_[i]);
+      if (it != data_shape_groups.end()) {
+        input_node_dim = it->second[g];
+        const auto model_shape = tensor_info.GetShape();
+        if (!model_shape.empty() && input_node_dim.size() != model_shape.size()) {
+          std::cerr << "Error: --data_shape rank mismatch for input '" << input_names_str_[i]
+                    << "': expected " << model_shape.size() << " dims but got " << input_node_dim.size() << "." << std::endl;
+          return false;
+        }
+      } else {
+        input_node_dim = tensor_info.GetShape();
+        bool has_dynamic_dim = std::any_of(input_node_dim.begin(), input_node_dim.end(),
+                                           [](int64_t d) { return d == -1; });
+        auto transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };
+        std::transform(input_node_dim.begin(), input_node_dim.end(), input_node_dim.begin(), transform_fcn);
+        if (g == 0 && has_dynamic_dim) {
+          std::cerr << "Warning: input '" << input_names_str_[i]
+                    << "' not specified in --data_shape; using inferred shape [";
+          for (size_t d = 0; d < input_node_dim.size(); d++) {
+            if (d > 0) std::cerr << ",";
+            std::cerr << input_node_dim[d];
+          }
+          std::cerr << "] (dynamic dims defaulted to 1)." << std::endl;
+        }
+      }
+
+      CreateAndStoreGeneratedInput(g, i, input_node_dim, tensor_info.GetElementType(), seed);
+    }
+  }
+  use_round_robin_ = true;
+  return true;
+}
+
+std::vector<int64_t> OnnxRuntimeTestSession::GetLoadedInputShape(size_t test_data_id, size_t input_id) const {
+  const auto& v = test_inputs_.at(test_data_id).at(input_id);
+  if (!v.IsTensor()) {
+    ORT_THROW("--data_shape only supports tensor inputs; input_id=", input_id, " in test_data_id=", test_data_id,
+              " is not a tensor.");
+  }
+  return v.GetTensorTypeAndShapeInfo().GetShape();
+}
+
+void OnnxRuntimeTestSession::SelectTestDataSets(const std::vector<size_t>& selected_ids) {
+  std::vector<std::vector<Ort::Value>> filtered;
+  filtered.reserve(selected_ids.size());
+  for (size_t id : selected_ids) {
+    filtered.push_back(std::move(test_inputs_.at(id)));
+  }
+  test_inputs_ = std::move(filtered);
+}
+
+OnnxRuntimeTestSession::~OnnxRuntimeTestSession() {
+#ifdef USE_CUDA
+  if (device_memory_name_ == CUDA && stream_ != nullptr) {
+    // Need to synchronize here before the custom allocator is destroyedif (cudaStreamSynchronize(stream_);
+    if (cudaStreamSynchronize(stream_) != cudaError_t::cudaSuccess) {
+      std::cerr << "Unable to sync CUDA stream";
+    }
+    if (cudaStreamDestroy(stream_) != cudaError_t::cudaSuccess) {
+      std::cerr << "Unable to destroy CUDA stream";
+    }
+  }
+#endif
 }
 
 }  // namespace perftest

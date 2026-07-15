@@ -42,8 +42,6 @@ std::vector<std::unique_ptr<IExecutionProvider>> GetExecutionProviders(
         result.emplace_back(DefaultCpuExecutionProvider());
       } else if (entry->Type() == onnxruntime::kCudaExecutionProvider) {
         result.emplace_back(DefaultCudaExecutionProvider());
-      } else if (entry->Type() == onnxruntime::kRocmExecutionProvider) {
-        result.emplace_back(DefaultRocmExecutionProvider());
       } else if (entry->Type() == onnxruntime::kDnnlExecutionProvider) {
         result.emplace_back(DefaultDnnlExecutionProvider());
       } else if (entry->Type() == onnxruntime::kTensorrtExecutionProvider) {
@@ -59,9 +57,6 @@ std::vector<std::unique_ptr<IExecutionProvider>> GetExecutionProviders(
   }
 #ifdef USE_CUDA
   result.emplace_back(DefaultCudaExecutionProvider());
-#endif
-#ifdef USE_ROCM
-  result.emplace_back(DefaultRocmExecutionProvider());
 #endif
   result.emplace_back(DefaultCpuExecutionProvider());
   return result;

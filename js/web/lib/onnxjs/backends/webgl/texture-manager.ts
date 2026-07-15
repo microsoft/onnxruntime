@@ -16,7 +16,7 @@ export interface TextureManagerConfig {
 /**
  * TextureManager is the mainly responsible for caching Textures
  * Textures are cached in 2 levels:
- *   1. the texures which are associated with a dataId (from Tensor)
+ *   1. the textures which are associated with a dataId (from Tensor)
  *    Caching these is crucial to performance. These are In-use Textures
  *   2. textures which are not in use by any current ProgramInfo/Tensor
  *     These are called Free Textures

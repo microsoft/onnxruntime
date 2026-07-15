@@ -16,6 +16,20 @@ Abstract:
 
 #include "mlasi.h"
 
+//
+// Define the parameters to execute segments of a transpose operation on worker
+// threads.
+//
+
+template<typename ElementType>
+struct MLAS_TRANPOSE_WORK_BLOCK {
+    ptrdiff_t ThreadCountM;
+    const ElementType* Input;
+    ElementType* Output;
+    size_t M;
+    size_t N;
+};
+
 #if defined(MLAS_SSE2_INTRINSICS)
 
 MLAS_FORCEINLINE
@@ -371,6 +385,180 @@ MlasTranspose16x16Block(
     vec_vsx_st(e0, 0, &Output[OutputStride * 14]);
     vec_vsx_st(e1, 0, &Output[OutputStride * 15]);
 }
+#elif defined(MLAS_TARGET_S390X)
+
+MLAS_FORCEINLINE
+void
+MlasTranspose4x4Block(
+    const uint32_t* Input,
+    size_t InputStride,
+    uint32_t* Output,
+    size_t OutputStride
+    )
+{
+    const __vector unsigned char mask0 = { 0, 1, 2, 3, 4, 5, 6, 7, 16, 17, 18, 19, 20, 21, 22, 23 };
+    const __vector unsigned char mask3 = { 8, 9, 10, 11, 12, 13, 14, 15, 24, 25, 26, 27, 28, 29, 30, 31 };
+
+    __vector unsigned int a0 = vec_xl(0, Input);
+    __vector unsigned int a1 = vec_xl(0, &Input[InputStride]);
+    __vector unsigned int a2 = vec_xl(0, &Input[InputStride * 2]);
+    __vector unsigned int a3 = vec_xl(0, &Input[InputStride * 3]);
+
+    __vector unsigned int b0 = vec_mergeh(a0, a1);
+    __vector unsigned int b1 = vec_mergeh(a2, a3);
+    __vector unsigned int b2 = vec_mergel(a0, a1);
+    __vector unsigned int b3 = vec_mergel(a2, a3);
+
+    __vector unsigned int c0 = vec_perm(b0, b1, mask0);
+    __vector unsigned int c1 = vec_perm(b0, b1, mask3);
+    __vector unsigned int c2 = vec_perm(b2, b3, mask0);
+    __vector unsigned int c3 = vec_perm(b2, b3, mask3);
+
+    // Workaround to avoid 'variable set but not used' message
+    MLAS_UNREFERENCED_PARAMETER(c0);
+    MLAS_UNREFERENCED_PARAMETER(c1);
+    MLAS_UNREFERENCED_PARAMETER(c2);
+    MLAS_UNREFERENCED_PARAMETER(c3);
+
+    vec_xst(c0, 0, Output);
+    vec_xst(c1, 0, &Output[OutputStride]);
+    vec_xst(c2, 0, &Output[OutputStride * 2]);
+    vec_xst(c3, 0, &Output[OutputStride * 3]);
+}
+
+MLAS_FORCEINLINE
+void
+MlasTranspose16x16Block(
+    const uint8_t* Input,
+    size_t InputStride,
+    uint8_t* Output,
+    size_t OutputStride
+    )
+{
+    const __vector unsigned char mask0 = { 0, 1, 2, 3, 4, 5, 6, 7, 16, 17, 18, 19, 20, 21, 22, 23 };
+    const __vector unsigned char mask3 = { 8, 9, 10, 11, 12, 13, 14, 15, 24, 25, 26, 27, 28, 29, 30, 31 };
+
+    __vector unsigned char a0 = vec_xl(0, Input);
+    __vector unsigned char a1 = vec_xl(0, &Input[InputStride]);
+    __vector unsigned char a2 = vec_xl(0, &Input[InputStride * 2]);
+    __vector unsigned char a3 = vec_xl(0, &Input[InputStride * 3]);
+    __vector unsigned char a4 = vec_xl(0, &Input[InputStride * 4]);
+    __vector unsigned char a5 = vec_xl(0, &Input[InputStride * 5]);
+    __vector unsigned char a6 = vec_xl(0, &Input[InputStride * 6]);
+    __vector unsigned char a7 = vec_xl(0, &Input[InputStride * 7]);
+    __vector unsigned char a8 = vec_xl(0, &Input[InputStride * 8]);
+    __vector unsigned char a9 = vec_xl(0, &Input[InputStride * 9]);
+    __vector unsigned char a10 = vec_xl(0, &Input[InputStride * 10]);
+    __vector unsigned char a11 = vec_xl(0, &Input[InputStride * 11]);
+    __vector unsigned char a12 = vec_xl(0, &Input[InputStride * 12]);
+    __vector unsigned char a13 = vec_xl(0, &Input[InputStride * 13]);
+    __vector unsigned char a14 = vec_xl(0, &Input[InputStride * 14]);
+    __vector unsigned char a15 = vec_xl(0, &Input[InputStride * 15]);
+
+    __vector unsigned char b0 = vec_mergeh(a0, a1);
+    __vector unsigned char b1 = vec_mergeh(a2, a3);
+    __vector unsigned char b2 = vec_mergeh(a4, a5);
+    __vector unsigned char b3 = vec_mergeh(a6, a7);
+    __vector unsigned char b4 = vec_mergeh(a8, a9);
+    __vector unsigned char b5 = vec_mergeh(a10, a11);
+    __vector unsigned char b6 = vec_mergeh(a12, a13);
+    __vector unsigned char b7 = vec_mergeh(a14, a15);
+    __vector unsigned char c0 = reinterpret_cast<__vector unsigned char>(vec_mergeh(reinterpret_cast<__vector unsigned short>(b0), reinterpret_cast<__vector unsigned short>(b1)));
+    __vector unsigned char c1 = reinterpret_cast<__vector unsigned char>(vec_mergeh(reinterpret_cast<__vector unsigned short>(b2), reinterpret_cast<__vector unsigned short>(b3)));
+    __vector unsigned char c2 = reinterpret_cast<__vector unsigned char>(vec_mergeh(reinterpret_cast<__vector unsigned short>(b4), reinterpret_cast<__vector unsigned short>(b5)));
+    __vector unsigned char c3 = reinterpret_cast<__vector unsigned char>(vec_mergeh(reinterpret_cast<__vector unsigned short>(b6), reinterpret_cast<__vector unsigned short>(b7)));
+
+    // Workaround to avoid 'variable set but not used' message
+    MLAS_UNREFERENCED_PARAMETER(c0);
+    MLAS_UNREFERENCED_PARAMETER(c1);
+    MLAS_UNREFERENCED_PARAMETER(c2);
+    MLAS_UNREFERENCED_PARAMETER(c3);
+
+    __vector unsigned char d0 = reinterpret_cast<__vector unsigned char>(vec_mergeh(reinterpret_cast<__vector unsigned int>(c0), reinterpret_cast<__vector unsigned int>(c1)));
+    __vector unsigned char d1 = reinterpret_cast<__vector unsigned char>(vec_mergeh(reinterpret_cast<__vector unsigned int>(c2), reinterpret_cast<__vector unsigned int>(c3)));
+    __vector unsigned char e0 = vec_perm(d0, d1, mask0);
+    __vector unsigned char e1 = vec_perm(d0, d1, mask3);
+
+    // Workaround to avoid 'variable set but not used' message
+    MLAS_UNREFERENCED_PARAMETER(e0);
+    MLAS_UNREFERENCED_PARAMETER(e1);
+
+    vec_xst(e0, 0, &Output[0]);
+    vec_xst(e1, 0, &Output[OutputStride]);
+
+    d0 = reinterpret_cast<__vector unsigned char>(vec_mergel(reinterpret_cast<__vector unsigned int>(c0), reinterpret_cast<__vector unsigned int>(c1)));
+    d1 = reinterpret_cast<__vector unsigned char>(vec_mergel(reinterpret_cast<__vector unsigned int>(c2), reinterpret_cast<__vector unsigned int>(c3)));
+    e0 = vec_perm(d0, d1, mask0);
+    e1 = vec_perm(d0, d1, mask3);
+    vec_xst(e0, 0, &Output[OutputStride * 2]);
+    vec_xst(e1, 0, &Output[OutputStride * 3]);
+
+    c0 = reinterpret_cast<__vector unsigned char>(vec_mergel(reinterpret_cast<__vector unsigned short>(b0), reinterpret_cast<__vector unsigned short>(b1)));
+    c1 = reinterpret_cast<__vector unsigned char>(vec_mergel(reinterpret_cast<__vector unsigned short>(b2), reinterpret_cast<__vector unsigned short>(b3)));
+    c2 = reinterpret_cast<__vector unsigned char>(vec_mergel(reinterpret_cast<__vector unsigned short>(b4), reinterpret_cast<__vector unsigned short>(b5)));
+    c3 = reinterpret_cast<__vector unsigned char>(vec_mergel(reinterpret_cast<__vector unsigned short>(b6), reinterpret_cast<__vector unsigned short>(b7)));
+
+    d0 = reinterpret_cast<__vector unsigned char>(vec_mergeh(reinterpret_cast<__vector unsigned int>(c0), reinterpret_cast<__vector unsigned int>(c1)));
+    d1 = reinterpret_cast<__vector unsigned char>(vec_mergeh(reinterpret_cast<__vector unsigned int>(c2), reinterpret_cast<__vector unsigned int>(c3)));
+    e0 = vec_perm(d0, d1, mask0);
+    e1 = vec_perm(d0, d1, mask3);
+    vec_xst(e0, 0, &Output[OutputStride * 4]);
+    vec_xst(e1, 0, &Output[OutputStride * 5]);
+
+    d0 = reinterpret_cast<__vector unsigned char>(vec_mergel(reinterpret_cast<__vector unsigned int>(c0), reinterpret_cast<__vector unsigned int>(c1)));
+    d1 = reinterpret_cast<__vector unsigned char>(vec_mergel(reinterpret_cast<__vector unsigned int>(c2), reinterpret_cast<__vector unsigned int>(c3)));
+    e0 = vec_perm(d0, d1, mask0);
+    e1 = vec_perm(d0, d1, mask3);
+    vec_xst(e0, 0, &Output[OutputStride * 6]);
+    vec_xst(e1, 0, &Output[OutputStride * 7]);
+
+    b0 = vec_mergel(a0, a1);
+    b1 = vec_mergel(a2, a3);
+    b2 = vec_mergel(a4, a5);
+    b3 = vec_mergel(a6, a7);
+    b4 = vec_mergel(a8, a9);
+    b5 = vec_mergel(a10, a11);
+    b6 = vec_mergel(a12, a13);
+    b7 = vec_mergel(a14, a15);
+
+    c0 = reinterpret_cast<__vector unsigned char>(vec_mergeh(reinterpret_cast<__vector unsigned short>(b0), reinterpret_cast<__vector unsigned short>(b1)));
+    c1 = reinterpret_cast<__vector unsigned char>(vec_mergeh(reinterpret_cast<__vector unsigned short>(b2), reinterpret_cast<__vector unsigned short>(b3)));
+    c2 = reinterpret_cast<__vector unsigned char>(vec_mergeh(reinterpret_cast<__vector unsigned short>(b4), reinterpret_cast<__vector unsigned short>(b5)));
+    c3 = reinterpret_cast<__vector unsigned char>(vec_mergeh(reinterpret_cast<__vector unsigned short>(b6), reinterpret_cast<__vector unsigned short>(b7)));
+
+    d0 = reinterpret_cast<__vector unsigned char>(vec_mergeh(reinterpret_cast<__vector unsigned int>(c0), reinterpret_cast<__vector unsigned int>(c1)));
+    d1 = reinterpret_cast<__vector unsigned char>(vec_mergeh(reinterpret_cast<__vector unsigned int>(c2), reinterpret_cast<__vector unsigned int>(c3)));
+    e0 = vec_perm(d0, d1, mask0);
+    e1 = vec_perm(d0, d1, mask3);
+    vec_xst(e0, 0, &Output[OutputStride * 8]);
+    vec_xst(e1, 0, &Output[OutputStride * 9]);
+
+    d0 = reinterpret_cast<__vector unsigned char>(vec_mergel(reinterpret_cast<__vector unsigned int>(c0), reinterpret_cast<__vector unsigned int>(c1)));
+    d1 = reinterpret_cast<__vector unsigned char>(vec_mergel(reinterpret_cast<__vector unsigned int>(c2), reinterpret_cast<__vector unsigned int>(c3)));
+    e0 = vec_perm(d0, d1, mask0);
+    e1 = vec_perm(d0, d1, mask3);
+    vec_xst(e0, 0, &Output[OutputStride * 10]);
+    vec_xst(e1, 0, &Output[OutputStride * 11]);
+
+    c0 = reinterpret_cast<__vector unsigned char>(vec_mergel(reinterpret_cast<__vector unsigned short>(b0), reinterpret_cast<__vector unsigned short>(b1)));
+    c1 = reinterpret_cast<__vector unsigned char>(vec_mergel(reinterpret_cast<__vector unsigned short>(b2), reinterpret_cast<__vector unsigned short>(b3)));
+    c2 = reinterpret_cast<__vector unsigned char>(vec_mergel(reinterpret_cast<__vector unsigned short>(b4), reinterpret_cast<__vector unsigned short>(b5)));
+    c3 = reinterpret_cast<__vector unsigned char>(vec_mergel(reinterpret_cast<__vector unsigned short>(b6), reinterpret_cast<__vector unsigned short>(b7)));
+
+    d0 = reinterpret_cast<__vector unsigned char>(vec_mergeh(reinterpret_cast<__vector unsigned int>(c0), reinterpret_cast<__vector unsigned int>(c1)));
+    d1 = reinterpret_cast<__vector unsigned char>(vec_mergeh(reinterpret_cast<__vector unsigned int>(c2), reinterpret_cast<__vector unsigned int>(c3)));
+    e0 = vec_perm(d0, d1, mask0);
+    e1 = vec_perm(d0, d1, mask3);
+    vec_xst(e0, 0, &Output[OutputStride * 12]);
+    vec_xst(e1, 0, &Output[OutputStride * 13]);
+
+    d0 = reinterpret_cast<__vector unsigned char>(vec_mergel(reinterpret_cast<__vector unsigned int>(c0), reinterpret_cast<__vector unsigned int>(c1)));
+    d1 = reinterpret_cast<__vector unsigned char>(vec_mergel(reinterpret_cast<__vector unsigned int>(c2), reinterpret_cast<__vector unsigned int>(c3)));
+    e0 = vec_perm(d0, d1, mask0);
+    e1 = vec_perm(d0, d1, mask3);
+    vec_xst(e0, 0, &Output[OutputStride * 14]);
+    vec_xst(e1, 0, &Output[OutputStride * 15]);
+}
 
 #elif defined(MLAS_LSX_INTRINSICS)
 
@@ -470,20 +658,20 @@ MlasTranspose8x8Block(
     __m128i c3 = __lsx_vilvh_h(b3, b2);
 
     __m128 d0 = (__m128)(__lsx_vilvl_w(c2, c0));
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 0], 0), __lsx_vpickve2gr_d(d0, 0), 0), (__m128i *)&Output[OutputStride * 0], 0);
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 1], 0), __lsx_vpickve2gr_d(d0, 1), 0), (__m128i *)&Output[OutputStride * 1], 0);
+    __lsx_vstelm_d(d0, &Output[OutputStride * 0], 0, 0);
+    __lsx_vstelm_d(d0, &Output[OutputStride * 1], 0, 1);
 
     __m128 d1 = (__m128)(__lsx_vilvh_w(c2, c0));
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 2], 0), __lsx_vpickve2gr_d(d1, 0), 0), (__m128i *)&Output[OutputStride * 2], 0);
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 3], 0), __lsx_vpickve2gr_d(d1, 1), 0), (__m128i *)&Output[OutputStride * 3], 0);
+    __lsx_vstelm_d(d1, &Output[OutputStride * 2], 0, 0);
+    __lsx_vstelm_d(d1, &Output[OutputStride * 3], 0, 1);
 
     __m128 d2 = (__m128)(__lsx_vilvl_w(c3, c1));
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 4], 0), __lsx_vpickve2gr_d(d2, 0), 0), (__m128i *)&Output[OutputStride * 4], 0);
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 5], 0), __lsx_vpickve2gr_d(d2, 1), 0), (__m128i *)&Output[OutputStride * 5], 0);
+    __lsx_vstelm_d(d2, &Output[OutputStride * 4], 0, 0);
+    __lsx_vstelm_d(d2, &Output[OutputStride * 5], 0, 1);
 
     __m128 d3 = (__m128)(__lsx_vilvh_w(c3, c1));
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 6], 0), __lsx_vpickve2gr_d(d3, 0), 0), (__m128i *)&Output[OutputStride * 6], 0);
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 7], 0), __lsx_vpickve2gr_d(d3, 1), 0), (__m128i *)&Output[OutputStride * 7], 0);
+    __lsx_vstelm_d(d3, &Output[OutputStride * 6], 0, 0);
+    __lsx_vstelm_d(d3, &Output[OutputStride * 7], 0, 1);
 }
 
 #endif
@@ -509,7 +697,7 @@ MlasTranspose4xNVector(
     Output[OutputStride * 3] = a3;
 }
 
-#if defined(MLAS_TARGET_POWER)
+#if defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_S390X)
 template<typename ElementType>
 MLAS_FORCEINLINE
 void
@@ -541,54 +729,72 @@ MlasTranspose8xNVector(
     MlasTranspose4xNVector(&Input[InputStride * 4], InputStride, &Output[OutputStride * 4], OutputStride);
 }
 
+template <typename ElementType>
 void
-MLASCALL
-MlasTranspose(
-    const uint32_t* Input,
-    uint32_t* Output,
-    size_t M,
-    size_t N
-    )
+MlasTransposeThreaded(
+    void* Context,
+    ptrdiff_t ThreadId
+);
 /*++
 
 Routine Description:
 
-    This routine transposes the input matrix (M rows by N columns) to the
-    output matrix (N rows by M columns).
+    This routine is invoked from a worker thread to execute a segment of a transpose
 
 Arguments:
 
-    Input - Supplies the input buffer.
+    Context - Supplies the pointer to the context for the threaded operation.
 
-    Output - Supplies the output buffer.
-
-    M - Supplies the number of rows for the input matrix and the number of
-        columns for the output matrix.
-
-    N - Supplies the number of columns for the input matrix and the number of
-        rows for the output matrix.
+    ThreadId - Supplies the current index of the threaded operation.
 
 Return Value:
 
     None.
 
 --*/
+
+template<>
+void
+MlasTransposeThreaded<uint32_t>(
+    void* Context,
+    ptrdiff_t ThreadId
+    )
 {
-    size_t n = N;
+    const auto* WorkBlock = (MLAS_TRANPOSE_WORK_BLOCK<uint32_t>*)Context;
+
+    //
+    // Partition the operation along the M dimension.
+    //
+
+    size_t IndexM;
+    size_t CountM;
+    MlasPartitionWork(ThreadId, WorkBlock->ThreadCountM, WorkBlock->M, &IndexM, &CountM);
+
+    //
+    // Set transpose parameters.
+    //
+
+    const size_t M = WorkBlock->M;
+    const size_t N = WorkBlock->N;
+
+    const uint32_t* Input = WorkBlock->Input + IndexM * N;
+    uint32_t* Output = WorkBlock->Output + IndexM;
 
     //
     // Transpose elements from the input matrix to the output matrix 4 columns
     // at a time.
     //
 
+    size_t n = N;
+
     while (n >= 4) {
 
         const uint32_t* s = Input;
         uint32_t* d = Output;
-        size_t m = M;
+        size_t m = CountM;
 
 #if defined(MLAS_SSE2_INTRINSICS) || defined(MLAS_NEON_INTRINSICS) || defined(MLAS_TARGET_POWER) || \
-    defined(MLAS_LSX_INTRINSICS)
+    defined(MLAS_TARGET_S390X) || defined(MLAS_LSX_INTRINSICS)
 
         while (m >= 4) {
 
@@ -624,7 +830,7 @@ Return Value:
 
         const uint32_t* s = Input;
         uint32_t* d = Output;
-        size_t m = M;
+        size_t m = CountM;
 
         while (m >= 4) {
 
@@ -650,68 +856,45 @@ Return Value:
     }
 }
 
+template<>
 void
-MLASCALL
-MlasTranspose(
-    const float* Input,
-    float* Output,
-    size_t M,
-    size_t N
+MlasTransposeThreaded<uint16_t>(
+    void* Context,
+    ptrdiff_t ThreadId
     )
 {
-    MlasTranspose(
-        reinterpret_cast<const uint32_t*>(Input),
-        reinterpret_cast<uint32_t*>(Output),
-        M,
-        N);
-}
+    const auto* WorkBlock = (MLAS_TRANPOSE_WORK_BLOCK<uint16_t>*)Context;
 
+    //
+    // Partition the operation along the M dimension.
+    //
 
-void
-MLASCALL
-MlasTranspose(
-    const uint16_t* Input,
-    uint16_t* Output,
-    size_t M,
-    size_t N
-    )
-/*++
+    size_t IndexM;
+    size_t CountM;
+    MlasPartitionWork(ThreadId, WorkBlock->ThreadCountM, WorkBlock->M, &IndexM, &CountM);
 
-Routine Description:
+    //
+    // Set transpose parameters.
+    //
 
-    This routine transposes the input matrix (M rows by N columns) to the
-    output matrix (N rows by M columns).
+    const size_t M = WorkBlock->M;
+    const size_t N = WorkBlock->N;
 
-Arguments:
-
-    Input - Supplies the input buffer.
-
-    Output - Supplies the output buffer.
-
-    M - Supplies the number of rows for the input matrix and the number of
-        columns for the output matrix.
-
-    N - Supplies the number of columns for the input matrix and the number of
-        rows for the output matrix.
-
-Return Value:
-
-    None.
-
---*/
-{
-    size_t n = N;
+    const uint16_t* Input = WorkBlock->Input + IndexM * N;
+    uint16_t* Output = WorkBlock->Output + IndexM;
 
     //
     // Transpose elements from the input matrix to the output matrix 4 columns
     // at a time.
     //
 
+    size_t n = N;
+
     while (n >= 4) {
 
         const uint16_t* s = Input;
         uint16_t* d = Output;
-        size_t m = M;
+        size_t m = CountM;
 
 #if defined(MLAS_SSE2_INTRINSICS) || defined(MLAS_NEON_INTRINSICS)  || defined(MLAS_LSX_INTRINSICS)
 
@@ -749,7 +932,7 @@ Return Value:
 
         const uint16_t* s = Input;
         uint16_t* d = Output;
-        size_t m = M;
+        size_t m = CountM;
 
         while (m >= 4) {
 
@@ -775,52 +958,46 @@ Return Value:
     }
 }
 
-
+template<>
 void
-MLASCALL
-MlasTranspose(
-    const uint8_t* Input,
-    uint8_t* Output,
-    size_t M,
-    size_t N
+MlasTransposeThreaded<uint8_t>(
+    void* Context,
+    ptrdiff_t ThreadId
     )
-/*++
-
-Routine Description:
-
-    This routine transposes the input matrix (M rows by N columns) to the
-    output matrix (N rows by M columns).
-
-Arguments:
-
-    Input - Supplies the input buffer.
-
-    Output - Supplies the output buffer.
-
-    M - Supplies the number of rows for the input matrix and the number of
-        columns for the output matrix.
-
-    N - Supplies the number of columns for the input matrix and the number of
-        rows for the output matrix.
-
-Return Value:
-
-    None.
-
---*/
 {
-    size_t n = N;
+    const auto* WorkBlock = (MLAS_TRANPOSE_WORK_BLOCK<uint8_t>*)Context;
+
+    //
+    // Partition the operation along the M dimension.
+    //
+
+    size_t IndexM;
+    size_t CountM;
+    MlasPartitionWork(ThreadId, WorkBlock->ThreadCountM, WorkBlock->M, &IndexM, &CountM);
+
+    //
+    // Set transpose parameters.
+    //
+
+    const size_t M = WorkBlock->M;
+    const size_t N = WorkBlock->N;
+
+    const uint8_t* Input = WorkBlock->Input + IndexM * N;
+    uint8_t* Output = WorkBlock->Output + IndexM;
 
     //
     // Transpose elements from the input matrix to the output matrix 8 columns
     // at a time.
     //
-#if defined(MLAS_TARGET_POWER)
+
+    size_t n = N;
+
+#if defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_S390X)
     while (n >= 16) {
 
         const uint8_t* s = Input;
         uint8_t* d = Output;
-        size_t m = M;
+        size_t m = CountM;
         while (m >= 16) {
 
             MlasTranspose16x16Block(s, N, d, M);
@@ -848,7 +1025,7 @@ Return Value:
 
         const uint8_t* s = Input;
         uint8_t* d = Output;
-        size_t m = M;
+        size_t m = CountM;
 
 #if defined(MLAS_SSE2_INTRINSICS) || defined(MLAS_NEON_INTRINSICS)  || defined(MLAS_LSX_INTRINSICS)
 
@@ -886,7 +1063,7 @@ Return Value:
 
         const uint8_t* s = Input;
         uint8_t* d = Output;
-        size_t m = M;
+        size_t m = CountM;
 
         while (m >= 8) {
 
@@ -912,17 +1089,140 @@ Return Value:
     }
 }
 
+template<typename DataType>
 void
 MLASCALL
 MlasTranspose(
+    const DataType* Input,
+    DataType* Output,
+    size_t M,
+    size_t N,
+    MLAS_THREADPOOL* ThreadPool
+    )
+/*++
+
+Routine Description:
+
+    This routine transposes the input matrix (M rows by N columns) to the
+    output matrix (N rows by M columns).
+
+Arguments:
+
+    Input - Supplies the input buffer.
+
+    Output - Supplies the output buffer.
+
+    M - Supplies the number of rows for the input matrix and the number of
+        columns for the output matrix.
+
+    N - Supplies the number of columns for the input matrix and the number of
+        rows for the output matrix.
+
+    ThreadPool - Supplies the thread pool object to use, else nullptr if the
+        base library threading support should be used.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    MLAS_TRANPOSE_WORK_BLOCK<DataType> WorkBlock;
+
+    //
+    // Capture the transpose parameters to the work block.
+    //
+
+    WorkBlock.Input = Input;
+    WorkBlock.Output = Output;
+    WorkBlock.M = M;
+    WorkBlock.N = N;
+
+    //
+    // Compute the number of target threads given the complexity of the transpose
+    // operation. Limit the number of threads to the number of rows and try to
+    // keep each thread processing a minimum number of elements before using
+    // another thread.
+    //
+
+    ptrdiff_t ThreadCountM = MlasGetMaximumThreadCount(ThreadPool);
+
+    if (size_t(ThreadCountM) > M) {
+        ThreadCountM = ptrdiff_t(M);
+    }
+
+    WorkBlock.ThreadCountM = ThreadCountM;
+
+    MlasExecuteThreaded(MlasTransposeThreaded<DataType>, &WorkBlock, ThreadCountM, ThreadPool);
+}
+
+template
+void
+MLASCALL
+MlasTranspose<uint32_t>(
+    const uint32_t* Input,
+    uint32_t* Output,
+    size_t M,
+    size_t N,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+template
+void
+MLASCALL
+MlasTranspose<uint16_t>(
+    const uint16_t* Input,
+    uint16_t* Output,
+    size_t M,
+    size_t N,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+template
+void
+MLASCALL
+MlasTranspose<uint8_t>(
+    const uint8_t* Input,
+    uint8_t* Output,
+    size_t M,
+    size_t N,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+template<>
+void
+MLASCALL
+MlasTranspose<int8_t>(
     const int8_t* Input,
     int8_t* Output,
     size_t M,
-    size_t N)
+    size_t N,
+    MLAS_THREADPOOL* ThreadPool
+    )
 {
     MlasTranspose(
         reinterpret_cast<const uint8_t*>(Input),
         reinterpret_cast<uint8_t*>(Output),
         M,
-        N);
+        N,
+        ThreadPool);
+}
+
+template<>
+void
+MLASCALL
+MlasTranspose<float>(
+    const float* Input,
+    float* Output,
+    size_t M,
+    size_t N,
+    MLAS_THREADPOOL* ThreadPool
+    )
+{
+    MlasTranspose(
+        reinterpret_cast<const uint32_t*>(Input),
+        reinterpret_cast<uint32_t*>(Output),
+        M,
+        N,
+        ThreadPool);
 }

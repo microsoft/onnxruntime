@@ -1,8 +1,10 @@
 /*
- * Copyright (c) 2021, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2021, 2025, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime.providers;
+
+import ai.onnxruntime.OrtFlags;
 
 /** Flags for the NNAPI provider. */
 public enum NNAPIFlags implements OrtFlags {

@@ -63,18 +63,18 @@ class TestInferenceSessionWithDmlGraph(unittest.TestCase):
     def test_ort_value_update_in_place(self):
         x0 = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         ortvalue_cpu = onnxrt.OrtValue.ortvalue_from_numpy(x0)
-        np.testing.assert_allclose(x0, ortvalue_cpu.numpy())
+        np.testing.assert_allclose(ortvalue_cpu.numpy(), x0)
 
         x1 = np.array([[10.0, 20.0], [30.0, 40.0], [50.0, 60.0]], dtype=np.float32)
         ortvalue_cpu.update_inplace(x1)
-        np.testing.assert_allclose(x1, ortvalue_cpu.numpy())
+        np.testing.assert_allclose(ortvalue_cpu.numpy(), x1)
 
         if "DmlExecutionProvider" in onnxrt.get_available_providers():
             ortvalue_gpu = onnxrt.OrtValue.ortvalue_from_numpy(x0, "dml", 0)
-            np.testing.assert_allclose(x0, ortvalue_gpu.numpy())
+            np.testing.assert_allclose(ortvalue_gpu.numpy(), x0)
 
             ortvalue_gpu.update_inplace(x1)
-            np.testing.assert_allclose(x1, ortvalue_gpu.numpy())
+            np.testing.assert_allclose(ortvalue_gpu.numpy(), x1)
 
     def test_select_ep_to_run_dml_graph(self):
         if "DmlExecutionProvider" in onnxrt.get_available_providers():
@@ -104,11 +104,11 @@ class TestInferenceSessionWithDmlGraph(unittest.TestCase):
         # One regular run for the necessary memory allocation and dml graph capturing
         session.run_with_iobinding(io_binding, ro)
         expected_y = np.array([[5.0], [11.0], [17.0]] * INPUT_SIZE, dtype=np.float32)
-        np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
+        np.testing.assert_allclose(y_ortvalue.numpy(), expected_y, rtol=1e-05, atol=1e-05)
 
         # After capturing, DML graph replay happens from this Run onwards
         session.run_with_iobinding(io_binding, ro)
-        np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
+        np.testing.assert_allclose(y_ortvalue.numpy(), expected_y, rtol=1e-05, atol=1e-05)
 
         # Update input and then replay DML graph
         x_ortvalue.update_inplace(
@@ -119,8 +119,8 @@ class TestInferenceSessionWithDmlGraph(unittest.TestCase):
         )
         session.run_with_iobinding(io_binding, ro)
         np.testing.assert_allclose(
-            np.array([[50.0], [110.0], [170.0]] * INPUT_SIZE, dtype=np.float32),
             y_ortvalue.numpy(),
+            np.array([[50.0], [110.0], [170.0]] * INPUT_SIZE, dtype=np.float32),
             rtol=1e-05,
             atol=1e-05,
         )
@@ -163,7 +163,7 @@ class TestInferenceSessionWithDmlGraph(unittest.TestCase):
             session.run_with_iobinding(io_bindings[i], ro)
             io_bindings[i].synchronize_outputs()
             expected_y = np.array(expected_y_base[: i + 1][:] * INPUT_SIZE, dtype=np.float32)
-            np.testing.assert_allclose(expected_y, y_ortvalues[i].numpy(), rtol=1e-05, atol=1e-05)
+            np.testing.assert_allclose(y_ortvalues[i].numpy(), expected_y, rtol=1e-05, atol=1e-05)
 
         del ro
         ro = onnxrt.RunOptions()
@@ -177,7 +177,7 @@ class TestInferenceSessionWithDmlGraph(unittest.TestCase):
             session.run_with_iobinding(io_bindings[i], ro)
             io_bindings[i].synchronize_outputs()
             expected_y = np.array(expected_y_base_mul_10[: i + 1][:] * INPUT_SIZE, dtype=np.float32)
-            np.testing.assert_allclose(expected_y, y_ortvalues[i].numpy(), rtol=1e-05, atol=1e-05)
+            np.testing.assert_allclose(y_ortvalues[i].numpy(), expected_y, rtol=1e-05, atol=1e-05)
 
 
 if __name__ == "__main__":

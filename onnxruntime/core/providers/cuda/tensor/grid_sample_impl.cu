@@ -21,15 +21,27 @@ __device__ T GsDenormalize(T n, int64_t length, bool align_corners) {
   return x;
 }
 
-
 template <typename T>
 __device__ T GsReflect(T x, float x_min, float x_max) {
   float fx = static_cast<float>(x);
   float dx = {};
+  // Guard against NaN or Inf first, before computing the range, so a non-finite coordinate
+  // returns early without an unnecessary subtraction and can never reach the float->int cast
+  // (undefined behavior) below.
+  if (!isfinite(fx)) {
+    return static_cast<T>(x_min);
+  }
   float range = x_max - x_min;
+  // Guard against a non-positive range (e.g. dim==1 with align_corners=true) which would
+  // otherwise produce wild indices via division by zero.
+  if (!(range > 0.0f)) {
+    return static_cast<T>(x_min);
+  }
   if (fx < x_min) {
     dx = x_min - fx;
-    int n = static_cast<int>(dx / range);
+    // Use int64_t rather than int: for extreme (but finite) inputs, dx / range can exceed
+    // INT_MAX, making a float->int cast undefined behavior.
+    int64_t n = static_cast<int64_t>(dx / range);
     float r = dx - n * range;
     if (n % 2 == 0) {
       fx = x_min + r;
@@ -38,7 +50,7 @@ __device__ T GsReflect(T x, float x_min, float x_max) {
     }
   } else if (fx > x_max) {
     dx = fx - x_max;
-    int n = static_cast<int>(dx / range);
+    int64_t n = static_cast<int64_t>(dx / range);
     float r = dx - n * range;
     if (n % 2 == 0) {
       fx = x_max - r;
@@ -50,6 +62,15 @@ __device__ T GsReflect(T x, float x_min, float x_max) {
   return static_cast<T>(fx);
 }
 
+// Returns true when v is finite and its magnitude is small enough that converting it to
+// int64_t via floor / nearbyint is well-defined. 2^62 is far below INT64_MAX (~9.22e18)
+// and leaves ample margin for any realistic image dimension.
+template <typename T>
+__device__ inline bool IsSafeForInt64Conversion(T v) {
+  constexpr T kSafeBound = static_cast<T>(int64_t{1} << 62);
+  return isfinite(v) && v >= -kSafeBound && v <= kSafeBound;
+}
+
 template <typename T, bool Layout>
 __device__ T PixelAtGrid(const T* input_data, int64_t bIdx, int64_t cIdx, int64_t y, int64_t x,
                          int64_t padding_mode, int64_t N, int64_t C, int64_t H, int64_t W, float border[4]) {
@@ -57,8 +78,8 @@ __device__ T PixelAtGrid(const T* input_data, int64_t bIdx, int64_t cIdx, int64_
 
   auto PixelOffset = [bIdx, cIdx, C, H, W](int64_t x, int64_t y) -> int64_t {
     return Layout == LAYOUT_NCHW
-       ? (bIdx * C * H * W + cIdx * H * W + y * W + x)
-       : (bIdx * H * W * C + y * W * C + x * C + cIdx);
+               ? (bIdx * C * H * W + cIdx * H * W + y * W + x)
+               : (bIdx * H * W * C + y * W * C + x * C + cIdx);
   };
 
   if (padding_mode == 0) {  // zeros
@@ -72,6 +93,11 @@ __device__ T PixelAtGrid(const T* input_data, int64_t bIdx, int64_t cIdx, int64_
   } else {  // Reflection
     x = (int64_t)GsReflect<T>(x, border[0], border[2]);
     y = (int64_t)GsReflect<T>(y, border[1], border[3]);
+    // Safety clamp: GsReflect is computed in floating point and cast back to int64_t.
+    // Extreme grid coordinates can overflow that cast, so clamp the resulting indices
+    // back into the image range before indexing.
+    x = max((int64_t)0, min((int64_t)W - 1, x));
+    y = max((int64_t)0, min((int64_t)H - 1, y));
     pixel = input_data[PixelOffset(x, y)];
   }
   return pixel;
@@ -112,121 +138,134 @@ __global__ void _GridSampleKernel(
     const int64_t W_in,
     const int64_t H_out,
     const int64_t W_out,
-    T* output_data)
-{
-    CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(idx, N * C * H_out * W_out);
-    // extract batch index, channel index, y index, x index for current thread
-    int BIdx, yIdx, xIdx, cIdx;
-    if constexpr (Layout == LAYOUT_NCHW) {
-      BIdx = idx / (C * H_out * W_out);
-      int tmpBCnt = BIdx * (C * H_out * W_out);
+    T* output_data) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(idx, N * C * H_out * W_out);
+  // extract batch index, channel index, y index, x index for current thread
+  int BIdx, yIdx, xIdx, cIdx;
+  if constexpr (Layout == LAYOUT_NCHW) {
+    BIdx = idx / (C * H_out * W_out);
+    int tmpBCnt = BIdx * (C * H_out * W_out);
 
-      cIdx = (idx - tmpBCnt) / (H_out * W_out);
-      int tmpCCnt = tmpBCnt + cIdx * (H_out * W_out);
+    cIdx = (idx - tmpBCnt) / (H_out * W_out);
+    int tmpCCnt = tmpBCnt + cIdx * (H_out * W_out);
 
-      yIdx = (idx - tmpCCnt) / W_out;
-      int tmpHCnt = tmpCCnt + yIdx * W_out;
+    yIdx = (idx - tmpCCnt) / W_out;
+    int tmpHCnt = tmpCCnt + yIdx * W_out;
 
-      xIdx = (idx - tmpHCnt);
-    } else {
-      static_assert(Layout == LAYOUT_NHWC, "Unsupported layout");
+    xIdx = (idx - tmpHCnt);
+  } else {
+    static_assert(Layout == LAYOUT_NHWC, "Unsupported layout");
 
-      BIdx = idx / (H_out * W_out * C);
-      int tmpBCnt = BIdx * (H_out * W_out * C);
+    BIdx = idx / (H_out * W_out * C);
+    int tmpBCnt = BIdx * (H_out * W_out * C);
 
-      yIdx = (idx - tmpBCnt) / (W_out * C);
-      int tmpHCnt = tmpBCnt + yIdx * (W_out * C);
+    yIdx = (idx - tmpBCnt) / (W_out * C);
+    int tmpHCnt = tmpBCnt + yIdx * (W_out * C);
 
-      xIdx = (idx - tmpHCnt) / C;
-      int tmpWCnt = tmpHCnt + xIdx * C;
+    xIdx = (idx - tmpHCnt) / C;
+    int tmpWCnt = tmpHCnt + xIdx * C;
 
-      cIdx = (idx - tmpWCnt);
+    cIdx = (idx - tmpWCnt);
+  }
+
+  int grid_idx = BIdx * H_out * W_out + yIdx * W_out + xIdx;
+  // ONNX spec guideline about ordering of grid indices:
+  // Following computer vision convention, the coordinates in the length-r location vector
+  // are listed from the innermost tensor dimension to the outermost, the opposite of regular
+  // tensor indexing.
+  T grid_X = grid_data[grid_idx * 2 + 0];
+  T grid_Y = grid_data[grid_idx * 2 + 1];
+  int outIdx = idx;
+
+  T grid_x_imgSpace = GsDenormalize(grid_X, W_in, align_corners == 1);
+  T grid_y_imgSpace = GsDenormalize(grid_Y, H_in, align_corners == 1);
+  if (mode == 1) {  // nearest
+    grid_x_imgSpace = nearbyint(grid_x_imgSpace);
+    grid_y_imgSpace = nearbyint(grid_y_imgSpace);
+  }
+  float x_min = -0.5f;
+  float x_max = W_in - 0.5f;
+  float y_min = -0.5f;
+  float y_max = H_in - 0.5f;
+
+  if (align_corners) {
+    x_min = 0.0f;
+    x_max = float(W_in) - 1.0f;
+    y_min = 0.0f;
+    y_max = float(H_in) - 1.0f;
+  }
+  float border[] = {x_min, y_min, x_max, y_max};  // l-t-r-b
+
+  // Sanitize coordinates that are non-finite or whose magnitude is too large for a safe
+  // float->int64 conversion. Substituting the in-range lower border keeps the subsequent
+  // floor / nearbyint casts well-defined for every padding mode.
+  if (!IsSafeForInt64Conversion(grid_x_imgSpace)) {
+    grid_x_imgSpace = x_min;
+  }
+  if (!IsSafeForInt64Conversion(grid_y_imgSpace)) {
+    grid_y_imgSpace = y_min;
+  }
+  if (grid_x_imgSpace < x_min || grid_x_imgSpace > x_max ||
+      grid_y_imgSpace < y_min || grid_y_imgSpace > y_max) {  // out of bound
+    if (padding_mode == 1) {                                 // border
+      // Clamping must not be done here, see #10607
+      // grid_x_imgSpace = max(0.0f, min(grid_x_imgSpace, W_in - 1.0f));
+      // grid_y_imgSpace = max(0.0f, min(grid_y_imgSpace, H_in - 1.0f));
+    } else if (padding_mode == 2) {  // reflection
+      grid_x_imgSpace = GsReflect(grid_x_imgSpace, x_min, x_max);
+      grid_y_imgSpace = GsReflect(grid_y_imgSpace, y_min, y_max);
     }
+  }
 
-    int grid_idx = BIdx * H_out * W_out + yIdx * W_out + xIdx;
-    T grid_X = grid_data[grid_idx * 2 + 0];
-    T grid_Y = grid_data[grid_idx * 2 + 1];
-    int outIdx = idx;
+  if (mode == 0) {  // bilinear
+    int64_t x1 = static_cast<int64_t>(floor(grid_x_imgSpace));
+    int64_t y1 = static_cast<int64_t>(floor(grid_y_imgSpace));
+    int64_t x2 = x1 + 1;
+    int64_t y2 = y1 + 1;
+    T w_lt = 0.0f;
+    T w_rt = 0.0f;
+    T w_lb = 0.0f;
+    T w_rb = 0.0f;
 
-    T grid_x_imgSpace = GsDenormalize(grid_X, W_in, align_corners == 1);
-    T grid_y_imgSpace = GsDenormalize(grid_Y, H_in, align_corners == 1);
-    if (mode == 1) {  //nearest
-      grid_x_imgSpace = nearbyint(grid_x_imgSpace);
-      grid_y_imgSpace = nearbyint(grid_y_imgSpace);
-    }
-    float x_min = -0.5f;
-    float x_max = W_in - 0.5f;
-    float y_min = -0.5f;
-    float y_max = H_in - 0.5f;
+    T w_r = grid_x_imgSpace - x1;
+    T w_l = 1.0f - w_r;
+    T w_b = grid_y_imgSpace - y1;
+    T w_t = 1.0f - w_b;
 
-    if (align_corners) {
-      x_min = 0.0f;
-      x_max = W_in - 1.0;
-      y_min = 0.0f;
-      y_max = H_in - 1.0f;
-    }
-    float border[] = {x_min, y_min, x_max, y_max};  // l-t-r-b
-    if (grid_x_imgSpace < x_min || grid_x_imgSpace > x_max ||
-        grid_y_imgSpace < y_min || grid_y_imgSpace > y_max) { // out of bound
-      if (padding_mode == 1) {  // border
-        // Clamping must not be done here, see #10607
-        // grid_x_imgSpace = max(0.0f, min(grid_x_imgSpace, W_in - 1.0f));
-        // grid_y_imgSpace = max(0.0f, min(grid_y_imgSpace, H_in - 1.0f));
-      } else if (padding_mode == 2) {  // reflection
-        grid_x_imgSpace = GsReflect(grid_x_imgSpace, x_min, x_max);
-        grid_y_imgSpace = GsReflect(grid_y_imgSpace, y_min, y_max);
-      }
-    }
+    w_lt = w_t * w_l;
+    w_rt = w_t * w_r;
+    w_lb = w_b * w_l;
+    w_rb = w_b * w_r;
 
-    if (mode == 0) {  // bilinear
-      int x1 = floor(grid_x_imgSpace);
-      int y1 = floor(grid_y_imgSpace);
-      int x2 = x1 + 1;
-      int y2 = y1 + 1;
-      T w_lt = 0.0f;
-      T w_rt = 0.0f;
-      T w_lb = 0.0f;
-      T w_rb = 0.0f;
-
-      T w_r = grid_x_imgSpace - x1;
-      T w_l = 1.0f - w_r;
-      T w_b = grid_y_imgSpace - y1;
-      T w_t = 1.0f - w_b;
-
-      w_lt = w_t * w_l;
-      w_rt = w_t * w_r;
-      w_lb = w_b * w_l;
-      w_rb = w_b * w_r;
-
-      T lt_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y1, x1, padding_mode, N, C, H_in, W_in, border);
-      T rt_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y1, x2, padding_mode, N, C, H_in, W_in, border);
-      T lb_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y2, x1, padding_mode, N, C, H_in, W_in, border);
-      T rb_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y2, x2, padding_mode, N, C, H_in, W_in, border);
-      T interpoV = w_lt * lt_v + w_rt * rt_v + w_lb * lb_v + w_rb * rb_v;
-      output_data[outIdx] = interpoV;
-      return;
-    }
-    if (mode == 1) {  // nearest
-      int x_n = grid_x_imgSpace;
-      int y_n = grid_y_imgSpace;
-      output_data[outIdx] =
+    T lt_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y1, x1, padding_mode, N, C, H_in, W_in, border);
+    T rt_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y1, x2, padding_mode, N, C, H_in, W_in, border);
+    T lb_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y2, x1, padding_mode, N, C, H_in, W_in, border);
+    T rb_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y2, x2, padding_mode, N, C, H_in, W_in, border);
+    T interpoV = w_lt * lt_v + w_rt * rt_v + w_lb * lb_v + w_rb * rb_v;
+    output_data[outIdx] = interpoV;
+    return;
+  }
+  if (mode == 1) {  // nearest
+    int64_t x_n = static_cast<int64_t>(grid_x_imgSpace);
+    int64_t y_n = static_cast<int64_t>(grid_y_imgSpace);
+    output_data[outIdx] =
         PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y_n, x_n, padding_mode, N, C, H_in, W_in, border);
-      return;
-    }
-    if (mode == 2) {  // bicubic
-      int64_t x0 = static_cast<int64_t>(std::floor(grid_x_imgSpace)) - 1;  // top-left corner of the bbox
-      int64_t y0 = static_cast<int64_t>(std::floor(grid_y_imgSpace)) - 1;
-      T p[4][4] = {};  // [H][W]
-      for (int64_t h = 0; h < 4; h++) {
-        for (int64_t w = 0; w < 4; w++) {
-          p[h][w] = 
+    return;
+  }
+  if (mode == 2) {                                                       // bicubic
+    int64_t x0 = static_cast<int64_t>(std::floor(grid_x_imgSpace)) - 1;  // top-left corner of the bbox
+    int64_t y0 = static_cast<int64_t>(std::floor(grid_y_imgSpace)) - 1;
+    T p[4][4] = {};  // [H][W]
+    for (int64_t h = 0; h < 4; h++) {
+      for (int64_t w = 0; w < 4; w++) {
+        p[h][w] =
             PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, h + y0, w + x0, padding_mode, N, C, H_in, W_in, border);
-        }
       }
-      T dx = grid_x_imgSpace - x0 - 1;
-      T dy = grid_y_imgSpace - y0 - 1;
-      output_data[outIdx] = GsBicubicInterpolate(p, dx, dy);
     }
+    T dx = grid_x_imgSpace - x0 - 1;
+    T dy = grid_y_imgSpace - y0 - 1;
+    output_data[outIdx] = GsBicubicInterpolate(p, dx, dy);
+  }
 }
 
 template <typename T, bool IsNHWC>
@@ -244,9 +283,9 @@ void GridSampleImpl(
   using Ch = Channels<IsNHWC>;
 
   int blocksPerGrid = static_cast<int>(
-    ceil(static_cast<T>(dims[Ch::N] * dims[Ch::C] * H_out * W_out) / GridDim::maxThreadsPerBlock));
+      ceil(static_cast<T>(dims[Ch::N] * dims[Ch::C] * H_out * W_out) / GridDim::maxThreadsPerBlock));
   _GridSampleKernel<T, IsNHWC><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-      input_data, grid_data, mode, padding_mode, align_corners, 
+      input_data, grid_data, mode, padding_mode, align_corners,
       dims[Ch::N], dims[Ch::C], dims[Ch::H], dims[Ch::W],
       H_out, W_out, output_data);
 }
@@ -259,6 +298,276 @@ void GridSampleImpl(
 SPECIALIZED_IMPL(float, false)  // NCHW
 SPECIALIZED_IMPL(float, true)   // NHWC
 
+template <typename T, bool Layout>
+__device__ T PixelAtGrid3D(const T* input_data, int64_t bIdx, int64_t cIdx, int64_t z, int64_t y, int64_t x,
+                           int64_t padding_mode, int64_t N, int64_t C, int64_t D, int64_t H, int64_t W, float border[6]) {
+  T pixel = 0.0f;
+
+  auto PixelOffset3D = [bIdx, cIdx, C, D, H, W](int64_t z, int64_t y, int64_t x) -> int64_t {
+    return Layout == LAYOUT_NCHW
+               ? (bIdx * C * D * H * W + cIdx * D * H * W + z * H * W + y * W + x)
+               : (bIdx * D * H * W * C + z * H * W * C + y * W * C + x * C + cIdx);
+  };
+
+  if (padding_mode == 0) {  // zeros
+    if (z >= 0 && z < D && y >= 0 && y < H && x >= 0 && x < W) {
+      pixel = input_data[PixelOffset3D(z, y, x)];
+    }
+  } else if (padding_mode == 1) {  // border
+    z = max((int64_t)0, min((int64_t)D - 1, (int64_t)z));
+    y = max((int64_t)0, min((int64_t)H - 1, (int64_t)y));
+    x = max((int64_t)0, min((int64_t)W - 1, (int64_t)x));
+
+    pixel = input_data[PixelOffset3D(z, y, x)];
+  } else {  // Reflection
+    z = (int64_t)GsReflect<T>(z, border[0], border[3]);
+    y = (int64_t)GsReflect<T>(y, border[1], border[4]);
+    x = (int64_t)GsReflect<T>(x, border[2], border[5]);
+    // Safety clamp: GsReflect is computed in floating point and cast back to int64_t.
+    // Extreme grid coordinates can overflow that cast, so clamp the resulting indices
+    // back into the volume range before indexing.
+    z = max((int64_t)0, min((int64_t)D - 1, z));
+    y = max((int64_t)0, min((int64_t)H - 1, y));
+    x = max((int64_t)0, min((int64_t)W - 1, x));
+    pixel = input_data[PixelOffset3D(z, y, x)];
+  }
+  return pixel;
+}
+
+template <typename T, bool Layout>
+__global__ void _GridSampleKernel3D(
+    const T* __restrict__ input_data,
+    const T* __restrict__ grid_data,
+    const int64_t mode,
+    const int64_t padding_mode,
+    const int64_t align_corners,
+    const int64_t N,
+    const int64_t C,
+    const int64_t D_in,
+    const int64_t H_in,
+    const int64_t W_in,
+    const int64_t D_out,
+    const int64_t H_out,
+    const int64_t W_out,
+    T* __restrict__ output_data) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(idx, N * C * D_out * H_out * W_out);
+
+  // extract batch index, channel index, y index, x index, z index for current thread
+  int BIdx, cIdx, zIdx, yIdx, xIdx;
+  if constexpr (Layout == LAYOUT_NCHW) {
+    BIdx = idx / (C * D_out * H_out * W_out);
+    int tmpBCnt = BIdx * (C * D_out * H_out * W_out);
+
+    cIdx = (idx - tmpBCnt) / (D_out * H_out * W_out);
+    int tmpCCnt = tmpBCnt + cIdx * (D_out * H_out * W_out);
+
+    zIdx = (idx - tmpCCnt) / (H_out * W_out);
+    int tmpDCnt = tmpCCnt + zIdx * (H_out * W_out);
+
+    yIdx = (idx - tmpDCnt) / (W_out);
+    int tmpHCnt = tmpDCnt + yIdx * W_out;
+
+    xIdx = (idx - tmpHCnt);
+  } else {  // Layout == LAYOUT_NHWC
+    BIdx = idx / (D_out * H_out * W_out * C);
+    int tmpBCnt = BIdx * (D_out * H_out * W_out * C);
+
+    zIdx = (idx - tmpBCnt) / (H_out * W_out * C);
+    int tmpDCnt = tmpBCnt + zIdx * (H_out * W_out * C);
+
+    yIdx = (idx - tmpDCnt) / (W_out * C);
+    int tmpHCnt = tmpDCnt + yIdx * (W_out * C);
+
+    xIdx = (idx - tmpHCnt) / C;
+    int tmpWCnt = tmpHCnt + xIdx * C;
+
+    cIdx = (idx - tmpWCnt);
+  }
+
+  int grid_idx = BIdx * D_out * H_out * W_out + zIdx * H_out * W_out + yIdx * W_out + xIdx;
+
+  // ONNX spec guideline about ordering of grid indices:
+  // Following computer vision convention, the coordinates in the length-r location vector
+  // are listed from the innermost tensor dimension to the outermost, the opposite of regular
+  // tensor indexing.
+  T grid_X = grid_data[grid_idx * 3 + 0];
+  T grid_Y = grid_data[grid_idx * 3 + 1];
+  T grid_Z = grid_data[grid_idx * 3 + 2];
+
+  int outIdx = idx;
+
+  T grid_x_volSpace = GsDenormalize(grid_X, W_in, align_corners == 1);
+  T grid_y_volSpace = GsDenormalize(grid_Y, H_in, align_corners == 1);
+  T grid_z_volSpace = GsDenormalize(grid_Z, D_in, align_corners == 1);
+
+  if (mode == 1) {  // nearest
+    grid_x_volSpace = nearbyint(grid_x_volSpace);
+    grid_y_volSpace = nearbyint(grid_y_volSpace);
+    grid_z_volSpace = nearbyint(grid_z_volSpace);
+  }
+
+  float z_min = -0.5f;
+  float z_max = D_in - 0.5f;
+  float y_min = -0.5f;
+  float y_max = H_in - 0.5f;
+  float x_min = -0.5f;
+  float x_max = W_in - 0.5f;
+
+  if (align_corners) {
+    z_min = 0.0f;
+    z_max = float(D_in) - 1.0f;
+    y_min = 0.0f;
+    y_max = float(H_in) - 1.0f;
+    x_min = 0.0f;
+    x_max = float(W_in) - 1.0f;
+  }
+
+  float border[] = {z_min, y_min, x_min, z_max, y_max, x_max};  // zmin,ymin,xmin,zmax,ymax,xmax
+
+  // Sanitize coordinates that are non-finite or whose magnitude is too large for a safe
+  // float->int64 conversion. Substituting the in-range lower border keeps the subsequent
+  // floor / nearbyint casts well-defined for every padding mode.
+  if (!IsSafeForInt64Conversion(grid_x_volSpace)) {
+    grid_x_volSpace = x_min;
+  }
+  if (!IsSafeForInt64Conversion(grid_y_volSpace)) {
+    grid_y_volSpace = y_min;
+  }
+  if (!IsSafeForInt64Conversion(grid_z_volSpace)) {
+    grid_z_volSpace = z_min;
+  }
+  if (grid_z_volSpace < z_min || grid_z_volSpace > z_max ||
+      grid_y_volSpace < y_min || grid_y_volSpace > y_max ||
+      grid_x_volSpace < x_min || grid_x_volSpace > x_max) {  // out of bound
+    if (padding_mode == 1) {                                 // border
+      // Clamping must not be done here, see #10607
+      // grid_z_volSpace = max(0.0f, min(grid_z_volSpace, D_in - 1.0f));
+      // grid_y_volSpace = max(0.0f, min(grid_y_volSpace, H_in - 1.0f));
+      // grid_x_volSpace = max(0.0f, min(grid_x_volSpace, W_in - 1.0f));
+    } else if (padding_mode == 2) {  // reflection
+      grid_z_volSpace = GsReflect(grid_z_volSpace, z_min, z_max);
+      grid_y_volSpace = GsReflect(grid_y_volSpace, y_min, y_max);
+      grid_x_volSpace = GsReflect(grid_x_volSpace, x_min, x_max);
+    }
+  }
+
+  if (mode == 0) {  // bilinear
+    int64_t z1 = static_cast<int64_t>(floor(grid_z_volSpace));
+    int64_t y1 = static_cast<int64_t>(floor(grid_y_volSpace));
+    int64_t x1 = static_cast<int64_t>(floor(grid_x_volSpace));
+    int64_t z2 = z1 + 1;
+    int64_t y2 = y1 + 1;
+    int64_t x2 = x1 + 1;
+
+    // Weights
+    T w_lt_front = 0.0f;
+    T w_rt_front = 0.0f;
+    T w_lb_front = 0.0f;
+    T w_rb_front = 0.0f;
+
+    T w_lt_back = 0.0f;
+    T w_rt_back = 0.0f;
+    T w_lb_back = 0.0f;
+    T w_rb_back = 0.0f;
+
+    // Assign weight values
+    T w_back = grid_z_volSpace - z1;
+    T w_front = 1.0f - w_back;
+    T w_b = grid_y_volSpace - y1;
+    T w_t = 1.0f - w_b;
+    T w_r = grid_x_volSpace - x1;
+    T w_l = 1.0f - w_r;
+
+    w_lt_front = w_t * w_l * w_front;
+    w_rt_front = w_t * w_r * w_front;
+    w_lb_front = w_b * w_l * w_front;
+    w_rb_front = w_b * w_r * w_front;
+
+    w_lt_back = w_t * w_l * w_back;
+    w_rt_back = w_t * w_r * w_back;
+    w_lb_back = w_b * w_l * w_back;
+    w_rb_back = w_b * w_r * w_back;
+
+    T lt_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y1, x1, padding_mode, N, C, D_in, H_in, W_in, border);
+    T rt_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y1, x2, padding_mode, N, C, D_in, H_in, W_in, border);
+    T lb_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y2, x1, padding_mode, N, C, D_in, H_in, W_in, border);
+    T rb_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y2, x2, padding_mode, N, C, D_in, H_in, W_in, border);
+
+    T lt_back_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z2, y1, x1, padding_mode, N, C, D_in, H_in, W_in, border);
+    T rt_back_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z2, y1, x2, padding_mode, N, C, D_in, H_in, W_in, border);
+    T lb_back_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z2, y2, x1, padding_mode, N, C, D_in, H_in, W_in, border);
+    T rb_back_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z2, y2, x2, padding_mode, N, C, D_in, H_in, W_in, border);
+
+    T interpoV = w_lt_front * lt_front_v + w_rt_front * rt_front_v + w_lb_front * lb_front_v + w_rb_front * rb_front_v +
+                 w_lt_back * lt_back_v + w_rt_back * rt_back_v + w_lb_back * lb_back_v + w_rb_back * rb_back_v;
+
+    output_data[outIdx] = interpoV;
+    return;
+  }
+  if (mode == 1) {  // nearest
+    int64_t x_n = static_cast<int64_t>(grid_x_volSpace);
+    int64_t y_n = static_cast<int64_t>(grid_y_volSpace);
+    int64_t z_n = static_cast<int64_t>(grid_z_volSpace);
+
+    output_data[outIdx] =
+        PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z_n, y_n, x_n, padding_mode, N, C, D_in, H_in, W_in, border);
+    return;
+  }
+  if (mode == 2) {  // cubic
+                    // Not implemented for 3D input. But will not reach here per input validation
+  }
+}
+
+template <typename T, bool IsNHWC>
+void GridSampleImpl3D(
+    cudaStream_t stream,
+    const T* input_data,
+    const T* grid_data,
+    const int64_t mode,
+    const int64_t padding_mode,
+    const int64_t align_corners,
+    const int64_t dims[5],
+    const int64_t D_out,
+    const int64_t H_out,
+    const int64_t W_out,
+    T* output_data) {
+  int64_t N = 0;
+  int64_t C = 0;
+  int64_t D_in = 0;
+  int64_t H_in = 0;
+  int64_t W_in = 0;
+
+  if constexpr (IsNHWC) {
+    N = dims[0];
+    D_in = dims[1];
+    H_in = dims[2];
+    W_in = dims[3];
+    C = dims[4];
+  } else {
+    N = dims[0];
+    C = dims[1];
+    D_in = dims[2];
+    H_in = dims[3];
+    W_in = dims[4];
+  }
+
+  int blocksPerGrid = static_cast<int>(
+      ceil(static_cast<T>(N * C * D_out * H_out * W_out) / GridDim::maxThreadsPerBlock));
+  _GridSampleKernel3D<T, IsNHWC><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+      input_data, grid_data, mode, padding_mode, align_corners,
+      N, C, D_in, H_in, W_in,
+      D_out, H_out, W_out, output_data);
+}
+
+template void GridSampleImpl3D<float, false>(cudaStream_t stream, const float* input_data, const float* grid_data,
+                                             const int64_t mode, const int64_t padding_mode, const int64_t align_corners,
+                                             const int64_t dims[5], const int64_t D_out, const int64_t H_out, const int64_t W_out,
+                                             float* output_data);
+
+template void GridSampleImpl3D<float, true>(cudaStream_t stream, const float* input_data, const float* grid_data,
+                                            const int64_t mode, const int64_t padding_mode, const int64_t align_corners,
+                                            const int64_t dims[5], const int64_t D_out, const int64_t H_out, const int64_t W_out,
+                                            float* output_data);
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

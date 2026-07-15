@@ -2,6 +2,7 @@ onnx_test_runner [options...] <data_root>
 Options:
         -j [models]: Specifies the number of models to run simultaneously.
         -c [runs]: Specifies the number of Session::Run() to invoke simultaneously for each model.
+        -I [inference_mode]: Use inference mode. Save the inference result and skip the output value comparison.
         -n [test_case_name]: Specifies a single test case to run.
         -p [PLANNER_TYPE]: PLANNER_TYPE could be 'seq' or 'simple'. Default: 'simple'.
         -e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt' or 'acl'. Default: 'cpu'.
@@ -33,3 +34,15 @@ How to run model tests:
    onnx_test_runner <test_data_dir>
    e.g.
 	 onnx_test_runner C:\testdata
+
+3. If running with inference_mode (-I), onnx_test_runner will save output in pb format.
+   - The value comparison will be skipped
+   - The actual_output_<output_id>.pb will be saved in the corresponding test_data_set_<test_case_id> directory.
+   - Example:
+      C:\workspace\resnet18-v1-7
+      │   resnet18-v1-7.onnx
+      │
+      └───test_data_set_0
+            actual_output_0.pb (produced by onnx_test_runner.exe)
+            input_0.pb
+            output_0.pb

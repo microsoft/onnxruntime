@@ -99,6 +99,44 @@ TensorShape GetShape(const py::array& arr) {
   return shape;
 }
 
+AllocatorPtr GetSharedAllocator(const OrtDevice& device) {
+  auto& env = GetOrtEnv()->GetEnvironment();
+
+  OrtMemoryInfo mem_info("ignored", OrtDeviceAllocator, device);
+  return env.GetRegisteredSharedAllocator(mem_info);
+}
+
+MemCpyFunc CreateDataTransferMemCpy([[maybe_unused]] const OrtDevice& src_device,
+                                    [[maybe_unused]] const OrtDevice& dst_device) {
+#if defined(ORT_MINIMAL_BUILD)
+  // plugin EPs are not supported in a minimal build so there won't be any data transfers registered
+  return nullptr;
+#else
+
+  auto& env = GetOrtEnv()->GetEnvironment();
+  const DataTransferManager& data_transfer_manager = env.GetDataTransferManager();
+  const IDataTransfer* data_transfer = data_transfer_manager.GetDataTransfer(src_device, dst_device);
+  if (!data_transfer) {
+    return nullptr;
+  }
+
+  const auto copy_func = [src_device, dst_device, data_transfer](void* dst, const void* src, size_t bytes) {
+    OrtMemoryInfo src_memory_info("ignored", OrtDeviceAllocator, src_device);
+    OrtMemoryInfo dst_memory_info("ignored", OrtDeviceAllocator, dst_device);
+
+    // real shape doesn't matter as the Tensor instances here are temporary in order to be able to call CopyTensor.
+    // we set the shape to `bytes` and the data type to uint8_t to copy the correct number of bytes.
+    TensorShape shape = {narrow<int64_t>(bytes)};
+    Tensor src_tensor{DataTypeImpl::GetType<uint8_t>(), shape, const_cast<void*>(src), src_memory_info};
+    Tensor dst_tensor{DataTypeImpl::GetType<uint8_t>(), shape, dst, dst_memory_info};
+
+    ORT_THROW_IF_ERROR(data_transfer->CopyTensor(src_tensor, dst_tensor));
+  };
+
+  return copy_func;
+#endif
+}
+
 void CpuToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   memcpy(dst, src, num_bytes);
 }
@@ -114,6 +152,11 @@ OrtMemoryInfo GetMemoryInfoPerDeviceType(const OrtDevice& ort_device) {
       ORT_THROW("The provided device id doesn't match any available GPUs on the machine: ", ort_device.Id());
     }
     mem_info = GetCudaAllocator(ort_device.Id())->Info();
+  }
+#endif
+#if USE_MIGRAPHX
+  else if (ort_device.Type() == OrtDevice::GPU) {
+    mem_info = GetMIGraphXAllocator(ort_device.Id())->Info();
   }
 #endif
   else {
@@ -137,17 +180,29 @@ int32_t GetTensorProtoType(const OrtValue& ort_value) {
 }
 
 #ifdef USE_CUDA
+
 void CpuToCudaMemCpy(void* dst, const void* src, size_t num_bytes) {
-  GetProviderInfo_CUDA().cudaMemcpy_HostToDevice(dst, src, num_bytes);
+  if (TryGetProviderInfo_CUDA() != nullptr) {
+    GetProviderInfo_CUDA().cudaMemcpy_HostToDevice(dst, src, num_bytes);
+    return;
+  }
+
+  ORT_THROW("CUDA provider interface is not available for host-to-device copy.");
 }
 
 void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
-  GetProviderInfo_CUDA().cudaMemcpy_DeviceToHost(dst, src, num_bytes);
+  if (TryGetProviderInfo_CUDA() != nullptr) {
+    GetProviderInfo_CUDA().cudaMemcpy_DeviceToHost(dst, src, num_bytes);
+    return;
+  }
+
+  ORT_THROW("CUDA provider interface is not available for device-to-host copy.");
 }
 
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpyFunction() {
-  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::GPU, CudaToCpuMemCpy}};
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetCudaToHostMemCpyFunction(const OrtDevice& device) {
+  static std::unordered_map<OrtDevice, MemCpyFunc> map{
+      {OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, device.Id()}, CudaToCpuMemCpy},
+  };
 
   return &map;
 }
@@ -189,6 +244,44 @@ AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
 std::unique_ptr<IDataTransfer> GetGPUDataTransfer() {
   // Using default stream
   return GetProviderInfo_CUDA().CreateGPUDataTransfer();
+}
+
+#endif
+
+#ifdef USE_MIGRAPHX
+
+void CpuToMIGraphXMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_MIGraphX().MIGraphXMemcpy_HostToDevice(dst, src, num_bytes);
+}
+
+void MIGraphXToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_MIGraphX().MIGraphXMemcpy_DeviceToHost(dst, src, num_bytes);
+}
+
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetMIGraphXToHostMemCpyFunction(const OrtDevice& device) {
+  static std::unordered_map<OrtDevice, MemCpyFunc> map{
+      {OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD, device.Id()}, MIGraphXToCpuMemCpy},
+  };
+
+  return &map;
+}
+
+AllocatorPtr GetMIGraphXAllocator(OrtDevice::DeviceId id) {
+  // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
+  // multi-threaded MIGraphX allocation work we need to maintain a per-thread MIGraphX allocator
+
+  static auto* id_to_allocator_map = new std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>();
+
+  if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
+    // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
+    id_to_allocator_map->insert(
+        {id, GetProviderInfo_MIGraphX().CreateMIGraphXAllocator(
+                 id, gpu_mem_limit, arena_extend_strategy,
+                 migraphx::external::alloc_fn, migraphx::external::free_fn, migraphx::external::empty_cache_fn,
+                 nullptr)});
+  }
+
+  return (*id_to_allocator_map)[id];
 }
 
 #endif
@@ -289,9 +382,10 @@ void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
       D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 }
 
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetDmlToHostMemCpyFunction() {
-  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::DML, DmlToCpuMemCpy}};
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetDmlToHostMemCpyFunction(const OrtDevice& device) {
+  static std::unordered_map<OrtDevice, MemCpyFunc> map{
+      {OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::MICROSOFT, device.Id()}, DmlToCpuMemCpy},
+  };
 
   return &map;
 }
@@ -307,9 +401,10 @@ void CannToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   GetProviderInfo_CANN().cannMemcpy_DeviceToHost(dst, src, num_bytes);
 }
 
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCannToHostMemCpyFunction() {
-  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::NPU, CannToCpuMemCpy}};
+const std::unordered_map<OrtDevice, MemCpyFunc>* GetCannToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice, MemCpyFunc> map{
+      {OrtDevice{OrtDevice::NPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::HUAWEI, 0}, CannToCpuMemCpy},
+  };
 
   return &map;
 }
@@ -348,54 +443,6 @@ AllocatorPtr GetCannAllocator(OrtDevice::DeviceId id) {
 
 #endif
 
-#ifdef USE_ROCM
-void CpuToRocmMemCpy(void* dst, const void* src, size_t num_bytes) {
-  GetProviderInfo_ROCM().rocmMemcpy_HostToDevice(dst, src, num_bytes);
-}
-
-void RocmToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
-  GetProviderInfo_ROCM().rocmMemcpy_DeviceToHost(dst, src, num_bytes);
-}
-
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetRocmToHostMemCpyFunction() {
-  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::GPU, RocmToCpuMemCpy}};
-
-  return &map;
-}
-
-bool IsRocmDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
-  int num_devices = GetProviderInfo_ROCM().hipGetDeviceCount();
-
-  if (0 == num_devices) {
-    LOGS(logger, WARNING) << "your system does not have a ROCM capable device.";
-    return false;
-  }
-
-  if (id < 0 || id >= num_devices) {
-    LOGS(logger, WARNING) << "rocm_device=" << id << " is invalid, must choose device ID between 0 and " << num_devices - 1;
-    return false;
-  }
-
-  return true;
-}
-
-AllocatorPtr GetRocmAllocator(OrtDevice::DeviceId id) {
-  // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
-  // multi-threaded ROCM allocation work we need to maintain a per-thread ROCM allocator
-
-  static auto* id_to_allocator_map = new std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>();
-
-  if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
-    // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
-    id_to_allocator_map->insert({id, GetProviderInfo_ROCM().CreateRocmAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, nullptr)});
-  }
-
-  return (*id_to_allocator_map)[id];
-}
-
-#endif
-
 int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type) {
   static std::map<MLDataType, int> type_map{
       {DataTypeImpl::GetType<bool>(), NPY_BOOL},
@@ -411,11 +458,17 @@ int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type) {
       {DataTypeImpl::GetType<int64_t>(), NPY_LONGLONG},
       {DataTypeImpl::GetType<uint64_t>(), NPY_ULONGLONG},
       {DataTypeImpl::GetType<std::string>(), NPY_OBJECT},
+#if !defined(DISABLE_FLOAT4_TYPES)
+      {DataTypeImpl::GetType<Float4E2M1x2>(), NPY_UINT8},
+#endif
+#if !defined(DISABLE_FLOAT8_TYPES)
+      {DataTypeImpl::GetType<Float8E4M3FN>(), NPY_UINT8},
+#endif
   };
 
   const auto it = type_map.find(tensor_type);
   if (it == type_map.end()) {
-    throw std::runtime_error("No corresponding Numpy type for Tensor Type.");
+    throw std::runtime_error("No corresponding Numpy type for Tensor Type. " + std::string(DataTypeImpl::ToString(tensor_type)));
   } else {
     return it->second;
   }
@@ -536,7 +589,7 @@ using OrtPybindSingleUseAllocatorPtr = std::shared_ptr<OrtPybindSingleUseAllocat
 // Does not manage darray life-cycle
 
 static void CopyDataToTensor(PyArrayObject* darray, int npy_type, Tensor& tensor,
-                             MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy) {
+                             const MemCpyFunc& mem_cpy_to_device = CpuToCpuMemCpy) {
   const auto total_items = tensor.Shape().Size();
   if (npy_type == NPY_UNICODE) {
     // Copy string data which needs to be done after Tensor is allocated.
@@ -598,11 +651,11 @@ static void CopyDataToTensor(PyArrayObject* darray, int npy_type, Tensor& tensor
 }
 
 inline void CopyDataToTensor(PyArrayObject* darray, int npy_type, std::unique_ptr<Tensor>& p_tensor,
-                             MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy) {
+                             const MemCpyFunc& mem_cpy_to_device = CpuToCpuMemCpy) {
   CopyDataToTensor(darray, npy_type, *p_tensor, mem_cpy_to_device);
 }
 
-void CopyDataToTensor(const py::array& py_array, int npy_type, Tensor& tensor, MemCpyFunc mem_cpy_to_device) {
+void CopyDataToTensor(const py::array& py_array, int npy_type, Tensor& tensor, const MemCpyFunc& mem_cpy_to_device) {
   CopyDataToTensor(reinterpret_cast<PyArrayObject*>(py_array.ptr()), npy_type, tensor, mem_cpy_to_device);
 }
 
@@ -611,7 +664,7 @@ void CopyDataToTensor(const py::array& py_array, int npy_type, Tensor& tensor, M
 // The numpy object owns the memory and needs to be alive until the corresponding OrtValue is in scope
 static std::unique_ptr<Tensor> CreateTensor(const AllocatorPtr& alloc, const std::string& name_input,
                                             PyArrayObject* pyObject, bool use_numpy_data_memory = true,
-                                            MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy) {
+                                            const MemCpyFunc& mem_cpy_to_device = CpuToCpuMemCpy) {
   PyArrayObject* darray = PyArray_GETCONTIGUOUS(pyObject);
   ORT_ENFORCE(darray != nullptr, "The object must be a contiguous array for input '", name_input, "'.");
 
@@ -701,7 +754,8 @@ static void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_
 // as the backing data buffer for the ORT Tensor where applicable (for numeric tensors)
 // The numpy object owns the memory and needs to be alive until the corresponding OrtValue is in scope
 static void CreateTensorMLValue(const AllocatorPtr& alloc, const std::string& name_input, PyArrayObject* pyObject,
-                                OrtValue* p_mlvalue, bool use_numpy_data_memory = true, MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy) {
+                                OrtValue* p_mlvalue, bool use_numpy_data_memory = true,
+                                const MemCpyFunc& mem_cpy_to_device = CpuToCpuMemCpy) {
   auto p_tensor = CreateTensor(alloc, name_input, pyObject, use_numpy_data_memory, mem_cpy_to_device);
 
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
@@ -751,7 +805,7 @@ std::string _get_type_name(std::string&) {
 #if !defined(DISABLE_ML_OPS)
 template <typename KeyType, typename ValueType, typename KeyGetterType, typename ValueGetterType>
 static void CreateMapMLValue_LoopIntoMap(Py_ssize_t& pos, PyObject*& key, const std::string& name_input, PyObject*& value,
-                                         PyObject* item, std::map<KeyType, ValueType>& current,
+                                         PyObject* item, bool owns_item_ref, std::map<KeyType, ValueType>& current,
                                          KeyGetterType keyGetter, ValueGetterType valueGetter) {
   KeyType ckey;
   ValueType cvalue;
@@ -763,7 +817,9 @@ static void CreateMapMLValue_LoopIntoMap(Py_ssize_t& pos, PyObject*& key, const 
       std::string sType = spyType;
       Py_XDECREF(pStr);
       Py_XDECREF(pType);
-      Py_XDECREF(item);
+      if (owns_item_ref) {
+        Py_XDECREF(item);
+      }
       throw std::runtime_error(std::string("Unexpected key type  ") + sType +
                                std::string(", it cannot be linked to C type ") +
                                _get_type_name(ckey) + std::string(" for input '") +
@@ -777,7 +833,9 @@ static void CreateMapMLValue_LoopIntoMap(Py_ssize_t& pos, PyObject*& key, const 
       std::string sType = spyType;
       Py_XDECREF(pStr);
       Py_XDECREF(pType);
-      Py_XDECREF(item);
+      if (owns_item_ref) {
+        Py_XDECREF(item);
+      }
       throw std::runtime_error(std::string("Unexpected value type  ") + sType +
                                std::string(", it cannot be linked to C type ") +
                                _get_type_name(ckey) + std::string(" for input '") +
@@ -793,7 +851,7 @@ static void CreateMapMLValue_Map(Py_ssize_t& pos, PyObject*& key, const std::str
                                  ValueGetterType valueGetter) {
   std::unique_ptr<std::map<KeyType, ValueType>> dst;
   dst = std::make_unique<std::map<KeyType, ValueType>>();
-  CreateMapMLValue_LoopIntoMap(pos, key, name_input, value, item, *dst, keyGetter, valueGetter);
+  CreateMapMLValue_LoopIntoMap(pos, key, name_input, value, item, false, *dst, keyGetter, valueGetter);
   p_mlvalue->Init(dst.release(), DataTypeImpl::GetType<std::map<KeyType, ValueType>>(),
                   DataTypeImpl::GetType<std::map<KeyType, ValueType>>()->GetDeleteFunc());
 }
@@ -807,7 +865,7 @@ void CreateMapMLValue_VectorMap(Py_ssize_t& pos, PyObject*& key, const std::stri
   int index = 0;
   do {
     dstVector->push_back(std::map<KeyType, ValueType>());
-    CreateMapMLValue_LoopIntoMap(pos, key, name_input, value, item, (*dstVector)[index], keyGetter, valueGetter);
+    CreateMapMLValue_LoopIntoMap(pos, key, name_input, value, item, true, (*dstVector)[index], keyGetter, valueGetter);
     Py_DECREF(item);
     ++index;
     item = iterator == NULL ? NULL : PyIter_Next(iterator);
@@ -949,9 +1007,10 @@ static void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc,
 // Setting `use_numpy_data_memory` to `true` will ensure that the underlying numpy array buffer is directly used
 // as the backing data buffer for the ORT Tensor where applicable (for numeric tensors)
 // The numpy object owns the memory and needs to be alive until the corresponding OrtValue is in scope
-void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const AllocatorPtr& alloc, const std::string& name_input,
-                          const py::object& value, OrtValue* p_mlvalue, bool accept_only_numpy_array,
-                          bool use_numpy_data_memory, MemCpyFunc mem_cpy_to_device) {
+void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const AllocatorPtr& alloc,
+                          const std::string& name_input, const py::object& value, OrtValue* p_mlvalue,
+                          bool accept_only_numpy_array, bool use_numpy_data_memory,
+                          const MemCpyFunc& mem_cpy_to_device) {
   onnx::TypeProto type_proto;
   if (PyObjectCheck_NumpyArray(value.ptr())) {
     // The most frequent case: input comes as an array.
@@ -1020,6 +1079,117 @@ void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const
     Py_DECREF(iterator);
   } else {
     throw std::runtime_error("Unable to create OrtValue from the given python object");
+  }
+}
+
+void UpdateOrtValueInplace(OrtValue& dst, const OrtValue& src) {
+  if (!dst.IsTensor()) {
+    throw std::runtime_error("Inplace update of OrtValues is only supported for Tensors");
+  }
+  if (!src.IsTensor()) {
+    throw std::runtime_error("The source OrtValue must contain a Tensor");
+  }
+
+  const auto& dst_tensor = dst.Get<Tensor>();
+  const auto& src_tensor = src.Get<Tensor>();
+
+  if (dst_tensor.DataType() != src_tensor.DataType()) {
+    throw std::runtime_error("The source and destination OrtValues must have the same data type");
+  }
+
+  if (dst_tensor.Shape().Size() != src_tensor.Shape().Size()) {
+    throw std::runtime_error("The source and destination OrtValues must have the same size");
+  }
+
+  if (dst_tensor.IsDataTypeString()) {
+    throw std::runtime_error("Inplace update of string tensors is not supported");
+  }
+
+  size_t bytes = 0;
+  auto status = Tensor::CalculateTensorStorageSize(dst_tensor.DataType(), dst_tensor.Shape(), 0, bytes);
+  if (!status.IsOK()) {
+    throw std::runtime_error(status.ErrorMessage());
+  }
+
+  const auto src_device = src_tensor.Location().device;
+  const auto dst_device = dst_tensor.Location().device;
+
+  void* dst_ptr = dst.GetMutable<Tensor>()->MutableDataRaw();
+  const void* src_ptr = src_tensor.DataRaw();
+
+  if (src_device.UsesCpuMemory() && dst_device.UsesCpuMemory()) {
+    memcpy(dst_ptr, src_ptr, bytes);
+  } else {
+    auto copy_fn = CreateDataTransferMemCpy(src_device, dst_device);
+    if (!copy_fn) {
+      // Fall back to built-in EP copy functions.
+      // Gate each path on (Type, VendorId) so that builds with multiple GPU EPs
+      // (e.g. CUDA + DML) route through the correct backend.
+#ifdef USE_CUDA
+      const auto is_cuda_device = [](const OrtDevice& device) {
+        return device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::NVIDIA;
+      };
+
+      if (is_cuda_device(src_device) && is_cuda_device(dst_device)) {
+        auto data_transfer = GetGPUDataTransfer();
+        ORT_THROW_IF_ERROR(data_transfer->CopyTensor(src_tensor, *dst.GetMutable<Tensor>()));
+        return;
+      }
+      if (src_device.UsesCpuMemory() && is_cuda_device(dst_device)) {
+        CpuToCudaMemCpy(dst_ptr, src_ptr, bytes);
+        return;
+      }
+      if (is_cuda_device(src_device) && dst_device.UsesCpuMemory()) {
+        CudaToCpuMemCpy(dst_ptr, src_ptr, bytes);
+        return;
+      }
+#endif
+#if USE_MIGRAPHX
+      const auto is_migraphx_device = [](const OrtDevice& device) {
+        return device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::AMD;
+      };
+
+      if (src_device.UsesCpuMemory() && is_migraphx_device(dst_device)) {
+        CpuToMIGraphXMemCpy(dst_ptr, src_ptr, bytes);
+        return;
+      }
+      if (is_migraphx_device(src_device) && dst_device.UsesCpuMemory()) {
+        MIGraphXToCpuMemCpy(dst_ptr, src_ptr, bytes);
+        return;
+      }
+#endif
+#if USE_DML
+      const auto is_dml_device = [](const OrtDevice& device) {
+        return (device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::MICROSOFT) ||
+               device.Type() == OrtDevice::DML;
+      };
+
+      if (src_device.UsesCpuMemory() && is_dml_device(dst_device)) {
+        CpuToDmlMemCpy(dst_ptr, src_ptr, bytes);
+        return;
+      }
+      if (is_dml_device(src_device) && dst_device.UsesCpuMemory()) {
+        DmlToCpuMemCpy(dst_ptr, src_ptr, bytes);
+        return;
+      }
+#endif
+#ifdef USE_CANN
+      const auto is_cann_device = [](const OrtDevice& device) {
+        return device.Type() == OrtDevice::NPU && device.Vendor() == OrtDevice::VendorIds::HUAWEI;
+      };
+
+      if (src_device.UsesCpuMemory() && is_cann_device(dst_device)) {
+        CpuToCannMemCpy(dst_ptr, src_ptr, bytes);
+        return;
+      }
+      if (is_cann_device(src_device) && dst_device.UsesCpuMemory()) {
+        CannToCpuMemCpy(dst_ptr, src_ptr, bytes);
+        return;
+      }
+#endif
+      throw std::runtime_error("Unable to copy data between the source and destination devices");
+    }
+    copy_fn(dst_ptr, src_ptr, bytes);
   }
 }
 

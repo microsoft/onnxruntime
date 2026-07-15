@@ -35,9 +35,9 @@ Setup for Stable Fast (see https://github.com/chengzeyi/stable-fast/blob/main/RE
 
 
 def get_canny_image():
-    import cv2
-    import numpy as np
-    from PIL import Image
+    import cv2  # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
+    from PIL import Image  # noqa: PLC0415
 
     # Test Image can be downloaded from https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png
     image = Image.open("input_image_vermeer.png").convert("RGB")
@@ -50,7 +50,7 @@ def get_canny_image():
 
 
 def compile_stable_fast(pipeline, enable_cuda_graph=True):
-    from sfast.compilers.stable_diffusion_pipeline_compiler import CompilationConfig, compile
+    from sfast.compilers.stable_diffusion_pipeline_compiler import CompilationConfig, compile  # noqa: PLC0415
 
     config = CompilationConfig.Default()
 
@@ -276,7 +276,7 @@ def test(pipeline, batch_size=1, steps=4, control_image=None, warmup_runs=3, tes
 
 
 def arguments():
-    import argparse
+    import argparse  # noqa: PLC0415
 
     parser = argparse.ArgumentParser(description="Benchmark Stable Diffusion pipeline (optional control net for SDXL)")
     parser.add_argument(
@@ -384,7 +384,7 @@ def main():
                 verbose=args.verbose,
             )
         elif args.engine == "stable_fast":
-            from sfast.utils.compute_precision import low_compute_precision
+            from sfast.utils.compute_precision import low_compute_precision  # noqa: PLC0415
 
             with low_compute_precision():
                 images, latency_list = test(

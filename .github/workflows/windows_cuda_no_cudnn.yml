@@ -1,0 +1,260 @@
+name: Windows CUDA No cuDNN CI
+
+on:
+  pull_request:
+    branches: [main, 'rel-*']
+    paths:
+      - '.github/workflows/windows_cuda_no_cudnn.yml'
+      - 'cmake/onnxruntime_providers_cuda.cmake'
+      - 'cmake/onnxruntime_providers_cuda_plugin.cmake'
+      - 'cmake/onnxruntime_python.cmake'
+      - 'docs/CUDA_cuDNN_Optional_Design.md'
+      - 'docs/cuda_plugin_ep/**'
+      - 'onnxruntime/__init__.py'
+      - 'onnxruntime/core/providers/cuda/**'
+      - 'onnxruntime/test/python/transformers/test_cuda_plugin_ep.py'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Windows CUDA Plugin EP Build without cuDNN
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-vs2022-latest",
+        "JobId=windows-cuda-plugin-no-cudnn-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: 'none'
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          architecture: x64
+
+      - name: Locate vcvarsall and Setup Env
+        uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Install python modules
+        run: python -m pip install -r .\tools\ci_build\github\windows\python\requirements.txt
+        working-directory: ${{ github.workspace }}
+        shell: cmd
+
+      - name: Download CUDA SDK v13.0
+        working-directory: ${{ runner.temp }}
+        run: |
+          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v13.0" .
+          dir
+        shell: pwsh
+
+      - name: Prepare cuDNN SDK without runtime DLLs
+        working-directory: ${{ runner.temp }}
+        run: |
+          $cudnnSdkUri = "https://lotusscus.blob.core.windows.net/models/cudnn_sdk/$env:CUDNN_FOLDER"
+          azcopy.exe cp --recursive $cudnnSdkUri .
+          $cudnnRoot = Join-Path $env:RUNNER_TEMP $env:CUDNN_FOLDER
+          if (-not (Test-Path $cudnnRoot)) {
+            Write-Error "cuDNN SDK was not downloaded to the expected folder: $cudnnRoot"
+            exit 1
+          }
+          Get-ChildItem -Path $cudnnRoot -Recurse -Include "cudnn*.dll" | Remove-Item -Force
+          if (Get-ChildItem -Path $cudnnRoot -Recurse -Include "cudnn*.dll" -ErrorAction SilentlyContinue) {
+            Write-Error "cuDNN runtime DLLs must not be present in the no-cuDNN build environment"
+            exit 1
+          }
+        shell: pwsh
+
+      - name: Add CUDA to PATH
+        shell: pwsh
+        run: |
+          Write-Host "Adding CUDA to PATH without adding any cuDNN directory"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\bin\x64"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\extras\CUPTI\lib64"
+
+      - name: Install CUDA Visual Studio integration
+        shell: pwsh
+        run: |
+          $sourceDir = "$env:RUNNER_TEMP\v13.0\extras\visual_studio_integration\MSBuildExtensions"
+          $targetDir = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VC\v170\BuildCustomizations"
+          Copy-Item -Path "$sourceDir\*" -Destination $targetDir -Force
+
+      - name: Set OnnxRuntimeBuildDirectory
+        shell: pwsh
+        run: |
+          $buildDir = Join-Path $env:RUNNER_TEMP "build"
+          echo "OnnxRuntimeBuildDirectory=$buildDir" >> $env:GITHUB_ENV
+
+      - name: Build ONNX Runtime with CUDA Plugin EP and no cuDNN runtime path
+        working-directory: ${{ runner.temp }}
+        shell: pwsh
+        run: |
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            --update --build --config Release `
+            --build_dir build `
+            --skip_submodule_sync `
+            --parallel `
+            --nvcc_threads 4 `
+            --flash_nvcc_threads 4 `
+            --use_binskim_compliant_compile_flags `
+            --cmake_generator "Visual Studio 17 2022" `
+            --build_shared_lib `
+            --build_wheel `
+            --use_cuda `
+            --cuda_home="$env:RUNNER_TEMP\v13.0" `
+            --cudnn_home="$env:RUNNER_TEMP\$env:CUDNN_FOLDER" `
+            --skip_tests `
+            --use_vcpkg `
+            --use_vcpkg_ms_internal_asset_cache `
+            --enable_cuda_profiling `
+            --cmake_extra_defines onnxruntime_QUICK_BUILD=ON `
+            --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 `
+            --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
+
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+
+          $outputDir = "${{ runner.temp }}\build\Release"
+          Write-Host "Cleaning up files from $outputDir..."
+          Remove-Item -Path "$outputDir\onnxruntime" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "$outputDir\pybind11" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "$outputDir\models" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "$outputDir\vcpkg_installed" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "$outputDir\_deps" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "$outputDir\CMakeCache.txt" -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "$outputDir\CMakeFiles" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path $outputDir -Include "*.obj" -Recurse
+
+          $cudnnArtifacts = Get-ChildItem -Path $outputDir -Recurse -Include "cudnn*.dll" -ErrorAction SilentlyContinue
+          if ($cudnnArtifacts) {
+            $cudnnArtifacts | ForEach-Object { Write-Host $_.FullName }
+            Write-Error "cuDNN runtime DLLs must not be present in no-cuDNN build artifacts"
+            exit 1
+          }
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: cuda-plugin-no-cudnn-build-artifacts
+          path: ${{ runner.temp }}\build
+    env:
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      setVcvars: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+      ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
+      AZCOPY_AUTO_LOGIN_TYPE: MSI
+      AZCOPY_MSI_CLIENT_ID: d712a4c7-a0cf-4e87-af75-31510eba0a8e
+      CUDNN_FOLDER: 9.14.0.64_cuda13
+
+  test:
+    name: Windows CUDA Plugin EP Test without cuDNN
+    needs: build
+    timeout-minutes: 120
+    runs-on: [
+      "self-hosted",
+      "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
+      "JobId=windows-cuda-plugin-no-cudnn-test-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+    ]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: 'none'
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: cuda-plugin-no-cudnn-build-artifacts
+          path: ${{ runner.temp }}\build
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          architecture: x64
+
+      - name: Locate vcvarsall and Setup Env
+        uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Install python modules
+        run: python -m pip install -r .\tools\ci_build\github\windows\python\requirements.txt
+        working-directory: ${{ github.workspace }}
+        shell: cmd
+
+      - name: Install torch for CPU only
+        run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+        working-directory: ${{ github.workspace }}
+        shell: cmd
+
+      - name: Download CUDA SDK v13.0
+        working-directory: ${{ runner.temp }}
+        run: |
+          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v13.0" .
+          dir
+        shell: pwsh
+
+      - name: Add CUDA to PATH
+        shell: pwsh
+        run: |
+          Write-Host "Adding CUDA to PATH without adding any cuDNN directory"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\bin\x64"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\extras\CUPTI\lib64"
+
+      - name: Set OnnxRuntimeBuildDirectory
+        shell: pwsh
+        run: |
+          $buildDir = Join-Path $env:RUNNER_TEMP "build"
+          echo "OnnxRuntimeBuildDirectory=$buildDir" >> $env:GITHUB_ENV
+
+      - name: Install ONNX Runtime Wheel
+        uses: ./.github/actions/install-onnxruntime-wheel
+        with:
+          whl-directory: ${{ runner.temp }}\build\Release\Release\dist
+
+      - name: Verify GPU access
+        shell: pwsh
+        run: nvidia-smi
+
+      - name: Verify CUDA plugin has no direct cuDNN dependency
+        shell: pwsh
+        run: |
+          $pluginPath = "${{ runner.temp }}\build\Release\Release\onnxruntime_providers_cuda.dll"
+          if (-not (Test-Path $pluginPath)) {
+            Write-Error "CUDA plugin EP library not found at $pluginPath"
+            exit 1
+          }
+
+          dumpbin /dependents $pluginPath | Tee-Object -FilePath $env:RUNNER_TEMP\cuda_plugin_dependents.txt
+          if (Select-String -Path $env:RUNNER_TEMP\cuda_plugin_dependents.txt -Pattern "cudnn" -SimpleMatch -Quiet) {
+            Write-Error "CUDA plugin EP has a direct cuDNN dependency"
+            exit 1
+          }
+
+      - name: Run CUDA Plugin EP Python Tests without cuDNN
+        working-directory: ${{ github.workspace }}\onnxruntime\test\python\transformers
+        shell: pwsh
+        run: |
+          $env:ORT_TEST_CUDA_PLUGIN_EP = "1"
+          $env:ORT_TEST_CUDA_PLUGIN_NO_CUDNN = "1"
+          python test_cuda_plugin_ep.py
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+    env:
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      setVcvars: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+      ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
+      AZCOPY_AUTO_LOGIN_TYPE: MSI
+      AZCOPY_MSI_CLIENT_ID: d712a4c7-a0cf-4e87-af75-31510eba0a8e

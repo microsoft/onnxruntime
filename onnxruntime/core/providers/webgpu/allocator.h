@@ -3,23 +3,27 @@
 
 #pragma once
 
+#include <functional>
+
 #include "core/framework/allocator.h"
 #include "core/framework/ortdevice.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-class WebGpuContext;
+class BufferManager;
+
+inline constexpr OrtDevice WebGpuDevice{OrtDevice::GPU,
+                                        OrtDevice::MemType::DEFAULT,
+                                        OrtDevice::VendorIds::NONE,
+                                        0};
 
 class GpuBufferAllocator : public IAllocator {
  public:
-  GpuBufferAllocator(const WebGpuContext& context)
-      : IAllocator(
-            OrtMemoryInfo(WEBGPU_BUFFER, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0),
-                          0, OrtMemTypeDefault)),
-        context_{context} {
-  }
+  // Calls buffer_manager_getter on every Alloc/Free to obtain the current
+  // BufferManager. This allows the EP to route allocations to different
+  // buffer managers (e.g., per-graph) without explicit refresh calls.
+  GpuBufferAllocator(std::function<const BufferManager&()> buffer_manager_getter, bool is_read_only_allocator);
 
   virtual void* Alloc(size_t size) override;
   virtual void Free(void* p) override;
@@ -27,7 +31,8 @@ class GpuBufferAllocator : public IAllocator {
 
  private:
   AllocatorStats stats_;
-  const WebGpuContext& context_;
+  std::function<const BufferManager&()> buffer_manager_getter_;
+  bool mapped_at_creation_;
 };
 
 }  // namespace webgpu

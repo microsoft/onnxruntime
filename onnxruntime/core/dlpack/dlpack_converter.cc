@@ -84,8 +84,11 @@ OrtDevice GetOrtDevice(const DLDevice& device) {
     case DLDeviceType::kDLCPU:
       return OrtDevice();
     case DLDeviceType::kDLCUDA:
+      return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
+                       static_cast<OrtDevice::DeviceId>(device.device_id));
     case DLDeviceType::kDLROCM:
-      return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(device.device_id));
+      return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD,
+                       static_cast<OrtDevice::DeviceId>(device.device_id));
     default:
       ORT_THROW("Unsupported device type");
   }
@@ -159,12 +162,18 @@ bool IsContiguousTensor(const DLTensor& tensor) {
     return true;
   }
 
-  int64_t running_size = 1;
-  for (int i = tensor.ndim - 1; i >= 0; i--) {
+  // Zero-size tensors (any dimension equals 0) have no elements, so any stride
+  // layout is vacuously contiguous. Check upfront before validating strides,
+  // because some frameworks (e.g. NumPy 2.x) set all strides to 0 for zero-size
+  // tensors, which would otherwise fail the per-dimension stride check below.
+  for (int i = 0; i < tensor.ndim; i++) {
     if (tensor.shape[i] == 0) {
       return true;
     }
+  }
 
+  int64_t running_size = 1;
+  for (int i = tensor.ndim - 1; i >= 0; i--) {
     if (tensor.shape[i] != 1 && tensor.strides[i] != running_size) {
       return false;
     }
@@ -188,11 +197,7 @@ DLDevice GetDlpackDevice(const OrtValue& ort_value, const int64_t& device_id) {
       device.device_type = DLDeviceType::kDLCPU;
       break;
     case OrtDevice::GPU:
-#ifdef USE_ROCM
-      device.device_type = DLDeviceType::kDLROCM;
-#else
       device.device_type = DLDeviceType::kDLCUDA;
-#endif
       break;
     default:
       ORT_THROW("Cannot pack tensors on this device.");
@@ -243,7 +248,7 @@ OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
   ORT_ENFORCE(IsContiguousTensor(dlpack->dl_tensor), "ORT only supports contiguous tensor for now.");
   OrtDevice device = GetOrtDevice(dlpack->dl_tensor.device);
   MLDataType data_type = GetOrtValueDataType(dlpack->dl_tensor.dtype, is_bool_tensor);
-  OrtMemoryInfo info(GetOrtDeviceName(device), OrtDeviceAllocator, device, device.Id());
+  OrtMemoryInfo info(GetOrtDeviceName(device), OrtDeviceAllocator, device);
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(
       data_type, TensorShape(dlpack->dl_tensor.shape, static_cast<size_t>(dlpack->dl_tensor.ndim)),
       dlpack->dl_tensor.data, info);
@@ -257,7 +262,7 @@ OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
       deleter(p);
   };
 
-  ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), deleter);
+  ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), std::move(deleter));
   return ort_value;
 }
 

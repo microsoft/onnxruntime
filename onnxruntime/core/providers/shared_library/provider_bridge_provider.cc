@@ -15,6 +15,8 @@
 #include "core/providers/cpu/controlflow/loop.h"
 #include "core/providers/cpu/controlflow/scan.h"
 #include "core/providers/cpu/math/einsum.h"
+#include "core/providers/cpu/math/einsum_utils/einsum_typed_compute_processor.h"
+#include "core/providers/cpu/math/einsum_utils/einsum_compute_preprocessor.h"
 #include "core/providers/cpu/object_detection/non_max_suppression.h"
 #include "core/providers/cpu/tensor/concatbase.h"
 #include "core/providers/cpu/tensor/padbase.h"
@@ -26,6 +28,7 @@
 #include "core/providers/cpu/tensor/unsqueeze.h"
 #include "core/providers/cpu/tensor/upsamplebase.h"
 #include "core/providers/cpu/tensor/tile.h"
+#include "core/providers/providers.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cpu/bert/attention_base.h"
@@ -166,11 +169,22 @@ template <>
 MLDataType DataTypeImpl::GetType<Float8E5M2>() { return Provider_GetHost()->DataTypeImpl__GetType_Float8E5M2(); }
 template <>
 MLDataType DataTypeImpl::GetType<Float8E5M2FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetType_Float8E5M2FNUZ(); }
+template <>
+MLDataType DataTypeImpl::GetType<Float8E8M0>() { return Provider_GetHost()->DataTypeImpl__GetType_Float8E8M0(); }
 #endif
 template <>
 MLDataType DataTypeImpl::GetType<Int4x2>() { return Provider_GetHost()->DataTypeImpl__GetType_Int4x2(); }
 template <>
 MLDataType DataTypeImpl::GetType<UInt4x2>() { return Provider_GetHost()->DataTypeImpl__GetType_UInt4x2(); }
+template <>
+MLDataType DataTypeImpl::GetType<Int2x4>() { return Provider_GetHost()->DataTypeImpl__GetType_Int2x4(); }
+template <>
+MLDataType DataTypeImpl::GetType<UInt2x4>() { return Provider_GetHost()->DataTypeImpl__GetType_UInt2x4(); }
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+MLDataType DataTypeImpl::GetType<Float4E2M1x2>() { return Provider_GetHost()->DataTypeImpl__GetType_Float4E2M1x2(); }
+#endif
 
 template <>
 MLDataType DataTypeImpl::GetType<std::string>() { return Provider_GetHost()->DataTypeImpl__GetType_string(); }
@@ -211,11 +225,22 @@ template <>
 MLDataType DataTypeImpl::GetTensorType<Float8E5M2>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Float8E5M2(); }
 template <>
 MLDataType DataTypeImpl::GetTensorType<Float8E5M2FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Float8E5M2FNUZ(); }
+template <>
+MLDataType DataTypeImpl::GetTensorType<Float8E8M0>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Float8E8M0(); }
 #endif
 template <>
 MLDataType DataTypeImpl::GetTensorType<Int4x2>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Int4x2(); }
 template <>
 MLDataType DataTypeImpl::GetTensorType<UInt4x2>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_UInt4x2(); }
+template <>
+MLDataType DataTypeImpl::GetTensorType<Int2x4>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Int2x4(); }
+template <>
+MLDataType DataTypeImpl::GetTensorType<UInt2x4>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_UInt2x4(); }
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+MLDataType DataTypeImpl::GetTensorType<Float4E2M1x2>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Float4E2M1x2(); }
+#endif
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 template <>
@@ -256,6 +281,8 @@ template <>
 MLDataType DataTypeImpl::GetSparseTensorType<Float8E5M2>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Float8E5M2(); }
 template <>
 MLDataType DataTypeImpl::GetSparseTensorType<Float8E5M2FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Float8E5M2FNUZ(); }
+template <>
+MLDataType DataTypeImpl::GetSparseTensorType<Float8E8M0>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Float8E8M0(); }
 #endif
 
 #endif
@@ -330,22 +357,29 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
   return g_host->IAllocator__CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);
 }
 
+std::unique_ptr<IExecutionProvider> IExecutionProviderFactory::CreateProvider(
+    const OrtSessionOptions& session_options, const OrtLogger& session_logger) {
+  return g_host->IExecutionProviderFactory__CreateProvider(this, session_options, session_logger);
+}
+
 std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                                                                  const IKernelLookup& kernel_lookup) const {
-  return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_lookup);
+                                                                                  const IKernelLookup& kernel_lookup,
+                                                                                  const GraphOptimizerRegistry& graph_optimizer_registry,
+                                                                                  IResourceAccountant* resource_accountant) const {
+  return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_lookup, graph_optimizer_registry, resource_accountant);
 }
 common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                            std::vector<NodeComputeInfo>& node_compute_funcs) {
   return g_host->IExecutionProvider__Compile(this, fused_nodes_and_graphs, node_compute_funcs);
 }
 
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT)
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAAllocator(device_id, name);
 }
 
-std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) {
-  return g_host->CreateCUDAPinnedAllocator(name);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateCUDAPinnedAllocator(device_id, name);
 }
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
@@ -353,7 +387,6 @@ std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
 }
 #endif
 
-#ifdef USE_MIGRAPHX
 std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) {
   return g_host->CreateMIGraphXAllocator(device_id, name);
 }
@@ -361,7 +394,6 @@ std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const cha
 std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name) {
   return g_host->CreateMIGraphXPinnedAllocator(device_id, name);
 }
-#endif
 
 std::string GetEnvironmentVar(const std::string& var_name) {
   return g_host->GetEnvironmentVar(var_name);
@@ -517,7 +549,7 @@ Status NonMaxSuppressionBase::GetThresholdsFromInputs(const PrepareContext& pc, 
 Status GatherBase::PrepareForCompute(OpKernelContext* context, GatherBase::Prepare& p) const { return g_host_cpu.GatherBase__PrepareForCompute(this, context, reinterpret_cast<GatherBase__Prepare&>(p)); }
 Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, UnsqueezeBase::Prepare& p) const { return g_host_cpu.UnsqueezeBase__PrepareCompute(this, ctx, reinterpret_cast<UnsqueezeBase__Prepare&>(p)); }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 bool TileOp::IsTileMemcpy(const TensorShape& input_shape, const int64_t* repeats, size_t rank, bool& is_batched_memcpy, size_t& num_of_elements_per_batch, size_t& num_of_copies_per_batch, size_t& num_of_batch_copies) {
   return g_host_cpu.TileOp__IsTileMemcpy(input_shape, repeats, rank, is_batched_memcpy, num_of_elements_per_batch, num_of_copies_per_batch, num_of_batch_copies);
 }
@@ -555,9 +587,11 @@ Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outp
 
 Status Size::Compute(OpKernelContext* context) const { return g_host_cpu.Size__Compute(this, context); }
 
+// Inlined rather than delegated through g_host_cpu because ValidateShapes is
+// pure shape arithmetic with no framework dependencies.
 Status ScatterND::ValidateShapes(const TensorShape& input_shape,
                                  const TensorShape& indice_shape,
-                                 const TensorShape& update_shape) { return g_host_cpu.ScatterNDBase__ValidateShapes(input_shape, indice_shape, update_shape); }
+                                 const TensorShape& update_shape) { return scatter_nd_internal::ValidateShapes(input_shape, indice_shape, update_shape); }
 
 Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, const TensorShape& output_shape) {
   return g_host_cpu.PadBase__HandleDimValueZero(mode, input_shape, output_shape);
@@ -578,11 +612,28 @@ PhiloxGenerator& PhiloxGenerator::Default() { return g_host->PhiloxGenerator__De
 Status Einsum::Compute(OpKernelContext* context) const { return g_host_cpu.Einsum__Compute(this, context); }
 
 template <>
-std::unique_ptr<EinsumTypedComputeProcessor<float>> EinsumTypedComputeProcessor<float>::Create(OpKernelContext* context, AllocatorPtr allocator, concurrency::ThreadPool* tp, EinsumComputePreprocessor& einsum_compute_preprocessor, void* einsum_cuda_assets) { return g_host_cpu.EinsumTypedComputeProcessor_float__Create(context, allocator, tp, einsum_compute_preprocessor, einsum_cuda_assets); }
+Status EinsumTypedComputeProcessor<float>::Run() {
+  return g_host_cpu.EinsumTypedComputeProcessor_float_Compute(
+      context_, allocator_, tp_, mlas_backend_config_, einsum_compute_preprocessor_, einsum_ep_assets_,
+      device_transpose_func_, device_matmul_func_, device_reduce_sum_func_,
+      device_data_copy_func_, device_zero_buffer_func_, device_create_tensor_func_);
+}
+
 template <>
-std::unique_ptr<EinsumTypedComputeProcessor<double>> EinsumTypedComputeProcessor<double>::Create(OpKernelContext* context, AllocatorPtr allocator, concurrency::ThreadPool* tp, EinsumComputePreprocessor& einsum_compute_preprocessor, void* einsum_cuda_assets) { return g_host_cpu.EinsumTypedComputeProcessor_double__Create(context, allocator, tp, einsum_compute_preprocessor, einsum_cuda_assets); }
+Status EinsumTypedComputeProcessor<double>::Run() {
+  return g_host_cpu.EinsumTypedComputeProcessor_double_Compute(
+      context_, allocator_, tp_, mlas_backend_config_, einsum_compute_preprocessor_, einsum_ep_assets_,
+      device_transpose_func_, device_matmul_func_, device_reduce_sum_func_,
+      device_data_copy_func_, device_zero_buffer_func_, device_create_tensor_func_);
+}
+
 template <>
-std::unique_ptr<EinsumTypedComputeProcessor<MLFloat16>> EinsumTypedComputeProcessor<MLFloat16>::Create(OpKernelContext* context, AllocatorPtr allocator, concurrency::ThreadPool* tp, EinsumComputePreprocessor& einsum_compute_preprocessor, void* einsum_cuda_assets) { return g_host_cpu.EinsumTypedComputeProcessor_MLFloat16__Create(context, allocator, tp, einsum_compute_preprocessor, einsum_cuda_assets); }
+Status EinsumTypedComputeProcessor<MLFloat16>::Run() {
+  return g_host_cpu.EinsumTypedComputeProcessor_MLFloat16_Compute(
+      context_, allocator_, tp_, mlas_backend_config_, einsum_compute_preprocessor_, einsum_ep_assets_,
+      device_transpose_func_, device_matmul_func_, device_reduce_sum_func_,
+      device_data_copy_func_, device_zero_buffer_func_, device_create_tensor_func_);
+}
 
 void UpsampleBase::AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
                                             InlinedVector<float>& scales) const {
@@ -628,6 +679,7 @@ Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, 
 }
 
 namespace transformers {
+#if !defined(DISABLE_GENERATION_OPS)
 void BeamSearch::Init(const OpKernelInfo& info) { g_host_cpu.BeamSearch__Init(this, info); }
 
 Status BeamSearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.BeamSearch__Compute(this, ctx); }
@@ -665,6 +717,7 @@ Status Sampling::SetupSubgraphExecutionInfo(const SessionState& session_state, c
                                             const SessionState& subgraph_session_state) {
   return g_host_cpu.Sampling__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state);
 }
+#endif  // !defined(DISABLE_GENERATION_OPS)
 }  // namespace transformers
 
 #ifdef ENABLE_ATEN
@@ -773,7 +826,7 @@ std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const loggin
 }  // namespace cann
 #endif
 
-void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
+void MurmurHash3::x86_128(const void* key, size_t len, uint32_t seed, void* out) {
   return g_host->MurmurHash3__x86_128(key, len, seed, out);
 }
 
@@ -784,12 +837,12 @@ Status LoadDynamicLibrary(onnxruntime::PathString library_name) {
 #endif
 
 #ifdef _WIN32
-std::string ToUTF8String(const std::wstring& s) {
-  return g_host->ToUTF8String(s);
+std::string ToUTF8String(std::wstring_view s) {
+  return g_host->ToUTF8String(std::wstring{s});
 }
 
-std::wstring ToWideString(const std::string& s) {
-  return g_host->ToWideString(s);
+std::wstring ToWideString(std::string_view s) {
+  return g_host->ToWideString(std::string{s});
 }
 #endif  // _WIN32
 }  // namespace onnxruntime

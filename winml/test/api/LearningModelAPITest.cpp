@@ -27,7 +27,8 @@ static void CreateModelFromFilePath() {
 
 static void CreateModelFromUnicodeFilePath() {
   LearningModel learningModel = nullptr;
-  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"UnicodePath\\\u3053\u3093\u306B\u3061\u306F maçã\\foo.onnx", learningModel)
+  WINML_EXPECT_NO_THROW(
+    APITest::LoadModel(L"UnicodePath\\\u3053\u3093\u306B\u3061\u306F maçã\\foo.onnx", learningModel)
   );
 }
 
@@ -242,12 +243,13 @@ static void CloseModelCheckMetadata() {
 }
 
 static void CheckLearningModelPixelRange() {
-  std::vector<std::wstring> modelPaths = {// NominalRange_0_255 and image output
-                                          L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_255.onnx",
-                                          // Normalized_0_1 and image output
-                                          L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",
-                                          // Normalized_1_1 and image output
-                                          L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"
+  std::vector<std::wstring> modelPaths = {
+    // NominalRange_0_255 and image output
+    L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_255.onnx",
+    // Normalized_0_1 and image output
+    L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",
+    // Normalized_1_1 and image output
+    L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"
   };
   std::vector<LearningModelPixelRange> pixelRanges = {
     LearningModelPixelRange::ZeroTo255, LearningModelPixelRange::ZeroToOne, LearningModelPixelRange::MinusOneToOne
@@ -296,9 +298,9 @@ static void CloseModelNoNewSessions() {
   WINML_EXPECT_NO_THROW(learningModel.Close());
   LearningModelSession session = nullptr;
   WINML_EXPECT_THROW_SPECIFIC(
-    session = LearningModelSession(learningModel),
-    winrt::hresult_error,
-    [](const winrt::hresult_error& e) -> bool { return e.code() == E_INVALIDARG; }
+    session = LearningModelSession(learningModel), winrt::hresult_error, [](const winrt::hresult_error& e) -> bool {
+      return e.code() == E_INVALIDARG;
+    }
   );
 }
 

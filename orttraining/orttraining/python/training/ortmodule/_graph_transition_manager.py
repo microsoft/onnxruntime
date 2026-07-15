@@ -200,7 +200,7 @@ class PostExportProcessedModelInfo:
 
         The inputs are constructed in the order they appear in the model's forward function signature
         """
-        from ._mem_efficient_grad_mgmt import (
+        from ._mem_efficient_grad_mgmt import (  # noqa: PLC0415
             MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME,
             MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE,
             MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE,
@@ -619,7 +619,7 @@ class GraphTransitionManager:
         post_processed_model = copy.deepcopy(exported_model_info.exported_model)
 
         if enable_custom_autograd_function:
-            from ._custom_autograd_function_exporter import post_process_enabling_autograd_function
+            from ._custom_autograd_function_exporter import post_process_enabling_autograd_function  # noqa: PLC0415
 
             post_processed_model = post_process_enabling_autograd_function(post_processed_model)
 
@@ -630,7 +630,7 @@ class GraphTransitionManager:
 
         if export_mode == torch.onnx.TrainingMode.TRAINING:
             if enable_zero_stage3_support:
-                from ._zero_stage3_compatibility import post_processing_enable_zero_stage3_compat
+                from ._zero_stage3_compatibility import post_processing_enable_zero_stage3_compat  # noqa: PLC0415
 
                 post_processed_model = post_processing_enable_zero_stage3_compat(
                     post_processed_model,
@@ -647,7 +647,7 @@ class GraphTransitionManager:
 
         if enable_mem_efficient_grad_management:
             # Remove those trainable parameters from graph input, as they will be retrieved from weight pull node.
-            from ._mem_efficient_grad_mgmt import get_params_connected_to_pull_param_trigger
+            from ._mem_efficient_grad_mgmt import get_params_connected_to_pull_param_trigger  # noqa: PLC0415
 
             # MUST call this before post_processing_enable_mem_efficient_training, otherwise, the onnx graph input
             # will be modified.
@@ -663,7 +663,7 @@ class GraphTransitionManager:
                     if k in onnx_graph_input_names_require_grad:
                         onnx_graph_input_names_require_grad.remove(k)
 
-                from ._mem_efficient_grad_mgmt import MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME
+                from ._mem_efficient_grad_mgmt import MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME  # noqa: PLC0415
 
                 # Add mem efficient grad trigger name to require_grad_names, so that it will be included in the gradient graph.
                 onnx_graph_input_names_user_defined.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
@@ -671,7 +671,7 @@ class GraphTransitionManager:
                 onnx_graph_input_names.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
                 onnx_graph_input_names_require_grad.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
 
-                from ._mem_efficient_grad_mgmt import post_processing_enable_mem_efficient_training
+                from ._mem_efficient_grad_mgmt import post_processing_enable_mem_efficient_training  # noqa: PLC0415
 
                 # Override the options if model is not modified.
 
@@ -749,7 +749,7 @@ class GraphTransitionManager:
         random_states = _utils.get_random_states()
 
         torch_exporter_verbose_log = debug_options.log_level < LogLevel.WARNING
-        from onnxruntime.training.utils.hooks._subscriber_manager import no_increase_global_step
+        from onnxruntime.training.utils.hooks._subscriber_manager import no_increase_global_step  # noqa: PLC0415
 
         with export_context(), no_increase_global_step():
             exported_model, module_output_schema = GraphTransitionManager._get_exported_model(

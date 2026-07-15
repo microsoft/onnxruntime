@@ -11,14 +11,13 @@ furo
 pyquickhelper
 pandas
 pydot
-coloredlogs
 flatbuffers
 numpy<2.0.0
 packaging
-protobuf
+protobuf>=4.25.8
 sympy
 onnx
 sphinx_exec_code
 sphinx_tabs
 furo
-torch
+torch >= 2.6.0

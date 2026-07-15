@@ -18,6 +18,20 @@
 namespace onnxruntime {
 namespace QDQ {
 
+// Out-of-line constructor/destructor definitions so NodeGroupSelector is
+// complete when unique_ptr<NodeGroupSelector> is destroyed (required by libc++).
+OpVersionsAndSelector::OpVersionsAndSelector(const OpVersionsMap& ops_and_versions_in,
+                                             std::unique_ptr<NodeGroupSelector> selector_in)
+    : op_versions_map{ops_and_versions_in},
+      selector{std::move(selector_in)} {}
+
+OpVersionsAndSelector::~OpVersionsAndSelector() = default;
+
+Selectors::Selectors() = default;
+Selectors::~Selectors() = default;
+
+SelectorManager::~SelectorManager() = default;
+
 void Selectors::RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops_and_versions_in,
                                  std::unique_ptr<NodeGroupSelector> selector_in) {
   auto entry = std::make_unique<OpVersionsAndSelector>(
@@ -38,7 +52,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() {
           {"Expand", {}},
           {"Flatten", {}},
           {"Transpose", {}},
-          {"MaxPool", {12}},
+          {"MaxPool", {12, 22}},
           {"Resize", {}},
           {"Squeeze", {}},
           {"Unsqueeze", {}},
@@ -87,8 +101,10 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"Neg", {}},
           {"DepthToSpace", {}},
           {"SpaceToDepth", {}},
-          {"Clip", {}},
           {"LpNormalization", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetClipOpVersionsMap() {
+  return {{"Clip", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
   return {{"Add", {}},
@@ -113,6 +129,14 @@ static const OpVersionsAndSelector::OpVersionsMap GetConvOpVersionsMap() {
 static const OpVersionsAndSelector::OpVersionsMap GetConvTransposeOpVersionsMap() {
   return {{"ConvTranspose", {}}};
 }
+static const OpVersionsAndSelector::OpVersionsMap GetEinsumOpVersionsMap() {
+  return {{"Einsum", {}}};
+}
+
+static const OpVersionsAndSelector::OpVersionsMap GetReciprocalOpVersionsMap() {
+  return {{"Reciprocal", {}}};
+}
+
 static const OpVersionsAndSelector::OpVersionsMap GetMatMulOpVersionsMap() {
   return {{"MatMul", {}}};
 }
@@ -143,6 +167,17 @@ static const OpVersionsAndSelector::OpVersionsMap GetPadOpVersionsMap() {
 static const OpVersionsAndSelector::OpVersionsMap GetTopKOpVersionsMap() {
   return {{"TopK", {}}};
 }
+static const OpVersionsAndSelector::OpVersionsMap GetCumSumOpVersionsMap() {
+  return {{"CumSum", {}}};
+}
+
+static const OpVersionsAndSelector::OpVersionsMap GetScatterElementsOpVersionsMap() {
+  return {{"ScatterElements", {}}};
+}
+
+static const OpVersionsAndSelector::OpVersionsMap GetRMSNormalizationOpVersionsMap() {
+  return {{"RMSNormalization", {}}};
+}
 
 /* Selector rules registration related */
 void RegisterMiscSelectors(Selectors& qdq_selectors) {
@@ -153,16 +188,23 @@ void RegisterMiscSelectors(Selectors& qdq_selectors) {
 }
 
 void RegisterDropDQSelectors(Selectors& qdq_selectors) {
-  /* register selectors for ops that have a sigle DQ -> node */
+  /* register selectors for ops that have a single DQ -> node */
   std::unique_ptr<NodeGroupSelector> selector = std::make_unique<DropDQNodeGroupSelector>();
   qdq_selectors.RegisterSelector(GetDropDQOpVersionsMap(),
                                  std::move(selector));
 }
 
 void RegisterUnarySelectors(Selectors& qdq_selectors) {
-  /* regsiter selectors for unary ops */
+  /* register selectors for unary ops */
   std::unique_ptr<NodeGroupSelector> selector = std::make_unique<UnaryNodeGroupSelector>();
   qdq_selectors.RegisterSelector(GetUnaryOpVersionsMap(),
+                                 std::move(selector));
+}
+
+void RegisterClipSelector(Selectors& qdq_selectors) {
+  /* register selector for Clip op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<ClipNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetClipOpVersionsMap(),
                                  std::move(selector));
 }
 
@@ -199,6 +241,20 @@ void RegisterConvTransposeSelector(Selectors& qdq_selectors) {
   // it shares selector with Conv op, they have the same input/output def.
   std::unique_ptr<NodeGroupSelector> selector = std::make_unique<ConvNodeGroupSelector>();
   qdq_selectors.RegisterSelector(GetConvTransposeOpVersionsMap(),
+                                 std::move(selector));
+}
+
+void RegisterEinsumSelector(Selectors& qdq_selectors) {
+  /* register selector for einsum op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<EinsumNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetEinsumOpVersionsMap(),
+                                 std::move(selector));
+}
+
+void RegisterReciprocalSelector(Selectors& qdq_selectors) {
+  /* register selector for Reciprocal op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<ReciprocalNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetReciprocalOpVersionsMap(),
                                  std::move(selector));
 }
 
@@ -258,15 +314,39 @@ void RegisterTopKSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterCumSumSelector(Selectors& qdq_selectors) {
+  /* register selector for cumsum op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<CumSumNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetCumSumOpVersionsMap(),
+                                 std::move(selector));
+}
+
+void RegisterScatterElementsSelector(Selectors& qdq_selectors) {
+  /* register selector for cumsum op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<ScatterElementsNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetScatterElementsOpVersionsMap(),
+                                 std::move(selector));
+}
+
+void RegisterRMSNormalizationSelector(Selectors& qdq_selectors) {
+  /* register selector for RMSNormalization op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<RMSNormalizationNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetRMSNormalizationOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
   RegisterDropDQSelectors(qdq_selectors_);
   RegisterUnarySelectors(qdq_selectors_);
+  RegisterClipSelector(qdq_selectors_);
   RegisterBinarySelectors(qdq_selectors_);
   RegisterVariadicSelectors(qdq_selectors_);
   RegisterSplitSelector(qdq_selectors_);
   RegisterConvSelector(qdq_selectors_);
   RegisterConvTransposeSelector(qdq_selectors_);
+  RegisterEinsumSelector(qdq_selectors_);
+  RegisterReciprocalSelector(qdq_selectors_);
   RegisterMatMulSelector(qdq_selectors_);
   RegisterGemmSelector(qdq_selectors_);
   RegisterInstanceAndLayerNormalizationSelector(qdq_selectors_);
@@ -275,6 +355,9 @@ void SelectorManager::CreateSelectors() {
   RegisterWhereSelectors(qdq_selectors_);
   RegisterPadSelectors(qdq_selectors_);
   RegisterTopKSelector(qdq_selectors_);
+  RegisterCumSumSelector(qdq_selectors_);
+  RegisterScatterElementsSelector(qdq_selectors_);
+  RegisterRMSNormalizationSelector(qdq_selectors_);
 }
 
 void SelectorManager::InitializeSelectorsMap() {

@@ -209,7 +209,7 @@ namespace Onnx {
     [pbr::OriginalName("IR_VERSION_2019_9_19")] IrVersion2019919 = 6,
     /// <summary>
     /// IR VERSION 7 published on May 8, 2020
-    /// - Add support to allow function body graph to rely on multiple external opreator sets.
+    /// - Add support to allow function body graph to rely on multiple external operator sets.
     /// - Add a list to promote inference graph's initializers to global and
     ///   mutable variables. Global variables are visible in all graphs of the
     ///   stored models.
@@ -2481,7 +2481,7 @@ namespace Onnx {
     ///
     /// Name of the function "FunctionProto.name" should be unique within the domain "FunctionProto.domain".
     /// In case of any conflicts the behavior (whether the model local functions are given higher priority,
-    /// or standard opserator sets are given higher priotity or this is treated as error) is defined by
+    /// or standard opserator sets are given higher priority or this is treated as error) is defined by
     /// the runtimes.
     ///
     /// The operator sets imported by FunctionProto should be compatible with the ones

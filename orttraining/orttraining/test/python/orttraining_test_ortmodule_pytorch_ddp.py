@@ -1,6 +1,8 @@
 # This test script is a modified version of Pytorch's tutorial.
 # For details, see https://pytorch.org/tutorials/intermediate/ddp_tutorial.html.
 import argparse
+import inspect
+import logging
 import os
 import sys  # noqa: F401
 import tempfile
@@ -14,6 +16,22 @@ from torch.nn.parallel import DistributedDataParallel as DDP  # noqa: N817
 
 import onnxruntime  # noqa: F401
 from onnxruntime.training.ortmodule import ORTModule
+
+logger = logging.getLogger(__name__)
+
+_TORCH_LOAD_HAS_WEIGHTS_ONLY = "weights_only" in inspect.signature(torch.load).parameters
+
+
+def _torch_load_weights_only(path: str, **kwargs):
+    if _TORCH_LOAD_HAS_WEIGHTS_ONLY:
+        return torch.load(path, weights_only=True, **kwargs)
+
+    logger.warning(
+        "Current PyTorch version does not support torch.load(..., weights_only=True); "
+        "falling back to default torch.load behavior for %s.",
+        path,
+    )
+    return torch.load(path, **kwargs)
 
 
 def setup(rank, world_size):
@@ -113,7 +131,7 @@ def demo_checkpoint(rank, world_size, use_ort_module):
     dist.barrier()
     # configure map_location properly
     map_location = {"cuda:0": f"cuda:{rank}"}
-    ddp_model.load_state_dict(torch.load(CHECKPOINT_PATH, map_location=map_location))
+    ddp_model.load_state_dict(_torch_load_weights_only(CHECKPOINT_PATH, map_location=map_location))
 
     optimizer.zero_grad()
     outputs = ddp_model(torch.randn(20, 10))

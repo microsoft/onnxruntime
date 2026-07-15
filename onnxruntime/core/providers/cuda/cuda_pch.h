@@ -13,7 +13,6 @@
 #include <cuda_fp16.h>
 #ifndef USE_CUDA_MINIMAL
 #include <cublas_v2.h>
-#include <cusparse.h>
 #include <curand.h>
 #include <cudnn.h>
 #include <cufft.h>

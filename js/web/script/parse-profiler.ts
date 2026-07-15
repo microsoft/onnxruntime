@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-/* eslint-disable @typescript-eslint/restrict-plus-operands */
-
 // parse-profiler
 //
 // this script is used to parse performance profiling result.

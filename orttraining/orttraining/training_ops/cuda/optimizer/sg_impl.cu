@@ -51,7 +51,7 @@ void SGDOptimizerImpl(
 
 #define SPECIALIZED_IMPL__SGDOptimizerImpl(T) \
   template void SGDOptimizerImpl(             \
-      cudaStream_t stream,              \
+      cudaStream_t stream,                    \
       const T* eta,                           \
       const T* weights,                       \
       const T* gradients,                     \

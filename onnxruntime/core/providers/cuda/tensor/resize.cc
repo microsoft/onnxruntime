@@ -40,10 +40,22 @@ namespace cuda {
           .InputMemoryType(OrtMemTypeCPUInput, 3)                  \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()), \
       Resize<T>);                                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                         \
+      Resize,                                                      \
+      kOnnxDomain,                                                 \
+      18, 18,                                                      \
+      T,                                                           \
+      kCudaExecutionProvider,                                      \
+      (*KernelDefBuilder::Create())                                \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                  \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                  \
+          .InputMemoryType(OrtMemTypeCPUInput, 3)                  \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()), \
+      Resize<T>);                                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
       Resize,                                                      \
       kOnnxDomain,                                                 \
-      18,                                                          \
+      19,                                                          \
       T,                                                           \
       kCudaExecutionProvider,                                      \
       (*KernelDefBuilder::Create())                                \

@@ -175,9 +175,9 @@ def test_mask_decoder_onnx(
     inputs = (image_features_0, image_features_1, image_embeddings, image_pe, sparse_embeddings, dense_embeddings)
     low_res_masks, iou_predictions = sam2_mask_decoder(*inputs)
 
-    import onnxruntime
+    import onnxruntime  # noqa: PLC0415
 
-    ort_session = onnxruntime.InferenceSession(onnx_model_path, providers=onnxruntime.get_available_providers())
+    ort_session = onnxruntime.InferenceSession(onnx_model_path, providers=["CPUExecutionProvider"])
 
     model_inputs = ort_session.get_inputs()
     input_names = [model_inputs[i].name for i in range(len(model_inputs))]

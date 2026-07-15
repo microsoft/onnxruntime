@@ -3,6 +3,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -19,11 +20,36 @@ class DataTypeImpl;
 
 struct OrtTensorTypeAndShapeInfo {
  public:
-  ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
-  onnxruntime::TensorShape shape;
-  // dim_param values. empty string if dim_value or no dim_param was specified.
-  // one entry per dimension in shape. only guaranteed to be populated for graph inputs and outputs
-  std::vector<std::string> dim_params;
+  void SetElementType(ONNXTensorElementDataType element_type) noexcept {
+    this->type = element_type;
+  }
+
+  ONNXTensorElementDataType GetElementType() const noexcept {
+    return type;
+  }
+
+  struct ShapeInfo {
+    onnxruntime::TensorShape shape;
+    // dim_param values. empty string if dim_value or no dim_param was specified.
+    // one entry per dimension in shape. only guaranteed to be populated for graph inputs and outputs
+    std::vector<std::string> dim_params;
+  };
+
+  bool HasShape() const noexcept {
+    return shape_info.has_value();
+  }
+
+  const onnxruntime::TensorShape* GetShape() const noexcept {
+    return shape_info ? &shape_info->shape : nullptr;
+  }
+
+  const std::vector<std::string>* GetDimParams() const noexcept {
+    return shape_info ? &shape_info->dim_params : nullptr;
+  }
+
+  void SetShape(ShapeInfo shape) {
+    this->shape_info = std::move(shape);
+  }
 
   OrtTensorTypeAndShapeInfo();
   ~OrtTensorTypeAndShapeInfo();
@@ -31,15 +57,15 @@ struct OrtTensorTypeAndShapeInfo {
   // Utils
   static std::unique_ptr<OrtTensorTypeAndShapeInfo> GetTensorShapeAndTypeHelper(
       ONNXTensorElementDataType type,
-      onnxruntime::TensorShape shape,
+      const onnxruntime::TensorShape* shape,
       const std::vector<std::string>* dim_params);
 
   static std::unique_ptr<OrtTensorTypeAndShapeInfo> GetTensorShapeAndType(
-      onnxruntime::TensorShape shape,
+      const onnxruntime::TensorShape* shape,
       const onnxruntime::DataTypeImpl& tensor_data_type);
 
   static std::unique_ptr<OrtTensorTypeAndShapeInfo> GetTensorShapeAndType(
-      onnxruntime::TensorShape shape,
+      const onnxruntime::TensorShape* shape,
       const std::vector<std::string>* dim_params,
       const ONNX_NAMESPACE::TypeProto&);
 
@@ -54,6 +80,10 @@ struct OrtTensorTypeAndShapeInfo {
   // Copy ops are public because std::make_unique above requires them to be accessible
   OrtTensorTypeAndShapeInfo(const OrtTensorTypeAndShapeInfo& other);
   OrtTensorTypeAndShapeInfo& operator=(const OrtTensorTypeAndShapeInfo& other);
+
+ private:
+  ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+  std::optional<ShapeInfo> shape_info;
 };
 
 constexpr ONNXTensorElementDataType TensorDataTypeToOnnxRuntimeTensorElementDataType(int32_t dtype);

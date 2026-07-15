@@ -3,7 +3,7 @@
 
 #include "core/framework/execution_provider.h"
 #include <memory>
-#include "dummy_allocator.h"
+#include "test/unittest_util/dummy_allocator.h"
 
 namespace onnxruntime {
 namespace test {

@@ -13,29 +13,6 @@ using namespace onnxruntime;
 
 namespace onnxruntime {
 
-namespace cumsum_op {
-Status GetAxis(const Tensor* axis_tensor, int64_t input_rank, int64_t& axis_out) {
-  if (!axis_tensor)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Axis tensor must be provided to the CumSum op");
-
-  if (axis_tensor->Shape().NumDimensions() > 1)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Axis tensor should be 0D or 1D");
-
-  if (axis_tensor->IsDataType<int32_t>()) {
-    axis_out = static_cast<int64_t>(axis_tensor->Data<int32_t>()[0]);
-  } else if (axis_tensor->IsDataType<int64_t>()) {
-    axis_out = axis_tensor->Data<int64_t>()[0];
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Axis tensor should be of type `int32_t` or `int64_t`");
-  }
-
-  axis_out = HandleNegativeAxis(axis_out, input_rank);
-
-  return Status::OK();
-}
-
-}  // namespace cumsum_op
-
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     CumSum,
     11,
@@ -129,7 +106,7 @@ CumSum<T>::CumSum(const OpKernelInfo& info) : OpKernel(info), exclusive_(), reve
     if (exclusive == 1 || exclusive == 0) {
       exclusive_ = exclusive;
     } else {
-      ORT_ENFORCE("attribute exclusive can only be 0 or 1");
+      ORT_THROW("attribute exclusive can only be 0 or 1");
     }
   }
   int64_t reverse = 0;
@@ -138,7 +115,7 @@ CumSum<T>::CumSum(const OpKernelInfo& info) : OpKernel(info), exclusive_(), reve
     if (reverse == 1 || reverse == 0) {
       reverse_ = reverse;
     } else {
-      ORT_ENFORCE("attribute reverse can only be 0 or 1");
+      ORT_THROW("attribute reverse can only be 0 or 1");
     }
   }
 }

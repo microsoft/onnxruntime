@@ -8,19 +8,29 @@
     ],
     "[python]": {
         "editor.tabSize": 4,
-        // Auto sort imports
-        "editor.formatOnSave": true,
-        "editor.codeActionsOnSave": {
-            "source.organizeImports": "explicit"
-        },
-        "editor.defaultFormatter": "ms-python.black-formatter"
     },
-    // Enable Python linting and Pylance type checking
-    "python.analysis.typeCheckingMode": "basic",
     "cpplint.lineLength": 120,
     "cpplint.filters": [
         "-build/include_subdir",
         "-runtime/references"
     ],
-    "C_Cpp.autoAddFileAssociations": false
+    "C_Cpp.autoAddFileAssociations": false,
+
+    // Exclude build directories and non-essential folders from C++ parsing
+    "C_Cpp.files.exclude": {
+        "**/build/**": true,
+        "**/build_*/**": true,
+        "**/cmake/external/**": true,
+        "**/node_modules/**": true,
+        "**/.git/**": true
+    },
+
+    // Exclude from search but keep in explorer
+    "search.exclude": {
+        "**/build/**": true,
+        "**/build_*/**": true,
+        "**/cmake/external/**": true,
+        "**/node_modules/**": true,
+        "**/.git/**": true
+    }
 }

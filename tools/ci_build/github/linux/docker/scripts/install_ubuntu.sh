@@ -52,7 +52,6 @@ PACKAGE_LIST=(
     "pkg-config"
     "python3-dev"
     "python3-distutils"
-    "python3-numpy"
     "python3-pip"
     "python3-pytest"
     "python3-setuptools"

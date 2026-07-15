@@ -14,6 +14,17 @@
 
 namespace onnxruntime {
 namespace qnn {
+#if QNN_API_VERSION_MAJOR > 2 || \
+    (QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 29))
+#define QNN_SYSTEM_PROFILE_API_ENABLED
+#endif
+
+#if defined(_WIN32) && (defined(__aarch64__) || defined(_M_ARM64))
+#if QNN_API_VERSION_MAJOR > 2 || ((QNN_API_VERSION_MAJOR) == 2 && (QNN_API_VERSION_MINOR >= 32))
+#define QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+#endif
+#endif
+
 // QNN only support subset of POSIX of dlopen/dlsym/dladdr/dlerror/dlclose
 // except the following flags for dlopen, others should be done only
 // when we really need them
@@ -32,7 +43,24 @@ enum class ProfilingLevel : uint8_t {
   OFF = 0,
   BASIC,
   DETAILED,
+  OPTRACE,
   INVALID
+};
+
+enum class ProfilingMethodType : uint8_t {
+  UNKNOWN = 0,
+  EXECUTE,
+  FINALIZE,
+  EXECUTE_ASYNC,
+  CREATE_FROM_BINARY,
+  DEINIT,
+  CONTEXT_CREATE,
+  COMPOSE_GRAPHS,
+  EXECUTE_IPS,
+  GRAPH_COMPONENT,
+  LIB_LOAD,
+  APPLY_BINARY_SECTION,
+  CONTEXT_FINALIZE
 };
 
 // Defines performance modes available for HTP backend.
@@ -48,6 +76,15 @@ enum class HtpPerformanceMode : uint8_t {
   kHtpBalanced,
   kHtpExtremePowerSaver,
 };
+
+typedef struct PerThreadHtpPowerConfigs {
+  std::optional<HtpPerformanceMode> pre_run_perf_mode;
+  std::optional<HtpPerformanceMode> post_run_perf_mode;
+  std::optional<uint32_t> rpc_control_latency;
+  std::optional<uint32_t> rpc_polling_time;
+
+  uint32_t power_config_id = 0;
+} PerThreadHtpPowerConfigs_t;
 
 enum class ContextPriority : uint8_t {
   LOW = 0,
@@ -70,10 +107,19 @@ enum class QnnBackendType : uint8_t {
   GPU,
   DSP,
   HTP,
-  HTP_FP16
+  HTP_FP16,
+  SERIALIZER,
 };
 
+bool IsIrBackend(QnnBackendType backend_type);
+
+bool IsCpuBackend(QnnBackendType backend_type);
+
 bool IsNpuBackend(QnnBackendType backend_type);
+
+bool IsGpuBackend(QnnBackendType backend_type);
+
+bool IsQpuBackend(QnnBackendType backend_type);
 
 // constexpr config values
 constexpr const int kSleepMinLatency = 40;
@@ -82,6 +128,9 @@ constexpr const int kSleepMediumLatency = 1000;
 constexpr const int kSleepHighLatency = 2000;
 constexpr const int kDcvsDisable = 0;
 constexpr const int kDcvsEnable = 1;
+constexpr const uint32_t kDisableRpcPolling = 0;
+constexpr const uint32_t kDisableRpcControlLatency = 0;
+constexpr const uint32_t kMaxRpcPolling = 9999;
 
 struct OnnxTensorInfo {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxTensorInfo);
@@ -100,7 +149,6 @@ void SetQnnTensorDataType(Qnn_Tensor_t& qnn_tensor, Qnn_DataType_t data_type);
 void SetQnnTensorDim(Qnn_Tensor_t& qnn_tensor, const std::vector<uint32_t>& dimensions);
 void SetQnnTensorMemType(Qnn_Tensor_t& qnn_tensor, Qnn_TensorMemType_t mem_type);
 void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, const std::vector<uint8_t>& client_buf);
-void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, const std::vector<uint32_t>& client_buf);
 void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, void* buf_data, uint32_t buf_size);
 void SetQnnTensorClientBufSize(Qnn_Tensor_t& qnn_tensor, uint32_t client_buf_size);
 void SetQnnTensorClientBufData(Qnn_Tensor_t& qnn_tensor, void* client_buf_data);
@@ -122,6 +170,7 @@ Qnn_DataType_t GetQnnTensorDataType(const Qnn_Tensor_t& qnn_tensor);
 Qnn_TensorMemType_t GetQnnTensorMemType(const Qnn_Tensor_t& qnn_tensor);
 uint32_t GetQnnTensorRank(const Qnn_Tensor_t& qnn_tensor);
 uint32_t* GetQnnTensorDims(const Qnn_Tensor_t& qnn_tensor);
+uint32_t CalcQnnTensorNumElems(const Qnn_Tensor_t& qnn_tensor);
 const Qnn_ClientBuffer_t& GetQnnTensorClientBuf(const Qnn_Tensor_t& qnn_tensor);
 Qnn_MemHandle_t GetQnnTensorMemHandle(const Qnn_Tensor_t& qnn_tensor);
 const Qnn_QuantizeParams_t& GetQnnTensorQParams(const Qnn_Tensor_t& qnn_tensor);
@@ -154,6 +203,24 @@ class QnnTensorWrapper {
                                                                            dimensions_(std::move(shape)),
                                                                            client_buf_(std::move(client_buf)),
                                                                            quant_params_(quantize_params) {
+    if (data_type == QNN_DATATYPE_INT_64) {
+      // QNN doesn't support int64_t, so we cast to int32_t.
+      if (tensor_type == QNN_TENSOR_TYPE_NATIVE) {
+        data_type = QNN_DATATYPE_INT_32;
+      }
+      if (client_buf_.size()) {
+        const size_t num_elems = client_buf_.size() / sizeof(int64_t);
+        std::vector<uint8_t> cast_data;
+        cast_data.resize(num_elems * sizeof(int32_t));
+        gsl::span<int64_t> origin_values{reinterpret_cast<int64_t*>(client_buf_.data()), num_elems};
+        gsl::span<int32_t> new_values(reinterpret_cast<int32_t*>(cast_data.data()), num_elems);
+        for (size_t i = 0; i < num_elems; i++) {
+          new_values[i] = static_cast<int32_t>(origin_values[i]);
+        }
+        data_type = QNN_DATATYPE_INT_32;
+        client_buf_ = std::move(cast_data);
+      }
+    }
     SetQnnTensorType(qnn_tensor_, tensor_type);
     SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
     SetQnnTensorDataType(qnn_tensor_, data_type);
@@ -161,10 +228,6 @@ class QnnTensorWrapper {
     SetQnnTensorMemType(qnn_tensor_, mem_type);
     if (QNN_TENSOR_TYPE_STATIC == tensor_type) {
       SetQnnTensorClientBuf(qnn_tensor_, client_buf_);
-    }
-
-    if (mem_type != QNN_TENSORMEMTYPE_RAW) {
-      ORT_THROW("mem_type not supported for now.");
     }
 
     SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());
@@ -194,7 +257,7 @@ class QnnTensorWrapper {
     dimensions_.assign(shape_data, shape_data + shape_rank);
     SetQnnTensorDim(qnn_tensor_, dimensions_);
 
-    SetQnnTensorMemType(qnn_tensor_, QNN_TENSORMEMTYPE_RAW);
+    SetQnnTensorMemType(qnn_tensor_, GetQnnTensorMemType(qnn_tensor));
 
     return Status::OK();
   }
@@ -286,9 +349,31 @@ class QnnParamWrapper {
   QnnParamWrapper(NodeIndex node_index,
                   const std::string& node_name,
                   const std::string& name,
+                  Qnn_DataType_t data_type,
+                  std::vector<uint32_t>&& shape,
+                  std::vector<uint8_t>&& param_data) : name_(name), shape_(std::move(shape)), param_data_(std::move(param_data)) {
+    qnn_param_.paramType = QNN_PARAMTYPE_TENSOR;
+    qnn_param_.name = name_.c_str();
+    std::stringstream ss;
+    ss << node_name << "_" << node_index << "_" << name;
+    tensor_name_ = ss.str();
+    qnn_param_.tensorParam = QNN_TENSOR_INIT;
+    SetQnnTensorType(qnn_param_.tensorParam, QNN_TENSOR_TYPE_STATIC);
+    SetQnnTensorName(qnn_param_.tensorParam, tensor_name_.c_str());
+    SetQnnTensorDataType(qnn_param_.tensorParam, data_type);
+    SetQnnTensorDim(qnn_param_.tensorParam, shape_);
+    SetQnnTensorMemType(qnn_param_.tensorParam, QNN_TENSORMEMTYPE_RAW);
+    SetQnnTensorClientBuf(qnn_param_.tensorParam, param_data_);
+  }
+
+  QnnParamWrapper(NodeIndex node_index,
+                  const std::string& node_name,
+                  const std::string& name,
                   std::vector<uint32_t>&& shape,
                   std::vector<uint32_t>&& param_data,
-                  bool is_signed = false) : name_(name), shape_(std::move(shape)), param_data_(std::move(param_data)) {
+                  bool is_signed = false) : name_(name), shape_(std::move(shape)) {
+    param_data_.resize(param_data.size() * sizeof(uint32_t));
+    std::memcpy(param_data_.data(), const_cast<void*>(static_cast<const void*>(param_data.data())), param_data_.size());
     qnn_param_.paramType = QNN_PARAMTYPE_TENSOR;
     qnn_param_.name = name_.c_str();
     std::stringstream ss;
@@ -302,6 +387,7 @@ class QnnParamWrapper {
     SetQnnTensorMemType(qnn_param_.tensorParam, QNN_TENSORMEMTYPE_RAW);
     SetQnnTensorClientBuf(qnn_param_.tensorParam, param_data_);
   }
+
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(QnnParamWrapper);
   QnnParamWrapper(QnnParamWrapper&& other) noexcept {
     std::swap(name_, other.name_);
@@ -345,9 +431,33 @@ class QnnParamWrapper {
   std::string name_;
   std::string tensor_name_;
   std::vector<uint32_t> shape_;
-  std::vector<uint32_t> param_data_;
+  std::vector<uint8_t> param_data_;
   Qnn_Param_t qnn_param_ = QNN_PARAM_INIT;
 };
+
+template <typename T>
+QnnParamWrapper createQnnParamWrapper(NodeIndex node_index,
+                                      const std::string& node_name,
+                                      const std::string& name,
+                                      std::vector<uint32_t>&& shape,
+                                      std::vector<T>&& param_data) {
+  Qnn_DataType_t qnn_data_type = QNN_DATATYPE_UNDEFINED;
+  if (std::is_same<T, float>::value) {
+    qnn_data_type = QNN_DATATYPE_FLOAT_32;
+  } else if (std::is_same<T, uint32_t>::value) {
+    qnn_data_type = QNN_DATATYPE_UINT_32;
+  } else if (std::is_same<T, int32_t>::value) {
+    qnn_data_type = QNN_DATATYPE_INT_32;
+  } else if (std::is_same<T, int64_t>::value) {
+    qnn_data_type = QNN_DATATYPE_INT_64;
+  } else if (std::is_same<T, bool>::value) {
+    qnn_data_type = QNN_DATATYPE_BOOL_8;
+  }
+  std::vector<uint8_t> new_param_data;
+  new_param_data.resize(param_data.size() * sizeof(T));
+  std::memcpy(new_param_data.data(), param_data.data(), new_param_data.size());
+  return QnnParamWrapper(node_index, node_name, name, qnn_data_type, std::move(shape), std::move(new_param_data));
+}
 
 class QnnOpConfigWrapper {
  public:

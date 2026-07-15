@@ -14,6 +14,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/optimizer/initializer.h"
 #include "core/optimizer/layout_transformation/layout_transformation_potentially_added_ops.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
 #include "core/optimizer/transpose_optimization/ort_transpose_optimization.h"
@@ -103,6 +104,14 @@ class ApiNode final : public api::NodeRef {
   std::string_view GetExecutionProviderType() const override;
   int SinceVersion() const override;
   int64_t Id() const override;
+
+  std::string_view GetLayeringAnnotation() const override {
+    return node_.GetLayeringAnnotation();
+  }
+
+  void SetLayeringAnnotation(std::string_view annotation) override {
+    node_.SetLayeringAnnotation(std::string(annotation));
+  }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiNode);
@@ -558,8 +567,8 @@ void ApiGraph::TransposeInitializer(std::string_view name, const std::vector<int
   TensorShape tensor_shape{tensor_shape_dims};
   Tensor in_tensor(tensor_dtype, tensor_shape, cpu_allocator_);
 
-  std::vector<int64_t> new_tensor_shape_dims;
-  std::vector<size_t> permutations;
+  TensorShapeVector new_tensor_shape_dims;
+  InlinedVector<size_t> permutations;
   permutations.reserve(perm.size());
   new_tensor_shape_dims.reserve(perm.size());
   for (int64_t p : perm) {
@@ -568,13 +577,15 @@ void ApiGraph::TransposeInitializer(std::string_view name, const std::vector<int
     new_tensor_shape_dims.push_back(tensor_shape_dims[p_size_t]);
   }
 
-  TensorShape new_tensor_shape(new_tensor_shape_dims);
-  Tensor out_tensor(tensor_dtype, new_tensor_shape, cpu_allocator_);
-
   ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), graph_.ModelPath(),
                                                 *tensor_proto, in_tensor));
 
-  ORT_THROW_IF_ERROR(Transpose::DoTranspose(permutations, in_tensor, out_tensor));
+  TensorShape new_tensor_shape(new_tensor_shape_dims);
+  Tensor out_tensor(tensor_dtype, new_tensor_shape, cpu_allocator_);
+
+  if (new_tensor_shape.Size() > 0) {
+    ORT_THROW_IF_ERROR(Transpose::DoTranspose(permutations, in_tensor, out_tensor));
+  }
 
   auto& node_arg = *graph_.GetNodeArg(name_str);
   TensorShapeProto new_shape;
@@ -584,9 +595,11 @@ void ApiGraph::TransposeInitializer(std::string_view name, const std::vector<int
 
   node_arg.SetShape(new_shape);
 
-  ONNX_NAMESPACE::TensorProto new_tensor_proto = utils::TensorToTensorProto(out_tensor, name_str);
   graph_.RemoveInitializedTensor(name_str);
-  graph_.AddInitializedTensor(new_tensor_proto);
+  constexpr const bool use_tensor_buffer_true = true;
+  ONNX_NAMESPACE::TensorProto new_tensor_proto = utils::TensorToTensorProto(out_tensor, name_str,
+                                                                            use_tensor_buffer_true);
+  graph_utils::AddInitializerWithOrtValue(graph_, new_tensor_proto, std::move(out_tensor));
 }
 
 void ApiGraph::ReshapeInitializer(std::string_view name, const std::vector<int64_t>& shape) {
@@ -607,14 +620,19 @@ void ApiGraph::ReshapeInitializer(std::string_view name, const std::vector<int64
   ORT_ENFORCE(new_num_elts == old_num_elts, "Cannot reshape initializer ", name,
               " to have different number of elements");
 
-  auto new_tensor_proto = ONNX_NAMESPACE::TensorProto(*tensor_proto);
+  Initializer initializer(graph_, *tensor_proto, graph_.ModelPath());
+
+  // This makes a copy including the data, we need this to create
+  // a new OrtValue with the correct tensor
+  TensorProto new_tensor_proto;
+  initializer.ToProto(new_tensor_proto);
   new_tensor_proto.clear_dims();
   for (int64_t d : shape) {
     new_tensor_proto.add_dims(d);
   }
 
   graph_.RemoveInitializedTensor(name_str);
-  graph_.AddInitializedTensor(new_tensor_proto);
+  graph_utils::AddInitializerWithOrtValue(graph_, new_tensor_proto);
 
   auto* node_arg = graph_.GetNodeArg(name_str);
   TensorShapeProto new_shape;
@@ -753,6 +771,9 @@ std::unique_ptr<api::NodeRef> ApiGraph::CopyNode(const api::NodeRef& source_node
                                 source_node.Outputs().size(), domain, new_node_since_version,
                                 source_node.GetExecutionProviderType());
 
+  const auto& layering_annotation = source_node.GetLayeringAnnotation();
+  node.SetLayeringAnnotation(std::string(layering_annotation));
+
   std::unique_ptr<api::NodeRef> new_node = std::make_unique<ApiNode>(node, graph_);
   new_node->CopyAttributes(source_node);
 
@@ -786,7 +807,7 @@ std::string_view ApiGraph::AddInitializer(api::DataType dtype, const std::vector
   }
   utils::SetRawDataInTensorProto(tensor_proto, data.data(), data.size());
 
-  const auto& node_arg = graph_utils::AddInitializer(graph_, tensor_proto);
+  const auto& node_arg = graph_utils::AddInitializerWithOrtValue(graph_, tensor_proto);
   return node_arg.Name();
 }
 

@@ -21,6 +21,7 @@ import torch
 from typing import TypeVar
 from collections import OrderedDict
 from collections.abc import Iterator, Callable
+from typing_extensions import Self
 
 # Needed to override PyTorch methods
 T = TypeVar("T", bound="torch.nn.Module")
@@ -187,7 +188,7 @@ class ORTModule(torch.nn.Module):
         self._torch_module._apply(fn)
         return self
 
-    def apply(self: T, fn: Callable[[torch.nn.Module], None]) -> T:
+    def apply(self, fn: Callable[[torch.nn.Module], None]) -> Self:
         """Override :meth:`~torch.nn.Module.apply` to delegate execution to ONNX Runtime"""
 
         self._torch_module.apply(fn)
@@ -196,7 +197,7 @@ class ORTModule(torch.nn.Module):
     def _is_training(self):
         return self._torch_module.is_training()
 
-    def train(self: T, mode: bool = True) -> T:
+    def train(self, mode: bool = True) -> Self:
         """Override :meth:`~torch.nn.Module.train` to delegate execution to ONNX Runtime"""
 
         self.training = mode

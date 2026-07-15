@@ -11,7 +11,7 @@
 #   conda create -n gpu_env python=3.8
 #   conda activate gpu_env
 #   pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113
-#   pip3 install onnx transformers onnxruntime-gpu numpy sympy coloredlogs psutil py3nvml
+#   pip3 install onnx transformers onnxruntime-gpu numpy sympy psutil py3nvml
 #   python benchmark_longformer.py
 #
 # When there is no parameter, pre-defined tests will run on the longformer-base-4096 model.
@@ -692,10 +692,10 @@ def output_summary(results, csv_filename, data_field="average_latency_ms"):
             row = {}
 
             sum_latency = {}
-            sum_latency.update({k: 0 for k in data_names})
+            sum_latency.update(dict.fromkeys(data_names, 0))
 
             count_latency = {}
-            count_latency.update({k: 0 for k in data_names})
+            count_latency.update(dict.fromkeys(data_names, 0))
 
             for result in results:
                 if result["description"] == description and result[data_field]:

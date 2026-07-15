@@ -927,7 +927,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
       }
       if (indicesShape.length < 2) {
         throw new IllegalArgumentException(
-            "Expected [numBlocks, co-ordinates] or larger, but indices shape was "
+            "Expected [numBlocks, coordinates] or larger, but indices shape was "
                 + Arrays.toString(indicesShape));
       }
     }

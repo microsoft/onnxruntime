@@ -93,17 +93,28 @@ Status Sample(AllocatorPtr& allocator,
 
 #ifdef DEBUG_GENERATION
   dumper->Print("sorted_scores", sorted_scores.data(), parameters->batch_size, parameters->vocab_size);
-  dumper->Print("sorted_indices", sorted_indices.data(), parameters->batch_size, parameters->vocab_size);
+  std::vector<int64_t> sorted_indices_copy(sorted_indices.begin(), sorted_indices.end());
+  dumper->Print("sorted_indices", sorted_indices_copy.data(), parameters->batch_size, parameters->vocab_size);
 #endif
 
   gsl::span<T>& cumulative_probs = sampling_state->cumulative_probs;
 
+  // TODO(hasesh): Plumb through mlas backend config to SoftmaxCPU
+  // Currently, MLAS uses a dedicated softmax kernel for float type
+  // that does not need the mlas backend config.
+  // The backend config is only needed for the double type softmax kernel
+  // which uses Gemm/Matmul for its implementation.
+  // At the time of writing, there is no backend other than MLAS that implements
+  // double type Gemm/Matmul. Hence, the cost of plumbing through the session option
+  // to enable/disable a backend (like KleidiAI) is not justified.
+  // It is better re-visited when it is relevant for the double type.
   ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(parameters->batch_size,
                                     parameters->vocab_size,
                                     sorted_scores.data(),
                                     cumulative_probs.data(),
                                     false,
-                                    thread_pool));
+                                    thread_pool,
+                                    nullptr));  // mlas_backend_kernel_selector_config
 
   if (parameters->custom_sampling) {
     cumulate_and_filter_custom(next_token_scores, cumulative_probs, parameters, sorted_indices);

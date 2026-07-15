@@ -33,22 +33,43 @@ Status PadOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                    std::vector<std::string>& input_names,
                                    bool do_op_validation) const {
   const auto& inputs = node_unit.Inputs();
-  // QNN Pad only has 1 input, the pads input & constant_value input need to be initializer and set as Qnn node parameter, axes input is not supported.
+  // QNN Pad only has 1 input, the pads input & constant_value input need to be initializer (opset >= 11) and set as Qnn node
+  // parameter, axes input is not supported.
   if (do_op_validation) {
-    ORT_RETURN_IF(inputs.size() > 3, "QNN Pad doesn't support axes.");
-    ORT_RETURN_IF(inputs.size() < 2, "QNN Pad requires the pads input.");
+    const int opset_version = node_unit.SinceVersion();
+    const std::string domain = node_unit.Domain();
+
+    if (domain == kMSDomain) {
+      // Pad in the com.microsoft domain accepts 2-3 inputs (data, pads, value).
+      ORT_RETURN_IF(inputs.size() < 2, "QNN Pad requires the pads input.");
+    } else {
+      // Pad in the ONNX domain accepts only 1 input (data) before opset 11.
+      // For opset 11 and after, it accepts 2-4 inputs (data, pads, constant_value, axes), although QNN pad
+      // does not support the axes input.
+
+      // Reject Pad opset 1, which differs slightly from Pad for 2 <= opset < 11.
+      // We could support it, but nodes below opset 7 should be rejected earlier by ORT, anyway.
+      ORT_RETURN_IF(opset_version < 2, "Pad with opset < 2 is not supported");
+
+      ORT_RETURN_IF(opset_version < 11 && inputs.size() > 1,
+                    "Pads should be specified in an attribute for opset < 11");
+      ORT_RETURN_IF(opset_version >= 11 && inputs.size() > 3, "QNN Pad doesn't support axes.");
+      ORT_RETURN_IF(opset_version >= 11 && inputs.size() < 2, "QNN Pad requires the pads input.");
+    }
 
     std::vector<uint32_t> input_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape of input 0.");
-    ORT_RETURN_IF(input_shape.size() > 5, "QNN Pad doesn't support more than 5 dimension");
+    ORT_RETURN_IF(input_shape.size() > 5, "QNN Pad doesn't support more than 5 dimensions");
 
-    auto& pads_input_name = inputs[1].node_arg.Name();
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.IsInitializerInput(pads_input_name),
-                      "Qnn doesn't support dynamic pad input");
-    if (inputs.size() > 2 && inputs[2].node_arg.Exists()) {
-      auto& constant_value_input_name = inputs[2].node_arg.Name();
-      ORT_RETURN_IF_NOT(qnn_model_wrapper.IsInitializerInput(constant_value_input_name),
-                        "Qnn doesn't support dynamic constant_value input");
+    if (opset_version >= 11 || domain == kMSDomain) {
+      auto& pads_input_name = inputs[1].node_arg.Name();
+      ORT_RETURN_IF_NOT(qnn_model_wrapper.IsConstantInput(pads_input_name),
+                        "Qnn doesn't support dynamic pad input");
+      if (inputs.size() > 2 && inputs[2].node_arg.Exists()) {
+        auto& constant_value_input_name = inputs[2].node_arg.Name();
+        ORT_RETURN_IF_NOT(qnn_model_wrapper.IsConstantInput(constant_value_input_name),
+                          "Qnn doesn't support dynamic constant_value input");
+      }
     }
   }
 
@@ -175,31 +196,63 @@ Status PadOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
                                                  const logging::Logger& logger,
                                                  bool do_op_validation) const {
   std::vector<std::string> param_tensor_names;
-  // Process pads input
-  // Already confirmed pads input is initializer in ProcessInputs()
+  const int opset_version = node_unit.SinceVersion();
+  const std::string domain = node_unit.Domain();
+
   const auto& inputs = node_unit.Inputs();
-  const auto& pads_input_name = inputs[1].node_arg.Name();
+  NodeAttrHelper node_helper(node_unit);
 
+  const int64_t* tensor_data = nullptr;
+  size_t size = 0;
+
+  const auto pads_attr = node_helper.GetInt64s("pads");
   std::vector<uint8_t> unpacked_tensor;
-  const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(pads_input_name);
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
-  // Onnx Pads are int64, Qnn use uint32
-  const int64_t* tensor_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
-  size_t tensor_byte_size = unpacked_tensor.size();
-  size_t size = tensor_byte_size / sizeof(int64_t);
 
+  if (opset_version < 11 && domain != kMSDomain) {
+    // Process pads attribute
+    // NodeAttrHelper::GetInt64s returns an allocated copy, not a view, so we must call it in the outer scope
+    ORT_RETURN_IF_NOT(pads_attr.has_value(), "Failed to get pads attribute.");
+    tensor_data = pads_attr.value().data();
+    size = pads_attr.value().size();
+  } else {
+    // Process pads input
+    // Already confirmed pads input is initializer in ProcessInputs()
+    const auto& pads_input_name = inputs[1].node_arg.Name();
+
+    const auto& input_tensor = qnn_model_wrapper.GetConstantTensor(pads_input_name);
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
+    tensor_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+    size_t tensor_byte_size = unpacked_tensor.size();
+    size = tensor_byte_size / sizeof(int64_t);
+  }
+
+  bool has_negative = std::any_of(tensor_data, tensor_data + size, [](int64_t item) { return item < 0; });
+  bool has_positive = std::any_of(tensor_data, tensor_data + size, [](int64_t item) { return item > 0; });
+
+  // Zero padding value gives 3110 error on QNN on NPU.
+  const bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
+  if (is_npu_backend && !has_positive && !has_negative) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got QNN invalid zero only padding value.");
+  }
+
+  // Onnx Pads are int64, Qnn uses uint32
   std::vector<uint32_t> pad_amount;
   std::transform(tensor_data, tensor_data + size, std::back_inserter(pad_amount),
-                 [](int64_t item) { return SafeInt<uint32_t>(item); });
+                 [](int64_t item) { return item < 0 ? SafeInt<uint32_t>(0) : SafeInt<uint32_t>(item); });
+
   // Onnx format is begin_0, begin_1, ..., end_0, end_1, ...
   // Qnn format is begin_0, end_0, begin_1, end_1, ...
-  ReArranagePads(pad_amount);
+  ReArrangePads(pad_amount);
 
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape of input 0.");
 
-  NodeAttrHelper node_helper(node_unit);
   std::string mode = node_helper.Get("mode", "constant");
+
+  if ("reflect" == mode && has_negative) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "reflect mode doesn't support negative padding value.");
+  }
+
   Qnn_Scalar_t mode_qnn_scalar = QNN_SCALAR_INIT;
   mode_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
   if ("constant" == mode) {
@@ -222,19 +275,124 @@ Status PadOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
   qnn_model_wrapper.AddParamWrapper(std::move(mode_param));
 
   QnnParamWrapper pad_amount_param(node_unit.Index(), node_unit.Name(), QNN_OP_PAD_PARAM_PAD_AMOUNT,
-                                   std::move(pad_amount_dim), std::move(pad_amount));
+                                   std::move(pad_amount_dim), std::vector<uint32_t>(pad_amount));
   param_tensor_names.push_back(pad_amount_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(pad_amount_param));
 
-  // Process optional input constant_value
-  if (inputs.size() > 2 && inputs[2].node_arg.Exists()) {
+  if (opset_version < 11 && domain != kMSDomain && node_helper.HasAttr("value")) {
+    // Process optional attribute value
+    Qnn_Scalar_t constant_value_qnn_scalar = QNN_SCALAR_INIT;
+    constant_value_qnn_scalar.dataType = QNN_DATATYPE_FLOAT_32;
+    constant_value_qnn_scalar.floatValue = node_helper.GetFloat("value").value();
+    QnnParamWrapper constant_value_param(node_unit.Index(),
+                                         node_unit.Name(),
+                                         QNN_OP_PAD_PARAM_PAD_CONSTANT_VALUE,
+                                         constant_value_qnn_scalar);
+    param_tensor_names.push_back(constant_value_param.GetParamTensorName());
+    qnn_model_wrapper.AddParamWrapper(std::move(constant_value_param));
+  } else if ((opset_version >= 11 || domain == kMSDomain) && inputs.size() > 2 && inputs[2].node_arg.Exists()) {
+    // Process optional input constant_value
     ORT_RETURN_IF_ERROR(ProcessConstantValue(qnn_model_wrapper, param_tensor_names, node_unit, inputs[2]));
-  }  // constant_value
+  }
 
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
-                                     std::move(input_names),
-                                     std::move(param_tensor_names),
-                                     logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
+  if (!has_negative) {
+    // Non-negative pads maps directly onto QNN pad.
+    ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
+                                       std::move(input_names),
+                                       std::move(param_tensor_names),
+                                       logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
+  } else {
+    // If the pads contain negative values, we will need to use a StridedSlice, possibly preceded by a Pad.
+    //   mixed pad values        => Pad + StridedSlice
+    //   non-positive pad values => StridedSlice
+
+    std::vector<uint32_t> pad_output_shape;
+    for (uint32_t i = 0; i < input_shape.size(); ++i) {
+      pad_output_shape.push_back(input_shape[i] + pad_amount[2 * i] + pad_amount[2 * i + 1]);
+    }
+
+    std::string pad_output_name = utils::GetUniqueName(node_unit, "_Pad_output");
+
+    if (has_positive) {
+      // Step 1. Add Pad to handle any positive values
+      TensorInfo input_info = {};
+      ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Inputs()[0], input_info));
+
+      std::string pad_name = utils::GetUniqueName(node_unit, "_Pad");
+      QnnTensorWrapper pad_output(pad_output_name,
+                                  QNN_TENSOR_TYPE_NATIVE,
+                                  input_info.qnn_data_type,
+                                  input_info.quant_param.Copy(),
+                                  std::vector<uint32_t>(pad_output_shape));
+      ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(pad_output)),
+                        "Failed to add Pad output tensor.");
+
+      ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(pad_name,
+                                                        QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                        GetQnnOpType(node_unit.OpType()),
+                                                        std::vector<std::string>(input_names),
+                                                        {pad_output_name},
+                                                        std::move(param_tensor_names),
+                                                        do_op_validation),
+                        "Failed to add Pad node.");
+    }
+
+    // Step 2. Add Slice to handle the negative values
+    TensorInfo output_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Outputs()[0], output_info));
+
+    const std::string& org_output_name = node_unit.Outputs()[0].node_arg.Name();
+    const bool is_graph_output = qnn_model_wrapper.IsGraphOutput(org_output_name);
+    Qnn_TensorType_t op_output_tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
+
+    // Create output tensor
+    std::vector<uint32_t> output_shape = output_info.shape;
+    QnnTensorWrapper org_output(org_output_name,
+                                op_output_tensor_type,
+                                output_info.qnn_data_type,
+                                output_info.quant_param.Copy(),
+                                std::vector<uint32_t>(output_shape));
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(org_output)),
+                      "Failed to add StridedSlice output tensor.");
+
+    // Create Slice param
+    const size_t input_rank = input_shape.size();
+    std::vector<uint32_t> ranges_dims{static_cast<uint32_t>(input_rank), 3};
+    std::vector<uint32_t> ranges_data;
+    ranges_data.reserve(input_rank);
+
+    std::vector<int64_t> slice_amount;
+    std::transform(tensor_data, tensor_data + size, std::back_inserter(slice_amount),
+                   [](int64_t item) { return item > 0 ? SafeInt<int64_t>(0) : SafeInt<int64_t>(item); });
+
+    // slice_amount in ONNX format: begin_0, begin_1, ..., end_0, end_1, ...
+    for (size_t i = 0; i < input_rank; i++) {
+      ranges_data.push_back(static_cast<uint32_t>(0 - slice_amount[i]));                                                       // starts
+      ranges_data.push_back(static_cast<uint32_t>(static_cast<int64_t>(pad_output_shape[i]) + slice_amount[i + input_rank]));  // ends
+      ranges_data.push_back(static_cast<uint32_t>(1));                                                                         // steps
+    }
+
+    QnnParamWrapper ranges_paramwrapper(node_unit.Index(),
+                                        node_unit.Name(),
+                                        QNN_OP_STRIDED_SLICE_PARAM_RANGES,
+                                        std::move(ranges_dims),
+                                        std::move(ranges_data),
+                                        true);
+    std::string slice_param_tensor_name(ranges_paramwrapper.GetParamTensorName());
+    qnn_model_wrapper.AddParamWrapper(std::move(ranges_paramwrapper));
+
+    // Create Slice Node
+    std::vector<std::string> slice_input_name = has_positive ? std::vector<std::string>{pad_output_name} : input_names;
+    std::string slice_name = utils::GetUniqueName(node_unit, "_Slice");
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(slice_name,
+                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                      QNN_OP_STRIDED_SLICE,
+                                                      std::move(slice_input_name),
+                                                      {org_output_name},
+                                                      {slice_param_tensor_name},
+                                                      do_op_validation),
+                      "Failed to add StridedSlice node.");
+  }
 
   return Status::OK();
 }

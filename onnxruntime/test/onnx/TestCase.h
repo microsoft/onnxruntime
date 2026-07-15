@@ -32,6 +32,7 @@ class ITestCase {
   virtual void LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
                             std::unordered_map<std::string, Ort::Value>& name_data_map,
                             bool is_input) const = 0;
+  virtual void SaveResult(size_t id, std::vector<Ort::Value>& out_values) const = 0;
   virtual const std::filesystem::path& GetModelUrl() const = 0;
   virtual const std::string& GetNodeName() const = 0;
   virtual const ONNX_NAMESPACE::ValueInfoProto* GetInputInfoFromModel(size_t i) const = 0;

@@ -22,12 +22,23 @@
 #   Always generate packages for onnxruntime-common and onnxruntime-(node|web|react-native)
 #
 
-if ($Args.Count -ne 3) {
-    throw "This script requires 3 arguments, but got $($Args.Count)"
+if ($Args.Count -lt 3) {
+    throw "This script requires at least 3 arguments, but got $($Args.Count)"
 }
 $MODE=$Args[0] # "dev" or "release" or "rc"; otherwise it is considered as a version number
 $ORT_ROOT=$Args[1] # eg. D:\source\onnxruntime
 $TARGET=$Args[2] # "node" or "web" or "react_native"
+
+if ($TARGET -ne "node" -and $TARGET -ne "web" -and $TARGET -ne "react_native") {
+    throw "Invalid target: $TARGET. Must be one of 'node', 'web' or 'react_native'"
+}
+if ($TARGET -ne "node" -and $Args.Count -gt 3) {
+    throw "Invalid argument count: $($Args.Count). Only 3 arguments are allowed for target '$TARGET'"
+}
+$VERSION_CANDIDATES=$Args[3] # optional, only for node target
+if ($TARGET -eq "node" -and $Args.Count -gt 4) {
+    throw "Invalid argument count: $($Args.Count). Only 4 arguments are allowed for target '$TARGET'"
+}
 
 Function Generate-Package-Version-Number {
     pushd $ORT_ROOT
@@ -67,15 +78,14 @@ if ($MODE -eq "dev") {
     Write-Host "Start checking version for onnxruntime-common@dev"
     npm view onnxruntime-common@dev --json | Out-File -Encoding utf8 ./ort_common_latest_info.json
     $ort_common_latest_version=node -p "require('./ort_common_latest_info.json').version"
-    $ort_common_latest_dist_tarball=node -p "require('./ort_common_latest_info.json').dist.tarball"
-    $ort_common_latest_dist_shasum=node -p "require('./ort_common_latest_info.json').dist.shasum"
     Write-Host "latest version is: $ort_common_latest_version"
 
     # download package latest@dev
-    Invoke-WebRequest $ort_common_latest_dist_tarball -OutFile ./latest.tgz
-    if ($(Get-FileHash -Algorithm SHA1 ./latest.tgz).Hash -ne "$ort_common_latest_dist_shasum") {
-        throw "SHASUM mismatch"
+    $packed_filename=npm pack "onnxruntime-common@dev"
+    if (!(Test-Path $packed_filename)) {
+        throw "npm pack failed to produce: $packed_filename"
     }
+    Rename-Item $packed_filename ./latest.tgz
     Write-Host "Tarball downloaded"
 
     # generate @dev version
@@ -170,7 +180,7 @@ if ($MODE -eq "dev") {
 
     # update version.ts of TARGET
     pushd ..
-    npm run update-version $TARGET
+    npm run update-version $TARGET $VERSION_CANDIDATES
     npm run format
     popd
 

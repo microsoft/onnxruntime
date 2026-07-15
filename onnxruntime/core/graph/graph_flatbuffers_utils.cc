@@ -3,11 +3,14 @@
 
 #include "graph_flatbuffers_utils.h"
 
+#include <limits>
+
 #include "core/common/flatbuffers.h"
 
 #include "core/common/narrow.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
+#include "core/framework/allocator.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_external_data_info.h"
 #include "core/graph/graph.h"
@@ -51,6 +54,19 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   } else {
     std::vector<uint8_t> unpacked_tensor;
     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, model_path, unpacked_tensor));
+
+    // We cannot convert data before unpacking due to
+    // external data not getting converted by ConvertRawDataInTensorProto function.
+    // Instead convert data after unpacking it
+    if constexpr (endian::native != endian::little) {
+      size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(initializer.data_type()));
+
+      if (element_size > 1) {
+        onnxruntime::utils::SwapByteOrderInplace(
+            element_size,
+            gsl::make_span(reinterpret_cast<std::byte*>(unpacked_tensor.data()), unpacked_tensor.size()));
+      }
+    }
 
     if (external_writer && unpacked_tensor.size() >= kMinimumSizeForExternalData) {
       // write bytes to external buffer/file and record offset for the start of the data
@@ -202,13 +218,50 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
  * to accommodate fbs::Tensors with external data.
  *
  * @param tensor flatbuffer representation of a tensor.
- * @return size_t size in bytes of the tensor's data.
+ * @param size_in_bytes Output size in bytes of the tensor's data.
+ * @return Status indicating success or providing error information.
  */
-size_t GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor) {
-  auto fbs_dims = tensor.dims();
+Status GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor, size_t& size_in_bytes) {
+  const auto* tensor_name = tensor.name();
+  const auto* tensor_name_str = tensor_name ? tensor_name->c_str() : "<unnamed>";
+  const auto* tensor_data_type_str = fbs::EnumNameTensorDataType(tensor.data_type());
+  if (tensor_data_type_str[0] == '\0') {
+    tensor_data_type_str = "<unknown>";
+  }
 
-  auto num_elements = std::accumulate(fbs_dims->cbegin(), fbs_dims->cend(), SafeInt<size_t>(1),
-                                      std::multiplies<>());
+  const auto* fbs_dims = tensor.dims();
+  if (nullptr == fbs_dims) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Missing dimensions for tensor '", tensor_name_str,
+                           "' with data type '", tensor_data_type_str,
+                           "'. Invalid ORT format model.");
+  }
+
+  size_t num_elements = 1;
+  for (int64_t dim : *fbs_dims) {
+    if (dim < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid negative dimension ", dim,
+                             " for tensor '", tensor_name_str,
+                             "' with data type '", tensor_data_type_str,
+                             "'. Invalid ORT format model.");
+    }
+
+    if (static_cast<uint64_t>(dim) > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Dimension ", dim,
+                             " does not fit in size_t for tensor '", tensor_name_str,
+                             "' with data type '", tensor_data_type_str,
+                             "'. Invalid ORT format model.");
+    }
+
+    if (!IAllocator::CalcMemSizeForArray(num_elements, static_cast<size_t>(dim), &num_elements)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Tensor element count overflows size_t for tensor '", tensor_name_str,
+                             "' with data type '", tensor_data_type_str,
+                             "'. Invalid ORT format model.");
+    }
+  }
 
   size_t byte_size_of_one_element;
 
@@ -267,11 +320,24 @@ size_t GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor) {
       break;
 #endif
     case fbs::TensorDataType::STRING:
-      ORT_THROW("String data type is not supported for on-device training", tensor.name());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "String data type is not supported for tensor '", tensor_name_str,
+                             "' in on-device training.");
     default:
-      ORT_THROW("Unsupported tensor data type for tensor ", tensor.name());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Unsupported tensor data type '", tensor_data_type_str,
+                             "' for tensor '", tensor_name_str,
+                             "'. Invalid ORT format model.");
   }
-  return num_elements * byte_size_of_one_element;
+
+  if (!IAllocator::CalcMemSizeForArray(num_elements, byte_size_of_one_element, &size_in_bytes)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Tensor byte size overflows size_t for tensor '", tensor_name_str,
+                           "' with data type '", tensor_data_type_str,
+                           "'. Invalid ORT format model.");
+  }
+
+  return Status::OK();
 }
 
 Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& initializer,
@@ -293,15 +359,30 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& init
     ORT_RETURN_IF(nullptr == fbs_str_data, "Missing string data for initializer. Invalid ORT format model.");
     auto mutable_str_data = initializer.mutable_string_data();
     mutable_str_data->Reserve(fbs_str_data->size());
-    for (const auto* fbs_str : *fbs_str_data) {
+    const auto* raw_string_offsets = reinterpret_cast<const uint8_t*>(fbs_str_data->Data());
+    for (flatbuffers::uoffset_t i = 0; i < fbs_str_data->size(); ++i) {
+      const auto entry_offset =
+          flatbuffers::ReadScalar<flatbuffers::uoffset_t>(raw_string_offsets + i * sizeof(flatbuffers::uoffset_t));
+      ORT_RETURN_IF(entry_offset == 0, "Null string data entry for initializer. Invalid ORT format model.");
+
+      const auto* fbs_str = fbs_str_data->Get(i);
+      ORT_RETURN_IF(nullptr == fbs_str, "Null string data entry for initializer. Invalid ORT format model.");
       mutable_str_data->Add(fbs_str->str());
     }
   } else {
     const auto* fbs_raw_data = fbs_tensor.raw_data();
     if (fbs_raw_data) {
-      if (load_options.can_use_flatbuffer_for_initializers && fbs_raw_data->size() > 127) {
-        initializer.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+      size_t expected_num_bytes = 0;
+      ORT_RETURN_IF_ERROR(GetSizeInBytesFromFbsTensor(fbs_tensor, expected_num_bytes));
+      const auto* fbs_name = fbs_tensor.name();
+      const char* tensor_name = fbs_name ? fbs_name->c_str() : "<unnamed>";
+      ORT_RETURN_IF(
+          fbs_raw_data->size() != expected_num_bytes,
+          "Initializer raw data size mismatch for tensor '", tensor_name,
+          "'. Expected ", expected_num_bytes, " bytes but found ", fbs_raw_data->size(),
+          ". Invalid ORT format model.");
 
+      if (load_options.can_use_flatbuffer_for_initializers && fbs_raw_data->size() > 127) {
         static_assert(sizeof(void*) <= sizeof(ExternalDataInfo::OFFSET_TYPE));
         const void* data_offset = fbs_raw_data->Data();
         // we reinterpret_cast this back to void* in tensorprotoutils.cc:GetExtDataFromTensorProto.
@@ -309,15 +390,9 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& init
         // high bit, but that should be unlikely in a scenario where we care about memory usage enough to use this path.
         auto offset = narrow<ExternalDataInfo::OFFSET_TYPE>(reinterpret_cast<intptr_t>(data_offset));
 
-        ONNX_NAMESPACE::StringStringEntryProto* entry = initializer.mutable_external_data()->Add();
-        entry->set_key("location");
-        entry->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoMemoryAddressTag));
-        entry = initializer.mutable_external_data()->Add();
-        entry->set_key("offset");
-        entry->set_value(std::to_string(offset));
-        entry = initializer.mutable_external_data()->Add();
-        entry->set_key("length");
-        entry->set_value(std::to_string(fbs_raw_data->size()));
+        ExternalDataInfo::SetExternalLocationToProto(onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag,
+                                                     offset, fbs_raw_data->size(), initializer);
+
       } else {
         // fbs_raw_data is uint8_t vector, so the size is byte size
         initializer.set_raw_data(fbs_raw_data->Data(), fbs_raw_data->size());
@@ -333,7 +408,8 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& init
 
       // FUTURE: This could be setup similarly to can_use_flatbuffer_for_initializers above if the external data file
       // is memory mapped and guaranteed to remain valid. This would avoid the copy.
-      auto num_bytes = GetSizeInBytesFromFbsTensor(fbs_tensor);
+      size_t num_bytes = 0;
+      ORT_RETURN_IF_ERROR(GetSizeInBytesFromFbsTensor(fbs_tensor, num_bytes));
 
       // pre-allocate so we can write directly to the string buffer
       std::string& raw_data = *initializer.mutable_raw_data();
@@ -352,17 +428,27 @@ Status LoadSparseInitializerOrtFormat(const fbs::SparseTensor& fbs_sparse_tensor
                                       SparseTensorProto& initializer,
                                       const OrtFormatLoadOptions& load_options) {
   SparseTensorProto loaded_initializer;
+
+  // Sparse sub-tensors must never carry the in-memory address marker. The marker would point into
+  // the mmap'd flatbuffer buffer; allowing it here would force every downstream consumer of the
+  // sparse->dense conversion to validate the marker, and would conflate the trust boundary
+  // (sparse markers from untrusted .onnx input are an arbitrary-memory-read vector). Force the
+  // inner loader to materialize a normal inline raw_data copy regardless of size; the cost is
+  // small because sparse->dense conversion immediately copies the bytes again.
+  OrtFormatLoadOptions sub_tensor_options = load_options;
+  sub_tensor_options.can_use_flatbuffer_for_initializers = false;
+
   auto fbs_values_tensor = fbs_sparse_tensor.values();
   ORT_RETURN_IF(nullptr == fbs_values_tensor, "Missing values for sparse initializer. Invalid ORT format model.");
   auto* values_tensor = loaded_initializer.mutable_values();
-  ORT_RETURN_IF_ERROR(LoadInitializerOrtFormat(*fbs_values_tensor, *values_tensor, load_options));
+  ORT_RETURN_IF_ERROR(LoadInitializerOrtFormat(*fbs_values_tensor, *values_tensor, sub_tensor_options));
   ORT_RETURN_IF(values_tensor->name().empty(), "Missing name for SparseTensor initializer. Invalid ORT format model.");
 
   auto fbs_indicies_tensor = fbs_sparse_tensor.indices();
   ORT_RETURN_IF(nullptr == fbs_indicies_tensor, "Missing indicies for sparse initializer: ", "'", values_tensor->name(), "'",
                 "Invalid ORT format model.");
   auto* indicies_tensor = loaded_initializer.mutable_indices();
-  ORT_RETURN_IF_ERROR(LoadInitializerOrtFormat(*fbs_indicies_tensor, *indicies_tensor, load_options));
+  ORT_RETURN_IF_ERROR(LoadInitializerOrtFormat(*fbs_indicies_tensor, *indicies_tensor, sub_tensor_options));
 
   auto fbs_dims = fbs_sparse_tensor.dims();
   ORT_RETURN_IF(nullptr == fbs_dims, "Missing dims for sparse initializer: ", "'", values_tensor->name(), "'",
@@ -472,9 +558,31 @@ Status SaveOrtTensorOrtFormat(
   // To avoid issues with vtable offsets, raw_data fbs::vector must be constructed before the TensorBuilder begins
   // building the tensor. See flatbuffer_builder.h's NotNested() function for more details.
   flatbuffers::Offset<flatbuffers::Vector<uint8_t>> raw_data;
+
+  auto unpack_tensor_data_be = [&ort_tensor](std::vector<uint8_t>& unpacked_tensor_data) -> Status {
+    unpacked_tensor_data.resize(ort_tensor.SizeInBytes());
+
+    size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(ort_tensor.GetElementType()));
+    auto src_span = gsl::make_span(reinterpret_cast<const unsigned char*>(ort_tensor.DataRaw()), ort_tensor.SizeInBytes());
+    auto dst_span = gsl::make_span(reinterpret_cast<unsigned char*>(unpacked_tensor_data.data()), unpacked_tensor_data.size());
+
+    // If element size is unknown, set it to 1 to disable byteswapping
+    if (element_size < 1) element_size = 1;
+
+    return onnxruntime::utils::WriteLittleEndian(element_size, src_span, dst_span);
+  };
+
   if (!external_data_writer) {
-    raw_data = builder.CreateVector(static_cast<const uint8_t*>(ort_tensor.DataRaw()),
-                                    ort_tensor.SizeInBytes());
+    if constexpr (endian::native != endian::little) {
+      std::vector<uint8_t> unpacked_tensor;
+
+      ORT_RETURN_IF_ERROR(unpack_tensor_data_be(unpacked_tensor));
+
+      raw_data = builder.CreateVector(unpacked_tensor.data(), unpacked_tensor.size());
+    } else {
+      raw_data = builder.CreateVector(static_cast<const uint8_t*>(ort_tensor.DataRaw()),
+                                      ort_tensor.SizeInBytes());
+    }
   }
 
   fbs::TensorBuilder tb(builder);
@@ -484,8 +592,17 @@ Status SaveOrtTensorOrtFormat(
   tb.add_data_type(static_cast<fbs::TensorDataType>(ort_tensor.GetElementType()));
   if (external_data_writer) {
     uint64_t offset = 0;
-    gsl::span<const uint8_t> ort_tensor_data_span(static_cast<const uint8_t*>(ort_tensor.DataRaw()), ort_tensor.SizeInBytes());
-    ORT_RETURN_IF_ERROR(external_data_writer(ort_tensor.GetElementType(), ort_tensor_data_span, offset));
+    if constexpr (endian::native != endian::little) {
+      std::vector<uint8_t> unpacked_tensor;
+
+      ORT_RETURN_IF_ERROR(unpack_tensor_data_be(unpacked_tensor));
+
+      gsl::span<const uint8_t> ort_tensor_data_span(static_cast<const uint8_t*>(unpacked_tensor.data()), unpacked_tensor.size());
+      ORT_RETURN_IF_ERROR(external_data_writer(ort_tensor.GetElementType(), ort_tensor_data_span, offset));
+    } else {
+      gsl::span<const uint8_t> ort_tensor_data_span(static_cast<const uint8_t*>(ort_tensor.DataRaw()), ort_tensor.SizeInBytes());
+      ORT_RETURN_IF_ERROR(external_data_writer(ort_tensor.GetElementType(), ort_tensor_data_span, offset));
+    }
     int64_t external_data_offset = onnxruntime::narrow<int64_t>(offset);
     tb.add_external_data_offset(external_data_offset);
   } else {
@@ -506,7 +623,8 @@ struct UnpackTensorWithType {
       // no external data. should have had raw data.
       ORT_RETURN_IF(fbs_tensor_external_data_offset < 0, "Missing raw data for initializer. Invalid ORT format model.");
 
-      const size_t raw_data_len = fbs::utils::GetSizeInBytesFromFbsTensor(fbs_tensor);
+      size_t raw_data_len = 0;
+      ORT_RETURN_IF_ERROR(fbs::utils::GetSizeInBytesFromFbsTensor(fbs_tensor, raw_data_len));
 
       auto raw_buf = std::make_unique<uint8_t[]>(raw_data_len);
       gsl::span<uint8_t> raw_buf_span(raw_buf.get(), raw_data_len);
@@ -545,8 +663,21 @@ Status LoadOrtTensorOrtFormat(const fbs::Tensor& fbs_tensor, const AllocatorPtr 
   const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(
                                          tensor_data_type)
                                          ->GetElementType();
-  ort_tensor = onnxruntime::Tensor(
-      tensor_dtype, TensorShape(tensor_dims->data(), tensor_dims->size()), allocator);
+
+  if constexpr (endian::native != endian::little) {
+    std::vector<typename std::remove_reference_t<decltype(*tensor_dims)>::return_type> byteswapped_data;
+    byteswapped_data.resize(tensor_dims->size());
+
+    for (size_t i = 0; i < tensor_dims->size(); ++i) {
+      byteswapped_data[i] = tensor_dims->Get(i);
+    }
+
+    ort_tensor = onnxruntime::Tensor(
+        tensor_dtype, TensorShape(byteswapped_data.data(), byteswapped_data.size()), allocator);
+  } else {
+    ort_tensor = onnxruntime::Tensor(
+        tensor_dtype, TensorShape(tensor_dims->data(), tensor_dims->size()), allocator);
+  }
 
   if (fbs_tensor.raw_data() && fbs_tensor.raw_data()->size() == 0U) {
     // Empty tensor. Nothing to unpack.

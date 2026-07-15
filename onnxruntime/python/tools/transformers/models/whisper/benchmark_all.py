@@ -97,7 +97,7 @@ def get_args():
         "--precision",
         type=str,
         required=True,
-        choices=["int8", "fp16", "fp32"],
+        choices=["int4", "int8", "fp16", "fp32"],
         help="Precision to run model",
     )
 
@@ -105,7 +105,7 @@ def get_args():
         "--device",
         type=str,
         required=True,
-        choices=["cpu", "cuda", "rocm"],
+        choices=["cpu", "cuda"],
         help="Device to benchmark models",
     )
 
@@ -245,7 +245,7 @@ def process_log_file(device_id, log_file, base_results):
 
 
 def save_results(results, filename):
-    import pandas as pd
+    import pandas as pd  # noqa: PLC0415
 
     df = pd.DataFrame(
         results,
@@ -287,7 +287,7 @@ def save_results(results, filename):
     df["Real Time Factor (RTF)"] = df["Real Time Factor (RTF)"].astype("float")
 
     # get package name and version
-    import pkg_resources
+    import pkg_resources  # noqa: PLC0415
 
     installed_packages = pkg_resources.working_set
     installed_packages_list = sorted(

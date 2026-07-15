@@ -694,12 +694,6 @@ public class InferenceTest {
   }
 
   @Test
-  @EnabledIfSystemProperty(named = "USE_ROCM", matches = "1")
-  public void testROCM() throws OrtException {
-    runProvider(OrtProvider.ROCM);
-  }
-
-  @Test
   @EnabledIfSystemProperty(named = "USE_TENSORRT", matches = "1")
   public void testTensorRT() throws OrtException {
     runProvider(OrtProvider.TENSOR_RT);
@@ -726,6 +720,18 @@ public class InferenceTest {
   }
 
   @Test
+  @EnabledIfSystemProperty(named = "USE_MIGRAPHX", matches = "1")
+  public void testMIGRAPHX() throws OrtException {
+    runProvider(OrtProvider.MI_GRAPH_X);
+  }
+
+  @Test
+  @EnabledIfSystemProperty(named = "USE_NNAPI", matches = "1")
+  public void testNNAPI() throws OrtException {
+    runProvider(OrtProvider.NNAPI);
+  }
+
+  @Test
   @EnabledIfSystemProperty(named = "USE_XNNPACK", matches = "1")
   public void testXNNPACK() throws OrtException {
     runProvider(OrtProvider.XNNPACK);
@@ -747,6 +753,12 @@ public class InferenceTest {
   @EnabledIfSystemProperty(named = "USE_QNN", matches = "1")
   public void testQNN() throws OrtException {
     runProvider(OrtProvider.QNN);
+  }
+
+  @Test
+  @EnabledIfSystemProperty(named = "USE_WEBGPU", matches = "1")
+  public void testWEBGPU() throws OrtException {
+    runProvider(OrtProvider.WEBGPU);
   }
 
   private void runProvider(OrtProvider provider) throws OrtException {
@@ -1139,7 +1151,7 @@ public class InferenceTest {
       try (OrtSession session = env.createSession(onnxModelFileName)) {
         String testDataDirNamePattern;
         if (opset.equals("opset9") && modelName.equals("LSTM_Seq_lens_unpacked")) {
-          testDataDirNamePattern = "seq_lens"; // discrepency in data directory
+          testDataDirNamePattern = "seq_lens"; // discrepancy in data directory
         } else {
           testDataDirNamePattern = "test_data";
         }
@@ -2112,12 +2124,6 @@ public class InferenceTest {
         case ACL:
           options.addACL(false);
           break;
-        case ARM_NN:
-          options.addArmNN(false);
-          break;
-        case ROCM:
-          options.addROCM();
-          break;
         case CORE_ML:
           options.addCoreML();
           break;
@@ -2125,13 +2131,11 @@ public class InferenceTest {
           options.addXnnpack(Collections.emptyMap());
           break;
         case QNN:
-          {
-            String backendPath = OS.WINDOWS.isCurrentOs() ? "/QnnCpu.dll" : "/libQnnCpu.so";
-            options.addQnn(
-                Collections.singletonMap(
-                    "backend_path", TestHelpers.getResourcePath(backendPath).toString()));
-            break;
-          }
+          options.addQnn(Collections.singletonMap("backend_type", "cpu"));
+          break;
+        case WEBGPU:
+          options.addWebGPU(Collections.emptyMap());
+          break;
         case VITIS_AI:
         case RK_NPU:
         case MI_GRAPH_X:

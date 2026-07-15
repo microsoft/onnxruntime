@@ -13,7 +13,16 @@ import { Logger } from '../lib/onnxjs/instrument';
 
 import { Test } from './test-types';
 
-if (ORT_WEB_TEST_CONFIG.model.some((testGroup) => testGroup.tests.some((test) => test.backend === 'cpu'))) {
+if (
+  // when NPM test is launched with `-e=node` and (`-b=cpu` or `-b=webgpu`), load ONNXRuntime Node.js binding.
+  platform.name === 'Node.js' &&
+  (ORT_WEB_TEST_CONFIG.model.some((testGroup) =>
+    testGroup.tests.some((test) => test.backend === 'cpu' || test.backend === 'webgpu'),
+  ) ||
+    ORT_WEB_TEST_CONFIG.op.some((testGroup) =>
+      testGroup.tests.some((test) => test.backend === 'cpu' || test.backend === 'webgpu'),
+    ))
+) {
   // require onnxruntime-node
   require('../../node');
 }

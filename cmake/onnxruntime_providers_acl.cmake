@@ -10,15 +10,17 @@
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_acl_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_acl ${onnxruntime_providers_acl_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_acl
-    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface
+    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface Eigen3::Eigen
   )
 
-  target_link_libraries(onnxruntime_providers_acl -L$ENV{LD_LIBRARY_PATH})
+  if (DEFINED ENV{LD_LIBRARY_PATH})
+    target_link_libraries(onnxruntime_providers_acl -L$ENV{LD_LIBRARY_PATH})
+  endif()
   add_dependencies(onnxruntime_providers_acl ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_acl PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_acl
     PRIVATE
-    ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${onnxruntime_ACL_HOME} ${onnxruntime_ACL_HOME}/include
+    ${ONNXRUNTIME_ROOT} ${onnxruntime_ACL_HOME} ${onnxruntime_ACL_HOME}/include
   )
   install(FILES ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/acl/acl_provider_factory.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/
@@ -26,7 +28,7 @@
   set_target_properties(onnxruntime_providers_acl PROPERTIES LINKER_LANGUAGE CXX)
 
   if (NOT onnxruntime_BUILD_SHARED_LIB)
-    install(TARGETS onnxruntime_providers_acl
+    install(TARGETS onnxruntime_providers_acl EXPORT ${PROJECT_NAME}Targets
             ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}

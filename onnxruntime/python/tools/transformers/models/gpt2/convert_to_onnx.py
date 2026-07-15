@@ -21,6 +21,7 @@ import logging
 import os
 import shutil
 import sys
+import warnings
 from pathlib import Path
 
 import numpy
@@ -96,8 +97,8 @@ def parse_arguments(argv=None):
         "--provider",
         required=False,
         default=None,
-        choices=["dml", "rocm", "migraphx", "cuda", "tensorrt"],
-        help="use dml, rocm, cuda, tensorrt or migraphx for respective backend",
+        choices=["dml", "migraphx", "cuda", "tensorrt"],
+        help="use dml, cuda, tensorrt or migraphx for respective backend",
     )
 
     parser.add_argument(
@@ -243,6 +244,13 @@ def get_latency_name(batch_size, sequence_length, past_sequence_length):
 
 
 def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: str = "gpt2_parity_results.csv"):
+    warnings.warn(
+        "This example is deprecated. Use the Olive recipe instead: "
+        "https://github.com/microsoft/olive-recipes/tree/main",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
     result = {}
     if version.parse(transformers_version) < version.parse(
         "3.1.0"
@@ -371,9 +379,6 @@ def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: 
     model_size_in_MB = int(get_onnx_model_size(output_path, args.use_external_data_format) / 1024 / 1024)  # noqa: N806
 
     provider = args.provider
-    if args.provider == "migraphx":
-        provider = "MIGraphXExecutionProvider"
-
     session = create_onnxruntime_session(
         output_path, args.use_gpu, provider, enable_all_optimization=True, verbose=args.verbose
     )

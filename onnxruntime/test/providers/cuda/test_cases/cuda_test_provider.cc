@@ -47,7 +47,7 @@ struct ProviderInfo_CUDA_TestImpl : ProviderInfo_CUDA {
     return nullptr;
   }
 
-  std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char*) override {
+  std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t, const char*) override {
     return nullptr;
   }
 
@@ -105,12 +105,17 @@ struct ProviderInfo_CUDA_TestImpl : ProviderInfo_CUDA {
     return nullptr;
   }
 
+  std::shared_ptr<onnxruntime::IAllocator> CreateCudaPinnedAllocator(int16_t, size_t, onnxruntime::ArenaExtendStrategy,
+                                                                     const OrtArenaCfg*) override {
+    return nullptr;
+  }
+
   void TestAll() override {
     // TestAll is the entry point of CUDA EP's internal tests.
-    // Those internal tests are not directly callable from onnxruntime_test_all
+    // Those internal tests are not directly callable from onnxruntime_provider_test
     // because CUDA EP is a shared library now.
     // Instead, this is a test provider that implements all the test cases.
-    // onnxruntime_test_all is calling this function through TryGetProviderInfo_CUDA_Test.
+    // onnxruntime_provider_test is calling this function through TryGetProviderInfo_CUDA_Test.
     char mock_exe_name[] = "onnxruntime_providers_cuda_ut";
 
     // InitGoogleTest decrements argc and removes args from argv if

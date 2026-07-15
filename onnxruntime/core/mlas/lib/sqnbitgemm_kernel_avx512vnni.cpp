@@ -27,6 +27,10 @@ Abstract:
 #include "sqnbitgemm_kernel_avx512_int8_blklen32.h"
 #include "sqnbitgemm_kernel_avx512_int8_blklen64.h"
 #include "sqnbitgemm_kernel_avx512_int8_blklen128.h"
+#include "sqnbitgemm_kernel_avx512_2bit.h"
+#include "sqnbitgemm_kernel_avx512_2bit_blklen64.h"
+#include "sqnbitgemm_kernel_avx512_2bit_blklen128.h"
+#include "sqnbitgemm_kernel_avx512_2bit_blklen32.h"
 
 MLAS_FORCEINLINE void
 SQ4BitGemmM1Kernel_CompFp32(
@@ -299,6 +303,100 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx512vnni(
     return CountM;
 }
 
+MLAS_FORCEINLINE
+size_t
+SQ8BitGemmKernel_BlkSum_CompInt8_avx512vnni(
+    const size_t BlkLen,
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* /*QuantBZeroPoint*/,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t /*CountK*/,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc,
+    const float* ABlockSum,
+    const float* QuantBBlkSum,
+    const float* /*QuantBBlkSum2*/
+)
+{
+    if (BlkLen == 16) {
+        MlasQ8Int8GemmKernelBlkLen16Avx512<true>(
+            QuantA,
+            QuantAScale,
+            QuantBData,
+            QuantBScale,
+            C,
+            CountM,
+            CountN,
+            BlockCountK,
+            Bias,
+            ldc
+        );
+    } else if (BlkLen == 32) {
+        MlasQ8Int8GemmKernelBlkLen32Avx512<true>(
+            QuantA,
+            QuantAScale,
+            QuantBData,
+            QuantBScale,
+            C,
+            CountM,
+            CountN,
+            BlockCountK,
+            Bias,
+            ldc
+        );
+    } else if (BlkLen == 64) {
+        MlasQ8Int8GemmKernelBlkLen64Avx512<true>(
+            BlkLen,
+            QuantA,
+            QuantAScale,
+            QuantBData,
+            QuantBScale,
+            C,
+            CountM,
+            CountN,
+            BlockCountK,
+            Bias,
+            ldc
+        );
+    } else {
+        MlasQ8Int8GemmKernelBlkLen128Avx512<true>(
+            BlkLen,
+            QuantA,
+            QuantAScale,
+            QuantBData,
+            QuantBScale,
+            C,
+            CountM,
+            CountN,
+            BlockCountK,
+            Bias,
+            ldc
+        );
+    }
+
+    float* c_blk = C;
+    const float* b_blk_sum = QuantBBlkSum;
+
+    size_t RowsRemaining = CountM;
+    const float* a_blksum_row = ABlockSum;
+    while (RowsRemaining > 0) {
+        auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
+            a_blksum_row, b_blk_sum, c_blk, BlockCountK, RowsRemaining, CountN, BlockCountK, ldc, 1.f, false
+        );
+
+        c_blk += ldc * RowsHandled;
+        a_blksum_row += BlockCountK * RowsHandled;
+        RowsRemaining -= RowsHandled;
+    }
+    return CountM;
+}
+
 void MLASCALL
 QuantizeARow_CompInt8_avx512(
     size_t BlkLen,
@@ -317,10 +415,11 @@ SQ4BitGemmPackQuantBDataAndBlkSum512vnni(
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const std::byte* QuantBDataBegin,
     const float* QuantBScaleBegin,
-    bool has_zp_input,
+    bool HasZeroPoint,
     const std::byte* QuantBZPBegin,
-    PackedQuantBDataStruct<float>& packed_quant_b,
-    MLAS_THREADPOOL* ThreadPool
+    PackedQuantBDataStruct<float, 4>& PackedQuantB,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /*BackendKernelSelectorConfig*/
 )
 {
     assert(BlkLen >= 16 && BlkLen % 16 == 0);
@@ -331,8 +430,77 @@ SQ4BitGemmPackQuantBDataAndBlkSum512vnni(
     if (ComputeType == SQNBIT_CompInt8) {
         SubBlkLen = 128;
     }
-    PackQuantBDataAndBlkSum(N, BlockCountK, BlkLen, SubBlkLen, QuantBDataBegin, QuantBScaleBegin, has_zp_input, QuantBZPBegin, packed_quant_b, ThreadPool);
+    PackQuantBDataAndBlkSum(N, BlockCountK, BlkLen, SubBlkLen, QuantBDataBegin, QuantBScaleBegin,
+        HasZeroPoint, QuantBZPBegin, PackedQuantB, ThreadPool);
 }
+
+static void
+SQ8BitGemmPackQuantBDataAndBlkSum512vnni(
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const std::byte* QuantBDataBegin,
+    const float* QuantBScaleBegin,
+    bool HasZeroPoint,
+    const std::byte* QuantBZPBegin,
+    PackedQuantBDataStruct<float, 8>& PackedQuantB,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /*BackendKernelSelectorConfig*/
+)
+{
+    assert(BlkLen >= 16 && BlkLen % 16 == 0);
+
+    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+
+    size_t SubBlkLen = (BlkLen == 16) ? 16 : (BlkLen == 32 ? 32 : 64);
+    if (ComputeType == SQNBIT_CompInt8) {
+        SubBlkLen = 128;
+    }
+    Q8PackQuantBDataAndBlkSum(N, BlockCountK, BlkLen, SubBlkLen, QuantBDataBegin, QuantBScaleBegin,
+        HasZeroPoint, QuantBZPBegin, PackedQuantB, ThreadPool);
+}
+
+//
+// BlkLen-routing wrapper for the W2 CompInt8 AVX-512-VNNI dispatch entry
+// (sqnbitgemm_kernel_avx512_2bit_blklen64.h and friends). Production code
+// reaches this via the MLAS dispatch table; tests call it directly via the
+// namespace.
+//
+namespace onnxruntime::mlas::sq2bit_avx512 {
+size_t MLASCALL
+SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_Dispatch(
+    size_t BlkLen,
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* QuantBZeroPoint,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t CountK,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc,
+    const float* ABlockSum,
+    const float* QuantBBlkSum)
+{
+    if (BlkLen == 128) {
+        return SQ2BitGemmKernel_BlkSum_CompInt8_BlkLen128_Avx512Vnni(
+            QuantA, QuantAScale, QuantBData, QuantBScale,
+            C, CountM, CountN, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum);
+    }
+    if (BlkLen == 32) {
+        return SQ2BitGemmKernel_BlkSum_CompInt8_BlkLen32_Avx512Vnni(
+            QuantA, QuantAScale, QuantBData, QuantBScale,
+            C, CountM, CountN, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum);
+    }
+    return SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni(
+        BlkLen, QuantA, QuantAScale, QuantBData, QuantBScale, QuantBZeroPoint,
+        C, CountM, CountN, CountK, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum);
+}
+}  // namespace onnxruntime::mlas::sq2bit_avx512
 
 //
 // Kernel dispatch structure definition.
@@ -340,18 +508,35 @@ SQ4BitGemmPackQuantBDataAndBlkSum512vnni(
 const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni = []() {
     MLAS_QNBIT_GEMM_DISPATCH d;
 
-    d.Q4BitGemmPackQuantBDataSize = Q4BitGemmPackQuantBDataSize;
+    d.Q4BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<4>;
+    d.Q8BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<8>;
     d.SQ4BitGemmPackQuantBData = SQ4BitGemmPackQuantBData;
     d.SQ4BitGemmPackQuantBDataAndBlkSum = SQ4BitGemmPackQuantBDataAndBlkSum512vnni;
+    d.SQ8BitGemmPackQuantBDataAndBlkSum = SQ8BitGemmPackQuantBDataAndBlkSum512vnni;
 
-    d.Q4BitGemmPerGemmWorkspaceSize = Q4BitGemmPerGemmWorkspaceSize;
-    d.Q4BitGemmPerGemmWorkspaceAlignment = Q4BitGemmPerGemmWorkspaceAlignment;
+    d.QNBitGemmPerGemmWorkspaceSize = QNBitGemmPerGemmWorkspaceSize;
+    d.QNBitGemmPerGemmWorkspaceAlignment = QNBitGemmPerGemmWorkspaceAlignment;
 
     d.SQ4BitGemmM1Kernel_CompFp32 = SQ4BitGemmM1Kernel_CompFp32;
     d.SQ4BitBlkDequantBForSgemm_CompFp32 = Q4BitBlkDequantBForSgemm_CompFp32_avx2;
 
     d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx512vnni;
+    d.SQ8BitGemmKernel_BlkSum_CompInt8 = SQ8BitGemmKernel_BlkSum_CompInt8_avx512vnni;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx512;
+
+    // 2-bit native CompInt8 path. Single dispatch entry (W2):
+    // 64-byte ZMM load + four fixed shift/mask pairs to unpack 4 K-blocks at
+    // once, with VNNI's `vpdpbusd` for the integer MAC. See the matching
+    // comment in sqnbitgemm_kernel_avx512.cpp for the K-padding contract.
+    static_assert(
+        onnxruntime::mlas::sq2bit_avx512::kBlockGroupBlks == kSq2BitAvx512WeightKBlockGroup,
+        "kBlockGroupBlks (kernel-internal) must match kSq2BitAvx512WeightKBlockGroup (qnbitgemm.h).");
+    d.Q2BitGemmPackQuantBDataSize       = onnxruntime::mlas::sq2bit_avx512::Q2BitGemmPackQuantBDataSize_Avx512;
+    d.SQ2BitGemmPackQuantBDataAndBlkSum = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmPackQuantBDataAndBlkSum_Scalar;
+    d.SQ2BitGemmKernel_BlkSum_CompInt8  = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_Dispatch;
+    d.Q2BitGemmEffectiveBlockCountK     = [](size_t BlockCountK) {
+        return MlasDivRoundup(BlockCountK, kSq2BitAvx512WeightKBlockGroup) * kSq2BitAvx512WeightKBlockGroup;
+    };
 
     return d;
 }();

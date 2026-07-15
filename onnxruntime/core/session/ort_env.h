@@ -4,15 +4,18 @@
 #pragma once
 #include <atomic>
 #include <string>
-#include "core/session/onnxruntime_c_api.h"
 #include <mutex>
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
+#include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
 class Environment;
 }
+
+// Managed pointer type for OrtEnv that calls OrtEnv::Release as its deleter.
+using OrtEnvPtr = std::unique_ptr<OrtEnv, void (*)(OrtEnv*)>;
 
 struct OrtEnv {
  public:
@@ -31,42 +34,52 @@ struct OrtEnv {
     const char* logid{};
   };
 
-  static OrtEnv* GetInstance(const LoggingManagerConstructionInfo& lm_info,
-                             onnxruntime::common::Status& status,
-                             const OrtThreadingOptions* tp_options = nullptr);
+  /// <summary>
+  /// Gets or creates the global OrtEnv instance. Arguments are ignored if the instance has already been created.
+  /// </summary>
+  /// <param name="lm_info">Configuration for the logging manager.</param>
+  /// <param name="status">Output parameter that indicates if an error occurred during environment creation.</param>
+  /// <param name="tp_options">Optional threading options.</param>
+  /// <param name="config_entries">Optional configuration entries.</param>
+  /// <returns>The OrtEnv instance.</returns>
+  static OrtEnvPtr GetOrCreateInstance(const LoggingManagerConstructionInfo& lm_info,
+                                       onnxruntime::common::Status& status,
+                                       const OrtThreadingOptions* tp_options = nullptr,
+                                       const OrtKeyValuePairs* config_entries = nullptr);
+
+  /// <summary>
+  /// Gets the global OrtEnv instance. Returns nullptr if the instance has not yet been created.
+  /// </summary>
+  /// <returns>The OrtEnv instance or nullptr.</returns>
+  static OrtEnvPtr TryGetInstance();
 
   static void Release(OrtEnv* env_ptr);
 
   const onnxruntime::Environment& GetEnvironment() const {
-    return *(value_.get());
+    return *value_;
+  }
+
+  onnxruntime::Environment& GetEnvironment() {
+    return *value_;
   }
 
   onnxruntime::logging::LoggingManager* GetLoggingManager() const;
   void SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager);
 
-  /**
-   * Registers an allocator for sharing between multiple sessions.
-   * Returns an error if an allocator with the same OrtMemoryInfo is already registered.
-   */
-  onnxruntime::common::Status RegisterAllocator(onnxruntime::AllocatorPtr allocator);
-
-  /**
-   * Creates and registers an allocator for sharing between multiple sessions.
-   * Return an error if an allocator with the same OrtMemoryInfo is already registered.
-   */
-  onnxruntime::common::Status CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info,
-                                                         const OrtArenaCfg* arena_cfg = nullptr);
-
-  /**
-   * Removes registered allocator that was previously registered for sharing between multiple sessions.
-   */
-  onnxruntime::common::Status UnregisterAllocator(const OrtMemoryInfo& mem_info);
   OrtEnv(std::unique_ptr<onnxruntime::Environment> value);
   ~OrtEnv();
-  onnxruntime::common::Status CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg = nullptr);
 
  private:
-  static std::unique_ptr<OrtEnv> p_instance_;
+  // p_instance_ holds the single, global instance of OrtEnv.
+  // This is a raw pointer to allow for intentional memory leaking when
+  // the process is shutting down (g_is_shutting_down is true).
+  // Using a smart pointer like std::unique_ptr would complicate this specific
+  // shutdown scenario, as it would attempt to deallocate the memory even if
+  // Release() hasn't been called or if a leak is desired.
+  // Management is handled by GetOrCreateInstance(), TryGetInstance(), and Release(), with ref_count_
+  // tracking active users. It is set to nullptr when the last reference is released
+  // (and not shutting down).
+  static OrtEnv* p_instance_;
   static std::mutex m_;
   static int ref_count_;
 

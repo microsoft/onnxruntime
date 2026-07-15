@@ -16,6 +16,8 @@ struct CpuProviderFactory : IExecutionProviderFactory {
   CpuProviderFactory(bool create_arena) : create_arena_(create_arena) {}
   ~CpuProviderFactory() override = default;
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
+  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions& session_options,
+                                                     const OrtLogger& session_logger) override;
 
  private:
   bool create_arena_;
@@ -25,6 +27,16 @@ std::unique_ptr<IExecutionProvider> CpuProviderFactory::CreateProvider() {
   CPUExecutionProviderInfo info;
   info.create_arena = create_arena_;
   return std::make_unique<CPUExecutionProvider>(info);
+}
+
+std::unique_ptr<IExecutionProvider> CpuProviderFactory::CreateProvider(const OrtSessionOptions& session_options,
+                                                                       const OrtLogger& session_logger) {
+  CPUExecutionProviderInfo info;
+  info.create_arena = session_options.value.enable_cpu_mem_arena;
+
+  auto cpu_ep = std::make_unique<CPUExecutionProvider>(info);
+  cpu_ep->SetLogger(reinterpret_cast<const logging::Logger*>(&session_logger));
+  return cpu_ep;
 }
 
 std::shared_ptr<IExecutionProviderFactory> CPUProviderFactoryCreator::Create(int use_arena) {
@@ -42,6 +54,6 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CPU, _In_ OrtSessio
 #endif
 ORT_API_STATUS_IMPL(OrtApis::CreateCpuMemoryInfo, enum OrtAllocatorType type, enum OrtMemType mem_type,
                     _Outptr_ OrtMemoryInfo** out) {
-  *out = new OrtMemoryInfo(onnxruntime::CPU, type, OrtDevice(), 0, mem_type);
+  *out = new OrtMemoryInfo(onnxruntime::CPU, type, OrtDevice(), mem_type);
   return nullptr;
 }

@@ -176,7 +176,7 @@ def output_summary(results: list[dict[str, Any]], csv_filename: str, metric_name
             # Metric value for given pair of batch_size and sequence_length.
             # Assume that (onnx_path, batch_size and sequence_length) are unique so keep first occurrence only.
             values = {}
-            values.update({k: "" for k in key_names})
+            values.update(dict.fromkeys(key_names, ""))
 
             for result in results:
                 if result["onnx_path"] == model and result[metric_name]:

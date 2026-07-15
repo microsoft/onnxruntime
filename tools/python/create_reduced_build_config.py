@@ -80,8 +80,7 @@ def create_config_from_onnx_models(model_files: typing.Iterable[pathlib.Path], o
 
     with open(output_file, "w") as out:
         out.write("# Generated from ONNX model/s:\n")
-        for model_file in sorted(model_files):
-            out.write(f"# - {model_file}\n")
+        out.writelines(f"# - {model_file}\n" for model_file in sorted(model_files))
 
         for domain in sorted(required_ops.keys()):
             for opset in sorted(required_ops[domain].keys()):
@@ -143,7 +142,7 @@ def main():
         model_files = files_from_file_or_dir(model_path_or_dir, _get_suffix_match_predicate(".onnx"))
         create_config_from_onnx_models(model_files, config_path)
     else:
-        from util.ort_format_model import create_config_from_models as create_config_from_ort_models
+        from util.ort_format_model import create_config_from_models as create_config_from_ort_models  # noqa: PLC0415
 
         model_files = files_from_file_or_dir(model_path_or_dir, _get_suffix_match_predicate(".ort"))
         create_config_from_ort_models(model_files, config_path, args.enable_type_reduction)

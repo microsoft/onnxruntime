@@ -32,14 +32,6 @@
 
 namespace onnxruntime {
 namespace utils {
-void* DefaultAlloc(size_t size) {
-  return onnxruntime::AllocatorDefaultAlloc(size);
-}
-
-void DefaultFree(void* p) {
-  onnxruntime::AllocatorDefaultFree(p);
-}
-
 void ConstructStrings(void* p_data, int64_t elements) {
   auto* ptr = static_cast<std::string*>(p_data);
   for (int64_t i = 0; i < elements; ++i) {
@@ -54,22 +46,60 @@ void DestroyStrings(void* p_data, int64_t elements) {
     ptr[i].~string();
 }
 
-bool ProviderIsCpuBased(const std::string& provider_type) {
-  return provider_type == onnxruntime::kCpuExecutionProvider ||
-         provider_type == onnxruntime::kDnnlExecutionProvider ||
-         provider_type == onnxruntime::kVitisAIExecutionProvider ||
-         provider_type == onnxruntime::kOpenVINOExecutionProvider ||
-         provider_type == onnxruntime::kNnapiExecutionProvider ||
-         provider_type == onnxruntime::kVSINPUExecutionProvider ||
-         provider_type == onnxruntime::kAclExecutionProvider ||
-         provider_type == onnxruntime::kArmNNExecutionProvider ||
-         provider_type == onnxruntime::kRknpuExecutionProvider ||
-         provider_type == onnxruntime::kCoreMLExecutionProvider ||
-         provider_type == onnxruntime::kSnpeExecutionProvider ||
-         provider_type == onnxruntime::kQnnExecutionProvider ||
-         provider_type == onnxruntime::kXnnpackExecutionProvider ||
-         provider_type == onnxruntime::kAzureExecutionProvider ||
-         provider_type == onnxruntime::utils::kInternalTestingExecutionProvider;
+bool ProviderIsCpuBased(const IExecutionProvider& provider) {
+  return provider.GetDevice().Type() == OrtDevice::CPU;
+}
+
+// Returns true if src memory can satisfy tgt's requirements without a data copy.
+//
+// HOST_ACCESSIBLE → DEFAULT is valid: the device can access HOST_ACCESSIBLE memory directly.
+// DEFAULT → HOST_ACCESSIBLE is NOT valid: HOST_ACCESSIBLE implies CPU consumers, and DEFAULT
+// memory is device-only — the CPU cannot read it.
+//
+// For the mixed case, src alignment must meet tgt's minimum requirement.
+// Alignment 0 on tgt means "no alignment requirement". Alignment 0 on src means "unknown" and
+// does not satisfy a non-zero tgt alignment requirement.
+bool CanSourceSatisfyTarget(const OrtDevice& src, const OrtDevice& tgt) {
+  const bool src_is_cpu_mem = src.UsesCpuMemory();
+  const bool tgt_is_cpu_mem = tgt.UsesCpuMemory();
+
+  // Identical devices are always compatible.
+  if (src == tgt) {
+    return true;
+  }
+
+  // Alignment 0 means "unspecified" — treat tgt as compatible with any alignment requirement.
+  const bool is_alignment_satisfied = tgt.GetAlignment() == 0 ||
+                                      src.GetAlignment() >= tgt.GetAlignment();
+
+  const bool is_same_physical_device = src.Type() == tgt.Type() &&
+                                       src.Vendor() == tgt.Vendor() &&
+                                       src.Id() == tgt.Id();
+
+  // Both are CPU-accessible (CPU type or HOST_ACCESSIBLE memory).
+  if (src_is_cpu_mem && tgt_is_cpu_mem) {
+    // CPU target can read from any CPU or HOST_ACCESSIBLE source, regardless of the source device
+    if (tgt.Type() == OrtDevice::CPU) {
+      return is_alignment_satisfied;
+    }
+    // Both are HOST_ACCESSIBLE on some device: require the same physical device.
+    return is_same_physical_device && is_alignment_satisfied;
+  }
+
+  // HOST_ACCESSIBLE source can serve a DEFAULT target on the same physical device —
+  // the device can DMA from HOST_ACCESSIBLE memory directly.
+  // The reverse (DEFAULT → HOST_ACCESSIBLE) is unsafe: HOST_ACCESSIBLE implies CPU consumers,
+  // and DEFAULT memory is device-only so the CPU cannot read it.
+  if (src_is_cpu_mem && !tgt_is_cpu_mem) {
+    return is_same_physical_device && is_alignment_satisfied;
+  }
+
+  return false;
+}
+
+bool IsMemcpyNode(const Node& node) {
+  return node.Domain() == kOnnxDomain &&
+         (node.OpType() == "MemcpyFromHost" || node.OpType() == "MemcpyToHost");
 }
 
 static common::Status AllocateHelper(const AllocatorPtr& allocator,
@@ -82,28 +112,21 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
 
   if (source_mlvalue.IsTensor()) {
     const Tensor& source_tensor = source_mlvalue.Get<Tensor>();
-    if (allocator->Info().alloc_type == OrtArenaAllocator) {
-      void* p_data = nullptr;
-#ifdef ORT_ENABLE_STREAM
-      BFCArena* arena_ptr = static_cast<BFCArena*>(allocator.get());
-      auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*arena_ptr);
-      if (stream_aware_alloc && target_stream) {
-        size_t len = Tensor::CalculateTensorStorageSize(source_tensor.DataType(), source_tensor.Shape());
-        p_data = stream_aware_alloc->AllocOnStream(len, target_stream, nullptr);
+    void* p_data = nullptr;
+    if (target_stream && allocator->IsStreamAware()) {
+      size_t len = Tensor::CalculateTensorStorageSize(source_tensor.DataType(), source_tensor.Shape());
+      p_data = allocator->AllocOnStream(len, target_stream);
+      if (p_data == nullptr && len > 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Allocation failed.");
       }
-#else
-      ORT_UNUSED_PARAMETER(target_stream);
-#endif  // ORT_ENABLE_STREAM
-      if (p_data == nullptr) {
-        Tensor::InitOrtValue(source_tensor.DataType(),
-                             source_tensor.Shape(),
-                             allocator, target_mlvalue);
-      } else {
-        Tensor::InitOrtValue(source_tensor.DataType(),
-                             source_tensor.Shape(),
-                             p_data,
-                             allocator, target_mlvalue);
-      }
+    }
+
+    if (p_data) {
+      Tensor::InitOrtValue(source_tensor.DataType(),
+                           source_tensor.Shape(),
+                           p_data,
+                           allocator, target_mlvalue);
+
     } else {
       Tensor::InitOrtValue(source_tensor.DataType(),
                            source_tensor.Shape(),
@@ -141,6 +164,36 @@ const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info) 
   return required_provider_type;
 }
 
+// Populate device_fetches for the output-copy path.
+// When the user pre-allocates a fetch buffer, reuse it directly as the EP's output buffer if
+// the user's buffer (tgt) can satisfy the EP's output device (src) requirements — i.e.,
+// CanSourceSatisfyTarget(tgt, src). This avoids a post-execution copy.
+// Otherwise inserts an empty placeholder for the EP to allocate into.
+static void PopulateDeviceFetches(gsl::span<const MLValueCopyInfo> fetch_copy_info,
+                                  const std::vector<OrtValue>& fetches,
+                                  std::vector<OrtValue>& device_fetches) {
+  // fetches is empty on the subgraph path, where control-flow nodes such as Loop pass an empty fetches vector
+  // and let ExecuteThePlan allocate the outputs; in that case device_fetches stays empty. A partially sized
+  // fetches vector indicates a bug.
+  ORT_ENFORCE(fetches.empty() || fetch_copy_info.size() == fetches.size());
+  device_fetches.clear();
+  device_fetches.reserve(fetches.size());
+  for (size_t i = 0; i < fetches.size(); ++i) {
+    const auto& src = fetch_copy_info[i].source_device;
+    const auto& tgt = fetch_copy_info[i].target_device;
+
+    // The swapped order is intentional. We're checking if a user's fetch buffer (tgt)
+    // can be reused for EP's output (src) buffer — i.e. CanSourceSatisfyTarget(tgt, src).
+    // Example: A user provided CPU buffer cannot satisfy a non-CPU host accessible EP output device so a copy should be
+    // inserted.
+    if (CanSourceSatisfyTarget(tgt, src) && fetches[i].IsAllocated()) {
+      device_fetches.push_back(fetches[i]);
+    } else {
+      device_fetches.push_back({});
+    }
+  }
+}
+
 // Copy MLValue. Uses DataTransferManager for device copy if necessary. If copy_tensor_pairs/copy_sparse_pairs is provided,
 // src/dst pairs that need a device copy are added to copy_pairs so copying can be batches by the DataTransferManager
 // implementation for performance reasons.
@@ -156,8 +209,9 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
                                  std::vector<IDataTransfer::SrcDstPair>* copy_tensor_pairs = nullptr)
 #endif
 {
-  // same device so direct copy
-  if (copy_info.source_device == copy_info.target_device) {
+  // No data transfer needed if devices are identical, or the source can satisfy the target
+  // (HOST_ACCESSIBLE source serving a DEFAULT target on the same physical device).
+  if (CanSourceSatisfyTarget(copy_info.source_device, copy_info.target_device)) {
     target_mlvalue = source_mlvalue;
     return Status::OK();
   }
@@ -225,7 +279,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
 
 static bool HaveCpuExecutionProvidersOnly(const ExecutionProviders& execution_providers) {
   for (const auto& execution_provider : execution_providers) {
-    if (!ProviderIsCpuBased(execution_provider->Type())) {
+    if (!ProviderIsCpuBased(*execution_provider)) {
       return false;
     }
   }
@@ -348,7 +402,7 @@ static bool FinalizeCopyInfoForFeeds(gsl::span<const OrtDevice> feed_locations,
   for (size_t i = 0, end = feed_locations.size(); i < end; ++i) {
     copy_info[i].source_device = feed_locations[i];
 
-    if (copy_info[i].source_device != copy_info[i].target_device) {
+    if (!CanSourceSatisfyTarget(copy_info[i].source_device, copy_info[i].target_device)) {
       copy_needed = true;
     }
   }
@@ -369,7 +423,7 @@ static bool FinalizeCopyInfoForFetches(gsl::span<const OrtDevice* const>& fetch_
       copy_info[i].target_device = *alloc_info;
     }
 
-    if (copy_info[i].source_device != copy_info[i].target_device) {
+    if (!CanSourceSatisfyTarget(copy_info[i].source_device, copy_info[i].target_device)) {
       copy_needed = true;
     }
   }
@@ -564,7 +618,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
     size_t num_streams = device_stream_collection->NumStreams();
     for (size_t i = 0; i < num_streams; i++) {
       Stream* stream = device_stream_collection->GetStream(i);
-      if (stream && stream->GetDevice().Type() != OrtDevice::CPU) {
+      if (stream && !stream->GetDevice().UsesCpuMemory()) {
         device_stream = stream;
         break;
       }
@@ -623,7 +677,8 @@ ExecuteGraphImpl(const SessionState& session_state,
                  DeviceStreamCollection* device_stream_collection,
 #endif
                  const bool only_execute_path_to_fetches = false,
-                 Stream* parent_stream = nullptr) {
+                 Stream* parent_stream = nullptr,
+                 profiling::Profiler* run_profiler = nullptr) {
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
 #ifdef ORT_ENABLE_STREAM
@@ -655,7 +710,8 @@ ExecuteGraphImpl(const SessionState& session_state,
                                   terminate_flag,
                                   only_execute_path_to_fetches,
                                   // single thread mode
-                                  single_thread_mode));
+                                  single_thread_mode,
+                                  run_profiler));
     ORT_RETURN_IF_ERROR(status);
   } else {
     auto feeds_to_use = feeds;
@@ -674,22 +730,9 @@ ExecuteGraphImpl(const SessionState& session_state,
       feeds_to_use = device_feeds;
     }
 
-    auto num_outputs = fetches.size();
     const auto& fetch_copy_info = feeds_fetches_manager.GetFetchesDeviceCopyInfo();
-
     if (device_copy_checks.output_copy_needed == DeviceCopyCheck::Copy) {
-      // need intermediate fetches. use pre-allocated fetches where possible.
-      device_fetches.reserve(num_outputs);
-
-      for (size_t i = 0; i < num_outputs; ++i) {
-        if (fetch_copy_info[i].source_device == fetch_copy_info[i].target_device && fetches[i].IsAllocated()) {
-          device_fetches.push_back(fetches[i]);
-        } else {
-          // use temporary value
-          device_fetches.push_back({});
-        }
-      }
-
+      PopulateDeviceFetches(fetch_copy_info, fetches, device_fetches);
       p_fetches = &device_fetches;
     }
 
@@ -703,7 +746,8 @@ ExecuteGraphImpl(const SessionState& session_state,
 #endif
                                   terminate_flag,
                                   only_execute_path_to_fetches,
-                                  single_thread_mode));
+                                  single_thread_mode,
+                                  run_profiler));
     ORT_RETURN_IF_ERROR(status);
     InlinedVector<Stream*> fetches_streams;
     fetches_streams.reserve(feeds_fetches_info.fetches_mlvalue_idxs.size());
@@ -741,7 +785,8 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             DeviceStreamCollectionHolder& device_stream_collection_holder,
 #endif
                             bool only_execute_path_to_fetches,
-                            Stream* parent_stream) {
+                            Stream* parent_stream,
+                            profiling::Profiler* run_profiler) {
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(session_state, feeds_fetches_manager));
 
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
@@ -752,13 +797,15 @@ common::Status ExecuteGraph(const SessionState& session_state,
                                  execution_mode, terminate_flag, logger,
                                  device_stream_collection,
                                  only_execute_path_to_fetches,
-                                 parent_stream);
+                                 parent_stream,
+                                 run_profiler);
   return retval;
 #else
   return ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
                           execution_mode, terminate_flag, logger,
                           only_execute_path_to_fetches,
-                          parent_stream);
+                          parent_stream,
+                          run_profiler);
 #endif
 }
 
@@ -769,17 +816,16 @@ common::Status ExecuteGraph(const SessionState& session_state,
 #ifdef ORT_ENABLE_STREAM
                             DeviceStreamCollectionHolder& device_stream_collection_holder,
 #endif
-                            const logging::Logger& logger) {
-  return ExecuteGraph(session_state,
-                      feeds_fetches_manager,
-                      feeds, fetches,
-                      execution_mode,
-                      run_options.terminate,
-                      logger,
+                            const logging::Logger& logger,
+                            profiling::Profiler* run_profiler) {
+  return ExecuteGraph(session_state, feeds_fetches_manager, feeds, fetches,
+                      execution_mode, run_options.terminate, logger,
 #ifdef ORT_ENABLE_STREAM
                       device_stream_collection_holder,
 #endif
-                      run_options.only_execute_path_to_fetches);
+                      run_options.only_execute_path_to_fetches,
+                      nullptr /* parent_stream */,
+                      run_profiler);
 }
 
 #ifdef ENABLE_TRAINING
@@ -827,22 +873,10 @@ common::Status ExecutePartialGraphImpl(const SessionState& session_state, FeedsF
       p_feeds = device_feeds;
     }
 
-    auto num_outputs = fetches.size();
     const auto& fetch_copy_info = feeds_fetches_manager.GetFetchesDeviceCopyInfo();
 
     if (device_copy_checks.output_copy_needed == DeviceCopyCheck::Copy) {
-      // need intermediate fetches. use pre-allocated fetches where possible.
-      device_fetches.reserve(num_outputs);
-
-      for (size_t i = 0; i < num_outputs; ++i) {
-        if (fetch_copy_info[i].source_device == fetch_copy_info[i].target_device && fetches[i].IsAllocated()) {
-          device_fetches.push_back(fetches[i]);
-        } else {
-          // use temporary value
-          device_fetches.push_back({});
-        }
-      }
-
+      PopulateDeviceFetches(fetch_copy_info, fetches, device_fetches);
       p_fetches = &device_fetches;
     }
 
@@ -902,18 +936,21 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
                                Stream* parent_stream,
-                               bool sync_subgraph_fetches) {
+                               bool sync_subgraph_fetches,
+                               profiling::Profiler* run_profiler) {
 #ifdef ORT_ENABLE_STREAM
   DeviceStreamCollectionHolder device_stream_collection_holder(&session_state);
   DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
 
   auto retval = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
-                                 execution_mode, terminate_flag, logger, device_stream_collection, false, parent_stream);
+                                 execution_mode, terminate_flag, logger, device_stream_collection, false, parent_stream,
+                                 run_profiler);
   if (device_stream_collection)
     ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(false));
 #else
   auto retval = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
-                                 execution_mode, terminate_flag, logger, false, parent_stream);
+                                 execution_mode, terminate_flag, logger, false, parent_stream,
+                                 run_profiler);
 #endif
   if (retval.IsOK() && sync_subgraph_fetches && parent_stream) {
     parent_stream->Flush();

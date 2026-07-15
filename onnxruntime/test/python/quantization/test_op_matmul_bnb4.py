@@ -7,7 +7,6 @@
 
 import tempfile
 import unittest
-from importlib.util import find_spec
 from pathlib import Path
 
 import numpy as np
@@ -149,7 +148,7 @@ class TestOpMatMulBnb4(unittest.TestCase):
         )
 
         # Quantize fp32 model to bnb4 model
-        from onnxruntime.quantization import matmul_bnb4_quantizer
+        from onnxruntime.quantization import matmul_bnb4_quantizer  # noqa: PLC0415
 
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
         quant = matmul_bnb4_quantizer.MatMulBnb4Quantizer(model, quant_type, block_size)
@@ -166,16 +165,10 @@ class TestOpMatMulBnb4(unittest.TestCase):
         except Exception as exception:
             raise exception
 
-    @unittest.skipIf(
-        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_bnb4"
-    )
     def test_quantize_matmul_bnb4_fp4(self):
         np.random.seed(13)
         self.quant_test(0, 64)
 
-    @unittest.skipIf(
-        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_bnb4"
-    )
     def test_quantize_matmul_bnb4_nf4(self):
         np.random.seed(13)
         self.quant_test(1, 64)

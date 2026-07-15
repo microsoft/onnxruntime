@@ -46,7 +46,7 @@ __global__ void MaxPoolWithIndexKernel(
   if (id >= output_size) return;
 
   auto compute_offset =
-    [height, width, depth, channels](int n_index, int c_index, int h_index, int w_index, int d_index) -> int64_t {
+      [height, width, depth, channels](int n_index, int c_index, int h_index, int w_index, int d_index) -> int64_t {
     if constexpr (Layout == LAYOUT_NCHW) {
       return (((n_index * channels + c_index) * height + h_index) * width + w_index) * depth + d_index;
     } else if constexpr (Layout == LAYOUT_NHWC) {
@@ -108,8 +108,8 @@ __global__ void MaxPoolWithIndexKernel(
       // layouts, does it make sense to do an index conversion as well?
       // Storing indices in NHWC layout isn't critical as they are supposed to be used by Unpooling operations
       // which currently assume that indices reference to Tensors in NHWC layout.
-      int64_t id_nchw = 
-        (((n_index * channels + c_index) * pooled_height + h_index) * pooled_width + w_index) * pooled_depth + d_index;
+      int64_t id_nchw =
+          (((n_index * channels + c_index) * pooled_height + h_index) * pooled_width + w_index) * pooled_depth + d_index;
       int64_t offset_nchw = (n_index * channels + c_index) * width * height * depth;
 
       p_indices[id_nchw] = (storage_order == 0)
@@ -161,9 +161,9 @@ void MaxPoolWithIndex(
   int64_t stride_h = stride_shape[0];
   int64_t stride_w = stride_shape.size() > 1 ? stride_shape[1] : 1;
   int64_t stride_d = stride_shape.size() > 2 ? stride_shape[2] : 1;
-  //pads in the format of [x1_begin, x2_begin...x1_end, x2_end,...],
-  //where xi_begin the number of pixels added at the beginning of axis i
-  //and xi_end, the number of pixels added at the end of axis i.
+  // pads in the format of [x1_begin, x2_begin...x1_end, x2_end,...],
+  // where xi_begin the number of pixels added at the beginning of axis i
+  // and xi_end, the number of pixels added at the end of axis i.
   int64_t pad_h = pads[0];
   int64_t pad_w = pads.size() >= 4 ? pads[1] : 0;
   int64_t pad_d = pads.size() == 6 ? pads[2] : 0;

@@ -15,8 +15,6 @@ namespace test {
 
 #if USE_CUDA
 constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
-#elif USE_ROCM
-constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
 #endif
 
 static void TestSoftmaxCrossEntropy(const std::vector<int64_t>& X_dims,
@@ -151,6 +149,53 @@ TEST(CrossEntropyTest, SparseSoftmaxCrossEntropy_Basic) {
   test.AddOutput<float>("log_prob", {3, 5}, log_prob_data);
 
   test.Run();
+}
+
+TEST(CrossEntropyTest, SparseSoftmaxCrossEntropy_LabelTooLarge) {
+  OpTester test("SparseSoftmaxCrossEntropy", 9);
+  test.AddAttribute("reduction", "mean");
+
+  std::vector<float> X_data(3 * 5, 1.0f);
+  std::vector<int64_t> index_data = {0, 5, 2};  // 5 is out of range [0, 5)
+
+  test.AddInput<float>("X", {3, 5}, X_data);
+  test.AddInput<int64_t>("index", {3}, index_data);
+  test.AddOutput<float>("output", {}, {0.0f});
+  test.AddOutput<float>("log_prob", {3, 5}, std::vector<float>(15, 0.0f));
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "out of range");
+}
+
+TEST(CrossEntropyTest, SparseSoftmaxCrossEntropy_NegativeLabel) {
+  OpTester test("SparseSoftmaxCrossEntropy", 9);
+  test.AddAttribute("reduction", "mean");
+
+  std::vector<float> X_data(3 * 5, 1.0f);
+  std::vector<int64_t> index_data = {0, -1, 2};  // -1 is out of range
+
+  test.AddInput<float>("X", {3, 5}, X_data);
+  test.AddInput<int64_t>("index", {3}, index_data);
+  test.AddOutput<float>("output", {}, {0.0f});
+  test.AddOutput<float>("log_prob", {3, 5}, std::vector<float>(15, 0.0f));
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "out of range");
+}
+
+TEST(CrossEntropyTest, SparseSoftmaxCrossEntropy_LabelTooLargeWithWeights) {
+  OpTester test("SparseSoftmaxCrossEntropy", 9);
+  test.AddAttribute("reduction", "mean");
+
+  std::vector<float> X_data(3 * 5, 1.0f);
+  std::vector<int64_t> index_data = {0, 100, 2};  // 100 is out of range
+  std::vector<float> weight_data = {1.0f, 1.0f, 1.0f};
+
+  test.AddInput<float>("X", {3, 5}, X_data);
+  test.AddInput<int64_t>("index", {3}, index_data);
+  test.AddInput<float>("weight", {3}, weight_data);
+  test.AddOutput<float>("output", {}, {0.0f});
+  test.AddOutput<float>("log_prob", {3, 5}, std::vector<float>(15, 0.0f));
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "out of range");
 }
 
 static void TestSparseSoftmaxCrossEntropy(const std::vector<int64_t>* X_dims,
@@ -423,8 +468,6 @@ static void TestSCELoss(const char* op, int opset_version,
       []() -> std::unique_ptr<IExecutionProvider> {
 #ifdef USE_CUDA
         return DefaultCudaExecutionProvider();
-#elif USE_ROCM
-        return DefaultRocmExecutionProvider();
 #endif
       },
       reduction, ignore_index,
@@ -934,8 +977,6 @@ static void TestSoftmaxCrossEntropyLossInternalGrad(const std::vector<int64_t>& 
           []() -> std::unique_ptr<IExecutionProvider> {
 #ifdef USE_CUDA
             return DefaultCudaExecutionProvider();
-#elif USE_ROCM
-            return DefaultRocmExecutionProvider();
 #endif
           },
           reduction, ignore_index, error_tolerance, has_bias,

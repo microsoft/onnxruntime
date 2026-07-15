@@ -6,9 +6,10 @@ on:
       - main
       - rel-*
   pull_request:
+  workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -16,9 +17,8 @@ jobs:
     name: Optional Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: misspell # Check spellings as well
-        continue-on-error: true
         uses: reviewdog/action-misspell@v1
         with:
           github_token: ${{ secrets.github_token }}
@@ -27,8 +27,7 @@ jobs:
           level: info
           filter_mode: diff_context
       - name: shellcheck # Static check shell scripts
-        continue-on-error: true
-        uses: reviewdog/action-shellcheck@v1
+        uses: reviewdog/action-shellcheck@v1.31.0
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
@@ -38,16 +37,18 @@ jobs:
   lint-python-format:
     # Required workflow
     name: Python format
-    runs-on: ubuntu-22.04
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=lint-python-format-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     permissions:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v6
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           # Use the version configured in target-version of [tool.black] section in pyproject.toml.
           python-version: "3.10"
@@ -67,11 +68,7 @@ jobs:
       - name: Run lintrunner on all files
         run: |
           set +e
-          LINTRUNNER_ARGS=(--force-color --tee-json=lint.json -v)
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-              LINTRUNNER_ARGS+=(--all-files)
-          fi
-          if ! lintrunner "${LINTRUNNER_ARGS[@]}"; then
+          if ! lintrunner --force-color --all-files --tee-json=lint.json -v; then
               echo ""
               echo -e "\e[1m\e[36mYou can reproduce these results locally by using \`lintrunner\`. To set up lintrunner locally, see https://github.com/microsoft/onnxruntime/blob/main/docs/Coding_Conventions_and_Standards.md#linting .\e[0m"
               exit 1
@@ -94,7 +91,7 @@ jobs:
     name: Optional Lint C++
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@master
+      - uses: actions/checkout@v6
       - name: Update PATH
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
@@ -116,32 +113,5 @@ jobs:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
           level: info
-          flags: --linelength=120
-            --exclude=java/src/main/native/*.c
-            --exclude=onnxruntime/core/mlas/inc/*
-            --exclude=onnxruntime/core/mlas/lib/*
-            --exclude=onnxruntime/contrib_ops/cuda/bert/flash_attention/*
-            --exclude=build/Debug/*
-            --exclude=cmake/*
-            --exclude=csharp/test/*
-            --exclude=onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/GeneratedShaders/*
-            --exclude=orttraining/orttraining/test/*
-            --exclude=onnxruntime/test/*
-            --exclude=winml/*
+          flags: --linelength=120 --exclude=java/src/main/native/*.c --exclude=onnxruntime/core/mlas/inc/* --exclude=onnxruntime/core/mlas/lib/* --exclude=onnxruntime/contrib_ops/cuda/bert/flash_attention/* --exclude=build/Debug/* --exclude=cmake/* --exclude=csharp/test/* --exclude=onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/GeneratedShaders/* --exclude=orttraining/orttraining/test/* --exclude=onnxruntime/test/* --exclude=winml/*
           filter: "-runtime/references"
-
-  lint-js:
-    name: Lint JavaScript
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - uses: reviewdog/action-eslint@v1
-        with:
-          reporter: github-pr-check
-          level: error
-          filter_mode: file
-          eslint_flags: "--ext .ts --ext .tsx"
-          workdir: "js/"

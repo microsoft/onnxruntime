@@ -30,7 +30,7 @@ static bool GetQConstantLowerUpper(const Graph& graph, const Node& node, float& 
     return false;
   }
 
-  Initializer s_initializer(*s_tensor_proto, graph.ModelPath());
+  Initializer s_initializer(graph, *s_tensor_proto, graph.ModelPath());
   if (s_initializer.dims().size() != 0 ||
       s_initializer.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     return false;
@@ -45,7 +45,7 @@ static bool GetQConstantLowerUpper(const Graph& graph, const Node& node, float& 
     return false;
   }
 
-  Initializer zp_initializer(*zp_tensor_proto, graph.ModelPath());
+  Initializer zp_initializer(graph, *zp_tensor_proto, graph.ModelPath());
   if (zp_initializer.dims().size() != 0) {
     return false;
   }
@@ -81,7 +81,7 @@ static bool GetQConstantLowerUpper(const Graph& graph, const Node& node, float& 
   return true;
 }
 
-bool ClipQuantFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& /*logger*/) const {
+bool ClipQuantFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Clip", {1, 6, 11, 12, 13}) ||
       !graph_utils::IsSupportedProvider(node, {kCpuExecutionProvider}) ||
       !optimizer_utils::CheckOutputEdges(graph, node, 1)) {
@@ -92,6 +92,10 @@ bool ClipQuantFusion::SatisfyCondition(const Graph& graph, const Node& node, con
   const auto& next_node = *node.OutputNodesBegin();
   if (!graph_utils::IsSupportedProvider(next_node, {kCpuExecutionProvider}) ||
       !QDQ::MatchQNode(next_node)) {
+    return false;
+  }
+
+  if (!graph_utils::CanRemoveNode(graph, node, logger)) {
     return false;
   }
 

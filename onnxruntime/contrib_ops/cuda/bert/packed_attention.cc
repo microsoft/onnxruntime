@@ -60,8 +60,7 @@ MHARunner* TrtFusedAttention<T>::GetFusedRunner(const cudaDeviceProp& device_pro
   bool is_fMHA_supported = FusedMHARunnerFP16v2::IsSupported(sm,
                                                              parameters.head_size,
                                                              parameters.sequence_length,
-                                                             enable_trt_flash_attention_,
-                                                             false /*causal*/);
+                                                             enable_trt_flash_attention_);
 
   if (!is_fMHA_supported) {
     return fused_runner;
@@ -69,7 +68,7 @@ MHARunner* TrtFusedAttention<T>::GetFusedRunner(const cudaDeviceProp& device_pro
 
   // Assuming that num_heads and head_size do not change.
   if (nullptr == fused_fp16_runner_.get()) {
-    fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(parameters.num_heads, parameters.head_size, sm, false /*causal*/,
+    fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(parameters.num_heads, parameters.head_size, sm,
                                                       enable_trt_flash_attention_, parameters.scale);
   }
 
@@ -261,7 +260,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     use_memory_efficient_attention =
         (attention_bias == nullptr || parameters.sequence_length % (4 * sizeof(T)) == 0) &&
         sizeof(T) == 2 &&  // only enable for fp16
-        has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
+        has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value, parameters.head_size, parameters.v_head_size);
   }
 #endif
 
@@ -269,7 +268,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     AttentionKernelDebugInfo debug_info;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
     if (fused_runner != nullptr) {
-      debug_info.SetTrtFusedKernel(false /*causal*/, this->enable_trt_flash_attention_, parameters.sequence_length);
+      debug_info.SetTrtFusedKernel(this->enable_trt_flash_attention_, parameters.sequence_length);
     }
 
     debug_info.Print("PackedAttention",
@@ -286,7 +285,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int m = parameters.token_count;
   int n = parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size;
   int k = parameters.input_hidden_size;
-  gemm_buffer = this->template GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
+  gemm_buffer = this->template GetScratchBuffer<T>(static_cast<size_t>(m) * n, this->GetComputeStream(context));
 
   cublasHandle_t cublas = this->GetCublasHandle(context);
 
@@ -310,7 +309,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    false,
                                                    use_memory_efficient_attention,
                                                    no_qkv_workspace);
-  auto work_space = this->template GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
+  auto work_space = this->template GetScratchBuffer<void>(workSpaceSize, this->GetComputeStream(context));
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   PackedAttentionData<CudaT> data;

@@ -5,6 +5,7 @@
 #include "contrib_ops/webgpu/bert/attention_common.h"
 #include "contrib_ops/webgpu/bert/multihead_attention.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
+#include "contrib_ops/webgpu/bert/flash_attention.h"
 
 #include "core/providers/webgpu/webgpu_supported_types.h"
 
@@ -28,7 +29,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 MultiHeadAttention::MultiHeadAttention(const OpKernelInfo& info)
     : WebGpuKernel(info), AttentionBase(info, false) {
-  ORT_ENFORCE(!is_unidirectional_, "Unidirectional MHA does not support webgpu kernel");
+  // Unidirectional attention is now supported for both flash attention and normal attention paths
 }
 
 Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
@@ -41,6 +42,11 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   const Tensor* past_key = context.Input(6);
   const Tensor* past_value = context.Input(7);
 
+  // Not supported in WebGPU EP currently
+  const Tensor* cache_indirection = nullptr;
+  const Tensor* past_sequence_length = nullptr;
+  constexpr bool past_present_share_buffer = false;
+
   if (query->Shape().GetDims().size() == 5) {
     ORT_NOT_IMPLEMENTED("Packed QKV of shape (B, L, N, 3, H) not implemented for webgpu");
   }
@@ -52,9 +58,23 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   }
 
   AttentionParameters params;
-  ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query, key, value,
-                                                                      bias, key_padding_mask, attention_bias, past_key, past_value, nullptr, &params,
-                                                                      num_heads_, mask_filter_value_, scale_, is_unidirectional_, false, kMultiHeadAttention,
+  ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
+                                                                      key,
+                                                                      value,
+                                                                      bias,
+                                                                      key_padding_mask,
+                                                                      attention_bias,
+                                                                      past_key,
+                                                                      past_value,
+                                                                      cache_indirection,
+                                                                      past_sequence_length,
+                                                                      &params,
+                                                                      num_heads_,
+                                                                      mask_filter_value_,
+                                                                      scale_,
+                                                                      is_unidirectional_,
+                                                                      past_present_share_buffer,
+                                                                      kMultiHeadAttention,
                                                                       context.DeviceLimits().maxComputeInvocationsPerWorkgroup));
   WebgpuAttentionParameters parameters(params);
   TensorShapeVector output_shape(3);
@@ -74,6 +94,64 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   Tensor* present_key = context.Output(1, present_shape);
   Tensor* present_value = context.Output(2, present_shape);
 
+  std::vector<int64_t> output_qk_dims{
+      parameters.batch_size_,
+      parameters.num_heads_,
+      parameters.sequence_length_,
+      parameters.total_sequence_length_,
+  };
+  TensorShape output_qk_shape(output_qk_dims);
+  Tensor* output_qk = context.Output(3, output_qk_shape);
+
+  // Match CPU EP semantics: when no present_key/present_value output is requested,
+  // ignore past_key/past_value. The CPU EP sets past_sequence_length=0 in this case,
+  // effectively treating the input as if there is no KV cache.
+  if (present_key == nullptr && present_value == nullptr) {
+    past_key = nullptr;
+    past_value = nullptr;
+    parameters.past_sequence_length_ = 0;
+    parameters.total_sequence_length_ = parameters.kv_sequence_length_;
+  }
+
+  if (output_qk == nullptr &&  // Flash attention does not output QK scores
+      CanApplyFlashAttention(parameters, context)) {
+    if (bias != nullptr) {
+      // Apply bias and transpose Q from BSD to BNSH before FlashAttention
+      TensorShapeVector q_dims({parameters.batch_size_, parameters.num_heads_,
+                                parameters.sequence_length_, parameters.head_size_});
+      Tensor Q = context.CreateGPUTensor(query->DataType(), TensorShape(q_dims));
+      ORT_RETURN_IF_ERROR(TransferBSDToBNSH(
+          context, parameters.num_heads_, parameters.sequence_length_, parameters.head_size_, query, bias, 0, &Q));
+
+      WebgpuAttentionParameters params_bnsh(parameters);
+      if (parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH) {
+        // Cross-attention: K/V are already BNSH, only Q needs bias+transpose
+        params_bnsh.qkv_format_ = Q_K_V_BNSH;
+        return ApplyFlashAttention(&Q, key, value, attention_bias, output, past_key, present_key, past_value,
+                                   present_value, params_bnsh, context);
+      }
+
+      // Self-attention: K/V also need bias+transpose
+      TensorShapeVector k_dims({parameters.batch_size_, parameters.num_heads_,
+                                parameters.kv_sequence_length_, parameters.head_size_});
+      Tensor K = context.CreateGPUTensor(key->DataType(), TensorShape(k_dims));
+      ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.num_heads_, parameters.kv_sequence_length_,
+                                            parameters.head_size_, key, bias, parameters.hidden_size_, &K));
+
+      TensorShapeVector v_dims({parameters.batch_size_, parameters.num_heads_,
+                                parameters.kv_sequence_length_, parameters.v_head_size_});
+      Tensor V = context.CreateGPUTensor(value->DataType(), TensorShape(v_dims));
+      ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.num_heads_, parameters.kv_sequence_length_,
+                                            parameters.v_head_size_, value, bias, 2 * parameters.hidden_size_, &V));
+
+      params_bnsh.qkv_format_ = Q_K_V_BNSH;
+      return ApplyFlashAttention(&Q, &K, &V, attention_bias, output, past_key, present_key, past_value,
+                                 present_value, params_bnsh, context);
+    }
+    return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
+                               present_value, parameters, context);
+  }
+
   TensorShapeVector q_new_dims({parameters.batch_size_, parameters.num_heads_,
                                 parameters.sequence_length_, parameters.head_size_});
   TensorShape q_new_shape(q_new_dims);
@@ -83,7 +161,7 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
 
   if (parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH) {  // key and value in BNSH format
     return ApplyAttention(&Q, key, value, attention_bias, past_key, past_value, output, present_key,
-                          present_value, parameters, context);
+                          present_value, output_qk, parameters, context);
   }
 
   TensorShapeVector k_new_dims({parameters.batch_size_, parameters.num_heads_,
@@ -102,7 +180,7 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
 
   // Compute the attention score and apply the score to V
   return ApplyAttention(&Q, &K, &V, attention_bias, past_key, past_value, output, present_key,
-                        present_value, parameters, context);
+                        present_value, output_qk, parameters, context);
 }
 
 }  // namespace webgpu

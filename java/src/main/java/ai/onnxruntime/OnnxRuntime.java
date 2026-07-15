@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2025, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -42,6 +42,8 @@ final class OnnxRuntime {
   private static final int ORT_API_VERSION_13 = 13;
   // Post 1.13 builds of the ORT API
   private static final int ORT_API_VERSION_14 = 14;
+  // Post 1.22 builds of the ORT API
+  private static final int ORT_API_VERSION_23 = 23;
 
   // The initial release of the ORT training API.
   private static final int ORT_TRAINING_API_VERSION_1 = 1;
@@ -79,6 +81,15 @@ final class OnnxRuntime {
   /** The short name of the ONNX runtime QNN provider library */
   static final String ONNXRUNTIME_LIBRARY_QNN_NAME = "onnxruntime_providers_qnn";
 
+  /** The short name of the WebGPU DAWN library */
+  static final String ONNXRUNTIME_LIBRARY_WEBGPU_DAWN_NAME = "webgpu_dawn";
+
+  /** The short name of the WebGPU DXC library "dxil.dll" */
+  static final String ONNXRUNTIME_LIBRARY_WEBGPU_DXC_DXIL_NAME = "dxil";
+
+  /** The short name of the WebGPU DXC library "dxcompiler.dll" */
+  static final String ONNXRUNTIME_LIBRARY_WEBGPU_DXC_DXCOMPILER_NAME = "dxcompiler";
+
   /** The OS & CPU architecture string */
   private static final String OS_ARCH_STR = initOsArch();
 
@@ -99,6 +110,9 @@ final class OnnxRuntime {
 
   /** The Training API handle. */
   static long ortTrainingApiHandle;
+
+  /** The Compile API handle. */
+  static long ortCompileApiHandle;
 
   /** Is training enabled in the native library */
   static boolean trainingEnabled;
@@ -137,6 +151,8 @@ final class OnnxRuntime {
       detectedArch = "aarch64";
     } else if (arch.startsWith("ppc64")) {
       detectedArch = "ppc64";
+    } else if (arch.startsWith("loongarch64")) {
+      detectedArch = "loongarch64";
     } else if (isAndroid()) {
       detectedArch = arch;
     } else {
@@ -162,17 +178,24 @@ final class OnnxRuntime {
       // the ONNX Runtime native library will load it
       extractProviderLibrary(ONNXRUNTIME_LIBRARY_SHARED_NAME);
 
+      // Extract and prepare the Dawn shared libraries (if present) but don't try to load them,
+      // the ONNX Runtime native library will load them
+      extractProviderLibrary(ONNXRUNTIME_LIBRARY_WEBGPU_DAWN_NAME);
+      extractProviderLibrary(ONNXRUNTIME_LIBRARY_WEBGPU_DXC_DXIL_NAME);
+      extractProviderLibrary(ONNXRUNTIME_LIBRARY_WEBGPU_DXC_DXCOMPILER_NAME);
+
       if (!isAndroid()) {
         load(ONNXRUNTIME_LIBRARY_NAME);
       }
       load(ONNXRUNTIME_JNI_LIBRARY_NAME);
 
-      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_14);
+      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_23);
       if (ortApiHandle == 0L) {
         throw new IllegalStateException(
             "There is a mismatch between the ORT class files and the ORT native library, and the native library could not be loaded");
       }
-      ortTrainingApiHandle = initialiseTrainingAPIBase(ortApiHandle, ORT_API_VERSION_14);
+      ortTrainingApiHandle = initialiseTrainingAPIBase(ortApiHandle, ORT_API_VERSION_23);
+      ortCompileApiHandle = initialiseCompileAPIBase(ortApiHandle);
       trainingEnabled = ortTrainingApiHandle != 0L;
       providers = initialiseProviders(ortApiHandle);
       version = initialiseVersion();
@@ -284,26 +307,22 @@ final class OnnxRuntime {
     if (extractedSharedProviders.contains(libraryName)) {
       return true;
     }
-    // Otherwise extract the file from the classpath resources
+    // If a native library directory is configured, prefer it and skip extraction when present.
+    if (libraryDirPathProperty != null) {
+      String libraryFileName = mapLibraryName(libraryName);
+      File libraryFile = Paths.get(libraryDirPathProperty, libraryFileName).toFile();
+      if (libraryFile.exists()) {
+        extractedSharedProviders.add(libraryName);
+        return true;
+      }
+    }
+    // Otherwise extract the file from the classpath resources.
     Optional<File> file = extractFromResources(libraryName);
     if (file.isPresent()) {
       extractedSharedProviders.add(libraryName);
       return true;
     } else {
-      // If we failed to extract it, check if there is a valid cache directory
-      // that contains it
-      if (libraryDirPathProperty != null) {
-        String libraryFileName = mapLibraryName(libraryName);
-        File libraryFile = Paths.get(libraryDirPathProperty, libraryFileName).toFile();
-        if (libraryFile.exists()) {
-          extractedSharedProviders.add(libraryName);
-          return true;
-        } else {
-          return false;
-        }
-      } else {
-        return false;
-      }
+      return false;
     }
   }
 
@@ -489,6 +508,14 @@ final class OnnxRuntime {
    * @return A pointer to the training API struct.
    */
   private static native long initialiseTrainingAPIBase(long apiHandle, int apiVersionNumber);
+
+  /**
+   * Get a reference to the compile API struct.
+   *
+   * @param apiHandle The ORT API struct pointer.
+   * @return A pointer to the compile API struct.
+   */
+  private static native long initialiseCompileAPIBase(long apiHandle);
 
   /**
    * Gets the array of available providers.

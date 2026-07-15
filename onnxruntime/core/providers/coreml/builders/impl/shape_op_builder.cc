@@ -25,7 +25,6 @@ Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
                                              const logging::Logger& /*logger*/) const {
   const auto& input_defs = node.InputDefs();
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
     NodeAttrHelper node_attr_helper{node};
@@ -57,15 +56,13 @@ Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
       std::vector<int64_t> sizes = {size};
       AddOperationInput(*slice_op, "begin", model_builder.AddConstant(slice_op->type(), "begin", starts));
       AddOperationInput(*slice_op, "size", model_builder.AddConstant(slice_op->type(), "size", sizes));
-      AddOperationOutput(*slice_op, *node.OutputDefs()[0], output_datatype);
+      AddOperationOutput(*slice_op, *node.OutputDefs()[0]);
       model_builder.AddOperation(std::move(slice_op));
     } else {
-      AddOperationOutput(*op, *node.OutputDefs()[0], output_datatype);
+      AddOperationOutput(*op, *node.OutputDefs()[0]);
       model_builder.AddOperation(std::move(op));
     }
-  } else  // NOLINT
-#endif
-  {
+  } else {
     auto layer = model_builder.CreateNNLayer(node);
     layer->mutable_getshape();
     *layer->mutable_input()->Add() = input_defs[0]->Name();
@@ -130,7 +127,8 @@ bool ShapeOpBuilder::HasSupportedInputsImpl(const Node& node,
   if (input_params.create_mlprogram) {
     if ((input_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
          input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
-         input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)) {
+         input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+         input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64)) {
       return true;
     } else {
       LOGS(logger, VERBOSE) << "[" << node.OpType()

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <limits>
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
@@ -17,101 +18,24 @@ namespace onnxruntime {
 namespace contrib {
 
 template <typename T>
-void ComputeSmoothSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
-  ThreadPool::TryParallelFor(tp, N, D * 2.0, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-    for (std::ptrdiff_t j = begin; j != end; ++j) {
-      float* x = reinterpret_cast<T*>(score) + j * D;
-      float* y = x;
-
-      float max = -std::numeric_limits<float>::infinity();
-      for (int i = 0; i < D; i++) {
-        if (max < x[i])
-          max = x[i];
-      }
-
-      if (max < 0.0f) {
-        max = 0.0f;
-      }
-
-      for (int i = 0; i < D; i++) {
-        y[i] = expf(x[i] - max);
-      }
-
-      double sum = 0.0;
-
-      for (int i = 0; i < D; i++) {
-        sum += x[i];
-      }
-
-      sum += exp(static_cast<double>(-max));
-
-      for (int i = 0; i < D; i++) {
-        y[i] = x[i] / (float)sum;
-      }
-    }
-  });
-}
-
-template <>
-inline void ComputeSmoothSoftmaxInplace(float* score, int N, int D, ThreadPool* tp) {
-  MlasComputeSoftmax(score, score, N, D, false, true, tp);
+inline void ComputeSmoothSoftmaxInplace(T* score, int D, float sink, ThreadPool* tp) {
+  MlasComputeSoftmax(score, score, 1, D, false, true, sink, tp);
 }
 
 template <typename T>
-void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
-  ThreadPool::TryParallelFor(tp, N, D * 2.0, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-    for (std::ptrdiff_t j = begin; j != end; ++j) {
-      float* x = reinterpret_cast<T*>(score) + j * D;
-      float* y = x;
-
-      // e^x is represented as infinity if x is large enough, like 100.f.
-      // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if
-      // one or more item are large enough. a math transform as below is
-      // leveraged to get a stable softmax: e^xi/(e^x1 + ...e^xn) = e^(xi -
-      // max) / (e^(x1 - max) + ... + e^(xn - max))
-      float max = -std::numeric_limits<float>::infinity();
-      for (int i = 0; i < D; i++) {
-        if (max < x[i])
-          max = x[i];
-      }
-      for (int i = 0; i < D; i++) {
-        y[i] = expf(x[i] - max);
-      }
-
-      double sum = 0.0;
-
-      for (int i = 0; i < D; i++) {
-        sum += x[i];
-      }
-
-      if (sum == 0) {
-        for (int i = 0; i < D; i++) {
-          y[i] = 1.0f / (float)D;
-        }
-      } else {
-        for (int i = 0; i < D; i++) {
-          y[i] = x[i] / (float)sum;
-        }
-      }
-    }
-  });
-}
-
-template <>
-inline void ComputeAttentionSoftmaxInplace(float* score, int N, int D, ThreadPool* tp) {
-  MlasComputeSoftmax(score, score, N, D, false, false, tp);
+inline void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
+  MlasComputeSoftmax(score, score, N, D, false, false, 0.0f, tp);
 }
 
 template <typename T>
-void ComputeAttentionSoftcapInplace(T* scores, int sequence_length, float softcap) {
-  for (int i = 0; i < sequence_length; i++) {
-    scores[i] = scores[i] / softcap;
-    scores[i] = std::tanh(scores[i]);
-    scores[i] = scores[i] * softcap;
-  }
+void ComputeAttentionSoftcapInplace(T* scores, int sequence_length, T softcap) {
+  MlasComputeSoftcap(scores, scores, sequence_length, softcap);
 }
 
-template void ComputeAttentionSoftcapInplace<float>(float* scores, int sequence_length, float softcap);
+template <typename T>
+void ApplyAttentionBias(T* softmax_logits, const T* attention_mask, int N) {
+  MlasEltwiseAdd(softmax_logits, attention_mask, softmax_logits, N);
+}
 
 template <typename T>
 void PrepareMask(const int32_t* mask_index,
@@ -172,14 +96,14 @@ void PrepareMask(const int32_t* mask_index,
         // mask_index is 1D: (B) or (2B) => (Bx)T
 
         // Handle right-side padding: mask value at or after the end position will be mask_filter_value
-        int end_position = mask_index[b_i];
+        int end_position = std::clamp(static_cast<int>(mask_index[b_i]), 0, all_sequence_length);
         for (int m_i = end_position; m_i < all_sequence_length; m_i++) {
           p_mask[m_i] = static_cast<T>(mask_filter_value);
         }
 
         // Handle left-side padding: mask value before the start position will be mask_filter_value
         if (has_mask_start_position) {
-          int start_position = std::min(mask_index[b_i + batch_size], all_sequence_length);
+          int start_position = std::clamp(static_cast<int>(mask_index[b_i + batch_size]), 0, all_sequence_length);
           for (int m_i = 0; m_i < start_position; m_i++) {
             p_mask[m_i] = static_cast<T>(mask_filter_value);
           }
@@ -244,11 +168,11 @@ T* ConcatStateChunkGQA(const T* past,
   T* p = start;
   if (!past_present_share_buffer && past_chunk_length > 0) {
     const T* src_past = past + i * past_buff_chunk_length;
-    memcpy(p, src_past, past_chunk_length * sizeof(T));
+    memcpy(p, src_past, SafeInt<size_t>(past_chunk_length) * sizeof(T));
   }
   p += past_chunk_length;
 
-  memcpy(p, chunk, new_chunk_length * sizeof(T));
+  memcpy(p, chunk, SafeInt<size_t>(new_chunk_length) * sizeof(T));
   return start;
 }
 

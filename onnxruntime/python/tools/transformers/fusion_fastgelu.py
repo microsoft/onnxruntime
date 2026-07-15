@@ -177,13 +177,12 @@ class FusionFastGelu(Fusion):
             return
         mul_after_mul_half = children[0]
 
+        # root_node could be None when root_input is graph input
         root_node = self.model.get_parent(
             mul_after_mul_half,
             0 if mul_after_mul_half.input[1] == mul_half.output[0] else 1,
             output_name_to_node,
         )
-        if root_node is None:
-            return
 
         mul_before_tanh = self.model.match_parent(tanh_node, "Mul", 0, output_name_to_node)
         if mul_before_tanh is None:
@@ -197,7 +196,13 @@ class FusionFastGelu(Fusion):
         if add_before_tanh is None:
             return
 
-        mul_after_pow = self.model.match_parent(add_before_tanh, "Mul", None, output_name_to_node, exclude=[root_node])
+        mul_after_pow = self.model.match_parent(
+            add_before_tanh,
+            "Mul",
+            None,
+            output_name_to_node,
+            exclude=[root_node] if root_node else [],
+        )
         if mul_after_pow is None:
             return
 
@@ -212,7 +217,9 @@ class FusionFastGelu(Fusion):
         if not self.model.has_constant_input(pow, 3.0):
             return
 
-        if pow.input[0] != root_node.output[0]:
+        root_input = mul_after_mul_half.input[0 if mul_after_mul_half.input[1] == mul_half.output[0] else 1]
+
+        if pow.input[0] != root_input:
             return
 
         subgraph_nodes = [
@@ -236,7 +243,7 @@ class FusionFastGelu(Fusion):
         self.nodes_to_remove.extend(subgraph_nodes)
         fused_node = helper.make_node(
             "FastGelu",
-            inputs=[root_node.output[0]],
+            inputs=[root_input],
             outputs=mul_after_mul_half.output,
             name=self.model.create_node_name("FastGelu"),
         )

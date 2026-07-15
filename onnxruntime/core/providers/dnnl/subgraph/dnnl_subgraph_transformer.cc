@@ -181,13 +181,11 @@ bool DnnlGraphTransformer::IsInitilizedWithExpectedValue(const onnxruntime::Grap
     return false;
   }
 
-  if (!tensor_proto->has_raw_data()) {
-    return false;
-  }
-
   const auto data_type = input_arg.Type();
   if (data_type == dnnl::memory::data_type::f32) {
-    const float* val = reinterpret_cast<const float*>(tensor_proto->raw_data().data());
+    onnxruntime::Initializer initializer(onnx_subgraph_viewer.GetGraph(),
+                                         *tensor_proto, onnx_subgraph_viewer.ModelPath());
+    const float* val = initializer.data<float>();
     if (std::isnan(val[0]) || std::isinf(val[0])) {
       if (std::isinf(val[0]) && std::isinf(expected_value) && (std::signbit(val[0]) == std::signbit(expected_value))) {
         return true;
@@ -775,9 +773,8 @@ void DnnlGraphTransformer::RemoveMatMulIntegerZP(DnnlSubgraph& subgraph, const o
 
     // check if b_zp is all zeros, assume data is s8 since only s8 weight is supported in onednn
     bool all_zero = true;
-    std::vector<int8_t> unpacked_tensor;
-    unpacked_tensor.resize(num_elements, 1);
-    ORT_THROW_IF_ERROR(onnxruntime::utils::UnpackTensor(*tensor_proto, tensor_proto->has_raw_data() ? tensor_proto->raw_data().data() : nullptr, tensor_proto->has_raw_data() ? tensor_proto->raw_data().size() : 0, reinterpret_cast<int8_t*>(unpacked_tensor.data()), num_elements));
+    std::vector<uint8_t> unpacked_tensor;
+    ORT_THROW_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*tensor_proto, unpacked_tensor));
     for (const auto& val : unpacked_tensor) {
       if (val != 0) {
         all_zero = false;

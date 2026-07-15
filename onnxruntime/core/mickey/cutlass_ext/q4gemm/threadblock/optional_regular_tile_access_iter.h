@@ -47,7 +47,7 @@ template <
     /// will utilize the higher numbered threads
     int ThreadblockSize_ = -1,
     int Alignment =
-        sizeof_bits<Element_>::value* ThreadMap_::kElementsPerAccess / 8>
+        sizeof_bits<Element_>::value * ThreadMap_::kElementsPerAccess / 8>
 class OptionalRegularTileAccessIterator {
  public:
   using Shape = Shape_;

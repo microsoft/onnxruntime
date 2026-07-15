@@ -5,8 +5,10 @@
 
 #include <map>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "core/graph/constants.h"
 #include "core/framework/session_options.h"
@@ -35,6 +37,7 @@ struct ModelInfo {
 struct MachineConfig {
   Platform platform{Platform::kWindows};
   std::string provider_type_name{onnxruntime::kCpuExecutionProvider};
+  std::vector<std::string> plugin_provider_type_list;
 };
 
 struct RunConfig {
@@ -53,25 +56,52 @@ struct RunConfig {
   int intra_op_num_threads{0};
   int inter_op_num_threads{0};
   GraphOptimizationLevel optimization_level{ORT_ENABLE_ALL};
-  std::basic_string<ORTCHAR_T> optimized_model_path;
+  PathString optimized_model_path;
+  std::string optimized_model_data_path;  // Always UTF-8
+  std::string optimized_model_weight_min_size;
+  bool optimized_save_optimized_prepacks{false};
   int cudnn_conv_algo{0};
   bool do_cuda_copy_in_separate_stream{false};
   bool set_denormal_as_zero{false};
   std::basic_string<ORTCHAR_T> ep_runtime_config_string;
   std::unordered_map<std::string, std::string> session_config_entries;
-  std::map<std::basic_string<ORTCHAR_T>, int64_t> free_dim_name_overrides;
-  std::map<std::basic_string<ORTCHAR_T>, int64_t> free_dim_denotation_overrides;
+  std::unordered_map<std::string, std::string> run_config_entries;
+  std::map<std::string, int64_t> free_dim_name_overrides;
+  std::map<std::string, int64_t> free_dim_denotation_overrides;
+  std::map<std::string, std::vector<std::vector<int64_t>>> data_shape_groups;
   std::string intra_op_thread_affinities;
   bool disable_spinning = false;
   bool disable_spinning_between_run = false;
+  int spin_duration_us = -1;  // -1 means use default (not set by user)
+  // Keep this signed in the CLI layer so negative user input can be diagnosed
+  // before clamping/conversion to the unsigned runtime option.
+  int spin_backoff_max = 1;  // 1 means no backoff (default)
+  bool spin_backoff_max_set = false;
   bool exit_after_session_creation = false;
+  uint32_t hold_ms_after_session_creation{0};
   std::basic_string<ORTCHAR_T> register_custom_op_path;
+  bool enable_cuda_io_binding{false};
+  bool use_extensions = false;
+  bool compile_ep_context{false};
+  std::basic_string<ORTCHAR_T> compile_model_path;
+  bool compile_binary_embed{false};
+  bool compile_only{false};
+  struct CudaMempoolArenaConfig {
+    std::string release_threshold;
+    std::string bytes_to_keep;
+  };
+  std::optional<CudaMempoolArenaConfig> cuda_mempool_arena_config;
 };
 
 struct PerformanceTestConfig {
   ModelInfo model_info;
   MachineConfig machine_config;
   RunConfig run_config;
+  std::basic_string<ORTCHAR_T> plugin_ep_names_and_libs;
+  std::vector<std::string> registered_plugin_eps;
+  std::string selected_ep_device_indices;
+  std::vector<std::pair<std::string, std::string>> filter_ep_device_kv_pairs;
+  bool list_available_ep_devices = false;
 };
 
 }  // namespace perftest

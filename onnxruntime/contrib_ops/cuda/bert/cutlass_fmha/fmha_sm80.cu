@@ -12,6 +12,8 @@ namespace cuda {
 void run_memory_efficient_attention_sm80(const MemoryEfficientAttentionParams& params) {
   if (params.is_half) {
     DispatchBlockSize<cutlass::half_t, cutlass::arch::Sm80>(params);
+  } else if (params.is_bf16) {
+    DispatchBlockSize<cutlass::bfloat16_t, cutlass::arch::Sm80>(params);
   } else {
     DispatchBlockSize<float, cutlass::arch::Sm80>(params);
   }

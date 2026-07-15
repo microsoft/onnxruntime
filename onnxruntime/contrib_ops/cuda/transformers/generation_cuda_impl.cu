@@ -1,18 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-
-// cub.cuh includes device/dispatch_radix_sort.cuh which has assignment in conditional expressions
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4706)  
-#endif
-#include <cub/cub.cuh>
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-
-#include <cub/util_type.cuh>
+#include "core/providers/cuda/cu_inc/cub.cuh"
 
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
@@ -98,7 +87,11 @@ __global__ void LogitsProcessKernel(
 
     if (word_id >= vocab_size) {
       // Set any value within the padding region to the lowest value so that it isn't picked
+#if CUDA_VERSION >= 12090
+      next_token_scores[index] = ::cuda::std::numeric_limits<T>::lowest();
+#else
       next_token_scores[index] = cub::FpLimits<T>::Lowest();
+#endif
     } else {
       // RepetitionPenaltyLogitsProcessor
       if (repetition_penalty != 1.0f) {
@@ -136,27 +129,43 @@ __global__ void LogitsProcessKernel(
         }
 
         if (found) {
+#if CUDA_VERSION >= 12090
+          next_token_scores[index] = ::cuda::std::numeric_limits<T>::lowest();
+#else
           next_token_scores[index] = cub::FpLimits<T>::Lowest();
+#endif
           return;
         }
       }
 
       // VocabMaskLogitsProcessor
       if (vocab_mask != nullptr && vocab_mask[word_id] == 0) {
+#if CUDA_VERSION >= 12090
+        next_token_scores[index] = ::cuda::std::numeric_limits<T>::lowest();
+#else
         next_token_scores[index] = cub::FpLimits<T>::Lowest();
+#endif
         return;
       }
 
       // PrefixVocabMaskLogitsProcessor
       int batch_id = batch_beam_index / num_beams;
       if (prefix_vocab_mask != nullptr && prefix_vocab_mask[batch_id * vocab_size + word_id] == 0) {
+#if CUDA_VERSION >= 12090
+        next_token_scores[index] = ::cuda::std::numeric_limits<T>::lowest();
+#else
         next_token_scores[index] = cub::FpLimits<T>::Lowest();
+#endif
         return;
       }
 
       // MinLengthLogitsProcessor
       if (word_id == demote_token_id) {
+#if CUDA_VERSION >= 12090
+        next_token_scores[index] = ::cuda::std::numeric_limits<T>::lowest();
+#else
         next_token_scores[index] = cub::FpLimits<T>::Lowest();
+#endif
       }
 
       // PresencePenaltyLogitsProcessor
@@ -323,8 +332,8 @@ __device__ void BeamHypotheses::Output(
     int top_k,
     int max_length,
     int pad_token_id,
-    int32_t* sequences,       // buffer of shape (num_return_sequences, max_length)
-    T* sequences_scores)      // buffer of shape (num_return_sequences) or empty
+    int32_t* sequences,   // buffer of shape (num_return_sequences, max_length)
+    T* sequences_scores)  // buffer of shape (num_return_sequences) or empty
 {
   // Copy the top_k beams into the sequences
   for (int index = 0; index < top_k; index++) {
@@ -343,6 +352,7 @@ __device__ void BeamHypotheses::Output(
   }
 }
 
+template <bool early_stopping>
 __global__ void BeamSearchScorer_Process(BeamScorerState& state_cpu,
                                          BeamScorerState& state,
                                          const int32_t* sequences_buffer,
@@ -358,24 +368,26 @@ __global__ void BeamSearchScorer_Process(BeamScorerState& state_cpu,
   // Sequences shape is (batch_size * num_beams, total_sequence_length)
   // It contains word ID of whole sequence generated so far.
   // It is different from subgraph input_ids, which only need one word when past state is not empty.
-
-  int batch = threadIdx.x;
-  int batch_start = batch * state.num_beams_;
+  const int batch = threadIdx.x;
+  const int num_beams = state.num_beams_;
+  const int batch_start = batch * num_beams;
 
   cuda::BeamHypotheses& beam_hyp = beam_hyps_[batch];
+
   if (!beam_hyp.done_) {
     // Next tokens for this sentence.
     size_t beam_idx = 0;
-    size_t top_k = 2 * state.num_beams_;
+    size_t top_k = 2 * num_beams;
     for (size_t j = 0; j < top_k; j++) {
       int32_t next_token = next_tokens[batch * top_k + j];
       float next_score = next_scores[batch * top_k + j];
       int32_t next_index = next_indices[batch * top_k + j];
 
       int batch_beam_idx = batch_start + next_index;
+
       // Add to generated hypotheses if end of sentence.
       if ((state.eos_token_id_ >= 0) && (next_token == state.eos_token_id_)) {
-        bool is_beam_token_worse_than_top_num_beams = (j >= state.num_beams_);
+        bool is_beam_token_worse_than_top_num_beams = (j >= num_beams);
         if (is_beam_token_worse_than_top_num_beams) {
           continue;
         }
@@ -396,27 +408,58 @@ __global__ void BeamSearchScorer_Process(BeamScorerState& state_cpu,
       }
 
       // Once the beam for next step is full, don't add more tokens to it.
-      if (beam_idx == state.num_beams_)
+      if (beam_idx == num_beams)
         break;
     }
 
     //  Check if we are done so that we can save a pad step if all(done)
-    if (beam_hyp.beams_used_ == state.num_beams_) {
-      if (state.early_stopping_ || !beam_hyp.CanImprove(*std::max_element(next_scores + batch_start, next_scores + batch_start + top_k), sequence_length)) {
-        beam_hyp.done_ = true;
-        if (atomicAdd(&state.not_done_count_, -1) == 1)
-          state_cpu.not_done_count_ = 0;  // Update the CPU side
+    if (beam_hyp.beams_used_ == num_beams) {
+      if constexpr (!early_stopping) {
+        float best_sum_logprobs = *std::max_element(next_scores + batch_start, next_scores + batch_start + top_k);
+        if (beam_hyp.CanImprove(best_sum_logprobs, sequence_length)) {
+          return;
+        }
+      }
+
+      beam_hyp.done_ = true;
+      if (atomicAdd(&(state.not_done_count_), -1) == 1) {
+        state_cpu.not_done_count_ = 0;  // Update the CPU side
       }
     }
   } else {
     // Pad the batch.
-    for (size_t beam_idx = 0; beam_idx < state.num_beams_; beam_idx++) {
+    for (size_t beam_idx = 0; beam_idx < num_beams; beam_idx++) {
       next_beam_scores_[batch_start + beam_idx] = 0.0f;
       next_beam_tokens_[batch_start + beam_idx] = state.pad_token_id_;
       next_beam_indices_[batch_start + beam_idx] = 0;
     }
   }
 }
+
+#ifdef DEBUG_GENERATION
+__global__ void DumpBeamScorerState(const BeamScorerState& state) {
+  state.Print(false);
+}
+
+void DumpBeamScorerStates(const BeamScorerState& state_cpu, const BeamScorerState& state, cudaStream_t stream) {
+  state_cpu.Print(true);
+  DumpBeamScorerState<<<1, 1, 0, stream>>>(state);
+  cudaDeviceSynchronize();
+}
+
+__global__ void DumpBeamSearchScorer(const BeamHypotheses& beam_hyp) {
+  beam_hyp.Print();
+}
+
+void DumpBeamHypotheses(gsl::span<BeamHypotheses> beam_hyps, cudaStream_t stream) {
+  printf("\n BeamHypotheses of size %zu: \n", beam_hyps.size());
+  for (size_t i = 0; i < beam_hyps.size(); i++) {
+    printf("\n [%zu]:\n", i);
+    DumpBeamSearchScorer<<<1, 1, 0, stream>>>(beam_hyps[i]);
+    cudaDeviceSynchronize();
+  }
+}
+#endif
 
 void LaunchBeamSearchScorer_Process(BeamScorerState& state_cpu,
                                     BeamScorerState& state,
@@ -431,18 +474,46 @@ void LaunchBeamSearchScorer_Process(BeamScorerState& state_cpu,
                                     gsl::span<const int32_t> next_tokens,
                                     gsl::span<const int32_t> next_indices,
                                     cudaStream_t stream) {
-  BeamSearchScorer_Process<<<1, state_cpu.batch_size_, 0, stream>>>(state_cpu,
-                                                                    state,
-                                                                    sequences.data(),
-                                                                    sequence_length,
-                                                                    beam_hyps.data(),
-                                                                    next_beam_scores.data(),
-                                                                    next_beam_tokens.data(),
-                                                                    next_beam_indices.data(),
-                                                                    hypothesis_buffer.data(),
-                                                                    next_scores.data(),
-                                                                    next_tokens.data(),
-                                                                    next_indices.data());
+#ifdef DEBUG_GENERATION
+  printf("\n Before BeamSearchScorer_Process: \n");
+  DumpBeamHypotheses(beam_hyps, stream);
+  DumpBeamScorerStates(state_cpu, state, stream);
+#endif
+
+  if (state_cpu.early_stopping_) {
+    BeamSearchScorer_Process<true><<<1, state_cpu.batch_size_, 0, stream>>>(state_cpu,
+                                                                            state,
+                                                                            sequences.data(),
+                                                                            sequence_length,
+                                                                            beam_hyps.data(),
+                                                                            next_beam_scores.data(),
+                                                                            next_beam_tokens.data(),
+                                                                            next_beam_indices.data(),
+                                                                            hypothesis_buffer.data(),
+                                                                            next_scores.data(),
+                                                                            next_tokens.data(),
+                                                                            next_indices.data());
+  } else {
+    BeamSearchScorer_Process<false><<<1, state_cpu.batch_size_, 0, stream>>>(state_cpu,
+                                                                             state,
+                                                                             sequences.data(),
+                                                                             sequence_length,
+                                                                             beam_hyps.data(),
+                                                                             next_beam_scores.data(),
+                                                                             next_beam_tokens.data(),
+                                                                             next_beam_indices.data(),
+                                                                             hypothesis_buffer.data(),
+                                                                             next_scores.data(),
+                                                                             next_tokens.data(),
+                                                                             next_indices.data());
+  }
+
+#ifdef DEBUG_GENERATION
+  cudaDeviceSynchronize();
+  printf("\n After BeamSearchScorer_Process: \n");
+  DumpBeamHypotheses(beam_hyps, stream);
+  DumpBeamScorerStates(state_cpu, state, stream);
+#endif
 }
 
 __global__ void BeamSearchScorer_AppendNextTokenToSequences1(BeamScorerState& state,
@@ -600,14 +671,14 @@ template <typename T>
 void LaunchBeamSearchScoreCopy(gsl::span<const float> final_scores,
                                gsl::span<T> output_scores,
                                cudaStream_t stream) {
-    ORT_ENFORCE(final_scores.size() == output_scores.size());
-    constexpr unsigned ThreadPerBlock = 256;
-    unsigned num_blocks = (unsigned)((final_scores.size() + (ThreadPerBlock - 1))/ ThreadPerBlock);
+  ORT_ENFORCE(final_scores.size() == output_scores.size());
+  constexpr unsigned ThreadPerBlock = 256;
+  unsigned num_blocks = (unsigned)((final_scores.size() + (ThreadPerBlock - 1)) / ThreadPerBlock);
 
-    typedef typename ToCudaType<float>::MappedType CudaT;
+  typedef typename ToCudaType<float>::MappedType CudaT;
 
-    FloatConvertAndCopyKernel<<<num_blocks, ThreadPerBlock, 0, stream>>>(
-        final_scores.data(), (CudaT*)output_scores.data(), final_scores.size());
+  FloatConvertAndCopyKernel<<<num_blocks, ThreadPerBlock, 0, stream>>>(
+      final_scores.data(), (CudaT*)output_scores.data(), final_scores.size());
 }
 
 template void LaunchBeamSearchScoreCopy(gsl::span<const float> final_scores,
@@ -1182,7 +1253,6 @@ void UpdateDecoderMaskedMultiHeadAttentionCacheIndirection(int32_t* tgt_indir_ca
                                                                                           current_length);
 }
 
-#ifndef USE_ROCM
 namespace {
 template <typename T, size_t size>
 struct TypeMapper : public V_vec_m_<T, size> {};
@@ -1197,7 +1267,6 @@ struct TypeMapper<int32_t, 4> {
   using Type = uint4;
 };
 }  // namespace
-#endif
 
 template <typename T>
 __global__ void KeyCacheExpansionKernel(const T* input,
@@ -1249,7 +1318,6 @@ void KeyCacheExpansionKernelLauncher(const T* key_cache,
   tpb |= (tpb >> 16);
   tpb++;
 
-#ifndef USE_ROCM
   if ((head_size % 4) == 0) {
     using vec_type = typename TypeMapper<T, 4>::Type;
     const dim3 block(tpb);
@@ -1267,16 +1335,13 @@ void KeyCacheExpansionKernelLauncher(const T* key_cache,
                                                         max_seq_length,
                                                         equiv_head_size);
   } else {
-#endif
     const dim3 block(tpb);
     KeyCacheExpansionKernel<<<grid, block, 0, stream>>>(key_cache,
                                                         key_cache_expanded,
                                                         beam_width,
                                                         max_seq_length,
                                                         head_size);
-#ifndef USE_ROCM
   }
-#endif
 }
 
 template void KeyCacheExpansionKernelLauncher(const float* key_cache,
@@ -1336,7 +1401,6 @@ void BufferExpansionKernelLauncher(const T* input,
                                    cudaStream_t stream) {
   const dim3 block(128);
 
-#ifndef USE_ROCM
   if ((chunk_size % 4) == 0) {
     using vec_type = typename TypeMapper<T, 4>::Type;
     const dim3 grid(batch_size, beam_width, (chunk_size / 4 + block.x - 1) / block.x);
@@ -1350,14 +1414,11 @@ void BufferExpansionKernelLauncher(const T* input,
                                                       reinterpret_cast<vec_type*>(output),
                                                       chunk_size / 2);
   } else {
-#endif
     const dim3 grid(batch_size, beam_width, (chunk_size + block.x - 1) / block.x);
     BufferExpansionKernel<<<grid, block, 0, stream>>>(input,
                                                       output,
                                                       chunk_size);
-#ifndef USE_ROCM
   }
-#endif
 }
 
 template void BufferExpansionKernelLauncher(const float* input,
@@ -1444,15 +1505,14 @@ void ReorderPastStatesKernelLauncher(void* out_buffer,
 
 template <typename T>
 __global__ void CopyCrossQKSingleDecodeStepKernel(
-    T* target, // shape [batchxbeam, layer_head_pair_count, max_length, frame]
+    T* target,  // shape [batchxbeam, layer_head_pair_count, max_length, frame]
     T** qk_layer_pointers,
     int token_index,
     int num_layers,
     int num_heads,
     const int* cross_qk_layer_head_pairs,
     int frames,
-    int max_length
-) {
+    int max_length) {
   const int pair = blockIdx.x;
   const int layer_head_pair_count = gridDim.x;
   const int bbm = blockIdx.y;
@@ -1464,7 +1524,7 @@ __global__ void CopyCrossQKSingleDecodeStepKernel(
   T* src = qk_layer_pointers[layer] + ((int64_t)bbm * num_heads + head) * frames;
 
   for (int tid = threadIdx.x; tid < frames; tid += blockDim.x) {
-    target[tid] = src[tid]; // use vectorized read write in future if needed
+    target[tid] = src[tid];  // use vectorized read write in future if needed
   }
 }
 
@@ -1479,8 +1539,7 @@ void LaunchCopyCrossQKSingleDecodeStep(
     int cross_qk_layer_head_pair_count,
     const int* cross_qk_layer_head_pairs,
     int frames,
-    int max_length
-) {
+    int max_length) {
   dim3 block(512);
   dim3 grid(cross_qk_layer_head_pair_count, batchxbeam);
   typedef typename ToCudaType<float>::MappedType CudaT;
@@ -1493,10 +1552,8 @@ void LaunchCopyCrossQKSingleDecodeStep(
       num_heads,
       cross_qk_layer_head_pairs,
       frames,
-      max_length
-  );
+      max_length);
 }
-
 
 template <typename T>
 __global__ void CopyDecoderCrossQKAllStepsKernel(
@@ -1505,11 +1562,10 @@ __global__ void CopyDecoderCrossQKAllStepsKernel(
     int num_return_sequences,
     int max_length,
     int frames_of_k,
-    const T* cross_qk_buffer_data, // [batch, num_beams, layer_head_pair_count, max_length, frames]
-    T* cross_qk_output, // [batch, num_return_sequences, layer_head_pair_count, total_decoding_length, frames]
-    const int* cache_indir_data, // [batch, num_beams, max_length]
-    const int32_t* beam_indices
-) {
+    const T* cross_qk_buffer_data,  // [batch, num_beams, layer_head_pair_count, max_length, frames]
+    T* cross_qk_output,             // [batch, num_return_sequences, layer_head_pair_count, total_decoding_length, frames]
+    const int* cache_indir_data,    // [batch, num_beams, max_length]
+    const int32_t* beam_indices) {
   const int pair = blockIdx.y;
   const int layer_head_pair_count = gridDim.y;
   const int total_decoding_length = gridDim.x;
@@ -1522,15 +1578,15 @@ __global__ void CopyDecoderCrossQKAllStepsKernel(
   const int src_beam = beam_indices[batch * num_beams + ret_seq_id] % num_beams;
 
   const int64_t offset_in_cache = ((int64_t)batch * num_beams + src_beam) * max_length + token_decoding_index + context_decoding_len;
-  int bm_mapped = ((num_beams <= 1) ? 0: ((token_decoding_index == total_decoding_length - 1) ?  ret_seq_id : cache_indir_data[offset_in_cache]));
+  int bm_mapped = ((num_beams <= 1) ? 0 : ((token_decoding_index == total_decoding_length - 1) ? ret_seq_id : cache_indir_data[offset_in_cache]));
   int bi_src = batch * num_beams + bm_mapped;
 
-  T* target =  cross_qk_output +
-          (((int64_t)br * layer_head_pair_count + (int64_t)pair) * total_decoding_length + token_decoding_index) * frames_of_k;
+  T* target = cross_qk_output +
+              (((int64_t)br * layer_head_pair_count + (int64_t)pair) * total_decoding_length + token_decoding_index) * frames_of_k;
   const T* src = cross_qk_buffer_data +
-          ((int64_t)bi_src * layer_head_pair_count * max_length + (int64_t)pair * max_length + token_decoding_index) * frames_of_k;
+                 ((int64_t)bi_src * layer_head_pair_count * max_length + (int64_t)pair * max_length + token_decoding_index) * frames_of_k;
   for (int tid = threadIdx.x; tid < frames_of_k; tid += blockDim.x) {
-    target[tid] = src[tid]; // use vectorized read write in future if needed
+    target[tid] = src[tid];  // use vectorized read write in future if needed
   }
 }
 
@@ -1548,8 +1604,7 @@ void LaunchFinalizeCrossQK(
     float* cross_qk_output,
     int num_return_sequences,
     const int* cache_indir_data,
-    const int32_t* beam_indices
-) {
+    const int32_t* beam_indices) {
   int64_t br = (int64_t)batch_size * num_return_sequences;
   ORT_ENFORCE(br < 65536L && cross_qk_layer_head_pair_count < 65536);
   const int total_decoding_length = iteration_number - 1;
@@ -1558,15 +1613,15 @@ void LaunchFinalizeCrossQK(
   typedef typename ToCudaType<float>::MappedType CudaT;
 
   CopyDecoderCrossQKAllStepsKernel<<<grid, block, 0, stream>>>(
-    context_decoding_len,
-    num_beams,
-    num_return_sequences,
-    max_length,
-    frames_of_k,
-    (const CudaT*)cross_qk_buffer_data,
-    (CudaT*)cross_qk_output,
-    cache_indir_data,
-    beam_indices);
+      context_decoding_len,
+      num_beams,
+      num_return_sequences,
+      max_length,
+      frames_of_k,
+      (const CudaT*)cross_qk_buffer_data,
+      (CudaT*)cross_qk_output,
+      cache_indir_data,
+      beam_indices);
 }
 
 template <int ElementsPerThreads>
@@ -1575,12 +1630,11 @@ __global__ void ForceDecodingIdsKernel(
     const int vocab_size,
     const int32_t* force_ids,
     int id_len,
-    int step
-) {
+    int step) {
   const int num_beams = gridDim.y;
   const int beam = blockIdx.y;
   const int batch = blockIdx.z;
-  beam_scores += (((int64_t)batch * num_beams + beam)* vocab_size); // move to (batch, beam)
+  beam_scores += (((int64_t)batch * num_beams + beam) * vocab_size);  // move to (batch, beam)
   const int32_t id_wanted = force_ids[((int64_t)batch * id_len) + step];
   if (id_wanted < 0 || id_wanted >= vocab_size) return;
 
@@ -1588,15 +1642,18 @@ __global__ void ForceDecodingIdsKernel(
   const int32_t block_start_id = blockIdx.x * elements_per_block;
 
   int32_t token_id = block_start_id + (int)threadIdx.x;
-  #pragma unroll
+#pragma unroll
   for (int elem = 0; elem < ElementsPerThreads; elem++) {
     if (token_id < vocab_size) {
+#if CUDA_VERSION >= 12090
+      beam_scores[token_id] = ((token_id == id_wanted) ? 0.0f : ::cuda::std::numeric_limits<float>::lowest());
+#else
       beam_scores[token_id] = ((token_id == id_wanted) ? 0.0f : cub::FpLimits<float>::Lowest());
+#endif
     }
     token_id += (int)blockDim.x;
   }
 }
-
 
 void LaunchForceDecodingIds(
     float* beam_scores,
@@ -1606,15 +1663,13 @@ void LaunchForceDecodingIds(
     const int32_t* force_ids,
     int id_len,
     int step,
-    cudaStream_t stream
-) {
+    cudaStream_t stream) {
   dim3 blocks(512);
   constexpr int ElementsPerThreads = 4;
   unsigned gridx = static_cast<unsigned>((vocab_size + 512 * ElementsPerThreads - 1) / (512 * ElementsPerThreads));
   dim3 grids(gridx, num_beams, batch_size);
   ForceDecodingIdsKernel<ElementsPerThreads><<<grids, blocks, 0, stream>>>(
-    beam_scores, vocab_size, force_ids, id_len, step
-  );
+      beam_scores, vocab_size, force_ids, id_len, step);
 }
 
 template <typename T>
@@ -1624,8 +1679,7 @@ __global__ void SaveNoSpeechProbsKernel(
     const int batch_size,
     const int num_beams,
     const int vocab_size,
-    const int no_speech_token_id
-) {
+    const int no_speech_token_id) {
   int b = blockIdx.x * blockDim.x + threadIdx.x;
   if (b < batch_size) {
     int64_t src_offset = b * num_beams * vocab_size + no_speech_token_id;
@@ -1635,20 +1689,19 @@ __global__ void SaveNoSpeechProbsKernel(
 
 template <typename T>
 void LaunchSaveNoSpeechProbs(
-    T* result_no_speech_probs,      /* [batch]*/
-    const float* probs,             /* [batch, num_beams, vocab_size]*/
+    T* result_no_speech_probs, /* [batch]*/
+    const float* probs,        /* [batch, num_beams, vocab_size]*/
     const int batch_size,
     const int num_beams,
     const int vocab_size,
     const int no_speech_token_id,
-    cudaStream_t stream
-) {
+    cudaStream_t stream) {
   int tpb = 256;
   int bpg = (batch_size + 255) / 256;
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   SaveNoSpeechProbsKernel<CudaT><<<bpg, tpb, 0, stream>>>(
-    (CudaT*)result_no_speech_probs, probs, batch_size, num_beams, vocab_size, no_speech_token_id);
+      (CudaT*)result_no_speech_probs, probs, batch_size, num_beams, vocab_size, no_speech_token_id);
 }
 
 template void LaunchSaveNoSpeechProbs<float>(
@@ -1658,8 +1711,7 @@ template void LaunchSaveNoSpeechProbs<float>(
     const int num_beams,
     const int vocab_size,
     const int no_speech_token_id,
-    cudaStream_t stream
-);
+    cudaStream_t stream);
 
 template void LaunchSaveNoSpeechProbs<MLFloat16>(
     MLFloat16* result_no_speech_probs,
@@ -1668,8 +1720,7 @@ template void LaunchSaveNoSpeechProbs<MLFloat16>(
     const int num_beams,
     const int vocab_size,
     const int no_speech_token_id,
-    cudaStream_t stream
-);
+    cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib

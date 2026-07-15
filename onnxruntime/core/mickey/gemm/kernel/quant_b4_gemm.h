@@ -29,15 +29,15 @@ namespace gemm {
 namespace kernel {
 
 #if defined(_MSC_VER) && !defined(__clang__)
-  #pragma warning(push)
-  #pragma warning(disable:4200)
+#pragma warning(push)
+#pragma warning(disable : 4200)
 #endif
 
-template<typename ElementT, typename Shape, typename QuantBlocking, int Stages, bool has_offsets>
-struct MmaLoopSharedBuffer{
+template <typename ElementT, typename Shape, typename QuantBlocking, int Stages, bool has_offsets>
+struct MmaLoopSharedBuffer {
   // Quantized weights are packed int4, each 16x16 tile of int4
   // is packed into 8x8 tile of 16b (i.e. 8x16 tile of bytes)
-  using PackedBShape = cutlass::MatrixShape<Shape::kK, Shape::kN/2>;
+  using PackedBShape = cutlass::MatrixShape<Shape::kK, Shape::kN / 2>;
   static_assert(sizeof(ElementT) == 2, "Only support 16b float types.");
 
   /// Buffer for prepacked weights
@@ -69,12 +69,12 @@ struct MmaLoopSharedBuffer{
  * @brief Fused GEMM kernel for fp16 x int4, where B matrix is blockwise quantized to 4bits.
  */
 template <
-  typename QuantBlocking_,     ///! Shape of the quantization block, either 1xb or bx1
-  bool     has_quant_offset_,  ///! Whether the quantization has offset
-  typename WarpShape_,         ///! Warp-scoped matrix multiply-accumulate
-  int SplitKSerial_ = 1,       ///! How many warps to split the K dimension in the same MxN block
-  int Stages_ = 3              ///! Stages of the pipelined mainloop
->
+    typename QuantBlocking_,  ///! Shape of the quantization block, either 1xb or bx1
+    bool has_quant_offset_,   ///! Whether the quantization has offset
+    typename WarpShape_,      ///! Warp-scoped matrix multiply-accumulate
+    int SplitKSerial_ = 1,    ///! How many warps to split the K dimension in the same MxN block
+    int Stages_ = 3           ///! Stages of the pipelined mainloop
+    >
 struct QuantB4Gemm {
  public:
   //
@@ -94,19 +94,17 @@ struct QuantB4Gemm {
   // Type constraints verifications:
   //
   static_assert(kSplitK > 0 && ((kSplitK - 1) & kSplitK) == 0,
-     "SplitK must be positive and a power of 2");
+                "SplitK must be positive and a power of 2");
   static_assert(kStages > 1, "Number of pipeline stages must be greater than 1.");
   static_assert(kElementSize == 2, "Only support 16b float types.");
 
   static_assert(WarpShape::kN % 16 == 0,
-    "Weight B is packed as 16x16 tiles, warp shape must contain whole tiles!");
+                "Weight B is packed as 16x16 tiles, warp shape must contain whole tiles!");
   static_assert(WarpShape::kK % 32 == 0,
-    "K stride too small leading to inefficient global memory load!");
+                "K stride too small leading to inefficient global memory load!");
 
   // Need to explore the way to relax this for very small m value.
-  static_assert((WarpShape::kM % InstructionShape::kM == 0)
-                 && (WarpShape::kN % InstructionShape::kN == 0)
-                 && (WarpShape::kK % InstructionShape::kK == 0),
+  static_assert((WarpShape::kM % InstructionShape::kM == 0) && (WarpShape::kN % InstructionShape::kN == 0) && (WarpShape::kK % InstructionShape::kK == 0),
                 "Warp shape must be multiple of instruction shape!");
 
   /// switches for debug print
@@ -117,7 +115,7 @@ struct QuantB4Gemm {
 
   using ATileLoader = mickey::gemm::warp::SwizzleTileLoader<WarpShape::kM, WarpShape::kK * kElementSize>;
   using MetaLoader = mickey::gemm::warp::QuantBScaleLoader<QuantBlocking, WarpShape, ElementT, has_quant_offset, false>;
-  using WarpPackedBShape = cutlass::gemm::GemmShape<1, WarpShape::kN/2, WarpShape::kK>;
+  using WarpPackedBShape = cutlass::gemm::GemmShape<1, WarpShape::kN / 2, WarpShape::kK>;
   using PackedBLoader = mickey::gemm::warp::SwizzleTileLoader<WarpPackedBShape::kN, WarpPackedBShape::kK>;
 
   // Need 4 tiles to fully utilize ldmatrix. And.....
@@ -154,7 +152,7 @@ struct QuantB4Gemm {
   static constexpr int kFragPackedBStrideK = WarpPackedBShape::kN == 8 ? 64 : 32;
   static_assert(WarpShape::kK % kFragPackedBStrideK == 0);
 
-  static constexpr int kWarps = kSplitK; // TODO! more warps when we have a larger thread block shape
+  static constexpr int kWarps = kSplitK;  // TODO! more warps when we have a larger thread block shape
   static int const kThreadCount = 32 * kWarps;
 
   using MainLoopSharedBuffer = MmaLoopSharedBuffer<ElementT, WarpShape, QuantBlocking, kStages, has_quant_offset>;
@@ -249,50 +247,48 @@ struct QuantB4Gemm {
     cutlass::gemm::GemmCoord grid_tiled_shape_;
     void* const ptr_output_;
     const size_t output_byte_stride_;
-    void const * const ptr_a_;
+    void const* const ptr_a_;
     const size_t a_byte_stride_;
-    void const * const ptr_packed_b_;
+    void const* const ptr_packed_b_;
     const size_t b_byte_stride_;
-    void const * const ptr_scales_;
+    void const* const ptr_scales_;
     const size_t scales_byte_stride_;
-    void const * const ptr_offsets_;
+    void const* const ptr_offsets_;
     const size_t offsets_byte_stride_;
     int gemm_k_size_{0};
 
     CUTLASS_HOST_DEVICE
-    Params() { }
+    Params() {}
 
     CUTLASS_HOST_DEVICE
     Params(
-      cutlass::gemm::GemmCoord const & problem_size,
-      void* ptr_output,
-      size_t output_byte_stride,
-      void const *ptr_a,
-      size_t a_byte_stride,
-      void const *ptr_packed_b,
-      size_t b_byte_stride,
-      void const *ptr_scales,
-      size_t scales_byte_stride,
-      void const *ptr_offsets = nullptr,
-      size_t offsets_byte_stride = 0
-    ):
-      problem_size_(problem_size),
-      ptr_output_(ptr_output),
-      output_byte_stride_(output_byte_stride),
-      ptr_a_(ptr_a),
-      a_byte_stride_(a_byte_stride),
-      ptr_packed_b_(ptr_packed_b),
-      b_byte_stride_(b_byte_stride),
-      ptr_scales_(ptr_scales),
-      scales_byte_stride_(scales_byte_stride),
-      ptr_offsets_(ptr_offsets),
-      offsets_byte_stride_(offsets_byte_stride),
-      gemm_k_size_(mickey::round_up(mickey::div_up(problem_size.k(), kSplitK), WarpShape::kK)),
-      // TODO! grid_tiled_shape_ should be based on thread block shape
-      grid_tiled_shape_(cutlass::gemm::GemmCoord(
-        mickey::div_up(problem_size.m(), WarpShape::kM),
-        mickey::div_up(problem_size.n(), WarpShape::kN),
-        1)) { }
+        cutlass::gemm::GemmCoord const& problem_size,
+        void* ptr_output,
+        size_t output_byte_stride,
+        void const* ptr_a,
+        size_t a_byte_stride,
+        void const* ptr_packed_b,
+        size_t b_byte_stride,
+        void const* ptr_scales,
+        size_t scales_byte_stride,
+        void const* ptr_offsets = nullptr,
+        size_t offsets_byte_stride = 0) : problem_size_(problem_size),
+                                          ptr_output_(ptr_output),
+                                          output_byte_stride_(output_byte_stride),
+                                          ptr_a_(ptr_a),
+                                          a_byte_stride_(a_byte_stride),
+                                          ptr_packed_b_(ptr_packed_b),
+                                          b_byte_stride_(b_byte_stride),
+                                          ptr_scales_(ptr_scales),
+                                          scales_byte_stride_(scales_byte_stride),
+                                          ptr_offsets_(ptr_offsets),
+                                          offsets_byte_stride_(offsets_byte_stride),
+                                          gemm_k_size_(mickey::round_up(mickey::div_up(problem_size.k(), kSplitK), WarpShape::kK)),
+                                          // TODO! grid_tiled_shape_ should be based on thread block shape
+                                          grid_tiled_shape_(cutlass::gemm::GemmCoord(
+                                              mickey::div_up(problem_size.m(), WarpShape::kM),
+                                              mickey::div_up(problem_size.n(), WarpShape::kN),
+                                              1)) {}
   };
 
   //
@@ -300,10 +296,10 @@ struct QuantB4Gemm {
   //
 
   CUTLASS_HOST_DEVICE
-  QuantB4Gemm() { }
+  QuantB4Gemm() {}
 
   /// Determines whether kernel satisfies alignment
-  static cutlass::Status can_implement(const Params &params) {
+  static cutlass::Status can_implement(const Params& params) {
     if (params.output_byte_stride_ >= std::numeric_limits<int>::max() ||
         params.a_byte_stride_ >= std::numeric_limits<int>::max() ||
         params.b_byte_stride_ >= std::numeric_limits<int>::max() ||
@@ -321,7 +317,7 @@ struct QuantB4Gemm {
       return cutlass::Status::kErrorMisalignedOperand;
     }
     if ((params.problem_size_.k() % QuantBlocking::kRow != 0) ||
-        (params.problem_size_.n() % QuantBlocking::kColumn) != 0){
+        (params.problem_size_.n() % QuantBlocking::kColumn) != 0) {
       std::cerr << "QuantB4Gemm validation fail: partial quantization block not supported!" << std::endl;
       return cutlass::Status::kErrorInvalidProblem;
     }
@@ -384,7 +380,7 @@ struct QuantB4Gemm {
       return cutlass::Status::kErrorInvalidProblem;
     }
 
-    if constexpr (kSplitK > 1){
+    if constexpr (kSplitK > 1) {
       // TODO! Use thread block shape
       if (params.gemm_k_size_ < WarpShape::kK * kStages * 2) {
         // spliting too small, may not get enough iterations to rampup pipeline
@@ -398,10 +394,10 @@ struct QuantB4Gemm {
 
   /// Executes one GEMM
   CUTLASS_DEVICE
-  void operator()(Params const &params, SharedStorage &shared_storage) {
+  void operator()(Params const& params, SharedStorage& shared_storage) {
     // Early exit if CTA is out of range
     if (params.grid_tiled_shape_.m() <= blockIdx.x ||
-      params.grid_tiled_shape_.n() <= blockIdx.y) {
+        params.grid_tiled_shape_.n() <= blockIdx.y) {
       // should not happen
       if (threadIdx.x == 0) {
         printf("CTA out of range %d, %d\n", blockIdx.x, blockIdx.y);
@@ -422,14 +418,14 @@ struct QuantB4Gemm {
       assert_pass = false;
       if (lane_idx == 0) {
         printf("warp_idx %d exceeds kWarps %d! Should use %d threads per threadblock for kernel launch!\n",
-          warp_idx, kWarps, kThreadCount);
+               warp_idx, kWarps, kThreadCount);
       }
     }
     if (warp_idx_k != warp_idx) {
       assert_pass = false;
       if (lane_idx == 0) {
         printf("warp_idx_k %d should be equal to warp_idx %d while we don't yet specify thread block shape larger than warp shape!\n",
-          warp_idx_k, warp_idx);
+               warp_idx_k, warp_idx);
       }
     }
     assert(assert_pass);
@@ -440,7 +436,7 @@ struct QuantB4Gemm {
     // so lead dimension byte size is coincidentally k/2 * 2 = k
     // and next dimension size is n/2
     //
-    const int n_start = mul_power2<WarpShape::kN>(blockIdx.y);   // TODO! change to thread block shape
+    const int n_start = mul_power2<WarpShape::kN>(blockIdx.y);  // TODO! change to thread block shape
     const int n_end = min(params.problem_size_.n(), mul_power2<WarpShape::kN>(blockIdx.y + 1));
     const int packed_n_start = (n_start) >> 1;
     const int packed_n_end = n_end >> 1;
@@ -452,34 +448,34 @@ struct QuantB4Gemm {
     const int m_end = min(params.problem_size_.m(), mul_power2<WarpShape::kM>(blockIdx.x + 1));
 
     PackedBLoader packed_b_loader{
-      params.ptr_packed_b_,
-      int(params.b_byte_stride_),
-      packed_n_start,
-      packed_n_end,
-      k_start,
-      k_end,
-      lane_idx};
+        params.ptr_packed_b_,
+        int(params.b_byte_stride_),
+        packed_n_start,
+        packed_n_end,
+        k_start,
+        k_end,
+        lane_idx};
 
     MetaLoader meta_loader{
-      lane_idx,
-      params.ptr_scales_,
-      int(params.scales_byte_stride_),
-      params.ptr_offsets_,
-      int(params.offsets_byte_stride_),
-      n_start, n_end};
+        lane_idx,
+        params.ptr_scales_,
+        int(params.scales_byte_stride_),
+        params.ptr_offsets_,
+        int(params.offsets_byte_stride_),
+        n_start, n_end};
 
     ATileLoader a_tile_loader{
-      params.ptr_a_,
-      int(params.a_byte_stride_),
-      m_start, m_end,
-      mul_power2<kElementSize>(k_start), mul_power2<kElementSize>(k_end), // convert to byte based index
-      lane_idx};
+        params.ptr_a_,
+        int(params.a_byte_stride_),
+        m_start, m_end,
+        mul_power2<kElementSize>(k_start), mul_power2<kElementSize>(k_end),  // convert to byte based index
+        lane_idx};
 
     //
     // Prologue: start loading from global memory to shared memory
     //
 
-    int load_k = k_start; // current k index for loading from global memory to shared memory
+    int load_k = k_start;  // current k index for loading from global memory to shared memory
     int smem_write_stage = 0;
     uint8_t* packed_b_shared_ptr = shared_storage.smem[warp_idx].main_loop.shared_B.data();
     ElementT* a_shared_ptr = shared_storage.smem[warp_idx].main_loop.shared_A.data();
@@ -489,7 +485,7 @@ struct QuantB4Gemm {
     if constexpr (kDebugPrintSteps) {
       if (lane_idx == 0) {
         printf("Warp: %d, m_start %d, m_end %d, n_start %d, n_end %d, k_start %d, k_end %d, packed_n_start %d, packed_n_end %d\n    PackedB: %p, A: %p, Scales: %p\n",
-          warp_idx, m_start, m_end, n_start, n_end, k_start, k_end, packed_n_start, packed_n_end, packed_b_shared_ptr, a_shared_ptr, scales_shared_ptr);
+               warp_idx, m_start, m_end, n_start, n_end, k_start, k_end, packed_n_start, packed_n_end, packed_b_shared_ptr, a_shared_ptr, scales_shared_ptr);
       }
     }
 
@@ -561,7 +557,7 @@ struct QuantB4Gemm {
     if constexpr (kDebugPrintSteps) {
       if (lane_idx == 0) {
         printf("Prefix: PackedB[%d] <- %p <- %p,  A[%d] <- %p <- %p,  fragment_scales[%d] <- load_k %d <- %p <- %p\n",
-          0, packed_b_smem_read_ptr, packed_b_smem_write_ptr, 0, a_smem_read_ptr, a_smem_write_ptr, 0, load_k, scales_smem_read_ptr, scales_smem_write_ptr);
+               0, packed_b_smem_read_ptr, packed_b_smem_write_ptr, 0, a_smem_read_ptr, a_smem_write_ptr, 0, load_k, scales_smem_read_ptr, scales_smem_write_ptr);
       }
     }
 
@@ -592,8 +588,7 @@ struct QuantB4Gemm {
     // Main loop
     // proc_k = load_k - (kStages - 1) * WarpShape::kK
     //
-    while (load_k < k_end + (kStages - 1) * WarpShape::kK){
-
+    while (load_k < k_end + (kStages - 1) * WarpShape::kK) {
       // One stage has kMmaIterations, we unroll the main loop by 2,
       // as the meta data is loaded only once every stage, need 2 stages
       // to complete a double buffer cycle. This is necessary to make
@@ -609,13 +604,13 @@ struct QuantB4Gemm {
           const int read_stage_diff = (smem_write_stage == (kStages - 2)) ? (1 - kStages) : 1;
           smem_write_stage = (smem_write_stage + 1) % kStages;
           scales_smem_write_ptr = const_cast<ElementT*>(scales_smem_read_ptr);
-          if constexpr(has_quant_offset) {
+          if constexpr (has_quant_offset) {
             offsets_smem_write_ptr = const_cast<uint8_t*>(offsets_smem_read_ptr);
           }
           packed_b_smem_write_ptr = const_cast<uint8_t*>(packed_b_smem_read_ptr);
           a_smem_write_ptr = const_cast<ElementT*>(a_smem_read_ptr);
           scales_smem_read_ptr += read_stage_diff * MainLoopSharedBuffer::kMetaSizePerIter;
-          if constexpr(has_quant_offset) {
+          if constexpr (has_quant_offset) {
             offsets_smem_read_ptr += read_stage_diff * MainLoopSharedBuffer::kMetaSizePerIter;
           }
           packed_b_smem_read_ptr += read_stage_diff * MainLoopSharedBuffer::kPackedBSizePerIter;
@@ -637,10 +632,10 @@ struct QuantB4Gemm {
                                     fragment_scales[(next_iter2 / kMmaIterations) % 2], scales_smem_read_ptr,
                                     fragment_offsets[(next_iter2 / kMmaIterations) % 2], offsets_smem_read_ptr);
 
-          if constexpr(kDebugPrintB) {
+          if constexpr (kDebugPrintB) {
             if (lane_idx == 0) {
               printf("Mainloop, warp: %d, proc_k %d, load_k %d\nWritePtr: %p, ReadPtr: %p\n",
-                warp_idx, load_k - (kStages - 1) * WarpShape::kK, load_k, packed_b_smem_write_ptr, packed_b_smem_read_ptr);
+                     warp_idx, load_k - (kStages - 1) * WarpShape::kK, load_k, packed_b_smem_write_ptr, packed_b_smem_read_ptr);
             }
             cutlass::debug::dump_shmem(packed_b_shared_ptr, MainLoopSharedBuffer::kPackedBSize);
           }
@@ -668,7 +663,7 @@ struct QuantB4Gemm {
 
         if constexpr (kDebugPrintSteps) {
           if (lane_idx == 0) {
-            printf("A[%d] <- %p <- %p\n",  (iter2 + 1) % 2, a_smem_read_ptr, a_smem_write_ptr);
+            printf("A[%d] <- %p <- %p\n", (iter2 + 1) % 2, a_smem_read_ptr, a_smem_write_ptr);
           }
         }
         a_tile_loader.load_fragment_k32(lane_idx, a_smem_read_ptr, next_iter * InstructionShape::kK * kElementSize, fragment_a[(iter2 + 1) % 2].data());
@@ -682,7 +677,8 @@ struct QuantB4Gemm {
           if (lane_id == 0) {
             printf("====  A tiles =======\n");
           }
-          const char* const format = (lane_id == 31) ? "%f, %f\n\n" : ((lane_id % 4) == 3) ? "%f, %f\n" : "%f, %f, ";
+          const char* const format = (lane_id == 31) ? "%f, %f\n\n" : ((lane_id % 4) == 3) ? "%f, %f\n"
+                                                                                           : "%f, %f, ";
           const ElementT* a_ptr = fragment_a[iter2 % 2].data();
           for (int m2_tile = 0; m2_tile < (WarpShape::kM / InstructionShape::kM); ++m2_tile, a_ptr += 8) {
             printf(format, float(a_ptr[0]), float(a_ptr[1]));
@@ -718,7 +714,8 @@ struct QuantB4Gemm {
           if (lane_id == 0) {
             printf("======= C tiles in warp %d =======\n", warp_idx);
           }
-          const char* const format = (lane_id == 31) ? "%f, %f\n\n" : ((lane_id % 4) == 3) ? "%f, %f\n" : "%f, %f, ";
+          const char* const format = (lane_id == 31) ? "%f, %f\n\n" : ((lane_id % 4) == 3) ? "%f, %f\n"
+                                                                                           : "%f, %f, ";
           for (int n_tile = 0; n_tile < (WarpShape::kN / InstructionShape::kN); ++n_tile) {
             for (int m_tile = 0; m_tile < (WarpShape::kM / InstructionShape::kM); ++m_tile, c_ptr += 4) {
               // since InstructionShape::kM is 16, we can print 2 tiles
@@ -739,7 +736,7 @@ struct QuantB4Gemm {
     using Float4 = cutlass::Array<float, 4>;  // hopefully utilize 128b st.shared.b128
     constexpr int kAccLoads = MmaOp::FragmentC::kElements / 4;
     static_assert(kAccLoads * 4 == MmaOp::FragmentC::kElements);
-    if (warp_idx != 0){
+    if (warp_idx != 0) {
       Float4* d_smem_ptr = reinterpret_cast<Float4*>(shared_storage.smem[warp_idx].shared_Acc.data());
       d_smem_ptr += lane_idx;
       Float4* f4s = reinterpret_cast<Float4*>(accumulators.data());
@@ -784,7 +781,8 @@ struct QuantB4Gemm {
         d_smem_ptr += 32;
 
         if constexpr (kDebugPrintC) {
-          const char* const format = (lane_idx == 31) ? "%f, %f\n\n" : ((lane_idx % 4) == 3) ? "%f, %f\n" : "%f, %f, ";
+          const char* const format = (lane_idx == 31) ? "%f, %f\n\n" : ((lane_idx % 4) == 3) ? "%f, %f\n"
+                                                                                             : "%f, %f, ";
           printf(format, float(other_acc[double_buffer_idx][0]), float(other_acc[double_buffer_idx][1]));
           printf(format, float(other_acc[double_buffer_idx][2]), float(other_acc[double_buffer_idx][3]));
         }
@@ -822,14 +820,12 @@ struct QuantB4Gemm {
       CUTLASS_PRAGMA_UNROLL
       for (int m_tile = 0; m_tile < (WarpShape::kM / 8); ++m_tile, m += 8, ++c_ptr) {
         if (n < n_end && m < m_end) {
-          *(output_ptr + m * output_stride + n/2) = __float22half2_rn(c_ptr[0]);
+          *(output_ptr + m * output_stride + n / 2) = __float22half2_rn(c_ptr[0]);
         }
       }
     }
-
   }
 };
-
 
 }  // namespace kernel
 }  // namespace gemm

@@ -71,7 +71,9 @@ SNPEExecutionProvider::~SNPEExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 SNPEExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                     const IKernelLookup& kernel_lookup) const {
+                                     const IKernelLookup& kernel_lookup,
+                                     const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+                                     IResourceAccountant* /* resource_accountant */) const {
   std::vector<NodeIndex> candidates;
   for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
     const auto* p_node = graph.GetNode(node_index);

@@ -1,0 +1,44 @@
+parameters:
+- name: DoEsrp
+  type: boolean
+  default: true
+
+stages:
+- stage: NuGet_Packaging_DML
+  dependsOn:
+  - Windows_CI_GPU_DML_Dev
+  - Windows_CI_GPU_DML_Dev_arm64
+  condition: succeeded()
+  jobs:
+  - job: NuGet_Packaging_DML
+    workspace:
+      clean: all
+    pool:
+      name: 'onnxruntime-Win2022-GPU-dml-A10'
+      os: windows
+    templateContext:
+      inputs:
+      - input: pipelineArtifact
+        artifactName: drop-nuget-dml
+        targetPath: '$(Build.BinariesDirectory)/nuget-artifact-dml'
+      - input: pipelineArtifact
+        artifactName: drop-win-dml-arm64-zip
+        targetPath: '$(Build.BinariesDirectory)/nuget-artifact-dml'
+      outputs:
+        - output: pipelineArtifact
+          targetPath: $(Build.ArtifactStagingDirectory)
+          artifactName: "packages"
+    steps:
+    - task: PowerShell@2
+      inputs:
+        filePath: 'tools\ci_build\github\windows\bundle_dml_package.ps1'
+        arguments: '-ArtifactStagingDirectory "$(Build.ArtifactStagingDirectory)"'
+        workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact-dml'
+      displayName: 'Bundle DML NuGet and other binaries'
+
+
+    - template: ../templates/esrp_nuget.yml
+      parameters:
+        DisplayName: 'ESRP - sign NuGet package'
+        FolderPath: '$(Build.ArtifactStagingDirectory)'
+        DoEsrp: ${{ parameters.DoEsrp }}

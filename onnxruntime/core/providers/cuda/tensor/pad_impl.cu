@@ -7,12 +7,18 @@
 namespace onnxruntime {
 namespace cuda {
 
-// PadMode enum from core/providers/cpu/tensor/pad.h, cannot use that header because of nvcc/onnxruntime incompatibility
+// PadMode enum from core/providers/cpu/tensor/padbase.h, cannot use that header because of nvcc/onnxruntime incompatibility
 enum class PadMode : int {
   Constant = 0,
   Reflect,
-  Edge
+  Edge,
+  Wrap
 };
+
+__device__ __forceinline__ int64_t WrapCoordinate(int64_t coord, int64_t extent) {
+  int64_t wrapped = coord % extent;
+  return wrapped < 0 ? wrapped + extent : wrapped;
+}
 
 template <typename T, int pad_mode>
 __global__ void _PadKernel(
@@ -20,6 +26,8 @@ __global__ void _PadKernel(
     const TArray<int64_t> input_dims,
     const TArray<int64_t> input_strides,
     const TArray<int64_t> lower_pads,
+    const TArray<int64_t> effective_input_extents,
+    const TArray<int64_t> input_offsets,
     const T pad_value,
     const T* input_data,
     const TArray<fast_divmod> fdm_output_strides,
@@ -33,33 +41,44 @@ __global__ void _PadKernel(
     int out_coord, r;
     fdm_output_strides[dim].divmod(output_index, out_coord, r);
     output_index = r;
-    int in_coord = 0;
-    if (out_coord < lower_pads[dim]) {
-      switch ((PadMode)pad_mode) {
-        case PadMode::Constant:
-          use_pad_value = true;
-          break;
-        case PadMode::Edge:
-          in_coord = 0;
-          break;
-        case PadMode::Reflect:
-          in_coord = lower_pads[dim] - out_coord;
-          break;
-      }
-    } else if (out_coord >= lower_pads[dim] + input_dims[dim]) {
-      switch ((PadMode)pad_mode) {
-        case PadMode::Constant:
-          use_pad_value = true;
-          break;
-        case PadMode::Edge:
-          in_coord = input_dims[dim] - 1;
-          break;
-        case PadMode::Reflect:
-          in_coord = input_dims[dim] - 2 - (out_coord - (lower_pads[dim] + input_dims[dim]));
-          break;
-      }
+    int64_t in_coord = 0;
+    if constexpr (pad_mode == static_cast<int>(PadMode::Wrap)) {
+      const int64_t effective_input_extent = effective_input_extents[dim];
+      const int64_t pre_pad = lower_pads[dim] + input_offsets[dim];
+      const int64_t relative_coord = static_cast<int64_t>(out_coord) - pre_pad;
+      in_coord = input_offsets[dim] + WrapCoordinate(relative_coord, effective_input_extent);
     } else {
-      in_coord = out_coord - lower_pads[dim];
+      if (out_coord < lower_pads[dim]) {
+        switch ((PadMode)pad_mode) {
+          case PadMode::Constant:
+            use_pad_value = true;
+            break;
+          case PadMode::Edge:
+            in_coord = 0;
+            break;
+          case PadMode::Reflect:
+            in_coord = lower_pads[dim] - out_coord;
+            break;
+          case PadMode::Wrap:
+            break;
+        }
+      } else if (out_coord >= lower_pads[dim] + input_dims[dim]) {
+        switch ((PadMode)pad_mode) {
+          case PadMode::Constant:
+            use_pad_value = true;
+            break;
+          case PadMode::Edge:
+            in_coord = input_dims[dim] - 1;
+            break;
+          case PadMode::Reflect:
+            in_coord = input_dims[dim] - 2 - (out_coord - (lower_pads[dim] + input_dims[dim]));
+            break;
+          case PadMode::Wrap:
+            break;
+        }
+      } else {
+        in_coord = out_coord - lower_pads[dim];
+      }
     }
     input_index += input_strides[dim] * in_coord;
   }
@@ -136,6 +155,8 @@ void PadImpl(
     const TArray<int64_t>& input_dims,
     const TArray<int64_t>& input_strides,
     const TArray<int64_t>& lower_pads,
+    const TArray<int64_t>& effective_input_extents,
+    const TArray<int64_t>& input_offsets,
     const T pad_value,
     const int pad_mode,
     const T* input_data,
@@ -149,17 +170,22 @@ void PadImpl(
   switch (pad_mode) {
     case 0:
       _PadKernel<T, 0><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-          shape_rank, input_dims, input_strides, lower_pads,
+          shape_rank, input_dims, input_strides, lower_pads, effective_input_extents, input_offsets,
           pad_value, input_data, fdm_output_strides, output_data, N);
       break;
     case 1:
       _PadKernel<T, 1><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-          shape_rank, input_dims, input_strides, lower_pads,
+          shape_rank, input_dims, input_strides, lower_pads, effective_input_extents, input_offsets,
           pad_value, input_data, fdm_output_strides, output_data, N);
       break;
     case 2:
       _PadKernel<T, 2><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-          shape_rank, input_dims, input_strides, lower_pads,
+          shape_rank, input_dims, input_strides, lower_pads, effective_input_extents, input_offsets,
+          pad_value, input_data, fdm_output_strides, output_data, N);
+      break;
+    case 3:
+      _PadKernel<T, 3><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+          shape_rank, input_dims, input_strides, lower_pads, effective_input_extents, input_offsets,
           pad_value, input_data, fdm_output_strides, output_data, N);
       break;
   }
@@ -211,6 +237,8 @@ void PadNCHWInputWithPaddingAlongHAndWImpl(
   template void PadImpl<T>(cudaStream_t stream, const size_t shape_rank,                                          \
                            const TArray<int64_t>& input_dims, const TArray<int64_t>& input_strides,               \
                            const TArray<int64_t>& lower_pads,                                                     \
+                           const TArray<int64_t>& effective_input_extents,                                        \
+                           const TArray<int64_t>& input_offsets,                                                  \
                            const T pad_value,                                                                     \
                            const int pad_mode,                                                                    \
                            const T* input_data,                                                                   \

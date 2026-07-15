@@ -1,29 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/util/include/default_providers.h"
-#ifdef USE_ROCM
-#include "core/providers/rocm/shared_inc/rocm_utils.h"
-#else
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
-#endif
 
 namespace onnxruntime {
 namespace contrib {
 namespace test {
 
-#ifdef USE_ROCM
-using onnxruntime::rocm::BitmaskElementType;
-using onnxruntime::rocm::kNumBitsPerBitmaskElement;
-#else
 using onnxruntime::cuda::BitmaskElementType;
 using onnxruntime::cuda::kNumBitsPerBitmaskElement;
-#endif
 using namespace onnxruntime::test;
 
 namespace {
@@ -62,8 +53,6 @@ void RunTestForInference(const std::vector<int64_t>& input_dims, bool has_ratio 
   std::vector<std::unique_ptr<IExecutionProvider>> test_eps;
 #ifdef USE_CUDA
   test_eps.emplace_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  test_eps.emplace_back(DefaultRocmExecutionProvider());
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &test_eps);
 }
@@ -123,8 +112,6 @@ void RunTestForTraining(const std::vector<int64_t>& input_dims) {
     std::vector<std::unique_ptr<IExecutionProvider>> dropout_eps;
 #ifdef USE_CUDA
     dropout_eps.emplace_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-    dropout_eps.emplace_back(DefaultRocmExecutionProvider());
 #endif
     dropout.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &dropout_eps);
 
@@ -146,8 +133,6 @@ void RunTestForTraining(const std::vector<int64_t>& input_dims) {
     std::vector<std::unique_ptr<IExecutionProvider>> bitmask_dropout_eps;
 #ifdef USE_CUDA
     bitmask_dropout_eps.emplace_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-    bitmask_dropout_eps.emplace_back(DefaultRocmExecutionProvider());
 #endif
     bitmask_dropout.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &bitmask_dropout_eps);
   }

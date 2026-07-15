@@ -1,12 +1,15 @@
 # packages used by transformers python unittest
 packaging
 # protobuf and numpy is same as tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt
-protobuf==4.21.12
-numpy==1.21.6 ; python_version < '3.9'
-numpy==2.0.0 ; python_version >= '3.9'
-torch
-coloredlogs==15.0
-transformers==4.46.3
+protobuf==6.33.5
+numpy==2.2.6; python_version < "3.11"
+numpy==2.4.2; python_version >= "3.11"
+torch==2.10.0
+torchvision==0.25.0
+transformers==4.52.1
 parameterized>=0.8.1
+sentencepiece
 psutil
 einops
+onnxscript==0.6.2
+onnx-ir==0.1.16

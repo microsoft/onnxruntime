@@ -26,6 +26,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateUnaryOpBuilder("Log", op_registrations);
     CreateUnaryOpBuilder("Neg", op_registrations);
     CreateUnaryOpBuilder("Reciprocal", op_registrations);
+    CreateUnaryOpBuilder("Round", op_registrations);
     CreateUnaryOpBuilder("Sign", op_registrations);
     CreateUnaryOpBuilder("Sin", op_registrations);
     CreateUnaryOpBuilder("Sqrt", op_registrations);
@@ -85,6 +86,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateCumSumOpBuilder("CumSum", op_registrations);
   }
 
+  {  // DepthToSpace
+    CreateDepthToSpaceOpBuilder("DepthToSpace", op_registrations);
+  }
+
   {  // Dropout
     CreateDropoutOpBuilder("Dropout", op_registrations);
   }
@@ -107,12 +112,20 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateGatherOpBuilder("Gather", op_registrations);
   }
 
+  {  // GatherBlockQuantized
+    CreateGatherBlockQuantizedOpBuilder("GatherBlockQuantized", op_registrations);
+  }
+
   {  // GatherElements
     CreateGatherElementsOpBuilder("GatherElements", op_registrations);
   }
 
   {  // GatherND
     CreateGatherNDOpBuilder("GatherND", op_registrations);
+  }
+
+  {  // GroupQueryAttention
+    CreateGroupQueryAttentionOpBuilder("GroupQueryAttention", op_registrations);
   }
 
   {  // Flatten
@@ -132,6 +145,8 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   {  // Logical
     CreateLogicalOpBuilder("And", op_registrations);
     CreateLogicalOpBuilder("Equal", op_registrations);
+    CreateLogicalOpBuilder("IsInf", op_registrations);
+    CreateLogicalOpBuilder("IsNaN", op_registrations);
     CreateLogicalOpBuilder("Greater", op_registrations);
     CreateLogicalOpBuilder("GreaterOrEqual", op_registrations);
     CreateLogicalOpBuilder("Less", op_registrations);
@@ -149,9 +164,17 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateLstmOpBuilder("LSTM", op_registrations);
   }
 
+  {  // MatMulNBits
+    CreateMatMulNBitsOpBuilder("MatMulNBits", op_registrations);
+  }
+
   {  // Max/Min
     CreateMaxMinOpBuilder("Max", op_registrations);
     CreateMaxMinOpBuilder("Min", op_registrations);
+  }
+
+  {  // MultiHeadAttention
+    CreateMultiHeadAttentionOpBuilder("MultiHeadAttention", op_registrations);
   }
 
   {  // Normalization

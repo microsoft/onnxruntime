@@ -18,7 +18,6 @@ from enum import Enum
 from time import sleep
 from typing import Any
 
-import coloredlogs
 import numpy
 import torch
 import transformers
@@ -88,73 +87,71 @@ def create_onnxruntime_session(
     enable_mlas_gemm_fastmath_arm64_bfloat16=False,
     provider_options={},  # map execution provider name to its option  # noqa: B006
 ):
+    sess_options = onnxruntime.SessionOptions()
+
+    if enable_all_optimization:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+    else:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
+
+    if enable_profiling:
+        sess_options.enable_profiling = True
+
+    if num_threads > 0:
+        sess_options.intra_op_num_threads = num_threads
+        logger.debug(f"Session option: intra_op_num_threads={sess_options.intra_op_num_threads}")
+
+    if verbose:
+        sess_options.log_severity_level = 0
+    else:
+        sess_options.log_severity_level = 4
+
+    if provider in onnxruntime.get_available_providers():
+        providers = [provider]
+    elif use_gpu:
+        if provider == "dml":
+            providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
+        elif provider == "migraphx":
+            providers = [
+                "MIGraphXExecutionProvider",
+                "CPUExecutionProvider",
+            ]
+        elif provider == "cuda" or provider is None:
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        elif provider == "tensorrt":
+            providers = [
+                "TensorrtExecutionProvider",
+                "CUDAExecutionProvider",
+                "CPUExecutionProvider",
+            ]
+        else:
+            raise RuntimeError(f"The execution provider is not supported: {provider}")
+    else:
+        providers = ["CPUExecutionProvider"]
+
+    if provider_options:
+        providers = [(name, provider_options[name]) if name in provider_options else name for name in providers]
+
+    if enable_mlas_gemm_fastmath_arm64_bfloat16:
+        sess_options.add_session_config_entry("mlas.enable_gemm_fastmath_arm64_bfloat16", "1")
+
     session = None
     try:
-        sess_options = onnxruntime.SessionOptions()
-
-        if enable_all_optimization:
-            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-        else:
-            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
-
-        if enable_profiling:
-            sess_options.enable_profiling = True
-
-        if num_threads > 0:
-            sess_options.intra_op_num_threads = num_threads
-            logger.debug(f"Session option: intra_op_num_threads={sess_options.intra_op_num_threads}")
-
-        if verbose:
-            sess_options.log_severity_level = 0
-        else:
-            sess_options.log_severity_level = 4
-
-        logger.debug(f"Create session for onnx model: {onnx_model_path}")
-        if use_gpu:
-            if provider == "dml":
-                providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
-            elif provider == "rocm":
-                providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
-            elif provider == "migraphx":
-                providers = [
-                    "MIGraphXExecutionProvider",
-                    "ROCMExecutionProvider",
-                    "CPUExecutionProvider",
-                ]
-            elif provider == "cuda":
-                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            elif provider == "tensorrt":
-                providers = [
-                    "TensorrtExecutionProvider",
-                    "CUDAExecutionProvider",
-                    "CPUExecutionProvider",
-                ]
-            else:
-                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-        else:
-            providers = ["CPUExecutionProvider"]
-
-        if provider_options:
-            providers = [(name, provider_options[name]) if name in provider_options else name for name in providers]
-
-        if enable_mlas_gemm_fastmath_arm64_bfloat16:
-            sess_options.add_session_config_entry("mlas.enable_gemm_fastmath_arm64_bfloat16", "1")
-
         session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=providers)
     except Exception:
-        logger.error("Exception", exc_info=True)  # noqa: G201
+        logger.exception(f"Failed to create session for {onnx_model_path} with providers={providers}")
 
     return session
 
 
 def setup_logger(verbose=True):
     if verbose:
-        coloredlogs.install(
-            level="DEBUG",
-            fmt="[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s",
+        logging.basicConfig(
+            format="[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s",
+            level=logging.DEBUG,
         )
     else:
-        coloredlogs.install(fmt="%(message)s")
+        logging.basicConfig(format="%(message)s", level=logging.INFO)
         logging.getLogger("transformers").setLevel(logging.WARNING)
 
 
@@ -173,8 +170,8 @@ def prepare_environment(cache_dir, output_dir, use_gpu, provider=None):
 
         else:
             assert not set(onnxruntime.get_available_providers()).isdisjoint(
-                ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
-            ), "Please install onnxruntime-gpu package, or install ROCm support, to test GPU inference."
+                ["CUDAExecutionProvider", "MIGraphXExecutionProvider"]
+            ), "Please install onnxruntime-gpu package, or install migraphx, to test GPU inference."
 
     logger.info(f"PyTorch Version:{torch.__version__}")
     logger.info(f"Transformers Version:{transformers.__version__}")
@@ -278,7 +275,7 @@ def output_summary(results, csv_filename, args):
                                     headers = {k: v for k, v in result.items() if k in header_names}
                                     if not row:
                                         row.update(headers)
-                                        row.update({k: "" for k in data_names})
+                                        row.update(dict.fromkeys(data_names, ""))
                                     else:
                                         for k in header_names:
                                             assert row[k] == headers[k]
@@ -406,7 +403,7 @@ def set_random_seed(seed=123):
 
 
 def get_gpu_info() -> list[dict[str, Any]] | None:
-    from py3nvml.py3nvml import (
+    from py3nvml.py3nvml import (  # noqa: PLC0415
         NVMLError,
         nvmlDeviceGetCount,
         nvmlDeviceGetHandleByIndex,
@@ -448,7 +445,7 @@ class MemoryMonitor(ABC):
         self.keep_measuring = keep_measuring
 
     def measure_cpu_usage(self):
-        import psutil
+        import psutil  # noqa: PLC0415
 
         max_usage = 0
         while True:
@@ -468,7 +465,7 @@ class CudaMemoryMonitor(MemoryMonitor):
         super().__init__(keep_measuring)
 
     def measure_gpu_usage(self) -> list[dict[str, Any]] | None:
-        from py3nvml.py3nvml import (
+        from py3nvml.py3nvml import (  # noqa: PLC0415
             NVMLError,
             nvmlDeviceGetCount,
             nvmlDeviceGetHandleByIndex,
@@ -521,7 +518,7 @@ class RocmMemoryMonitor(MemoryMonitor):
             if rocm_smi_path not in sys.path:
                 sys.path.append(rocm_smi_path)
         try:
-            import rocm_smi
+            import rocm_smi  # noqa: PLC0415
 
             self.rocm_smi = rocm_smi
             self.rocm_smi.initializeRsmi()
@@ -628,7 +625,6 @@ def get_ort_environment_variables():
     # Environment variables might impact ORT performance on transformer models. Note that they are for testing only.
     env_names = [
         "ORT_DISABLE_FUSED_ATTENTION",
-        "ORT_ENABLE_FUSED_CAUSAL_ATTENTION",
         "ORT_DISABLE_FUSED_CROSS_ATTENTION",
         "ORT_DISABLE_TRT_FLASH_ATTENTION",
         "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION",

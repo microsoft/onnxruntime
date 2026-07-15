@@ -9,7 +9,7 @@
 #include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
 #include "default_providers.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/test_utils.h"
 
 namespace onnxruntime::training::test {

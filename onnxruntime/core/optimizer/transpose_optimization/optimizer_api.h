@@ -10,6 +10,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <cstdint>
 #include <vector>
 
 namespace onnx_transpose_optimization {
@@ -257,6 +258,18 @@ class NodeRef {
   /// <returns>Id</returns>
   virtual int64_t Id() const = 0;
 
+  /// <summary>
+  /// Get the layering annotation of the node.
+  /// </summary>
+  /// <returns>annotation</returns>
+  virtual std::string_view GetLayeringAnnotation() const = 0;
+
+  /// <summary>
+  /// Set layering annotation
+  /// </summary>
+  /// <param name="annotation"></param>
+  virtual void SetLayeringAnnotation(std::string_view annotation) = 0;
+
   virtual ~NodeRef() {};
 };
 
@@ -465,7 +478,7 @@ class GraphRef {
 }  // namespace api
 
 constexpr int64_t kMinSupportedOpset = 7;
-constexpr int64_t kMaxSupportedOpset = 22;
+constexpr int64_t kMaxSupportedOpset = 27;
 
 // enum of results that a CostCheckFn can return.
 enum class CostCheckResult {

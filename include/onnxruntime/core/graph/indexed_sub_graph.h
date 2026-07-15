@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "core/common/inlined_containers_fwd.h"
+#include "core/framework/resource_accountant.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/onnx_protobuf.h"
 
@@ -29,7 +31,7 @@ struct IndexedSubGraph {
     std::string domain;  ///< Domain of customized SubGraph/FunctionProto
     int since_version;   ///< Since version of customized SubGraph/FunctionProto.
 
-    ONNX_NAMESPACE::OperatorStatus status;  ///< Status of customized SubGraph/FunctionProto.
+    ONNX_NAMESPACE::OperatorStatus status{ONNX_NAMESPACE::OperatorStatus::STABLE};  ///< Status of customized SubGraph/FunctionProto.
 
     std::vector<std::string> inputs;                 ///< Inputs of customized SubGraph/FunctionProto.
     std::vector<std::string> outputs;                ///< Outputs of customized SubGraph/FunctionProto.
@@ -70,9 +72,72 @@ struct IndexedSubGraph {
     return meta_def_.get();
   }
 
+  /** Gets the mutable meta definition needed to represent this subgraph as a FunctionProto.
+  @returns MetaDef instance if it has been set. nullptr if not. */
+  MetaDef* GetMutableMetaDef() {
+    return meta_def_.get();
+  }
+
+  // Check if the accounting is enabled for the current EP
+  bool IsAccountingEnabled() const {
+    return resource_accountant != nullptr &&
+           nodes_costs.size() == nodes.size();
+  }
+
+  // Should call IsAccountingEnabled() first
+  // Takes the previously computed ResourceCount for the node
+  // (usually during GetCapability())
+  // if present and adds it to the consumed amount
+  void AccountForNode(size_t cost_index) const {
+    assert(cost_index < nodes_costs.size());
+    resource_accountant->AddConsumedAmount(nodes_costs[cost_index]);
+    resource_accountant->CommitWeightsForNode(nodes[cost_index]);
+  }
+
+  // Accounts for all constituent nodes by summing their pre-stored costs.
+  // Use this when fusing nodes into a single node so the total cost
+  // reflects what was computed during GetCapability() (with correct
+  // cross-node weight deduplication already applied).
+  void AccountForAllNodes() const {
+    assert(resource_accountant != nullptr);
+    for (size_t i = 0; i < nodes_costs.size(); ++i) {
+      resource_accountant->AddConsumedAmount(nodes_costs[i]);
+      resource_accountant->CommitWeightsForNode(nodes[i]);
+    }
+  }
+
+  // Accounts for a node given its index and a pre-computed resource cost.
+  // Use this when the cost was computed externally (e.g. for a fused node).
+  void AccountForNode(NodeIndex node_index, const ResourceCount& resource_count) const {
+    assert(resource_accountant != nullptr);
+    resource_accountant->AddConsumedAmount(resource_count);
+    resource_accountant->CommitWeightsForNode(node_index);
+  }
+
+  void SetAccountant(IResourceAccountant* res_accountant) {
+    resource_accountant = res_accountant;
+  }
+
+  // Append resource count to the list of costs for the nodes.
+  void AppendNodeCost(const ResourceCount& cost) {
+    assert(resource_accountant != nullptr);
+    nodes_costs.emplace_back(cost);
+  }
+
+  // Read-only access to the pre-computed resource cost for the node at cost_index.
+  // Should call IsAccountingEnabled() first.
+  const ResourceCount& GetNodeCost(size_t cost_index) const {
+    assert(cost_index < nodes_costs.size());
+    return nodes_costs[cost_index];
+  }
+
  private:
   // subgraph meta definition.
   std::unique_ptr<MetaDef> meta_def_;
+  // Optional resource accountant for this subgraph.
+  IResourceAccountant* resource_accountant = nullptr;
+  // Vector with resource costs for nodes above. Should have the same size
+  InlinedVector<ResourceCount> nodes_costs;
 };
 
 }  // namespace onnxruntime

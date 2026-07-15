@@ -330,6 +330,12 @@ struct TensorArray : public ArgBase {
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
             tensor = std::make_unique<Custom::Tensor<float>>(ctx, ith_input, true);
             break;
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+            tensor = std::make_unique<Custom::Tensor<Ort::Float16_t>>(ctx, ith_input, true);
+            break;
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+            tensor = std::make_unique<Custom::Tensor<Ort::BFloat16_t>>(ctx, ith_input, true);
+            break;
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
             tensor = std::make_unique<Custom::Tensor<double>>(ctx, ith_input, true);
             break;
@@ -360,8 +366,20 @@ struct TensorArray : public ArgBase {
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
             tensor = std::make_unique<Custom::Tensor<std::string>>(ctx, ith_input, true);
             break;
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:
+            tensor = std::make_unique<Custom::Tensor<Ort::Float8E4M3FN_t>>(ctx, ith_input, true);
+            break;
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ:
+            tensor = std::make_unique<Custom::Tensor<Ort::Float8E4M3FNUZ_t>>(ctx, ith_input, true);
+            break;
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2:
+            tensor = std::make_unique<Custom::Tensor<Ort::Float8E5M2_t>>(ctx, ith_input, true);
+            break;
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ:
+            tensor = std::make_unique<Custom::Tensor<Ort::Float8E5M2FNUZ_t>>(ctx, ith_input, true);
+            break;
           default:
-            ORT_CXX_API_THROW("unknow input type", ORT_RUNTIME_EXCEPTION);
+            ORT_CXX_API_THROW("unknown input type", ORT_RUNTIME_EXCEPTION);
             break;
         }
         tensors_.emplace_back(tensor.release());
@@ -442,18 +460,6 @@ struct OrtLiteCustomOp : public OrtCustomOp {
     thread_local CudaContext cuda_context;
     cuda_context.Init(*context);
     std::tuple<T> current = std::tuple<const CudaContext&>{cuda_context};
-    auto next = CreateTuple<ith_input, ith_output, Ts...>(context, args, num_input, num_output, ep);
-    return std::tuple_cat(current, next);
-  }
-#endif
-
-#ifdef ORT_ROCM_CTX
-  template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
-  static typename std::enable_if<std::is_same<T, const RocmContext&>::value, std::tuple<T, Ts...>>::type
-  CreateTuple(OrtKernelContext* context, ArgPtrs& args, size_t num_input, size_t num_output, const std::string& ep) {
-    thread_local RocmContext rocm_context;
-    rocm_context.Init(*context);
-    std::tuple<T> current = std::tuple<const RocmContext&>{rocm_context};
     auto next = CreateTuple<ith_input, ith_output, Ts...>(context, args, num_input, num_output, ep);
     return std::tuple_cat(current, next);
   }
@@ -669,14 +675,6 @@ struct OrtLiteCustomOp : public OrtCustomOp {
 #ifdef ORT_CUDA_CTX
   template <typename T, typename... Ts>
   static typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, const CudaContext&>::value>::type
-  ParseArgs(std::vector<ONNXTensorElementDataType>& input_types, std::vector<ONNXTensorElementDataType>& output_types) {
-    ParseArgs<Ts...>(input_types, output_types);
-  }
-#endif
-
-#ifdef ORT_ROCM_CTX
-  template <typename T, typename... Ts>
-  static typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, const RocmContext&>::value>::type
   ParseArgs(std::vector<ONNXTensorElementDataType>& input_types, std::vector<ONNXTensorElementDataType>& output_types) {
     ParseArgs<Ts...>(input_types, output_types);
   }

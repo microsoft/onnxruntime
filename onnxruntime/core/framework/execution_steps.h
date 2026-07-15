@@ -38,7 +38,7 @@ class WaitOnEPStep : public SequentialExecutionPlan::ExecutionStep {
   std::string ToString() const override;
 
  private:
-  WaitNotificationFn wait_handle_;
+  WaitNotificationFn wait_fn_;
   NotificationIndex notification_idx_;
 };
 

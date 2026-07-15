@@ -3,7 +3,12 @@
 # This workflow was copied from the link above.
 
 name: "Validate Gradle Wrapper"
-on: [push, pull_request]
+on:
+  push:
+    branches: [main, 'rel-*']
+  pull_request:
+    branches: [main, 'rel-*']
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -11,7 +16,14 @@ permissions:
 jobs:
   validation:
     name: "Validation"
-    runs-on: ubuntu-22.04
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=gradle-wrapper-validation-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     steps:
-      - uses: actions/checkout@v4
-      - uses: gradle/actions/wrapper-validation@v4
+      - uses: actions/checkout@v6
+      - uses: gradle/actions/wrapper-validation@v5
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true

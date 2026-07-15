@@ -1,0 +1,17 @@
+diff --git a/third_party/emdawnwebgpu/pkg/webgpu/src/library_webgpu.js b/third_party/emdawnwebgpu/pkg/webgpu/src/library_webgpu.js
+index a3ce6dc732..7119eae424 100644
+--- a/third_party/emdawnwebgpu/pkg/webgpu/src/library_webgpu.js
++++ b/third_party/emdawnwebgpu/pkg/webgpu/src/library_webgpu.js
+@@ -903,6 +903,12 @@ var LibraryWebGPU = {
+           stackRestore(sp);
+       };
+ 
++      // Polyfill `device.AdapterInfo` if not present (Safari v26.0).
++      // See https://bugs.webkit.org/show_bug.cgi?id=301878
++      if (!('adapterInfo' in device)) {
++        device.adapterInfo = adapter.info;
++      }
++
+       _emwgpuOnRequestDeviceCompleted(futureId, {{{ gpu.RequestDeviceStatus.Success }}},
+         {{{ gpu.passAsPointer('devicePtr') }}}, {{{ gpu.NULLPTR }}});
+     }, (ex) => {

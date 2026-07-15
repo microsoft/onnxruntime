@@ -3,8 +3,12 @@
 
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/ort_value.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph.h"
+#include "core/optimizer/initializer.h"
+#include "core/providers/common.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -27,35 +31,48 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
     return Status::OK();
   }
 
-  auto num_axes = axes.size();
-  auto output_rank = num_axes + tensor_proto.dims().size();
+  const int64_t output_rank = narrow<int64_t>(axes.size() + tensor_proto.dims().size());
 
-  // handle any negative axis values
+  // handle any negative axis values and validate range
   for (auto& axis : axes) {
+    if (!IsAxisInRange(axis, output_rank)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "'axes' has an out of range axis value ", axis,
+                             " for output rank ", output_rank,
+                             ". This is an invalid model. Node: ", node.Name());
+    }
     if (axis < 0) {
       axis += output_rank;
     }
   }
 
-  // Generate new dims.
-  InlinedVector<int64_t> new_dims(output_rank, 0);
+  // Generate new dims. Mark axes positions with 1, fill the rest from input dims.
+  InlinedVector<int64_t> new_dims(narrow<size_t>(output_rank), 0);
   for (int64_t axis : axes) {
-    if (static_cast<size_t>(axis) >= new_dims.size()) {
-      LOGS(logger, WARNING) << "UnsqueezeElimination cannot remove node due to invalid axes" << node.Name();
-      return Status::OK();
+    const size_t idx = narrow<size_t>(axis);
+    if (new_dims[idx] != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "'axes' has a duplicate axis value ", axis,
+                             ". This is an invalid model. Node: ", node.Name());
     }
-    new_dims[static_cast<size_t>(axis)] = 1;
+    new_dims[idx] = 1;
   }
 
   auto begin = tensor_proto.dims().cbegin();
-  for (auto& axis : new_dims) {
-    if (axis == 0) {
-      axis = *begin++;
+  for (auto& dim : new_dims) {
+    if (dim == 0) {
+      assert(begin != tensor_proto.dims().cend());
+      dim = *begin++;
     }
   }
+  assert(begin == tensor_proto.dims().cend());
+
+  Initializer initializer(graph, tensor_proto, graph.ModelPath(), /*check_outer_scope=*/false);
+  ONNX_NAMESPACE::TensorProto new_tensor_proto;
+  OrtValue ort_value;
+  initializer.ToProtoWithOrtValue(new_tensor_proto, ort_value);
 
   // Update shape of tensor proto.
-  ONNX_NAMESPACE::TensorProto new_tensor_proto(tensor_proto);
   new_tensor_proto.set_name(new_name);
   new_tensor_proto.clear_dims();
 
@@ -63,10 +80,16 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
     new_tensor_proto.add_dims(dim);
   }
 
-  auto& new_node_arg = graph_utils::AddInitializer(graph, new_tensor_proto);
-  // Remove the Unsqueeze node and replace it with the initializer.
+  if (utils::HasExternalDataInMemory(new_tensor_proto)) {
+    ORT_ENFORCE(ort_value.IsAllocated());
+    TensorShape new_shape(new_tensor_proto.dims());
+    ort_value.GetMutable<Tensor>()->Reshape(new_shape);
+  }
+
+  auto& new_node_arg = graph_utils::AddInitializerWithOrtValue(graph, new_tensor_proto, ort_value);
   graph_utils::ReplaceNodeWithInitializer(graph, node, new_node_arg);
 
+  // Remove the Unsqueeze node and replace it with the initializer.
   rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
 
   return Status::OK();

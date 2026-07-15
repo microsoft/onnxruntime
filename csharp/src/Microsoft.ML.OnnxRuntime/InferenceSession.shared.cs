@@ -215,6 +215,82 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// Fetches memory info for all inputs in the same order as their names.
+        /// (See InputNames property).
+        /// </summary>
+        /// <returns>A disposable readonly collection of OrtMemoryInfo</returns>
+        public IDisposableReadOnlyCollection<OrtMemoryInfo> GetMemoryInfosForInputs()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputCount(_nativeHandle, out UIntPtr numInputs));
+
+            if(numInputs == UIntPtr.Zero)
+            {
+                return new DisposableList<OrtMemoryInfo>();
+            }
+
+            var memoryInfoArray = new IntPtr[(ulong)numInputs];
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetMemoryInfoForInputs(_nativeHandle,
+                memoryInfoArray, numInputs));
+
+            return new DisposableList<OrtMemoryInfo>(
+                memoryInfoArray.Select(static ptr => new OrtMemoryInfo(ptr, /* owned= */ false)));
+        }
+
+        /// <summary>
+        /// Fetches memory info for all outputs in the same order as their names.
+        /// (See OutputNames property).
+        /// </summary>
+        /// <returns>A disposable readonly collection of OrtMemoryInfo</returns>
+        public IDisposableReadOnlyCollection<OrtMemoryInfo> GetMemoryInfosForOutputs()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputCount(_nativeHandle,
+                out UIntPtr numOutputs));
+
+            if(numOutputs == UIntPtr.Zero)
+            {
+                return new DisposableList<OrtMemoryInfo>();
+            }
+
+            var memoryInfoArray = new IntPtr[(ulong)numOutputs];
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetMemoryInfoForOutputs(_nativeHandle,
+                memoryInfoArray, numOutputs));
+            return new DisposableList<OrtMemoryInfo>(
+                memoryInfoArray.Select(static ptr => new OrtMemoryInfo(ptr, /* owned= */ false)));
+        }
+
+        /// <summary>
+        /// Fetches OrtEpDevice instances for all inputs in the same order as their input names.
+        /// For inputs that do not have a device, the corresponding entry in the returned list is null.
+        /// See InputNames property.
+        /// </summary>
+        /// <returns>IReadOnlyList<OrtEpDevice></returns>
+        public IReadOnlyList<OrtEpDevice> GetEpDeviceForInputs()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputCount(_nativeHandle,
+                out UIntPtr numInputs));
+
+            if (numInputs == UIntPtr.Zero)
+            {
+                // OrtSessionGetEpDeviceForInputs expects numInputs > 0, otherwise it is an invalid arg.
+                return [];
+            }
+
+            var epDevicesForInputs = new IntPtr[(ulong)numInputs];
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetEpDeviceForInputs(_nativeHandle,
+                epDevicesForInputs, numInputs));
+
+            // Some entries in epDevicesForInputs can be IntPtr.Zero, indicating the input does not
+            // have a device; return null for those entries.
+            return epDevicesForInputs
+                .Select(static ptr => ptr == IntPtr.Zero ? null : new OrtEpDevice(ptr))
+                .ToList()
+                .AsReadOnly();
+        }
+
+        /// <summary>
         /// Runs the loaded model for the given inputs, and fetches all the outputs.
         /// </summary>
         /// <param name="inputs">specify a collection of <see cref="NamedOnnxValue"/> that indicates the input values.</param>
@@ -1046,7 +1122,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        private static void OrtCallback(IntPtr userData, IntPtr[] ouputs, uint numOutputs, IntPtr status)
+        private static void OrtCallback(IntPtr userData, IntPtr[] outputs, uint numOutputs, IntPtr status)
         {
             var hostHdl = GCHandle.FromIntPtr(userData);
             CallbackHost host = (CallbackHost)hostHdl.Target;
@@ -1635,7 +1711,7 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
-    /// Represents sequnce metdata
+    /// Represents sequence metadata
     /// </summary>
     public class SequenceMetadata
     {
@@ -1648,7 +1724,7 @@ namespace Microsoft.ML.OnnxRuntime
             ElementMeta = elementData;
         }
         /// <summary>
-        /// Element Metatada, recursive definition with a Tensor being a base case
+        /// Element Metadata, recursive definition with a Tensor being a base case
         /// may contain maps, tensors and other sequences
         /// </summary>
         public NodeMetadata ElementMeta { get; }
@@ -1669,7 +1745,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Element Metatada, recursive definition with a Tensor being a base case
+        /// Element Metadata, recursive definition with a Tensor being a base case
         /// may contain maps, tensors and sequences
         /// </summary>
         public NodeMetadata ElementMeta { get; }
@@ -1876,7 +1952,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Convinience method to check for string
+        /// Convenience method to check for string
         /// </summary>
         public bool IsString
         {

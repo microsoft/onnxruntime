@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <gsl/gsl>
 #include "gtest/gtest.h"
 
 #include "custom_op_utils.h"
@@ -16,6 +17,14 @@ void cuda_add(int64_t, T3*, const T1*, const T2*, cudaStream_t compute_stream);
 template <typename T>
 void cuda_slice(const T*, int64_t, int64_t, T*, cudaStream_t compute_stream);
 #endif
+
+MyCustomKernel::MyCustomKernel(const OrtApi& ort_api, const OrtKernelInfo* info)
+    : ort_(ort_api) {
+  Ort::ConstKernelInfo kernel_info(info);
+  EXPECT_EQ(kernel_info.GetOperatorDomain(), "test");
+  EXPECT_EQ(kernel_info.GetOperatorType(), "Foo");
+  EXPECT_EQ(kernel_info.GetOperatorSinceVersion(), 1);
+}
 
 void MyCustomKernel::Compute(OrtKernelContext* context) {
   // Setup inputs
@@ -34,18 +43,22 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   int64_t size = output_info.GetElementCount();
 
 #ifdef USE_CUDA
-  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
+  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator,
+                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0));
 #else
-  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtArenaAllocator, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0));
+  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtArenaAllocator,
+                         OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0));
 #endif
-  OrtAllocator* allocator;
-  Ort::ThrowOnError(ort_.KernelContext_GetAllocator(context, &mem_info, &allocator));
-  void* allocated = allocator->Alloc(allocator, 2);
+  Ort::Allocator allocator = ctx.GetAllocator(mem_info);
+  void* allocated = allocator.Alloc(2);
   EXPECT_NE(allocated, nullptr) << "KernelContext_GetAllocator() can successfully allocate some memory";
-  allocator->Free(allocator, allocated);
+  allocator.Free(allocated);
+
+  OrtSyncStream* sync_stream = ctx.GetSyncStream();
 
   // Do computation
 #ifdef USE_CUDA
+  EXPECT_NE(sync_stream, nullptr) << "KernelContext_GetSyncStream() returns the kernel compute stream";
   // Launch on stream 0 or user provided stream
   void* stream;
   Ort::ThrowOnError(ort_.KernelContext_GetGPUComputeStream(context, &stream));
@@ -60,6 +73,7 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   //     and use the same compute stream to launch the custom op.
   // Here, an example for (1) is shown (See test_inference.cc to see how this custom op is used.)
 #else
+  EXPECT_EQ(sync_stream, nullptr) << "CPU custom ops do not have a compute stream";
   ORT_UNUSED_PARAMETER(ort_);
   for (int64_t i = 0; i < size; i++) {
     out[i] = X[i] + Y[i];
@@ -88,7 +102,12 @@ void MyCustomKernelSecondInputOnCpu::Compute(OrtKernelContext* context) {
   const int64_t y_size = input_Y.GetTensorTypeAndShapeInfo().GetElementCount();
   float* Y_cuda{};
   cudaMalloc(&Y_cuda, y_size * sizeof(float));
-  cudaMemcpy(Y_cuda, Y, y_size * sizeof(float), cudaMemcpyHostToDevice);
+  // Use the same stream that the add kernel is launched on so the copy is properly
+  // sequenced before the add. The stream used here may be non-blocking, so an
+  // asynchronous copy on the compute stream guarantees the data is ready before the
+  // add kernel reads it.
+  cudaStream_t compute_stream = compute_stream_ == nullptr ? 0 : reinterpret_cast<cudaStream_t>(compute_stream_);
+  cudaMemcpyAsync(Y_cuda, Y, y_size * sizeof(float), cudaMemcpyHostToDevice, compute_stream);
 
   // Setup output
   auto dimensions = input_X.GetTensorTypeAndShapeInfo().GetShape();
@@ -101,7 +120,7 @@ void MyCustomKernelSecondInputOnCpu::Compute(OrtKernelContext* context) {
   // Do computation
 
   // Launch on stream 0 or user provided stream
-  cuda_add(size, out, X, Y_cuda, compute_stream_ == nullptr ? 0 : reinterpret_cast<cudaStream_t>(compute_stream_));
+  cuda_add(size, out, X, Y_cuda, compute_stream);
   // cudaStreamSynchronize(nullptr);
   // If everything is setup correctly, custom op implementations need not have such explicit synchronization logic as above.
   // To make sure custom kernels and ORT CUDA kernels are implicitly synchronized:
@@ -450,8 +469,9 @@ void StandaloneCustomKernel::InitGru() {
   float betas[1] = {2.f};
   Ort::OpAttr activation_beta = Ort::OpAttr("activation_beta ", betas, 1, OrtOpAttrType::ORT_OP_ATTR_FLOATS);
 
-  const char* direction_string = "bidirectional";
-  Ort::OpAttr direction = Ort::OpAttr("direction", direction_string, 1, OrtOpAttrType::ORT_OP_ATTR_STRING);
+  const std::string direction_string = "bidirectional";
+  Ort::OpAttr direction = Ort::OpAttr("direction", direction_string.c_str(), static_cast<int>(direction_string.length()),
+                                      OrtOpAttrType::ORT_OP_ATTR_STRING);
 
   int64_t linear_before_reset_value = 0;
   Ort::OpAttr linear_before_reset = Ort::OpAttr("linear_before_reset", &linear_before_reset_value, 1,
@@ -638,4 +658,23 @@ void StandaloneCustomKernel::Compute(OrtKernelContext* context) {
 }
 
 StandaloneCustomKernel::~StandaloneCustomKernel() {
+}
+
+OrtStatusPtr CustomCastKernel::ComputeV2(OrtKernelContext* context) {
+  Ort::KernelContext ctx(context);
+
+  auto in = ctx.GetInput(0);
+  std::vector<int64_t> shape = in.GetTensorTypeAndShapeInfo().GetShape();
+  int64_t num_elements = std::accumulate(shape.cbegin(), shape.cend(), int64_t(1), std::multiplies<int64_t>());
+
+  // CustomCast::GetInputType constraint ensures we only get float input
+  const float* data = in.GetTensorData<float>();
+  double* out_data = ctx.GetOutput(0, shape).GetTensorMutableData<double>();
+  gsl::span<const float> input_span(data, num_elements);
+  gsl::span<double> output_span(out_data, num_elements);
+
+  std::transform(input_span.begin(), input_span.end(), output_span.begin(),
+                 [](float val) { return static_cast<double>(val); });
+
+  return nullptr;
 }

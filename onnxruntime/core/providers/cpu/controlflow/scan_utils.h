@@ -106,10 +106,13 @@ class OutputIterator {
 
   // set the output for the current iteration to zeros. used for short sequence lengths
   Status ZeroOutCurrent() {
-    auto status = Status::OK();
     auto* tensor = (**this).GetMutable<Tensor>();
-    status = zero_data_func_(tensor->MutableDataRaw(), tensor->SizeInBytes());
-    return status;
+    if (tensor->IsDataTypeString()) {
+      // std::string is not trivially copyable — memset would corrupt the objects.
+      // The strings are already default-constructed (empty) from placement-new so nothing to do.
+      return Status::OK();
+    }
+    return zero_data_func_(tensor->MutableDataRaw(), tensor->SizeInBytes());
   }
 
   const OrtValue& GetOutput() const {

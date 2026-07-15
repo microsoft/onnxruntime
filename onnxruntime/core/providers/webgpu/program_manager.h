@@ -3,10 +3,13 @@
 
 #pragma once
 
+#include <functional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
-#include <webgpu/webgpu_cpp.h>
+#include "core/providers/webgpu/webgpu_external_header.h"
 
 #include "core/common/common.h"
 
@@ -16,6 +19,7 @@ namespace onnxruntime {
 class Tensor;
 
 namespace webgpu {
+class WebGpuContext;
 
 class ProgramArtifact {
  public:
@@ -34,15 +38,16 @@ class ProgramArtifact {
 
 class ProgramManager {
  public:
-  ProgramManager(const wgpu::Device& device, const wgpu::Limits& limits) : device_(device), limits_(limits) {}
+  ProgramManager(WebGpuContext& webgpu_context);
 
   Status NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z) const;
+  Status CalculateSegmentsForInputsAndOutputs(const ProgramBase& program, std::vector<uint32_t>& inputs_segments, std::vector<uint32_t>& outputs_segments) const;
 
   Status Build(const ProgramBase& program,
                const ProgramMetadata& metadata,
-#ifndef NDEBUG  // if debug build
+               const std::span<uint32_t> inputs_segments,
+               const std::span<uint32_t> outputs_segments,
                const std::string& program_key,
-#endif
                uint32_t normalized_dispatch_x,
                uint32_t normalized_dispatch_y,
                uint32_t normalized_dispatch_z,
@@ -53,8 +58,9 @@ class ProgramManager {
 
  private:
   std::unordered_map<std::string, ProgramArtifact> programs_;
-  const wgpu::Device& device_;
-  const wgpu::Limits& limits_;
+  WebGpuContext& webgpu_context_;
+
+  std::function<void(std::string_view)> shader_dump_fn_;
 };
 
 }  // namespace webgpu

@@ -3,6 +3,9 @@
 #include "DmlGraphFusionHelper.h"
 #include "DmlRuntimeFusedGraphKernel.h"
 
+#include "core/common/endian.h"
+#include "core/framework/endian_utils.h"
+
 using namespace Windows::AI::MachineLearning::Adapter;
 
 namespace Dml
@@ -117,9 +120,45 @@ namespace DmlGraphFusionHelper
         // The tensor may be stored as raw data or in typed fields.
         if (initializer->data_location() == onnx::TensorProto_DataLocation_EXTERNAL)
         {
-            THROW_IF_NOT_OK(onnxruntime::utils::UnpackInitializerData(*initializer, graph.ModelPath(), unpackedExternalTensor));
-            tensorPtr = reinterpret_cast<std::byte*>(unpackedExternalTensor.data());
-            tensorByteSize = unpackedExternalTensor.size();
+            std::basic_string<ORTCHAR_T> externalFilePath;
+            onnxruntime::FileOffsetType fileOffset;
+            SafeInt<size_t> safeTensorByteSize;
+            THROW_IF_NOT_OK(onnxruntime::utils::GetExternalDataInfo(*initializer,  graph.ModelPath(), /*out*/ externalFilePath, /*out*/ fileOffset, /*out*/ safeTensorByteSize));
+            if (externalFilePath == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag)
+            {
+                if constexpr (onnxruntime::endian::native != onnxruntime::endian::little)
+                {
+                    unpackedTensor.reset(new std::byte[safeTensorByteSize]);
+
+                    auto src = gsl::make_span<const unsigned char>(reinterpret_cast<const unsigned char*>(fileOffset), safeTensorByteSize);
+                    auto dst = gsl::make_span<unsigned char>(reinterpret_cast<unsigned char*>(unpackedTensor.get()), safeTensorByteSize);
+                    size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(initializer->data_type()));
+
+                    // If element size is unknown, set it to 1 to disable byteswapping
+                    if (element_size < 1) element_size = 1;
+
+                    THROW_IF_NOT_OK(onnxruntime::utils::ReadLittleEndian(element_size, src, dst));
+
+                    tensorPtr = unpackedTensor.get();
+                    tensorByteSize = safeTensorByteSize;
+                }
+                else
+                {
+                    tensorPtr = reinterpret_cast<std::byte*>(fileOffset);
+                    tensorByteSize = safeTensorByteSize;
+                }
+            }
+            else if (externalFilePath == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag)
+            {
+                tensorPtr = reinterpret_cast<std::byte*>(fileOffset);
+                tensorByteSize = safeTensorByteSize;
+            }
+            else
+            {
+                THROW_IF_NOT_OK(onnxruntime::utils::UnpackInitializerData(*initializer, graph.ModelPath(), unpackedExternalTensor));
+                tensorPtr = reinterpret_cast<std::byte*>(unpackedExternalTensor.data());
+                tensorByteSize = unpackedExternalTensor.size();
+            }
         }
         else if (initializer->has_raw_data())
         {
@@ -220,8 +259,6 @@ namespace DmlGraphFusionHelper
                     }
                 }
 
-                // Tensor sizes in DML must be a multiple of 4 bytes large.
-                tensorByteSize = AlignToPow2<size_t>(tensorByteSize, 4);
                 if(graphSerializationEnabled)
                 {
                     WriteToFile(modelName, ConvertToWString(iter->first) + L".bin", reinterpret_cast<uint8_t*>(tensorPtr), tensorByteSize);
@@ -252,9 +289,10 @@ namespace DmlGraphFusionHelper
                         initializeInputBuffer = CreateCpuResource(providerImpl, tensorPtr, tensorByteSize);
                     }
 
-                    // Set the binding for operator initialization to the buffer
+                    // Set the binding for operator initialization to the buffer.
+                    // DML requires buffer binding sizes to be a multiple of 4 bytes.
                     initInputBindings[i].Buffer = initializeInputBuffer.Get();
-                    initInputBindings[i].SizeInBytes = tensorByteSize;
+                    initInputBindings[i].SizeInBytes = AlignToPow2<size_t>(tensorByteSize, 4);
                     initializeResourceRefs.push_back(std::move(initializeInputBuffer));
                 }
 
@@ -1056,11 +1094,49 @@ namespace DmlGraphFusionHelper
         uint64_t completionValue;
         HRESULT hr = provider->ExecuteCommandList(commandListState.graphicsCommandList.Get(), fence.GetAddressOf(), &completionValue);
 
-        if (hr == DXGI_ERROR_DEVICE_REMOVED)
+        // ExecuteCommandList may report any of the device-lost / removal-class HRESULTs when
+        // the GPU device has transitioned to a "removed" state. Windows often surfaces these
+        // through FormatMessage as "...most likely because of an invalid command...", but in
+        // practice they almost always indicate a Timeout Detection and Recovery (TDR) event
+        // (e.g. a long-running shader exceeding the system TdrDelay), a driver fault, or a
+        // hardware reset rather than a malformed command from the calling application.
+        //
+        // GetDeviceRemovedReason on the DML and D3D12 devices reports the underlying reason
+        // when the device has been removed. Throw with the most specific reason and a
+        // clearer message so that downstream tooling (Watson, telemetry, anyone reading the
+        // log) doesn't have to guess at the cause.
+        if (hr == DXGI_ERROR_DEVICE_REMOVED ||
+            hr == DXGI_ERROR_DEVICE_HUNG ||
+            hr == DXGI_ERROR_DEVICE_RESET ||
+            hr == DXGI_ERROR_DRIVER_INTERNAL_ERROR)
         {
-            ComPtr<ID3D12Device> device;
-            ORT_THROW_IF_FAILED(provider->GetD3DDevice(&device));
-            ORT_THROW_IF_FAILED(device->GetDeviceRemovedReason());
+            ComPtr<ID3D12Device> d3dDevice;
+            ComPtr<IDMLDevice> dmlDevice;
+            ORT_THROW_IF_FAILED(provider->GetD3DDevice(&d3dDevice));
+            ORT_THROW_IF_FAILED(provider->GetDmlDevice(&dmlDevice));
+
+            const HRESULT dmlRemovedReason = dmlDevice->GetDeviceRemovedReason();
+            const HRESULT d3dRemovedReason = d3dDevice->GetDeviceRemovedReason();
+
+            // Prefer the more-specific reason returned by GetDeviceRemovedReason - matching
+            // the prior behavior for DXGI_ERROR_DEVICE_REMOVED and the pattern in
+            // DmlCommandRecorder.cpp which checks DML first, then D3D12. Fall back to the
+            // original ExecuteCommandList HRESULT if neither device reports a removal reason.
+            const HRESULT throwHr = FAILED(dmlRemovedReason) ? dmlRemovedReason
+                                  : FAILED(d3dRemovedReason) ? d3dRemovedReason
+                                                             : hr;
+
+            ORT_THROW_HR_MSG(throwHr,
+                "DirectML execution failed because of a device-lost / removal-class error. "
+                "Windows may report this as 'invalid command' via FormatMessage, but in practice "
+                "this often indicates a Timeout Detection and Recovery (TDR) event (e.g. a shader "
+                "exceeding the system TdrDelay), a driver fault, or a hardware reset rather than "
+                "a malformed command from the application. ExecuteCommandList HRESULT=0x%08X, "
+                "ID3D12Device::GetDeviceRemovedReason=0x%08X, "
+                "IDMLDevice::GetDeviceRemovedReason=0x%08X.",
+                static_cast<unsigned int>(hr),
+                static_cast<unsigned int>(d3dRemovedReason),
+                static_cast<unsigned int>(dmlRemovedReason));
         }
 
         ORT_THROW_IF_FAILED(hr);

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import { isMainThread } from 'worker_threads';
+
 import { InferenceSession, OnnxValue, Tensor, TensorConstructor, env } from 'onnxruntime-common';
 
 type SessionOptions = InferenceSession.SessionOptions;
@@ -19,12 +21,19 @@ type RunOptions = InferenceSession.RunOptions;
  * Binding exports a simple synchronized inference session object wrap.
  */
 export declare namespace Binding {
+  export interface ValueMetadata {
+    name: string;
+    isTensor: boolean;
+    symbolicDimensions: string[];
+    shape: number[];
+    type: number;
+  }
   export interface InferenceSession {
     loadModel(modelPath: string, options: SessionOptions): void;
     loadModel(buffer: ArrayBuffer, byteOffset: number, byteLength: number, options: SessionOptions): void;
 
-    readonly inputNames: string[];
-    readonly outputNames: string[];
+    readonly inputMetadata: ValueMetadata[];
+    readonly outputMetadata: ValueMetadata[];
 
     run(feeds: FeedsType, fetches: FetchesType, options: RunOptions): ReturnType;
 
@@ -46,11 +55,11 @@ export declare namespace Binding {
 // export native binding
 export const binding =
   // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-  require(`../bin/napi-v3/${process.platform}/${process.arch}/onnxruntime_binding.node`) as {
+  require(`../bin/napi-v6/${process.platform}/${process.arch}/onnxruntime_binding.node`) as {
     // eslint-disable-next-line @typescript-eslint/naming-convention
     InferenceSession: Binding.InferenceSessionConstructor;
     listSupportedBackends: () => Binding.SupportedBackend[];
-    initOrtOnce: (logLevel: number, tensorConstructor: TensorConstructor) => void;
+    initOrtOnce: (logLevel: number, tensorConstructor: TensorConstructor, isMainThread: boolean) => void;
   };
 
 let ortInitialized = false;
@@ -79,6 +88,6 @@ export const initOrt = (): void => {
           throw new Error(`Unsupported log level: ${env.logLevel}`);
       }
     }
-    binding.initOrtOnce(logLevel, Tensor);
+    binding.initOrtOnce(logLevel, Tensor, isMainThread);
   }
 };

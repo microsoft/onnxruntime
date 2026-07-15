@@ -13,7 +13,9 @@ namespace onnxruntime {
 
 std::vector<std::unique_ptr<ComputeCapability>>
 IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                  const IKernelLookup& kernel_lookup) const {
+                                  const IKernelLookup& kernel_lookup,
+                                  const GraphOptimizerRegistry&,
+                                  IResourceAccountant*) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (const auto& node : graph.Nodes()) {
     if (const KernelCreateInfo* kernel_create_info = kernel_lookup.LookUpKernel(node);

@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,13 +31,15 @@
 
 #pragma once
 
+#include "core/providers/cuda/curand_wrapper.h"
+
 #ifdef HAS_PYTORCH
 #include <ATen/cuda/CUDAGeneratorImpl.h>
 #include <ATen/cuda/CUDAGraphsUtils.cuh>
 #endif
 
-#include <curand_kernel.h>
 #include <cmath>
+#include <cinttypes>
 #include <vector>
 
 #include "cutlass/fast_math.h"
@@ -62,6 +64,27 @@
 #include "cutlass/matrix_shape.h"
 #include "cutlass/platform/platform.h"
 #include "cutlass/transform/threadblock/predicated_tile_iterator.h"
+
+// Workaround for build error here:
+// https://github.com/NVIDIA/cutlass/blob/f3fde58372d33e9a5650ba7b80fc48b3b49d40c8/examples/41_fused_multi_head_attention/epilogue/epilogue_thread_apply_logsumexp.h#L87
+// epilogue_thread_apply_logsumexp.h(87): error : no suitable user-defined conversion from "const __half2" to
+//   "__nv_bfloat162" exists
+//          res_ptr[i] = h2exp(input_ptr[i]);
+//                             ^
+//
+// On architectures < sm_53, h2exp(__half2) is not available. The compiler may find the __nv_bfloat162 overload from
+// cuda_bf16.h, leading to a type mismatch.
+// Provide a fallback that decomposes the operation into two scalar expf calls via float conversion.
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 530)
+#include <cuda_fp16.h>
+
+inline __device__ __half2 h2exp(const __half2 x) {
+  float hi = __high2float(x);
+  float lo = __low2float(x);
+  return __floats2half2_rn(expf(lo), expf(hi));
+}
+#endif  // defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 530)
+
 #include "41_fused_multi_head_attention/debug_utils.h"
 #include "41_fused_multi_head_attention/epilogue/epilogue_pipelined.h"
 #include "41_fused_multi_head_attention/epilogue/epilogue_rescale_output.h"
@@ -70,8 +93,6 @@
 #include "41_fused_multi_head_attention/gemm/mma_from_smem.h"
 #include "41_fused_multi_head_attention/gemm_kernel_utils.h"
 #include "41_fused_multi_head_attention/transform/tile_smem_loader.h"
-
-#include <inttypes.h>
 
 using namespace gemm_kernel_utils;
 
@@ -178,7 +199,11 @@ struct AttentionKernel {
     int32_t* seqstart_k_ptr = nullptr;
 
     int32_t* seqlen_k_ptr = nullptr;
-    uint32_t causal_diagonal_offset = 0;
+    // Signed: CausalFromBottomRight sets this to (num_keys - num_queries), which is NEGATIVE in the
+    // external-KV-cache regime where nonpad_kv_seqlen < q_sequence_length (onnx#8068 / ORT #28904).
+    // A uint32_t here wraps the negative value to ~4.29e9 and breaks the causal-mask guard below
+    // (see the signed comparison at the "Mask out last if causal" block), so it MUST stay int32_t.
+    int32_t causal_diagonal_offset = 0;
 
     // Output tensors
     output_t* output_ptr = nullptr;  // [num_queries, num_heads, head_dim_value]
@@ -186,6 +211,8 @@ struct AttentionKernel {
     output_accum_t* output_accum_ptr = nullptr;
     // [num_heads, num_queries] - can be null
     lse_scalar_t* logsumexp_ptr = nullptr;
+
+    int32_t window_size = -1;
 
     // Scale
     accum_t scale = 0.0;
@@ -322,6 +349,8 @@ struct AttentionKernel {
 
       // Custom masking
       if (custom_mask_type == CausalFromBottomRight) {
+        // May be negative when num_keys < num_queries (nonpad external KV cache, onnx#8068 / ORT #28904).
+        // causal_diagonal_offset is int32_t so the negative value is preserved (no unsigned wrap).
         causal_diagonal_offset = num_keys - num_queries;
       }
       // We use num_keys_absolute to index into the rng_state
@@ -453,13 +482,17 @@ struct AttentionKernel {
             kNumWarpsPerBlock,
         "");
 
-    // used for efficient load of bias tile Bij from global to shared memory
+    // used for efficient load of bias tile Bij from global to shared memory.
+    // Use kAlignmentA so the unaligned kernel path (kIsAligned=false) uses
+    // narrower vectorized loads (64-bit instead of 128-bit), matching the
+    // relaxed alignment requirement for Q/K/V. This allows bias_strideM
+    // (= total_kv_length) to be any multiple of 4 elements (fp16) rather
+    // than requiring a multiple of 8.
     using BiasLoader = TileSmemLoader<
         scalar_t,
         cutlass::MatrixShape<kQueriesPerBlock, kKeysPerBlock>,
         MmaCore::kThreads,
-        // input restriction: kv_len has to be a multiple of this value
-        128 / cutlass::sizeof_bits<scalar_t>::value>;
+        kAlignmentA>;
 
     // Epilogue to store to shared-memory in a format that we can use later for
     // the second matmul
@@ -651,6 +684,12 @@ struct AttentionKernel {
     XFORMERS_CHECK(
         p.custom_mask_type < NumCustomMaskTypes,
         "invalid value for `custom_mask_type`");
+    if (p.window_size > 0) {
+      XFORMERS_CHECK(
+          p.custom_mask_type == CausalFromTopLeft ||
+              p.custom_mask_type == CausalFromBottomRight,
+          "invalid value for custom_mask_type");
+    }
     return true;
   }
 
@@ -726,6 +765,13 @@ struct AttentionKernel {
     // Iterate through keys
     for (int32_t iter_key_start = 0; iter_key_start < p.num_keys;
          iter_key_start += kKeysPerBlock) {
+      if (p.window_size > 0) {
+        // don't compute anything if below attention band
+        if (iter_key_start + kKeysPerBlock <
+            static_cast<int32_t>(query_start + p.causal_diagonal_offset) - p.window_size) {
+          continue;
+        }
+      }
       int32_t problem_size_0_m =
           cutlass::fast_min((int32_t)kQueriesPerBlock, p.num_queries);
       int32_t problem_size_0_n = cutlass::fast_min(
@@ -870,9 +916,14 @@ struct AttentionKernel {
       // first masked element is x = y + offset -> query_start + offset There is
       // intersection (and we need to mask) if min(iter_key_start +
       // kKeysPerBlock, num_keys)) >= query_start + offset
+      // NOTE: query_start is uint32_t and causal_diagonal_offset can be negative
+      // (CausalFromBottomRight with num_keys < num_queries, onnx#8068 / ORT #28904). Cast query_start
+      // to int32_t so this comparison is performed in signed arithmetic; otherwise the RHS wraps
+      // to ~4.29e9, the guard is always false, and the per-element causal mask is skipped
+      // entirely (boundary query rows then attend one extra key).
       if (p.custom_mask_type &&
           cutlass::fast_min(iter_key_start + kKeysPerBlock, p.num_keys) >=
-              (query_start + p.causal_diagonal_offset)) {
+              (static_cast<int32_t>(query_start) + p.causal_diagonal_offset)) {
         auto query_start = blockIdx.x * kQueriesPerBlock;
         auto lane_offset = MM0::AccumLambdaIterator::get_lane_offset(
             my_lane_id, my_warp_id, iteratorC_tile_offset);
@@ -894,6 +945,44 @@ struct AttentionKernel {
             },
             [&](int accum_m) {});
       }
+
+      // Mask out lower left corner of block if window_size > 0
+      // only required if current block intersects with the lower left corner
+      // block starts at x_lowerleft = iter_key_start // y = query_start +
+      // kQueriesPerBlock first non masked value at this y is : x_first =
+      // query_start + kQueriesPerBlock - window_size mask if x_fist >
+      // x_lowerleft
+
+      // Mirrors the signed-comparison hardening of the "Mask out last if causal" guard above
+      // (onnx#8068 / ORT #28904): query_start is uint32_t, so cast it to int32_t to keep this
+      // relational comparison in signed arithmetic. Dormant today (window_size > 0 never co-occurs
+      // with a negative causal_diagonal_offset — opset-24 Attention hard-codes window=-1, GQA/Paged
+      // keep offset >= 0), but this prevents an unsigned-wrap landmine if a future sliding-window /
+      // KV-trimming caller combines window_size > 0 with a negative offset.
+      if (p.window_size > 0 &&
+          (static_cast<int32_t>(query_start) + p.causal_diagonal_offset +
+               cutlass::fast_min(
+                   static_cast<int32_t>(kQueriesPerBlock), static_cast<int32_t>(p.num_queries)) -
+               p.window_size >=
+           iter_key_start)) {
+        auto query_start = blockIdx.x * kQueriesPerBlock;
+        auto lane_offset = MM0::AccumLambdaIterator::get_lane_offset(
+            my_lane_id, my_warp_id, iteratorC_tile_offset);
+        int32_t first_col;
+        const int32_t offset = query_start + p.causal_diagonal_offset -
+                               p.window_size - iter_key_start;
+        MM0::AccumLambdaIterator::iterateRows(
+            lane_offset,
+            [&](int accum_m) { first_col = accum_m + offset; },
+            [&](int accum_m, int accum_n, int idx) {
+              if (accum_n <= first_col) {
+                accum[idx] =
+                    -cutlass::platform::numeric_limits<accum_t>::infinity();
+              }
+            },
+            [&](int accum_m) {});
+      }
+
       // Update `mi` from accum stored in registers
       // Also does accum[i] <- exp(accum[i] - mi)
       iterative_softmax<typename MM0::Mma::Operator::IteratorC>(
@@ -1036,9 +1125,18 @@ struct AttentionKernel {
         }
 
         if (!kKeepOutputInRF) {
+          int first_key = 0;
+          if (p.window_size > 0) {
+            first_key = (cutlass::fast_max(
+                             static_cast<int>(query_start + p.causal_diagonal_offset) -
+                                 p.window_size + 1,
+                             0) /
+                         kKeysPerBlock) *
+                        kKeysPerBlock;
+          }
           MM1::Mma::drain_cp_asyncs();
           DISPATCH_BOOL(
-              iter_key_start == 0, kIsFirst, ([&] {
+              iter_key_start == first_key, kIsFirst, ([&] {
                 DISPATCH_BOOL(
                     (iter_key_start + kKeysPerBlock) >= p.num_keys,
                     kIsLast,
@@ -1050,15 +1148,15 @@ struct AttentionKernel {
                       using EpilogueOutputOp = typename cutlass::epilogue::
                           thread::MemoryEfficientAttentionNormalize<
                               typename cutlass::platform::conditional<
-                                  kIsLast,
+                                  kIsLast::value,
                                   output_t,
                                   output_accum_t>::type,
                               output_accum_t,
                               DefaultOp::kCount,
                               typename DefaultOp::ElementAccumulator,
                               ElementCompute,
-                              kIsFirst,
-                              kIsLast,
+                              kIsFirst::value,
+                              kIsLast::value,
                               cutlass::Array<ElementCompute, kQueriesPerBlock>>;
                       using Epilogue = typename cutlass::epilogue::threadblock::
                           EpiloguePipelined<
@@ -1066,7 +1164,7 @@ struct AttentionKernel {
                               typename MM1::Mma::Operator,
                               DefaultEpilogue::kPartitionsK,
                               typename cutlass::platform::conditional<
-                                  kIsLast,
+                                  kIsLast::value,
                                   typename MM1::OutputTileIterator,
                                   typename MM1::OutputTileIteratorAccum>::type,
                               typename DefaultEpilogue::
@@ -1084,7 +1182,7 @@ struct AttentionKernel {
                       int col = blockN * MM1::Mma::Shape::kN;
                       auto source_iter = createOutputAccumIter(col);
                       auto dest_iter = call_conditional<
-                          kIsLast,
+                          kIsLast::value,
                           decltype(createOutputIter),
                           decltype(createOutputAccumIter)>::
                           apply(createOutputIter, createOutputAccumIter, col);

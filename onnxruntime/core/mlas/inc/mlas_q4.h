@@ -57,10 +57,10 @@ MlasQ4GemmPackBSize(
  *
  * @param QType      type of block quantization
  * @param PackedBuf  destination buffer
- * @param FpData     the pointer to fp32 matrix
- * @param N          the number of columns of matrix B.
- * @param K          the number of rows of matrix B.
- * @param ldb        leading dimension of B
+ * @param FpData     the pointer to fp32 matrix, with shape [K, N].
+ * @param N          the number of columns of matrix B (Output Channels).
+ * @param K          the number of rows of matrix B (Input Channels).
+ * @param ldb        leading dimension of FpData (usually N)
 */
 void
 MLASCALL
@@ -266,7 +266,7 @@ MlasBlockwiseQuantizedShape(
 /**
  * @brief Compute the sizes of the quantized data and quantization parameter buffers.
  *
- * @param qbits                             The bit width of each quantized value.
+ * @tparam qbits                            The bit width of each quantized value.
  * @param block_size                        The number of quantized values in a block.
  * @param columnwise                        Whether a block contains values from a matrix column (true) or row (false).
  * @param rows                              Number of matrix rows.
@@ -277,9 +277,9 @@ MlasBlockwiseQuantizedShape(
  *
  * If the qbits or block_size values are unsupported the output sizes will be zero.
  */
+template<int qbits>
 void MLASCALL
 MlasBlockwiseQuantizedBufferSizes(
-    int qbits,
     int block_size,
     bool columnwise,
     int rows,

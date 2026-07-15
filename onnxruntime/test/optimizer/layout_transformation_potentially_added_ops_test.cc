@@ -5,7 +5,7 @@
 
 #include "gtest/gtest.h"
 
-#include "onnx/defs/schema.h"
+#include "core/graph/onnx_protobuf.h"
 
 #include "core/graph/constants.h"
 

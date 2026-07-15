@@ -8,9 +8,11 @@
 #include <vector>
 #include <sstream>
 #include "core/common/common.h"
+#include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocation_planner.h"
 #include "core/framework/execution_frame.h"
+#include "core/framework/resource_accountant.h"
 #include "core/framework/stream_execution_context.h"
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
@@ -104,7 +106,7 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
   const int input_count = op_kernel_context->InputCount();
   for (auto i = 0; i < input_count; i++) {
     const OrtValue* p_input = op_kernel_context->GetInputMLValue(i);
-    if (p_input != nullptr && p_input->IsTensor() && p_input->IsAllocated()) {
+    if (p_input != nullptr && p_input->IsAllocated() && p_input->IsTensor()) {
       const OpKernelInfo& op_kernel_info = p_op_kernel->Info();
       const Tensor* p_tensor = nullptr;
       bool is_param = op_kernel_info.TryGetConstantInput(i, &p_tensor);
@@ -154,8 +156,8 @@ std::string ComposeSeriesName(const GraphViewer& graph_viewer) {
 class SessionScope {
  public:
   friend class KernelScope;
-  SessionScope(const SessionState& session_state, const ExecutionFrame& frame)
-      : session_state_(session_state)
+  SessionScope(const SessionState& session_state, const ExecutionFrame& frame, profiling::Profiler* run_profiler)
+      : session_state_(session_state), run_profiler_(run_profiler)
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
         ,
         frame_(frame)
@@ -172,13 +174,10 @@ class SessionScope {
 #endif
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
         ,
-        dump_context_{
-            session_state_.GetGraphExecutionCounter(), 0}
+        dump_context_{session_state_.GetGraphExecutionCounter(), 0}
 #endif
   {
-    if (session_state_.Profiler().IsEnabled()) {
-      session_start_ = session_state.Profiler().Start();
-    }
+    session_start_ = StartProfilingIfEnabled();
 
     auto& logger = session_state_.Logger();
     VLOGS(logger, 0) << "Begin execution";
@@ -224,9 +223,8 @@ class SessionScope {
     }
 #endif
 
-    if (session_state_.Profiler().IsEnabled()) {
-      session_state_.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_);
-    }
+    StopProfilingIfEnabled(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_);
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     auto& logger = session_state_.Logger();
     for (auto i : frame_.GetStaticMemorySizeInfo()) {
@@ -251,11 +249,52 @@ class SessionScope {
   }
 #endif
 
+  bool IsRunProfilingEnabled() const {
+    return run_profiler_ && run_profiler_->IsEnabled();
+  }
+
+  profiling::Profiler* GetRunProfiler() const { return run_profiler_; }
+
+  void StopProfilingIfEnabled(profiling::EventCategory category,
+                              const std::string& event_name,
+                              const TimePoint& start_time,
+                              InlinedHashMap<std::string, std::string> event_args = {}) {
+    const bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
+    const bool run_profiling_enabled = IsRunProfilingEnabled();
+
+    if (session_profiling_enabled) {
+      session_state_.Profiler().EndTimeAndRecordEvent(category,
+                                                      event_name,
+                                                      start_time,
+                                                      std::move(event_args));
+    } else if (run_profiling_enabled) {
+      run_profiler_->EndTimeAndRecordEvent(category,
+                                           event_name,
+                                           start_time,
+                                           std::move(event_args));
+    }
+  }
+
+  TimePoint StartProfilingIfEnabled() {
+    const bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
+    const bool run_profiling_enabled = IsRunProfilingEnabled();
+
+    if (session_profiling_enabled) {
+      return session_state_.Profiler().Start();
+    } else if (run_profiling_enabled) {
+      return run_profiler_->Start();
+    }
+    return TimePoint{};
+  }
+
  private:
   const SessionState& session_state_;
+  profiling::Profiler* run_profiler_;
   TimePoint session_start_;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   const ExecutionFrame& frame_;
+#endif
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Whether memory profiler need create events and flush to file.
   // For partial graph run, when the last subgraph of the whole graph is executing, we need flush to file.
   bool flush_memory_info_ = true;
@@ -325,6 +364,7 @@ class KernelScope {
         forward_range.End();
         backward_range.Begin();
       }
+      node_compute_range_.Begin();
     }
 #endif
 
@@ -337,19 +377,33 @@ class KernelScope {
     utils::DumpNodeInputs(dump_context_, kernel_context_, kernel_.Node(), session_state_, session_scope_.dump_analysis_);
 #endif
 
-#ifdef ENABLE_NVTX_PROFILE
-    node_compute_range_.Begin();
-#endif
+    const bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
+    const bool run_profiling_enabled = session_scope_.IsRunProfilingEnabled();
 
-    if (session_state_.Profiler().IsEnabled()) {
+    if (session_profiling_enabled || run_profiling_enabled) {
       auto& node = kernel.Node();
       node_name_ = node.Name().empty() ? MakeString(node.OpType(), "_", node.Index()) : node.Name();
       concurrency::ThreadPool::StartProfiling(session_state_.GetThreadPool());
       VLOGS(session_state_.Logger(), 1) << "Computing kernel: " << node_name_;
-      kernel_begin_time_ = session_state_.Profiler().Start();
+
+      kernel_begin_time_ = session_scope_.StartProfilingIfEnabled();
+
       CalculateTotalInputSizes(&kernel_context, &kernel_,
                                input_activation_sizes_, input_parameter_sizes_,
                                node_name_, input_type_shape_);
+
+      // Sample allocator memory stats before kernel execution
+      ep_allocator_ = session_state_.GetAllocator(kernel_.Info().GetDevice(OrtMemTypeDefault));
+      if (ep_allocator_) {
+        AllocatorStats stats_before;
+        ep_allocator_->GetStats(&stats_before);
+        if (stats_before.num_allocs > 0 || stats_before.bytes_limit != 0) {
+          has_meaningful_stats_ = true;
+          mem_in_use_before_ = stats_before.bytes_in_use;
+          mem_requested_in_use_before_ = stats_before.bytes_requested_in_use;
+          mem_total_allocated_before_ = stats_before.total_allocated_bytes;
+        }
+      }
     }
   }
 
@@ -360,26 +414,58 @@ class KernelScope {
     node_compute_range_.End();
 #endif
 
-    if (session_state_.Profiler().IsEnabled()) {
-      auto& profiler = session_state_.Profiler();
+    const bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
+    const bool run_profiling_enabled = session_scope_.IsRunProfilingEnabled();
+
+    if (session_profiling_enabled || run_profiling_enabled) {
       std::string output_type_shape_;
       CalculateTotalOutputSizes(&kernel_context_, total_output_sizes_, node_name_, output_type_shape_);
-      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                     node_name_ + "_kernel_time",
-                                     kernel_begin_time_,
-                                     // Log additional operation args / info.
-                                     {
-                                         {"op_name", kernel_.KernelDef().OpName()},
-                                         {"provider", kernel_.KernelDef().Provider()},
-                                         {"node_index", std::to_string(kernel_.Node().Index())},
-                                         {"activation_size", std::to_string(input_activation_sizes_)},
-                                         {"parameter_size", std::to_string(input_parameter_sizes_)},
-                                         {"output_size", std::to_string(total_output_sizes_)},
-                                         {"input_type_shape", input_type_shape_},
-                                         {"output_type_shape", output_type_shape_},
-                                         {"thread_scheduling_stats",
-                                          concurrency::ThreadPool::StopProfiling(session_state_.GetThreadPool())},
-                                     });
+
+      InlinedHashMap<std::string, std::string> event_args = {
+          {"op_name", kernel_.KernelDef().OpName()},
+          {"provider", kernel_.KernelDef().Provider()},
+          {"node_index", std::to_string(kernel_.Node().Index())},
+          {"activation_size", std::to_string(input_activation_sizes_)},
+          {"parameter_size", std::to_string(input_parameter_sizes_)},
+          {"output_size", std::to_string(total_output_sizes_)},
+          {"input_type_shape", input_type_shape_},
+          {"output_type_shape", output_type_shape_},
+          {"thread_scheduling_stats",
+           concurrency::ThreadPool::StopProfiling(session_state_.GetThreadPool())},
+      };
+
+      // Emit memory stats after kernel execution.
+      // ~KernelScope is noexcept, and plugin EP allocators (IAllocatorWrappingOrtAllocator)
+      // can throw from GetStats. Catch only that call and skip mem_* args on failure.
+      if (has_meaningful_stats_) {
+        AllocatorStats stats_after;
+        bool has_stats_after = false;
+        ORT_TRY {
+          ep_allocator_->GetStats(&stats_after);
+          has_stats_after = true;
+        }
+        ORT_CATCH(...) {
+          // Swallow GetStats errors — profiling stats are best-effort and must not crash.
+        }
+
+        if (has_stats_after) {
+          // Actual bytes requested by user code (excludes internal padding/fragmentation)
+          event_args["mem_bytes_requested_in_use"] = std::to_string(stats_after.bytes_requested_in_use);
+          event_args["mem_requested_in_use_delta"] = std::to_string(stats_after.bytes_requested_in_use - mem_requested_in_use_before_);
+          // Bytes in use including arena internal padding
+          event_args["mem_bytes_in_use"] = std::to_string(stats_after.bytes_in_use);
+          event_args["mem_in_use_delta"] = std::to_string(stats_after.bytes_in_use - mem_in_use_before_);
+          event_args["mem_in_use_peak"] = std::to_string(stats_after.max_bytes_in_use);
+          // Total device memory held by the allocator (not available to other applications)
+          event_args["mem_arena_held"] = std::to_string(stats_after.total_allocated_bytes);
+          event_args["mem_arena_held_delta"] = std::to_string(stats_after.total_allocated_bytes - mem_total_allocated_before_);
+        }
+      }
+
+      session_scope_.StopProfilingIfEnabled(profiling::NODE_EVENT,
+                                            node_name_ + "_kernel_time",
+                                            kernel_begin_time_,
+                                            std::move(event_args));
     }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
@@ -413,6 +499,16 @@ class KernelScope {
   size_t input_parameter_sizes_{};
   size_t total_output_sizes_{};
   std::string input_type_shape_;
+
+  // Memory profiling: allocator stats sampled before/after kernel execution.
+  // has_meaningful_stats_ is true when the allocator has been used (num_allocs > 0) or reports a
+  // memory limit (bytes_limit != 0), indicating it implements stats tracking. This avoids emitting
+  // empty stats for allocators that don't support GetStats() or haven't been used yet.
+  AllocatorPtr ep_allocator_;
+  bool has_meaningful_stats_{false};
+  int64_t mem_in_use_before_{0};
+  int64_t mem_requested_in_use_before_{0};
+  int64_t mem_total_allocated_before_{0};
 
 #ifdef CONCURRENCY_VISUALIZER
   diagnostic::span span_;
@@ -448,7 +544,8 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
                                      *p_kernel,
                                      ctx.GetLogger(),
                                      terminate_flag,
-                                     ctx.GetDeviceStream(stream_idx));
+                                     ctx.GetDeviceStream(stream_idx),
+                                     session_scope.GetRunProfiler());
   onnxruntime::Status status;
   auto& logger = ctx.GetLogger();
   if (p_kernel->IsAsync()) {
@@ -487,7 +584,71 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
       }
 #else
       status = p_kernel->Compute(&kernel_ctx);
+
+#if !defined(ORT_MINIMAL_BUILD)
+      auto* node_stats_recorder = ctx.GetSessionState().GetNodeStatsRecorder();
+      if (node_stats_recorder != nullptr) {
+        const auto& node = p_kernel->Node();
+        const OpKernelInfo& op_kernel_info = p_kernel->Info();
+        const auto input_defs = node.InputDefs();
+
+        // Lets first check if any inputs are initializers,
+        // if so we need to account for their memory usage.
+        SafeInt<int64_t> initializers_size = 0;
+        SafeInt<size_t> input_sizes = 0;
+        for (int i = 0, lim = kernel_ctx.InputCount(); i < lim; ++i) {
+          // Need to get ort_value_index for each input.
+          const OrtValue* p_input = kernel_ctx.GetInputMLValue(i);
+          if (p_input != nullptr && p_input->IsAllocated() && p_input->IsTensor()) {
+            const auto& input_name = input_defs[i]->Name();
+            if (node_stats_recorder->ShouldAccountFor(input_name)) {
+              const Tensor* p_tensor = nullptr;
+              const bool is_constant = op_kernel_info.TryGetConstantInput(i, &p_tensor);
+              if (!is_constant) {
+                p_tensor = &p_input->Get<Tensor>();
+              }
+              input_sizes += p_tensor->SizeInBytes();
+            }
+          }
+        }
+
+        // Get outputs and see if anything were allocated dynamically
+        const auto output_defs = node.OutputDefs();
+        SafeInt<size_t> total_dynamic_sizes = 0;
+        const auto& exec_frame = ctx.GetExecutionFrame();
+        for (int i = 0, lim = kernel_ctx.OutputCount(); i < lim; ++i) {
+          const OrtValue* p_output = kernel_ctx.GetOutputMLValue(i);
+          if (p_output != nullptr && p_output->IsAllocated() && p_output->IsTensor()) {
+            int ort_value_index = kernel_ctx.GetOrtValueIndexForOutput(i);
+            auto maybe_val = exec_frame.GetOrtValueDynamicAllocation(ort_value_index);
+            if (maybe_val.has_value() && node_stats_recorder->ShouldAccountFor(output_defs[i]->Name())) {
+              total_dynamic_sizes += *maybe_val;
+            }
+          }
+        }
+
+        NodeAllocationStats node_stats;
+        node_stats.input_sizes = static_cast<size_t>(input_sizes);
+        node_stats.initializers_sizes = static_cast<size_t>(initializers_size);
+        node_stats.total_dynamic_sizes = total_dynamic_sizes;
+
+        // Get the temporary allocations
+        AllocatorStats temp_stats;
+        if (kernel_ctx.GetAllocatorStats(temp_stats)) {
+          node_stats.total_temp_allocations = narrow<size_t>(temp_stats.total_allocated_bytes);
+        }
+
+        // Record node allocation stats
+        const std::string name = IResourceAccountant::MakeUniqueNodeName(node);
+        node_stats_recorder->ReportNodeStats(name, node_stats);
+      }
 #endif
+#endif
+    }
+    ORT_CATCH(const OnnxRuntimeException& ort_ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = Status(ort_ex.Category(), ort_ex.Code(), ort_ex.what());
+      });
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {
@@ -510,6 +671,7 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
     LOGS(logger, ERROR) << msg_string;
     return Status(status.Category(), status.Code(), msg_string);
   }
+
   ctx.RecycleNodeInputs(idx);
   VLOGS(logger, 0) << "stream " << stream_idx << " launch kernel with idx " << idx;
   return Status::OK();
@@ -525,7 +687,8 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 #endif
                                    const bool& terminate_flag,
                                    const bool only_execute_path_to_fetches,
-                                   bool single_thread_mode) {
+                                   bool single_thread_mode,
+                                   profiling::Profiler* run_profiler) {
   auto* execution_plan = session_state.GetExecutionPlan();
   VLOGS(logger, 0) << "Number of streams: " << execution_plan->execution_plan.size();
   int32_t valid_streams = 0;
@@ -538,7 +701,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 #ifdef ORT_ENABLE_STREAM
   StreamExecutionContext ctx(session_state,
                              valid_streams,
-                             execution_plan->notification_owners,
+                             execution_plan->notification_owner_stream,
                              execution_plan->num_barriers,
                              device_streams,
                              feed_mlvalue_idxs,
@@ -568,7 +731,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
   ORT_UNUSED_PARAMETER(only_execute_path_to_fetches);
 #endif
 
-  SessionScope session_scope(session_state, ctx.GetExecutionFrame());
+  SessionScope session_scope(session_state, ctx.GetExecutionFrame(), run_profiler);
 
   auto* tp = single_thread_mode ? nullptr : session_state.GetInterOpThreadPool();
 
@@ -629,7 +792,7 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
 
   ctx.SetCurrentRange(&state.GetProgramRegions(session_state));
 
-  SessionScope session_scope(session_state, ctx.GetExecutionFrame());
+  SessionScope session_scope(session_state, ctx.GetExecutionFrame(), nullptr);
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Only flush memory info for the 2nd partial graph execution (since ORTModule runs this function twice).

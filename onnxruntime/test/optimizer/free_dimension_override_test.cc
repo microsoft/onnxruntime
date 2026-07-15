@@ -5,7 +5,7 @@
 #include "core/graph/model.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_mgr.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/test_environment.h"
 #include "gtest/gtest.h"
 #include "core/optimizer/free_dim_override_transformer.h"
@@ -18,7 +18,7 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
 
-void TestFreeDimensions(FreeDimensionOverrideType overrideType) {
+void TestFreeDimensions(FreeDimensionOverrideType overrideType, TransformerLevel level) {
   auto model_uri = ORT_TSTR("testdata/abs_free_dimensions.onnx");
 
   std::shared_ptr<Model> model;
@@ -43,9 +43,9 @@ void TestFreeDimensions(FreeDimensionOverrideType overrideType) {
   auto graph_transformer = std::make_unique<FreeDimensionOverrideTransformer>(overrides);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr(5);
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(graph_transformer), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(graph_transformer), level));
 
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1,
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, level,
                                                               DefaultLoggingManager().DefaultLogger()));
 
   // Verify that the shape of the input graph has the correct values
@@ -73,8 +73,10 @@ void TestFreeDimensions(FreeDimensionOverrideType overrideType) {
 }
 
 TEST(FreeDimensionOverrideDenotationTransformerTest, Test) {
-  TestFreeDimensions(FreeDimensionOverrideType::Denotation);
-  TestFreeDimensions(FreeDimensionOverrideType::Name);
+  TestFreeDimensions(FreeDimensionOverrideType::Denotation, TransformerLevel::Level1);
+  TestFreeDimensions(FreeDimensionOverrideType::Name, TransformerLevel::Level1);
+  TestFreeDimensions(FreeDimensionOverrideType::Denotation, TransformerLevel::Default);
+  TestFreeDimensions(FreeDimensionOverrideType::Name, TransformerLevel::Default);
 }
 
 }  // namespace test

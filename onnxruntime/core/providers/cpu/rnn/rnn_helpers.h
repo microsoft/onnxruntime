@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <initializer_list>
+
 #ifdef _WIN32
 #pragma warning(disable : 4267)
 #endif
@@ -42,6 +44,27 @@ inline Direction MakeDirection(const std::string& direction) {
   }
   ORT_THROW("Invalid 'direction' argument of '", direction,
             "'. Must be one of 'forward', 'reverse', or 'bidirectional'.");
+}
+
+inline size_t CalculateBufferElementCount(std::initializer_list<int> dimensions) {
+  SafeInt<size_t> count{1};
+
+  for (int dimension : dimensions) {
+    count *= dimension;
+  }
+
+  return count;
+}
+
+inline int CalculateOutputStepLength(int batch_size, int hidden_size, int num_directions, Direction direction) {
+  SafeInt<int> output_step_length{batch_size};
+  output_step_length *= hidden_size;
+
+  if (direction == kForward && num_directions == 2) {
+    output_step_length *= 2;
+  }
+
+  return output_step_length;
 }
 
 /** Allocate a unique_ptr using allocator_, and return a span to the allocated memory so usage is safe
@@ -146,7 +169,8 @@ void ComputeGemm(const int M,
                  TSpanCIter C,
                  TSpanCIter C_end,
                  const int ldc,
-                 concurrency::ThreadPool* thread_pool) {
+                 concurrency::ThreadPool* thread_pool,
+                 const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
   // validate all the inputs
   // need to use the lda/ldb/ldc strides which should be >= the columns for the span
   ORT_ENFORCE(lda >= K && ldb >= K && ldc >= N);
@@ -159,7 +183,7 @@ void ComputeGemm(const int M,
       M, N, K, alpha,
       &*A, lda,
       &*B, ldb, beta,
-      &*C, ldc, thread_pool);
+      &*C, ldc, thread_pool, mlas_backend_kernel_selector_config);
 }
 
 struct PackedWeights {
@@ -241,7 +265,8 @@ void ComputeGemm(const int M,
                  const int ldc,
                  uint8_t* /* quantized_A_buffer */,
                  int32_t* /* quantize_agg_C_buffer */,
-                 concurrency::ThreadPool* thread_pool);
+                 concurrency::ThreadPool* thread_pool,
+                 const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);
 
 void ComputeGemm(const int M,
                  const int N,
@@ -256,7 +281,8 @@ void ComputeGemm(const int M,
                  const int ldc,
                  uint8_t* quantized_A_buffer,
                  int32_t* quantize_agg_C_buffer,
-                 concurrency::ThreadPool* thread_pool);
+                 concurrency::ThreadPool* thread_pool,
+                 const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);
 
 // helper to call the above pointer versions with spans
 template <typename GemmWeightsType>
@@ -271,7 +297,8 @@ inline void ComputeGemm(const int M,
                         const int ldc,
                         uint8_t* quantized_A_buffer,
                         int32_t* quantize_agg_C_buffer,
-                        concurrency::ThreadPool* thread_pool) {
+                        concurrency::ThreadPool* thread_pool,
+                        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
   ComputeGemm(M,
               N,
               K,
@@ -283,7 +310,8 @@ inline void ComputeGemm(const int M,
               ldc,
               quantized_A_buffer,
               quantize_agg_C_buffer,
-              thread_pool);
+              thread_pool,
+              mlas_backend_kernel_selector_config);
 }
 
 // helper to convert a span to a raw pointer

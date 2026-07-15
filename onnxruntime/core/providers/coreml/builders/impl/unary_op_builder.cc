@@ -18,6 +18,11 @@ class UnaryOpBuilder : public BaseOpBuilder {
   bool SupportsMLProgram() const override { return true; }
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
+
+  // Of the unary ops this builder handles, only Ceil is cheap enough to count
+  // as trivial. Erf/Round/Exp/Reciprocal/Sqrt are all transcendental or
+  // multi-cycle ops and earn their own marshalling cost.
+  bool IsTrivial(const Node& node) const override { return node.OpType() == "Ceil"; }
 };
 
 Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
@@ -25,7 +30,6 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   const auto& op_type(node.OpType());
   const auto& input_defs(node.InputDefs());
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
 
@@ -38,6 +42,14 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
       coreml_op_type = "erf";
     } else if (op_type == "Round") {
       coreml_op_type = "round";
+    } else if (op_type == "Exp") {
+      coreml_op_type = "exp";
+    } else if (op_type == "Sin") {
+      coreml_op_type = "sin";
+    } else if (op_type == "Cos") {
+      coreml_op_type = "cos";
+    } else if (op_type == "Ceil") {
+      coreml_op_type = "ceil";
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "UnaryOpBuilder::AddToModelBuilderImpl, unexpected op: ", op_type);
@@ -58,9 +70,7 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     AddOperationOutput(*op, *node.OutputDefs()[0]);
 
     model_builder.AddOperation(std::move(op));
-  } else  // NOLINT
-#endif    // defined (COREML_ENABLE_MLPROGRAM)
-  {
+  } else {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
     if (op_type == "Sqrt") {
@@ -82,8 +92,14 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
 bool UnaryOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                        const logging::Logger& /*logger*/) const {
-  if (!input_params.create_mlprogram && (node.OpType() == "Erf" || node.OpType() == "Round")) {
-    return false;
+  if (!input_params.create_mlprogram) {
+    // These ops only have an ML Program lowering; the NeuralNetwork
+    // UnaryFunctionLayerParams has no equivalent.
+    const auto& op_type = node.OpType();
+    if (op_type == "Erf" || op_type == "Round" || op_type == "Exp" ||
+        op_type == "Sin" || op_type == "Cos" || op_type == "Ceil") {
+      return false;
+    }
   }
   return true;
 }

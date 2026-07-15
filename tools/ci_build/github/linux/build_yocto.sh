@@ -40,7 +40,7 @@ fi
 
 YOCTO_CONTAINER="arm_yocto"
 docker rm -f $YOCTO_CONTAINER || true
-docker run --name $YOCTO_CONTAINER --volume $TARGET_FOLDER/fsl-arm-yocto-bsp:/fsl-arm-yocto-bsp --volume $SOURCE_ROOT:/onnxruntime_src $YOCTO_IMAGE /bin/bash /onnxruntime_src/tools/ci_build/github/linux/yocto_build_toolchain.sh -y $YOCTO_VERSION &
+docker run -e SYSTEM_COLLECTIONURI --name $YOCTO_CONTAINER --volume $TARGET_FOLDER/fsl-arm-yocto-bsp:/fsl-arm-yocto-bsp --volume $SOURCE_ROOT:/onnxruntime_src $YOCTO_IMAGE /bin/bash /onnxruntime_src/tools/ci_build/github/linux/yocto_build_toolchain.sh -y $YOCTO_VERSION &
 
 wait $!
 

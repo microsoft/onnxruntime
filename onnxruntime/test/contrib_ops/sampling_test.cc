@@ -18,7 +18,7 @@ namespace onnxruntime {
 namespace test {
 
 #if defined(__linux__) && !defined(__ANDROID__)
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 TEST(SamplingTest, Gpt2Sampling_GPU) {
   std::vector<int32_t> input_ids{
       0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620,
@@ -73,10 +73,6 @@ TEST(SamplingTest, Gpt2Sampling_GPU) {
   OrtCUDAProviderOptionsV2 cuda_options;
   cuda_options.use_tf32 = false;
   session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
-#else  // USE_ROCM
-  OrtROCMProviderOptions rocm_options;
-  // TODO - verify the default settings
-  session_options.AppendExecutionProvider_ROCM(rocm_options);
 #endif
 
   Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_sampling.onnx"), session_options);

@@ -52,4 +52,6 @@ namespace Dml
     void RegisterDmlOperators(IMLOperatorRegistry* registry);
     void RegisterCpuOperatorsAsDml(onnxruntime::KernelRegistry* registry);
 
+    void getDMLDevice(onnxruntime::IExecutionProvider* provider, _COM_Outptr_ IDMLDevice** dmlDevice);
+
 } // namespace Dml

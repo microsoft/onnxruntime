@@ -22,7 +22,7 @@ Status EliminateDropout::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule
 bool EliminateDropout::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
   // We currently support elimination for Dropout operator v1, v6, v7, v10 and v12.
   // REVIEW(mzs): v10 implementation does not exist.
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", {1, 6, 7, 10, 12, 13})) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", {1, 6, 7, 10, 12, 13, 22})) {
     return false;
   }
 
@@ -32,7 +32,7 @@ bool EliminateDropout::SatisfyCondition(const Graph& graph, const Node& node, co
   //    2. ratio input is not a graph input, so it cannot be overridden
 
   // support opset 12 and above for ort training
-  if (graph_utils::MatchesOpSinceVersion(node, {12, 13}) && node.InputDefs().size() > 1) {
+  if (graph_utils::MatchesOpSinceVersion(node, {12, 13, 22}) && node.InputDefs().size() > 1) {
     if (graph_utils::IsGraphInput(graph, node.InputDefs()[1])) {
       return false;
     }
@@ -41,7 +41,11 @@ bool EliminateDropout::SatisfyCondition(const Graph& graph, const Node& node, co
       return false;
     }
     int32_t data_type = initializer->data_type();
-    Initializer ratio(*initializer, graph.ModelPath());
+    Initializer ratio(graph, *initializer, graph.ModelPath());
+    // Dropout 'ratio' must be a scalar/1-element tensor.
+    if (ratio.size() != 1) {
+      return false;
+    }
     switch (data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
         if (*ratio.data<float>() > 0.f) {

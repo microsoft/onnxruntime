@@ -61,7 +61,7 @@ void PadAndUnflattenImpl(cudaStream_t stream,
       output_data);
 }
 
-#define PAD_AND_UNFLATTEN_IMPL(T)                                       \
+#define PAD_AND_UNFLATTEN_IMPL(T)                                                   \
   template void PadAndUnflattenImpl<T>(cudaStream_t stream,                         \
                                        const int64_t total_element_count,           \
                                        const fast_divmod output_element_stride_fdm, \

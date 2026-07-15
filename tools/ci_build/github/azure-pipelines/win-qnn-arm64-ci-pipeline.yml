@@ -33,11 +33,14 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: 2.30.0.250109
+  default: 2.42.0.251225
 
 jobs:
 - job: 'BUILD_QNN_EP'
-  pool: 'onnxruntime-qnn-windows-vs-2022-arm64'
+  pool:
+    name: 'onnxruntime-qnn-windows-vs-2022-arm64'
+    demands:
+      - Agent.Version -equals 4.264.2
   variables:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     buildArch: arm64
@@ -50,19 +53,21 @@ jobs:
     matrix:
       SHARED_LIB:
         QnnLibKind: 'shared_lib'
+        # We currently do not have a standalone Windows ARM64 CI pipeline for the CPU EP,
+        # so we enable --enable_arm_neon_nchwc for additional coverage of the NCHWc code paths in the CPU EP.
+        # Once we have a standalone Windows ARM64 CI pipeline for the CPU EP, we can consider adding --enable_arm_neon_nchwc
+        # to that pipeline and removing it from this pipeline since this pipeline is primarily for testing the QNN EP.
+        ExtraQnnBuildArgs: '--client_package_build --enable_arm_neon_nchwc'
       STATIC_LIB:
         QnnLibKind: 'static_lib'
+        ExtraQnnBuildArgs: ''
+      SHARED_LIB_GENERIC_INTERFACE:
+        QnnLibKind: 'shared_lib'
+        # Note: Building ORT with generic ep interface which only builds the provider-bridge APIs for
+        # various EPs, but does not build the actual EPs. We enable --build_wheel for additional code coverage
+        # because the python bindings also use the USE_<EP>_PROVIDER_INTERFACE preprocessor macros.
+        ExtraQnnBuildArgs: '--enable_generic_interface --build_wheel'
   steps:
-
-  - script: |
-      MKDIR $(Agent.ToolsDirectory)\Python\3.11.0\arm64
-      XCOPY /s /y /h /e /c /q "C:\Python\Python311\*.*" $(Agent.ToolsDirectory)\Python\3.11.0\arm64\
-      COPY NUL $(Agent.ToolsDirectory)\Python\3.11.0\arm64.complete
-      DIR $(Agent.ToolsDirectory)\Python
-      DIR $(Agent.ToolsDirectory)\Python\3.11.0
-      DIR $(Agent.ToolsDirectory)\Python\3.11.0\arm64
-    displayName: Copy python 3.11.0 version to agent tools directory
-
   - task: UsePythonVersion@0
     inputs:
       versionSpec: '3.x'
@@ -85,10 +90,10 @@ jobs:
         --config $(BuildConfig)
         --build_dir $(Build.BinariesDirectory)
         --cmake_generator "Visual Studio 17 2022"
-        --build_shared_lib
+        --build_shared_lib --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         --use_qnn $(QnnLibKind)
         --qnn_home $(QnnSDKRootDir)
-        --update --build --parallel
+        --update --build --parallel $(ExtraQnnBuildArgs)
 
   - script: |
       python $(Build.SourcesDirectory)\tools\ci_build\build.py ^
@@ -98,7 +103,7 @@ jobs:
         --build_shared_lib ^
         --use_qnn $(QnnLibKind) ^
         --qnn_home $(QnnSDKRootDir) ^
-        --test --enable_onnx_tests
+        --test --enable_onnx_tests $(ExtraQnnBuildArgs)
     displayName: 'Run unit tests'
 
   - script: |

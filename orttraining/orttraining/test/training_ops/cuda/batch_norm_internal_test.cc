@@ -14,7 +14,7 @@ namespace test {
 
 using namespace onnxruntime::test;
 
-#if USE_CUDA || USE_ROCM
+#if USE_CUDA
 static void TestBatchNormInternal(bool test_double = false, bool T_is_half = false,
                                   bool T1_is_half = false, bool T2_is_half = false,
                                   const std::vector<int64_t>& input_output_dims = {2, 2, 2, 2}) {
@@ -137,11 +137,9 @@ TEST(CudaKernelTest, BNInternalBasic) {  // float case
   TestBatchNormInternal();
 }
 
-#ifndef USE_ROCM                          // MIOpen does not support double type
 TEST(CudaKernelTest, BNInternalDouble) {  // double case
   TestBatchNormInternal(true);
 }
-#endif  // ndef USE_ROCM
 
 TEST(CudaKernelTest, BNInternalHalf) {  // half case
   TestBatchNormInternal(false, true, true, true);
@@ -196,7 +194,7 @@ TEST(CudaKernelTest, BNInternal1DInput) {  // float case, 1d input
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
-#endif  // USE_CUDA || USE_ROCM
+#endif  // USE_CUDA
 
 }  // namespace test
 }  // namespace contrib

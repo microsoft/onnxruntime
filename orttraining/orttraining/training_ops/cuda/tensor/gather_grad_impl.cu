@@ -70,14 +70,14 @@ void GetSortedIndices(
       nullptr, temp_storage_size_bytes,
       dX_indices, dX_indices_sorted.get(),
       dY_indices.get(), dY_indices_sorted.get(),
-      num_gathered_indices, 0, sizeof(TIndex)*8, stream));
+      num_gathered_indices, 0, sizeof(TIndex) * 8, stream));
 
   auto temp_storage = allocator.GetScratchBuffer<void>(temp_storage_size_bytes);
   CUDA_CALL_THROW(cub::DeviceRadixSort::SortPairs(
       temp_storage.get(), temp_storage_size_bytes,
       dX_indices, dX_indices_sorted.get(),
       dY_indices.get(), dY_indices_sorted.get(),
-      num_gathered_indices, 0, sizeof(TIndex)*8, stream));
+      num_gathered_indices, 0, sizeof(TIndex) * 8, stream));
 
   dX_indices_sorted_out = std::move(dX_indices_sorted);
   dY_indices_sorted_out = std::move(dY_indices_sorted);

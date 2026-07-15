@@ -1,9 +1,8 @@
 # Dockerfiles
 **Execution Providers**
 - CPU: [Dockerfile](Dockerfile.source), [Instructions](#cpu)
-- CUDA/cuDNN: [Dockerfile](Dockerfile.cuda), [Instructions](#cuda)
+- CUDA: [Dockerfile](Dockerfile.cuda), [Instructions](#cuda)
 - MIGraphX: [Dockerfile](Dockerfile.migraphx), [Instructions](#migraphx)
-- ROCm: [Dockerfile](Dockerfile.rocm), [Instructions](#rocm)
 - OpenVINO: [Dockerfile](Dockerfile.openvino), [Instructions](#openvino)
 - TensorRT: [Dockerfile](Dockerfile.tensorrt), [Instructions](#tensorrt)
 - VitisAI: [Dockerfile](Dockerfile.vitisai)
@@ -35,7 +34,7 @@
 The docker file supports both x86_64 and ARM64(aarch64). You may use docker's "--platform" parameter to explicitly specify which CPU architecture you want to build. For example:
 
 ```bash
-  docker build --platform linux/arm64/v8 -f Dockerfile.source
+  docker build --platform linux/arm64/v8 -f Dockerfile.source ..
 ```
 However, we cannot build the code for 32-bit ARM in such a way since a 32-bit compiler/linker might not have enough memory to generate the binaries.
 
@@ -303,18 +302,4 @@ Note: When running the container you built in Docker, please either use 'nvidia-
 
   ```
   docker run -it --device=/dev/kfd --device=/dev/dri --group-add video onnxruntime-migraphx
-  ```
-
-   ## ROCm
-**Ubuntu 22.04, ROCm6.2.3**
-
-1. Build the docker image from the Dockerfile in this repository.
-  ```
-  docker build -t onnxruntime-rocm -f Dockerfile.rocm .
-  ```
-
-2. Run the Docker image
-
-  ```
-  docker run -it --device=/dev/kfd --device=/dev/dri --group-add video onnxruntime-rocm
   ```

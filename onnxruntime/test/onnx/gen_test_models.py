@@ -3,11 +3,15 @@
 # Licensed under the MIT License.
 import argparse
 import os
+import warnings
 from datetime import date
 
 import numpy as np
 import onnx
 from onnx import AttributeProto, GraphProto, TensorProto, helper, numpy_helper, utils  # noqa: F401
+
+# Suppress protobuf deprecation warnings from onnx internals (label() -> is_required()/is_repeated())
+warnings.filterwarnings("ignore", message="label\\(\\) is deprecated", category=DeprecationWarning)
 
 
 def parse_arguments():
@@ -94,7 +98,7 @@ def generate_size_op_test(type, X, test_folder):
 
 
 def generate_reducesum_op_test(X, test_folder):
-    type = onnx.mapping.NP_TYPE_TO_TENSOR_TYPE[X.dtype]
+    type = helper.np_dtype_to_tensor_dtype(X.dtype)
     data_dir = os.path.join(test_folder, "test_data_0")
     os.makedirs(data_dir, exist_ok=True)
     # Create one output (ValueInfoProto)

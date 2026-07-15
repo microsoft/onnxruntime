@@ -5,7 +5,9 @@
 
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
 #include "core/providers/cuda/tunable/math/matmul.h"
+#endif
 
 namespace onnxruntime {
 namespace cuda {
@@ -121,9 +123,11 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
   if (GetTuningContext()->IsTunableOpEnabled()) {
     return tunable::TunableMatMul<T>(alpha_, trans_a, trans_b, trans_batch_a_, trans_batch_b_, helper, this, ctx);
   }
+#endif
 
   return ComputeDefault(ctx, helper);
 }
@@ -219,9 +223,9 @@ Status FuncMatMul(
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(A->Data<T>()), helper.LeftOffsets(), A_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(B->Data<T>()), helper.RightOffsets(), B_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<CudaT*>(Y->MutableData<T>()), helper.OutputOffsets(), Y_arrays.CpuSpan());
-  ORT_RETURN_IF_ERROR(A_arrays.CopyToGpu(ctx->GetComputeStream()));
-  ORT_RETURN_IF_ERROR(B_arrays.CopyToGpu(ctx->GetComputeStream()));
-  ORT_RETURN_IF_ERROR(Y_arrays.CopyToGpu(ctx->GetComputeStream()));
+  ORT_RETURN_IF_ERROR(A_arrays.CopyToGpu(cuda_kernel->GetComputeStream(ctx)));
+  ORT_RETURN_IF_ERROR(B_arrays.CopyToGpu(cuda_kernel->GetComputeStream(ctx)));
+  ORT_RETURN_IF_ERROR(Y_arrays.CopyToGpu(cuda_kernel->GetComputeStream(ctx)));
 
   // TF32 provides a huge performance gain for training and inference while preserving FP32 levels of accuracy.
   // It requires Ampere or newer GPU, and pointers of matrices shall be aligned (ideal alignment is 16-byte).
@@ -370,9 +374,9 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(left_X->Data<T>()), helper.LeftOffsets(), left_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(right_X->Data<T>()), helper.RightOffsets(), right_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<CudaT*>(Y->MutableData<T>()), helper.OutputOffsets(), output_arrays.CpuSpan());
-  ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu(ctx->GetComputeStream()));
-  ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu(ctx->GetComputeStream()));
-  ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu(ctx->GetComputeStream()));
+  ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu(this->GetComputeStream(ctx)));
+  ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu(this->GetComputeStream(ctx)));
+  ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu(this->GetComputeStream(ctx)));
 
   // TF32 provides a huge performance gain for training and inference while preserving FP32 levels of accuracy.
   // It requires Ampere or newer GPU, and pointers of matrices shall be aligned (ideal alignment is 16-byte).

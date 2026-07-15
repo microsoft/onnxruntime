@@ -8,7 +8,6 @@ set -e
 set -x
 
 ls /build
-ls /build/deps
 
 # User inputs
 USE_QNN=${1:-0}  # by default qnn will not be included in package

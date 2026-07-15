@@ -23,7 +23,7 @@ def prepare_dir(path):
 def _extract_value_info(arr, name, ele_type=None):
     return onnx.helper.make_tensor_value_info(
         name=name,
-        elem_type=ele_type if ele_type else onnx.mapping.NP_TYPE_TO_TENSOR_TYPE[arr.dtype],
+        elem_type=ele_type if ele_type else onnx.helper.np_dtype_to_tensor_dtype(arr.dtype),
         shape=arr.shape,
     )
 

@@ -7,8 +7,15 @@
 #include <unordered_map>
 
 #include "common.h"
+#include "ort_instance_data.h"
 #include "tensor_helper.h"
 #include "inference_session_wrap.h"
+
+// napi_float16_array was added in Node.js 23 (N-API version 10).
+// Define it for older Node.js versions to support Float16Array input tensors.
+#ifndef napi_float16_array
+#define napi_float16_array static_cast<napi_typedarray_type>(11)
+#endif
 
 // make sure consistent with origin definition
 static_assert(ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == 0, "definition not consistent with OnnxRuntime");
@@ -195,9 +202,20 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
 
       auto tensorDataTypedArray = tensorDataValue.As<Napi::TypedArray>();
       std::underlying_type_t<napi_typedarray_type> typedArrayType = tensorDataValue.As<Napi::TypedArray>().TypedArrayType();
-      ORT_NAPI_THROW_TYPEERROR_IF(DATA_TYPE_TYPEDARRAY_MAP[elemType] != typedArrayType, env,
-                                  "Tensor.data must be a typed array (", DATA_TYPE_TYPEDARRAY_MAP[elemType], ") for ",
-                                  tensorTypeString, " tensors, but got typed array (", typedArrayType, ").");
+
+      // For float16 tensors, accept both Uint16Array and Float16Array.
+      // Float16Array is a newer JavaScript type (ES2024) that may be passed by users.
+      // Both use 16-bit storage, so they are compatible at the binary level.
+      bool isValidTypedArray = (DATA_TYPE_TYPEDARRAY_MAP[elemType] == typedArrayType);
+      if (!isValidTypedArray && elemType == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
+        // Accept Float16Array (napi_float16_array = 11) for float16 tensors
+        isValidTypedArray = (typedArrayType == napi_float16_array);
+      }
+
+      ORT_NAPI_THROW_TYPEERROR_IF(!isValidTypedArray, env,
+                                  "Tensor.data must be a typed array (", DATA_TYPE_TYPEDARRAY_MAP[elemType],
+                                  elemType == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 ? " or Float16Array" : "",
+                                  ") for ", tensorTypeString, " tensors, but got typed array (", typedArrayType, ").");
 
       char* buffer = reinterpret_cast<char*>(tensorDataTypedArray.ArrayBuffer().Data());
       size_t bufferByteOffset = tensorDataTypedArray.ByteOffset();
@@ -250,7 +268,7 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
   // location
   auto memoryInfo = value.GetTensorMemoryInfo();
   bool isGpuBuffer = memoryInfo.GetDeviceType() == OrtMemoryInfoDeviceType_GPU &&
-                     memoryInfo.GetAllocatorName() == "WebGPU_Buffer";
+                     memoryInfo.GetAllocatorName() == "WebGPU_Buf";
 
   // size
   auto size = tensorTypeAndShapeInfo.GetElementCount();
@@ -275,12 +293,18 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
     }
 
     // new Tensor("string", stringArray /* string[] */, dims /* number[] */)
-    return scope.Escape(InferenceSessionWrap::GetTensorConstructor().New({Napi::String::New(env, "string"), stringArray, dims}));
+    return scope.Escape(OrtInstanceData::TensorConstructor(env)
+                            .New({Napi::String::New(env, "string"),
+                                  stringArray,
+                                  dims}));
   } else {
     // number data
     if (isGpuBuffer) {
       // Tensor.fromGpuBuffer(buffer, options)
-      Napi::Function tensorFromGpuBuffer = InferenceSessionWrap::GetTensorConstructor().Value().Get("fromGpuBuffer").As<Napi::Function>();
+      Napi::Function tensorFromGpuBuffer = OrtInstanceData::TensorConstructor(env)
+                                               .Value()
+                                               .Get("fromGpuBuffer")
+                                               .As<Napi::Function>();
       OrtValue* underlyingOrtValue = value.release();
 
       auto options = Napi::Object::New(env);
@@ -311,10 +335,10 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
       NAPI_THROW_IF_FAILED(env, status, Napi::Value);
 
       // new Tensor(type, typedArrayData, dims)
-      return scope.Escape(InferenceSessionWrap::GetTensorConstructor().New(
-          {type,
-           Napi::Value(env, typedArrayData),
-           dims}));
+      return scope.Escape(OrtInstanceData::TensorConstructor(env)
+                              .New({type,
+                                    Napi::Value(env, typedArrayData),
+                                    dims}));
     }
   }
 }

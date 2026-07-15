@@ -1,13 +1,16 @@
 // Copyright (C) Intel Corporation
 // Licensed under the MIT License
-
 #include <algorithm>
 #include <sstream>
 #include <fstream>
 #include <utility>
 
+#include <filesystem>
+#include <stdexcept>
+
 #include "openvino/pass/convert_fp32_to_fp16.hpp"
 #include "openvino/pass/constant_folding.hpp"
+#include "openvino/runtime/intel_npu/level_zero/level_zero.hpp"
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/backend_utils.h"
 #include "core/providers/openvino/ov_interface.h"
@@ -16,41 +19,51 @@ using Exception = ov::Exception;
 
 namespace onnxruntime {
 namespace openvino_ep {
+
 namespace backend_utils {
 
 bool IsDebugEnabled() {
-  const std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_DEBUG");
+  static std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_DEBUG");
   if (!env_name.empty()) {
     return true;
   }
   return false;
+}
+
+std::string GetPerfCountDumpPath() {
+  static std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_PERF_COUNT");
+  return env_name;
 }
 
 bool IsCILogEnabled() {
-  const std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG");
+  static std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG");
   if (!env_name.empty()) {
     return true;
   }
   return false;
 }
 
-struct static_cast_int64 {
-  template <typename T1>  // T1 models type statically convertible to T
-  int64_t operator()(const T1& x) const { return static_cast<int64_t>(x); }
-};
-
 std::shared_ptr<const OVNetwork>
-CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context,
+CreateOVModel(std::string&& model,
+              const SessionContext& session_context,
               std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map) {
   if (IsCILogEnabled()) {
     std::cout << "CreateNgraphFunc" << std::endl;
   }
-  const std::string model = model_proto.SerializeAsString();
   try {
-    auto ov_model = global_context.ie_core.ReadModel(model, global_context.onnx_model_path_name);
+    auto ov_model = OVCore::Get()->ReadModel(std::move(model), session_context.onnx_model_path_name.string());
 
+    if (!session_context.reshape.empty()) {
+      LOGS_DEFAULT(INFO) << log_tag << "Reshaping the ov tensor to specified shape";
+      ov_model->reshape(session_context.reshape);
+    }
+
+    if (!session_context.layout.empty()) {
+      LOGS_DEFAULT(INFO) << log_tag << "Setting the ov tensor layout to specified layout";
+      ov_model = Set_Layout(ov_model, session_context.layout);
+    }
     // Check for Constant Folding
-    if ((global_context.device_type != "NPU") && !global_context.is_wholly_supported_graph) {
+    if ((session_context.device_type != "NPU") && !session_context.is_wholly_supported_graph) {
       ov::pass::ConstantFolding pass_const_obj;
       pass_const_obj.run_on_model(ov_model);
       auto& results = const_cast<ov::ResultVector&>(ov_model.get()->get_results());
@@ -79,38 +92,12 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
 }
 
 Ort::UnownedValue
-GetOutputTensor(Ort::KernelContext& context, size_t batch_size,
-                OVInferRequestPtr infer_request,
-                std::string output_name,
-                std::unordered_map<std::string, int> output_names) {
-  auto graph_output_blob = infer_request->GetTensor(output_name);
-
-  auto graph_output_dims = graph_output_blob->get_shape();
-
-  if (batch_size > 1) {
-    // Add the batch size as dim 0.
-    graph_output_dims.insert(graph_output_dims.begin(), batch_size);
-  }
-  size_t num_dims = graph_output_dims.size();
-  std::unique_ptr<int64_t[]> output_shape(new int64_t[num_dims]);
-  for (size_t j = 0; j < num_dims; j++) {
-    output_shape[j] = static_cast<int64_t>(graph_output_dims[j]);
-  }
-  auto it = output_names.find(output_name);
-  if (it == output_names.end()) {
-    ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
-  }
-  int index = it->second;
-  return context.GetOutput(index, output_shape.get(), num_dims);
-}
-
-Ort::UnownedValue
 GetOutputTensor(Ort::KernelContext& context,
                 std::string output_name,
-                std::unordered_map<std::string, int> output_names,
+                const SubGraphContext::string_index_map_t& output_names,
                 std::shared_ptr<ov::Node> node) {
   // Find position of '/' in the output_name
-  int pos = output_name.find("/");
+  auto pos = output_name.find("/");
   // Copy the substring from start to pos
   output_name = output_name.substr(0, pos);
 
@@ -119,23 +106,53 @@ GetOutputTensor(Ort::KernelContext& context,
     ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
   }
   int index = it->second;
-  auto shape = node->get_shape();
+  auto output_shape = ParameterShape::ToOrtShape(node->get_shape());
 
-  size_t num_dims = shape.size();
-  std::unique_ptr<int64_t[]> output_shape(new int64_t[num_dims]);
-  for (size_t j = 0; j < num_dims; j++) {
-    output_shape[j] = static_cast<int64_t>(shape[j]);
-  }
-  return context.GetOutput(index, output_shape.get(), num_dims);
+  return context.GetOutput(index, output_shape);
 }
 
-int GetFirstAvailableDevice(GlobalContext& global_context) {
+std::shared_ptr<OVNetwork> Set_Layout(std::shared_ptr<OVNetwork> ov_model, const layout_t& layout) {
+  ov::preprocess::PrePostProcessor preproc(ov_model);
+
+  const auto& inputs = ov_model->inputs();
+  const auto& outputs = ov_model->outputs();
+
+  auto find_tensor_index = [](const std::vector<ov::Output<ov::Node>>& tensors, const std::string& name) -> std::optional<size_t> {
+    for (size_t i = 0; i < tensors.size(); ++i) {
+      const auto& tensor = tensors[i];
+      if (tensor.get_any_name() == name || tensor.get_tensor().get_names().count(name) > 0) {
+        return i;
+      }
+    }
+    return std::nullopt;
+  };
+
+  for (const auto& [tensor_name, layout_value] : layout) {
+    bool tensor_found = false;
+
+    if (auto input_idx = find_tensor_index(inputs, tensor_name)) {
+      preproc.input(*input_idx).tensor().set_layout(layout_value);
+      tensor_found = true;
+    } else if (auto output_idx = find_tensor_index(outputs, tensor_name)) {
+      preproc.output(*output_idx).tensor().set_layout(layout_value);
+      tensor_found = true;
+    }
+
+    if (!tensor_found) {
+      LOGS_DEFAULT(WARNING) << "Tensor '" << tensor_name << "' not found in model inputs or outputs";
+    }
+  }
+
+  return preproc.build();
+}
+
+int GetFirstAvailableDevice(SessionContext& session_context) {
   int i = 0;
   // Get the first available VAD-M device and set the device to busy
   while (i < 8) {
-    bool device = global_context.deviceAvailableList[i];
+    bool device = session_context.deviceAvailableList[i];
     if (device) {
-      global_context.deviceAvailableList[i] = false;
+      session_context.deviceAvailableList[i] = false;
       break;
     }
     i++;
@@ -144,9 +161,9 @@ int GetFirstAvailableDevice(GlobalContext& global_context) {
   // make all remaining devices free
   if (i == 8) {
     i = 0;
-    global_context.deviceAvailableList[i] = false;
+    session_context.deviceAvailableList[i] = false;
     for (int j = 1; j < 8; j++) {
-      global_context.deviceAvailableList[j] = true;
+      session_context.deviceAvailableList[j] = true;
     }
   }
   return i;
@@ -155,23 +172,23 @@ int GetFirstAvailableDevice(GlobalContext& global_context) {
 void FillOutputsWithConstantData(std::shared_ptr<ov::Node> node, Ort::UnownedValue& out_tensor) {
   switch (node->get_element_type()) {
     case ov::element::Type_t::f32: {
-      FillOutputHelper<float>(out_tensor, node);
+      FillOutputHelper<float>(out_tensor, std::move(node));
       break;
     }
     case ov::element::Type_t::boolean: {
-      FillOutputHelper<char>(out_tensor, node);
+      FillOutputHelper<char>(out_tensor, std::move(node));
       break;
     }
     case ov::element::Type_t::i32: {
-      FillOutputHelper<int32_t>(out_tensor, node);
+      FillOutputHelper<int32_t>(out_tensor, std::move(node));
       break;
     }
     case ov::element::Type_t::i64: {
-      FillOutputHelper<int64_t>(out_tensor, node);
+      FillOutputHelper<int64_t>(out_tensor, std::move(node));
       break;
     }
     case ov::element::Type_t::f16: {
-      FillOutputHelper<float>(out_tensor, node);
+      FillOutputHelper<float>(out_tensor, std::move(node));
       break;
     }
     default:
@@ -211,22 +228,10 @@ void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
   std::memcpy(input_data, batch_memory_offset, input_data_size);
 }
 
-void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
-                    size_t batch_slice_idx) {
-  auto output_data = outputBlob->data();
-  size_t output_data_size = outputBlob->get_byte_size();
-  char* tensor_data = output_tensor.GetTensorMutableData<char>();
-  char* batch_memory_offset = tensor_data + output_data_size * batch_slice_idx;
-  std::memcpy(batch_memory_offset, output_data, output_data_size);
-}
-
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
-                            std::ostream& stream, std::string deviceName) {
-  int64_t totalTime = 0;
+                            std::ostream& stream) {
   // Print performance counts
-  stream << std::endl
-         << "performance counts:" << std::endl
-         << std::endl;
+  stream << "Layer Name,Status,Layer Type,Real Time (us),Exec Type" << std::endl;
 
   for (const auto& it : performanceMap) {
     std::string toPrint(it.node_name);
@@ -236,35 +241,60 @@ void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
       toPrint = it.node_name.substr(0, maxLayerName - 4);
       toPrint += "...";
     }
-    stream << std::setw(maxLayerName) << std::left << toPrint;
+    stream << toPrint << ",";
+
     switch (it.status) {
       case OVProfilingInfo::Status::EXECUTED:
-        stream << std::setw(15) << std::left << "EXECUTED";
+        stream << "EXECUTED"
+               << ",";
         break;
       case OVProfilingInfo::Status::NOT_RUN:
-        stream << std::setw(15) << std::left << "NOT_RUN";
+        stream << "NOT_RUN"
+               << ",";
         break;
       case OVProfilingInfo::Status::OPTIMIZED_OUT:
-        stream << std::setw(15) << std::left << "OPTIMIZED_OUT";
+        stream << "OPTIMIZED_OUT"
+               << ",";
         break;
     }
-    stream << std::setw(30) << std::left << "layerType: " + std::string(it.node_type) + " ";
-    stream << std::setw(20) << std::left << "realTime: " + std::to_string(it.real_time.count());
-    stream << std::setw(20) << std::left << "cpu: " + std::to_string(it.cpu_time.count());
-    stream << " execType: " << it.exec_type << std::endl;
-    if (it.real_time.count() > 0) {
-      totalTime += it.real_time.count();
-    }
+    stream << std::string(it.node_type) << ",";
+    stream << it.real_time.count() << ",";
+    stream << std::string(it.exec_type) << std::endl;
   }
-  stream << std::setw(20) << "Total time: " + std::to_string(totalTime) << " microseconds" << std::endl;
-  std::cout << std::endl;
-  std::cout << "Full device name: " << deviceName << std::endl;
-  std::cout << std::endl;
 }
 
-void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std::string deviceName) {
-  auto performanceMap = request->GetNewObj().get_profiling_info();
-  printPerformanceCounts(performanceMap, stream, std::move(deviceName));
+void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream) {
+  auto performanceMap = request->GetInfReq().get_profiling_info();
+  if (!performanceMap.empty()) {
+    printPerformanceCounts(performanceMap, stream);
+  }
+}
+
+bool IsModelStreamXML(std::istream& model_stream) {
+  std::streampos originalPos = model_stream.tellg();
+
+  // first, get the total size of model_stream in bytes
+  model_stream.seekg(0, std::ios::end);
+  auto end_pos = model_stream.tellg();
+  //  Restore the stream position
+  model_stream.seekg(originalPos);
+  auto total_size = end_pos - originalPos;
+
+  // Choose 32 bytes to hold content of:
+  // '<?xml version-"1.0"?> <net '
+  const std::streamsize header_check_len = 32;
+  ORT_ENFORCE(total_size > header_check_len);
+
+  // read 32 bytes into header
+  std::string header(header_check_len, '\0');
+  model_stream.read(&header[0], header_check_len);
+  // Clear any read errors
+  model_stream.clear();
+  // Restore the stream position
+  model_stream.seekg(originalPos);
+
+  // return true if the header starts with '<?xml' and also includes '<net '
+  return ((header.rfind("<?xml", 0) == 0) && (header.find("<net ") != std::string::npos));
 }
 
 }  // namespace backend_utils

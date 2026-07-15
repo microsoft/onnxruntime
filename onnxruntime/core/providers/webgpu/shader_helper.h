@@ -3,15 +3,18 @@
 
 #pragma once
 
+#include <span>
 #include <sstream>
 
-#include <webgpu/webgpu_cpp.h>
+#include "core/providers/webgpu/webgpu_external_header.h"
 
 #include "core/framework/tensor_shape.h"
 
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_variable.h"
 #include "core/providers/webgpu/string_utils.h"
+
+#include "core/providers/webgpu/wgsl_templates/wgsl_gen.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -65,8 +68,9 @@ class ShaderHelper final {
  public:
   ShaderHelper(const ProgramBase& program,
                const ProgramMetadata& program_metadata,
-               const wgpu::Device& device,
-               const wgpu::Limits& limits,
+               const WebGpuContext& webgpu_context,
+               const std::span<uint32_t> inputs_segments,
+               const std::span<uint32_t> outputs_segments,
                uint32_t dispatch_group_size_x,
                uint32_t dispatch_group_size_y,
                uint32_t dispatch_group_size_z);
@@ -86,7 +90,7 @@ class ShaderHelper final {
                                         ShaderUsage usage = ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseUniform);
 
   // Add an indices variable to the shader.
-  const ShaderIndicesHelper& AddIndices(const std::string& name, bool use_uniform = true);
+  const ShaderIndicesHelper& AddIndices(const std::string& name, ShaderUsage usage = ShaderUsage::UseUniform);
 
   // Get the string stream for additional implementation code to the shader.
   inline OStringStream& AdditionalImplementation() {
@@ -104,7 +108,7 @@ class ShaderHelper final {
 
  private:
   template <typename ConstantType>  // ConstantType is one of {ProgramConstant, ProgramOverridableConstantValue, ProgramOverridableConstantDefinition}
-  void WriteConstantValue(std::ostream& ss, const ConstantType& constant) const {
+  void WriteConstantValue(OStringStream& ss, const ConstantType& constant) const {
     switch (constant.type) {
       case ProgramConstantDataType::Float16:
         ss << constant.f16.ToFloat();
@@ -126,10 +130,11 @@ class ShaderHelper final {
     }
   }
 
-  const ShaderVariableHelper& AddVariableImpl(bool is_input,
-                                              const std::string& name,
-                                              ShaderUsage usage,
-                                              const TensorShape& dims);
+  ShaderVariableHelper& AddVariableImpl(bool is_input,
+                                        const std::string& name,
+                                        ShaderUsage usage,
+                                        const TensorShape& dims,
+                                        uint32_t segments);
 
 #ifndef NDEBUG  // if debug build
   Status ValidateVariable(const ProgramInput& input, const ShaderVariableHelper& var) const;
@@ -151,11 +156,13 @@ class ShaderHelper final {
   // \param code The generated full WGSL source code.
   // \param shape_uniform_ranks The ranks for variables that need a uniform for the shape.
   //
-  Status GenerateSourceCode(std::string& code, std::vector<int>& shape_uniform_ranks) const;
+  Status GenerateSourceCode(std::string& code, std::vector<int>& shape_uniform_ranks);
   friend class ProgramManager;
 
-  const wgpu::Device& device_;
+  const WebGpuContext& webgpu_context_;
   const wgpu::Limits& limits_;
+  const std::span<uint32_t> inputs_segments_;
+  const std::span<uint32_t> outputs_segments_;
   uint32_t dispatch_group_size_x_;
   uint32_t dispatch_group_size_y_;
   uint32_t dispatch_group_size_z_;
@@ -163,12 +170,12 @@ class ShaderHelper final {
   const ProgramBase& program_;
   const ProgramMetadata& program_metadata_;
 
+  uint32_t numbers_storage_buffers_ = 0;
+
   std::vector<std::unique_ptr<ShaderVariableHelper>> input_vars_;
   std::vector<std::unique_ptr<ShaderVariableHelper>> output_vars_;
   std::vector<std::unique_ptr<ShaderIndicesHelper>> indices_vars_;
-  std::string additional_implementation_;
   OStringStream additional_implementation_ss_;
-  std::string body_;
   OStringStream body_ss_;
 };
 

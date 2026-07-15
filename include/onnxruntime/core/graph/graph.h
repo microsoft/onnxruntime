@@ -27,6 +27,7 @@
 #include "core/common/span_utils.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/prepacked_weights_container.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/basic_types.h"
@@ -39,7 +40,11 @@
 #include "core/graph/node_arg.h"
 #include "core/graph/ort_format_load_options.h"
 
+// Type from Model Editor API in ORT C API so can't be in a namespace
+struct OrtGraph;
+
 namespace onnxruntime {
+class ExternalDataInfo;
 class Graph;
 struct IndexedSubGraph;
 class Model;
@@ -68,7 +73,10 @@ class Node {
     Fused = 1,      ///< The node refers to a function.
   };
 
-  explicit Node() = default;
+  // Constructor and destructor defined out-of-line in graph.cc so that Graph
+  // is a complete type when std::unique_ptr<Graph> in subgraphs_ is destroyed
+  // (required by libc++).
+  explicit Node();
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   Node(std::string_view name,
@@ -77,15 +85,10 @@ class Node {
        gsl::span<NodeArg* const> input_args,
        gsl::span<NodeArg* const> output_args,
        const NodeAttributes* attributes,
-       std::string_view domain) {
-    Init(name, op_type, description,
-         input_args,
-         output_args,
-         attributes, domain);
-  }
+       std::string_view domain);
 #endif
 
-  ~Node() = default;
+  ~Node();
 
   /**
   @class EdgeEnd
@@ -140,6 +143,14 @@ class Node {
    */
   const std::string& Domain() const noexcept { return domain_; }
 
+  /** Gets the overload identifier for model-local function dispatch (IR version 10+).
+   * @remarks Empty string for non-overloaded operators.
+   */
+  const std::string& Overload() const noexcept { return overload_; }
+
+  /** Sets the overload identifier for model-local function dispatch. */
+  void SetOverload(std::string_view overload) { overload_ = overload; }
+
   /** Gets the path of the owning model if any. */
   const std::filesystem::path& ModelPath() const noexcept;
 
@@ -169,7 +180,14 @@ class Node {
   */
   void SetSinceVersion(int since_version) noexcept { since_version_ = since_version; }
 
+  void SetLayeringAnnotation(std::string annotation) { layering_annotation_ = std::move(annotation); }
+
+  const std::string& GetLayeringAnnotation() const noexcept { return layering_annotation_; }
+
+  const Graph* GetContainingGraph() const noexcept { return graph_; }
+
 #if !defined(ORT_MINIMAL_BUILD)
+
   /** Gets the Node's OpSchema.
   @remarks The graph containing this node must be resolved, otherwise nullptr will be returned. */
   const ONNX_NAMESPACE::OpSchema* Op() const noexcept { return op_; }
@@ -251,6 +269,13 @@ class Node {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+  // Make sure that the annotation does not occupy memory after partitioning is done.
+  void ClearLayeringAnnotation() {
+    std::string t;
+    layering_annotation_.swap(t);
+  }
+
   /** Gets a modifiable count of arguments for each of the Node's explicit inputs.
   @todo This should be removed in favor of a method that updates the input args and the count.
         Currently these operations are separate which is not a good setup. */
@@ -561,7 +586,14 @@ class Node {
   // NOTE: This friendship relationship should ONLY be used for calling methods of the Node class and not accessing
   // the data members directly, so that the Node can maintain its internal invariants.
   friend class Graph;
-  Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph), can_be_saved_(true) {}
+  Node(NodeIndex index, Graph& graph);
+
+ protected:
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  // internal only method to allow selected classes to directly alter the input/output definitions and arg counts
+  // made protected to facilitate testing
+  Definitions& MutableDefinitions() noexcept;
+#endif
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Node);
@@ -584,9 +616,6 @@ class Node {
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  // internal only method to allow selected classes to directly alter the input/output definitions and arg counts
-  Definitions& MutableDefinitions() noexcept;
-
   // internal only method to allow selected classes to directly alter the links between nodes.
   Relationships& MutableRelationships() noexcept;
 
@@ -615,6 +644,9 @@ class Node {
 
   // OperatorSet domain of op_type_.
   std::string domain_;
+
+  // Overload identifier for model-local function dispatch (IR version 10+).
+  std::string overload_;
 
 #if !defined(ORT_MINIMAL_BUILD)
   // OperatorSchema that <*this> node refers to.
@@ -676,6 +708,8 @@ class Node {
   // Graph instances for subgraphs that are owned by this Node
   std::vector<std::unique_ptr<Graph>> subgraphs_;
 
+  std::string layering_annotation_;
+
   // Can be saved? The node cannot be saved anymore if removable attributes have been cleared.
   bool can_be_saved_;
 };
@@ -717,11 +751,12 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   /** Replaces the initializer tensor with the same name as the given initializer tensor.
   The replacement initializer tensor must have the same type and shape as the existing initializer tensor.
+  The new_initializer is expected to be either small or have external data reference stored in OrtValue.
 
   Note: This currently has linear time complexity. There is room for improvement but it would likely require changes to
   how initializer tensors are stored and tracked.
   */
-  common::Status ReplaceInitializedTensor(ONNX_NAMESPACE::TensorProto new_initializer);
+  common::Status ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer, const OrtValue& ort_value);
 
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS)
   /** This function takes externally provided data for initializers with external data
@@ -730,7 +765,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   common::Status InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers);
 
   /** This function takes externally provided files in memory for initializers with external
-   *    data and replaces graph initializers with its content.
+   *    data and replaces main graph initializers with its content.
    */
   common::Status InjectExternalInitializersFromFilesInMemory(
       const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files);
@@ -739,8 +774,21 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  /** Add an initializer tensor to the Graph. */
+  /** Add an initializer tensor with embedded/owned data to the Graph. */
   void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto);
+
+  /// <summary>
+  /// Add initializer to the Graph. This method takes a tensor proto that contains
+  /// a data pointer to ort_value. For small tensors (LT utils::kSmallTensorExternalDataThreshold),
+  /// the data would still be contained within tensor_proto, and
+  /// OrtValue would be unallocated in this case, and not added to ortvalue_initializers_.
+  /// </summary>
+  /// <param name="tensor_proto">tensor proto with external data pointing to OrtValue.</param>
+  /// <param name="ort_value_initializer">value that contains the initializer tensor. This must
+  /// be allocated iff tensor_proto uses in-memory external data, and may be unallocated for
+  /// small tensors with embedded data.</param>
+  Status AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                const OrtValue& ort_value_initializer);
 #endif
 
   /** Remove the initializer tensor with the provided name from the Graph. */
@@ -757,11 +805,43 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   bool IsSparseInitializer(const std::string& name) const;
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD)
+  /** Gets the frequency count of weight data types in this graph. */
+  gsl::span<const int32_t> GetWeightDataTypeFrequency() const noexcept {
+    return weight_data_type_freq_;
+  }
+#endif
+
   /** Gets an initializer tensor with the provided name.
   @param[out] value Set to the TensorProto* if the initializer is found, or nullptr if not.
   @returns True if found.
   */
   bool GetInitializedTensor(const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) const;
+
+  /** Populate `value` if an externally allocated OrtValue exists for an initializer with the given name.
+   */
+  bool GetOrtValueInitializer(const std::string& name, OrtValue& value, bool check_outer_scope = false) const;
+
+  /// <summary>
+  /// Loads an initializer with data in an external file into an OrtValue. Does NOT cache the OrtValue
+  /// in this Graph.
+  /// </summary>
+  /// <param name="name">The name of the initializer.</param>
+  /// <param name="value">Output parameter set to the loaded OrtValue. Set to an existing OrtValue if
+  /// it is already loaded.</param>
+  /// <returns>A status indicating an error or success. An error occurs if `name` is not an initializer
+  /// with external data.</returns>
+  Status LoadExternalInitializerAsOrtValue(const std::string& name, OrtValue& value) const;
+
+  /// <summary>
+  /// Gets information (external filepath, file offset, num bytes) for an initializer with data in an external file.
+  /// </summary>
+  /// <param name="name">The initializer's name.</param>
+  /// <param name="ext_info">Output parameter set to the location information of the external data.</param>
+  /// <param name="check_outer_scope">Set to true if parent graphs should be checked.</param>
+  /// <returns>True if `name` refers to an initializer with data in an external file. Otherwise, returns false</returns>
+  bool GetExternalInitializerInfo(const std::string& name, std::unique_ptr<ExternalDataInfo>& ext_info,
+                                  bool check_outer_scope = false) const;
 
   /** Gets all the initializer tensors in this Graph. */
   const InitializedTensorSet& GetAllInitializedTensors() const noexcept { return name_to_initial_tensor_; }
@@ -771,6 +851,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   /** Returns true if an initializer value can be overridden by a graph input with the same name. */
   bool CanOverrideInitializer() const noexcept { return ir_version_ >= 4; }
+
+  /** Returns the ONNX IR version for the model. */
+  Version GetOnnxIRVersion() const noexcept { return ir_version_; }
 
   /** returns the initializer's TensorProto if 'name' is an initializer, is constant and
   cannot be overridden at runtime. If the initializer is not found or is not constant, a nullptr is returned.
@@ -786,6 +869,21 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   @remarks check_outer_scope of true is not supported in a minimal build
   */
   const ONNX_NAMESPACE::TensorProto* GetInitializer(const std::string& name, bool check_outer_scope) const;
+
+  /// <summary>
+  /// Returns the initializer's TensorProto if 'name' is an initializer (either constant or overridable).
+  /// If the initializer is not found, a nullptr is returned. Also returns, via output parameters, the
+  /// OrtValue that holds the actual data (if any) and a boolean that indicates if the initializer is constant.
+  /// </summary>
+  /// <param name="name">The initializer's name.</param>
+  /// <param name="value">Output OrtValue that is populated if the initializer tensor proto has been configured
+  ///                     to use external data that points to an OrtValue. Is set to an unallocated OrtValue for
+  ///                     a tensor proto that holds the weight data (e.g., small initializers).</param>
+  /// <param name="is_constant">Output parameter set to true if the initializer is a constant.</param>
+  /// <param name="check_outer_scope">Checks outer scope if set to true and the graph is a subgraph.</param>
+  /// <returns>The initializer's TensorProto or nullptr.</returns>
+  const ONNX_NAMESPACE::TensorProto* GetInitializer(const std::string& name, OrtValue& value,
+                                                    bool& is_constant, bool check_outer_scope = false) const;
 
   /** Gets the Graph inputs excluding initializers.
   These are the required inputs to the Graph as the initializers can be optionally overridden via graph inputs.
@@ -909,8 +1007,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return const_cast<Graph*>(this)->GetNodeArg(name);
   }
 
-  // search this and up through any parent_graph_ instance for a NodeArg
+  // Searches for a NodeArg in the current graph and its parent graphs, and returns the corresponding mutable NodeArg
   NodeArg* GetNodeArgIncludingParentGraphs(const std::string& node_arg_name);
+
+  // Searches for a NodeArg in the current graph and its parent graphs, and returns the corresponding const NodeArg
+  const NodeArg* GetNodeArgIncludingParentGraphs(const std::string& node_arg_name) const;
 
   /** Gets a mutable NodeArg by name. Creates a new NodeArg that is owned by this Graph if not found.
   @param name The NodeArg name.
@@ -969,6 +1070,41 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                 gsl::span<NodeArg* const> output_args,
                 NodeAttributes&& attributes,
                 const std::string& domain = kOnnxDomain);
+
+  /** Add a Node to this Graph, propagating the layering annotation from an existing node.
+  This is the preferred way to create new nodes in Level 1 (pre-partitioning) graph optimizers.
+  The new node automatically inherits the layering annotation from @p annotation_source, which
+  ensures correct layer-based partitioning when annotations are present.
+  @param name The Node name. Must be unique in this Graph.
+  @param op_type The operator type. e.g. ONNX operator name.
+  @param description Arbitrary description of the Node.
+  @param input_args The explicit inputs to this Node.
+  @param output_args The outputs from this Node.
+  @param annotation_source The node from which to inherit the layering annotation.
+  @param attributes Optional NodeAttributes to add.
+  @param domain The domain for the op_type.
+  @returns Reference to the new Node.
+  @remarks Use this overload in Level 1 optimizers that create nodes replacing or derived from
+  existing annotated nodes. See docs/Optimizer_Layering_Annotations.md for details.
+  */
+  Node& AddNode(const std::string& name,
+                const std::string& op_type,
+                const std::string& description,
+                gsl::span<NodeArg* const> input_args,
+                gsl::span<NodeArg* const> output_args,
+                const Node& annotation_source,
+                const NodeAttributes* attributes = nullptr,
+                const std::string& domain = kOnnxDomain);
+
+  Node& AddNode(const std::string& name,
+                const std::string& op_type,
+                const std::string& description,
+                gsl::span<NodeArg* const> input_args,
+                gsl::span<NodeArg* const> output_args,
+                const Node& annotation_source,
+                NodeAttributes&& attributes,
+                const std::string& domain = kOnnxDomain);
+
   Node& AddNode(const std::string& name,
                 const std::string& op_type,
                 const std::string& description,
@@ -979,6 +1115,21 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return AddNode(name, op_type, description,
                    AsSpan(input_args),
                    AsSpan(output_args),
+                   attributes, domain);
+  }
+
+  Node& AddNode(const std::string& name,
+                const std::string& op_type,
+                const std::string& description,
+                std::initializer_list<NodeArg*> input_args,
+                std::initializer_list<NodeArg*> output_args,
+                const Node& annotation_source,
+                const NodeAttributes* attributes = nullptr,
+                const std::string& domain = kOnnxDomain) {
+    return AddNode(name, op_type, description,
+                   AsSpan(input_args),
+                   AsSpan(output_args),
+                   annotation_source,
                    attributes, domain);
   }
 
@@ -998,6 +1149,21 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   Node& AddNode(const std::string& name,
                 const std::string& op_type,
                 const std::string& description,
+                gsl::span<NodeArg* const> input_args,
+                std::initializer_list<NodeArg*> output_args,
+                const Node& annotation_source,
+                const NodeAttributes* attributes = nullptr,
+                const std::string& domain = kOnnxDomain) {
+    return AddNode(name, op_type, description,
+                   input_args,
+                   AsSpan(output_args),
+                   annotation_source,
+                   attributes, domain);
+  }
+
+  Node& AddNode(const std::string& name,
+                const std::string& op_type,
+                const std::string& description,
                 std::initializer_list<NodeArg*> input_args,
                 gsl::span<NodeArg* const> output_args,
                 const NodeAttributes* attributes = nullptr,
@@ -1005,6 +1171,21 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return AddNode(name, op_type, description,
                    AsSpan(input_args),
                    output_args,
+                   attributes, domain);
+  }
+
+  Node& AddNode(const std::string& name,
+                const std::string& op_type,
+                const std::string& description,
+                std::initializer_list<NodeArg*> input_args,
+                gsl::span<NodeArg* const> output_args,
+                const Node& annotation_source,
+                const NodeAttributes* attributes = nullptr,
+                const std::string& domain = kOnnxDomain) {
+    return AddNode(name, op_type, description,
+                   AsSpan(input_args),
+                   output_args,
+                   annotation_source,
                    attributes, domain);
   }
 
@@ -1152,8 +1333,19 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
-  /** Gets the GraphProto representation of this Graph. */
+  /** Gets the GraphProto representation of this Graph only.
+   * This does not remove in-memory tags for graph initializers.
+   * Use ToGraphProto() const to get a GraphProto that can be serialized externally.
+   */
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
+
+  /// <summary>
+  // This function recurses subgraphs and examines each initializer
+  // If initializer data points to in-memory location, it is inlined
+  // otherwise, the initializer is copied as is including any
+  // external data references.
+  /// </summary>
+  /// <returns>GraphProto</returns>
   ONNX_NAMESPACE::GraphProto ToGraphProto() const;
 
   /** Gets the GraphProto representation of this Graph
@@ -1167,6 +1359,18 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
                                                                   const std::filesystem::path& model_file_path,
                                                                   const ModelSavingOptions& model_saving_options) const;
+
+  /// <summary>
+  /// Serialize the Graph to a onnx::GraphProto. Caller provides a function that determines where each initializer
+  /// is stored (i.e., either in an external file or within the model).
+  /// </summary>
+  /// <param name="handle_initializer_func">Function called for every initializer.</param>
+  /// <param name="state">Opaque user state passed to the handle_initializer_func.</param>
+  /// <param name="graph_proto">Output parameter set to the serialized onnx::GraphProto.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  common::Status ToGraphProtoWithCustomInitializerHandling(OrtGetInitializerLocationFunc handle_initializer_func,
+                                                           void* state,
+                                                           /*out*/ ONNX_NAMESPACE::GraphProto& graph_proto) const;
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;
@@ -1224,10 +1428,12 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   The Graph needs to be Resolve()d after this call.
   @param func_to_inline
+  @param parent_annotation. Annotation inherited from the parent node that is being inlined.
   @returns Status indicating success or providing an error message.
   */
 
-  Status InlineFunctionProto(const ONNX_NAMESPACE::FunctionProto& func_to_inline);
+  Status InlineFunctionProto(const ONNX_NAMESPACE::FunctionProto& func_to_inline,
+                             const std::string& parent_annotation);
 
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
   be used as a GraphProto attribute in another Node.
@@ -1249,10 +1455,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     SetInputs(AsSpan(inputs));
   }
 
-  const Model& GetModel() const {
-    return owning_model_;
-  }
-
   const logging::Logger& GetLogger() const {
     return logger_;
   }
@@ -1270,6 +1472,10 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  const Model& GetModel() const {
+    return owning_model_;
+  }
+
   /** Sets the type of a NodeArg, replacing existing type/shape if any */
   void SetNodeArgType(NodeArg& arg, const ONNX_NAMESPACE::TypeProto& type_proto);
 
@@ -1363,6 +1569,24 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return Resolve(default_options);
   }
 
+  /// <summary>
+  /// This function converts all the graph TensorProto initializers into OrtValues
+  /// and creates a in-memory external data reference for each OrtValue.
+  /// </summary>
+  /// <returns></returns>
+  Status ConvertInitializersIntoOrtValues();
+
+  /**
+   * @brief This function examines the specified initializers in the graph and converts them inline
+   *        if any has external data in memory.
+   *
+   * @param iterators Span of iterators pointing to the initializers and the order that should be processed
+   * @param output_graph_proto The GraphProto to be updated with the modified initializers
+   * @return Status Returns a Status object indicating success or any errors that occurred during conversion
+   */
+  Status RegenerateInitializersAndReplaceInMemory(gsl::span<const InitializedTensorSet::const_iterator> iterators,
+                                                  ONNX_NAMESPACE::GraphProto& output_graph_proto) const;
+
   const std::unordered_set<std::string>& GetOuterScopeNodeArgNames() const noexcept {
     return outer_scope_node_arg_names_;
   }
@@ -1382,6 +1606,34 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   PrepackedWeightsForGraph& GetPrepacked() noexcept {
     return *prepacked_weights_for_graph_;
+  }
+
+  // Tags a fusion-generated initializer (whose name is not stable across sessions) with a stable,
+  // content-derived identity that SessionState uses to key cross-session pre-pack sharing.
+  //
+  // Single-consumer invariant: a MatMulNBits packed buffer folds in the *consuming* node's
+  // scales/zero_points/attributes, not B alone, so this id is meaningful only for a B initializer that
+  // has exactly one consumer. The DQ->MatMulNBits producers guarantee that -- each generated B has a
+  // unique name with a single consumer, and the fusion bails when the source weight/scale is shared (the
+  // DQMatMulNotConvertedToMatMulNBits_SharedWeight case). If a future change ever tags a multi-consumer
+  // initializer whose consumers differ in scales/zp/attrs, they would compute different ids for the same
+  // name and the last writer would silently mis-share. Enforce that a name is never re-tagged with a
+  // conflicting id so the invariant survives later refactors.
+  void SetSharedPrepackInitializerId(const std::string& initializer_name, std::string share_id) {
+    auto it = generated_shared_prepack_ids_.find(initializer_name);
+    if (it != generated_shared_prepack_ids_.end()) {
+      ORT_ENFORCE(it->second == share_id, "MatMulNBits pre-pack sharing id for initializer '",
+                  initializer_name, "' was re-tagged with a different id; the single-consumer invariant ",
+                  "is violated (a multi-consumer weight whose consumers differ in scales/zp/attrs).");
+      return;
+    }
+    generated_shared_prepack_ids_.emplace(initializer_name, std::move(share_id));
+  }
+
+  // Returns the sharing identity for a generated initializer, or nullptr if it was not tagged.
+  const std::string* GetSharedPrepackInitializerId(const std::string& initializer_name) const {
+    auto it = generated_shared_prepack_ids_.find(initializer_name);
+    return it == generated_shared_prepack_ids_.end() ? nullptr : &it->second;
   }
 
   /** Returns the Node containing the GraphProto for this Graph instance if IsSubgraph is true */
@@ -1430,6 +1682,16 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                   const OrtFormatLoadOptions& load_options,
                                   const logging::Logger& logger, std::unique_ptr<Graph>& graph);
 
+  static Status LoadFromModelEditorApiModel(const OrtGraph& api_graph,
+                                            const Model& owning_model,
+                                            const std::unordered_map<std::string, int>& domain_to_version,
+                                            IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+                                            bool strict_shape_type_inference,
+                                            const logging::Logger& logger,
+                                            std::unique_ptr<Graph>& graph);
+
+  Status UpdateUsingModelEditorApiModel(const OrtModel& api_model);
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   const RuntimeOptimizationRecordContainer& RuntimeOptimizations() const {
     return runtime_optimizations_;
@@ -1443,6 +1705,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // compiled model during partitioning, leaving them unused in the ORT Graph. To allow the memory to be freed
   // we need to manually run the cleanup that would usually happen as part of Graph::Resolve.
   Status RemovedUnusedInitializersOrtFormat();
+
+  // This examines all the nodes and removes any annotations that are only used for layering.
+  // This potentially saves memory.
+  Status RemoveAllLayeringAnnotations();
+
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   // This friendship relationship should only be used to call Graph::Graph and
@@ -1490,6 +1757,8 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
 
  private:
+  int32_t weight_data_type_freq_[ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE] = {0};
+
   void InitializeStateFromModelFileGraphProto();
 
   // Add node with specified <node_proto>.
@@ -1502,6 +1771,19 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   */
   Status AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& constant_node_proto,
                                        std::optional<std::string_view> new_name);
+
+  /// <summary>
+  /// This function is used by ToGraphProto() to ensure in-memory external data references
+  /// don't leak externally since they are non-standard.
+  ///
+  /// It is used when GraphSynchronizationNeeded() is false: GraphProto is simply copied
+  ///   from graph_proto_ by ToGraphProto(). This copy includes both main graph
+  ///   and subgraph initializers. This function examines all initializers
+  ///   and inlines any in-memory data references.
+  /// </summary>
+  /// <param name="output_graph_proto">The GraphProto to process</param>
+  /// <returns>Status indicating success or failure</returns>
+  Status ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto) const;
 
   /// <summary>
   /// This function traverses the graph bottom up and externalizes
@@ -1528,6 +1810,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
       std::ostream& external_stream,
       int64_t& external_offset) const;
 
+  Status ToGraphProtoWithCustomInitializerHandlingImpl(OrtGetInitializerLocationFunc handle_initializer_func,
+                                                       void* state,
+                                                       /*out*/ ONNX_NAMESPACE::GraphProto& output_graph_proto) const;
 #endif
 
   Version IrVersion() const noexcept {
@@ -1589,7 +1874,8 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #if !defined(ORT_MINIMAL_BUILD)
   // Build and verify node connection (edges).
   // Verify NodeArg name/type/shape matching correctly.
-  common::Status BuildConnections(std::unordered_set<std::string>& outer_scope_node_args_consumed);
+  common::Status BuildConnections(std::unordered_set<std::string>& outer_scope_node_args_consumed,
+                                  bool& removed_node_with_subgraph);
 
   common::Status VerifyNoDuplicateName();
 
@@ -1609,6 +1895,15 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                                     std::vector<const ONNX_NAMESPACE::TypeProto*>& output_types,
                                                     const Graph::ResolveOptions& options);
 
+  // If ONNX operator's PartialDataPropagationFunction() infers concrete shape values in the output
+  // save them to the output NodeArg as a TensorShapeProto or a scalar value so that downstream (consumer) nodes
+  // can use them later for their TypeAndShapeInferenceFunction() and PartialDataPropagationFunction().
+  common::Status SaveShapeValuesFromDataPropagation(const Node& node, NodeArg& output_def,
+                                                    const ONNX_NAMESPACE::TypeProto& propagated_value_as_type_proto) const;
+
+  // Remove intermediate inferred shape values stored in all NodeArgs to reduce memory usage.
+  common::Status CleanUpShapeValuesFromDataPropagation();
+
   // Apply type-inference and type-checking to all inputs and initializers:
   common::Status TypeCheckInputsAndInitializers();
 
@@ -1627,10 +1922,19 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // so they can be used to resolve outer scope dependencies when running BuildConnections for the subgraphs.
   common::Status SetOuterScopeNodeArgs(const std::unordered_set<std::string>& outer_scope_node_args);
 
-  // Implementation for initializer replacement
-  Status ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initializer, bool is_external);
+  /// <summary>
+  /// Replace initializer with new_initializer.
+  /// </summary>
+  /// <param name="new_initializer"></param>
+  /// <param name="ort_value">ort_value with data, may be empty</param>
+  /// <param name="must_replace_external">This is true when we replace the initializer with external data
+  /// with OrtValue from the customer, in which case we enforce that the original initializer must have external data</param>
+  /// <returns></returns>
+  Status ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initializer,
+                                      OrtValue ort_value, bool must_replace_external);
 
-  std::vector<NodeArg*> CreateNodeArgs(const google::protobuf::RepeatedPtrField<std::string>& names,
+  template <typename StringRange>  // range-initializer returning std::string
+  std::vector<NodeArg*> CreateNodeArgs(const StringRange& names,
                                        const ArgNameToTypeMap& name_to_type_map);
 
   void ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const;
@@ -1694,6 +1998,8 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return nodes_[node_index].get();
   }
 
+  Status LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updating_existing_graph = false);
+
   const Model& owning_model_;
 
   // GraphProto to store name, version, initializer.
@@ -1707,6 +2013,12 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   ONNX_NAMESPACE::GraphProto deserialized_proto_data_;
 
   InitializedTensorSet name_to_initial_tensor_;
+
+  // Initializers that are external to the Graph.
+  // e.g. created from existing memory using CreateTensorWithDataAndDeleterAsOrtValue in the ORT API.
+  // As we need to convert to TensorProto for the optimizers to work and keep the deleter information we store them
+  // in the Graph instance and retrieve during session state finalization.
+  std::unordered_map<std::string, OrtValue> ortvalue_initializers_;
 
   std::unordered_set<std::reference_wrapper<const std::string>,
                      std::hash<std::string>, std::equal_to<std::string>>
@@ -1727,6 +2039,10 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // This is optional due to delayed construction.
   std::optional<PrepackedWeightsForGraph> prepacked_weights_for_graph_;
 
+  // Maps a fusion-generated initializer name to its cross-session sharing identity.
+  // See SetSharedPrepackInitializerId.
+  InlinedHashMap<std::string, std::string> generated_shared_prepack_ids_;
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // Runtime optimization storage.
   // Note: runtime_optimizations_ == *runtime_optimizations_ptr_ and must be initialized
@@ -1744,6 +2060,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // in some case, a fused sub-graph will happens multiple times in one model, we use a map
   // to store reusable-schema in lookup.
   InlinedHashMap<std::string, std::reference_wrapper<ONNX_NAMESPACE::OpSchema>> reusable_fused_schema_map_;
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   // Graph nodes.
@@ -1806,7 +2123,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   std::unordered_map<std::string, std::unordered_set<NodeIndex>> node_arg_to_consumer_nodes_;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-  const std::unordered_map<std::string, int> domain_to_version_;
+  std::unordered_map<std::string, int> domain_to_version_;
 
   // Model IR version.
   Version ir_version_{ONNX_NAMESPACE::Version::IR_VERSION};

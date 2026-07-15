@@ -92,34 +92,21 @@ init_command = [
 is_formatter = true
 
 [[linter]]
-code = 'RUSTFMT'
-include_patterns = ['**/*.rs']
-command = [
-    'python',
-    '-m',
-    'lintrunner_adapters',
-    'run',
-    'rustfmt_linter',
-    '--binary=rustfmt',
-    '--config-path=rust/rustfmt.toml',
-    '--',
-    '@{{PATHSFILE}}'
-]
-is_formatter = true
-
-[[linter]]
 code = 'CLANGFORMAT'
 include_patterns = [
     '**/*.h',
     '**/*.cc',
     '**/*.hpp',
     '**/*.cpp',
+    '**/*.cuh',
+    '**/*.cu',
     '**/*.m',
     '**/*.mm',
 ]
 exclude_patterns = [
     'java/**', # FIXME: Enable clang-format for java
     'onnxruntime/contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/**', # Contains data chunks
+    'onnxruntime/contrib_ops/cuda/llm/fpA_intB_gemm/launchers/*.generated.cu', # Generated code
     'onnxruntime/core/flatbuffers/schema/*.fbs.h', # Generated code
     'onnxruntime/test/flatbuffers/*.fbs.h', # Generated code
     'onnxruntime/core/graph/contrib_ops/quantization_defs.cc',
@@ -129,6 +116,8 @@ exclude_patterns = [
     'winml/lib/Api.Image/shaders/**',  # Contains data chunks
     'onnxruntime/contrib_ops/cuda/bert/flash_attention/flash_fwd_launch_template.h', # Bool Switches hang Clang
     'onnxruntime/core/providers/coreml/mlprogram_test_scripts/**',  # test scripts only
+    'tools/python/wgsl_template/test/testcases/**', # Generated golden fixtures; must match tool output byte-for-byte
+    'tools/python/wgsl_template/test/in_tree_golden/**', # Generated golden snapshots; must match tool output byte-for-byte
 ]
 command = [
     'python',

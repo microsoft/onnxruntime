@@ -25,46 +25,54 @@ static void LearningModelBindingAPITestsClassSetup() {
 
 static void CpuSqueezeNet() {
   std::string cpuInstance("CPU");
-  WINML_EXPECT_NO_THROW(WinML::Engine::Test::ModelValidator::SqueezeNet(
-    cpuInstance,
-    LearningModelDeviceKind::Cpu,
-    /*dataTolerance*/ 0.00001f,
-    false
-  ));
+  WINML_EXPECT_NO_THROW(
+    WinML::Engine::Test::ModelValidator::SqueezeNet(
+      cpuInstance,
+      LearningModelDeviceKind::Cpu,
+      /*dataTolerance*/ 0.00001f,
+      false
+    )
+  );
 }
 
 static void CpuSqueezeNetEmptyOutputs() {
   std::string cpuInstance("CPU");
-  WINML_EXPECT_NO_THROW(WinML::Engine::Test::ModelValidator::SqueezeNet(
-                          cpuInstance,
-                          LearningModelDeviceKind::Cpu,
-                          /*dataTolerance*/ 0.00001f,
-                          false,
-                          OutputBindingStrategy::Empty
-  ););
+  WINML_EXPECT_NO_THROW(
+    WinML::Engine::Test::ModelValidator::SqueezeNet(
+      cpuInstance,
+      LearningModelDeviceKind::Cpu,
+      /*dataTolerance*/ 0.00001f,
+      false,
+      OutputBindingStrategy::Empty
+    );
+  );
 }
 
 static void CpuSqueezeNetUnboundOutputs() {
   std::string cpuInstance("CPU");
-  WINML_EXPECT_NO_THROW(WinML::Engine::Test::ModelValidator::SqueezeNet(
-                          cpuInstance,
-                          LearningModelDeviceKind::Cpu,
-                          /*dataTolerance*/ 0.00001f,
-                          false,
-                          OutputBindingStrategy::Unbound
-  ););
+  WINML_EXPECT_NO_THROW(
+    WinML::Engine::Test::ModelValidator::SqueezeNet(
+      cpuInstance,
+      LearningModelDeviceKind::Cpu,
+      /*dataTolerance*/ 0.00001f,
+      false,
+      OutputBindingStrategy::Unbound
+    );
+  );
 }
 
 static void CpuSqueezeNetBindInputTensorAsInspectable() {
   std::string cpuInstance("CPU");
-  WINML_EXPECT_NO_THROW(WinML::Engine::Test::ModelValidator::SqueezeNet(
-                          cpuInstance,
-                          LearningModelDeviceKind::Cpu,
-                          /*dataTolerance*/ 0.00001f,
-                          false,
-                          OutputBindingStrategy::Bound /* empty outputs */,
-                          true /* bind inputs as inspectables */
-  ););
+  WINML_EXPECT_NO_THROW(
+    WinML::Engine::Test::ModelValidator::SqueezeNet(
+      cpuInstance,
+      LearningModelDeviceKind::Cpu,
+      /*dataTolerance*/ 0.00001f,
+      false,
+      OutputBindingStrategy::Bound /* empty outputs */,
+      true /* bind inputs as inspectables */
+    );
+  );
 }
 
 static void CastMapInt64() {
@@ -287,33 +295,39 @@ static void ZipMapString() {
 
 static void GpuSqueezeNet() {
   std::string gpuInstance("GPU");
-  WINML_EXPECT_NO_THROW(WinML::Engine::Test::ModelValidator::SqueezeNet(
-                          gpuInstance,
-                          LearningModelDeviceKind::DirectX,
-                          /*dataTolerance*/ 0.00001f
-  ););
+  WINML_EXPECT_NO_THROW(
+    WinML::Engine::Test::ModelValidator::SqueezeNet(
+      gpuInstance,
+      LearningModelDeviceKind::DirectX,
+      /*dataTolerance*/ 0.00001f
+    );
+  );
 }
 
 static void GpuSqueezeNetEmptyOutputs() {
   std::string gpuInstance("GPU");
-  WINML_EXPECT_NO_THROW(WinML::Engine::Test::ModelValidator::SqueezeNet(
-                          gpuInstance,
-                          LearningModelDeviceKind::DirectX,
-                          /*dataTolerance*/ 0.00001f,
-                          false,
-                          OutputBindingStrategy::Empty
-  ););
+  WINML_EXPECT_NO_THROW(
+    WinML::Engine::Test::ModelValidator::SqueezeNet(
+      gpuInstance,
+      LearningModelDeviceKind::DirectX,
+      /*dataTolerance*/ 0.00001f,
+      false,
+      OutputBindingStrategy::Empty
+    );
+  );
 }
 
 static void GpuSqueezeNetUnboundOutputs() {
   std::string gpuInstance("GPU");
-  WINML_EXPECT_NO_THROW(WinML::Engine::Test::ModelValidator::SqueezeNet(
-                          gpuInstance,
-                          LearningModelDeviceKind::DirectX,
-                          /*dataTolerance*/ 0.00001f,
-                          false,
-                          OutputBindingStrategy::Unbound
-  ););
+  WINML_EXPECT_NO_THROW(
+    WinML::Engine::Test::ModelValidator::SqueezeNet(
+      gpuInstance,
+      LearningModelDeviceKind::DirectX,
+      /*dataTolerance*/ 0.00001f,
+      false,
+      OutputBindingStrategy::Unbound
+    );
+  );
 }
 
 // Validates that when the input image is the same as the model expects, the binding step is executed correctly.

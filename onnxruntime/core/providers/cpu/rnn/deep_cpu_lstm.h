@@ -16,13 +16,15 @@ namespace onnxruntime {
 /// For details, refer to http://aka.ms/dl-optimization/.
 class DeepCpuLstmOp final : public OpKernel, public LSTMBase {
  public:
-  DeepCpuLstmOp(const OpKernelInfo& info) : OpKernel(info), LSTMBase(info) {}
+  DeepCpuLstmOp(const OpKernelInfo& info) : OpKernel(info), LSTMBase(info) {
+  }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 

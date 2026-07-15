@@ -23,11 +23,10 @@ namespace detail {
 
 /**
  * @brief Convert (4b weights - 8) to fp16 using bits operations.
-*/
+ */
 CUTLASS_DEVICE
-void weightsMinuEight2Half(uint32_t const &weights,
-                  cutlass::Array<cutlass::half_t, 8>& dest)
-{
+void weightsMinuEight2Half(uint32_t const& weights,
+                           cutlass::Array<cutlass::half_t, 8>& dest) {
   // 4b weights are arranged as [0, 2, 4, 6, 1, 3, 5, 7], so that adjacent
   // weights are in adjacent 16b half words.
   //   w & 0x000f000f --> take out element 0, 1
@@ -47,24 +46,23 @@ void weightsMinuEight2Half(uint32_t const &weights,
   //
   // 1.125 instruction per weight, 9 instructions in total.
 
-  uint32_t*      b32s   = reinterpret_cast<uint32_t*>(dest.data());
+  uint32_t* b32s = reinterpret_cast<uint32_t*>(dest.data());
   const uint32_t high_8s = weights >> 8;
 
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 500))
   asm volatile(
-    "  lop3.b32      %0, %4, 0x000f000f, %6, 0xea;\n"
-    "  lop3.b32      %1, %4, 0x00f000f0, %7, 0xea;\n"
-    "  lop3.b32      %2, %5, 0x000f000f, %6, 0xea;\n"
-    "  lop3.b32      %3, %5, 0x00f000f0, %7, 0xea;\n"
-    "  sub.rn.f16x2  %0, %0, %10;\n"         // q_w - 1032.0
-    "  fma.rn.f16x2  %1, %1, %8, %9;\n"     // 1.0 * q_w + (-72.0)
-    "  sub.rn.f16x2  %2, %2, %10;\n"
-    "  fma.rn.f16x2  %3, %3, %8, %9;\n"
-    : "=r"(b32s[0]), "=r"(b32s[1]), "=r"(b32s[2]), "=r"(b32s[3])
-    : "r"(weights), "r"(high_8s),
-      "r"(0x64006400), "r"(0x54005400)
-      "r"(0x3c003c00), "r"(0xd480d480),
-      "r"(0x64086408));
+      "  lop3.b32      %0, %4, 0x000f000f, %6, 0xea;\n"
+      "  lop3.b32      %1, %4, 0x00f000f0, %7, 0xea;\n"
+      "  lop3.b32      %2, %5, 0x000f000f, %6, 0xea;\n"
+      "  lop3.b32      %3, %5, 0x00f000f0, %7, 0xea;\n"
+      "  sub.rn.f16x2  %0, %0, %10;\n"     // q_w - 1032.0
+      "  fma.rn.f16x2  %1, %1, %8, %9;\n"  // 1.0 * q_w + (-72.0)
+      "  sub.rn.f16x2  %2, %2, %10;\n"
+      "  fma.rn.f16x2  %3, %3, %8, %9;\n"
+      : "=r"(b32s[0]), "=r"(b32s[1]), "=r"(b32s[2]), "=r"(b32s[3])
+      : "r"(weights), "r"(high_8s),
+        "r"(0x64006400), "r"(0x54005400) "r"(0x3c003c00), "r"(0xd480d480),
+        "r"(0x64086408));
 #else
   assert(false);
 #endif
@@ -72,11 +70,10 @@ void weightsMinuEight2Half(uint32_t const &weights,
 
 /**
  * @brief Convert 4b weights to fp16 using bits operations.
-*/
+ */
 CUTLASS_DEVICE
-void weights2Half([[maybe_unused]] uint32_t const &weights,
-                  cutlass::Array<cutlass::half_t, 8>& dest)
-{
+void weights2Half([[maybe_unused]] uint32_t const& weights,
+                  cutlass::Array<cutlass::half_t, 8>& dest) {
   // 4b weights are arranged as [0, 2, 4, 6, 1, 3, 5, 7], so that adjacent
   // weights are in adjacent 16b half words.
   //   w & 0x000f000f --> take out element 0, 1
@@ -96,23 +93,22 @@ void weights2Half([[maybe_unused]] uint32_t const &weights,
   //
   // 1.125 instruction per weight, 9 instructions in total.
 
-  uint32_t*      b32s   = reinterpret_cast<uint32_t*>(dest.data());
+  uint32_t* b32s = reinterpret_cast<uint32_t*>(dest.data());
   const uint32_t high_8s = weights >> 8;
 
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 500))
   asm volatile(
-    "  lop3.b32      %0, %4, 0x000f000f, %6, 0xea;\n"
-    "  lop3.b32      %1, %4, 0x00f000f0, %7, 0xea;\n"
-    "  lop3.b32      %2, %5, 0x000f000f, %6, 0xea;\n"
-    "  lop3.b32      %3, %5, 0x00f000f0, %7, 0xea;\n"
-    "  sub.rn.f16x2  %0, %0, %6;\n"         // q_w - 1024.0
-    "  fma.rn.f16x2  %1, %1, %8, %9;\n"     // 1.0 * q_w + (-64.0)
-    "  sub.rn.f16x2  %2, %2, %6;\n"
-    "  fma.rn.f16x2  %3, %3, %8, %9;\n"
-    : "=r"(b32s[0]), "=r"(b32s[1]), "=r"(b32s[2]), "=r"(b32s[3])
-    : "r"(weights), "r"(high_8s),
-      "r"(0x64006400), "r"(0x54005400)
-      "r"(0x3c003c00), "r"(0xd400d400));
+      "  lop3.b32      %0, %4, 0x000f000f, %6, 0xea;\n"
+      "  lop3.b32      %1, %4, 0x00f000f0, %7, 0xea;\n"
+      "  lop3.b32      %2, %5, 0x000f000f, %6, 0xea;\n"
+      "  lop3.b32      %3, %5, 0x00f000f0, %7, 0xea;\n"
+      "  sub.rn.f16x2  %0, %0, %6;\n"      // q_w - 1024.0
+      "  fma.rn.f16x2  %1, %1, %8, %9;\n"  // 1.0 * q_w + (-64.0)
+      "  sub.rn.f16x2  %2, %2, %6;\n"
+      "  fma.rn.f16x2  %3, %3, %8, %9;\n"
+      : "=r"(b32s[0]), "=r"(b32s[1]), "=r"(b32s[2]), "=r"(b32s[3])
+      : "r"(weights), "r"(high_8s),
+        "r"(0x64006400), "r"(0x54005400) "r"(0x3c003c00), "r"(0xd400d400));
 #else
   assert(false);
 #endif
@@ -124,10 +120,10 @@ void weights2Half([[maybe_unused]] uint32_t const &weights,
 
 /// Loader for blockwise quantization scales
 template <
-    typename QuantBlocking_,  ///! Shape of the quant block (concept: MatrixShape)
-    typename WarpShape_,      ///! Shape of the warp tile (concept: GemmShape kM ignored)
+    typename QuantBlocking_,               ///! Shape of the quant block (concept: MatrixShape)
+    typename WarpShape_,                   ///! Shape of the warp tile (concept: GemmShape kM ignored)
     typename ElementT_ = cutlass::half_t,  ///! Data type of the scales and dequantized B
-    bool has_offsets = false,  ///! Whether the quantization has offsets
+    bool has_offsets = false,              ///! Whether the quantization has offsets
     bool DebugPrint = false>
 struct QuantBScaleLoader;
 
@@ -170,44 +166,42 @@ struct QuantBScaleLoader<cutlass::MatrixShape<block_size_, 1>, WarpShape_, Eleme
   // HBM -> SMEM, 16 bytes per load, no leftover since WarpShape::kN is multiple of 16
   static constexpr int kSmemSize = WarpShape::kN * kMetaChunkCount;
   static constexpr int kScaleLoadThreads = (kSmemSize * sizeof(ElementT)) / 16;
-  static_assert(kScaleLoadThreads <= 16); // shape up to 64x64, 16 threads can load all scales
+  static_assert(kScaleLoadThreads <= 16);  // shape up to 64x64, 16 threads can load all scales
 
   using FragmentScales = cutlass::Array<ElementT, kMetaFragSize * kMetaChunkCount>;
 
   static constexpr int kOffsetLoadThreads = (kSmemSize * sizeof(OffsetT)) / 16;
-  static_assert(kOffsetLoadThreads <= 16); // shape up to 64x64, 16 threads can load all offsets
+  static_assert(kOffsetLoadThreads <= 16);  // shape up to 64x64, 16 threads can load all offsets
 
   using FragmentOffsets = typename std::conditional<has_offsets,
-                                           FragmentScales,
-                                           std::monostate>::type;
+                                                    FragmentScales,
+                                                    std::monostate>::type;
 
   //
   // Data members
   //
   const int n_cnt;
 
-  const uint8_t * const scales_byte_p;
+  const uint8_t* const scales_byte_p;
   const int scales_byte_stride;
-  const uint8_t * const offsets_byte_p;
+  const uint8_t* const offsets_byte_p;
   const int offsets_byte_stride;
 
   //
   // Methods
   //
   template <typename T>
-  CUTLASS_DEVICE
-  static const uint8_t* get_scales_p(const void* ptr_scales, int scales_byte_stride, int k, int n) {
-    return (ptr_scales == nullptr) ? nullptr :
-        reinterpret_cast<uint8_t const*>(ptr_scales) + k * scales_byte_stride + n * sizeof(T);
+  CUTLASS_DEVICE static const uint8_t* get_scales_p(const void* ptr_scales, int scales_byte_stride, int k, int n) {
+    return (ptr_scales == nullptr) ? nullptr : reinterpret_cast<uint8_t const*>(ptr_scales) + k * scales_byte_stride + n * sizeof(T);
   }
 
   /// Initializes the scale loader, pointing to the start of the scales tensor
   CUTLASS_DEVICE
   QuantBScaleLoader(
       int lane_idx,
-      void const *ptr_scales,
+      void const* ptr_scales,
       int scales_byte_stride,
-      void const *ptr_offsets,  // dummy to make the interface consistent with QuantBScaleOffsetLoader
+      void const* ptr_offsets,  // dummy to make the interface consistent with QuantBScaleOffsetLoader
       int offsets_byte_stride,
       int start_n,
       int end_n)
@@ -215,12 +209,11 @@ struct QuantBScaleLoader<cutlass::MatrixShape<block_size_, 1>, WarpShape_, Eleme
         scales_byte_p(get_scales_p<ElementT>(ptr_scales, scales_byte_stride, 0, start_n)),
         scales_byte_stride(scales_byte_stride),
         offsets_byte_p(get_scales_p<OffsetT>(ptr_offsets, offsets_byte_stride, 0, start_n)),
-        offsets_byte_stride(offsets_byte_stride)
-  {
+        offsets_byte_stride(offsets_byte_stride) {
     assert(ptr_scales != nullptr);
     assert(scales_byte_stride > 0 && mod_power2<16>(scales_byte_stride) == 0);
     assert(scales_byte_stride >= end_n * sizeof(ElementT));
-    if constexpr(has_offsets) {
+    if constexpr (has_offsets) {
       assert(ptr_offsets != nullptr);
       assert(offsets_byte_stride > 0 && mod_power2<16>(offsets_byte_stride) == 0);
       assert(offsets_byte_stride >= end_n * sizeof(OffsetT));
@@ -235,7 +228,7 @@ struct QuantBScaleLoader<cutlass::MatrixShape<block_size_, 1>, WarpShape_, Eleme
   CUTLASS_DEVICE
   void load_to_smem(const int lane_idx, const int start_k, const int k_cnt, ElementT* smem, OffsetT* offset_smem) const {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
-    { // Load scales to smem
+    {  // Load scales to smem
       int lane_ptr_offset = mul_power2<16 / sizeof(ElementT)>(lane_idx);
 
       // Column-wise quantization, every column has its own scale/offset
@@ -251,13 +244,12 @@ struct QuantBScaleLoader<cutlass::MatrixShape<block_size_, 1>, WarpShape_, Eleme
           "  .reg .pred p;\n"
           "  setp.ne.b32 p, %0, 0;\n"
           "  @p cp.async.cg.shared.global [%1], [%2], %3, %4;\n"
-          "}\n"
-          ::"r"((int)(kScaleLoadThreads > lane_idx)),
-            "r"(smem_int_ptr),
-            "l"(&scales_ptr[k_idx * scales_byte_stride + n_idx * sizeof(ElementT)]),
-            "n"(16), "r"(src_in_bytes));
+          "}\n" ::"r"((int)(kScaleLoadThreads > lane_idx)),
+          "r"(smem_int_ptr),
+          "l"(&scales_ptr[k_idx * scales_byte_stride + n_idx * sizeof(ElementT)]),
+          "n"(16), "r"(src_in_bytes));
     }
-    if constexpr(has_offsets) { // Load offset to smem
+    if constexpr (has_offsets) {  // Load offset to smem
       int lane_ptr_offset = mul_power2<16 / sizeof(OffsetT)>(lane_idx);
 
       // Column-wise quantization, every column has its own scale/offset
@@ -274,26 +266,25 @@ struct QuantBScaleLoader<cutlass::MatrixShape<block_size_, 1>, WarpShape_, Eleme
           "  .reg .pred p;\n"
           "  setp.ne.b32 p, %0, 0;\n"
           "  @p cp.async.cg.shared.global [%1], [%2], %3, %4;\n"
-          "}\n"
-          ::"r"((int)(kOffsetLoadThreads > lane_idx)),
-            "r"(smem_int_ptr),
-            "l"(&offsets_ptr[k_idx * offsets_byte_stride + n_idx * sizeof(OffsetT)]),
-            "n"(16), "r"(src_in_bytes));
+          "}\n" ::"r"((int)(kOffsetLoadThreads > lane_idx)),
+          "r"(smem_int_ptr),
+          "l"(&offsets_ptr[k_idx * offsets_byte_stride + n_idx * sizeof(OffsetT)]),
+          "n"(16), "r"(src_in_bytes));
     }
 #else
-      assert(false);
-      (void)(lane_idx);
-      (void)(start_k);
-      (void)(k_cnt);
-      (void)(smem);
-      (void)(offset_smem);
+    assert(false);
+    (void)(lane_idx);
+    (void)(start_k);
+    (void)(k_cnt);
+    (void)(smem);
+    (void)(offset_smem);
 #endif
   }
 
   CUTLASS_DEVICE
   static void load_fragment(const int lane_idx,
-      FragmentScales &frag_scales, const ElementT* smem,
-      FragmentOffsets &frag_offsets, const OffsetT* offset_smem) {
+                            FragmentScales& frag_scales, const ElementT* smem,
+                            FragmentOffsets& frag_offsets, const OffsetT* offset_smem) {
     const int n_idx = div_power2<4>(lane_idx);
     ElementT const* scales_ptr = smem + n_idx;
     [[maybe_unused]] OffsetT const* offset_ptr = offset_smem + n_idx;
@@ -301,7 +292,7 @@ struct QuantBScaleLoader<cutlass::MatrixShape<block_size_, 1>, WarpShape_, Eleme
     CUTLASS_PRAGMA_UNROLL
     for (int i = 0; i < kSmemSize / 8; ++i) {
       frag_scales[i] = scales_ptr[i << 3];
-      if constexpr(has_offsets) {
+      if constexpr (has_offsets) {
         uint16_t v = offset_ptr[i << 3];
         frag_offsets[i] = cutlass::half_t(__ushort2half_rn(v));
       }
@@ -315,13 +306,12 @@ struct QuantBScaleLoader<cutlass::MatrixShape<block_size_, 1>, WarpShape_, Eleme
   /// thus the FragmentB has (WarpShape::kN / 8) * 2 * 2 elements.
 
   template <int PackedBSize>
-  CUTLASS_DEVICE
-  static void dequant_k16(
+  CUTLASS_DEVICE static void dequant_k16(
       const int k_iter,
-      cutlass::Array<unsigned, PackedBSize> const &frag_pack_b,
-      FragmentScales const &frag_scales,
-      FragmentOffsets const &frag_offsets,
-      FragmentB &frag_b) {
+      cutlass::Array<unsigned, PackedBSize> const& frag_pack_b,
+      FragmentScales const& frag_scales,
+      FragmentOffsets const& frag_offsets,
+      FragmentB& frag_b) {
     // Each 32b number in packed B represent a 16x16 tile
     constexpr int kPackedBNTiles = WarpShape::kN / 16;
     constexpr int kPackedBKStride = PackedBSize / kPackedBNTiles;
@@ -334,7 +324,7 @@ struct QuantBScaleLoader<cutlass::MatrixShape<block_size_, 1>, WarpShape_, Eleme
     const int meta_k = k_iter / (QuantBlocking::kRow / 16);
     half const* scales = reinterpret_cast<half const*>(frag_scales.data() + meta_k * kMetaFragSize);
     [[maybe_unused]] half const* offsets = nullptr;
-    if constexpr(has_offsets) {
+    if constexpr (has_offsets) {
       offsets = reinterpret_cast<half const*>(frag_offsets.data() + meta_k * kMetaFragSize);
     }
 
@@ -349,7 +339,7 @@ struct QuantBScaleLoader<cutlass::MatrixShape<block_size_, 1>, WarpShape_, Eleme
 
       cutlass::Array<ElementT, 8> ws;
       half2* weight_pair = reinterpret_cast<half2*>(ws.data());
-      if constexpr(has_offsets) {
+      if constexpr (has_offsets) {
         detail::weights2Half(frag_pack_b[b_idx], ws);
         half2 offset_pair = __half2half2(offsets[nn * 2]);
         half2 offset_pair1 = __half2half2(offsets[nn * 2 + 1]);
@@ -392,9 +382,7 @@ struct QuantBScaleLoader<cutlass::MatrixShape<block_size_, 1>, WarpShape_, Eleme
       }
     }
   }
-
 };
-
 
 /// Specialization for row-wise quantization, i.e. QuantBlocking::kRow == 1
 template <
@@ -430,44 +418,42 @@ struct QuantBScaleLoader<cutlass::MatrixShape<1, block_size_>, WarpShape_, Eleme
   // HBM -> SMEM, 16 bytes per load, no leftover since WarpShape::kN is multiple of 16
   static constexpr int kSmemSize = WarpShape::kK * kMetaChunkCount;
   static constexpr int kScaleLoadThreads = (kSmemSize * sizeof(ElementT)) / 16;
-  static_assert(kScaleLoadThreads <= 16); // shape up to 64x64, 16 threads can load all scales
+  static_assert(kScaleLoadThreads <= 16);  // shape up to 64x64, 16 threads can load all scales
 
   using FragmentScales = cutlass::Array<ElementT, kMetaFragSize * kMetaChunkCount>;
 
   static constexpr int kOffsetLoadThreads = (kSmemSize * sizeof(OffsetT)) / 16;
-  static_assert(kOffsetLoadThreads <= 16); // shape up to 64x64, 16 threads can load all offsets
+  static_assert(kOffsetLoadThreads <= 16);  // shape up to 64x64, 16 threads can load all offsets
 
   using FragmentOffsets = typename std::conditional<has_offsets,
-                                           FragmentScales,
-                                           std::monostate>::type;
+                                                    FragmentScales,
+                                                    std::monostate>::type;
 
   //
   // Data members
   //
   const int n_cnt;
 
-  const uint8_t * const scales_byte_p;
+  const uint8_t* const scales_byte_p;
   const int scales_byte_stride;
-  const uint8_t * const offsets_byte_p;
+  const uint8_t* const offsets_byte_p;
   const int offsets_byte_stride;
 
   //
   // Methods
   //
   template <typename T>
-  CUTLASS_DEVICE
-  static const uint8_t* get_scales_p(const void* ptr_scales, int scales_byte_stride, int k, int n) {
-    return (ptr_scales == nullptr) ? nullptr :
-           reinterpret_cast<uint8_t const*>(ptr_scales) + n * scales_byte_stride + k * sizeof(T);
+  CUTLASS_DEVICE static const uint8_t* get_scales_p(const void* ptr_scales, int scales_byte_stride, int k, int n) {
+    return (ptr_scales == nullptr) ? nullptr : reinterpret_cast<uint8_t const*>(ptr_scales) + n * scales_byte_stride + k * sizeof(T);
   }
 
   /// Initializes the scale loader, pointing to the start of the scales tensor
   CUTLASS_DEVICE
   QuantBScaleLoader(
       int lane_idx,
-      void const *ptr_scales,
+      void const* ptr_scales,
       int scales_byte_stride,
-      void const *ptr_offsets,  // dummy to make the interface consistent with QuantBScaleOffsetLoader
+      void const* ptr_offsets,  // dummy to make the interface consistent with QuantBScaleOffsetLoader
       int offsets_byte_stride,
       int start_n,
       int end_n)
@@ -475,11 +461,10 @@ struct QuantBScaleLoader<cutlass::MatrixShape<1, block_size_>, WarpShape_, Eleme
         scales_byte_p(get_scales_p<ElementT>(ptr_scales, scales_byte_stride, 0, start_n / QuantBlocking::kColumn)),
         scales_byte_stride(scales_byte_stride),
         offsets_byte_p(get_scales_p<OffsetT>(ptr_offsets, offsets_byte_stride, 0, start_n / QuantBlocking::kColumn)),
-        offsets_byte_stride(offsets_byte_stride)
-  {
+        offsets_byte_stride(offsets_byte_stride) {
     assert(ptr_scales != nullptr);
     assert(scales_byte_stride > 0 && mod_power2<16>(scales_byte_stride) == 0);
-    if constexpr(has_offsets) {
+    if constexpr (has_offsets) {
       assert(ptr_offsets != nullptr);
       assert(offsets_byte_stride > 0 && mod_power2<16>(offsets_byte_stride) == 0);
     } else {
@@ -507,13 +492,12 @@ struct QuantBScaleLoader<cutlass::MatrixShape<1, block_size_>, WarpShape_, Eleme
           "  .reg .pred p;\n"
           "  setp.ne.b32 p, %0, 0;\n"
           "  @p cp.async.cg.shared.global [%1], [%2], %3, %4;\n"
-          "}\n"
-          ::"r"((int)(kScaleLoadThreads > lane_idx)),
-            "r"(smem_int_ptr),
-            "l"(&scales_ptr[n_idx * scales_byte_stride + k_idx * sizeof(ElementT)]),
-            "n"(16), "r"(src_in_bytes));
+          "}\n" ::"r"((int)(kScaleLoadThreads > lane_idx)),
+          "r"(smem_int_ptr),
+          "l"(&scales_ptr[n_idx * scales_byte_stride + k_idx * sizeof(ElementT)]),
+          "n"(16), "r"(src_in_bytes));
     }
-    if constexpr(has_offsets) {
+    if constexpr (has_offsets) {
       // Load offsets to smem
       int lane_ptr_offset = mul_power2<16 / sizeof(OffsetT)>(lane_idx);
       const uint8_t* offsets_ptr = offsets_byte_p + start_k * sizeof(OffsetT);
@@ -527,26 +511,25 @@ struct QuantBScaleLoader<cutlass::MatrixShape<1, block_size_>, WarpShape_, Eleme
           "  .reg .pred p;\n"
           "  setp.ne.b32 p, %0, 0;\n"
           "  @p cp.async.cg.shared.global [%1], [%2], %3, %4;\n"
-          "}\n"
-          ::"r"((int)(kOffsetLoadThreads > lane_idx)),
-            "r"(smem_int_ptr),
-            "l"(&offsets_ptr[n_idx * offsets_byte_stride + k_idx * sizeof(OffsetT)]),
-            "n"(16), "r"(src_in_bytes));
+          "}\n" ::"r"((int)(kOffsetLoadThreads > lane_idx)),
+          "r"(smem_int_ptr),
+          "l"(&offsets_ptr[n_idx * offsets_byte_stride + k_idx * sizeof(OffsetT)]),
+          "n"(16), "r"(src_in_bytes));
     }
 #else
-      assert(false);
-      (void)(lane_idx);
-      (void)(start_k);
-      (void)(k_cnt);
-      (void)(smem);
-      (void)(offset_smem);
+    assert(false);
+    (void)(lane_idx);
+    (void)(start_k);
+    (void)(k_cnt);
+    (void)(smem);
+    (void)(offset_smem);
 #endif
   }
 
   CUTLASS_DEVICE
   static void load_fragment(const int lane_idx,
-      FragmentScales &frag_scales, const ElementT* smem,
-      FragmentOffsets &frag_offsets, const OffsetT* offset_smem) {
+                            FragmentScales& frag_scales, const ElementT* smem,
+                            FragmentOffsets& frag_offsets, const OffsetT* offset_smem) {
     // Row-wise quantization, every row has its own scale/offset, elements have been rearraged
     // such that we can load two tile at a time.
     // T0        T0
@@ -560,17 +543,17 @@ struct QuantBScaleLoader<cutlass::MatrixShape<1, block_size_>, WarpShape_, Eleme
     const int lane_offset = mod_power2<4>(lane_idx) << 2;
     const uint32_t* scales_ptr = reinterpret_cast<const uint32_t*>(smem + lane_offset);
     [[maybe_unused]] const uint32_t* offsets_ptr = nullptr;
-    if constexpr(has_offsets) {
+    if constexpr (has_offsets) {
       offsets_ptr = reinterpret_cast<const uint32_t*>(offset_smem + lane_offset);
     }
 
     CUTLASS_PRAGMA_UNROLL
     for (int i = 0; i < FragmentScales::kElements; i += 4) {
-      uint32_t* frag_ptr = reinterpret_cast<uint32_t *>(frag_scales.data() + i);
+      uint32_t* frag_ptr = reinterpret_cast<uint32_t*>(frag_scales.data() + i);
       frag_ptr[0] = scales_ptr[0];
       frag_ptr[1] = scales_ptr[1];
       scales_ptr += 8;
-      if constexpr(has_offsets) {
+      if constexpr (has_offsets) {
         // offsets are always 4 a group, this give us an opportunity to use
         // a little trick to reduce the number of instructions.
         // So here 4 offset a, b, c, d, we convert them to fp16, but not quite,
@@ -582,11 +565,11 @@ struct QuantBScaleLoader<cutlass::MatrixShape<1, block_size_>, WarpShape_, Eleme
           const uint32_t ab = offsets_ptr[0];
           const uint32_t cd = ab >> 4;
           asm volatile(
-            "  lop3.b32      %0, %2, 0x000f000f, %4, 0xea;\n"
-            "  lop3.b32      %1, %3, 0x00f000f0, %5, 0xea;\n"
-            : "=r"(offset_pair[0]), "=r"(offset_pair[1])
-            : "r"(ab), "r"(cd),
-              "r"(0x64006400), "r"(0x54005400));
+              "  lop3.b32      %0, %2, 0x000f000f, %4, 0xea;\n"
+              "  lop3.b32      %1, %3, 0x00f000f0, %5, 0xea;\n"
+              : "=r"(offset_pair[0]), "=r"(offset_pair[1])
+              : "r"(ab), "r"(cd),
+                "r"(0x64006400), "r"(0x54005400));
         }
         offsets_ptr += 4;
       }
@@ -598,14 +581,13 @@ struct QuantBScaleLoader<cutlass::MatrixShape<1, block_size_>, WarpShape_, Eleme
   /// Dequantize a block of (16, WarpShape::kN) packed int4 weights to 16b float.
   /// This block has (WarpShape::kN / 8) * 2 tiles, each tile has 2 elements per thread,
   /// thus the FragmentB has (WarpShape::kN / 8) * 2 * 2 elements.
-  template<int PackedBSize>
-  CUTLASS_DEVICE
-  static void dequant_k16(
+  template <int PackedBSize>
+  CUTLASS_DEVICE static void dequant_k16(
       const int k_iter,
-      cutlass::Array<unsigned, PackedBSize> const &frag_pack_b,
-      FragmentScales const &frag_scales,
-      FragmentOffsets const &frag_offsets,
-      FragmentB &frag_b) {
+      cutlass::Array<unsigned, PackedBSize> const& frag_pack_b,
+      FragmentScales const& frag_scales,
+      FragmentOffsets const& frag_offsets,
+      FragmentB& frag_b) {
     // Each 32b number in packed B represent a 16x16 tile
     constexpr int kPackedBNTiles = WarpShape::kN / 16;
     constexpr int kPackedBKStride = PackedBSize / kPackedBNTiles;
@@ -618,9 +600,9 @@ struct QuantBScaleLoader<cutlass::MatrixShape<1, block_size_>, WarpShape_, Eleme
       half2* const fb_pair = reinterpret_cast<half2*>(frag_b.data() + nn * 8);
       const int meta_n = (nn * 16) / QuantBlocking::kColumn;
       const int idx = meta_n * kMetaFragSize + (k_iter * 4);
-      half2 const* const scale_pair = reinterpret_cast<half2 const*>(frag_scales.data() + idx); // k_offset / 16 * 4
+      half2 const* const scale_pair = reinterpret_cast<half2 const*>(frag_scales.data() + idx);  // k_offset / 16 * 4
       [[maybe_unused]] half2 const* offsets = nullptr;
-      if constexpr(has_offsets) {
+      if constexpr (has_offsets) {
         offsets = reinterpret_cast<half2 const*>(frag_offsets.data() + idx);
       }
       cutlass::Array<ElementT, 8> ws;
@@ -629,17 +611,17 @@ struct QuantBScaleLoader<cutlass::MatrixShape<1, block_size_>, WarpShape_, Eleme
         // a group of 4 offsets was converted to a + 1024.0, b + 1024.0, c + 64.0, d + 64.0
         // when loaded from shared memory.
         {
-          uint32_t*      b32s   = reinterpret_cast<uint32_t*>(ws.data());
+          uint32_t* b32s = reinterpret_cast<uint32_t*>(ws.data());
           const uint32_t low_8s = frag_pack_b[b_idx];
           const uint32_t high_8s = low_8s >> 8;
 
           asm volatile(
-            "  lop3.b32      %0, %4, 0x000f000f, 0x64006400, 0xea;\n"
-            "  lop3.b32      %1, %4, 0x00f000f0, 0x54005400, 0xea;\n"
-            "  lop3.b32      %2, %5, 0x000f000f, 0x64006400, 0xea;\n"
-            "  lop3.b32      %3, %5, 0x00f000f0, 0x54005400, 0xea;\n"
-            : "=r"(b32s[0]), "=r"(b32s[1]), "=r"(b32s[2]), "=r"(b32s[3])
-            : "r"(low_8s), "r"(high_8s));
+              "  lop3.b32      %0, %4, 0x000f000f, 0x64006400, 0xea;\n"
+              "  lop3.b32      %1, %4, 0x00f000f0, 0x54005400, 0xea;\n"
+              "  lop3.b32      %2, %5, 0x000f000f, 0x64006400, 0xea;\n"
+              "  lop3.b32      %3, %5, 0x00f000f0, 0x54005400, 0xea;\n"
+              : "=r"(b32s[0]), "=r"(b32s[1]), "=r"(b32s[2]), "=r"(b32s[3])
+              : "r"(low_8s), "r"(high_8s));
         }
 
         weight_pair[0] = __hsub2(weight_pair[0], offsets[0]);
@@ -681,7 +663,6 @@ struct QuantBScaleLoader<cutlass::MatrixShape<1, block_size_>, WarpShape_, Eleme
       }
     }
   }
-
 };
 
 }  // namespace warp

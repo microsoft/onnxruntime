@@ -16,7 +16,7 @@ to its use in its converted from.
 Train a logistic regression
 +++++++++++++++++++++++++++
 
-The first step consists in retrieving the iris datset.
+The first step consists in retrieving the iris dataset.
 """
 
 from sklearn.datasets import load_iris
@@ -95,7 +95,7 @@ print(prob_sklearn[:3])
 
 #############################
 # And then with ONNX Runtime.
-# The probabilies appear to be
+# The probabilities appear to be
 
 prob_name = sess.get_outputs()[1].name
 prob_rt = sess.run([prob_name], {input_name: X_test.astype(numpy.float32)})[0]

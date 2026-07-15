@@ -2,8 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/framework/session_options.h"
+
 #include "core/common/logging/logging.h"
+#include "core/common/string_utils.h"
 #include "core/framework/ort_value.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 
@@ -96,4 +99,11 @@ void SessionOptions::AddCustomOpLibraryHandle(PathString library_name, void* lib
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
+epctx::ModelGenOptions SessionOptions::GetEpContextGenerationOptions() const {
+  if (this->has_explicit_ep_context_gen_options) {
+    return this->ep_context_gen_options;
+  }
+
+  return epctx::ModelGenOptions(this->config_options);
+}
 }  // namespace onnxruntime

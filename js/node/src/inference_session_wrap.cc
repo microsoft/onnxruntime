@@ -5,25 +5,16 @@
 
 #include "common.h"
 #include "inference_session_wrap.h"
+#include "ort_instance_data.h"
+#include "ort_singleton_data.h"
 #include "run_options_helper.h"
 #include "session_options_helper.h"
 #include "tensor_helper.h"
 #include <string>
 
-Napi::FunctionReference InferenceSessionWrap::wrappedSessionConstructor;
-Napi::FunctionReference InferenceSessionWrap::ortTensorConstructor;
-
-Napi::FunctionReference& InferenceSessionWrap::GetTensorConstructor() {
-  return InferenceSessionWrap::ortTensorConstructor;
-}
-
 Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
   // create ONNX runtime env
   Ort::InitApi();
-  ORT_NAPI_THROW_ERROR_IF(
-      Ort::Global<void>::api_ == nullptr, env,
-      "Failed to initialize ONNX Runtime API. It could happen when this nodejs binding was built with a higher version "
-      "ONNX Runtime but now runs with a lower version ONNX Runtime DLL(or shared library).");
 
   // initialize binding
   Napi::HandleScope scope(env);
@@ -34,11 +25,11 @@ Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
        InstanceMethod("run", &InferenceSessionWrap::Run),
        InstanceMethod("dispose", &InferenceSessionWrap::Dispose),
        InstanceMethod("endProfiling", &InferenceSessionWrap::EndProfiling),
-       InstanceAccessor("inputNames", &InferenceSessionWrap::GetInputNames, nullptr, napi_default, nullptr),
-       InstanceAccessor("outputNames", &InferenceSessionWrap::GetOutputNames, nullptr, napi_default, nullptr)});
+       InstanceAccessor("inputMetadata", &InferenceSessionWrap::GetMetadata, nullptr, napi_default, reinterpret_cast<void*>(true)),
+       InstanceAccessor("outputMetadata", &InferenceSessionWrap::GetMetadata, nullptr, napi_default, reinterpret_cast<void*>(false))});
 
-  wrappedSessionConstructor = Napi::Persistent(func);
-  wrappedSessionConstructor.SuppressDestruct();
+  OrtInstanceData::Create(env, func);
+
   exports.Set("InferenceSession", func);
 
   Napi::Function listSupportedBackends = Napi::Function::New(env, InferenceSessionWrap::ListSupportedBackends);
@@ -55,22 +46,32 @@ Napi::Value InferenceSessionWrap::InitOrtOnce(const Napi::CallbackInfo& info) {
   Napi::HandleScope scope(env);
 
   int log_level = info[0].As<Napi::Number>().Int32Value();
-
-  Ort::Env* ortEnv = env.GetInstanceData<Ort::Env>();
-  if (ortEnv == nullptr) {
-    ortEnv = new Ort::Env{OrtLoggingLevel(log_level), "onnxruntime-node"};
-    env.SetInstanceData(ortEnv);
-  }
-
   Napi::Function tensorConstructor = info[1].As<Napi::Function>();
-  ortTensorConstructor = Napi::Persistent(tensorConstructor);
-  ortTensorConstructor.SuppressDestruct();
+  bool is_main_thread = info[2].As<Napi::Boolean>().Value();
+
+  OrtInstanceData::InitOrt(env, log_level, tensorConstructor, is_main_thread);
 
   return env.Undefined();
 }
 
 InferenceSessionWrap::InferenceSessionWrap(const Napi::CallbackInfo& info)
-    : Napi::ObjectWrap<InferenceSessionWrap>(info), initialized_(false), disposed_(false), session_(nullptr), defaultRunOptions_(nullptr) {}
+    : Napi::ObjectWrap<InferenceSessionWrap>(info), initialized_(false), disposed_(false), session_(nullptr) {}
+
+InferenceSessionWrap::~InferenceSessionWrap() {
+  // If the ORT singleton has already been destroyed (e.g. during process shutdown when the
+  // cleanup hook fires before N-API finalizers run), we must not call into ORT to
+  // release owned ORT objects — doing so would crash. Intentionally leak in that case.
+  if (!OrtSingletonData::GetOrtObjects()) {
+    for (auto& type_info : inputTypes_) {
+      (void)type_info.release();
+    }
+    for (auto& type_info : outputTypes_) {
+      (void)type_info.release();
+    }
+    (void)ioBinding_.release();
+    (void)session_.release();
+  }
+}
 
 Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
@@ -83,14 +84,13 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
   ORT_NAPI_THROW_TYPEERROR_IF(argsLength == 0, env, "Expect argument: model file path or buffer.");
 
   try {
-    defaultRunOptions_.reset(new Ort::RunOptions{});
     Ort::SessionOptions sessionOptions;
 
     if (argsLength == 2 && info[0].IsString() && info[1].IsObject()) {
       Napi::String value = info[0].As<Napi::String>();
 
       ParseSessionOptions(info[1].As<Napi::Object>(), sessionOptions);
-      this->session_.reset(new Ort::Session(*env.GetInstanceData<Ort::Env>(),
+      this->session_.reset(new Ort::Session(OrtSingletonData::GetOrtObjects()->env,
 #ifdef _WIN32
                                             reinterpret_cast<const wchar_t*>(value.Utf16Value().c_str()),
 #else
@@ -105,7 +105,7 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
       int64_t bytesLength = info[2].As<Napi::Number>().Int64Value();
 
       ParseSessionOptions(info[3].As<Napi::Object>(), sessionOptions);
-      this->session_.reset(new Ort::Session(*env.GetInstanceData<Ort::Env>(),
+      this->session_.reset(new Ort::Session(OrtSingletonData::GetOrtObjects()->env,
                                             reinterpret_cast<char*>(buffer) + bytesOffset, bytesLength,
                                             sessionOptions));
     } else {
@@ -120,27 +120,17 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
     size_t count = session_->GetInputCount();
     inputNames_.reserve(count);
     for (size_t i = 0; i < count; i++) {
-      auto inp_name = session_->GetInputNameAllocated(i, allocator);
-      inputNames_.emplace_back(inp_name.get());
-      auto typeInfo = session_->GetInputTypeInfo(i);
-      auto onnxType = typeInfo.GetONNXType();
-      inputTypes_.emplace_back(onnxType);
-      inputTensorElementDataTypes_.emplace_back(onnxType == ONNX_TYPE_TENSOR
-                                                    ? typeInfo.GetTensorTypeAndShapeInfo().GetElementType()
-                                                    : ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED);
+      auto input_name = session_->GetInputNameAllocated(i, allocator);
+      inputNames_.emplace_back(input_name.get());
+      inputTypes_.push_back(session_->GetInputTypeInfo(i));
     }
 
     count = session_->GetOutputCount();
     outputNames_.reserve(count);
     for (size_t i = 0; i < count; i++) {
-      auto out_name = session_->GetOutputNameAllocated(i, allocator);
-      outputNames_.emplace_back(out_name.get());
-      auto typeInfo = session_->GetOutputTypeInfo(i);
-      auto onnxType = typeInfo.GetONNXType();
-      outputTypes_.emplace_back(onnxType);
-      outputTensorElementDataTypes_.emplace_back(onnxType == ONNX_TYPE_TENSOR
-                                                     ? typeInfo.GetTensorTypeAndShapeInfo().GetElementType()
-                                                     : ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED);
+      auto output_name = session_->GetOutputNameAllocated(i, allocator);
+      outputNames_.emplace_back(output_name.get());
+      outputTypes_.push_back(session_->GetOutputTypeInfo(i));
     }
 
     // cache preferred output locations
@@ -157,22 +147,32 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
   return env.Undefined();
 }
 
-Napi::Value InferenceSessionWrap::GetInputNames(const Napi::CallbackInfo& info) {
+Napi::Value InferenceSessionWrap::GetMetadata(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
 
   Napi::EscapableHandleScope scope(env);
-  return scope.Escape(CreateNapiArrayFrom(env, inputNames_));
-}
+  auto& names = info.Data() != nullptr ? inputNames_ : outputNames_;
+  auto& types = info.Data() != nullptr ? inputTypes_ : outputTypes_;
+  auto array = Napi::Array::New(env, types.size());
+  for (uint32_t i = 0; i < types.size(); i++) {
+    Napi::Object obj = Napi::Object::New(env);
+    obj.Set("name", names[i]);
+    auto& typeInfo = types[i];
+    if (typeInfo.GetONNXType() == ONNX_TYPE_TENSOR) {
+      obj.Set("isTensor", true);
 
-Napi::Value InferenceSessionWrap::GetOutputNames(const Napi::CallbackInfo& info) {
-  Napi::Env env = info.Env();
-  ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
-  ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
-
-  Napi::EscapableHandleScope scope(env);
-  return scope.Escape(CreateNapiArrayFrom(env, outputNames_));
+      auto tensorInfo = typeInfo.GetTensorTypeAndShapeInfo();
+      obj.Set("type", static_cast<std::underlying_type_t<ONNXTensorElementDataType>>(tensorInfo.GetElementType()));
+      obj.Set("symbolicDimensions", CreateNapiArrayFrom(env, tensorInfo.GetSymbolicDimensions()));
+      obj.Set("shape", CreateNapiArrayFrom(env, tensorInfo.GetShape()));
+    } else {
+      obj.Set("isTensor", false);
+    }
+    array.Set(i, Napi::Value::From(env, obj));
+  }
+  return scope.Escape(array);
 }
 
 Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
@@ -198,7 +198,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   size_t inputIndex = 0;
   size_t outputIndex = 0;
   Ort::MemoryInfo cpuMemoryInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-  Ort::MemoryInfo gpuBufferMemoryInfo{"WebGPU_Buffer", OrtDeviceAllocator, 0, OrtMemTypeDefault};
+  Ort::MemoryInfo gpuBufferMemoryInfo{"WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault};
 
   try {
     for (auto& name : inputNames_) {
@@ -225,7 +225,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
       ParseRunOptions(info[2].As<Napi::Object>(), runOptions);
     }
     if (preferredOutputLocations_.size() == 0) {
-      session_->Run(runOptions == nullptr ? *defaultRunOptions_.get() : runOptions,
+      session_->Run(runOptions == nullptr ? OrtSingletonData::GetOrtObjects()->default_run_options : runOptions,
                     inputIndex == 0 ? nullptr : &inputNames_cstr[0], inputIndex == 0 ? nullptr : &inputValues[0],
                     inputIndex, outputIndex == 0 ? nullptr : &outputNames_cstr[0],
                     outputIndex == 0 ? nullptr : &outputValues[0], outputIndex);
@@ -233,7 +233,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
       Napi::Object result = Napi::Object::New(env);
 
       for (size_t i = 0; i < outputIndex; i++) {
-        result.Set(outputNames_[i], OrtValueToNapiValue(env, std::move(outputValues[i])));
+        result.Set(outputNames_cstr[i], OrtValueToNapiValue(env, std::move(outputValues[i])));
       }
       return scope.Escape(result);
     } else {
@@ -254,14 +254,14 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
         }
       }
 
-      session_->Run(runOptions == nullptr ? *defaultRunOptions_.get() : runOptions, *ioBinding_);
+      session_->Run(runOptions == nullptr ? OrtSingletonData::GetOrtObjects()->default_run_options : runOptions, *ioBinding_);
 
       auto outputs = ioBinding_->GetOutputValues();
       ORT_NAPI_THROW_ERROR_IF(outputs.size() != outputIndex, env, "Output count mismatch.");
 
       Napi::Object result = Napi::Object::New(env);
       for (size_t i = 0; i < outputIndex; i++) {
-        result.Set(outputNames_[i], OrtValueToNapiValue(env, std::move(outputs[i])));
+        result.Set(outputNames_cstr[i], OrtValueToNapiValue(env, std::move(outputs[i])));
       }
       return scope.Escape(result);
     }
@@ -277,9 +277,10 @@ Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo& info) {
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
 
-  this->ioBinding_.reset(nullptr);
+  this->inputTypes_.clear();
+  this->outputTypes_.clear();
 
-  this->defaultRunOptions_.reset(nullptr);
+  this->ioBinding_.reset(nullptr);
   this->session_.reset(nullptr);
 
   this->disposed_ = true;

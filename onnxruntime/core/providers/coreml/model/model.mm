@@ -146,6 +146,23 @@ Status CreateInputFeatureProvider(const std::unordered_map<std::string, OnnxTens
 
         break;
       }
+      case ONNX_NAMESPACE::TensorProto_DataType_BOOL: {
+        // CoreML has no bool MLMultiArray; the bool feature is exposed as int32 (see the model builder's
+        // RewriteBoolGraphIOBoundaries). Convert the bool input to int32 (0/1).
+        data_type = MLMultiArrayDataTypeInt32;
+
+        const auto num_elements = narrow<size_t>(ShapeSize(shape));
+        const auto input_span = gsl::span{static_cast<const bool*>(onnx_tensor_data.buffer), num_elements};
+        auto conversion_buffer = std::make_unique<int32_t[]>(num_elements);
+        const auto conversion_span = gsl::span{conversion_buffer.get(), num_elements};
+        std::transform(input_span.begin(), input_span.end(), conversion_span.begin(),
+                       [](bool v) { return v ? 1 : 0; });
+
+        conversion_buffers.emplace_back(std::move(conversion_buffer));
+        data_pointer = conversion_buffers.back().get();
+
+        break;
+      }
       default: {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output data type is not supported, actual type: ",
                                onnx_tensor_data.tensor_info.data_type);
@@ -244,6 +261,26 @@ Status CopyMLMultiArrayBuffer(const void* mlmultiarray_buffer, void* tensor_buff
         auto output_span = gsl::span{dst_buffer, static_cast<size_t>(block_size)};
         std::transform(input_span.begin(), input_span.end(), output_span.begin(),
                        [](int32_t v) { return static_cast<int64_t>(v); });
+
+        src_buffer += stride;
+        dst_buffer += block_size;
+      }
+      break;
+    }
+    // CoreML has no bool MLMultiArray; a bool output is produced as int32 (see the model builder's
+    // RewriteBoolGraphIOBoundaries) and converted back to bool here.
+    case ONNX_NAMESPACE::TensorProto_DataType_BOOL: {
+      ORT_RETURN_IF(array.dataType != MLMultiArrayDataTypeInt32,
+                    "CoreML output data type is not MLMultiArrayDataTypeInt32");
+
+      const int32_t* src_buffer = static_cast<const int32_t*>(mlmultiarray_buffer);
+      bool* dst_buffer = static_cast<bool*>(tensor_buffer);
+
+      for (int64_t idx = 0; idx < num_blocks; ++idx) {
+        auto input_span = gsl::span{src_buffer, static_cast<size_t>(block_size)};
+        auto output_span = gsl::span{dst_buffer, static_cast<size_t>(block_size)};
+        std::transform(input_span.begin(), input_span.end(), output_span.begin(),
+                       [](int32_t v) { return v != 0; });
 
         src_buffer += stride;
         dst_buffer += block_size;
@@ -363,23 +400,14 @@ void ProfileComputePlan(NSURL* compileUrl, MLModelConfiguration* config) {
 #endif
 }
 
-#if __has_include(<CoreML/MLOptimizationHints.h>)
+#if __has_include(<CoreML/MLOptimizationHints.h>) && CAN_BUILD_COREML8_OR_LATER
 #define HAS_COREMLOPTIMIZATIONHINT 1
 #else
 #define HAS_COREMLOPTIMIZATIONHINT 0
 #endif
 
-#if HAS_COREMLOPTIMIZATIONHINT &&                                                             \
-    ((defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 150000) || \
-     (defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 180000))
-#define HAS_COREMLOPTIMIZATIONHINT_SPECIALIZATION_STRATEGY 1
-#else
-#define HAS_COREMLOPTIMIZATIONHINT_SPECIALIZATION_STRATEGY 0
-#endif
-
-API_AVAILABLE_COREML8
 void ConfigureOptimizationHints(MLModelConfiguration* config, const CoreMLOptions& coreml_options) {
-#if HAS_COREMLOPTIMIZATIONHINT_SPECIALIZATION_STRATEGY
+#if HAS_COREMLOPTIMIZATIONHINT
   MLOptimizationHints* optimizationHints = [[MLOptimizationHints alloc] init];
   if (coreml_options.UseStrategy("FastPrediction")) {
     optimizationHints.specializationStrategy = MLSpecializationStrategyFastPrediction;

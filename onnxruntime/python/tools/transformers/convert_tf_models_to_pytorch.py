@@ -5,8 +5,8 @@
 
 import glob
 import os
-
-import requests
+import tarfile
+import zipfile
 
 TFMODELS = {
     "bert-base-uncased": (
@@ -55,12 +55,62 @@ TFMODELS = {
 
 
 def download_compressed_file(tf_ckpt_url, ckpt_dir):
+    import requests  # noqa: PLC0415
+
     r = requests.get(tf_ckpt_url)
     compressed_file_name = tf_ckpt_url.split("/")[-1]
     compressed_file_dir = os.path.join(ckpt_dir, compressed_file_name)
     with open(compressed_file_dir, "wb") as f:
         f.write(r.content)
     return compressed_file_dir
+
+
+def _is_safe_archive_member(extract_dir, member_name):
+    # Normalize separators so that backslash-based traversal entries are detected
+    # on POSIX as well as Windows (zip members may use either separator).
+    normalized_parts = [part for part in member_name.replace("\\", "/").split("/") if part not in ("", ".")]
+    extract_dir = os.path.realpath(extract_dir)
+    candidate_path = os.path.realpath(os.path.join(extract_dir, *normalized_parts))
+    try:
+        return os.path.commonpath([extract_dir, candidate_path]) == extract_dir
+    except ValueError:
+        # os.path.commonpath raises ValueError for mixed drives or absolute/relative
+        # mixes (e.g. on Windows). Treat any such case as unsafe.
+        return False
+
+
+def safe_extract_archive(archive_path, extract_dir):
+    archive_path = os.path.realpath(archive_path)
+    extract_dir = os.path.realpath(extract_dir)
+
+    if tarfile.is_tarfile(archive_path):
+        with tarfile.open(archive_path, "r:*") as tar_ref:
+            for member in tar_ref.getmembers():
+                if not _is_safe_archive_member(extract_dir, member.name):
+                    raise ValueError(f"Archive member '{member.name}' resolves outside '{extract_dir}'")
+                if member.issym() or member.islnk():
+                    raise ValueError(f"Archive member '{member.name}' is a link, which is not allowed")
+            try:
+                tar_ref.extractall(extract_dir, filter="data")
+            except TypeError as exc:
+                # The "data" extraction filter (Python 3.9+/backports) rejects symlinks,
+                # hardlinks, device files and absolute paths. Without it, extraction is
+                # not safe, so refuse rather than falling back to an unfiltered extract.
+                raise RuntimeError(
+                    "Safe archive extraction requires the tarfile 'data' filter, "
+                    "which is unavailable in this Python runtime."
+                ) from exc
+        return
+
+    if zipfile.is_zipfile(archive_path):
+        with zipfile.ZipFile(archive_path, "r") as zip_ref:
+            for member_name in zip_ref.namelist():
+                if not _is_safe_archive_member(extract_dir, member_name):
+                    raise ValueError(f"Archive member '{member_name}' resolves outside '{extract_dir}'")
+            zip_ref.extractall(extract_dir)
+        return
+
+    raise ValueError(f"Unsupported archive format: {archive_path}")
 
 
 def get_ckpt_prefix_path(ckpt_dir):
@@ -78,7 +128,7 @@ def get_ckpt_prefix_path(ckpt_dir):
 
 
 def download_tf_checkpoint(model_name, tf_models_dir="tf_models"):
-    import pathlib
+    import pathlib  # noqa: PLC0415
 
     base_dir = os.path.join(pathlib.Path(__file__).parent.absolute(), tf_models_dir)
     ckpt_dir = os.path.join(base_dir, model_name)
@@ -88,17 +138,14 @@ def download_tf_checkpoint(model_name, tf_models_dir="tf_models"):
 
     tf_ckpt_url = TFMODELS[model_name][3]
 
-    import re
+    import re  # noqa: PLC0415
 
     if re.search(".zip$", tf_ckpt_url) is not None:
         zip_dir = download_compressed_file(tf_ckpt_url, ckpt_dir)
 
         # unzip file
-        import zipfile
-
-        with zipfile.ZipFile(zip_dir, "r") as zip_ref:
-            zip_ref.extractall(ckpt_dir)
-            os.remove(zip_dir)
+        safe_extract_archive(zip_dir, ckpt_dir)
+        os.remove(zip_dir)
 
         return get_ckpt_prefix_path(ckpt_dir)
 
@@ -106,15 +153,14 @@ def download_tf_checkpoint(model_name, tf_models_dir="tf_models"):
         tar_dir = download_compressed_file(tf_ckpt_url, ckpt_dir)
 
         # untar file
-        import tarfile
-
-        with tarfile.open(tar_dir, "r") as tar_ref:
-            tar_ref.extractall(ckpt_dir)
-            os.remove(tar_dir)
+        safe_extract_archive(tar_dir, ckpt_dir)
+        os.remove(tar_dir)
 
         return get_ckpt_prefix_path(ckpt_dir)
 
     else:
+        import requests  # noqa: PLC0415
+
         for filename in [
             "checkpoint",
             "model.ckpt.data-00000-of-00001",
@@ -138,7 +184,7 @@ def init_pytorch_model(model_name, tf_checkpoint_path):
     config = model_config() if len(config_path) == 0 else model_config.from_json_file(str(config_path[0]))
 
     if not TFMODELS[model_name][2]:
-        from transformers import AutoModelForPreTraining
+        from transformers import AutoModelForPreTraining  # noqa: PLC0415
 
         init_model = AutoModelForPreTraining.from_config(config)
     else:
@@ -159,7 +205,7 @@ def convert_tf_checkpoint_to_pytorch(model_name, config, init_model, tf_checkpoi
     else:
         if TFMODELS[model_name][0] != "bert":
             raise NotImplementedError("Only support tf2 ckeckpoint for Bert model")
-        from transformers import convert_bert_original_tf2_checkpoint_to_pytorch
+        from transformers import convert_bert_original_tf2_checkpoint_to_pytorch  # noqa: PLC0415
 
         load_tf_weight_func = convert_bert_original_tf2_checkpoint_to_pytorch.load_tf2_weights_in_bert
 
@@ -185,9 +231,9 @@ def tf2pt_pipeline(model_name, is_tf2=False):
 
 def tf2pt_pipeline_test():
     # For test on linux only
-    import logging
+    import logging  # noqa: PLC0415
 
-    import torch
+    import torch  # noqa: PLC0415
 
     logger = logging.getLogger("")
     for model_name in TFMODELS:

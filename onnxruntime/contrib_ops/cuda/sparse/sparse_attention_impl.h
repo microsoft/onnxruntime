@@ -6,6 +6,7 @@
 #include <cublas_v2.h>
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cpu/bert/attention_parameters.h"
 #include "core/framework/allocator.h"
 #include "core/providers/cuda/tunable/cuda_tunable.h"
 
@@ -66,6 +67,31 @@ Status QkvToContext(
     Stream* ort_stream,
     contrib::SparseAttentionParameters& parameters,
     SparseAttentionData<T>& data);
+
+// Error codes returned by the CSR validation kernel via the device error flag.
+enum CSRValidationError : int32_t {
+  kCSRValidationOk = 0,
+  kCSRValidationRowFirstNotZero = 1,
+  kCSRValidationRowNonMonotonic = 2,
+  kCSRValidationColOutOfRange = 3,
+  kCSRValidationKeyLengthOutOfRange = 4,
+};
+
+// Validate CSR row-pointer monotonicity, column-index range, and key lengths on device.
+// Returns Status::OK() if valid, or INVALID_ARGUMENT with a description of the failure.
+// d_error_flag must point to a device-allocated int32_t scratch buffer (1 element).
+Status ValidateCSRIndicesOnDevice(
+    cudaStream_t stream,
+    const int32_t* csr_row_indices,  // device pointer, shape [num_layout, max_blocks + 1]
+    const int32_t* csr_col_indices,  // device pointer, shape [num_layout, col_count]
+    const int32_t* seqlens_k_total,  // device pointer, shape [batch_size]
+    int num_layout,
+    int max_blocks,
+    int col_count,
+    int batch_size,
+    int sequence_length,
+    int total_sequence_length,
+    int32_t* d_error_flag);  // device scratch buffer (1 int32_t)
 
 }  // namespace cuda
 }  // namespace contrib

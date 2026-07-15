@@ -4,7 +4,8 @@
             "arm64"
         ],
         "iphonesimulator": [
-            "arm64"
+            "arm64",
+            "x86_64"
         ],
         "macabi": [
             "arm64",
@@ -17,25 +18,24 @@
             "--build_apple_framework",
             "--use_coreml",
             "--skip_tests",
-            "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF",
-            "--cmake_extra_defines=CMAKE_POLICY_VERSION_MINIMUM=3.5"
+            "--no_kleidiai",
+            "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF"
         ],
         "iphoneos": [
             "--ios",
             "--use_xcode",
             "--use_xnnpack",
-            "--apple_deploy_target=16.4"
+            "--apple_deploy_target=15.1"
         ],
         "iphonesimulator": [
             "--ios",
             "--use_xcode",
             "--use_xnnpack",
-            "--apple_deploy_target=16.4"
+            "--apple_deploy_target=15.1"
         ],
         "macabi":[
             "--macos=Catalyst",
-            "--apple_deploy_target=16.4",
-            "--cmake_extra_defines=FETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER"
+            "--apple_deploy_target=14.0"
         ]
     }
 }

@@ -32,7 +32,7 @@ const isMultiThreadSupported = (): boolean => {
         2, 0, 26, 11,
       ]),
     );
-  } catch (e) {
+  } catch {
     return false;
   }
 };
@@ -59,7 +59,35 @@ const isSimdSupported = (): boolean => {
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 253, 186, 1, 26, 11,
       ]),
     );
-  } catch (e) {
+  } catch {
+    return false;
+  }
+};
+
+const isRelaxedSimdSupported = (): boolean => {
+  try {
+    // Test for WebAssembly Relaxed SIMD capability (for both browsers and Node.js)
+    // This typed array is a WebAssembly program containing Relaxed SIMD instructions.
+
+    // The binary data is generated from the following code by wat2wasm:
+    // (module
+    //   (func (result v128)
+    //      i32.const 1
+    //      i8x16.splat
+    //      i32.const 2
+    //      i8x16.splat
+    //      i32.const 3
+    //      i8x16.splat
+    //      i32x4.relaxed_dot_i8x16_i7x16_add_s
+    //   )
+    //  )
+    return WebAssembly.validate(
+      new Uint8Array([
+        0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 19, 1, 17, 0, 65, 1, 253, 15, 65, 2, 253,
+        15, 65, 3, 253, 15, 253, 147, 2, 11,
+      ]),
+    );
+  } catch {
     return false;
   }
 };
@@ -82,8 +110,21 @@ export const initializeWebAssembly = async (flags: Env.WebAssemblyFlags): Promis
   let numThreads = flags.numThreads!;
 
   // ensure SIMD is supported
-  if (!isSimdSupported()) {
+  if (flags.simd === false) {
+    // skip SIMD feature checking as it is disabled explicitly by user
+  } else if (flags.simd === 'relaxed') {
+    // check if relaxed SIMD is supported
+    if (!isRelaxedSimdSupported()) {
+      throw new Error('Relaxed WebAssembly SIMD is not supported in the current environment.');
+    }
+  } else if (!isSimdSupported()) {
     throw new Error('WebAssembly SIMD is not supported in the current environment.');
+  }
+
+  if (BUILD_DEFS.ENABLE_JSPI) {
+    if (!('Suspending' in WebAssembly)) {
+      throw new Error('WebAssembly JSPI is not supported in the current environment.');
+    }
   }
 
   // check if multi-threading is supported
@@ -116,7 +157,12 @@ export const initializeWebAssembly = async (flags: Env.WebAssemblyFlags): Promis
   const wasmPathOverride = (wasmPathOverrideFlag as URL)?.href ?? wasmPathOverrideFlag;
   const wasmBinaryOverride = flags.wasmBinary;
 
-  const [objectUrl, ortWasmFactory] = await importWasmModule(mjsPathOverride, wasmPrefixOverride, numThreads > 1);
+  const [objectUrl, ortWasmFactory] = await importWasmModule(
+    mjsPathOverride,
+    wasmPrefixOverride,
+    numThreads > 1,
+    !!wasmBinaryOverride || !!wasmPathOverride,
+  );
 
   let isTimeout = false;
 
@@ -147,7 +193,14 @@ export const initializeWebAssembly = async (flags: Env.WebAssemblyFlags): Promis
 
       if (wasmBinaryOverride) {
         // Set a custom buffer which contains the WebAssembly binary. This will skip the wasm file fetching.
-        config.wasmBinary = wasmBinaryOverride;
+        config.wasmBinary = wasmBinaryOverride as ArrayBuffer;
+
+        // Offer an implementation of locateFile() that returns the file name directly. This helps to avoid an error
+        // thrown later from the following code when `import.meta.url` is a blob URL:
+        // ```
+        //   return new URL("ort-wasm-simd-threaded.jsep.wasm", import.meta.url).href;
+        // ```
+        config.locateFile = (fileName) => fileName;
       } else if (wasmPathOverride || wasmPrefixOverride) {
         // A callback function to locate the WebAssembly file. The function should return the full path of the file.
         //

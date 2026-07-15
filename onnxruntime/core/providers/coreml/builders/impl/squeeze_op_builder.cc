@@ -29,6 +29,9 @@ class SqueezeOpBuilder : public BaseOpBuilder {
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
   bool SupportsMLProgram() const override { return true; }
+
+  // SqueezeOpBuilder handles both Squeeze and Unsqueeze; both are shape-only.
+  bool IsTrivial(const Node& /*node*/) const override { return true; }
 };
 
 namespace {
@@ -38,7 +41,8 @@ void GetAxes(ModelBuilder& model_builder, const Node& node, TensorShapeVector& a
     // If axes is not provided, return an empty axes as default to squeeze all
     if (node.InputDefs().size() > 1) {
       const auto& axes_tensor = *model_builder.GetConstantInitializer(node.InputDefs()[1]->Name());
-      Initializer unpacked_tensor(axes_tensor);
+      const Initializer unpacked_tensor(model_builder.GetGraphViewer().GetGraph(), axes_tensor,
+                                        model_builder.GetGraphViewer().ModelPath());
       auto raw_axes = unpacked_tensor.DataAsSpan<int64_t>();
       const auto size = SafeInt<size_t>(axes_tensor.dims()[0]);
       axes.reserve(size);
@@ -58,9 +62,8 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   }
 }
 
-#if defined(COREML_ENABLE_MLPROGRAM)
-void HandleX86ArchUnsqueezeScalarInput(ModelBuilder& model_builder,
-                                       const Node& node, const logging::Logger& logger) {
+void HandleUnsqueezeScalarInput(ModelBuilder& model_builder,
+                                const Node& node, const logging::Logger& logger) {
   const auto& input_defs(node.InputDefs());
   TensorShapeVector axes;
   GetAxes(model_builder, node, axes);
@@ -74,7 +77,6 @@ void HandleX86ArchUnsqueezeScalarInput(ModelBuilder& model_builder,
   AddOperationOutput(*op, *node.OutputDefs()[0]);
   model_builder.AddOperation(std::move(op));
 }
-#endif
 
 Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                const Node& node,
@@ -83,18 +85,19 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   auto* coreml_squeeze = layer->mutable_squeeze();
   TensorShapeVector axes;
   GetAxes(model_builder, node, axes);
-#if defined(COREML_ENABLE_MLPROGRAM)
+
   const auto& input_defs(node.InputDefs());
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
 
-#if defined(TARGET_CPU_X86_64) && TARGET_CPU_X86_64
-    // expand_dims has limited requirements for static shape, however, X86_64 has a bug that it can't handle scalar input
+    // MLProgram does not support scalar values -- we convert the scalars to 1D tensors.
+    // So there is a bug when we attempt to unsqueeze what is a
+    // scalar value in the ONNX graph to a 1D tensor.
     if (node.OpType() == "Unsqueeze" && input_defs[0]->Shape()->dim_size() < 2) {
-      HandleX86ArchUnsqueezeScalarInput(model_builder, node, logger);
+      HandleUnsqueezeScalarInput(model_builder, node, logger);
       return Status::OK();
     }
-#endif
+
     std::string_view coreml_op_type = node.OpType() == "Squeeze" ? "squeeze" : "expand_dims";
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, coreml_op_type);
     AddOperationInput(*op, "x", input_defs[0]->Name());
@@ -105,9 +108,7 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     }
     AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
-  } else  // NOLINT
-#endif
-  {
+  } else {
     if (axes.empty()) {
       coreml_squeeze->set_squeezeall(true);
     } else {

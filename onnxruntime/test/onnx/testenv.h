@@ -34,7 +34,7 @@ using PThreadPool = OrtThreadPool*;
 class TestEnv {
  public:
   TestEnv(Ort::Env& env, Ort::SessionOptions& sf1, PThreadPool tp,
-          std::vector<ITestCase*>&& tests, TestResultStat& stat1);
+          std::vector<ITestCase*>&& tests, TestResultStat& stat1, bool inference_mode = false);
 
   ~TestEnv();
 
@@ -72,6 +72,7 @@ class TestEnv {
 
   Ort::Env& env_;
   const Ort::SessionOptions& so_;
+  bool inference_mode_;
   PThreadPool tp_;
   std::vector<ITestCase*> tests_;
   TestResultStat& stat_;

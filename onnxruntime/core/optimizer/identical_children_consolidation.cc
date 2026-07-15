@@ -69,7 +69,7 @@ std::string IdenticalChildrenConsolidation::IdentityBuilder(const Graph& graph, 
         if (optimizer_utils::IsScalar(*input_def)) {
           const auto* data = graph_utils::GetConstantInitializer(graph, name);
           identity << constant_prefix;
-          Initializer value{*data, graph.ModelPath()};
+          Initializer value{graph, *data, graph.ModelPath()};
           switch (static_cast<TensorProto::DataType>(data->data_type())) {
             case TensorProto::DataType::TensorProto_DataType_INT8:
               identity << *value.data<int8_t>();

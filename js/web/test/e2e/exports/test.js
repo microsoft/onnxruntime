@@ -121,7 +121,29 @@ async function runProdTest(testCaseName, ready, port) {
   await runTest(testCaseName, ['prod'], ready, 'npm run start', port);
 }
 
+async function verifyAssets(testCaseName, testers) {
+  testers = Array.isArray(testers) ? testers : [testers];
+  const wd = path.join(__dirname, 'testcases', testCaseName);
+
+  console.log(`[${testCaseName}] Verifying assets...`);
+
+  const testResults = [];
+
+  try {
+    for (const tester of testers) {
+      testResults.push(await tester(wd));
+    }
+
+    if (testResults.some((r) => !r.success)) {
+      throw new Error(`[${testCaseName}] asset verification failed.`);
+    }
+  } finally {
+    console.log(`[${testCaseName}] asset verification result:`, testResults);
+  }
+}
+
 module.exports = {
   runDevTest,
   runProdTest,
+  verifyAssets,
 };

@@ -23,7 +23,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var platformPath = NativeOnnxValueHelper.GetPlatformSerializedString(adapterPath);
             var allocatorHandle = (ortAllocator != null) ? ortAllocator.Pointer : IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.CreateLoraAdapter(platformPath, allocatorHandle,
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateLoraAdapter(platformPath, allocatorHandle,
                 out IntPtr adapterHandle));
             return new OrtLoraAdapter(adapterHandle);
         }
@@ -38,7 +38,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static OrtLoraAdapter Create(byte[] bytes, OrtAllocator ortAllocator)
         {
             var allocatorHandle = (ortAllocator != null) ? ortAllocator.Pointer : IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.CreateLoraAdapterFromArray(bytes, 
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateLoraAdapterFromArray(bytes, 
                 new UIntPtr((uint)bytes.Length), allocatorHandle, out IntPtr adapterHandle));
             return new OrtLoraAdapter(adapterHandle);
         }
@@ -71,7 +71,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>always returns true</returns>
         protected override bool ReleaseHandle()
         {
-            NativeMethods.ReleaseLoraAdapter(handle);
+            NativeMethods.OrtReleaseLoraAdapter(handle);
             handle = IntPtr.Zero;
             return true;
         }

@@ -16,12 +16,12 @@ from test_optimizer import _get_test_model_path
 
 class TestBertProfiler(unittest.TestCase):
     def setUp(self):
-        from onnxruntime import get_available_providers
+        from onnxruntime import get_available_providers  # noqa: PLC0415
 
         self.test_cuda = "CUDAExecutionProvider" in get_available_providers()
 
     def run_profile(self, arguments: str):
-        from onnxruntime.transformers.profiler import parse_arguments, run
+        from onnxruntime.transformers.profiler import parse_arguments, run  # noqa: PLC0415
 
         args = parse_arguments(arguments.split())
         results = run(args)

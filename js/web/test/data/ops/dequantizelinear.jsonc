@@ -6,7 +6,7 @@
     "attributes": [],
     "cases": [
       {
-        "name": "T[1]",
+        "name": "uint8 per-tensor with zero point",
         "inputs": [
           {
             "data": [1, 2, 3, 4],
@@ -41,7 +41,7 @@
     "attributes": [],
     "cases": [
       {
-        "name": "T[2]",
+        "name": "int32 per-tensor no zero point",
         "inputs": [
           {
             "data": [1, 2, 3, 4],
@@ -67,6 +67,41 @@
   {
     "name": "dequantizelinear",
     "operator": "DequantizeLinear",
+    "opset": { "domain": "", "version": 10 },
+    "attributes": [],
+    "cases": [
+      {
+        "name": "int32 per-tensor with zero point",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4],
+            "dims": [4],
+            "type": "int32"
+          },
+          {
+            "data": [0.1],
+            "dims": [1],
+            "type": "float32"
+          },
+          {
+            "data": [1],
+            "dims": [1],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.0, 0.1, 0.2, 0.3],
+            "dims": [4],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "dequantizelinear",
+    "operator": "DequantizeLinear",
     "opset": { "domain": "", "version": 13 },
     "attributes": [
       {
@@ -77,7 +112,7 @@
     ],
     "cases": [
       {
-        "name": "T[3]",
+        "name": "uint8 2D per-axis scalar scale with zero point",
         "inputs": [
           {
             "data": [1, 2, 3, 4],
@@ -118,7 +153,7 @@
     ],
     "cases": [
       {
-        "name": "T[4]",
+        "name": "int32 2D per-axis scalar scale no zero point",
         "inputs": [
           {
             "data": [1, 2, 3, 4],
@@ -154,7 +189,48 @@
     ],
     "cases": [
       {
-        "name": "T[5]",
+        "name": "int32 2D per-axis scalar scale with zero point",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4],
+            "dims": [2, 2],
+            "type": "int32"
+          },
+          {
+            "data": [0.1],
+            "dims": [1],
+            "type": "float32"
+          },
+          {
+            "data": [1],
+            "dims": [1],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.0, 0.1, 0.2, 0.3],
+            "dims": [2, 2],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "dequantizelinear",
+    "operator": "DequantizeLinear",
+    "opset": { "domain": "", "version": 13 },
+    "attributes": [
+      {
+        "name": "axis",
+        "data": 1,
+        "type": "int"
+      }
+    ],
+    "cases": [
+      {
+        "name": "uint8 3D per-axis uniform scale with zero point",
         "inputs": [
           {
             "data": [1, 2, 3, 4, 5, 6, 7, 8],
@@ -195,7 +271,7 @@
     ],
     "cases": [
       {
-        "name": "T[6]",
+        "name": "uint8 3D per-axis varying scale with zero point",
         "inputs": [
           {
             "data": [1, 2, 3, 4, 5, 6, 7, 8],
@@ -236,7 +312,7 @@
     ],
     "cases": [
       {
-        "name": "T[7]",
+        "name": "int32 3D per-axis scalar scale no zero point",
         "inputs": [
           {
             "data": [1, 2, 3, 4, 5, 6, 7, 8],
@@ -262,6 +338,47 @@
   {
     "name": "dequantizelinear",
     "operator": "DequantizeLinear",
+    "opset": { "domain": "", "version": 13 },
+    "attributes": [
+      {
+        "name": "axis",
+        "data": 1,
+        "type": "int"
+      }
+    ],
+    "cases": [
+      {
+        "name": "int32 3D per-axis scalar scale with zero point",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [2, 2, 2],
+            "type": "int32"
+          },
+          {
+            "data": [0.1],
+            "dims": [1],
+            "type": "float32"
+          },
+          {
+            "data": [1],
+            "dims": [1],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
+            "dims": [2, 2, 2],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "dequantizelinear",
+    "operator": "DequantizeLinear",
     "opset": { "domain": "", "version": 21 },
     "attributes": [
       {
@@ -277,7 +394,7 @@
     ],
     "cases": [
       {
-        "name": "T[8]",
+        "name": "uint8 3D blocked with zero point",
         "inputs": [
           {
             "data": [1, 2, 3, 4, 5, 6, 7, 8],
@@ -323,7 +440,7 @@
     ],
     "cases": [
       {
-        "name": "T[9]",
+        "name": "int32 3D blocked no zero point",
         "inputs": [
           {
             "data": [1, 2, 3, 4, 5, 6, 7, 8],
@@ -347,6 +464,52 @@
     ]
   },
   {
+    "name": "dequantizelinear block dequantization",
+    "operator": "DequantizeLinear",
+    "opset": { "domain": "", "version": 21 },
+    "attributes": [
+      {
+        "name": "axis",
+        "data": 1,
+        "type": "int"
+      },
+      {
+        "name": "block_size",
+        "data": 2,
+        "type": "int"
+      }
+    ],
+    "cases": [
+      {
+        "name": "int32 3D blocked with zero point",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [2, 2, 2],
+            "type": "int32"
+          },
+          {
+            "data": [0.1, 0.2, 0.3, 0.4],
+            "dims": [2, 1, 2],
+            "type": "float32"
+          },
+          {
+            "data": [0, 1, 0, 1],
+            "dims": [2, 1, 2],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.1, 0.2, 0.3, 0.6, 1.5, 2.0, 2.1, 2.8],
+            "dims": [2, 2, 2],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "name": "dequantizelinear",
     "operator": "DequantizeLinear",
     "opset": { "domain": "", "version": 13 },
@@ -359,7 +522,7 @@
     ],
     "cases": [
       {
-        "name": "T[3]",
+        "name": "uint8 2D per-axis scalar scale no zero point",
         "inputs": [
           {
             "data": [1, 2, 3, 4],

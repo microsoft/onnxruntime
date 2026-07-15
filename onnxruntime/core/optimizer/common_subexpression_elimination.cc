@@ -172,29 +172,20 @@ bool AreRangesEqual(const Range& lhs, const Range& rhs) {
 }
 
 // Check if two tensor attributes are equal scalar tensors, mainly to support ConstantOfShape Op.
-// Currently support float, float16 and int64 data types, and requires the data are raw data in TensorProto.
 bool AreScalarTensorAttributeEqual(const ONNX_NAMESPACE::TensorProto& lhs_t, const ONNX_NAMESPACE::TensorProto& rhs_t) {
   if (!(utils::HasDataType(lhs_t) && utils::HasDataType(rhs_t) && lhs_t.data_type() == rhs_t.data_type() &&
-        (lhs_t.data_type() == onnx::TensorProto_DataType_FLOAT ||
-         lhs_t.data_type() == onnx::TensorProto_DataType_FLOAT16 ||
-         lhs_t.data_type() == onnx::TensorProto_DataType_INT64) &&
-        lhs_t.dims_size() == 1 && rhs_t.dims_size() == 1 && lhs_t.dims()[0] == 1 && rhs_t.dims()[0] == 1 &&
-        utils::HasRawData(lhs_t) && utils::HasRawData(rhs_t))) {
+        lhs_t.dims_size() == 1 && rhs_t.dims_size() == 1 && lhs_t.dims()[0] == 1 && rhs_t.dims()[0] == 1)) {
     return false;
   }
-  const void* lhs_value = lhs_t.raw_data().data();
-  const void* rhs_value = rhs_t.raw_data().data();
-  switch (lhs_t.data_type()) {
-    case onnx::TensorProto_DataType_FLOAT:
-      return *reinterpret_cast<const float*>(lhs_value) == *reinterpret_cast<const float*>(rhs_value);
-    case onnx::TensorProto_DataType_FLOAT16:
-      return *reinterpret_cast<const MLFloat16*>(lhs_value) == *reinterpret_cast<const MLFloat16*>(rhs_value);
-    case onnx::TensorProto_DataType_INT64:
-      return *reinterpret_cast<const int64_t*>(lhs_value) == *reinterpret_cast<const int64_t*>(rhs_value);
-    default:
-      break;
+  if (utils::HasString(lhs_t)) {
+    return AreRangesEqual(lhs_t.string_data(), rhs_t.string_data());
   }
-  return false;
+  std::vector<uint8_t> unpacked_lhs_tensor, unpacked_rhs_tensor;
+  if (!utils::UnpackInitializerData(lhs_t, unpacked_lhs_tensor).IsOK() ||
+      !utils::UnpackInitializerData(rhs_t, unpacked_rhs_tensor).IsOK()) {
+    return false;
+  }
+  return unpacked_lhs_tensor == unpacked_rhs_tensor;
 }
 
 bool AreEqual(const ONNX_NAMESPACE::AttributeProto& lhs, const ONNX_NAMESPACE::AttributeProto& rhs) {
@@ -235,26 +226,18 @@ bool AreEqual(const ONNX_NAMESPACE::AttributeProto& lhs, const ONNX_NAMESPACE::A
   return false;
 }
 
-// Support scalar float/int64/fp16 tensor attribute only for now, and requires data is raw data in TensorProto.
+// Support scalar tensor attribute only for now.
 std::size_t GetTensorAttributeHash(const ONNX_NAMESPACE::TensorProto& attr_t) {
   std::size_t hash = 0;
-  if (utils::HasDataType(attr_t) && attr_t.dims_size() == 1 && attr_t.dims()[0] == 1 && utils::HasRawData(attr_t)) {
-    int data_type = attr_t.data_type();
-    switch (data_type) {
-      case onnx::TensorProto_DataType_FLOAT:
-        UpdateHash(data_type, hash);
-        UpdateHash(*reinterpret_cast<const float*>(attr_t.raw_data().data()), hash);
-        break;
-      case onnx::TensorProto_DataType_FLOAT16:
-        UpdateHash(data_type, hash);
-        UpdateHash(static_cast<float>(*reinterpret_cast<const MLFloat16*>(attr_t.raw_data().data())), hash);
-        break;
-      case onnx::TensorProto_DataType_INT64:
-        UpdateHash(data_type, hash);
-        UpdateHash(*reinterpret_cast<const int64_t*>(attr_t.raw_data().data()), hash);
-        break;
-      default:
-        break;
+  if (utils::HasDataType(attr_t) && attr_t.dims_size() == 1 && attr_t.dims()[0] == 1) {
+    UpdateHash(attr_t.data_type(), hash);
+    if (utils::HasString(attr_t)) {
+      UpdateHashWithContainer(attr_t.string_data(), hash);
+    } else {
+      std::vector<uint8_t> unpacked_tensor;
+      if (utils::UnpackInitializerData(attr_t, unpacked_tensor).IsOK()) {
+        UpdateHashWithContainer(unpacked_tensor, hash);
+      }
     }
   }
   return hash;
@@ -421,7 +404,13 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
 
   for (NodeIndex node_index : node_topology_list) {
     Node* node = graph.GetNode(node_index);
-    if (node == nullptr)
+
+    // In the context of a model containing EPContext nodes, it's highly unlikely that two EPContext nodes will
+    // produce the same results.
+    // Furthermore, the EquivalenceClass constructor includes the node and all its attributes in the hash calculation,
+    // which can be particularly time-consuming when the "ep_cache_context" attribute contains a large binary blob.
+    // Therefore, EPContext nodes are excluded from this process.
+    if (node == nullptr || node->OpType() == "EPContext")
       continue;
 
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
@@ -471,7 +460,12 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
 
   for (NodeIndex node_index : node_topology_list) {
     Node* node = graph.GetNode(node_index);
-    if (node == nullptr)
+    // In the context of a model containing EPContext nodes, it's highly unlikely that two EPContext nodes will
+    // produce the same results.
+    // Furthermore, the EquivalenceClass constructor includes the node and all its attributes in the hash calculation,
+    // which can be particularly time-consuming when the "ep_cache_context" attribute contains a large binary blob.
+    // Therefore, EPContext nodes are excluded from this process.
+    if (node == nullptr || node->OpType() == "EPContext")
       continue;
 
     bool node_output_replaced = false;

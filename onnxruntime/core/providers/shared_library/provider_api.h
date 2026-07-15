@@ -7,6 +7,18 @@
 //       switching providers to be runnable as shared libraries. The interfaces will become more tightly integrated into the core code.
 
 #pragma once
+
+// When building the CUDA EP as a plugin (BUILD_CUDA_EP_AS_PLUGIN),
+// skip all SHARED_PROVIDER type redefinitions. The adapter header (ep/adapters.h)
+// provides its own facade types, and the SHARED_PROVIDER bridge would conflict.
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+
+// Plugin build: provider_api.h is a complete no-op. We do NOT define
+// SHARED_PROVIDER so that #ifndef SHARED_PROVIDER guards in framework
+// headers (op_kernel.h, etc.) remain active.
+
+#else  // !BUILD_CUDA_EP_AS_PLUGIN — normal SHARED_PROVIDER path
+
 #define SHARED_PROVIDER 1
 
 #ifdef _WIN32
@@ -27,9 +39,11 @@
 #include "core/common/type_list.h"
 #include "core/common/logging/severity.h"
 #include "core/framework/allocator.h"
-#include "core/framework/float8.h"
-#include "core/framework/float16.h"
+#include "core/common/float8.h"
+#include "core/common/float16.h"
 #include "core/framework/int4.h"
+#include "core/framework/int2.h"
+#include "core/framework/float4.h"
 #include "core/framework/tensor_shape.h"
 #include "core/providers/providers.h"
 #include "core/common/path_string.h"
@@ -77,6 +91,10 @@ enum TensorProto_DataType : int {
   TensorProto_DataType_FLOAT8E5M2FNUZ = 20,
   TensorProto_DataType_UINT4 = 21,
   TensorProto_DataType_INT4 = 22,
+  TensorProto_DataType_FLOAT4E2M1 = 23,
+  TensorProto_DataType_FLOAT8E8M0 = 24,
+  TensorProto_DataType_UINT2 = 25,
+  TensorProto_DataType_INT2 = 26,
 };
 
 enum TensorProto_DataLocation : int {
@@ -95,7 +113,9 @@ enum Version : int {
   IR_VERSION_2020_5_8 = 7,
   IR_VERSION_2021_7_31 = 8,
   IR_VERSION_2023_5_5 = 9,
-  IR_VERSION = 10
+  IR_VERSION_2024_3_25 = 10,
+  IR_VERSION_2025_05_12 = 11,
+  IR_VERSION = 12
 };
 
 enum OperatorStatus : int {
@@ -200,6 +220,7 @@ struct SparseTensor;
 class TensorSeq;
 class SessionState;
 class ModelMetadefIdGenerator;
+class GraphOptimizerRegistry;
 
 class If;
 class Loop;
@@ -213,9 +234,6 @@ class TensorShape;
 struct Prepare;
 struct PrepareContext;
 enum class Mode : int;
-struct EinsumComputePreprocessor;
-template <typename T>
-struct EinsumTypedComputeProcessor;
 struct SessionOptions;
 
 namespace contrib {
@@ -244,7 +262,6 @@ using NameMLValMap = std::unordered_map<std::string, OrtValue>;
 }  // namespace onnxruntime
 
 #include "core/platform/threadpool.h"
-#include "core/providers/cpu/math/einsum_utils/einsum_compute_preprocessor.h"
 #include "core/providers/cpu/cpu_provider_shared.h"
 #include "core/framework/data_transfer.h"
 #include "core/framework/external_data_loader.h"
@@ -286,6 +303,7 @@ struct DeleteOnUnloadPtr {
 
 constexpr const char* kOnnxDomain = "";
 constexpr const char* kMSDomain = "com.microsoft";
+constexpr const char* kMLDomain = "ai.onnx.ml";
 constexpr const char* kMSInternalNHWCDomain = "com.ms.internal.nhwc";
 constexpr const char* kPytorchAtenDomain = "org.pytorch.aten";
 constexpr const char* kNGraphDomain = "com.intel.ai";
@@ -294,27 +312,24 @@ constexpr const char* kCannExecutionProvider = "CANNExecutionProvider";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
 constexpr const char* kVitisAIExecutionProvider = "VitisAIExecutionProvider";
-constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
+constexpr const char* kNvTensorRTRTXExecutionProvider = "NvTensorRTRTXExecutionProvider";
 constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
 constexpr const char* kQnnExecutionProvider = "QNNExecutionProvider";
 constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
 constexpr const char* kAzureExecutionProvider = "AzureExecutionProvider";
 
 template <typename T>
-using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
+using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)> >;
 
 inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept { return g_host->CreateStatus(code, msg); }
 
 std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info);
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
-std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
 
 std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name);
-
-std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name);
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name);
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer();
 
@@ -324,6 +339,12 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
                                                    const logging::Logger& logger);
 
 std::string GetEnvironmentVar(const std::string& var_name);
+inline std::string GetEnvironmentVar(std::string_view var_name) {
+  return GetEnvironmentVar(std::string{var_name});
+}
+inline std::string GetEnvironmentVar(const char* var_name) {
+  return GetEnvironmentVar(std::string{var_name});
+}
 
 namespace profiling {
 
@@ -386,6 +407,12 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2>() {
 template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2FNUZ>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ; }
 #endif
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float4E2M1x2>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1; }
+#endif
+
 template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Int4x2>() {
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;
@@ -395,7 +422,16 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt4x2>() {
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4;
 }
 
-inline std::vector<std::unique_ptr<ComputeCapability>>
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Int2x4>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2;
+}
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt2x4>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2;
+}
+
+inline std::vector<std::unique_ptr<ComputeCapability> >
 CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const std::unordered_set<const Node*>& supported_nodes,
                           const std::unordered_set<std::string>& stop_ops,
@@ -416,10 +452,44 @@ inline std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewe
   return g_host->Utils__MakeComputeCapability(graph_viewer, group, generate_metadef_name,
                                               execution_provider_name, drop_constant_initializers);
 }
+
+inline Status GetTensorProtoWithDataIfInMemory(
+    const ONNX_NAMESPACE::TensorProto& tensor_proto, std::unique_ptr<ONNX_NAMESPACE::TensorProto>& result) {
+  return g_host->Utils__GetTensorProtoWithDataIfInMemory(tensor_proto, result);
+}
+
+inline bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto) {
+  return g_host->Utils__HasExternalDataInMemory(ten_proto);
+}
+
+inline Status ValidateExternalDataPath(const std::filesystem::path& model_path,
+                                       const std::filesystem::path& external_data_path) {
+  return g_host->Utils__ValidateExternalDataPath(model_path, external_data_path);
+}
+
+inline Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
+                                              const std::filesystem::path& external_data_path) {
+  return g_host->Utils__ValidateExternalDataPathFromDir(model_dir, external_data_path);
+}
+
 }  // namespace utils
 
+namespace graph_utils {
+inline NodeArg& AddInitializerWithOrtValue(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
+  return g_host->GraphUtils__AddInitializerWithExternalData(graph, new_initializer);
+}
+inline void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph, const std::string& name,
+                                          bool load_inline = false) {
+  g_host->GraphUtils__MakeInitializerCopyIfNotExist(src_graph, dst_graph, name, load_inline);
+}
+
+inline Status ConvertInMemoryDataToInline(Graph& graph, const std::string& name) {
+  return g_host->GraphUtils__ConvertInMemoryDataToInline(graph, name);
+}
+}  // namespace graph_utils
+
 namespace QDQ {
-inline std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
+inline std::pair<std::vector<std::unique_ptr<NodeUnit> >, std::unordered_map<const Node*, const NodeUnit*> >
 GetAllNodeUnits(const GraphViewer* graph_viewer, const logging::Logger& logger) {
   return g_host->QDQ__GetAllNodeUnits(graph_viewer, logger);
 }
@@ -433,6 +503,19 @@ void InitProviderOrtApi();
 inline Env& GetDefaultEnv() {
   return g_host->Env__Default();
 }
+
+template <class T>
+inline const T* Initializer::data() const {
+  constexpr const int data_type = static_cast<int>(utils::GetONNXTensorElementDataType<T>());
+  return reinterpret_cast<const T*>(g_host->Initializer__data(*this_ptr_, data_type));
+}
+
+template <class T>
+inline T* Initializer::data() {
+  constexpr const int data_type = static_cast<int>(utils::GetONNXTensorElementDataType<T>());
+  return reinterpret_cast<T*>(g_host->Initializer__mutable_data(*this_ptr_, data_type));
+}
+
 }  // namespace onnxruntime
 
 #define CREATE_MESSAGE(logger, severity, category, datatype) \
@@ -451,3 +534,5 @@ inline Env& GetDefaultEnv() {
 
 #define LOGS_DEFAULT(severity) \
   LOGS_DEFAULT_CATEGORY(severity, ::onnxruntime::logging::Category::onnxruntime)
+
+#endif  // !BUILD_CUDA_EP_AS_PLUGIN

@@ -4,14 +4,16 @@
 #pragma once
 
 #include <cuda_fp16.h>
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 
 namespace onnxruntime {
 namespace cuda {
 
 // specifies the auxiliary type to use for accumulation of the given type
 template <typename T>
-struct AccumulationType;
+struct AccumulationType {
+  using type = T;
+};
 template <>
 struct AccumulationType<half> {
   using type = float;

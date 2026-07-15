@@ -51,3 +51,25 @@ export const TRACE_FUNC_END = (extraMsg?: string) => {
   }
   TRACE_FUNC('END', extraMsg);
 };
+
+/**
+ * @ignore
+ */
+export const TRACE_EVENT_BEGIN = (extraMsg?: string) => {
+  if (typeof env.trace === 'undefined' ? !env.wasm.trace : !env.trace) {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.time(`ORT::${extraMsg}`);
+};
+
+/**
+ * @ignore
+ */
+export const TRACE_EVENT_END = (extraMsg?: string) => {
+  if (typeof env.trace === 'undefined' ? !env.wasm.trace : !env.trace) {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.timeEnd(`ORT::${extraMsg}`);
+};

@@ -29,7 +29,7 @@ const createBiasAddProgramInfo = (inputs: readonly TensorView[]): ProgramInfo =>
   const outputShape = inputs[0].dims;
 
   const channels = inputs[0].dims[2];
-  // since channel number can be only 320/640/1280, it's always divisable by 4
+  // since channel number can be only 320/640/1280, it's always divisible by 4
   const outputSize = ShapeUtil.size(outputShape) / 4;
 
   const dataType = inputs[0].dataType;

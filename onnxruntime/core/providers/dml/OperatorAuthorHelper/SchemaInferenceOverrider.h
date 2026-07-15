@@ -5,6 +5,7 @@
 
 #include "OperatorHelper.h"
 #include "OperatorVersions.h"
+#include "core/providers/dml/DmlExecutionProvider/src/SafeMakeOrThrow.h"
 
 namespace SchemaInferenceOverrider
 {
@@ -21,7 +22,7 @@ namespace SchemaInferenceOverrider
     )
     {
         Microsoft::WRL::ComPtr<MLOperatorShapeInferrer> shapeInferrer =
-            wil::MakeOrThrow<MLOperatorShapeInferrer>(OperatorHelper::ShapeInferenceFunction<T>);
+            Dml::SafeMakeOrThrow<MLOperatorShapeInferrer>(OperatorHelper::ShapeInferenceFunction<T>);
 
         auto schema = const_cast<onnx::OpSchema*>(onnx::OpSchemaRegistry::Schema(name, version));
 

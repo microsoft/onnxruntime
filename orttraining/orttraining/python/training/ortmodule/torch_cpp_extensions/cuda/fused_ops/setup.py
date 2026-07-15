@@ -18,12 +18,10 @@ filenames = [
     os.path.join(os.path.dirname(__file__), "multi_tensor_l2norm_kernel.cu"),
 ]
 
-use_rocm = bool(os.environ["ONNXRUNTIME_ROCM_VERSION"])
 extra_compile_args = {"cxx": ["-O3"]}
-if not use_rocm:
-    nvcc_extra_args = os.environ.get("ONNXRUNTIME_CUDA_NVCC_EXTRA_ARGS", "")
-    if nvcc_extra_args:
-        extra_compile_args.update({"nvcc": nvcc_extra_args.split(",")})
+nvcc_extra_args = os.environ.get("ONNXRUNTIME_CUDA_NVCC_EXTRA_ARGS", "")
+if nvcc_extra_args:
+    extra_compile_args.update({"nvcc": nvcc_extra_args.split(",")})
 
 setup(
     name="fused_ops",

@@ -1,0 +1,289 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#pragma once
+
+#include <gsl/gsl>
+#include <iostream>
+#include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cpu/bert/attention_parameters.h"
+
+namespace onnxruntime {
+namespace contrib {
+namespace cuda {
+
+template <typename T>
+struct AttentionData {
+  T* gemm_buffer = nullptr;
+  const T* bias = nullptr;
+  int* seqlens_k_total = nullptr;
+
+  const T* query = nullptr;
+  const T* key = nullptr;
+  const T* value = nullptr;
+  const int* mask_index = nullptr;
+  gsl::span<const int64_t> mask_index_dims;
+  const T* past = nullptr;
+  const T* past_key = nullptr;
+  const T* past_value = nullptr;
+  const int32_t* cache_indirection = nullptr;
+  const T* attention_bias = nullptr;
+
+  bool has_qkv_workspace = false;
+  T* workspace = nullptr;
+
+  T* output = nullptr;
+  T* present = nullptr;
+  T* present_key = nullptr;
+  T* present_value = nullptr;
+  void* output_qk = nullptr;
+
+  void* fused_runner = nullptr;
+  const void* fused_cross_attention_kernel = nullptr;
+
+  bool use_flash_attention = false;
+  bool use_memory_efficient_attention = false;
+  bool use_decoder_masked_multihead_attention = false;
+
+  const int32_t* cumulated_sequence_length_q_cache = nullptr;
+  const int32_t* cumulated_sequence_length_kv_cache = nullptr;
+
+  // Intermediate data
+  T* q = nullptr;
+  T* k = nullptr;
+  T* v = nullptr;
+  T* scratch = nullptr;
+  AttentionQkvFormat qkv_format = AttentionQkvFormat::UNKNOWN;
+
+  // Flash buffers
+  T* softmax_lse = nullptr;
+  T* softmax_lse_accum = nullptr;
+  T* out_accum = nullptr;
+
+  // Flash Atttention and Lean Attention
+  int num_splits;
+
+  // Lean Attention
+  bool use_lean_attention = false;
+#if USE_LEAN_ATTENTION
+  int grid_dim_z = 0;
+  int max_tiles_per_tb = 0;
+  int high_load_tbs = 0;
+  int tiles_per_head = 0;
+  int* lean_sync_flag = nullptr;
+#endif
+
+  // For Debugging
+  size_t workspace_bytes = 0;
+  bool allow_debug_info = false;
+
+  // For MultiHeadAttention only.
+  AttentionKernelType kernel_type = AttentionKernelType::AttentionKernel_Default;
+  AllocatorPtr allocator = nullptr;
+  bool IsUnfused() const {
+    return kernel_type == AttentionKernelType::AttentionKernel_Unfused;
+  }
+
+  // For DecoderMaskedMultiHeadAttention
+  T* q_bias = nullptr;
+  T* k_bias = nullptr;
+  T* v_bias = nullptr;
+
+  void PrintDebugInfo() const {
+    std::cout << "flash=" << use_flash_attention
+              << ", lean=" << use_lean_attention
+              << ", efficient=" << use_memory_efficient_attention
+              << ", fused_runner=" << (fused_runner != nullptr)
+              << ", fused_cross=" << (fused_cross_attention_kernel != nullptr)
+              << ", bias=" << (bias != nullptr)
+              << ", attn_bias=" << (attention_bias != nullptr)
+              << ", mask_dims=" << mask_index_dims.size()
+              << ", has_qkv_workspace=" << has_qkv_workspace
+              << ", workspace=" << workspace_bytes
+              << ", past=" << (past != nullptr ? 1 : (past_key != nullptr ? 2 : 0))
+              << ", present=" << (present != nullptr ? 1 : (present_key != nullptr ? 2 : 0))
+              << std::endl;
+  }
+};
+
+template <typename T>
+struct PackedAttentionData {
+  T* gemm_buffer;
+  const T* bias;
+  const T* attention_bias;
+  const int32_t* token_offset;
+  const int32_t* cumulative_sequence_length;
+
+  T* workspace;
+  T* output;
+
+  void* fused_runner;
+
+  bool use_memory_efficient_attention;
+};
+
+template <typename T>
+struct PackedMultiHeadAttentionData {
+  const T* query;
+  const T* key;
+  const T* value;
+  const T* bias;
+  const T* attention_bias;
+
+  const int32_t* token_offset;
+  const int32_t* cumulative_sequence_length;
+
+  AttentionQkvFormat source_qkv_format;
+
+  bool no_qkv_workspace;
+  T* workspace;
+  T* output;
+
+  void* fused_runner;
+
+  bool use_flash_attention;
+  bool use_memory_efficient_attention;
+};
+
+template <typename T, typename U>
+struct GroupQueryAttentionData {
+  // Input Tensors
+  const T* query = nullptr;
+  const T* key = nullptr;
+  const T* value = nullptr;
+  const U* past_key = nullptr;
+  const U* past_value = nullptr;
+  const T* cos_cache = nullptr;
+  const T* sin_cache = nullptr;
+  const T* head_sink = nullptr;
+
+  // Optional additive attention bias, shape (batch_size or 1, num_heads or 1, sequence_length,
+  // total_sequence_length). Broadcast on dims 0/1 is carried by
+  // parameters.broadcast_attn_bias_dim_0/1. Only consumed by the unfused fallback path.
+  const T* attention_bias = nullptr;
+
+  // Optional per-head Q/K RMSNorm (QK-Norm) weights, shape (head_size,), shared across heads.
+  // Both are non-null together (validated in the op) and trigger the fused normalization before RoPE.
+  const T* q_norm_weight = nullptr;
+  const T* k_norm_weight = nullptr;
+  float qk_norm_epsilon = 1e-6f;
+
+  const float* k_scale = nullptr;
+  const float* v_scale = nullptr;
+
+  // Total sequence length for each batch. It has shape [batch_size].
+  int* total_seq_lens = nullptr;
+
+  // Past sequence length for each batch (i.e., the offset to append new tokens). Shape [batch_size].
+  // For first prompt: past_seq_lens[b] = 0
+  // For token generation or subsequent prompt: past_seq_lens[b] = total_seq_lens[b] - sequence_length
+  int* past_seq_lens = nullptr;
+
+  // Padded sequence length for each batch. Shape [batch_size].
+  // Only used for first prompt: padded_seq_lens[b] = sequence_length
+  int* padded_seq_lens = nullptr;
+
+  // Flash buffers
+  T* softmax_lse = nullptr;
+  T* softmax_lse_accum = nullptr;
+  T* out_accum = nullptr;
+
+  // Position IDs from Input
+  const int64_t* position_ids = nullptr;
+
+  // Memory Efficient buffers
+  T* fmha_buffer = nullptr;
+  T* qkv_buffer = nullptr;
+
+  T* k = nullptr;
+  T* v = nullptr;
+
+  // Output Tensors
+  T* output = nullptr;
+  U* present_key = nullptr;
+  U* present_value = nullptr;
+
+  // Kernel Flags
+  bool use_flash_attention = false;
+  bool use_memory_efficient_attention = false;
+  bool use_flash_attention_fast_decode = false;
+  bool use_xqa = false;
+  // cuDNN SDPA (cudnn_frontend) path: preferred on SM>=90 for non-quantized FP16/BF16 GQA.
+  bool use_cudnn_sdpa = false;
+  // GQA-capable unfused fallback (issue #28195): used when Flash/MEA/XQA are all ineligible,
+  // e.g. fp16 head_size > 256 with past_key, or GQA on old GPUs without MEA/Flash support.
+  bool use_unfused = false;
+
+  // XQA buffer
+  void* xqa_buffer = nullptr;
+  size_t xqa_buffer_bytes = 0;
+  // FP32 per-head attention sink consumed by the XQA kernel (nullptr when no head_sink input).
+  // Either points to a PrePack-cached buffer or to scratch that is filled at launch time.
+  float* xqa_head_sink = nullptr;
+  // When true, head_sink was not prepacked (e.g. dynamic/non-initializer input) and the FP16/BF16
+  // head_sink must be converted to xqa_head_sink (FP32 scratch) before launching XQA.
+  bool xqa_head_sink_needs_conversion = false;
+
+  // Unfused fallback buffers (see LaunchUnfusedAttention in unfused_attention.h):
+  //   unfused_q_bnsh : [B, N_q, S_q, H]   (Q transposed from BSNH to BNSH)
+  //   unfused_y_bnsh : [B, N_q, S_q, H_v] (output BNSH, transposed to BSNH before leaving op)
+  //   unfused_workspace: FP32 QK scratch + T softmax scratch (sized by
+  //                      GetUnfusedAttentionWorkspaceSize)
+  T* unfused_q_bnsh = nullptr;
+  T* unfused_y_bnsh = nullptr;
+  void* unfused_workspace = nullptr;
+
+  // cuDNN SDPA path: temp-space allocator and cuDNN handle (stored as void* to avoid pulling the
+  // cuDNN headers into this file; cast to cudnnHandle_t in the .cu runner).
+  AllocatorPtr allocator = nullptr;
+  void* cudnn_handle = nullptr;
+};
+
+template <typename T>
+struct PagedAttentionData {
+  // Input Tensors
+  const T* query = nullptr;
+  const T* key = nullptr;
+  const T* value = nullptr;
+  T* key_cache = nullptr;
+  T* value_cache = nullptr;
+  const int* cumulative_seqlens_q = nullptr;
+  const int* past_seqlens = nullptr;
+  const int* block_table = nullptr;
+  const int* slot_mappings = nullptr;
+  const T* cos_cache = nullptr;
+  const T* sin_cache = nullptr;
+
+  // Flash buffers
+  T* softmax_lse = nullptr;
+  int* cumulative_seqlens_kv = nullptr;  // Flash api takes cumulative sequence length for kv-cache
+
+  // Fused op buffers
+  T* workspace_buffer = nullptr;
+
+  // Memory-efficient attention (CUTLASS fMHA) buffers for the unfused fallback path
+  // taken when FlashAttention is unavailable (SM<80 or ORT_DISABLE_FLASH_ATTENTION).
+  T* gathered_key = nullptr;    // [total_kv_tokens, num_heads, head_size], packed varlen (GQA-expanded)
+  T* gathered_value = nullptr;  // [total_kv_tokens, num_heads, head_size], packed varlen (GQA-expanded)
+  T* fmha_buffer = nullptr;     // CUTLASS fMHA output-accumulator workspace
+  // Populated by the caller after a D->H sync on cumulative_seqlens_kv[batch_size].
+  int total_kv_tokens = 0;
+
+  // Actual max of per-batch new-query lengths (cumulative_seqlens_q[i+1] - cumulative_seqlens_q[i]).
+  // Populated by the caller via the same D->H sync so the MEA path's rotary grid and MEA's
+  // grid_x (ceil_div(sequence_length, kQueriesPerBlock)) cover every query token. The previous
+  // heuristic `token_count - batch_size + 1` underestimates when any batch has 0 new tokens,
+  // producing silent per-token dropout in MEA and rotary.
+  int max_query_len = 0;
+
+  // Output Tensors
+  T* output = nullptr;
+
+  // Kernel Flags
+  bool use_flash_attention = false;
+  bool use_memory_efficient_attention = false;
+};
+
+}  // namespace cuda
+}  // namespace contrib
+}  // namespace onnxruntime

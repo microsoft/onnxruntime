@@ -287,9 +287,46 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_int8) {
                           127, -127,
                           127, -128,
                           127, -128});
+  std::unordered_set<std::string> excluded_providers;
   // Disable Tensorrt EP due to error: node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  excluded_providers.insert(kTensorrtExecutionProvider);
+  // Disable OV EP due to different formulation for QuantizeLinear
+  excluded_providers.insert(kOpenVINOExecutionProvider);
+  test.ConfigExcludeEps(excluded_providers)
+      .RunWithConfig();
 }
+
+#ifdef USE_OPENVINO
+TEST(QuantizeLinearContribOpTest, OVEPQuantizeLinear_per_tensor_float_int8) {
+  OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{16};
+  test.AddInput<float>("x", dims, {
+                                      0.f, 2.f,        //
+                                      3.f, -3.f,       // rounding half to even
+                                      2.9f, -2.9f,     // low case
+                                      3.1f, -3.1f,     // up case
+                                      254.f, -256.f,   // critical point
+                                      255.f, -257.f,   // critical point
+                                      256.f, -258.f,   // critical point
+                                      1000.f, -1000.f  // saturate case
+                                  });
+  test.AddInput<float>("y_scale", {}, {2.0f});
+  test.AddInput<int8_t>("y_zero_point", {}, {1});
+  test.AddOutput<int8_t>("y", dims,
+                         {1, 2,
+                          2, 0,
+                          2, 0,
+                          3, -1,
+                          127, -127,
+                          127, -128,
+                          127, -128,
+                          127, -128});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultOpenVINOExecutionProvider());
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+#endif  // USE_OPENVINO
 
 // Test uint16 com.microsoft.QuantizeLinear (per tensor)
 TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_uint16) {
@@ -311,10 +348,41 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_uint16) {
                             32769, 32765,
                             65535, 0,
                             65535, 0});
-
+  std::unordered_set<std::string> excluded_providers;
   // Disable Tensorrt EP due to error: unsupported data type
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  excluded_providers.insert(kTensorrtExecutionProvider);
+  // Disable OV EP due to different formulation for QuantizeLinear
+  excluded_providers.insert(kOpenVINOExecutionProvider);
+  test.ConfigExcludeEps(excluded_providers)
+      .RunWithConfig();
 }
+
+#ifdef USE_OPENVINO
+TEST(QuantizeLinearContribOpTest, OVEPQuantizeLinear_per_tensor_float_uint16) {
+  OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{12};
+  test.AddInput<float>("x", dims, {
+                                      0.f, -128.f, 3.f, -3.f,  // rounding half to even
+                                      2.9f, -2.9f,             // round < .5
+                                      3.1f, -3.1f,             // round > .5
+                                      65536.f, -65534.f,       // critical point
+                                      70000.f, -70000.f        // saturate case
+                                  });
+  test.AddInput<float>("scale", {}, {2.0f}, true);
+  test.AddInput<uint16_t>("zero_point", {}, {32767}, true);
+  test.AddOutput<uint16_t>("y", dims,
+                           {32767, 32703,
+                            32768, 32766,
+                            32768, 32766,
+                            32769, 32765,
+                            65535, 0,
+                            65535, 0});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultOpenVINOExecutionProvider());
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+#endif  // USE_OPENVINO
 
 // Test int16 com.microsoft.QuantizeLinear (per tensor)
 TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_int16) {

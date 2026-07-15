@@ -24,11 +24,26 @@ class GraphTransformerManager {
   // Get the maximum number of graph transformation steps
   common::Status GetSteps(unsigned& steps) const;
 
+  // Set the cancellation flag ptr from session_options
+  void SetLoadCancellationFn(CheckLoadCancellationFn check_load_cancellation_fn) {
+    check_load_cancellation_fn_ = std::move(check_load_cancellation_fn);
+  }
+
+  // Get the cancellation flag ptr
+  bool IsLoadCancellationFlagSet() const noexcept {
+    return check_load_cancellation_fn_ && check_load_cancellation_fn_();
+  }
+
   // Register a transformer with a level.
   common::Status Register(std::unique_ptr<GraphTransformer> transformer, TransformerLevel level);
 
   // Apply all transformers registered for the given level on the given graph
   common::Status ApplyTransformers(Graph& graph, TransformerLevel level, const logging::Logger& logger) const;
+
+  // Get if the graph is modified while applying the registered transformers
+  const bool& IsGraphModified(void) const;
+  // Set/Re-Set graph modified to "false" (generally) to remove any trace of previous application
+  void ClearGraphModified(void);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformerManager);
@@ -38,5 +53,7 @@ class GraphTransformerManager {
 
   InlinedHashMap<TransformerLevel, InlinedVector<std::unique_ptr<GraphTransformer>>> level_to_transformer_map_;
   InlinedHashMap<std::string, GraphTransformer*> transformers_info_;
+  CheckLoadCancellationFn check_load_cancellation_fn_;
+  mutable bool _is_graph_modified = false;
 };
 }  // namespace onnxruntime

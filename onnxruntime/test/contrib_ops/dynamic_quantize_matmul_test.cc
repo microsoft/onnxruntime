@@ -5,11 +5,12 @@
 #include "core/framework/tensor.h"
 #include "core/session/inference_session.h"
 #include "test/common/tensor_op_test_utils.h"
-#include "test/framework/test_utils.h"
-#include "test/optimizer/graph_transform_test_builder.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/default_providers.h"
 #include "core/util/qmath.h"
+#include "core/mlas/lib/mlasi.h"  // for MLAS_CPUIDINFO
 
 #include <chrono>
 #include <random>
@@ -50,7 +51,7 @@ static void CalculateDynamicQuantizeMatMul(const int64_t M, const int64_t N, con
   min = std::min(min, 0.0f);
 
   float scale = static_cast<float>(max - min) / (qmax - qmin);
-  T zeroPoint = std::round(std::clamp(qmin - min / scale, qmin, qmax));
+  T zeroPoint = static_cast<T>(std::round(std::clamp(qmin - min / scale, qmin, qmax)));
 
   A_scale.push_back(scale);
   A_zero_point.push_back(zeroPoint);
@@ -82,21 +83,48 @@ static void CalculateDynamicQuantizeMatMul(const int64_t M, const int64_t N, con
   }
 }
 
+struct TestDynamicQuantizeMatMulOptions {
+  bool is_matrix_b_constant = true;
+
+  bool per_column = false;
+
+  bool is_scale_constant = false;
+
+  bool has_zp = true;
+  bool is_zp_constant = false;
+  bool is_zp_zero = false;
+
+  bool has_bias = false;
+  bool is_bias_constant = false;
+
+  bool empty_input = false;
+};
+
 template <typename T>
-void TestDynamicQuantizeMatMul(bool is_matrix_b_constant,
-                               bool per_column = false,
-                               bool has_zp = true,
-                               bool has_bias = false,
-                               bool empty_input = false) {
+void TestDynamicQuantizeMatMul(const TestDynamicQuantizeMatMulOptions& opts) {
+  static_assert(std::is_same_v<T, uint8_t> || std::is_same_v<T, int8_t>);
+
+  SCOPED_TRACE(MakeString(
+      "b data type:", (std::is_same_v<T, uint8_t> ? "uint8" : "int8"),
+      ", is_matrix_b_constant:", opts.is_matrix_b_constant,
+      ", per_column:", opts.per_column,
+      ", is_scale_constant:", opts.is_scale_constant,
+      ", has_zp:", opts.has_zp,
+      ", is_zp_constant:", opts.is_zp_constant,
+      ", is_zp_zero:", opts.is_zp_zero,
+      ", has_bias:", opts.has_bias,
+      ", is_bias_constant:", opts.is_bias_constant,
+      ", empty_input:", opts.empty_input));
+
   // create rand inputs
   RandomValueGenerator random{1668426375};
 
-  int64_t M = empty_input ? 1 : 4;
+  int64_t M = opts.empty_input ? 1 : 4;
   int64_t N = 128;
   int64_t K = 128;
-  std::vector<int64_t> A_dims{empty_input ? 0 : M, K};
+  std::vector<int64_t> A_dims{opts.empty_input ? 0 : M, K};
   std::vector<int64_t> B_dims{K, N};
-  std::vector<int64_t> Y_dims{empty_input ? 0 : M, K};
+  std::vector<int64_t> Y_dims{opts.empty_input ? 0 : M, K};
   std::vector<float> A_data = random.Uniform<float>(A_dims, -1.0f, 1.0f);
   std::vector<T> B_data;
   std::vector<T> tmp_B_data = random.Uniform<T>(B_dims,
@@ -106,101 +134,120 @@ void TestDynamicQuantizeMatMul(bool is_matrix_b_constant,
     return static_cast<T>(v);
   });
 
-  int64_t b_scale_zp_size = per_column ? B_dims.back() : 1;
+  int64_t b_scale_zp_size = opts.per_column ? B_dims.back() : 1;
   std::vector<float> B_scale = random.Uniform<float>(AsSpan({b_scale_zp_size}), -0.1f, 0.1f);
   std::vector<T> B_zero_point(b_scale_zp_size);
-  std::for_each(B_zero_point.begin(),
-                B_zero_point.end(),
-                [&random](T& zp) {
-                  zp = static_cast<T>(random.Uniform<T>(std::array<int64_t, 1>{1},
-                                                        std::numeric_limits<T>::min(),
-                                                        std::numeric_limits<T>::max())[0]);
-                });
+  if (!opts.is_zp_zero) {
+    std::for_each(B_zero_point.begin(),
+                  B_zero_point.end(),
+                  [&random](T& zp) {
+                    zp = static_cast<T>(random.Uniform<T>(std::array<int64_t, 1>{1},
+                                                          std::numeric_limits<T>::min(),
+                                                          std::numeric_limits<T>::max())[0]);
+                  });
+  }
 
   std::vector<float> Bias = random.Uniform<float>(AsSpan({B_dims.back()}), -0.1f, 0.1f);
 
   OpTester test("DynamicQuantizeMatMul", 1, onnxruntime::kMSDomain);
   test.AddInput<float>("A", A_dims, A_data);
-  test.AddInput<T>("B", B_dims, B_data, is_matrix_b_constant);
-  test.AddInput<float>("b_scale", {b_scale_zp_size}, B_scale);
+  test.AddInput<T>("B", B_dims, B_data, opts.is_matrix_b_constant);
+  test.AddInput<float>("b_scale", {b_scale_zp_size}, B_scale, opts.is_scale_constant);
 
-  if (has_zp) {
-    test.AddInput<T>("b_zero_point", {b_scale_zp_size}, B_zero_point);
+  if (opts.has_zp) {
+    test.AddInput<T>("b_zero_point", {b_scale_zp_size}, B_zero_point, opts.is_zp_constant);
   } else {
     test.AddOptionalInputEdge<T>();
   }
 
-  if (has_bias) {
-    test.AddInput<float>("bias", {B_dims.back()}, Bias);
+  if (opts.has_bias) {
+    test.AddInput<float>("bias", {B_dims.back()}, Bias, opts.is_bias_constant);
   } else {
     test.AddOptionalInputEdge<float>();
   }
 
   std::vector<float> Y_data(M * N);
   CalculateDynamicQuantizeMatMul<T>(M, N, K, A_data, B_data, B_scale, B_zero_point, Bias, Y_data,
-                                    per_column, has_zp, has_bias);
+                                    opts.per_column, opts.has_zp, opts.has_bias);
   test.AddOutput<float>("Y", Y_dims, Y_data);
   test.SetOutputRelErr("Y", 0.02f);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
-template <typename T, bool HasZeroPoint, bool HasBias>
+template <typename T>
+void TestDynamicQuantizeMatMul(bool is_matrix_b_constant,
+                               bool per_column = false,
+                               bool has_zp = true,
+                               bool has_bias = false,
+                               bool empty_input = false) {
+  TestDynamicQuantizeMatMulOptions opts{};
+  opts.is_matrix_b_constant = is_matrix_b_constant;
+  opts.per_column = per_column;
+  opts.has_zp = has_zp;
+  opts.has_bias = has_bias;
+  opts.empty_input = empty_input;
+
+  TestDynamicQuantizeMatMul<T>(opts);
+}
+
+template <typename T>
 void RunDynamicQuantizeMatMulTest() {
-  TestDynamicQuantizeMatMul<T>(false,        /*is_matrix_b_constant*/
-                               false,        /*per_column*/
-                               HasZeroPoint, /*has_zp*/
-                               HasBias       /*has_bias*/
-  );
-
-  TestDynamicQuantizeMatMul<T>(true,         /*is_matrix_b_constant*/
-                               false,        /*per_column*/
-                               HasZeroPoint, /*has_zp*/
-                               HasBias       /*has_bias*/
-  );
-
-  TestDynamicQuantizeMatMul<T>(false,        /*is_matrix_b_constant*/
-                               true,         /*per_column*/
-                               HasZeroPoint, /*has_zp*/
-                               HasBias       /*has_bias*/
-  );
-
-  TestDynamicQuantizeMatMul<T>(true,         /*is_matrix_b_constant*/
-                               true,         /*per_column*/
-                               HasZeroPoint, /*has_zp*/
-                               HasBias       /*has_bias*/
-  );
+  for (bool is_matrix_b_constant : {false, true}) {
+    for (bool per_column : {false, true}) {
+      for (bool has_zp : {false, true}) {
+        for (bool has_bias : {false, true}) {
+          TestDynamicQuantizeMatMul<T>(is_matrix_b_constant,
+                                       per_column,
+                                       has_zp,
+                                       has_bias);
+        }
+      }
+    }
+  }
 }
 
-TEST(DynamicQuantizeMatMul, HasZeroPoint_NoBias_test_S8) {
-  RunDynamicQuantizeMatMulTest<int8_t, true, false>();
+TEST(DynamicQuantizeMatMul, Int8) {
+  RunDynamicQuantizeMatMulTest<int8_t>();
 }
 
-TEST(DynamicQuantizeMatMul, HasZeroPoint_NoBias_test_U8) {
-  RunDynamicQuantizeMatMulTest<uint8_t, true, false>();
+TEST(DynamicQuantizeMatMul, UInt8) {
+  RunDynamicQuantizeMatMulTest<uint8_t>();
 }
 
-TEST(DynamicQuantizeMatMul, NoZeroPoint_HasBias_test_S8) {
-  RunDynamicQuantizeMatMulTest<int8_t, false, true>();
-}
+TEST(DynamicQuantizeMatMul, WithConstantBInputs) {
+  TestDynamicQuantizeMatMulOptions base_opts{};
+  base_opts.is_matrix_b_constant = true;
+  base_opts.is_scale_constant = true;
+  base_opts.is_zp_constant = true;
 
-TEST(DynamicQuantizeMatMul, NoZeroPoint_HasBias_test_U8) {
-  RunDynamicQuantizeMatMulTest<uint8_t, false, true>();
-}
+  {
+    // no zp
+    auto opts = base_opts;
+    opts.has_zp = false;
 
-TEST(DynamicQuantizeMatMul, NoZeroPoint_NoBias_test_S8) {
-  RunDynamicQuantizeMatMulTest<int8_t, false, false>();
-}
+    TestDynamicQuantizeMatMul<int8_t>(opts);
+    TestDynamicQuantizeMatMul<uint8_t>(opts);
+  }
 
-TEST(DynamicQuantizeMatMul, NoZeroPoint_NoBias_test_U8) {
-  RunDynamicQuantizeMatMulTest<uint8_t, false, false>();
-}
+  {
+    // zp that is zero (symmetric quantization)
+    auto opts = base_opts;
+    opts.has_zp = true;
+    opts.is_zp_zero = true;
 
-TEST(DynamicQuantizeMatMul, HasZeroPoint_HasBias_test_S8) {
-  RunDynamicQuantizeMatMulTest<int8_t, true, true>();
-}
+    TestDynamicQuantizeMatMul<int8_t>(opts);
+    TestDynamicQuantizeMatMul<uint8_t>(opts);
+  }
 
-TEST(DynamicQuantizeMatMul, HasZeroPoint_HasBias_test_U8) {
-  RunDynamicQuantizeMatMulTest<uint8_t, true, true>();
+  {
+    // zp that is non-zero
+    auto opts = base_opts;
+    opts.has_zp = true;
+    opts.is_zp_zero = false;
+
+    TestDynamicQuantizeMatMul<int8_t>(opts);
+    TestDynamicQuantizeMatMul<uint8_t>(opts);
+  }
 }
 
 TEST(DynamicQuantizeMatMul, UInt8_test_with_empty_input) {
@@ -216,6 +263,206 @@ TEST(DynamicQuantizeMatMul, UInt8_test_with_empty_input) {
   test.AddOutput<float>("Y", {0, 2}, {});
   test.Run();
 }
+
+#if defined(USE_KLEIDIAI)
+
+static bool HasArmSME() {
+  return (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME() || MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2());
+}
+
+// Helper to build a tiny 2x3×4 case we reuse.
+struct KleidiDynMatMulData {
+  static constexpr int64_t M = 2;
+  static constexpr int64_t K = 4;
+  static constexpr int64_t N = 3;
+
+  std::vector<float> a = {
+      1.f, 2.f, 3.f, 4.f,
+      -1.f, -2.f, -3.f, -4.f};
+  std::vector<int8_t> b = {
+      1, 0, -1,
+      2, -1, 0,
+      0, 1, 2,
+      -2, 0, 1};
+  std::vector<float> b_scale = {0.5f, 0.25f, 0.125f};
+  std::vector<int8_t> b_zp = {0, 0, 0};
+
+  std::vector<float> Reference(float bias0, float bias1, float bias2) const {
+    std::vector<float> out(M * N, 0.f);
+    for (int64_t m = 0; m < M; ++m) {
+      for (int64_t n = 0; n < N; ++n) {
+        float sum = 0.f;
+        for (int64_t k = 0; k < K; ++k) {
+          const float b_val = (static_cast<int32_t>(b[k * N + n]) - b_zp[n]) * b_scale[n];
+          sum += a[m * K + k] * b_val;
+        }
+        const float bias = (n == 0 ? bias0 : n == 1 ? bias1
+                                                    : bias2);
+        out[m * N + n] = sum + bias;
+      }
+    }
+    return out;
+  }
+
+  std::vector<float> Reference3D(float bias0, float bias1, float bias2, int64_t leading = 1) const {
+    auto base = Reference(bias0, bias1, bias2);
+    std::vector<float> out;
+    out.reserve(leading * M * N);
+    for (int64_t i = 0; i < leading; ++i) {
+      out.insert(out.end(), base.begin(), base.end());
+    }
+    return out;
+  }
+};
+
+// 1. Bias provided as initializer -> Kleidi packs bias and skips runtime add.
+TEST(DynamicQuantizeMatMul, KleidiBiasInitializer) {
+  if (!HasArmSME()) GTEST_SKIP();
+  KleidiDynMatMulData data;
+  const std::vector<float> bias = {0.25f, -0.5f, 1.125f};
+  auto expected = data.Reference(bias[0], bias[1], bias[2]);
+
+  OpTester test("DynamicQuantizeMatMul", 1, kMSDomain);
+  test.AddInput<float>("A", {data.M, data.K}, data.a);
+  test.AddInput<int8_t>("B", {data.K, data.N}, data.b, true /*initializer*/);
+  test.AddInput<float>("b_scale", {data.N}, data.b_scale, true);
+  test.AddInput<int8_t>("b_zero_point", {data.N}, data.b_zp, true /*initializer*/);
+  test.AddInput<float>("bias", {data.N}, bias, true /*initializer*/);
+  test.AddOutput<float>("Y", {data.M, data.N}, expected);
+  test.SetOutputAbsErr("Y", 0.03f);
+  test.Run();
+}
+
+// 2. Bias as runtime tensor -> exercise deferred bias add branch.
+TEST(DynamicQuantizeMatMul, KleidiBiasRuntime) {
+  if (!HasArmSME()) GTEST_SKIP();
+  KleidiDynMatMulData data;
+  const std::vector<float> bias = {1.0f, 0.0f, -0.75f};
+  auto expected = data.Reference(bias[0], bias[1], bias[2]);
+
+  OpTester test("DynamicQuantizeMatMul", 1, kMSDomain);
+  test.AddInput<float>("A", {data.M, data.K}, data.a);
+  test.AddInput<int8_t>("B", {data.K, data.N}, data.b, true);
+  test.AddInput<float>("b_scale", {data.N}, data.b_scale, true);
+  test.AddInput<int8_t>("b_zero_point", {data.N}, data.b_zp, true);
+  test.AddInput<float>("bias", {data.N}, bias, false /*runtime*/);
+  test.AddOutput<float>("Y", {data.M, data.N}, expected);
+  test.SetOutputAbsErr("Y", 0.03f);
+  test.Run();
+}
+
+// 3. Non-zero zero-points -> Kleidi pack rejected, falls back to generic path.
+TEST(DynamicQuantizeMatMul, KleidiRejectsNonZeroZeroPoint) {
+  if (!HasArmSME()) GTEST_SKIP();
+  KleidiDynMatMulData data;
+  data.b_zp = {1, 0, 0};                          // violates symmetry, Kleidi path disabled
+  auto expected = data.Reference(0.f, 0.f, 0.f);  // still compare to reference
+
+  OpTester test("DynamicQuantizeMatMul", 1, kMSDomain);
+  test.AddInput<float>("A", {data.M, data.K}, data.a);
+  test.AddInput<int8_t>("B", {data.K, data.N}, data.b, true);
+  test.AddInput<float>("b_scale", {data.N}, data.b_scale, true);
+  test.AddInput<int8_t>("b_zero_point", {data.N}, data.b_zp);
+  test.AddOptionalInputEdge<float>();  // no bias
+  test.AddOutput<float>("Y", {data.M, data.N}, expected);
+  test.SetOutputAbsErr("Y", 0.03f);
+  test.Run();  // succeeds, but exercises the “fallback” branch
+}
+
+// 4. Invalid scales -> Kleidi pack rejected.
+TEST(DynamicQuantizeMatMul, KleidiRejectsInvalidScale) {
+  if (!HasArmSME()) GTEST_SKIP();
+  KleidiDynMatMulData data;
+  data.b_scale[1] = 0.f;  // invalid
+  auto expected = data.Reference(0.f, 0.f, 0.f);
+
+  OpTester test("DynamicQuantizeMatMul", 1, kMSDomain);
+  test.AddInput<float>("A", {data.M, data.K}, data.a);
+  test.AddInput<int8_t>("B", {data.K, data.N}, data.b, true);
+  test.AddInput<float>("b_scale", {data.N}, data.b_scale, true);
+  test.AddInput<int8_t>("b_zero_point", {data.N}, data.b_zp, true);
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("Y", {data.M, data.N}, expected);
+  test.SetOutputAbsErr("Y", 0.03f);
+  test.Run();
+}
+
+// 5. Unsupported B-shape (e.g., 3D) -> Kleidi pack rejected.
+TEST(DynamicQuantizeMatMul, KleidiRejectsUnsupportedBShape) {
+  if (!HasArmSME()) GTEST_SKIP();
+  KleidiDynMatMulData data;
+  std::vector<int8_t> b_3d;
+  b_3d.reserve(2 * data.b.size());
+  b_3d.insert(b_3d.end(), data.b.begin(), data.b.end());
+  b_3d.insert(b_3d.end(), data.b.begin(), data.b.end());
+  std::vector<int64_t> b_shape = {2, data.K, data.N};
+
+  std::vector<float> b_scale_3d;
+  b_scale_3d.reserve(2 * data.N);
+  b_scale_3d.insert(b_scale_3d.end(), data.b_scale.begin(), data.b_scale.end());
+  b_scale_3d.insert(b_scale_3d.end(), data.b_scale.begin(), data.b_scale.end());
+
+  std::vector<int8_t> b_zp_3d;
+  b_zp_3d.reserve(2 * data.N);
+  b_zp_3d.insert(b_zp_3d.end(), data.b_zp.begin(), data.b_zp.end());
+  b_zp_3d.insert(b_zp_3d.end(), data.b_zp.begin(), data.b_zp.end());
+
+  auto expected = data.Reference3D(0.f, 0.f, 0.f, /*leading=*/2);
+
+  OpTester test("DynamicQuantizeMatMul", 1, kMSDomain);
+  test.AddInput<float>("A", {data.M, data.K}, data.a);
+  test.AddInput<int8_t>("B", b_shape, b_3d, true);
+  test.AddInput<float>("b_scale", {2, 1, data.N}, b_scale_3d, true);
+  test.AddInput<int8_t>("b_zero_point", {2, 1, data.N}, b_zp_3d, true);
+
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("Y", {2, data.M, data.N}, expected);
+  test.SetOutputAbsErr("Y", 0.03f);
+  test.Run();
+}
+
+// 6. Mismatched bias (runtime tensor) -> must be rejected at compute time.
+TEST(DynamicQuantizeMatMul, KleidiBiasRuntimeShapeMismatch) {
+  if (!HasArmSME()) GTEST_SKIP();
+  KleidiDynMatMulData data;
+  // Bias has only 1 element but N=3 — this must be rejected.
+  const std::vector<float> bad_bias = {1.0f};
+
+  OpTester test("DynamicQuantizeMatMul", 1, kMSDomain);
+  test.AddInput<float>("A", {data.M, data.K}, data.a);
+  test.AddInput<int8_t>("B", {data.K, data.N}, data.b, true /*initializer*/);
+  test.AddInput<float>("b_scale", {data.N}, data.b_scale, true);
+  test.AddInput<int8_t>("b_zero_point", {data.N}, data.b_zp, true);
+  test.AddInput<float>("bias", {1}, bad_bias, false /*runtime*/);
+  test.AddOutput<float>("Y", {data.M, data.N}, std::vector<float>(data.M * data.N, 0.0f));
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .Config(OpTester::ExpectResult::kExpectFailure,
+              "bias tensor's element count must equal B's last dimension")
+      .RunWithConfig();
+}
+
+// 7. Mismatched bias (constant initializer) -> KleidiAI pre-pack rejects -> falls back to ComputeCommon
+// -> rejected
+TEST(DynamicQuantizeMatMul, KleidiBiasInitializerShapeMismatch) {
+  if (!HasArmSME()) GTEST_SKIP();
+  KleidiDynMatMulData data;
+  // Bias has only 1 element but N=3 — this must be rejected.
+  const std::vector<float> bad_bias = {1.0f};
+
+  OpTester test("DynamicQuantizeMatMul", 1, kMSDomain);
+  test.AddInput<float>("A", {data.M, data.K}, data.a);
+  test.AddInput<int8_t>("B", {data.K, data.N}, data.b, true /*initializer*/);
+  test.AddInput<float>("b_scale", {data.N}, data.b_scale, true);
+  test.AddInput<int8_t>("b_zero_point", {data.N}, data.b_zp, true);
+  test.AddInput<float>("bias", {1}, bad_bias, true /*initializer*/);
+  test.AddOutput<float>("Y", {data.M, data.N}, std::vector<float>(data.M * data.N, 0.0f));
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .Config(OpTester::ExpectResult::kExpectFailure,
+              "bias tensor's element count must equal B's last dimension")
+      .RunWithConfig();
+}
+
+#endif  // USE_KLEIDIAI
 
 TEST(DynamicQuantizeMatMul, B_PerColumn_ND) {
   auto test_case = [&](const std::vector<int64_t>& input_shape,
@@ -278,6 +525,36 @@ TEST(DynamicQuantizeMatMul, B_PerColumn_ND) {
 
   // ND B per-column
   test_case({15, 14, 13}, {15, 13, 27}, {15, 1, 27});
+}
+
+// Test that a bias tensor with length mismatched to B's last dimension is rejected.
+// This reproduces a heap OOB read when bias is shorter than N.
+TEST(DynamicQuantizeMatMul, BiasShapeMismatch) {
+  constexpr int64_t M = 2;
+  constexpr int64_t K = 4;
+  constexpr int64_t N = 8;
+
+  std::vector<float> A_data(M * K, 1.0f);
+  std::vector<uint8_t> B_data(K * N, 128);
+  std::vector<float> B_scale = {0.5f};
+  std::vector<uint8_t> B_zero_point = {128};
+
+  // Bias has only 1 element but N=8 — this must be rejected.
+  std::vector<float> bad_bias = {1.0f};
+
+  OpTester test("DynamicQuantizeMatMul", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("A", {M, K}, A_data);
+  test.AddInput<uint8_t>("B", {K, N}, B_data);
+  test.AddInput<float>("b_scale", {1}, B_scale);
+  test.AddInput<uint8_t>("b_zero_point", {1}, B_zero_point);
+  test.AddInput<float>("bias", {1}, bad_bias);
+
+  test.AddOutput<float>("Y", {M, N}, std::vector<float>(M * N, 0.0f));
+
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .Config(OpTester::ExpectResult::kExpectFailure,
+              "bias tensor's element count must equal B's last dimension")
+      .RunWithConfig();
 }
 
 }  // namespace test

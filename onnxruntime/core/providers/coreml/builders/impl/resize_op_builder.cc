@@ -77,7 +77,8 @@ bool GetValidatedResizeScales(const GraphViewer& graph_viewer,
     return false;
   }
 
-  Initializer unpacked_tensor(*scales_tensor);
+  const auto& graph = graph_viewer.GetGraph();
+  Initializer unpacked_tensor(graph, *scales_tensor, graph.ModelPath());
   auto scales_data = unpacked_tensor.DataAsSpan<float>();
   scales.assign(scales_data.begin(), scales_data.end());
 
@@ -108,7 +109,7 @@ bool GetValidatedResizeSizes(const GraphViewer& graph_viewer,
     return false;
   }
 
-  Initializer unpacked_tensor(*sizes_tensor);
+  Initializer unpacked_tensor(graph_viewer.GetGraph(), *sizes_tensor, graph_viewer.ModelPath());
   auto sizes_data = unpacked_tensor.DataAsSpan<int64_t>();
   sizes.assign(sizes_data.begin(), sizes_data.end());
 
@@ -212,7 +213,6 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     num_sizes = output_sizes.size();
   }
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;  // NOLINT
 
@@ -279,9 +279,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
     AddOperationOutput(*op, *output_defs[0]);
     model_builder.AddOperation(std::move(op));
-  } else  // NOLINT
-#endif
-  {
+  } else {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
     auto* coreml_upsample = layer->mutable_upsample();

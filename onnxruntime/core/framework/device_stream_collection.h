@@ -28,6 +28,15 @@ class DeviceStreamCollection {
   // a EP which doesn't support Stream, i.e. CPU based EPs.
   void SetDeviceStream(size_t stream_idx, Stream* stream);
 
+  // override the stream for matching device.
+  // only one override is allowed at a time presumably coming from
+  // OrtRunOptions
+  // returns an error if no matching stream
+  Status SetStreamOverride(Stream* stream);
+
+  // Remove the override before caching/reusing the collection.
+  void ResetStreamOverride();
+
   // get the Stream instance on given stream index
   // The return value could be nullptr, which means the EP on this
   // logic sequence doesn't support Stream.

@@ -39,8 +39,6 @@ class MockEtwSink : public ::onnxruntime::logging::ISink {
 #endif
 
 ACTION(PrintArgs) {
-  using onnxruntime::logging::timestamp_ns::operator<<;
-
   // const Timestamp &timestamp, const std::string &logger_id, const Message &message
   //                  arg0                          arg1                        arg2
   std::cout << arg1 << "@" << arg0 << " "

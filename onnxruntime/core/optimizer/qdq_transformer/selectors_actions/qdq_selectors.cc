@@ -5,7 +5,10 @@
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 
+#include <cmath>
+
 #include "core/graph/graph.h"
+#include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
@@ -20,9 +23,25 @@ constexpr bool Is16BitIntType(int32_t data_type) {
          (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16);
 }
 
+constexpr bool Is2BitIntType(int32_t data_type) {
+  return (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT2) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT2);
+}
+
 constexpr bool Is4BitIntType(int32_t data_type) {
   return (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT4) ||
          (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT4);
+}
+
+constexpr bool Is8BitIntType(int32_t data_type) {
+  return (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8);
+}
+
+// Returns true if the data type is a sub-byte or byte quantized integer type
+// suitable for MatMulNBits fusion (2, 4, or 8 bit).
+constexpr bool IsNBitsIntType(int32_t data_type) {
+  return Is2BitIntType(data_type) || Is4BitIntType(data_type) || Is8BitIntType(data_type);
 }
 
 // adjust for an optional input/output that has an entry but does not exist
@@ -164,6 +183,27 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node
     return false;
   }
 
+  // Resize output depends on both the interpolation mode and the coordinate transformation mode:
+  //   - "nearest" mode copies existing input values, so it can operate directly on quantized integers.
+  //   - Non-nearest modes (e.g., "linear", "cubic") interpolate using float arithmetic, which is only
+  //     correct in the dequantized (float) domain, so QDQ must be preserved.
+  //   - "tf_crop_and_resize" writes extrapolation_value (authored in the float domain) into out-of-crop
+  //     positions; dropping QDQ would store that float value raw in the quantized domain, even for nearest.
+  // Only allow dropping QDQ for nearest mode without tf_crop_and_resize coordinate transformation.
+  if (node.OpType() == "Resize") {
+    const auto& attrs = node.GetAttributes();
+    // "mode" defaults to "nearest" when absent. It is always present after Graph::Resolve() injects
+    // schema defaults; the absence check is a defensive fallback for hand-built/unresolved graphs.
+    const auto mode_iter = attrs.find("mode");
+    if (mode_iter != attrs.end() && mode_iter->second.s() != "nearest") {
+      return false;
+    }
+    const auto coord_mode_iter = attrs.find("coordinate_transformation_mode");
+    if (coord_mode_iter != attrs.end() && coord_mode_iter->second.s() == "tf_crop_and_resize") {
+      return false;
+    }
+  }
+
   const Node& dq_node = *dq_nodes.front();
   const Node& q_node = *q_nodes.front();
 
@@ -173,12 +213,13 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node
 
   if (!allow_nonpositive_scale_) {
     // IsQDQPairSupported will check that the scale is the same between q_node and dq_node.
-    if (!IsQOrDQScalePositiveConstantScalar(q_node, get_const_initializer, graph_viewer.ModelPath())) {
+    if (!IsQOrDQScalePositiveConstantScalar(graph_viewer.GetGraph(), q_node, get_const_initializer,
+                                            graph_viewer.ModelPath())) {
       return false;
     }
   }
 
-  return IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
+  return IsQDQPairSupported(graph_viewer.GetGraph(), q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
 }
 
 bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
@@ -222,6 +263,41 @@ bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
                                    const std::vector<const Node*>& dq_nodes,
                                    const std::vector<const Node*>& q_nodes) const {
   if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes, 1)) {
+    return false;
+  }
+
+  int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+  if (dt_input != dt_output) {
+    return false;
+  }
+
+  // 16-bit int types must be explicitly allowed.
+  if (!allow_16bit_ && Is16BitIntType(dt_input)) {
+    return false;
+  }
+
+  if (!allow_4bit_ && Is4BitIntType(dt_input)) {
+    return false;
+  }
+
+  return true;
+}
+
+bool ClipNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
+                                  const std::vector<const Node*>& dq_nodes,
+                                  const std::vector<const Node*>& q_nodes) const {
+  // Clip can have 1, 2, or 3 DQ inputs:
+  // - 1 DQ: only data input is quantized
+  // - 2 DQ: data and min or max are quantized
+  // - 3 DQ: data, min, and max are all quantized
+  const size_t num_dq_nodes = dq_nodes.size();
+  if (num_dq_nodes < 1 || num_dq_nodes > 3) {
+    return false;
+  }
+
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes, static_cast<int>(num_dq_nodes))) {
     return false;
   }
 
@@ -345,7 +421,7 @@ bool SplitNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
     }
 
     if (req_equal_quant_params_ &&
-        !IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath())) {
+        !IsQDQPairSupported(graph_viewer.GetGraph(), q_node, dq_node, get_const_initializer, graph_viewer.ModelPath())) {
       return false;
     }
   }
@@ -355,6 +431,136 @@ bool SplitNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
 
 void SplitSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.num_output_defs = 1;  // set to 1 as the first output is variadic
+}
+
+// Validates that the bias DQ's scale matches input_scale * weight_scale[i] for each output channel.
+// ONNX QLinearConv requires bias to be in int32 with scale = x_scale * w_scale[i].
+// If this condition is violated, the fused output would be silently incorrect.
+// Returns false (conservative) if any scale initializer is not a constant or types are non-conformant.
+static bool CheckConvBiasScale(const GraphViewer& graph_viewer,
+                               const Node& input_dq, const Node& weight_dq, const Node& bias_dq) {
+  const auto* x_scale_arg = input_dq.InputDefs()[QDQ::InputIndex::SCALE_ID];
+  const auto* w_scale_arg = weight_dq.InputDefs()[QDQ::InputIndex::SCALE_ID];
+  const auto* b_scale_arg = bias_dq.InputDefs()[QDQ::InputIndex::SCALE_ID];
+
+  const auto* x_scale_proto = graph_viewer.GetConstantInitializer(x_scale_arg->Name(), true);
+  const auto* w_scale_proto = graph_viewer.GetConstantInitializer(w_scale_arg->Name(), true);
+  const auto* b_scale_proto = graph_viewer.GetConstantInitializer(b_scale_arg->Name(), true);
+
+  if (!x_scale_proto || !w_scale_proto || !b_scale_proto) {
+    return false;  // conservative: cannot verify
+  }
+
+  // Input scale must be scalar (rank 0 or 1-element rank-1).
+  if (x_scale_proto->dims_size() != 0 &&
+      !(x_scale_proto->dims_size() == 1 && x_scale_proto->dims(0) == 1)) {
+    return false;
+  }
+
+  const Initializer x_scale_init{graph_viewer.GetGraph(), *x_scale_proto, graph_viewer.ModelPath()};
+  const Initializer w_scale_init{graph_viewer.GetGraph(), *w_scale_proto, graph_viewer.ModelPath()};
+  const Initializer b_scale_init{graph_viewer.GetGraph(), *b_scale_proto, graph_viewer.ModelPath()};
+
+  // All scales must be float32 for standard QLinearConv.
+  if (x_scale_init.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+      w_scale_init.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+      b_scale_init.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    return false;
+  }
+
+  const auto x_scales = x_scale_init.DataAsSpan<float>();
+  const auto w_scales = w_scale_init.DataAsSpan<float>();
+  const auto b_scales = b_scale_init.DataAsSpan<float>();
+
+  // Guard against empty initializers — an empty span would cause an out-of-bounds
+  // access on x_scales[0] or w_scales[i] / b_scales[i] below.
+  if (x_scales.empty() || w_scales.empty() || b_scales.empty()) {
+    return false;
+  }
+
+  const float x_scale = x_scales[0];
+  const size_t w_num = w_scales.size();  // 1 for per-tensor weight scale, C_out for per-channel
+  const size_t b_num = b_scales.size();  // 1 for scalar bias scale, C_out for per-channel
+
+  // Each scale tensor must be either scalar or per-channel (C_out). When one is
+  // per-channel and the other is scalar, broadcast the scalar across channels.
+  if (w_num != 1 && b_num != 1 && w_num != b_num) {
+    return false;
+  }
+  const size_t num_channels = std::max(w_num, b_num);
+
+  // Looser tolerances than optimizer_utils::IsInitializerWithExpectedValue (atol=1e-8, rtol=1e-5)
+  // are used intentionally: bias_scale is computed as input_scale * weight_scale and may
+  // accumulate fp rounding error from upstream quantization tools, so a tighter check
+  // would reject otherwise valid fusions in practice.
+  constexpr float atol = 1e-6f;
+  constexpr float rtol = 1e-2f;
+
+  // x_scale is a scalar — check it once here rather than redundantly on every loop iteration.
+  if (!std::isfinite(x_scale)) {
+    return false;
+  }
+
+  for (size_t i = 0; i < num_channels; ++i) {
+    const float w_scale = (w_num == 1) ? w_scales[0] : w_scales[i];
+    const float b_scale = (b_num == 1) ? b_scales[0] : b_scales[i];
+    // Reject non-finite per-channel values: NaN compares unequal to itself so
+    // the tolerance check below could pass or fail unpredictably; Inf * Inf =
+    // Inf which also produces unreliable results.  Be conservative and refuse fusion.
+    if (!std::isfinite(w_scale) || !std::isfinite(b_scale)) {
+      return false;
+    }
+    const float expected = x_scale * w_scale;
+    if (std::abs(b_scale - expected) > (atol + rtol * std::abs(expected))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// Validates that the bias DQ's zero point is absent or a constant int32 initializer whose every
+// element is zero. ONNX QLinearConv (int32 bias path) assumes bias_zero_point == 0; a nonzero value
+// would shift all output activations silently after fusion since QLinearConv has no bias_zero_point
+// input.
+// Returns false (conservative) if a zero-point name is set but not a constant, or if any element is
+// nonzero or the dtype is unexpected.
+static bool CheckConvBiasZeroPoint(const GraphViewer& graph_viewer, const Node& bias_dq) {
+  const auto& bias_dq_inputs = bias_dq.InputDefs();
+  // Zero-point is optional input at index 2.
+  if (bias_dq_inputs.size() < 3 || !bias_dq_inputs[QDQ::InputIndex::ZERO_POINT_ID] ||
+      !bias_dq_inputs[QDQ::InputIndex::ZERO_POINT_ID]->Exists()) {
+    return true;  // absent zero-point is implicitly zero — allow fusion
+  }
+
+  const auto* zp_arg = bias_dq_inputs[QDQ::InputIndex::ZERO_POINT_ID];
+  const auto* zp_proto = graph_viewer.GetConstantInitializer(zp_arg->Name(), true);
+  if (!zp_proto) {
+    return false;  // zero-point present but not constant — cannot verify
+  }
+
+  // Fusion to QLinearConv assumes bias is symmetrically quantized (zero_point == 0).
+  // If a nonzero bias zero-point is present we skip fusion to avoid producing an
+  // arithmetically incorrect QLinearConv (which has no bias zero-point input).
+  const Initializer zp_init{graph_viewer.GetGraph(), *zp_proto, graph_viewer.ModelPath()};
+  if (zp_init.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    return false;  // unexpected dtype for bias zero-point
+  }
+
+  const auto zp_values = zp_init.DataAsSpan<int32_t>();
+  // An empty zero-point initializer is malformed; reject fusion rather than
+  // silently treating it as "all zeros".
+  if (zp_values.empty()) {
+    return false;
+  }
+
+  for (const int32_t v : zp_values) {
+    if (v != 0) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
@@ -387,6 +593,18 @@ bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& n
     if (dt_bias != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) {
       return false;
     }
+
+    // Verify bias scale == input_scale * weight_scale[i] per ONNX QLinearConv spec.
+    // If scales don't match within tolerance, skip fusion to avoid silent numerical errors.
+    if (!CheckConvBiasScale(graph_viewer, *dq_nodes[0], *dq_nodes[1], *dq_nodes[2])) {
+      return false;
+    }
+
+    // Verify bias zero-point is absent or all-zero. A nonzero bias zero-point would silently
+    // shift all output activations after fusion since QLinearConv has no bias_zero_point input.
+    if (!CheckConvBiasZeroPoint(graph_viewer, *dq_nodes[2])) {
+      return false;
+    }
   }
 
   // 16-bit int types must be explicitly allowed.
@@ -399,6 +617,68 @@ bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& n
 
 void ConvSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.input_nodes.resize(3, NodesToOptimizeIndices::kEmptyNodeIndex);
+}
+
+bool EinsumNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                    const Node& node, const Node* redundant_clip_node,
+                                    const std::vector<const Node*>& dq_nodes,
+                                    const std::vector<const Node*>& q_nodes) const {
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes, /*num_dq_inputs=*/-1,
+                     /*is_empty_q_nodes_allowed=*/true)) {
+    return false;
+  }
+  size_t num_dq_inputs = dq_nodes.size();
+  for (size_t i = 0; i < num_dq_inputs; ++i) {
+    int32_t dt_input = dq_nodes[i]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    if (!allow_int8_ && dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+      return false;
+    }
+    if (!allow_16bit_ && Is16BitIntType(dt_input)) {
+      return false;
+    }
+    if (!allow_4bit_ && Is4BitIntType(dt_input)) {
+      return false;
+    }
+  }
+  if (!q_nodes.empty()) {
+    int32_t dt_input0 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    if (dt_input0 != dt_output) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ReciprocalNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                        const Node& node, const Node* redundant_clip_node,
+                                        const std::vector<const Node*>& dq_nodes,
+                                        const std::vector<const Node*>& q_nodes) const {
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes, /*num_dq_inputs=*/-1,
+                     /*is_empty_q_nodes_allowed=*/true)) {
+    return false;
+  }
+  size_t num_dq_inputs = dq_nodes.size();
+  for (size_t i = 0; i < num_dq_inputs; ++i) {
+    int32_t dt_input = dq_nodes[i]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    if (!allow_int8_ && dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+      return false;
+    }
+    if (!allow_16bit_ && Is16BitIntType(dt_input)) {
+      return false;
+    }
+    if (!allow_4bit_ && Is4BitIntType(dt_input)) {
+      return false;
+    }
+  }
+  if (!q_nodes.empty()) {
+    int32_t dt_input0 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    if (dt_input0 != dt_output) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
@@ -444,58 +724,26 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node&
   }
 }
 
-bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
-                                      const Node* redundant_clip_node, const std::vector<const Node*>& dq_nodes,
-                                      const std::vector<const Node*>& q_nodes) const {
-  if (redundant_clip_node) {
-    return false;
-  }
-
-  // Should not have any Q nodes
-  if (!q_nodes.empty()) {
-    return false;
-  }
-
-  const auto& graph = graph_viewer.GetGraph();
-
-  // MatMul has only 1 DQ input and the DQ must have 1 output edge and not be a graph output
-  if (dq_nodes.size() != 1 || !optimizer_utils::CheckOutputEdges(graph, *dq_nodes[0], 1)) {
-    return false;
-  }
-
-  // DQ must be MatMul's the second input
-  if (node.InputDefs()[1] != dq_nodes[0]->OutputDefs()[0]) {
-    return false;
-  }
-
-  // DQ weight/zero points types are int4/uint4, scales/output types are float or float16
-  const auto* weight_arg = dq_nodes[0]->InputDefs()[0];
-  const auto* scale_arg = dq_nodes[0]->InputDefs()[1];
-  const auto* zero_point_arg = dq_nodes[0]->InputDefs().size() == 3 ? dq_nodes[0]->InputDefs()[2] : nullptr;
+// Validate that a DQ node has the correct structure for MatMulNBits fusion.
+// Supports three quantization granularities:
+// - Blockwise: axis=0, block_size >= 16 and power-of-2, scale/zp rank 2
+// - Per-tensor: scale is scalar (rank 0), no block_size attribute
+// - Per-channel (axis=1): scale is 1D with shape [N], weight is 2D [K,N], no block_size attribute
+// In all cases: weight type is 2/4/8-bit int, scale type is float or float16,
+// weight/scale/zp are constant initializers.
+static bool ValidateDQForMatMulNBits(const Graph& graph, const Node& dq_node) {
+  const auto* weight_arg = dq_node.InputDefs()[0];
+  const auto* scale_arg = dq_node.InputDefs()[1];
+  const auto* zero_point_arg = dq_node.InputDefs().size() == 3 ? dq_node.InputDefs()[2] : nullptr;
   int32_t dt_weight = weight_arg->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_scales = scale_arg->TypeAsProto()->tensor_type().elem_type();
+
   if (dt_scales != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT &&
       dt_scales != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
     return false;
   }
 
-  if (!Is4BitIntType(dt_weight)) {
-    return false;
-  }
-
-  // DQ is blockwise quantized along axis 0, and block_size must be 2's power and >= 16
-  const auto& dq_attrs = dq_nodes[0]->GetAttributes();
-  if (const auto a_iter = dq_attrs.find("axis"); a_iter == dq_attrs.end() || a_iter->second.i() != 0) {
-    return false;
-  }
-
-  const auto a_iter = dq_attrs.find("block_size");
-  if (a_iter == dq_attrs.end()) {
-    return false;
-  }
-
-  auto block_size = a_iter->second.i();
-  if (block_size < 16 || ((block_size - 1) & block_size)) {
+  if (!IsNBitsIntType(dt_weight)) {
     return false;
   }
 
@@ -512,21 +760,241 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Nod
     return false;
   }
 
-  // weight, scale and zero points (if exists) must have the rank 2
-  if (weight_tensor_proto->dims_size() != 2 || scale_tensor_proto->dims_size() != 2 ||
-      (zp_tensor_proto && zp_tensor_proto->dims_size() != 2)) {
+  // weight must be rank 2
+  if (weight_tensor_proto->dims_size() != 2) {
     return false;
   }
 
-  // check weight, scale and zero points (if exists) shapes
-  if ((weight_tensor_proto->dims()[0] + block_size - 1) / block_size != scale_tensor_proto->dims()[0] ||
-      weight_tensor_proto->dims()[1] != scale_tensor_proto->dims()[1] ||
-      (zp_tensor_proto && (zp_tensor_proto->dims()[0] != scale_tensor_proto->dims()[0] ||
-                           zp_tensor_proto->dims()[1] != scale_tensor_proto->dims()[1]))) {
-    return false;
+  const auto& dq_attrs = dq_node.GetAttributes();
+  const auto block_size_iter = dq_attrs.find("block_size");
+  const bool has_block_size = block_size_iter != dq_attrs.end() && block_size_iter->second.i() > 0;
+
+  if (has_block_size) {
+    // --- Blockwise path (existing logic) ---
+    if (const auto a_iter = dq_attrs.find("axis"); a_iter == dq_attrs.end() || a_iter->second.i() != 0) {
+      return false;
+    }
+
+    auto block_size = block_size_iter->second.i();
+    if (block_size < 16 || ((block_size - 1) & block_size)) {
+      return false;
+    }
+
+    if (scale_tensor_proto->dims_size() != 2 ||
+        (zp_tensor_proto && zp_tensor_proto->dims_size() != 2)) {
+      return false;
+    }
+
+    if ((weight_tensor_proto->dims()[0] + block_size - 1) / block_size != scale_tensor_proto->dims()[0] ||
+        weight_tensor_proto->dims()[1] != scale_tensor_proto->dims()[1] ||
+        (zp_tensor_proto && (zp_tensor_proto->dims()[0] != scale_tensor_proto->dims()[0] ||
+                             zp_tensor_proto->dims()[1] != scale_tensor_proto->dims()[1]))) {
+      return false;
+    }
+  } else {
+    // --- Per-tensor or per-channel path ---
+    int scale_rank = scale_tensor_proto->dims_size();
+    auto N = weight_tensor_proto->dims()[1];
+
+    if (scale_rank == 0) {
+      // Per-tensor: scalar scale, optional scalar zp
+      if (zp_tensor_proto && zp_tensor_proto->dims_size() != 0) {
+        return false;
+      }
+    } else if (scale_rank == 1 && scale_tensor_proto->dims()[0] == N) {
+      // Per-channel (axis=1): scale shape [N], axis must be 1
+      const auto a_iter = dq_attrs.find("axis");
+      // DQ default axis is 1, so absent axis is OK
+      if (a_iter != dq_attrs.end() && a_iter->second.i() != 1) {
+        return false;
+      }
+      if (zp_tensor_proto && (zp_tensor_proto->dims_size() != 1 || zp_tensor_proto->dims()[0] != N)) {
+        return false;
+      }
+    } else {
+      // Unsupported quantization granularity
+      return false;
+    }
   }
 
   return true;
+}
+
+// Validate Gemm attributes for DQ->MatMulNBits fusion.
+// Gemm must be equivalent to MatMul: alpha=1, transA=0, transB=0.
+// If bias exists, beta must be 1 and bias shape must be [N].
+static bool ValidateGemmForDQMatMulNBits(const Graph& graph, const Node& gemm_node, const Node& weight_dq_node) {
+  if (const auto* alpha_attr = graph_utils::GetNodeAttribute(gemm_node, "alpha");
+      alpha_attr && std::abs(alpha_attr->f() - 1.0f) > 1e-6f)
+    return false;
+  if (const auto* trans_a = graph_utils::GetNodeAttribute(gemm_node, "transA");
+      trans_a && trans_a->i() != 0)
+    return false;
+  if (const auto* trans_b = graph_utils::GetNodeAttribute(gemm_node, "transB");
+      trans_b && trans_b->i() != 0)
+    return false;
+
+  const auto& inputs = gemm_node.InputDefs();
+  if (inputs.size() > 2 && inputs[2] && inputs[2]->Exists()) {
+    // Bias exists — beta must be 1.0
+    if (const auto* beta_attr = graph_utils::GetNodeAttribute(gemm_node, "beta");
+        beta_attr && std::abs(beta_attr->f() - 1.0f) > 1e-6f)
+      return false;
+
+    // Bias shape must be [N] where N = weight dim 1. Prefer reading N and
+    // bias length from constant initializers when available, and fall back to
+    // NodeArg::Shape().
+    const auto* weight_arg = weight_dq_node.InputDefs()[0];
+    const auto* weight_initializer = graph.GetConstantInitializer(weight_arg->Name(), true);
+    int64_t N = -1;
+
+    if (weight_initializer) {
+      if (weight_initializer->dims_size() != 2) {
+        return false;
+      }
+      N = weight_initializer->dims(1);
+    } else {
+      const auto* weight_shape = weight_arg->Shape();
+      if (!weight_shape || weight_shape->dim_size() != 2 ||
+          !utils::HasDimValue(weight_shape->dim(1))) {
+        return false;
+      }
+      N = weight_shape->dim(1).dim_value();
+    }
+
+    const auto* bias_arg = inputs[2];
+    const auto* bias_initializer = graph.GetConstantInitializer(bias_arg->Name(), true);
+
+    if (bias_initializer) {
+      if (bias_initializer->dims_size() != 1 ||
+          bias_initializer->dims(0) != N) {
+        return false;
+      }
+    } else {
+      const auto* bias_shape = bias_arg->Shape();
+      if (!bias_shape || bias_shape->dim_size() != 1 ||
+          !utils::HasDimValue(bias_shape->dim(0)) ||
+          bias_shape->dim(0).dim_value() != N) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
+                                      const Node* redundant_clip_node, const std::vector<const Node*>& dq_nodes,
+                                      const std::vector<const Node*>& q_nodes) const {
+  if (redundant_clip_node) {
+    return false;
+  }
+
+  // Should not have any Q nodes
+  if (!q_nodes.empty()) {
+    return false;
+  }
+
+  const auto& graph = graph_viewer.GetGraph();
+  const bool is_gemm = node.OpType() == "Gemm";
+
+  if (is_gemm) {
+    // Gemm: accept 1 DQ (weight only) or 2 DQs (weight + bias).
+    if (dq_nodes.size() < 1 || dq_nodes.size() > 2) {
+      return false;
+    }
+  } else {
+    // MatMul: exactly 1 DQ input
+    if (dq_nodes.size() != 1) {
+      return false;
+    }
+  }
+
+  // Find the weight DQ node — the one feeding input 1 (B)
+  const Node* weight_dq = nullptr;
+  for (const auto* dq : dq_nodes) {
+    if (node.InputDefs()[1] == dq->OutputDefs()[0]) {
+      weight_dq = dq;
+      break;
+    }
+  }
+
+  if (!weight_dq) {
+    return false;
+  }
+
+  // Weight DQ must have exactly 1 output edge and not be a graph output
+  if (!optimizer_utils::CheckOutputEdges(graph, *weight_dq, 1)) {
+    return false;
+  }
+
+  // Reject fusion if the weight or scale initializer is shared (consumed by more than one node).
+  // When two DQ nodes reference the same initializer (tied embedding pattern, issue #28306),
+  // the first fusion would consume the initializer, leaving the second DQ unable to find it —
+  // causing a crash in TransposeDQWeightsForMatMulNBits with "Missing required scale".
+  // We only check weight/scale here; the bias initializer (input 2 on Gemm) is passed through
+  // untouched by the action, so sharing it across Gemm nodes is safe.
+  // Note: GetConsumerNodes only counts consumers at the current graph level; initializers
+  // captured by subgraph bodies (Loop/If) are not counted, so this guard is best-effort.
+  const auto* weight_arg = weight_dq->InputDefs()[0];
+  const auto* scale_arg = weight_dq->InputDefs()[1];
+  if (graph.GetConsumerNodes(weight_arg->Name()).size() > 1 ||
+      graph.GetConsumerNodes(scale_arg->Name()).size() > 1) {
+    return false;
+  }
+
+  if (is_gemm) {
+    // If there's a second DQ node (for bias), it must feed input 2
+    if (dq_nodes.size() == 2) {
+      const Node* bias_dq = (dq_nodes[0] == weight_dq) ? dq_nodes[1] : dq_nodes[0];
+      if (node.InputDefs().size() <= 2 || !node.InputDefs()[2] ||
+          node.InputDefs()[2] != bias_dq->OutputDefs()[0]) {
+        return false;
+      }
+    }
+
+    // Validate Gemm attributes (alpha=1, transA=0, transB=0, beta=1 if bias)
+    if (!ValidateGemmForDQMatMulNBits(graph, node, *weight_dq)) {
+      return false;
+    }
+  }
+
+  return ValidateDQForMatMulNBits(graph, *weight_dq);
+}
+
+// Check if a QDQ node's scale/zero_point shape is scalar or 1D with a compatible size.
+// When expected_n <= 0 (default), only accepts scalar or 1D with size 1 (per-tensor quantization).
+// When expected_n > 0, also accepts 1D with size equal to expected_n (per-column quantization).
+// Rejects when shape or dim is unknown to avoid incorrect fusion.
+static bool IsScalarOr1DWithSizeOneOrN(const NodeArg* arg, int64_t expected_n = -1) {
+  if (!arg || !arg->Exists()) {
+    return true;  // absent optional input is OK
+  }
+
+  const auto* shape = arg->Shape();
+  if (!shape) {
+    return false;  // unknown shape, reject to avoid incorrect fusion
+  }
+
+  int rank = shape->dim_size();
+  if (rank == 0) {
+    return true;  // scalar
+  }
+
+  if (rank == 1) {
+    const auto& dim = shape->dim(0);
+    if (!dim.has_dim_value()) {
+      return false;  // unknown dim, reject to avoid incorrect fusion
+    }
+
+    if (expected_n > 0) {
+      return dim.dim_value() == 1 || dim.dim_value() == expected_n;
+    } else {
+      return dim.dim_value() == 1;
+    }
+  }
+
+  return false;  // rank > 1
 }
 
 bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
@@ -535,6 +1003,61 @@ bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& n
   if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes, -1 /*num_dq_inputs*/,
                      true /*is_empty_q_nodes_allowed*/)) {
     return false;
+  }
+
+  // Validate scale/zero_point shapes are compatible with QGemm.
+  // QGemm requires:
+  //   A: scale/zero_point must be scalar or 1D with size 1
+  //   B: scale/zero_point must be scalar or 1D with size 1 or N, scale and zero_point must have the same shape size
+  //   Y: scale/zero_point must be scalar or 1D with size 1
+  //
+  // QGemm requires a_zero_point and b_zero_point as mandatory inputs.
+  // DQ nodes must have zero_point (input 2) that actually exists.
+  const auto& a_defs = dq_nodes[0]->InputDefs();
+  if (a_defs.size() <= 2 || !a_defs[2]->Exists()) {
+    return false;  // DQ_A missing zero_point, QGemm requires it
+  }
+
+  if (!IsScalarOr1DWithSizeOneOrN(a_defs[1]) ||
+      !IsScalarOr1DWithSizeOneOrN(a_defs[2])) {
+    return false;
+  }
+
+  const auto& b_defs = dq_nodes[1]->InputDefs();
+  if (b_defs.size() <= 2 || !b_defs[2]->Exists()) {
+    return false;  // DQ_B missing zero_point, QGemm requires it
+  }
+
+  // Try to get N for validating per-column scale/zero_point size.
+  // N depends on transB: if transB=1, N=B.shape[0]; otherwise N=B.shape[1].
+  int64_t expected_n = -1;
+  const auto* b_weight_shape = b_defs[0]->Shape();
+  if (b_weight_shape && b_weight_shape->dim_size() == 2) {
+    const auto* trans_b_attr = graph_utils::GetNodeAttribute(node, "transB");
+    bool trans_b = trans_b_attr && trans_b_attr->i() != 0;
+    int n_dim = trans_b ? 0 : 1;
+    if (b_weight_shape->dim(n_dim).has_dim_value()) {
+      expected_n = b_weight_shape->dim(n_dim).dim_value();
+    }
+  }
+
+  if (!IsScalarOr1DWithSizeOneOrN(b_defs[1], expected_n) ||
+      !IsScalarOr1DWithSizeOneOrN(b_defs[2], expected_n)) {
+    return false;
+  }
+
+  // B's scale and zero_point must have the same rank and the same dim value.
+  const auto* b_scale_shape = b_defs[1]->Shape();
+  const auto* b_zp_shape = b_defs[2]->Shape();
+  if (b_scale_shape && b_zp_shape) {
+    if (b_scale_shape->dim_size() != b_zp_shape->dim_size()) {
+      return false;
+    }
+
+    if (b_scale_shape->dim_size() == 1 &&
+        b_scale_shape->dim(0).dim_value() != b_zp_shape->dim(0).dim_value()) {
+      return false;
+    }
   }
 
   // input and output types need to be same
@@ -552,6 +1075,13 @@ bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& n
     if (dt_A != dt_Y) {  // activation and output must be same type
       return false;
     }
+
+    // QGemm requires Y's scale and zero_point to be scalar or 1D with size 1.
+    const auto& y_defs = q_nodes[0]->InputDefs();
+    if (!IsScalarOr1DWithSizeOneOrN(y_defs[1]) ||
+        (y_defs.size() > 2 && !IsScalarOr1DWithSizeOneOrN(y_defs[2]))) {
+      return false;
+    }
   }
 
   // 16-bit int types must be explicitly allowed.
@@ -567,6 +1097,13 @@ bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& n
     return true;
   }
 
+  // When bias is present, QGemm folds bias into the int32 accumulator before
+  // applying the alpha*sa*sb output scale, which would incorrectly scale the
+  // bias by alpha. Require alpha==1 and beta==1 so the fused path is exact.
+  if (node.GetAttributes().at("alpha").f() != 1.0) {
+    return false;
+  }
+
   if (node.GetAttributes().at("beta").f() != 1.0) {  // beta needs to be 1.0
     return false;
   }
@@ -577,6 +1114,13 @@ bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& n
 
 void GemmSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.input_nodes.resize(3, NodesToOptimizeIndices::kEmptyNodeIndex);
+}
+
+void DQMatMulToMatMulNBitsSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
+  // Keep only the weight DQ (first entry). If a Gemm has a bias DQ, it will be in
+  // position 1 — trim it so RemoveNodes does not delete it. The bias DQ's output
+  // is wired to MatMulNBits input 5 in ProcessNewNode.
+  builder.input_nodes.resize(1);
 }
 
 bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
@@ -614,7 +1158,7 @@ bool PadNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& no
   // Pad can have 1 or 2 dq input, the optional input constant_value can be quantized or non-quantized.
   // QNN supports data input quantized with constant_value input non-quantized.
   int num_dq_inputs = static_cast<int>(dq_nodes.size());
-  if (num_dq_inputs > 2) {
+  if (num_dq_inputs < 1 || num_dq_inputs > 2) {
     return false;
   }
 
@@ -660,7 +1204,14 @@ bool BatchNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                                 const Node* redundant_clip_node,
                                                 const std::vector<const Node*>& dq_nodes,
                                                 const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes, 3)) {
+  // BatchNormalization has 5 inputs: x, scale, bias, mean, var.
+  // Require DQ on x and scale (indices 0,1). mean, var may optionally have DQ.
+  const int num_dq_nodes = gsl::narrow_cast<int>(dq_nodes.size());
+  if (num_dq_nodes < 3 || num_dq_nodes > 5) {
+    return false;
+  }
+
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes, num_dq_nodes)) {
     return false;
   }
 
@@ -730,7 +1281,59 @@ bool TopKNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& n
     return graph_viewer.GetConstantInitializer(initializer_name, true);
   };
 
-  return IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
+  return IsQDQPairSupported(graph_viewer.GetGraph(), q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
+}
+
+bool CumSumNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
+                                    const std::vector<const Node*>& dq_nodes,
+                                    const std::vector<const Node*>& q_nodes) const {
+  // Only the first input has DQ node
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes, 1)) {
+    return false;
+  }
+
+  int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+  if (dt_input != dt_output) {
+    return false;
+  }
+
+  return true;
+}
+
+bool ScatterElementsNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
+                                             const std::vector<const Node*>& dq_nodes,
+                                             const std::vector<const Node*>& q_nodes) const {
+  // ScatterElements has 1 INT32 input and 2 dq inputs
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes, 2)) {
+    return false;
+  }
+  const int32_t dt_input_1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  const int32_t dt_input_2 = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  const int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+  // All input and output types must match.
+  if (dt_input_1 != dt_input_2 || dt_input_1 != dt_output) {
+    return false;
+  }
+
+  return true;
+}
+
+bool RMSNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
+                                              const Node* redundant_clip_node,
+                                              const std::vector<const Node*>& dq_nodes,
+                                              const std::vector<const Node*>& q_nodes) const {
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes)) {
+    return false;
+  }
+
+  int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+  // input and output need to be the same type.
+  return (dt_input == dt_output);
 }
 
 }  // namespace QDQ

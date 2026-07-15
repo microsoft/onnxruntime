@@ -2,14 +2,16 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
-
-#include "core/common/common.h"
+#include <fstream>
+#include <memory>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
+#include "core/platform/env_var.h"
 
 #include "core/providers/webgpu/program_manager.h"
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/webgpu_context.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -19,20 +21,56 @@ ProgramArtifact::ProgramArtifact(const ProgramBase& program, wgpu::ComputePipeli
       compute_pipeline{compute_pipeline},
       shape_uniform_ranks{shape_uniform_ranks} {}
 
+ProgramManager::ProgramManager(WebGpuContext& webgpu_context)
+    : webgpu_context_{webgpu_context} {
+  if (std::string dump_file_path = onnxruntime::detail::GetEnvironmentVar("ORT_WEBGPU_EP_SHADER_DUMP_FILE");
+      !dump_file_path.empty()) {
+    auto dump_file = std::make_shared<std::ofstream>(dump_file_path.c_str(), std::ios::app);
+    shader_dump_fn_ = [dump_file = std::move(dump_file)](std::string_view shader_content) {
+      *dump_file << shader_content << "\n";
+    };
+  }
+}
+
 Status ProgramManager::NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z) const {
   ORT_RETURN_IF(x == 0 || y == 0 || z == 0, "Invalid dispatch group size (", x, ", ", y, ", ", z, ")");
 
-  auto limit_per_dimension = limits_.maxComputeWorkgroupsPerDimension;
+  auto limit_per_dimension = webgpu_context_.DeviceLimits().maxComputeWorkgroupsPerDimension;
   if (x > limit_per_dimension || y > limit_per_dimension || z > limit_per_dimension) {
-    auto size = static_cast<double>(x) * static_cast<double>(y) * static_cast<double>(z);
-    uint32_t dispatch_avg = gsl::narrow<uint32_t>(std::ceil(std::sqrt(size)));
+    double size = static_cast<double>(x) * static_cast<double>(y) * static_cast<double>(z);
+    double dispatch_avg = std::ceil(std::sqrt(size));
     if (dispatch_avg > limit_per_dimension) {
-      dispatch_avg = gsl::narrow<uint32_t>(std::ceil(std::cbrt(size)));
+      dispatch_avg = std::ceil(std::cbrt(size));
       ORT_RETURN_IF(dispatch_avg > limit_per_dimension, "The dispatch group size exceeds WebGPU maximum.");
-      x = y = z = dispatch_avg;
+      x = y = z = static_cast<uint32_t>(dispatch_avg);
     } else {
-      x = y = dispatch_avg;
+      x = y = static_cast<uint32_t>(dispatch_avg);
       z = 1;
+    }
+  }
+  return Status::OK();
+}
+
+Status ProgramManager::CalculateSegmentsForInputsAndOutputs(const ProgramBase& program, std::vector<uint32_t>& inputs_segments, std::vector<uint32_t>& outputs_segments) const {
+  inputs_segments.resize(program.Inputs().size(), 1);
+  outputs_segments.resize(program.Outputs().size(), 1);
+
+  const uint64_t maxStorageBufferBindingSize = webgpu_context_.DeviceLimits().maxStorageBufferBindingSize;
+
+  // Inputs
+  for (size_t i = 0; i < program.Inputs().size(); ++i) {
+    const auto& input = program.Inputs()[i];
+    if (input.tensor && input.tensor->SizeInBytes() > maxStorageBufferBindingSize) {
+      uint32_t segments = static_cast<uint32_t>((input.tensor->SizeInBytes() + maxStorageBufferBindingSize - 1) / maxStorageBufferBindingSize);
+      inputs_segments[i] = segments;
+    }
+  }
+  // Outputs
+  for (size_t i = 0; i < program.Outputs().size(); ++i) {
+    const auto& output = program.Outputs()[i];
+    if (output.tensor && output.tensor->SizeInBytes() > maxStorageBufferBindingSize) {
+      uint32_t segments = static_cast<uint32_t>((output.tensor->SizeInBytes() + maxStorageBufferBindingSize - 1) / maxStorageBufferBindingSize);
+      outputs_segments[i] = segments;
     }
   }
   return Status::OK();
@@ -40,24 +78,31 @@ Status ProgramManager::NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint
 
 Status ProgramManager::Build(const ProgramBase& program,
                              const ProgramMetadata& program_metadata,
-#ifndef NDEBUG  // if debug build
+                             const std::span<uint32_t> inputs_segments,
+                             const std::span<uint32_t> outputs_segments,
                              const std::string& program_key,
-#endif
                              uint32_t normalized_dispatch_x,
                              uint32_t normalized_dispatch_y,
                              uint32_t normalized_dispatch_z,
                              wgpu::ComputePipeline& compute_pipeline,
                              std::vector<int>& shape_uniform_ranks) const {
+  auto& device = webgpu_context_.Device();
   ShaderHelper shader_helper{program,
                              program_metadata,
-                             device_,
-                             limits_,
+                             webgpu_context_,
+                             inputs_segments,
+                             outputs_segments,
                              normalized_dispatch_x,
                              normalized_dispatch_y,
                              normalized_dispatch_z};
   ORT_RETURN_IF_ERROR(shader_helper.Init());
 
   ORT_RETURN_IF_ERROR(program.GenerateShaderCode(shader_helper));
+
+  // Add indirect buffer as the last shader input when using indirect dispatch.
+  if (program.IndirectDispatchTensor() != nullptr) {
+    shader_helper.AddInput("indirect_buffer", ShaderUsage::None);
+  }
 
   ORT_RETURN_IF_ERROR(shader_helper.ValidateShapeForInputs());
   ORT_RETURN_IF_ERROR(shader_helper.ValidateShapeForOutputs());
@@ -67,25 +112,33 @@ Status ProgramManager::Build(const ProgramBase& program,
   std::string code;
   ORT_RETURN_IF_ERROR(shader_helper.GenerateSourceCode(code, shape_uniform_ranks));
 
-  LOGS_DEFAULT(VERBOSE) << "\n=== WebGPU Shader code [" << program.Name()
-#ifndef NDEBUG  // if debug build
-                        << ", Key=\"" << program_key << "\""
-#endif
-                        << "] Start ===\n\n"
-                        << code
-                        << "\n=== WebGPU Shader code [" << program.Name()
-#ifndef NDEBUG  // if debug build
-                        << ", Key=\"" << program_key << "\""
-#endif
-                        << "] End ===\n";
+  // Dump shader code, if requested. It is dumped to `shader_dump_fn_` if set or VERBOSE logging otherwise.
+  {
+    const auto shader_content = [&program, &program_key, &code]() {
+      return MakeString("\n=== WebGPU Shader code [", program.Name(),
+                        ", Key=\"", program_key, "\"",
+                        "] Start ===\n\n",
+                        code,
+                        "\n=== WebGPU Shader code [", program.Name(),
+                        ", Key=\"", program_key, "\"",
+                        "] End ===\n");
+    };
 
-  wgpu::ShaderModuleWGSLDescriptor wgsl_descriptor{};
-  wgsl_descriptor.code = code.c_str();
+    if (shader_dump_fn_) {
+      shader_dump_fn_(shader_content());
+    } else {
+      LOGS_DEFAULT(VERBOSE) << shader_content();
+    }
+  }
+
+  wgpu::ShaderSourceWGSL wgsl_source{};
+  wgsl_source.code = code.c_str();
 
   wgpu::ShaderModuleDescriptor descriptor{};
-  descriptor.nextInChain = &wgsl_descriptor;
+  descriptor.nextInChain = &wgsl_source;
+  descriptor.label = program.Name().c_str();
 
-  auto shader_module = device_.CreateShaderModule(&descriptor);
+  auto shader_module = device.CreateShaderModule(&descriptor);
 
   // TODO: a new cache hierarchy for constants.
   //
@@ -161,9 +214,29 @@ Status ProgramManager::Build(const ProgramBase& program,
   pipeline_descriptor.label = program.Name().c_str();
 #endif
 
-  compute_pipeline = device_.CreateComputePipeline(&pipeline_descriptor);
+  struct CreateComputePipelineContext {
+    wgpu::ComputePipeline& pipeline;
+    Status status;
+  } create_pipeline_context{compute_pipeline, {}};
 
-  return Status();
+  ORT_RETURN_IF_ERROR(
+      webgpu_context_.Wait(
+          device.CreateComputePipelineAsync(
+              &pipeline_descriptor,
+              wgpu::CallbackMode::WaitAnyOnly,
+              // Note: Don't throw from a Dawn callback.
+              [](wgpu::CreatePipelineAsyncStatus status, wgpu::ComputePipeline pipeline, wgpu::StringView message,
+                 CreateComputePipelineContext* context) noexcept {
+                if (status == wgpu::CreatePipelineAsyncStatus::Success) {
+                  context->pipeline = std::move(pipeline);
+                } else {
+                  context->status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create a WebGPU compute pipeline: ",
+                                                    std::string_view{message});
+                }
+              },
+              &create_pipeline_context)));
+
+  return create_pipeline_context.status;
 }
 
 const ProgramArtifact* ProgramManager::Get(const std::string& key) const {

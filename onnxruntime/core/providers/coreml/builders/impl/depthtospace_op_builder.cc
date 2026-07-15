@@ -33,7 +33,6 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   NodeAttrHelper helper(node);
   int64_t blocksize = *helper.GetInt64("blocksize");  // required attribute
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;  // NOLINT
 
@@ -105,7 +104,6 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       model_builder.AddOperation(std::move(reshape2));
     }
   } else  // NOLINT
-#endif    // if defined(COREML_ENABLE_MLPROGRAM)
   {
     const auto& output_name = output_defs[0]->Name();
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);

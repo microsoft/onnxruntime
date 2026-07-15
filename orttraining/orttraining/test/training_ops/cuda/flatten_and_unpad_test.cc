@@ -7,7 +7,7 @@
 namespace onnxruntime {
 namespace test {
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 
 TEST(FlattenAndUnpadTest, Int32Type2D) {
   std::vector<int32_t> input = {1, 1, 3, 2, 0, 3, 0, 4,

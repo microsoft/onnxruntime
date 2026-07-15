@@ -3,7 +3,7 @@ add_library(CUDNN::cudnn_all INTERFACE IMPORTED)
 find_path(
     CUDNN_INCLUDE_DIR cudnn.h
     HINTS $ENV{CUDNN_PATH} ${CUDNN_PATH} ${Python_SITEARCH}/nvidia/cudnn ${CUDAToolkit_INCLUDE_DIRS}
-    PATH_SUFFIXES include
+    PATH_SUFFIXES include include/${onnxruntime_CUDA_VERSION}
     REQUIRED
 )
 
@@ -15,7 +15,7 @@ function(find_cudnn_library NAME)
     find_library(
         ${NAME}_LIBRARY ${NAME} "lib${NAME}.so.${CUDNN_MAJOR_VERSION}"
         HINTS $ENV{CUDNN_PATH} ${CUDNN_PATH} ${Python_SITEARCH}/nvidia/cudnn ${CUDAToolkit_LIBRARY_DIR}
-        PATH_SUFFIXES lib64 lib/x64 lib
+        PATH_SUFFIXES lib64 lib/x64 lib lib/${onnxruntime_CUDA_VERSION}/x64
         REQUIRED
     )
 
@@ -67,43 +67,3 @@ target_link_libraries(
     INTERFACE
     CUDNN::cudnn
 )
-
-if(CUDNN_MAJOR_VERSION EQUAL 8)
-    find_cudnn_library(cudnn_adv_infer)
-    find_cudnn_library(cudnn_adv_train)
-    find_cudnn_library(cudnn_cnn_infer)
-    find_cudnn_library(cudnn_cnn_train)
-    find_cudnn_library(cudnn_ops_infer)
-    find_cudnn_library(cudnn_ops_train)
-
-    target_link_libraries(
-        CUDNN::cudnn_all
-        INTERFACE
-        CUDNN::cudnn_adv_train
-        CUDNN::cudnn_ops_train
-        CUDNN::cudnn_cnn_train
-        CUDNN::cudnn_adv_infer
-        CUDNN::cudnn_cnn_infer
-        CUDNN::cudnn_ops_infer
-    )
-elseif(CUDNN_MAJOR_VERSION EQUAL 9)
-    find_cudnn_library(cudnn_cnn)
-    find_cudnn_library(cudnn_adv)
-    find_cudnn_library(cudnn_graph)
-    find_cudnn_library(cudnn_ops)
-    find_cudnn_library(cudnn_engines_runtime_compiled)
-    find_cudnn_library(cudnn_engines_precompiled)
-    find_cudnn_library(cudnn_heuristic)
-
-    target_link_libraries(
-        CUDNN::cudnn_all
-        INTERFACE
-        CUDNN::cudnn_adv
-        CUDNN::cudnn_ops
-        CUDNN::cudnn_cnn
-        CUDNN::cudnn_graph
-        CUDNN::cudnn_engines_runtime_compiled
-        CUDNN::cudnn_engines_precompiled
-        CUDNN::cudnn_heuristic
-    )
-endif()

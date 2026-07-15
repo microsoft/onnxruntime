@@ -56,10 +56,10 @@ void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::fun
     if (dynamic_block_base > 0) {
       onnxruntime::ThreadOptions thread_options;
       thread_options.dynamic_block_base_ = dynamic_block_base;
-      auto tp_dynamic_block_size = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), thread_options, nullptr, num_threads, true, mock_hybrid);
+      auto tp_dynamic_block_size = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), thread_options, nullptr, num_threads, onnxruntime::concurrency::kSpinDurationDefault, mock_hybrid);
       test_body(tp_dynamic_block_size.get());  // test thread pool with dynamic block size
     } else {
-      auto tp_constant_block_size = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions{}, nullptr, num_threads, true, mock_hybrid);
+      auto tp_constant_block_size = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions{}, nullptr, num_threads, onnxruntime::concurrency::kSpinDurationDefault, mock_hybrid);
       test_body(tp_constant_block_size.get());  // test thread pool with constant block size
     }
   } else {
@@ -172,7 +172,7 @@ void TestPoolCreation(const std::string&, int iter) {
                                            onnxruntime::ThreadOptions(),
                                            nullptr,
                                            num_threads,
-                                           true);
+                                           onnxruntime::concurrency::kSpinDurationDefault);
     ThreadPool::TryParallelFor(tp.get(), per_iter, 0.0,
                                [&](std::ptrdiff_t s, std::ptrdiff_t e) {
                                  ctr += e - s;
@@ -519,7 +519,7 @@ TEST(ThreadPoolTest, TestStackSize) {
   // For ARM, x86 and x64 machines, the default stack size is 1 MB
   // We change it to a different value to see if the setting works
   to.stack_size = 8 * 1024 * 1024;
-  auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), to, nullptr, 2, true);
+  auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), to, nullptr, 2, onnxruntime::concurrency::kSpinDurationDefault);
   typedef void(WINAPI * FnGetCurrentThreadStackLimits)(_Out_ PULONG_PTR LowLimit, _Out_ PULONG_PTR HighLimit);
 
   Notification n;
@@ -671,5 +671,373 @@ TEST(ThreadPoolTest, TestDefaultAffinity) {
 }
 #endif
 #endif
+
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+// Test for OrtThreadPoolCallbacksConfig - validates that callbacks are invoked
+// when work is scheduled to the thread pool.
+namespace {
+
+struct WorkCallbackTestContext {
+  std::atomic<int> enqueue_count{0};
+  std::atomic<int> start_count{0};
+  std::atomic<int> stop_count{0};
+  std::atomic<int> abandon_count{0};
+};
+
+void* TestOnEnqueue(void* user_context) noexcept {
+  auto* ctx = static_cast<WorkCallbackTestContext*>(user_context);
+  ctx->enqueue_count++;
+  return reinterpret_cast<void*>(static_cast<uintptr_t>(0xCB00CB00));
+}
+
+void TestOnStart(void* user_context, void* callback_data) noexcept {
+  auto* ctx = static_cast<WorkCallbackTestContext*>(user_context);
+  ctx->start_count++;
+  EXPECT_EQ(callback_data, reinterpret_cast<void*>(static_cast<uintptr_t>(0xCB00CB00)));
+}
+
+void TestOnStop(void* user_context, void* callback_data) noexcept {
+  auto* ctx = static_cast<WorkCallbackTestContext*>(user_context);
+  ctx->stop_count++;
+  EXPECT_EQ(callback_data, reinterpret_cast<void*>(static_cast<uintptr_t>(0xCB00CB00)));
+}
+
+void TestOnAbandon(void* user_context, void* callback_data) noexcept {
+  auto* ctx = static_cast<WorkCallbackTestContext*>(user_context);
+  ctx->abandon_count++;
+  EXPECT_EQ(callback_data, reinterpret_cast<void*>(static_cast<uintptr_t>(0xCB00CB00)));
+}
+
+// Helper to create a thread pool with work callbacks and run a test
+void CreateThreadPoolWithCallbacksAndTest(
+    int num_threads,
+    WorkCallbackTestContext& ctx,
+    bool enable_start_stop,
+    const std::function<void(ThreadPool*)>& test_body) {
+  OrtThreadPoolCallbacksConfig callbacks{};
+  callbacks.on_enqueue = TestOnEnqueue;
+  callbacks.on_start_work = enable_start_stop ? TestOnStart : nullptr;
+  callbacks.on_stop_work = enable_start_stop ? TestOnStop : nullptr;
+  callbacks.on_abandon = enable_start_stop ? TestOnAbandon : nullptr;
+  callbacks.user_context = &ctx;
+
+  onnxruntime::ThreadOptions thread_options;
+  thread_options.work_callbacks = &callbacks;
+
+  auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
+                                         thread_options,
+                                         nullptr,
+                                         num_threads,
+                                         onnxruntime::concurrency::kSpinDurationDefault);
+  test_body(tp.get());
+}
+
+}  // namespace
+
+TEST(ThreadPoolTest, TestWorkCallbacks_Schedule) {
+  WorkCallbackTestContext ctx;
+  constexpr int num_tasks = 100;
+  std::atomic<int> tasks_completed{0};
+
+  CreateThreadPoolWithCallbacksAndTest(4, ctx, true, [&](ThreadPool* tp) {
+    for (int i = 0; i < num_tasks; i++) {
+      ThreadPool::Schedule(tp, [&]() { tasks_completed++; });
+    }
+  });
+
+  ASSERT_EQ(tasks_completed.load(), num_tasks);
+  ASSERT_EQ(ctx.enqueue_count.load(), num_tasks);
+  ASSERT_EQ(ctx.start_count.load(), num_tasks);
+  ASSERT_EQ(ctx.stop_count.load(), num_tasks);
+}
+
+TEST(ThreadPoolTest, TestWorkCallbacks_OnEnqueueOnly) {
+  WorkCallbackTestContext ctx;
+  constexpr int num_tasks = 50;
+  std::atomic<int> tasks_completed{0};
+
+  CreateThreadPoolWithCallbacksAndTest(2, ctx, false, [&](ThreadPool* tp) {
+    for (int i = 0; i < num_tasks; i++) {
+      ThreadPool::Schedule(tp, [&]() { tasks_completed++; });
+    }
+  });
+
+  ASSERT_EQ(tasks_completed.load(), num_tasks);
+  ASSERT_EQ(ctx.enqueue_count.load(), num_tasks);
+  ASSERT_EQ(ctx.start_count.load(), 0);  // Not set
+  ASSERT_EQ(ctx.stop_count.load(), 0);   // Not set
+}
+
+TEST(ThreadPoolTest, TestWorkCallbacks_NoCallbacks) {
+  WorkCallbackTestContext ctx;
+  constexpr int num_tasks = 50;
+  std::atomic<int> tasks_completed{0};
+
+  CreateThreadPoolAndTest("NoCallbacks", 2, [&](ThreadPool* tp) {
+    for (int i = 0; i < num_tasks; i++) {
+      ThreadPool::Schedule(tp, [&]() { tasks_completed++; });
+    }
+  });
+
+  ASSERT_EQ(tasks_completed.load(), num_tasks);
+  ASSERT_EQ(ctx.enqueue_count.load(), 0);
+  ASSERT_EQ(ctx.start_count.load(), 0);
+  ASSERT_EQ(ctx.stop_count.load(), 0);
+}
+
+TEST(ThreadPoolTest, TestWorkCallbacks_ParallelFor) {
+  WorkCallbackTestContext ctx;
+  constexpr int num_tasks = 100;
+  std::atomic<int> tasks_completed{0};
+
+  CreateThreadPoolWithCallbacksAndTest(4, ctx, true, [&](ThreadPool* tp) {
+    ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t) {
+      tasks_completed++;
+    });
+  });
+
+  ASSERT_EQ(tasks_completed.load(), num_tasks);
+  // Worker threads get callbacks; main thread's fn(0) does not.
+  // Some enqueued tasks may be revoked before execution (work completed by other threads),
+  // so enqueue_count >= start_count. Start/stop must always be balanced.
+  // Every enqueued item must end with either start+stop or abandon.
+  ASSERT_GE(ctx.enqueue_count.load(), ctx.start_count.load());
+  ASSERT_EQ(ctx.start_count.load(), ctx.stop_count.load());
+  ASSERT_EQ(ctx.enqueue_count.load(), ctx.start_count.load() + ctx.abandon_count.load());
+}
+
+TEST(ThreadPoolTest, TestWorkCallbacks_ParallelSection) {
+  WorkCallbackTestContext ctx;
+  constexpr int num_tasks = 50;
+  constexpr int num_loops = 3;
+  std::atomic<int> tasks_completed{0};
+
+  CreateThreadPoolWithCallbacksAndTest(4, ctx, true, [&](ThreadPool* tp) {
+    ThreadPool::ParallelSection ps(tp);
+    for (int loop = 0; loop < num_loops; loop++) {
+      ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t) {
+        tasks_completed++;
+      });
+    }
+  });
+
+  ASSERT_EQ(tasks_completed.load(), num_tasks * num_loops);
+  // Some enqueued tasks may be revoked before execution (work completed by other threads),
+  // so enqueue_count >= start_count. Start/stop must always be balanced.
+  // Every enqueued item must end with either start+stop or abandon.
+  ASSERT_GE(ctx.enqueue_count.load(), ctx.start_count.load());
+  ASSERT_EQ(ctx.start_count.load(), ctx.stop_count.load());
+  ASSERT_EQ(ctx.enqueue_count.load(), ctx.start_count.load() + ctx.abandon_count.load());
+}
+
+TEST(ThreadPoolTest, TestWorkCallbacks_Abandon) {
+  // Verify that on_abandon is called when enqueued work is revoked.
+  // Block all workers so dispatch tasks sit in queues unexecuted,
+  // then the main thread completes all iterations and revokes them.
+  //
+  // ThreadPool(num_threads) creates num_threads-1 actual worker threads
+  // (the calling thread counts as one).  We must block exactly
+  // num_threads-1 workers so that all pool workers are occupied.
+  WorkCallbackTestContext ctx;
+  constexpr int num_threads = 5;
+  const int num_workers = num_threads - 1;  // actual pool worker threads
+
+  CreateThreadPoolWithCallbacksAndTest(num_threads, ctx, true, [&](ThreadPool* tp) {
+    onnxruntime::Barrier workers_ready(num_workers);
+    onnxruntime::Barrier workers_released(num_workers);
+    std::atomic<bool> release{false};
+
+    for (int i = 0; i < num_workers; i++) {
+      ThreadPool::Schedule(tp, [&]() {
+        workers_ready.Notify();
+        while (!release.load(std::memory_order_acquire)) {
+          onnxruntime::concurrency::SpinPause();
+        }
+        workers_released.Notify();
+      });
+    }
+    workers_ready.Wait();  // All workers are now blocked
+
+    // Reset counters so we only measure the parallel loop below.
+    ctx.enqueue_count = 0;
+    ctx.start_count = 0;
+    ctx.stop_count = 0;
+    ctx.abandon_count = 0;
+
+    // The parallel loop enqueues a dispatch task, but no worker can pick it up.
+    // The main thread completes all iterations, then EndParallelSection revokes
+    // the dispatch task, triggering on_abandon.
+    std::atomic<int> tasks_done{0};
+    ThreadPool::TrySimpleParallelFor(tp, 100, [&](std::ptrdiff_t) {
+      tasks_done++;
+    });
+
+    ASSERT_EQ(tasks_done.load(), 100);
+    ASSERT_GT(ctx.abandon_count.load(), 0);
+    ASSERT_EQ(ctx.start_count.load(), ctx.stop_count.load());
+    ASSERT_EQ(ctx.enqueue_count.load(), ctx.start_count.load() + ctx.abandon_count.load());
+
+    release.store(true, std::memory_order_release);
+    workers_released.Wait();
+  });
+}
+
+TEST(ThreadPoolTest, TestWorkCallbacks_EnqueueReturnsNull) {
+  // Verify that when on_enqueue returns nullptr, it is correctly passed
+  // through to on_start_work/on_stop_work.
+  WorkCallbackTestContext ctx;
+  constexpr int num_tasks = 50;
+  std::atomic<int> tasks_completed{0};
+
+  OrtThreadPoolCallbacksConfig callbacks{};
+  callbacks.on_enqueue = [](void* user_context) noexcept -> void* {
+    auto* c = static_cast<WorkCallbackTestContext*>(user_context);
+    c->enqueue_count++;
+    return nullptr;
+  };
+  callbacks.on_start_work = [](void* user_context, void* enqueue_data) noexcept {
+    auto* c = static_cast<WorkCallbackTestContext*>(user_context);
+    c->start_count++;
+    EXPECT_EQ(enqueue_data, nullptr);
+  };
+  callbacks.on_stop_work = [](void* user_context, void* enqueue_data) noexcept {
+    auto* c = static_cast<WorkCallbackTestContext*>(user_context);
+    c->stop_count++;
+    EXPECT_EQ(enqueue_data, nullptr);
+  };
+  callbacks.user_context = &ctx;
+
+  onnxruntime::ThreadOptions thread_options;
+  thread_options.work_callbacks = &callbacks;
+
+  auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
+                                         thread_options,
+                                         nullptr,
+                                         4,
+                                         onnxruntime::concurrency::kSpinDurationDefault);
+
+  for (int i = 0; i < num_tasks; i++) {
+    ThreadPool::Schedule(tp.get(), [&]() { tasks_completed++; });
+  }
+  tp.reset();
+
+  ASSERT_EQ(tasks_completed.load(), num_tasks);
+  ASSERT_EQ(ctx.enqueue_count.load(), num_tasks);
+  ASSERT_EQ(ctx.start_count.load(), num_tasks);
+  ASSERT_EQ(ctx.stop_count.load(), num_tasks);
+}
+
+TEST(ThreadPoolTest, TestWorkCallbacks_NoEnqueueWithStartStop) {
+  // Verify that on_start_work/on_stop_work are called even when
+  // on_enqueue is not set. enqueue_data should be nullptr.
+  WorkCallbackTestContext ctx;
+  constexpr int num_tasks = 50;
+  std::atomic<int> tasks_completed{0};
+
+  OrtThreadPoolCallbacksConfig callbacks{};
+  callbacks.on_enqueue = nullptr;
+  callbacks.on_start_work = [](void* user_context, void* enqueue_data) noexcept {
+    auto* c = static_cast<WorkCallbackTestContext*>(user_context);
+    c->start_count++;
+    EXPECT_EQ(enqueue_data, nullptr);
+  };
+  callbacks.on_stop_work = [](void* user_context, void* enqueue_data) noexcept {
+    auto* c = static_cast<WorkCallbackTestContext*>(user_context);
+    c->stop_count++;
+    EXPECT_EQ(enqueue_data, nullptr);
+  };
+  callbacks.user_context = &ctx;
+
+  onnxruntime::ThreadOptions thread_options;
+  thread_options.work_callbacks = &callbacks;
+
+  auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
+                                         thread_options,
+                                         nullptr,
+                                         4,
+                                         onnxruntime::concurrency::kSpinDurationDefault);
+
+  for (int i = 0; i < num_tasks; i++) {
+    ThreadPool::Schedule(tp.get(), [&]() { tasks_completed++; });
+  }
+  tp.reset();
+
+  ASSERT_EQ(tasks_completed.load(), num_tasks);
+  ASSERT_EQ(ctx.enqueue_count.load(), 0);  // No enqueue callback
+  ASSERT_EQ(ctx.start_count.load(), num_tasks);
+  ASSERT_EQ(ctx.stop_count.load(), num_tasks);
+}
+
+#endif  // ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+
+// -------------------------------------------------------------------
+// Tests for the three spin_duration_us modes (-1/0/>0)
+// -------------------------------------------------------------------
+
+// Helper: create a thread pool with the given spin_duration_us, run a parallel
+// workload, and verify correctness.
+void TestSpinDurationMode(int spin_duration_us) {
+  constexpr int num_threads = 4;
+  constexpr std::ptrdiff_t num_tasks = 1024;
+  auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
+                                         onnxruntime::ThreadOptions(),
+                                         nullptr,
+                                         num_threads,
+                                         spin_duration_us);
+  std::atomic<std::ptrdiff_t> ctr{0};
+  ThreadPool::TryParallelFor(tp.get(), num_tasks, 0.0,
+                             [&](std::ptrdiff_t s, std::ptrdiff_t e) {
+                               ctr += e - s;
+                             });
+  ASSERT_EQ(ctr.load(), num_tasks);
+}
+
+// Default (-1): iteration-count-based spinning (original behavior).
+TEST(ThreadPoolTest, SpinDurationDefault) {
+  TestSpinDurationMode(onnxruntime::concurrency::kSpinDurationDefault);
+}
+
+// Zero: no spinning — threads block immediately when idle.
+TEST(ThreadPoolTest, SpinDurationZero_NoSpinning) {
+  TestSpinDurationMode(0);
+}
+
+// Positive: time-based spinning with a short duration.
+TEST(ThreadPoolTest, SpinDurationPositive_TimeBased) {
+  TestSpinDurationMode(100);   // 100us
+  TestSpinDurationMode(1000);  // 1ms
+}
+
+// Smoke test: exponential backoff (spin_backoff_max > 1) produces correct results.
+void TestSpinBackoffMode(int spin_duration_us, unsigned int spin_backoff_max) {
+  constexpr int num_threads = 4;
+  constexpr std::ptrdiff_t num_tasks = 1024;
+  auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
+                                         onnxruntime::ThreadOptions(),
+                                         nullptr,
+                                         num_threads,
+                                         spin_duration_us,
+                                         /*force_hybrid*/ false,
+                                         spin_backoff_max);
+  std::atomic<std::ptrdiff_t> ctr{0};
+  ThreadPool::TryParallelFor(tp.get(), num_tasks, 0.0,
+                             [&](std::ptrdiff_t s, std::ptrdiff_t e) {
+                               ctr += e - s;
+                             });
+  ASSERT_EQ(ctr.load(), num_tasks);
+}
+
+TEST(ThreadPoolTest, SpinBackoffDefault_NoBackoff) {
+  TestSpinBackoffMode(onnxruntime::concurrency::kSpinDurationDefault, 1U);
+}
+
+TEST(ThreadPoolTest, SpinBackoffEnabled) {
+  TestSpinBackoffMode(onnxruntime::concurrency::kSpinDurationDefault, 4U);
+  TestSpinBackoffMode(onnxruntime::concurrency::kSpinDurationDefault, 8U);
+}
+
+TEST(ThreadPoolTest, SpinBackoffWithTimeBoundedSpin) {
+  TestSpinBackoffMode(1000, 8U);  // 1ms + backoff cap 8
+}
 
 }  // namespace onnxruntime

@@ -10,6 +10,10 @@
 
 #include <emscripten.h>
 
+#ifdef USE_WEBGPU
+#include <webgpu/webgpu.h>
+#endif
+
 #include <stddef.h>
 
 struct OrtSession;
@@ -56,7 +60,7 @@ int EMSCRIPTEN_KEEPALIVE OrtGetLastError(int* error_code, const char** error_mes
  * create an instance of ORT session options.
  * assume that all enum type parameters, such as graph_optimization_level, execution_mode, and log_severity_level,
  * are checked and set properly at JavaScript.
- * @param graph_optimization_level disabled, basic, extended, or enable all
+ * @param graph_optimization_level disabled, basic, extended, layout, or enable all
  * @param enable_cpu_mem_arena enable or disable cpu memory arena
  * @param enable_mem_pattern enable or disable memory pattern
  * @param execution_mode sequential or parallel execution mode
@@ -85,7 +89,10 @@ ort_session_options_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateSessionOptions(size_t
  * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
  */
 int EMSCRIPTEN_KEEPALIVE OrtAppendExecutionProvider(ort_session_options_handle_t session_options,
-                                                    const char* name);
+                                                    const char* name,
+                                                    const char* const* provider_options_keys,
+                                                    const char* const* provider_options_values,
+                                                    size_t num_keys);
 
 /**
  * add a free dimension override for one dimension of a session's input.
@@ -138,21 +145,17 @@ int EMSCRIPTEN_KEEPALIVE OrtGetInputOutputCount(ort_session_handle_t session,
                                                 size_t* output_count);
 
 /**
- * get the model's input name.
+ * get the metadata of the specified input or output of the model.
  * @param session handle of the specified session
- * @param index the input index
- * @returns a pointer to a buffer which contains C-style string. Caller must release the C style string after use by
+ * @param index the input index or output index. index should be in range [0, input_count + output_count). if the index
+ * is in range [0, input_count), it's an input index. otherwise, it's an output index.
+ * @param name_cstr_ptr [out] a pointer to a buffer which contains C-style string of the name of the input or output. Caller must release the C style string after use by
  * calling OrtFree().
- */
-char* EMSCRIPTEN_KEEPALIVE OrtGetInputName(ort_session_handle_t session, size_t index);
-/**
- * get the model's output name.
- * @param session handle of the specified session
- * @param index the output index
- * @returns a pointer to a buffer which contains C-style string. Caller must release the C style string after use by
+ * @param type_info_ptr [out] a pointer to a buffer which contains the type information of the input or output. Caller must release the buffer after use by
  * calling OrtFree().
+ * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
  */
-char* EMSCRIPTEN_KEEPALIVE OrtGetOutputName(ort_session_handle_t session, size_t index);
+int EMSCRIPTEN_KEEPALIVE OrtGetInputOutputMetadata(ort_session_handle_t session, size_t index, char** name_cstr_ptr, void** type_info_ptr);
 
 /**
  * free the specified buffer.
@@ -293,6 +296,21 @@ int EMSCRIPTEN_KEEPALIVE OrtRun(ort_session_handle_t session,
  * Caller must release the C style string after use by calling OrtFree().
  */
 char* EMSCRIPTEN_KEEPALIVE OrtEndProfiling(ort_session_handle_t session);
+
+// WebGPU API Section
+
+#ifdef USE_WEBGPU
+
+/**
+ * get the GPU Device by device ID.
+ *
+ * This function is only available after the GPU Device is initialized in WebGpuContextFactory.
+ *
+ * @returns a WGPUDevice handle.
+ */
+WGPUDevice EMSCRIPTEN_KEEPALIVE OrtGetWebGpuDevice(int device_id);
+
+#endif
 
 // Training API Section
 

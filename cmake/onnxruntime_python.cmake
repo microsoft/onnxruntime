@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-include(pybind11)
+
 
 # ---[ Python + Numpy
 set(onnxruntime_pybind_srcs_pattern
@@ -19,6 +19,13 @@ endif()
 file(GLOB onnxruntime_pybind_srcs CONFIGURE_DEPENDS
   ${onnxruntime_pybind_srcs_pattern}
   )
+
+# onnxruntime_pybind_cuda_quant.cc is compiled into the standalone
+# onnxruntime_cuda_quant_preprocess extension module (see below), not into
+# onnxruntime_pybind11_state. It includes <cuda_runtime.h> and links CUDA::cudart,
+# so compiling it into the main pybind module would break CPU-only builds and
+# re-introduce the hard libcudart dependency this design avoids.
+list(REMOVE_ITEM onnxruntime_pybind_srcs ${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_cuda_quant.cc)
 
 if(onnxruntime_ENABLE_TRAINING)
   list(REMOVE_ITEM onnxruntime_pybind_srcs  ${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_module.cc)
@@ -69,15 +76,35 @@ endif()
 
 onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
 
+message(STATUS "Python_EXECUTABLE: ${Python_EXECUTABLE}")
+
+# Query Py_GIL_DISABLED (PEP 703)
+execute_process(
+  COMMAND "${Python_EXECUTABLE}" -c
+          "import sysconfig; print(sysconfig.get_config_var('Py_GIL_DISABLED') or '0')"
+  RESULT_VARIABLE _py_result
+  OUTPUT_VARIABLE _py_gil_disabled
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+if (_py_result EQUAL 0 AND _py_gil_disabled STREQUAL "1")
+  message(STATUS "Py_GIL_DISABLED=1 detected: Enabling free-threaded support for onnxruntime_pybind11_state")
+endif()
+
 if(MSVC)
   # The following source file is only needed for the EPs that use delayloading. Namely, DML and WebGPU.
   target_sources(onnxruntime_pybind11_state PRIVATE "${ONNXRUNTIME_ROOT}/core/dll/delay_load_hook.cc")
 
   target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-  target_compile_options(onnxruntime_pybind11_state PRIVATE "/bigobj")
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/bigobj>")
 endif()
 if(HAS_CAST_FUNCTION_TYPE)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-cast-function-type")
+endif()
+# pybind11 3.0 headers trigger -Wmaybe-uninitialized in GCC's flow analysis
+# of property accessor lambdas. Suppress it for this target only.
+# See https://github.com/microsoft/onnxruntime/issues/25681
+if(HAS_MAYBE_UNINITIALIZED)
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-maybe-uninitialized")
 endif()
 
 # We export symbols using linker and the compiler does not know anything about it
@@ -96,17 +123,16 @@ if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4244")
 endif()
 
-onnxruntime_add_include_to_target(onnxruntime_pybind11_state Python::Module Python::NumPy)
+onnxruntime_add_include_to_target(onnxruntime_pybind11_state Python::Module)
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${pybind11_INCLUDE_DIRS})
 if(onnxruntime_USE_CUDA)
-    target_include_directories(onnxruntime_pybind11_state PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${CUDNN_INCLUDE_DIR})
+    target_include_directories(onnxruntime_pybind11_state PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+    if(NOT onnxruntime_CUDA_MINIMAL)
+      target_include_directories(onnxruntime_pybind11_state PRIVATE ${CUDNN_INCLUDE_DIR})
+    endif()
 endif()
 if(onnxruntime_USE_CANN)
     target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CANN_HOME}/include)
-endif()
-if(onnxruntime_USE_ROCM)
-  target_compile_options(onnxruntime_pybind11_state PUBLIC -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1)
-  target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
 endif()
 if (onnxruntime_USE_NCCL)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${NCCL_INCLUDE_DIRS})
@@ -131,7 +157,7 @@ if (onnxruntime_ENABLE_ATEN)
 endif()
 
 if (onnxruntime_ENABLE_DLPACK)
-  target_include_directories(onnxruntime_pybind11_state PRIVATE ${dlpack_SOURCE_DIR}/include)
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE dlpack::dlpack)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
@@ -180,16 +206,20 @@ set(onnxruntime_pybind11_state_static_providers
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
-    ${PROVIDERS_ARMNN}
     ${PROVIDERS_XNNPACK}
-    ${PROVIDERS_WEBGPU}
     ${PROVIDERS_AZURE}
 )
 
 if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_qnn)
 endif()
-
+if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
+  list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_webgpu)
+endif()
+if(WIN32)
+  # onnxruntime_pybind11_state is a DLL
+  target_sources(onnxruntime_pybind11_state PRIVATE "${ONNXRUNTIME_ROOT}/core/dll/dllmain.cc")
+endif()
 target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
@@ -205,7 +235,14 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_common
     onnxruntime_flatbuffers
     ${pybind11_lib}
+    Python::NumPy
 )
+
+# The CUDA quantization helpers (pack_weights_for_cuda_mixed_gemm) are built into a
+# separate extension module (onnxruntime_cuda_quant_preprocess) that is imported on
+# demand. Do NOT compile CUDA source files directly into onnxruntime_pybind11_state or
+# link CUDA::cudart from it: that would create a hard libcudart.so dependency that
+# prevents importing the Python module on CPU-only machines.
 
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
@@ -274,6 +311,71 @@ else()
   set_target_properties(onnxruntime_pybind11_state PROPERTIES SUFFIX ".so")
 endif()
 
+# ---------------------------------------------------------------------------
+# Standalone CUDA weight-preprocessing extension module.
+#
+# The CUDA weight-packing kernels (pack_weights_for_cuda_mixed_gemm) are compiled
+# into their OWN Python extension module instead of onnxruntime_pybind11_state.
+# This keeps the hard libcudart dependency out of the main pybind module so that
+# `import onnxruntime` still works on CPU-only machines.
+#
+# Production weight packing is done in PyTorch (cuda_quantizer.py); this module is
+# retained only as a byte-parity oracle for that PyTorch packer. It is gated by
+# onnxruntime_BUILD_CUDA_QUANT_PREPROCESS.
+#
+# It does NOT go through the provider bridge / ProviderInfo_CUDA, so it works for
+# both the legacy in-tree CUDA EP build and the CUDA-EP-as-plugin build.
+#
+# Not built on Windows: matching the previous behavior where CUDA runtime was not
+# linked into Python extension modules (DLL search path constraints since
+# Python 3.8), so pack_weights_for_cuda_mixed_gemm was unavailable there.
+if (onnxruntime_USE_CUDA AND NOT WIN32 AND onnxruntime_BUILD_CUDA_QUANT_PREPROCESS)
+  onnxruntime_add_shared_library_module(onnxruntime_cuda_quant_preprocess
+    "${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_cuda_quant.cc"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.cu"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors_impl.cu"
+  )
+  include(cutlass)
+  onnxruntime_add_include_to_target(onnxruntime_cuda_quant_preprocess Python::Module onnxruntime_common)
+  target_include_directories(onnxruntime_cuda_quant_preprocess PRIVATE
+    ${ONNXRUNTIME_ROOT}
+    ${pybind11_INCLUDE_DIRS}
+    ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+    ${cutlass_SOURCE_DIR}/include
+    ${cutlass_SOURCE_DIR}/tools/util/include
+  )
+  target_compile_definitions(onnxruntime_cuda_quant_preprocess PRIVATE USE_CUDA)
+  target_link_libraries(onnxruntime_cuda_quant_preprocess PRIVATE
+    onnxruntime_common
+    Boost::mp11
+    safeint_interface
+    ${ABSEIL_LIBS}
+    CUDA::cudart
+    ${pybind11_lib}
+    Python::NumPy
+  )
+  if (NOT MSVC)
+    target_compile_options(onnxruntime_cuda_quant_preprocess PRIVATE "-fvisibility=hidden")
+  endif()
+  set_target_properties(onnxruntime_cuda_quant_preprocess PROPERTIES PREFIX "" SUFFIX ".so" FOLDER "ONNXRuntime")
+  if (APPLE)
+    set_target_properties(onnxruntime_cuda_quant_preprocess PROPERTIES
+      INSTALL_RPATH "@loader_path"
+      BUILD_WITH_INSTALL_RPATH TRUE
+      INSTALL_RPATH_USE_LINK_PATH FALSE)
+  elseif (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+    target_link_options(onnxruntime_cuda_quant_preprocess PRIVATE "LINKER:-rpath=\$ORIGIN")
+  endif()
+  # Place the module next to the main pybind module inside onnxruntime/capi.
+  add_custom_command(
+    TARGET onnxruntime_cuda_quant_preprocess POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:onnxruntime_common>/onnxruntime/capi
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_cuda_quant_preprocess>
+        $<TARGET_FILE_DIR:onnxruntime_common>/onnxruntime/capi/
+  )
+endif()
+
 # Generate version_info.py in Windows build.
 # Has to be done before onnxruntime_python_srcs is set.
 if (WIN32)
@@ -282,18 +384,35 @@ if (WIN32)
   if (onnxruntime_USE_CUDA)
     file(WRITE "${VERSION_INFO_FILE}" "use_cuda = True\n")
     if(onnxruntime_CUDNN_HOME)
-      file(GLOB CUDNN_DLL_PATH "${onnxruntime_CUDNN_HOME}/bin/cudnn64_*.dll")
-      if (NOT CUDNN_DLL_PATH)
-        message(FATAL_ERROR "cuDNN not found in ${onnxruntime_CUDNN_HOME}")
+      # may have x64 in the path
+      # may have a path with CUDA toolkit version if multiple installed on the machine
+      set(CUDNN_SEARCH_PATHS
+        "${onnxruntime_CUDNN_HOME}/bin/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/x64/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/${onnxruntime_CUDA_VERSION}/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/${onnxruntime_CUDA_VERSION}/x64/cudnn64_*.dll"
+      )
+      set(CUDNN_DLL_PATH "")
+      foreach(search_path ${CUDNN_SEARCH_PATHS})
+        file(GLOB CUDNN_DLL_PATH "${search_path}")
+        if(CUDNN_DLL_PATH)
+          break()
+        endif()
+      endforeach()
+      if(NOT CUDNN_DLL_PATH)
+        message(STATUS "cuDNN not found in ${onnxruntime_CUDNN_HOME}. Python package metadata will record an empty cuDNN version.")
       endif()
     else()
       file(GLOB CUDNN_DLL_PATH "${onnxruntime_CUDA_HOME}/bin/cudnn64_*.dll")
       if (NOT CUDNN_DLL_PATH)
-        message(FATAL_ERROR "cuDNN not found in ${onnxruntime_CUDA_HOME}")
+        message(STATUS "cuDNN not found in ${onnxruntime_CUDA_HOME}. Python package metadata will record an empty cuDNN version.")
       endif()
     endif()
-    get_filename_component(CUDNN_DLL_NAME ${CUDNN_DLL_PATH} NAME_WE)
-    string(REPLACE "cudnn64_" "" CUDNN_VERSION "${CUDNN_DLL_NAME}")
+    set(CUDNN_VERSION "")
+    if(CUDNN_DLL_PATH)
+      get_filename_component(CUDNN_DLL_NAME ${CUDNN_DLL_PATH} NAME_WE)
+      string(REPLACE "cudnn64_" "" CUDNN_VERSION "${CUDNN_DLL_NAME}")
+    endif()
     if(NOT onnxruntime_CUDA_VERSION)
       set(onnxruntime_CUDA_VERSION ${CUDAToolkit_VERSION})
       message("onnxruntime_CUDA_VERSION=${onnxruntime_CUDA_VERSION}")
@@ -439,6 +558,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   file(GLOB onnxruntime_python_transformers_test_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/test/python/transformers/*.py"
   )
+  file(GLOB onnxruntime_python_transformers_test_onnx_attention_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/test/python/transformers/test_onnx_attention/*.py"
+  )
   file(GLOB onnxruntime_python_transformers_testdata_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/test/python/transformers/test_data/models/*.onnx"
   )
@@ -452,6 +574,9 @@ endif()
 
 file(GLOB onnxruntime_python_tools_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/*.py"
+)
+file(GLOB onnxruntime_python_tools_qnn_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/qnn/*.py"
 )
 file(GLOB onnxruntime_python_quantization_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/quantization/*.py"
@@ -468,8 +593,17 @@ file(GLOB onnxruntime_python_quantization_fusions_src CONFIGURE_DEPENDS
 file(GLOB onnxruntime_python_quantization_ep_qnn_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/quantization/execution_providers/qnn/*.py"
 )
+file(GLOB onnxruntime_python_quantization_neural_compressor_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/quantization/neural_compressor/*.py"
+)
 file(GLOB onnxruntime_python_transformers_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/transformers/*.py"
+)
+file(GLOB onnxruntime_python_transformers_models_torch_export_patches_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/torch_export_patches/*.py"
+)
+file(GLOB onnxruntime_python_transformers_models_torch_export_patches_patches_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/torch_export_patches/patches/*.py"
 )
 file(GLOB onnxruntime_python_transformers_models_bart_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/bart/*.py"
@@ -522,6 +656,7 @@ set(onnxruntime_mobile_util_srcs
     ${REPO_ROOT}/tools/python/util/pytorch_export_helpers.py
     ${REPO_ROOT}/tools/python/util/reduced_build_config_parser.py
     ${REPO_ROOT}/tools/python/util/update_onnx_opset.py
+    ${REPO_ROOT}/tools/python/remove_initializer_from_input.py
 )
 file(GLOB onnxruntime_ort_format_model_srcs CONFIGURE_DEPENDS
     ${REPO_ROOT}/tools/python/util/ort_format_model/*.py
@@ -555,6 +690,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/qdq_helpers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/ort_flatbuffers_py
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/qnn
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/bart
@@ -566,6 +702,8 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/sam2
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/stable_diffusion
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/t5
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/torch_export_patches
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/torch_export_patches/patches
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/whisper
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/operators
@@ -573,8 +711,10 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/fusions
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/execution_providers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/execution_providers/qnn
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/neural_compressor
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_onnx_attention
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/whisper
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/eager_test
@@ -638,6 +778,9 @@ add_custom_command(
       ${ONNXRUNTIME_ROOT}/core/flatbuffers/ort_flatbuffers_py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/ort_flatbuffers_py
   COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_tools_qnn_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/qnn/
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_quantization_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/
   COMMAND ${CMAKE_COMMAND} -E copy
@@ -652,6 +795,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_quantization_ep_qnn_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/execution_providers/qnn/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_quantization_neural_compressor_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/neural_compressor/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_transformers_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/
@@ -683,6 +829,12 @@ add_custom_command(
       ${onnxruntime_python_transformers_models_t5_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/t5/
   COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_transformers_models_torch_export_patches_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/torch_export_patches/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_transformers_models_torch_export_patches_patches_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/torch_export_patches/patches/
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_transformers_models_whisper_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/whisper/
   COMMAND ${CMAKE_COMMAND} -E copy
@@ -708,6 +860,21 @@ if (onnxruntime_USE_OPENVINO)
   )
 endif()
 
+if (onnxruntime_USE_MIGRAPHX)
+  if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+    add_custom_command(
+            TARGET onnxruntime_pybind11_state POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy
+            ${MIGRAPHX_LIB_FILES}
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/)
+    add_custom_command(
+            TARGET onnxruntime_pybind11_state POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy
+            ${HIPSDK_LIB_FILES}
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/)
+  endif()
+endif()
+
 if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
@@ -725,9 +892,8 @@ if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
 endif()
 
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
-                                  AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS"
+                                  AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS"
                                   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
-                                  AND NOT onnxruntime_USE_ROCM
                                   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
@@ -749,6 +915,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_transformers_test_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/transformers/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_transformers_test_onnx_attention_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_onnx_attention/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_transformers_testdata_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/
@@ -914,6 +1083,36 @@ if (onnxruntime_USE_TENSORRT)
   )
 endif()
 
+if (onnxruntime_USE_NV)
+  if (WIN32 OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+      file(GLOB NV_LIB_FILES LIST_DIRECTORIES false "${TENSORRT_RTX_ROOT}/lib/tensorrt_*.dll"
+                                             "${TENSORRT_RTX_ROOT}/bin/tensorrt_*.dll"
+                                             "${TENSORRT_RTX_ROOT}/lib/libtensorrt_*.so"
+                                             "${TENSORRT_RTX_ROOT}/bin/libtensorrt_*.so")
+    message(STATUS "NV lib files: " ${NV_LIB_FILES})
+  endif()
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${NV_LIB_FILES}
+        $<TARGET_FILE:onnxruntime_providers_nv_tensorrt_rtx>
+        $<TARGET_FILE:onnxruntime_providers_shared>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
+  if (EXISTS "${TENSORRT_RTX_ROOT}/doc/LICENSE.txt")
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${TENSORRT_RTX_ROOT}/doc/LICENSE.txt" $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/TRT_RTX_LICENSE.txt
+    )
+  endif()
+  if (EXISTS "${TENSORRT_RTX_ROOT}/doc/Acknowledgements.txt")
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${TENSORRT_RTX_ROOT}/doc/Acknowledgements.txt" $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/TRT_RTX_Acknowledgements.txt
+    )
+  endif()
+endif()
+
 if (onnxruntime_USE_MIGRAPHX)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
@@ -947,7 +1146,7 @@ if (DEFINED ENV{OPENVINO_MANYLINUX})
     )
 endif()
 
-if (onnxruntime_USE_CUDA)
+if (onnxruntime_USE_CUDA AND NOT onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
@@ -957,21 +1156,20 @@ if (onnxruntime_USE_CUDA)
     )
 endif()
 
+if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+      $<TARGET_FILE:onnxruntime_providers_cuda_plugin>
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
+endif()
+
 if (onnxruntime_USE_CANN)
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
           $<TARGET_FILE:onnxruntime_providers_cann>
-          $<TARGET_FILE:onnxruntime_providers_shared>
-          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-    )
-endif()
-
-if (onnxruntime_USE_ROCM)
-    add_custom_command(
-      TARGET onnxruntime_pybind11_state POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy
-          $<TARGET_FILE:onnxruntime_providers_rocm>
           $<TARGET_FILE:onnxruntime_providers_shared>
           $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
     )
@@ -1026,18 +1224,44 @@ if (onnxruntime_USE_QNN)
         ${QNN_LIB_FILES}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:onnxruntime_qnn_ctx_gen>
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  )
-  if (EXISTS "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf")
+  if (EXISTS "${onnxruntime_QNN_HOME}/LICENSE.pdf")
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/LICENSE.pdf" $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/Qualcomm_LICENSE.pdf
+    )
+  endif()
+endif()
+
+if (onnxruntime_USE_WEBGPU)
+  if (WIN32 AND onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
+    # TODO: the following code is used to disable building Dawn using vcpkg temporarily
+    # until we figure out how to resolve the packaging pipeline failures
+    #
+    # if (onnxruntime_USE_VCPKG)
+    if (FALSE)
+      add_custom_command(
+        TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+            $<TARGET_FILE:Microsoft::DXIL>
+            $<TARGET_FILE:Microsoft::DirectXShaderCompiler>
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+      )
+    else()
+      add_custom_command(
+        TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+            $<TARGET_FILE_DIR:dxcompiler>/dxil.dll
+            $<TARGET_FILE_DIR:dxcompiler>/dxcompiler.dll
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+      )
+    endif()
+  endif()
+  if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
-          "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf"
-          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
+          $<TARGET_FILE:dawn::webgpu_dawn>
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
     )
   endif()
 endif()

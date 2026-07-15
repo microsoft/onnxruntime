@@ -10,6 +10,7 @@
 #include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model.h"
+#include "core/providers/qnn/shared_context.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -20,12 +21,7 @@ bool GraphHasEpContextNode(const onnxruntime::GraphViewer& graph_viewer) {
   for (const auto& node : graph_viewer.Nodes()) {
     if (EPCONTEXT_OP == node.OpType()) {
       NodeAttrHelper node_helper(node);
-      std::string cache_source = node_helper.Get(SOURCE, "");
-
-      std::transform(cache_source.begin(),
-                     cache_source.end(),
-                     cache_source.begin(),
-                     [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
+      std::string cache_source = qnn::utils::GetLowercaseString(node_helper.Get(SOURCE, ""));
 
       if (cache_source == "qnnexecutionprovider" || cache_source == "qnn") {
         return true;
@@ -76,6 +72,7 @@ Status CreateNodeArgs(const std::vector<std::string>& names,
     const OnnxTensorInfo& tensor_info = tensor_info_table.at(name);
     std::unique_ptr<ONNX_NAMESPACE::TypeProto> tensor_type = Factory<ONNX_NAMESPACE::TypeProto>::Create();
     tensor_type->mutable_tensor_type()->set_elem_type(tensor_info.data_type_);
+    tensor_type->mutable_tensor_type()->mutable_shape();
     for (size_t j = 0; j < tensor_info.shape_.size(); ++j) {
       tensor_type->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(tensor_info.shape_[j]);
     }
@@ -97,6 +94,7 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
     const std::string& context_binary = node_helper.Get(EP_CACHE_CONTEXT, "");
     return qnn_backend_manager->LoadCachedQnnContextFromBuffer(const_cast<char*>(context_binary.c_str()),
                                                                static_cast<uint64_t>(context_binary.length()),
+                                                               "",
                                                                main_context_node.Name(),
                                                                qnn_models,
                                                                max_spill_fill_size);
@@ -105,30 +103,31 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
   std::filesystem::path folder_path = std::filesystem::path(ctx_onnx_model_path).parent_path();
   std::string external_qnn_ctx_binary_file_name = node_helper.Get(EP_CACHE_CONTEXT, "");
   ORT_RETURN_IF(external_qnn_ctx_binary_file_name.empty(), "The file path in ep_cache_context should not be empty.");
-#ifdef _WIN32
-  onnxruntime::PathString external_qnn_context_binary_path = onnxruntime::ToPathString(external_qnn_ctx_binary_file_name);
-  auto ctx_file_path = std::filesystem::path(external_qnn_context_binary_path.c_str());
-  ORT_RETURN_IF(ctx_file_path.is_absolute(), "External mode should set ep_cache_context field with a relative path, but it is an absolute path: ",
-                external_qnn_ctx_binary_file_name);
-  auto relative_path = ctx_file_path.lexically_normal().make_preferred().wstring();
-  if (relative_path.find(L"..", 0) != std::string::npos) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context field has '..'. It's not allowed to point outside the directory.");
+
+  // Validate that the cache path does not escape the model directory.
+  // Rejects absolute paths, ".." traversal, and symlink-based escapes.
+  auto validate_status = ::onnxruntime::utils::ValidateExternalDataPath(
+      std::filesystem::path(ctx_onnx_model_path), std::filesystem::path(external_qnn_ctx_binary_file_name));
+  if (!validate_status.IsOK()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, validate_status.ErrorMessage());
   }
 
-  std::filesystem::path context_binary_path = folder_path.append(relative_path);
-#else
-  ORT_RETURN_IF(external_qnn_ctx_binary_file_name[0] == '/',
-                "External mode should set ep_cache_context field with a relative path, but it is an absolute path: ",
-                external_qnn_ctx_binary_file_name);
-  if (external_qnn_ctx_binary_file_name.find("..", 0) != std::string::npos) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context field has '..'. It's not allowed to point outside the directory.");
-  }
-  std::filesystem::path context_binary_path = folder_path.append(external_qnn_ctx_binary_file_name);
-  std::string file_full_path = context_binary_path.string();
-#endif
+  std::filesystem::path context_binary_path = folder_path / external_qnn_ctx_binary_file_name;
   if (!std::filesystem::is_regular_file(context_binary_path)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context does not exist or is not accessible.");
   }
+
+  std::string context_binary_path_str = context_binary_path.string();
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+  if (qnn_backend_manager->FileMappingIsEnabled()) {
+    return qnn_backend_manager->LoadCachedQnnContextFromBuffer(nullptr,
+                                                               0,
+                                                               context_binary_path_str,
+                                                               main_context_node.Name(),
+                                                               qnn_models,
+                                                               max_spill_fill_size);
+  }
+#endif
 
   size_t buffer_size{0};
   std::ifstream cache_file(context_binary_path.string().c_str(), std::ifstream::binary);
@@ -147,6 +146,7 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
   cache_file.close();
   return qnn_backend_manager->LoadCachedQnnContextFromBuffer(buffer.get(),
                                                              static_cast<uint64_t>(buffer_size),
+                                                             context_binary_path_str,
                                                              main_context_node.Name(),
                                                              qnn_models,
                                                              max_spill_fill_size);
@@ -198,38 +198,18 @@ Status LoadQnnCtxFromOnnxGraph(const onnxruntime::GraphViewer& graph_viewer,
   return Status::OK();
 }
 
-// Figure out the real context cache file path
-// return true if context cache file exists
-bool ValidateContextCacheFilePath(bool is_qnn_ctx_model,
-                                  const std::string& customer_context_cache_path,
-                                  const onnxruntime::PathString& model_pathstring,
-                                  onnxruntime::PathString& context_cache_path) {
-  // always try the path set by user first, it's the only way to set it if load model from memory
-  if (!customer_context_cache_path.empty()) {
-    context_cache_path = ToPathString(customer_context_cache_path);
-  } else if (!model_pathstring.empty()) {  // model loaded from file
-    if (is_qnn_ctx_model) {
-      // it's a context cache model, just use the model path
-      context_cache_path = model_pathstring;
-    } else if (!model_pathstring.empty()) {
-      // this is not a normal Onnx model, no customer path, create a default path for generation: model_path + _ctx.onnx
-      context_cache_path = model_pathstring + ToPathString("_ctx.onnx");
-    }
-  }
-
-  return std::filesystem::is_regular_file(context_cache_path) && std::filesystem::exists(context_cache_path);
-}
-
 Status CreateEPContextNodes(Model* model,
                             unsigned char* buffer,
                             uint64_t buffer_size,
                             const std::string& sdk_build_version,
                             const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
                             const QnnModelLookupTable& qnn_models,
-                            const onnxruntime::PathString& context_cache_path,
+                            const onnxruntime::PathString& context_model_path,
                             bool qnn_context_embed_mode,
                             uint64_t max_spill_fill_buffer_size,
-                            const logging::Logger& logger) {
+                            const logging::Logger& logger,
+                            bool share_ep_contexts,
+                            bool stop_share_ep_contexts) {
   auto& graph = model->MainGraph();
 
   using namespace ONNX_NAMESPACE;
@@ -262,15 +242,52 @@ Status CreateEPContextNodes(Model* model,
         std::string cache_payload(buffer, buffer + buffer_size);
         ep_node.AddAttribute(EP_CACHE_CONTEXT, cache_payload);
       } else {
-        onnxruntime::PathString context_bin_path = context_cache_path + ToPathString("_" + graph_name + ".bin");
-        std::string context_cache_name(std::filesystem::path(context_bin_path).filename().string());
-        std::ofstream of_stream(context_bin_path.c_str(), std::ofstream::binary);
-        if (!of_stream) {
-          LOGS(logger, ERROR) << "Failed to open create context file.";
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to open context cache file.");
+        onnxruntime::PathString context_bin_path;
+        std::string context_cache_name;
+        auto pos = context_model_path.find_last_of(ORT_TSTR("."));
+        if (pos != std::string::npos) {
+          context_bin_path = context_model_path.substr(0, pos);
+        } else {
+          context_bin_path = context_model_path;
         }
-        of_stream.write(reinterpret_cast<char*>(buffer), buffer_size);
+
+        if (context_bin_path.empty()) {
+          // Context bin path is empty, so just use the graph name (e.g., "QNNExecutionProvider_QNN_13728744673520368385_2_0").
+          // This happens if both the input model and output model are stored in buffers (i.e., there are no paths).
+          context_bin_path = ToPathString(graph_name);
+        }
+
+        context_bin_path = context_bin_path + ToPathString("_qnn.bin");
+        context_cache_name = PathToUTF8String(std::filesystem::path(context_bin_path).filename().native());
+
+        // If generate ctx.onnx with share_ep_context enabled, all ctx.onnx should point to the same ctx.bin
+        if (share_ep_contexts) {
+          auto shared_ctx_bin_name = SharedContext::GetInstance().GetSharedCtxBinFileName();
+          if (shared_ctx_bin_name.empty()) {
+            SharedContext::GetInstance().SetSharedCtxBinFileName(context_cache_name);
+          } else {
+            context_cache_name = shared_ctx_bin_name;
+            auto model_folder_path = std::filesystem::path(context_bin_path).parent_path().string();
+            context_bin_path = ToPathString(model_folder_path + "/" + context_cache_name);
+          }
+        }
+
+        // Write the ctx.bin file for the case: 1. no share_ep_context enabled, write for every session
+        // 2. share_ep_context enabled, only write for the last session which has stop_share_ep_contexts enabled
+        if (!share_ep_contexts || (share_ep_contexts && stop_share_ep_contexts)) {
+          std::ofstream of_stream(context_bin_path.c_str(), std::ofstream::binary);
+          if (!of_stream) {
+            LOGS(logger, ERROR) << "Failed to open create context file.";
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to open context cache file.");
+          }
+          of_stream.write(reinterpret_cast<char*>(buffer), buffer_size);
+        }
+
         ep_node.AddAttribute(EP_CACHE_CONTEXT, context_cache_name);
+        if (share_ep_contexts && stop_share_ep_contexts) {
+          SharedContext::GetInstance().ResetSharedCtxBinFileName();
+        }
+
         ep_node.AddAttribute(MAX_SIZE, static_cast<int64_t>(max_spill_fill_buffer_size));
       }
     } else {

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/reshape_fusion.h"
@@ -13,7 +15,10 @@ namespace onnxruntime {
 bool GetAxesFromUnsqueezeNode(const Graph& graph, const Node& unsqueeze, InlinedVector<int64_t>& axes) {
   if (graph_utils::MatchesOpSinceVersion(unsqueeze, {1, 11})) {
     return graph_utils::GetRepeatedNodeAttributeValues(unsqueeze, "axes", axes);
-  } else if (graph_utils::MatchesOpSinceVersion(unsqueeze, {13})) {
+  }
+
+  // Opset 13+ moved axes from attribute to input[1].
+  if (unsqueeze.InputDefs().size() > 1) {
     const NodeArg* axes_node_arg = unsqueeze.InputDefs()[1];
     return optimizer_utils::AppendTensorFromInitializer(graph, *axes_node_arg, axes, true);
   }
@@ -34,7 +39,7 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
     Node& reshape = *p_reshape;
     ORT_RETURN_IF_ERROR(Recurse(reshape, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reshape, "Reshape", {5, 13, 14}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reshape, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}) ||
         !graph_utils::IsSupportedProvider(reshape, GetCompatibleExecutionProviders())) {
       continue;
     }
@@ -47,6 +52,8 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
     if (ReshapeFusion::Fuse_Subgraph(reshape, graph, logger)) {
       fused_count++;
       LOGS(logger, INFO) << "Fused reshape node: " << reshape.OutputDefs()[0]->Name();
+      modified = true;
+    } else if (ReshapeFusion::FuseContiguousReshapes(reshape, graph)) {
       modified = true;
     }
   }
@@ -90,8 +97,8 @@ static bool Match_Linear_Subgraph_1(Graph& graph, const Node& concat, const Node
   const Node& reshape = *reshape_itr;
 
   std::vector<graph_utils::EdgeEndToMatch> linear_path{
-      {0, 0, "Add", {7}, kOnnxDomain},
-      {0, 0, "MatMul", {1, 9}, kOnnxDomain}};
+      {0, 0, "Add", {7, 13, 14}, kOnnxDomain},
+      {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(reshape, true, linear_path, edges, logger)) {
     return false;
@@ -156,21 +163,20 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
                                                         int index, gsl::span<const int64_t> shape_value, bool checkOneElementOnly,
                                                         const logging::Logger& logger) {
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
-      {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, index, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Shape", {1, 13, 15}, kOnnxDomain}};
+      {0, 0, "Shape", {1, 13, 15, 19, 21, 23, 24, 25}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
   if (graph_utils::FindPath(concat, true, parent_path, edges, logger)) {
     const Node& unsqueeze = edges[0]->GetNode();
     const Node& gather = edges[1]->GetNode();
     const Node& shape = edges[2]->GetNode();
 
-    if (graph_utils::MatchesOpSinceVersion(shape, {15})) {
-      const ONNX_NAMESPACE::AttributeProto* start_attr = graph_utils::GetNodeAttribute(shape, "start");
-      const ONNX_NAMESPACE::AttributeProto* end_attr = graph_utils::GetNodeAttribute(shape, "end");
-      if (!((!start_attr || static_cast<int>(start_attr->i()) == 0) && (!end_attr))) {
-        return false;
-      }
+    // The fusion assumes Shape returns the full tensor shape so that Gather indices correspond
+    // directly to tensor dimensions. A partial shape (opset 15+ start/end attributes) would shift
+    // the index mapping and produce incorrect results.
+    if (!graph_utils::IsFullShapeNode(shape)) {
+      return false;
     }
 
     InlinedVector<int64_t> axes;
@@ -202,9 +208,9 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
 bool ReshapeFusion::Match_One_Element_Output_Subgraph_2(Graph& graph, const NodeArg& root_input, const Node& cur_node,
                                                         int index, const logging::Logger& logger) {
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
-      {0, index, "Squeeze", {1, 11, 13}, kOnnxDomain},
+      {0, index, "Squeeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "Slice", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
+      {0, 0, "Shape", {1, 13, 15, 19, 21, 23, 24, 25}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
   if (graph_utils::FindPath(cur_node, true, parent_path, edges, logger)) {
     const Node& slice = edges[1]->GetNode();
@@ -280,15 +286,15 @@ bool ReshapeFusion::Is_One_Element_Output_Subgraph(Graph& graph, const NodeArg& 
   }
 
   std::vector<graph_utils::EdgeEndToMatch> div_path{
-      {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, index, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "Div", {7, 13, 14}, kOnnxDomain}};
 
   std::vector<graph_utils::EdgeEndToMatch> mul_path{
-      {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, index, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "Mul", {7, 13, 14}, kOnnxDomain}};
 
   std::vector<graph_utils::EdgeEndToMatch> unsqueeze_path{
-      {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain}};
+      {0, index, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain}};
 
   std::vector<const Node::EdgeEnd*> edges;
   if (graph_utils::FindPath(concat, true, div_path, edges, logger) ||
@@ -436,7 +442,7 @@ bool ReshapeFusion::Fuse_Subgraph(Node& reshape, Graph& graph, const logging::Lo
   shape_initializer_proto.add_dims(static_cast<int64_t>(shape_value.size()));
   shape_initializer_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
   utils::SetRawDataInTensorProto(shape_initializer_proto, shape_value.data(), shape_value.size() * sizeof(int64_t));
-  auto& new_node_arg = graph_utils::AddInitializer(graph, shape_initializer_proto);
+  auto& new_node_arg = graph_utils::AddInitializerWithOrtValue(graph, shape_initializer_proto);
 
   // Safely remove concat parent nodes which have only one output
   for (int i = 0; i < concat_input_count; ++i) {
@@ -449,6 +455,79 @@ bool ReshapeFusion::Fuse_Subgraph(Node& reshape, Graph& graph, const logging::Lo
   if (!graph_utils::ReplaceNodeWithInitializer(graph, *graph.GetNode(concat.Index()), new_node_arg)) {
     return false;
   }
+  return true;
+}
+
+bool ReshapeFusion::FuseContiguousReshapes(Node& reshape, Graph& graph) {
+  InlinedVector<std::reference_wrapper<Node>> contiguous_reshapes{reshape};
+  InlinedVector<int64_t> shape_value;
+  while (true) {
+    Node& curr_node = contiguous_reshapes.back();
+    if (graph.NodeProducesGraphOutput(curr_node) || curr_node.GetOutputEdgesCount() != 1) {
+      break;
+    }
+
+    Node* next_node = graph.GetNode(curr_node.OutputNodesBegin()->Index());
+    if (next_node->OpType() != "Reshape" && next_node->OpType() != "Squeeze" && next_node->OpType() != "Unsqueeze") {
+      break;
+    }
+
+    // If next_node is a Reshape with allowzero=1, the fused node cannot represent this
+    // correctly: the fused node inherits attributes from the first node in the chain
+    // (which has allowzero=0 or no allowzero attribute). Bailing out here prevents
+    // incorrect fusion such as Reshape([0,8,2]->[4,2,-1]) + Reshape([0,0,4],allowzero=1)
+    // being collapsed into Reshape([0,8,2]->[0,0,4],allowzero=0), which would silently
+    // copy dims from the original input instead of preserving the explicit zeros.
+    if (next_node->OpType() == "Reshape") {
+      const auto* az_attr = graph_utils::GetNodeAttribute(*next_node, "allowzero");
+      if ((nullptr != az_attr) && az_attr->has_i() && az_attr->i() != 0) {
+        break;
+      }
+    }
+
+    auto shape = next_node->OutputDefs()[0]->Shape();
+    if (!shape) {
+      break;
+    }
+
+    auto tensor_shape = utils::GetTensorShapeFromTensorShapeProto(*shape);
+    if (tensor_shape.Size() == -1) {
+      break;
+    }
+
+    shape_value = tensor_shape.AsShapeVector();
+    contiguous_reshapes.emplace_back(*next_node);
+  }
+
+  if (contiguous_reshapes.size() < 2) {
+    return false;
+  }
+
+  // The fused shape is taken verbatim from the inferred output shape of the last reshape
+  // (we ensured tensor_shape.Size() != -1 above, so dims are concrete). If any dim is
+  // literally 0, fusing into a single Reshape is unsafe: ONNX Reshape with the default
+  // allowzero=0 would reinterpret the 0 as "copy from input", producing the wrong shape.
+  // Setting allowzero=1 would fix it but requires opset >= 14, which we cannot assume
+  // here (this transformer accepts Reshape opset 5+). Bail out conservatively.
+  if (std::any_of(shape_value.begin(), shape_value.end(), [](int64_t d) { return d == 0; })) {
+    return false;
+  }
+
+  const std::string& name = contiguous_reshapes[0].get().Name();
+  ONNX_NAMESPACE::TensorProto shape_initializer_proto;
+  shape_initializer_proto.set_name(graph.GenerateNodeName(name + "_new_shape"));
+  shape_initializer_proto.add_dims(static_cast<int64_t>(shape_value.size()));
+  shape_initializer_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  utils::SetRawDataInTensorProto(shape_initializer_proto, shape_value.data(), shape_value.size() * sizeof(int64_t));
+  NodeArg* shape_arg = &graph_utils::AddInitializerWithOrtValue(graph, shape_initializer_proto);
+  Node& reshape_node = graph.AddNode(graph.GenerateNodeName(name + "_new_reshape"), "Reshape", "Reshape for " + name,
+                                     {contiguous_reshapes[0].get().MutableInputDefs()[0], shape_arg},
+                                     {contiguous_reshapes.back().get().MutableOutputDefs()[0]},
+                                     reshape);
+  reshape_node.SetExecutionProviderType(contiguous_reshapes[0].get().GetExecutionProviderType());
+
+  graph_utils::FinalizeNodeFusion(graph, contiguous_reshapes, reshape_node);
+
   return true;
 }
 
