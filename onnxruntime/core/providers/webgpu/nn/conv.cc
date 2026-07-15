@@ -3,6 +3,7 @@
 #include "core/providers/webgpu/nn/conv.h"
 #include "core/providers/webgpu/nn/conv2d_mm.h"
 #include "core/providers/webgpu/nn/conv3d_naive.h"
+#include "core/providers/webgpu/nn/depthwise_conv.h"
 #include "core/providers/webgpu/nn/im2col_matmul.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -184,6 +185,40 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       }
       inputs[1] = grouped_kernel;
       modified_input_output_shapes[1] = grouped_kernel->Shape();
+
+      // Specialized fast path: NHWC depthwise 3x3, stride 1 or 2, dilation 1.
+      // Depthwise means group == input_channels == output_channels; each output channel
+      // depends on exactly one input channel, so vec4 packing along the channel axis is safe.
+      if (kernel_height == 3 && kernel_width == 3 &&
+          conv_attrs_.group == input_channels && input_channels == output_channels &&
+          dilations[0] == 1 && dilations[1] == 1 &&
+          strides[0] == strides[1] && (strides[0] == 1 || strides[0] == 2)) {
+        const uint32_t components = (input_channels % 4 == 0) ? 4u : 1u;
+        const auto reduced_kernel_shape = ReduceShapeByComponents(grouped_kernel->Shape(), components);
+        const auto reduced_output_shape =
+            ReduceShapeByComponents(TensorShape(output_shape_vector), components);
+        const auto tiles_per_row = static_cast<uint32_t>((output_width + 3) / 4);
+        const auto c_vec = static_cast<uint32_t>(input_channels / components);
+        const auto output_size = static_cast<uint32_t>(batch * output_height * tiles_per_row * c_vec);
+        const std::vector<uint32_t> pads_hw{updated_pads[0], updated_pads[1]};
+
+        DepthwiseConv3x3Program program(activation_, has_bias, static_cast<uint32_t>(strides[0]));
+        program.CacheHint(activation_.ToString(), std::to_string(strides[0]), std::to_string(components))
+            .AddInput({input, ProgramTensorMetadataDependency::TypeAndRank,
+                       ReduceShapeByComponents(input_shape, components), static_cast<int>(components)})
+            .AddInput({grouped_kernel, ProgramTensorMetadataDependency::TypeAndRank,
+                       reduced_kernel_shape, static_cast<int>(components)})
+            .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank,
+                        reduced_output_shape, static_cast<int>(components)})
+            .AddUniformVariables({{output_size}, {pads_hw}, {tiles_per_row}})
+            .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+        if (has_bias) {
+          const auto reduced_bias_shape = ReduceShapeByComponents(bias->Shape(), components);
+          program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank,
+                            reduced_bias_shape, static_cast<int>(components)});
+        }
+        return context.RunProgram(program);
+      }
     }
     auto output_channels_per_group = output_channels / conv_attrs_.group;
     auto components = static_cast<int>(is_channels_last && output_channels_per_group >= 4 ? GetMaxComponents(output_channels) : 1);
