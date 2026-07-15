@@ -43,6 +43,9 @@ jobs:
 - job: build_WASM
   pool:
     name: ${{ parameters.PoolName }}
+    ${{ if eq(parameters.PoolName, 'onnxruntime-Win-CPU-VS2022-Latest') }}:
+      demands:
+      - ImageVersionOverride -equals 275.0.0
   variables:
     EnvSetupScript: setup_env.bat
     buildArch: x64

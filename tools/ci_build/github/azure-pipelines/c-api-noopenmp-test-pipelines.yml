@@ -219,7 +219,10 @@ stages:
     artifactPipelineResource: build
     previousStageName: Setup
     platform: win-x64
-    agentPool: onnxruntime-Win-CPU-VS2022-Latest
+    agentPool:
+      name: onnxruntime-Win-CPU-VS2022-Latest
+      demands:
+      - ImageVersionOverride -equals 275.0.0
 
 # Run GPU tests.
 - stage: Windows_Packaging_cuda_Testing

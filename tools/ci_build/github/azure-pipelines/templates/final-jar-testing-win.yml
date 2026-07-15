@@ -11,6 +11,9 @@ stages:
       clean: all
     pool:
       name: ${{ parameters.PoolName }}
+      ${{ if eq(parameters.PoolName, 'onnxruntime-Win-CPU-VS2022-Latest') }}:
+        demands:
+        - ImageVersionOverride -equals 275.0.0
     templateContext:
       type: validationJob
     variables:

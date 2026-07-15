@@ -12,7 +12,10 @@ stages:
     variables:
     - name: GDN_CODESIGN_TARGETDIRECTORY
       value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
-    pool: 'onnxruntime-Win-CPU-VS2022-Latest'
+    pool:
+      name: 'onnxruntime-Win-CPU-VS2022-Latest'
+      demands:
+      - ImageVersionOverride -equals 275.0.0
     steps:
     - checkout: none
 

@@ -13,6 +13,9 @@ stages:
     timeoutInMinutes: 120
     pool:
       name: ${{ parameters.AgentPool }}
+      ${{ if eq(parameters.AgentPool, 'onnxruntime-Win-CPU-VS2022-Latest') }}:
+        demands:
+        - ImageVersionOverride -equals 275.0.0
     variables:
     - name: OnnxRuntimeBuildDirectory
       value: '$(Build.BinariesDirectory)'

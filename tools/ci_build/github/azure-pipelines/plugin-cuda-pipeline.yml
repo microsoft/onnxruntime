@@ -95,6 +95,8 @@ extends:
     pool:
       name: 'onnxruntime-Win-CPU-VS2022-Latest'
       os: windows
+      demands:
+      - ImageVersionOverride -equals 275.0.0
 
     stages:
       # Validate parameter combinations
@@ -108,6 +110,8 @@ extends:
             pool:
               name: 'onnxruntime-Win-CPU-VS2022-Latest'
               os: windows
+              demands:
+              - ImageVersionOverride -equals 275.0.0
             steps:
             - checkout: none
             - ${{ if eq(variables['invalidBuildTypeConfig'], 'True') }}:

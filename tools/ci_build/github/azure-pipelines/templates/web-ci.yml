@@ -70,6 +70,9 @@ stages:
       name: ${{ parameters.PoolName }}
       ${{ if or(contains(parameters.PoolName, 'ubuntu'), contains(parameters.PoolName, 'linux')) }}:
         os: linux
+      ${{ if eq(parameters.PoolName, 'onnxruntime-Win-CPU-VS2022-Latest') }}:
+        demands:
+        - ImageVersionOverride -equals 275.0.0
     variables:
       runCodesignValidationInjection: false
     timeoutInMinutes: 30
