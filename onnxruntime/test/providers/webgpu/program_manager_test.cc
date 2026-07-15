@@ -9,6 +9,7 @@
 #include "gtest/gtest.h"
 
 #include <array>
+#include <iostream>
 #include <string>
 #include <string_view>
 
@@ -16,7 +17,7 @@
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_external_header.h"
 
-#include "test/util/include/default_providers.h"
+#include "default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -175,6 +176,30 @@ TEST(ShaderCompilationErrorFormatterTest, ZeroLengthProducesSingleCaret) {
   // linePos=4 -> col=3 -> 3 spaces then "^".
   EXPECT_NE(formatted.find("    |    ^\n"), std::string::npos)
       << "zero-length should render exactly one caret:\n"
+      << formatted;
+}
+
+// If Dawn reports a column past the end of the source line (e.g. an EOL-anchored diagnostic),
+// the caret must not extend past the line text -- exactly one '^' should be emitted at the
+// clamped column, with no '~' tail.
+TEST(ShaderCompilationErrorFormatterTest, ColumnPastEndOfLineClampsCaretLength) {
+  const std::string code = "abc\n";  // 3 chars
+  const std::string text = "trailing";
+  // linePos=10 (well past end of line), length=5 (would normally draw ^~~~~).
+  std::array<wgpu::CompilationMessage, 1> msgs{
+      MakeMessage(text, wgpu::CompilationMessageType::Error, 1, 10, 5)};
+
+  wgpu::CompilationInfo info{};
+  info.messageCount = msgs.size();
+  info.messages = msgs.data();
+
+  std::string formatted = FormatShaderCompilationInfo(code, &info);
+  // col is clamped to src_line.size()=3; a single '^' should be printed and no '~' tail.
+  EXPECT_NE(formatted.find("    |    ^\n"), std::string::npos)
+      << "column past end of line should render exactly one caret at the clamped column:\n"
+      << formatted;
+  EXPECT_EQ(formatted.find("^~"), std::string::npos)
+      << "caret must not extend past end of line:\n"
       << formatted;
 }
 

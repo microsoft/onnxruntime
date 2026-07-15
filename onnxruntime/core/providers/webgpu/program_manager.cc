@@ -84,6 +84,10 @@ std::string FormatShaderCompilationInfo(std::string_view code, const wgpu::Compi
       size_t caret_len = (msg.length > 0) ? static_cast<size_t>(msg.length) : 1;
       if (col < src_line.size()) {
         caret_len = std::min(caret_len, src_line.size() - col);
+      } else {
+        // Column is at/past end of the source line (e.g. an EOL-anchored diagnostic).
+        // Emit just a single caret so we don't draw '^~~~' past the end of the text.
+        caret_len = 1;
       }
       if (caret_len == 0) {
         caret_len = 1;
