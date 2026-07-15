@@ -50,7 +50,10 @@ stages:
       skipComponentGovernanceDetection: true
     workspace:
       clean: all
-    pool: onnxruntime-Win-CPU-VS2022-Latest
+    pool:
+      name: onnxruntime-Win-CPU-VS2022-Latest
+      demands:
+      - ImageVersionOverride -equals 275.0.0
     steps:
     - task: PowerShell@2
       displayName: 'Add Build Tag'

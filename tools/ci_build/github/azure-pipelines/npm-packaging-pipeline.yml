@@ -54,6 +54,8 @@ extends:
       sourceAnalysisPool:
         name: onnxruntime-Win-CPU-VS2022-Latest
         os: windows
+        demands:
+        - ImageVersionOverride -equals 275.0.0
       codeql:
         compiled:
           enabled: false
@@ -93,7 +95,11 @@ extends:
         - ReactNative_CI_Android
       jobs:
       - job: Download_Node_Package_And_Publish_Validation_Script
-        pool: 'onnxruntime-Win-CPU-VS2022-Latest'
+        pool:
+          name: 'onnxruntime-Win-CPU-VS2022-Latest'
+          os: windows
+          demands:
+          - ImageVersionOverride -equals 275.0.0
         variables:
           runCodesignValidationInjection: false
         timeoutInMinutes: 10

@@ -264,6 +264,8 @@ stages:
     pool:
       name: 'onnxruntime-Win-CPU-VS2022-Latest'
       os: windows
+      demands:
+      - ImageVersionOverride -equals 275.0.0
     templateContext:
       inputs:
       - input: pipelineArtifact
@@ -308,6 +310,8 @@ stages:
     pool:
       name: 'onnxruntime-Win-CPU-VS2022-Latest'
       os: windows
+      demands:
+      - ImageVersionOverride -equals 275.0.0
     templateContext:
       sdl:
         codeSignValidation:

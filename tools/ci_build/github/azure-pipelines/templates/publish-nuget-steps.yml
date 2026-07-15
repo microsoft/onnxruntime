@@ -19,6 +19,8 @@ stages:
       value: '$(Agent.TempDirectory)\binfiles'
     pool:
       name: 'onnxruntime-Win-CPU-VS2022-Latest'
+      demands:
+      - ImageVersionOverride -equals 275.0.0
 
     steps:
     # https://learn.microsoft.com/en-us/azure/devops/pipelines/yaml-schema/resources-pipelines-pipeline?view=azure-pipelines#pipeline-resource-metadata-as-predefined-variables

@@ -57,6 +57,8 @@ extends:
     pool:
       name: 'onnxruntime-Win-CPU-VS2022-Latest'  # Name of your hosted pool
       os: windows  # OS of the image. This value cannot be a variable. Allowed values: windows, linux, macOS
+      demands:
+      - ImageVersionOverride -equals 275.0.0
 
     stages:
       - template: stages/py-webgpu-packaging-stage.yml

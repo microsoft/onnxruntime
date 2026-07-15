@@ -31,6 +31,8 @@ stages:
       clean: all
     pool:
       name: 'onnxruntime-Win-CPU-VS2022-Latest'
+      demands:
+      - ImageVersionOverride -equals 275.0.0
     variables:
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]

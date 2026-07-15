@@ -22,7 +22,11 @@ stages:
   - job:  NuGet_Test_Win_${{ parameters.StageSuffix }}${{ parameters.MoreSuffix }}
     workspace:
       clean: all
-    pool: ${{ parameters.AgentPool }}
+    pool:
+      name: ${{ parameters.AgentPool }}
+      ${{ if eq(parameters.AgentPool, 'onnxruntime-Win-CPU-VS2022-Latest') }}:
+        demands:
+        - ImageVersionOverride -equals 275.0.0
 
     variables:
     - name: OnnxRuntimeBuildDirectory
