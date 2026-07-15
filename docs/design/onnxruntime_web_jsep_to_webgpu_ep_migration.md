@@ -1,6 +1,5 @@
 # Design: Migrate onnxruntime-web WebGPU/WebNN from JSEP to the native WebGPU EP
 
-**Last updated:** 2026-07-14
 **Scope:** `onnxruntime-web` JavaScript/TypeScript package — WebGPU and WebNN backends
 
 **Related work:** [Remove the WebGL (onnxjs) backend from onnxruntime-web](onnxruntime_web_remove_webgl_backend.md)
@@ -149,14 +148,15 @@ kernel only guards int64 *inputs*), so "int64 off" narrows to int64 *inputs*, no
 **Why it's not a blocker.** int64 in real models carries indices/shapes/axes/token IDs, all `≪ 2³¹` (a tensor
 with `> 2³¹` elements can't fit in a `< 2GB` buffer), so JSEP (GPU-truncated) and native-int64-off (CPU-full)
 produce identical numeric results for realistic models — the difference is **performance only**. `transformers.js`
-already runs the native EP with int64 **off** at scale on int64-heavy token-ID models, confirming the
-CPU-fallback cost is acceptable.
+already runs the native EP with int64 **off** at scale on int64-heavy token-ID models, confirming the overhead of
+running those int64-input ops on CPU/WASM (plus the partition-boundary copies — int64 inputs typically originate on
+CPU, and results are uploaded back to the GPU) is acceptable.
 
 **Decision.** Keep int64 **off by default** everywhere, with a uniform native-EP config across `.` and `/webgpu`.
 Migrating JSEP users (always-truncating) to native-int64-off is a correctness *upgrade*. Follow-ups (not
 blockers): (1) an **optional** typed `enableInt64?: boolean` on `WebGpuExecutionProviderOption` as sugar over the
-`extra` key that already works today; (2) benchmark an int64-heavy graph (tokenizer / LLM decode) to quantify the
-CPU-fallback cost.
+`extra` key that already works today; (2) benchmark an int64-heavy graph (tokenizer / LLM decode) to quantify that
+cost (CPU/WASM execution of the int64-input ops plus the partition-boundary copies).
 
 **Graph-capture interaction (resolved).** Graph capture and int64 are coupled inside the EP
 (`enable_int64_{config.enable_graph_capture || config.enable_int64}` in `webgpu_execution_provider.cc`): capture
@@ -300,6 +300,10 @@ EP), so no consumer on the documented path hits an error. Communicated via relea
 - **Default import (`onnxruntime-web`):** no code change needed. The `webgpu` backend continues to work; the
   implementation swaps to the native EP in Phase 1 (this release).
 - **`onnxruntime-web/all`:** continues to work and converges to the native EP.
+- **Lower-overhead build (`onnxruntime-web/jspi`):** when you can target JSPI-capable browsers, prefer the `./jspi`
+  bundle. It runs the **same native WebGPU EP** but bridges async via **JSPI** instead of Asyncify, giving a
+  smaller WASM binary and lower per-call overhead. The default (Asyncify) build remains the universal fallback for
+  browsers without JSPI.
 - **Need JSEP for one more release:** import `onnxruntime-web/jsep` (temporary, deprecated). Please file an issue
   if the native WebGPU EP does not work for your model so the gap can be fixed before JSEP is deleted.
 - **int64-heavy models needing JSEP-identical GPU behavior:** set

@@ -1,6 +1,5 @@
 # Design: Remove the WebGL (onnxjs) backend from onnxruntime-web
 
-**Last updated:** 2026-07-14
 **Scope:** `onnxruntime-web` JavaScript/TypeScript package — WebGL backend
 
 **Related work:**
@@ -70,20 +69,23 @@ nothing.
 ### 4.1 WebGPU browser coverage
 
 The historical reason to keep WebGL was "WebGPU isn't available on Safari / iOS / Firefox." As of 2026 that is
-**less true**, though per MDN's `api.GPU` browser-compat data gaps remain:
+**less true** — WebGPU has shipped enabled-by-default in Chrome/Edge since **113** (2023), in Safari (macOS/iOS),
+and in Chrome for Android; Firefox support is partial. Per MDN's
+[`api.GPU`](https://developer.mozilla.org/docs/Web/API/GPU#browser_compatibility) browser-compat data, gaps
+remain:
 
-| Browser | WebGPU (per MDN BCD) |
+| Browser | WebGPU |
 |---|---|
-| Chrome / Edge (desktop) | Full from 144 (Linux: Intel Gen12+ only) |
-| Chrome Android | Full from 121 |
-| Safari (macOS / iOS) | Full from 26 |
-| Firefox (desktop) | Partial from 141 |
-| Firefox for Android | ❌ |
+| Chrome / Edge (desktop) | ✅ (default since 113; Linux support landed later) |
+| Chrome (Android) | ✅ |
+| Safari (macOS / iOS) | ✅ |
+| Firefox (desktop) | ⚠️ partial |
+| Firefox (Android) | ❌ |
 
-Safari/iOS and Chrome/Edge desktop are solid, but gaps remain (older versions, Firefox for Android, Firefox
-desktop still partial). Coverage is **broadening but not universal**, so the pool of users for whom WebGL is the
-*only* GPU path is shrinking, not gone. The design does **not** assume universal WebGPU — the actionable fallback
-for uncovered users is the WASM/CPU backend.
+Chrome/Edge and Safari/iOS are solid, but gaps remain (older versions, Firefox for Android, Firefox desktop still
+partial). Coverage is **broadening but not universal**, so the pool of users for whom WebGL is the *only* GPU path
+is shrinking, not gone. The design does **not** assume universal WebGPU — the actionable fallback for uncovered
+users is the WASM/CPU backend.
 
 ---
 
