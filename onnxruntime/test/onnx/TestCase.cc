@@ -442,9 +442,14 @@ static void LoadTensor(const PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::TensorPr
   }
   google::protobuf::io::FileInputStream f(tensor_fd, protobuf_block_size_in_bytes);
   f.SetCloseOnDelete(true);
+#if defined(ORT_USE_ONNX_LIGHT)
+  ONNX_LIGHT_NAMESPACE::ParseOptions parse_opts;
+  input_pb.ParseFromZeroCopyStream(&f, parse_opts);
+#else
   if (!input_pb.ParseFromZeroCopyStream(&f)) {
     ORT_THROW("parse file '", ToUTF8String(pb_file), "' failed");
   }
+#endif
 }
 
 // save tensors to disk
@@ -457,9 +462,14 @@ static void SaveTensor(const PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::TensorPr
   }
   google::protobuf::io::FileOutputStream f(tensor_fd, protobuf_block_size_in_bytes);
   f.SetCloseOnDelete(true);
+#if defined(ORT_USE_ONNX_LIGHT)
+  ONNX_LIGHT_NAMESPACE::SerializeOptions serialize_opts;
+  result_pb.SerializeToStream(f, serialize_opts);
+#else
   if (!result_pb.SerializeToZeroCopyStream(&f)) {
     ORT_THROW("serialize file '", ToUTF8String(pb_file), "' failed");
   }
+#endif
 }
 
 // load sequence tensors from disk
@@ -472,9 +482,14 @@ static void LoadSequenceTensor(const PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::
   }
   google::protobuf::io::FileInputStream f(tensor_fd, protobuf_block_size_in_bytes);
   f.SetCloseOnDelete(true);
+#if defined(ORT_USE_ONNX_LIGHT)
+  ONNX_LIGHT_NAMESPACE::ParseOptions parse_opts;
+  input_pb.ParseFromZeroCopyStream(&f, parse_opts);
+#else
   if (!input_pb.ParseFromZeroCopyStream(&f)) {
     ORT_THROW("parse file '", ToUTF8String(pb_file), "' failed");
   }
+#endif
 }
 
 #if !defined(DISABLE_OPTIONAL_TYPE)
@@ -488,9 +503,14 @@ static void LoadOptional(const PATH_STRING_TYPE& pb_file,
   }
   google::protobuf::io::FileInputStream f(tensor_fd, protobuf_block_size_in_bytes);
   f.SetCloseOnDelete(true);
+#if defined(ORT_USE_ONNX_LIGHT)
+  ONNX_LIGHT_NAMESPACE::ParseOptions parse_opts;
+  input_pb.ParseFromZeroCopyStream(&f, parse_opts);
+#else
   if (!input_pb.ParseFromZeroCopyStream(&f)) {
     ORT_THROW("parse file '", ToUTF8String(pb_file), "' failed");
   }
+#endif
 }
 #endif
 

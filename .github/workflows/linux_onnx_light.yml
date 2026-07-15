@@ -15,6 +15,13 @@
 # than downloading/compiling it, and finally runs a small inference smoke test
 # (mul_1.onnx) to prove the resulting onnxruntime actually executes a model
 # without onnx or protobuf installed.
+#
+# The C++ unit tests ARE built and run: onnx-light now provides a protobuf-free
+# tml replacement (test/proto/tml_onnx_light.h) plus the google::protobuf::Map /
+# FileInputStream / CodedInputStream / onnx-data.pb.h compatibility surface the
+# test tooling needs, so onnx_test_data_proto no longer requires protoc or the
+# upstream onnx .proto sources. Correctness is proven by both the C++ unit tests
+# (onnxruntime_test_all) and the inference smoke test on the wheel.
 
 name: Linux CPU ONNX-Light Build
 
@@ -37,10 +44,14 @@ permissions:
   contents: read
 
 env:
-  # Prebuilt onnx-light C++ release artifact (0.1.5). Pinned by sha256.
-  ONNX_LIGHT_VERSION: "0.1.5"
+  # Prebuilt onnx-light C++ release artifact (0.1.6). Pinned by sha256.
+  # NOTE: 0.1.6 adds the protobuf-compat surface the C++ unit tests need
+  # (google::protobuf::Map, io::FileInputStream, delimited CodedInputStream and
+  # onnx/onnx-data.pb.h). Update ONNX_LIGHT_CPP_SHA256 to the published 0.1.6
+  # linux artifact's sha256 once the release is cut.
+  ONNX_LIGHT_VERSION: "0.1.6"
   ONNX_LIGHT_CPP_ASSET: "onnx-light-cpp-linux-x86_64.tar.gz"
-  ONNX_LIGHT_CPP_SHA256: "2427c208482260614b6fb4268edfc68504b74dec7c0aa1c2a785060fba6a66cc"
+  ONNX_LIGHT_CPP_SHA256: "REPLACE_WITH_0.1.6_LINUX_ARTIFACT_SHA256"
 
 jobs:
   build-linux-onnx-light:
@@ -182,6 +193,16 @@ jobs:
               sys.exit(1)
           print("OK: build completed without pulling in onnx or protobuf.")
           PY
+
+      - name: Run C++ unit tests (no onnx, no protobuf)
+        run: |
+          set -e -x
+          # The gtest unit-test binary links the protobuf-free tml replacement and
+          # exercises the onnx-light compat surface. Run it directly (build.py's
+          # test phase would pull in Python packages we deliberately exclude).
+          test_bin="build/Release/Release/onnxruntime_test_all"
+          test -x "$test_bin"
+          "$test_bin"
 
       - name: Install the built onnxruntime wheel (no deps, so protobuf is not pulled)
         run: |

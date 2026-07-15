@@ -145,13 +145,6 @@ class NodeArg {
   // Node arg name, type and shape.
   NodeArgInfo node_arg_info_;
 
-#if defined(ORT_USE_ONNX_LIGHT)
-  // onnx-light proto string fields are utils::String, not std::string, so node_arg_info_.name()
-  // cannot be returned as a const std::string&. NodeArg names are immutable after construction,
-  // so we cache the name here (populated in each constructor) to back Name()'s reference return.
-  std::string name_;
-#endif
-
   // This variable stores the actual tensor data of the shape as a TensorShapeProto after executing
   // the ONNX operator's PartialDataPropagationFunction(). It's used for shape inference purpose.
   //

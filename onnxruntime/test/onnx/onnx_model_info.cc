@@ -47,7 +47,15 @@ void OnnxModelInfo::InitOnnxModelInfo(const std::filesystem::path& model_url) { 
 
   ONNX_NAMESPACE::ModelProto model_pb;
   ::google::protobuf::io::FileInputStream input(model_fd, protobuf_block_size_in_bytes);
+#if defined(ORT_USE_ONNX_LIGHT)
+  // onnx-light parsing returns void and throws on malformed input; reaching the
+  // next line means the parse succeeded.
+  ONNX_LIGHT_NAMESPACE::ParseOptions parse_opts;
+  model_pb.ParseFromZeroCopyStream(&input, parse_opts);
+  const bool parse_result = true;
+#else
   const bool parse_result = model_pb.ParseFromZeroCopyStream(&input) && input.GetErrno() == 0;
+#endif
   if (!parse_result) {
     (void)Env::Default().FileClose(model_fd);
     std::ostringstream oss;

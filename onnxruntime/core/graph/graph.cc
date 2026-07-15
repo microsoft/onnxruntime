@@ -187,9 +187,6 @@ static std::string GenerateSchemaKey(const IndexedSubGraph& subgraph_ptr) {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type) {
   node_arg_info_.set_name(name);
-#if defined(ORT_USE_ONNX_LIGHT)
-  name_ = name;
-#endif
   // If the name is empty, it means the arg does not exist.
   exists_ = !(name.empty());
   if (nullptr != p_node_arg_type) {
@@ -208,9 +205,6 @@ NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type) {
 
 NodeArg::NodeArg(NodeArgInfo&& node_arg_info) {
   node_arg_info_ = std::move(node_arg_info);
-#if defined(ORT_USE_ONNX_LIGHT)
-  name_ = node_arg_info_.name();
-#endif
 
   exists_ = !node_arg_info_.name().empty();
   if (node_arg_info_.has_type())
@@ -222,7 +216,7 @@ NodeArg::NodeArg(NodeArgInfo&& node_arg_info) {
 
 const std::string& NodeArg::Name() const noexcept {
 #if defined(ORT_USE_ONNX_LIGHT)
-  return name_;
+  return node_arg_info_.name().str();
 #else
   return node_arg_info_.name();
 #endif

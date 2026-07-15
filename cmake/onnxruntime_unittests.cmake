@@ -1277,22 +1277,39 @@ endif()
 
 set(test_data_target onnxruntime_test_all)
 
-onnxruntime_add_static_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
-add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
-#onnx_proto target should mark this definition as public, instead of private
-target_compile_definitions(onnx_test_data_proto PRIVATE "-DONNX_API=")
-onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto ${PROTOBUF_LIB})
-if (MSVC)
-    # Cutlass code has an issue with the following:
-    # warning C4100: 'magic': unreferenced formal parameter
+if(onnxruntime_USE_ONNX_LIGHT)
+  # onnx-light build: there is no protobuf/protoc and no onnx .proto sources, so
+  # tml.proto cannot be code-generated. Compile the hand-written, protobuf-free
+  # replacement (test/proto/tml_onnx_light.h, header-only) instead. Expose the
+  # proto directory as a PUBLIC include so consumers that include the tml header
+  # (via pb_helper.h) resolve it.
+  onnxruntime_add_static_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml_onnx_light.cc)
+  add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  target_compile_definitions(onnx_test_data_proto PRIVATE "-DONNX_API=")
+  onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto)
+  target_include_directories(onnx_test_data_proto PUBLIC ${TEST_SRC_DIR}/proto)
+  if (MSVC)
     target_compile_options(onnx_test_data_proto PRIVATE "/wd4100")
+  endif()
+  set_target_properties(onnx_test_data_proto PROPERTIES FOLDER "ONNXRuntimeTest")
+else()
+  onnxruntime_add_static_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
+  add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  #onnx_proto target should mark this definition as public, instead of private
+  target_compile_definitions(onnx_test_data_proto PRIVATE "-DONNX_API=")
+  onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto ${PROTOBUF_LIB})
+  if (MSVC)
+      # Cutlass code has an issue with the following:
+      # warning C4100: 'magic': unreferenced formal parameter
+      target_compile_options(onnx_test_data_proto PRIVATE "/wd4100")
+  endif()
+  target_include_directories(onnx_test_data_proto PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+  set_target_properties(onnx_test_data_proto PROPERTIES FOLDER "ONNXRuntimeTest")
+  if(NOT DEFINED onnx_SOURCE_DIR)
+    find_path(onnx_SOURCE_DIR NAMES "onnx/onnx-ml.proto3" "onnx/onnx-ml.proto" REQUIRED)
+  endif()
+  onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS ${onnx_SOURCE_DIR} TARGET onnx_test_data_proto)
 endif()
-target_include_directories(onnx_test_data_proto PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-set_target_properties(onnx_test_data_proto PROPERTIES FOLDER "ONNXRuntimeTest")
-if(NOT DEFINED onnx_SOURCE_DIR)
-  find_path(onnx_SOURCE_DIR NAMES "onnx/onnx-ml.proto3" "onnx/onnx-ml.proto" REQUIRED)
-endif()
-onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS ${onnx_SOURCE_DIR} TARGET onnx_test_data_proto)
 
 #
 # onnxruntime_ir_graph test data
