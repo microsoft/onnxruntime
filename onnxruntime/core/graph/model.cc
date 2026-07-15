@@ -619,7 +619,7 @@ static Status SaveModel(Model& model, const T& file_path) {
 #if defined(__wasm__) && defined(ORT_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL)
   ORT_RETURN_IF_ERROR(model.MainGraph().Resolve());
   auto model_proto = model.ToProto();
-  auto buffer_size = onnxruntime::proto_io::ByteSize(model_proto);
+  auto buffer_size = model_proto.ByteSizeLong();
   void* buffer = malloc(buffer_size);
   onnxruntime::proto_io::SerializeToArray(model_proto, buffer, buffer_size);
 

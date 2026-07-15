@@ -159,14 +159,6 @@ inline std::string SerializeAsString(const Proto& proto) {
 #endif
 }
 
-// proto.ByteSizeLong()  (serialized size in bytes)
-template <typename Proto>
-inline size_t ByteSize(const Proto& proto) {
-  // onnx-light's ByteSizeLong() computes the size via SerializeSize() without
-  // performing a real serialization, matching protobuf's ByteSizeLong().
-  return proto.ByteSizeLong();
-}
-
 // proto.SerializeToArray(data, size)
 template <typename Proto>
 inline bool SerializeToArray(const Proto& proto, void* data, int size) {

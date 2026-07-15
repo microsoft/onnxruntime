@@ -1218,7 +1218,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
 
   if (output_buffer_holder != nullptr) {
     // Write output model into a buffer ORT allocates for the user.
-    size_t buffer_size = onnxruntime::proto_io::ByteSize(model_proto);
+    size_t buffer_size = model_proto.ByteSizeLong();
     ORT_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<int>::max()),
                   "Cannot serialize ONNX ModelProto larger than 2GB");
 
@@ -1230,7 +1230,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     *output_buffer_holder->buffer_ptr = buffer.release();
   } else if (output_write_func_holder != nullptr) {
     // Write output model to user's output stream.
-    size_t buffer_size = onnxruntime::proto_io::ByteSize(model_proto);
+    size_t buffer_size = model_proto.ByteSizeLong();
     ORT_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<int>::max()),
                   "Cannot serialize ONNX ModelProto larger than 2GB");
 

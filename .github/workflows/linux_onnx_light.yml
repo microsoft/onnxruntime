@@ -92,7 +92,16 @@ jobs:
           import sys
 
           forbidden = ["onnx", "google.protobuf"]
-          present = [name for name in forbidden if importlib.util.find_spec(name) is not None]
+
+          def _is_installed(name):
+              # find_spec raises ModuleNotFoundError if a parent package (e.g.
+              # `google`) is missing; that means the module is absent, not an error.
+              try:
+                  return importlib.util.find_spec(name) is not None
+              except ModuleNotFoundError:
+                  return False
+
+          present = [name for name in forbidden if _is_installed(name)]
           if present:
               print(f"ERROR: forbidden packages are installed: {present}")
               sys.exit(1)
@@ -158,7 +167,16 @@ jobs:
           import sys
 
           forbidden = ["onnx", "google.protobuf"]
-          present = [name for name in forbidden if importlib.util.find_spec(name) is not None]
+
+          def _is_installed(name):
+              # find_spec raises ModuleNotFoundError if a parent package (e.g.
+              # `google`) is missing; that means the module is absent, not an error.
+              try:
+                  return importlib.util.find_spec(name) is not None
+              except ModuleNotFoundError:
+                  return False
+
+          present = [name for name in forbidden if _is_installed(name)]
           if present:
               print(f"ERROR: forbidden packages were installed during the build: {present}")
               sys.exit(1)
@@ -183,7 +201,16 @@ jobs:
           import sys
 
           forbidden = ["onnx", "google.protobuf"]
-          present = [name for name in forbidden if importlib.util.find_spec(name) is not None]
+
+          def _is_installed(name):
+              # find_spec raises ModuleNotFoundError if a parent package (e.g.
+              # `google`) is missing; that means the module is absent, not an error.
+              try:
+                  return importlib.util.find_spec(name) is not None
+              except ModuleNotFoundError:
+                  return False
+
+          present = [name for name in forbidden if _is_installed(name)]
           if present:
               print(f"ERROR: forbidden packages were pulled in by the wheel: {present}")
               sys.exit(1)

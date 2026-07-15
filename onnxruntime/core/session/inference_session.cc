@@ -1101,7 +1101,7 @@ common::Status InferenceSession::SaveToOrtFormat(const std::filesystem::path& fi
   // TODO: Investigate whether we should set a max size, and clarify the cost of having a buffer smaller than
   // what the total flatbuffers serialized size will be.
   constexpr size_t m_bytes = 1024 * 1024;
-  size_t fbs_buffer_size = std::max(m_bytes, onnxruntime::proto_io::ByteSize(model_->ToProto()));
+  size_t fbs_buffer_size = std::max(m_bytes, model_->ToProto().ByteSizeLong());
   fbs_buffer_size = ((fbs_buffer_size + m_bytes - 1) / m_bytes) * m_bytes;
   flatbuffers::FlatBufferBuilder builder(fbs_buffer_size);
 

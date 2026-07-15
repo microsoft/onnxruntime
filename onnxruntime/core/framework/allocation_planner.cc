@@ -1384,7 +1384,7 @@ class PlannerImpl {
 
           const auto* shape = context_->GetShape(*node_output);
           if (!shape) continue;
-          size_t size_in_bytes = onnxruntime::proto_io::ByteSize(*shape);
+          size_t size_in_bytes = shape->ByteSizeLong();
 
           const auto& location = allocation_plan[output_idx_global].location;
           auto local_iter = waiting_list.find(location);
