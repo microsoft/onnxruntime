@@ -339,6 +339,8 @@ def get_msvc_spectre_lib_dir(args):
         arch = "arm64"
     elif args.arm64ec:
         arch = "arm64ec"
+    elif args.x86:
+        arch = "x86"
     else:
         # Default to the target architecture selected by vcvarsall.bat (x86, x64, arm, arm64),
         # falling back to x64 which is what the official Windows release packages use.
@@ -1179,7 +1181,7 @@ def generate_build_tree(
                     # resolved ahead of the default (non-mitigated) CRT libraries.
                     spectre_lib_dir = get_msvc_spectre_lib_dir(args)
                     if spectre_lib_dir is not None:
-                        ldflags += [f'/LIBPATH:"{spectre_lib_dir}"']
+                        ldflags = [f'/LIBPATH:"{spectre_lib_dir}"', *ldflags]
                     else:
                         log.warning(
                             "Could not locate the MSVC Spectre-mitigated CRT/STL libraries. The "
