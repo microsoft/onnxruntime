@@ -353,21 +353,21 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "let effective_seq_length = seq_causal_length;\n";
   }
   shader.MainFunctionBody()
-      << "var thread_max: f32 = -3.4028234663852886e+38f;\n"
-      << "var thread_sum: f32 = 0.0;\n"
+      << "var thread_max_local: f32 = -3.4028234663852886e+38f;\n"
+      << "var thread_sum_local: f32 = 0.0;\n"
       << "for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {\n"
       << "  let actual_pos = local_offset + i + start_offset;\n"
       << "  if (!should_apply_local_window || actual_pos < seq_causal_length) {\n"
       << "    let value = f32_val_t(x[offset + i + start_offset]);\n"
       << "    let value_max = " << value_max_expr << ";\n"
-      << "    let new_max = max(thread_max, value_max);\n"
+      << "    let new_max = max(thread_max_local, value_max);\n"
       << "    let shifted_exp = exp(value - f32_val_t(new_max));\n"
-      << "    thread_sum = thread_sum * exp(thread_max - new_max) + " << shifted_exp_sum_expr << ";\n"
-      << "    thread_max = new_max;\n"
+      << "    thread_sum_local = thread_sum_local * exp(thread_max_local - new_max) + " << shifted_exp_sum_expr << ";\n"
+      << "    thread_max_local = new_max;\n"
       << "  }\n"
       << "}\n"
-      << "thread_max[local_idx] = thread_max;\n"
-      << "thread_sum[local_idx] = thread_sum;\n"
+      << "thread_max[local_idx] = thread_max_local;\n"
+      << "thread_sum[local_idx] = thread_sum_local;\n"
       << "workgroupBarrier();\n";
 
   if (has_head_sink_) {
@@ -386,7 +386,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "workgroupBarrier();\n"
                             << "var sum: f32 = 0.0;\n"
                             << "for (var i = 0u; i < " << work_group_size_ << "; i++) {\n"
-                            << "  sum += thread_sum[i];\n"
+                            << "  sum += thread_sum[i] * exp(thread_max[i] - max_value);\n"
                             << "}\n";
 
   if (has_head_sink_) {
