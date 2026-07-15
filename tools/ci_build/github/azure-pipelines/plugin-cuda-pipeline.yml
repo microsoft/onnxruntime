@@ -36,10 +36,9 @@ parameters:
   type: boolean
   default: true
 
-# CUDA major.minor series for the build. The exact toolkit minor can differ per platform:
-# win-x64 / linux use CUDA 13.0, while win-arm64 uses CUDA 13.1 (NVIDIA only ships
-# Windows-on-ARM CUDA for 13.x). The option is labeled '13.x' to avoid implying every
-# platform uses 13.0. It is translated to the concrete x64 minor ('13.0') below.
+# CUDA major.minor series for the build. The exact toolkit minor can differ per platform,
+# so the CUDA 13 option uses a major-only label. It is translated to concrete toolkit
+# versions when invoking the packaging stage below.
 - name: cuda_version
   displayName: 'CUDA Version'
   type: string
@@ -136,9 +135,8 @@ extends:
             build_windows_arm64: ${{ parameters.build_windows_arm64 }}
             build_linux_x64: ${{ parameters.build_linux_x64 }}
             build_linux_aarch64: ${{ parameters.build_linux_aarch64 }}
-            # Translate the UI label '13.x' to the concrete x64 toolkit minor '13.0'.
-            # win-arm64 overrides this with arm64_cuda_version (13.1) inside the win stage.
             cuda_version: ${{ replace(parameters.cuda_version, '13.x', '13.0') }}
+            arm64_cuda_version: '13.1'
             package_type: ${{ parameters.package_type }}
             version_file: ${{ variables.epVersionFile }}
             cmake_build_type: ${{ parameters.cmake_build_type }}
