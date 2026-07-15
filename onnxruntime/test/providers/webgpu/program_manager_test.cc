@@ -133,7 +133,8 @@ TEST(ShaderCompilationErrorFormatterTest, MultipleMessages) {
   auto p2 = formatted.find("warning at line 3:6: second");
   ASSERT_NE(p1, std::string::npos) << formatted;
   ASSERT_NE(p2, std::string::npos) << formatted;
-  EXPECT_LT(p1, p2) << "messages should appear in order:\n" << formatted;
+  EXPECT_LT(p1, p2) << "messages should appear in order:\n"
+                    << formatted;
 
   // Source lines for both messages should be present.
   EXPECT_NE(formatted.find("    | line one"), std::string::npos) << formatted;
@@ -233,12 +234,12 @@ TEST(ShaderCompilationErrorFormatterTest, EndToEnd_BrokenShaderProducesLineNumbe
   // Intentionally-broken WGSL: `let` requires an initializer, and `not_a_type` is not a type.
   // We craft the error so we know exactly which line the compiler must complain about (line 4).
   const std::string code =
-      "@compute @workgroup_size(1)\n"                    // 1
-      "fn main() {\n"                                    // 2
-      "  var ok : u32 = 0u;\n"                           // 3
-      "  let broken : not_a_type = 42;\n"                // 4  <- error line
-      "  ok = ok + 1u;\n"                                // 5
-      "}\n";                                             // 6
+      "@compute @workgroup_size(1)\n"      // 1
+      "fn main() {\n"                      // 2
+      "  var ok : u32 = 0u;\n"             // 3
+      "  let broken : not_a_type = 42;\n"  // 4  <- error line
+      "  ok = ok + 1u;\n"                  // 5
+      "}\n";                               // 6
 
   wgpu::ShaderSourceWGSL wgsl_source{};
   wgsl_source.code = code.c_str();
