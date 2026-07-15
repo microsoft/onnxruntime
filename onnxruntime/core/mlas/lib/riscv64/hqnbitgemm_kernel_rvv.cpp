@@ -12,17 +12,18 @@ Abstract:
 
     RISC-V Vector (RVV) kernels for the half-precision (fp16) activation path of
     n-bit quantized GEMM (MatMulNBits), i.e. MLAS_QNBIT_GEMM_COMPUTE_TYPE
-    HQNBIT_CompFp16 with 4-bit weights.
+    HQNBIT_CompFp16, for both 4-bit and 8-bit weights.
 
     Requires the Zvfh extension (native fp16 vectors); this file is compiled with
     -march=rv64gcv_zvfh and only when MLAS_USE_RVV_ZVFH is defined.
 
-    Two kernels are provided: dequantize packed 4-bit B into an fp16 buffer, and
-    an fp16 GEMM that consumes it. Both are paired with each other and with the
-    RVV packing (SubBlkLen == 16 nibble interleave), so the intermediate layouts
-    are private to this dispatch. The dequantized B is stored column-major
-    (B[n*ldb + k]); the GEMM accumulates in fp32 for accuracy and rounds the
-    result to fp16.
+    Three entry points are provided: dequantize packed 4-bit B into an fp16
+    buffer, dequantize packed 8-bit B into an fp16 buffer, and a single fp16 GEMM
+    that consumes either. The 4-bit dequant reads the RVV nibble-interleave pack
+    (SubBlkLen == 16); the 8-bit dequant reads a plain byte pack; both
+    intermediate layouts are private to this dispatch. The dequantized B is stored
+    column-major (B[n*ldb + k]); the GEMM accumulates in fp32 for accuracy and
+    rounds the result to fp16.
 
 --*/
 

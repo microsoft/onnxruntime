@@ -230,12 +230,6 @@ RvvSQ4BitGemmPackQuantBData(
     //   =>
     // dst: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
     //
-    // For SubBlkLen == 32, pack 32 4-bit values (16 bytes) at a time like this:
-    //
-    // src: | v0  v1  | v2  v3  | ... | v28 v29 | v30 v31 |
-    //   =>
-    // dst: | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 |
-    //
 
     MlasTrySimpleParallel(
         ThreadPool, Iterations,
