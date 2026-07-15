@@ -168,7 +168,7 @@ class MlasRvvFp16HQ4GemmTest : public MlasTestBase {
     RunOne<4, 17, 64, 64, true, true>();
     RunOne<8, 33, 128, 64, false, true>();
     RunOne<8, 32, 256, 128, true, true>();
-    RunOne<2, 15, 88, 32, true, false>();   // K not multiple of BlkLen
+    RunOne<2, 15, 88, 32, true, false>();    // K not multiple of BlkLen
     RunOne<5, 16, 4096, 128, true, true>();  // large K
 
     RunOne8<1, 1, 16, 16, false, false>();
@@ -177,7 +177,7 @@ class MlasRvvFp16HQ4GemmTest : public MlasTestBase {
     RunOne8<4, 17, 64, 64, true, true>();
     RunOne8<8, 33, 128, 64, false, true>();
     RunOne8<8, 32, 256, 128, true, true>();
-    RunOne8<2, 15, 88, 32, true, false>();   // K not multiple of BlkLen
+    RunOne8<2, 15, 88, 32, true, false>();    // K not multiple of BlkLen
     RunOne8<5, 16, 4096, 128, true, true>();  // large K
   }
 };

@@ -221,10 +221,12 @@ RvvHQ4BitBlkDequantBForHgemm_CompFp16(
     const auto* scale = reinterpret_cast<const _mlas_fp16_*>(QuantBScale);
     if (QuantBZeroPoint != nullptr) {
         HQ4BitBlkDequantBForHgemm_CompFp16_Impl<true>(
-            BlkLen, fp, QuantBData, scale, QuantBZeroPoint, CountN, CountK, BlockCountK);
+            BlkLen, fp, QuantBData, scale, QuantBZeroPoint, CountN, CountK, BlockCountK
+        );
     } else {
         HQ4BitBlkDequantBForHgemm_CompFp16_Impl<false>(
-            BlkLen, fp, QuantBData, scale, QuantBZeroPoint, CountN, CountK, BlockCountK);
+            BlkLen, fp, QuantBData, scale, QuantBZeroPoint, CountN, CountK, BlockCountK
+        );
     }
 }
 
@@ -244,10 +246,12 @@ RvvHQ8BitBlkDequantBForHgemm_CompFp16(
     const auto* scale = reinterpret_cast<const _mlas_fp16_*>(QuantBScale);
     if (QuantBZeroPoint != nullptr) {
         HQ8BitBlkDequantBForHgemm_CompFp16_Impl<true>(
-            BlkLen, fp, QuantBData, scale, QuantBZeroPoint, CountN, CountK, BlockCountK);
+            BlkLen, fp, QuantBData, scale, QuantBZeroPoint, CountN, CountK, BlockCountK
+        );
     } else {
         HQ8BitBlkDequantBForHgemm_CompFp16_Impl<false>(
-            BlkLen, fp, QuantBData, scale, QuantBZeroPoint, CountN, CountK, BlockCountK);
+            BlkLen, fp, QuantBData, scale, QuantBZeroPoint, CountN, CountK, BlockCountK
+        );
     }
 }
 
@@ -277,7 +281,8 @@ RvvHQ4BitGemmKernel_CompFp16(
 
     auto load_a = [](const _mlas_fp16_* p, size_t vl) {
         return __riscv_vfwcvt_f_f_v_f32m2(
-            __riscv_vreinterpret_v_u16m1_f16m1(__riscv_vle16_v_u16m1(p, vl)), vl);
+            __riscv_vreinterpret_v_u16m1_f16m1(__riscv_vle16_v_u16m1(p, vl)), vl
+        );
     };
 
     for (size_t n = 0; n < CountN; ++n) {
@@ -298,7 +303,8 @@ RvvHQ4BitGemmKernel_CompFp16(
             for (size_t off = 0; off < K;) {
                 const size_t vl = __riscv_vsetvl_e16m1(K - off);
                 const vfloat32m2_t bf = __riscv_vfwcvt_f_f_v_f32m2(
-                    __riscv_vreinterpret_v_u16m1_f16m1(__riscv_vle16_v_u16m1(b_row + off, vl)), vl);  // widen B once
+                    __riscv_vreinterpret_v_u16m1_f16m1(__riscv_vle16_v_u16m1(b_row + off, vl)), vl
+                );  // widen B once
                 acc0 = __riscv_vfmacc_vv_f32m2_tu(acc0, load_a(a0 + off, vl), bf, vl);
                 acc1 = __riscv_vfmacc_vv_f32m2_tu(acc1, load_a(a1 + off, vl), bf, vl);
                 acc2 = __riscv_vfmacc_vv_f32m2_tu(acc2, load_a(a2 + off, vl), bf, vl);
@@ -319,7 +325,8 @@ RvvHQ4BitGemmKernel_CompFp16(
             for (size_t off = 0; off < K;) {
                 const size_t vl = __riscv_vsetvl_e16m1(K - off);
                 const vfloat32m2_t bf = __riscv_vfwcvt_f_f_v_f32m2(
-                    __riscv_vreinterpret_v_u16m1_f16m1(__riscv_vle16_v_u16m1(b_row + off, vl)), vl);
+                    __riscv_vreinterpret_v_u16m1_f16m1(__riscv_vle16_v_u16m1(b_row + off, vl)), vl
+                );
                 acc = __riscv_vfmacc_vv_f32m2_tu(acc, load_a(a_row + off, vl), bf, vl);
                 off += vl;
             }

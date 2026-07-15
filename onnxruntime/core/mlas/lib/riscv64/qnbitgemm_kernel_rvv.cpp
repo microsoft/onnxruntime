@@ -62,7 +62,7 @@ RvvQ4BitGemmPackQuantBDataSize(
     size_t BlkLen,
     bool /*HasZeroPoint*/,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE /*ComputeType*/,  // same size regardless of ComputeType
-    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /*BackendKernelSelectorConfig*/
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG*     /*BackendKernelSelectorConfig*/
 )
 {
     constexpr size_t BlkBitWidth = 4;
@@ -140,8 +140,7 @@ RvvSQ8BitGemmPackQuantBDataAndBlkSum(
             const size_t row = static_cast<size_t>(n) * BlockCountK;
 
             if (QuantBDataBegin != nullptr) {
-                std::memcpy(PackedData + static_cast<size_t>(n) * DataBytesPerCol,
-                            QuantBDataBegin + static_cast<size_t>(n) * DataBytesPerCol, DataBytesPerCol);
+                std::memcpy(PackedData + static_cast<size_t>(n) * DataBytesPerCol, QuantBDataBegin + static_cast<size_t>(n) * DataBytesPerCol, DataBytesPerCol);
             }
 
             if (QuantBScaleBegin != nullptr) {
@@ -685,7 +684,8 @@ SQ4BitGemmKernel_CompInt8_Impl(
                 const size_t k0 = b * BlkLen;
                 const size_t len = std::min(BlkLen, CountK - k0);
                 const int8_t offset = static_cast<int8_t>(
-                    HasZeroPoint ? static_cast<int>(DequantOffset(b_zp, b, true)) : 8);
+                    HasZeroPoint ? static_cast<int>(DequantOffset(b_zp, b, true)) : 8
+                );
                 const uint8_t* qb = b_data + b * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
 
                 int32_t isum[MTILE] = {};
@@ -703,7 +703,8 @@ SQ4BitGemmKernel_CompInt8_Impl(
                         for (size_t off = 0; off < clen;) {
                             const size_t vl = __riscv_vsetvl_e8m4(clen - off);
                             const vint16m8_t prod = __riscv_vwmul_vv_i16m8(
-                                __riscv_vle8_v_i8m4(qa + off, vl), __riscv_vle8_v_i8m4(qbc + off, vl), vl);
+                                __riscv_vle8_v_i8m4(qa + off, vl), __riscv_vle8_v_i8m4(qbc + off, vl), vl
+                            );
                             is = __riscv_vwredsum_vs_i16m8_i32m1(prod, is, vl);
                             off += vl;
                         }
@@ -840,12 +841,12 @@ SQ8BitGemmKernel_BlkSum_CompInt8_Impl(
                 for (size_t off = 0; off < len;) {
                     const size_t vl = __riscv_vsetvl_e8m4(len - off);
                     const vint16m8_t prod = __riscv_vwmulsu_vv_i16m8(
-                        __riscv_vle8_v_i8m4(qa + off, vl), __riscv_vle8_v_u8m4(qb + off, vl), vl);
+                        __riscv_vle8_v_i8m4(qa + off, vl), __riscv_vle8_v_u8m4(qb + off, vl), vl
+                    );
                     is = __riscv_vwredsum_vs_i16m8_i32m1(prod, is, vl);
                     off += vl;
                 }
-                acc += ascale_row[b] * bscale_col[b] * static_cast<float>(__riscv_vmv_x_s_i32m1_i32(is))
-                       - asum_row[b] * bblksum_col[b];
+                acc += ascale_row[b] * bscale_col[b] * static_cast<float>(__riscv_vmv_x_s_i32m1_i32(is)) - asum_row[b] * bblksum_col[b];
             }
             C[mm * ldc + cc] = acc + bias;
         }
@@ -991,24 +992,29 @@ RvvSQ8BitGemmKernel_BlkSum_CompInt8(
 
 #if defined(MLAS_USE_RVV_ZVFH)
 // Defined in hqnbitgemm_kernel_rvv.cpp (compiled with -march=rv64gcv_zvfh).
-void RvvHQ4BitBlkDequantBForHgemm_CompFp16(
-    size_t BlkLen, MLAS_FP16* FpData, const std::byte* QuantBData, const MLAS_FP16* QuantBScale,
-    const std::byte* QuantBZeroPoint, size_t CountN, size_t CountK, size_t BlockCountK);
-void RvvHQ4BitGemmKernel_CompFp16(
-    const MLAS_FP16* A, const MLAS_FP16* B, const MLAS_FP16* Bias, MLAS_FP16* C,
-    size_t CountM, size_t CountN, size_t K, size_t lda, size_t ldb, size_t ldc);
-void RvvHQ8BitBlkDequantBForHgemm_CompFp16(
-    size_t BlkLen, MLAS_FP16* FpData, const std::byte* QuantBData, const MLAS_FP16* QuantBScale,
-    const std::byte* QuantBZeroPoint, size_t CountN, size_t CountK, size_t BlockCountK);
+void
+RvvHQ4BitBlkDequantBForHgemm_CompFp16(
+    size_t BlkLen, MLAS_FP16* FpData, const std::byte* QuantBData, const MLAS_FP16* QuantBScale, const std::byte* QuantBZeroPoint, size_t CountN, size_t CountK, size_t BlockCountK
+);
+void
+RvvHQ4BitGemmKernel_CompFp16(
+    const MLAS_FP16* A, const MLAS_FP16* B, const MLAS_FP16* Bias, MLAS_FP16* C, size_t CountM, size_t CountN, size_t K, size_t lda, size_t ldb, size_t ldc
+);
+void
+RvvHQ8BitBlkDequantBForHgemm_CompFp16(
+    size_t BlkLen, MLAS_FP16* FpData, const std::byte* QuantBData, const MLAS_FP16* QuantBScale, const std::byte* QuantBZeroPoint, size_t CountN, size_t CountK, size_t BlockCountK
+);
 #endif
 
 //
 // RVV QNBit GEMM dispatch.
 //
-// SQNBIT_CompFp32 (4-bit) is wired up: the two kernels above plus the portable
-// packing/workspace helpers make MlasIsQNBitGemmAvailable() return true for
-// that variant. The CompInt8 and 8-bit compute kernels remain null and fall
-// back to the generic path.
+// Wires up the portable packing/workspace helpers (always) plus, under
+// MLAS_USE_RVV, the SQNBIT_CompFp32 (4-bit) and SQNBIT_CompInt8 (4-bit and
+// 8-bit) compute kernels, and, under MLAS_USE_RVV_ZVFH, the HQNBIT_CompFp16
+// (4-bit and 8-bit) kernels. Compute-type/bit-width variants without an
+// assignment below remain null, so MlasIsQNBitGemmAvailable() reports them
+// unavailable and they fall back to the generic path.
 //
 const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchRvv = []() {
     MLAS_QNBIT_GEMM_DISPATCH d;
