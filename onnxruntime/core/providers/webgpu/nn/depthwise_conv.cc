@@ -36,7 +36,8 @@ Status DepthwiseConv3x3Program::GenerateShaderCode(ShaderHelper& shader) const {
                                       ShaderUsage::UseIndicesTypeAlias);
   const auto& output = shader.AddOutput("output",
                                         ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias |
-                                            ShaderUsage::UseElementTypeAlias);
+                                            ShaderUsage::UseElementTypeAlias |
+                                            ShaderUsage::UseShapeAndStride);
   const std::string apply_activation =
       GetActivationSnippet(activation_, "output_value_t", "output_element_t");
 
