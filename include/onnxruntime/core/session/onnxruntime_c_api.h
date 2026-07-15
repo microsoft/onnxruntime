@@ -1059,10 +1059,11 @@ typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t n
  * \since Version 1.24.
  */
 typedef enum OrtExternalMemoryHandleType {
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE = 0,      /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(resource) */
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP = 1,          /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(heap) */
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_WIN32 = 2,     /**< Shared HANDLE from vkGetMemoryWin32HandleKHR, non-dedicated allocation */
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_OPAQUE_FD = 3, /**< File descriptor from vkGetMemoryOpaqueFdKHR, non-dedicated allocation */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE = 0,   /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(resource) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP = 1,       /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(heap) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_MEMORY_WIN32 = 2,     /**< Shared HANDLE from vkGetMemoryWin32HandleKHR or clGetMemObjectInfo with CL_EXTERNAL_MEMORY_HANDLE_OPAQUE_WIN32_KHR, non-dedicated allocation */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_MEMORY_OPAQUE_FD = 3, /**< File descriptor from vkGetMemoryOpaqueFdKHR or clGetMemObjectInfo with CL_EXTERNAL_MEMORY_HANDLE_OPAQUE_FD_KHR, non-dedicated allocation */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION = 4,  /**< Equivalent to VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT or CL_MEM_USE_HOST_PTR */
 } OrtExternalMemoryHandleType;
 
 /** \brief Descriptor for importing external memory.
