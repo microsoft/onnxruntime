@@ -9,7 +9,6 @@
 #include "gtest/gtest.h"
 
 #include <array>
-#include <iostream>
 #include <string>
 #include <string_view>
 
@@ -321,10 +320,8 @@ TEST(ShaderCompilationErrorFormatterTest, EndToEnd_BrokenShaderProducesLineNumbe
       << "formatted output was:\n"
       << formatted;
 
-  // Print for developer visibility when running the test manually.
-  std::cout << "=== Formatted diagnostic for broken shader ===\n"
-            << formatted
-            << "==============================================\n";
+  // No unconditional stdout output; assertion failure messages above already include `formatted`
+  // for debugging.
 }
 
 }  // namespace test

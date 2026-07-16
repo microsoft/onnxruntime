@@ -373,10 +373,13 @@ Status ProgramManager::Build(const ProgramBase& program,
     }
     if (!formatted_compilation_info.empty()) {
       oss << "\nShader compilation messages:\n"
-          << formatted_compilation_info
-          << "Annotated WGSL source:\n"
-          << detail::AnnotateShaderWithLineNumbers(code);
+          << formatted_compilation_info;
     }
+    // Always include the annotated WGSL source so the developer can locate the offending line,
+    // even when structured compilation info is unavailable or empty (Dawn may report a failure
+    // via the pipeline callback while returning no CompilationMessages).
+    oss << "\nAnnotated WGSL source:\n"
+        << detail::AnnotateShaderWithLineNumbers(code);
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, oss.str());
   }
 
