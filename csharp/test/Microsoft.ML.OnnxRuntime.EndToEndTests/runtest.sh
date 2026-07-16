@@ -11,11 +11,11 @@ RunTestNative=${RunTestNative:-true}
 
 set -x -e
 
-cd $BUILD_SOURCESDIRECTORY
+cd "$BUILD_SOURCESDIRECTORY"
 
 echo "Current NuGet package version is $CurrentOnnxRuntimeVersion"
 
-if [ $RunTestCsharp = "true" ]; then
+if [ "$RunTestCsharp" = "true" ]; then
   if [[ $IsMacOS == "True" || $IsMacOS == "true" ]]; then
     # TODO(#12040): The test should figure out the opset version from the model file. Remove it from the path.
     ONNX_DIR="${BUILD_SOURCESDIRECTORY}/cmake/external/onnx"
@@ -50,23 +50,24 @@ if [ $RunTestCsharp = "true" ]; then
     fi
   fi
   # Run C# tests
-  dotnet restore $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj -s $LocalNuGetRepo -s https://api.nuget.org/v3/index.json
-  if [ $? -ne 0 ]; then
+  if ! dotnet restore "$BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj" -s "$LocalNuGetRepo" -s https://api.nuget.org/v3/index.json; then
     echo "Failed to restore nuget packages for the test project"
     exit 1
   fi
 
-  if [ $PACKAGENAME = "Microsoft.ML.OnnxRuntime.Gpu" ] || [ $PACKAGENAME = "Microsoft.ML.OnnxRuntime.Gpu.Linux" ]; then
+  if [ "$PACKAGENAME" = "Microsoft.ML.OnnxRuntime.Gpu" ] || [ "$PACKAGENAME" = "Microsoft.ML.OnnxRuntime.Gpu.Linux" ]; then
     export TESTONGPU=ON
-    dotnet test -p:DefineConstants=USE_CUDA $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --verbosity detailed
-    if [ $? -ne 0 ]; then
+    if ! dotnet test -p:DefineConstants=USE_CUDA "$BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj" --no-restore --verbosity detailed; then
       echo "Failed to build or execute the end-to-end test"
       exit 1
     fi
-    dotnet test -p:DefineConstants=USE_TENSORRT $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --verbosity detailed
+    dotnet test -p:DefineConstants=USE_TENSORRT "$BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj" --no-restore --verbosity detailed
   else
-    dotnet test $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --verbosity detailed
+    dotnet test "$BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj" --no-restore --verbosity detailed
   fi
+  # shellcheck disable=SC2181  # $? here is the exit of the last dotnet test in the if/else above
+  # (USE_TENSORRT in the GPU branch, or the default run in the else branch); it spans two branches,
+  # so it can't be inlined into a single `if ! ...`.
   if [ $? -ne 0 ]; then
     echo "Failed to build or execute the end-to-end test"
     exit 1
