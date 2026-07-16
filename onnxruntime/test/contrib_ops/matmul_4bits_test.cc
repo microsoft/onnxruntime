@@ -691,6 +691,14 @@ TEST(MatMulNBits, SharedPrepackedWeights_AsymmetricPackedScales) {
 // Uses a KleidiAI-compatible Q4 CompInt8 shape. Runtime zero points must not reuse a B pack
 // generated without them.
 TEST(MatMulNBits, DynamicZeroPoints_AsymmetricCompInt8) {
+#if !defined(MLAS_TARGET_ARM64)
+  GTEST_SKIP() << "This test targets the Arm64 KleidiAI path.";
+#else
+  if (!MlasQNBitGemmScalesPacked(1024, QBits, 128, SQNBIT_CompInt8, true, nullptr)) {
+    GTEST_SKIP() << "KleidiAI Q4 packed-scales path is not active.";
+  }
+#endif
+
   TestOptions opts{};
   opts.M = 1;
   opts.N = 288;

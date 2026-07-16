@@ -506,14 +506,6 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
                                                     has_zp_input_, &mlas_backend_kernel_selector_config_));
 #endif
       if (finalize_scale_zp_into_packed_b) {
-        const uint8_t* zp_ptr = nullptr;
-        if (has_zp_input_) {
-          const Tensor* zp_tensor = nullptr;
-          OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zp_tensor);
-          if (zp_tensor != nullptr) {
-            zp_ptr = zp_tensor->Data<uint8_t>();
-          }
-        }
         MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, effective_compute_type, nullptr /*QuantBData*/,
                                     packed_b_.get(), scale_ptr, has_zp_input_, zp_ptr, nullptr,
                                     &mlas_backend_kernel_selector_config_);
@@ -827,14 +819,6 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
                                                   has_zp_input_, &mlas_backend_kernel_selector_config_));
 #endif
     if (finalize_scale_zp_into_packed_b) {
-      const uint8_t* zp_ptr = nullptr;
-      if (has_zp_input_) {
-        const Tensor* zp_tensor = nullptr;
-        OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zp_tensor);
-        if (zp_tensor != nullptr) {
-          zp_ptr = zp_tensor->Data<uint8_t>();
-        }
-      }
       MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, effective_compute_type, nullptr /*QuantBData*/,
                                   packed_b_.get(), scales_fp32_.get(), has_zp_input_, zp_ptr, nullptr,
                                   &mlas_backend_kernel_selector_config_);
