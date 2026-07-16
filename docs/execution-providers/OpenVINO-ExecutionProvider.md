@@ -38,7 +38,7 @@ pip install onnxruntime-ep-openvino
 ```
 
 #### Nuget
-Nuget Packages for ABI EP is published under namespace: 
+Nuget Package for ABI EP is published under namespace: 
 
 [Intel.ML.OnnxRuntime.EP.OpenVINO](https://www.nuget.org/packages/Intel.ML.OnnxRuntime.EP.OpenVINO)
 
