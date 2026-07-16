@@ -24,6 +24,7 @@
 #include <cuda_fp8.h>
 #endif
 #include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime::llm::common {
 inline int getDevice() {
