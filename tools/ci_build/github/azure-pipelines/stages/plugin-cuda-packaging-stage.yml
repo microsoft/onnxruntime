@@ -54,7 +54,7 @@ parameters:
 - name: cmake_cuda_archs
   type: string
   displayName: 'CMAKE_CUDA_ARCHITECTURES'
-  default: '52-real;61-real;75-real;86-real;89-real;90-virtual'
+  default: '61-real;75-real;86-real;89-real;120-real;120-virtual'
 
 - name: python_version
   type: string
