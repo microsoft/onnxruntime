@@ -28,6 +28,8 @@
 
 #include <onnx/onnx_pb.h>
 
+#include "core/common/inlined_containers.h"
+
 namespace onnxruntime {
 namespace proto {
 
@@ -95,7 +97,7 @@ inline double ReadScalar<double>(ol::utils::BinaryStream& s) {
 // Reads one length-delimited entry of a protobuf map (key = field 1,
 // value = field 2) into *out*. The stream must already be limited to the entry.
 template <typename K, typename V>
-inline void ParseMapEntry(ol::utils::BinaryStream& s, google::protobuf::Map<K, V>& out) {
+inline void ParseMapEntry(ol::utils::BinaryStream& s, std::map<K, V>& out) {
   K key{};
   V value{};
   while (s.NotEnd()) {
@@ -117,7 +119,7 @@ inline void ParseMapEntry(ol::utils::BinaryStream& s, google::protobuf::Map<K, V
 template <typename K, typename V>
 class MapMessage {
  public:
-  using MapType = google::protobuf::Map<K, V>;
+  using MapType = std::map<K, V>;
 
   const MapType& v() const { return v_; }
   MapType& v() { return v_; }
@@ -154,7 +156,7 @@ using MapInt64ToDouble = MapMessage<int64_t, double>;
 template <typename MapMsg>
 class VectorMapMessage {
  public:
-  using RepeatedType = google::protobuf::RepeatedPtrField<MapMsg>;
+  using RepeatedType = onnxruntime::InlinedVector<MapMsg>;
 
   const RepeatedType& v() const { return v_; }
   RepeatedType& v() { return v_; }
@@ -166,7 +168,8 @@ class VectorMapMessage {
       if (f.field_number == 1 && f.wire_type == tml_detail::kWireLengthDelimited) {
         const uint64_t len = s.next_uint64();
         s.LimitToNext(len);
-        v_.add().ParseFromStream(s, opts);
+        v_.emplace_back();
+        v_.back().ParseFromStream(s, opts);
         s.Restore();
       } else {
         tml_detail::SkipField(s, f.wire_type);
