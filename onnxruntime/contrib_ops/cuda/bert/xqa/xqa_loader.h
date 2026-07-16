@@ -54,6 +54,18 @@ size_t GetXQAScratchSize(
     XqaQuantType kv_quant_type,
     bool is_bf16 = false);
 
+// Dynamic shared memory (bytes) the XQA decode kernel requires for the given head size and
+// query/KV group size on this device. The value is read from the loaded kernel module, so it is
+// accurate even when the kernel is a PTX image JIT-compiled for the running SM. Returns 0 when it
+// cannot be determined (e.g. unsupported head size / group size). Callers should skip XQA when the
+// returned value exceeds device_prop.sharedMemPerBlockOptin (otherwise the launch fails with
+// cudaErrorInvalidValue, e.g. consumer Blackwell sm_120 running a kernel built only for sm_90).
+size_t GetXQARequiredSharedMemoryBytes(
+    const cudaDeviceProp& device_prop,
+    int head_size,
+    int num_heads,
+    int kv_num_heads);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
