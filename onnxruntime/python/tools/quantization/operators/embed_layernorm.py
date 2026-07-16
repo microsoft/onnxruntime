@@ -1,7 +1,6 @@
 import logging
 
 from onnxruntime._onnx_shim import onnx
-from onnxruntime._onnx_shim.onnx import onnx_pb as onnx_proto  # noqa: F401
 
 from ..quant_utils import attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
