@@ -297,7 +297,7 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearSoftmax_Int8_Saturate) {
     float X_scale = 0.1f;
 
     int8_t X_zero_point = 0;
-    // Quantizer will always use this Y_scale and Y_zero_point.
+    // Quantizer currently uses this Y_scale and Y_zero_point by default.
     // See onnxruntime/python/tools/quantization/operators/softmax.py
     float Y_scale = 1.0f / 256.0f;
     int8_t Y_zero_point = -128;
