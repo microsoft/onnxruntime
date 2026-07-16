@@ -30,8 +30,9 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
   }
 
   // Wraps an OrtAllocator without taking ownership. The caller must keep it alive for the
-  // lifetime of this IAllocator. This is used for allocators passed to PrePackWeight, whose
-  // lifetime is owned by the plugin EP kernel adapter.
+  // lifetime of this IAllocator. This is used for allocators passed to PrePackWeight, which are
+  // provided and owned by the ORT framework/caller for the duration of the PrePack call (this
+  // wrapper must not release them).
   explicit IAllocatorWrappingOrtAllocator(OrtAllocator* ort_allocator)
       : IAllocator(*EnsureOrtAllocatorHasValue(ort_allocator)->Info(ort_allocator)),
         owned_ort_allocator_(nullptr),

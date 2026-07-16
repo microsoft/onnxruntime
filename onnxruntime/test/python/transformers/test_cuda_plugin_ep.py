@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 import unittest
+from contextlib import contextmanager
 
 import numpy as np
 import torch
@@ -103,6 +104,42 @@ def is_cuda_mempool_unsupported_error(exc: Exception) -> bool:
     return "cudaMemPoolCreate failed" in message and (
         "cudaErrorNotSupported" in message or "operation not supported" in message
     )
+
+
+# The fpA_intB MatMulNBits pre-pack path (which triggers the EP-provided allocator use this test
+# guards) requires a compute capability >= 7.5 (Turing) device; see MatMulNBits::MatMulNBits.
+FPA_INTB_MIN_COMPUTE_CAPABILITY = (7, 5)
+
+
+def get_cuda_compute_capability(device):
+    """Return the device (major, minor) CUDA compute capability from plugin EP metadata, or None."""
+    value = device.ep_metadata.get("cuda_compute_capability")
+    if not value:
+        return None
+    try:
+        major_str, _, minor_str = value.partition(".")
+        return (int(major_str), int(minor_str))
+    except (TypeError, ValueError):
+        return None
+
+
+def is_fpa_intb_unsupported_error(exc: Exception) -> bool:
+    """True if the error indicates the fpA_intB MatMulNBits path is unsupported for this device/config."""
+    message = str(exc)
+    return "fpA_intB" in message
+
+
+@contextmanager
+def scoped_env(name: str, value: str):
+    old_value = os.environ.get(name)
+    os.environ[name] = value
+    try:
+        yield
+    finally:
+        if old_value is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = old_value
 
 
 def _create_session_options(session_config=None):
@@ -772,6 +809,17 @@ class TestCudaPluginEP(unittest.TestCase):
         # into PrePack, crashing session creation with an IAllocator::ValidateAllocator failure.
         target_device = get_cuda_plugin_device()
 
+        # The fpA_intB pre-pack path only runs on SM >= 7.5. Skip deterministically on older GPUs
+        # so the test does not silently pass without exercising the allocator-forwarding path.
+        compute_capability = get_cuda_compute_capability(target_device)
+        if compute_capability is None:
+            self.skipTest("CUDA plugin EP device metadata did not include cuda_compute_capability")
+        if compute_capability < FPA_INTB_MIN_COMPUTE_CAPABILITY:
+            self.skipTest(
+                "MatMulNBits fpA_intB pre-pack requires compute capability >= 7.5, but device reports "
+                f"{compute_capability[0]}.{compute_capability[1]}"
+            )
+
         with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
             model_path = tmp.name
         try:
@@ -779,16 +827,14 @@ class TestCudaPluginEP(unittest.TestCase):
             sess_options = _create_session_options()
             sess_options.add_provider_for_devices([target_device], _plugin_provider_options())
 
-            # Session creation is where weight pre-packing runs (and where the null-allocator crash
-            # used to happen). If the device lacks fpA_intB GEMM support the op is not pre-packed and
-            # falls back, so treat an unsupported-op error as a skip rather than a failure.
-            try:
+            # Force the fpA_intB path so weight pre-packing (MatMulNBits::PrePack_B) runs during
+            # session creation, which is where the null-allocator crash used to happen. Given the
+            # deterministic capability check above, session creation is expected to succeed, so any
+            # exception here (including the "allocator != nullptr" assertion) is a genuine regression
+            # and is deliberately propagated instead of skipped.
+            with scoped_env("ORT_FPA_INTB_GEMM", "1"):
                 sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
-            except Exception as exc:
-                if "allocator != nullptr" in str(exc):
-                    raise
-                self.skipTest(f"MatMulNBits pre-pack not supported on this device: {exc}")
-            else:
+
                 assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
                 self.assertTrue(
                     assigned_nodes,
@@ -797,7 +843,15 @@ class TestCudaPluginEP(unittest.TestCase):
                 )
 
                 a = np.random.rand(2, 64).astype(np.float16)
-                res = sess.run(None, {"A": a})
+                # Some devices/configs may still lack a valid fpA_intB tactic at runtime; skip only
+                # for that known-unsupported case and re-raise anything else so real regressions
+                # (e.g. incorrect kernels or the allocator assertion) are not hidden.
+                try:
+                    res = sess.run(None, {"A": a})
+                except Exception as exc:
+                    if is_fpa_intb_unsupported_error(exc):
+                        self.skipTest(f"fpA_intB MatMulNBits not supported on this device: {exc}")
+                    raise
                 self.assertEqual(res[0].shape, (2, 64))
                 self.assertTrue(np.isfinite(res[0].astype(np.float32)).all(), "MatMulNBits produced non-finite output")
         finally:
