@@ -313,7 +313,7 @@ Another agent may already have rebased `onnx.patch`. Inspect with
 
 **(j) A green Linux webgpu CI leg does NOT mean WebGPU ran the node tests.**
 New ONNX backend node tests (`OnnxBackendNodeModelTest`) only **execute** on the
-**macOS-arm64** webgpu CI leg. The Linux webgpu leg (`py-linux-webgpu-stage.yml`) is
+**macOS-arm64** webgpu CI leg. The Linux webgpu leg (`.github\workflows\linux_webgpu.yml`) is
 **build-only** — it compiles the WebGPU EP but runs no kernels. So a green Linux webgpu
 leg proves the build, not that any WebGPU op actually ran. To exercise WebGPU kernels
 off-Mac locally, use a software Vulkan adapter (Mesa lavapipe) — see the

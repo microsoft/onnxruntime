@@ -98,7 +98,7 @@ VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json \
 
 ## 6. Why this matters: the Linux webgpu CI leg is build-only
 
-The Linux webgpu CI leg (`py-linux-webgpu-stage.yml`) **only builds** — it does not run
+The Linux webgpu CI leg (`.github\workflows\linux_webgpu.yml`) **only builds** — it does not run
 WebGPU kernels. A green Linux webgpu leg therefore does **not** mean any WebGPU test
 actually executed. The macOS-arm64 webgpu leg is the only CI leg that runs WebGPU
 backend node tests. So a local lavapipe run is the practical way to **actually exercise
