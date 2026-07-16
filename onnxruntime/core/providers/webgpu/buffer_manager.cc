@@ -599,9 +599,28 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
 
   // TODO: revise wait in whole project
 
-  ORT_ENFORCE(context_.Wait(staging_buffer.MapAsync(wgpu::MapMode::Read, 0, buffer_size, wgpu::CallbackMode::WaitAnyOnly, [](wgpu::MapAsyncStatus status, wgpu::StringView message) {
-    ORT_ENFORCE(status == wgpu::MapAsyncStatus::Success, "Failed to download data from buffer: ", std::string_view{message});
-  })) == Status::OK());
+  struct MapAsyncResult {
+    wgpu::MapAsyncStatus status{};
+    std::string message{};
+  } map_async_result;
+
+  ORT_THROW_IF_ERROR(context_.Wait(
+      staging_buffer.MapAsync(
+          wgpu::MapMode::Read, 0, buffer_size, wgpu::CallbackMode::WaitAnyOnly,
+          // Note: Don't throw from a Dawn callback.
+          [](wgpu::MapAsyncStatus status, wgpu::StringView message,
+             MapAsyncResult* result) noexcept {
+            result->status = status;
+            if (auto message_sv = static_cast<std::string_view>(message);
+                !message_sv.empty()) {
+              result->message = std::string{message_sv};
+            }
+          },
+          &map_async_result)));
+
+  ORT_ENFORCE(map_async_result.status == wgpu::MapAsyncStatus::Success,
+              "Failed to download data from buffer. wgpu::MapAsyncStatus value: ",
+              static_cast<int>(map_async_result.status), ", message: ", map_async_result.message);
 
   auto mapped_data = staging_buffer.GetConstMappedRange();
   memcpy(dst, mapped_data, size);
