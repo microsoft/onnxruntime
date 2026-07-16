@@ -115,14 +115,26 @@ md_link_replace = {
 
 
 def setup(app):
-    # download examples for the documentation
+    # Build the example Sigmoid model in memory (no network dependency). Previously this
+    # urlretrieved onnx/backend/test/data/node/test_sigmoid/model.onnx from GitHub, but that
+    # on-disk node-test corpus is being removed upstream (onnx/onnx#7959), which would turn the
+    # download into a latent 404. A single-node graph built with onnx.helper is equivalent for
+    # the docs and keeps the doc build hermetic. I/O matches the bundled sigmoid example
+    # (input "x" -> output "y", float32 [3, 4, 5]).
     this = os.path.abspath(os.path.dirname(__file__))
     dest = os.path.join(this, "model.onnx")
     if not os.path.exists(dest):
-        import urllib.request  # noqa: PLC0415
+        import onnx  # noqa: PLC0415
+        from onnx import TensorProto, helper  # noqa: PLC0415
 
-        url = "https://raw.githubusercontent.com/onnx/onnx/v1.22.0/onnx/backend/test/data/node/test_sigmoid/model.onnx"
-        urllib.request.urlretrieve(url, dest)
+        shape = [3, 4, 5]
+        x = helper.make_tensor_value_info("x", TensorProto.FLOAT, shape)
+        y = helper.make_tensor_value_info("y", TensorProto.FLOAT, shape)
+        node = helper.make_node("Sigmoid", ["x"], ["y"])
+        graph = helper.make_graph([node], "sigmoid", [x], [y])
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 9)])
+        model.ir_version = 3
+        onnx.save(model, dest)
     loc = os.path.split(dest)[-1]
     if not os.path.exists(loc):
         shutil.copy(dest, loc)
