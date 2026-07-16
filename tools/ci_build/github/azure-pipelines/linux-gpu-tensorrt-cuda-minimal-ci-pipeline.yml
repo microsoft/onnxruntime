@@ -62,10 +62,7 @@ jobs:
     clean: all
   pool: onnxruntime-tensorrt-linuxbuild-T4
   steps:
-
-  - checkout: self
-    clean: true
-    submodules: none
+  - template: templates/jobs/checkout-and-git-redirect.yml
 
   - template: templates/setup-feeds-and-python-steps.yml
     parameters:
@@ -87,22 +84,27 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
-          docker run -e SYSTEM_COLLECTIONURI --gpus all --rm \
-              --volume /data/onnx:/data/onnx:ro \
-              --volume $(Build.SourcesDirectory):/onnxruntime_src \
-              --volume $(Build.BinariesDirectory):/build \
+          docker run \
+              --gpus all \
+              --rm \
+              --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
               --volume /data/models:/build/models:ro \
-              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+              --volume /data/onnx:/data/onnx:ro \
+              --volume ${BUILD_BINARIESDIRECTORY}:/build \
+              --volume ${BUILD_SOURCESDIRECTORY}:/onnxruntime_src \
+              --volume ${HOME}/.gitconfig:/home/onnxruntimedev/.gitconfig:ro \
+              --volume ${HOME}/.gradle:/home/onnxruntimedev/.gradle \
+              --volume ${HOME}/.m2:/home/onnxruntimedev/.m2:ro \
+              --volume ${HOME}/.onnx:/home/onnxruntimedev/.onnx \
+              -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+              -e BUILD_BUILDNUMBER \
+              -e NIGHTLY_BUILD \
               -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
               -e PIP_INDEX_URL \
-              --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
-              --volume $HOME/.m2:/home/onnxruntimedev/.m2:ro \
-              --volume $HOME/.gradle:/home/onnxruntimedev/.gradle \
-              -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
-              -e NIGHTLY_BUILD \
-              -e BUILD_BUILDNUMBER \
+              -e SYSTEM_COLLECTIONURI \
               -w /onnxruntime_src \
-              onnxruntimetensorrtcudaminimalbuild tools/ci_build/github/linux/build_tensorrt_ci.sh --cuda_minimal=ON
+              onnxruntimetensorrtcudaminimalbuild \
+              tools/ci_build/github/linux/build_tensorrt_ci.sh --cuda_minimal=ON
       workingDirectory: $(Build.SourcesDirectory)
 
   - template: templates/explicitly-defined-final-tasks.yml

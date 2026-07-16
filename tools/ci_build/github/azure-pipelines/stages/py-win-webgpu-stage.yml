@@ -60,9 +60,7 @@ stages:
       - name: VSGenerator
         value: 'Visual Studio 17 2022'
       steps:
-      - checkout: self
-        clean: true
-        submodules: none
+      - template: ../templates/jobs/checkout-and-git-redirect.yml
 
       - template: ../templates/setup-build-tools.yml
         parameters:
@@ -151,9 +149,7 @@ stages:
           artifactName: win_webgpu_wheel_${{ parameters.PYTHON_VERSION }}
           targetPath: '$(Build.ArtifactStagingDirectory)'
       steps:
-        - checkout: self
-          clean: true
-          submodules: none
+        - template: ../templates/jobs/checkout-and-git-redirect.yml
 
         - template: ../templates/setup-feeds-and-python-steps.yml
           parameters:

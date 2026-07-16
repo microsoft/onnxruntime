@@ -65,7 +65,8 @@ jobs:
   workspace:
     clean: all
   steps:
-  - checkout: self
+  - template: jobs/checkout-and-git-redirect.yml
+
   - task: DownloadPipelineArtifact@2
     inputs:
       artifact: '__commit'
@@ -146,7 +147,36 @@ jobs:
         ${{ else }}:
           AdditionalKey: wasm_inferencing_webgpu | ${{ parameters.BuildConfig }}
         CacheDir: $(ORT_CACHE_DIR)/wasm_inferencing_webgpu
-        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_webgpu --use_webgpu --use_webnn --target onnxruntime_webassembly $(ExceptionHandlingBuildArgs) $(reducedSizeBuildArgs) --skip_tests'
+        Arguments: >-
+          --build_dir '$(Build.BinariesDirectory)/wasm_inferencing_webgpu'
+          --skip_tests
+          --target onnxruntime_webassembly
+          --use_webgpu
+          --use_webnn
+          $(CommonBuildArgs)
+          $(ExceptionHandlingBuildArgs)
+          $(reducedSizeBuildArgs)
+        DisplayName: 'Build (simd + threads + WebGPU experimental)'
+        WithCache: ${{ parameters.WithCache }}
+
+  - ${{ if eq(parameters.BuildWebGPU, true) }}:
+    - template: build-linux-wasm-step.yml
+      parameters:
+        Today: $(Today)
+        ${{ if eq(parameters.BuildStaticLib, true)}}:
+          AdditionalKey: wasm_inferencing_webgpu | ${{ parameters.BuildConfig }} | static
+        ${{ else }}:
+          AdditionalKey: wasm_inferencing_webgpu | ${{ parameters.BuildConfig }}
+        CacheDir: $(ORT_CACHE_DIR)/wasm_inferencing_webgpu
+        Arguments: >-
+          --build_dir '$(Build.BinariesDirectory)/wasm_inferencing_webgpu'
+          --skip_tests
+          --target onnxruntime_webassembly
+          --use_webgpu
+          --use_webnn
+          $(CommonBuildArgs)
+          $(ExceptionHandlingBuildArgs)
+          $(reducedSizeBuildArgs)
         DisplayName: 'Build (simd + threads + WebGPU experimental)'
         WithCache: ${{ parameters.WithCache }}
 
@@ -159,7 +189,15 @@ jobs:
         ${{ else }}:
           AdditionalKey: wasm_inferencing_webgpu_jspi | ${{ parameters.BuildConfig }}
         CacheDir: $(ORT_CACHE_DIR)/wasm_inferencing_webgpu_jspi
-        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_webgpu_jspi --use_webgpu --use_webnn --enable_wasm_jspi --target onnxruntime_webassembly $(reducedSizeBuildArgs) --skip_tests'
+        Arguments: >-
+          --build_dir '$(Build.BinariesDirectory)/wasm_inferencing_webgpu_jspi'
+          --enable_wasm_jspi
+          --skip_tests
+          --target onnxruntime_webassembly
+          --use_webgpu
+          --use_webnn
+          $(CommonBuildArgs)
+          $(reducedSizeBuildArgs)
         DisplayName: 'Build (simd + threads + WebGPU experimental, JSPI)'
         WithCache: ${{ parameters.WithCache }}
 

@@ -19,19 +19,21 @@ done
 
 mkdir -p "${HOME}/.onnx"
 
-docker run --rm \
-    --volume /data/onnx:/data/onnx:ro \
-    --volume "${BUILD_SOURCESDIRECTORY}:/onnxruntime_src" \
+docker run \
+    --rm \
     --volume "${BUILD_BINARIESDIRECTORY}:/build" \
-    --volume /data/models:/build/models:ro \
+    --volume "${BUILD_SOURCESDIRECTORY}:/onnxruntime_src" \
+    --volume "${HOME}/.gitconfig:/home/onnxruntimedev/.gitconfig:ro" \
+    --volume "${HOME}/.gradle:/home/onnxruntimedev/.gradle" \
+    --volume "${HOME}/.m2:/home/onnxruntimedev/.m2:ro" \
     --volume "${HOME}/.onnx:/home/onnxruntimedev/.onnx" \
+    --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
+    --volume /data/models:/build/models:ro \
+    --volume /data/onnx:/data/onnx:ro \
+    -e BUILD_BUILDNUMBER \
+    -e NIGHTLY_BUILD \
     -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
     -e PIP_INDEX_URL \
-    --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
-    --volume "$HOME/.m2:/home/onnxruntimedev/.m2:ro" \
-    --volume "$HOME/.gradle:/home/onnxruntimedev/.gradle" \
-    -e NIGHTLY_BUILD \
-    -e BUILD_BUILDNUMBER \
     -e SYSTEM_COLLECTIONURI \
     "$DOCKER_IMAGE" \
     /bin/bash -c "/usr/bin/python3 /onnxruntime_src/tools/ci_build/build.py \

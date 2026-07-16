@@ -109,7 +109,7 @@ extends:
           os: linux
 
         steps:
-        - checkout: self
+        - template: templates/jobs/checkout-and-git-redirect.yml
 
         - task: PipAuthenticate@1
           displayName: 'Pip Authenticate'

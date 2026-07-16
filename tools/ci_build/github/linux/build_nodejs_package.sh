@@ -11,19 +11,44 @@ else
 fi
 
 mkdir -p "$HOME/.onnx"
-docker run -e SYSTEM_COLLECTIONURI --rm --network=host --volume /data/onnx:/data/onnx:ro --volume "$BUILD_SOURCESDIRECTORY:/onnxruntime_src" \
---volume "$BUILD_BINARIESDIRECTORY:/build" --volume /data/models:/build/models:ro \
--e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
--e PIP_INDEX_URL \
---volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
---volume "$HOME/.m2:/home/onnxruntimedev/.m2:ro" \
---volume "$HOME/.gradle:/home/onnxruntimedev/.gradle" \
---volume "$HOME/.onnx:/home/onnxruntimedev/.onnx" -e NIGHTLY_BUILD "onnxruntimecuda${CUDA_VERSION_MAJOR}xtrt86build" \
-/bin/bash -c "/usr/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release \
---skip_tests --skip_submodule_sync \
---parallel --nvcc_threads 1 --flash_nvcc_threads 1 \
---use_binskim_compliant_compile_flags --build_shared_lib --build_nodejs \
---use_webgpu --use_tensorrt --cuda_version=$CUDA_VERSION --cuda_home=/usr/local/cuda-$CUDA_VERSION \
---cudnn_home=/usr --tensorrt_home=/usr \
---cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHS}' --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
-&& cd /build/Release && make install DESTDIR=/build/installed"
+docker run \
+    --network=host \
+    --rm \
+    --volume "/data/models:/build/models:ro" \
+    --volume "/data/onnx:/data/onnx:ro" \
+    --volume "${BUILD_BINARIESDIRECTORY}:/build" \
+    --volume "${BUILD_SOURCESDIRECTORY}:/onnxruntime_src" \
+    --volume "${HOME}/.gitconfig:/home/onnxruntimedev/.gitconfig:ro" \
+    --volume "${HOME}/.gradle:/home/onnxruntimedev/.gradle" \
+    --volume "${HOME}/.m2:/home/onnxruntimedev/.m2:ro" \
+    --volume "${HOME}/.onnx:/home/onnxruntimedev/.onnx" \
+    --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
+    -e NIGHTLY_BUILD \
+    -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
+    -e PIP_INDEX_URL \
+    -e SYSTEM_COLLECTIONURI \
+    "onnxruntimecuda${CUDA_VERSION_MAJOR}xtrt86build" \
+    /bin/bash -c "\
+        /usr/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+            --build_dir /build \
+            --build_nodejs \
+            --build_shared_lib \
+            --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHS}' \
+            --cmake_extra_defines 'CMAKE_MESSAGE_LOG_LEVEL=VERBOSE' \
+            --config Release \
+            --cuda_home '/usr/local/cuda-${CUDA_VERSION}' \
+            --cuda_version '${CUDA_VERSION}' \
+            --cudnn_home '/usr' \
+            --flash_nvcc_threads 1 \
+            --nvcc_threads 1 \
+            --parallel \
+            --skip_submodule_sync \
+            --skip_tests \
+            --tensorrt_home '/usr' \
+            --use_binskim_compliant_compile_flags \
+            --use_tensorrt \
+            --use_vcpkg \
+            --use_vcpkg_ms_internal_asset_cache \
+            --use_webgpu \
+        && cd /build/Release \
+        && make install DESTDIR=/build/installed"
