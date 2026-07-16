@@ -97,6 +97,23 @@ option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 option(onnxruntime_USE_QMX_KLEIDIAI_COEXIST "Build with QMX and Arm KLEIDIAI libraries" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
+# Materialize the ONNX node-test corpus from ONNX's Python generators into the build tree at
+# configure/build time, instead of depending on the on-disk corpus shipped in the ONNX source
+# archive. This detaches ORT from ONNX PR #7959 (which deletes onnx/backend/test/data/node).
+#
+# Defaults OFF -- it is an explicit opt-in, enabled only on CI legs that (a) install the pinned
+# onnx + numpy pre-build and (b) actually consume the materialized node corpus (the QNN legs and
+# one Linux CPU leg that runs the equivalence + materialized-node ctests), via
+# `--cmake_extra_defines onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON`. Legs that leave it OFF keep
+# their pre-existing behavior (node tests are read from the FetchContent'd ONNX source tree, which
+# still ships data/node on the pinned version), so the default is a zero-regression no-op today.
+#
+# When explicitly set ON, the configure step FAILS LOUDLY if onnx/numpy are missing or off-pin
+# (it does NOT silently skip) -- the loud contract is preserved exactly where materialization is
+# requested. On reduced/minimal builds the dependent condition forces it OFF regardless.
+cmake_dependent_option(onnxruntime_MATERIALIZE_ONNX_NODE_TESTS
+  "Materialize the ONNX node-test corpus into the build tree (opt-in; needs onnx+numpy)." OFF
+  "onnxruntime_BUILD_UNIT_TESTS;NOT onnxruntime_REDUCED_OPS_BUILD;NOT onnxruntime_MINIMAL_BUILD" OFF)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)
