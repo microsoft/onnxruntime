@@ -91,8 +91,8 @@ Status ProgramManager::Build(const ProgramBase& program,
                              uint32_t normalized_dispatch_z,
                              wgpu::ComputePipeline& compute_pipeline,
                              std::vector<int>& shape_uniform_ranks,
-                             wgpu::Future* out_future,
-                             std::unique_ptr<PipelineCallbackContext>* out_ctx) const {
+                             wgpu::Future& future,
+                             std::unique_ptr<PipelineCallbackContext>& callback_context) const {
   auto& device = webgpu_context_.Device();
   ShaderHelper shader_helper{program,
                              program_metadata,
@@ -231,28 +231,13 @@ Status ProgramManager::Build(const ProgramBase& program,
         }
       };
 
-  if (out_future != nullptr) {
-    ORT_ENFORCE(out_ctx != nullptr, "out_ctx must be provided when out_future is provided.");
-    auto ctx = std::make_unique<PipelineCallbackContext>(compute_pipeline, Status{});
-    *out_future = device.CreateComputePipelineAsync(
-        &pipeline_descriptor,
-        wgpu::CallbackMode::WaitAnyOnly,
-        pipeline_callback,
-        ctx.get());
-    *out_ctx = std::move(ctx);
-    return Status::OK();
-  }
-
-  PipelineCallbackContext sync_context{compute_pipeline, {}};
-  ORT_RETURN_IF_ERROR(
-      webgpu_context_.Wait(
-          device.CreateComputePipelineAsync(
-              &pipeline_descriptor,
-              wgpu::CallbackMode::WaitAnyOnly,
-              pipeline_callback,
-              &sync_context)));
-
-  return sync_context.status;
+  callback_context = std::make_unique<PipelineCallbackContext>(compute_pipeline, Status{});
+  future = device.CreateComputePipelineAsync(
+      &pipeline_descriptor,
+      wgpu::CallbackMode::WaitAnyOnly,
+      pipeline_callback,
+      callback_context.get());
+  return Status::OK();
 }
 
 const ProgramArtifact* ProgramManager::Get(const std::string& key) const {

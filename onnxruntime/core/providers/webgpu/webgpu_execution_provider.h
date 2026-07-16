@@ -137,8 +137,6 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool enable_graph_capture_ = false;
   bool graph_buffer_mgr_active_ = false;
   bool enable_int64_ = false;
-  // Tracks whether the current run needs its deferred work drained by OnRunEnd().
-  bool defer_dispatch_active_ = false;
   uint32_t multi_rotary_cache_concat_offset_ = 0;
   uint32_t kv_cache_quantization_bits_ = 0;
   std::unordered_map<int, int> graph_id_to_run_count_;

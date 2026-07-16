@@ -801,14 +801,6 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
     context_.StartProfiling();
   }
 
-  defer_dispatch_active_ = false;
-  if (!IsGraphCaptureEnabled()) {
-    // Regular sessions defer every run so pipeline cache misses compile asynchronously.
-    defer_dispatch_active_ = true;
-    context_.SetDeferDispatch(true);
-    return Status::OK();
-  }
-
   if (IsGraphCaptureEnabled()) {
     auto graph_annotation_str = run_options.config_options.GetConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation);
     int graph_annotation_id = 0;
@@ -839,10 +831,6 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
       if (IsGraphCaptureAllowed() && !IsGraphCaptured(graph_annotation_id)) {
         auto& commands = captured_graphs_[graph_annotation_id];
         context_.CaptureBegin(&commands, *it->second);
-        // Defer only a run that is actually being captured. Runs with annotation ID -1
-        // retain the regular graph-capture-session execution path.
-        defer_dispatch_active_ = true;
-        context_.SetDeferDispatch(true);
       }
     }
   }
@@ -851,14 +839,9 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
 }
 
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
-  Status deferred_status = Status::OK();
-  if (defer_dispatch_active_) {
-    // When capturing, draining creates the replay-ready CapturedCommandInfo entries before
-    // CaptureEnd() detaches their external storage.
-    deferred_status = context_.FlushDeferred();
-    context_.SetDeferDispatch(false);
-    defer_dispatch_active_ = false;
-  }
+  // When capturing, draining creates the replay-ready CapturedCommandInfo entries before
+  // CaptureEnd() detaches their external storage.
+  Status deferred_status = context_.EncodeDeferredDispatches();
 
   context_.Flush(BufferManager());
 

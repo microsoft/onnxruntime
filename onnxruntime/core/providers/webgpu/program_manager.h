@@ -52,10 +52,8 @@ class ProgramManager {
   Status NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z) const;
   Status CalculateSegmentsForInputsAndOutputs(const ProgramBase& program, std::vector<uint32_t>& inputs_segments, std::vector<uint32_t>& outputs_segments) const;
 
-  // Builds a compute pipeline for `program`. When `out_future` is null, waits for asynchronous
-  // creation to complete and returns the ready pipeline in `compute_pipeline`. Otherwise, returns
-  // immediately with the future and callback state in `out_future` and `out_ctx`; the caller must
-  // keep both `out_ctx` and `compute_pipeline` alive until the future completes.
+  // Starts building a compute pipeline for `program` and returns immediately. The caller must keep
+  // both `callback_context` and `compute_pipeline` alive until `future` completes.
   Status Build(const ProgramBase& program,
                const ProgramMetadata& metadata,
                const std::span<uint32_t> inputs_segments,
@@ -66,8 +64,8 @@ class ProgramManager {
                uint32_t normalized_dispatch_z,
                wgpu::ComputePipeline& compute_pipeline,
                std::vector<int>& shape_uniform_ranks,
-               wgpu::Future* out_future = nullptr,
-               std::unique_ptr<PipelineCallbackContext>* out_ctx = nullptr) const;
+               wgpu::Future& future,
+               std::unique_ptr<PipelineCallbackContext>& callback_context) const;
   const ProgramArtifact* Get(const std::string& key) const;
   const ProgramArtifact* Set(const std::string& key, ProgramArtifact&& program);
 

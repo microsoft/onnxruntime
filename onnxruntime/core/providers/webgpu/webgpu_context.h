@@ -61,17 +61,8 @@ struct PendingKernelInfo {
   std::vector<TensorShape> output_shapes;
 };
 
-// Represents either an asynchronous pipeline build or replay-ready captured resources.
-// `compute_pipeline` stays at a stable address while its build callback is pending.
+// Resources required to replay one dispatch from a captured graph.
 struct CapturedCommandInfo {
-  struct AsyncPipelineBuildInfo {
-    std::string key;
-    std::string name;
-    std::vector<int> shape_uniform_ranks;
-    std::unique_ptr<PipelineCallbackContext> callback_context;
-    wgpu::Future future;
-  };
-
   wgpu::ComputePipeline compute_pipeline;
   WGPUBindGroup bind_group;
   WGPUBindGroupLayout bind_group_layout;
@@ -80,8 +71,6 @@ struct CapturedCommandInfo {
   WGPUBuffer indirect_buffer;
   // Optional profiling data
   std::optional<PendingKernelInfo> pending_kernel_info;
-  // Present only while asynchronous pipeline creation is in flight.
-  std::unique_ptr<AsyncPipelineBuildInfo> async_pipeline_build;
 };
 
 struct WebGpuBufferCacheConfig {
@@ -283,18 +272,10 @@ class WebGpuContext final {
 
   Status Run(ComputeContextBase& context, const ProgramBase& program);
 
-  // Deferred dispatch reduces pipeline-cache-miss latency by starting pipeline creation asynchronously
-  // and recording the corresponding dispatches. A full `maxNumPendingDispatches` window waits for its
-  // pending builds and is encoded through the normal batching path. Draining a partial window encodes
-  // it, and the caller's subsequent Flush() submits any remaining work.
-  void SetDeferDispatch(bool value);
-  bool DeferDispatch() const { return defer_dispatch_; }
-  Status FlushDeferred();
-
-  // Called by Download() to encode pending deferred dispatches before the readback is recorded.
-  // Download() then flushes the context before mapping the result. No-op when defer is inactive or
-  // no dispatches are pending.
-  Status FlushDeferredIfPending();
+  // Program dispatches are recorded while pipeline cache misses compile asynchronously. A full
+  // `maxNumPendingDispatches` window is encoded through the normal batching path; callers encode
+  // a partial window at their execution boundary and then Flush() the remaining submitted work.
+  Status EncodeDeferredDispatches();
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   std::unique_ptr<WebGpuPIXFrameGenerator> CreatePIXFrameGenerator() {
@@ -356,27 +337,33 @@ class WebGpuContext final {
     wgpu::Buffer query_buffer;
   };
 
-  // A recorded deferred dispatch. Its bind group is created only after any pending pipeline build
-  // completes. The first cache miss for a key owns `pending_command`; later occurrences before that
-  // build is cached resolve the artifact from the program cache while draining the window. The
-  // command is heap-allocated to keep its callback-referenced compute pipeline at a stable address.
+  // State for one in-flight pipeline build. This object is heap-allocated because the callback
+  // stores a reference to `compute_pipeline`, whose address must remain stable until `future` completes.
+  struct PendingPipelineBuild {
+    std::string name;
+    std::vector<int> shape_uniform_ranks;
+    wgpu::ComputePipeline compute_pipeline;
+    std::unique_ptr<PipelineCallbackContext> callback_context;
+    wgpu::Future future;
+  };
+
+  // One dispatch recorded while any cache-miss pipeline builds complete. Only the first dispatch
+  // for a cache key owns `pending_build`; every dispatch retains its key to resolve the cached
+  // ProgramArtifact when the window is encoded.
   struct DeferredDispatch {
     std::string key;
-    std::unique_ptr<CapturedCommandInfo> pending_command;
+    std::unique_ptr<PendingPipelineBuild> pending_build;
     std::vector<WGPUBuffer> bind_buffers;
     std::vector<uint32_t> bind_buffers_segments;
     WGPUBuffer uniform_buffer = nullptr;
     uint32_t x = 1, y = 1, z = 1;
     WGPUBuffer indirect_buffer = nullptr;
     // Profiling info captured at record time (shapes must be read while the tensors are alive);
-    // replayed into pending_kernels_ during FlushDeferredWindow so GPU profiling stays consistent.
+    // replayed into pending_kernels_ during encoding so GPU profiling stays consistent.
     std::optional<PendingKernelInfo> pending_kernel_info;
   };
 
-  // Wait for pending pipeline builds, cache the completed artifacts, and encode the window through
-  // the normal batching path. Full batches may be submitted here; the caller's subsequent Flush()
-  // submits any remaining work. Clears `window`.
-  Status FlushDeferredWindow(std::vector<DeferredDispatch>& window);
+  PendingPipelineBuild* FindPendingPipelineBuild(std::string_view key) const;
 
   friend class WebGpuContextFactory;
 
@@ -406,12 +393,8 @@ class WebGpuContext final {
   uint32_t num_pending_dispatches_ = 0;
   uint32_t max_num_pending_dispatches_ = 16;
 
-  // `deferred_dispatches_` holds the active window. `deferred_inflight_builds_` retains
-  // shape-uniform ranks for cache-miss keys so repeated occurrences do not start duplicate builds;
-  // it is cleared when deferred state is drained.
-  bool defer_dispatch_ = false;
+  // Owns the active dispatch window and the unique pending builds referenced within that window.
   std::vector<DeferredDispatch> deferred_dispatches_;
-  InlinedHashMap<std::string, std::vector<int>> deferred_inflight_builds_;
   const webgpu::BufferManager* deferred_buffer_mgr_ = nullptr;
 
   std::unique_ptr<SplitKConfig> split_k_config_;

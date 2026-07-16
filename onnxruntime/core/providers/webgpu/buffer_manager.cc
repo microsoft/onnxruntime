@@ -586,7 +586,7 @@ void BufferManager::Release(WGPUBuffer buffer) const {
 void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
   // Encode pending deferred dispatches before recording the readback; the flush below submits both
   // in order.
-  ORT_THROW_IF_ERROR(context_.FlushDeferredIfPending());
+  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches());
 
   EnforceBufferUnmapped(context_, src);
   auto buffer_size = NormalizeBufferSize(size);
