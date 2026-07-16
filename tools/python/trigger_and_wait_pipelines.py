@@ -154,11 +154,6 @@ PIPELINE_REGISTRY: list[PipelineConfig] = [
             "buildType": "release",
         },
     ),
-    PipelineConfig(
-        id=2107,
-        name="WebGPU Python Packaging Pipeline",
-        key="webgpu_python_packaging",
-    ),
 ]
 assert len({cfg.id for cfg in PIPELINE_REGISTRY}) == len(PIPELINE_REGISTRY), "Pipeline IDs must be unique"
 

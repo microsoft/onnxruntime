@@ -58,11 +58,6 @@ parameters:
   type: boolean
   default: true
 
-- name: webgpu_python_packaging
-  displayName: 'Run WebGPU Python Packaging Pipeline (2107)'
-  type: boolean
-  default: true
-
 - name: pre_release_suffix_string
   displayName: 'Pre-release version suffix, applied to supported pipelines'
   type: string
