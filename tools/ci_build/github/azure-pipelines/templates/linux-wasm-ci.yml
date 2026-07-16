@@ -65,7 +65,8 @@ jobs:
   workspace:
     clean: all
   steps:
-  - checkout: self
+  - template: jobs/checkout-and-git-redirect.yml
+
   - task: DownloadPipelineArtifact@2
     inputs:
       artifact: '__commit'

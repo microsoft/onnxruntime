@@ -1,0 +1,16 @@
+parameters:
+- name: submodules
+  type: string
+  default: false
+
+steps:
+- pwsh: |
+    git config --global --add url."https://PAT:${env:TOKEN}@aiinfra.visualstudio.com/Lotus-Dependencies/_git/".insteadOf "https://chromium.googlesource.com/chromium/src/third_party/"
+    git config --global --add url."https://github.com/".insteadOf "https://chromium.googlesource.com/external/github.com/"
+  displayName: Redirect chromium hosted dependencies to GitHub and Lotus-Dependencies
+  env:
+    TOKEN: $(System.AccessToken)
+
+- checkout: self
+  clean: true
+  submodules: ${{ parameters.submodules }}
