@@ -50,6 +50,11 @@ namespace sqnbitgemm_neon
 namespace
 {
 
+#ifdef USE_KLEIDIAI
+// Maps ORT's unsigned Q4 range [0, 15] to KleidiAI's signed-int4 origin [-8, 7].
+constexpr int32_t kKaiQ4SignedZeroPointOffset = 8;
+#endif
+
 //
 // Quantized B data packing function implementation.
 //
@@ -259,7 +264,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
                     assert(QuantBScaleBegin != nullptr);
                     kai_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0_params params{};
                     params.lhs_zero_point = 1;
-                    params.rhs_zero_point = 8;
+                    params.rhs_zero_point = kKaiQ4SignedZeroPointOffset;
                     params.scale_dt = kai_dt_bf16;
 
                     const size_t scales_len = N * BlockCountK;
@@ -292,7 +297,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
                     assert(QuantBZPBegin != nullptr);
                     kai_rhs_pack_nxk_qai4c32p_params params{};
                     params.lhs_zero_point = 1;
-                    params.rhs_zero_point = 8;
+                    params.rhs_zero_point = kKaiQ4SignedZeroPointOffset;
 
                     const size_t zp_stride = MlasDivRoundup(BlockCountK, 2);
                     const size_t rhs_stride = K / 2;
@@ -332,6 +337,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
 
                         const float* scales_panel = QuantBScaleBegin + panel_start * BlockCountK;
 
+                        // KAI reads only panel_rows rows, so stale trailing scratch rows are not consulted.
                         // Pack the current scratch buffer panel using layout based on what the kernel expects
                         switch (k.rhs_layout) {
                             case KaiQ4RhsPackLayout::AsymmetricNxK: {

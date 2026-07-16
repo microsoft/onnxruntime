@@ -2592,7 +2592,7 @@ GetKleidiAIQ4LhsPackedOffset(
     const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel,
     size_t m_idx,
     size_t k,
-    size_t
+    size_t /* bl */
 )
 {
     return ukernel.get_lhs_packed_offset(m_idx, k);

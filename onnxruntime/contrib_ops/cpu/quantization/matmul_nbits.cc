@@ -173,7 +173,7 @@ class MatMulNBits final : public OpKernel {
   IAllocatorUniquePtr<float> scales_fp32_{};
   IAllocatorUniquePtr<float> bias_fp32_{};
 
-  bool has_zp_input_{false};
+  bool has_zp_input_{false};  // true only when zero_points is a constant initializer available during PrePack
 
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 
@@ -232,6 +232,7 @@ static const float* ConvertFloatZeroPointsForLutGemm(
 }
 
 #if defined(MLAS_TARGET_ARM64)
+namespace {
 bool RequiresDynamicZeroPointPrepackFallback(
     size_t K, size_t nbits, size_t block_size,
     bool has_zp_arg, bool has_zp_input,
@@ -244,6 +245,7 @@ bool RequiresDynamicZeroPointPrepackFallback(
          MlasQNBitGemmScalesPacked(K, nbits, block_size, effective_compute_type,
                                    true, &backend_kernel_selector_config);
 }
+}  // namespace
 #endif
 
 template <typename T1>
