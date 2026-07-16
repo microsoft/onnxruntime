@@ -43,13 +43,15 @@ jobs:
           python-version: '3.12'
           architecture: x64
 
-      # onnx (pinned to cmake/deps.txt) + numpy (pinned to requirements.txt, python-conditional)
+      # onnx (pinned to cmake/deps.txt) + numpy (pinned in requirements-materialize-onnx-node-tests.txt,
+      # python-conditional)
       # are required at configure time by the onnxruntime_MATERIALIZE_ONNX_NODE_TESTS gate, which
       # regenerates the onnx node-test corpus into the build tree (onnx_node_tests\node) for
-      # onnx_test_runner. The numpy markers self-select the same pin the CMake gate asserts.
+      # onnx_test_runner. The numpy markers in requirements-materialize-onnx-node-tests.txt self-select
+      # the same pin the CMake gate asserts.
       - name: Install onnx for node-test materialization
         shell: cmd
-        run: python -m pip install onnx==1.22.0 "numpy==2.2.6; python_version<'3.11'" "numpy==2.4.2; python_version>='3.11'"
+        run: python -m pip install -r requirements-materialize-onnx-node-tests.txt
 
       - name: Locate vcvarsall and Setup Env
         uses: ./.github/actions/locate-vcvarsall-and-setup-env

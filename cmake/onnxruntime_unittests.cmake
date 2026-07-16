@@ -1776,7 +1776,11 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       # build-time --min-cases via ORT_ONNX_NODE_MIN_CASES.
       add_test(NAME onnx_test_node_materialized
         COMMAND onnx_test_runner -m ${ORT_ONNX_NODE_MIN_CASES} ${_materialized_node_dir})
-      set_tests_properties(onnx_test_node_materialized PROPERTIES DEPENDS onnx_node_tests_materialized)
+      # No ctest DEPENDS on onnx_node_tests_materialized: it is an add_custom_target(... ALL),
+      # not a registered test, so a test-level DEPENDS on it is a silent no-op. The real ordering
+      # guarantee is (a) the ALL target materializes the corpus during the normal build, before
+      # any ctest runs, and (b) the -m case-count tripwire above fails LOUD if the corpus is
+      # missing/partial at consumption time.
 
       # Equivalence oracle: while pinned BELOW #7959 the on-disk corpus still ships in the archive,
       # so we byte-compare the materialized copy against it. Gated on if(EXISTS ...) at CONFIGURE
@@ -1791,7 +1795,10 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
                   --expected-onnx-version  ${_onnx_pinned_version}
                   --expected-numpy-version ${_numpy_pinned_version}
                   --min-cases ${ORT_ONNX_NODE_MIN_CASES})
-        set_tests_properties(onnx_node_tests_equivalence PROPERTIES DEPENDS onnx_node_tests_materialized)
+        # No test-level DEPENDS on onnx_node_tests_materialized here either: it is a custom
+        # target (ALL), not a test, so ctest DEPENDS on it is a silent no-op. The ALL target
+        # materializes the corpus during the build (before ctest); the comparator's own
+        # --min-cases floor fails loud on a missing/partial corpus.
       else()
         message(STATUS "ONNX on-disk node corpus absent (post-#7959 pin) -- equivalence oracle "
           "retired; skipping onnx_node_tests_equivalence.")
