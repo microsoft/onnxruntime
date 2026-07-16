@@ -52,6 +52,8 @@ void usage() {
       "\t-M : Disable memory pattern\n"
       "\t-c [runs]: Specifies the number of Session::Run() to invoke simultaneously for each model.\n"
       "\t-r [repeat]: Specifies the number of times to repeat\n"
+      "\t-m [min_tests]: Fail if fewer than this many test cases are collected (0 = no floor, the "
+      "default). Guards against a silently empty/partial/truncated test tree.\n"
       "\t-I [inference_mode]: Use inference mode. Save the inference result and skip the output value comparison.\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
@@ -236,6 +238,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   double atol = 1e-5;
   double rtol = 1e-5;
   int device_id = 0;
+  int min_tests = 0;  // -m: fail if fewer than this many test cases are collected (0 = no floor).
   GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
   bool user_graph_optimization_level_set = false;
   bool set_denormal_as_zero = false;
@@ -251,7 +254,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool pause = false;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:IMn:r:e:t:a:xvo:d:C:i:pzfb"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:IMm:n:r:e:t:a:xvo:d:C:i:pzfb"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -285,6 +288,13 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           break;
         case 'M':
           enable_mem_pattern = false;
+          break;
+        case 'm':
+          min_tests = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
+          if (min_tests < 0) {
+            usage();
+            return -1;
+          }
           break;
         case 'n':
           // run only some whitelisted tests
@@ -945,6 +955,22 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
                 owned_tests.push_back(std::move(l));
               });
 
+    // Consumption-point floor (opt-in via -m). LoadTests silently skips non-existent/empty dirs
+    // (TestCase.cc: `if (!exists) continue`), so an empty/partial/truncated test tree would
+    // otherwise run to a green exit with near-zero coverage. This fires for a materialized node
+    // corpus that failed to generate, a truncated artifact copy (from a separate download/copy
+    // stage), a stale stamp masking a partial tree, and the post-#7959 state where the
+    // equivalence oracle has retired and nothing else re-anchors the count.
+    if (min_tests > 0 && tests.size() < static_cast<size_t>(min_tests)) {
+      fprintf(stderr,
+              "FATAL: node test corpus collapsed -- onnx_test_runner collected %zu test case(s) "
+              "from the given data root(s), but -m required at least %d. See onnx-opset-bump-checklist "
+              "gotcha (p): onnx#7959 deletes the on-disk node-test corpus and corpus absence is "
+              "otherwise SILENT-GREEN. A silently empty/partial/truncated test tree would report "
+              "success with near-zero coverage.\n",
+              tests.size(), min_tests);
+      return -1;
+    }
     auto tp = TestEnv::CreateThreadPool(Env::Default());
     TestEnv test_env(env, sf, tp.get(), std::move(tests), stat, inference_mode);
     Status st = test_env.Run(p_models, concurrent_session_runs, repeat_count);
