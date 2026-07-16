@@ -8,6 +8,8 @@
 #include <iterator>
 #include <map>
 #include <unordered_set>
+#include <future>
+#include <thread>
 
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
@@ -30,6 +32,13 @@ namespace onnxruntime {
 
 // Models can only be parsed and built serially in the same process
 std::mutex g_mutex;
+namespace cann {
+
+// See cann_graph.cc
+extern std::promise<void> g_ge_promise_final;
+extern std::thread g_ge_thread;
+
+}  // namespace cann
 
 class Memcpy final : public OpKernel {
  public:
@@ -1067,7 +1076,11 @@ void InitializeRegistry() {
 void DeleteRegistry() {
   s_kernel_registry.reset();
 
-  ge::aclgrphBuildFinalize();
+  // Calls ge::aclgrphBuildFinalize
+  cann::g_ge_promise_final.set_value();
+  if (cann::g_ge_thread.joinable()) {
+    cann::g_ge_thread.join();
+  }
 
   if (!cann::GetRepeatInitFlag()) {
     CANN_CALL_THROW(aclFinalize());
