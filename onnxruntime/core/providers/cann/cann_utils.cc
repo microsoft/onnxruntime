@@ -5,6 +5,15 @@
 #include <unistd.h>
 #include <algorithm>
 #include <string>
+#include <filesystem>
+#include <stdexcept>
+#include <system_error>
+
+#ifndef _WIN32
+#include <errno.h>
+#include <sys/file.h>
+#include <unistd.h>
+#endif
 
 #include "core/providers/cann/cann_utils.h"
 
@@ -252,6 +261,129 @@ bool GetRepeatInitFlag() {
 
 void SetRepeatInitFlag(bool val) {
   repeat_acl_init_flag = val;
+}
+
+InterprocessFileLock::InterprocessFileLock(const std::string& name, bool temp)
+    : filepath_{name + std::string(".lock")}, is_locked_{false} {
+  if (temp) {
+    filepath_ = (std::filesystem::temp_directory_path() / filepath_).string();
+  }
+
+#ifdef _WIN32
+  handle_ = CreateFileA(
+      filepath_.c_str(),
+      GENERIC_READ | GENERIC_WRITE,
+      FILE_SHARE_READ | FILE_SHARE_WRITE,
+      NULL,
+      OPEN_ALWAYS,
+      FILE_ATTRIBUTE_NORMAL,
+      NULL);
+
+  if (handle_ == INVALID_HANDLE_VALUE) {
+    throw std::system_error(GetLastError(), std::system_category());
+  }
+#else
+  fd_ = open(filepath_.c_str(), O_CREAT | O_RDWR, 0666);
+
+  if (fd_ == -1) {
+    throw std::system_error(errno, std::generic_category());
+  }
+#endif
+}
+
+InterprocessFileLock::~InterprocessFileLock() {
+  if (is_locked_) {
+    unlock();
+  }
+
+#ifdef _WIN32
+  if (handle_ != INVALID_HANDLE_VALUE) {
+    CloseHandle(handle_);
+    handle_ = INVALID_HANDLE_VALUE;
+  }
+#else
+  if (fd_ != -1) {
+    close(fd_);
+    fd_ = -1;
+  }
+#endif
+}
+
+void InterprocessFileLock::lock() {
+  if (is_locked_) {
+    return;
+  }
+
+#ifdef _WIN32
+  OVERLAPPED overlapped = {0};
+  auto result = LockFileEx(
+      handle_,
+      LOCKFILE_EXCLUSIVE_LOCK,
+      0,
+      MAXDWORD,
+      MAXDWORD,
+      &overlapped);
+
+  if (!result) {
+    throw std::system_error(GetLastError(), std::system_category());
+  }
+#else
+  if (flock(fd_, LOCK_EX) == -1) {
+    throw std::system_error(errno, std::generic_category());
+  }
+#endif
+
+  is_locked_ = true;
+}
+
+bool InterprocessFileLock::try_lock() {
+  if (is_locked_) {
+    return false;
+  }
+
+#ifdef _WIN32
+  OVERLAPPED overlapped = {0};
+  auto result = LockFileEx(
+      handle_,
+      LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
+      0,
+      MAXDWORD,
+      MAXDWORD,
+      &overlapped);
+
+  if (result) {
+    is_locked_ = true;
+    return true;
+  }
+
+  return false;
+#else
+  if (flock(fd_, LOCK_EX | LOCK_NB) == -1) {
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      return false;
+    }
+
+    throw std::system_error(errno, std::generic_category());
+  }
+#endif
+
+  is_locked_ = true;
+  return true;
+}
+
+void InterprocessFileLock::unlock() {
+  if (!is_locked_) {
+    return;
+  }
+
+#ifdef _WIN32
+  OVERLAPPED overlapped = {0};
+  UnlockFileEx(handle_, 0, MAXDWORD, MAXDWORD, &overlapped);
+#else
+  flock(fd_, LOCK_UN);
+#endif
+
+  is_locked_ = false;
 }
 }  // namespace cann
 }  // namespace onnxruntime

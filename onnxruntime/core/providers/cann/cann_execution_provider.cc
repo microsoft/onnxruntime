@@ -28,9 +28,6 @@ using onnxruntime::common::Status;
 
 namespace onnxruntime {
 
-// Models can only be parsed and built serially in the same process
-std::mutex g_mutex;
-
 class Memcpy final : public OpKernel {
  public:
   Memcpy(const OpKernelInfo& info) : OpKernel{info} {}
@@ -1395,16 +1392,24 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
       if (modelIDs_.find(filename) != modelIDs_.end()) {
         modelID = modelIDs_[filename];
       } else {
-        std::lock_guard<std::mutex> lock(g_mutex);
+        cann::InterprocessFileLock ipc_lock(filename);
+        std::unique_lock<cann::InterprocessFileLock> lock(ipc_lock);
         auto filename_with_suffix = cann::MatchFile(filename);
         if (!filename_with_suffix.empty()) {
+          lock.unlock();
           CANN_RETURN_IF_ERROR(aclmdlLoadFromFile(filename_with_suffix.c_str(), &modelID));
         } else {
+          if (!info_.dump_om_model) {
+            // Only hold the lock if going to dump an .om file
+            // Note: second unlock() will have no effect
+            lock.unlock();
+          }
           ge::Graph graph{cann_state->node_name.c_str()};
           ORT_RETURN_IF_ERROR(ParserONNXModel(string_model, graph));
 
           ge::ModelBufferData model;
           ORT_RETURN_IF_ERROR(BuildONNXModel(graph, input_shape, soc_name_, filename, info_, model));
+          lock.unlock();
 
           CANN_RETURN_IF_ERROR(aclmdlLoadFromMem(model.data.get(), model.length, &modelID));
         }

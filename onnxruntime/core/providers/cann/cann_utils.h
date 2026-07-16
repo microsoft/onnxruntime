@@ -12,6 +12,11 @@
 #include <filesystem>
 #include <regex>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 #include "core/framework/murmurhash3.h"
 #include "core/providers/cann/cann_common.h"
 #include "core/providers/cann/cann_inc.h"
@@ -131,5 +136,34 @@ std::string MatchFile(const std::string& file_name);
 std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger);
 bool GetRepeatInitFlag();
 void SetRepeatInitFlag(bool val);
+
+class InterprocessFileLock {
+ public:
+  explicit InterprocessFileLock(const std::string& name, bool temp = true);
+
+  ~InterprocessFileLock();
+
+  InterprocessFileLock(const InterprocessFileLock&) = delete;
+  InterprocessFileLock& operator=(const InterprocessFileLock&) = delete;
+
+  InterprocessFileLock(InterprocessFileLock&&) = delete;
+  InterprocessFileLock& operator=(InterprocessFileLock&&) = delete;
+
+  void lock();
+
+  bool try_lock();
+
+  void unlock();
+
+ private:
+  std::string filepath_;
+  bool is_locked_;
+
+#ifdef _WIN32
+  HANDLE handle_;
+#else
+  int fd_;
+#endif
+};
 }  // namespace cann
 }  // namespace onnxruntime
