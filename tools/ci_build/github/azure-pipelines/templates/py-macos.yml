@@ -62,7 +62,7 @@ jobs:
         --build_wheel \
         --use_coreml ${{ parameters.extra_build_arg }} \
         --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=${{ parameters.arch }} \
-        --update --skip_submodule_sync --build --parallel
+        --update --skip_submodule_sync --build --parallel --use_telemetry
       python -m pip install --upgrade delocate
       cd '$(Build.SourcesDirectory)/build/Release/dist'
       ls

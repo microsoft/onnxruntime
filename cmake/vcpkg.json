@@ -58,7 +58,6 @@
     "pybind11",
     "re2",
     "safeint",
-    "utf8-range",
     {
       "name": "vcpkg-cmake",
       "host": true
@@ -96,9 +95,31 @@
     "webgpu-ep": {
       "description": "Build with WebGPU EP",
       "dependencies": []
+    },
+    "telemetry": {
+      "description": "Build with 1DS telemetry support (cpp-client-telemetry) on non-Windows platforms",
+      "dependencies": [
+        {
+          "name": "cpp-client-telemetry",
+          "platform": "!windows & !emscripten & !uwp"
+        },
+        {
+          "name": "sqlite3",
+          "default-features": false,
+          "platform": "!windows & !emscripten & !uwp"
+        }
+      ]
     }
   },
   "overrides": [
+    {
+      "name": "benchmark",
+      "version": "1.9.4"
+    },
+    {
+      "name": "directx-headers",
+      "version": "1.616.0"
+    },
     {
       "name": "protobuf",
       "version": "3.21.12#4"
@@ -106,6 +127,10 @@
     {
       "name": "flatbuffers",
       "version": "23.5.26"
+    },
+    {
+      "name": "mimalloc",
+      "version": "2.1.1"
     }
   ]
 }

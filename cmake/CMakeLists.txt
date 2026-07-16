@@ -144,6 +144,9 @@ option(onnxruntime_USE_WINML "Build with WinML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
+# Optional 1DS ingestion token for non-Windows telemetry. Leave empty to compile in the encoded
+# in-repo default from core/platform/posix/telemetry.cc; callers can override it at configure time.
+set(ONNXRUNTIME_TELEMETRY_TENANT_TOKEN "" CACHE STRING "Override the compiled-in telemetry ingestion token (non-Windows)")
 cmake_dependent_option(onnxruntime_USE_MIMALLOC "Override new/delete and arena allocator with mimalloc" OFF "WIN32;NOT onnxruntime_USE_CUDA;NOT onnxruntime_USE_OPENVINO" OFF)
 option(onnxruntime_USE_CANN "Build with CANN support" OFF)
 option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternative math library on ARM, WebAssembly and x86." OFF)
@@ -1883,6 +1886,19 @@ else()
         add_library(safeint_interface IMPORTED INTERFACE)\n\
         target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})\n\
         ")
+    if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND onnxruntime_USE_VCPKG)
+      string(APPEND PROJECT_CONFIG_CONTENT
+        "find_dependency(MSTelemetry CONFIG)\n\
+        ")
+    endif()
+    if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND NOT APPLE AND NOT onnxruntime_USE_VCPKG AND NOT onnxruntime_BUILD_SHARED_LIB)
+      # FetchContent static non-Apple telemetry ships mat plus bundled sqlite3/zlib archives in this
+      # package, but mat still links system libcurl and pthreads; the consumer must re-find them.
+      string(APPEND PROJECT_CONFIG_CONTENT
+        "find_dependency(CURL)\n\
+        find_dependency(Threads)\n\
+        ")
+    endif()
   endif()
 
   string(APPEND PROJECT_CONFIG_CONTENT
