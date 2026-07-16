@@ -248,7 +248,33 @@ WebGpuContext::PendingPipelineBuild* WebGpuContext::FindPendingPipelineBuild(std
   return nullptr;
 }
 
-Status WebGpuContext::EncodeDeferredDispatches() {
+Status WebGpuContext::WaitForDeferredPipelineBuilds() {
+  Status result = Status::OK();
+  for (auto& dispatch : deferred_dispatches_) {
+    if (!dispatch.pending_build) {
+      continue;
+    }
+
+    auto& build = *dispatch.pending_build;
+    Status wait_status = Wait(build.future);
+    if (!wait_status.IsOK()) {
+      result = wait_status;
+      continue;
+    }
+    if (build.callback_context && !build.callback_context->status.IsOK()) {
+      result = build.callback_context->status;
+      continue;
+    }
+
+    ProgramArtifact artifact{std::move(build.name), std::move(build.compute_pipeline),
+                             std::move(build.shape_uniform_ranks)};
+    program_mgr_->Set(dispatch.key, std::move(artifact));
+  }
+
+  return result;
+}
+
+Status WebGpuContext::WaitForDeferredPipelineBuildsAndEncodeDispatches() {
   if (deferred_dispatches_.empty()) {
     deferred_buffer_mgr_ = nullptr;
     return Status::OK();
@@ -270,26 +296,8 @@ Status WebGpuContext::EncodeDeferredDispatches() {
   };
 
   // The window is bounded by dispatch count, not unique pipeline count. Only the first cache miss
-  // for each key owns a pending build; wait for those unique builds and cache all completed
-  // artifacts before encoding every recorded dispatch in original order below.
-  Status result = Status::OK();
-  for (auto& d : deferred_dispatches_) {
-    if (d.pending_build) {
-      auto& build = *d.pending_build;
-      Status ws = Wait(build.future);
-      if (!ws.IsOK()) {
-        result = ws;
-        continue;
-      }
-      if (build.callback_context && !build.callback_context->status.IsOK()) {
-        result = build.callback_context->status;
-        continue;
-      }
-      ProgramArtifact artifact{std::move(build.name), std::move(build.compute_pipeline),
-                               std::move(build.shape_uniform_ranks)};
-      program_mgr_->Set(d.key, std::move(artifact));
-    }
-  }
+  // for each key owns a pending build. Wait for those unique builds before encoding any dispatch.
+  Status result = WaitForDeferredPipelineBuilds();
   if (!result.IsOK()) {
     release_uniform_buffers();
     reset_deferred_state();
@@ -297,38 +305,36 @@ Status WebGpuContext::EncodeDeferredDispatches() {
   }
 
   // Encode the recorded dispatches in order, using the normal batching and submission thresholds.
-  for (auto& d : deferred_dispatches_) {
-    const ProgramArtifact* artifact = program_mgr_->Get(d.key);
+  for (auto& dispatch : deferred_dispatches_) {
+    const ProgramArtifact* artifact = program_mgr_->Get(dispatch.key);
     if (artifact == nullptr) {
-      result = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Program artifact not found for deferred dispatch: ", d.key);
+      result = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Program artifact not found for deferred dispatch: ", dispatch.key);
       break;
     }
     const auto& compute_pass_encoder = GetComputePassEncoder();
     WriteTimestamp(num_pending_dispatches_ * 2);
-    LaunchComputePipeline(compute_pass_encoder, d.bind_buffers, d.bind_buffers_segments,
-                          *artifact, d.x, d.y, d.z, d.indirect_buffer);
-    if (d.uniform_buffer) {
-      buffer_mgr->Release(d.uniform_buffer);
-      d.uniform_buffer = nullptr;
+    LaunchComputePipeline(compute_pass_encoder, dispatch.bind_buffers, dispatch.bind_buffers_segments,
+                          *artifact, dispatch.x, dispatch.y, dispatch.z, dispatch.indirect_buffer);
+    if (dispatch.uniform_buffer) {
+      buffer_mgr->Release(dispatch.uniform_buffer);
+      dispatch.uniform_buffer = nullptr;
     }
     WriteTimestamp(num_pending_dispatches_ * 2 + 1);
     ++num_pending_dispatches_;
     // Preserve profiling info in a captured command for future replays. Otherwise, replay it into
     // the current batch so pending_kernels_ stays in sync with num_pending_dispatches_.
-    if (is_profiling_ && d.pending_kernel_info.has_value()) {
+    if (is_profiling_ && dispatch.pending_kernel_info.has_value()) {
       if (graph_capture_state_ == GraphCaptureState::Capturing) {
         ORT_ENFORCE(external_captured_commands_ && !external_captured_commands_->empty());
-        external_captured_commands_->back().pending_kernel_info = std::move(d.pending_kernel_info);
+        external_captured_commands_->back().pending_kernel_info = std::move(dispatch.pending_kernel_info);
       } else {
-        pending_kernels_.emplace_back(std::move(*d.pending_kernel_info));
+        pending_kernels_.emplace_back(std::move(*dispatch.pending_kernel_info));
       }
     }
     if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||
         (is_profiling_ && query_type_ == TimestampQueryType::AtPasses)) {
       EndComputePass();
-    }
-    if (num_pending_dispatches_ >= max_num_pending_dispatches_) {
-      Flush(*buffer_mgr);
     }
   }
 
@@ -449,8 +455,9 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   auto key = CalculateProgramCacheKey(program, inputs_segments, outputs_segments, is_1d_dispatch);
 
   LOGS(context.Logger(), INFO) << "Starting program \"" << key << "\" (" << x << ", " << y << ", " << z << ")";
-  // The program cache prevents duplicate builds across encoded windows. EncodeDeferredDispatches()
-  // inserts completed pipelines into this cache before clearing the window.
+  // The program cache prevents duplicate builds across encoded windows.
+  // WaitForDeferredPipelineBuildsAndEncodeDispatches() inserts completed pipelines into this cache
+  // before clearing the window.
   const auto* program_artifact = program_mgr_->Get(key);
 
   // For cache misses, reuse a pending build already owned by this bounded dispatch window instead
@@ -628,7 +635,8 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
     bind_buffers_segments.push_back(1);  // uniform buffer defaults to 1 segment
   }
 
-  // Record the dispatch and return; EncodeDeferredDispatches() encodes it after pending builds complete.
+  // Record the dispatch and return; WaitForDeferredPipelineBuildsAndEncodeDispatches() encodes it
+  // after pending builds complete.
   DeferredDispatch d;
   d.key = key;
   d.pending_build = std::move(pending_build);
@@ -650,9 +658,11 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   deferred_dispatches_.push_back(std::move(d));
   deferred_buffer_mgr_ = &buffer_mgr;
 
-  // Drain a full window to bound recorded state and use the normal submission path.
+  // Drain and submit a full window to bound both recorded and encoded dispatch state. Partial
+  // windows are encoded and submitted by the caller at its execution boundary.
   if (deferred_dispatches_.size() >= max_num_pending_dispatches_) {
-    ORT_RETURN_IF_ERROR(EncodeDeferredDispatches());
+    ORT_RETURN_IF_ERROR(WaitForDeferredPipelineBuildsAndEncodeDispatches());
+    Flush(buffer_mgr);
   }
   return Status::OK();
 }

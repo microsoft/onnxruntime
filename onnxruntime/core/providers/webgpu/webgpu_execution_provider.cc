@@ -841,7 +841,7 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
   // When capturing, draining creates the replay-ready CapturedCommandInfo entries before
   // CaptureEnd() detaches their external storage.
-  Status deferred_status = context_.EncodeDeferredDispatches();
+  Status deferred_status = context_.WaitForDeferredPipelineBuildsAndEncodeDispatches();
 
   context_.Flush(BufferManager());
 

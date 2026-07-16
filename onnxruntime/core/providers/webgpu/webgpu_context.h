@@ -272,10 +272,10 @@ class WebGpuContext final {
 
   Status Run(ComputeContextBase& context, const ProgramBase& program);
 
-  // Program dispatches are recorded while pipeline cache misses compile asynchronously. A full
-  // `maxNumPendingDispatches` window is encoded through the normal batching path; callers encode
-  // a partial window at their execution boundary and then Flush() the remaining submitted work.
-  Status EncodeDeferredDispatches();
+  // Wait for all pipeline builds owned by the current deferred window, cache the completed
+  // pipelines, and call LaunchComputePipeline() for every recorded dispatch in order. Launching
+  // only encodes commands; the caller must call Flush() to submit them at the execution boundary.
+  Status WaitForDeferredPipelineBuildsAndEncodeDispatches();
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   std::unique_ptr<WebGpuPIXFrameGenerator> CreatePIXFrameGenerator() {
@@ -364,6 +364,7 @@ class WebGpuContext final {
   };
 
   PendingPipelineBuild* FindPendingPipelineBuild(std::string_view key) const;
+  Status WaitForDeferredPipelineBuilds();
 
   friend class WebGpuContextFactory;
 
