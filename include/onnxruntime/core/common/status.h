@@ -89,6 +89,8 @@ constexpr const char* StatusCodeToString(StatusCode status) noexcept {
       return "MODEL_REQUIRES_COMPILATION";
     case StatusCode::NOT_FOUND:
       return "NOT_FOUND";
+    case StatusCode::DEVICE_RESET:
+      return "DEVICE_RESET";
     default:
       return "GENERAL ERROR";
   }
@@ -127,6 +129,8 @@ constexpr HRESULT StatusCodeToHRESULT(StatusCode status) noexcept {
       return HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);
     case StatusCode::NOT_FOUND:
       return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+    case StatusCode::DEVICE_RESET:
+      return E_FAIL;
     default:
       return E_FAIL;
   }
