@@ -303,7 +303,26 @@ class PosixEnv : public Env {
 
   int GetL2CacheSize() const override {
 #ifdef _SC_LEVEL2_CACHE_SIZE
-    return static_cast<int>(sysconf(_SC_LEVEL2_CACHE_SIZE));
+    // Prefer sysconf where it is implemented (e.g. Linux/x86), so those
+    // platforms keep their existing, working values. glibc's aarch64 backend
+    // does not implement the cache-size queries, so sysconf(_SC_LEVEL2_CACHE_SIZE)
+    // returns 0 on Linux/aarch64, which silently disables cache-tiled kernels
+    // (e.g. CPU FlashAttention in MultiHeadAttention). Only when sysconf reports
+    // no L2 do we fall back to cpuinfo, which reads the sizes from sysfs
+    // cacheinfo and works across architectures.
+    const auto l2_cache_size = sysconf(_SC_LEVEL2_CACHE_SIZE);
+    if (l2_cache_size > 0) {
+      return narrow<int>(l2_cache_size);
+    }
+#ifdef ORT_USE_CPUINFO
+    if (cpuinfo_available_ && cpuinfo_get_l2_caches_count() > 0) {
+      const auto* l2_cache = cpuinfo_get_l2_cache(0);
+      if (l2_cache != nullptr && l2_cache->size > 0) {
+        return narrow<int>(l2_cache->size);
+      }
+    }
+#endif  // ORT_USE_CPUINFO
+    return narrow<int>(l2_cache_size);
 #else
     int value = 0;  // unknown
 #if (defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__)) && defined(HW_L2CACHESIZE)

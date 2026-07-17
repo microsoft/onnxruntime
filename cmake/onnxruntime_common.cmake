@@ -94,18 +94,23 @@ else()
          "${ONNXRUNTIME_ROOT}/core/platform/device_discovery_default.cc")
 endif()
 
+# Raw /bigobj is a cl.exe option. Do not apply it to CUDA sources; nvcc treats a
+# standalone /bigobj as an input file on Windows ARM64 CUDA 13.1.
+set(onnxruntime_msvc_bigobj_compile_option
+    "$<$<AND:$<NOT:$<COMPILE_LANGUAGE:ASM_MARMASM>>,$<NOT:$<COMPILE_LANGUAGE:CUDA>>>:/bigobj>")
+
 if(onnxruntime_target_platform STREQUAL "ARM64EC")
     if (MSVC)
         link_directories("$ENV{VCINSTALLDIR}/Tools/MSVC/$ENV{VCToolsVersion}/lib/ARM64EC")
         link_directories("$ENV{VCINSTALLDIR}/Tools/MSVC/$ENV{VCToolsVersion}/ATLMFC/lib/ARM64EC")
         link_libraries(softintrin.lib)
-        add_compile_options("$<$<NOT:$<COMPILE_LANGUAGE:ASM_MARMASM>>:/bigobj>")
+        add_compile_options("${onnxruntime_msvc_bigobj_compile_option}")
     endif()
 endif()
 
 if(onnxruntime_target_platform STREQUAL "ARM64")
     if (MSVC)
-        add_compile_options("$<$<NOT:$<COMPILE_LANGUAGE:ASM_MARMASM>>:/bigobj>")
+        add_compile_options("${onnxruntime_msvc_bigobj_compile_option}")
     endif()
 endif()
 
