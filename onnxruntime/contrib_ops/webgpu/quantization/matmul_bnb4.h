@@ -75,9 +75,8 @@ class MatMulBnb4 final : public WebGpuKernel {
     ORT_ENFORCE(block_size_ > 0, "block_size must be positive, got ", block_size_);
     ORT_ENFORCE(quant_type_ == 0 || quant_type_ == 1,
                 "Invalid quant_type, only 0 (FP4) and 1 (NF4) are supported.");
-    // transB defaults to 1 (true). Only the forward (transB=true) case is supported on WebGPU.
-    const int64_t trans_b = info.GetAttrOrDefault<int64_t>("transB", static_cast<int64_t>(1));
-    ORT_ENFORCE(trans_b == 1, "MatMulBnb4 on WebGPU only supports transB=1.");
+    // Only the forward case (transB=1) is supported on WebGPU; nodes with transB=0 are
+    // filtered out and fall back to CPU in WebGpuExecutionProvider::GetCapability.
   }
 
   Status ComputeInternal(ComputeContext& context) const override;
