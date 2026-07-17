@@ -1507,9 +1507,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("block_size",
               "Size of each quantization block along the K (input feature) dimension. "
               "Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). "
-              "MXFP4 ('fp4'/'wfp4afp8') uses block_size 32; NVFP4 ('nvfp4') uses block_size 16. "
-              "If provided, both hidden_size and inter_size must be divisible by the block size. "
-              "Otherwise, there is no blocking and a whole column shares one scaling factor. ",
+              "Both hidden_size and inter_size must be divisible by the block size. "
+              "The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 "
+              "and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. "
+              "For integer quantization ('int'), omitting block_size means there is no blocking "
+              "and a whole column shares one scaling factor. ",
               AttributeProto::INT,
               OPTIONAL_VALUE)
         .Attr("quant_type",
