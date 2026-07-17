@@ -818,13 +818,13 @@ Status WebGpuContext::PopErrorScope() {
   ORT_RETURN_IF_ERROR(Wait(device_.PopErrorScope(
       wgpu::CallbackMode::WaitAnyOnly,
       // Note: Don't throw from a Dawn callback.
-      [](wgpu::PopErrorScopeStatus pop_status, wgpu::ErrorType error_type, char const* message,
+      [](wgpu::PopErrorScopeStatus pop_status, wgpu::ErrorType error_type, wgpu::StringView message,
          Status* status) noexcept {
         if (pop_status != wgpu::PopErrorScopeStatus::Success) {
           *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to pop WebGPU error scope. status=",
                                     static_cast<uint32_t>(pop_status));
         } else if (error_type != wgpu::ErrorType::NoError) {
-          *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU validation failed. ", message);
+          *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU validation failed. ", std::string_view(message));
         }
       },
       &status)));
