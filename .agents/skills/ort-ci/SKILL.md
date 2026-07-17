@@ -202,6 +202,9 @@ gh pr comment <number> --repo microsoft/onnxruntime \
 Then wait briefly and check for a reply from `azure-pipelines[bot]`:
 
 ```bash
+# Note: through the GraphQL `comments` field (what `gh pr view --json comments`
+# uses), the bot's author.login is `azure-pipelines` (no `[bot]` suffix), even
+# though it surfaces as azure-pipelines[bot] in the UI and the REST API.
 gh pr view <number> --repo microsoft/onnxruntime --json comments \
   --jq '.comments[] | select(.author.login=="azure-pipelines")
         | {createdAt, body}' | tail

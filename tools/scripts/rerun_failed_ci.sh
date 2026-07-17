@@ -62,7 +62,10 @@ echo "Head:    $HEAD_SHA"
 echo
 
 # Pull every workflow run for this exact commit and decide what to re-run.
-# Group runs by workflow. For each workflow:
+# Group runs by workflow. jq's group_by sorts by the key internally, so the
+# time-ordered (interleaved) input from `gh run list` does not need to be
+# pre-sorted; every run of a given workflow lands in a single group. For each
+# workflow:
 #   - if any run is still active (queued/in_progress/...), skip it (a rerun already exists);
 #   - otherwise take the most recent run and, if it did not succeed, mark it for rerun.
 #
