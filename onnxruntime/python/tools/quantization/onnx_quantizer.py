@@ -22,6 +22,7 @@ from .quant_utils import (
     __version__,
     add_infer_metadata,
     attribute_to_kwarg,
+    bias_abs_max_per_channel,
     compute_scale_zp,
     compute_scale_zp_float8,
     find_by_name,
@@ -712,9 +713,11 @@ class ONNXQuantizer(BaseQuantizer):
                 weight_scale = new_scale
                 updated = True
         elif weight_scale.shape and len(weight_scale.shape) == 1:
+            bias_abs = bias_abs_max_per_channel(bias_float_data, weight_scale.shape[0])
+
             for i in range(weight_scale.shape[0]):
                 changed, new_scale = self.adjust_single_weight_scale_if_needed(
-                    bias_float_data[i],
+                    bias_abs[i],
                     input_scale,
                     weight_scale[i],
                     weight_scale_dtype,
