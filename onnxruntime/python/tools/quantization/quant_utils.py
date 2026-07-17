@@ -1280,6 +1280,10 @@ def bias_abs_max_per_channel(bias_data: numpy.ndarray, num_channels: int) -> num
 
     if bias_abs.shape[0] == 1 and num_channels > 1:
         bias_abs = numpy.broadcast_to(bias_abs, (num_channels,))
+    elif bias_abs.shape[0] != num_channels:
+        raise ValueError(
+            f"Bias shape {bias_data.shape} is not broadcastable to per-channel size {num_channels} along the last axis."
+        )
 
     return bias_abs
 
