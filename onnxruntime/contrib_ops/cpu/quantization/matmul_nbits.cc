@@ -914,7 +914,7 @@ Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
       // Bulk convert A from fp16 to fp32.
       auto a_size = static_cast<size_t>(a->Shape().Size());
       auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, a_size, true);
-      MlasConvertHalfToFloatBuffer(a_data_fp16, tmp_a_data_ptr.get(), a_size);
+      MlasConvertHalfToFloatBufferInParallel(a_data_fp16, tmp_a_data_ptr.get(), a_size, thread_pool);
 
       // Use pre-converted fp32 scales, or nullptr if scales are baked into packed B (KleidiAI).
       // For non-KleidiAI 4-bit: scales_fp32_ was set during PrePack.
@@ -977,7 +977,7 @@ Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
                          thread_pool, &mlas_backend_kernel_selector_config_);
 
       // Bulk convert output from fp32 to fp16.
-      MlasConvertFloatToHalfBuffer(tmp_c.get(), y_data, c_size);
+      MlasConvertFloatToHalfBufferInParallel(tmp_c.get(), y_data, c_size, thread_pool);
       return Status::OK();
     }
   }
@@ -1045,7 +1045,7 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
 
   auto a_size = static_cast<size_t>(a->Shape().Size());
   auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, a_size, true);
-  MlasConvertHalfToFloatBuffer(a_data, tmp_a_data_ptr.get(), a_size);
+  MlasConvertHalfToFloatBufferInParallel(a_data, tmp_a_data_ptr.get(), a_size, thread_pool);
 
   float* scales_ptr = nullptr;
   if (!scales_fp32_) {
@@ -1068,7 +1068,8 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
   }
 
   size_t c_size = static_cast<size_t>(y->Shape().Size());
-  std::vector<float> c_v(c_size);
+  // No zero-initialization needed: the GEMM writes every element of C.
+  auto c_v = IAllocator::MakeUniquePtr<float>(allocator, c_size, true);
 
   InlinedVector<MLAS_QNBIT_GEMM_DATA_PARAMS<float>> data(batch_count);
   for (size_t i = 0; i < batch_count; ++i) {
@@ -1081,12 +1082,12 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
     data[i].QuantBScale = scales_ptr;
     data[i].QuantBZeroPoint = zero_points_data;
     data[i].Bias = bias ? bias_ptr : nullptr;
-    data[i].C = c_v.data() + helper.OutputOffsets()[i];
+    data[i].C = c_v.get() + helper.OutputOffsets()[i];
     data[i].ldc = N;
   }
   MlasQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type_, data.data(), workspace.get(),
                      thread_pool, &mlas_backend_kernel_selector_config_);
-  MlasConvertFloatToHalfBuffer(c_v.data(), y_data, c_size);
+  MlasConvertFloatToHalfBufferInParallel(c_v.get(), y_data, c_size, thread_pool);
   return Status::OK();
 }
 #endif  // end of !MLAS_F16VEC_INTRINSICS_SUPPORTED || !MLAS_TARGET_AMD64
