@@ -81,13 +81,6 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
 
   bool prepare_indirect_dispatch = (indirect_buffer != nullptr);
   bool use_seqlen_k = (seqlen_k != nullptr);
-  ORT_RETURN_IF_ERROR(
-      (!use_seqlen_k || parameters.batch_size_ == 1)
-          ? Status::OK()
-          : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "TurboQuant graph-capture decode path reads seqlen_k[0] for all batches and "
-                            "currently supports batch_size == 1 only; got batch_size = ",
-                            parameters.batch_size_));
   bool kv_BNSH = parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH || parameters.qkv_format_ == Q_K_V_BNSH;
 
   TurboQuantHadamardProgram program{"TurboQuantCopyToQuantizedKVCache", has_past, kv_BNSH,
@@ -215,13 +208,6 @@ Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::Compu
 
   bool prepare_indirect_dispatch = (indirect_buffer != nullptr);
   bool use_seqlen_k = (seqlen_k != nullptr);
-  ORT_RETURN_IF_ERROR(
-      (!use_seqlen_k || parameters.batch_size_ == 1)
-          ? Status::OK()
-          : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "TurboQuant graph-capture decode path reads seqlen_k[0] for all batches and "
-                            "currently supports batch_size == 1 only; got batch_size = ",
-                            parameters.batch_size_));
   const uint32_t multi_rotary_cache_concat_offset = context.MultiRotaryCacheConcatOffset();
 
   TurboQuantFusedRotaryProgram program{"TurboQuantFusedRotary", head_size_log2,

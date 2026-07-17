@@ -44,28 +44,28 @@ $MAIN {
   let kv_slice = select(workgroup_idx, workgroup_idx - uniforms.num_slices_per_kv, is_value);
   if (kv_slice >= uniforms.num_slices_per_kv) { return; }
 
-  // Compute total_seq_length
+  // Unflatten kv_slice into (batch, head, seq). The slice layout is allocated on the
+  // host using the UNIFORM copy sequence length (same for every batch), so batch/head/seq
+  // must be computed from that uniform value — NOT from the per-batch seqlen_k — otherwise
+  // the unflatten would disagree with the host dispatch layout.
+#if past_present_share_buffer
+  let copy_seq_length = uniforms.kv_sequence_length;
+#else
+  let copy_seq_length = uniforms.total_sequence_length;
+#endif
+  let batch = kv_slice / (uniforms.kv_num_heads * copy_seq_length);
+  let head = (kv_slice / copy_seq_length) % uniforms.kv_num_heads;
+  let seq = kv_slice % copy_seq_length;
+
+  // Compute total_seq_length per batch (right-padded batches may have different seqlens).
 #if use_seqlen_k
-  let total_seq_length = u32(seqlen_k[0u]) + 1u;
+  let total_seq_length = u32(seqlen_k[batch]) + 1u;
 #else
   let total_seq_length = uniforms.total_sequence_length;
 #endif
 
   // uniforms.kv_sequence_length is the sequence length of the new key/values.
   let past_seq_length = total_seq_length - uniforms.kv_sequence_length;
-
-  // Unflatten kv_slice into (batch, head, seq). The seq extent depends on whether
-  // past tokens also need processing (copy) or just new tokens.
-#if past_present_share_buffer
-  let copy_seq_length = uniforms.kv_sequence_length;
-#elif has_past
-  let copy_seq_length = total_seq_length;
-#else
-  let copy_seq_length = uniforms.kv_sequence_length;
-#endif
-  let batch = kv_slice / (uniforms.kv_num_heads * copy_seq_length);
-  let head = (kv_slice / copy_seq_length) % uniforms.kv_num_heads;
-  let seq = kv_slice % copy_seq_length;
 
   // Prepare indirect dispatch buffer (first workgroup, first thread only).
 #if prepare_indirect_dispatch
