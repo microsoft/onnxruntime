@@ -116,6 +116,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   const bool cudnn_sdpa_enabled = enable_cudnn_flash_attention_ ||
                                   (auto_enable_cudnn_flash_attention_ && sm >= 90);
+  // attention_bias is safe here because the no-cache self-attention path has
+  // sequence_length == total_sequence_length, so cuDNN uses top-left causal alignment.
   const bool cudnn_sdpa_supported = cudnn_sdpa_enabled &&
                                     (parameters.mask_type == AttentionMaskType::MASK_NONE ||
                                      is_mask_1d_seq_len) &&
