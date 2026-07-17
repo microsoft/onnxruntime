@@ -9,9 +9,13 @@ on:
   workflow_call: # Allows this workflow to be invoked as the Stage 2 "tensorrt provider" gate by ci_orchestrator.yml
   # NOTE: standalone `pull_request:` trigger removed - ci_orchestrator.yml is now the sole PR entry point.
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: true
+# NOTE: no standalone `concurrency:` block here - this workflow's own group would be
+# `${{ github.workflow }}-<ref>`, but github.workflow resolves to the *caller's* name
+# ("CI Orchestrator") when invoked via workflow_call, which is identical to the
+# orchestrator's own top-level group and causes GitHub to detect a deadlock and cancel
+# this job outright. ci_orchestrator.yml's top-level `concurrency:` already covers
+# cancel-in-progress for the whole PR run; standalone push/workflow_dispatch triggers
+# here are keyed off github.sha, which is always unique, so no dedicated group is needed.
 
 #TODO: enable  --build_nodejs
 jobs:
