@@ -71,7 +71,7 @@ class StreamExecutionContext {
     }
 
     int32_t Get() const {
-      return gsl::narrow_cast<int32_t>(v_.load(std::memory_order_acquire));
+      return v_.load(std::memory_order_acquire);
     }
 
     void Wait() const {
@@ -96,7 +96,10 @@ class StreamExecutionContext {
     }
 
    private:
-    std::atomic_int_fast32_t v_;
+    // Kept as a fixed-width int32_t so Set()/Get()/Inc()/Dec() and the overflow
+    // guard in Inc() all operate on the same range on every platform (int_fast32_t
+    // is 64-bit on some targets such as x86-64 Linux).
+    std::atomic<int32_t> v_;
   };
 
   class FirstFailureStatus {

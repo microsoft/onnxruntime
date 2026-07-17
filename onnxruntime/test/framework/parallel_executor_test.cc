@@ -112,7 +112,6 @@ struct CancellationTestOp {
       const auto terminate_token =
           static_cast<OpKernelContextInternal*>(ctx)->GetCancellationToken();
       started_count_.fetch_add(1, std::memory_order_release);
-      started_count_.notify_all();
 
       std::atomic<bool> stop_requested{terminate_token.stop_requested()};
       onnxruntime::CancellationCallback callback(terminate_token, [&]() {

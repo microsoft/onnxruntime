@@ -206,7 +206,7 @@ void StreamExecutionContext::RecycleNodeInputs(onnxruntime::NodeIndex node_index
 
 void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& session_scope,
               onnxruntime::CancellationToken terminate_token, size_t since) {
-  auto complete_task = gsl::finally([&ctx]() { ctx.CompleteTask(); });
+  [[maybe_unused]] auto complete_task = gsl::finally([&ctx]() { ctx.CompleteTask(); });
 
   if (terminate_token.stop_requested()) {
     ctx.SetStatus(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true."));
