@@ -26,22 +26,23 @@
 #                            provider area and so have no path-filter of their own:
 #                            windows_x64_release, windows_x64_debug,
 #                            windows_x64_release_ep_generic_interface, windows_x86 (x64 CPU
-#                            Pipeline), windows_x64_asan, CUDA Plugin Linux CI, Linux CPU Minimal
-#                            Build E2E, iOS CI on Mac, React Native CI Pipeline. Note the first four
-#                            all run on the contended Win2022-GPU-A10 pool despite being "generic"
-#                            builds - they deliberately live in Stage 3, not Stage 2, so a broad
-#                            "framework" match (e.g. touching .github/workflows/** or a big chunk of
-#                            onnxruntime/core/**) doesn't put them on the hook for every PR; they
-#                            still build/test on every PR, just gated behind Stage 2 succeeding
-#                            (or being skipped) instead of racing it or being mislabeled as a
-#                            "targeted" gate. Not included here (left as standalone,
-#                            independently-triggered workflows): CodeQL and
+#                            Pipeline), windows_x64_asan, windows_gpu_doc_gen.yml (Windows GPU
+#                            Kernel Documentation Validation), CUDA Plugin Linux CI, Linux CPU
+#                            Minimal Build E2E, iOS CI on Mac, React Native CI Pipeline. Note the
+#                            first five all run on the contended Win2022-GPU-A10 pool despite being
+#                            "generic"/near-unfiltered (windows_gpu_doc_gen.yml's own `paths: '**'`
+#                            match is effectively no filter at all) - they deliberately live in
+#                            Stage 3, not Stage 2, so a broad "framework" match (e.g. touching
+#                            .github/workflows/** or a big chunk of onnxruntime/core/**) doesn't put
+#                            them on the hook for every PR; they still build/test on every PR, just
+#                            gated behind Stage 2 succeeding (or being skipped) instead of racing it
+#                            or being mislabeled as a "targeted" gate. Not included here (left as
+#                            standalone, independently-triggered workflows): CodeQL and
 #                            gradle-wrapper-validation (security/policy checks, kept independent of
 #                            build gating on purpose), pr_checks.yml (lightweight bot job), the
 #                            publish-*-apidocs.yml workflows and linux/windows_cuda_no_cudnn.yml
 #                            (each already has its own narrow `paths:` filter so isn't a backlog
-#                            contributor), and windows_gpu_doc_gen.yml (broad path filter, but
-#                            empirically fast/low-contention, not a queue-timeout contributor).
+#                            contributor).
 #
 # NOTE: Every workflow wired into Stage 2 and Stage 3 above has had its standalone `pull_request:`
 # trigger removed (see each workflow's `on:` block) - ci_orchestrator.yml is now the sole PR entry
@@ -292,6 +293,15 @@ jobs:
     needs: *stage3_needs
     if: *stage3_gate
     uses: ./.github/workflows/windows_build_x64_asan.yml
+
+  # windows_gpu_doc_gen.yml has a near-unfiltered `paths: '**'` match and runs on the contended
+  # Win2022-GPU-A10 pool (300 min timeout) - it belongs in Stage 3, not left standalone, so it
+  # doesn't race every PR independently of Stage 2.
+  stage3-windows-gpu-doc-gen:
+    name: "Stage 3: Windows GPU Kernel Documentation Validation"
+    needs: *stage3_needs
+    if: *stage3_gate
+    uses: ./.github/workflows/windows_gpu_doc_gen.yml
 
   stage3-linux-cuda-plugin:
     name: "Stage 3: CUDA Plugin Linux CI"
