@@ -174,7 +174,9 @@ if (MSVC)
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>"
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>"
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>"
-        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>"
+        # Pass /bigobj to the CUDA host compiler using dash spelling. Raw /bigobj is excluded
+        # from global ARM64 CUDA options in onnxruntime_common.cmake because nvcc parses it as input.
+        "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-bigobj>"
     )
 
     target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
@@ -232,7 +234,10 @@ if (MSVC)
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>"
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>"
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>"
-            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>"
+            # Unlike the options explicitly paired with -Xcompiler above, the raw /bigobj inherited
+            # from global compile options is parsed by nvcc as an input file on ARM64. Exclude that raw
+            # option in onnxruntime_common.cmake and forward its dash-spelled equivalent explicitly.
+            "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-bigobj>"
     )
 endif()
 

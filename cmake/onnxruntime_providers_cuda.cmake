@@ -364,8 +364,9 @@
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/Zc:preprocessor>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>")
-      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>")
-      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/bigobj>")
+      # Pass /bigobj to the CUDA host compiler using dash spelling. Raw /bigobj is excluded
+      # from global ARM64 CUDA options in onnxruntime_common.cmake because nvcc parses it as input.
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-bigobj>")
       # /permissive is required for CUTLASS cute headers and to work around MSVC template resolution
       # issues with abseil headers when compiled through nvcc.
       # See https://github.com/NVIDIA/cutlass/issues/3065
@@ -449,7 +450,7 @@
         target_compile_definitions(${target} PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
       endif()
       if (MSVC)
-        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>")
+        # Do NOT add another /bigobj here: the MSVC block above already forwards it to cl.
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4172>")
       endif()
     endif()
