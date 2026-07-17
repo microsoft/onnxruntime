@@ -228,10 +228,16 @@ class EventBuilder {
 
   // Helper for batch size duration map
   EventBuilder& AddBatchSizeDurations(const std::unordered_map<int64_t, long long>& durations) {
+    std::string result;
     for (const auto& [batch_size, duration] : durations) {
-      std::string key = "batchSize_" + std::to_string(batch_size);
-      props_.SetProperty(key, static_cast<int64_t>(duration));
+      if (!result.empty()) {
+        result += ", ";
+      }
+      result += std::to_string(batch_size);
+      result += ": ";
+      result += std::to_string(duration);
     }
+    props_.SetProperty("totalRunDurationPerBatchSize", result);
     return *this;
   }
 
@@ -423,7 +429,8 @@ void PosixTelemetry::Initialize() {
 #else
   // Desktop: send a hashed version of our persistent UUID (the "c:" prefix marks it as a
   // caller-supplied identifier); the raw UUID itself is never transmitted.
-  std::string raw_device_id = DeviceId::Instance().GetValue();
+  auto& device_id = DeviceId::Instance();
+  std::string raw_device_id = device_id.GetValue();
   if (!raw_device_id.empty()) {
     logger->GetSemanticContext()->SetDeviceId("c:" + HashDeviceId(raw_device_id));
   }
@@ -718,6 +725,12 @@ void PosixTelemetry::LogProcessInfo() const {
   if (process_info_logged_.exchange(true)) {
     return;
   }
+
+#if !defined(__ANDROID__) && !(defined(__APPLE__) && TARGET_OS_IOS)
+  if (DeviceId::Instance().GetStatus() == DeviceIdStatus::Failed) {
+    ORT_TELEMETRY_WARN("Failed to persist telemetry device ID; using an in-memory identifier");
+  }
+#endif
 
   auto builder = EventBuilder("ProcessInfo", EventPriority::CRITICAL)
                      .AddString("runtimeVersion", ORT_VERSION)

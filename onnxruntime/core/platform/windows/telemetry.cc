@@ -97,14 +97,14 @@ uint32_t GetProcessorCount() {
   return static_cast<uint32_t>(system_info.dwNumberOfProcessors);
 }
 
-uint32_t GetTotalMemoryMB() {
+uint64_t GetTotalMemoryMB() {
   MEMORYSTATUSEX memory_status{};
   memory_status.dwLength = sizeof(memory_status);
   if (::GlobalMemoryStatusEx(&memory_status) == 0) {
     return 0;
   }
 
-  return static_cast<uint32_t>(memory_status.ullTotalPhys / (1024 * 1024));
+  return memory_status.ullTotalPhys / (1024 * 1024);
 }
 
 std::string ConvertWideStringToUtf8(const std::wstring& wide) {
@@ -365,7 +365,7 @@ void WindowsTelemetry::LogProcessInfo() const {
   const std::string service_names = GetServiceNamesForCurrentProcess();
   const std::string cpu_model = GetCpuModel();
   const uint32_t processor_count = GetProcessorCount();
-  const uint32_t total_memory_mb = GetTotalMemoryMB();
+  const uint64_t total_memory_mb = GetTotalMemoryMB();
   TraceLoggingWrite(telemetry_provider_handle,
                     "ProcessInfo",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -377,7 +377,7 @@ void WindowsTelemetry::LogProcessInfo() const {
                     TraceLoggingString(ORT_VERSION, "runtimeVersion"),
                     TraceLoggingString(cpu_model.c_str(), "cpuModel"),
                     TraceLoggingUInt32(processor_count, "processorCount"),
-                    TraceLoggingUInt32(total_memory_mb, "totalMemoryMB"),
+                    TraceLoggingUInt64(total_memory_mb, "totalMemoryMB"),
                     TraceLoggingBool(IsDebuggerPresent(), "isDebuggerAttached"),
                     TraceLoggingBool(isRedist, "isRedist"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"),
