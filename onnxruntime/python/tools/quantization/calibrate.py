@@ -367,7 +367,7 @@ class CalibraterBase:
         """
         raise NotImplementedError
 
-    def collect_data(self, data_reader: CalibrationDataReader):
+    def collect_data(self, data_reader: CalibrationDataReader, progress_bar=None):
         """
         abstract method: collect the tensors that will be used for range computation. It can be called multiple times.
         """
@@ -506,7 +506,7 @@ class MinMaxCalibrater(CalibraterBase):
     def clear_collected_data(self):
         self.intermediate_outputs = []
 
-    def collect_data(self, data_reader: CalibrationDataReader):
+    def collect_data(self, data_reader: CalibrationDataReader, progress_bar=None):
         while True:
             inputs = data_reader.get_next()
             if not inputs:
@@ -519,6 +519,8 @@ class MinMaxCalibrater(CalibraterBase):
                     )
                 ]
             )
+            if progress_bar is not None:
+                progress_bar.update(1)
             if (
                 self.max_intermediate_outputs is not None
                 and len(self.intermediate_outputs) == self.max_intermediate_outputs
@@ -684,7 +686,7 @@ class HistogramCalibrater(CalibraterBase):
     def clear_collected_data(self):
         self.intermediate_outputs = []
 
-    def collect_data(self, data_reader: CalibrationDataReader):
+    def collect_data(self, data_reader: CalibrationDataReader, progress_bar=None):
         """
         Entropy Calibrator collects operators' tensors as well as generates tensor histogram for each operator.
         """
@@ -707,6 +709,8 @@ class HistogramCalibrater(CalibraterBase):
                     fixed_outputs.append(output)
 
             self.intermediate_outputs.append(fixed_outputs)
+            if progress_bar is not None:
+                progress_bar.update(1)
 
         if len(self.intermediate_outputs) == 0:
             raise ValueError("No data is collected.")

@@ -7,8 +7,11 @@
 
 import tempfile
 import unittest
+from contextlib import contextmanager
 from importlib.util import find_spec
 from pathlib import Path
+from types import ModuleType
+from unittest import mock
 
 import numpy as np
 import onnx
@@ -150,6 +153,63 @@ class TestStaticQuantization(unittest.TestCase):
         data_reader.rewind()
         check_model_correctness(self, self._model_fp32_path, quant_model_path, data_reader.get_next())
         data_reader.rewind()
+
+    def test_strided_calibration_progress_bar_uses_tqdm_when_enabled(self):
+        updates = []
+        totals = []
+
+        class FakeTqdm:
+            def __init__(self, *args, **kwargs):
+                del args
+                totals.append(kwargs.get("total"))
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc_value, traceback):
+                del exc_type, exc_value, traceback
+
+            def update(self, value):
+                updates.append(value)
+
+        @contextmanager
+        def logging_redirect_tqdm():
+            yield
+
+        fake_tqdm = ModuleType("tqdm")
+        fake_tqdm.__path__ = []
+        fake_tqdm.tqdm = FakeTqdm
+        fake_tqdm_contrib = ModuleType("tqdm.contrib")
+        fake_tqdm_contrib.__path__ = []
+        fake_tqdm_logging = ModuleType("tqdm.contrib.logging")
+        fake_tqdm_logging.logging_redirect_tqdm = logging_redirect_tqdm
+
+        stride = 5
+        input_shapes = [1, self._channel_size, 1, 3]
+        data_list = input_feeds_neg_one_zero_one_list(10, {"input": input_shapes}, 123)
+        data_reader = StridedDataReader(
+            data_list, ["input"], input_shapes, no_tensor_num=0, in_dtypes=[np.float32], stride=stride
+        )
+        quant_model_path = str(Path(self._tmp_model_dir.name) / "quant.progress.onnx")
+        with mock.patch.dict(
+            "sys.modules",
+            {
+                "tqdm": fake_tqdm,
+                "tqdm.contrib": fake_tqdm_contrib,
+                "tqdm.contrib.logging": fake_tqdm_logging,
+            },
+        ):
+            quantize_static(
+                self._model_fp32_path,
+                quant_model_path,
+                data_reader,
+                activation_type=QuantType.QUInt8,
+                weight_type=QuantType.QUInt8,
+                extra_options={"CalibStridedMinMax": stride, "CalibUseTQDM": True},
+            )
+
+        self.assertEqual(sum(updates), 10)
+        self.assertEqual(totals, [10])
 
     @unittest.skip(
         "Skip failed test in Python Packaging Test Pipeline."

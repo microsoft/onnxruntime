@@ -5,7 +5,10 @@
 # --------------------------------------------------------------------------
 from __future__ import annotations
 
+import contextlib
 import copy
+import importlib.metadata
+import importlib.util
 import json
 import logging
 import tempfile
@@ -38,6 +41,47 @@ from .quant_utils import (
 )
 from .registry import IntegerOpsRegistry, QDQRegistry, QLinearOpsRegistry
 from .tensor_quant_overrides import TensorQuantOverridesHelper
+
+
+def _is_installed(package):
+    try:
+        dist = importlib.metadata.distribution(package)
+    except importlib.metadata.PackageNotFoundError:
+        try:
+            spec = importlib.util.find_spec(package)
+        except ModuleNotFoundError:
+            return False
+
+        return spec is not None
+
+    return dist is not None
+
+
+def _get_calibration_data_reader_len(calibration_data_reader: CalibrationDataReader):
+    try:
+        return len(calibration_data_reader)
+    except (NotImplementedError, TypeError):
+        return None
+
+
+@contextlib.contextmanager
+def _calibration_progress_bar(calibration_data_reader: CalibrationDataReader, enabled: bool):
+    if not enabled:
+        yield None
+        return
+
+    if not _is_installed("tqdm"):
+        logging.info("tqdm is not installed. Run calibration without progress bar")
+        yield None
+        return
+
+    from tqdm import tqdm  # noqa: PLC0415
+    from tqdm.contrib.logging import logging_redirect_tqdm  # noqa: PLC0415
+
+    total = _get_calibration_data_reader_len(calibration_data_reader)
+    with logging_redirect_tqdm():
+        with tqdm(total=total, desc="calibration") as progress_bar:
+            yield progress_bar
 
 
 class QuantConfig:
@@ -659,6 +703,9 @@ def quantize_static(
                     Default is None. If set to an integer, during calculation of the min-max range of the tensors
                     it will load at max value number of outputs before computing and merging the range. This will
                     produce the same result as all computing with None, but is more memory efficient.
+                CalibUseTQDM = True/False :
+                    Default is False. If enabled and tqdm is installed, show a progress bar during calibration data
+                    collection.
                 SmoothQuant = True/False :
                     Default is False. If enabled, SmoothQuant algorithm will be applied before quantization to do
                     fake input channel quantization.
@@ -845,18 +892,23 @@ def quantize_static(
                 extra_options=calib_extra_options,
             )
 
-            stride = extra_options.get("CalibStridedMinMax", None)
-            if stride:
-                total_data_size = len(calibration_data_reader)
-                if total_data_size % stride != 0:
-                    raise ValueError(f"Total data size ({total_data_size}) is not divisible by stride size ({stride}).")
+            with _calibration_progress_bar(
+                calibration_data_reader, bool(extra_options.get("CalibUseTQDM", False))
+            ) as progress_bar:
+                stride = extra_options.get("CalibStridedMinMax", None)
+                if stride:
+                    total_data_size = len(calibration_data_reader)
+                    if total_data_size % stride != 0:
+                        raise ValueError(
+                            f"Total data size ({total_data_size}) is not divisible by stride size ({stride})."
+                        )
 
-                for start in range(0, total_data_size, stride):
-                    end_index = start + stride
-                    calibration_data_reader.set_range(start_index=start, end_index=end_index)
-                    calibrator.collect_data(calibration_data_reader)
-            else:
-                calibrator.collect_data(calibration_data_reader)
+                    for start in range(0, total_data_size, stride):
+                        end_index = start + stride
+                        calibration_data_reader.set_range(start_index=start, end_index=end_index)
+                        calibrator.collect_data(calibration_data_reader, progress_bar)
+                else:
+                    calibrator.collect_data(calibration_data_reader, progress_bar)
             tensors_range = calibrator.compute_data()
             if not isinstance(tensors_range, TensorsData):
                 raise TypeError(
