@@ -1405,8 +1405,15 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
       if (auto modelID_opt = get_model_if_exists(); modelID_opt.has_value()) {
         modelID = modelID_opt.value();
       } else {
-        cann::InterprocessFileLock ipc_lock(filename);
-        std::unique_lock<cann::InterprocessFileLock> lock(ipc_lock);
+        std::optional<cann::InterprocessFileLock> ipc_lock;
+        std::unique_lock<cann::InterprocessFileLock> lock;
+        ORT_TRY {
+          ipc_lock.emplace(filename);
+          lock = std::unique_lock<cann::InterprocessFileLock>(ipc_lock.value());
+        }
+        ORT_CATCH(const std::exception& e) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, e.what());
+        };
         auto filename_with_suffix = cann::MatchFile(filename);
         if (!filename_with_suffix.empty()) {
           lock.unlock();
