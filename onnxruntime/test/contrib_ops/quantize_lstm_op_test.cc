@@ -352,6 +352,81 @@ static void RunQuantLSTM(int64_t input_size,
                       per_channel /*w_per_channel*/, per_channel /*r_per_channel*/, "bidirectional");
 }
 
+static void RunInvalidDynamicQuantLstmShapeTest(const std::vector<int64_t>& W_dims,
+                                                const std::vector<uint8_t>& W_data,
+                                                const std::vector<int64_t>& R_dims,
+                                                const std::vector<uint8_t>& R_data,
+                                                const std::string& expected_error) {
+  constexpr int64_t seq_length = 2;
+  constexpr int64_t batch_size = 1;
+  constexpr int64_t input_size = 1;
+  constexpr int64_t hidden_size = 2;
+  constexpr int64_t num_directions = 1;
+
+  OpTester test("DynamicQuantizeLSTM", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<std::vector<std::string>>("activations", {"sigmoid", "tanh", "tanh"});
+  test.AddAttribute("direction", std::string("forward"));
+  test.AddAttribute("hidden_size", hidden_size);
+  test.AddAttribute<int64_t>("input_forget", 0);
+
+  test.AddInput<float>("X", {seq_length, batch_size, input_size},
+                       std::vector<float>(seq_length * batch_size * input_size, 0.1f));
+  test.AddInput<uint8_t>("W", W_dims, W_data);
+  test.AddInput<uint8_t>("R", R_dims, R_data);
+
+  test.AddOptionalInputEdge<float>();  // B
+  test.AddOptionalInputEdge<int>();    // sequence_lens
+  test.AddOptionalInputEdge<float>();  // initial_h
+  test.AddOptionalInputEdge<float>();  // initial_c
+  test.AddOptionalInputEdge<float>();  // P
+
+  test.AddInput<float>("W_scale", {num_directions}, {1.0f});
+  test.AddInput<uint8_t>("W_zero_point", {num_directions}, {128});
+  test.AddInput<float>("R_scale", {num_directions}, {1.0f});
+  test.AddInput<uint8_t>("R_zero_point", {num_directions}, {128});
+
+  test.AddOutput<float>("Y", {seq_length, num_directions, batch_size, hidden_size},
+                        std::vector<float>(seq_length * num_directions * batch_size * hidden_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, expected_error, {}, nullptr, &execution_providers);
+}
+
+TEST(DynamicQuantLSTMTest, InvalidInputShapes) {
+  constexpr int64_t input_size = 1;
+  constexpr int64_t hidden_size = 2;
+  constexpr int64_t num_directions = 1;
+
+  // DynamicQuantizeLSTM W layout: [num_directions, input_size, 4*hidden_size]
+  const std::vector<int64_t> valid_W_dims = {num_directions, input_size, 4 * hidden_size};
+  const std::vector<uint8_t> valid_W_data(num_directions * input_size * 4 * hidden_size, 128);
+
+  // DynamicQuantizeLSTM R layout: [num_directions, hidden_size, 4*hidden_size]
+  const std::vector<int64_t> valid_R_dims = {num_directions, hidden_size, 4 * hidden_size};
+  const std::vector<uint8_t> valid_R_data(num_directions * hidden_size * 4 * hidden_size, 128);
+
+  RunInvalidDynamicQuantLstmShapeTest({4 * hidden_size, input_size},
+                                      std::vector<uint8_t>(4 * hidden_size * input_size, 128),
+                                      valid_R_dims, valid_R_data,
+                                      "Input W must have shape");
+
+  RunInvalidDynamicQuantLstmShapeTest({num_directions, input_size, 4 * hidden_size - 1},
+                                      std::vector<uint8_t>(num_directions * input_size * (4 * hidden_size - 1), 128),
+                                      valid_R_dims, valid_R_data,
+                                      "Input W must have shape");
+
+  RunInvalidDynamicQuantLstmShapeTest(valid_W_dims, valid_W_data,
+                                      {4 * hidden_size, hidden_size},
+                                      std::vector<uint8_t>(4 * hidden_size * hidden_size, 128),
+                                      "Input R must have shape");
+
+  RunInvalidDynamicQuantLstmShapeTest(valid_W_dims, valid_W_data,
+                                      {num_directions, hidden_size + 1, 4 * hidden_size},
+                                      std::vector<uint8_t>(num_directions * (hidden_size + 1) * 4 * hidden_size, 128),
+                                      "Input R must have shape");
+}
+
 TEST(DynamicQuantLSTMTest, SmallSize) {
   RunQuantLSTM<int8_t>(2, 1, 16);
   RunQuantLSTM<int8_t>(2, 1, 16, true /*per_channel*/);
