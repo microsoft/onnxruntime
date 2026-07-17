@@ -386,11 +386,19 @@ if (WIN32)
     if(onnxruntime_CUDNN_HOME)
       # may have x64 in the path
       # may have a path with CUDA toolkit version if multiple installed on the machine
+      # Since CUDA 13.x, Windows cuDNN DLLs live under an architecture-specific subdirectory
+      # (bin/x64 for win-x64, bin/arm64 for win-arm64). A single cuDNN package may ship both
+      # arches, so only search the subdirectory matching the current target platform.
+      if(onnxruntime_target_platform STREQUAL "ARM64" OR onnxruntime_target_platform STREQUAL "ARM64EC")
+        set(_cudnn_arch "arm64")
+      else()
+        set(_cudnn_arch "x64")
+      endif()
       set(CUDNN_SEARCH_PATHS
+        "${onnxruntime_CUDNN_HOME}/bin/${_cudnn_arch}/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/${onnxruntime_CUDA_VERSION}/${_cudnn_arch}/cudnn64_*.dll"
         "${onnxruntime_CUDNN_HOME}/bin/cudnn64_*.dll"
-        "${onnxruntime_CUDNN_HOME}/bin/x64/cudnn64_*.dll"
         "${onnxruntime_CUDNN_HOME}/bin/${onnxruntime_CUDA_VERSION}/cudnn64_*.dll"
-        "${onnxruntime_CUDNN_HOME}/bin/${onnxruntime_CUDA_VERSION}/x64/cudnn64_*.dll"
       )
       set(CUDNN_DLL_PATH "")
       foreach(search_path ${CUDNN_SEARCH_PATHS})

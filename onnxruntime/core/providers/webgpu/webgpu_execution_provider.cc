@@ -700,6 +700,15 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
       }
     }
 
+    // Check for MatMulBnb4
+    if (node.OpType() == "MatMulBnb4" && node.Domain() == kMSDomain) {
+      // Current implementation only supports the forward case (transB=1). transB defaults to 1.
+      const auto& trans_b = node.GetAttributes().find("transB");
+      if (trans_b != node.GetAttributes().end() && trans_b->second.i() == 0) {
+        continue;
+      }
+    }
+
     candidates.push_back(node.Index());
     tenative_candidates.push_back(node.Index());
   }

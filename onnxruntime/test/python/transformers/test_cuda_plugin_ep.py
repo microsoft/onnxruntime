@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 import unittest
+from contextlib import contextmanager
 
 import numpy as np
 import torch
@@ -103,6 +104,42 @@ def is_cuda_mempool_unsupported_error(exc: Exception) -> bool:
     return "cudaMemPoolCreate failed" in message and (
         "cudaErrorNotSupported" in message or "operation not supported" in message
     )
+
+
+# The fpA_intB MatMulNBits pre-pack path (which triggers the EP-provided allocator use this test
+# guards) requires a compute capability >= 7.5 (Turing) device; see MatMulNBits::MatMulNBits.
+FPA_INTB_MIN_COMPUTE_CAPABILITY = (7, 5)
+
+
+def get_cuda_compute_capability(device):
+    """Return the device (major, minor) CUDA compute capability from plugin EP metadata, or None."""
+    value = device.ep_metadata.get("cuda_compute_capability")
+    if not value:
+        return None
+    try:
+        major_str, _, minor_str = value.partition(".")
+        return (int(major_str), int(minor_str))
+    except (TypeError, ValueError):
+        return None
+
+
+def is_fpa_intb_unsupported_error(exc: Exception) -> bool:
+    """True if the error indicates the fpA_intB MatMulNBits path is unsupported for this device/config."""
+    message = str(exc)
+    return "fpA_intB" in message
+
+
+@contextmanager
+def scoped_env(name: str, value: str):
+    old_value = os.environ.get(name)
+    os.environ[name] = value
+    try:
+        yield
+    finally:
+        if old_value is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = old_value
 
 
 def _create_session_options(session_config=None):
@@ -217,6 +254,52 @@ def create_gemm_model(model_path, alpha=1.0, beta=1.0, transA=0, transB=0):
         [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [m, n])],
     )
     model_def = _make_released_opset_model(graph_def)
+    save(model_def, model_path)
+
+
+def create_matmul_nbits_model(model_path, k=64, n=64, bits=4, block_size=32):
+    # Create a MatMulNBits (com.microsoft) model with a runtime-prepacked (weight_prepacked=0)
+    # fp16 quantized weight. During session initialization the CUDA kernel pre-packs the constant
+    # weight via MatMulNBits::PrePack_B, which allocates scratch through the EP-provided allocator
+    # (IAllocator::MakeUniquePtr(alloc, ...)). This is a regression guard: the CUDA-EP-as-plugin
+    # adapter previously forwarded a null allocator into PrePack, so this model crashed at session
+    # creation with "IAllocator::ValidateAllocator ... allocator != nullptr was false".
+    k_blocks = (k + block_size - 1) // block_size
+    blob_size = block_size * bits // 8
+
+    # Deterministic quantized weight and positive scales. Exact numerics are not asserted here;
+    # the test only requires that pre-packing runs (and no longer crashes) end to end.
+    b = np.full((n, k_blocks, blob_size), 0x88, dtype=np.uint8)
+    scales = np.full((n, k_blocks), 0.02, dtype=np.float16)
+
+    node_def = helper.make_node(
+        "MatMulNBits",
+        ["A", "B", "scales"],
+        ["Y"],
+        domain="com.microsoft",
+        K=k,
+        N=n,
+        bits=bits,
+        block_size=block_size,
+        weight_prepacked=0,
+    )
+    graph_def = helper.make_graph(
+        [node_def],
+        "test-model-matmulnbits",
+        [helper.make_tensor_value_info("A", TensorProto.FLOAT16, [2, k])],
+        [helper.make_tensor_value_info("Y", TensorProto.FLOAT16, [2, n])],
+        initializer=[
+            helper.make_tensor("B", TensorProto.UINT8, b.shape, b.tobytes(), raw=True),
+            helper.make_tensor("scales", TensorProto.FLOAT16, scales.shape, scales.tobytes(), raw=True),
+        ],
+    )
+    opset_onnx = OperatorSetIdProto()
+    opset_onnx.version = 21
+    opset_ms = OperatorSetIdProto()
+    opset_ms.domain = "com.microsoft"
+    opset_ms.version = 1
+    model_def = helper.make_model(graph_def, producer_name="onnx-example", opset_imports=[opset_onnx, opset_ms])
+    model_def.ir_version = 10
     save(model_def, model_path)
 
 
@@ -718,6 +801,62 @@ class TestCudaPluginEP(unittest.TestCase):
         }
         result = run_operator_test(target_device, create_conv_model, inputs, _expected_conv)
         self.assertTrue(result, "Conv plugin registration test failed")
+
+    def test_registration_matmul_nbits_prepack(self):
+        # Regression guard for the CUDA-EP-as-plugin pre-pack allocator bug: a fp16 MatMulNBits
+        # weight is pre-packed during session initialization, which allocates scratch through the
+        # EP-provided allocator. The plugin op-kernel adapter previously forwarded a null allocator
+        # into PrePack, crashing session creation with an IAllocator::ValidateAllocator failure.
+        target_device = get_cuda_plugin_device()
+
+        # The fpA_intB pre-pack path only runs on SM >= 7.5. Skip deterministically on older GPUs
+        # so the test does not silently pass without exercising the allocator-forwarding path.
+        compute_capability = get_cuda_compute_capability(target_device)
+        if compute_capability is None:
+            self.skipTest("CUDA plugin EP device metadata did not include cuda_compute_capability")
+        if compute_capability < FPA_INTB_MIN_COMPUTE_CAPABILITY:
+            self.skipTest(
+                "MatMulNBits fpA_intB pre-pack requires compute capability >= 7.5, but device reports "
+                f"{compute_capability[0]}.{compute_capability[1]}"
+            )
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            create_matmul_nbits_model(model_path)
+            sess_options = _create_session_options()
+            sess_options.add_provider_for_devices([target_device], _plugin_provider_options())
+
+            # Force the fpA_intB path so weight pre-packing (MatMulNBits::PrePack_B) runs during
+            # session creation, which is where the null-allocator crash used to happen. Given the
+            # deterministic capability check above, session creation is expected to succeed, so any
+            # exception here (including the "allocator != nullptr" assertion) is a genuine regression
+            # and is deliberately propagated instead of skipped.
+            with scoped_env("ORT_FPA_INTB_GEMM", "1"):
+                sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+
+                assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+                self.assertTrue(
+                    assigned_nodes,
+                    f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                    f"Assignments: {_format_assignment_summary(assignment_info)}",
+                )
+
+                a = np.random.rand(2, 64).astype(np.float16)
+                # Some devices/configs may still lack a valid fpA_intB tactic at runtime; skip only
+                # for that known-unsupported case and re-raise anything else so real regressions
+                # (e.g. incorrect kernels or the allocator assertion) are not hidden.
+                try:
+                    res = sess.run(None, {"A": a})
+                except Exception as exc:
+                    if is_fpa_intb_unsupported_error(exc):
+                        self.skipTest(f"fpA_intB MatMulNBits not supported on this device: {exc}")
+                    raise
+                self.assertEqual(res[0].shape, (2, 64))
+                self.assertTrue(np.isfinite(res[0].astype(np.float32)).all(), "MatMulNBits produced non-finite output")
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
 
     # ---- Provider options tests ----
 

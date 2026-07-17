@@ -179,7 +179,7 @@ MlasHalfGemmKernel<MLAS_HALF_GEMM_KERNEL_NEON>(
 
 const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchNeon = {
     MlasHalfGemmOperation<MLAS_HALF_GEMM_KERNEL_NEON>,
-    nullptr,
+    MlasHalfGemmCopyPackB<MLAS_HALF_GEMM_KERNEL_NEON>,
     MlasHalfGemmConvertPackB<MLAS_HALF_GEMM_KERNEL_NEON>,
     MLAS_HALF_GEMM_KERNEL_NEON::PackedK,
     MLAS_HALF_GEMM_KERNEL_NEON::KernelMaxM,
