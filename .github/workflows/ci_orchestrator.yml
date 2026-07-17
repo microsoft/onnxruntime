@@ -21,15 +21,27 @@
 #                                migraphx, rknpu, snpe, vsinpu, winml.
 #                            Multiple gates can run in parallel when a PR touches more than one area
 #                            (e.g. framework + cuda).
-# Stage 3 (everything else): Placeholder for now - will fan out to the remaining CI workflows as
-#                            they are incrementally converted to workflow_call (see rollout plan).
-#                            Waits for all Stage 2 gates that were triggered to succeed (skipped
-#                            gates count as pass-through).
+# Stage 3 (everything else):  Runs after all Stage 2 gates that were triggered succeed (skipped
+#                            gates count as pass-through, via the shared `&stage3_gate` anchor).
+#                            Fans out to the remaining CI workflows that aren't tied to a single
+#                            provider area and so have no path-filter of their own: CUDA Plugin
+#                            Linux CI, Linux CPU Minimal Build E2E, iOS CI on Mac, React Native CI
+#                            Pipeline. These still build/test on every PR, just no longer racing
+#                            Stage 2 independently - if Stage 2 already caught a break, Stage 3 is
+#                            skipped instead of burning a runner. Not included here (left as
+#                            standalone, independently-triggered workflows): CodeQL and
+#                            gradle-wrapper-validation (security/policy checks, kept independent of
+#                            build gating on purpose), pr_checks.yml (lightweight bot job), the
+#                            publish-*-apidocs.yml workflows and linux/windows_cuda_no_cudnn.yml
+#                            (each already has its own narrow `paths:` filter so isn't a backlog
+#                            contributor), and windows_gpu_doc_gen.yml (broad path filter, but
+#                            empirically fast/low-contention, not a queue-timeout contributor).
 #
-# NOTE: Every workflow wired into Stage 2 above has had its standalone `pull_request:` trigger
-# removed (see each workflow's `on:` block) - ci_orchestrator.yml is now the sole PR entry point for
-# those workflows, so unrelated PRs no longer queue Windows/Linux GPU runners they don't need. This
-# is what actually reduces contention on the self-hosted runner pools, not just a cosmetic gate.
+# NOTE: Every workflow wired into Stage 2 and Stage 3 above has had its standalone `pull_request:`
+# trigger removed (see each workflow's `on:` block) - ci_orchestrator.yml is now the sole PR entry
+# point for those workflows, so unrelated PRs no longer queue Windows/Linux GPU runners they don't
+# need. This is what actually reduces contention on the self-hosted runner pools, not just a
+# cosmetic gate.
 
 name: CI Orchestrator
 
@@ -247,36 +259,62 @@ jobs:
     if: needs.detect-changes.outputs.js == 'true'
     uses: ./.github/workflows/web.yml
 
-  # Stage 3 placeholder: remaining CI workflows will be added here as jobs (one `uses:` per
-  # workflow, converted to workflow_call) once each has been validated individually. Each such job
-  # should set:
-  #   needs: [detect-changes, stage2-linux-cpu, stage2-windows-release, stage2-windows-debug,
-  #           stage2-windows-ep-generic, stage2-windows-cpu, stage2-windows-asan, stage2-cuda,
-  #           stage2-windows-cuda, stage2-windows-cuda-plugin, stage2-tensorrt,
-  #           stage2-windows-tensorrt, stage2-openvino, stage2-windows-openvino, stage2-dml,
-  #           stage2-webgpu, stage2-windows-webgpu, stage2-qnn, stage2-xnnpack, stage2-vitisai, stage2-coreml,
-  #           stage2-nnapi, stage2-js]
-  #   if: |
-  #     always() &&
-  #     needs.detect-changes.result == 'success' &&
-  #     (needs.stage2-linux-cpu.result == 'success' || needs.stage2-linux-cpu.result == 'skipped') &&
-  #     (needs.stage2-windows-release.result == 'success' || needs.stage2-windows-release.result == 'skipped') &&
-  #     (needs.stage2-windows-debug.result == 'success' || needs.stage2-windows-debug.result == 'skipped') &&
-  #     (needs.stage2-windows-ep-generic.result == 'success' || needs.stage2-windows-ep-generic.result == 'skipped') &&
-  #     (needs.stage2-windows-cpu.result == 'success' || needs.stage2-windows-cpu.result == 'skipped') &&
-  #     (needs.stage2-windows-asan.result == 'success' || needs.stage2-windows-asan.result == 'skipped') &&
-  #     (needs.stage2-cuda.result == 'success' || needs.stage2-cuda.result == 'skipped') &&
-  #     (needs.stage2-windows-cuda.result == 'success' || needs.stage2-windows-cuda.result == 'skipped') &&
-  #     (needs.stage2-windows-cuda-plugin.result == 'success' || needs.stage2-windows-cuda-plugin.result == 'skipped') &&
-  #     (needs.stage2-tensorrt.result == 'success' || needs.stage2-tensorrt.result == 'skipped') &&
-  #     (needs.stage2-windows-tensorrt.result == 'success' || needs.stage2-windows-tensorrt.result == 'skipped') &&
-  #     (needs.stage2-openvino.result == 'success' || needs.stage2-openvino.result == 'skipped') &&
-  #     (needs.stage2-windows-openvino.result == 'success' || needs.stage2-windows-openvino.result == 'skipped') &&
-  #     (needs.stage2-dml.result == 'success' || needs.stage2-dml.result == 'skipped') &&
-  #     (needs.stage2-webgpu.result == 'success' || needs.stage2-webgpu.result == 'skipped') &&
-  #     (needs.stage2-windows-webgpu.result == 'success' || needs.stage2-windows-webgpu.result == 'skipped') &&
-  #     (needs.stage2-qnn.result == 'success' || needs.stage2-qnn.result == 'skipped') &&
-  #     (needs.stage2-xnnpack.result == 'success' || needs.stage2-xnnpack.result == 'skipped') &&
+  # Stage 3: fan out to the remaining CI workflows that aren't tied to one provider area, so they
+  # don't waste a runner if Stage 2 already found a break. These still run for every PR (no
+  # path-filter gate of their own), just after Stage 2 instead of racing it independently.
+  stage3-linux-cuda-plugin:
+    name: "Stage 3: CUDA Plugin Linux CI"
+    needs: &stage3_needs [detect-changes, stage2-linux-cpu, stage2-windows-release, stage2-windows-debug,
+            stage2-windows-ep-generic, stage2-windows-cpu, stage2-windows-asan, stage2-cuda,
+            stage2-windows-cuda, stage2-windows-cuda-plugin, stage2-tensorrt,
+            stage2-windows-tensorrt, stage2-openvino, stage2-windows-openvino, stage2-dml,
+            stage2-webgpu, stage2-windows-webgpu, stage2-qnn, stage2-xnnpack, stage2-vitisai,
+            stage2-coreml, stage2-nnapi, stage2-js]
+    if: &stage3_gate |
+      always() &&
+      needs.detect-changes.result == 'success' &&
+      (needs.stage2-linux-cpu.result == 'success' || needs.stage2-linux-cpu.result == 'skipped') &&
+      (needs.stage2-windows-release.result == 'success' || needs.stage2-windows-release.result == 'skipped') &&
+      (needs.stage2-windows-debug.result == 'success' || needs.stage2-windows-debug.result == 'skipped') &&
+      (needs.stage2-windows-ep-generic.result == 'success' || needs.stage2-windows-ep-generic.result == 'skipped') &&
+      (needs.stage2-windows-cpu.result == 'success' || needs.stage2-windows-cpu.result == 'skipped') &&
+      (needs.stage2-windows-asan.result == 'success' || needs.stage2-windows-asan.result == 'skipped') &&
+      (needs.stage2-cuda.result == 'success' || needs.stage2-cuda.result == 'skipped') &&
+      (needs.stage2-windows-cuda.result == 'success' || needs.stage2-windows-cuda.result == 'skipped') &&
+      (needs.stage2-windows-cuda-plugin.result == 'success' || needs.stage2-windows-cuda-plugin.result == 'skipped') &&
+      (needs.stage2-tensorrt.result == 'success' || needs.stage2-tensorrt.result == 'skipped') &&
+      (needs.stage2-windows-tensorrt.result == 'success' || needs.stage2-windows-tensorrt.result == 'skipped') &&
+      (needs.stage2-openvino.result == 'success' || needs.stage2-openvino.result == 'skipped') &&
+      (needs.stage2-windows-openvino.result == 'success' || needs.stage2-windows-openvino.result == 'skipped') &&
+      (needs.stage2-dml.result == 'success' || needs.stage2-dml.result == 'skipped') &&
+      (needs.stage2-webgpu.result == 'success' || needs.stage2-webgpu.result == 'skipped') &&
+      (needs.stage2-windows-webgpu.result == 'success' || needs.stage2-windows-webgpu.result == 'skipped') &&
+      (needs.stage2-qnn.result == 'success' || needs.stage2-qnn.result == 'skipped') &&
+      (needs.stage2-xnnpack.result == 'success' || needs.stage2-xnnpack.result == 'skipped') &&
+      (needs.stage2-vitisai.result == 'success' || needs.stage2-vitisai.result == 'skipped') &&
+      (needs.stage2-coreml.result == 'success' || needs.stage2-coreml.result == 'skipped') &&
+      (needs.stage2-nnapi.result == 'success' || needs.stage2-nnapi.result == 'skipped') &&
+      (needs.stage2-js.result == 'success' || needs.stage2-js.result == 'skipped')
+    uses: ./.github/workflows/linux_cuda_plugin_ci.yml
+
+  stage3-linux-minimal-build:
+    name: "Stage 3: Linux CPU Minimal Build E2E"
+    needs: *stage3_needs
+    if: *stage3_gate
+    uses: ./.github/workflows/linux_minimal_build.yml
+
+  stage3-ios:
+    name: "Stage 3: iOS CI on Mac"
+    needs: *stage3_needs
+    if: *stage3_gate
+    uses: ./.github/workflows/ios.yml
+
+  stage3-react-native:
+    name: "Stage 3: React Native CI Pipeline"
+    needs: *stage3_needs
+    if: *stage3_gate
+    uses: ./.github/workflows/react_native.yml
+
   #     (needs.stage2-vitisai.result == 'success' || needs.stage2-vitisai.result == 'skipped') &&
   #     (needs.stage2-coreml.result == 'success' || needs.stage2-coreml.result == 'skipped') &&
   #     (needs.stage2-nnapi.result == 'success' || needs.stage2-nnapi.result == 'skipped') &&
