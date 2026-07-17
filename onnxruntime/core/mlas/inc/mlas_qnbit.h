@@ -65,6 +65,11 @@ struct MLAS_QNBIT_GEMM_DATA_PARAMS {
 
     const T* Bias = nullptr;  ///< optional address of Bias, vector size N
     T* C = nullptr;           ///< address of result matrix
+    /// Optional fp16 output for the CompInt8 path. When set (and the platform provides
+    /// a fp16 C epilogue), each worker converts its output tile to fp16 as it is
+    /// produced and writes it here, so `C` above can point at a small scratch instead
+    /// of a full fp32 copy of the result. Uses the same leading dimension `ldc`.
+    MLAS_FP16* CFp16 = nullptr;
     size_t ldc = 0;           ///< leading dimension of C
 
     ///< optional post processing to apply to result matrix
@@ -143,6 +148,17 @@ MlasIsQNBitGemmAvailable(
  */
 bool MLASCALL
 MlasQNBitGemmFp16DirectQuantASupported();
+
+/**
+ * @brief Whether the CompInt8 path can write its result directly as fp16 for the given
+ *        weight bit width. When true, a fp16 MatMulNBits can set
+ *        MLAS_QNBIT_GEMM_DATA_PARAMS::CFp16 and point `C` at a small per-worker scratch
+ *        instead of a full fp32 copy of the result; each worker converts its output tile
+ *        to fp16 in place. The fp16 result is bit-identical to computing in fp32 and
+ *        converting with MlasConvertFloatToHalfBuffer.
+ */
+bool MLASCALL
+MlasQNBitGemmFp16DirectCOutputSupported(size_t BlkBitWidth);
 
 /**
  * @brief Gets the size in bytes of the intermediate workspace buffer required by the float32/quantized n-bit int GEMM

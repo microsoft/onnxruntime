@@ -1078,8 +1078,15 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
   }
 
   size_t c_size = static_cast<size_t>(y->Shape().Size());
-  // No zero-initialization needed: the GEMM writes every element of C.
-  auto c_v = IAllocator::MakeUniquePtr<float>(allocator, c_size, true);
+  // When the int8 path can emit fp16 directly, skip the full fp32 copy of the result:
+  // each worker converts its own output tile to fp16 in place. Otherwise compute into an
+  // fp32 buffer and convert once at the end. No zero-init: the GEMM writes every element.
+  const bool output_fp16_direct =
+      compute_type_ == SQNBIT_CompInt8 && MlasQNBitGemmFp16DirectCOutputSupported(nbits_);
+  IAllocatorUniquePtr<float> c_v;
+  if (!output_fp16_direct) {
+    c_v = IAllocator::MakeUniquePtr<float>(allocator, c_size, true);
+  }
 
   InlinedVector<MLAS_QNBIT_GEMM_DATA_PARAMS<float>> data(batch_count);
   for (size_t i = 0; i < batch_count; ++i) {
@@ -1096,12 +1103,18 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
     data[i].QuantBScale = scales_ptr;
     data[i].QuantBZeroPoint = zero_points_data;
     data[i].Bias = bias ? bias_ptr : nullptr;
-    data[i].C = c_v.get() + helper.OutputOffsets()[i];
+    if (output_fp16_direct) {
+      data[i].CFp16 = y_data + helper.OutputOffsets()[i];
+    } else {
+      data[i].C = c_v.get() + helper.OutputOffsets()[i];
+    }
     data[i].ldc = N;
   }
   MlasQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type_, data.data(), workspace.get(),
                      thread_pool, &mlas_backend_kernel_selector_config_);
-  MlasConvertFloatToHalfBufferInParallel(c_v.get(), y_data, c_size, thread_pool);
+  if (!output_fp16_direct) {
+    MlasConvertFloatToHalfBufferInParallel(c_v.get(), y_data, c_size, thread_pool);
+  }
   return Status::OK();
 }
 #endif  // end of !MLAS_F16VEC_INTRINSICS_SUPPORTED || !MLAS_TARGET_AMD64

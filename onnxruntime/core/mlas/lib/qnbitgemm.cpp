@@ -149,6 +149,16 @@ MlasQNBitGemmFp16DirectQuantASupported()
     return Dispatch != nullptr && Dispatch->QuantizeARowComputeBlkSum_CompInt8_Fp16 != nullptr;
 }
 
+bool MLASCALL
+MlasQNBitGemmFp16DirectCOutputSupported(size_t BlkBitWidth)
+{
+    // Wired for the 4-bit CompInt8 compute op on x64 (where the fp16 A quantizer is also
+    // present). The C epilogue itself is portable, so this widens as other bit widths
+    // gain the branch.
+    const auto* Dispatch = GetMlasPlatform().QNBitGemmDispatch;
+    return BlkBitWidth == 4 && Dispatch != nullptr && Dispatch->QuantizeARowComputeBlkSum_CompInt8_Fp16 != nullptr;
+}
+
 namespace
 {
 
@@ -806,7 +816,15 @@ SQ4BitGemm_CompInt8(
             : static_cast<const std::byte*>(DataParams->QuantBZeroPoint) + RangeStartN * k_blks_zp_bytes;
     const float* ABlockSum = per_gemm_quant_a_workspace->BlockSum + RangeStartM * k_blks;
     const float* QuantBBlkSum = DataParams->QuantBBlkSum + RangeStartN * k_blks;
-    float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
+
+    // fp16 output: let the kernel write each N-strip into a cache-resident fp32 scratch,
+    // then convert that tile straight to fp16, so the full fp32 result never touches DRAM.
+    // The scratch is thread-local and its pages stay unfaulted unless this path is used.
+    // In this mode DataParams->C is not a full result buffer, so leave the fp32 C base null.
+    const bool to_fp16 = DataParams->CFp16 != nullptr;
+    MLAS_FP16* CFp16 = to_fp16 ? DataParams->CFp16 + RangeStartM * ldc + RangeStartN : nullptr;
+    static thread_local float c_scratch[128 * 128];  // StrideM (<=128) rows x CountN (<=128) cols
+    float* C = to_fp16 ? nullptr : DataParams->C + RangeStartM * ldc + RangeStartN;
 
     const float* Bias = (DataParams->Bias == nullptr) ? nullptr : DataParams->Bias + RangeStartN;
 #else
@@ -842,7 +860,7 @@ SQ4BitGemm_CompInt8(
         const float* b_col_scale = QuantBScale + n * k_blks;
         const std::byte* b_col_zp =
             (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
-        float* c_blk = C + n;
+        float* c_blk = (C == nullptr) ? nullptr : C + n;
         const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
         if (GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_CompInt8 != nullptr) {
@@ -870,6 +888,9 @@ SQ4BitGemm_CompInt8(
         else if (GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_BlkSum_CompInt8 != nullptr)
         {
             const float* b_blk_sum = QuantBBlkSum + n * k_blks;
+            assert(!to_fp16 || RangeCountM * CountN <= sizeof(c_scratch) / sizeof(c_scratch[0]));
+            float* kernel_c = to_fp16 ? c_scratch : c_blk;
+            const size_t kernel_ldc = to_fp16 ? CountN : ldc;
             GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_BlkSum_CompInt8(
                 BlkLen,
                 QuantA,
@@ -877,18 +898,22 @@ SQ4BitGemm_CompInt8(
                 b_col,
                 b_col_scale,
                 b_col_zp,
-                c_blk,
+                kernel_c,
                 RangeCountM,
                 CountN,
                 K,
                 k_blks,
                 bias,
-                ldc,
+                kernel_ldc,
                 ABlockSum,
                 b_blk_sum
             );
 
-            if (DataParams->PostProcessor != nullptr) {
+            if (to_fp16) {
+                for (size_t m = 0; m < RangeCountM; ++m) {
+                    MlasConvertFloatToHalfBuffer(c_scratch + m * CountN, CFp16 + n + m * ldc, CountN);
+                }
+            } else if (DataParams->PostProcessor != nullptr) {
                 DataParams->PostProcessor->Process(
                     DataParams->C, RangeStartM, RangeStartN + n,
                     RangeCountM, CountN, ldc

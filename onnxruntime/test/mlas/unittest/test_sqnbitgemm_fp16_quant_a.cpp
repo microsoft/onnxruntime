@@ -46,6 +46,8 @@ class MlasQNBitGemmFp16QuantATest : public MlasTestBase {
   MatrixGuardBuffer<float> BufferBias;
   MatrixGuardBuffer<float> BufferCRef;
   MatrixGuardBuffer<float> BufferCTest;
+  MatrixGuardBuffer<MLFloat16> BufferCRefFp16;
+  MatrixGuardBuffer<MLFloat16> BufferCTestFp16;
 
   void RunOne(size_t M, size_t N, size_t K, bool Symmetric, bool WithBias, bool WithThreadpool) {
     MLAS_THREADPOOL* Threadpool = WithThreadpool ? GetMlasThreadPool() : nullptr;
@@ -114,13 +116,14 @@ class MlasQNBitGemmFp16QuantATest : public MlasTestBase {
     float* CRef = BufferCRef.GetBuffer(M * N, true);
     float* CTest = BufferCTest.GetBuffer(M * N, true);
 
-    auto run = [&](const float* Afloat, const MLFloat16* Afp16, float* C, void* Workspace) {
+    auto run = [&](const float* Afloat, const MLFloat16* Afp16, float* C, MLFloat16* Cfp16, void* Workspace) {
       MLAS_QNBIT_GEMM_DATA_PARAMS<float> params;
       params.A = Afloat;
       params.AFp16 = Afp16;
       params.lda = K;
       params.Bias = Bias;
       params.C = C;
+      params.CFp16 = Cfp16;
       params.ldc = N;
 #ifdef MLAS_TARGET_AMD64_IX86
       params.QuantBDataWorkspace = PackedQuantBDataWorkspace;
@@ -131,13 +134,27 @@ class MlasQNBitGemmFp16QuantATest : public MlasTestBase {
       MlasQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, SQNBIT_CompInt8, &params, Workspace, Threadpool, nullptr);
     };
 
-    run(AFloat, nullptr, CRef, WorkspaceRef);   // reference: A converted to fp32 first
-    run(nullptr, AFp16, CTest, WorkspaceTest);  // native: A quantized straight from fp16
+    run(AFloat, nullptr, CRef, nullptr, WorkspaceRef);   // reference: A converted to fp32 first
+    run(nullptr, AFp16, CTest, nullptr, WorkspaceTest);  // native A quantize, fp32 output
 
     for (size_t i = 0; i < M * N; ++i) {
       ASSERT_EQ(CTest[i], CRef[i])
-          << "mismatch at " << i << " (M=" << M << ", N=" << N << ", K=" << K << ", BlkLen=" << BlkLen
+          << "A-path mismatch at " << i << " (M=" << M << ", N=" << N << ", K=" << K << ", BlkLen=" << BlkLen
           << ", symmetric=" << Symmetric << ", bias=" << WithBias << ", threadpool=" << WithThreadpool << ")";
+    }
+
+    // fp16 output path: the direct fp16 C must equal the fp32 reference converted to fp16.
+    if (MlasQNBitGemmFp16DirectCOutputSupported(BlkBitWidth)) {
+      MLFloat16* CRefFp16 = BufferCRefFp16.GetBuffer(M * N, true);
+      MLFloat16* CTestFp16 = BufferCTestFp16.GetBuffer(M * N, true);
+      MlasConvertFloatToHalfBuffer(CRef, CRefFp16, M * N);
+      run(nullptr, AFp16, nullptr, CTestFp16, WorkspaceTest);  // native A quantize, fp16 output
+
+      for (size_t i = 0; i < M * N; ++i) {
+        ASSERT_EQ(CTestFp16[i].val, CRefFp16[i].val)
+            << "C-path mismatch at " << i << " (M=" << M << ", N=" << N << ", K=" << K << ", BlkLen=" << BlkLen
+            << ", symmetric=" << Symmetric << ", bias=" << WithBias << ", threadpool=" << WithThreadpool << ")";
+      }
     }
   }
 
