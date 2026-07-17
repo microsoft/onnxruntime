@@ -54,6 +54,10 @@ struct NotFound : std::runtime_error {
   explicit NotFound(const std::string& what) : std::runtime_error(what) {}
 };
 
+struct DeviceReset : std::runtime_error {
+  explicit DeviceReset(const std::string& what) : std::runtime_error(what) {}
+};
+
 void RegisterExceptions(pybind11::module& m);
 
 void OrtPybindThrowIfError(onnxruntime::common::Status status);
