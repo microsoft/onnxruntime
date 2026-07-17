@@ -8,6 +8,8 @@
 #include <iterator>
 #include <map>
 #include <unordered_set>
+#include <optional>
+#include <shared_mutex>
 
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
@@ -1389,8 +1391,19 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
       // It is very necessary to provide a new mechanism for memory reclamation to avoid inference failure caused by
       // device memory exhaustion
       uint32_t modelID;
-      if (modelIDs_.find(filename) != modelIDs_.end()) {
-        modelID = modelIDs_[filename];
+
+      static std::shared_mutex g_map_mutex;
+
+      auto get_model_if_exists = [&]() -> std::optional<uint32_t> {
+        std::shared_lock<std::shared_mutex> map_guard(g_map_mutex);
+        if (auto it = modelIDs_.find(filename); it != modelIDs_.end()) {
+          return it->second;
+        }
+        return std::nullopt;
+      };
+
+      if (auto modelID_opt = get_model_if_exists(); modelID_opt.has_value()) {
+        modelID = modelID_opt.value();
       } else {
         cann::InterprocessFileLock ipc_lock(filename);
         std::unique_lock<cann::InterprocessFileLock> lock(ipc_lock);
@@ -1424,6 +1437,7 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
           CANN_RETURN_IF_ERROR(aclmdlLoadFromMem(model.data.get(), model.length, &modelID));
         }
 
+        std::unique_lock<std::shared_mutex> map_guard(g_map_mutex);
         modelIDs_.emplace(filename, modelID);
       }
 

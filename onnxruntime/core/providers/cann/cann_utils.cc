@@ -282,7 +282,12 @@ InterprocessFileLock::InterprocessFileLock(const std::string& name, bool temp)
     throw std::system_error(GetLastError(), std::system_category());
   }
 #else
+
+#ifdef O_CLOEXEC
+  fd_ = open(filepath_.c_str(), O_CREAT | O_RDWR | O_CLOEXEC, 0666);
+#else
   fd_ = open(filepath_.c_str(), O_CREAT | O_RDWR, 0666);
+#endif
 
   if (fd_ == -1) {
     throw std::system_error(errno, std::generic_category());
@@ -353,6 +358,10 @@ bool InterprocessFileLock::try_lock() {
   if (result) {
     is_locked_ = true;
     return true;
+  }
+
+  if (auto err = GetLastError(); err != ERROR_LOCK_VIOLATION) {
+    throw std::system_error(err, std::system_category());
   }
 
   return false;
