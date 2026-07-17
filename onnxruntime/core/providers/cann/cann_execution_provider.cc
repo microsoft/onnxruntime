@@ -1404,11 +1404,17 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
             lock.unlock();
           }
 
+          // Models can only be parsed and built serially in the same process
+          static std::mutex g_mutex;
+          std::unique_lock<std::mutex> build_guard(g_mutex);
+
           ge::Graph graph{cann_state->node_name.c_str()};
           ORT_RETURN_IF_ERROR(ParserONNXModel(string_model, graph));
 
           ge::ModelBufferData model;
           ORT_RETURN_IF_ERROR(BuildONNXModel(graph, input_shape, soc_name_, filename, info_, model));
+
+          build_guard.unlock();
 
           // May have already been unlocked if dump_om_model is false
           if (lock.owns_lock()) {

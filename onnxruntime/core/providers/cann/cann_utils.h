@@ -144,7 +144,7 @@ void SetRepeatInitFlag(bool val);
 
 class InterprocessFileLock {
  public:
-  explicit InterprocessFileLock(const std::string& name, bool temp = true);
+  explicit InterprocessFileLock(const std::string& name, bool temp = false);
 
   ~InterprocessFileLock();
 

@@ -2,11 +2,9 @@
 // Copyright (c) Huawei. All rights reserved.
 // Licensed under the MIT License.
 
-#include <unistd.h>
 #include <algorithm>
 #include <string>
 #include <filesystem>
-#include <stdexcept>
 #include <system_error>
 
 #ifndef _WIN32
