@@ -1009,6 +1009,7 @@ endif()
               ${MLAS_SRC_DIR}/riscv64/layernorm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/qgemm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/activation_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/qnbitgemm_kernel_rvv.cpp
             )
             list(REMOVE_ITEM mlas_platform_srcs
               "${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp")
@@ -1022,6 +1023,7 @@ endif()
               ${MLAS_SRC_DIR}/riscv64/layernorm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/qgemm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/activation_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/qnbitgemm_kernel_rvv.cpp
               PROPERTIES COMPILE_FLAGS "-march=rv64gcv -mabi=lp64d")
             list(APPEND mlas_private_compile_definitions MLAS_USE_RVV=1)
 
@@ -1029,10 +1031,12 @@ endif()
               list(APPEND mlas_platform_srcs
                 ${MLAS_SRC_DIR}/riscv64/halfgemm_kernel_rvv.cpp
                 ${MLAS_SRC_DIR}/riscv64/cast_kernel_rvv.cpp
+                ${MLAS_SRC_DIR}/riscv64/hqnbitgemm_kernel_rvv.cpp
               )
               set_source_files_properties(
                 ${MLAS_SRC_DIR}/riscv64/halfgemm_kernel_rvv.cpp
                 ${MLAS_SRC_DIR}/riscv64/cast_kernel_rvv.cpp
+                ${MLAS_SRC_DIR}/riscv64/hqnbitgemm_kernel_rvv.cpp
                 PROPERTIES COMPILE_FLAGS "-march=rv64gcv_zvfh -mabi=lp64d")
               list(APPEND mlas_private_compile_definitions MLAS_USE_RVV_ZVFH=1)
             endif()
