@@ -42,6 +42,7 @@ jobs:
         --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON
         --cmake_extra_defines onnxruntime_QUICK_BUILD=ON
         --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
+        --cmake_extra_defines onnxruntime_BUILD_CUDA_QUANT_PREPROCESS=ON
       python_path_prefix: 'PATH=/opt/python/cp312-cp312/bin:$PATH'
       run_tests: false
       upload_build_output: true
@@ -145,4 +146,3 @@ jobs:
               cd /onnxruntime_src/onnxruntime/test/python/transformers
               python test_cuda_plugin_ep.py
             "
-

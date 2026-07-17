@@ -869,6 +869,27 @@ endif()
 
 set(onnxruntime_LINK_DIRS)
 if (onnxruntime_USE_CUDA)
+  # Work around a CMake limitation (present through at least CMake 3.31 and current
+  # upstream master) when building natively on a Windows-on-ARM64 host. FindCUDAToolkit
+  # only sets the Windows import-library search suffix when the host is x64:
+  #
+  #   if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+  #     if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "AMD64")
+  #       set(_CUDAToolkit_win_search_dirs lib/x64)
+  #       set(_CUDAToolkit_win_stub_search_dirs lib/x64/stubs)
+  #
+  # On an ARM64 host the suffix is left empty, so find_library() for cudart only looks in
+  # "lib64" and never finds <cuda_home>/lib/.../cudart.lib. find_package(CUDAToolkit) then
+  # fails with: Could NOT find CUDAToolkit (missing: CUDA_CUDART). Pre-seed the (internal)
+  # search-suffix variables with win-arm64 import-library locations (lib/arm64 and
+  # lib/arm64/stubs) so the toolkit's cudart.lib can be found. FindCUDAToolkit unsets
+  # these at the end, so this only affects the search below and is a no-op once CMake
+  # gains native WoA support.
+  if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows" AND CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "ARM64")
+    set(_CUDAToolkit_win_search_dirs lib/arm64)
+    set(_CUDAToolkit_win_stub_search_dirs lib/arm64/stubs)
+  endif()
+
   find_package(CUDAToolkit REQUIRED)
 
   # cuDNN is not needed for minimal CUDA builds (e.g., TensorRT-only builds)
