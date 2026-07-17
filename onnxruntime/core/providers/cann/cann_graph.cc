@@ -105,44 +105,46 @@ Status ParserONNXModel(std::string string_model, ge::Graph& graph) {
 
 Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc_name, std::string file_name,
                       CANNExecutionProviderInfo& info, ge::ModelBufferData& model) {
+  std::exception_ptr call_once_ex_ptr = nullptr;
+
   std::call_once(flag, [&soc_name, &info]() {
-    std::exception_ptr g_ge_thread_ex_ptr = nullptr;
+    try {
+      // Both aclgrphBuildInitialize and aclgrphBuildFinalize
+      // need to be called from the same thread
+      g_ge_thread = std::thread([&]() {
+        try {
+          std::map<ge::AscendString, ge::AscendString> options;
+          options.emplace(ge::ir_option::SOC_VERSION, soc_name);
 
-    // Both aclgrphBuildInitialize and aclgrphBuildFinalize
-    // need to be called from the same thread
-    g_ge_thread = std::thread([&]() {
-      try {
-        std::map<ge::AscendString, ge::AscendString> options;
-        options.emplace(ge::ir_option::SOC_VERSION, soc_name);
+          if (!info.precision_mode.empty())
+            options.emplace(ge::ir_option::PRECISION_MODE, info.precision_mode.c_str());
+          if (!info.op_select_impl_mode.empty())
+            options.emplace(ge::ir_option::OP_SELECT_IMPL_MODE, info.op_select_impl_mode.c_str());
+          if (!info.optypelist_for_implmode.empty())
+            options.emplace(ge::ir_option::OPTYPELIST_FOR_IMPLMODE, info.optypelist_for_implmode.c_str());
 
-        if (!info.precision_mode.empty())
-          options.emplace(ge::ir_option::PRECISION_MODE, info.precision_mode.c_str());
-        if (!info.op_select_impl_mode.empty())
-          options.emplace(ge::ir_option::OP_SELECT_IMPL_MODE, info.op_select_impl_mode.c_str());
-        if (!info.optypelist_for_implmode.empty())
-          options.emplace(ge::ir_option::OPTYPELIST_FOR_IMPLMODE, info.optypelist_for_implmode.c_str());
+          CANN_CALL_THROW(ge::aclgrphBuildInitialize(options));
+          ge_promise_init.set_value();
 
-        CANN_CALL_THROW(ge::aclgrphBuildInitialize(options));
-        ge_promise_init.set_value();
-      } catch (...) {
-        g_ge_thread_ex_ptr = std::current_exception();
-        ge_promise_init.set_value();
+          ge_future_final.wait();
+          ge::aclgrphBuildFinalize();
+        } catch (...) {
+          call_once_ex_ptr = std::current_exception();
+          ge_promise_init.set_value();
+        }
+      });
+
+      if (ge_future_init.valid()) {
+        ge_future_init.wait();
       }
-
-      try {
-        ge_future_final.wait();
-        ge::aclgrphBuildFinalize();
-      } catch (...) {
-        /* ignore, g_ge_thread_ex_ptr is no longer alive */
-      }
-    });
-
-    ge_future_init.wait();
-
-    if (g_ge_thread_ex_ptr) {
-      std::rethrow_exception(g_ge_thread_ex_ptr);
+    } catch (...) {
+      call_once_ex_ptr = std::current_exception();
     }
   });
+
+  if (call_once_ex_ptr) {
+    std::rethrow_exception(call_once_ex_ptr);
+  }
 
   std::map<ge::AscendString, ge::AscendString> options;
   options.emplace(ge::ir_option::INPUT_SHAPE, input_shape.c_str());
