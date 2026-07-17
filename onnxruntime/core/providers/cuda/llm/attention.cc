@@ -581,7 +581,7 @@ Status Attention<T>::RunCudnnSdpaAttention(
     Tensor* Y, Tensor* present_key, Tensor* present_value,
     const attention_helper::AttentionParameters& parameters) const {
   auto& device_prop = GetDeviceProp();
-  auto* ort_stream = context->GetComputeStream();
+  auto ort_stream = GetOrtStream(context);
   auto cuda_stream = Stream(context);
   const bool is_bf16 = std::is_same<T, BFloat16>::value;
   const bool is_bsnh = parameters.transpose_output;  // 3D inputs → BSNH
@@ -666,7 +666,7 @@ Status Attention<T>::RunCudnnSdpaAttention(
       /*sliding_window=*/0,
       qkv_format,
       cudnn_handle,
-      ort_stream,
+      ort_stream.get(),
       allocator);
 
   // --- Fully-masked-batch guard (REQUIRED, §4.3 step 7). nonpad_kv_seqlen[b] may be 0; every
