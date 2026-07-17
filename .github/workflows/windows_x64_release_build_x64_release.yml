@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, 'rel-*']
   workflow_dispatch:
-  workflow_call: # Allows this workflow to be invoked as the Stage 2 "framework" gate by ci_orchestrator.yml
+  workflow_call: # Allows this workflow to be invoked as a Stage 3 "everything else" job by ci_orchestrator.yml
   # NOTE: standalone `pull_request:` trigger removed - ci_orchestrator.yml is now the sole PR entry point.
 
 concurrency:
