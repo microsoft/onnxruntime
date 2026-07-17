@@ -35,6 +35,8 @@ Status LaunchXQAKernelImpl(
     void* workspace,
     size_t workspace_size);
 
+size_t GetXQAKernelSmemBytes(int group_size);
+
 }  // namespace H128
 
 namespace H64 {
@@ -61,6 +63,8 @@ Status LaunchXQAKernelImpl(
     void* workspace,
     size_t workspace_size);
 
+size_t GetXQAKernelSmemBytes(int group_size);
+
 }  // namespace H64
 
 namespace H256 {
@@ -86,6 +90,8 @@ Status LaunchXQAKernelImpl(
     const XqaQuantType kv_quant_type,
     void* workspace,
     size_t workspace_size);
+
+size_t GetXQAKernelSmemBytes(int group_size);
 
 }  // namespace H256
 
@@ -176,6 +182,28 @@ size_t GetXQAScratchSize(
 
   size_t semaphore_size = nbSeq * sizeof(uint32_t);
   return roundUp<size_t>(semaphore_size, 128) + scratch_size;
+}
+
+size_t GetXQARequiredSharedMemoryBytes(
+    const cudaDeviceProp& device_prop,
+    int head_size,
+    int num_heads,
+    int kv_num_heads) {
+  if (device_prop.major < 8 || kv_num_heads <= 0) {
+    return 0;
+  }
+  const int group_size = num_heads / kv_num_heads;
+  // The dtype (fp16 vs bf16) does not change the shared-memory footprint (both are 2-byte
+  // elements), so the fp16 kernels are queried for both. The non-quantized kernel is an upper
+  // bound for the int8/fp8 variants, so a single query covers all XQA paths.
+  if (head_size == 256) {
+    return H256::GetXQAKernelSmemBytes(group_size);
+  } else if (head_size == 128) {
+    return H128::GetXQAKernelSmemBytes(group_size);
+  } else if (head_size == 64) {
+    return H64::GetXQAKernelSmemBytes(group_size);
+  }
+  return 0;
 }
 
 // Instantiate template for half
