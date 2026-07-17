@@ -78,8 +78,11 @@ jobs:
       run: |
         set -e -x
         BINARY_SIZE_THRESHOLD_ARGS=""
-        echo "Binary size threshold in bytes: 1440768"
-        BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes 1440768"
+        # Raised from 1440768 to accommodate the C++20 atomic wait/notify
+        # runtime and the stop-token-style cancellation framework that replace
+        # the executor busy-spin and the plain terminate bool.
+        echo "Binary size threshold in bytes: 1474560"
+        BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes 1474560"
 
         # Ensure ANDROID_NDK_HOME is available and get its real path
         if [ -z "$ANDROID_NDK_HOME" ]; then
