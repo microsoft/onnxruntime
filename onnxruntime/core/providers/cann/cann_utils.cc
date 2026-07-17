@@ -224,7 +224,8 @@ Status aclrtblasGemmEx(aclTransType transA,
 }
 
 bool FileExist(const std::string& file_name) {
-  return (access(file_name.c_str(), F_OK) != -1);
+  std::error_code ec;
+  return std::filesystem::exists(file_name, ec);
 }
 
 void GenerateHashValue(const std::string string, HashValue& hash_value) {
