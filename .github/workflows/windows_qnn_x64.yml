@@ -43,6 +43,13 @@ jobs:
           python-version: '3.12'
           architecture: x64
 
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          architecture: x64
+
       - name: Locate vcvarsall and Setup Env
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
