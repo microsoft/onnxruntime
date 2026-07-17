@@ -1,16 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <atomic>
-#include "core/framework/cancellation.h"
+#include <sstream>
 #include <thread>
 
+#include "core/framework/cancellation.h"
 #include "core/framework/data_types.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/op_kernel_context_internal.h"
+#include "core/session/inference_session.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/unittest_util/framework_test_utils.h"
-#include "core/session/inference_session.h"
 
 #include "gtest/gtest.h"
 
@@ -199,6 +201,8 @@ TEST(ParallelExecutor, TestStatusPropagation) {
 }
 
 TEST(ParallelExecutor, ConcurrentRunCancellationFanoutAndReset) {
+  constexpr const char* kCancellationMessage = "Exiting due to terminate flag being set to true.";
+
   auto registry = std::make_shared<CustomRegistry>();
   std::vector<OpSchema> schemas{CancellationTestOp::OpSchema()};
   Status status;
@@ -214,35 +218,80 @@ TEST(ParallelExecutor, ConcurrentRunCancellationFanoutAndReset) {
   auto kernel_def = CancellationTestOp::KernelDef();
   ASSERT_TRUE((status = registry->RegisterCustomKernel(kernel_def, kernel_create_fn)).IsOK()) << status;
 
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain(CancellationTestOp::OpDomain);
+  opset->set_version(10);
+
+  auto* graph = model_proto.mutable_graph();
+  graph->set_name("cancellation_test");
+  auto* input = graph->add_input();
+  input->set_name("wait_for_cancellation");
+  auto* input_tensor_type = input->mutable_type()->mutable_tensor_type();
+  input_tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  input_tensor_type->mutable_shape()->add_dim()->set_dim_value(1);
+  auto* output = graph->add_output();
+  output->set_name("output");
+  auto* output_tensor_type = output->mutable_type()->mutable_tensor_type();
+  output_tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  output_tensor_type->mutable_shape()->add_dim()->set_dim_value(1);
+  auto* node = graph->add_node();
+  node->set_name("node1");
+  node->set_op_type(CancellationTestOp::OpName);
+  node->set_domain(CancellationTestOp::OpDomain);
+  node->add_input("wait_for_cancellation");
+  node->add_output("output");
+
+  std::string model_data;
+  ASSERT_TRUE(model_proto.SerializeToString(&model_data));
+  std::istringstream model_stream{model_data};
+
+  // Use one CPU-only session directly so this test still executes when OpTester
+  // restricts provider enumeration, such as in TensorRT builds.
+  SessionOptions session_options;
+  InferenceSession session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterCustomRegistry(registry));
+  ASSERT_STATUS_OK(session.Load(model_stream));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  OrtValue wait_input;
+  CreateMLValue<int64_t>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                         {1}, {1}, &wait_input);
+  NameMLValMap wait_feeds{{"wait_for_cancellation", wait_input}};
+  const std::vector<std::string> output_names{"output"};
+
   RunOptions run_options;
   CancellationTestOp::ResetStartedCount();
   std::atomic<int> completed_count{0};
-  auto run_until_cancelled = [&]() {
-    OpTester tester{CancellationTestOp::OpName, 10, CancellationTestOp::OpDomain};
-    tester.AddCustomOpRegistry(registry);
-    tester.AddInput<int64_t>("wait_for_cancellation", {1}, {1});
-    tester.AddOutput<int64_t>("output", {1}, {1});
-    tester.Run(OpTester::ExpectResult::kExpectFailure,
-               "Exiting due to terminate flag being set to true.",
-               {kTensorrtExecutionProvider}, &run_options);
+  std::array<Status, 2> run_statuses;
+  auto run_until_cancelled = [&](size_t run_index) {
+    std::vector<OrtValue> fetches;
+    run_statuses[run_index] = session.Run(run_options, wait_feeds, output_names, &fetches);
     completed_count.fetch_add(1, std::memory_order_release);
   };
 
-  std::thread first_run(run_until_cancelled);
-  std::thread second_run(run_until_cancelled);
+  std::thread first_run(run_until_cancelled, 0);
+  std::thread second_run(run_until_cancelled, 1);
   const bool both_runs_started = CancellationTestOp::WaitForStartedCount(2, completed_count);
   run_options.RequestTerminate();
   first_run.join();
   second_run.join();
   ASSERT_TRUE(both_runs_started);
+  for (const auto& run_status : run_statuses) {
+    EXPECT_FALSE(run_status.IsOK());
+    EXPECT_NE(run_status.ErrorMessage().find(kCancellationMessage), std::string::npos);
+  }
 
   run_options.ResetTerminate();
-  OpTester reuse_tester{CancellationTestOp::OpName, 10, CancellationTestOp::OpDomain};
-  reuse_tester.AddCustomOpRegistry(registry);
-  reuse_tester.AddInput<int64_t>("wait_for_cancellation", {1}, {0});
-  reuse_tester.AddOutput<int64_t>("output", {1}, {0});
-  reuse_tester.Run(OpTester::ExpectResult::kExpectSuccess, {},
-                   {kTensorrtExecutionProvider}, &run_options);
+  OrtValue no_wait_input;
+  CreateMLValue<int64_t>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                         {1}, {0}, &no_wait_input);
+  NameMLValMap no_wait_feeds{{"wait_for_cancellation", no_wait_input}};
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(session.Run(run_options, no_wait_feeds, output_names, &fetches));
+  ASSERT_EQ(fetches.size(), 1U);
+  EXPECT_EQ(fetches[0].Get<Tensor>().Data<int64_t>()[0], 0);
 }
 
 class ParallelExecutorThreadPoolTest : public testing::TestWithParam<int> {
