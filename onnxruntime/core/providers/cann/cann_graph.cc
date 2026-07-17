@@ -105,8 +105,7 @@ Status ParserONNXModel(std::string string_model, ge::Graph& graph) {
 
 Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc_name, std::string file_name,
                       CANNExecutionProviderInfo& info, ge::ModelBufferData& model) {
-  std::exception_ptr call_once_ex_ptr = nullptr;
-
+static std::exception_ptr call_once_ex_ptr = nullptr;
   std::call_once(flag, [&soc_name, &info]() {
     try {
       // Both aclgrphBuildInitialize and aclgrphBuildFinalize
