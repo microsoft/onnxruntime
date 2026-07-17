@@ -4,7 +4,7 @@ packaging
 protobuf==6.33.5
 numpy==2.2.6; python_version < "3.11"
 numpy==2.4.2; python_version >= "3.11"
-torch==2.10.0
+torch==2.13.0
 torchvision==0.25.0
 transformers==4.52.1
 parameterized>=0.8.1
