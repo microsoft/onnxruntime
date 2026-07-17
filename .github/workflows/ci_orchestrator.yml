@@ -7,10 +7,10 @@
 #                                -> linux_ci.yml (Linux CPU build+test): cheapest/fastest full leg,
 #                                highest-signal predictor of framework-level breakage.
 #                              - "<provider>" gate (onnxruntime/core/providers/<provider>/**) -> that
-#                                provider's own CI workflow(s), e.g. cuda -> linux_cuda_ci.yml.
-#                                Piloting with CUDA only for now; other providers (tensorrt, dml,
-#                                openvino, webgpu, qnn, coreml, nnapi, js/webnn, ...) will be added
-#                                the same way as their workflows are converted to workflow_call.
+#                                provider's own CI workflow(s). Wired so far: cuda, tensorrt,
+#                                openvino, dml, webgpu, qnn, xnnpack, vitisai, coreml, nnapi,
+#                                js/webnn. Not yet wired (no obvious reusable CI workflow or low PR
+#                                volume): acl, azure, cann, dnnl, migraphx, rknpu, snpe, vsinpu, winml.
 #                            Multiple gates can run in parallel when a PR touches more than one area
 #                            (e.g. framework + cuda).
 # Stage 3 (everything else): Placeholder for now - will fan out to the remaining CI workflows as
@@ -49,6 +49,16 @@ jobs:
     outputs:
       framework: ${{ steps.filter.outputs.framework }}
       cuda: ${{ steps.filter.outputs.cuda }}
+      tensorrt: ${{ steps.filter.outputs.tensorrt }}
+      openvino: ${{ steps.filter.outputs.openvino }}
+      dml: ${{ steps.filter.outputs.dml }}
+      webgpu: ${{ steps.filter.outputs.webgpu }}
+      qnn: ${{ steps.filter.outputs.qnn }}
+      xnnpack: ${{ steps.filter.outputs.xnnpack }}
+      vitisai: ${{ steps.filter.outputs.vitisai }}
+      coreml: ${{ steps.filter.outputs.coreml }}
+      nnapi: ${{ steps.filter.outputs.nnapi }}
+      js: ${{ steps.filter.outputs.js }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v3
@@ -61,12 +71,37 @@ jobs:
               - '!onnxruntime/core/platform/**'
               - 'include/onnxruntime/core/**'
               - 'cmake/**'
+              - '.github/workflows/**' # CI infra changes are treated as framework-level
             cuda:
               - 'onnxruntime/core/providers/cuda/**'
               - 'onnxruntime/contrib_ops/cuda/**'
-            # Additional provider filters (tensorrt, dml, openvino, webgpu, qnn, coreml, nnapi,
-            # js/webnn, ...) will be added here as their CI workflows are converted to
-            # workflow_call and wired up as Stage 2 gates below.
+            tensorrt:
+              - 'onnxruntime/core/providers/tensorrt/**'
+              - 'onnxruntime/core/providers/nv_tensorrt_rtx/**'
+            openvino:
+              - 'onnxruntime/core/providers/openvino/**'
+            dml:
+              - 'onnxruntime/core/providers/dml/**'
+            webgpu:
+              - 'onnxruntime/core/providers/webgpu/**'
+              - 'onnxruntime/contrib_ops/webgpu/**'
+            qnn:
+              - 'onnxruntime/core/providers/qnn/**'
+            xnnpack:
+              - 'onnxruntime/core/providers/xnnpack/**'
+            vitisai:
+              - 'onnxruntime/core/providers/vitisai/**'
+            coreml:
+              - 'onnxruntime/core/providers/coreml/**'
+            nnapi:
+              - 'onnxruntime/core/providers/nnapi/**'
+            js:
+              - 'onnxruntime/core/providers/js/**'
+              - 'onnxruntime/core/providers/webnn/**'
+              - 'js/**'
+            # Providers intentionally not yet wired to a Stage 2 gate (no reusable CI workflow
+            # identified / low PR volume): acl, azure, cann, dnnl, migraphx, rknpu, snpe, vsinpu,
+            # winml. Add filters + jobs here the same way once their workflow is converted.
 
   stage2-linux-cpu:
     name: "Stage 2: Linux CI CPU (framework gate)"
@@ -80,12 +115,84 @@ jobs:
     if: needs.detect-changes.outputs.cuda == 'true'
     uses: ./.github/workflows/linux_cuda_ci.yml
 
+  stage2-tensorrt:
+    name: "Stage 2: Linux TensorRT CI (tensorrt provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.tensorrt == 'true'
+    uses: ./.github/workflows/linux_tensorrt_ci.yml
+
+  stage2-openvino:
+    name: "Stage 2: Linux OpenVINO CI (openvino provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.openvino == 'true'
+    uses: ./.github/workflows/linux_openvino_ci.yml
+
+  stage2-dml:
+    name: "Stage 2: Windows DML CI (dml provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.dml == 'true'
+    uses: ./.github/workflows/windows_dml.yml
+
+  stage2-webgpu:
+    name: "Stage 2: Linux WebGPU CI (webgpu provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.webgpu == 'true'
+    uses: ./.github/workflows/linux_webgpu.yml
+
+  stage2-qnn:
+    name: "Stage 2: Windows QNN CI (qnn provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.qnn == 'true'
+    uses: ./.github/workflows/windows_qnn_x64.yml
+
+  stage2-xnnpack:
+    name: "Stage 2: Windows XNNPACK CI (xnnpack provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.xnnpack == 'true'
+    uses: ./.github/workflows/windows_x64_release_xnnpack.yml
+
+  stage2-vitisai:
+    name: "Stage 2: Windows VitisAI CI (vitisai provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.vitisai == 'true'
+    uses: ./.github/workflows/windows_x64_release_vitisai_build_x64_release.yml
+
+  stage2-coreml:
+    name: "Stage 2: macOS CI (coreml provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.coreml == 'true'
+    uses: ./.github/workflows/mac.yml
+
+  stage2-nnapi:
+    name: "Stage 2: Android CI (nnapi provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.nnapi == 'true'
+    uses: ./.github/workflows/android.yml
+
+  stage2-js:
+    name: "Stage 2: Web CI (js/webnn provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.js == 'true'
+    uses: ./.github/workflows/web.yml
+
   # Stage 3 placeholder: remaining CI workflows will be added here as jobs (one `uses:` per
   # workflow, converted to workflow_call) once each has been validated individually. Each such job
   # should set:
-  #   needs: [detect-changes, stage2-linux-cpu, stage2-cuda]
+  #   needs: [detect-changes, stage2-linux-cpu, stage2-cuda, stage2-tensorrt, stage2-openvino,
+  #           stage2-dml, stage2-webgpu, stage2-qnn, stage2-xnnpack, stage2-vitisai, stage2-coreml,
+  #           stage2-nnapi, stage2-js]
   #   if: |
   #     always() &&
   #     needs.detect-changes.result == 'success' &&
   #     (needs.stage2-linux-cpu.result == 'success' || needs.stage2-linux-cpu.result == 'skipped') &&
-  #     (needs.stage2-cuda.result == 'success' || needs.stage2-cuda.result == 'skipped')
+  #     (needs.stage2-cuda.result == 'success' || needs.stage2-cuda.result == 'skipped') &&
+  #     (needs.stage2-tensorrt.result == 'success' || needs.stage2-tensorrt.result == 'skipped') &&
+  #     (needs.stage2-openvino.result == 'success' || needs.stage2-openvino.result == 'skipped') &&
+  #     (needs.stage2-dml.result == 'success' || needs.stage2-dml.result == 'skipped') &&
+  #     (needs.stage2-webgpu.result == 'success' || needs.stage2-webgpu.result == 'skipped') &&
+  #     (needs.stage2-qnn.result == 'success' || needs.stage2-qnn.result == 'skipped') &&
+  #     (needs.stage2-xnnpack.result == 'success' || needs.stage2-xnnpack.result == 'skipped') &&
+  #     (needs.stage2-vitisai.result == 'success' || needs.stage2-vitisai.result == 'skipped') &&
+  #     (needs.stage2-coreml.result == 'success' || needs.stage2-coreml.result == 'skipped') &&
+  #     (needs.stage2-nnapi.result == 'success' || needs.stage2-nnapi.result == 'skipped') &&
+  #     (needs.stage2-js.result == 'success' || needs.stage2-js.result == 'skipped')
