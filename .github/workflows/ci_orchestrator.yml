@@ -117,55 +117,46 @@ jobs:
             cuda:
               - 'onnxruntime/core/providers/cuda/**'
               - 'onnxruntime/contrib_ops/cuda/**'
-              - '.github/workflows/linux_cuda_ci.yml'
-              - '.github/workflows/windows_cuda.yml'
-              - '.github/workflows/windows_cuda_plugin.yml'
             tensorrt:
               - 'onnxruntime/core/providers/tensorrt/**'
               - 'onnxruntime/core/providers/nv_tensorrt_rtx/**'
-              - '.github/workflows/linux_tensorrt_ci.yml'
-              - '.github/workflows/windows_tensorrt.yml'
             openvino:
               - 'onnxruntime/core/providers/openvino/**'
-              - '.github/workflows/linux_openvino_ci.yml'
-              - '.github/workflows/windows_openvino.yml'
             dml:
               - 'onnxruntime/core/providers/dml/**'
-              - '.github/workflows/windows_dml.yml'
             webgpu:
               - 'onnxruntime/core/providers/webgpu/**'
               - 'onnxruntime/contrib_ops/webgpu/**'
-              - '.github/workflows/linux_webgpu.yml'
-              - '.github/workflows/windows_webgpu.yml'
             qnn:
               - 'onnxruntime/core/providers/qnn/**'
-              - '.github/workflows/windows_qnn_x64.yml'
             xnnpack:
               - 'onnxruntime/core/providers/xnnpack/**'
-              - '.github/workflows/windows_x64_release_xnnpack.yml'
             vitisai:
               - 'onnxruntime/core/providers/vitisai/**'
-              - '.github/workflows/windows_x64_release_vitisai_build_x64_release.yml'
             coreml:
               - 'onnxruntime/core/providers/coreml/**'
-              - '.github/workflows/mac.yml'
             nnapi:
               - 'onnxruntime/core/providers/nnapi/**'
-              - '.github/workflows/android.yml'
             js:
               - 'onnxruntime/core/providers/js/**'
               - 'onnxruntime/core/providers/webnn/**'
               - 'js/**'
-              - '.github/workflows/web.yml'
             # Providers intentionally not yet wired to a Stage 2 gate (no reusable CI workflow
             # identified / low PR volume): acl, azure, cann, dnnl, migraphx, rknpu, snpe, vsinpu,
             # winml. Add filters + jobs here the same way once their workflow is converted.
             #
-            # NOTE: each provider filter above also matches that provider's own CI workflow
-            # file(s) directly (not just source paths). Without this, a PR that only edits e.g.
-            # windows_cuda.yml would trip the broad "framework" gate (via .github/workflows/**)
-            # but never run the CUDA gate whose YAML actually changed, leaving the edit
-            # unvalidated.
+            # NOTE (deliberate trade-off): provider filters intentionally match only that
+            # provider's *source* paths, not its own CI workflow file. A PR that edits only e.g.
+            # windows_cuda.yml (no onnxruntime/core/providers/cuda/** change) will trip the broad
+            # "framework" gate (via .github/workflows/**) but not the cuda gate - accepted because
+            # the alternative (matching each provider's own workflow file) makes any PR that edits
+            # many workflow files at once - such as this CI-gating PR itself, which touches nearly
+            # every provider's workflow file purely for the workflow_call conversion, with zero
+            # provider source changes - trigger every single Stage 2 gate simultaneously. That
+            # defeats the entire point of narrow gating for exactly the kind of PR most likely to
+            # touch these files. YAML/schema issues in a provider's own workflow file are still
+            # caught the next time that gate is exercised by a real source change, or can be
+            # smoke-tested manually via workflow_dispatch.
 
   stage2-linux-cpu:
     name: "Stage 2: Linux CI CPU (framework gate)"
