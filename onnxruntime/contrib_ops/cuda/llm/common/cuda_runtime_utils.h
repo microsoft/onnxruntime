@@ -24,7 +24,6 @@
 #include <cuda_fp8.h>
 #endif
 #include "core/providers/cuda/shared_inc/cuda_call.h"
-#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime::llm::common {
 inline int getDevice() {
@@ -63,7 +62,7 @@ inline int getMaxSharedMemoryPerBlockOptin() {
 inline std::optional<bool> isCudaLaunchBlocking() {
   thread_local bool firstCall = true;
   thread_local std::optional<bool> result = std::nullopt;
-  if (!firstCall) {
+  if (firstCall) {
     // Read the env var directly here instead of via core/platform/env_var_utils.h.
     // This is a leaf CUDA header pulled in by kernel headers (e.g. compute_occupancy.h)
     // BEFORE the SHARED_PROVIDER bridge (provider_api.h) is established. env_var_utils.h
