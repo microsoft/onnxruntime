@@ -9,6 +9,26 @@
 namespace onnxruntime {
 namespace test {
 
+// Execution providers excluded from the four opset-18 AveragePool ceil_mode +
+// count_include_pad parity tests below. Shared by all four tests to prevent scoping
+// drift. Two rationales:
+//   - Most EPs (kTensorrt, kNvTensorRTRTX, kAcl, kOpenVINO, kDml, kWebGpu, kDnnl,
+//     kCoreML, kQnn) do not implement the clamped-window divisor (PyTorch #183528),
+//     so they return the pre-fix full-kernel-size average and would fail these tests.
+//   - kCuda / kCudaNHWC DO support the semantics, but these opset-18 cases are
+//     CPU-reference gate tests (the CUDA path has its own parity tests) and cuDNN-NHWC
+//     can flap on the 2D case, so they are excluded here too.
+//
+// NOTE: do not confuse this with kPoolingEpsExcludedFromCeilCipTests (defined ~L1150), which
+// has the OPPOSITE kCuda membership. This set is the CPU-reference GATE and therefore INCLUDES
+// kCuda/kCudaNHWC in the exclusion list (CPU is the oracle here); that other set EXCLUDES
+// kCuda/kCudaNHWC because there CUDA is the tested target. Pick the one matching your intent.
+static const std::unordered_set<std::string> kPoolingEpsExcludedFromCeilCountIncludePadTests = {
+    kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider,
+    kNvTensorRTRTXExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+    kDmlExecutionProvider, kWebGpuExecutionProvider, kDnnlExecutionProvider,
+    kCoreMLExecutionProvider, kQnnExecutionProvider};
+
 template <typename T>
 class PoolTest : public ::testing::Test {
 };
@@ -1130,6 +1150,11 @@ TEST(PoolTest, AveragePool_19_ceil_count_include_pad_1d) {
 // passes. kWebGpuExecutionProvider is listed defensively: it auto-skips in a CUDA-only build
 // (DefaultWebGpuExecutionProvider returns nullptr), but naming it keeps a future WebGPU build leg
 // from re-triggering the CI failure this list fixes.
+//
+// NOTE: do not confuse this with kPoolingEpsExcludedFromCeilCountIncludePadTests (top of file,
+// ~L21), which has the OPPOSITE kCuda membership. That set is a CPU-reference GATE and INCLUDES
+// kCuda/kCudaNHWC in its exclusions; this set EXCLUDES them because here CUDA/CUDA-NHWC ARE the
+// tested targets. Opposite kCuda intent — pick the one matching your test.
 // ---------------------------------------------------------------------------
 const std::unordered_set<std::string> kPoolingEpsExcludedFromCeilCipTests = {
     kTensorrtExecutionProvider, kNvTensorRTRTXExecutionProvider, kDnnlExecutionProvider,
@@ -1377,6 +1402,112 @@ TEST(PoolTest, AveragePool_CUDA_same_lower_asymmetric_1d) {
 // AveragePool schema type constraint does not include tensor(bfloat16), so OpTester's model
 // type-checker rejects such a graph at load. The fp16 case above already exercises the
 // accumulate-in-float path.
+
+// (a)-gate regression test for the CPU/MLAS AvgPool ceil_mode + count_include_pad bug
+// (PyTorch #183528). This is the opset-18 clone of AveragePool_19_ceil_count_include_pad_1d:
+// same X and same expected_vals, but at opset 18 the float path routes through MLAS (which
+// divided by the full kernel size and produced a wrong average) instead of the v19 reference
+// loop. GPU / other EPs are excluded so the test is green the moment the CPU fix lands; the
+// CUDA leg is tracked separately as the (b) probe.
+TEST(PoolTest, AveragePool_18_ceil_count_include_pad_1d) {
+  OpTester test("AveragePool", 18);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3});
+  test.AddAttribute("pads", std::vector<int64_t>{3, 3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{7});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals = {2.0903f, 4.6493f, 1.6320f, -3.2051f, 4.6975f, 4.7296f, 3.3653f, -1.5815f, -2.3832f, 0.9628f, -1.5899f, -2.6820f, 5.7529f, 7.7346f, -0.8910f, -2.0151f, 0.1313f, -0.5374f};
+  std::vector<int64_t> x_dims = {1, 2, 9};
+  std::vector<int64_t> expected_dims = {1, 2, 4};
+  std::vector<float> expected_vals = {0.73807144f, 2.5655572f, 0.8032287f, -0.09990001f, 0.34911433f, 1.0389f, 1.4536142f, -0.40353334f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCountIncludePadTests);
+}
+
+// 2D opset-18 case for the same bug. Input is the PyTorch #183528 repro:
+// x = arange(1, 17).reshape(1, 1, 4, 4), kernel=3, stride=2, pad=1, ceil_mode=1,
+// count_include_pad=1. The ceil-mode trailing window ends past input+pad_tail, so MLAS's
+// full-kernel divisor gave a wrong average; the reference loop divides by the clamped
+// window (in-bounds + real pad cells only).
+TEST(PoolTest, AveragePool_18_ceil_count_include_pad_2d) {
+  OpTester test("AveragePool", 18);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f,
+                               9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f};
+  std::vector<int64_t> x_dims = {1, 1, 4, 4};
+  std::vector<int64_t> expected_dims = {1, 1, 3, 3};
+  std::vector<float> expected_vals = {1.5555556f, 3.3333333f, 2.0f,
+                                      6.3333335f, 11.0f, 6.0f,
+                                      4.5f, 7.5f, 4.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCountIncludePadTests);
+}
+
+// 3D opset-18 case for the same bug, exercising the AveragePool3DTask path.
+TEST(PoolTest, AveragePool_18_ceil_count_include_pad_3d) {
+  OpTester test("AveragePool", 18);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1, 1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals(27);
+  for (int i = 0; i < 27; ++i) {
+    x_vals[i] = static_cast<float>(i + 1);
+  }
+  std::vector<int64_t> x_dims = {1, 1, 3, 3, 3};
+  std::vector<int64_t> expected_dims = {1, 1, 2, 2, 2};
+  // Ground truth from the CPU v19 reference loop (window clamped to input + real pad).
+  std::vector<float> expected_vals = {2.2222223f, 2.5185184f, 3.1111112f, 3.4074075f,
+                                      4.888889f, 5.185185f, 5.7777777f, 6.074074f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCountIncludePadTests);
+}
+
+// No-regression guard: with count_include_pad=0 the divisor already counts only in-bounds
+// cells, so this combo stays on the MLAS fast path and must remain correct.
+TEST(PoolTest, AveragePool_18_ceil_count_exclude_pad_2d) {
+  OpTester test("AveragePool", 18);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)0);
+
+  std::vector<float> x_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f,
+                               9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f};
+  std::vector<int64_t> x_dims = {1, 1, 4, 4};
+  std::vector<int64_t> expected_dims = {1, 1, 3, 3};
+  // count_include_pad=0: each output divides by the number of in-bounds cells only.
+  std::vector<float> expected_vals = {3.5f, 5.0f, 6.0f,
+                                      9.5f, 11.0f, 12.0f,
+                                      13.5f, 15.0f, 16.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCountIncludePadTests);
+}
 
 TEST(PoolTest, GlobalAveragePool) {
   OpTester test("GlobalAveragePool");
@@ -2244,6 +2375,224 @@ TEST(PoolTest, MaxPool_ZeroDilation) {
   test.AddOutput<float>("Y", {0}, {});
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "All dilation values must be positive",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Verify that a 'pads' attribute shorter than 2 * kernel_shape rank is rejected by PoolAttributes
+// kernel validation. AddShapeToTensorData(false) omits input shape from the graph so ONNX shape
+// inference is bypassed and the model reaches kernel construction where the ORT_ENFORCE fires.
+// Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
+// different error messages.
+TEST(PoolTest, MaxPool_PadsTooShort) {
+  OpTester test("MaxPool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "twice the kernel_shape rank",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+TEST(PoolTest, AveragePool_PadsTooShort) {
+  OpTester test("AveragePool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+  test.AddAttribute("count_include_pad", static_cast<int64_t>(0));
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "twice the kernel_shape rank",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+TEST(PoolTest, LpPool_PadsTooShort) {
+  OpTester test("LpPool", 18);
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "twice the kernel_shape rank",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Verify that a kernel_shape whose rank does not match the input spatial rank is rejected by
+// PoolAttributes::InferOutputSize. LpPool (opset < 18) uses the generic Pool::Compute path, which
+// has no earlier rank guard, so the request reaches the InferOutputSize validation directly.
+// AddShapeToTensorData(false) omits the input shape so ONNX shape inference is bypassed.
+// Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
+// different error messages.
+TEST(PoolTest, LpPool_KernelRankMismatch) {
+  OpTester test("LpPool", 11);
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  // Input spatial rank is 3 while kernel_shape rank is 2.
+  std::vector<float> x_vals(1 * 1 * 8 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "input spatial rank",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Verify that attribute values producing a non-positive output dimension are rejected by
+// PoolAttributes::ComputeOutputSize. A 3x3 kernel over a 1x1 spatial input with no padding makes
+// the padded input smaller than the dilated kernel, so the computed output dimension is negative.
+// AddShapeToTensorData(false) omits the input shape so ONNX shape inference is bypassed.
+// Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
+// different error messages.
+TEST(PoolTest, AveragePool_NegativeOutputDim) {
+  OpTester test("AveragePool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("count_include_pad", static_cast<int64_t>(0));
+
+  std::vector<float> x_vals(1 * 1 * 1 * 1, 1.0f);
+  test.AddInput<float>("X", {1, 1, 1, 1}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "output dimension is negative",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Verify that a 'pads' attribute longer than 2 * kernel_shape rank is rejected by the
+// PoolAttributes constructor. AddShapeToTensorData(false) omits the input shape so ONNX shape
+// inference is bypassed and the model reaches kernel construction where the ORT_ENFORCE fires.
+// Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
+// different error messages.
+TEST(PoolTest, MaxPool_PadsTooLong) {
+  OpTester test("MaxPool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "twice the kernel_shape rank",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Verify that a 'strides' attribute whose length does not match the kernel_shape rank is rejected
+// by the PoolAttributes constructor. The assertion pins the explicit strides length message
+// ("Strides dimensions should match kernel shape"). AddShapeToTensorData(false) bypasses shape
+// inference. Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
+// different error messages.
+TEST(PoolTest, MaxPool_StridesLengthMismatch) {
+  OpTester test("MaxPool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Strides dimensions should match kernel shape",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Verify that a 'dilations' attribute whose length does not match the kernel_shape rank is
+// rejected by the PoolAttributes constructor. AddShapeToTensorData(false) bypasses shape inference.
+// Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
+// different error messages.
+TEST(PoolTest, MaxPool_DilationsLengthMismatch) {
+  // 'dilations' is only a valid MaxPool attribute from opset 10 onward, so target that version.
+  OpTester test("MaxPool", 10);
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 1, 1});
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Dilations dimensions should match kernel shape",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Verify that a low-rank input is rejected before pooling. The rank check in SetOutputSize
+// (NumDimensions >= 2) is defense-in-depth for execution providers and direct callers, but the CPU
+// pooling kernels reject inputs with rank < 3 earlier in Compute, so the tested path fires that
+// earlier guard and this test pins its message ("Input dimension cannot be less than 3").
+// AddShapeToTensorData(false) bypasses shape inference so the rank-2 input reaches the kernel.
+// Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML).
+TEST(PoolTest, MaxPool_InputRankTooLow) {
+  OpTester test("MaxPool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals(4 * 4, 1.0f);
+  test.AddInput<float>("X", {4, 4}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Input dimension cannot be less than 3",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Verify that a MaxPool 'storage_order' outside the valid set {0, 1} is rejected by the
+// PoolAttributes constructor. storage_order was introduced in MaxPool opset 8, so target that
+// version. AddShapeToTensorData(false) bypasses shape inference so the model reaches kernel
+// construction where the ORT_ENFORCE fires. Exclude compiling EPs (TRT, QNN) and EPs with their
+// own validation (DML) that produce different error messages.
+TEST(PoolTest, MaxPool_InvalidStorageOrder) {
+  OpTester test("MaxPool", 8);
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+  test.AddAttribute("storage_order", static_cast<int64_t>(2));
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "storage_order must be 0",
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
 }
 
