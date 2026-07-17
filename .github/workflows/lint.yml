@@ -7,6 +7,7 @@ on:
       - rel-*
   pull_request:
   workflow_dispatch:
+  workflow_call: # Allows this workflow to be invoked as Stage 1 by ci_orchestrator.yml
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}

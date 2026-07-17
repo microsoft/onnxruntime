@@ -25,6 +25,7 @@ on:
   pull_request:
     branches: [main, 'rel-*']
   workflow_dispatch:
+  workflow_call: # Allows this workflow to be invoked as the Stage 2 "framework" gate by ci_orchestrator.yml
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
