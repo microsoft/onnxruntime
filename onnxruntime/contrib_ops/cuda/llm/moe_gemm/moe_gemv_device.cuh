@@ -21,7 +21,7 @@ namespace fpA_intB_gemv {
 template <typename Details, int CtaN, int Threads, int GroupSize, bool EnableBias,
           typename TypeA = typename Details::TypeDetailsA::Type, typename AccT = TypeA>
 __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
-                                int64_t const* expert_first_token_offset, int const* permuted_row_to_expert,
+                                const int64_t* expert_first_token_offset, const int* permuted_row_to_expert,
                                 int num_experts,
                                 int64_t weight_expert_stride, int64_t scale_expert_stride, int n, int k) {
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
@@ -37,7 +37,7 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
     static_assert((CtaK / Details::kInterleave) % GroupSize == 0);
   }
 
-  int const row = blockIdx.x;
+  const int row = blockIdx.x;
 
   int expert = permuted_row_to_expert != nullptr ? permuted_row_to_expert[row] : 0;
 #pragma unroll 1
@@ -58,13 +58,13 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
     bias += static_cast<int64_t>(expert) * n;
   }
 
-  int const origin_k = k, interleaved_k = k * Details::kInterleave;
+  const int origin_k = k, interleaved_k = k * Details::kInterleave;
 
-  int const tile_id_m = row, tile_id_n = blockIdx.y, tid = threadIdx.x;
-  int const offset_m = tile_id_m * CtaM, interleaved_offset_n = tile_id_n * CtaN;
-  int const real_offset_n = interleaved_offset_n * Details::kInterleave +
+  const int tile_id_m = row, tile_id_n = blockIdx.y, tid = threadIdx.x;
+  const int offset_m = tile_id_m * CtaM, interleaved_offset_n = tile_id_n * CtaN;
+  const int real_offset_n = interleaved_offset_n * Details::kInterleave +
                             ((tid * StepK / Details::LayoutDetails::kTileSize) % Details::kInterleave);
-  int const real_offset_k =
+  const int real_offset_k =
       (tid * StepK / (Details::kInterleave * Details::LayoutDetails::kTileSize)) * Details::LayoutDetails::kTileSize +
       ((tid * StepK) % Details::LayoutDetails::kTileSize);
 
@@ -147,8 +147,8 @@ __device__ __forceinline__ void swiglu_epilogue(void* out, void* tile_acc, void*
 
 #pragma unroll
   for (int pair = tid; pair < RawCols / 2; pair += Threads) {
-    int const gate_idx = pair * 2;
-    int const linear_idx = gate_idx + 1;
+    const int gate_idx = pair * 2;
+    const int linear_idx = gate_idx + 1;
     float gate = 0.f;
     float linear = 0.f;
 #pragma unroll
@@ -165,7 +165,7 @@ __device__ __forceinline__ void swiglu_epilogue(void* out, void* tile_acc, void*
       linear = fminf(fmaxf(linear, -activation_params.limit), activation_params.limit);
     }
     linear += activation_params.beta;
-    float const sigmoid = 1.0f / (1.0f + expf(-activation_params.alpha * gate));
+    const float sigmoid = 1.0f / (1.0f + expf(-activation_params.alpha * gate));
     reinterpret_cast<TypeA*>(out)[pair] = static_cast<TypeA>(gate * sigmoid * linear);
   }
 }
@@ -174,7 +174,7 @@ template <typename Details, int CtaN, int Threads, int GroupSize, bool EnableBia
           typename TypeA = typename Details::TypeDetailsA::Type, typename AccT = TypeA>
 __global__ void moe_gemv_interleaved_swiglu_kernel(
     TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
-    int64_t const* expert_first_token_offset, int const* permuted_row_to_expert, int num_experts,
+    const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
     int64_t weight_expert_stride, int64_t scale_expert_stride, int inter_size, int k,
     cutlass_kernels::ActivationParams activation_params) {
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
@@ -190,7 +190,7 @@ __global__ void moe_gemv_interleaved_swiglu_kernel(
     static_assert((CtaK / Details::kInterleave) % GroupSize == 0);
   }
 
-  int const row = blockIdx.x;
+  const int row = blockIdx.x;
 
   int expert = permuted_row_to_expert != nullptr ? permuted_row_to_expert[row] : 0;
 #pragma unroll 1
@@ -205,27 +205,27 @@ __global__ void moe_gemv_interleaved_swiglu_kernel(
     return;
   }
 
-  float const* alpha = activation_params.swiglu_alpha;
-  float const* beta = activation_params.swiglu_beta;
-  float const* limit = activation_params.swiglu_limit;
+  const float* alpha = activation_params.swiglu_alpha;
+  const float* beta = activation_params.swiglu_beta;
+  const float* limit = activation_params.swiglu_limit;
   activation_params.alpha = alpha ? alpha[expert] : activation_params.alpha;
   activation_params.beta = beta ? beta[expert] : activation_params.beta;
   activation_params.limit = limit ? limit[expert] : activation_params.limit;
 
-  int const n = inter_size * 2;
+  const int n = inter_size * 2;
   weight += expert * weight_expert_stride;
   scales += static_cast<int64_t>(expert) * scale_expert_stride;
   if constexpr (EnableBias) {
     bias += static_cast<int64_t>(expert) * n;
   }
 
-  int const origin_k = k, interleaved_k = k * Details::kInterleave;
+  const int origin_k = k, interleaved_k = k * Details::kInterleave;
 
-  int const tile_id_m = row, tile_id_n = blockIdx.y, tid = threadIdx.x;
-  int const offset_m = tile_id_m * CtaM, interleaved_offset_n = tile_id_n * CtaN;
-  int const real_offset_n = interleaved_offset_n * Details::kInterleave +
+  const int tile_id_m = row, tile_id_n = blockIdx.y, tid = threadIdx.x;
+  const int offset_m = tile_id_m * CtaM, interleaved_offset_n = tile_id_n * CtaN;
+  const int real_offset_n = interleaved_offset_n * Details::kInterleave +
                             ((tid * StepK / Details::LayoutDetails::kTileSize) % Details::kInterleave);
-  int const real_offset_k =
+  const int real_offset_k =
       (tid * StepK / (Details::kInterleave * Details::LayoutDetails::kTileSize)) * Details::LayoutDetails::kTileSize +
       ((tid * StepK) % Details::LayoutDetails::kTileSize);
 
@@ -282,11 +282,11 @@ __global__ void moe_gemv_interleaved_swiglu_kernel(
 
 template <typename Details, int CtaN, int Threads, int GroupSize, typename TypeA, typename AccT = TypeA>
 static void launch_moe_gemv(TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
-                            int64_t const* expert_first_token_offset, int const* permuted_row_to_expert,
+                            const int64_t* expert_first_token_offset, const int* permuted_row_to_expert,
                             int num_experts, int64_t expanded_num_rows, int64_t n, int64_t k,
                             cudaStream_t stream) {
-  int64_t const weight_expert_stride = n * k / Details::kElemsPerByteW;
-  int64_t const scale_expert_stride = GroupSize == 0 ? n : ((k + GroupSize - 1) / GroupSize) * n;
+  const int64_t weight_expert_stride = n * k / Details::kElemsPerByteW;
+  const int64_t scale_expert_stride = GroupSize == 0 ? n : ((k + GroupSize - 1) / GroupSize) * n;
   dim3 grid(static_cast<unsigned>(expanded_num_rows), static_cast<unsigned>(n / (CtaN * Details::kInterleave)));
   dim3 block(Threads);
   if (bias != nullptr) {
@@ -303,12 +303,12 @@ static void launch_moe_gemv(TypeA* act, uint8_t* weight, TypeA* scales, TypeA* b
 template <typename Details, int CtaN, int Threads, int GroupSize, typename TypeA, typename AccT = TypeA>
 static void launch_moe_gemv_interleaved_swiglu(
     TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
-    int64_t const* expert_first_token_offset, int const* permuted_row_to_expert, int num_experts,
+    const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
     int64_t expanded_num_rows, int64_t inter_size, int64_t k,
     cutlass_kernels::ActivationParams activation_params, cudaStream_t stream) {
-  int64_t const n = inter_size * 2;
-  int64_t const weight_expert_stride = n * k / Details::kElemsPerByteW;
-  int64_t const scale_expert_stride = GroupSize == 0 ? n : ((k + GroupSize - 1) / GroupSize) * n;
+  const int64_t n = inter_size * 2;
+  const int64_t weight_expert_stride = n * k / Details::kElemsPerByteW;
+  const int64_t scale_expert_stride = GroupSize == 0 ? n : ((k + GroupSize - 1) / GroupSize) * n;
   dim3 grid(static_cast<unsigned>(expanded_num_rows), static_cast<unsigned>(n / (CtaN * Details::kInterleave)));
   dim3 block(Threads);
   if (bias != nullptr) {
@@ -324,8 +324,8 @@ static void launch_moe_gemv_interleaved_swiglu(
 
 template <typename Details, int CtaN, int Threads, typename TypeA, typename AccT = TypeA>
 static void dispatch_moe_gemv_group_size(TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
-                                         int64_t const* expert_first_token_offset,
-                                         int const* permuted_row_to_expert, int num_experts,
+                                         const int64_t* expert_first_token_offset,
+                                         const int* permuted_row_to_expert, int num_experts,
                                          int64_t expanded_num_rows, int64_t n, int64_t k,
                                          int group_size, cudaStream_t stream) {
   if (group_size <= 0) {
@@ -351,7 +351,7 @@ static void dispatch_moe_gemv_group_size(TypeA* act, uint8_t* weight, TypeA* sca
 template <typename Details, int CtaN, int Threads, typename TypeA, typename AccT = TypeA>
 static void dispatch_moe_gemv_interleaved_swiglu_group_size(
     TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
-    int64_t const* expert_first_token_offset, int const* permuted_row_to_expert, int num_experts,
+    const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
     int64_t expanded_num_rows, int64_t inter_size, int64_t k, int group_size,
     cutlass_kernels::ActivationParams activation_params, cudaStream_t stream) {
   if (group_size <= 0) {

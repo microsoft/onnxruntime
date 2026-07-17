@@ -581,12 +581,14 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     // MXFP4 ("fp4"/"wfp4afp8") uses block size 32 with Float8E8M0 block scales; NVFP4 ("nvfp4")
     // uses block size 16 with Float8E4M3FN block scales. Both are consumed as raw uint8 bytes.
     const int64_t fp4_block_size = is_nvfp4 ? 16 : 32;
+    const char* fp4_mode_label = is_nvfp4 ? "quant_type='nvfp4'" : "quant_type='fp4'/'wfp4afp8'";
+    const char* fp4_scale_label = is_nvfp4 ? "NVFP4 block scales" : "MXFP4 block scales";
     ORT_RETURN_IF_NOT(moe_params.hidden_size % fp4_block_size == 0,
-                      "QMoE quant_type='fp4'/'wfp4afp8' requires hidden_size to be a multiple of ",
-                      fp4_block_size, " for MXFP4 block scales, got hidden_size=", moe_params.hidden_size, ".");
+                      "QMoE ", fp4_mode_label, " requires hidden_size to be a multiple of ",
+                      fp4_block_size, " for ", fp4_scale_label, ", got hidden_size=", moe_params.hidden_size, ".");
     ORT_RETURN_IF_NOT(moe_params.inter_size % fp4_block_size == 0,
-                      "QMoE quant_type='fp4'/'wfp4afp8' requires inter_size to be a multiple of ",
-                      fp4_block_size, " for MXFP4 block scales, got inter_size=", moe_params.inter_size, ".");
+                      "QMoE ", fp4_mode_label, " requires inter_size to be a multiple of ",
+                      fp4_block_size, " for ", fp4_scale_label, ", got inter_size=", moe_params.inter_size, ".");
     const int64_t fc1_out_size = is_fused_swiglu ? moe_params.inter_size * 2 : moe_params.inter_size;
     auto check_fp4_block_scale = [is_nvfp4](const Tensor* tensor, const char* name, int64_t num_experts,
                                             int64_t n, int64_t k) -> Status {
@@ -1525,6 +1527,14 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         }
       }
     };
+    // This dequant fallback is reachable only for the FP4 family (fp4/nvfp4) and the
+    // WFP4AFP8 dequant path -- never for quant_type='int'. Only the int path nulls out
+    // fc*_experts_weights (int_weights_consumed_by_prepack), so the raw weight pointers are
+    // guaranteed live here. Enforce that invariant explicitly so a future mode-guard change
+    // that lets int fall through cannot silently dereference a null weight tensor.
+    ORT_ENFORCE(fc1_experts_weights != nullptr && fc2_experts_weights != nullptr,
+                "QMoE FP4/NVFP4 dequant fallback requires the raw expert-weight tensors; got null "
+                "(this path must not be reached in int-weight prepack mode).");
     dequant(static_cast<const uint8_t*>(fc1_experts_weights->DataRaw()),
             static_cast<const uint8_t*>(p_fc1_block_scales),
             static_cast<const float*>(p_fc1_global_scale),

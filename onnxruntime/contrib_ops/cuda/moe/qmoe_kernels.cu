@@ -1059,6 +1059,7 @@ void LaunchQMoECombineFp4ScalesForGemvImpl(
   int grid = onnxruntime::narrow<int>((total + block - 1) / block);
   QMoECombineFp4ScalesForGemvKernel<<<grid, block, 0, stream>>>(
       block_scales, global_scales, output, experts, n, k_blocks);
+  CUDA_CALL_THROW(cudaGetLastError());
 }
 
 void LaunchQMoECombineFp4ScalesForGemv(
@@ -1133,6 +1134,7 @@ void LaunchQMoEPackFp4ScalesForTmaWs(
   int grid = onnxruntime::narrow<int>((total + block - 1) / block);
   QMoEPackFp4ScalesForTmaWsKernel<<<grid, block, 0, stream>>>(
       input, output, n, k_blocks, k_blocks_padded, kPackedScalesPerKTile, total);
+  CUDA_CALL_THROW(cudaGetLastError());
 }
 
 __device__ __forceinline__ float DecodeFloat8E4M3FN(uint8_t code) {
@@ -1269,6 +1271,7 @@ void LaunchQMoEDequantizeNvfp4WeightsImpl(
   int grid = onnxruntime::narrow<int>((total + block - 1) / block);
   QMoEDequantizeNvfp4WeightsKernel<<<grid, block, 0, stream>>>(
       packed_weights, block_scales, global_scales, output, num_experts, n, k);
+  CUDA_CALL_THROW(cudaGetLastError());
 }
 
 void LaunchQMoEDequantizeNvfp4Weights(
@@ -1339,6 +1342,7 @@ void LaunchQMoECombineNvfp4ScalesForGemvImpl(
   int grid = onnxruntime::narrow<int>((total + block - 1) / block);
   QMoECombineNvfp4ScalesForGemvKernel<<<grid, block, 0, stream>>>(
       block_scales, global_scales, output, experts, n, k_blocks);
+  CUDA_CALL_THROW(cudaGetLastError());
 }
 
 void LaunchQMoECombineNvfp4ScalesForGemv(
