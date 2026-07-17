@@ -3687,7 +3687,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       // This avoids exponential re-traversal of deeply nested subgraphs. Ops whose inference
       // function does not descend into subgraphs (e.g. BeamSearch) are not recorded, so their
       // subgraphs are still verified here.
-      if (resolve_context_.inferred_subgraphs.count(subgraph) == 0) {
+      if (!resolve_context_.inferred_subgraphs.contains(subgraph)) {
         ORT_RETURN_IF_ERROR(subgraph->VerifyNodeAndOpMatch(options));
       }
     }
