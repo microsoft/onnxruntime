@@ -100,6 +100,77 @@ class TestAdjustWeightScaleForInt32BiasQOperator(unittest.TestCase):
                 data_reader.rewind()
                 check_model_correctness(self, float_model_path, qop_model_path, data_reader.get_next())
 
+    def build_gemm_test_model(self, input_shape, weight_shape, bias_shape, onnx_float_type):
+        np_float_type = onnx.helper.tensor_dtype_to_np_dtype(onnx_float_type)
+        input_0 = onnx.helper.make_tensor_value_info("input_0", onnx_float_type, input_shape)
+        output_0 = onnx.helper.make_tensor_value_info("output_0", onnx_float_type, None)
+
+        tiny_value = 1e-7
+        weight_data = np.full(weight_shape, tiny_value, dtype=np_float_type)
+        for i in range(weight_data.shape[0]):
+            for j in range(weight_data.shape[1]):
+                if j % 2 == 0:
+                    weight_data[i, j] = -weight_data[i, j]
+        weight = onnx.numpy_helper.from_array(weight_data, "weight")
+
+        bias_data = np.ones(bias_shape, dtype=np_float_type)
+        for i in range(bias_data.shape[-1]):
+            bias_data[..., i] = 5.0 if (i % 2 == 0) else -4.5
+        bias = onnx.numpy_helper.from_array(bias_data, "bias")
+
+        gemm_node = onnx.helper.make_node("Gemm", ["input_0", "weight", "bias"], ["output_0"], name="Gemm0")
+        graph = onnx.helper.make_graph([gemm_node], "Gemmfloat", [input_0], [output_0], initializer=[weight, bias])
+        opset_imports = [onnx.helper.make_opsetid("", 21)]
+        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
+        model = onnx.shape_inference.infer_shapes(model)
+        onnx.checker.check_model(model, True)
+        return model
+
+    def test_adjust_weight_scale_for_int32_bias_gemm_2d_bias_qop(self):
+        """
+        Test the weight scale adjustment (in QOperator) Gemm with 2D bias.
+
+        Unlike Conv, whose bias must be 1D, Gemm's C input may be 2D.
+        """
+        for per_channel in (True, False):
+            with self.subTest(per_channel=per_channel):
+                label = f"_perchannel{per_channel}"
+                float_model_path = os.path.join(self._tmp_dir_path, f"gemm{label}.float.onnx")
+                qop_model_path = os.path.join(self._tmp_dir_path, f"gemm{label}.qop.onnx")
+
+                input_shape = [1, 8]  # (M, K)
+                weight_shape = [8, 4]  # (K, N)
+                bias_shape = [1, 4]  # broadcastable to (M, N)
+                float_model = self.build_gemm_test_model(input_shape, weight_shape, bias_shape, onnx.TensorProto.FLOAT)
+                onnx.save_model(float_model, float_model_path)
+
+                input_rmin = 0.0
+                input_scale = 0.05
+                input_rmax = (input_scale * 255.0) + input_rmin
+                input_data_list = [
+                    {"input_0": np.full(input_shape, input_rmin, dtype=np.float32)},
+                    {"input_0": np.full(input_shape, (input_rmax - input_rmin) / 2.0, dtype=np.float32)},
+                    {"input_0": np.full(input_shape, input_rmax, dtype=np.float32)},
+                ]
+                data_reader = TestDataFeeds(input_data_list)
+
+                quantize_static(
+                    float_model_path,
+                    qop_model_path,
+                    data_reader,
+                    activation_type=QuantType.QInt8,
+                    weight_type=QuantType.QInt8,
+                    per_channel=per_channel,
+                    quant_format=QuantFormat.QOperator,
+                    extra_options={
+                        "ActivationSymmetric": True,
+                        "WeightSymmetric": True,
+                    },
+                )
+
+                data_reader.rewind()
+                check_model_correctness(self, float_model_path, qop_model_path, data_reader.get_next())
+
 
 if __name__ == "__main__":
     unittest.main()
