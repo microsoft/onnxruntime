@@ -54,6 +54,7 @@ enum StatusCode {
   MODEL_LOAD_CANCELED = ORT_MODEL_LOAD_CANCELED,
   MODEL_REQUIRES_COMPILATION = ORT_MODEL_REQUIRES_COMPILATION,
   NOT_FOUND = ORT_NOT_FOUND,
+  DEVICE_RESET = ORT_DEVICE_RESET,
 };
 
 constexpr const char* StatusCodeToString(StatusCode status) noexcept {
