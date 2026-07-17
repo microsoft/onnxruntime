@@ -55,6 +55,16 @@ else()
          "${ONNXRUNTIME_ROOT}/core/platform/posix/stacktrace.cc"
     )
 
+    # Telemetry for non-Windows platforms (enabled by USE_TELEMETRY)
+    if (onnxruntime_USE_TELEMETRY)
+        list(APPEND onnxruntime_common_src_patterns
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/device_id.h"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/device_id.cc"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.h"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.cc"
+        )
+    endif()
+
     # logging files
     if (onnxruntime_USE_SYSLOG)
         list(APPEND onnxruntime_common_src_patterns
@@ -134,6 +144,13 @@ if(WIN32)
     set_property(TARGET onnxruntime_common PROPERTY CXX_STANDARD 23)
     target_compile_options(onnxruntime_common PRIVATE "/Zc:char8_t-")
   endif()
+  # windows/telemetry.cc's svchost service-name fallback uses CommandLineToArgvW (shell32), which is
+  # only compiled on the desktop partition (guarded with WINAPI_PARTITION_DESKTOP there). Restrict the
+  # explicit shell32 link to desktop Windows: GDK lists shell32.lib in nodefault_libs (excluded via
+  # /NODEFAULTLIB), and non-desktop partitions (UWP/WindowsStore) neither use nor ship it.
+  if(NOT GDK_PLATFORM AND NOT CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
+    target_link_libraries(onnxruntime_common PRIVATE shell32)
+  endif()
 endif()
 
 if(NOT WIN32 AND NOT APPLE AND NOT ANDROID AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
@@ -144,7 +161,35 @@ if(NOT WIN32 AND NOT APPLE AND NOT ANDROID AND CMAKE_SYSTEM_PROCESSOR MATCHES "x
 endif()
 
 if (onnxruntime_USE_TELEMETRY)
-  set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
+  if(WIN32)
+    set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
+  else()
+    target_compile_definitions(onnxruntime_common PRIVATE USE_POSIX_TELEMETRY)
+    # Optional tenant-token override written into a generated header in the build tree (kept off the
+    # compiler command line, so the token never appears in compile_commands.json or build logs). It may be
+    # supplied either as -DONNXRUNTIME_TELEMETRY_TENANT_TOKEN=... or via an
+    # ONNXRUNTIME_TELEMETRY_TENANT_TOKEN environment variable — the latter lets callers inject a token without
+    # it ever appearing on any command line. When unset, telemetry.cc uses the encoded in-repo default.
+    if(NOT ONNXRUNTIME_TELEMETRY_TENANT_TOKEN AND DEFINED ENV{ONNXRUNTIME_TELEMETRY_TENANT_TOKEN})
+      set(ONNXRUNTIME_TELEMETRY_TENANT_TOKEN "$ENV{ONNXRUNTIME_TELEMETRY_TENANT_TOKEN}")
+    endif()
+    # Ignore an unexpanded build-system macro (e.g. the literal "$(ONNXRUNTIME_TELEMETRY_TENANT_TOKEN)")
+    # so the build falls back to the in-repo default instead of embedding the macro text as a bogus token.
+    if(ONNXRUNTIME_TELEMETRY_TENANT_TOKEN MATCHES "^\\$\\(")
+      set(ONNXRUNTIME_TELEMETRY_TENANT_TOKEN "")
+    endif()
+    if(ONNXRUNTIME_TELEMETRY_TENANT_TOKEN)
+      set(ONNXRUNTIME_TELEMETRY_TENANT_TOKEN_DEFINE "#define ORT_TELEMETRY_TENANT_TOKEN \"${ONNXRUNTIME_TELEMETRY_TENANT_TOKEN}\"")
+    else()
+      set(ONNXRUNTIME_TELEMETRY_TENANT_TOKEN_DEFINE "")
+    endif()
+    set(_ort_telemetry_gen_dir "${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_telemetry")
+    configure_file(
+      "${REPO_ROOT}/cmake/onnxruntime_telemetry_tenant_token.h.in"
+      "${_ort_telemetry_gen_dir}/onnxruntime_telemetry_tenant_token.h"
+      @ONLY)
+    target_include_directories(onnxruntime_common PRIVATE "${_ort_telemetry_gen_dir}")
+  endif()
 endif()
 if (onnxruntime_USE_MIMALLOC)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES mimalloc-static)
@@ -204,6 +249,69 @@ if(CPUINFO_SUPPORTED)
   # Link cpuinfo if supported
   onnxruntime_add_include_to_target(onnxruntime_common cpuinfo::cpuinfo)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo::cpuinfo)
+endif()
+
+# Link telemetry library (1DS SDK) for non-Windows platforms
+if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
+  if(TARGET MSTelemetry::mat)
+    # vcpkg port (cpp-client-telemetry): the imported target propagates its include
+    # directories and transitive dependencies (curl/sqlite3/zlib/nlohmann-json), so no
+    # manual include paths or system libraries are required here.
+    target_link_libraries(onnxruntime_common PRIVATE MSTelemetry::mat)
+  elseif(TARGET mat)
+    # Link mat directly. In a shared build its resolved dependency set is absorbed into
+    # libonnxruntime; in a static build mat -- and the bundled static archives it links -- are shipped
+    # and exported below so a downstream find_package(onnxruntime) resolves them.
+    target_link_libraries(onnxruntime_common PRIVATE mat)
+    # mat propagates its public include dir as a normal (non-SYSTEM) include, so onnxruntime_common's
+    # -Wall -Wextra -Werror would apply to the SDK's headers (they trip -Werror=unused-parameter in
+    # NullObjects.hpp / LogManagerProvider.hpp). Re-add the SDK include dirs as SYSTEM to exempt them.
+    if(DEFINED cpp_client_telemetry_SOURCE_DIR)
+      target_include_directories(onnxruntime_common SYSTEM PRIVATE
+        ${cpp_client_telemetry_SOURCE_DIR}/lib/include/public
+        ${cpp_client_telemetry_SOURCE_DIR}/lib/include/mat
+        ${cpp_client_telemetry_SOURCE_DIR}/lib
+      )
+    endif()
+    # Platform-specific system libraries required only for the Apple static-package path.
+    if(APPLE AND NOT onnxruntime_BUILD_SHARED_LIB)
+      if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        # iOS links the bundled sqlite3/zlib archives (shipped below); only the frameworks the SDK's
+        # Apple PAL needs are added here.
+        target_link_libraries(onnxruntime_common PRIVATE
+          "-framework CoreFoundation"
+          "-framework Security"
+        )
+      else()
+        target_link_libraries(onnxruntime_common PRIVATE
+          "-framework CoreFoundation"
+          "-framework Security"
+          z
+          sqlite3
+        )
+      endif()
+    endif()
+
+    if (NOT onnxruntime_BUILD_SHARED_LIB)
+      # Static package: ship mat and the bundled static archives it links so the exported package is
+      # self-contained. The bundled deps are optional -- which exist depends on platform (the vendored
+      # sqlite3/zlib built for Android, iOS, and non-Apple static via MATSDK_BUNDLE_VENDORED_DEPS) and
+      # may fold into libmat.a in a future SDK version -- so install each only if its target exists.
+      install(TARGETS mat EXPORT ${PROJECT_NAME}Targets
+              ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+              LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+              RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+              FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+      foreach(_mat_bundled_dep sqlite3_bundled zlib_bundled)
+        if(TARGET ${_mat_bundled_dep})
+          install(TARGETS ${_mat_bundled_dep} EXPORT ${PROJECT_NAME}Targets
+                  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+        endif()
+      endforeach()
+    endif()
+  else()
+    message(FATAL_ERROR "Telemetry enabled but no 1DS SDK target ('MSTelemetry::mat' or 'mat') was found")
+  endif()
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)

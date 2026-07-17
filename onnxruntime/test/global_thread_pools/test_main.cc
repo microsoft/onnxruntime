@@ -17,6 +17,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "gtest/gtest.h"
 #include "test/test_environment.h"
+#include <cstdlib>
 #include <thread>
 
 std::unique_ptr<Ort::Env> ort_env;
@@ -62,6 +63,14 @@ using namespace TestGlobalCustomThreadHooks;
 int main(int argc, char** argv) {
   int status = 0;
   const int thread_pool_size = std::thread::hardware_concurrency();
+
+  // Fully suppress telemetry for the unit-test process before any Ort::Env (and therefore the platform
+  // telemetry provider) is created, so local non-CI runs never spin up the uploader or emit events.
+#ifdef _WIN32
+  _putenv_s("ORT_RUNNING_UNIT_TESTS", "1");
+#else
+  setenv("ORT_RUNNING_UNIT_TESTS", "1", 1);
+#endif
 
   // compose affinity string
   std::stringstream affinity_stream;

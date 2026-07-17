@@ -61,6 +61,13 @@ constexpr const char* kDynamicPluginEpConfigJsonFile = "ORT_UNIT_TEST_MAIN_DYNAM
 
 // ortenv_setup() and ortenv_teardown() are used by onnxruntime/test/xctest/xcgtest.mm so can't be file local
 extern "C" void ortenv_setup() {
+  // Fully suppress telemetry for the unit-test process before any Ort::Env (and therefore the platform
+  // telemetry provider) is created, so local non-CI runs never spin up the uploader or emit events.
+#ifdef _WIN32
+  _putenv_s("ORT_RUNNING_UNIT_TESTS", "1");
+#else
+  setenv("ORT_RUNNING_UNIT_TESTS", "1", 1);
+#endif
   ORT_TRY {
 #ifdef _WIN32
     // Set the locale to UTF-8 to ensure proper handling of wide characters on Windows
