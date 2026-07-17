@@ -142,6 +142,13 @@ MlasIsQNBitGemmAvailable(
     }
 }
 
+bool MLASCALL
+MlasQNBitGemmFp16DirectQuantASupported()
+{
+    const auto* Dispatch = GetMlasPlatform().QNBitGemmDispatch;
+    return Dispatch != nullptr && Dispatch->QuantizeARowComputeBlkSum_CompInt8_Fp16 != nullptr;
+}
+
 namespace
 {
 
@@ -1123,6 +1130,7 @@ InitializeWorkspace_CompInt8<float>(
     const auto ComputeAFloatBlkSumFn = GetMlasPlatform().QNBitGemmDispatch->ComputeAFloatBlkSum;
     const auto QuantizeARow = GetMlasPlatform().QNBitGemmDispatch->QuantizeARow_CompInt8;
     const auto QuantizeARow2 = GetMlasPlatform().QNBitGemmDispatch->QuantizeARowComputeBlkSum_CompInt8;
+    const auto QuantizeARow2Fp16 = GetMlasPlatform().QNBitGemmDispatch->QuantizeARowComputeBlkSum_CompInt8_Fp16;
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
     const size_t QuantAStride = BlockCountK * Q8BlkSize(BlkLen);
@@ -1195,6 +1203,8 @@ InitializeWorkspace_CompInt8<float>(
                 MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
                     const auto& data = DataParams[gemm_idx];
                     const float* ARowPtr = data.A;
+                    const MLAS_FP16* AFp16RowPtr = data.AFp16;
+                    const bool quant_from_fp16 = AFp16RowPtr != nullptr && QuantizeARow2Fp16 != nullptr;
 
                     void* PerGemmWorkspace = static_cast<std::byte*>(Workspace) + gemm_idx * PerGemmWorkspaceStride;
                     PerGemmQuantAWorkspace quant_a_data(PerGemmWorkspace, M, BlockCountK, BlkLen);
@@ -1202,8 +1212,13 @@ InitializeWorkspace_CompInt8<float>(
                     float* QuantARowScalePtr = quant_a_data.QuantScale;
                     float* QuantARowBlkSum = quant_a_data.BlockSum;
                     for (size_t m = 0; m < M; ++m) {
-                        QuantizeARow2_W2(BlkLen, ARowPtr, K, QuantARowPtr, QuantARowScalePtr, QuantARowBlkSum);
-                        ARowPtr += data.lda;
+                        if (quant_from_fp16) {
+                            QuantizeARow2Fp16(BlkLen, AFp16RowPtr, K, QuantARowPtr, QuantARowScalePtr, QuantARowBlkSum);
+                            AFp16RowPtr += data.lda;
+                        } else {
+                            QuantizeARow2_W2(BlkLen, ARowPtr, K, QuantARowPtr, QuantARowScalePtr, QuantARowBlkSum);
+                            ARowPtr += data.lda;
+                        }
                         QuantARowPtr += BlockCountK * BlkLen;
                         QuantARowScalePtr += BlockCountK;
                         QuantARowBlkSum += BlockCountK;
@@ -1215,6 +1230,8 @@ InitializeWorkspace_CompInt8<float>(
                 MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
                     const auto& data = DataParams[gemm_idx];
                     const float* ARowPtr = data.A;
+                    const MLAS_FP16* AFp16RowPtr = data.AFp16;
+                    const bool quant_from_fp16 = AFp16RowPtr != nullptr && QuantizeARow2Fp16 != nullptr;
 
                     void* PerGemmWorkspace = static_cast<std::byte*>(Workspace) + gemm_idx * PerGemmWorkspaceStride;
                     PerGemmQuantAWorkspace quant_a_data(PerGemmWorkspace, M, BlockCountK, BlkLen);
@@ -1222,8 +1239,13 @@ InitializeWorkspace_CompInt8<float>(
                     float* QuantARowScalePtr = quant_a_data.QuantScale;
                     float* QuantARowBlkSum = quant_a_data.BlockSum;
                     for (size_t m = 0; m < M; ++m) {
-                        QuantizeARow2(BlkLen, ARowPtr, K, QuantARowPtr, QuantARowScalePtr, QuantARowBlkSum);
-                        ARowPtr += data.lda;
+                        if (quant_from_fp16) {
+                            QuantizeARow2Fp16(BlkLen, AFp16RowPtr, K, QuantARowPtr, QuantARowScalePtr, QuantARowBlkSum);
+                            AFp16RowPtr += data.lda;
+                        } else {
+                            QuantizeARow2(BlkLen, ARowPtr, K, QuantARowPtr, QuantARowScalePtr, QuantARowBlkSum);
+                            ARowPtr += data.lda;
+                        }
                         QuantARowPtr += BlockCountK * BlkLen;
                         QuantARowScalePtr += BlockCountK;
                         QuantARowBlkSum += BlockCountK;
