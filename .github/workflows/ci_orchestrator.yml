@@ -4,13 +4,21 @@
 # Stage 2 (targeted gates):  Only the CI job(s) covering the changed area run here, gated on Stage 1:
 #                              - "framework" gate (onnxruntime/core/** excluding core/providers/**
 #                                and core/platform/**, plus include/onnxruntime/core/** and cmake/**)
-#                                -> linux_ci.yml (Linux CPU build+test): cheapest/fastest full leg,
-#                                highest-signal predictor of framework-level breakage.
+#                                -> linux_ci.yml (Linux CPU build+test, cheapest/fastest full leg,
+#                                highest-signal predictor of framework-level breakage), plus the
+#                                generic (non-provider-specific) full-ORT Windows builds that used
+#                                to run unconditionally on every PR: windows_x64_release,
+#                                windows_x64_debug, windows_x64_release_ep_generic_interface,
+#                                Windows CPU CI Pipeline (x86), windows_x64_asan.
 #                              - "<provider>" gate (onnxruntime/core/providers/<provider>/**) -> that
-#                                provider's own CI workflow(s). Wired so far: cuda, tensorrt,
-#                                openvino, dml, webgpu, qnn, xnnpack, vitisai, coreml, nnapi,
-#                                js/webnn. Not yet wired (no obvious reusable CI workflow or low PR
-#                                volume): acl, azure, cann, dnnl, migraphx, rknpu, snpe, vsinpu, winml.
+#                                provider's own CI workflow(s), Linux and Windows legs alike. Wired
+#                                so far: cuda (Linux CUDA CI, ONNX Runtime CUDA Builds, CUDA Plugin
+#                                Windows CI), tensorrt (Linux + Windows GPU TensorRT CI Pipeline),
+#                                openvino (Linux + Windows OpenVINO CI Pipeline), webgpu (Linux +
+#                                ONNX Runtime WebGPU Builds), dml, qnn, xnnpack, vitisai, coreml,
+#                                nnapi, js/webnn. Not yet wired (no obvious
+#                                reusable CI workflow or low PR volume): acl, azure, cann, dnnl,
+#                                migraphx, rknpu, snpe, vsinpu, winml.
 #                            Multiple gates can run in parallel when a PR touches more than one area
 #                            (e.g. framework + cuda).
 # Stage 3 (everything else): Placeholder for now - will fan out to the remaining CI workflows as
@@ -18,9 +26,10 @@
 #                            Waits for all Stage 2 gates that were triggered to succeed (skipped
 #                            gates count as pass-through).
 #
-# NOTE: This orchestrator currently runs ALONGSIDE the existing standalone `pull_request` triggers
-# on lint.yml / linux_ci.yml (not yet replacing them), so nothing is required or blocking yet. This
-# is intentional for validation before cutting real required-status-checks over to this workflow.
+# NOTE: Every workflow wired into Stage 2 above has had its standalone `pull_request:` trigger
+# removed (see each workflow's `on:` block) - ci_orchestrator.yml is now the sole PR entry point for
+# those workflows, so unrelated PRs no longer queue Windows/Linux GPU runners they don't need. This
+# is what actually reduces contention on the self-hosted runner pools, not just a cosmetic gate.
 
 name: CI Orchestrator
 
@@ -109,11 +118,56 @@ jobs:
     if: needs.detect-changes.outputs.framework == 'true'
     uses: ./.github/workflows/linux_ci.yml
 
+  # windows_x64_release / windows_x64_debug / windows_x64_release_ep_generic_interface / Windows CPU
+  # CI Pipeline / windows_x64_asan are generic full-ORT builds (not tied to one provider), so they
+  # ride on the same "framework" gate as stage2-linux-cpu above.
+  stage2-windows-release:
+    name: "Stage 2: Windows x64 Release (framework gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.framework == 'true'
+    uses: ./.github/workflows/windows_x64_release_build_x64_release.yml
+
+  stage2-windows-debug:
+    name: "Stage 2: Windows x64 Debug (framework gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.framework == 'true'
+    uses: ./.github/workflows/windows_x64_debug_build_x64_debug.yml
+
+  stage2-windows-ep-generic:
+    name: "Stage 2: Windows x64 Release EP Generic Interface (framework gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.framework == 'true'
+    uses: ./.github/workflows/windows_x64_release_ep_generic_interface_build_x64_release_ep_generic_interface.yml
+
+  stage2-windows-cpu:
+    name: "Stage 2: Windows CPU CI Pipeline (framework gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.framework == 'true'
+    uses: ./.github/workflows/windows_x86.yml
+
+  stage2-windows-asan:
+    name: "Stage 2: Windows x64 ASan (framework gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.framework == 'true'
+    uses: ./.github/workflows/windows_build_x64_asan.yml
+
   stage2-cuda:
     name: "Stage 2: Linux CUDA CI (cuda provider gate)"
     needs: detect-changes
     if: needs.detect-changes.outputs.cuda == 'true'
     uses: ./.github/workflows/linux_cuda_ci.yml
+
+  stage2-windows-cuda:
+    name: "Stage 2: Windows CUDA Builds (cuda provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.cuda == 'true'
+    uses: ./.github/workflows/windows_cuda.yml
+
+  stage2-windows-cuda-plugin:
+    name: "Stage 2: CUDA Plugin Windows CI (cuda provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.cuda == 'true'
+    uses: ./.github/workflows/windows_cuda_plugin.yml
 
   stage2-tensorrt:
     name: "Stage 2: Linux TensorRT CI (tensorrt provider gate)"
@@ -121,11 +175,23 @@ jobs:
     if: needs.detect-changes.outputs.tensorrt == 'true'
     uses: ./.github/workflows/linux_tensorrt_ci.yml
 
+  stage2-windows-tensorrt:
+    name: "Stage 2: Windows GPU TensorRT CI Pipeline (tensorrt provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.tensorrt == 'true'
+    uses: ./.github/workflows/windows_tensorrt.yml
+
   stage2-openvino:
     name: "Stage 2: Linux OpenVINO CI (openvino provider gate)"
     needs: detect-changes
     if: needs.detect-changes.outputs.openvino == 'true'
     uses: ./.github/workflows/linux_openvino_ci.yml
+
+  stage2-windows-openvino:
+    name: "Stage 2: Windows OpenVINO CI Pipeline (openvino provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.openvino == 'true'
+    uses: ./.github/workflows/windows_openvino.yml
 
   stage2-dml:
     name: "Stage 2: Windows DML CI (dml provider gate)"
@@ -138,6 +204,12 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.webgpu == 'true'
     uses: ./.github/workflows/linux_webgpu.yml
+
+  stage2-windows-webgpu:
+    name: "Stage 2: ONNX Runtime WebGPU Builds (webgpu provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.webgpu == 'true'
+    uses: ./.github/workflows/windows_webgpu.yml
 
   stage2-qnn:
     name: "Stage 2: Windows QNN CI (qnn provider gate)"
@@ -178,21 +250,35 @@ jobs:
   # Stage 3 placeholder: remaining CI workflows will be added here as jobs (one `uses:` per
   # workflow, converted to workflow_call) once each has been validated individually. Each such job
   # should set:
-  #   needs: [detect-changes, stage2-linux-cpu, stage2-cuda, stage2-tensorrt, stage2-openvino,
-  #           stage2-dml, stage2-webgpu, stage2-qnn, stage2-xnnpack, stage2-vitisai, stage2-coreml,
+  #   needs: [detect-changes, stage2-linux-cpu, stage2-windows-release, stage2-windows-debug,
+  #           stage2-windows-ep-generic, stage2-windows-cpu, stage2-windows-asan, stage2-cuda,
+  #           stage2-windows-cuda, stage2-windows-cuda-plugin, stage2-tensorrt,
+  #           stage2-windows-tensorrt, stage2-openvino, stage2-windows-openvino, stage2-dml,
+  #           stage2-webgpu, stage2-windows-webgpu, stage2-qnn, stage2-xnnpack, stage2-vitisai, stage2-coreml,
   #           stage2-nnapi, stage2-js]
   #   if: |
   #     always() &&
   #     needs.detect-changes.result == 'success' &&
   #     (needs.stage2-linux-cpu.result == 'success' || needs.stage2-linux-cpu.result == 'skipped') &&
+  #     (needs.stage2-windows-release.result == 'success' || needs.stage2-windows-release.result == 'skipped') &&
+  #     (needs.stage2-windows-debug.result == 'success' || needs.stage2-windows-debug.result == 'skipped') &&
+  #     (needs.stage2-windows-ep-generic.result == 'success' || needs.stage2-windows-ep-generic.result == 'skipped') &&
+  #     (needs.stage2-windows-cpu.result == 'success' || needs.stage2-windows-cpu.result == 'skipped') &&
+  #     (needs.stage2-windows-asan.result == 'success' || needs.stage2-windows-asan.result == 'skipped') &&
   #     (needs.stage2-cuda.result == 'success' || needs.stage2-cuda.result == 'skipped') &&
+  #     (needs.stage2-windows-cuda.result == 'success' || needs.stage2-windows-cuda.result == 'skipped') &&
+  #     (needs.stage2-windows-cuda-plugin.result == 'success' || needs.stage2-windows-cuda-plugin.result == 'skipped') &&
   #     (needs.stage2-tensorrt.result == 'success' || needs.stage2-tensorrt.result == 'skipped') &&
+  #     (needs.stage2-windows-tensorrt.result == 'success' || needs.stage2-windows-tensorrt.result == 'skipped') &&
   #     (needs.stage2-openvino.result == 'success' || needs.stage2-openvino.result == 'skipped') &&
+  #     (needs.stage2-windows-openvino.result == 'success' || needs.stage2-windows-openvino.result == 'skipped') &&
   #     (needs.stage2-dml.result == 'success' || needs.stage2-dml.result == 'skipped') &&
   #     (needs.stage2-webgpu.result == 'success' || needs.stage2-webgpu.result == 'skipped') &&
+  #     (needs.stage2-windows-webgpu.result == 'success' || needs.stage2-windows-webgpu.result == 'skipped') &&
   #     (needs.stage2-qnn.result == 'success' || needs.stage2-qnn.result == 'skipped') &&
   #     (needs.stage2-xnnpack.result == 'success' || needs.stage2-xnnpack.result == 'skipped') &&
   #     (needs.stage2-vitisai.result == 'success' || needs.stage2-vitisai.result == 'skipped') &&
   #     (needs.stage2-coreml.result == 'success' || needs.stage2-coreml.result == 'skipped') &&
   #     (needs.stage2-nnapi.result == 'success' || needs.stage2-nnapi.result == 'skipped') &&
   #     (needs.stage2-js.result == 'success' || needs.stage2-js.result == 'skipped')
+
