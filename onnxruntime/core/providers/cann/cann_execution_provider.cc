@@ -1076,13 +1076,13 @@ void InitializeRegistry() {
 void DeleteRegistry() {
   s_kernel_registry.reset();
 
-  // Calls ge::aclgrphBuildFinalize
-  cann::g_ge_promise_final.set_value();
-  if (cann::g_ge_thread.joinable()) {
-    cann::g_ge_thread.join();
-  }
-
   if (!cann::GetRepeatInitFlag()) {
+    // Calls ge::aclgrphBuildFinalize
+    cann::g_ge_promise_final.set_value();
+    if (cann::g_ge_thread.joinable()) {
+      cann::g_ge_thread.join();
+    }
+
     CANN_CALL_THROW(aclFinalize());
   }
 }
