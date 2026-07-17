@@ -8,12 +8,12 @@
 #include <optional>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "core/providers/webgpu/webgpu_external_header.h"
 
 #include "core/common/common.h"
-#include "core/common/inlined_containers.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/program_manager.h"
 #include "core/providers/webgpu/webgpu_utils.h"
@@ -349,8 +349,40 @@ class WebGpuContext final {
 
   // One dispatch recorded while any cache-miss pipeline builds complete. Only the first dispatch
   // for a cache key owns `pending_build`; every dispatch retains its key to resolve the cached
-  // ProgramArtifact when the window is encoded.
+  // ProgramArtifact when the window is encoded. Each record also retains its raw buffer handles
+  // until the dispatch is encoded or discarded.
   struct DeferredDispatch {
+    DeferredDispatch() = default;
+    ~DeferredDispatch() {
+      ReleaseBuffers();
+    }
+
+    DeferredDispatch(DeferredDispatch&& other) noexcept
+        : key{std::move(other.key)},
+          pending_build{std::move(other.pending_build)},
+          bind_buffers{std::move(other.bind_buffers)},
+          bind_buffers_segments{std::move(other.bind_buffers_segments)},
+          uniform_buffer{std::exchange(other.uniform_buffer, nullptr)},
+          x{other.x},
+          y{other.y},
+          z{other.z},
+          indirect_buffer{std::exchange(other.indirect_buffer, nullptr)},
+          pending_kernel_info{std::move(other.pending_kernel_info)} {
+      other.bind_buffers.clear();
+    }
+
+    DeferredDispatch& operator=(DeferredDispatch&&) = delete;
+    ORT_DISALLOW_COPY_AND_ASSIGNMENT(DeferredDispatch);
+
+    void RetainBuffers() const {
+      for (WGPUBuffer buffer : bind_buffers) {
+        wgpuBufferAddRef(buffer);
+      }
+      if (indirect_buffer) {
+        wgpuBufferAddRef(indirect_buffer);
+      }
+    }
+
     std::string key;
     std::unique_ptr<PendingPipelineBuild> pending_build;
     std::vector<WGPUBuffer> bind_buffers;
@@ -361,8 +393,19 @@ class WebGpuContext final {
     // Profiling info captured at record time (shapes must be read while the tensors are alive);
     // replayed into pending_kernels_ during encoding so GPU profiling stays consistent.
     std::optional<PendingKernelInfo> pending_kernel_info;
+
+   private:
+    void ReleaseBuffers() const {
+      for (WGPUBuffer buffer : bind_buffers) {
+        wgpuBufferRelease(buffer);
+      }
+      if (indirect_buffer) {
+        wgpuBufferRelease(indirect_buffer);
+      }
+    }
   };
 
+  // Find the build owner for a cache key in the current deferred window.
   PendingPipelineBuild* FindPendingPipelineBuild(std::string_view key) const;
   Status WaitForDeferredPipelineBuilds();
 

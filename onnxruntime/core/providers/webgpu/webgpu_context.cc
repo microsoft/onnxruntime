@@ -251,6 +251,7 @@ WebGpuContext::PendingPipelineBuild* WebGpuContext::FindPendingPipelineBuild(std
 Status WebGpuContext::WaitForDeferredPipelineBuilds() {
   Status result = Status::OK();
   for (auto& dispatch : deferred_dispatches_) {
+    // Same-key dispatches share the build owned by the first dispatch in the window.
     if (!dispatch.pending_build) {
       continue;
     }
@@ -467,6 +468,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   if (program_artifact == nullptr) {
     PendingPipelineBuild* in_flight_build = FindPendingPipelineBuild(key);
 
+    // Reuse an in-flight same-key build instead of compiling the shader again.
     if (in_flight_build == nullptr) {
       pending_build = std::make_unique<PendingPipelineBuild>();
       auto& build = *pending_build;
@@ -655,6 +657,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
     d.pending_kernel_info.emplace(context.NodeName(), context.OpType(), program.Name(),
                                   key, inputs, outputs);
   }
+  d.RetainBuffers();
   deferred_dispatches_.push_back(std::move(d));
   deferred_buffer_mgr_ = &buffer_mgr;
 

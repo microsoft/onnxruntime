@@ -31,7 +31,6 @@ struct PipelineCallbackContext {
 
 class ProgramArtifact {
  public:
-  ProgramArtifact(const ProgramBase& program, wgpu::ComputePipeline&& compute_pipeline, std::vector<int>&& shape_uniform_ranks);
   ProgramArtifact(std::string program_name, wgpu::ComputePipeline&& compute_pipeline, std::vector<int>&& shape_uniform_ranks);
 
   const std::string name;

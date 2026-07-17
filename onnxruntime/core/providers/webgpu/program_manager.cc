@@ -16,11 +16,6 @@
 namespace onnxruntime {
 namespace webgpu {
 
-ProgramArtifact::ProgramArtifact(const ProgramBase& program, wgpu::ComputePipeline&& compute_pipeline, std::vector<int>&& shape_uniform_ranks)
-    : name{program.Name()},
-      compute_pipeline{compute_pipeline},
-      shape_uniform_ranks{shape_uniform_ranks} {}
-
 ProgramArtifact::ProgramArtifact(std::string program_name, wgpu::ComputePipeline&& compute_pipeline, std::vector<int>&& shape_uniform_ranks)
     : name{std::move(program_name)},
       compute_pipeline{std::move(compute_pipeline)},
@@ -227,7 +222,9 @@ Status ProgramManager::Build(const ProgramBase& program,
         if (status == wgpu::CreatePipelineAsyncStatus::Success) {
           context->pipeline = std::move(pipeline);
         } else {
-          context->status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create a WebGPU compute pipeline: ", std::string_view{message});
+          context->status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                            "Failed to create a WebGPU compute pipeline: ",
+                                            std::string_view{message});
         }
       };
 
