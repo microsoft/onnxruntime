@@ -299,10 +299,6 @@ Status PrepareForReduce(const Tensor* X,
   const int64_t rank = gsl::narrow<int64_t>(input_shape.NumDimensions());
   prepare_reduce_metadata.input_count = input_shape.Size();
 
-  if (rank > 8) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "cuDNN only supports up to 8-D tensors in reduction");
-  }
-
   const auto input_dims = input_shape.GetDims();
   std::vector<bool> reduced(rank, false);
   if (axes.size() > 0) {
@@ -478,6 +474,41 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const CudaKernel* ke
       }
 
       return Status::OK();
+    }
+  }
+
+  if constexpr (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_FLATTENED_INDICES) {
+    if (axes.size() == 1) {
+      const int64_t rank = input_shape.NumDimensions();
+      const int64_t axis = HandleNegativeAxis(axes[0], rank);
+      if (axis == rank - 1) {
+        const int64_t m = input_shape.SizeToDimension(axis);
+        const int64_t n = input_shape[axis];
+        if (n > 0 && m <= std::numeric_limits<int>::max() && n <= std::numeric_limits<int>::max()) {
+          if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MAX) {
+            return arg_min_max_last_axis<CudaT, true>(stream, reinterpret_cast<const CudaT*>(input.Data<T>()),
+                                                      output.MutableData<int64_t>(), gsl::narrow_cast<int>(m),
+                                                      gsl::narrow_cast<int>(n));
+          }
+          if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MIN) {
+            return arg_min_max_last_axis<CudaT, false>(stream, reinterpret_cast<const CudaT*>(input.Data<T>()),
+                                                       output.MutableData<int64_t>(), gsl::narrow_cast<int>(m),
+                                                       gsl::narrow_cast<int>(n));
+          }
+        }
+      }
+    }
+  }
+
+  // Preserve the optimized matrix reductions above and the existing cuDNN path when available.
+  // Without cuDNN, use a general CUDA kernel for plain ReduceSum axis layouts that cannot be
+  // represented as a contiguous matrix reduction.
+  if constexpr (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_NO_INDICES) {
+    if ((cudnn_handle == nullptr || input_shape.NumDimensions() > 8) &&
+        cudnn_reduce_op == CUDNN_REDUCE_TENSOR_ADD &&
+        !calculate_log && !calculate_sqt && !log_sum_exp) {
+      return reduce_sum_nd(stream, reinterpret_cast<const CudaT*>(input.Data<T>()),
+                           reinterpret_cast<CudaT*>(output.MutableData<T>()), input_shape.GetDims(), axes);
     }
   }
 
@@ -785,7 +816,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   const bool fast_reduction = fast_reduction_ && !ctx->GetUseDeterministicCompute();
   return ReduceComputeCore<T, ReduceTensorIndices>(AllocatorPtr{}, this, *X, prepare_reduce_metadata, *Y, cudnn_reduce_op, axes,
                                                    calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction,
-                                                   Stream(ctx), GetComputeStream(ctx), GetCudnnHandle(ctx));
+                                                   Stream(ctx), GetComputeStream(ctx), TryGetCudnnHandle(ctx));
 }
 
 #define SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(T)                                                                           \
@@ -797,9 +828,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
     const Tensor* X = ctx->Input<Tensor>(0);                                                                              \
     TensorShapeVector axes;                                                                                               \
     size_t num_inputs = ctx->InputCount();                                                                                \
-    if (num_inputs == 2) {                                                                                                \
-      const Tensor* axes_tensor = ctx->Input<Tensor>(1);                                                                  \
-      ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");                                                          \
+    const Tensor* axes_tensor = num_inputs == 2 ? ctx->Input<Tensor>(1) : nullptr;                                        \
+    if (axes_tensor != nullptr) {                                                                                         \
       ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1, "An axes tensor must be a vector tensor.");                  \
       auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);                                                          \
       const auto* data = axes_tensor->Data<int64_t>();                                                                    \
@@ -856,6 +886,14 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
                                              input_count * sizeof(T), cudaMemcpyDeviceToDevice, Stream(ctx)));            \
       }                                                                                                                   \
       return Status::OK();                                                                                                \
+    }                                                                                                                     \
+                                                                                                                          \
+    if constexpr (std::is_same_v<T, int32_t> || std::is_same_v<T, int64_t>) {                                             \
+      if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_ADD &&                                                                   \
+          !calculate_log_ && !calculate_sqt_ && !log_sum_exp_) {                                                          \
+        return reduce_sum_nd(Stream(ctx), reinterpret_cast<const CudaT*>(X->Data<T>()),                                   \
+                             reinterpret_cast<CudaT*>(Y->MutableData<T>()), X->Shape().GetDims(), axes);                  \
+      }                                                                                                                   \
     }                                                                                                                     \
                                                                                                                           \
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(Y->MutableDataRaw(), 0, Y->SizeInBytes(), Stream(ctx)));                         \

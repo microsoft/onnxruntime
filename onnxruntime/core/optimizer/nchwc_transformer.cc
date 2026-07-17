@@ -533,6 +533,31 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
     return;
   }
 
+  // Bail out for AveragePool with ceil_mode==1 && count_include_pad==1. The default float CPU
+  // AveragePool kernel was fixed (PR #29629) to divide the trailing ceil_mode window by its
+  // clamped size instead of the full kernel size. NchwcAveragePool routes to
+  // MlasAveragePoolingIncludePad, which still uses the full-kernel-size divisor and would
+  // silently reintroduce the wrong-average bug for optimized NCHWc graphs. Leaving this combo
+  // unconverted keeps it on the fixed CPU path; every other AveragePool (and all MaxPool /
+  // global pooling) conversion is unaffected, so there is no perf impact on the common case.
+  if (node.OpType() == "AveragePool") {
+    const NodeAttributes& attrs = node.GetAttributes();
+    const auto get_int_attr = [&attrs](const char* name) -> int64_t {
+      const auto it = attrs.find(name);
+      return (it != attrs.end() && it->second.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_INT)
+                 ? it->second.i()
+                 : 0;
+    };
+    // Gate count_include_pad as (!= 0) to match how PoolBase and the float (pool.cc) / fp16
+    // kernels treat it: any nonzero value enables include-pad. Using == 1 here would let an
+    // out-of-spec count_include_pad=2 model escape the bail-out, convert to NchwcAveragePool,
+    // and silently hit the buggy full-kernel divisor in the optimized graph. ceil_mode stays
+    // == 1 because the kernels gate the ceil-window fix on exactly ceil_mode == 1.
+    if (get_int_attr("ceil_mode") == 1 && get_int_attr("count_include_pad") != 0) {
+      return;
+    }
+  }
+
   const size_t nchwc_block_size = MlasNchwcGetBlockSize();
 
   const auto* input_type = input_defs[0]->TypeAsProto();
