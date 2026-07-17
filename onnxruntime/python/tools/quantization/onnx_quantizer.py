@@ -828,6 +828,12 @@ class ONNXQuantizer(BaseQuantizer):
             node_qtype,
         ) = self.quantize_bias_static_impl(bias_name, input_scale, weight_scale, beta)
 
+        # Bias (which may be 2D for Gemm) is dequantized along its last axis.
+        bias_axis = None
+        if bias_scale_data.size > 1:
+            bias_initializer = find_by_name(bias_name, self.model.initializer())
+            bias_axis = len(bias_initializer.dims) - 1
+
         assert bias_name not in self.quantized_value_map
         quantized_value = QuantizedValue(
             bias_name,
@@ -835,7 +841,7 @@ class ONNXQuantizer(BaseQuantizer):
             quantized_bias_scale_name,
             quantized_bias_zp_name,
             QuantizedValueType.Initializer,
-            0 if bias_scale_data.size > 1 else None,
+            bias_axis,
             node_type=node_type,
             node_qtype=node_qtype,
         )
