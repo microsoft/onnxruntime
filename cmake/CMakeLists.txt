@@ -12,14 +12,6 @@ project(onnxruntime C CXX ASM)
 
 include(onnxruntime_language_standard_versions.cmake)
 
-# Xcode versions before 26 gate libc++'s C++20 stop-token support behind
-# -fexperimental-library. Keep the legacy Xcode 15/16 CI configurations buildable.
-if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" AND
-   CMAKE_CXX_COMPILER_VERSION VERSION_LESS 17)
-  add_compile_options("$<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-fexperimental-library>")
-  add_link_options("$<$<OR:$<LINK_LANGUAGE:CXX>,$<LINK_LANGUAGE:OBJCXX>>:-fexperimental-library>")
-endif()
-
 # We don't use C++20 modules yet.
 # There are some known issues to address first:
 # - Android builds from Linux Docker containers have trouble finding clang-scan-deps.

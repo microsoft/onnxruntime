@@ -5,7 +5,7 @@
 
 #include <map>
 #include <optional>
-#include <stop_token>
+#include "core/framework/cancellation.h"
 #include <string>
 #include <unordered_map>
 #include <filesystem>
@@ -797,7 +797,7 @@ class InferenceSession {
   static constexpr int kMaxGraphCaptureRunAttempts = 8;
 
   // Internal implementation of Run() with graph capture recursion depth tracking.
-  [[nodiscard]] common::Status RunImpl(const RunOptions& run_options, std::stop_token terminate_token,
+  [[nodiscard]] common::Status RunImpl(const RunOptions& run_options, onnxruntime::CancellationToken terminate_token,
                                        gsl::span<const std::string> feed_names,
                                        gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names,
                                        std::vector<OrtValue>* p_fetches,

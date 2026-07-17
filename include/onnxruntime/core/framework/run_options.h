@@ -4,10 +4,11 @@
 #pragma once
 
 #include <memory>
-#include <stop_token>
+#include <mutex>
 #include <string>
 
 #include "core/common/inlined_containers_fwd.h"
+#include "core/framework/cancellation.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/config_options.h"
 
@@ -65,18 +66,100 @@ struct OrtRunOptions {
   OrtRunOptions& operator=(const OrtRunOptions& other);
   OrtRunOptions(OrtRunOptions&&) noexcept = default;
   OrtRunOptions& operator=(OrtRunOptions&&) noexcept = default;
-  ~OrtRunOptions();
+  ~OrtRunOptions() = default;
 
   // The token snapshots the current termination state. ResetTerminate replaces
   // that state for future snapshots without reviving already-stopped tokens.
-  std::stop_token GetTerminateToken() const;
+  onnxruntime::CancellationToken GetTerminateToken() const;
   void RequestTerminate();
   void ResetTerminate();
 
  private:
-  class TerminationState;
+  // Thread-safe holder so RunOptionsSetTerminate/RunOptionsUnsetTerminate can be
+  // called concurrently with active runs. Reset() installs a fresh source for
+  // future snapshots while previously-snapshotted, in-flight tokens stay stopped.
+  class TerminationState {
+   public:
+    explicit TerminationState(bool stop_requested = false) {
+      if (stop_requested) {
+        source_.request_stop();
+      }
+    }
+
+    onnxruntime::CancellationToken GetToken() const {
+      std::lock_guard<std::mutex> lock(mutex_);
+      return source_.get_token();
+    }
+
+    void RequestStop() {
+      onnxruntime::CancellationSource source;
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        source = source_;
+      }
+
+      source.request_stop();
+    }
+
+    void Reset() {
+      std::lock_guard<std::mutex> lock(mutex_);
+      source_ = onnxruntime::CancellationSource{};
+    }
+
+   private:
+    mutable std::mutex mutex_;
+    onnxruntime::CancellationSource source_;
+  };
+
   std::shared_ptr<TerminationState> termination_state_;
 };
+
+// The special members and termination helpers are defined inline (rather than in
+// run_options.cc) so that OrtRunOptions stays self-contained in every translation
+// unit and dynamically loaded provider library. ONNX Runtime only exports the C
+// API from its shared library, so an out-of-line OrtRunOptions constructor would
+// be an unresolved symbol when a provider .so that constructs RunOptions is loaded.
+inline OrtRunOptions::OrtRunOptions()
+    : termination_state_{std::make_shared<TerminationState>()} {
+}
+
+inline OrtRunOptions::OrtRunOptions(const OrtRunOptions& other)
+    : run_log_severity_level{other.run_log_severity_level},
+      run_log_verbosity_level{other.run_log_verbosity_level},
+      run_tag{other.run_tag},
+      only_execute_path_to_fetches{other.only_execute_path_to_fetches},
+      enable_profiling{other.enable_profiling},
+      profile_file_prefix{other.profile_file_prefix},
+#ifdef ENABLE_TRAINING
+      training_mode{other.training_mode},
+#endif
+      config_options{other.config_options},
+      active_adapters{other.active_adapters},
+      sync_stream{other.sync_stream},
+      termination_state_{
+          std::make_shared<TerminationState>(other.GetTerminateToken().stop_requested())} {
+}
+
+inline OrtRunOptions& OrtRunOptions::operator=(const OrtRunOptions& other) {
+  if (this != &other) {
+    OrtRunOptions copy{other};
+    *this = std::move(copy);
+  }
+
+  return *this;
+}
+
+inline onnxruntime::CancellationToken OrtRunOptions::GetTerminateToken() const {
+  return termination_state_->GetToken();
+}
+
+inline void OrtRunOptions::RequestTerminate() {
+  termination_state_->RequestStop();
+}
+
+inline void OrtRunOptions::ResetTerminate() {
+  termination_state_->Reset();
+}
 
 namespace onnxruntime {
 using RunOptions = ::OrtRunOptions;

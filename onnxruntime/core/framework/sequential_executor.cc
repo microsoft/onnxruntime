@@ -526,7 +526,7 @@ class KernelScope {
 onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
                                   NodeIndex idx,
                                   size_t stream_idx,
-                                  std::stop_token terminate_token,
+                                  onnxruntime::CancellationToken terminate_token,
                                   SessionScope& session_scope) {
   auto* p_kernel = ctx.GetSessionState().GetKernel(idx);
   if (p_kernel->KernelDef().OpName() == "YieldOp") {
@@ -684,7 +684,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 #ifdef ORT_ENABLE_STREAM
                                    const DeviceStreamCollection* device_streams,
 #endif
-                                   std::stop_token terminate_token,
+                                   onnxruntime::CancellationToken terminate_token,
                                    const bool only_execute_path_to_fetches,
                                    bool single_thread_mode,
                                    profiling::Profiler* run_profiler) {
@@ -781,7 +781,7 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
                                               fetch_allocators,
                                           const logging::Logger& logger,
                                           const DeviceStreamCollection* device_streams,
-                                          std::stop_token terminate_token,
+                                          onnxruntime::CancellationToken terminate_token,
                                           bool single_thread_mode,
                                           PartialGraphExecutionState& state,
                                           const OrtValueCachePtr& cache,

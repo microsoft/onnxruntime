@@ -40,7 +40,7 @@ StreamExecutionContext::StreamExecutionContext(const SessionState& sess_state,
                                                const std::unordered_map<size_t, IExecutor::CustomAllocator>&
                                                    fetch_allocators,
                                                const logging::Logger& sess_logger,
-                                               std::stop_token terminate_token,
+                                               onnxruntime::CancellationToken terminate_token,
                                                bool single_thread_mode)
     : session_state_(&sess_state),
       frame_(feed_mlvalue_idxs,
@@ -112,7 +112,7 @@ StreamExecutionContext::StreamExecutionContext(const SessionState& sess_state,
                                                const std::unordered_map<size_t, IExecutor::CustomAllocator>&
                                                    fetch_allocators,
                                                const logging::Logger& sess_logger,
-                                               std::stop_token terminate_token,
+                                               onnxruntime::CancellationToken terminate_token,
                                                bool single_thread_mode)
     : session_state_(&sess_state),
       frame_(feed_mlvalue_idxs,
@@ -182,11 +182,11 @@ void StreamExecutionContext ::SetStatus(const Status& status) {
   }
 }
 
-void StreamExecutionContext::ResetForExecution(int32_t num_tasks, std::stop_token terminate_token) {
+void StreamExecutionContext::ResetForExecution(int32_t num_tasks, onnxruntime::CancellationToken terminate_token) {
   ORT_ENFORCE(remain_tasks_.Get() == 0);
 
   external_stop_callback_.reset();
-  stop_source_ = std::stop_source{};
+  stop_source_ = onnxruntime::CancellationSource{};
   task_status_.Reset();
   remain_tasks_.Set(num_tasks);
   external_stop_callback_.emplace(terminate_token, RequestStop{stop_source_});
@@ -205,7 +205,7 @@ void StreamExecutionContext::RecycleNodeInputs(onnxruntime::NodeIndex node_index
 }
 
 void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& session_scope,
-              std::stop_token terminate_token, size_t since) {
+              onnxruntime::CancellationToken terminate_token, size_t since) {
   auto complete_task = gsl::finally([&ctx]() { ctx.CompleteTask(); });
 
   if (terminate_token.stop_requested()) {
@@ -281,7 +281,7 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
 }
 
 void ScheduleDownstream(StreamExecutionContext& ctx, size_t trigger, bool single_thread_mode,
-                        std::stop_token terminate_token, SessionScope& session_scope) {
+                        onnxruntime::CancellationToken terminate_token, SessionScope& session_scope) {
   auto* plan = ctx.GetSessionState().GetExecutionPlan();
   auto& downstream_map = plan->downstream_map;
   auto* tp = single_thread_mode ? nullptr : ctx.GetSessionState().GetInterOpThreadPool();

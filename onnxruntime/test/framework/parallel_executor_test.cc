@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include <atomic>
-#include <stop_token>
+#include "core/framework/cancellation.h"
 #include <thread>
 
 #include "core/framework/data_types.h"
@@ -115,7 +115,7 @@ struct CancellationTestOp {
       started_count_.notify_all();
 
       std::atomic<bool> stop_requested{terminate_token.stop_requested()};
-      std::stop_callback callback(terminate_token, [&]() {
+      onnxruntime::CancellationCallback callback(terminate_token, [&]() {
         stop_requested.store(true, std::memory_order_release);
         stop_requested.notify_one();
       });

@@ -6,7 +6,7 @@
 #include <limits>
 #include <mutex>
 #include <optional>
-#include <stop_token>
+#include "core/framework/cancellation.h"
 
 #include "core/common/logging/logging.h"
 #include "core/framework/device_stream_collection.h"
@@ -122,7 +122,7 @@ class StreamExecutionContext {
                          std::vector<OrtValue>& fetches,
                          const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                          const logging::Logger& sess_logger,
-                         std::stop_token terminate_token,
+                         onnxruntime::CancellationToken terminate_token,
                          bool single_thread_mode);
 
   const SessionState& GetSessionState() const;
@@ -166,11 +166,11 @@ class StreamExecutionContext {
   // If one of the stream got non-OK status, update the status in the context.
   void SetStatus(const Status& status);
 
-  std::stop_token GetCancellationToken() const noexcept {
+  onnxruntime::CancellationToken GetCancellationToken() const noexcept {
     return stop_source_.get_token();
   }
 
-  void ResetForExecution(int32_t num_tasks, std::stop_token terminate_token);
+  void ResetForExecution(int32_t num_tasks, onnxruntime::CancellationToken terminate_token);
 
   // Release the OrtValues after a step, based on the execution plan.
   void RecycleNodeInputs(onnxruntime::NodeIndex node_index);
@@ -218,15 +218,15 @@ class StreamExecutionContext {
   CountDownBarrier remain_tasks_;
 
   struct RequestStop {
-    mutable std::stop_source stop_source;
+    mutable onnxruntime::CancellationSource stop_source;
 
     void operator()() const noexcept {
       stop_source.request_stop();
     }
   };
 
-  std::stop_source stop_source_;
-  std::optional<std::stop_callback<RequestStop>> external_stop_callback_;
+  onnxruntime::CancellationSource stop_source_;
+  std::optional<onnxruntime::CancellationCallback<RequestStop>> external_stop_callback_;
   FirstFailureStatus task_status_;
 
 #ifdef ENABLE_TRAINING
@@ -255,13 +255,13 @@ using NotificationIndex = size_t;
 void RunSince(size_t stream_idx,
               StreamExecutionContext& ctx,
               SessionScope& session_scope,
-              std::stop_token terminate_token,
+              onnxruntime::CancellationToken terminate_token,
               size_t since);
 
 // Schedule the downstream jobs from other streams at 'trigger' step, based on the execution plan.
 void ScheduleDownstream(StreamExecutionContext& ctx,
                         size_t trigger,
                         bool single_thread_mode,
-                        std::stop_token terminate_token,
+                        onnxruntime::CancellationToken terminate_token,
                         SessionScope& session_scope);
 }  // namespace onnxruntime

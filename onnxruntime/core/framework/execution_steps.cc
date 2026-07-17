@@ -12,7 +12,7 @@ BarrierStep::BarrierStep(size_t id, NodeIndex node_index) : SequentialExecutionP
 Status BarrierStep::Execute(StreamExecutionContext& ctx,
                             size_t /*stream_idx*/,
                             SessionScope& /*session_scope*/,
-                            std::stop_token /*terminate_token*/,
+                            onnxruntime::CancellationToken /*terminate_token*/,
                             bool& continue_flag) {
   continue_flag = ctx.DecCountDownBarrier(barrier_id_);
   return Status::OK();
@@ -33,7 +33,7 @@ WaitOnEPStep::WaitOnEPStep(WaitNotificationFn handle, NotificationIndex idx, Nod
 Status WaitOnEPStep::Execute(StreamExecutionContext& ctx,
                              size_t stream_idx,
                              SessionScope& /*session_scope*/,
-                             std::stop_token /*terminate_token*/,
+                             onnxruntime::CancellationToken /*terminate_token*/,
                              bool& continue_flag) {
   auto* stream = ctx.GetDeviceStream(stream_idx);
   auto& notification = *ctx.GetNotification(notification_idx_);
@@ -65,7 +65,7 @@ LaunchKernelStep::LaunchKernelStep(NodeIndex index, std::string_view node_name)
 Status LaunchKernelStep::Execute(StreamExecutionContext& ctx,
                                  size_t stream_idx,
                                  SessionScope& session_scope,
-                                 std::stop_token terminate_token,
+                                 onnxruntime::CancellationToken terminate_token,
                                  bool& continue_flag) {
 #ifdef ENABLE_TRAINING
   // legacy code required by ORTTrainer. Should be removed when ORTTrainer is removed
@@ -95,7 +95,7 @@ ActivateNotificationStep::ActivateNotificationStep(
 Status ActivateNotificationStep::Execute(StreamExecutionContext& ctx,
                                          size_t stream_idx,
                                          SessionScope& /*session_scope*/,
-                                         std::stop_token /*terminate_token*/,
+                                         onnxruntime::CancellationToken /*terminate_token*/,
                                          bool& continue_flag) {
   if (ctx.GetNotification(notification_idx_)) {
     ctx.GetNotification(notification_idx_)->ActivateAndUpdate();
@@ -117,7 +117,7 @@ TriggerDownstreamStep::TriggerDownstreamStep(size_t trigger_point_index, NodeInd
 Status TriggerDownstreamStep::Execute(StreamExecutionContext& ctx,
                                       size_t /*stream_idx*/,
                                       SessionScope& session_scope,
-                                      std::stop_token terminate_token,
+                                      onnxruntime::CancellationToken terminate_token,
                                       bool& continue_flag) {
   ScheduleDownstream(ctx, trigger_point_index_, ctx.SingleThreadMode(), terminate_token, session_scope);
   continue_flag = true;

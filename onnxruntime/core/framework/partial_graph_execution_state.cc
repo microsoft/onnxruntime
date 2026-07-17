@@ -67,7 +67,7 @@ StreamExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::spa
                                                                         const SessionState& session_state,
                                                                         const logging::Logger& sess_logger,
                                                                         const DeviceStreamCollection* device_streams,
-                                                                        std::stop_token terminate_token) {
+                                                                        onnxruntime::CancellationToken terminate_token) {
   auto* execution_plan = session_state.GetExecutionPlan();
   LOGS(sess_logger, VERBOSE) << "Number of streams: " << execution_plan->execution_plan.size();
   int32_t valid_streams = 0;

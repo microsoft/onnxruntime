@@ -4,7 +4,7 @@
 #pragma once
 
 #ifdef ENABLE_TRAINING
-#include <stop_token>
+#include "core/framework/cancellation.h"
 
 #include "core/common/common.h"
 #include "core/framework/ort_value.h"
@@ -39,7 +39,7 @@ struct PartialGraphExecutionState {
                                               const SessionState& session_state,
                                               const logging::Logger& sess_logger,
                                               const DeviceStreamCollection* device_streams,
-                                              std::stop_token terminate_token);
+                                              onnxruntime::CancellationToken terminate_token);
   DeviceStreamCollection* GetDeviceStreamCollection(const SessionState& session_state);
 
  private:

@@ -3242,7 +3242,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
                  /*graph_capture_depth=*/0);
 }
 
-Status InferenceSession::RunImpl(const RunOptions& run_options, std::stop_token terminate_token,
+Status InferenceSession::RunImpl(const RunOptions& run_options, onnxruntime::CancellationToken terminate_token,
                                  gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                                  gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                                  const std::vector<OrtDevice>* p_fetches_device_info,

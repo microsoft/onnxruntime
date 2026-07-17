@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <stop_token>
+#include "core/framework/cancellation.h"
 
 #include "core/graph/basic_types.h"
 #include "core/framework/allocator.h"
@@ -85,7 +85,7 @@ void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager,
 // Execute the main graph. The feed_fetches_manager will be finalized based on the provided feeds and fetches.
 common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                             gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
-                            ExecutionMode execution_mode, std::stop_token terminate_token,
+                            ExecutionMode execution_mode, onnxruntime::CancellationToken terminate_token,
                             const logging::Logger& logger,
 #ifdef ORT_ENABLE_STREAM
                             DeviceStreamCollectionHolder& device_stream_collection_holder,
@@ -99,7 +99,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
                                    std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                    const logging::Logger& logger, PartialGraphExecutionState& state,
                                    const OrtValueCachePtr& cache,
-                                   std::stop_token terminate_token,
+                                   onnxruntime::CancellationToken terminate_token,
                                    int32_t partial_graph_index,
                                    Stream* parent_stream);
 #endif
@@ -109,7 +109,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               ExecutionMode execution_mode, std::stop_token terminate_token,
+                               ExecutionMode execution_mode, onnxruntime::CancellationToken terminate_token,
                                const logging::Logger& logger,
                                Stream* parent_stream,
                                /*when this is enabled, we will sync the parent stream to make sure the subgraph fetches
