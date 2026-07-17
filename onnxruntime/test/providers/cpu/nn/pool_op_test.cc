@@ -326,6 +326,62 @@ TEST(PoolTest, MaxPool1D_12_With_Index_8bits) {
   MaxPool1D_12_WithIndexTest_uint8(1 /*storage_order*/);
 }
 
+// Regression test: every VALID window equals the type's lowest value (uint8_t all-zero,
+// int8_t all -128). The CUDA kernel seeds maxval with NumericLimits<T>::Lowest() and used a
+// strict '>' comparison, so it never recorded a max-index for such windows and incorrectly
+// emitted Indices = -1 even though the window is not empty. CPU is used here as the oracle
+// (expected_indices = {0, 2}); the buggy CUDA kernel would produce {-1, -1} instead.
+static void MaxPool1D_12_WithIndexTest_int8_LowestValue(int64_t storage_order) {
+  OpTester test("MaxPool", 12);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+  test.AddAttribute("storage_order", storage_order);
+
+  std::vector<int8_t> x_vals = {-128, -128, -128, -128};
+  std::vector<int64_t> x_dims = {1, 1, 4};
+  std::vector<int64_t> expected_dims = {1, 1, 2};
+  std::vector<int8_t> expected_vals = {-128, -128};
+  std::vector<int64_t> expected_indices = {0, 2};
+
+  test.AddInput<int8_t>("X", x_dims, x_vals);
+  test.AddOutput<int8_t>("Y", expected_dims, expected_vals);
+  test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider});
+}
+
+static void MaxPool1D_12_WithIndexTest_uint8_LowestValue(int64_t storage_order) {
+  OpTester test("MaxPool", 12);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+  test.AddAttribute("storage_order", storage_order);
+
+  std::vector<uint8_t> x_vals = {0, 0, 0, 0};
+  std::vector<int64_t> x_dims = {1, 1, 4};
+  std::vector<int64_t> expected_dims = {1, 1, 2};
+  std::vector<uint8_t> expected_vals = {0, 0};
+  std::vector<int64_t> expected_indices = {0, 2};
+
+  test.AddInput<uint8_t>("X", x_dims, x_vals);
+  test.AddOutput<uint8_t>("Y", expected_dims, expected_vals);
+  test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool1D_12_With_Index_8bits_LowestValue) {
+  MaxPool1D_12_WithIndexTest_int8_LowestValue(0 /*storage_order*/);
+  MaxPool1D_12_WithIndexTest_int8_LowestValue(1 /*storage_order*/);
+  MaxPool1D_12_WithIndexTest_uint8_LowestValue(0 /*storage_order*/);
+  MaxPool1D_12_WithIndexTest_uint8_LowestValue(1 /*storage_order*/);
+}
+
 // Used by MaxPool2D_uint8
 template <typename InputIter>
 void print_vector(std::ostream& os, const std::string& txt, InputIter begin, InputIter end) {

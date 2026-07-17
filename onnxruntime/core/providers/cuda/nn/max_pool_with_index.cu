@@ -105,7 +105,9 @@ __global__ void MaxPoolWithIndexKernel(
     for (int64_t w = w_start; w < w_end; w += dilation_w) {
       for (int64_t h = h_start; h < h_end; h += dilation_h) {
         auto pool_offset = compute_offset(0, 0, h, w, d);
-        if (p_slice[pool_offset] > maxval) {
+        // h_index_max < 0 means no tap recorded yet (maxval is still the seeded Lowest());
+        // accept the first valid tap so windows whose true max equals Lowest() still get an index.
+        if (h_index_max < 0 || p_slice[pool_offset] > maxval) {
           h_index_max = h;
           w_index_max = w;
           d_index_max = d;
