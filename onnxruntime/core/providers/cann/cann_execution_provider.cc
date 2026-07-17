@@ -1399,17 +1399,21 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
           lock.unlock();
           CANN_RETURN_IF_ERROR(aclmdlLoadFromFile(filename_with_suffix.c_str(), &modelID));
         } else {
+          // Only hold the lock while saving an .om file
           if (!info_.dump_om_model) {
-            // Only hold the lock if going to dump an .om file
-            // Note: second unlock() will have no effect
             lock.unlock();
           }
+
           ge::Graph graph{cann_state->node_name.c_str()};
           ORT_RETURN_IF_ERROR(ParserONNXModel(string_model, graph));
 
           ge::ModelBufferData model;
           ORT_RETURN_IF_ERROR(BuildONNXModel(graph, input_shape, soc_name_, filename, info_, model));
-          lock.unlock();
+
+          // May have already been unlocked if dump_om_model is false
+          if (lock.owns_lock()) {
+            lock.unlock();
+          }
 
           CANN_RETURN_IF_ERROR(aclmdlLoadFromMem(model.data.get(), model.length, &modelID));
         }
