@@ -772,8 +772,8 @@ debug switches.
 | `ORT_ENABLE_FP4_GEMV` | on | Fused MXFP4 GEMV decode kernel. Set to `0` to force the dequant-to-dense fallback (debugging/bisecting). Active in the SM<120 fallback regime, and as the decode arm when native CUTLASS prefill is enabled. |
 | `ORT_FP4_GEMV_AUTOTUNE` | `0` | Opt-in per-shape autotune of the GEMV CtaN/Threads tiling. Enabling it synchronizes the first uncached inference for each shape. |
 | `ORT_FP4_GEMV_AUTOTUNE_LOG` | `0` | Set to `1` to log the chosen GEMV configs per shape. |
-| `ORT_FP4_GEMV_INTERLEAVED` | `0` | **Experimental, opt-in ("Lever A").** Routes the MXFP4 decode GEMV through the `ColumnMajorInterleaved` weight layout (`kInterleave=4`, `kStepK=32`) with dtype-conditional accumulation. fp16 gets ~4% faster decode; bf16 stays accuracy-safe. Default off keeps the shipping `ColumnMajor` path byte-for-byte unchanged. See [§9.10](#910-interleaved-gemv-layout--dtype-conditional-accumulation). |
-| `ORT_FP4_GEMV_INTERLEAVED_HALFACC` | `0` | **Diagnostic only.** When `ORT_FP4_GEMV_INTERLEAVED=1`, forces 16-bit accumulation for *both* fp16 and bf16, overriding the dtype-conditional policy. Used to isolate the layout-vs-accumulation effect; regresses bf16 accuracy. |
+| `ORT_FP4_GEMV_INTERLEAVED` | `0` | **Experimental, opt-in.** Routes the MXFP4 decode GEMV through the `ColumnMajorInterleaved` weight layout (`kInterleave=4`, `kStepK=32`) with dtype-conditional accumulation. fp16 gets faster decode; bf16 stays accuracy-safe. Default off keeps the shipping `ColumnMajor` path byte-for-byte unchanged. See [§9.10](#910-interleaved-gemv-layout--dtype-conditional-accumulation). |
+| `ORT_FP4_GEMV_INTERLEAVED_HALFACC` | `0` | **Override.** When `ORT_FP4_GEMV_INTERLEAVED=1`, forces 16-bit accumulation for *both* fp16 and bf16, overriding the dtype-conditional policy; regresses bf16 accuracy, so it is off by default. |
 | `ORT_FP4_SM80_GEMM` | `1` | Routes SM80/Ampere FP4 prefill through the fused-dequant grouped GEMM. Set to `0` to force dense fallback for debugging or comparison. Decode still routes through fused MXFP4 GEMV when supported. |
 | `ORT_ENABLE_FP4_CUTLASS_GEMM` | `0` | Opt-in native SM90 WFP4A16 CUTLASS GEMM (fast prefill). Requires FP16, SM90, and aligned shapes (`hidden`/`inter` divisible by 256). Must be combined with `ORT_ENABLE_FP4_CUTLASS_UNSAFE=1`. |
 | `ORT_ENABLE_FP4_CUTLASS_UNSAFE` | `0` | Confirms use of the experimental native SM90 path. Without it, a request to enable native GEMM logs a warning and falls back to dequant/GEMV. |
@@ -787,20 +787,20 @@ prefill and decode kernels with no extra conversion.
 
 **Opt-in (`ORT_FP4_GEMV_INTERLEAVED=1`, default off).** The shipping MXFP4 decode GEMV uses a
 non-interleaved `ColumnMajor` weight layout (`kInterleave=1`, `kStepK=8`). This experimental path
-("Lever A") instead mirrors the INT4 GEMV's `ColumnMajorInterleaved` layout (`kInterleave=4`,
-`kStepK=32`, 4× fewer K-loop trips) and pairs it with a **dtype-conditional accumulator** to
-resolve the long-standing tension between bf16 accuracy and occupancy:
+instead mirrors the INT4 GEMV's `ColumnMajorInterleaved` layout (`kInterleave=4`, `kStepK=32`, 4×
+fewer K-loop trips) and pairs it with a **dtype-conditional accumulator** to balance bf16 accuracy
+against occupancy:
 
 ```cpp
 // onnxruntime/contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.cu
 template <typename T>
-using Fp4LeverAAccT = std::conditional_t<std::is_same<T, half>::value, half, float>;
+using Fp4GemvAccT = std::conditional_t<std::is_same<T, half>::value, half, float>;
 ```
 
-| Activation | Accumulator | Registers / occupancy (A100, fc1 GEMV) | Rationale |
-|-----------|-------------|----------------------------------------|-----------|
-| **fp16** | fp16 (`half`) | ~79 reg / ~32% occ | fp16's 10-bit mantissa tolerates 16-bit accumulation over the longer `kStepK=32` chains; the cheaper accumulator keeps registers low so the interleaved layout's K-trip savings translate into a real speedup. |
-| **bf16** | fp32 (`float`) | ~96 reg / ~28% occ | bf16's 7-bit mantissa loses too much precision under 16-bit accumulation (fails tolerance), so it must accumulate in fp32 — at the cost of the extra registers that erase the speedup. |
+| Activation | Accumulator | Rationale |
+|-----------|-------------|-----------|
+| **fp16** | fp16 (`half`) | fp16's 10-bit mantissa tolerates 16-bit accumulation over the longer `kStepK=32` chains; the cheaper accumulator keeps register use low so the interleaved layout's K-trip savings translate into a real speedup. |
+| **bf16** | fp32 (`float`) | bf16's 7-bit mantissa loses too much precision under 16-bit accumulation (fails tolerance), so it must accumulate in fp32 — at the cost of the extra registers that erase the speedup. |
 
 The interleaved weights are produced by the `gemv_interleaved` branch of
 [`PrePackRepackFP4Weights`](onnxruntime/contrib_ops/cuda/moe/moe_quantization.cc), which routes the
@@ -811,20 +811,9 @@ floating-point e2m1 codes; the layout-only steps apply unchanged). Block scales 
 `k % 64==0`; `CtaN`/`Threads` are pinned (`4`/`128`) so the kernel always matches the prepacked
 weights.
 
-**Measured (A100-SXM4-80GB, sm_80, locked clocks; `hidden=inter=2880`, `E=32`, `top_k=4`,
-`tokens=1`):**
-
-| dtype | baseline e2e | Lever A e2e | Δ |
-|-------|-------------|-------------|---|
-| fp16 | 172.1 µs | **165.3 µs** | **−4.0% (faster)** |
-| bf16 | 173.8 µs | 176.6 µs | +1.6% (slower) |
-
-Correctness passes 4/4 vs the torch reference (fp16 `0.0156`/`0.0234`; bf16 `0.0625`/`0.0625`,
-resolving the earlier bf16 interleaved-layout regression). So the interleaved layout is a genuine
-lever **for fp16 decode**; bf16 gets no speedup (the fp32 register cost cancels it) but stays
-accurate. The path is opt-in so fp16 deployments can take the win without affecting bf16 or the
-shipping default. Full data and the per-dtype occupancy analysis are in
-[qmoe_fp4_experiments.md](qmoe_fp4_experiments.md) (2026-06-30 section).
+The interleaved layout speeds up fp16 decode; bf16 gets no speedup (the fp32 register cost cancels
+it) but stays accurate. The path is opt-in so fp16 deployments can take the win without affecting
+bf16 or the shipping default.
 
 ---
 
@@ -861,7 +850,7 @@ compile-time template (`static_assert((CtaK/kInterleave) % GroupSize == 0)`). NV
 - `is_moe_gemv_fp4_supported` accepts `group_size ∈ {16, 32}`; the dispatch instantiates the
   `GroupSize=16` cases in `dispatch_moe_gemv_group_size` /
   `dispatch_moe_gemv_interleaved_swiglu_group_size` ([moe_gemv_device.cuh](onnxruntime/contrib_ops/cuda/llm/moe_gemm/moe_gemv_device.cuh)).
-- NVFP4 uses **only** the non-interleaved `ColumnMajor` layout; the opt-in Lever A interleaved path
+- NVFP4 uses **only** the non-interleaved `ColumnMajor` layout; the opt-in interleaved path
   ([§9.10](#910-interleaved-gemv-layout--dtype-conditional-accumulation)) is MXFP4-only because its
   `kStepK=32` tile is tied to the block-32 scale layout.
 - `QMoECombineNvfp4ScalesForGemv` ([qmoe_kernels.cu](onnxruntime/contrib_ops/cuda/moe/qmoe_kernels.cu))
@@ -899,7 +888,7 @@ This is numerically bit-identical to the previous LUT. Measured decode speedup (
 ncu confirms the mechanism: FC1 compute (SM) throughput dropped 68.8% → 55.9% and DRAM rose
 7.3% → 10.2% (a more balanced kernel). Full-node latency (incl. expand / sort / finalize /
 softmax-topk overhead) fell 66.8 µs → 56.1 µs, and end-to-end Qwen3.6 decode reaches ~131 tok/s on
-H200. See [qmoe_fp4_experiments.md](qmoe_fp4_experiments.md) for the full profiling data.
+H200.
 
 ### 9b.4 Testing & benchmarking
 

@@ -146,7 +146,7 @@ class QMoE final : public CudaKernel, public MoEBase {
   // TMA FP4 path is ~50x slower than vLLM at prefill; routing prefill through the Ampere/SM80
   // DqMma grouped GEMM (the same kernel INT4 uses) closes most of the gap. When set, PrePack lays the e2m1
   // weights out in the SM80 CUTLASS ColumnMajorTileInterleave layout (reusing the GEMV
-  // "Lever A" buffers) and ComputeInternal routes prefill through the FP4 runner with
+    // interleaved-layout buffers) and ComputeInternal routes prefill through the FP4 runner with
   // QuantParams::GroupWise(32, ...) activation-dtype group scales. Because that layout is
   // incompatible with the decode GEMV kernel, PrePack also packs a separate ColToRow copy of
   // the e2m1 weights (gemv_fp4_fc*_weights_decode_) that the fused GEMV decode path consumes.
@@ -172,7 +172,7 @@ class QMoE final : public CudaKernel, public MoEBase {
   // When enable_fp4_sm80_gemm_ repurposes gemv_fp4_fc*_weights_ for the SM80 grouped-GEMM
   // prefill (SM80 pair-interleaved layout, which the decode GEMV kernel cannot read), these
   // hold the decode GEMV's own copy of the e2m1 weights in the GEMV-consumed layout
-  // (ColToRow, or Lever-A steps-1-3). Null when SM80 GEMM is disabled -- then the decode GEMV
+  // (ColToRow, or the interleaved layout's preprocessor steps 1-3). Null when SM80 GEMM is disabled -- then the decode GEMV
   // reads gemv_fp4_fc*_weights_ directly.
   IAllocatorUniquePtr<void> gemv_fp4_fc1_weights_decode_;
   IAllocatorUniquePtr<void> gemv_fp4_fc2_weights_decode_;

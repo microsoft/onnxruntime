@@ -1441,8 +1441,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const void* fc2_weight_data = fc2_experts_weights ? fc2_experts_weights->DataRaw() : nullptr;
   if (fp4_sm80_prefill) {
     // SM80 FP4 grouped GEMM: consume the e2m1 weights in the SM80 CUTLASS interleaved layout
-    // that PrePack produced into the GEMV "Lever A" buffers (same layout the INT4 SM80 grouped
-    // GEMM uses). The activation-dtype group scales are wired via quant_params above.
+    // that PrePack produced into the GEMV interleaved-layout buffers (same layout the INT4 SM80
+    // grouped GEMM uses). The activation-dtype group scales are wired via quant_params above.
     fc1_weight_data = gemv_fp4_fc1_weights_.get();
     fc2_weight_data = gemv_fp4_fc2_weights_.get();
   } else if ((is_fp4 && route_native_fp4) || (is_wfp4afp8 && !use_wfp4afp8_dequant_fallback_)) {
@@ -1653,7 +1653,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                          (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_))) {
     PrePackRepackFP4Weights(tensor, stream, alloc, packed_fp4_fc1_weights_, is_packed);
     // Native CUTLASS + GEMV coexist: also pre-pack the GEMV layout for decode (interleaved
-    // "Lever A" layout when ORT_FP4_GEMV_INTERLEAVED=1, else the [E,n,k/2] row-major layout).
+    // layout when ORT_FP4_GEMV_INTERLEAVED=1, else the [E,n,k/2] row-major layout).
     if (quant_type_ == "fp4" && enable_fp4_gemv_) {
       bool local_packed = false;
       PrePackRepackFP4Weights(tensor, stream, alloc, gemv_fp4_fc1_weights_, local_packed,
@@ -1674,7 +1674,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     // is_packed = false so the raw [E, hidden, n/2] initializer remains available for the
     // dequant fallback used by shapes the GEMV does not support. When the SM80 grouped-GEMM
     // port is enabled (MXFP4 only), force the SM80 CUTLASS ColumnMajorTileInterleave layout
-    // (Lever A) so this buffer feeds the prefill grouped GEMM; the decode GEMV then reads its
+    // so this buffer feeds the prefill grouped GEMM; the decode GEMV then reads its
     // own ColToRow copy in gemv_fp4_fc1_weights_decode_ (packed below) since it cannot consume
     // that layout. NVFP4 (block 16) has no native/SM80 path and always uses the plain ColToRow
     // layout the non-interleaved GEMV consumes.
@@ -2123,7 +2123,7 @@ void QMoE::PrePackRepackFP4Weights(const Tensor& tensor, cudaStream_t stream, Al
   packed_buf = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
 
   if (gemv_interleaved) {
-    // Lever A: produce the INT4-style ColumnMajorInterleaved FP4 weight layout instead of the
+    // Interleaved layout: produce the INT4-style ColumnMajorInterleaved FP4 weight layout instead of the
     // [E, n, k/2] row-major ColToRow layout. The source per expert is [k, n/2] bytes == a
     // [K, N] row-major W4 (e2m1) tensor, which is exactly what the CUTLASS fpA_intB SM80 W4_A16
     // preprocessor consumes (shape {k, n}). The preprocessor's layout-only steps 1-3 (row-
