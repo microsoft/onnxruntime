@@ -320,6 +320,42 @@ def generate_vcpkg_install_options(build_dir, args):
     return vcpkg_install_options
 
 
+def get_msvc_spectre_lib_dir(args):
+    """Return the directory that holds the MSVC Spectre-mitigated CRT/STL static libraries for the
+    target architecture, or None if it cannot be located.
+
+    The /Qspectre compile flag only mitigates ONNX Runtime's own object files. The prebuilt MSVC
+    CRT/STL static libraries (libcmt.lib, libcpmt.lib, libvcruntime.lib) that get linked into the
+    binaries also need to be the Spectre-mitigated variants, otherwise BinSkim BA2024
+    (EnableSpectreMitigations) still fails. Those variants ship in the "C++ Spectre-mitigated libs"
+    Visual Studio component under %VCToolsInstallDir%\\lib\\spectre\\<arch>.
+    """
+    vctools_dir = os.environ.get("VCToolsInstallDir")  # noqa: SIM112
+    if not vctools_dir:
+        return None
+    if args.arm:
+        arch = "arm"
+    elif args.arm64:
+        arch = "arm64"
+    elif args.arm64ec:
+        arch = "arm64ec"
+    elif args.x86:
+        arch = "x86"
+    else:
+        # Default to the target architecture selected by vcvarsall.bat (x86, x64, arm, arm64),
+        # falling back to x64 which is what the official Windows release packages use.
+        arch = os.environ.get("VSCMD_ARG_TGT_ARCH", "x64")
+    spectre_dir = Path(vctools_dir) / "lib" / "spectre" / arch
+    if spectre_dir.is_dir():
+        return str(spectre_dir)
+    # Some toolsets do not ship a dedicated arm64ec folder; those reuse the arm64 Spectre libraries.
+    if args.arm64ec:
+        fallback = Path(vctools_dir) / "lib" / "spectre" / "arm64"
+        if fallback.is_dir():
+            return str(fallback)
+    return None
+
+
 def generate_build_tree(
     cmake_path,
     source_dir,
@@ -1137,6 +1173,22 @@ def generate_build_tree(
                 # Address Sanitizer libs do not have a Qspectre version. So they two cannot be both enabled.
                 if not args.enable_address_sanitizer:
                     cflags += ["/Qspectre"]
+                    # /Qspectre only mitigates ONNX Runtime's own object files. The prebuilt MSVC
+                    # CRT/STL static libraries (libcmt.lib, libcpmt.lib, libvcruntime.lib) that are
+                    # linked into the binaries also have to be the Spectre-mitigated variants,
+                    # otherwise BinSkim BA2024 (EnableSpectreMitigations) still fails. Prepend the
+                    # Spectre lib directory to the linker search path so those libraries are
+                    # resolved ahead of the default (non-mitigated) CRT libraries.
+                    spectre_lib_dir = get_msvc_spectre_lib_dir(args)
+                    if spectre_lib_dir is not None:
+                        ldflags = [f'/LIBPATH:"{spectre_lib_dir}"', *ldflags]
+                    else:
+                        log.warning(
+                            "Could not locate the MSVC Spectre-mitigated CRT/STL libraries. The "
+                            "resulting binaries may fail BinSkim BA2024 (EnableSpectreMitigations). "
+                            "Install the 'C++ Spectre-mitigated libs' component from the Visual "
+                            "Studio installer and build from a Developer Command Prompt."
+                        )
                 if config == "Release":
                     cflags += ["/O2", "/Ob2", "/DNDEBUG"]
                 elif config == "RelWithDebInfo":
