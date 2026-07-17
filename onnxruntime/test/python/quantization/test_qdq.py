@@ -16,6 +16,7 @@ import onnx
 from onnx import TensorProto, helper, numpy_helper
 from op_test_utils import (
     TestDataFeeds,
+    build_tiny_weights,
     check_model_correctness,
     check_op_type_count,
     check_op_type_order,
@@ -1764,20 +1765,6 @@ class TestAdjustWeightScaleForInt32Bias(unittest.TestCase):
     def tearDownClass(cls):
         cls._tmp_model_dir.cleanup()
 
-    def build_tiny_weights(
-        self,
-        tiny_value: float,
-        weight_shape: list[int],
-        np_float_type,
-    ):
-        weight_data = np.full(weight_shape, tiny_value, dtype=np_float_type)
-        with np.nditer(weight_data, op_flags=["readwrite"]) as it:
-            # Swap signs so that the elements aren't all identical
-            for i, x in enumerate(it):
-                if i % 2 == 0:
-                    x[...] = -x
-        return onnx.numpy_helper.from_array(weight_data, "weight")
-
     def build_conv_test_model(
         self,
         input0_shape: list[int],
@@ -1790,7 +1777,7 @@ class TestAdjustWeightScaleForInt32Bias(unittest.TestCase):
 
         tiny_value = 1e-7 if np_float_type == np.float32 else 0.007782
         # weight_scale = 2*tiny_value / 255.0 = 7.84313725490196e-10
-        weight = self.build_tiny_weights(tiny_value, weight_shape, np_float_type)
+        weight = build_tiny_weights(tiny_value, weight_shape, np_float_type)
 
         # if we set input_scale to 0.05, then normally bias_scale would be
         # (input_scale * weight_scale) => (0.05 * 7.84314e-10) => 3.9215686274509805e-11
@@ -1892,7 +1879,7 @@ class TestAdjustWeightScaleForInt32Bias(unittest.TestCase):
         # enough to saturate the bias's int32 range.
         # See build_conv_test_model().
         tiny_value = 1e-7
-        weight = self.build_tiny_weights(tiny_value, weight_shape, np_float_type)
+        weight = build_tiny_weights(tiny_value, weight_shape, np_float_type)
 
         bias_data = np.ones(bias_shape, dtype=np_float_type)
         with np.nditer(bias_data, op_flags=["readwrite"]) as it:

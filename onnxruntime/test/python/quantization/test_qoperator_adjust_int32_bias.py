@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 import onnx
-from op_test_utils import TestDataFeeds, check_model_correctness
+from op_test_utils import TestDataFeeds, build_tiny_weights, check_model_correctness
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 
@@ -26,16 +26,7 @@ class TestAdjustWeightScaleForInt32BiasQOperator(unittest.TestCase):
 
         tiny_value = 1e-7 if np_float_type == np.float32 else 0.007782
 
-        # Step 1: reshape to (C_out, -1) to ensure per-channel broadcasting
-        weight_data = np.full(weight_shape, tiny_value, dtype=np_float_type)
-        weight_data = weight_data.reshape(weight_shape[0], -1)
-        for i in range(weight_data.shape[0]):
-            for j in range(weight_data.shape[1]):
-                if j % 2 == 0:
-                    weight_data[i, j] = -weight_data[i, j]
-        # Step 2: reshape back to original shape
-        weight_data = weight_data.reshape(weight_shape)
-        weight = onnx.numpy_helper.from_array(weight_data, "weight")
+        weight = build_tiny_weights(tiny_value, weight_shape, np_float_type)
 
         bias_shape = [weight_shape[0]]
         bias_data = np.ones(bias_shape, dtype=np_float_type)
@@ -106,12 +97,7 @@ class TestAdjustWeightScaleForInt32BiasQOperator(unittest.TestCase):
         output_0 = onnx.helper.make_tensor_value_info("output_0", onnx_float_type, None)
 
         tiny_value = 1e-7
-        weight_data = np.full(weight_shape, tiny_value, dtype=np_float_type)
-        for i in range(weight_data.shape[0]):
-            for j in range(weight_data.shape[1]):
-                if j % 2 == 0:
-                    weight_data[i, j] = -weight_data[i, j]
-        weight = onnx.numpy_helper.from_array(weight_data, "weight")
+        weight = build_tiny_weights(tiny_value, weight_shape, np_float_type)
 
         bias_data = np.ones(bias_shape, dtype=np_float_type)
         for i in range(bias_data.shape[-1]):
