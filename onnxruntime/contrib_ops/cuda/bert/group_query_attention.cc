@@ -20,6 +20,7 @@
 #include "contrib_ops/cuda/bert/unfused_attention.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
+#include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -490,6 +491,37 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                        group_size == 8 || group_size == 16 || group_size == 32);
 
     data.use_xqa = (is_non_quantized_supported || is_int8_quantized_supported || is_fp8_quantized_supported);
+
+    if (data.use_xqa) {
+      // Consumer Blackwell (sm_120) and some other devices expose a smaller per-block opt-in
+      // shared-memory limit than the SM the XQA kernel was compiled / JIT-compiled for (sm_80 and
+      // sm_90 use a larger K/V-tile layout, ~140 KB for head_size 128/256). Launching XQA there
+      // fails with cudaErrorInvalidValue because cudaFuncSetAttribute requests more shared memory
+      // than the device allows. Query the actual kernel requirement (read from the device symbol,
+      // so it is accurate even for a PTX kernel JIT-compiled for this SM) and fall back to cuDNN
+      // SDPA / Flash when it does not fit. Cached per node because head_size and group size are
+      // constant for a given GQA node (avoids a device->host copy on every decode step).
+      int xqa_smem_ok = xqa_shared_memory_ok_.load(std::memory_order_relaxed);
+      if (xqa_smem_ok < 0) {
+        // GetXQARequiredSharedMemoryBytes issues a cudaMemcpyFromSymbol, which synchronizes and is
+        // therefore illegal during CUDA graph capture (it would invalidate the capture). The result
+        // is invariant for a node (fixed head_size / group size / device), and ORT performs at least
+        // one non-captured warm-up run before capturing, so this normally resolves and caches during
+        // warm-up. Guard defensively: only issue the synchronizing query when the compute stream is
+        // not capturing. If we somehow reach here for the first time while capturing, conservatively
+        // skip XQA for this run instead of breaking the capture, and leave the cache unresolved so a
+        // later non-capturing run can determine it.
+        if (!onnxruntime::llm::common::isCapturing(Stream(context))) {
+          const size_t required_smem = onnxruntime::contrib::cuda::GetXQARequiredSharedMemoryBytes(
+              device_prop, parameters.head_size, parameters.num_heads, parameters.kv_num_heads);
+          xqa_smem_ok = (required_smem == 0 || required_smem <= device_prop.sharedMemPerBlockOptin) ? 1 : 0;
+          xqa_shared_memory_ok_.store(xqa_smem_ok, std::memory_order_relaxed);
+        } else {
+          xqa_smem_ok = 0;  // capturing (or status query failed) and not yet resolved -> fall back
+        }
+      }
+      data.use_xqa = (xqa_smem_ok != 0);
+    }
 
     if (data.use_xqa) {
       size_t xqa_internal_bytes = onnxruntime::contrib::cuda::GetXQAScratchSize(

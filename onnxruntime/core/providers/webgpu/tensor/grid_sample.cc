@@ -204,6 +204,15 @@ Status GridSample::ComputeInternal(ComputeContext& context) const {
   ORT_RETURN_IF_NOT(grid_shape.NumDimensions() == 4, "grid must be 4-D");
   ORT_RETURN_IF_NOT(grid_shape[3] == 2, "grid last dimension must be 2");
 
+  // Spatial dimensions must be non-empty for sampling: the output is sized by the grid, so a zero-size
+  // input spatial dimension would otherwise lead to invalid index computations during interpolation.
+  // This kernel is NCHW and 4-D, so the spatial dimensions are indices [2, rank).
+  for (size_t i = 2; i < X_shape.NumDimensions(); ++i) {
+    ORT_RETURN_IF_NOT(X_shape[i] > 0,
+                      "Input spatial dimensions must be non-empty for sampling. Dimension ", i,
+                      " has size ", X_shape[i]);
+  }
+
   const int64_t N = X_shape[0];
   const int64_t C = X_shape[1];
   const int64_t H_in = X_shape[2];
