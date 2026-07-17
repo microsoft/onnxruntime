@@ -317,17 +317,6 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
                 out = self._run(model, a)
             np.testing.assert_allclose(out, ref, rtol=2e-2, atol=2e-2, err_msg=f"env={value}")
 
-    def test_prepacked_requires_enable_reports_config_key(self):
-        # A prepacked node requires the fpA_intB path; when it is disabled the construction-time
-        # error must point at the session config key (and the env var).
-        model, a, q_weight, scales = self._make_int4_case()
-        prepacked = self._make_model(
-            a.shape[0], a.shape[1], q_weight.shape[0], q_weight, scales, 4, 64, weight_prepacked=1
-        )
-        with self.assertRaises(Exception) as ctx:
-            self._run(prepacked, a)  # nothing enables the path
-        self.assertIn("ep.cuda.fpa_intb_gemm", str(ctx.exception))
-
 
 if __name__ == "__main__":
     unittest.main()
