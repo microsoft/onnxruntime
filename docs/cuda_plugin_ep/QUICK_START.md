@@ -27,7 +27,7 @@ For local Linux CUDA 13 validation, use the no-cuDNN helper script. It keeps `CU
 bash .env/cuda_130_plugin_no_cudnn.sh --build --test_plugin
 ```
 
-The test mode sets `ORT_TEST_CUDA_PLUGIN_EP=1` and `ORT_TEST_CUDA_PLUGIN_NO_CUDNN=1`, which passes `enable_cudnn=0` to plugin sessions and skips plugin tests for operators that still require cuDNN, such as Conv, ConvTranspose, BatchNormalization, InstanceNormalization, LRN, ArgMax, reductions, Einsum, and cuDNN-backed pooling paths.
+The test mode sets `ORT_TEST_CUDA_PLUGIN_EP=1` and `ORT_TEST_CUDA_PLUGIN_NO_CUDNN=1`, which passes `enable_cudnn=0` to plugin sessions and skips plugin tests for operators that still require cuDNN, such as Conv, ConvTranspose, BatchNormalization, InstanceNormalization, LRN, Einsum, and cuDNN-backed pooling paths.
 
 ## Minimum ONNX Runtime Version
 

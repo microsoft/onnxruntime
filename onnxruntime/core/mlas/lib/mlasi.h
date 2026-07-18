@@ -101,6 +101,26 @@ Abstract:
 #define MLAS_FORCEINLINE __attribute__ ((always_inline)) inline
 #endif
 
+MLAS_FORCEINLINE
+bool
+MlasAddOverflowsSizeT(
+    size_t a,
+    size_t b,
+    size_t* out
+    )
+{
+#if defined(__has_builtin)
+#if __has_builtin(__builtin_add_overflow)
+    return __builtin_add_overflow(a, b, out);
+#endif
+#endif
+    if (a > (std::numeric_limits<size_t>::max)() - b) {
+        return true;
+    }
+    *out = a + b;
+    return false;
+}
+
 //
 // Macro to tag globals as internal data shared with kernels written in
 // assembly. These globals are marked with having hidden visibility to avoid
@@ -1018,6 +1038,90 @@ bool
     void* PackedB);
 #endif
 
+typedef
+bool
+(MLASCALL MLAS_HALF_GEMM_BATCH_OVERRIDE)(
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BatchN,
+    const MLAS_HALF_GEMM_DATA_PARAMS* DataParams,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
+
+typedef
+size_t
+(MLASCALL MLAS_HALF_GEMM_PACK_B_SIZE_OVERRIDE)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K);
+
+typedef
+bool
+(MLASCALL MLAS_HALF_GEMM_PACK_B_OVERRIDE)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const MLAS_FP16* B,
+    size_t ldb,
+    void* PackedB);
+
+typedef
+bool
+(MLASCALL MLAS_HALF_CONV_PREPARE_OVERRIDE)(
+    MLAS_CONV_PARAMETERS* Parameters,
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    size_t InputChannels,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    size_t FilterCount,
+    const MLAS_ACTIVATION* Activation,
+    size_t* WorkingBufferSize,
+    float Beta,
+    bool InputOutputChannelsLast,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
+
+typedef
+bool
+(MLASCALL MLAS_HALF_CONV_OVERRIDE)(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const MLAS_FP16* Input,
+    const MLAS_FP16* Filter,
+    bool FilterAndBiasArePacked,
+    const MLAS_FP16* Bias,
+    MLAS_FP16* WorkingBuffer,
+    MLAS_FP16* Output,
+    MLAS_THREADPOOL* ThreadPool);
+
+typedef
+size_t
+(MLASCALL MLAS_HALF_CONV_PACK_WEIGHTS_AND_BIAS_SIZE_OVERRIDE)(
+    size_t FilterCount,
+    size_t InputChannels,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape);
+
+typedef
+bool
+(MLASCALL MLAS_HALF_CONV_PACK_WEIGHTS_AND_BIAS_OVERRIDE)(
+    size_t FilterCount,
+    size_t InputChannels,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const MLAS_FP16* Filter,
+    const MLAS_FP16* Bias,
+    void* PackedWeightsAndBias,
+    MLAS_THREADPOOL* ThreadPool);
+
 extern "C" {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
@@ -1444,6 +1548,8 @@ extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni;
 
 extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchLasx;
 
+extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchRvv;
+
 struct MLAS_QNBIT_LUT_GEMM_DISPATCH;
 
 extern const MLAS_QNBIT_LUT_GEMM_DISPATCH MlasLutGenKernelAvx2;
@@ -1556,6 +1662,15 @@ struct MLAS_PLATFORM {
     MLAS_DYNAMIC_QGEMM_BATCH_OVERRIDE* MlasDynamicQGemmBatchOverride = nullptr;
     MLAS_DYNAMIC_QGEMM_PACK_B_SIZE_OVERRIDE* MlasDynamicQGemmPackBSizeOverride = nullptr;
     MLAS_DYNAMIC_QGEMM_PACK_B_OVERRIDE* MlasDynamicQGemmPackBOverride = nullptr;
+    // MLAS HalfGemm overrides
+    MLAS_HALF_GEMM_BATCH_OVERRIDE* MlasHalfGemmBatchOverride = nullptr;
+    MLAS_HALF_GEMM_PACK_B_SIZE_OVERRIDE* MlasHalfGemmPackBSizeOverride = nullptr;
+    MLAS_HALF_GEMM_PACK_B_OVERRIDE* MlasHalfGemmPackBOverride = nullptr;
+    // MLAS HalfConv overrides
+    MLAS_HALF_CONV_PREPARE_OVERRIDE* MlasHalfConvPrepareOverride = nullptr;
+    MLAS_HALF_CONV_OVERRIDE* MlasHalfConvOverride = nullptr;
+    MLAS_HALF_CONV_PACK_WEIGHTS_AND_BIAS_SIZE_OVERRIDE* MlasHalfConvPackWeightsAndBiasSizeOverride = nullptr;
+    MLAS_HALF_CONV_PACK_WEIGHTS_AND_BIAS_OVERRIDE* MlasHalfConvPackWeightsAndBiasOverride = nullptr;
     // MLAS Conv overrides
     MLAS_CONV_PREPARE_FLOAT_OVERRIDE* MlasConvPrepareOverride = nullptr;
     MLAS_CONV_FLOAT_OVERRIDE* MlasConvOverride = nullptr;

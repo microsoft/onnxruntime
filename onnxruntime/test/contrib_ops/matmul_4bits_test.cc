@@ -328,7 +328,14 @@ void TestMatMulNBitsTyped(std::optional<float> abs_error = std::nullopt,
   } else if (base_opts.accuracy_level == 4) {
     base_opts.output_abs_error = 0.1f;
   } else if constexpr (std::is_same<AType, MLFloat16>::value) {
-    base_opts.output_abs_error = 0.055f;
+    // The fp16 provider paths compare against a float reference while native kernels may accumulate
+    // in fp16 (for example native HGEMM on SME; see PR #28786), so allow slightly wider drift.
+#if defined(USE_WEBGPU)
+    // WebGPU's fp16 path has additional provider-specific rounding drift for these quantized matmul cases.
+    base_opts.output_abs_error = 0.1f;
+#else
+    base_opts.output_abs_error = 0.065f;
+#endif
   } else {
     base_opts.output_abs_error = 0.05f;
   }
@@ -984,8 +991,13 @@ TEST(MatMulNBits, Fp16_Int4_NoZeroPoint_Bias_Prepacked) {
   RunTest<MLFloat16>(opts, std::move(eps));
 }
 
-TEST(MatMulNBits, Fp16_Int4_PrepackedWeightRequiresFpAIntBGemm) {
-  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "0"}}};
+// A prepacked weight (weight_prepacked!=0) forces the fpA_intB path on regardless of the enable
+// flag, and the constructor ORT_ENFORCEs that the path is actually supported for the node. Here the
+// block_size (256) is outside the fpA_intB-supported set {32, 64, 128}, so kernel construction is
+// rejected up front with "weight_prepacked requires the fpA_intB path, but it is unsupported ...",
+// even though ORT_FPA_INTB_GEMM is enabled.
+TEST(MatMulNBits, Fp16_Int4_PrepackedWeightRejectedWhenFpAIntBUnsupported) {
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
 
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (!cuda_ep) {
@@ -994,7 +1006,7 @@ TEST(MatMulNBits, Fp16_Int4_PrepackedWeightRequiresFpAIntBGemm) {
 
   TestOptions opts{};
   opts.M = 1, opts.N = 256, opts.K = 1024;
-  opts.block_size = 64;
+  opts.block_size = 256;
   opts.disable_cpu_ep_fallback = true;
   opts.weight_prepacked = 1;
   opts.expected_failure = "weight_prepacked requires";

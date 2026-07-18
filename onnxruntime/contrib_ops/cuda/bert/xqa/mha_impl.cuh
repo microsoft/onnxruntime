@@ -30,6 +30,7 @@
 #ifndef GENERATE_CUBIN
 #include "hostUtils.h"
 #include <cuda_runtime.h>
+#include <string>
 #ifndef NDEBUG
 #include <cstdio>
 #endif
@@ -2491,6 +2492,20 @@ void launchMHA(cudaDeviceProp const& prop, uint32_t nbKHeads,
   static uint32_t const hostSmemSize = [&]() {
     uint32_t size;
     checkCuda(cudaMemcpyFromSymbol(&size, smemSize, sizeof(smemSize)));
+    // Defensive backstop: the kernel's shared-memory footprint is fixed at compile time for its
+    // target SM (sm_80/sm_90 use a larger K/V-tile layout than sm_86/sm_89/sm_120). When such a
+    // kernel is JIT-compiled from PTX onto a device with a smaller per-block opt-in limit (e.g.
+    // consumer Blackwell sm_120, ~99 KB), cudaFuncSetAttribute below returns cudaErrorInvalidValue.
+    // The GQA dispatcher already skips XQA in that case (see GetXQARequiredSharedMemoryBytes); this
+    // guard turns any remaining mismatch into an actionable message instead of an opaque CUDA error.
+    if (size > prop.sharedMemPerBlockOptin) {
+      throw std::runtime_error(
+          "XQA kernel requires " + std::to_string(size) +
+          " bytes of shared memory per block but this GPU allows only " +
+          std::to_string(prop.sharedMemPerBlockOptin) +
+          " bytes. Build ONNX Runtime with the device's native CUDA architecture (e.g. add 120 to "
+          "CMAKE_CUDA_ARCHITECTURES for sm_120 / RTX 50-series) or disable XQA (ORT_ENABLE_XQA=0).");
+    }
     checkCuda(cudaFuncSetAttribute(kernel_mha, cudaFuncAttributeMaxDynamicSharedMemorySize, size));
     return size;
   }();
