@@ -108,6 +108,32 @@ TEST(SignalOpsTest, DFT17_Float_radix2_onesided) { TestRadix2DFTFloat(true, kMin
 
 TEST(SignalOpsTest, DFT20_Float_radix2_onesided) { TestRadix2DFTFloat(true, kOpsetVersion20); }
 
+TEST(SignalOpsTest, DFT20_Float_Bluestein_DftLengthTruncatesInput) {
+  OpTester test("DFT", kOpsetVersion20);
+
+  // Non-power-of-2 dft_length selects the Bluestein path.
+  // Input length on axis=1 is intentionally larger than dft_length. The trailing input must be ignored.
+  vector<int64_t> input_shape = {1, 10, 1};
+  vector<float> input = {1.f, 2.f, 3.f, 100.f, 200.f, 300.f, 400.f, 500.f, 600.f, 700.f};
+  vector<int64_t> output_shape = {1, 3, 2};
+  // clang-format off
+  vector<float> expected_output = {
+      6.000000f, 0.000000f,
+      -1.500000f, 0.866025f,
+      -1.500000f, -0.866025f,
+  };
+  // clang-format on
+
+  test.AddInput<float>("input", input_shape, input);
+  test.AddInput<int64_t>("dft_length", {}, {3});
+  test.AddInput<int64_t>("axis", {}, {1});
+  test.AddOutput<float>("output", output_shape, expected_output);
+  test.SetOutputAbsErr("output", 0.001f);
+  // DML path is deprecated for this test scenario.
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
+}
+
 TEST(SignalOpsTest, DFT17_Float_inverse) {
   TestInverseFloat(kMinOpsetVersion);
 }

@@ -32,9 +32,10 @@ Abstract:
 
 #pragma once
 
-#include <cstdlib>
 #include <cassert>
-#include <string>
+#include <cstdlib>
+#include <cstring>
+#include <limits>
 
 #include "mlasi.h"
 #include "mlas_float16.h"
@@ -49,6 +50,49 @@ struct MLAS_HALF_GEMM_STRIDES {
     size_t N;
     size_t K;
 };
+
+MLAS_FORCEINLINE
+bool
+MlasHalfGemmTryGetPackedBSize(
+    size_t N,
+    size_t K,
+    size_t PackedK,
+    size_t Padding,
+    size_t* PackedBSize
+    )
+{
+    if (N == 0 || K == 0) {
+        *PackedBSize = 0;
+        return true;
+    }
+
+    if (PackedK == 0) {
+        return false;
+    }
+
+    size_t aligned_k_input = 0;
+    if (MlasAddOverflowsSizeT(K, PackedK - 1, &aligned_k_input)) {
+        return false;
+    }
+
+    const size_t AlignedK = aligned_k_input & ~(PackedK - 1);
+
+    size_t BytesRequired = 0;
+    if (MlasMultiplyOverflowsSizeT(N, AlignedK, &BytesRequired) ||
+        MlasMultiplyOverflowsSizeT(BytesRequired, sizeof(_mlas_fp16_), &BytesRequired) ||
+        MlasAddOverflowsSizeT(BytesRequired, Padding, &BytesRequired)) {
+        return false;
+    }
+
+    const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
+    size_t aligned_bytes_input = 0;
+    if (MlasAddOverflowsSizeT(BytesRequired, BufferAlignment - 1, &aligned_bytes_input)) {
+        return false;
+    }
+
+    *PackedBSize = aligned_bytes_input & ~(BufferAlignment - 1);
+    return true;
+}
 
 /**
  * @brief Packing function for fp16 B matrix
@@ -71,12 +115,51 @@ MlasHalfGemmCopyPackB(
     size_t CountK
 )
 {
-    MLAS_UNREFERENCED_PARAMETER(D);
-    MLAS_UNREFERENCED_PARAMETER(B);
-    MLAS_UNREFERENCED_PARAMETER(ldb);
-    MLAS_UNREFERENCED_PARAMETER(CountN);
-    MLAS_UNREFERENCED_PARAMETER(CountK);
-    // No packing needed by default
+    size_t aligned_count_k_input = 0;
+    if (MlasAddOverflowsSizeT(CountK, KernelType::PackedK - 1, &aligned_count_k_input)) {
+        assert(!"MlasHalfGemmCopyPackB aligned K overflow");
+        return;
+    }
+    const size_t AlignedCountK = aligned_count_k_input & ~(KernelType::PackedK - 1);
+    size_t PaddingCountK = AlignedCountK - CountK;
+
+    if (ldb == CountN) {
+        size_t elements_to_copy = 0;
+        size_t bytes_to_copy = 0;
+        if (MlasMultiplyOverflowsSizeT(CountK, CountN, &elements_to_copy) ||
+            MlasMultiplyOverflowsSizeT(elements_to_copy, sizeof(_mlas_fp16_), &bytes_to_copy)) {
+            assert(!"MlasHalfGemmCopyPackB size overflow");
+            return;
+        }
+        std::memcpy(D, B, bytes_to_copy);
+        if (PaddingCountK > 0) {
+            size_t padding_bytes = 0;
+            if (MlasMultiplyOverflowsSizeT(PaddingCountK, CountN, &padding_bytes) ||
+                MlasMultiplyOverflowsSizeT(padding_bytes, sizeof(_mlas_fp16_), &padding_bytes)) {
+                assert(!"MlasHalfGemmCopyPackB padding size overflow");
+                return;
+            }
+            std::memset(D + elements_to_copy, 0, padding_bytes);
+        }
+        return;
+    }
+
+    size_t row_bytes = 0;
+    if (MlasMultiplyOverflowsSizeT(CountN, sizeof(_mlas_fp16_), &row_bytes)) {
+        assert(!"MlasHalfGemmCopyPackB row size overflow");
+        return;
+    }
+    while (CountK > 0) {
+        std::memcpy(D, B, row_bytes);
+        B += ldb;
+        D += CountN;
+        CountK--;
+    }
+    while (PaddingCountK > 0) {
+        std::memset(D, 0, row_bytes);
+        D += CountN;
+        PaddingCountK--;
+    }
 }
 
 /**

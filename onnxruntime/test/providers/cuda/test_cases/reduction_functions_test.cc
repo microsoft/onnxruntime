@@ -3,7 +3,9 @@
 
 #include "gtest/gtest.h"
 
+#include <limits>
 #include <memory>
+#include <numeric>
 
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/common/optional.h"
@@ -236,6 +238,97 @@ TEST(ReductionFunctionsTest, ReduceColumnsToColumn) {
 
 TEST(ReductionFunctionsTest, ReduceColumnsToColumnRepeated) {
   TestReduceColumnsToColumnRepeated(17, 8192, 100, 2e-4f);
+}
+
+TEST(ReductionFunctionsTest, ReduceSumNdMiddleAndMultipleAxes) {
+  const std::vector<int64_t> dims{2, 3, 4, 2};
+  const std::vector<int64_t> axes{1, 3};
+  std::vector<float> input(48);
+  std::iota(input.begin(), input.end(), 1.0f);
+  std::vector<float> expected(8, 0.0f);
+  for (int64_t d0 = 0; d0 < dims[0]; ++d0) {
+    for (int64_t d1 = 0; d1 < dims[1]; ++d1) {
+      for (int64_t d2 = 0; d2 < dims[2]; ++d2) {
+        for (int64_t d3 = 0; d3 < dims[3]; ++d3) {
+          expected[d0 * dims[2] + d2] += input[((d0 * dims[1] + d1) * dims[2] + d2) * dims[3] + d3];
+        }
+      }
+    }
+  }
+
+  auto d_input = AllocateDeviceMemory<float>(input.size());
+  auto d_output = AllocateDeviceMemory<float>(expected.size());
+  cudaMemcpy(d_input.get(), input.data(), input.size() * sizeof(float), cudaMemcpyHostToDevice);
+
+  ASSERT_STATUS_OK(reduce_sum_nd(0, d_input.get(), d_output.get(), dims, axes));
+  ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()).IsOK());
+  CheckDeviceValues(expected.size(), d_output.get(), expected.data(), 1e-6f);
+}
+
+TEST(ReductionFunctionsTest, ReduceSumNdIntegerSaturation) {
+  const std::vector<int64_t> dims{2, 3, 2};
+  const std::vector<int64_t> axes{1};
+  const int32_t big = 1'100'000'000;
+  const std::vector<int32_t> input(12, big);
+  const std::vector<int32_t> expected(4, std::numeric_limits<int32_t>::max());
+
+  auto d_input = AllocateDeviceMemory<int32_t>(input.size());
+  auto d_output = AllocateDeviceMemory<int32_t>(expected.size());
+  cudaMemcpy(d_input.get(), input.data(), input.size() * sizeof(int32_t), cudaMemcpyHostToDevice);
+
+  ASSERT_STATUS_OK(reduce_sum_nd(0, d_input.get(), d_output.get(), dims, axes));
+  ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()).IsOK());
+  std::vector<int32_t> actual(expected.size());
+  cudaMemcpy(actual.data(), d_output.get(), actual.size() * sizeof(int32_t), cudaMemcpyDeviceToHost);
+  EXPECT_EQ(actual, expected);
+}
+
+TEST(ReductionFunctionsTest, ReduceSumNdLargeReductionSmallOutput) {
+  const std::vector<int64_t> dims{2, 131072, 3};
+  const std::vector<int64_t> axes{1};
+  std::vector<float> input(TensorShape(dims).Size(), 1.0f);
+  const std::vector<float> expected(6, 131072.0f);
+
+  auto d_input = AllocateDeviceMemory<float>(input.size());
+  auto d_output = AllocateDeviceMemory<float>(expected.size());
+  cudaMemcpy(d_input.get(), input.data(), input.size() * sizeof(float), cudaMemcpyHostToDevice);
+
+  ASSERT_STATUS_OK(reduce_sum_nd(0, d_input.get(), d_output.get(), dims, axes));
+  ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()).IsOK());
+  CheckDeviceValues(expected.size(), d_output.get(), expected.data(), 0.0f);
+}
+
+TEST(ReductionFunctionsTest, ReduceSumNdInt64Cancellation) {
+  const std::vector<int64_t> dims{1, 3, 1};
+  const std::vector<int64_t> axes{1};
+  const int64_t large = int64_t{1} << 53;
+  const std::vector<int64_t> input{large, 1, -large};
+  const std::vector<int64_t> expected{1};
+
+  auto d_input = AllocateDeviceMemory<int64_t>(input.size());
+  auto d_output = AllocateDeviceMemory<int64_t>(expected.size());
+  cudaMemcpy(d_input.get(), input.data(), input.size() * sizeof(int64_t), cudaMemcpyHostToDevice);
+
+  ASSERT_STATUS_OK(reduce_sum_nd(0, d_input.get(), d_output.get(), dims, axes));
+  ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()).IsOK());
+  std::vector<int64_t> actual(expected.size());
+  cudaMemcpy(actual.data(), d_output.get(), actual.size() * sizeof(int64_t), cudaMemcpyDeviceToHost);
+  EXPECT_EQ(actual, expected);
+}
+
+TEST(ReductionFunctionsTest, ReduceSumNdRank9) {
+  const std::vector<int64_t> dims{2, 2, 2, 2, 2, 2, 2, 2, 2};
+  const std::vector<int64_t> axes{1, 3, 5, 7};
+  std::vector<float> input(TensorShape(dims).Size(), 1.0f);
+  const std::vector<float> expected(32, 16.0f);
+
+  auto d_input = AllocateDeviceMemory<float>(input.size());
+  auto d_output = AllocateDeviceMemory<float>(expected.size());
+  cudaMemcpy(d_input.get(), input.data(), input.size() * sizeof(float), cudaMemcpyHostToDevice);
+
+  ASSERT_STATUS_OK(reduce_sum_nd(0, d_input.get(), d_output.get(), dims, axes));
+  ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()).IsOK());
+  CheckDeviceValues(expected.size(), d_output.get(), expected.data(), 0.0f);
 }
 
 TEST(ReductionFunctionsTest, BufferOffsets) {
