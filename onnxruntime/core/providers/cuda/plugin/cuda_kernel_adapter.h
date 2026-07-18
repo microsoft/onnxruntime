@@ -342,7 +342,7 @@ class PluginKernelCollector {
 #define ORT_ADAPTER_CONCAT(x, y) ORT_ADAPTER_CONCAT_IMPL(x, y)
 
 // The provider parameter are not used in below macros since we are hardcoding the provider to cuda plugin.
-#define CUDA_PLUGIN_EP ::onnxruntime::kCudaPluginExecutionProvider
+#define CUDA_PLUGIN_EP ::onnxruntime::kCudaExecutionProviderPluginAlias
 
 #undef ONNX_OPERATOR_KERNEL_EX
 #define ONNX_OPERATOR_KERNEL_EX(name, domain, ver, provider, builder, ...)                           \
@@ -1064,8 +1064,30 @@ class CudaKernel : public OpKernel {
           std::string("cuDNN is unavailable or disabled for CUDA Plugin Execution Provider: ") +
               onnxruntime::cuda::CudnnLibrary::Get().Error()));
     }
-    if (handle != nullptr && stream != nullptr) {
-      CUDNN_CALL_THROW(cudnnSetStream(handle, stream));
+    // Bind the shared handle to the current compute stream. cudaStream_t 0/nullptr is the default
+    // stream, which is still a valid stream to bind, so do this unconditionally to avoid leaving
+    // the handle bound to a stale stream from a previous call.
+    CUDNN_CALL_THROW(cudnnSetStream(handle, stream));
+    return handle;
+  }
+
+  cudnnHandle_t TryGetCudnnHandle(OpKernelContext* ctx) const {
+    auto stream = Stream(ctx);
+    auto handle = GetCudnnHandle(stream);
+    if (handle != nullptr) {
+      return handle;
+    }
+
+    handle = DefaultCudnnHandle();
+    if (handle != nullptr) {
+      // Bind the shared handle to the current compute stream. cudaStream_t 0/nullptr is the default
+      // stream, which is still a valid stream to bind, so do this unconditionally to avoid leaving
+      // the handle bound to a stale stream from a previous call.
+      // Keep this accessor non-throwing: if the stream cannot be bound, treat it as "no cuDNN handle"
+      // so callers can fall back to a cuDNN-free path instead of failing.
+      if (!CUDNN_CALL(cudnnSetStream(handle, stream)).IsOK()) {
+        return nullptr;
+      }
     }
     return handle;
   }

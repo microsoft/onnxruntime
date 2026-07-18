@@ -37,7 +37,7 @@ const onnxruntime::ConfigOptions& OrtSessionOptions::GetConfigOptions() const no
 onnxruntime::Status OrtSessionOptions::AddProviderOptionsToConfigOptions(
     const std::unordered_map<std::string, std::string>& provider_options, const char* provider_name) {
   // Add provider options to the session config options.
-  // Use a new key with the format: "ep.<lowercase_provider_name>.<PROVIDER_OPTION_KEY>"
+  // Use the provider-specific prefix from GetProviderOptionPrefix().
   auto key_prefix = GetProviderOptionPrefix(provider_name);
   for (const auto& [ep_key, ep_value] : provider_options) {
     const std::string new_key = key_prefix + ep_key;
@@ -48,6 +48,10 @@ onnxruntime::Status OrtSessionOptions::AddProviderOptionsToConfigOptions(
 
 // static
 std::string OrtSessionOptions::GetProviderOptionPrefix(const char* provider_name) {
+  if (std::string_view{provider_name} == "CUDAExecutionProvider") {
+    return "ep.cuda.";
+  }
+
   std::string key_prefix = "ep.";
   key_prefix += onnxruntime::utils::GetLowercaseString(provider_name);
   key_prefix += ".";

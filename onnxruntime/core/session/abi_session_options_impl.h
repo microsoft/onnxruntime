@@ -25,8 +25,8 @@ struct OrtSessionOptions {
 
   const onnxruntime::ConfigOptions& GetConfigOptions() const noexcept;
 
-  // Adds the given provider options to the session config options using a key with the format:
-  // "ep.<lowercase_provider_name>.<PROVIDER_OPTION_KEY>"
+  // Adds the given provider options to the session config options using an EP-specific key prefix.
+  // Most EPs use "ep.<lowercase_provider_name>.<PROVIDER_OPTION_KEY>".
   onnxruntime::Status AddProviderOptionsToConfigOptions(
       const std::unordered_map<std::string, std::string>& provider_options, const char* provider_name);
 
@@ -37,5 +37,6 @@ struct OrtSessionOptions {
   // get the EP prefix to used when an EP specific option is added to config_options.
   // e.g. for EP called 'MyEP' an options 'device_id' would be added as 'ep.myep.device_id'
   //      with GetProviderOptionPrefix returning 'ep.myep.'
+  // CUDAExecutionProvider uses the stable short prefix 'ep.cuda.'.
   static std::string GetProviderOptionPrefix(const char* provider_name);
 };

@@ -347,113 +347,22 @@ static OrtStatus* CreateSessionAndLoadSingleModelImpl(_In_ const OrtSessionOptio
 }
 
 // Internal function that creates an InferenceSession and loads the model.
-// Caller should provide either a model file path, model_data + model_data_length, or a model package directory.
+// Caller should provide either a model file path, or model_data + model_data_length.
 static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* options,
                                                 const onnxruntime::Environment& env,
                                                 _In_opt_z_ const ORTCHAR_T* model_path,
                                                 _In_opt_ const void* model_data,
                                                 size_t model_data_length,
                                                 std::unique_ptr<onnxruntime::InferenceSession>& sess) {
-  // `model_path` could be a single ONNX file path, an ORT format model path, or a model package directory.
-  const ORTCHAR_T* model_path_to_use = model_path;
-
-  // keep storage alive if ORT selects a model variant.
-  std::filesystem::path selected_model_variant_path;
-
-  if (model_path_to_use != nullptr) {
+  if (model_path != nullptr) {
     std::error_code ec;
-    std::filesystem::path package_root{model_path_to_use};
-
-    if (std::filesystem::is_directory(package_root, ec) && !ec) {
-#if !defined(ORT_MINIMAL_BUILD)
-      OrtSessionOptions* options_to_use = nullptr;
-      OrtSessionOptions ort_sess_options = options ? *options : OrtSessionOptions();
-      if (options) {
-        options_to_use = &ort_sess_options;
-      }
-
-      std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
-      const bool has_provider_factories = options_to_use != nullptr && !options_to_use->provider_factories.empty();
-      ProviderPolicyContext provider_policy_context;
-      std::vector<const OrtEpDevice*> execution_devices;
-      std::vector<const OrtEpDevice*> devices_selected;
-
-      // Create the IExecutionProvider instances to gather EP name and EP devices.
-      if (has_provider_factories) {
-        for (auto& factory : options_to_use->provider_factories) {
-          auto provider = factory->CreateProvider(*options_to_use, *logging::LoggingManager::DefaultLogger().ToExternal());
-          provider_list.push_back(std::move(provider));
-        }
-      } else if (options_to_use != nullptr && options_to_use->value.ep_selection_policy.enable) {
-        // No model loaded yet, so no model metadata. Pass empty metadata for now.
-        // TODO: Pass metadata from manifest json to delegate policy?
-        OrtKeyValuePairs model_metadata;
-        auto status = provider_policy_context.SelectEpsForModelPackage(env, *options_to_use, model_metadata,
-                                                                       execution_devices, devices_selected,
-                                                                       provider_list);
-        ORT_API_RETURN_IF_STATUS_NOT_OK(status);
-      }
-
-      // Build EP info from finalized providers.
-      std::vector<VariantSelectionEpInfo> ep_infos;
-      ORT_API_RETURN_IF_STATUS_NOT_OK(GetVariantSelectionEpInfo(provider_list, ep_infos));
-
-      ORT_API_RETURN_IF_STATUS_NOT_OK(PrintAvailableAndSelectedEpInfos(env, ep_infos));
-
-      if (ep_infos.empty()) {
-        return OrtApis::CreateStatus(ORT_FAIL,
-                                     "No execution providers were provided or selected. "
-                                     "Check the EP selection policy or explicitly specify EPs.");
-      }
-
-      // Select the most suitable model variant based on EP info and model constraints.
-      ModelPackageContext model_package_context(package_root);
-      const auto& package_info = model_package_context.GetModelPackageInfo();
-      const ComponentInfo* component_info = nullptr;
-
-      if (package_info.components.empty()) {
-        return OrtApis::CreateStatus(ORT_FAIL, "No component models found in the model package.");
-      } else if (package_info.components.size() > 1) {
-        return OrtApis::CreateStatus(ORT_FAIL,
-                                     "Multiple component models found in the model package. "
-                                     "Currently only single component model is supported.");
-      }
-
-      component_info = &package_info.components[0];
-      if (component_info == nullptr) {
-        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Component model not found.");
-      }
-
-      ModelPackageComponentContext component_context(component_info->component_name, *component_info, ep_infos);
-      ORT_API_RETURN_IF_STATUS_NOT_OK(component_context.ResolveVariant());
-      ORT_API_RETURN_IF_STATUS_NOT_OK(component_context.GetSelectedVariantFilePath(selected_model_variant_path));
-      model_path_to_use = selected_model_variant_path.c_str();
-
-      ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadSingleModelImpl(options_to_use, env, model_path_to_use,
-                                                                  model_data, model_data_length, sess));
-
-      // Register execution providers
-      for (auto& provider : provider_list) {
-        if (provider) {
-          ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterExecutionProvider(std::move(provider)));
-        }
-      }
-
-      // Log telemetry for auto EP selection
-      if (!has_provider_factories &&
-          options_to_use != nullptr &&
-          options_to_use->value.ep_selection_policy.enable) {
-        ORT_API_RETURN_IF_STATUS_NOT_OK(provider_policy_context.LogTelemetry(*sess, *options_to_use,
-                                                                             execution_devices, devices_selected));
-      }
-
-#else
-      return OrtApis::CreateStatus(ORT_FAIL, "Model package is not supported in this build.");
-#endif
-      return nullptr;
+    if (std::filesystem::is_directory(model_path, ec) && !ec) {
+      return OrtApis::CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          "The model path is a directory. Loading a model package from a directory path is not supported. "
+          "Use the model package API (CreateModelPackageContext, SelectComponent, CreateSession) instead.");
     }
   }
-
   return CreateSessionAndLoadSingleModelImpl(options, env, model_path, model_data, model_data_length, sess);
 }
 
@@ -981,67 +890,23 @@ OrtStatus* CreateSessionForModelPackage(_In_ const OrtSessionOptions* options,
                                         const std::filesystem::path& selected_model_path,
                                         onnxruntime::ModelPackageComponentContext& model_package_context,
                                         std::unique_ptr<onnxruntime::InferenceSession>& sess) {
-  // When the variant declares an external_data folder (e.g. a shared asset
-  // under <package_root>/shared_assets/sha256-<hex>/) we must switch to
-  // buffer load: ORT only honors session.model_external_initializers_file_folder_path
-  // when model_location_ is empty (see inference_session.cc). The mmap'd
-  // model buffer can be released right after Load; external initializers
-  // are read from the folder hint during Initialize.
-  const std::string* external_data_folder = nullptr;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(
-      model_package_context.GetSelectedVariantExternalDataFolder(external_data_folder));
-
-  std::unique_ptr<OrtSessionOptions> cloned_options;
+  // The model is loaded from selected_model_path. Any path-valued options (e.g. the external
+  // initializers folder via session.model_external_initializers_file_folder_path) were already
+  // resolved and merged into `options` by the caller.
+  std::unique_ptr<OrtSessionOptions> default_options;
   const OrtSessionOptions* options_to_use = options;
-  onnxruntime::Env::MappedMemoryPtr mapped_model;
-  const void* model_data = nullptr;
-  size_t model_data_length = 0;
-
-  if (external_data_folder != nullptr) {
-    cloned_options = options ? std::make_unique<OrtSessionOptions>(*options)
-                             : std::make_unique<OrtSessionOptions>();
-    ORT_API_RETURN_IF_STATUS_NOT_OK(
-        cloned_options->value.config_options.AddConfigEntry(
-            kOrtSessionOptionsModelExternalInitializersFileFolderPath,
-            external_data_folder->c_str()));
-    options_to_use = cloned_options.get();
-
-    size_t model_file_length = 0;
-    ORT_API_RETURN_IF_STATUS_NOT_OK(
-        onnxruntime::Env::Default().GetFileLength(selected_model_path.c_str(), model_file_length));
-    if (model_file_length == 0) {
-      return OrtApis::CreateStatus(
-          ORT_FAIL,
-          ("model_package: selected variant model file is empty: " + selected_model_path.string()).c_str());
-    }
-    ORT_API_RETURN_IF_STATUS_NOT_OK(
-        onnxruntime::Env::Default().MapFileIntoMemory(selected_model_path.c_str(),
-                                                      /*offset=*/0,
-                                                      model_file_length,
-                                                      mapped_model));
-    model_data = mapped_model.get();
-    model_data_length = model_file_length;
-  } else if (options_to_use == nullptr) {
-    // No external_data and caller did not pass options: synthesize a default
-    // OrtSessionOptions so the downstream *options_to_use dereferences are safe.
-    cloned_options = std::make_unique<OrtSessionOptions>();
-    options_to_use = cloned_options.get();
+  if (options_to_use == nullptr) {
+    // Caller did not pass options: synthesize a default OrtSessionOptions so the downstream
+    // *options_to_use dereferences are safe.
+    default_options = std::make_unique<OrtSessionOptions>();
+    options_to_use = default_options.get();
   }
 
-  if (model_data != nullptr) {
-    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadSingleModelImpl(options_to_use, env,
-                                                                /*model_path*/ nullptr,
-                                                                model_data,
-                                                                model_data_length,
-                                                                sess));
-  } else {
-    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadSingleModelImpl(options_to_use, env,
-                                                                selected_model_path.c_str(),
-                                                                /*model_data*/ nullptr,
-                                                                /*model_data_length*/ 0,
-                                                                sess));
-  }
-  mapped_model.reset();
+  ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadSingleModelImpl(options_to_use, env,
+                                                              selected_model_path.c_str(),
+                                                              /*model_data*/ nullptr,
+                                                              /*model_data_length*/ 0,
+                                                              sess));
 
   // Providers were created earlier from the original options; rebuild now so
   // any merged variant-specific provider options take effect.

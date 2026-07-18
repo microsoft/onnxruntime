@@ -43,8 +43,6 @@ stages:
       submodules: none
 
     - template: ../templates/use-xcode-version.yml
-      parameters:
-        xcodeVersion: '16.4'
 
     - template: ../templates/setup-build-tools.yml
       parameters:

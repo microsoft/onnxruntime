@@ -105,6 +105,10 @@ std::string ToUpper(std::string value) {
 }
 
 std::string GetProviderOptionPrefix(std::string_view provider_name) {
+  if (provider_name == kCudaExecutionProvider) {
+    return "ep.cuda.";
+  }
+
   return "ep." + onnxruntime::utils::GetLowercaseString(std::string{provider_name}) + ".";
 }
 
@@ -499,8 +503,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   const std::string gpu_external_free_key = ep_options_prefix + "gpu_external_free";
   const std::string gpu_external_empty_cache_key = ep_options_prefix + "gpu_external_empty_cache";
 
-  // Prefer plugin-provider-option keys, then fall back to the legacy ep.cuda.*
-  // aliases and finally to the historical flat session config names.
+  // Prefer canonical EP-scoped keys, then fall back to historical flat session config names.
   read_session_config_bool(
       {prefer_nhwc_key, prefer_nhwc_layout_key, "ep.cuda.prefer_nhwc_layout", "prefer_nhwc", "prefer_nhwc_layout"},
       config.prefer_nhwc);
@@ -623,18 +626,6 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
     config.use_ep_level_unified_stream = true;
   }
 
-  // Store external allocator info in the device cache entry so CreateAllocatorImpl can use it.
-  if (config.external_alloc != nullptr && config.external_free != nullptr) {
-    std::lock_guard<std::mutex> lock(factory->device_cache_mutex_);
-    auto* entry = factory->FindDeviceCacheEntryByOrdinalLocked(config.device_id);
-    if (entry) {
-      std::lock_guard<std::mutex> arena_lock(entry->arena_mutex);
-      entry->external_alloc = config.external_alloc;
-      entry->external_free = config.external_free;
-      entry->external_empty_cache = config.external_empty_cache;
-    }
-  }
-
   const OrtLogger& ep_logger = logger ? *logger : factory->default_logger_;
   auto actual_ep = std::make_unique<CudaEp>(*factory, config, ep_logger);
   *ep = actual_ep.release();
@@ -692,19 +683,6 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
     }
 
     std::lock_guard<std::mutex> lock{entry->arena_mutex};
-
-    // If external allocator function pointers are configured, use those directly
-    // (no arena, no mempool — the external allocator manages its own caching).
-    if (entry->UseExternalAllocator()) {
-      if (!entry->external_device_allocator) {
-        entry->external_device_allocator = std::make_unique<CudaExternalDeviceAllocator>(
-            memory_info, req_device_id,
-            entry->external_alloc, entry->external_free, entry->external_empty_cache);
-      }
-      ++entry->num_external_allocator_users;
-      *allocator = entry->external_device_allocator.get();
-      return nullptr;
-    }
 
     if (use_mempool) {
       if (!entry->mempool_allocator) {
@@ -829,16 +807,6 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
         if (--entry.num_mempool_users == 0) entry.mempool_allocator.reset();
         return;
       }
-      if (allocator == entry.external_device_allocator.get()) {
-        if (entry.num_external_allocator_users <= 0) {
-          LogWarning(factory->ort_api_, factory->default_logger_, ORT_FILE, __LINE__,
-                     "CudaEpFactory::ReleaseAllocatorImpl",
-                     "Refcount underflow in ReleaseAllocatorImpl (external_device_allocator). Ignoring release.");
-          return;
-        }
-        if (--entry.num_external_allocator_users == 0) entry.external_device_allocator.reset();
-        return;
-      }
     }
   }
 
@@ -846,6 +814,10 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
   auto* typed_allocator = static_cast<CudaAllocatorBase*>(allocator);
   switch (typed_allocator->GetKind()) {
     case CudaAllocatorKind::kDevice:
+      if (typed_allocator->IsExternalDeviceAllocator()) {
+        delete static_cast<CudaExternalDeviceAllocator*>(allocator);
+        return;
+      }
       delete static_cast<CudaDeviceAllocator*>(allocator);
       return;
     case CudaAllocatorKind::kPinned:

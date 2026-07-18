@@ -226,6 +226,37 @@ Status LaunchXQAKernelImpl(
   }
 }
 
+#ifndef GENERATE_CUBIN
+// Returns the dynamic shared-memory (bytes) the non-quantized XQA kernel for this head dim and
+// group size requests at launch (read from the device symbol, so it is accurate even for a PTX
+// kernel JIT-compiled for the running SM). Used by the GQA dispatcher to skip XQA when the
+// device's per-block opt-in shared memory is too small. The non-quantized kernel is an upper
+// bound for the int8/fp8 variants (smaller cache element), so this single query also guards the
+// quantized paths. Not marked inline: it is defined in exactly one TU per head-dim namespace
+// (xqa_loader_fp16_{64,128,256}.cu) and called from the head-size dispatcher TU, so it needs an
+// externally linkable definition.
+size_t GetXQAKernelSmemBytes(int group_size) {
+  switch (group_size) {
+    case 1:
+      return grp1_fp16::GetSmemSize();
+    case 2:
+      return grp2_fp16::GetSmemSize();
+    case 4:
+      return grp4_fp16::GetSmemSize();
+    case 5:
+      return grp5_fp16::GetSmemSize();
+    case 8:
+      return grp8_fp16::GetSmemSize();
+    case 16:
+      return grp16_fp16::GetSmemSize();
+    case 32:
+      return grp32_fp16::GetSmemSize();
+    default:
+      return 0;
+  }
+}
+#endif  // GENERATE_CUBIN
+
 // Instantiate template for half
 
 }  // namespace HEAD_DIM_NAMESPACE

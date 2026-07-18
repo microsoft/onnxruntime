@@ -312,6 +312,7 @@ Return Value:
     this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelRvv;
     this->RopeDispatch = &MlasRopeDispatchRvv;
     this->LayerNormF32Kernel = &MlasLayerNormKernelRvv;
+    this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchRvv;
 
 #if defined(MLAS_USE_RVV_ZVFH)
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration()) {
@@ -704,13 +705,20 @@ Return Value:
     }
 
 #if defined(USE_KLEIDIAI)
-    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
+    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME() || MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()){
         this->MlasSGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;
         this->MlasSGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSize;
         this->MlasSGemmPackBOverride = ArmKleidiAI::MlasGemmPackB;
         this->MlasDynamicQGemmBatchOverride = ArmKleidiAI::MlasDynamicQGemmBatch;
         this->MlasDynamicQGemmPackBSizeOverride = ArmKleidiAI::MlasDynamicQGemmPackBSize;
         this->MlasDynamicQGemmPackBOverride = ArmKleidiAI::MlasDynamicQGemmPackB;
+        this->MlasHalfGemmBatchOverride = ArmKleidiAI::MlasHalfGemmBatch;
+        this->MlasHalfGemmPackBSizeOverride = ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize;
+        this->MlasHalfGemmPackBOverride = ArmKleidiAI::MlasHalfGemmKleidiAIPackB;
+        this->MlasHalfConvPrepareOverride = ArmKleidiAI::MlasHalfConvPrepare;
+        this->MlasHalfConvOverride = ArmKleidiAI::MlasHalfConv;
+        this->MlasHalfConvPackWeightsAndBiasSizeOverride = ArmKleidiAI::MlasHalfConvPackWeightsAndBiasSize;
+        this->MlasHalfConvPackWeightsAndBiasOverride = ArmKleidiAI::MlasHalfConvPackWeightsAndBias;
         this->MlasConvPrepareOverride = ArmKleidiAI::MlasConvPrepare;
         this->MlasConvOverride = ArmKleidiAI::MlasConv;
         this->MlasConvSGemmRouteOverride = ArmKleidiAI::MlasConvSGemmRoute;
