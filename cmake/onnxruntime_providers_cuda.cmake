@@ -364,8 +364,9 @@
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/Zc:preprocessor>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>")
-      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>")
-      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/bigobj>")
+      # Pass /bigobj to the CUDA host compiler using dash spelling. Raw /bigobj is excluded
+      # from global ARM64 CUDA options in onnxruntime_common.cmake because nvcc parses it as input.
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-bigobj>")
       # /permissive is required for CUTLASS cute headers and to work around MSVC template resolution
       # issues with abseil headers when compiled through nvcc.
       # See https://github.com/NVIDIA/cutlass/issues/3065
@@ -401,7 +402,7 @@
       endif()
       target_compile_definitions(${target} PRIVATE NV_CUDNN_FRONTEND_USE_DYNAMIC_LOADING)
       target_include_directories(${target} PRIVATE ${CUDNN_INCLUDE_DIR})
-      target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas cudnn_frontend CUDA::curand CUDA::cufft CUDA::cudart CUDA::nvrtc CUDA::cuda_driver
+      target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas cudnn_frontend CUDA::curand CUDA::cufft CUDA::cudart CUDA::cuda_driver
               ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
     endif()
 
@@ -444,12 +445,19 @@
     if(ORT_HAS_SM90_OR_LATER)
       target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-w>)
       target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-DCUTLASS_ENABLE_GDC_FOR_SM90=1>)
-      target_compile_definitions(${target} PRIVATE COMPILE_HOPPER_TMA_GEMMS)
       if(NOT MSVC)
+        # The native SM90 (Hopper) TMA/WGMMA launchers pass CUTLASS TMA descriptor types through
+        # NVCC-generated host stubs. With CUDA 13 + MSVC those stubs contain 128-byte over-aligned
+        # by-value formal parameters, which triggers MSVC C2719 ("formal parameter with requested
+        # alignment of 128 won't be aligned"). Disable the native SM90 fpA_intB (COMPILE_HOPPER_TMA_GEMMS)
+        # and grouped MoE (COMPILE_HOPPER_TMA_GROUPED_GEMMS) TMA kernels on MSVC; the launcher bodies
+        # become throwing stubs and the SM80 compatibility path still runs on Hopper at runtime.
+        # See docs/contrib_ops/cuda/moe_qmoe.md section 14.1.
+        target_compile_definitions(${target} PRIVATE COMPILE_HOPPER_TMA_GEMMS)
         target_compile_definitions(${target} PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
       endif()
       if (MSVC)
-        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>")
+        # Do NOT add another /bigobj here: the MSVC block above already forwards it to cl.
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4172>")
       endif()
     endif()

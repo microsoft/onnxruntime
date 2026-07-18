@@ -44,7 +44,7 @@ Source files:
 | `bits` | Quantization bit width: `4` or `8`. |
 | `block_size` | Quantization group size along `K` (16 / 32 / 64 / 128). One scale (and optional zero point) per group. |
 | `accuracy_level` | Minimum accuracy level for internal handling of `A`; default `0` means unset. |
-| `weight_prepacked` | CUDA fpA_intB weight-layout selector. `0` (default): `B` is in standard MatMulNBits layout and may be runtime-prepacked. `1`: `B` is already prepacked in the CUDA SM80 fpA_intB layout. `2`: `B` is prepacked in the CUDA SM90 (Hopper) fpA_intB layout, consumed by the native SM90 kernel (requires an SM90 device and `block_size` in {64, 128}). |
+| `weight_prepacked` | CUDA fpA_intB weight-layout selector. `0` (default): `B` is in standard MatMulNBits layout and may be runtime-prepacked. `1`: `B` is already prepacked in the CUDA SM80 fpA_intB layout. `2`: `B` is prepacked in the CUDA SM90 (Hopper) fpA_intB layout, consumed by the native SM90 kernel (requires an SM90 device and `block_size` in {64, 128}). The native SM90 kernel is not compiled on Windows/MSVC builds (CUDA 13 host stubs hit MSVC `C2719` with over-aligned TMA parameters — see [moe_qmoe.md §14.1](./moe_qmoe.md)); on those builds the default `0`/`1` layouts run the SM80 compatibility kernel on Hopper instead. |
 
 | Input | Index | Notes |
 |-------|-------|-------|
@@ -87,9 +87,9 @@ step is **not** performed.
 The offline CUDA packer exposed through Python produces this layout:
 
 ```python
-from onnxruntime.capi import _pybind_state as _pybind
+from onnxruntime.capi import onnxruntime_cuda_quant_preprocess as _cuda_quant
 
-prepacked_flat = _pybind.pack_weights_for_cuda_mixed_gemm(
+prepacked_flat = _cuda_quant.pack_weights_for_cuda_mixed_gemm(
   q_weight.reshape(N, -1), N, K, bits, 80
 )
 prepacked_b = np.asarray(prepacked_flat, dtype=np.int8).view(np.uint8).reshape(q_weight.shape)
@@ -263,8 +263,10 @@ Prepacked weights are intentionally strict:
 
 - If ORT was built without `onnxruntime_USE_FPA_INTB_GEMM=ON`, any nonzero
   `weight_prepacked` value throws during kernel construction.
-- If `ORT_FPA_INTB_GEMM` is unset or `0`, any nonzero `weight_prepacked` value
-  throws instead of silently falling back to a raw-layout path.
+- Any nonzero `weight_prepacked` value forces the fpA_intB path on, so the enable
+  flag (`ep.cuda.fpa_intb_gemm` session config, or the `ORT_FPA_INTB_GEMM` env
+  var) is ignored for prepacked weights — the layout choice was fixed at export
+  time and cannot be turned off at run time.
 - Nonzero `weight_prepacked` requires FP16 or BF16 input `A`, because only the
   CUDA fpA_intB path consumes this layout.
 - `weight_prepacked` must match the layout the selected kernel expects: `1` is
@@ -293,7 +295,7 @@ present. `ComputeInternal` then:
 | Variable | Type / default | Effect |
 |----------|----------------|--------|
 | `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION` | bool, `0` | Disable the router GEMV specialization (§4.2); shapes fall back to the generic GEMV / dequant path. Useful for A/B benchmarking. |
-| `ORT_FPA_INTB_GEMM` | int bitmask, `0` | Enable the CUTLASS weight-only path (§6). `0x01` = all, `0x02` = CUDA GEMV, `0x04` = int4, `0x08` = int8. `0` disables it. |
+| `ORT_FPA_INTB_GEMM` | int/string, `0` | Enable the CUTLASS weight-only path (§6). `0` or `off` disables it, otherwise enables it. |
 | `ORT_MATMULNBITS_FORCE_CHUNKED` | int, `0` | Force the chunked dequant+GEMM fallback (§5) regardless of the size heuristic. |
 | `ORT_MATMULNBITS_CHUNK_SIZE` | int64, `32768` | Target rows per chunk in the chunked fallback. Values `< 1` reset to the default. |
 
@@ -309,7 +311,7 @@ present. `ComputeInternal` then:
   GEMV profiling helpers, e.g. `profile_qmoe_gemv.sh`).
 - CUDA prepacked-weight parity tests:
   [onnxruntime/test/python/quantization/test_op_matmulnbits_prepacked_cuda.py](../../../onnxruntime/test/python/quantization/test_op_matmulnbits_prepacked_cuda.py).
-  These use `_pybind_state.pack_weights_for_cuda_mixed_gemm(..., 80)` to produce
+  These use `onnxruntime_cuda_quant_preprocess.pack_weights_for_cuda_mixed_gemm(..., 80)` to produce
   `weight_prepacked=1` initializers and compare their outputs against runtime
   fpA_intB prepacking for int4/int8 and GEMV/GEMM-shaped `M` values.
 - Constructor failure tests for unsupported prepacked configurations live in

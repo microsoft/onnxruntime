@@ -20,7 +20,7 @@ jobs:
     name: Windows x64 QNN CI Pipeline (${{ matrix.QnnLibKind }})
     runs-on: [
       "self-hosted",
-      "1ES.Pool=onnxruntime-github-vs2022-latest",
+      "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
       "JobId=build_test_qnn_ep-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}-${{matrix.QnnLibKind}}"
     ]
     timeout-minutes: 120
@@ -41,6 +41,13 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+          architecture: x64
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
           architecture: x64
 
       - name: Locate vcvarsall and Setup Env
