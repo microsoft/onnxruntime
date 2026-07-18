@@ -133,6 +133,10 @@ class CudaKernel : public OpKernel {
     return RequireCudnnHandle(GetCudnnHandle(static_cast<CudaStream*>(ctx->GetComputeStream())));
   }
 
+  inline cudnnHandle_t TryGetCudnnHandle(OpKernelContext* ctx) const {
+    return GetCudnnHandle(static_cast<CudaStream*>(ctx->GetComputeStream()));
+  }
+
   static inline cudnnHandle_t GetCudnnHandle(onnxruntime::CudaStream* stream) {
     return stream ? stream->cudnn_handle_ : nullptr;
   }

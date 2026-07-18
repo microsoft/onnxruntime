@@ -42,6 +42,7 @@ jobs:
         "1ES.Pool=onnxruntime-github-linux-large",
         "JobId=build-wasm-${{inputs.job_name}}-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
+    timeout-minutes: 120
     env:
       buildArch: x64
       common_build_args: >-
