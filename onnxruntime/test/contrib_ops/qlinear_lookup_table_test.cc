@@ -289,5 +289,40 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearSoftmax_Int8_v12) {
   run_test(false);
 }
 
+TEST(QLinearLookupTableBasedOperatorTests, QLinearSoftmax_Int8_Saturate) {
+  auto run_test = [](bool add_shape_to_input) {
+    OpTester test("QLinearSoftmax", 1, onnxruntime::kMSDomain);
+    test.AddAttribute<int64_t>("axis", -1);
+    test.AddAttribute<int64_t>("opset", 13);
+    float X_scale = 0.1f;
+
+    int8_t X_zero_point = 0;
+    // Quantizer currently uses this Y_scale and Y_zero_point by default.
+    // See onnxruntime/python/tools/quantization/operators/softmax.py
+    float Y_scale = 1.0f / 256.0f;
+    int8_t Y_zero_point = -128;
+
+    std::vector<int64_t> dims = {1, 4};
+    auto x_in = std::vector<int8_t>{127, -128, -128, -128};
+    // First element expected to saturate to 127 (would otherwise
+    // mathematically be 128)
+    auto y_out = std::vector<int8_t>{127, -128, -128, -128};
+
+    test.AddShapeToTensorData(add_shape_to_input);
+    test.AddInput<int8_t>("X", dims, x_in);
+    test.AddInput<float>("X_scale", {}, {X_scale});
+    test.AddInput<int8_t>("X_zero_point", {}, {X_zero_point});
+    test.AddInput<float>("Y_scale", {}, {Y_scale});
+    test.AddInput<int8_t>("Y_zero_point", {}, {Y_zero_point});
+    test.AddOutput<int8_t>("Y", dims, y_out);
+    auto origin_round_mode = std::fegetround();
+    std::fesetround(FE_TONEAREST);
+    test.Run();
+    std::fesetround(origin_round_mode);
+  };
+  run_test(true);
+  run_test(false);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
