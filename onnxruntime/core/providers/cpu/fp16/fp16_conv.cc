@@ -12,6 +12,7 @@
 #include "core/common/safeint.h"
 #include "core/common/float16.h"
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
 
 #include "contrib_ops/cpu/fused_activation.h"
@@ -46,6 +47,7 @@ class FusedConvFp16 final : public OpKernel {
   FusedConvFp16(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
     ORT_ENFORCE(GetFusedActivationAttr(info, activation_).IsOK());
     channels_last_ = (info.GetKernelDef().OpName() == "NhwcFusedConv");
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -93,6 +95,7 @@ class FusedConvFp16 final : public OpKernel {
   }
 
   MLAS_ACTIVATION activation_;
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
   ConvAttributes conv_attrs_;
   TensorShape W_shape_;
   BufferUniquePtr packed_W_buffer_;
@@ -558,6 +561,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
           gemm_params.ldc = static_cast<size_t>(M);
           gemm_params.Bias = Bdata;
           gemm_params.OutputProcessor = (!channels_last_ && sum_data) ? nullptr : &act;  // process fused activation and add
+          gemm_params.BackendKernelSelectorConfig = &mlas_backend_kernel_selector_config_;
 
           MlasHalfGemmBatch(
               static_cast<size_t>(output_count),
