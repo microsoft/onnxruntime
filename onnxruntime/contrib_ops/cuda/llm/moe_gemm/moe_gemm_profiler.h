@@ -94,8 +94,13 @@ class MoeGemmProfiler {
   // Profiles (and caches) the best config for the M bucket that contains dims.maxM. The first
   // call for a new (GemmId, M-bucket) pair runs the profiler; subsequent calls return immediately.
   // The data/weight types are taken from gemmId, so no separate dtype argument is needed.
+  // `timing_stream` (the ORT compute stream) is required: the profiler runs its kernels on it so
+  // they are strictly ordered with the surrounding compute-stream work and share the same temp
+  // arena, avoiding the cross-stream scratch race that a private side stream would introduce.
+  // Must not be called while `timing_stream` is being captured into a CUDA graph.
   void profileTactics(CutlassMoeFCRunnerInterface* runner,
-                      weight_only::GemmDims const& dims, MoeGemmId const& gemmId);
+                      weight_only::GemmDims const& dims, MoeGemmId const& gemmId,
+                      cudaStream_t timing_stream);
 
   // Get best config for a given M and GemmId. Selects the config profiled for the M bucket that
   // contains m, so small-M (decode) GEMMs use a decode-tuned tile instead of a prefill-tuned one.
@@ -111,7 +116,7 @@ class MoeGemmProfiler {
   void initBackend(CutlassMoeFCRunnerInterface* runner, MoeGemmId const& gemmId);
 
   // Run profiling for all tactics
-  std::optional<Config> runProfiling(int maxM, MoeGemmId const& gemmId);
+  std::optional<Config> runProfiling(int maxM, MoeGemmId const& gemmId, cudaStream_t timing_stream);
 
   AllocatorPtr allocator_;
   GemmProfilerBackend backend_;

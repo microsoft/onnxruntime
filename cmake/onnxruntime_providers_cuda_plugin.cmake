@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 # Build the CUDA Execution Provider as a plugin shared library.
-# This file is included from the main CMakeLists.txt when onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON.
+# This file is included from onnxruntime_providers.cmake when onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON.
 
 message(STATUS "Building CUDA EP as plugin shared library")
 
@@ -174,7 +174,9 @@ if (MSVC)
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>"
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>"
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>"
-        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>"
+        # Pass /bigobj to the CUDA host compiler using dash spelling. Raw /bigobj is excluded
+        # from global ARM64 CUDA options in onnxruntime_common.cmake because nvcc parses it as input.
+        "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-bigobj>"
     )
 
     target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
@@ -232,7 +234,10 @@ if (MSVC)
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>"
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>"
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>"
-            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>"
+            # Unlike the options explicitly paired with -Xcompiler above, the raw /bigobj inherited
+            # from global compile options is parsed by nvcc as an input file on ARM64. Exclude that raw
+            # option in onnxruntime_common.cmake and forward its dash-spelled equivalent explicitly.
+            "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-bigobj>"
     )
 endif()
 
@@ -386,7 +391,6 @@ target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE
     CUDA::cublas
     CUDA::cublasLt
     CUDA::cufft
-    CUDA::nvrtc
     CUDA::cuda_driver
     cudnn_frontend
     Boost::mp11
@@ -458,7 +462,7 @@ endif()
 
 # Set output name and solution folder
 set_target_properties(onnxruntime_providers_cuda_plugin PROPERTIES
-    OUTPUT_NAME "onnxruntime_providers_cuda_plugin"
+  OUTPUT_NAME "onnxruntime_providers_cuda"
     FOLDER "ONNXRuntime"
 )
 

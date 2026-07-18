@@ -20,9 +20,10 @@ jobs:
     name: Windows CUDA Plugin EP Build
     runs-on: [
         "self-hosted",
-        "1ES.Pool=onnxruntime-github-vs2022-latest",
+        "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
         "JobId=windows-cuda-plugin-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
+    timeout-minutes: 210
     steps:
       - uses: actions/checkout@v6
         with:
@@ -157,7 +158,7 @@ jobs:
         shell: cmd
 
       - name: Install torch for CPU only
-        run: python -m pip install torch
+        run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
         working-directory: ${{ github.workspace }}
         shell: cmd
 
@@ -194,20 +195,32 @@ jobs:
         shell: pwsh
         run: nvidia-smi
 
+      - name: Run Tests
+        working-directory: ${{ runner.temp }}\build\Release\Release
+        shell: pwsh
+        run: |
+          $env:ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON = '{"ep_library_registration_name":"CUDAExecutionProvider","ep_library_path":"onnxruntime_providers_cuda.dll","selected_ep_name":"CUDAExecutionProvider","tests_to_skip":["BeamSearchTest.*","ContribOpAttentionTest.AttentionPastState_dynamic","ContribOpAttentionTest.Attention_Mask1D_Fp32_B2_S64","ContribOpAttentionTest.Attention_Mask2D_Fp32_B2_S32","ConvTest.Conv2D_MatMul_*","ConvTest.Conv3D_2","CudaPluginArenaTest.DeviceAllocator_ArenaReusesMemory","CudaPluginArenaTest.DeviceAllocator_CudaMemoryIsValid","CudaPluginArenaTest.DeviceAllocator_IsArena","CudaPluginArenaTest.DeviceAllocator_MultipleAllocations","DeformConvTest.Group1OffsetGroup2","GRUTest.*","GreedySearchTest.*","InferenceSessionTests.Test2LayerNestedSubgraph","InferenceSessionTests.Test3LayerNestedSubgraph","InferenceSessionTests.TestArenaShrinkageAfterRun","LSTMTest.*","LogSoftmaxOperator.*","LongformerAttentionTest.*","LoraAdapterTest.VerifyDeviceCopy","PackedAttentionTest.*","PlannerTest.MultiStream","PlannerTest.MultiStream1StreamWaitFor2Streams","PlannerTest.MultiStream2NodesSameStreamConsumedBy1NodeInDifferentStream","PlannerTest.MultiStreamCudaEPNodeCPUOutput","PlannerTest.MultiStreamMultiOutput","RNNTest.*","ReductionOpTest.ArgMax2D_select_last","ReductionOpTest.ArgMin_do_not_keepdims_2_select_last","SamplingTest.*","Scan.MixedExecutionProvidersUnknownDimInSubgraphOutput","Scan8.*","SessionStateTest.TestLayeringPartitioning","SessionStateTest.TestResourceAwarePartitioning_LargeLimit","SessionStateTest.TestResourceAwarePartitioning_NoLimit","SkipGroupNormTest.*","TopKOperator.NthElementBFloat16_NegativeVals"]}'
+
+          .\onnxruntime_test_all.exe
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+
+          .\onnxruntime_provider_test.exe
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+
       - name: Run CUDA Plugin EP Python Tests
         working-directory: ${{ github.workspace }}\onnxruntime\test\python\transformers
         shell: pwsh
         run: |
-          $env:ORT_CUDA_PLUGIN_PATH = "${{ runner.temp }}\build\Release\Release\onnxruntime_providers_cuda_plugin.dll"
-          Write-Host "ORT_CUDA_PLUGIN_PATH=$env:ORT_CUDA_PLUGIN_PATH"
-          if (-not (Test-Path $env:ORT_CUDA_PLUGIN_PATH)) {
-            Write-Error "CUDA plugin EP library not found at $env:ORT_CUDA_PLUGIN_PATH"
-            exit 1
-          }
+          $env:ORT_TEST_CUDA_PLUGIN_EP = "1"
           python test_cuda_plugin_ep.py
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
+
     env:
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       setVcvars: true
