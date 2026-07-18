@@ -7,6 +7,7 @@
 
 #include "core/framework/op_kernel.h"
 #include "core/util/math.h"
+#include "core/providers/cpu/nn/pool.h"
 #include "core/providers/cpu/nn/pool_attributes.h"
 #include "core/platform/threadpool.h"
 #include "core/common/safeint.h"
@@ -36,6 +37,22 @@ class PoolFp16 : public OpKernel {
   PoolAttributes pool_attrs_;
   bool is_max_pool_;  // either max pool or average pool
   bool channels_last_;
+
+ private:
+  // Correct reference fallback for ceil_mode==1 && count_include_pad==1 AveragePool. The MLAS
+  // fp16 im2col path divides by the full kernel_size and cannot drop the ceil_mode phantom tail
+  // cells. Rather than duplicate the pooling loop, this casts the tensor MLFloat16->float,
+  // delegates to the shared float ComputeAveragePoolReferenceCompute (cpu/nn/pool.cc), then casts
+  // float->MLFloat16 with a single round at store. Accumulation happens in float inside the shared
+  // helper, so the result is identical to accumulate-in-float + round-once. Handles both NCHW and
+  // channels-last (NHWC) layouts (transposing to NCHW for the shared helper) and 1D/2D/3D. Zero
+  // MLAS edits.
+  Status ComputeAveragePoolFp16Reference(OpKernelContext* context,
+                                         const Tensor* X,
+                                         const TensorShapeVector& output_dims,
+                                         const TensorShapeVector& pads,
+                                         int64_t N,
+                                         int64_t C) const;
 };
 
 Status PoolFp16::Compute(OpKernelContext* context) const {
@@ -77,7 +94,9 @@ Status PoolFp16::Compute(OpKernelContext* context) const {
     std::ostringstream ss;
     ss << "Invalid kernel shape. Input shape ";
     ss << (channels_last_ ? "(NHWC):[" : "(NCHW):[");
-    for (int64_t i = 0; i < input_shape.Size(); i++) {
+    // NumDimensions() is the number of dimensions; TensorShape::Size() is the element count
+    // (product of dims), so iterating to Size() would index beyond the dimension array.
+    for (size_t i = 0; i < input_shape.NumDimensions(); i++) {
       ss << input_shape[i] << ", ";
     }
     ss << "] Kernel shape:[";
@@ -113,6 +132,17 @@ Status PoolFp16::Compute(OpKernelContext* context) const {
   }
   if (channels_last_) {
     output_dims.push_back(C);
+  }
+
+  // The MLAS fp16 NHWC avg-pool (MlasNhwcAvgPool -> mlas/lib/pooling_fp16.cpp) divides every
+  // window by the full kernel_size and cannot drop the ceil_mode phantom tail cells, giving a
+  // too-small average for ceil_mode==1 && count_include_pad. Route only that combo to a correct
+  // float-accumulating reference loop; every other case keeps the fast MLAS im2col path. This
+  // mirrors the float fix in pool.cc (Pool<float, AveragePool>::Compute guard) so the fp16 and
+  // float AveragePool paths stay dtype-consistent.
+  if (!is_max_pool_ && pool_attrs_.ceil_mode == 1 && pool_attrs_.count_include_pad &&
+      !pool_attrs_.global_pooling) {
+    return ComputeAveragePoolFp16Reference(context, X, output_dims, pads, N, C);
   }
 
   const bool need_padding = !is_max_pool_ && pool_attrs_.count_include_pad;
@@ -217,9 +247,94 @@ Status PoolFp16::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-//
-// Operator definitions
-//
+// fp16 AveragePool reference fallback for ceil_mode + count_include_pad. Casts the input
+// MLFloat16->float (transposing NHWC->NCHW when channels_last_), runs the shared float pooling
+// core (ComputeAveragePoolReferenceCompute in cpu/nn/pool.cc), then casts float->MLFloat16 into
+// the output (transposing NCHW->NHWC back when channels_last_). A single round happens at the
+// float->fp16 store; all accumulation is in float inside the shared core, so this is numerically
+// equivalent to accumulate-in-float + round-once and stays in lockstep with the float path's
+// clamped-divisor semantics. Reuses the float loop per xadupre's review request.
+Status PoolFp16::ComputeAveragePoolFp16Reference(OpKernelContext* context,
+                                                 const Tensor* X,
+                                                 const TensorShapeVector& output_dims,
+                                                 const TensorShapeVector& pads,
+                                                 int64_t N,
+                                                 int64_t C) const {
+  const TensorShape& input_shape = X->Shape();
+  const size_t spatial_dims = output_dims.size() - 2;
+  const size_t spatial_dim_start = channels_last_ ? 1 : 2;
+
+  // Build NCHW spatial extents plus flat spatial sizes for input and output.
+  int64_t input_image_size = 1;
+  int64_t output_image_size = 1;
+  TensorShapeVector x_nchw_dims({N, C});
+  TensorShapeVector out_nchw_dims({N, C});
+  for (size_t d = 0; d < spatial_dims; ++d) {
+    const int64_t in_d = input_shape[d + spatial_dim_start];
+    const int64_t out_d = output_dims[d + spatial_dim_start];
+    x_nchw_dims.push_back(in_d);
+    out_nchw_dims.push_back(out_d);
+    input_image_size *= in_d;
+    output_image_size *= out_d;
+  }
+  const TensorShape x_nchw_shape(x_nchw_dims);
+
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+
+  const size_t x_float_count = static_cast<size_t>(N) * static_cast<size_t>(C) *
+                               static_cast<size_t>(input_image_size);
+  const size_t y_float_count = static_cast<size_t>(N) * static_cast<size_t>(C) *
+                               static_cast<size_t>(output_image_size);
+  auto x_float = IAllocator::MakeUniquePtr<float>(alloc, x_float_count);
+  auto y_float = IAllocator::MakeUniquePtr<float>(alloc, y_float_count);
+
+  // Cast MLFloat16 -> float into an NCHW buffer (transpose from NHWC when channels_last_).
+  const auto* Xdata = X->Data<MLFloat16>();
+  float* x_ptr = x_float.get();
+  if (channels_last_) {
+    for (int64_t n = 0; n < N; ++n) {
+      for (int64_t c = 0; c < C; ++c) {
+        for (int64_t s = 0; s < input_image_size; ++s) {
+          x_ptr[(n * C + c) * input_image_size + s] =
+              Xdata[(n * input_image_size + s) * C + c].ToFloat();
+        }
+      }
+    }
+  } else {
+    for (size_t i = 0; i < x_float_count; ++i) {
+      x_ptr[i] = Xdata[i].ToFloat();
+    }
+  }
+
+  // Run the shared float pooling core. The guard in Compute() excludes global_pooling, so
+  // pool_attrs_ carries fully-populated kernel_shape/strides/dilations that match this call.
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
+  ORT_RETURN_IF_ERROR(ComputeAveragePoolReferenceCompute(x_ptr, y_float.get(), x_nchw_shape,
+                                                         out_nchw_dims, pads, pool_attrs_, tp));
+
+  // Cast float -> MLFloat16 into the output (transpose back to NHWC when channels_last_).
+  // MLFloat16(float) is the single, final rounding step.
+  auto* Y = context->Output(0, output_dims);
+  auto* Ydata = Y->MutableData<MLFloat16>();
+  const float* y_ptr = y_float.get();
+  if (channels_last_) {
+    for (int64_t n = 0; n < N; ++n) {
+      for (int64_t c = 0; c < C; ++c) {
+        for (int64_t s = 0; s < output_image_size; ++s) {
+          Ydata[(n * output_image_size + s) * C + c] =
+              MLFloat16(y_ptr[(n * C + c) * output_image_size + s]);
+        }
+      }
+    }
+  } else {
+    for (size_t i = 0; i < y_float_count; ++i) {
+      Ydata[i] = MLFloat16(y_ptr[i]);
+    }
+  }
+
+  return Status::OK();
+}
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     MaxPool, 8, 11,
     MLFloat16,

@@ -32,7 +32,19 @@ jobs:
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
       docker_build_args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1'
       docker_image_repo: onnxruntimecuda13manylinuxbuild
-      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --cuda_version=13.0 --cuda_home=/usr/local/cuda-13.0 --cudnn_home=/usr/local/cuda-13.0 --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 onnxruntime_BUILD_UNIT_TESTS=ON'
+      extra_build_flags: >-
+        --use_binskim_compliant_compile_flags
+        --build_wheel
+        --parallel
+        --nvcc_threads 4
+        --flash_nvcc_threads 4
+        --cuda_version=13.0
+        --cuda_home=/usr/local/cuda-13.0
+        --cudnn_home=/usr/local/cuda-13.0
+        --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON
+        --cmake_extra_defines onnxruntime_QUICK_BUILD=ON
+        --cmake_extra_defines onnxruntime_USE_FPA_INTB_GEMM=OFF
       python_path_prefix: 'PATH=/opt/python/cp312-cp312/bin:$PATH'
       run_tests: false
       upload_build_output: true
@@ -49,6 +61,7 @@ jobs:
       - "1ES.Pool=onnxruntime-github-linux-a10"
       - "1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10-Test"
       - "JobId=smoke-linux-cuda-no-cudnn-x64-release-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+    timeout-minutes: 210
     permissions:
       contents: read
       packages: read
@@ -93,15 +106,37 @@ jobs:
           ldd /build/Release/Release/libonnxruntime_providers_cuda.so | tee /tmp/ldd.txt
           ! grep -i cudnn /tmp/ldd.txt'
 
-      - name: Run no-cuDNN CUDA EP smoke test
+      - name: Run no-cuDNN CUDA EP op smoke test
         run: |
-          docker run --rm --gpus all \
+          # The build image runs as a non-root user by default, but this step
+          # deletes the system cuDNN libraries and rebuilds the dynamic linker
+          # cache (both require root). Run this disposable test container as root.
+          docker run --rm --gpus all --user root \
             -v "${{ runner.temp }}/Release:/build/Release" \
             "${{ steps.build_docker_image_step.outputs.full-image-name }}" \
             bash -lc 'set -e
           PATH=/opt/python/cp312-cp312/bin:$PATH
           LD_LIBRARY_PATH=/usr/local/cuda-13.0/lib64:${LD_LIBRARY_PATH:-}
           export PATH LD_LIBRARY_PATH
+
+          # The build image contains cuDNN. Remove its runtime libraries from this disposable
+          # test container so the smoke test proves that the provider works when cuDNN is
+          # physically unavailable, rather than merely relying on enable_cudnn=0.
+          for root in /usr /opt /lib /lib64; do
+            if [ -e "$root" ]; then
+              find "$root" -name "libcudnn*.so*" -print -delete 2>/dev/null || true
+            fi
+          done
+          ldconfig
+          if ldconfig -p | grep -qi cudnn; then
+            echo "cuDNN remains available in the dynamic linker cache" >&2
+            exit 1
+          fi
+          if find /usr /opt /lib /lib64 -name "libcudnn*.so*" -print -quit 2>/dev/null | grep -q .; then
+            echo "cuDNN runtime libraries remain in the no-cuDNN test container" >&2
+            exit 1
+          fi
+
           WHEEL_PATH=$(find /build/Release/Release/dist -type f -name "onnxruntime_gpu-*.whl" | head -n 1)
           if [ -z "$WHEEL_PATH" ]; then
             echo "No built onnxruntime GPU wheel found under /build/Release/Release/dist" >&2
@@ -111,21 +146,114 @@ jobs:
           python -m pip install --no-cache-dir --force-reinstall --no-deps numpy onnx "$WHEEL_PATH"
           python - <<"PY"
           import numpy as np
-          import onnx
           import onnxruntime as ort
           from onnx import TensorProto, helper
 
-          x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2, 3])
-          y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [2, 3])
-          node = helper.make_node("Add", ["x", "x"], ["y"])
-          graph = helper.make_graph([node], "cuda_no_cudnn_smoke", [x], [y])
-          model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
-          model.ir_version = 10
-
           providers = [("CUDAExecutionProvider", {"enable_cudnn": "0"})]
-          sess = ort.InferenceSession(model.SerializeToString(), providers=providers)
-          data = np.arange(6, dtype=np.float32).reshape(2, 3)
-          result = sess.run(None, {"x": data})[0]
-          np.testing.assert_allclose(result, data + data)
-          print("CUDA no-cuDNN smoke test passed")
+
+
+          def run_op(name, model, feeds, expected, rtol=1e-4, atol=1e-4):
+              model.ir_version = 10
+              options = ort.SessionOptions()
+              options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+              sess = ort.InferenceSession(model.SerializeToString(), sess_options=options, providers=providers)
+              got = sess.run(None, feeds)[0]
+              np.testing.assert_allclose(got, expected, rtol=rtol, atol=atol)
+              print("[no-cuDNN] " + name + " passed")
+
+
+          def make_model(nodes, inputs, outputs, opset, initializers=None):
+              graph = helper.make_graph(nodes, "no_cudnn_smoke", inputs, outputs, initializer=initializers or [])
+              return helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
+
+
+          def f32_in(shape):
+              return helper.make_tensor_value_info("x", TensorProto.FLOAT, shape)
+
+
+          data = np.random.rand(2, 3).astype(np.float32)
+
+          # Elementwise baseline (does not depend on cuDNN).
+          run_op(
+              "Add",
+              make_model(
+                  [helper.make_node("Add", ["x", "x"], ["y"])],
+                  [f32_in([2, 3])],
+                  [helper.make_tensor_value_info("y", TensorProto.FLOAT, [2, 3])],
+                  21,
+              ),
+              {"x": data},
+              data + data,
+          )
+
+          # LogSoftmax over the last axis (softmax kernel, no cuDNN).
+          shifted = data - data.max(axis=1, keepdims=True)
+          log_softmax = shifted - np.log(np.exp(shifted).sum(axis=1, keepdims=True))
+          run_op(
+              "LogSoftmax",
+              make_model(
+                  [helper.make_node("LogSoftmax", ["x"], ["y"], axis=1)],
+                  [f32_in([2, 3])],
+                  [helper.make_tensor_value_info("y", TensorProto.FLOAT, [2, 3])],
+                  13,
+              ),
+              {"x": data},
+              log_softmax,
+          )
+
+          # ReduceMean over the last axis (matrix-reduction path, no cuDNN).
+          run_op(
+              "ReduceMean",
+              make_model(
+                  [helper.make_node("ReduceMean", ["x"], ["y"], axes=[1], keepdims=1)],
+                  [f32_in([2, 3])],
+                  [helper.make_tensor_value_info("y", TensorProto.FLOAT, [2, 1])],
+                  13,
+              ),
+              {"x": data},
+              data.mean(axis=1, keepdims=True),
+          )
+
+          # ReduceSum over a middle axis, which requires the general no-cuDNN path.
+          reduce_sum_data = np.random.rand(2, 3, 4).astype(np.float32)
+          run_op(
+              "ReduceSum",
+              make_model(
+                  [helper.make_node("ReduceSum", ["x", "axes"], ["y"], keepdims=1)],
+                  [f32_in([2, 3, 4])],
+                  [helper.make_tensor_value_info("y", TensorProto.FLOAT, [2, 1, 4])],
+                  13,
+                  initializers=[helper.make_tensor("axes", TensorProto.INT64, [1], [1])],
+              ),
+              {"x": reduce_sum_data},
+              reduce_sum_data.sum(axis=1, keepdims=True),
+          )
+
+          # ArgMax over the last axis (custom cuDNN-free kernel).
+          run_op(
+              "ArgMax",
+              make_model(
+                  [helper.make_node("ArgMax", ["x"], ["y"], axis=1, keepdims=1)],
+                  [f32_in([2, 3])],
+                  [helper.make_tensor_value_info("y", TensorProto.INT64, [2, 1])],
+                  13,
+              ),
+              {"x": data},
+              np.argmax(data, axis=1).reshape(2, 1).astype(np.int64),
+          )
+
+          # ArgMin over the last axis (custom cuDNN-free kernel).
+          run_op(
+              "ArgMin",
+              make_model(
+                  [helper.make_node("ArgMin", ["x"], ["y"], axis=1, keepdims=1)],
+                  [f32_in([2, 3])],
+                  [helper.make_tensor_value_info("y", TensorProto.INT64, [2, 1])],
+                  13,
+              ),
+              {"x": data},
+              np.argmin(data, axis=1).reshape(2, 1).astype(np.int64),
+          )
+
+          print("CUDA no-cuDNN op smoke tests passed")
           PY'

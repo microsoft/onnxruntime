@@ -9,6 +9,26 @@
 namespace onnxruntime {
 namespace test {
 
+// Execution providers excluded from the four opset-18 AveragePool ceil_mode +
+// count_include_pad parity tests below. Shared by all four tests to prevent scoping
+// drift. Two rationales:
+//   - Most EPs (kTensorrt, kNvTensorRTRTX, kAcl, kOpenVINO, kDml, kWebGpu, kDnnl,
+//     kCoreML, kQnn) do not implement the clamped-window divisor (PyTorch #183528),
+//     so they return the pre-fix full-kernel-size average and would fail these tests.
+//   - kCuda / kCudaNHWC DO support the semantics, but these opset-18 cases are
+//     CPU-reference gate tests (the CUDA path has its own parity tests) and cuDNN-NHWC
+//     can flap on the 2D case, so they are excluded here too.
+//
+// NOTE: do not confuse this with kPoolingEpsExcludedFromCeilCipTests (defined ~L1150), which
+// has the OPPOSITE kCuda membership. This set is the CPU-reference GATE and therefore INCLUDES
+// kCuda/kCudaNHWC in the exclusion list (CPU is the oracle here); that other set EXCLUDES
+// kCuda/kCudaNHWC because there CUDA is the tested target. Pick the one matching your intent.
+static const std::unordered_set<std::string> kPoolingEpsExcludedFromCeilCountIncludePadTests = {
+    kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider,
+    kNvTensorRTRTXExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+    kDmlExecutionProvider, kWebGpuExecutionProvider, kDnnlExecutionProvider,
+    kCoreMLExecutionProvider, kQnnExecutionProvider};
+
 template <typename T>
 class PoolTest : public ::testing::Test {
 };
@@ -959,10 +979,13 @@ TEST(PoolTest, AveragePool_CountIncludePad_AsymmetricPads) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  // This test targets the CPU fix only. Exclude EPs whose external libraries
-  // (cuDNN, CoreML, etc.) also produce wrong results for this case.
+  // The CUDA custom AveragePoolWithPad kernel now honors per-side (asymmetric) pads, so the
+  // CUDA (NCHW) leg is un-excluded here to lock in that fix. kCudaNHWCExecutionProvider is
+  // excluded here only to avoid redundant coverage: the asymmetric NHWC-CUDA decode branch is
+  // now exercised (and passing) by the 1D/2D AveragePool_CUDA_* parity tests below. The remaining
+  // exclusions are EPs whose external libraries (CoreML, etc.) still produce wrong results here.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider,
+           {kCudaNHWCExecutionProvider,
             kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
             kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
             kDmlExecutionProvider});
@@ -994,10 +1017,14 @@ TEST(PoolTest, AveragePool3D_CountIncludePad_AsymmetricPads) {
                                         0.5f, 0.25f};
   test.AddInput<float>("X", x3d_dims, x3d_vals);
   test.AddOutput<float>("Y", expected3d_dims, expected3d_vals);
-  // This test targets the CPU fix only. Exclude EPs whose external libraries
-  // (cuDNN, CoreML, etc.) also produce wrong results for this case.
+  // The CUDA custom AveragePoolWithPad kernel now honors per-side (asymmetric) pads in 3D, so the
+  // CUDA (NCHW) leg is un-excluded here to lock in that fix. kCudaNHWCExecutionProvider stays
+  // excluded here: the asymmetric NHWC-CUDA decode branch is now exercised (and passing) by the
+  // 1D/2D AveragePool_CUDA_* parity tests below, but 3D (NDHWC) NHWC pooling is not among them, so
+  // it remains a follow-up. The remaining exclusions are EPs whose external libraries (CoreML,
+  // etc.) still produce wrong results here.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider,
+           {kCudaNHWCExecutionProvider,
             kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
             kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
             kDmlExecutionProvider});
@@ -1093,6 +1120,393 @@ TEST(PoolTest, AveragePool_19_ceil_count_include_pad_1d) {
   // TODO: Re-enable DML when fixed #41968513
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider});
+}
+
+// ---------------------------------------------------------------------------
+// CUDA AveragePool asymmetric-padding parity tests.
+//
+// cuDNN's pooling descriptor stores one symmetric pad per axis, so it silently drops the
+// ONNX end pad when pad_begin != pad_end, producing wrong averages on CUDA (e.g. for a 1D
+// pad of (0,3) cuDNN yields [4, 6.5, 8] while the CPU reference yields [4, 5.571, 4], and a
+// 2D pad of (0,0,3,3) diverges by up to 53.25). The custom AveragePoolWithPad CUDA kernel
+// fixes this. These cases keep the CUDA EP UN-excluded so the CUDA leg actually runs and must
+// match the CPU reference oracle. Expected values are the CPU reference outputs.
+//
+// ceil_mode + count_include_pad cases use opset 19 so the CPU leg runs the already-correct v19
+// reference functor and validates the CUDA kernel independently of the separate CPU opset-7..18
+// MLAS fix (PR #29629); the CUDA routing is opset-independent, so this still exercises the fix.
+//
+// Exception: the fp16 case below runs CUDA-only (CPU has no fp16 AveragePool kernel on x64 and
+// the Arm64 NEON fp16 pooling kernel mishandles the ceil_mode + count_include_pad divisor), so
+// the "CPU leg runs the v19 reference oracle" statement above does not apply to it — see its own
+// comment for how it validates the CUDA half accumulate-in-float path without a CPU oracle.
+//
+// The float cases share a single exclusion set (kPoolingEpsExcludedFromCeilCipTests) so the list cannot
+// drift test-to-test. It names every EP whose pooling does NOT implement ONNX's asymmetric-pad /
+// dilated / ceil_mode + count_include_pad clamped-divisor semantics (they would produce wrong
+// values and cannot serve as an oracle). The CPU EP (correct v19 reference) stays un-excluded as
+// the float oracle, and the CUDA + CUDA-NHWC EPs stay un-excluded as the tested targets — the
+// asymmetric NHWC-CUDA path is intentionally exercised here (USE_CUDA_NHWC_OPS defaults ON) and
+// passes. kWebGpuExecutionProvider is listed defensively: it auto-skips in a CUDA-only build
+// (DefaultWebGpuExecutionProvider returns nullptr), but naming it keeps a future WebGPU build leg
+// from re-triggering the CI failure this list fixes.
+//
+// NOTE: do not confuse this with kPoolingEpsExcludedFromCeilCountIncludePadTests (top of file,
+// ~L21), which has the OPPOSITE kCuda membership. That set is a CPU-reference GATE and INCLUDES
+// kCuda/kCudaNHWC in its exclusions; this set EXCLUDES them because here CUDA/CUDA-NHWC ARE the
+// tested targets. Opposite kCuda intent — pick the one matching your test.
+// ---------------------------------------------------------------------------
+const std::unordered_set<std::string> kPoolingEpsExcludedFromCeilCipTests = {
+    kTensorrtExecutionProvider, kNvTensorRTRTXExecutionProvider, kDnnlExecutionProvider,
+    kOpenVINOExecutionProvider, kAclExecutionProvider, kCoreMLExecutionProvider,
+    kQnnExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider};
+
+TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_1d) {
+  OpTester test("AveragePool", 19);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{7});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  std::vector<int64_t> x_dims = {1, 1, 9};
+  std::vector<int64_t> expected_dims = {1, 1, 3};
+  std::vector<float> expected_vals = {4.0f, 5.5714283f, 4.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCipTests);
+}
+
+TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_1d_exclude_pad) {
+  OpTester test("AveragePool", 18);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{7});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)0);
+
+  std::vector<float> x_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  std::vector<int64_t> x_dims = {1, 1, 9};
+  std::vector<int64_t> expected_dims = {1, 1, 3};
+  // exclude-pad divides by in-bounds cells only.
+  std::vector<float> expected_vals = {4.0f, 6.5f, 8.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCipTests);
+}
+
+TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_2d) {
+  OpTester test("AveragePool", 19);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3, 3});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 3, 3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{7, 7});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals(81);
+  for (int i = 0; i < 81; ++i) {
+    x_vals[i] = static_cast<float>(i + 1);
+  }
+  std::vector<int64_t> x_dims = {1, 1, 9, 9};
+  std::vector<int64_t> expected_dims = {1, 1, 3, 3};
+  std::vector<float> expected_vals = {31.0f, 28.714287f, 17.5f,
+                                      45.857143f, 41.142857f, 24.642858f,
+                                      33.5f, 29.785715f, 17.75f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCipTests);
+}
+
+TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_2d_exclude_pad) {
+  OpTester test("AveragePool", 18);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3, 3});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 3, 3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{7, 7});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)0);
+
+  std::vector<float> x_vals(81);
+  for (int i = 0; i < 81; ++i) {
+    x_vals[i] = static_cast<float>(i + 1);
+  }
+  std::vector<int64_t> x_dims = {1, 1, 9, 9};
+  std::vector<int64_t> expected_dims = {1, 1, 3, 3};
+  std::vector<float> expected_vals = {31.0f, 33.5f, 35.0f,
+                                      53.5f, 56.0f, 57.5f,
+                                      67.0f, 69.5f, 71.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCipTests);
+}
+
+// auto_pad=SAME_UPPER produces naturally asymmetric pads (here pad(0,1)); proves the latent
+// SAME-pad bug on CUDA is also fixed by the same kernel.
+TEST(PoolTest, AveragePool_CUDA_same_upper_asymmetric_1d) {
+  OpTester test("AveragePool", 18);
+
+  test.AddAttribute("auto_pad", "SAME_UPPER");
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3});
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f};
+  std::vector<int64_t> x_dims = {1, 1, 10};
+  std::vector<int64_t> expected_dims = {1, 1, 5};
+  std::vector<float> expected_vals = {2.0f, 4.0f, 6.0f, 8.0f, 6.3333335f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCipTests);
+}
+
+// Regression guard: symmetric pads must STAY on the fast cuDNN path and remain correct.
+TEST(PoolTest, AveragePool_CUDA_symmetric_pad_regression_1d) {
+  OpTester test("AveragePool", 19);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3});
+  test.AddAttribute("pads", std::vector<int64_t>{3, 3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{7});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  std::vector<int64_t> x_dims = {1, 1, 9};
+  std::vector<int64_t> expected_dims = {1, 1, 4};
+  std::vector<float> expected_vals = {1.4285715f, 4.0f, 5.5714283f, 4.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCipTests);
+}
+
+// MaxPool asymmetric-pad probe/regression on CUDA (verify-then-decide per design). MaxPool
+// ignores pad cells (no divisor); asymmetric tail pad only changes output size, computed
+// correctly upstream. CUDA un-excluded to confirm parity with the CPU reference.
+TEST(PoolTest, MaxPool_CUDA_asymmetric_tail_pad_1d) {
+  OpTester test("MaxPool", 12);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{7});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+
+  std::vector<float> x_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  std::vector<int64_t> x_dims = {1, 1, 9};
+  std::vector<int64_t> expected_dims = {1, 1, 3};
+  std::vector<float> expected_vals = {7.0f, 9.0f, 9.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCipTests);
+}
+
+// fp16 asymmetric-pad AveragePool. Runs on the CUDA EP ONLY (via an explicit provider list):
+// the CPU AveragePool has no fp16 kernel on x64, and the Arm64 NEON fp16 pooling kernel does
+// not honor the ceil_mode + count_include_pad divisor rule (a separate, pre-existing CPU
+// limitation), so it cannot serve as the fp16 oracle. This test validates that the CUDA
+// AveragePoolWithPad kernel's half accumulate-in-float path matches the reference values.
+TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_1d_fp16) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
+  OpTester test("AveragePool", 19);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{7});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<MLFloat16> x_vals = {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f),
+                                   MLFloat16(4.0f), MLFloat16(5.0f), MLFloat16(6.0f),
+                                   MLFloat16(7.0f), MLFloat16(8.0f), MLFloat16(9.0f)};
+  std::vector<int64_t> x_dims = {1, 1, 9};
+  std::vector<int64_t> expected_dims = {1, 1, 3};
+  std::vector<MLFloat16> expected_vals = {MLFloat16(4.0f), MLFloat16(5.5714283f), MLFloat16(4.0f)};
+
+  test.AddInput<MLFloat16>("X", x_dims, x_vals);
+  test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
+  test.SetOutputTolerance(0.005f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Symmetric pads BUT dilation > 1. cuDNN's pooling descriptor has no dilation parameter, so the
+// old (asymmetric-pads-only) guard let this fall through to cuDNN, which silently ignored the
+// dilation and produced the wrong result. The dilation guard (!default_dilations) now routes this
+// to the custom kernel. opset 19 so the CPU AveragePoolV19 reference (which honors dilation) also
+// runs and must match. Expected values come from that CPU reference.
+TEST(PoolTest, AveragePool_CUDA_symmetric_pad_dilation_1d) {
+  OpTester test("AveragePool", 19);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1});
+  test.AddAttribute("pads", std::vector<int64_t>{2, 2});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3});
+  test.AddAttribute("dilations", std::vector<int64_t>{2});
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  std::vector<int64_t> x_dims = {1, 1, 9};
+  std::vector<int64_t> expected_dims = {1, 1, 9};
+  std::vector<float> expected_vals = {1.3333334f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f,
+                                      4.6666665f, 5.3333335f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCipTests);
+}
+
+// auto_pad=SAME_LOWER produces naturally asymmetric pads with the extra pad on the LOW side
+// (here pad(1,0)); companion to the SAME_UPPER case. opset 19 so the CPU reference also runs.
+TEST(PoolTest, AveragePool_CUDA_same_lower_asymmetric_1d) {
+  OpTester test("AveragePool", 19);
+
+  test.AddAttribute("auto_pad", "SAME_LOWER");
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3});
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f};
+  std::vector<int64_t> x_dims = {1, 1, 10};
+  std::vector<int64_t> expected_dims = {1, 1, 5};
+  std::vector<float> expected_vals = {1.0f, 3.0f, 5.0f, 7.0f, 9.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCipTests);
+}
+
+// bf16 AveragePool is intentionally NOT tested here: although the CUDA kernel instantiates
+// BFloat16 (compile-checked) and AveragePoolWithPad accumulates it in float like fp16, the ONNX
+// AveragePool schema type constraint does not include tensor(bfloat16), so OpTester's model
+// type-checker rejects such a graph at load. The fp16 case above already exercises the
+// accumulate-in-float path.
+
+// (a)-gate regression test for the CPU/MLAS AvgPool ceil_mode + count_include_pad bug
+// (PyTorch #183528). This is the opset-18 clone of AveragePool_19_ceil_count_include_pad_1d:
+// same X and same expected_vals, but at opset 18 the float path routes through MLAS (which
+// divided by the full kernel size and produced a wrong average) instead of the v19 reference
+// loop. GPU / other EPs are excluded so the test is green the moment the CPU fix lands; the
+// CUDA leg is tracked separately as the (b) probe.
+TEST(PoolTest, AveragePool_18_ceil_count_include_pad_1d) {
+  OpTester test("AveragePool", 18);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3});
+  test.AddAttribute("pads", std::vector<int64_t>{3, 3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{7});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals = {2.0903f, 4.6493f, 1.6320f, -3.2051f, 4.6975f, 4.7296f, 3.3653f, -1.5815f, -2.3832f, 0.9628f, -1.5899f, -2.6820f, 5.7529f, 7.7346f, -0.8910f, -2.0151f, 0.1313f, -0.5374f};
+  std::vector<int64_t> x_dims = {1, 2, 9};
+  std::vector<int64_t> expected_dims = {1, 2, 4};
+  std::vector<float> expected_vals = {0.73807144f, 2.5655572f, 0.8032287f, -0.09990001f, 0.34911433f, 1.0389f, 1.4536142f, -0.40353334f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCountIncludePadTests);
+}
+
+// 2D opset-18 case for the same bug. Input is the PyTorch #183528 repro:
+// x = arange(1, 17).reshape(1, 1, 4, 4), kernel=3, stride=2, pad=1, ceil_mode=1,
+// count_include_pad=1. The ceil-mode trailing window ends past input+pad_tail, so MLAS's
+// full-kernel divisor gave a wrong average; the reference loop divides by the clamped
+// window (in-bounds + real pad cells only).
+TEST(PoolTest, AveragePool_18_ceil_count_include_pad_2d) {
+  OpTester test("AveragePool", 18);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f,
+                               9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f};
+  std::vector<int64_t> x_dims = {1, 1, 4, 4};
+  std::vector<int64_t> expected_dims = {1, 1, 3, 3};
+  std::vector<float> expected_vals = {1.5555556f, 3.3333333f, 2.0f,
+                                      6.3333335f, 11.0f, 6.0f,
+                                      4.5f, 7.5f, 4.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCountIncludePadTests);
+}
+
+// 3D opset-18 case for the same bug, exercising the AveragePool3DTask path.
+TEST(PoolTest, AveragePool_18_ceil_count_include_pad_3d) {
+  OpTester test("AveragePool", 18);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1, 1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals(27);
+  for (int i = 0; i < 27; ++i) {
+    x_vals[i] = static_cast<float>(i + 1);
+  }
+  std::vector<int64_t> x_dims = {1, 1, 3, 3, 3};
+  std::vector<int64_t> expected_dims = {1, 1, 2, 2, 2};
+  // Ground truth from the CPU v19 reference loop (window clamped to input + real pad).
+  std::vector<float> expected_vals = {2.2222223f, 2.5185184f, 3.1111112f, 3.4074075f,
+                                      4.888889f, 5.185185f, 5.7777777f, 6.074074f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCountIncludePadTests);
+}
+
+// No-regression guard: with count_include_pad=0 the divisor already counts only in-bounds
+// cells, so this combo stays on the MLAS fast path and must remain correct.
+TEST(PoolTest, AveragePool_18_ceil_count_exclude_pad_2d) {
+  OpTester test("AveragePool", 18);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)0);
+
+  std::vector<float> x_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f,
+                               9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f};
+  std::vector<int64_t> x_dims = {1, 1, 4, 4};
+  std::vector<int64_t> expected_dims = {1, 1, 3, 3};
+  // count_include_pad=0: each output divides by the number of in-bounds cells only.
+  std::vector<float> expected_vals = {3.5f, 5.0f, 6.0f,
+                                      9.5f, 11.0f, 12.0f,
+                                      13.5f, 15.0f, 16.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCountIncludePadTests);
 }
 
 TEST(PoolTest, GlobalAveragePool) {
@@ -1961,6 +2375,224 @@ TEST(PoolTest, MaxPool_ZeroDilation) {
   test.AddOutput<float>("Y", {0}, {});
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "All dilation values must be positive",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Verify that a 'pads' attribute shorter than 2 * kernel_shape rank is rejected by PoolAttributes
+// kernel validation. AddShapeToTensorData(false) omits input shape from the graph so ONNX shape
+// inference is bypassed and the model reaches kernel construction where the ORT_ENFORCE fires.
+// Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
+// different error messages.
+TEST(PoolTest, MaxPool_PadsTooShort) {
+  OpTester test("MaxPool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "twice the kernel_shape rank",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+TEST(PoolTest, AveragePool_PadsTooShort) {
+  OpTester test("AveragePool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+  test.AddAttribute("count_include_pad", static_cast<int64_t>(0));
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "twice the kernel_shape rank",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+TEST(PoolTest, LpPool_PadsTooShort) {
+  OpTester test("LpPool", 18);
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "twice the kernel_shape rank",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Verify that a kernel_shape whose rank does not match the input spatial rank is rejected by
+// PoolAttributes::InferOutputSize. LpPool (opset < 18) uses the generic Pool::Compute path, which
+// has no earlier rank guard, so the request reaches the InferOutputSize validation directly.
+// AddShapeToTensorData(false) omits the input shape so ONNX shape inference is bypassed.
+// Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
+// different error messages.
+TEST(PoolTest, LpPool_KernelRankMismatch) {
+  OpTester test("LpPool", 11);
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  // Input spatial rank is 3 while kernel_shape rank is 2.
+  std::vector<float> x_vals(1 * 1 * 8 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "input spatial rank",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Verify that attribute values producing a non-positive output dimension are rejected by
+// PoolAttributes::ComputeOutputSize. A 3x3 kernel over a 1x1 spatial input with no padding makes
+// the padded input smaller than the dilated kernel, so the computed output dimension is negative.
+// AddShapeToTensorData(false) omits the input shape so ONNX shape inference is bypassed.
+// Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
+// different error messages.
+TEST(PoolTest, AveragePool_NegativeOutputDim) {
+  OpTester test("AveragePool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("count_include_pad", static_cast<int64_t>(0));
+
+  std::vector<float> x_vals(1 * 1 * 1 * 1, 1.0f);
+  test.AddInput<float>("X", {1, 1, 1, 1}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "output dimension is negative",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Verify that a 'pads' attribute longer than 2 * kernel_shape rank is rejected by the
+// PoolAttributes constructor. AddShapeToTensorData(false) omits the input shape so ONNX shape
+// inference is bypassed and the model reaches kernel construction where the ORT_ENFORCE fires.
+// Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
+// different error messages.
+TEST(PoolTest, MaxPool_PadsTooLong) {
+  OpTester test("MaxPool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "twice the kernel_shape rank",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Verify that a 'strides' attribute whose length does not match the kernel_shape rank is rejected
+// by the PoolAttributes constructor. The assertion pins the explicit strides length message
+// ("Strides dimensions should match kernel shape"). AddShapeToTensorData(false) bypasses shape
+// inference. Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
+// different error messages.
+TEST(PoolTest, MaxPool_StridesLengthMismatch) {
+  OpTester test("MaxPool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Strides dimensions should match kernel shape",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Verify that a 'dilations' attribute whose length does not match the kernel_shape rank is
+// rejected by the PoolAttributes constructor. AddShapeToTensorData(false) bypasses shape inference.
+// Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
+// different error messages.
+TEST(PoolTest, MaxPool_DilationsLengthMismatch) {
+  // 'dilations' is only a valid MaxPool attribute from opset 10 onward, so target that version.
+  OpTester test("MaxPool", 10);
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 1, 1});
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Dilations dimensions should match kernel shape",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Verify that a low-rank input is rejected before pooling. The rank check in SetOutputSize
+// (NumDimensions >= 2) is defense-in-depth for execution providers and direct callers, but the CPU
+// pooling kernels reject inputs with rank < 3 earlier in Compute, so the tested path fires that
+// earlier guard and this test pins its message ("Input dimension cannot be less than 3").
+// AddShapeToTensorData(false) bypasses shape inference so the rank-2 input reaches the kernel.
+// Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML).
+TEST(PoolTest, MaxPool_InputRankTooLow) {
+  OpTester test("MaxPool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals(4 * 4, 1.0f);
+  test.AddInput<float>("X", {4, 4}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Input dimension cannot be less than 3",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Verify that a MaxPool 'storage_order' outside the valid set {0, 1} is rejected by the
+// PoolAttributes constructor. storage_order was introduced in MaxPool opset 8, so target that
+// version. AddShapeToTensorData(false) bypasses shape inference so the model reaches kernel
+// construction where the ORT_ENFORCE fires. Exclude compiling EPs (TRT, QNN) and EPs with their
+// own validation (DML) that produce different error messages.
+TEST(PoolTest, MaxPool_InvalidStorageOrder) {
+  OpTester test("MaxPool", 8);
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+  test.AddAttribute("storage_order", static_cast<int64_t>(2));
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "storage_order must be 0",
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
 }
 
