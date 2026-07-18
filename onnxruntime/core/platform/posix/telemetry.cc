@@ -14,6 +14,9 @@
 // 1DS SDK
 #include <LogManagerProvider.hpp>
 #include <ILogConfiguration.hpp>
+#if defined(__ANDROID__)
+#include "http/HttpClient_Android.hpp"
+#endif
 
 #include <unistd.h>
 #include <sys/resource.h>
@@ -361,6 +364,12 @@ void PosixTelemetry::Initialize() {
   //   new HttpClient(getApplicationContext());
   //   OfflineRoom.connectContext(getApplicationContext());  // if using Room DB
   // See cpp_client_telemetry/docs/cpp-start-android.md for details.
+#if defined(__ANDROID__)
+  if (!HttpClient_Android::GetClientInstance()) {
+    ORT_TELEMETRY_WARN("Android telemetry is waiting for the 1DS Java HttpClient");
+    return;
+  }
+#endif
 
   // Create SDK configuration — stored as member because LogManagerImpl holds a reference
   // and the configuration must remain valid for the lifetime of the log manager.
@@ -374,7 +383,9 @@ void PosixTelemetry::Initialize() {
   // Shutdown non-blocking and avoids adding exit latency to host apps.
   config[CFG_INT_MAX_TEARDOWN_TIME] = 0;
 
-  // Configure cache for offline scenarios — use same directory as device ID storage
+#if !defined(__ANDROID__)
+  // Configure the desktop cache in the same directory as device ID storage. Android's Java
+  // HttpClient supplies the app-private cache directory to 1DS.
   {
     std::string cache_dir = DeviceId::EnsureStorageDirectory();
     if (!cache_dir.empty()) {
@@ -382,6 +393,7 @@ void PosixTelemetry::Initialize() {
       config[CFG_STR_CACHE_FILE_PATH] = cache_path;
     }
   }
+#endif
 
   // Configure RAM queue for async batching
   config[CFG_INT_RAM_QUEUE_SIZE] = 512 * 1024;  // 512KB RAM queue
