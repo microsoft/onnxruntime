@@ -40,25 +40,19 @@ inline size_t FindPathAnchor(std::string_view s) {
       return i;  // drive prefix C:\ or C:/
     }
     if (c == '\\') {
-      // Relative Windows path with >= 2 '\'-delimited non-empty, space-free segments (e.g.
-      // Users\jane\model.onnx). A drive-less backslash path has no C:\ / UNC prefix to anchor on,
-      // so mirror the POSIX '/' rule; its spaced tail is removed by the to-end-of-message redaction.
-      size_t segments = 0;
-      size_t j = i;
-      while (j < s.size() && s[j] == '\\') {
-        const size_t seg_start = ++j;
-        while (j < s.size() && s[j] != '\\' && s[j] != '/' && s[j] != '\r' && s[j] != '\n' &&
-               s[j] != ' ' && s[j] != '\t') {
-          ++j;
-        }
-        if (j > seg_start) {
-          ++segments;
-        } else {
-          break;
-        }
+      // Relative Windows path with at least two '\' separators (e.g.
+      // alice\models\phi3.onnx). Anchor at the beginning of the containing token
+      // so a sensitive first segment cannot survive. Spaces are allowed after
+      // the first separator because Windows user profile directories routinely contain them.
+      size_t start = i;
+      while (start > 0) {
+        const unsigned char prev = static_cast<unsigned char>(s[start - 1]);
+        if (std::isspace(prev) || s[start - 1] == '"' || s[start - 1] == '\'') break;
+        --start;
       }
-      if (segments >= 2) {
-        return i;
+      size_t separators = 0;
+      for (size_t j = i; j < s.size() && s[j] != '\r' && s[j] != '\n'; ++j) {
+        if (s[j] == '\\' && ++separators >= 2) return start;
       }
     }
     if (c == '/') {
@@ -82,7 +76,13 @@ inline size_t FindPathAnchor(std::string_view s) {
         }
       }
       if (segments >= 2) {
-        return i;
+        size_t start = i;
+        while (start > 0) {
+          const unsigned char prev = static_cast<unsigned char>(s[start - 1]);
+          if (std::isspace(prev) || s[start - 1] == '"' || s[start - 1] == '\'') break;
+          --start;
+        }
+        return start;
       }
     }
   }

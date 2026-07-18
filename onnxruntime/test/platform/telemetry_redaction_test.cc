@@ -73,6 +73,8 @@ TEST(TelemetryRedactionTest, HomeUsernameNeverLeaksAcrossVariants) {
       "file:///home/alice/secret/model.onnx",
       "Users\\alice\\model.onnx",
       "at proj\\alice\\weights\\m.onnx",
+      "alice/models/phi3.onnx",
+      "at alice/models/phi3.onnx",
   };
   for (const char* in : inputs) {
     const std::string out = ScrubStringForTelemetry(in);
@@ -84,17 +86,20 @@ TEST(TelemetryRedactionTest, HomeUsernameNeverLeaksAcrossVariants) {
 TEST(TelemetryRedactionTest, MultiSegmentRelativePathReplaced) {
   // A relative token with 2+ "/x" segments is a path anchor; the character(s) before the leading
   // slash are kept and the rest is redacted.
-  EXPECT_EQ(ScrubStringForTelemetry("a/b/c"), "a[path]");
-  EXPECT_EQ(ScrubStringForTelemetry("x/y/z/"), "x[path]");
+  EXPECT_EQ(ScrubStringForTelemetry("a/b/c"), "[path]");
+  EXPECT_EQ(ScrubStringForTelemetry("x/y/z/"), "[path]");
 }
 
 TEST(TelemetryRedactionTest, RelativeWindowsPathReplaced) {
   // A drive-less relative Windows path (>= 2 '\'-delimited segments) has no C:\ / UNC / home prefix to
   // anchor on, but is still a path: it anchors at the first backslash and redacts to end-of-message, so
   // the user name in the second segment cannot leak.
-  EXPECT_EQ(ScrubStringForTelemetry("a\\b\\c"), "a[path]");
-  EXPECT_EQ(ScrubStringForTelemetry("Users\\alice\\model.onnx"), "Users[path]");
-  EXPECT_EQ(ScrubStringForTelemetry("Load Users\\bob\\m.onnx failed"), "Load Users[path]");
+  EXPECT_EQ(ScrubStringForTelemetry("a\\b\\c"), "[path]");
+  EXPECT_EQ(ScrubStringForTelemetry("alice\\models\\phi3.onnx"), "[path]");
+  EXPECT_EQ(ScrubStringForTelemetry("Users\\alice\\model.onnx"), "[path]");
+  EXPECT_EQ(ScrubStringForTelemetry("Load Users\\bob\\m.onnx failed"), "Load [path]");
+  EXPECT_EQ(ScrubStringForTelemetry("Users\\First Last\\model.onnx"), "[path]");
+  EXPECT_EQ(ScrubStringForTelemetry("Load Users\\First Last\\m.onnx failed"), "Load [path]");
 }
 
 TEST(TelemetryRedactionTest, SingleSegmentAndNonPathSlashesKept) {
