@@ -1,0 +1,84 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param quant_type
+#param a_components
+#param output_number
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+#use .getByOffset .setByOffset
+
+// FP4 (quant_type == 0) and NF4 (quant_type == 1) dequantization lookup tables.
+// These must match the host-side maps in
+// onnxruntime/contrib_ops/cpu/quantization/blockwise_quant_block_bnb4.h.
+#if quant_type == 0
+const QUANT_MAP = array<f32, 16>(0.0, 5.208333333e-03, 0.66666667, 1.0,
+                                 0.33333333, 0.5, 0.16666667, 0.25,
+                                 -0.0, -5.208333333e-03, -0.66666667, -1.0,
+                                 -0.33333333, -0.5, -0.16666667, -0.25);
+#else
+const QUANT_MAP = array<f32, 16>(-1.0, -0.6961928009986877, -0.5250730514526367, -0.39491748809814453,
+                                 -0.28444138169288635, -0.18477343022823334, -0.09105003625154495, 0.0,
+                                 0.07958029955625534, 0.16093020141124725, 0.24611230194568634, 0.33791524171829224,
+                                 0.44070982933044434, 0.5626170039176941, 0.7229568362236023, 1.0);
+#endif
+
+// M rows computed per invocation (reusing each dequantized weight across all rows).
+const OUTPUT_NUMBER : u32 = output_number;
+// Number of K codes processed per iteration (A's vectorization factor: 1, 2 or 4).
+const A_COMPONENTS : u32 = a_components;
+
+// Each invocation computes `OUTPUT_NUMBER` consecutive output rows for one column n:
+//   output[row + i, n] = sum_k a[row + i, k] * dequant_b[n, k]   for i in [0, OUTPUT_NUMBER).
+// The quantized weight b has logical (transposed) shape [N, K]; flat index f = n * K + k packs
+// two 4-bit codes per byte (even f -> high nibble, odd f -> low nibble) and the per-block scale
+// is absmax[f / block_size]. The K loop is processed `A_COMPONENTS` codes at a time, and the
+// dequantized weight(s) are reused across all `OUTPUT_NUMBER` rows.
+$MAIN {
+  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.output_size);
+  let n = global_idx % uniforms.N;
+  let row = (global_idx / uniforms.N) * OUTPUT_NUMBER;
+  var quant_map = QUANT_MAP;
+  let b_col_base = n * uniforms.K;
+  var acc: array<f32, OUTPUT_NUMBER>;
+  for (var k = 0u; k < uniforms.K; k = k + A_COMPONENTS) {
+    let f0 = b_col_base + k;
+    let scale = f32(absmax.getByOffset(f0 / uniforms.block_size));
+    let base_byte = f0 / 2u;
+    let b_bytes = unpack4xU8(input_b.getByOffset(base_byte / 4u));
+    let byte_off = base_byte % 4u;
+#if a_components == 1
+    // Scalar K: f0 may be even or odd, so select the nibble accordingly.
+    let code = select(b_bytes[byte_off] & 0xfu, b_bytes[byte_off] >> 4u, (f0 & 1u) == 0u);
+    let bw = quant_map[code] * scale;
+    for (var i = 0u; i < OUTPUT_NUMBER; i = i + 1u) {
+      acc[i] = fma(f32(input_a.getByOffset((row + i) * uniforms.K + k)), bw, acc[i]);
+    }
+#else
+    // Vectorized K: f0 is a multiple of A_COMPONENTS (K and block_size are too), so the
+    // A_COMPONENTS consecutive codes start on a high nibble and share a single scale.
+#if a_components == 2
+    var bw: vec2<f32>;
+#else
+    var bw: vec4<f32>;
+#endif
+    for (var j = 0u; j < A_COMPONENTS; j = j + 1u) {
+      let cur_byte = b_bytes[byte_off + j / 2u];
+      let code = select(cur_byte & 0xfu, cur_byte >> 4u, (j & 1u) == 0u);
+      bw[j] = quant_map[code];
+    }
+    bw = bw * scale;
+    for (var i = 0u; i < OUTPUT_NUMBER; i = i + 1u) {
+#if a_components == 2
+      let a_vec = vec2<f32>(input_a.getByOffset(((row + i) * uniforms.K + k) / A_COMPONENTS));
+#else
+      let a_vec = vec4<f32>(input_a.getByOffset(((row + i) * uniforms.K + k) / A_COMPONENTS));
+#endif
+      acc[i] = acc[i] + dot(a_vec, bw);
+    }
+#endif
+  }
+  for (var i = 0u; i < OUTPUT_NUMBER; i = i + 1u) {
+    output.setByOffset((row + i) * uniforms.N + n, output_value_t(acc[i]));
+  }
+} // MAIN

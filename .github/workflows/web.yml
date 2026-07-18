@@ -18,6 +18,7 @@ concurrency:
 jobs:
   precheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     outputs:
       commit_sha: ${{ steps.extract_commit.outputs.commit_sha }}
     steps:

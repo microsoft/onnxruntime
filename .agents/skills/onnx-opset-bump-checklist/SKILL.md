@@ -38,7 +38,7 @@ B/C/D can be validated). Throughout this section, bold letters in parentheses (e
 ### Group A — version plumbing (always required, mechanical)
 | File | Note |
 |---|---|
-| `cmake/deps.txt` (`onnx;` line) | archive URL + **SHA1 of the `.zip`** (see §2) |
+| `cmake/deps.txt` (`onnx;` line) | archive URL + **SHA1 of the `.zip`** (see §2). ⚠️ Before advancing this pin, verify the target commit still ships `onnx/backend/test/data/node/` — see gotcha **p** (#7959 deletes the on-disk node-test corpus → silent-green CI). |
 | `cmake/external/onnx` (submodule) | `git -C cmake/external/onnx fetch && git -C cmake/external/onnx reset --hard <sha> && git add cmake/external/onnx` |
 | `cmake/vcpkg-ports/onnx/vcpkg.json` | `version-semver`; reset `port-version` to 0 on a real version bump |
 | `cmake/vcpkg-ports/onnx/portfile.cmake` | `REF` + **SHA512 of the `.tar.gz`** (see §2). RC = bare commit as `REF`; formal = `REF "v${VERSION}"` |
@@ -46,6 +46,7 @@ B/C/D can be validated). Throughout this section, bold letters in parentheses (e
 | `cmake/patches/onnx/onnx.patch` | rebase to the new source (see §3) |
 | `cmake/vcpkg-ports/onnx/fix-dependency-protobuf.patch`, `fix-cmakelists.patch` | re-`diff` only if they fail to apply |
 | **The 7 `requirements.txt` files** with `onnx==X.Y.Z` | `onnxruntime/test/python/requirements.txt`; `tools/ci_build/github/linux/python/requirements.txt`; `tools/ci_build/github/windows/python/requirements.txt`; `tools/ci_build/github/linux/docker/scripts/{requirements.txt,manylinux/requirements.txt,lort/requirements.txt}`; `tools/ci_build/github/linux/docker/inference/aarch64/python/cpu/scripts/requirements.txt`. Confirm with `git grep -n "onnx==<OLD>"` (e.g. `onnx==1.21`) — grep the **old** pin you are replacing, not bare `onnx==1`. ⚠️ **Do NOT bump all matches.** `git grep -n "onnx==1"` also lists 3 transformers-model files — `onnxruntime/python/tools/transformers/models/{llama,phi2,stable_diffusion}/requirements.txt` — that are **intentionally frozen at `onnx==1.18.0`**. Leave those alone; only the 7 CI files above get the new pin. |
+| **The 4 QNN/android CI yaml with an INLINE `onnx==X.Y.Z` pip pin** (node-test materialization legs — NOT covered by the `requirements.txt` grep above) | `tools/ci_build/github/azure-pipelines/linux-qnn-ci-pipeline.yml`; `tools/ci_build/github/azure-pipelines/win-qnn-arm64-ci-pipeline.yml`; `tools/ci_build/github/azure-pipelines/android-arm64-v8a-QNN-crosscompile-ci-pipeline.yml`; `.github/workflows/windows_qnn_x64.yml`. Each has a `pip install onnx==X.Y.Z "numpy==...; ..."` step feeding the `onnxruntime_MATERIALIZE_ONNX_NODE_TESTS` gate (see gotcha **p**); the pin must be bumped in lockstep with `cmake/deps.txt`. Confirm with `git grep -n "onnx==<OLD>" -- '*.yml'`. (These are inline, not `-r requirements.txt`, by design — pulling the full requirements would drag heavy unrelated test deps onto the QNN legs.) |
 
 ### Group B — opset enablement
 | File | Change |
@@ -369,6 +370,109 @@ the legs you remember to touch and leaves the default-strict legs red. Precedent
 branch: `38f17243b` (GatherToSlice), generalized to all `*CurrentOpset` fusion tests.
 Annotate each call site with a one-line WHY + the tracking issue so it can be removed once
 the opset is released (#28966).
+
+**(p) A future onnx commit may DELETE the on-disk node-test corpus — a SILENT-GREEN C++ bump landmine.**
+ORT's **C++** node-test coverage depends on ONNX **shipping pre-generated `.pb` artifacts
+inside the pinned archive**: `onnx_test_runner` reads `model.onnx` + `test_data_set_*/*.pb`
+from `_deps/onnx-src/onnx/backend/test/data/node/<test>/` (the FetchContent archive pinned by
+the **SHA1 on the `onnx;` line of `cmake/deps.txt` ~L40** — *not* the `cmake/external/onnx`
+submodule, which only the QNN CI `.../node` path uses). **ONNX PR [onnx/onnx#7959] "Remove
+node test artifacts" deletes that entire on-disk corpus** (~2992+ files) — it targets onnx
+master, so the first affected release is expected to be **onnx 1.23** (one past the current
+1.22 pin), consistent with the JS `NOTE(#7959)` "onnx >= 1.23" caveat — **and removes the
+`cmd_tools.py generate-data` node path**, replacing both with a **Python-only, in-memory**
+flow (`loader.load_node_model_tests()` → `runner.run_node()`, `model_dir=None`, nothing
+written to disk). Naming / directory layout / `.pb` format are **unchanged — the files are
+simply gone.**
+- **⚠️ The C++ failure is SILENT, not loud.** Because names/layout/format don't change, the
+  C++ skip contracts (`GetBrokenTests` / `immutable_broken_tests` in `TestCase.cc` +
+  `main.cc`, names *without* the `test_` prefix) **don't throw or mismatch** — their target
+  paths just cease to exist. An empty `data/node` yields **ZERO** collected cases; the
+  runner's directory BFS finds nothing, `ctest`/`add_test` **exit 0**, and
+  `onnx_test_runner -e cuda .../node/<test>` prints nothing and **returns success.** C++
+  node-test **kernel guarding evaporates behind a GREEN CI with no failure signal** —
+  strictly worse than a hard break.
+- **The Python leg SURVIVES automatically — do not conflate it.** `onnx_backend_test_series.py`
+  does **zero** `.pb`/`model.onnx` disk I/O: it subclasses `onnx.backend.test.runner.Runner`
+  and delegates discovery+execution to the **installed pip `onnx`** package, whose base
+  `_add_model_test` already branches on `model_dir is None` → in-memory. ORT's only override
+  is a rtol/atol injector (`onnx_backend_test_series.py:60-71`), field-agnostic, no disk. So
+  the name-keyed **Python** contracts (`onnx_backend_test_series_filters.jsonc` `^test_`
+  regexes, `onnx_backend_test_series_overrides.jsonc` atol) keep resolving against the pip
+  package's in-memory tests and stay valid. **The mitigation surface is C++-only.** (Residual
+  Python risk is only if #7959 changes the public subclass contract — `Runner.__init__` /
+  `_add_model_test` / `assert_similar_outputs` sig / `TestCase` field names.)
+- **Guardrail — verify the corpus survives BEFORE advancing the `cmake/deps.txt` pin.** As of
+  this writing #7959 is **OPEN + CONFLICTING** (no onnx pin includes it yet), so this is
+  latent, not active. When re-pinning, confirm the target commit still ships the on-disk tree:
+  ```bash
+  # Does the target onnx commit/tag still contain the on-disk node-test corpus?
+  gh api "repos/onnx/onnx/contents/onnx/backend/test/data/node?ref=<target-commit-or-tag>" \
+    --jq 'length'      # >0 = corpus present (safe) ; 404 = DELETED (see #7959) -> STOP
+  # note: the contents API caps directory listings at 1000 entries (~1799 dirs exist today),
+  # so 'length' returns 1000, not the true count — fine here since we only test >0 vs 404.
+  # For an exact count use the git trees API instead:
+  #   gh api "repos/onnx/onnx/git/trees/<target-sha>?recursive=1" --jq '[.tree[].path | select(startswith("onnx/backend/test/data/node/"))] | length'
+  # Or on a materialized archive/worktree:
+  ls _deps/onnx-src/onnx/backend/test/data/node | head   # empty => the landmine has landed
+  ```
+- **Mitigation if a bump is forced onto a #7959 commit (C++ leg only):** ORT must **own
+  node-test materialization** — a CMake `add_custom_command` (gated on
+  `onnxruntime_BUILD_UNIT_TESTS`) that imports the ONNX Python case generators (**confirmed
+  byte-identical / untouched by #7959** — `onnx/backend/test/case/node/*.py`'s `export.*` +
+  `expect(...)` remain; #7959 removes only the serialized `.pb` output, not the source) via
+  `load_node_model_tests()`, and re-serializes each `_NodeTestCase` back to the on-disk
+  `model.onnx` + `test_data_set_*/{input,output}_N.pb` layout the C++ loader expects (exact
+  serialization detail below — **not** `from_array`-only). Then repoint the C++ consumers
+  (runner arg + QNN CI `.../node` path). This also collapses the 3-independent-onnx-pins /
+  dual-skip-list tangle into one materialized copy. **Reference implementation already exists — vendor it, do not
+  re-derive.** Vendor the ~85-line node branch of `onnx/backend/test/cmd_tools.py:generate_data`
+  (`cmd_tools.py:64-110` — the very disk-writer #7959 removes) into a build-time script:
+  - **Entry point: `collect_testcases(op_type=None)`** — pass `op_type=None` **explicitly**
+    to collect ALL ops (it is a required positional; a real `op_type` silently returns a
+    1-op subset — another silent-undercount path). It **self-calls `import_recursive`
+    internally** (`onnx/backend/test/case/node/__init__.py:417`), so one call both populates
+    and returns `_NodeTestCases` — no separate import step, no empty-list footgun.
+  - **Per `TestCase`**: write `case.model.SerializeToString()` → `model.onnx`, and serialize
+    each input/output into `test_data_set_0/{input,output}_j.pb` using the reference's
+    **4-branch dispatch on `graph.input[j].type`** — `numpy_helper.from_dict` (map) /
+    `from_list` (sequence) / `from_optional` (optional) / `from_array`-or-`SerializeToString`
+    (tensor). **Do NOT hand-simplify to `from_array`-only** — that silently mis-serializes
+    every Sequence/Map/Optional node test (`SequenceInsert`, `Optional*`, some Loop/Scan
+    fixtures). Dir name = `case.name` (already carries the `test_` prefix). Positional binding
+    is by the same `j` as the model's `graph.input`, so any `len(inputs) != len(graph.input)`
+    mismatch IndexErrors at BUILD time (fail-loud, never a bad corpus).
+  - **MANDATORY version parity (correctness, not just hygiene).** `expect()` stamps each
+    `model.onnx`'s `opset_import`/IR from the **compiled onnx RUNTIME's** C++ schema registry
+    (`get_schema(op_type, domain).since_version`, `case/node/__init__.py:311-319`), *not* the
+    `.py` case source. So the shim MUST run under an installed onnx wheel whose
+    `onnx.__version__` **==** the `cmake/deps.txt` pin, **hard-asserted as its first line**
+    (`assert onnx.__version__ == <deps-derived>`) — a mismatched wheel bakes the WRONG opset
+    into `model.onnx` = silent corpus drift. Make this structural by **deriving the 6 CI
+    `requirements.txt` `onnx==` pins FROM `cmake/deps.txt`** so wheel==archive by construction
+    (this is also what keeps the *Python* leg testing the pinned version). Under that parity
+    the installed wheel's `case/node/*.py` are byte-identical to the archive's, so the shim
+    uses the installed wheel directly — no `_deps/onnx-src` source plumbing needed.
+  - Also **assert `len(_NodeTestCases) > 0`** at shim start — fail the build on an empty
+    materialization (the build-time twin of the runtime tripwire below).
+- **Min-count TRIPWIRE (mitigation 0 — highest ROI, cause-AGNOSTIC, do this regardless of
+  #7959).** The deepest problem is that corpus absence is **silent-green**, so assert a floor
+  on discovered node-test count in **both** harnesses: C++ at `onnx/main.cc:937` right after
+  `LoadTests` populates the vector — `ORT_ENFORCE(tests.size() >= floor, ...)` (add a
+  `--min_cases N` flag); Python in `onnx_backend_test_series.py` after `create_backend_test()`
+  asserting a floor on `len(backend_test.test_cases)`. This converts *any* future
+  corpus-absence regression (#7959, a bad archive, broken FetchContent, an over-matching
+  filter) from an invisible pass into a **loud red** — the single highest-leverage, lowest-cost
+  change here.
+- **Other on-disk node-test consumers to repoint when #7959 lands (track, don't lose).** Beyond the
+  C++ `onnx_test_runner` + QNN `.../node` path, three more consumers read the ONNX on-disk
+  node-test data and will break/skip silently once #7959 deletes it — repoint/update each in the
+  same bump: **`csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh`** (C# backend test
+  runner pointed at the node dir), **`js/scripts/prepare-onnx-node-tests.ts`** (the JS/web test
+  harness that stages the node corpus), and **`docs/python/conf.py`** (Sphinx doc build that
+  references the node-test data). None are
+  covered by the C++ materialization mitigation above; each needs its own repoint to the
+  materialized tree (or removal) when the corpus source disappears.
 
 ## 5. Build & validate locally
 
