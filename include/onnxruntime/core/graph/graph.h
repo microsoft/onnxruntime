@@ -73,7 +73,10 @@ class Node {
     Fused = 1,      ///< The node refers to a function.
   };
 
-  explicit Node() = default;
+  // Constructor and destructor defined out-of-line in graph.cc so that Graph
+  // is a complete type when std::unique_ptr<Graph> in subgraphs_ is destroyed
+  // (required by libc++).
+  explicit Node();
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   Node(std::string_view name,
@@ -82,15 +85,10 @@ class Node {
        gsl::span<NodeArg* const> input_args,
        gsl::span<NodeArg* const> output_args,
        const NodeAttributes* attributes,
-       std::string_view domain) {
-    Init(name, op_type, description,
-         input_args,
-         output_args,
-         attributes, domain);
-  }
+       std::string_view domain);
 #endif
 
-  ~Node() = default;
+  ~Node();
 
   /**
   @class EdgeEnd
@@ -145,6 +143,14 @@ class Node {
    */
   const std::string& Domain() const noexcept { return domain_; }
 
+  /** Gets the overload identifier for model-local function dispatch (IR version 10+).
+   * @remarks Empty string for non-overloaded operators.
+   */
+  const std::string& Overload() const noexcept { return overload_; }
+
+  /** Sets the overload identifier for model-local function dispatch. */
+  void SetOverload(std::string_view overload) { overload_ = overload; }
+
   /** Gets the path of the owning model if any. */
   const std::filesystem::path& ModelPath() const noexcept;
 
@@ -174,7 +180,14 @@ class Node {
   */
   void SetSinceVersion(int since_version) noexcept { since_version_ = since_version; }
 
+  void SetLayeringAnnotation(std::string annotation) { layering_annotation_ = std::move(annotation); }
+
+  const std::string& GetLayeringAnnotation() const noexcept { return layering_annotation_; }
+
+  const Graph* GetContainingGraph() const noexcept { return graph_; }
+
 #if !defined(ORT_MINIMAL_BUILD)
+
   /** Gets the Node's OpSchema.
   @remarks The graph containing this node must be resolved, otherwise nullptr will be returned. */
   const ONNX_NAMESPACE::OpSchema* Op() const noexcept { return op_; }
@@ -256,6 +269,13 @@ class Node {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+  // Make sure that the annotation does not occupy memory after partitioning is done.
+  void ClearLayeringAnnotation() {
+    std::string t;
+    layering_annotation_.swap(t);
+  }
+
   /** Gets a modifiable count of arguments for each of the Node's explicit inputs.
   @todo This should be removed in favor of a method that updates the input args and the count.
         Currently these operations are separate which is not a good setup. */
@@ -566,7 +586,7 @@ class Node {
   // NOTE: This friendship relationship should ONLY be used for calling methods of the Node class and not accessing
   // the data members directly, so that the Node can maintain its internal invariants.
   friend class Graph;
-  Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph), can_be_saved_(true) {}
+  Node(NodeIndex index, Graph& graph);
 
  protected:
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -624,6 +644,9 @@ class Node {
 
   // OperatorSet domain of op_type_.
   std::string domain_;
+
+  // Overload identifier for model-local function dispatch (IR version 10+).
+  std::string overload_;
 
 #if !defined(ORT_MINIMAL_BUILD)
   // OperatorSchema that <*this> node refers to.
@@ -684,6 +707,8 @@ class Node {
 
   // Graph instances for subgraphs that are owned by this Node
   std::vector<std::unique_ptr<Graph>> subgraphs_;
+
+  std::string layering_annotation_;
 
   // Can be saved? The node cannot be saved anymore if removable attributes have been cleared.
   bool can_be_saved_;
@@ -749,7 +774,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  /** Add an initializer tensor to the Graph. */
+  /** Add an initializer tensor with embedded/owned data to the Graph. */
   void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
   /// <summary>
@@ -759,8 +784,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// OrtValue would be unallocated in this case, and not added to ortvalue_initializers_.
   /// </summary>
   /// <param name="tensor_proto">tensor proto with external data pointing to OrtValue.</param>
-  /// <param name="ort_value_initializer">value that contains the initializer tensor. This may
-  /// be unallocated for small tensors.</param>
+  /// <param name="ort_value_initializer">value that contains the initializer tensor. This must
+  /// be allocated iff tensor_proto uses in-memory external data, and may be unallocated for
+  /// small tensors with embedded data.</param>
   Status AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                 const OrtValue& ort_value_initializer);
 #endif
@@ -1044,6 +1070,41 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                 gsl::span<NodeArg* const> output_args,
                 NodeAttributes&& attributes,
                 const std::string& domain = kOnnxDomain);
+
+  /** Add a Node to this Graph, propagating the layering annotation from an existing node.
+  This is the preferred way to create new nodes in Level 1 (pre-partitioning) graph optimizers.
+  The new node automatically inherits the layering annotation from @p annotation_source, which
+  ensures correct layer-based partitioning when annotations are present.
+  @param name The Node name. Must be unique in this Graph.
+  @param op_type The operator type. e.g. ONNX operator name.
+  @param description Arbitrary description of the Node.
+  @param input_args The explicit inputs to this Node.
+  @param output_args The outputs from this Node.
+  @param annotation_source The node from which to inherit the layering annotation.
+  @param attributes Optional NodeAttributes to add.
+  @param domain The domain for the op_type.
+  @returns Reference to the new Node.
+  @remarks Use this overload in Level 1 optimizers that create nodes replacing or derived from
+  existing annotated nodes. See docs/Optimizer_Layering_Annotations.md for details.
+  */
+  Node& AddNode(const std::string& name,
+                const std::string& op_type,
+                const std::string& description,
+                gsl::span<NodeArg* const> input_args,
+                gsl::span<NodeArg* const> output_args,
+                const Node& annotation_source,
+                const NodeAttributes* attributes = nullptr,
+                const std::string& domain = kOnnxDomain);
+
+  Node& AddNode(const std::string& name,
+                const std::string& op_type,
+                const std::string& description,
+                gsl::span<NodeArg* const> input_args,
+                gsl::span<NodeArg* const> output_args,
+                const Node& annotation_source,
+                NodeAttributes&& attributes,
+                const std::string& domain = kOnnxDomain);
+
   Node& AddNode(const std::string& name,
                 const std::string& op_type,
                 const std::string& description,
@@ -1054,6 +1115,21 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return AddNode(name, op_type, description,
                    AsSpan(input_args),
                    AsSpan(output_args),
+                   attributes, domain);
+  }
+
+  Node& AddNode(const std::string& name,
+                const std::string& op_type,
+                const std::string& description,
+                std::initializer_list<NodeArg*> input_args,
+                std::initializer_list<NodeArg*> output_args,
+                const Node& annotation_source,
+                const NodeAttributes* attributes = nullptr,
+                const std::string& domain = kOnnxDomain) {
+    return AddNode(name, op_type, description,
+                   AsSpan(input_args),
+                   AsSpan(output_args),
+                   annotation_source,
                    attributes, domain);
   }
 
@@ -1073,6 +1149,21 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   Node& AddNode(const std::string& name,
                 const std::string& op_type,
                 const std::string& description,
+                gsl::span<NodeArg* const> input_args,
+                std::initializer_list<NodeArg*> output_args,
+                const Node& annotation_source,
+                const NodeAttributes* attributes = nullptr,
+                const std::string& domain = kOnnxDomain) {
+    return AddNode(name, op_type, description,
+                   input_args,
+                   AsSpan(output_args),
+                   annotation_source,
+                   attributes, domain);
+  }
+
+  Node& AddNode(const std::string& name,
+                const std::string& op_type,
+                const std::string& description,
                 std::initializer_list<NodeArg*> input_args,
                 gsl::span<NodeArg* const> output_args,
                 const NodeAttributes* attributes = nullptr,
@@ -1080,6 +1171,21 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return AddNode(name, op_type, description,
                    AsSpan(input_args),
                    output_args,
+                   attributes, domain);
+  }
+
+  Node& AddNode(const std::string& name,
+                const std::string& op_type,
+                const std::string& description,
+                std::initializer_list<NodeArg*> input_args,
+                gsl::span<NodeArg* const> output_args,
+                const Node& annotation_source,
+                const NodeAttributes* attributes = nullptr,
+                const std::string& domain = kOnnxDomain) {
+    return AddNode(name, op_type, description,
+                   AsSpan(input_args),
+                   output_args,
+                   annotation_source,
                    attributes, domain);
   }
 
@@ -1322,10 +1428,12 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   The Graph needs to be Resolve()d after this call.
   @param func_to_inline
+  @param parent_annotation. Annotation inherited from the parent node that is being inlined.
   @returns Status indicating success or providing an error message.
   */
 
-  Status InlineFunctionProto(const ONNX_NAMESPACE::FunctionProto& func_to_inline);
+  Status InlineFunctionProto(const ONNX_NAMESPACE::FunctionProto& func_to_inline,
+                             const std::string& parent_annotation);
 
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
   be used as a GraphProto attribute in another Node.
@@ -1347,10 +1455,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     SetInputs(AsSpan(inputs));
   }
 
-  const Model& GetModel() const {
-    return owning_model_;
-  }
-
   const logging::Logger& GetLogger() const {
     return logger_;
   }
@@ -1368,6 +1472,10 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  const Model& GetModel() const {
+    return owning_model_;
+  }
+
   /** Sets the type of a NodeArg, replacing existing type/shape if any */
   void SetNodeArgType(NodeArg& arg, const ONNX_NAMESPACE::TypeProto& type_proto);
 
@@ -1500,6 +1608,34 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return *prepacked_weights_for_graph_;
   }
 
+  // Tags a fusion-generated initializer (whose name is not stable across sessions) with a stable,
+  // content-derived identity that SessionState uses to key cross-session pre-pack sharing.
+  //
+  // Single-consumer invariant: a MatMulNBits packed buffer folds in the *consuming* node's
+  // scales/zero_points/attributes, not B alone, so this id is meaningful only for a B initializer that
+  // has exactly one consumer. The DQ->MatMulNBits producers guarantee that -- each generated B has a
+  // unique name with a single consumer, and the fusion bails when the source weight/scale is shared (the
+  // DQMatMulNotConvertedToMatMulNBits_SharedWeight case). If a future change ever tags a multi-consumer
+  // initializer whose consumers differ in scales/zp/attrs, they would compute different ids for the same
+  // name and the last writer would silently mis-share. Enforce that a name is never re-tagged with a
+  // conflicting id so the invariant survives later refactors.
+  void SetSharedPrepackInitializerId(const std::string& initializer_name, std::string share_id) {
+    auto it = generated_shared_prepack_ids_.find(initializer_name);
+    if (it != generated_shared_prepack_ids_.end()) {
+      ORT_ENFORCE(it->second == share_id, "MatMulNBits pre-pack sharing id for initializer '",
+                  initializer_name, "' was re-tagged with a different id; the single-consumer invariant ",
+                  "is violated (a multi-consumer weight whose consumers differ in scales/zp/attrs).");
+      return;
+    }
+    generated_shared_prepack_ids_.emplace(initializer_name, std::move(share_id));
+  }
+
+  // Returns the sharing identity for a generated initializer, or nullptr if it was not tagged.
+  const std::string* GetSharedPrepackInitializerId(const std::string& initializer_name) const {
+    auto it = generated_shared_prepack_ids_.find(initializer_name);
+    return it == generated_shared_prepack_ids_.end() ? nullptr : &it->second;
+  }
+
   /** Returns the Node containing the GraphProto for this Graph instance if IsSubgraph is true */
   const Node* ParentNode() const { return parent_node_; }
 
@@ -1569,6 +1705,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // compiled model during partitioning, leaving them unused in the ORT Graph. To allow the memory to be freed
   // we need to manually run the cleanup that would usually happen as part of Graph::Resolve.
   Status RemovedUnusedInitializersOrtFormat();
+
+  // This examines all the nodes and removes any annotations that are only used for layering.
+  // This potentially saves memory.
+  Status RemoveAllLayeringAnnotations();
+
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   // This friendship relationship should only be used to call Graph::Graph and
@@ -1897,6 +2038,10 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // names and their pre-packed blobs (via keys).
   // This is optional due to delayed construction.
   std::optional<PrepackedWeightsForGraph> prepacked_weights_for_graph_;
+
+  // Maps a fusion-generated initializer name to its cross-session sharing identity.
+  // See SetSharedPrepackInitializerId.
+  InlinedHashMap<std::string, std::string> generated_shared_prepack_ids_;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // Runtime optimization storage.

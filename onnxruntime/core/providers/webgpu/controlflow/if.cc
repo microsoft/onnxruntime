@@ -3,6 +3,10 @@
 
 #include "core/providers/webgpu/controlflow/if.h"
 
+#if defined(ORT_USE_EP_API_ADAPTERS)
+#include "core/framework/error_code_helper.h"
+#endif
+
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 
@@ -68,10 +72,20 @@ ONNX_OPERATOR_KERNEL_EX(If,
                             .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                         If);
 
+#if !defined(ORT_USE_EP_API_ADAPTERS)
 Status If::Compute(OpKernelContext* ctx) const {
   // call the base CPU version.
   return onnxruntime::If::Compute(ctx);
 }
+#else
+Status If::CreateControlFlowKernelImpl(const OrtKernelInfo* info, OrtKernelImpl** impl) {
+  return ToStatusAndRelease(ep::Api().ep.CreateIfKernel(info, impl));
+}
+
+Status If::Compute(OpKernelContext* /*ctx*/) const {
+  return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "If operator should be handled by ORT core.");
+}
+#endif
 
 }  // namespace webgpu
 }  // namespace onnxruntime

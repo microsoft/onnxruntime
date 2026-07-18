@@ -4,6 +4,9 @@ description: "Windows Web CI pipeline for building and testing ONNX Runtime Web"
 on:
   workflow_call:
     inputs:
+      job_name: # workflow-scope unique key
+        required: true
+        type: string
       commit_override:
         type: string
         default: ""

@@ -45,6 +45,8 @@ if (onnxruntime_MINIMAL_BUILD)
       "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/selector_action_transformer.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/selector_action_transformer.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/slice_concat_to_space_to_depth_fusion.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/slice_concat_to_space_to_depth_fusion.h"
       # files required for layout transformation
       "${ONNXRUNTIME_ROOT}/core/optimizer/layout_transformation/layout_transformation.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/layout_transformation/layout_transformation.cc"

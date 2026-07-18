@@ -253,7 +253,8 @@ LutPackScalesAndZeroPoints(
     bool HasZeroPoint,
     float* PackedQuantBZPBegin,
     const float* QuantBScale,
-    const uint8_t* QuantBZeroPoint,
+    const void* QuantBZeroPoint,
+    bool IsFloatZeroPoint,
     MLAS_THREADPOOL* ThreadPool
 )
 {
@@ -270,7 +271,7 @@ LutPackScalesAndZeroPoints(
 
     Dispatch->PackScalesAndZeroPoints(
         N, K, bits, BlkLen, simd_n_out, bm, HasZeroPoint,
-        PackedQuantBZPBegin, QuantBScale, QuantBZeroPoint, ThreadPool
+        PackedQuantBZPBegin, QuantBScale, QuantBZeroPoint, IsFloatZeroPoint, ThreadPool
     );
 }
 
@@ -317,7 +318,8 @@ MlasLutGemmPack(
     bool HasZeroPoint,
     const std::byte* QuantBData,
     const float* QuantBScale,
-    const uint8_t* QuantBZeroPoint,
+    const void* QuantBZeroPoint,
+    bool IsFloatZeroPoint,
     std::byte* PackedBuf,
     MLAS_THREADPOOL* ThreadPool
 )
@@ -331,7 +333,8 @@ MlasLutGemmPack(
     if (QuantBScale != nullptr) {
         size_t scales_offset = LutGemmPackedScalesOffset(N, K, BlkBitWidth, BlkLen, HasZeroPoint);
         float* scales_dest = reinterpret_cast<float*>(PackedBuf + scales_offset);
-        LutPackScalesAndZeroPoints(N, K, BlkBitWidth, BlkLen, HasZeroPoint, scales_dest, QuantBScale, QuantBZeroPoint, ThreadPool);
+        LutPackScalesAndZeroPoints(N, K, BlkBitWidth, BlkLen, HasZeroPoint, scales_dest,
+                                   QuantBScale, QuantBZeroPoint, IsFloatZeroPoint, ThreadPool);
     }
 }
 
@@ -358,6 +361,13 @@ MlasIsLutGemmAvailable(
     }
 
     if (K % 32 != 0) {
+        return false;
+    }
+
+    // K must be divisible by BlkLen. The packing and compute kernels use
+    // floor division (K / BlkLen) for per-column block strides, which
+    // diverges from the caller's ceiling division when K % BlkLen != 0.
+    if (K % BlkLen != 0) {
         return false;
     }
 
@@ -410,7 +420,8 @@ MlasLutGemm(
     size_t M,  // batch size (number of rows in activation)
     size_t N,
     bool HasZeroPoint,
-    MLAS_THREADPOOL* threadpool
+    MLAS_THREADPOOL* threadpool,
+    const float* Bias
 )
 {
     // adapted from ggml_backend_tmac_mul_mat
@@ -606,6 +617,22 @@ MlasLutGemm(
                         BlkLen,                          // Weight quantization group size
                         HasZeroPoint                     // Whether zero points are used
                     );
+
+                    // Fused bias add: broadcast the per-output-feature Bias[N] slice into the
+                    // just-written tile. The output tile we just wrote is `ChunkSize0` contiguous
+                    // floats at `act_output + dst_offset`, corresponding to output feature indices
+                    // [ichunk0 * ChunkSize0, ichunk0 * ChunkSize0 + ChunkSize0). The bias slice
+                    // therefore aligns at `Bias + ichunk0 * ChunkSize0`. Doing this here (rather
+                    // than as a separate post-pass) keeps the data hot in cache and inherits the
+                    // existing per-chunk parallelism for free.
+                    if (Bias != nullptr) {
+                        const size_t tile_n = ir0_end - ir0_start;
+                        float* y_tile = act_output + dst_offset;
+                        const float* bias_tile = Bias + ichunk0 * ChunkSize0;
+                        for (size_t i = 0; i < tile_n; ++i) {
+                            y_tile[i] += bias_tile[i];
+                        }
+                    }
                 }
             }
         }

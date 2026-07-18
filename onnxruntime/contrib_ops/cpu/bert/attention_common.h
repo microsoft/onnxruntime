@@ -4,6 +4,11 @@
 #pragma once
 #include <gsl/gsl>
 
+#include <algorithm>
+#include <cctype>
+#include <string>
+#include "core/common/common.h"
+
 namespace onnxruntime {
 namespace contrib {
 
@@ -32,7 +37,6 @@ enum AttentionQkvFormat {
   Q_K_V_BNSH,            // for non-packed qkv, permuted
   Q_K_V_BSNH,            // for non-packed qkv, not permuted, used by memory efficient attention or MultiHeadAttention
   Q_K_V_BSNH_BNSH_BNSH,  // for cross attention, k and v are permuted
-  Q_K_V_BNSH_QKV_BS3NH,  // for TRT fused causal attention, data has two formats (qkv is 3BNSH, gemm_buffer is BS3NH)
   Q_K_V_TNH,             // for memory efficient attention, qkv are not packed, and paddings are removed.
   Q_KV_BSNH_BSN2H,       // for TRT fused cross attention, kv are packed
   QKV_BSN3H,             // for TRT fused attention, qkv are packed
@@ -66,12 +70,33 @@ enum class KVQuantizationType : int {
   PER_CHANNEL = 2,
 };
 
+inline KVQuantizationType StringToKVQuantizationType(std::string s) {
+  std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::toupper(c); });
+  if (s == "NONE") {
+    return KVQuantizationType::NONE;
+  }
+  if (s == "PER_TENSOR") {
+    return KVQuantizationType::PER_TENSOR;
+  }
+  if (s == "PER_CHANNEL") {
+    return KVQuantizationType::PER_CHANNEL;
+  }
+  ORT_THROW("Invalid KV quantization type: '", s,
+            "'. Valid values are: NONE, PER_TENSOR, PER_CHANNEL.");
+}
+
 constexpr bool LAYOUT_BSNH = false;
 constexpr bool LAYOUT_BNSH = true;
 
 namespace sparse_attention {
 // Environment variable to enable or disable sparse attention v1 kernel. Default is 0 (enabled).
 constexpr const char* kDisableSparseAttentionV1 = "ORT_DISABLE_SPARSE_ATTENTION_V1";
+
+// Environment variable to disable device-side validation of CSR indices and key sequence lengths.
+// Default is 0 (validation enabled). Set to 1 to skip the validation kernel launch and stream
+// synchronization, which may improve latency when inputs are known to be well-formed.
+// Usage: export ORT_DISABLE_SPARSE_ATTENTION_INPUT_VALIDATION=1
+constexpr const char* kDisableInputValidation = "ORT_DISABLE_SPARSE_ATTENTION_INPUT_VALIDATION";
 }  // namespace sparse_attention
 
 namespace attention {
@@ -86,7 +111,6 @@ enum class AttentionBackend : int {
   // The following TRT kernels might be deprecated in the future.
   TRT_FLASH_ATTENTION = 32,
   TRT_CROSS_ATTENTION = 64,
-  TRT_CAUSAL_ATTENTION = 128,
 
   // Experimental kernels
   LEAN_ATTENTION = 256,
@@ -102,14 +126,10 @@ constexpr const char* kDisableFusedSelfAttention = "ORT_DISABLE_FUSED_ATTENTION"
 // Environment variable to enable or disable fused cross attention kernel. Default is 0 (enabled).
 constexpr const char* kDisableFusedCrossAttention = "ORT_DISABLE_FUSED_CROSS_ATTENTION";
 
-// Environment variable to enable or disable TRT fused causal attention kernels. Default is 0 (disabled).
-// Note that those causal attention kernels use fp16 accumulation. There is potential accuracy drop using those kernels.
-constexpr const char* kEnableFusedCausalAttention = "ORT_ENABLE_FUSED_CAUSAL_ATTENTION";
-
 // Environment variable to enable or disable cuDNN flash attention.
 constexpr const char* kEnableCudnnFlashAttention = "ORT_ENABLE_CUDNN_FLASH_ATTENTION";
 
-// Environment variable to enable or disable TRT flash attention. This applies to both self and causal attention. Default is 0 (enabled).
+// Environment variable to enable or disable TRT flash attention. Default is 0 (enabled).
 constexpr const char* kDisableTrtFlashAttention = "ORT_DISABLE_TRT_FLASH_ATTENTION";
 
 // Environment variable to enable or disable cutlass memory efficient attention. Default is 0 (enabled).

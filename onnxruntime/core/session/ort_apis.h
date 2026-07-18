@@ -64,6 +64,8 @@ ORT_API_STATUS_IMPL(EnableProfiling, _In_ OrtSessionOptions* options, _In_ const
 ORT_API_STATUS_IMPL(DisableProfiling, _In_ OrtSessionOptions* options);
 ORT_API_STATUS_IMPL(EnableMemPattern, _In_ OrtSessionOptions* options);
 ORT_API_STATUS_IMPL(DisableMemPattern, _In_ OrtSessionOptions* options);
+ORT_API_STATUS_IMPL(GetMemPatternEnabled, _In_ const OrtSessionOptions* options, _Out_ int* out);
+ORT_API_STATUS_IMPL(GetSessionExecutionMode, _In_ const OrtSessionOptions* options, _Out_ ExecutionMode* out);
 ORT_API_STATUS_IMPL(EnableCpuMemArena, _In_ OrtSessionOptions* options);
 ORT_API_STATUS_IMPL(DisableCpuMemArena, _In_ OrtSessionOptions* options);
 ORT_API_STATUS_IMPL(SetSessionLogId, _In_ OrtSessionOptions* options, const char* logid);
@@ -125,6 +127,8 @@ ORT_API_STATUS_IMPL(RunOptionsUnsetTerminate, _Inout_ OrtRunOptions* options);
 ORT_API(void, RunOptionsSetSyncStream, _Inout_ OrtRunOptions* options, _In_ OrtSyncStream* sync_stream);
 ORT_API_STATUS_IMPL(RunOptionsEnableProfiling, _Inout_ OrtRunOptions* options, _In_ const ORTCHAR_T* profile_file_prefix);
 ORT_API_STATUS_IMPL(RunOptionsDisableProfiling, _Inout_ OrtRunOptions* options);
+ORT_API_STATUS_IMPL(KernelInfoGetAttributeArray_string, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                    _Inout_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*size) char*** out, _Out_ size_t* size);
 
 ORT_API_STATUS_IMPL(CreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
                     _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type,
@@ -192,6 +196,7 @@ ORT_API_STATUS_IMPL(KernelContext_GetInputCount, _In_ const OrtKernelContext* co
 ORT_API_STATUS_IMPL(KernelContext_GetOutputCount, _In_ const OrtKernelContext* context, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(KernelContext_GetInput, _In_ const OrtKernelContext* context, _In_ size_t index, _Out_ const OrtValue** out);
 ORT_API_STATUS_IMPL(KernelContext_GetOutput, _Inout_ OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count, _Out_ OrtValue** out);
+ORT_API_STATUS_IMPL(KernelContext_GetSyncStream, _In_ const OrtKernelContext* context, _Outptr_result_maybenull_ OrtSyncStream** out);
 
 // OrtTypeInfo methods
 ORT_API_STATUS_IMPL(GetDenotationFromTypeInfo, _In_ const OrtTypeInfo*, _Out_ const char** const denotation, _Out_ size_t* len);
@@ -423,6 +428,11 @@ ORT_API_STATUS_IMPL(UpdateEnvWithCustomLogLevel, _In_ OrtEnv* ort_env, OrtLoggin
 
 ORT_API_STATUS_IMPL(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions* tp_options,
                     const char* affinity_string);
+
+ORT_API_STATUS_IMPL(SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* ort_env,
+                    _In_ const OrtThreadPoolCallbacksConfig* config);
+
+ORT_API_STATUS_IMPL(SessionReleaseCapturedGraph, _In_ OrtSession* session, _In_ int graph_annotation_id);
 
 ORT_API_STATUS_IMPL(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options,
                     _In_ const ORTCHAR_T* library_name);
@@ -817,5 +827,8 @@ ORT_API_STATUS_IMPL(GetTensorElementTypeAndShapeDataReference, _In_ const OrtVal
                     _Out_ ONNXTensorElementDataType* elem_type,
                     _Outptr_result_maybenull_ const int64_t** shape_data,
                     _Out_ size_t* shape_data_count);
+
+// Experimental API
+ORT_API(OrtExperimentalFnPtr, GetExperimentalFunction, _In_ const char* name);
 
 }  // namespace OrtApis

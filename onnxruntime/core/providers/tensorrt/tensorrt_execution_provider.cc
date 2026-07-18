@@ -8,6 +8,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/common.h"
 #include "core/common/narrow.h"
+#include "core/common/path_utils.h"
 #include "core/common/safeint.h"
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_execution_provider_utils.h"
@@ -64,7 +65,7 @@ bool FindCycleHelper(size_t i, gsl::span<const InlinedVector<size_t>> adjacency_
   st[i] = false;
   return false;
 }
-
+#if NV_TENSORRT_MAJOR < 11
 bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<std::string, float>& dynamic_range_map) {
   // Set dynamic range for input tensors
   for (int i = 0; i < network.getNbInputs(); ++i) {
@@ -153,6 +154,7 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
   }
   return true;
 }
+#endif  // NV_TENSORRT_MAJOR < 11
 
 std::vector<std::string> SplitToStringVec(std::string const& s, char separator) {
   std::vector<std::string> splitted;
@@ -1231,7 +1233,7 @@ void TensorrtExecutionProvider::PerThreadContext::ResetTensorRTContext(std::stri
 
 bool TensorrtExecutionProvider::PerThreadContext::UpdateTensorRTContext(std::string fused_node, std::unique_ptr<nvinfer1::IExecutionContext> context) {
   if (!context) {
-    context = std::make_unique<nvinfer1::IExecutionContext>();
+    ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "UpdateTensorRTContext: Provided context was nullptr!"));
   }
   trt_context_map_[fused_node] = std::move(context);
 
@@ -1251,12 +1253,10 @@ bool TensorrtExecutionProvider::PerThreadContext::IsTensorRTContextInMap(std::st
 
 nvinfer1::IExecutionContext& TensorrtExecutionProvider::PerThreadContext::GetTensorRTContext(std::string fused_node) {
   auto it = trt_context_map_.find(fused_node);
-  if (it != trt_context_map_.end()) {
-    return *(it->second);  // dereference shared pointer
+  if (it == trt_context_map_.end()) {
+    ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "GetTensorRTContext: Requested context was not found!"));
   }
-  auto context = std::make_unique<nvinfer1::IExecutionContext>();
-  trt_context_map_[fused_node] = std::move(context);
-  return *(trt_context_map_[fused_node]);  // dereference shared pointer
+  return *(it->second);  // dereference shared pointer
 }
 
 void TensorrtExecutionProvider::ReleasePerThreadContext() const {
@@ -1649,6 +1649,16 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     }
   }
 
+  // In TRT 11.0 precision flags are removed.
+#if NV_TENSORRT_MAJOR >= 11
+  if (fp16_enable_ || bf16_enable_ || int8_enable_) {
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] TensorRT EP was compiled for TensorRT version >= 11.0 - precision flags (BF16 / FP16 / INT8) have been removed and no longer have an effect. Strongly-typed will be used for all networks.";
+    fp16_enable_ = false;
+    bf16_enable_ = false;
+    int8_enable_ = false;
+  }
+#endif
+
   // Validate setting
   if (max_partition_iterations_ <= 0) {
     LOGS_DEFAULT(WARNING) << "[TensorRT EP] TensorRT option trt_max_partition_iterations must be a positive integer value. Set it to 1000";
@@ -1677,10 +1687,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   // The new cache path will be saved as the "ep_cache_context" node attritue of the EP context node.
   // For security reason, it needs to make sure the engine cache is saved inside context model directory.
   if (dump_ep_context_model_ && engine_cache_enable_) {
-    if (IsAbsolutePath(cache_path_)) {
+    if (path_utils::IsAbsolutePath(cache_path_)) {
       LOGS_DEFAULT(ERROR) << "In the case of dumping context model and for security purpose, the trt_engine_cache_path should be set with a relative path, but it is an absolute path:  " << cache_path_;
     }
-    if (IsRelativePathToParentPath(cache_path_)) {
+    if (path_utils::IsRelativePathToParentPath(cache_path_)) {
       LOGS_DEFAULT(ERROR) << "In the case of dumping context model and for security purpose, The trt_engine_cache_path has '..', it's not allowed to point outside the directory.";
     }
 
@@ -1689,7 +1699,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     engine_cache_relative_path_to_context_model_dir = cache_path_;
 
     // Make cache_path_ to be the relative path of ep_context_file_path_
-    cache_path_ = GetPathOrParentPathOfCtxModel(ep_context_file_path_).append(cache_path_).string();
+    cache_path_ = path_utils::GetDirOrParentPath(ep_context_file_path_).append(cache_path_).string();
   }
 
   // Hardware compatibility: pre-check on environment
@@ -1906,7 +1916,8 @@ bool TensorrtExecutionProvider::IsGraphCaptured(int) const {
   return is_graph_captured_;
 }
 
-Status TensorrtExecutionProvider::ReplayGraph(int) {
+Status TensorrtExecutionProvider::ReplayGraph(int, bool /*sync*/) {
+  // The sync parameter is ignored: TRT EP always replays synchronously under a lock_guard in compute_func().
   ORT_ENFORCE(IsGraphCaptured(0));
   // Please note that CUDAGraph::Replay() is not thread safe.
   // ORT TRT calls ReplayGraph() in compute_func() where synchronization is enforced due to lock_guard(),
@@ -2382,7 +2393,9 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log_);
         auto trt_builder = GetBuilder(trt_logger);
         auto network_flags = 0;
-#if NV_TENSORRT_MAJOR > 8
+#if NV_TENSORRT_VERSION >= 11
+        network_flags |= 0;
+#elif NV_TENSORRT_MAJOR > 8
         network_flags |= (fp16_enable_ || int8_enable_ || bf16_enable_) ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
 #else
         network_flags |= 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
@@ -2884,17 +2897,10 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
                              "Please use provide an ONNX bytestream to enable refitting the weightless engine."
                              "When providing a bytestream during session initialization, it should also be set as trt_onnx_bytes_stream");
     } else {
-      // check if file path to ONNX is legal
-      if (path_check && IsAbsolutePath(onnx_model_path.string())) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "For security purpose, the ONNX model path should be set with "
-                               "a relative path, but it is an absolute path: " +
-                                   onnx_model_path.string());
-      }
-      if (path_check && IsRelativePathToParentPath(onnx_model_path.string())) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "The ONNX model path has '..'. For security purpose, it's not "
-                               "allowed to point outside the directory.");
+      // Validate that the ONNX model path does not escape the model directory.
+      if (path_check && !onnx_model_filename.empty()) {
+        ORT_RETURN_IF_ERROR(utils::ValidateExternalDataPathFromDir(
+            std::filesystem::path(onnx_model_folder_path), std::filesystem::path(onnx_model_filename)));
       }
 
       if (!(std::filesystem::exists(onnx_model_path) && std::filesystem::is_regular_file(onnx_model_path))) {
@@ -3144,7 +3150,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log_);
   auto trt_builder = GetBuilder(trt_logger);
   auto network_flags = 0;
-#if NV_TENSORRT_MAJOR > 8
+#if NV_TENSORRT_VERSION >= 11
+  network_flags |= 0;
+#elif NV_TENSORRT_MAJOR > 8
   network_flags |= (fp16_enable_ || int8_enable_ || bf16_enable_) ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
 #else
   network_flags |= 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
@@ -3171,6 +3179,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   }
 
   // Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow
+#if NV_TENSORRT_MAJOR < 11
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4996)
@@ -3191,6 +3200,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
+#endif  // NV_TENSORRT_MAJOR < 11
 
   int num_inputs = trt_network->getNbInputs();
   int num_outputs = trt_network->getNbOutputs();
@@ -3326,6 +3336,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     trt_profiles.push_back(trt_builder->createOptimizationProfile());
   }
 
+#if NV_TENSORRT_MAJOR < 11
   // Check platform availability for low precision
   if (fp16_enable_ || bf16_enable_) {
 #if defined(_MSC_VER)
@@ -3355,6 +3366,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_INT8_ENABLE is set, but platform doesn't support fast native int8";
     }
   }
+#endif  // NV_TENSORRT_MAJOR < 11
 
   // Load INT8 calibration table
   std::unordered_map<std::string, float> dynamic_range_map;
@@ -3364,13 +3376,14 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       throw std::runtime_error("Failed to read INT8 calibration table " + calibration_cache_path);
     }
   }
+  std::string trt_node_name_with_precision = fused_node.Name();
 
+#if NV_TENSORRT_MAJOR < 11
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4996)
 #endif
   // Set precision flags
-  std::string trt_node_name_with_precision = fused_node.Name();
   if (fp16_enable_) {
     trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
     trt_node_name_with_precision += "_fp16";
@@ -3389,6 +3402,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
+#endif  // NV_TENSORRT_MAJOR >= 11
   // Set DLA
   if (fp16_enable_ || int8_enable_) {
     if (dla_enable_ && dla_core_ >= 0) {  // DLA can only run with FP16 and INT8
@@ -3523,7 +3537,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
   // Generate file name for dumping ep context model
   if (dump_ep_context_model_ && ctx_model_path_.empty()) {
-    ctx_model_path_ = GetCtxModelPath(ep_context_file_path_, model_path_);
+    ctx_model_path_ = path_utils::GetPathWithStemSuffix(ep_context_file_path_, model_path_, "_ctx.onnx");
   }
 
   if (!has_dynamic_shape) {
@@ -3581,6 +3595,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
                                  "TensorRT EP could not deserialize engine from encrypted cache: " + encrypted_engine_cache_path);
         }
       } else {
+#if NV_TENSORRT_MAJOR < 11
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4996)
@@ -3596,6 +3611,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
                                    "TensorRT EP could not set INT8 dynamic range for fused node: " + fused_node.Name());
           }
         }
+#endif  // NV_TENSORRT_MAJOR < 11
 
         // Load timing cache from file. Create a fresh cache if the file doesn't exist
         std::unique_ptr<nvinfer1::ITimingCache> timing_cache = nullptr;
@@ -3794,7 +3810,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   // Create function state
   // TODO: remove default capture
   NodeComputeInfo compute_info;
-  compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
+  compute_info.create_state_func = [=, this](ComputeContext* context, FunctionState* state) {
     std::unique_ptr<TensorrtFuncState> p = std::make_unique<TensorrtFuncState>();
     // translate tactic sources string to nvinfer1::TacticSources
     nvinfer1::TacticSources tactics = 0;
@@ -3995,6 +4011,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       for (auto trt_profile : trt_profiles) {
         trt_config->addOptimizationProfile(trt_profile);
       }
+#if NV_TENSORRT_MAJOR < 11
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4996)
@@ -4029,6 +4046,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
+#endif  // NV_TENSORRT_MAJOR < 11
       // Set DLA (DLA can only run with FP16 or INT8)
       if ((trt_state->fp16_enable || trt_state->int8_enable) && trt_state->dla_enable) {
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] use DLA core " << trt_state->dla_core;
@@ -4298,6 +4316,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
     // Set execution context memory
     if (trt_state->context_memory_sharing_enable) {
+#if NV_TENSORRT_MAJOR < 11
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4996)
@@ -4306,6 +4325,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
+#else
+      size_t mem_size = trt_engine->getDeviceMemorySizeV2();
+#endif  // #if NV_TENSORRT_MAJOR < 11
       if (mem_size > *max_context_mem_size_ptr) {
         *max_context_mem_size_ptr = mem_size;
         *context_memory = IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr, true /*use_reserve*/);
@@ -4441,6 +4463,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
   // Note: Creating an execution context from an engine is thread safe per TRT doc
   // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
   if (context_memory_sharing_enable_) {
+#if NV_TENSORRT_MAJOR < 11
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4996)
@@ -4449,6 +4472,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
+#else
+    size_t mem_size = trt_engine->getDeviceMemorySizeV2();
+#endif  // #if NV_TENSORRT_MAJOR < 11
     if (mem_size > max_ctx_mem_size_) {
       max_ctx_mem_size_ = mem_size;
     }
@@ -4499,7 +4525,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
   // Create function state
   // TODO: remove default capture
   NodeComputeInfo compute_info;
-  compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
+  compute_info.create_state_func = [=, this](ComputeContext* context, FunctionState* state) {
     std::unique_ptr<TensorrtShortFuncState> p = std::make_unique<TensorrtShortFuncState>();
     *p = {context->allocate_func,
           context->release_func,
@@ -4629,6 +4655,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
 
     // Set execution context memory
     if (trt_state->context_memory_sharing_enable) {
+#if NV_TENSORRT_MAJOR < 11
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4996)
@@ -4637,6 +4664,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
+#else
+      size_t mem_size = trt_engine->getDeviceMemorySizeV2();
+#endif  // #if NV_TENSORRT_MAJOR < 11
       if (mem_size > *max_context_mem_size_ptr) {
         *max_context_mem_size_ptr = mem_size;
         *context_memory = IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr, true /*use_reserve*/);

@@ -1,0 +1,22 @@
+diff --git a/third_party/emdawnwebgpu/pkg/webgpu/src/library_webgpu.js b/third_party/emdawnwebgpu/pkg/webgpu/src/library_webgpu.js
+--- a/third_party/emdawnwebgpu/pkg/webgpu/src/library_webgpu.js
++++ b/third_party/emdawnwebgpu/pkg/webgpu/src/library_webgpu.js
+@@ -876,7 +876,9 @@
+ #if ASSERTIONS
+         assert(deviceLostFutureId);
+ #endif
+-        // Don't keepalive here, because this isn't guaranteed to ever happen.
++        // Keep the runtime alive until device.lost resolves, to prevent
++        // maybeExit() from triggering premature ABORT during callUserCallback.
++        {{{ runtimeKeepalivePush() }}}
+         WebGPU.Internals.futureInsert(deviceLostFutureId, device.lost.then((info) => {
+           // If the runtime has exited, avoid calling callUserCallback as it
+           // will print an error (e.g. if the device got freed during shutdown).
+@@ -892,6 +894,7 @@
+               {{{ gpu.passAsPointer('messagePtr') }}});
+             stackRestore(sp);
+           });
++          {{{ runtimeKeepalivePop() }}}
+         }));
+ 
+         // Set up uncaptured error handlers.

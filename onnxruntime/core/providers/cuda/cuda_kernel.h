@@ -3,14 +3,34 @@
 
 #pragma once
 
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
+#include "core/providers/cuda/cudnn_loader.h"
 #include "core/providers/cuda/cuda_fwd.h"
 #include <mutex>
 #include "core/providers/cuda/cuda_stream_handle.h"
 
 namespace onnxruntime {
 namespace cuda {
+
+class OrtStreamAdapter {
+ public:
+  explicit OrtStreamAdapter(onnxruntime::Stream* stream) : stream_(stream) {}
+  explicit OrtStreamAdapter(void* stream) : stream_(static_cast<onnxruntime::Stream*>(stream)) {}
+
+  onnxruntime::Stream* get() const { return stream_; }
+  operator onnxruntime::Stream*() const { return stream_; }
+
+ private:
+  onnxruntime::Stream* stream_;
+};
+
+#ifndef CUDA_STREAM_FROM_CTX
+// Helper for kernels that need a cudaStream_t from OpKernelContext in both framework and plugin builds.
+#define CUDA_STREAM_FROM_CTX(ctx) static_cast<cudaStream_t>(GetComputeStream(ctx))
+#endif
 
 // -----------------------------------------------------------------------
 // Base class for CUDA kernels
@@ -49,6 +69,19 @@ class CudaKernel : public OpKernel {
                                         stream);
   }
 
+  // void* overload for dual-build compatibility with the plugin EP.
+  // In the framework build, the void* is always a static_cast<void*>(onnxruntime::Stream*).
+  template <typename T>
+  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, void* stream) const {
+    return GetScratchBuffer<T>(count_or_bytes, static_cast<onnxruntime::Stream*>(stream));
+  }
+
+  // Resolve nullptr ambiguity between Stream* and void* overloads.
+  template <typename T>
+  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, std::nullptr_t) const {
+    return GetScratchBuffer<T>(count_or_bytes, static_cast<onnxruntime::Stream*>(nullptr));
+  }
+
   // Different from GetScratchBuffer which use IAllocator::Alloc() to allocate memory,
   // this GetTransientScratchBuffer will call IAllocator::Reserve() to allocate memory.
   // IAllocator::Reserve() optionally implement some allocation logic that by-passes any arena-based
@@ -65,6 +98,11 @@ class CudaKernel : public OpKernel {
     cuda_ep_stream->EnqueDeferredCPUBuffer(p);
   }
 
+  // void* overload for dual-build compatibility with the plugin EP.
+  inline void AddDeferredReleaseCPUPtr(void* p, void* stream) const {
+    AddDeferredReleaseCPUPtr(p, static_cast<onnxruntime::Stream*>(stream));
+  }
+
   template <typename T>
   inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
     if (count_or_bytes == 0) return nullptr;
@@ -72,6 +110,19 @@ class CudaKernel : public OpKernel {
   }
 
   const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); }
+  int GetCudnnConvAlgo() const { return provider_->GetCudnnConvAlgo(); }
+  bool GetCudnnConvUseMaxWorkspace() const { return provider_->GetCudnnConvUseMaxWorkspace(); }
+  bool GetCudnnConv1dPadToNc1d() const { return provider_->GetCudnnConv1dPadToNc1d(); }
+  bool IsFuseConvBias() const { return provider_->IsFuseConvBias(); }
+
+  // Compatibility helper used by kernels that need the underlying ORT stream object.
+  inline onnxruntime::Stream* GetComputeStream(OpKernelContext* ctx) const {
+    return ctx ? ctx->GetComputeStream() : nullptr;
+  }
+
+  inline OrtStreamAdapter GetOrtStream(OpKernelContext* ctx) const {
+    return OrtStreamAdapter(GetComputeStream(ctx));
+  }
 
   inline cudaStream_t Stream(OpKernelContext* ctx) const {
     auto* stream = ctx->GetComputeStream();
@@ -79,11 +130,25 @@ class CudaKernel : public OpKernel {
   }
 
   inline cudnnHandle_t GetCudnnHandle(OpKernelContext* ctx) const {
+    return RequireCudnnHandle(GetCudnnHandle(static_cast<CudaStream*>(ctx->GetComputeStream())));
+  }
+
+  inline cudnnHandle_t TryGetCudnnHandle(OpKernelContext* ctx) const {
     return GetCudnnHandle(static_cast<CudaStream*>(ctx->GetComputeStream()));
   }
 
   static inline cudnnHandle_t GetCudnnHandle(onnxruntime::CudaStream* stream) {
-    return stream->cudnn_handle_;
+    return stream ? stream->cudnn_handle_ : nullptr;
+  }
+
+  static inline cudnnHandle_t GetCudnnHandle(onnxruntime::Stream* stream) {
+    auto* cuda_stream = dynamic_cast<CudaStream*>(stream);
+    ORT_ENFORCE(cuda_stream != nullptr, "Stream is not a CudaStream.");
+    return GetCudnnHandle(cuda_stream);
+  }
+
+  inline cudnnHandle_t GetCudnnHandleOrDefault(onnxruntime::Stream* stream) const {
+    return stream ? RequireCudnnHandle(GetCudnnHandle(stream)) : DefaultCudnnHandle();
   }
 
   inline cublasHandle_t GetCublasHandle(OpKernelContext* ctx) const {
@@ -91,18 +156,30 @@ class CudaKernel : public OpKernel {
   }
 
   static inline cublasHandle_t GetCublasHandle(onnxruntime::CudaStream* stream) {
-    return stream->cublas_handle_;
+    return stream ? stream->cublas_handle_ : nullptr;
+  }
+
+  static inline cublasHandle_t GetCublasHandle(onnxruntime::Stream* stream) {
+    auto* cuda_stream = dynamic_cast<CudaStream*>(stream);
+    ORT_ENFORCE(cuda_stream != nullptr, "Stream is not a CudaStream.");
+    return GetCublasHandle(cuda_stream);
+  }
+
+  inline cublasHandle_t GetCublasHandleOrDefault(onnxruntime::Stream* stream) const {
+    return stream ? GetCublasHandle(stream) : DefaultCublasHandle();
+  }
+
+  inline cublasLtHandle_t GetCublasLtHandle(OpKernelContext* /*ctx*/) const {
+    return provider_->PerThreadCublasLtHandle();
   }
 
   bool UseTF32() const {
     return provider_->UseTF32();
   }
 
-#ifndef DISABLE_CONTRIB_OPS
   const AttentionKernelOptions* GetAttentionKernelOptions() const {
     return provider_->GetAttentionKernelOptions();
   }
-#endif
 
   tunable::CudaTuningContext* GetTuningContext() const {
     return static_cast<tunable::CudaTuningContext*>(provider_->GetTuningContext());
@@ -149,6 +226,11 @@ class CudaKernel : public OpKernel {
       return Status::OK();
     }
 
+    // void* overload for dual-build compatibility with the plugin EP.
+    Status CopyToGpu(void* stream) {
+      return CopyToGpu(static_cast<onnxruntime::Stream*>(stream));
+    }
+
     T* CpuPtr() const {
       return cpu_pinned_copy_.get();
     }
@@ -181,7 +263,21 @@ class CudaKernel : public OpKernel {
   }
 
   inline cudnnHandle_t DefaultCudnnHandle() const {
-    return provider_->PerThreadDefaultCudnnHandle();
+    return RequireCudnnHandle(provider_->PerThreadDefaultCudnnHandle());
+  }
+
+  static inline cudnnHandle_t RequireCudnnHandle(cudnnHandle_t handle) {
+    if (handle == nullptr) {
+#ifndef USE_CUDA_MINIMAL
+      ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                                         "cuDNN is unavailable or disabled for CUDA Execution Provider: ",
+                                         cuda::CudnnLibrary::Get().Error()));
+#else
+      ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                                         "cuDNN is unavailable for CUDA Execution Provider in a CUDA minimal build."));
+#endif
+    }
+    return handle;
   }
 
   inline cudaStream_t DefaultCudaStream() const {
@@ -209,3 +305,7 @@ class CudaKernel : public OpKernel {
 
 }  // namespace cuda
 }  // namespace onnxruntime
+
+#else
+#include "core/providers/cuda/plugin/cuda_kernel_adapter.h"
+#endif

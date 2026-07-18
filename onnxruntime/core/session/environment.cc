@@ -60,6 +60,10 @@
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
 #endif
 
+#if !defined(NDEBUG) && defined(__linux__) && !defined(__ANDROID__)
+#include "absl/debugging/symbolize.h"
+#endif
+
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
@@ -69,6 +73,7 @@ using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
 
 std::once_flag schemaRegistrationOnceFlag;
+std::once_flag symbolizerInitOnceFlag;
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
 #endif  // defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
@@ -268,6 +273,17 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
     ORT_RETURN_IF_ERROR(SetGlobalThreadingOptions(*tp_options));
   }
 
+  // Initialize abseil symbolizer for readable stack traces in debug builds.
+  // Restricted to Linux: InitializeSymbolizer(nullptr) relies on /proc/self/exe
+  // to locate the executable, which is Linux-specific. Other platforms either
+  // use a different mechanism (Windows: C++23 <stacktrace>) or would need a real
+  // argv[0] path plumbed through, which is out of scope for this debug helper.
+#if !defined(NDEBUG) && defined(__linux__) && !defined(__ANDROID__)
+  std::call_once(symbolizerInitOnceFlag, []() {
+    absl::InitializeSymbolizer(nullptr);
+  });
+#endif
+
   ORT_TRY {
 #if !defined(ORT_MINIMAL_BUILD)
     // Register Microsoft domain with min/max op_set version as 1/1.
@@ -442,6 +458,13 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
   return Status{ONNXRUNTIME, common::INVALID_ARGUMENT,
                 provider_type + " is not implemented in CreateAndRegisterAllocatorV2()"};
 }
+
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+Status Environment::SetPerSessionWorkCallbacks(const OrtThreadPoolCallbacksConfig& config) {
+  per_session_work_callbacks_ = config;
+  return Status::OK();
+}
+#endif
 
 Environment::~Environment() {
   // need to make sure all the OrtAllocator instances are released prior to any plugin EPs being freed.
@@ -618,7 +641,7 @@ Status Environment::CreateAndRegisterInternalEps() {
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name, const ORTCHAR_T* lib_path) {
   std::lock_guard<std::mutex> lock{mutex_};
 
-  std::string lib_file_name = std::filesystem::path(lib_path).filename().string();
+  std::string lib_file_name = PathToUTF8String(std::filesystem::path(lib_path).filename().native());
   Env::Default().GetTelemetryProvider().LogRegisterEpLibraryWithLibPath(registration_name, lib_file_name);
 
   std::vector<EpFactoryInternal*> internal_factories = {};
@@ -855,7 +878,14 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
 
   shared_ort_allocators_.insert(allocator);
 
-  AllocatorPtr shared_allocator = std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator));
+  // Wrap as IArena when the plugin allocator implements Shrink(), making it
+  // discoverable by session-level arena management (e.g. ShrinkMemoryArenas).
+  AllocatorPtr shared_allocator;
+  if (allocator->version >= 25 && allocator->Shrink != nullptr) {
+    shared_allocator = std::make_shared<IArenaImplWrappingOrtAllocator>(std::move(ort_allocator));
+  } else {
+    shared_allocator = std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator));
+  }
   shared_allocators_.push_back(std::move(shared_allocator));
 
   if (allocator_out != nullptr) {

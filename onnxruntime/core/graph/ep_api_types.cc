@@ -110,6 +110,8 @@ static bool IsOptionalAttribute(const Node& node, const std::string& attr_name) 
 // EpNode
 //
 
+EpNode::SubgraphState::~SubgraphState() = default;
+
 EpNode::EpNode(const EpGraph* ep_graph, const Node& node, PrivateTag)
     : OrtNode(OrtGraphIrApi::kEpApi), ep_graph_(ep_graph), node_(node) {}
 
@@ -351,7 +353,8 @@ static Status GetOutputIndex(const EpNode& producer_node,
   gsl::span<const EpValueInfo* const> outputs = producer_node.GetOutputsSpan();
 
   for (size_t i = 0; i < outputs.size(); i++) {
-    if (outputs[i]->GetName() == value_info_name) {
+    const auto output = outputs[i];
+    if (output != nullptr && output->GetName() == value_info_name) {
       index = i;
       found = true;
     }

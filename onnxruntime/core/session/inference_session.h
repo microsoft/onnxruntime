@@ -15,6 +15,7 @@
 #include "core/common/path_string.h"
 #include "core/common/profiler.h"
 #include "core/common/status.h"
+#include "core/platform/env.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/iexecutor.h"
@@ -413,6 +414,12 @@ class InferenceSession {
   [[nodiscard]] virtual common::Status Run(const RunOptions& run_options, IOBinding& io_binding);
   [[nodiscard]] common::Status Run(IOBinding& io_binding);
 
+  /**
+   * Release a previously captured graph and its associated resources.
+   * @param graph_annotation_id The annotation ID of the captured graph to release.
+   */
+  [[nodiscard]] common::Status ReleaseCapturedGraph(int graph_annotation_id);
+
 #ifdef ENABLE_TRAINING
   /**
    * Partially run a pre-loaded and pre-intialized model.
@@ -738,6 +745,20 @@ class InferenceSession {
   /// convenience pointer to logger. should always be the same as session_state_.Logger();
   const logging::Logger* session_logger_;
 
+  /// Logging manager if provided.
+  /// When user_logging_function is set, user_logging_manager_ owns the LoggingManager and
+  /// logging_manager_ points to it. Both MUST be declared before owned_session_logger_ and
+  /// execution_providers_ so they outlive the logger and EPs during destruction (C++ destroys
+  /// members in reverse declaration order).
+  logging::LoggingManager* logging_manager_;
+  std::unique_ptr<logging::LoggingManager> user_logging_manager_;
+
+  /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
+  /// This MUST be declared before execution_providers_ so the logger outlives EPs during destruction
+  /// (C++ destroys members in reverse declaration order), allowing EP teardown callbacks to safely
+  /// use the logger pointer.
+  std::unique_ptr<logging::Logger> owned_session_logger_ = nullptr;
+
   // The list of execution providers.
   // This MUST be prior to model_ in case there are values in the model that were allocated using an allocator
   // provided by the EP. If that is the case the allocator's `free` implementation may depend on other parts of the
@@ -767,6 +788,20 @@ class InferenceSession {
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
+
+  // Maximum number of internal run attempts allowed (within a single session.Run()) for EP graph capture.
+  // If the number of run attempts exceeds this limit, the session.Run() returns an error status.
+  // This prevents running an unbounded number of runs due to buggy EPs that never return true from
+  // IsGraphCaptured(). Note that EPs typically need at most two runs to capture a graph (e.g., CUDA EP).
+  static constexpr int kMaxGraphCaptureRunAttempts = 8;
+
+  // Internal implementation of Run() with graph capture recursion depth tracking.
+  [[nodiscard]] common::Status RunImpl(const RunOptions& run_options, gsl::span<const std::string> feed_names,
+                                       gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names,
+                                       std::vector<OrtValue>* p_fetches,
+                                       const std::vector<OrtDevice>* p_fetches_device_info,
+                                       int graph_capture_depth);
+
   void SetLoggingManager(const SessionOptions& session_options,
                          const Environment& session_env);
   void ConstructorCommon(const SessionOptions& session_options,
@@ -851,6 +886,11 @@ class InferenceSession {
    */
   void ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink);
 
+  // Populates telemetry_.ep_device_info_ and the related summary strings used by
+  // the SessionCreation and EpDeviceUsage telemetry events. Must be called after
+  // graph partitioning is complete so node counts per EP are accurate.
+  void PopulateEpDeviceInfo(const onnxruntime::Graph& graph);
+
 #ifdef _WIN32
   static void LogAllSessions();
 #endif
@@ -880,15 +920,6 @@ class InferenceSession {
   CheckLoadCancellationFn check_load_cancellation_fn_ = [this]() {
     return session_options_.IsLoadCancellationFlagSet();
   };
-
-  /// Logging manager if provided.
-  logging::LoggingManager* logging_manager_;
-
-  /// User specified logging mgr; logging_manager_ is simply the ptr in this unique_ptr when available
-  std::unique_ptr<logging::LoggingManager> user_logging_manager_;
-
-  /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
-  std::unique_ptr<logging::Logger> owned_session_logger_ = nullptr;
 
   // Profiler for this session.
   profiling::Profiler session_profiler_;
@@ -980,6 +1011,26 @@ class InferenceSession {
     constexpr static int64_t kRuntimePerfInitialInterval = 2 * 1000 * 1000;    // 2 seconds in (us)
     constexpr static int64_t kRuntimePerfMaxInterval = 1000 * 1000 * 60 * 10;  // 10 minutes in (us)
     int64_t runtime_perf_interval_ = kRuntimePerfInitialInterval;
+
+    // Per-(EP, hardware device) tuple captured once at session Initialize() time,
+    // after graph partitioning. Used to emit "EpDeviceUsage" events on the same
+    // cadence as RuntimePerf so downstream consumers can attribute inference usage
+    // to specific EP + device combinations without joining back to SessionCreation.
+    struct EpDeviceInfo {
+      std::string ep_type;               // e.g. "QNNExecutionProvider"
+      std::string hardware_device_type;  // "CPU", "GPU", "NPU", "FPGA", or "UNKNOWN"
+      uint32_t vendor_id = 0;            // PCI vendor ID (e.g. 0x5143 for Qualcomm)
+      uint32_t device_id = 0;            // PCI device ID (0 when unavailable)
+      std::string vendor;                // e.g. "Qualcomm"
+      std::string ep_vendor;             // e.g. "Qualcomm" (from OrtEpDevice)
+      std::string ep_version;            // e.g. "1.2.3" (from OrtEpFactory::GetVersion, empty when unavailable)
+      int assigned_node_count = 0;       // # graph nodes assigned to this EP type
+    };
+    std::vector<EpDeviceInfo> ep_device_info_;
+    // Pre-formatted comma-separated summaries used to enrich SessionCreation.
+    std::string ep_device_types_summary_;       // "NPU,CPU"
+    std::string ep_device_vendor_ids_summary_;  // "0x5143,0x0000"
+    std::string ep_versions_summary_;           // "QNNExecutionProvider:1.2.3,CPUExecutionProvider:"
   } telemetry_;
 
   mutable std::mutex telemetry_mutex_;  // to ensure thread-safe access to telemetry data
@@ -1011,6 +1062,8 @@ class InferenceSession {
   //   We store them currently in the ort_format_model_bytes_data_holder_ to make the Load + Initialize
   //   behave the same way as for an ONNX model, as we need some of the bytes for the Load (create the Model)
   //   and some for the Initialize (create SessionState).
+  //   If "session.use_memory_mapped_ort_model" is set, we memory-map the file instead and store the
+  //   mapping in ort_format_model_mapped_memory_.
   // Short term we free them after Initialize.
   // Longer term we may want to directly refer to offsets in this buffer for initializers so we don't need to copy
   // those into new OrtValue instances, at which point we won't free them until the InferenceSession goes away.
@@ -1019,8 +1072,12 @@ class InferenceSession {
   // This holds the actual model data
   // In case if the session is started with an input byte array contains model data, and the caller
   // specifies that ORT should use the model bytes directly by setting the session config option
-  // "session.use_ort_model_bytes_directly" to "1", this will be empty
+  // "session.use_ort_model_bytes_directly" to "1", this will be empty.
+  // Also empty when using memory-mapped loading, as the data is held by ort_format_model_mapped_memory_.
   std::vector<uint8_t> ort_format_model_bytes_data_holder_;
+
+  // Holds the memory-mapped file data when session.use_memory_mapped_ort_model is set.
+  Env::MappedMemoryPtr ort_format_model_mapped_memory_;
 
   bool using_ort_model_bytes_for_initializers_{false};
 
@@ -1054,14 +1111,23 @@ class InferenceSession {
       return cached_execution_provider_for_graph_replay_ != nullptr && graph_annotation_id != kGraphAnnotationSkip;
     }
 
-    Status ReplayGraph(int graph_annotation_id) {
+    Status ReplayGraph(int graph_annotation_id, bool sync = true) {
       if (cached_execution_provider_for_graph_replay_) {
-        return cached_execution_provider_for_graph_replay_->ReplayGraph(graph_annotation_id);
+        return cached_execution_provider_for_graph_replay_->ReplayGraph(graph_annotation_id, sync);
       }
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cached EP instance for graph replay is not set yet before calling ReplayGraph()");
     }
 
+    Status ReleaseCapturedGraph(int graph_annotation_id) {
+      if (cached_execution_provider_for_graph_replay_) {
+        return cached_execution_provider_for_graph_replay_->ReleaseCapturedGraph(graph_annotation_id);
+      }
+      return Status::OK();
+    }
+
     const std::string& Type() const {
+      ORT_ENFORCE(cached_execution_provider_for_graph_replay_ != nullptr,
+                  "No EP registered for graph replay yet");
       return cached_execution_provider_for_graph_replay_->Type();
     }
 

@@ -136,5 +136,49 @@ TEST(MLOpTest, SVMRegressorLinear) {
   test.Run();
 }
 
+TEST(MLOpTest, SVMRegressorUndersizedCoefficients) {
+  OpTester test("SVMRegressor", 1, onnxruntime::kMLDomain);
+
+  std::vector<float> coefficients = {1.f};  // needs 5, only 1 provided
+  std::vector<float> support_vectors = {0.f, 0.5f, 32.f, 1.f, 1.5f, 1.f, 2.f, 2.9f, -32.f,
+                                        12.f, 12.9f, -312.f, 43.f, 413.3f, -114.f};
+  std::vector<float> rho = {0.1f};
+  std::vector<float> kernel_params = {0.001f, 0.f, 3.f};
+
+  test.AddAttribute("kernel_type", std::string("RBF"));
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("support_vectors", support_vectors);
+  test.AddAttribute("rho", rho);
+  test.AddAttribute("kernel_params", kernel_params);
+  test.AddAttribute("n_supports", static_cast<int64_t>(5));
+
+  test.AddInput<float>("X", {1, 3}, {1.f, 0.f, 0.4f});
+  test.AddOutput<float>("Y", {1, 1}, {0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "coefficients size");
+}
+
+TEST(MLOpTest, SVMRegressorUndersizedSupportVectors) {
+  OpTester test("SVMRegressor", 1, onnxruntime::kMLDomain);
+
+  std::vector<float> coefficients = {1.f, 1.f, 1.f, 1.f, 1.f};
+  std::vector<float> support_vectors = {0.1f, 0.2f};  // far too small for n_supports=5
+  std::vector<float> rho = {0.1f};
+  std::vector<float> kernel_params = {0.001f, 0.f, 3.f};
+
+  test.AddAttribute("kernel_type", std::string("RBF"));
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("support_vectors", support_vectors);
+  test.AddAttribute("rho", rho);
+  test.AddAttribute("kernel_params", kernel_params);
+  test.AddAttribute("n_supports", static_cast<int64_t>(5));
+
+  test.AddInput<float>("X", {1, 3}, {1.f, 0.f, 0.4f});
+  test.AddOutput<float>("Y", {1, 1}, {0.f});
+
+  // support_vectors.size() (= 2) is not a multiple of n_supports (= 5), triggering the support_vectors size validation
+  test.Run(OpTester::ExpectResult::kExpectFailure, "support_vectors size");
+}
+
 }  // namespace test
 }  // namespace onnxruntime

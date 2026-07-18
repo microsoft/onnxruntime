@@ -151,6 +151,11 @@ TEST(FileIoTest, MapFileIntoMemory) {
 
     // invalid - negative offset
     ASSERT_FALSE(Env::Default().MapFileIntoMemory(tmp.path.c_str(), -1, 0, mapped_memory).IsOK());
+
+    // invalid - requested length exceeds file size
+    auto status = Env::Default().MapFileIntoMemory(tmp.path.c_str(), 0, expected_data.size() + 1, mapped_memory);
+    ASSERT_FALSE(status.IsOK());
+    ASSERT_NE(status.ErrorMessage().find("too small for the requested mapping"), std::string::npos);
   }
 }
 #else
@@ -184,6 +189,11 @@ TEST(FileIoTest, MapFileIntoMemory) {
 
     // invalid - negative offset
     ASSERT_STATUS_NOT_OK(Env::Default().MapFileIntoMemory(tmp.path.c_str(), -1, 0, mapped_memory));
+
+    // invalid - requested length exceeds file size
+    auto status = Env::Default().MapFileIntoMemory(tmp.path.c_str(), 0, expected_data.size() + 1, mapped_memory);
+    ASSERT_FALSE(status.IsOK());
+    ASSERT_NE(status.ErrorMessage().find("too small for the requested mapping"), std::string::npos);
   }
 }
 #endif

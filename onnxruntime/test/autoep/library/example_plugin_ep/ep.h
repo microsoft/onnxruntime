@@ -6,6 +6,7 @@
 #include <gsl/span>
 
 #include "../plugin_ep_utils.h"
+#include "onnxruntime_experimental_cxx_api.h"
 
 class ExampleEpFactory;
 
@@ -61,13 +62,16 @@ class ExampleEp : public OrtEp, public ApiPtrs {
  public:
   struct Config {
     bool enable_ep_context = false;
+    bool embed_ep_context_in_model = false;
     bool enable_weightless_ep_context_nodes = false;
+    std::string ep_context_output_model_path;
     // Other EP configs (typically extracted from OrtSessionOptions or OrtHardwareDevice(s))
   };
 
-  ExampleEp(ExampleEpFactory& factory, const std::string& name, const Config& config, const OrtLogger& logger);
+  ExampleEp(ExampleEpFactory& factory, const std::string& name, const Config& config, const OrtLogger& logger,
+            Ort::Experimental::EpContextConfig ep_context_config);
 
-  ~ExampleEp();
+  ~ExampleEp() = default;
 
   std::unordered_map<std::string, std::unique_ptr<MulKernel>>& MulKernels() {
     return mul_kernels_;
@@ -103,15 +107,27 @@ class ExampleEp : public OrtEp, public ApiPtrs {
   static const char* ORT_API_CALL GetCompiledModelCompatibilityInfoImpl(OrtEp* this_ptr,
                                                                         const OrtGraph* graph) noexcept;
 
-  OrtStatus* CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes,
+  static OrtStatus* ORT_API_CALL SyncImpl(_In_ OrtEp* this_ptr) noexcept;
+
+  static OrtStatus* ORT_API_CALL GetDefaultMemoryDeviceImpl(_In_ const OrtEp* this_ptr,
+                                                            _Outptr_ const OrtMemoryDevice** device) noexcept;
+
+  OrtStatus* CreateEpContextNodes(const OrtGraph* graph,
+                                  gsl::span<const OrtNode*> fused_nodes,
                                   /*out*/ gsl::span<OrtNode*> ep_context_nodes);
 
-  OrtStatus* SaveConstantInitializers(const OrtGraph* graph);
+  // Returns true if the EP should save constant initializers so that they are available during inference.
+  bool CopiesConstantInitializers() const;
+
+  // If the given `OrtValueInfo` represents a constant initializer, this function saves a copy of the initializer data
+  // within this EP instance so that it is available during inference.
+  OrtStatus* TrySaveConstantInitializer(Ort::ConstValueInfo maybe_initializer);
 
   ExampleEpFactory& factory_;
   std::string name_;
   Config config_{};
   const OrtLogger& logger_;
+  Ort::Experimental::EpContextConfig ep_context_config_;
   std::unordered_map<std::string, std::unique_ptr<MulKernel>> mul_kernels_;
   std::unordered_map<std::string, std::unique_ptr<EpContextKernel>> ep_context_kernels_;
   std::unordered_map<std::string, FloatInitializer> float_initializers_;

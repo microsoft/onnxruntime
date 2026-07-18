@@ -1,0 +1,4 @@
+; Symbol export definition file for CUDA Plugin EP (Windows)
+EXPORTS
+    CreateEpFactories
+    ReleaseEpFactory

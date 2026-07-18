@@ -9,6 +9,7 @@
 #include <sstream>
 #include <utility>
 
+#include <onnx/defs/attr_proto_util.h>
 #include "core/common/inlined_containers_fwd.h"
 #include "core/graph/extended_graph_edge.h"
 #include "core/graph/graph_utils.h"
@@ -31,21 +32,37 @@ bool CanNodePropagate(const Node& node) {
 
 // Makes matching attributes for new QuantizeLinear nodes from an existing DequantizeLinear node.
 NodeAttributes MakeQAttrsFromDQ(const Node& dq_node) {
-  assert(dq_node.SinceVersion() <= 21);  // Checked by previous call to QDQ::MatchDQNode().
-  // In opset <= 21, all DQ attributes (i.e., axis and block_size) are also Q attributes.
-  // So, set a copy of the DQ attributes.
-  return dq_node.GetAttributes();
+  // DQ's axis and block_size attributes are also valid Q attributes for all supported opsets.
+  // So, start with a copy of the DQ attributes.
+  NodeAttributes q_attrs = dq_node.GetAttributes();
+
+  // From opset 21 onward, Q supports an "output_dtype" attribute that controls the quantized
+  // element type when no zero-point input is provided. Without it, qdq_util.cc silently falls
+  // back to UINT8, which corrupts negative values for INT8 (or other signed) inputs.
+  if (dq_node.SinceVersion() >= 21) {
+    const auto* input_type_proto = dq_node.InputDefs()[0]->TypeAsProto();
+    if (input_type_proto != nullptr) {
+      const int32_t elem_type = input_type_proto->tensor_type().elem_type();
+      if (elem_type != ONNX_NAMESPACE::TensorProto::UNDEFINED) {
+        q_attrs["output_dtype"] = ONNX_NAMESPACE::MakeAttribute("output_dtype",
+                                                                static_cast<int64_t>(elem_type));
+      }
+    }
+  }
+
+  return q_attrs;
 }
 
 // Makes matching attributes for new DequantizeLinear nodes from an existing QuantizeLinear node.
 NodeAttributes MakeDQAttrsFromQ(const Node& q_node) {
-  assert(q_node.SinceVersion() <= 21);  // Checked by previous call to QDQ::MatchQNode().
+  // QDQ::MatchQNode() accepts opsets 10–25; the assert below would abort debug builds for
+  // opset 23/24/25 models, so it is intentionally omitted.
   const NodeAttributes& q_attrs = q_node.GetAttributes();
   if (q_attrs.empty()) {
     return {};
   }
 
-  // In opset <= 21, only the "axis" and "block_size" attributes for Q are also DQ attributes.
+  // Only the "axis" and "block_size" attributes for Q are also valid DQ attributes.
   NodeAttributes dq_attrs;
 
   auto axis_attr_it = q_attrs.find("axis");
@@ -194,6 +211,8 @@ Status InsertQDQPairs(Graph& graph, gsl::span<const ExtendedGraphEdge> insertion
       }
     }
 
+    optimizer_utils::DuplicateNodeAnnotation(*src_node, q_node);
+
     // Add edge from src to Q node.
     src_node->MutableOutputDefs()[first_edge.src->arg_idx] = &pre_q_nodearg;
     graph.AddEdge(src_node->Index(), q_node.Index(), first_edge.src->arg_idx, 0);
@@ -220,6 +239,10 @@ Status InsertQDQPairs(Graph& graph, gsl::span<const ExtendedGraphEdge> insertion
                                   {&post_dq_nodearg},
                                   &dq_attrs,  // attributes
                                   qdq_domain);
+
+    if (src_node) {
+      optimizer_utils::DuplicateNodeAnnotation(*src_node, dq_node);
+    }
 
     ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(dq_node), "Failed to set op schema for added DQ node.");
 
@@ -345,6 +368,21 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
     bool dq_zero_point_exists = false;
     if (!QDQ::QOrDQNodeHasConstantScalarScaleAndZeroPoint(dq_node, GraphConstantInitializerGetter{graph},
                                                           dq_zero_point_exists)) {
+      continue;
+    }
+
+    // Do not propagate DQ forward when its data input is a constant (graph initializer or
+    // Constant op output). Propagation would insert a Q -> DQ pair after any downstream
+    // reshape-like node; later passes (e.g. S8-to-U8 weight transformer) may flip the
+    // existing DQ to uint8 without touching the inserted Q, causing int8 negatives to
+    // be clamped to zero. See GitHub issue #28491.
+    const NodeArg* dq_data_input = dq_node.InputDefs()[QDQ::InputIndex::INPUT_ID];
+    const bool is_initializer_constant = graph_utils::NodeArgIsConstant(graph, *dq_data_input);
+    const Node* dq_data_producer = graph.GetProducerNode(dq_data_input->Name());
+    const bool is_constant_op_output = dq_data_producer != nullptr &&
+                                       dq_data_producer->OpType() == "Constant" &&
+                                       dq_data_producer->Domain() == kOnnxDomain;
+    if (is_initializer_constant || is_constant_op_output) {
       continue;
     }
 

@@ -25,6 +25,7 @@
 
 #include <wil/wrl.h>
 #include <wil/result.h>
+#include "SafeMakeOrThrow.h"
 
 #include <gsl/gsl>
 

@@ -205,35 +205,24 @@ def number_of_parallel_jobs(args):
     return os.cpu_count() if args.parallel == 0 else args.parallel
 
 
+def number_of_test_parallel_jobs(args):
+    if args.test_parallel is None:
+        return number_of_parallel_jobs(args)
+    return os.cpu_count() if args.test_parallel == 0 else args.test_parallel
+
+
 def number_of_nvcc_threads(args):
     if args.nvcc_threads >= 0:
         return args.nvcc_threads
 
-    nvcc_threads = 1
-    try:
-        import psutil  # noqa: PLC0415
+    return 4
 
-        available_memory = psutil.virtual_memory().available
-        if isinstance(available_memory, int) and available_memory > 0:
-            if available_memory >= 64 * 1024 * 1024 * 1024:
-                # When available memory is large enough, chance of OOM is small.
-                nvcc_threads = min(4, int(available_memory / (8 * 4 * 1024 * 1024 * 1024)))
-            else:
-                # NVCC need a lot of memory to compile 48 flash attention cu files.
-                # Here we select number of threads to ensure each thread has enough memory (>= 4 GB).
-                memory_per_thread = 4 * 1024 * 1024 * 1024
-                fmha_cu_files = 48
-                fmha_parallel_jobs = min(fmha_cu_files, number_of_parallel_jobs(args))
-                nvcc_threads = max(1, int(available_memory / (memory_per_thread * fmha_parallel_jobs)))
-                print(
-                    f"nvcc_threads={nvcc_threads} to ensure memory per thread >= 4GB for available_memory={available_memory} and fmha_parallel_jobs={fmha_parallel_jobs}"
-                )
-    except ImportError:
-        print(
-            "Failed to import psutil. Please `pip install psutil` for better estimation of nvcc threads. Use nvcc_threads=1"
-        )
 
-    return nvcc_threads
+def number_of_flash_nvcc_threads(args):
+    if args.flash_nvcc_threads >= 0:
+        return args.flash_nvcc_threads
+
+    return number_of_nvcc_threads(args)
 
 
 # See https://learn.microsoft.com/en-us/vcpkg/commands/install
@@ -274,8 +263,6 @@ def generate_vcpkg_install_options(build_dir, args):
         vcpkg_install_options.append("--x-feature=vsinpu-ep")
     if args.use_webgpu:
         vcpkg_install_options.append("--x-feature=webgpu-ep")
-        if args.wgsl_template == "dynamic":
-            vcpkg_install_options.append("--x-feature=webgpu-ep-wgsl-template-dynamic")
     if args.use_webnn:
         vcpkg_install_options.append("--x-feature=webnn-ep")
     if args.use_xnnpack:
@@ -331,6 +318,42 @@ def generate_vcpkg_install_options(build_dir, args):
             )
 
     return vcpkg_install_options
+
+
+def get_msvc_spectre_lib_dir(args):
+    """Return the directory that holds the MSVC Spectre-mitigated CRT/STL static libraries for the
+    target architecture, or None if it cannot be located.
+
+    The /Qspectre compile flag only mitigates ONNX Runtime's own object files. The prebuilt MSVC
+    CRT/STL static libraries (libcmt.lib, libcpmt.lib, libvcruntime.lib) that get linked into the
+    binaries also need to be the Spectre-mitigated variants, otherwise BinSkim BA2024
+    (EnableSpectreMitigations) still fails. Those variants ship in the "C++ Spectre-mitigated libs"
+    Visual Studio component under %VCToolsInstallDir%\\lib\\spectre\\<arch>.
+    """
+    vctools_dir = os.environ.get("VCToolsInstallDir")  # noqa: SIM112
+    if not vctools_dir:
+        return None
+    if args.arm:
+        arch = "arm"
+    elif args.arm64:
+        arch = "arm64"
+    elif args.arm64ec:
+        arch = "arm64ec"
+    elif args.x86:
+        arch = "x86"
+    else:
+        # Default to the target architecture selected by vcvarsall.bat (x86, x64, arm, arm64),
+        # falling back to x64 which is what the official Windows release packages use.
+        arch = os.environ.get("VSCMD_ARG_TGT_ARCH", "x64")
+    spectre_dir = Path(vctools_dir) / "lib" / "spectre" / arch
+    if spectre_dir.is_dir():
+        return str(spectre_dir)
+    # Some toolsets do not ship a dedicated arm64ec folder; those reuse the arm64 Spectre libraries.
+    if args.arm64ec:
+        fallback = Path(vctools_dir) / "lib" / "spectre" / "arm64"
+        if fallback.is_dir():
+            return str(fallback)
+    return None
 
 
 def generate_build_tree(
@@ -465,13 +488,14 @@ def generate_build_tree(
         ),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
         "-Donnxruntime_CLIENT_PACKAGE_BUILD=" + ("ON" if args.client_package_build else "OFF"),
+        "-Donnxruntime_ENABLE_SESSION_THREADPOOL_CALLBACKS="
+        + ("ON" if args.enable_session_threadpool_callbacks else "OFF"),
         "-Donnxruntime_BUILD_MS_EXPERIMENTAL_OPS=" + ("ON" if args.ms_experimental else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
         "-Donnxruntime_USE_ACL=" + ("ON" if args.use_acl else "OFF"),
         "-Donnxruntime_USE_JSEP=" + ("ON" if args.use_jsep else "OFF"),
         "-Donnxruntime_USE_WEBGPU=" + ("ON" if args.use_webgpu else "OFF"),
         "-Donnxruntime_USE_EXTERNAL_DAWN=" + ("ON" if args.use_external_dawn else "OFF"),
-        "-Donnxruntime_WGSL_TEMPLATE=" + args.wgsl_template,
         # Training related flags
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + ("ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
@@ -722,6 +746,10 @@ def generate_build_tree(
     if args.use_cuda:
         nvcc_threads = number_of_nvcc_threads(args)
         cmake_args.append("-Donnxruntime_NVCC_THREADS=" + str(nvcc_threads))
+
+        flash_nvcc_threads = number_of_flash_nvcc_threads(args)
+        cmake_args.append("-Donnxruntime_FLASH_NVCC_THREADS=" + str(flash_nvcc_threads))
+
         cmake_args.append(f"-DCMAKE_CUDA_COMPILER={cuda_home}/bin/nvcc")
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_CUDA", "ON")
         if args.cuda_version:
@@ -885,6 +913,9 @@ def generate_build_tree(
 
     if args.enable_arm_neon_nchwc:
         cmake_args += ["-Donnxruntime_USE_ARM_NEON_NCHWC=ON"]
+
+    if args.enable_rvv:
+        cmake_args += ["-Donnxruntime_USE_RVV=ON"]
 
     if not args.no_sve:
         cmake_args += ["-Donnxruntime_USE_SVE=ON"]
@@ -1074,7 +1105,7 @@ def generate_build_tree(
     cmake_args += cmake_extra_args
 
     # ADO pipelines will store the pipeline build number
-    # (e.g. 191101-2300.1.master) and source version in environment
+    # (e.g. 20260615.4) and source version in environment
     # variables. If present, use these values to define the
     # WinML/ORT DLL versions.
     build_number = os.getenv("Build_BuildNumber")  # noqa: SIM112
@@ -1082,31 +1113,31 @@ def generate_build_tree(
     if build_number and source_version:
         build_matches = re.fullmatch(r"(\d\d)(\d\d)(\d\d)(\d\d)\.(\d+)", build_number)
         if build_matches:
-            YY = build_matches.group(2)  # noqa: N806
             MM = build_matches.group(3)  # noqa: N806
             DD = build_matches.group(4)  # noqa: N806
 
-            # Get ORT major and minor number
+            # Get ORT major, minor, and patch number
             with open(os.path.join(source_dir, "VERSION_NUMBER")) as f:
                 first_line = f.readline()
-                ort_version_matches = re.match(r"(\d+).(\d+)", first_line)
+                ort_version_matches = re.match(r"(\d+)\.(\d+)\.(\d+)", first_line)
                 if not ort_version_matches:
-                    raise BuildError("Couldn't read version from VERSION_FILE")
+                    raise BuildError("Couldn't read version from VERSION_NUMBER")
                 ort_major = ort_version_matches.group(1)
                 ort_minor = ort_version_matches.group(2)
-                # Example (BuildNumber: 191101-2300.1.master,
-                # SourceVersion: 0bce7ae6755c792eda558e5d27ded701707dc404)
+                ort_patch = ort_version_matches.group(3)
+                # Example (VERSION_NUMBER: 1.27.0, BuildNumber: 20260615.4,
+                # SourceVersion: 8f0278c77bf44b0cc83c098c6c722b92a36ac4b5)
                 # MajorPart = 1
-                # MinorPart = 0
-                # BuildPart = 1911
-                # PrivatePart = 123
-                # String = 191101-2300.1.master.0bce7ae
+                # MinorPart = 27
+                # BuildPart = 0
+                # PrivatePart = 615
+                # String = 1.27.0.20260615.4.8f0278c
                 cmake_args += [
                     f"-DVERSION_MAJOR_PART={ort_major}",
                     f"-DVERSION_MINOR_PART={ort_minor}",
-                    f"-DVERSION_BUILD_PART={YY}",
+                    f"-DVERSION_BUILD_PART={ort_patch}",
                     f"-DVERSION_PRIVATE_PART={MM}{DD}",
-                    f"-DVERSION_STRING={ort_major}.{ort_minor}.{build_number}.{source_version[0:7]}",
+                    f"-DVERSION_STRING={ort_major}.{ort_minor}.{ort_patch}.{build_number}.{source_version[0:7]}",
                 ]
 
     for config in configs:
@@ -1142,6 +1173,22 @@ def generate_build_tree(
                 # Address Sanitizer libs do not have a Qspectre version. So they two cannot be both enabled.
                 if not args.enable_address_sanitizer:
                     cflags += ["/Qspectre"]
+                    # /Qspectre only mitigates ONNX Runtime's own object files. The prebuilt MSVC
+                    # CRT/STL static libraries (libcmt.lib, libcpmt.lib, libvcruntime.lib) that are
+                    # linked into the binaries also have to be the Spectre-mitigated variants,
+                    # otherwise BinSkim BA2024 (EnableSpectreMitigations) still fails. Prepend the
+                    # Spectre lib directory to the linker search path so those libraries are
+                    # resolved ahead of the default (non-mitigated) CRT libraries.
+                    spectre_lib_dir = get_msvc_spectre_lib_dir(args)
+                    if spectre_lib_dir is not None:
+                        ldflags = [f'/LIBPATH:"{spectre_lib_dir}"', *ldflags]
+                    else:
+                        log.warning(
+                            "Could not locate the MSVC Spectre-mitigated CRT/STL libraries. The "
+                            "resulting binaries may fail BinSkim BA2024 (EnableSpectreMitigations). "
+                            "Install the 'C++ Spectre-mitigated libs' component from the Visual "
+                            "Studio installer and build from a Developer Command Prompt."
+                        )
                 if config == "Release":
                     cflags += ["/O2", "/Ob2", "/DNDEBUG"]
                 elif config == "RelWithDebInfo":
@@ -1723,7 +1770,18 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 test_output = f"--gtest_output=xml:{cwd}/{exe}.{config}.results.xml"
                 run_subprocess([os.path.join(cwd, exe), test_output], cwd=cwd, dll_path=dll_path)
         else:
-            ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", args.ctest_timeout]
+            num_parallel_jobs = number_of_test_parallel_jobs(args)
+            ctest_cmd = [
+                ctest_path,
+                "--build-config",
+                config,
+                "--verbose",
+                "--timeout",
+                args.ctest_timeout,
+                "--parallel",
+                str(num_parallel_jobs),
+                "--output-on-failure",
+            ]
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
         if args.enable_pybind:
@@ -1816,7 +1874,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
                 if not args.disable_contrib_ops:
                     run_subprocess(
-                        [sys.executable, "-m", "unittest", "discover", "-s", "quantization"], cwd=cwd, dll_path=dll_path
+                        [sys.executable, "-m", "unittest", "discover", "-s", "quantization", "-v"],
+                        cwd=cwd,
+                        dll_path=dll_path,
                     )
 
                     if args.enable_transformers_tool_test and (sys.version_info.major, sys.version_info.minor) < (
@@ -2327,9 +2387,6 @@ def main():
         if args.nnapi_min_api < 27:
             raise BuildError("--nnapi_min_api should be 27+")
 
-    if args.build_wasm_static_lib:
-        args.build_wasm = True
-
     if args.build_wasm:
         if not args.disable_wasm_exception_catching and args.disable_exceptions:
             # When '--disable_exceptions' is set, we set '--disable_wasm_exception_catching' as well
@@ -2561,6 +2618,9 @@ def main():
         build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, args.targets)
 
     if args.test:
+        if args.test_parallel is not None and args.test_parallel < 0:
+            raise BuildError(f"Invalid test parallel job count: {args.test_parallel}")
+
         if args.enable_onnx_tests:
             source_onnx_model_dir = "C:\\local\\models" if is_windows() else "/data/models"
             setup_test_data(source_onnx_model_dir, "models", build_dir, configs)

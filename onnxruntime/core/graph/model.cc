@@ -1,13 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+#include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/model.h"
 #include "core/graph/model_editor_api_types.h"
+#include "core/graph/model_helpers.h"
 #include "core/graph/model_load_utils.h"
 
 #ifdef _MSC_VER
@@ -61,7 +68,7 @@ void Model::RemoveLocalFunctionsProtos(const InlinedHashSet<std::string>& retain
     }
 
     for (auto it = local_functions->begin(); it != local_functions->end();) {
-      const auto function_id = function_utils::GetFunctionIdentifier(it->domain(), it->name());
+      const auto function_id = function_utils::GetFunctionIdentifier(it->domain(), it->name(), it->overload());
       if (retained.find(function_id) == retained_end) {
         it = local_functions->erase(it);
       } else {
@@ -125,14 +132,17 @@ Model::Model(const std::string& graph_name,
   for (auto& func : model_local_functions) {
     auto func_ptr = model_proto_.add_functions();
     func_ptr->CopyFrom(func);
-    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func_ptr->domain(), func_ptr->name()),
+    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func_ptr->domain(), func_ptr->name(), func_ptr->overload()),
                                             func_ptr);
   }
+
+  ORT_THROW_IF_ERROR(ValidateModelLocalFunctionAcyclic(model_local_functions_));
 
   model_local_function_templates_maps_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {
     auto func_schema_ptr = function_utils::CreateSchema(func.domain(),
                                                         func.name(),
+                                                        func.overload(),
                                                         model_local_functions_,
                                                         *p_domain_to_version,
                                                         *schema_registry,
@@ -142,7 +152,8 @@ Model::Model(const std::string& graph_name,
     func_template_ptr->op_schema_ = std::move(func_schema_ptr);
     func_template_ptr->onnx_func_proto_ = &func;
     model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(),
-                                                                                                func.name()),
+                                                                                                func.name(),
+                                                                                                func.overload()),
                                                           std::move(func_template_ptr));
   }
 
@@ -256,13 +267,16 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
 
   model_local_functions_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {
-    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name()), &func);
+    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name(), func.overload()), &func);
   }
+
+  ORT_THROW_IF_ERROR(ValidateModelLocalFunctionAcyclic(model_local_functions_));
 
   model_local_function_templates_maps_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {
     auto func_schema_ptr = function_utils::CreateSchema(func.domain(),
                                                         func.name(),
+                                                        func.overload(),
                                                         model_local_functions_,
                                                         domain_to_version,
                                                         *schema_registry,
@@ -272,7 +286,8 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     func_template_ptr->op_schema_ = std::move(func_schema_ptr);
     func_template_ptr->onnx_func_proto_ = &func;
     model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(),
-                                                                                                func.name()),
+                                                                                                func.name(),
+                                                                                                func.overload()),
                                                           std::move(func_template_ptr));
   }
 
@@ -694,6 +709,19 @@ Status Model::Load(const PathString& file_path, std::shared_ptr<Model>& p_model,
                    const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                    const logging::Logger& logger, const ModelOptions& options) {
   return LoadModel(file_path, p_model, local_registries, logger, options);
+}
+
+GSL_SUPPRESS(r .30)  // spurious warnings. p_model is potentially reset in the internal call to Load
+GSL_SUPPRESS(r .35)
+Status Model::Load(const PathString& file_path, const PathString& graph_model_path,
+                   std::shared_ptr<Model>& p_model,
+                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                   const logging::Logger& logger, const ModelOptions& options) {
+  const auto loader = [&graph_model_path, &p_model, local_registries, &logger, &options](int fd) {
+    return Model::Load(fd, graph_model_path, p_model, local_registries, logger, options);
+  };
+
+  return LoadModelHelper(file_path, loader);
 }
 
 Status Model::SaveWithExternalInitializers(Model& model, const std::filesystem::path& file_path,

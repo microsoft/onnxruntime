@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <initializer_list>
+
 #ifdef _WIN32
 #pragma warning(disable : 4267)
 #endif
@@ -44,6 +46,27 @@ inline Direction MakeDirection(const std::string& direction) {
             "'. Must be one of 'forward', 'reverse', or 'bidirectional'.");
 }
 
+inline size_t CalculateBufferElementCount(std::initializer_list<int> dimensions) {
+  SafeInt<size_t> count{1};
+
+  for (int dimension : dimensions) {
+    count *= dimension;
+  }
+
+  return count;
+}
+
+inline int CalculateOutputStepLength(int batch_size, int hidden_size, int num_directions, Direction direction) {
+  SafeInt<int> output_step_length{batch_size};
+  output_step_length *= hidden_size;
+
+  if (direction == kForward && num_directions == 2) {
+    output_step_length *= 2;
+  }
+
+  return output_step_length;
+}
+
 /** Allocate a unique_ptr using allocator_, and return a span to the allocated memory so usage is safe
 @param allocator IAllocator to use for the allocation.
 @param size Allocation size. Number of elements of type TAlloc, or total size if TAlloc is 'void'.
@@ -77,7 +100,12 @@ Status ValidateCommonRnnInputs(const Tensor& X,
                                const Tensor* sequence_lens,
                                const Tensor* initial_h,
                                int64_t num_directions,
-                               int64_t hidden_size);
+                               int64_t hidden_size,
+                               // When true, the W and R gate dimension and input/hidden dimension are
+                               // swapped, i.e. W is [num_directions, input_size, mult*hidden_size] and
+                               // R is [num_directions, hidden_size, mult*hidden_size]. This is the layout
+                               // used by the quantized LSTM (DynamicQuantizeLSTM).
+                               bool weights_transposed = false);
 
 /// Copy an input array repeatedly to an output array
 /// @param input_begin Beginning of input

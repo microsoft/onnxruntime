@@ -34,7 +34,7 @@ variables:
       value: $(Agent.TempDirectory)\v13.0
   - name: CmakeCudaArchitectures
     ${{ if eq(parameters.CudaVersion, '12.8') }}:
-      value: 52-real;61-real;75-real;86-real;89-real;90-virtual
+      value: 61-real;75-real;86-real;89-real;120-real;120-virtual
     ${{ if eq(parameters.CudaVersion, '13.0') }}:
       value: 75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual
 
@@ -97,7 +97,7 @@ extends:
           msbuildPlatform: x64
           packageName: x64-cuda
           CudaVersion: ${{ parameters.CudaVersion }}
-          buildparameter: --use_cuda --cuda_home=${{ variables.win_cuda_home }} --enable_onnx_tests --use_webgpu --nvcc_threads 1 --caller_framework WinAI --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ variables.CmakeCudaArchitectures }}"
+          buildparameter: --use_cuda --cuda_home=${{ variables.win_cuda_home }} --enable_onnx_tests --nvcc_threads 1 --flash_nvcc_threads 1 --caller_framework WinAI --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ variables.CmakeCudaArchitectures }}"
           runTests: false
           buildJava: false
           java_artifact_id: onnxruntime_gpu
@@ -129,11 +129,23 @@ extends:
       - template: templates/mac-cpu-packaging-pipeline.yml
         parameters:
           AllowReleasedOpsetOnly: 1
-          AdditionalBuildFlags: '--use_webgpu --skip_tests'
+          AdditionalBuildFlags: '--skip_tests'
           DoEsrp: true
+
+      - stage: Linux_C_API_Packaging_CPU_aarch64
+        dependsOn: []
+        jobs:
+        - template: tools/ci_build/github/azure-pipelines/templates/c-api-linux-cpu.yml@self
+          parameters:
+            AdditionalBuildFlags: '--skip_tests'
+            OnnxruntimeArch: 'aarch64'
+            OnnxruntimeNodejsBindingArch: 'arm64'
+            PoolName: 'onnxruntime-linux-ARM64-CPU-2019'
+            PackageJava: false
+            PackageNodejs: false
 
       - template: templates/foundry-local-nuget-packaging.yml
         parameters:
-          DependsOn: [Setup, Windows_Packaging_CUDA, Windows_Packaging_CPU_arm64, ManagedNugetPackaging, MacOS_C_API_Package_Publish]
+          DependsOn: [Setup, Windows_Packaging_CUDA, Windows_Packaging_CPU_arm64, ManagedNugetPackaging, MacOS_C_API_Package_Publish, Linux_C_API_Packaging_CPU_aarch64]
           DoEsrp: true
           PackageName: 'Microsoft.ML.OnnxRuntime.Foundry'

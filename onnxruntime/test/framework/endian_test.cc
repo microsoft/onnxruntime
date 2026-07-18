@@ -199,7 +199,7 @@ class ConvertRawDataInTensorProtoTest : public ::testing::Test {
                           const std::vector<T>& values) {
     tensor.Clear();
     tensor.set_data_type(data_type);
-    tensor.set_raw_data(values.data(), values.size() * sizeof(T));
+    onnxruntime::utils::SetRawDataInTensorProto(tensor, values.data(), values.size() * sizeof(T));
   }
 
   // Helper to compare float data before and after conversion
@@ -274,6 +274,12 @@ TEST_F(ConvertRawDataInTensorProtoTest, Int16Data) {
   // Convert once
   onnxruntime::utils::ConvertRawDataInTensorProto(tensor);  // Pass by reference, not pointer
 
+  // check that conversion does something
+  ASSERT_EQ(tensor.int32_data_size(), static_cast<int>(original_values.size()));
+  for (int i = 0; i < tensor.int32_data_size(); i++) {
+    EXPECT_NE(tensor.int32_data(i), original_values[i]);
+  }
+
   // Convert back - should restore original values
   onnxruntime::utils::ConvertRawDataInTensorProto(tensor);  // Pass by reference, not pointer
 
@@ -295,6 +301,9 @@ TEST_F(ConvertRawDataInTensorProtoTest, RawFloatData) {
 
   // Convert once
   onnxruntime::utils::ConvertRawDataInTensorProto(tensor);  // Pass by reference, not pointer
+
+  // check that conversion does something
+  EXPECT_NE(tensor.raw_data(), original_raw_data);
 
   // Convert back - should restore original bytes
   onnxruntime::utils::ConvertRawDataInTensorProto(tensor);  // Pass by reference, not pointer
@@ -318,6 +327,12 @@ TEST_F(ConvertRawDataInTensorProtoTest, UInt8NoConversion) {
 
   // Convert once
   onnxruntime::utils::ConvertRawDataInTensorProto(tensor);  // Pass by reference, not pointer
+
+  // check that conversion does nothing
+  ASSERT_EQ(tensor.int32_data_size(), static_cast<int>(original_values.size()));
+  for (int i = 0; i < tensor.int32_data_size(); i++) {
+    EXPECT_EQ(tensor.int32_data(i), original_values[i]);
+  }
 
   // Convert again - this should restore original values
   onnxruntime::utils::ConvertRawDataInTensorProto(tensor);  // Pass by reference, not pointer
@@ -346,6 +361,12 @@ TEST_F(ConvertRawDataInTensorProtoTest, DoubleConversionAndRestore) {
 
   // Convert once
   onnxruntime::utils::ConvertRawDataInTensorProto(tensor);  // Pass by reference, not pointer
+
+  // check that conversion does something
+  ASSERT_EQ(tensor.double_data_size(), static_cast<int>(original_values.size()));
+  for (int i = 0; i < tensor.double_data_size(); i++) {
+    EXPECT_NE(tensor.double_data(i), original_values[i]);
+  }
 
   // Convert again - this should restore original values
   onnxruntime::utils::ConvertRawDataInTensorProto(tensor);  // Pass by reference, not pointer

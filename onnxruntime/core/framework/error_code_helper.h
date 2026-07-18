@@ -5,6 +5,7 @@
 
 #include "core/common/status.h"
 #include "core/common/exceptions.h"
+#include "core/common/make_string.h"
 #include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
@@ -39,6 +40,14 @@ Status ToStatusAndRelease(OrtStatus* ort_status,
 #define API_IMPL_END }
 #endif
 
+// Check condition. If met, return an OrtStatus* error with the given OrtErrorCode.
+#define ORT_API_RETURN_IF(condition, ort_error_code, ...)                                           \
+  do {                                                                                              \
+    if (condition) {                                                                                \
+      return OrtApis::CreateStatus(ort_error_code, ::onnxruntime::MakeString(__VA_ARGS__).c_str()); \
+    }                                                                                               \
+  } while (false)
+
 // Return the OrtStatus if it indicates an error
 #define ORT_API_RETURN_IF_ERROR(expr) \
   do {                                \
@@ -54,3 +63,11 @@ Status ToStatusAndRelease(OrtStatus* ort_status,
     if (!_status.IsOK())                        \
       return onnxruntime::ToOrtStatus(_status); \
   } while (0)
+
+// Check condition. If met, return an OrtStatus* error with the given OrtErrorCode.
+#define ORT_API_RETURN_IF(condition, ort_error_code, ...)                                           \
+  do {                                                                                              \
+    if (condition) {                                                                                \
+      return OrtApis::CreateStatus(ort_error_code, ::onnxruntime::MakeString(__VA_ARGS__).c_str()); \
+    }                                                                                               \
+  } while (false)

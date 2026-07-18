@@ -26,6 +26,7 @@ class WordConvEmbedding final : public OpKernel {
   void CharEmbeddingLookup(
       const int* seq_ptr,
       const float* char_embedding_weight_p,
+      size_t char_embedding_table_size,
       size_t seq_len,
       size_t word_len,
       size_t char_embedding_size,
@@ -51,6 +52,7 @@ class WordConvEmbedding final : public OpKernel {
       size_t word_len) const;
 
   Status ValidateInputShape(
+      const TensorShape& sequence_shape,
       const TensorShape& w_conv_shape,
       const TensorShape& w_char_embedding_shape) const;
 

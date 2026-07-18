@@ -49,14 +49,6 @@ using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExec
                                                                         Concat, Input, 0);
 }  // namespace
 
-// this method will be shared between 'Concat' (CPU and GPU) and
-// 'ConcatFromSequence' ('concat' and 'stack' modes) to validate inputs
-Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
-                                     const InlinedTensorsVector& input_tensors,
-                                     Prepare& p) const {
-  return PrepareForComputeImpl(ctx, input_tensors, p);
-}
-
 namespace {
 TensorShapeVector StridesForStack(const TensorShapeVector& full_strides, uint64_t axis) {
   // if we are stacking, skip the dimension that will be stacked along in the output strides

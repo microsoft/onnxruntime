@@ -12,9 +12,11 @@
 #include "winml_adapter_apis.h"
 #include "core/framework/error_code_helper.h"
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 
 #include <io.h>
 #include <fcntl.h>
+#include <limits>
 #include "google/protobuf/io/zero_copy_stream_impl.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 
@@ -177,9 +179,17 @@ OrtStatus* OrtModelImpl::CreateOrtModelFromPath(const char* path, size_t len, Or
 }
 
 OrtStatus* OrtModelImpl::CreateOrtModelFromData(void* data, size_t len, ::OrtModel** model) {
+  constexpr int32_t kProtobufMaxArraySize = std::numeric_limits<int32_t>::max();
+  if (len > static_cast<size_t>(kProtobufMaxArraySize)) {
+    const auto error_message = onnxruntime::MakeString(
+      "Model data size (", len, " bytes) exceeds maximum supported size (INT32_MAX bytes, approximately 2GB)."
+    );
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, error_message.c_str());
+  }
+
   auto model_proto = std::unique_ptr<ONNX_NAMESPACE::ModelProto>(new ONNX_NAMESPACE::ModelProto());
 
-  auto parse_succeeded = model_proto->ParseFromArray(data, static_cast<int>(len));
+  auto parse_succeeded = model_proto->ParseFromArray(data, onnxruntime::narrow<int32_t>(len));
   if (!parse_succeeded) {
     return OrtApis::CreateStatus(ORT_INVALID_PROTOBUF, "Failed to parse model stream!");
   }
@@ -645,7 +655,7 @@ ORT_API_STATUS_IMPL(
 
   input.set_data_type(ONNXTensorElementDataTypeToTensorProto_DataType(info->tensor_type_info->GetElementType()));
   auto tensor = value->GetMutable<onnxruntime::Tensor>();
-  input.set_raw_data(tensor->DataRaw(), tensor->SizeInBytes());
+  onnxruntime::utils::SetRawDataInTensorProto(input, tensor->DataRaw(), tensor->SizeInBytes());
 
   return nullptr;
   API_IMPL_END
@@ -766,7 +776,7 @@ ORT_API_STATUS_IMPL(
           return OrtApis::CreateStatus(ORT_ENGINE_ERROR, "Undefined tensor type!");
         }
         tensor_proto->set_data_type(prim_type->GetDataType());
-        tensor_proto->set_raw_data(tensor->DataRaw(), tensor->SizeInBytes());
+        onnxruntime::utils::SetRawDataInTensorProto(*tensor_proto, tensor->DataRaw(), tensor->SizeInBytes());
         break;
       }
     }

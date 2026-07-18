@@ -37,6 +37,8 @@ void AppendPluginExecutionProviders(Ort::Env& env,
                                     Ort::SessionOptions& session_options,
                                     const PerformanceTestConfig& test_config);
 
+bool UsesNvidiaDevice(Ort::Env& env, const PerformanceTestConfig& test_config);
+
 }  // namespace utils
 }  // namespace perftest
 }  // namespace onnxruntime

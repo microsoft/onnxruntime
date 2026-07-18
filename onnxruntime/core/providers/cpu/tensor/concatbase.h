@@ -209,8 +209,16 @@ class ConcatBase {
     return Status::OK();
   }
 
+#ifdef SHARED_PROVIDER
   Status PrepareForCompute(OpKernelContext* ctx, const InlinedTensorsVector& input_tensors,
                            Prepare& p) const;
+#else
+  template <typename KernelContextType>
+  inline Status PrepareForCompute(KernelContextType* ctx, const InlinedTensorsVector& input_tensors,
+                                  Prepare& p) const {
+    return PrepareForComputeImpl(ctx, input_tensors, p);
+  }
+#endif
 
  protected:
   template <typename KernelInfoType>

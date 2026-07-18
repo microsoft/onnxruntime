@@ -33,6 +33,20 @@ struct Utils {
   // automatically unregister the EP library.
   static void RegisterAndGetExampleEp(Ort::Env& env, const ExamplePluginInfo& ep_info,
                                       RegisteredEpDeviceUniquePtr& example_ep);
+
+  struct ExampleEpHooks {
+    using ResetSyncCountFn = void (*)();
+    using GetSyncCountFn = uint64_t (*)();
+
+    ResetSyncCountFn reset_sync_count{};
+    GetSyncCountFn get_sync_count{};
+  };
+
+  using LoadExampleEpHooksPtr = std::unique_ptr<ExampleEpHooks, std::function<void(ExampleEpHooks*)>>;
+
+  static void LoadExampleEpHooks(const Utils::ExamplePluginInfo& ep_info,
+                                 LoadExampleEpHooksPtr& example_ep_hooks);
 };
+
 }  // namespace test
 }  // namespace onnxruntime

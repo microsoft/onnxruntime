@@ -8,19 +8,23 @@
 #endif
 
 #include <memory>
+#include <shared_mutex>
 
+#include "core/common/inlined_containers.h"
+#include "core/common/narrow.h"
 #include "core/common/status.h"
 #include "core/framework/config_options.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensor.h"
 
+#include "allocator.h"
 #include "node.h"
 #include "kernel_def.h"
 #include "tensor_helper.h"
 
 namespace onnxruntime {
-struct DataTransferManager;
-struct IExecutionProvider;
+class DataTransferManager;
+class IExecutionProvider;
 }  // namespace onnxruntime
 
 namespace onnxruntime {
@@ -42,18 +46,28 @@ struct OpKernelInfo {
   struct KernelInfoCache {
     explicit KernelInfoCache(const OrtKernelInfo* kernel_info) : kernel_info_(kernel_info) {
       Ort::ConstKernelInfo info{kernel_info};
-      const int input_count = info.GetInputCount();
+      ort_ep_ = info.GetEp();
+      ORT_ENFORCE(ort_ep_ != nullptr, "Plugin EP adapter requires a non-null OrtEp");
+      ep_impl_ = static_cast<const Ep*>(ort_ep_)->EpImpl();
+
+      const size_t input_count = info.GetInputCount();
       constant_input_tensors.resize(input_count);
-      for (int i = 0; i < input_count; ++i) {
+      for (size_t i = 0; i < input_count; ++i) {
         int is_constant = 0;
-        Ort::ConstValue const_input = info.GetTensorConstantInput(i, &is_constant);
+        Ort::ConstValue const_input = info.GetTensorConstantInput(gsl::narrow_cast<int>(i), &is_constant);
         if (is_constant && const_input != nullptr && const_input.IsTensor()) {
           constant_input_tensors[i] = CreateTensorFromApiValue(const_cast<OrtValue*>(static_cast<const OrtValue*>(const_input)));
         }
       }
     }
     const OrtKernelInfo* kernel_info_;
+    const OrtEp* ort_ep_{};
+    const ::onnxruntime::IExecutionProvider* ep_impl_{};
     std::vector<Tensor> constant_input_tensors;
+
+    mutable std::shared_mutex allocator_cache_mutex_;
+    mutable InlinedHashMap<OrtMemType, AllocatorPtr> allocator_cache_;
+
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelInfoCache);
   };
 
@@ -61,13 +75,47 @@ struct OpKernelInfo {
   }
 
   const DataTransferManager& GetDataTransferManager() const noexcept {
-    return (static_cast<const Ep*>(info_.GetEp()))->GetDataTransferManager();
+    return (static_cast<const Ep*>(cache_->ort_ep_))->GetDataTransferManager();
   }
+
+  AllocatorPtr GetAllocator(OrtMemType mem_type) const {
+    {
+      std::shared_lock lock(cache_->allocator_cache_mutex_);
+      auto it = cache_->allocator_cache_.find(mem_type);
+      if (it != cache_->allocator_cache_.end()) {
+        return it->second;
+      }
+    }
+
+    std::unique_lock lock(cache_->allocator_cache_mutex_);
+    // Double-check after acquiring exclusive lock
+    auto it = cache_->allocator_cache_.find(mem_type);
+    if (it != cache_->allocator_cache_.end()) {
+      return it->second;
+    }
+
+    OrtAllocator* ort_allocator_raw = nullptr;
+    Ort::Status status(Ort::GetApi().KernelInfoGetAllocator(cache_->kernel_info_, mem_type, &ort_allocator_raw));
+
+    if (!status.IsOK() || ort_allocator_raw == nullptr) {
+      cache_->allocator_cache_.emplace(mem_type, nullptr);
+      return nullptr;
+    }
+
+    Ort::Allocator ort_allocator{ort_allocator_raw};
+    auto allocator = std::make_shared<IAllocatorWrappingOrtAllocator>(std::move(ort_allocator));
+    cache_->allocator_cache_.emplace(mem_type, allocator);
+    return allocator;
+  }
+
   Node node() const noexcept {
     return Node{cache_->kernel_info_};
   }
   const IExecutionProvider* GetExecutionProvider() const noexcept {
-    return (static_cast<const Ep*>(info_.GetEp()))->EpImpl();
+    return cache_->ep_impl_;
+  }
+  const OrtEp* GetOrtEp() const noexcept {
+    return cache_->ort_ep_;
   }
 
   KernelDef GetKernelDef() const noexcept {
@@ -75,7 +123,7 @@ struct OpKernelInfo {
   }
 
   const Ort::ConstKernelInfo GetKernelInfo() const noexcept {
-    return info_;
+    return Ort::ConstKernelInfo{cache_->kernel_info_};
   }
 
   ConfigOptions GetConfigOptions() const noexcept {
@@ -85,7 +133,7 @@ struct OpKernelInfo {
   }
 
   int GetInputCount() const noexcept {
-    return info_.GetInputCount();
+    return gsl::narrow_cast<int>(info_.GetInputCount());
   }
 
   const std::vector<Tensor>& GetConstantInputTensors() const noexcept {

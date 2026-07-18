@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <utility>
+#include <cstring>
 #include <limits>
 
 #include "core/providers/webgpu/math/unary_elementwise_ops.h"
@@ -194,10 +195,6 @@ class Clip final : public UnaryElementwise {
                          "Clip",
                          std::is_same_v<T, MLFloat16> ? ClipF16Impl : ClipImpl,
                          "", ShaderUsage::UseElementTypeAlias} {}
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-#endif
 
   Status ConfigureProgram(const ComputeContext& context, UnaryElementwiseProgram& program) const override {
     const auto* clip_min_tensor = context.Input<Tensor>(1);
@@ -209,7 +206,9 @@ class Clip final : public UnaryElementwise {
                                       : std::numeric_limits<T>::max()};
     if constexpr (std::is_same_v<T, MLFloat16>) {
       // F16: stores span<f16, 2> as a single float
-      float encoded_value = *reinterpret_cast<const float*>(attr);
+      float encoded_value;
+      static_assert(sizeof(encoded_value) == 2 * sizeof(MLFloat16));
+      std::memcpy(&encoded_value, attr, sizeof(encoded_value));
       program.AddUniformVariable({encoded_value});
     } else {
       static_assert(sizeof(T) == sizeof(float), "T must be f32, i32 or u32");
@@ -218,9 +217,6 @@ class Clip final : public UnaryElementwise {
     }
     return Status::OK();
   }
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
 
   // uniforms.attr is a f32 value. It is encoded as a float for 2 f16 values.
   // bitcast<vec2<f16>>(uniforms.attr)[0] is clip_min, bitcast<vec2<f16>>(uniforms.attr)[1] is clip_max

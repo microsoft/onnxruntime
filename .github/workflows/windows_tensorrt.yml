@@ -21,7 +21,7 @@ jobs:
     name: Windows GPU TensorRT CI Pipeline
     runs-on: [
         "self-hosted",
-        "1ES.Pool=onnxruntime-github-vs2022-latest",
+        "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
         "JobId=windows-tensorrt-build-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
       ]
     steps:
@@ -121,7 +121,7 @@ jobs:
             exit $lastExitCode
           }
           # Execute the build process
-          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --nvcc_threads 1 --use_binskim_compliant_compile_flags --build_dir build --skip_submodule_sync --build_shared_lib --build --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.14.1.48.Windows.win10.cuda-12.9" --cuda_home="${{ runner.temp }}\v12.8" --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --use_binskim_compliant_compile_flags --build_dir build --skip_submodule_sync --build_shared_lib --build --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.14.1.48.Windows.win10.cuda-12.9" --cuda_home="${{ runner.temp }}\v12.8" --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines onnxruntime_QUICK_BUILD=ON --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
@@ -154,7 +154,7 @@ jobs:
       DocUpdateNeeded: false
       ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
       AZCOPY_AUTO_LOGIN_TYPE: MSI
-      AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
+      AZCOPY_MSI_CLIENT_ID: d712a4c7-a0cf-4e87-af75-31510eba0a8e
 
   test:
     name: Windows GPU TensorRT CI Pipeline Test Job
@@ -247,7 +247,7 @@ jobs:
             exit $lastExitCode
           }
 
-          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --use_binskim_compliant_compile_flags --parallel --nvcc_threads 1 --build_dir build --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.14.1.48.Windows.win10.cuda-12.9" --cuda_home="${{ runner.temp }}\v12.8" --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --use_binskim_compliant_compile_flags --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --build_dir build --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.14.1.48.Windows.win10.cuda-12.9" --cuda_home="${{ runner.temp }}\v12.8" --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
@@ -265,4 +265,4 @@ jobs:
       DocUpdateNeeded: false
       ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
       AZCOPY_AUTO_LOGIN_TYPE: MSI
-      AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
+      AZCOPY_MSI_CLIENT_ID: d712a4c7-a0cf-4e87-af75-31510eba0a8e

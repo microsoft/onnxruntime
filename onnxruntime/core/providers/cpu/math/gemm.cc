@@ -225,6 +225,7 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
     if (c_shape != nullptr) {
       data.Bias = c_data;
     }
+    data.BackendKernelSelectorConfig = mlas_backend_kernel_selector_config;
     MlasHalfGemmBatch(M, N, K, 1, &data, thread_pool);
     return;
   }
@@ -296,6 +297,7 @@ Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx,
 
 template <typename T>
 Status Gemm<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& /*prepacked_buffers*/,
+                                          gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                           int /*input_idx*/,
                                           /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
@@ -304,6 +306,7 @@ Status Gemm<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& /*prepac
 
 template <>
 Status Gemm<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                              gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                               int input_idx,
                                               /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;

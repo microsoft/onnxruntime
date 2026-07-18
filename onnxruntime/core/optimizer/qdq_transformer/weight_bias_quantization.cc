@@ -189,14 +189,14 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
           graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node.Name() + "_weight_q"), &weight_q_type_proto);
       Node& weight_q_node = graph.AddNode(
           graph.GenerateNodeArgName(node.Name() + "_weight_q"), QDQ::QOpName, "Weight Q node",
-          {node.MutableInputDefs()[1], weight_scale_arg, &weight_zp_arg}, {&weight_q_arg}, nullptr, node.Domain());
+          {node.MutableInputDefs()[1], weight_scale_arg, &weight_zp_arg}, {&weight_q_arg}, node, nullptr, node.Domain());
 
       // DQ from int8 to float32.
       NodeArg& weight_dq_arg =
           graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node.Name() + "_weight_dq"), weight_arg->TypeAsProto());
       Node& weight_dq_node =
           graph.AddNode(graph.GenerateNodeArgName(node.Name() + "_weight_dq"), QDQ::DQOpName, "Weight DQ node",
-                        {&weight_q_arg, weight_scale_arg, &weight_zp_arg}, {&weight_dq_arg}, nullptr, node.Domain());
+                        {&weight_q_arg, weight_scale_arg, &weight_zp_arg}, {&weight_dq_arg}, node, nullptr, node.Domain());
       graph.AddEdge(weight_q_node.Index(), weight_dq_node.Index(), 0, 0);
       node.MutableInputDefs()[1] = &weight_dq_arg;
       graph.AddEdge(weight_dq_node.Index(), node.Index(), 0, 1);
@@ -211,14 +211,14 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
                                                          weight_scale_arg->TypeAsProto());
       Node& mul_node =
           graph.AddNode(graph.GenerateNodeName(node.Name() + "_scale"), "Mul", "Bias scale node",
-                        {dq_0.MutableInputDefs()[1], weight_scale_arg}, {&bias_scale_arg}, nullptr, node.Domain());
+                        {dq_0.MutableInputDefs()[1], weight_scale_arg}, {&bias_scale_arg}, node, nullptr, node.Domain());
 
       // fp_bias / scale.
       NodeArg& bias_div_arg =
           graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node.Name() + "_bias_div"), bias_arg->TypeAsProto());
       Node& div_node =
           graph.AddNode(graph.GenerateNodeName(node.Name() + "_bias_div"), "Div", "Bias div node",
-                        {node.MutableInputDefs()[2], &bias_scale_arg}, {&bias_div_arg}, nullptr, node.Domain());
+                        {node.MutableInputDefs()[2], &bias_scale_arg}, {&bias_div_arg}, node, nullptr, node.Domain());
       graph.AddEdge(mul_node.Index(), div_node.Index(), 0, 1);
 
       // Round(fp_bias / scale).
@@ -226,7 +226,7 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
           graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node.Name() + "_bias_div_round"), bias_arg->TypeAsProto());
       Node& round_node =
           graph.AddNode(graph.GenerateNodeName(node.Name() + "_bias_div_round"), "Round", "Bias div round node",
-                        {&bias_div_arg}, {&bias_div_round_arg}, nullptr, node.Domain());
+                        {&bias_div_arg}, {&bias_div_round_arg}, node, nullptr, node.Domain());
       graph.AddEdge(div_node.Index(), round_node.Index(), 0, 0);
 
       // Cast(Round(fp_bias / scale)) to int32.
@@ -236,7 +236,7 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
       NodeArg& bias_int32_arg =
           graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node.Name() + "_bias_int32"), &bias_int32_type_proto);
       Node& cast_node = graph.AddNode(graph.GenerateNodeName(node.Name() + "_bias_int32"), "Cast", "Bias INT32 node",
-                                      {&bias_div_round_arg}, {&bias_int32_arg}, nullptr, node.Domain());
+                                      {&bias_div_round_arg}, {&bias_int32_arg}, node, nullptr, node.Domain());
       cast_node.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32));
       graph.AddEdge(round_node.Index(), cast_node.Index(), 0, 0);
 
@@ -245,7 +245,7 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
           graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node.Name() + "_bias_dq"), bias_arg->TypeAsProto());
       Node& bias_dq_node =
           graph.AddNode(graph.GenerateNodeName(node.Name() + "_bias_dq"), QDQ::DQOpName, "Bias DQ node",
-                        {&bias_int32_arg, &bias_scale_arg}, {&bias_dq_arg}, nullptr, node.Domain());
+                        {&bias_int32_arg, &bias_scale_arg}, {&bias_dq_arg}, node, nullptr, node.Domain());
       if (!is_per_tensor_scale) {
         bias_dq_node.AddAttribute("axis", static_cast<int64_t>(0));
       }

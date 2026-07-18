@@ -1,4 +1,10 @@
 parameters:
+
+- name: is_nightly_build
+  displayName: 'Nightly or Release Candidate build. Set to false if Release build.'
+  type: boolean
+  default: true
+
 - name: enable_linux_cpu
   displayName: 'Whether Linux CPU package is built.'
   type: boolean
@@ -19,26 +25,6 @@ parameters:
   type: boolean
   default: true
 
-- name: enable_windows_arm64_qnn
-  displayName: 'Whether Windows ARM64 package with QNN EP is built.'
-  type: boolean
-  default: true
-
-- name: enable_windows_arm64ec_qnn
-  displayName: 'Whether Windows ARM64EC package with QNN EP is built.'
-  type: boolean
-  default: true
-
-- name: enable_windows_x64_qnn
-  displayName: 'Whether Windows x86_64 package with QNN EP is built.'
-  type: boolean
-  default: true
-
-- name: enable_linux_x64_qnn
-  displayName: 'Whether Linux x86_64 package with QNN EP is built.'
-  type: boolean
-  default: true
-
 - name: build_py_parameters
   displayName: 'Specify extra build parameters'
   type: string
@@ -55,11 +41,12 @@ parameters:
   - RelWithDebInfo
   - MinSizeRel
 
-# Only applies to QNN packages.
-- name: qnn_sdk_version
-  type: string
-  displayName: 'QNN SDK version. Only for QNN packages.'
-  default: 2.42.0.251225
+variables:
+  # Magic env-var used by CI build scripts & piped around several docker containers.
+  # This should also be set to `1` for release candidates, despite the name. RCs do not yet have proper handling, so
+  # wheels can only be nightly or full release.
+  # FUTURE WORK: Add proper RC handling/suffix for wheels. Replace this w/ nightly/RC/release options.
+  NIGHTLY_BUILD: ${{ iif(parameters.is_nightly_build, '1', '0') }}
 
 trigger: none
 
@@ -103,10 +90,5 @@ extends:
         enable_windows_cpu: ${{ parameters.enable_windows_cpu }}
         enable_mac_cpu: ${{ parameters.enable_mac_cpu }}
         enable_linux_arm: ${{ parameters.enable_linux_arm }}
-        enable_windows_arm64_qnn: ${{ parameters.enable_windows_arm64_qnn }}
-        enable_windows_arm64ec_qnn: ${{ parameters.enable_windows_arm64ec_qnn }}
-        enable_windows_x64_qnn: ${{ parameters.enable_windows_x64_qnn }}
-        enable_linux_x64_qnn: ${{ parameters.enable_linux_x64_qnn }}
         build_py_parameters: ${{ parameters.build_py_parameters }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
-        qnn_sdk_version: ${{ parameters.qnn_sdk_version }}

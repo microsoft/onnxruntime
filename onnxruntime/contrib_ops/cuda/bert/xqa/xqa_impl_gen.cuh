@@ -17,26 +17,19 @@ namespace NAMESPACE_NAME {
 // XQA kernels require SM80+ (Ampere or newer). We need a guard that works correctly
 // during both host and device compilation passes:
 //   - Device pass: __CUDA_ARCH__ is defined, check it directly.
-//   - Host pass: __CUDA_ARCH__ is NOT defined. Use __CUDA_ARCH_LIST__ (available since
-//     CUDA 11.5), which nvcc defines as a comma-separated ascending list of target
-//     architectures (e.g. 750,800). In #if, the comma operator returns the rightmost
-//     (highest) value, so __CUDA_ARCH_LIST__ >= 800 checks the max target arch.
-//   - Non-nvcc (e.g. IDE parser): cuda_hint.cuh defines __CUDA_ARCH__ 900, which
-//     takes the first branch.
-// Using !defined(__CUDA_ARCH__) here would be WRONG: it always evaluates true during
-// the host pass, causing the kernel to be declared even when no SM80+ device code
-// exists. CUDA 13+ then fails to generate a host stub, producing C2129 / LNK2001.
+//   - Host pass: rely on HAS_SM80_OR_LATER from cmake/external/cuda_configuration.cmake.
+//     If any SM80+ arch is enabled, the host stub must be emitted.
+//   - Non-nvcc parsers usually won't see the CMake-provided define, so keep editor parsing
+//     intact by taking the fallback branch when __CUDACC__ is not defined.
+// Using only !defined(__CUDA_ARCH__) here would be WRONG: it always evaluates true during
+// the host pass, causing the kernel to be declared even when no SM80+ device code exists.
+// CUDA 13+ then fails to generate a host stub, producing C2129 / LNK2001.
 #undef XQA_HAS_SM80_TARGET
 #ifdef __CUDA_ARCH__
 #if __CUDA_ARCH__ >= 800
 #define XQA_HAS_SM80_TARGET 1
 #endif
-#elif defined(__CUDA_ARCH_LIST__)
-#if __CUDA_ARCH_LIST__ >= 800
-#define XQA_HAS_SM80_TARGET 1
-#endif
-#else
-// Non-nvcc fallback: assume supported (IDE parsers, etc.)
+#elif defined(HAS_SM80_OR_LATER) || !defined(__CUDACC__)
 #define XQA_HAS_SM80_TARGET 1
 #endif
 
@@ -63,9 +56,13 @@ inline Status Launch(
     [[maybe_unused]] const float scale,
     [[maybe_unused]] const bool is_bsnh,
     [[maybe_unused]] const int* past_seq_lens,
+    [[maybe_unused]] const float* attention_sinks,
     [[maybe_unused]] const float* kv_cache_scale,
     [[maybe_unused]] void* workspace,
-    [[maybe_unused]] size_t workspace_size) {
+    [[maybe_unused]] size_t workspace_size,
+    // No default: every caller must thread local_window_size through explicitly so a future
+    // caller that forgets it fails to compile instead of silently running global attention.
+    [[maybe_unused]] const int local_window_size) {
 #ifdef XQA_HAS_SM80_TARGET
   const InputHead* q_ptr = reinterpret_cast<const InputHead*>(query);
   GMemKVCacheHead* k_ptr = reinterpret_cast<GMemKVCacheHead*>(const_cast<void*>(key_cache));
@@ -98,13 +95,30 @@ inline Status Launch(
     cudaMemsetAsync(semaphores, 0, semaphore_size, stream);
   }
 
+#if SLIDING_WINDOW
+  // SLIDING_WINDOW is #defined to 1 only by the fp16/bf16/int8/fp8 xqa_loader_*_impl.cuh headers
+  // that include this file; it defaults to 0 in defines.h, so this block is dead (and
+  // local_window_size is unused) in any translation unit that does not opt in.
+  // ORT local_window_size semantics: -1 => global attention; >0 => each query attends to the
+  // last local_window_size tokens (including the current one). XQA's slidingWinSize uses the
+  // same "last N tokens incl. current" definition, so pass it through directly. For global
+  // attention, use max_seq_len so the kernel's runtime guard (cacheSeqLen > slidingWinSize) is
+  // never taken and no masking work is performed (numerically identical to the global kernel).
+  uint32_t const sliding_win_size = (local_window_size > 0)
+                                        ? static_cast<uint32_t>(local_window_size)
+                                        : static_cast<uint32_t>(max_seq_len);
+#endif
+
   launchMHA(
       device_prop,
       static_cast<uint32_t>(kv_num_heads),
+#if SLIDING_WINDOW
+      sliding_win_size,
+#endif
       scale,
       out_ptr,
       q_ptr,
-      nullptr,  // attentionSinks
+      attention_sinks,
       k_ptr,
       v_ptr,
       is_bsnh,
@@ -120,5 +134,30 @@ inline Status Launch(
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "XQA is only supported on Ampere (SM80) or newer GPUs.");
 #endif
 }
+
+#ifndef GENERATE_CUBIN
+// Host helper: dynamic shared-memory size (bytes) this kernel instantiation requests at launch,
+// read from the device `smemSize` symbol. Because it is read from the loaded module, the value
+// reflects the ACTUAL kernel that will run -- including a kernel JIT-compiled from PTX for a
+// different SM, whose shared-memory layout (and therefore smemSize) was fixed at PTX-generation
+// time. The GQA dispatcher uses this to avoid selecting XQA on devices whose per-block opt-in
+// shared memory is smaller than the kernel needs, which would otherwise fail at launch with
+// cudaErrorInvalidValue (e.g. consumer Blackwell sm_120 running a kernel JIT'd from sm_90 PTX,
+// where the Hopper layout needs ~140 KB but sm_120 allows only ~99 KB). Returns 0 if the value
+// cannot be queried.
+inline size_t GetSmemSize() {
+#ifdef XQA_HAS_SM80_TARGET
+  uint32_t size = 0;
+  if (cudaMemcpyFromSymbol(&size, smemSize, sizeof(smemSize)) != cudaSuccess) {
+    (void)cudaGetLastError();  // clear any sticky error so it does not leak to the next CUDA call
+    return 0;
+  }
+  return static_cast<size_t>(size);
+#else
+  return 0;
+#endif
+}
+#endif  // GENERATE_CUBIN
+
 #undef XQA_HAS_SM80_TARGET
 }  // namespace NAMESPACE_NAME

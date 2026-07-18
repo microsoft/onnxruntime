@@ -11,6 +11,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/common.h"
 #include "core/common/narrow.h"
+#include "core/common/path_utils.h"
 #include "core/common/safeint.h"
 #include "core/framework/ort_value.h"
 #include "nv_execution_provider.h"
@@ -1047,6 +1048,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   dump_ep_context_model_ = info.dump_ep_context_model;
   ep_context_file_path_ = info.ep_context_file_path;
   ep_context_embed_mode_ = info.ep_context_embed_mode;
+  compile_only_mode_ = info.compile_only_mode;
   enable_engine_cache_for_ep_context_model();
   cache_prefix_ = info.engine_cache_prefix;
   // use a more global cache if given
@@ -1137,10 +1139,10 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   if (dump_ep_context_model_) {
     // TODO(maximilianm) not sure if this is still needed
     engine_cache_enable_ = true;
-    if (IsAbsolutePath(cache_path_)) {
+    if (path_utils::IsAbsolutePath(cache_path_)) {
       LOGS_DEFAULT(ERROR) << "In the case of dumping context model and for security purpose, the trt_engine_cache_path should be set with a relative path, but it is an absolute path:  " << cache_path_;
     }
-    if (IsRelativePathToParentPath(cache_path_)) {
+    if (path_utils::IsRelativePathToParentPath(cache_path_)) {
       LOGS_DEFAULT(ERROR) << "In the case of dumping context model and for security purpose, The trt_engine_cache_path has '..', it's not allowed to point outside the directory.";
     }
 
@@ -1149,7 +1151,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
     engine_cache_relative_path_to_context_model_dir = cache_path_;
 
     // Make cache_path_ to be the relative path of ep_context_file_path_
-    cache_path_ = GetPathOrParentPathOfCtxModel(ep_context_file_path_).append(cache_path_).string();
+    cache_path_ = path_utils::GetDirOrParentPath(ep_context_file_path_).append(cache_path_).string();
   }
 
   if (engine_decryption_enable_) {
@@ -1280,7 +1282,9 @@ void NvExecutionProvider::HandleCudaGraphStart(cudaStream_t stream, bool require
 }
 
 bool NvExecutionProvider::IsGraphCaptureEnabled() const {
-  return cuda_graph_enable_;
+  // Return false so that ORT's framework does not cache this EP for ORT-managed graph capture/replay.
+  // NvTensorRTRTX manages CUDA graph capture/replay internally.
+  return false;
 }
 
 bool NvExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
@@ -1289,7 +1293,8 @@ bool NvExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
   return false;
 }
 
-Status NvExecutionProvider::ReplayGraph(int graph_annotation_id) {
+Status NvExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync*/) {
+  // The sync parameter is ignored: NV TRT RTX EP manages its own CUDA graph lifecycle and always replays synchronously.
   // This is hardcoded to always return OK because we are not allowing the ORT framework to have the CUDA graph control.
   (void)graph_annotation_id;
   return Status::OK();
@@ -1776,7 +1781,12 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
         SubGraphCollection_t parser_nodes_list;
         TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log_);
         auto trt_builder = GetBuilder(trt_logger);
+#if TRT_MAJOR_RTX >= 2 || (TRT_MAJOR_RTX == 1 && ((TRT_MINOR_RTX == 5 && TRT_BUILD_RTX >= 97) || TRT_MINOR_RTX >= 6))
+        // kSTRONGLY_TYPED == 0 => bit flag value is 1U. Use literal to avoid deprecated-enum warning (deprecated since 1.5.0.97).
+        constexpr uint32_t network_flags = 1U;
+#else
         auto network_flags = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
+#endif
         auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(network_flags));
 
         bool is_model_supported = false;
@@ -2016,6 +2026,13 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
     const auto& node = graph.GetNode(node_idx);
     const bool is_context_node = node && !node->OpType().empty() && node->OpType() == EPCONTEXT_OP;
     if (is_context_node) {
+      // Only claim EPContext nodes that belong to this EP.
+      // If the source attribute is present and doesn't match, skip the node.
+      const auto& attrs = node->GetAttributes();
+      if (attrs.count(SOURCE) > 0 &&
+          attrs.at(SOURCE).s() != kNvTensorRTRTXExecutionProvider) {
+        continue;
+      }
       SubGraph_t supported_node_vector(std::make_pair(std::vector<size_t>{node_idx}, true));
       std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, model_hash, subgraph_idx++);
 
@@ -2268,17 +2285,10 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
                              "The ONNX model was not provided as path. "
                              "Please use provide an ONNX bytestream to enable refitting the weightless engine.");
     } else {
-      // check if file path to ONNX is legal
-      if (path_check && IsAbsolutePath(onnx_model_path.string())) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "For security purpose, the ONNX model path should be set with "
-                               "a relative path, but it is an absolute path: " +
-                                   onnx_model_path.string());
-      }
-      if (path_check && IsRelativePathToParentPath(onnx_model_path.string())) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "The ONNX model path has '..'. For security purpose, it's not "
-                               "allowed to point outside the directory.");
+      // Validate that the ONNX model path does not escape the model directory.
+      if (path_check && !onnx_model_filename.empty()) {
+        ORT_RETURN_IF_ERROR(utils::ValidateExternalDataPathFromDir(
+            std::filesystem::path(onnx_model_folder_path), std::filesystem::path(onnx_model_filename)));
       }
 
       if (!(std::filesystem::exists(onnx_model_path) && std::filesystem::is_regular_file(onnx_model_path))) {
@@ -2704,7 +2714,12 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 
   TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log_);
   auto trt_builder = GetBuilder(trt_logger);
+#if TRT_MAJOR_RTX >= 2 || (TRT_MAJOR_RTX == 1 && ((TRT_MINOR_RTX == 5 && TRT_BUILD_RTX >= 97) || TRT_MINOR_RTX >= 6))
+  // kSTRONGLY_TYPED == 0 => bit flag value is 1U. Use literal to avoid deprecated-enum warning (deprecated since 1.5.0.97).
+  constexpr uint32_t network_flags = 1U;
+#else
   auto network_flags = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
+#endif
   auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(network_flags));
   auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
   auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
@@ -2916,7 +2931,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 
   // Generate file name for dumping ep context model
   if (dump_ep_context_model_ && ctx_model_path_.empty()) {
-    ctx_model_path_ = GetCtxModelPath(ep_context_file_path_, model_path_);
+    ctx_model_path_ = path_utils::GetPathWithStemSuffix(ep_context_file_path_, model_path_, "_ctx.onnx");
   }
   {
     auto lock = GetApiLock();
@@ -2942,35 +2957,39 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
                             << serialized_engine->size() << " bytes";
     }
 
-    trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(serialized_engine->data(), serialized_engine->size()));
-    if (trt_engine == nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "NvTensorRTRTX EP failed to deserialize engine for fused node: " + fused_node.Name());
-    }
-
-    trt_runtime_config = std::unique_ptr<nvinfer1::IRuntimeConfig>(trt_engine->createRuntimeConfig());
-    if (trt_runtime_config && cuda_graph_enable_) {
-      trt_runtime_config->setDynamicShapesKernelSpecializationStrategy(nvinfer1::DynamicShapesKernelSpecializationStrategy::kEAGER);
-#if TRT_MAJOR_RTX > 1 || (TRT_MAJOR_RTX == 1 && TRT_MINOR_RTX >= 3)
-      auto cuda_strategy_flag = trt_runtime_config->setCudaGraphStrategy(nvinfer1::CudaGraphStrategy::kWHOLE_GRAPH_CAPTURE);
-      LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] CUDA graph strategy with RTX Graph capture enabled : " << cuda_strategy_flag;
-#else
-      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] CUDA graph is enabled but RTX Graph capture is not available. "
-                            << "The current TRT RTX version does not support RTX Graph. "
-                            << "Please upgrade to TRT RTX >= 1.3 to use RTX Graph capture feature for optimal CUDA graph performance.";
-#endif
-    }
-    trt_runtime_config->setExecutionContextAllocationStrategy(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED);
-    if (!runtime_cache_.empty()) {
-      runtime_cache_file = (runtime_cache_ / fused_node.Name()).string();
-      trt_runtime_cache = std::unique_ptr<nvinfer1::IRuntimeCache>(trt_runtime_config->createRuntimeCache());
-      auto cache_data = file_utils::ReadFile(runtime_cache_file);
-      if (!trt_runtime_cache->deserialize(cache_data.data(), cache_data.size())) {
-        trt_runtime_cache = std::unique_ptr<nvinfer1::IRuntimeCache>(trt_runtime_config->createRuntimeCache());
-        LOGS_DEFAULT(INFO) << "TensorRT RTX failed to deserialize the runtime cache, will overwrite with new one" << std::endl;
+    // In compile-only mode the session will not be used for inference. Skip deserialization
+    // and GPU context creation — the serialized engine is already saved as an EP context node.
+    if (!compile_only_mode_) {
+      trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(serialized_engine->data(), serialized_engine->size()));
+      if (trt_engine == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                               "NvTensorRTRTX EP failed to deserialize engine for fused node: " + fused_node.Name());
       }
-      if (!trt_runtime_config->setRuntimeCache(*trt_runtime_cache)) {
-        LOGS_DEFAULT(INFO) << "TensorRT RTX failed to set the runtime cache" << std::endl;
+
+      trt_runtime_config = std::unique_ptr<nvinfer1::IRuntimeConfig>(trt_engine->createRuntimeConfig());
+      if (trt_runtime_config && cuda_graph_enable_) {
+        trt_runtime_config->setDynamicShapesKernelSpecializationStrategy(nvinfer1::DynamicShapesKernelSpecializationStrategy::kEAGER);
+#if TRT_MAJOR_RTX > 1 || (TRT_MAJOR_RTX == 1 && TRT_MINOR_RTX >= 3)
+        auto cuda_strategy_flag = trt_runtime_config->setCudaGraphStrategy(nvinfer1::CudaGraphStrategy::kWHOLE_GRAPH_CAPTURE);
+        LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] CUDA graph strategy with RTX Graph capture enabled : " << cuda_strategy_flag;
+#else
+        LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] CUDA graph is enabled but RTX Graph capture is not available. "
+                              << "The current TRT RTX version does not support RTX Graph. "
+                              << "Please upgrade to TRT RTX >= 1.3 to use RTX Graph capture feature for optimal CUDA graph performance.";
+#endif
+      }
+      trt_runtime_config->setExecutionContextAllocationStrategy(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED);
+      if (!runtime_cache_.empty()) {
+        runtime_cache_file = (runtime_cache_ / fused_node.Name()).string();
+        trt_runtime_cache = std::unique_ptr<nvinfer1::IRuntimeCache>(trt_runtime_config->createRuntimeCache());
+        auto cache_data = file_utils::ReadFile(runtime_cache_file);
+        if (!trt_runtime_cache->deserialize(cache_data.data(), cache_data.size())) {
+          trt_runtime_cache = std::unique_ptr<nvinfer1::IRuntimeCache>(trt_runtime_config->createRuntimeCache());
+          LOGS_DEFAULT(INFO) << "TensorRT RTX failed to deserialize the runtime cache, will overwrite with new one" << std::endl;
+        }
+        if (!trt_runtime_config->setRuntimeCache(*trt_runtime_cache)) {
+          LOGS_DEFAULT(INFO) << "TensorRT RTX failed to set the runtime cache" << std::endl;
+        }
       }
     }
 
@@ -3012,6 +3031,24 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
       }
     }
+  }
+
+  // In compile-only mode the engine was built and saved but GPU deserialization was skipped.
+  // Return a stub compute function — it will never be called since the session is
+  // destroyed immediately after compilation without running any inference.
+  if (compile_only_mode_) {
+    NodeComputeInfo stub_compute_info;
+    stub_compute_info.create_state_func = [](ComputeContext*, FunctionState* state) -> int {
+      *state = nullptr;
+      return 0;
+    };
+    stub_compute_info.release_state_func = [](FunctionState) {};
+    stub_compute_info.compute_func = [](FunctionState, const OrtApi*, OrtKernelContext*) -> Status {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "NvTensorRTRTX EP: inference is not available in a compile-only session");
+    };
+    node_compute_funcs.push_back(std::move(stub_compute_info));
+    return Status::OK();
   }
 
   if (weight_stripped_engine_refit_) {
@@ -3301,6 +3338,24 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
                                                                        std::unordered_map<std::string, size_t>& input_map,
                                                                        std::unordered_map<std::string, size_t>& output_map,
                                                                        std::vector<NodeComputeInfo>& node_compute_funcs) {
+  // Compile-only sessions never run inference. The input is already an EPContext model,
+  // so no engine save is needed either — skip deserialization and execution context creation
+  // and register a stub compute function that will not be invoked.
+  if (compile_only_mode_) {
+    NodeComputeInfo stub_compute_info;
+    stub_compute_info.create_state_func = [](ComputeContext*, FunctionState* state) -> int {
+      *state = nullptr;
+      return 0;
+    };
+    stub_compute_info.release_state_func = [](FunctionState) {};
+    stub_compute_info.compute_func = [](FunctionState, const OrtApi*, OrtKernelContext*) -> Status {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "NvTensorRTRTX EP: inference is not available in a compile-only session");
+    };
+    node_compute_funcs.push_back(std::move(stub_compute_info));
+    return Status::OK();
+  }
+
   std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
   tensorrt_ptr::unique_pointer_exec_ctx trt_context;
   std::unordered_map<std::string, size_t> input_indexes;   // TRT engine input name -> ORT kernel context input index

@@ -5,6 +5,7 @@
 #if USE_FLASH_ATTENTION
 
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
+#include <algorithm>
 #include <cutlass/numeric_types.h>
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash.h"
@@ -106,16 +107,16 @@ void set_params_fprop(Flash_fwd_params& params,
 #pragma warning(disable : 4267)  // Ignore conversion from 'size_t' to 'int', possible loss of data
 #pragma warning(disable : 4244)  // Ignore conversion from 'double' to 'float', possible loss of data
 #endif
-  params.b = batch_size;
-  params.h = num_heads;
-  params.h_k = num_heads_k;
-  params.h_h_k_ratio = num_heads / num_heads_k;
-  params.seqlen_q = seqlen_q;
-  params.seqlen_k = seqlen_k;
-  params.seqlen_q_rounded = seqlen_q_rounded;
-  params.seqlen_k_rounded = seqlen_k_rounded;
-  params.d = head_size;
-  params.d_rounded = head_size_rounded;
+  params.b = static_cast<int>(batch_size);
+  params.h = static_cast<int>(num_heads);
+  params.h_k = static_cast<int>(num_heads_k);
+  params.h_h_k_ratio = static_cast<int>(num_heads / num_heads_k);
+  params.seqlen_q = static_cast<int>(seqlen_q);
+  params.seqlen_k = static_cast<int>(seqlen_k);
+  params.seqlen_q_rounded = static_cast<int>(seqlen_q_rounded);
+  params.seqlen_k_rounded = static_cast<int>(seqlen_k_rounded);
+  params.d = static_cast<int>(head_size);
+  params.d_rounded = static_cast<int>(head_size_rounded);
 
   // Set the different scale values.
   if (softcap > 0.0) {
@@ -136,10 +137,10 @@ void set_params_fprop(Flash_fwd_params& params,
     params.is_causal = false;
   }
   if (window_size_left < 0 && window_size_right >= 0) {
-    window_size_left = seqlen_k;
+    window_size_left = static_cast<int>(seqlen_k);
   }
   if (window_size_left >= 0 && window_size_right < 0) {
-    window_size_right = seqlen_k;
+    window_size_right = static_cast<int>(seqlen_k);
   }
 #if defined(_MSC_VER)
 #pragma warning(pop)
@@ -198,6 +199,7 @@ void run_mha_fwd(Flash_fwd_params& params, cudaStream_t stream, bool force_split
 size_t num_splits_heuristic(size_t batch_size, size_t seqlen_q, size_t seqlen_k, size_t num_heads,
                             size_t head_size, size_t num_SMs, size_t max_splits) {
   // This needs to match with run_mha_fwd_splitkv_dispatch
+  num_SMs = std::max<size_t>(num_SMs, 1);
   const size_t block_n = head_size <= 64 ? 256 : (head_size <= 128 ? 128 : 64);
   const size_t num_n_blocks = (seqlen_k + block_n - 1) / block_n;
   // Technically kBlockM = 64 only for the splitKV kernels, not the standard kernel.
@@ -209,6 +211,9 @@ size_t num_splits_heuristic(size_t batch_size, size_t seqlen_q, size_t seqlen_k,
     return 1;
   }
   max_splits = std::min({max_splits, num_SMs, num_n_blocks});
+  if (max_splits <= 1) {
+    return 1;
+  }
   float max_efficiency = 0.f;
   std::vector<float> efficiency;
   efficiency.reserve(max_splits);

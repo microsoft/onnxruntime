@@ -8,6 +8,10 @@ parameters:
   - 'production (@latest)'
   - 'custom'
   default: 'nightly (@dev)'
+- name: EnableReactNative
+  displayName: 'Whether to build React Native packages'
+  type: boolean
+  default: false
 
 variables:
   # pipeline should define the following variables
@@ -26,7 +30,7 @@ variables:
 resources:
   pipelines:
   - pipeline: build
-    source: 'Zip-Nuget-Java-Nodejs Packaging Pipeline'
+    source: 'Nuget - Packaging - CUDA13'
     trigger: true
     branch: main
   repositories:
@@ -70,21 +74,23 @@ extends:
         WebCpuPoolName: 'onnxruntime-Win2022-VS2022-webgpu-A10'
         is1ES: true
 
-    - template: templates/react-native-ci.yml
-      parameters:
-        NpmPackagingMode: ${{ variables.NpmPackagingMode }}
-        BuildConfig: 'Release'
-        PoolName: 'onnxruntime-Ubuntu2404-AMD-CPU'
-        PackageName: 'onnxruntime-react-native'
-        InitialStageDependsOn: 'Precheck_and_extract_commit'
-        enable_code_sign: false
+    - ${{ if eq(parameters.EnableReactNative, true) }}:
+      - template: templates/react-native-ci.yml
+        parameters:
+          NpmPackagingMode: ${{ variables.NpmPackagingMode }}
+          BuildConfig: 'Release'
+          PoolName: 'onnxruntime-Ubuntu2404-AMD-CPU'
+          PackageName: 'onnxruntime-react-native'
+          InitialStageDependsOn: 'Precheck_and_extract_commit'
+          enable_code_sign: false
 
     - stage: Download_Node_Package_And_Publish_Validation_Script
       dependsOn:
-      - ReactNative_CI_Android
-      - ReactNative_CI_iOS
       - Build_web_Release
       - Build_web_Debug
+      - ${{ if eq(parameters.EnableReactNative, true) }}:
+        - ReactNative_CI_iOS
+        - ReactNative_CI_Android
       jobs:
       - job: Download_Node_Package_And_Publish_Validation_Script
         pool: 'onnxruntime-Win-CPU-VS2022-Latest'
@@ -92,11 +98,11 @@ extends:
           runCodesignValidationInjection: false
         timeoutInMinutes: 10
         steps:
-    #    This pipeline usually are triggered by Zip-Nuget-Java-Nodejs Packaging Pipeline,
-    #    The NPM_packages is from Android_Java_API_AAR_Packaging_QNN, not from RN_CI
+    #    This pipeline is triggered by the Nuget - Packaging - CUDA13 pipeline.
+    #    The NPM_packages is from the Nodejs_Packaging stage.
         - download: build
           artifact: 'NPM_packages'
-          displayName: 'Download NPM_packages from Zip-Nuget-Java-Nodejs Packaging Pipeline Pipeline Artifact'
+          displayName: 'Download NPM_packages from CUDA 13 Packaging Pipeline Artifact'
 
         - task: CopyFiles@2
           inputs:

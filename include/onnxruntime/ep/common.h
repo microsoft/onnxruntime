@@ -41,3 +41,24 @@
     OrtStatus* _status = (status_expr); \
     Ort::Status _ignored{_status};      \
   } while (false)
+
+// Helper macros to convert exceptions to OrtStatus* return values.
+// Usage:
+//   EXCEPTION_TO_RETURNED_STATUS_BEGIN
+//     ... code that may throw ...
+//   EXCEPTION_TO_RETURNED_STATUS_END
+#define EXCEPTION_TO_RETURNED_STATUS_BEGIN try {
+#define EXCEPTION_TO_RETURNED_STATUS_END                  \
+  }                                                       \
+  catch (const Ort::Exception& ex) {                      \
+    Ort::Status status(ex);                               \
+    return status.release();                              \
+  }                                                       \
+  catch (const std::exception& ex) {                      \
+    Ort::Status status(ex.what(), ORT_EP_FAIL);           \
+    return status.release();                              \
+  }                                                       \
+  catch (...) {                                           \
+    Ort::Status status("Unknown exception", ORT_EP_FAIL); \
+    return status.release();                              \
+  }

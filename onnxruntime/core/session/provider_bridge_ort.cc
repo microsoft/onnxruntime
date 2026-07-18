@@ -1295,6 +1295,16 @@ struct ProviderHostImpl : ProviderHost {
     return onnxruntime::utils::HasExternalDataInMemory(ten_proto);
   }
 
+  Status Utils__ValidateExternalDataPath(const std::filesystem::path& model_path,
+                                         const std::filesystem::path& external_data_path) override {
+    return onnxruntime::utils::ValidateExternalDataPath(model_path, external_data_path);
+  }
+
+  Status Utils__ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
+                                                const std::filesystem::path& external_data_path) override {
+    return onnxruntime::utils::ValidateExternalDataPathFromDir(model_dir, external_data_path);
+  }
+
   // Model (wrapped)
   std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                           const IOnnxRuntimeOpSchemaRegistryList* local_registries,
@@ -1722,6 +1732,7 @@ struct ProviderHostImpl : ProviderHost {
   const UInt2x4* Tensor__Data_UInt2x4(const Tensor* p) override { return p->Data<UInt2x4>(); }
 
   gsl::span<const int64_t> Tensor__DataAsSpan_int64(const Tensor* p) override { return p->DataAsSpan<int64_t>(); }
+  gsl::span<const int32_t> Tensor__DataAsSpan_int32(const Tensor* p) override { return p->DataAsSpan<int32_t>(); }
 
   void* Tensor__MutableDataRaw(Tensor* p, MLDataType type) override { return p->MutableDataRaw(type); }
   const void* Tensor__DataRaw(const Tensor* p, MLDataType type) override { return p->DataRaw(type); }
@@ -1859,6 +1870,18 @@ struct ProviderHostImpl : ProviderHost {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   Status LoadDynamicLibrary(onnxruntime::PathString library_name) override { return LoadDynamicLibraryFromProvider(library_name); };
 #endif
+
+  // Float8E8M0 support — appended at end to preserve vtable ABI compatibility
+#if !defined(DISABLE_FLOAT8_TYPES)
+  MLDataType DataTypeImpl__GetType_Float8E8M0() override { return DataTypeImpl::GetType<Float8E8M0>(); }
+  MLDataType DataTypeImpl__GetTensorType_Float8E8M0() override { return DataTypeImpl::GetTensorType<Float8E8M0>(); }
+#if !defined(DISABLE_SPARSE_TENSORS)
+  MLDataType DataTypeImpl__GetSparseTensorType_Float8E8M0() override { return DataTypeImpl::GetSparseTensorType<Float8E8M0>(); }
+#endif
+  Float8E8M0* Tensor__MutableData_Float8E8M0(Tensor* p) override { return p->MutableData<Float8E8M0>(); }
+  const Float8E8M0* Tensor__Data_Float8E8M0(const Tensor* p) override { return p->Data<Float8E8M0>(); }
+  bool Tensor__IsDataType_Float8E8M0(const Tensor* p) noexcept override { return p->IsDataType<Float8E8M0>(); }
+#endif
 } g_provider_host;
 
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -1942,7 +1965,11 @@ Status ProviderLibrary::Load() {
       }
 
       Provider* (*PGetProvider)();
-      ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
+      auto status = Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
+      if (!status.IsOK()) {
+        Unload();
+        return status;
+      }
 
       provider_ = PGetProvider();
     }

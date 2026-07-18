@@ -9,8 +9,11 @@
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
+#include <algorithm>
 
 #include <gsl/gsl>
+#include "core/common/safeint.h"
+#include "core/common/string_helper.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/data_types.h"
 #include "core/framework/error_code_helper.h"
@@ -200,6 +203,15 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKe
       *out = stream->GetHandle();
     else
       *out = nullptr;
+    return nullptr;
+  });
+};
+
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetSyncStream, _In_ const OrtKernelContext* context,
+                    _Outptr_result_maybenull_ OrtSyncStream** out) {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
+    auto* stream = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->GetComputeStream();
+    *out = reinterpret_cast<OrtSyncStream*>(stream);
     return nullptr;
   });
 };
@@ -545,6 +557,65 @@ static Status CopyDataFromVectorToMemory(const std::vector<T>& values, T* out, s
   return Status::OK();
 }
 
+static char* DuplicateStringToAllocatorMemory(const std::string& value, OrtAllocator* allocator) {
+  SafeInt<size_t> allocation_size(value.size());
+  allocation_size += 1;
+
+  char* duplicated_value = static_cast<char*>(allocator->Alloc(allocator, allocation_size));
+  if (duplicated_value == nullptr) {
+    return nullptr;
+  }
+
+  std::memcpy(duplicated_value, value.data(), value.size());
+  duplicated_value[value.size()] = '\0';
+  return duplicated_value;
+}
+
+static Status CopyStringDataFromVectorToMemory(const std::vector<std::string>& values, OrtAllocator* allocator, char*** out, size_t* size) {
+  *size = values.size();
+
+  if (out == nullptr) {
+    return Status::OK();
+  }
+
+  ORT_RETURN_IF_NOT(allocator != nullptr, "allocator must not be null when out is provided");
+  *out = nullptr;
+
+  if (values.empty()) {
+    return Status::OK();
+  }
+
+  auto free_with_allocator = [allocator](void* value) {
+    allocator->Free(allocator, value);
+  };
+  SafeInt<size_t> alloc_count(values.size());
+  char** array = reinterpret_cast<char**>(allocator->Alloc(allocator, alloc_count * sizeof(char*)));
+  ORT_RETURN_IF_NOT(array != nullptr, "Failed to allocate string attribute pointer array");
+  std::unique_ptr<void, decltype(free_with_allocator)> array_guard(array, free_with_allocator);
+
+  size_t allocated_string_count = 0;
+  for (size_t i = 0; i < values.size(); ++i) {
+    char* duplicated_value = DuplicateStringToAllocatorMemory(values[i], allocator);
+    if (duplicated_value == nullptr) {
+      for (size_t j = 0; j < allocated_string_count; ++j) {
+        if (array[j] != nullptr) {
+          allocator->Free(allocator, array[j]);
+        }
+      }
+
+      return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL,
+                    "Failed to allocate string attribute array");
+    }
+
+    array[i] = duplicated_value;
+    ++allocated_string_count;
+  }
+
+  *out = array;
+  array_guard.release();
+  return Status::OK();
+}
+
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_float, _In_ const OrtKernelInfo* info, _In_ const char* name,
                     _Out_ float* out, _Inout_ size_t* size) {
   return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
@@ -564,6 +635,18 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_int64, _In_ const OrtKe
     auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttrs<int64_t>(name, values);
     if (status.IsOK()) {
       status = CopyDataFromVectorToMemory<int64_t>(values, out, size);
+    }
+    return onnxruntime::ToOrtStatus(status);
+  });
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_string, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                    _Inout_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*size) char*** out, _Out_ size_t* size) {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
+    std::vector<std::string> values;
+    auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttrs<std::string>(name, values);
+    if (status.IsOK()) {
+      status = CopyStringDataFromVectorToMemory(values, allocator, out, size);
     }
     return onnxruntime::ToOrtStatus(status);
   });
@@ -834,9 +917,13 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetScratchBuffer, _In_ const OrtKerne
 namespace onnxruntime {
 struct CustomOpKernel : OpKernel {
   CustomOpKernel(const OpKernelInfo& info, const OrtCustomOp& op) : OpKernel(info), op_(op) {
-    if (op_.version > ORT_API_VERSION) {
-      ORT_THROW("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
-    }
+    // Cap the version to the current ORT API version. This allows custom ops compiled against a newer ORT
+    // to work on an older ORT runtime, provided they don't call API functions unavailable at the runtime version.
+    // Individual newer functions in OrtCustomOp are gated by per-function version checks throughout this file.
+    const uint32_t api_version = std::min(op_.version, static_cast<uint32_t>(ORT_API_VERSION));
+    const OrtApi* ort_api = OrtGetApiBase()->GetApi(api_version);
+    ORT_ENFORCE(ort_api != nullptr, "Failed to get ORT API for version ",
+                api_version, " in custom op '", op_.GetName(&op_), "'");
 
     if (op_.version >= min_ort_version_with_compute_v2_support &&
         op_.CreateKernelV2) {
@@ -844,11 +931,11 @@ struct CustomOpKernel : OpKernel {
       Ort::ThrowOnError(
           op_.CreateKernelV2(
               &op_,
-              OrtGetApiBase()->GetApi(op_.version),
+              ort_api,
               reinterpret_cast<const OrtKernelInfo*>(&info),
               &op_kernel_));
     } else {
-      op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version),
+      op_kernel_ = op_.CreateKernel(&op_, ort_api,
                                     reinterpret_cast<const OrtKernelInfo*>(&info));
     }
   }

@@ -56,10 +56,6 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>()),
     Gather);
 
-Status GatherBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const {
-  return PrepareForComputeImpl(context, p);
-}
-
 template <typename Tin>
 Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uint8_t* dst_base, bool is_string_type,
                       const size_t element_bytes, const int64_t block_size, const int64_t M,

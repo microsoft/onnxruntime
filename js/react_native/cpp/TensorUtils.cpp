@@ -54,7 +54,7 @@ static const std::unordered_map<ONNXTensorElementDataType, const char*>
         {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, "Int8Array"},
         {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16, "Uint16Array"},
         {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16, "Int16Array"},
-        {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, "Float16Array"},
+        {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, "Uint16Array"},
         {ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING, "Array"},
         {ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, "Uint8Array"},
 };

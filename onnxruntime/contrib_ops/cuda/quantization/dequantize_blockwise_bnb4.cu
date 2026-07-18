@@ -1,9 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <cub/cub.cuh>
-#include <cuda_fp16.h>
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cpu/quantization/blockwise_quant_block_bnb4.h"
 #include "dequantize_blockwise_bnb4.cuh"
 

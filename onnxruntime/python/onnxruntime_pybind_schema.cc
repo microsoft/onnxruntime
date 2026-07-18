@@ -4,6 +4,10 @@
 
 #include "python/onnxruntime_pybind_state_common.h"
 #include "core/framework/kernel_registry.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/session/utils.h"
+#include "core/session/abi_devices.h"
+#endif
 #include <pybind11/stl.h>
 
 namespace py = pybind11;
@@ -93,6 +97,58 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
         return result;
       },
       "Return a vector of KernelDef for all registered OpKernels");
+
+#if !defined(ORT_MINIMAL_BUILD)
+  m.def(
+      "get_registered_ep_kernel_defs",
+      [](const std::string& ep_name) -> std::vector<onnxruntime::KernelDef> {
+        std::vector<onnxruntime::KernelDef> result;
+        auto& env = GetEnv();
+
+        // Collect all OrtEpDevice pointers matching the requested EP name.
+        std::vector<const OrtEpDevice*> selected_devices;
+        for (const OrtEpDevice* device : env.GetOrtEpDevices()) {
+          if (device && device->ep_name == ep_name) {
+            selected_devices.push_back(device);
+            break;  // one device is sufficient to create the factory and query kernels
+          }
+        }
+
+        if (selected_devices.empty()) {
+          throw std::runtime_error(
+              "No devices found for EP '" + ep_name +
+              "'. Ensure the plugin EP library is registered via register_execution_provider_library().");
+        }
+
+        // Create a factory for the plugin EP.
+        std::unique_ptr<IExecutionProviderFactory> factory;
+        auto status = CreateIExecutionProviderFactoryForEpDevices(env, selected_devices, factory);
+        if (!status.IsOK()) {
+          throw std::runtime_error("Failed to create EP factory for '" + ep_name + "': " + status.ToString());
+        }
+
+        // Create an EP instance with default session options.
+        OrtSessionOptions ort_session_options{};
+        const auto& logger = *env.GetLoggingManager()->DefaultLogger().ToExternal();
+        auto provider = factory->CreateProvider(ort_session_options, logger);
+        if (!provider) {
+          throw std::runtime_error("Failed to create EP instance for '" + ep_name + "'.");
+        }
+
+        // Extract kernel defs from the EP's kernel registry.
+        auto kernel_registry = provider->GetKernelRegistry();
+        if (kernel_registry) {
+          for (const auto& entry : kernel_registry->GetKernelCreateMap()) {
+            result.emplace_back(*(entry.second.kernel_def));
+          }
+        }
+
+        return result;
+      },
+      py::arg("ep_name"),
+      "Return a vector of KernelDef for a dynamically registered plugin EP.\n"
+      "The EP must be loaded first via register_execution_provider_library().");
+#endif
 }
 
 void addOpKernelSubmodule(py::module& m) {

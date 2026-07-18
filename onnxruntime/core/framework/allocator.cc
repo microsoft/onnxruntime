@@ -191,12 +191,7 @@ void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve
 }
 
 IArena* IArena::SafeArenaCast(IAllocator* allocator) {
-#if !defined(ORT_NO_RTTI)
-  auto* result = dynamic_cast<IArena*>(allocator);
-  return result;
-#else
-  return static_cast<IArena*>(allocator);
-#endif
+  return allocator ? allocator->AsArena() : nullptr;
 }
 
 }  // namespace onnxruntime
@@ -237,9 +232,22 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD, device_id),
         mem_type1);
   } else if (strcmp(name1, onnxruntime::WEBGPU_BUFFER) == 0 ||
-             strcmp(name1, onnxruntime::WEBNN_TENSOR) == 0) {
+             strcmp(name1, onnxruntime::WEBNN_TENSOR) == 0 ||
+             // Accept pre-1.25 names "WebGPU_Buffer"/"WebNN_Tensor" for backward compatibility
+             // with released onnxruntime-genai that still uses the old names.
+             // Normalize to the current (short) constant so downstream name comparisons work.
+             // See: https://github.com/microsoft/onnxruntime/pull/27207
+             strcmp(name1, "WebGPU_Buffer") == 0 ||
+             strcmp(name1, "WebNN_Tensor") == 0) {
+    // Map old long names to current short constants to keep downstream name comparisons consistent.
+    const char* normalized_name = name1;
+    if (strcmp(name1, "WebGPU_Buffer") == 0) {
+      normalized_name = onnxruntime::WEBGPU_BUFFER;
+    } else if (strcmp(name1, "WebNN_Tensor") == 0) {
+      normalized_name = onnxruntime::WEBNN_TENSOR;
+    }
     *out = new OrtMemoryInfo(
-        name1, type,
+        normalized_name, type,
         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, device_id),
         mem_type1);
 

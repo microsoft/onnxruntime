@@ -396,6 +396,13 @@ namespace OperatorHelper
         {
             std::vector<int> kernelStrides = kernelInfo.GetOptionalAttributeVectorInt32(AttrName::Strides);
             ML_CHECK_VALID_ARGUMENT(kernelStrides.size() >= spatialDimensionCount);
+            for (uint32_t i = 0; i < spatialDimensionCount; ++i)
+            {
+                ML_CHECK_VALID_ARGUMENT_MSG(
+                    kernelStrides[i] > 0,
+                    "All stride values must be positive, got: %d",
+                    kernelStrides[i]);
+            }
 
             std::copy(kernelStrides.begin(), kernelStrides.begin() + spatialDimensionCount, args.strides);
         }
@@ -408,6 +415,13 @@ namespace OperatorHelper
         {
             std::vector<int> kernelDilations = kernelInfo.GetOptionalAttributeVectorInt32(AttrName::Dilations);
             ML_CHECK_VALID_ARGUMENT(kernelDilations.size() >= spatialDimensionCount);
+            for (uint32_t i = 0; i < spatialDimensionCount; ++i)
+            {
+                ML_CHECK_VALID_ARGUMENT_MSG(
+                    kernelDilations[i] > 0,
+                    "All dilation values must be positive, got: %d",
+                    kernelDilations[i]);
+            }
 
             std::copy(kernelDilations.begin(), kernelDilations.begin() + spatialDimensionCount, args.dilations);
         }
@@ -1858,6 +1872,13 @@ namespace OperatorHelper
         if (kernelInformation.HasAttribute(AttrName::Dilations, MLOperatorAttributeType::IntArray))
         {
             shapeData = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Dilations);
+            for (size_t i = 0; i < shapeData.size(); ++i)
+            {
+                ML_CHECK_VALID_ARGUMENT_MSG(
+                    shapeData[i] > 0,
+                    "All dilation values must be positive, got: %d",
+                    shapeData[i]);
+            }
             DowncastDimensions(gsl::span(shapeData), /*out*/ m_dilations);
             ML_CHECK_VALID_ARGUMENT(m_dilations.size() == dimCount);
         }
@@ -1872,6 +1893,13 @@ namespace OperatorHelper
         if (kernelInformation.HasAttribute(AttrName::Strides, MLOperatorAttributeType::IntArray))
         {
             shapeData = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Strides);
+            for (size_t i = 0; i < shapeData.size(); ++i)
+            {
+                ML_CHECK_VALID_ARGUMENT_MSG(
+                    shapeData[i] > 0,
+                    "All stride values must be positive, got: %d",
+                    shapeData[i]);
+            }
             DowncastDimensions(gsl::span(shapeData), /*out*/ m_strides);
             ML_CHECK_VALID_ARGUMENT(m_strides.size() == dimCount);
         }

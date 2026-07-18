@@ -149,6 +149,9 @@ class AttentionCPUBase : public AttentionBase {
                                  OpKernelContext* context,
                                  int beam_width,
                                  Tensor* output_qk) const {
+    ORT_RETURN_IF_ERROR(ValidateCacheIndirectionValues(cache_indir->Data<int32_t>(), batch_size, beam_width,
+                                                       past_sequence_length, max_sequence_length));
+
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
@@ -186,6 +189,33 @@ class AttentionCPUBase : public AttentionBase {
   }
 
  private:
+  static Status ValidateCacheIndirectionValues(const int32_t* cache_indirection_data,
+                                               int batch_beam_size,
+                                               int beam_width,
+                                               int past_sequence_length,
+                                               int max_sequence_length) {
+    if (cache_indirection_data == nullptr || beam_width <= 0 || past_sequence_length <= 0) {
+      return Status::OK();
+    }
+
+    for (int batch_beam_index = 0; batch_beam_index < batch_beam_size; ++batch_beam_index) {
+      const int32_t* beam_indices = cache_indirection_data +
+                                    static_cast<std::ptrdiff_t>(batch_beam_index) * max_sequence_length;
+      for (int position = 0; position < past_sequence_length; ++position) {
+        const int32_t beam_index = beam_indices[position];
+        if (beam_index < 0 || beam_index >= beam_width) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "cache_indirection beam index out of range. Expected [0, ", beam_width,
+                                 "), got ", beam_index,
+                                 " at flattened batch_beam index ", batch_beam_index,
+                                 ", sequence position ", position);
+        }
+      }
+    }
+
+    return Status::OK();
+  }
+
   // Helper function to compute the attention probs. It does 2 things:
   //  attention_probs(B, N, S, T) = 1/sqrt(H) x Q(B, N, S, H) x K'(B, N, T, H -> B, N, H, T) +
   //                                1 x mask_data(B, N, S, T)

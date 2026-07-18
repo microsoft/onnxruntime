@@ -1,7 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "gtest/gtest.h"
+#include "core/providers/cpu/tensor/reshape_helper.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -168,6 +171,59 @@ TEST(TensorOpTest, Reshape_EmptyInputWithAllowZero) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+// Test allowzero=1 with zero dim and unknown dim (-1): infer unknown from non-zero product.
+// Input: {2, 0, 3} (0 elements), shape: {0, -1} → output: {0, 6}
+TEST(TensorOpTest, Reshape_AllowZeroWithZeroDimAndUnknownDim) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {2, 0, 3}, std::vector<float>());
+  test.AddInput<int64_t>("shape", {2}, {0, -1});
+  test.AddAttribute<int64_t>("allowzero", 1);
+  test.AddOutput<float>("reshaped", {0, 6}, std::vector<float>());
+  // TensorRT, QNN don't support empty dimension
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+// Test allowzero=1 with zero dim and unknown dim: input {4, 0}, shape {0, 2, -1} → output {0, 2, 2}
+TEST(TensorOpTest, Reshape_AllowZeroWithZeroDimAndUnknownDim2) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {4, 0}, std::vector<float>());
+  test.AddInput<int64_t>("shape", {3}, {0, 2, -1});
+  test.AddAttribute<int64_t>("allowzero", 1);
+  test.AddOutput<float>("reshaped", {0, 2, 2}, std::vector<float>());
+  // TensorRT, QNN don't support empty dimension
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+// Test allowzero=1 with zero dim, unknown dim, and multi-dim non-zero product.
+// Input: {3, 0, 5} (0 elements), shape: {0, -1} → non-zero product of input is 3*5=15, output: {0, 15}
+TEST(TensorOpTest, Reshape_AllowZeroWithZeroDimAndUnknownDimMultiDim) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {3, 0, 5}, std::vector<float>());
+  test.AddInput<int64_t>("shape", {2}, {0, -1});
+  test.AddAttribute<int64_t>("allowzero", 1);
+  test.AddOutput<float>("reshaped", {0, 15}, std::vector<float>());
+  // TensorRT, QNN don't support empty dimension
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
 TEST(TensorOpTest, Reshape_UnknownDimWithoutAllowZero) {
   OpTester test("Reshape");
 
@@ -190,6 +246,26 @@ TEST(TensorOpTest, Reshape_UnknownDimWithAllowZero) {
   test.AddAttribute<int64_t>("allowzero", 1);
   test.AddOutput<float>("reshaped", {1, 6}, std::vector<float>(6, 1.0f));
   test.Run();
+}
+
+TEST(TensorOpTest, ReshapeHelper_RejectsRequestedShapeOverflow) {
+  TensorShape input_shape({1});
+  TensorShapeVector requested_shape{std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max()};
+
+  try {
+    ReshapeHelper(input_shape, requested_shape);
+    FAIL() << "Expected ReshapeHelper to throw";
+  } catch (const OnnxRuntimeException& exception) {
+    const std::string message = exception.what();
+    const std::string max_dim = std::to_string(std::numeric_limits<int64_t>::max());
+    EXPECT_NE(message.find("The requested shape has too many elements."), std::string::npos);
+    EXPECT_NE(message.find("Input shape:"), std::string::npos);
+    EXPECT_NE(message.find("1"), std::string::npos);
+    EXPECT_NE(message.find("requested shape:"), std::string::npos);
+    EXPECT_NE(message.find(max_dim), std::string::npos);
+    EXPECT_NE(message.rfind(max_dim), std::string::npos);
+    EXPECT_NE(message.find(max_dim), message.rfind(max_dim));
+  }
 }
 
 TEST(TensorOpTest, ReshapeSixDimNewShape) {

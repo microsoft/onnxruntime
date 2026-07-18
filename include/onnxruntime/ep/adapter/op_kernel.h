@@ -8,6 +8,8 @@
 #endif
 
 #include <memory>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "core/framework/allocator.h"
@@ -19,7 +21,7 @@
 
 namespace onnxruntime {
 struct PrePackedWeights;
-struct TensorShape;
+class TensorShape;
 }  // namespace onnxruntime
 
 namespace onnxruntime {
@@ -35,7 +37,7 @@ struct OpKernel {
   explicit OpKernel(const OpKernelInfo& info) : op_kernel_info_{info} {}
   virtual ~OpKernel() {}
 
-  Node Node() const {
+  adapter::Node Node() const {
     return op_kernel_info_.node();
   }
   const OpKernelInfo& Info() const {
@@ -93,6 +95,15 @@ struct OpKernelContext {
     input_tensors_[index] = CreateTensorFromApiValue(const_cast<OrtValue*>(static_cast<const OrtValue*>(input)));
     return &input_tensors_[index];
   }
+  /// Get a required (non-optional) input tensor. Throws if the input is null.
+  /// Use Input<T>() for optional inputs that may legitimately be absent.
+  template <typename T,
+            typename = std::enable_if_t<std::is_same_v<T, Tensor>>>
+  const T& RequiredInput(int index) const {
+    auto* input = Input<T>(index);
+    ORT_ENFORCE(input != nullptr, "Required input ", index, " is null");
+    return *input;
+  }
   Tensor* Output(int index, const TensorShape& shape) {
     if (index < 0 || static_cast<size_t>(index) >= output_tensors_.size()) {
       return nullptr;
@@ -109,6 +120,12 @@ struct OpKernelContext {
     output_tensors_[index] = CreateTensorFromApiValue(output);
     return &output_tensors_[index];
   }
+  /// Get a required (non-optional) output tensor. Throws if the output is null.
+  Tensor& RequiredOutput(int index, const TensorShape& shape) {
+    auto* output = Output(index, shape);
+    ORT_ENFORCE(output != nullptr, "Required output ", index, " is null");
+    return *output;
+  }
   Tensor* Output(int index, const std::vector<int64_t>& shape) {
     return Output(index, TensorShape{shape});
   }
@@ -116,10 +133,20 @@ struct OpKernelContext {
     return Output(index, TensorShape{shape});
   }
   [[nodiscard]] Status GetTempSpaceCPUAllocator(AllocatorPtr* output) const {
-    return static_cast<const Ep*>(op_kernel_.Info().GetKernelInfo().GetEp())->GetTempSpaceCPUAllocator(output);
+    // Use GetOrtEp() directly from the cached KernelInfoCache rather than going through
+    // GetExecutionProvider()->GetOrtEp(). GetExecutionProvider() returns the native EP impl
+    // (e.g. WebGpuExecutionProvider), which doesn't override GetOrtEp() and returns nullptr.
+    // The cached ort_ep_ is resolved from the plugin wrapper's IExecutionProvider during
+    // KernelInfoCache construction, so it correctly holds the OrtEp instance.
+    const auto* ort_ep = op_kernel_.Info().GetOrtEp();
+    ORT_ENFORCE(ort_ep != nullptr, "Kernel execution provider is not associated with an OrtEp instance.");
+    return static_cast<const Ep*>(ort_ep)->GetTempSpaceCPUAllocator(output);
   }
   [[nodiscard]] Status GetTempSpaceAllocator(AllocatorPtr* output) const {
-    return static_cast<const Ep*>(op_kernel_.Info().GetKernelInfo().GetEp())->GetTempSpaceAllocator(output);
+    // See comment in GetTempSpaceCPUAllocator for why we use GetOrtEp() directly.
+    const auto* ort_ep = op_kernel_.Info().GetOrtEp();
+    ORT_ENFORCE(ort_ep != nullptr, "Kernel execution provider is not associated with an OrtEp instance.");
+    return static_cast<const Ep*>(ort_ep)->GetTempSpaceAllocator(output);
   }
   int InputCount() const {
     return static_cast<int>(input_tensors_.size());
@@ -129,11 +156,22 @@ struct OpKernelContext {
   }
   bool GetUseDeterministicCompute() const {
     // TODO(fs-eire): Implement GetUseDeterministicCompute().
+    // if (CurrentOrtApiVersion() >= 25) {
+    //   return /* TBD: wait for GetUseDeterministicCompute to be added in ORT API v25 */;
+    // } else {
     return false;
+    // }
   }
-
   void* GetGPUComputeStream() const {
     return context_.GetGPUComputeStream();
+  }
+  OrtSyncStream* GetSyncStream() const {
+    static constexpr uint32_t kOrtKernelContextGetSyncStreamMinVersion = 28;
+    if (CurrentOrtApiVersion() < kOrtKernelContextGetSyncStreamMinVersion) {
+      return nullptr;
+    }
+
+    return context_.GetSyncStream();
   }
 
  private:
@@ -146,7 +184,7 @@ struct OpKernelContext {
 };
 
 /// <summary>
-/// A bridge class between `onnxruntime::ep::adapter::OpKernel` and `::OrtKernelImpl`.
+/// A bridge class between `onnxruntime::ep::adapter::OpKernel` and `onnxruntime::OrtKernelImpl`.
 /// </summary>
 struct KernelImpl : OrtKernelImpl {
   explicit KernelImpl(std::unique_ptr<OpKernel> impl)
@@ -185,14 +223,15 @@ struct KernelImpl : OrtKernelImpl {
   static OrtStatus* ORT_API_CALL PrePackWeightImpl(_In_ OrtKernelImpl* this_ptr,
                                                    _In_ const OrtValue* weight,
                                                    int input_index,
-                                                   _In_ OrtAllocator* /* allocator */,
+                                                   _In_ OrtAllocator* allocator,
                                                    _In_opt_ OrtSharedPrePackedWeightCache* /* prepacked_weight_cache */,
                                                    _Out_ bool* is_packed) noexcept {
     Status status;
     ORT_TRY {
       auto* kernel_impl = static_cast<KernelImpl*>(this_ptr)->impl_.get();
       const auto tensor = CreateTensorFromApiValue(const_cast<OrtValue*>(weight));
-      status = kernel_impl->PrePack(tensor, input_index, AllocatorPtr{}, *is_packed, nullptr);
+      auto allocator_wrapper = std::make_shared<IAllocatorWrappingOrtAllocator>(allocator);
+      status = kernel_impl->PrePack(tensor, input_index, std::move(allocator_wrapper), *is_packed, nullptr);
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {

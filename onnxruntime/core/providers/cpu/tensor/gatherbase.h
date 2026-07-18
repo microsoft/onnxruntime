@@ -46,7 +46,14 @@ class GatherBase {
     return Status::OK();
   }
 
+#ifdef SHARED_PROVIDER
   Status PrepareForCompute(OpKernelContext* context, Prepare& p) const;
+#else
+  template <typename KernelContextType>
+  inline Status PrepareForCompute(KernelContextType* context, Prepare& p) const {
+    return PrepareForComputeImpl(context, p);
+  }
+#endif
 
  protected:
   template <typename KernelInfoType>

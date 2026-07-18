@@ -42,20 +42,8 @@ const char* CudaErrString<CUresult>(CUresult x) {
 template <>
 const char* CudaErrString<cublasStatus_t>(cublasStatus_t e) {
   cudaDeviceSynchronize();
-  switch (e) {
-    CASE_ENUM_TO_STR(CUBLAS_STATUS_SUCCESS);
-    CASE_ENUM_TO_STR(CUBLAS_STATUS_NOT_INITIALIZED);
-    CASE_ENUM_TO_STR(CUBLAS_STATUS_ALLOC_FAILED);
-    CASE_ENUM_TO_STR(CUBLAS_STATUS_INVALID_VALUE);
-    CASE_ENUM_TO_STR(CUBLAS_STATUS_ARCH_MISMATCH);
-    CASE_ENUM_TO_STR(CUBLAS_STATUS_MAPPING_ERROR);
-    CASE_ENUM_TO_STR(CUBLAS_STATUS_EXECUTION_FAILED);
-    CASE_ENUM_TO_STR(CUBLAS_STATUS_INTERNAL_ERROR);
-    CASE_ENUM_TO_STR(CUBLAS_STATUS_NOT_SUPPORTED);
-    CASE_ENUM_TO_STR(CUBLAS_STATUS_LICENSE_ERROR);
-    default:
-      return "(look for CUBLAS_STATUS_xxx in cublas_api.h)";
-  }
+  const char* status_string = cublasGetStatusString(e);
+  return status_string != nullptr ? status_string : "Unknown cuBLAS error status";
 }
 
 template <>

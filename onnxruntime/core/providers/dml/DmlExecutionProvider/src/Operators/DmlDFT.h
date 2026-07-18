@@ -1097,7 +1097,7 @@ public:
                 version = 20;
             }
 
-            auto dftOperator = wil::MakeOrThrow<GpuDFTOperator>(context, version);
+            auto dftOperator = Dml::SafeMakeOrThrow<GpuDFTOperator>(context, version);
             dftOperator.CopyTo(kernel);
             return S_OK;
         }
@@ -1177,8 +1177,8 @@ public:
         kernelDescription.options = MLOperatorKernelOptions::None;
         kernelDescription.executionOptions = 0;
 
-        auto shareInferrer = wil::MakeOrThrow<DFTShapeInferrer>();
-        auto factory = wil::MakeOrThrow<GpuDFTOperatorFactory>();
+        auto shareInferrer = Dml::SafeMakeOrThrow<DFTShapeInferrer>();
+        auto factory = Dml::SafeMakeOrThrow<GpuDFTOperatorFactory>();
 
         std::array<uint32_t, 2> requiredConstantCpuInputs = { 1, 2 };
 

@@ -150,6 +150,21 @@ def add_build_type(f, build_type: str) -> None:
         )
 
 
+def _get_cxx_standard_cmake_configure_options_str() -> str:
+    # These should match what's specified in cmake/CMakeLists.txt.
+    options = [
+        "-DCMAKE_CXX_STANDARD=20",
+        # We don't use C++20 modules yet.
+        # There are some known issues to address first:
+        # - Android builds from Linux Docker containers have trouble finding clang-scan-deps.
+        # - The MSVC /permissive option is needed for compiling some of the CUDA EP code which uses CUTLASS.
+        #   This option is not compatible with C++20 modules.
+        # So we will skip module scanning for now.
+        "-DCMAKE_CXX_SCAN_FOR_MODULES=OFF",
+    ]
+    return " ".join(options)
+
+
 def generate_triplet_for_android(
     build_dir: str,
     configs: set[str],
@@ -280,7 +295,9 @@ def generate_triplet_for_android(
 
             if ldflags:
                 f.write(f'set(VCPKG_LINKER_FLAGS "{" ".join(ldflags)}")\n')
-            f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DCMAKE_CXX_STANDARD=17)\n")
+
+            f.write(f"list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS {_get_cxx_standard_cmake_configure_options_str()})\n")
+
             add_build_type(f, config)
             add_port_configs(
                 f, enable_exception, False, enable_minimal_build, use_full_protobuf=use_full_protobuf
@@ -471,10 +488,9 @@ def generate_triplet_for_posix_platform(
 
             if ldflags:
                 f.write(f'set(VCPKG_LINKER_FLAGS "{" ".join(ldflags)}")\n')
-            if os_name == "osx":
-                f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DCMAKE_CXX_STANDARD=20)\n")
-            else:
-                f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DCMAKE_CXX_STANDARD=17)\n")
+
+            f.write(f"list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS {_get_cxx_standard_cmake_configure_options_str()})\n")
+
             add_build_type(f, config)
             add_port_configs(
                 f, enable_exception, False, enable_minimal_build, use_full_protobuf=use_full_protobuf
@@ -734,7 +750,7 @@ def generate_windows_triplets(build_dir: str, configs: set[str], toolset_version
                                         if cxxflags:
                                             f.write(f'set(VCPKG_CXX_FLAGS "{" ".join(cxxflags)}")\n')
                                         f.write(
-                                            "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DCMAKE_CXX_STANDARD=17)\n"
+                                            f"list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error {_get_cxx_standard_cmake_configure_options_str()})\n"
                                         )
                                         if ldflags:
                                             f.write(f'set(VCPKG_LINKER_FLAGS "{" ".join(ldflags)}")\n')

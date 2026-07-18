@@ -47,6 +47,16 @@
 
 #endif  // ARM
 
+#if defined(CPUIDINFO_ARCH_RISCV64)
+#include <asm/hwprobe.h>
+#ifndef RISCV_HWPROBE_EXT_ZVFH
+#define RISCV_HWPROBE_EXT_ZVFH (1 << 30)
+#endif
+#ifndef RISCV_HWPROBE_IMA_V
+#define RISCV_HWPROBE_IMA_V (1 << 2)
+#endif
+#endif  // RISCV64
+
 #endif  // Linux
 
 #if _WIN32
@@ -162,13 +172,7 @@ void CPUIDInfo::X86Init() {
         // Check for TPAUSE
         CheckIntelResult check_intel = CheckIntel();
         if (check_intel.is_intel) {
-#ifdef __linux__
-#if !defined(__ANDROID__)
-          has_tpause_ = __builtin_cpu_supports("waitpkg") != 0;
-#endif
-#else
           has_tpause_ = (data[2] & (1 << 5)) != 0;
-#endif
         }
         if (max_SubLeaves >= 1) {
           GetCPUID(7, 1, data);
@@ -213,6 +217,10 @@ void CPUIDInfo::ArmLinuxInit() {
         continue;
       }
       auto coreid = proc->linux_id;
+      if (coreid < 0 || static_cast<size_t>(coreid) >= core_uarchs_.size()) {
+        continue;
+      }
+
       auto uarch = corep->uarch;
       core_uarchs_[coreid] = uarch;
       if (uarch == cpuinfo_uarch_cortex_a53 || uarch == cpuinfo_uarch_cortex_a55r0 ||
@@ -340,6 +348,17 @@ void CPUIDInfo::ArmAppleInit() {
 
 #endif  // defined(CPUIDINFO_ARCH_ARM)
 
+#if defined(CPUIDINFO_ARCH_RISCV64) && defined(__linux__)
+void CPUIDInfo::RiscvLinuxInit() {
+  struct riscv_hwprobe pairs[] = {
+      {RISCV_HWPROBE_KEY_IMA_EXT_0, 0},
+  };
+  if (syscall(__NR_riscv_hwprobe, pairs, 1, 0, nullptr, 0) == 0) {
+    has_fp16_ = (pairs[0].value & RISCV_HWPROBE_EXT_ZVFH) != 0;
+  }
+}
+#endif  // defined(CPUIDINFO_ARCH_RISCV64) && defined(__linux__)
+
 uint32_t CPUIDInfo::GetCurrentCoreIdx() const {
 #ifdef _WIN32
   return GetCurrentProcessorNumber();
@@ -366,11 +385,7 @@ CPUIDInfo::CPUIDInfo() {
 #endif  // defined(CPUINFO_SUPPORTED)
 
   // Note: This should be run after cpuinfo initialization if cpuinfo is enabled.
-  // On Wasm/Emscripten, cpuinfo cannot detect the CPU vendor so skip to avoid
-  // an unhelpful "Unknown CPU vendor" warning.
-#if !defined(__wasm__)
   VendorInfoInit();
-#endif
 
 #ifdef CPUIDINFO_ARCH_X86
   X86Init();
@@ -383,5 +398,20 @@ CPUIDInfo::CPUIDInfo() {
   ArmAppleInit();
 #endif
 #endif  // defined(CPUIDINFO_ARCH_ARM)
+
+#if defined(CPUIDINFO_ARCH_RISCV64)
+#if defined(__linux__)
+  RiscvLinuxInit();
+#endif
+#endif  // defined(CPUIDINFO_ARCH_RISCV64)
+}
+
+CPUIDInfo::~CPUIDInfo() {
+#if defined(CPUINFO_SUPPORTED)
+  if (pytorch_cpuinfo_init_) {
+    cpuinfo_deinitialize();
+    pytorch_cpuinfo_init_ = false;
+  }
+#endif
 }
 }  // namespace onnxruntime

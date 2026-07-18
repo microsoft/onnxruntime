@@ -64,6 +64,27 @@
 #include "cutlass/matrix_shape.h"
 #include "cutlass/platform/platform.h"
 #include "cutlass/transform/threadblock/predicated_tile_iterator.h"
+
+// Workaround for build error here:
+// https://github.com/NVIDIA/cutlass/blob/f3fde58372d33e9a5650ba7b80fc48b3b49d40c8/examples/41_fused_multi_head_attention/epilogue/epilogue_thread_apply_logsumexp.h#L87
+// epilogue_thread_apply_logsumexp.h(87): error : no suitable user-defined conversion from "const __half2" to
+//   "__nv_bfloat162" exists
+//          res_ptr[i] = h2exp(input_ptr[i]);
+//                             ^
+//
+// On architectures < sm_53, h2exp(__half2) is not available. The compiler may find the __nv_bfloat162 overload from
+// cuda_bf16.h, leading to a type mismatch.
+// Provide a fallback that decomposes the operation into two scalar expf calls via float conversion.
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 530)
+#include <cuda_fp16.h>
+
+inline __device__ __half2 h2exp(const __half2 x) {
+  float hi = __high2float(x);
+  float lo = __low2float(x);
+  return __floats2half2_rn(expf(lo), expf(hi));
+}
+#endif  // defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 530)
+
 #include "41_fused_multi_head_attention/debug_utils.h"
 #include "41_fused_multi_head_attention/epilogue/epilogue_pipelined.h"
 #include "41_fused_multi_head_attention/epilogue/epilogue_rescale_output.h"
@@ -178,7 +199,11 @@ struct AttentionKernel {
     int32_t* seqstart_k_ptr = nullptr;
 
     int32_t* seqlen_k_ptr = nullptr;
-    uint32_t causal_diagonal_offset = 0;
+    // Signed: CausalFromBottomRight sets this to (num_keys - num_queries), which is NEGATIVE in the
+    // external-KV-cache regime where nonpad_kv_seqlen < q_sequence_length (onnx#8068 / ORT #28904).
+    // A uint32_t here wraps the negative value to ~4.29e9 and breaks the causal-mask guard below
+    // (see the signed comparison at the "Mask out last if causal" block), so it MUST stay int32_t.
+    int32_t causal_diagonal_offset = 0;
 
     // Output tensors
     output_t* output_ptr = nullptr;  // [num_queries, num_heads, head_dim_value]
@@ -324,6 +349,8 @@ struct AttentionKernel {
 
       // Custom masking
       if (custom_mask_type == CausalFromBottomRight) {
+        // May be negative when num_keys < num_queries (nonpad external KV cache, onnx#8068 / ORT #28904).
+        // causal_diagonal_offset is int32_t so the negative value is preserved (no unsigned wrap).
         causal_diagonal_offset = num_keys - num_queries;
       }
       // We use num_keys_absolute to index into the rng_state
@@ -455,13 +482,17 @@ struct AttentionKernel {
             kNumWarpsPerBlock,
         "");
 
-    // used for efficient load of bias tile Bij from global to shared memory
+    // used for efficient load of bias tile Bij from global to shared memory.
+    // Use kAlignmentA so the unaligned kernel path (kIsAligned=false) uses
+    // narrower vectorized loads (64-bit instead of 128-bit), matching the
+    // relaxed alignment requirement for Q/K/V. This allows bias_strideM
+    // (= total_kv_length) to be any multiple of 4 elements (fp16) rather
+    // than requiring a multiple of 8.
     using BiasLoader = TileSmemLoader<
         scalar_t,
         cutlass::MatrixShape<kQueriesPerBlock, kKeysPerBlock>,
         MmaCore::kThreads,
-        // input restriction: kv_len has to be a multiple of this value
-        128 / cutlass::sizeof_bits<scalar_t>::value>;
+        kAlignmentA>;
 
     // Epilogue to store to shared-memory in a format that we can use later for
     // the second matmul
@@ -885,9 +916,14 @@ struct AttentionKernel {
       // first masked element is x = y + offset -> query_start + offset There is
       // intersection (and we need to mask) if min(iter_key_start +
       // kKeysPerBlock, num_keys)) >= query_start + offset
+      // NOTE: query_start is uint32_t and causal_diagonal_offset can be negative
+      // (CausalFromBottomRight with num_keys < num_queries, onnx#8068 / ORT #28904). Cast query_start
+      // to int32_t so this comparison is performed in signed arithmetic; otherwise the RHS wraps
+      // to ~4.29e9, the guard is always false, and the per-element causal mask is skipped
+      // entirely (boundary query rows then attend one extra key).
       if (p.custom_mask_type &&
           cutlass::fast_min(iter_key_start + kKeysPerBlock, p.num_keys) >=
-              (query_start + p.causal_diagonal_offset)) {
+              (static_cast<int32_t>(query_start) + p.causal_diagonal_offset)) {
         auto query_start = blockIdx.x * kQueriesPerBlock;
         auto lane_offset = MM0::AccumLambdaIterator::get_lane_offset(
             my_lane_id, my_warp_id, iteratorC_tile_offset);
@@ -917,8 +953,14 @@ struct AttentionKernel {
       // query_start + kQueriesPerBlock - window_size mask if x_fist >
       // x_lowerleft
 
+      // Mirrors the signed-comparison hardening of the "Mask out last if causal" guard above
+      // (onnx#8068 / ORT #28904): query_start is uint32_t, so cast it to int32_t to keep this
+      // relational comparison in signed arithmetic. Dormant today (window_size > 0 never co-occurs
+      // with a negative causal_diagonal_offset — opset-24 Attention hard-codes window=-1, GQA/Paged
+      // keep offset >= 0), but this prevents an unsigned-wrap landmine if a future sliding-window /
+      // KV-trimming caller combines window_size > 0 with a negative offset.
       if (p.window_size > 0 &&
-          (query_start + p.causal_diagonal_offset +
+          (static_cast<int32_t>(query_start) + p.causal_diagonal_offset +
                cutlass::fast_min(
                    static_cast<int32_t>(kQueriesPerBlock), static_cast<int32_t>(p.num_queries)) -
                p.window_size >=

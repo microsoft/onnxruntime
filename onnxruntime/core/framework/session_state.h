@@ -404,6 +404,10 @@ class SessionState {
   // (replaced byOrtValue instances in initialized_tensors_)
   void CleanInitializedTensorsFromGraph();
 
+#ifdef ORT_ENABLE_STREAM
+  void PruneExpiredDeviceStreamPoolsLocked() const;
+#endif
+
   /**
    * Prepack the constant initialized tensors for better performance.
    * The original constant initialized tensors will be removed to save memory.
@@ -592,9 +596,15 @@ class SessionState {
 #ifdef ORT_ENABLE_STREAM
   std::unique_ptr<IStreamCommandHandleRegistry> stream_handles_registry_;
 
-  // lock for the device stream pool
+  struct DeviceStreamPoolBucket {
+    std::weak_ptr<const void> thread_token;
+    std::vector<std::unique_ptr<DeviceStreamCollection>> device_streams;
+  };
+
+  // Lock for thread-affine device stream pools keyed by a per-thread lifetime
+  // token. Buckets for exited threads are pruned lazily on acquire/recycle.
   mutable std::mutex device_stream_pool_mutex_;
-  mutable std::vector<std::unique_ptr<DeviceStreamCollection>> device_stream_pool_;
+  mutable InlinedHashMap<const void*, DeviceStreamPoolBucket> device_stream_pools_;
   // flag to indicate whether current session using any EP that create device stream dynamically.
   bool has_device_stream_enabled_ep_ = false;
 #endif

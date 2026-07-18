@@ -14,6 +14,7 @@ namespace onnxruntime {
 
 class ExecutionProviders;
 class KernelRegistryManager;
+class LayeringIndex;
 class Model;
 struct ConfigOptions;
 
@@ -62,6 +63,7 @@ class GraphPartitioner {
                    const layout_transformation::TransformLayoutFunction& transform_layout_function,
                    const ConfigOptions& config_options,
                    const logging::Logger& logger,
+                   LayeringIndex* layering_index,
                    Mode mode = Mode::kNormal,
                    const epctx::ModelGenOptions& ep_context_gen_options = {},
                    const layout_transformation::DebugGraphFn& debug_graph_fn = {}) const;

@@ -108,7 +108,7 @@ void EmbedLayerNormalizationShapeInference(::ONNX_NAMESPACE::InferenceContext& c
     updateOutputShape(ctx, 1, mask_index_shape);
   }
 
-  if (ctx.getNumOutputs() == 3 || (ctx.getNumOutputs() == 2 && mask_index_type == 0)) {
+  if (ctx.getNumOutputs() > 2) {
     updateOutputShape(ctx, 2, output_shape);
     propagateElemTypeFromInputToOutput(ctx, 0, 2);
   }
@@ -134,6 +134,9 @@ void SkipLayerNormalizationShapeInference(::ONNX_NAMESPACE::InferenceContext& ct
   }
   auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
   int64_t input_ndim = input_shape.dim_size();
+  if (input_ndim < 1) {
+    fail_shape_inference("SkipLayerNormalization: input must have rank >= 1");
+  }
   int axis = static_cast<int>(input_ndim - 1);
 
   if (ctx.getNumOutputs() > 1) {

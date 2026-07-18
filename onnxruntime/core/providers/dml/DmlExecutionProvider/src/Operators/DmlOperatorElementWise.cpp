@@ -542,64 +542,7 @@ public:
         const DML_TENSOR_DATA_TYPE outputDataType = m_outputTensorDescs[0].GetDmlDataType();
         bool hasZeroPointTensor = kernelInfo.IsInputValid(2);
 
-        uint32_t axis = 0;
-
-        // If an axis was given explicitly passed (or the default value 1 is set from the schema),
-        // then other inputs are broadcasting to the shape of the input data tensor.
-        if (kernelInfo.HasAttribute(AttrName::Axis, MLOperatorAttributeType::Int))
-        {
-            // Avoid validating the axis until later because the axis parameter is ignorable unless
-            // broadcasting is actually needed. ONNX opset 13 returns a default value of 1 for the
-            // "axis" attribute even when the attribute doesn't actually exist in the model, which
-            // would cause a validation failure here.
-            const int32_t signedAxis = gsl::narrow_cast<int32_t>(kernelInfo.GetAttribute<int64_t>(AttrName::Axis));
-            axis = Dml::HandleNegativeAxis(signedAxis, outputShapeDimCount, /*validateAxis*/ false);
-        }
-
-        // Explicitly reshape each of the inputs after the first input (scale tensor and optional zero point tensor).
-        for (uint32_t index = 1, inputCount = gsl::narrow_cast<uint32_t>(m_inputTensorDescs.size()); index < inputCount; ++index)
-        {
-            if (!kernelInfo.IsInputValid(index))
-            {
-                continue;
-            }
-
-            auto edgeDesc = kernelInfo.GetInputEdgeDescription(index);
-            assert(edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
-
-            // Fix up the the tensor shape by filling with trailing ones. So input[2,3] with axis=0 and scale[2]
-            // becomes scale[2,1], so that broadcasting works correctly.
-            std::vector<uint32_t> inputTensorShape = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(index);
-
-            // If the input tensor is a 1D vector, then extra massaging is needed to project their
-            // 1D vectors back to the full shape for broadcasting along the given axis.
-            // The 1D vector should have a length equal to the output tensor's dimension on that axis.
-            if (inputTensorShape.size() == 1 && inputTensorShape != outputShape)
-            {
-                ML_CHECK_VALID_ARGUMENT(axis < outputShapeDimCount);
-                uint32_t broadcastAxisLength = outputShape[axis];
-                ML_CHECK_VALID_ARGUMENT(
-                    (inputTensorShape[0] == broadcastAxisLength) ||
-                    // Treat as broadcast dimension to match CPU behavior.
-                    (inputTensorShape[0] == 1)
-                );
-                inputTensorShape.insert(inputTensorShape.begin(), axis, 1);
-                inputTensorShape.insert(inputTensorShape.end(), outputShapeDimCount - 1 - axis, 1);
-            }
-            // For any other shape (scalar/ND), leave it alone, and the TensorDesc constructor
-            // will apply broadcasting with standard elementwise alignment.
-
-            m_inputTensorDescs[index] = TensorDesc(
-                edgeDesc.tensorDataType,
-                gsl::make_span(outputShape),
-                gsl::make_span(inputTensorShape),
-                TensorAxis::DoNotCoerce,
-                TensorAxis::W,
-                TensorAxis::RightAligned,
-                NchwDimensionCount, // minDimensionCount
-                0 // guaranteedBaseOffsetAlignment
-            );
-        }
+        BroadcastQuantizationParameters(kernelInfo, gsl::make_span(outputShape));
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
@@ -629,6 +572,8 @@ public:
         const DML_TENSOR_DATA_TYPE inputDataType = m_inputTensorDescs[0].GetDmlDataType();
         const DML_TENSOR_DATA_TYPE outputDataType = m_outputTensorDescs[0].GetDmlDataType();
         bool hasZeroPointTensor = kernelInfo.IsInputValid(2);
+
+        BroadcastQuantizationParameters(kernelInfo, gsl::make_span(outputShape));
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();

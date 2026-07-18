@@ -27,7 +27,7 @@ export declare namespace InferenceSession {
    * - An array of string indicating the output names.
    * - An object that use output names as keys and OnnxValue or null as corresponding values.
    *
-   * @remark
+   * @remarks
    * different from input argument, in output, OnnxValue is optional. If an OnnxValue is present it will be
    * used as a pre-allocated value by the inference engine; if omitted, inference engine will allocate buffer
    * internally.
@@ -273,6 +273,47 @@ export declare namespace InferenceSession {
     validationMode?: 'disabled' | 'wgpuOnly' | 'basic' | 'full';
 
     /**
+     * Specify the cache mode for storage buffers.
+     * - 'disabled': Disable buffer cache. Buffers are destroyed when no longer in use.
+     * - 'lazyRelease': Buffers are released lazily, at the end of the current run.
+     * - 'simple': Released buffers are cached and reused only for requests of the exact same size.
+     * - 'bucket': Released buffers are cached and reused using predefined size buckets. This is the default mode.
+     *
+     * For static-shape models, 'simple' may reduce GPU memory usage, because exact-size buffers are reused across
+     * runs instead of allocating new bucket-sized buffers.
+     *
+     * @default 'bucket'
+     */
+    storageBufferCacheMode?: 'disabled' | 'lazyRelease' | 'simple' | 'bucket';
+
+    /**
+     * Specify the cache mode for uniform buffers.
+     *
+     * See {@link storageBufferCacheMode} for a description of the available modes.
+     *
+     * @default 'simple'
+     */
+    uniformBufferCacheMode?: 'disabled' | 'lazyRelease' | 'simple' | 'bucket';
+
+    /**
+     * Specify the cache mode for query resolve buffers.
+     *
+     * See {@link storageBufferCacheMode} for a description of the available modes.
+     *
+     * @default 'disabled'
+     */
+    queryResolveBufferCacheMode?: 'disabled' | 'lazyRelease' | 'simple' | 'bucket';
+
+    /**
+     * Specify the cache mode for buffers not covered by the other buffer cache mode options.
+     *
+     * See {@link storageBufferCacheMode} for a description of the available modes.
+     *
+     * @default 'disabled'
+     */
+    defaultBufferCacheMode?: 'disabled' | 'lazyRelease' | 'simple' | 'bucket';
+
+    /**
      * Specify an optional WebGPU device to be used by the WebGPU execution provider.
      */
     device?: TryGetGlobalType<'GPUDevice'>;
@@ -311,7 +352,8 @@ export declare namespace InferenceSession {
    * @see https://www.w3.org/TR/webnn/#dom-ml-createcontext
    */
   export interface WebNNOptionsWithMLContext
-    extends WebNNExecutionProviderName,
+    extends
+      WebNNExecutionProviderName,
       Omit<WebNNContextOptions, 'deviceType'>,
       Required<Pick<WebNNContextOptions, 'deviceType'>> {
     context: TryGetGlobalType<'MLContext'>;

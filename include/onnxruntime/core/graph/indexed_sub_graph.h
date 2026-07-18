@@ -86,18 +86,32 @@ struct IndexedSubGraph {
 
   // Should call IsAccountingEnabled() first
   // Takes the previously computed ResourceCount for the node
-  // (usually during GetCapabiilty())
+  // (usually during GetCapability())
   // if present and adds it to the consumed amount
   void AccountForNode(size_t cost_index) const {
     assert(cost_index < nodes_costs.size());
     resource_accountant->AddConsumedAmount(nodes_costs[cost_index]);
+    resource_accountant->CommitWeightsForNode(nodes[cost_index]);
   }
 
-  // This computes and accounts for the resource cost for the node that just
-  // been fused from other nodes, and the EP did not had a chance to compute the costs.
-  void ComputeAndAccountForNode(const Node& node) const {
+  // Accounts for all constituent nodes by summing their pre-stored costs.
+  // Use this when fusing nodes into a single node so the total cost
+  // reflects what was computed during GetCapability() (with correct
+  // cross-node weight deduplication already applied).
+  void AccountForAllNodes() const {
     assert(resource_accountant != nullptr);
-    resource_accountant->AddConsumedAmount(resource_accountant->ComputeResourceCount(node));
+    for (size_t i = 0; i < nodes_costs.size(); ++i) {
+      resource_accountant->AddConsumedAmount(nodes_costs[i]);
+      resource_accountant->CommitWeightsForNode(nodes[i]);
+    }
+  }
+
+  // Accounts for a node given its index and a pre-computed resource cost.
+  // Use this when the cost was computed externally (e.g. for a fused node).
+  void AccountForNode(NodeIndex node_index, const ResourceCount& resource_count) const {
+    assert(resource_accountant != nullptr);
+    resource_accountant->AddConsumedAmount(resource_count);
+    resource_accountant->CommitWeightsForNode(node_index);
   }
 
   void SetAccountant(IResourceAccountant* res_accountant) {
@@ -108,6 +122,13 @@ struct IndexedSubGraph {
   void AppendNodeCost(const ResourceCount& cost) {
     assert(resource_accountant != nullptr);
     nodes_costs.emplace_back(cost);
+  }
+
+  // Read-only access to the pre-computed resource cost for the node at cost_index.
+  // Should call IsAccountingEnabled() first.
+  const ResourceCount& GetNodeCost(size_t cost_index) const {
+    assert(cost_index < nodes_costs.size());
+    return nodes_costs[cost_index];
   }
 
  private:

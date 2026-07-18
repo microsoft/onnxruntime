@@ -20,6 +20,10 @@ struct OrtAllocatorWrapper : public OrtAllocator {
     Alloc = AllocImpl;
     Free = FreeImpl;
     Info = InfoImpl;
+    Reserve = nullptr;
+    GetStats = nullptr;
+    AllocOnStream = nullptr;
+    Shrink = nullptr;
   }
 
   static void* ORT_API_CALL AllocImpl(struct OrtAllocator* this_, size_t size) {

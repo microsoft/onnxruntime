@@ -1,13 +1,46 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
+#include <algorithm>
+
 #include "gtest/gtest.h"
 #include "default_providers.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+
 using namespace std;
 namespace onnxruntime {
 namespace test {
+
+// Compute reference LRN output using the ONNX formula:
+//   Y[n,c,h,w] = X[n,c,h,w] * (bias + alpha/size * sum(X[n,j,h,w]^2))^(-beta)
+// where j ranges over [max(0, c - floor(size/2)), min(C-1, c + floor(size/2))].
+// Input shape must be NCHW.
+static vector<float> ComputeLRNReference(const vector<float>& X,
+                                         int64_t N, int64_t C, int64_t H, int64_t W,
+                                         float alpha, float beta, float bias, int64_t size) {
+  const int64_t total = N * C * H * W;
+  const int64_t pre_pad = (size - 1) / 2;
+  vector<float> expected(static_cast<size_t>(total));
+  for (int64_t n = 0; n < N; ++n) {
+    for (int64_t c = 0; c < C; ++c) {
+      for (int64_t h = 0; h < H; ++h) {
+        for (int64_t w = 0; w < W; ++w) {
+          float sum_sq = 0.0f;
+          for (int64_t j = std::max(int64_t{0}, c - pre_pad); j <= std::min(C - 1, c + pre_pad); ++j) {
+            float val = X[n * C * H * W + j * H * W + h * W + w];
+            sum_sq += val * val;
+          }
+          float scale = bias + (alpha / size) * sum_sq;
+          int64_t idx = n * C * H * W + c * H * W + h * W + w;
+          expected[idx] = X[idx] * std::pow(scale, -beta);
+        }
+      }
+    }
+  }
+  return expected;
+}
 
 TEST(LRNTest, LRN_1) {
   OpTester test("LRN");
@@ -101,6 +134,168 @@ TEST(LRNTest, LRN_2) {
 
   test.AddInput<float>("X", shape, X);
   test.AddOutput<float>("Y", shape, expected_output);
+  test.Run();
+}
+
+// Test that size > C is handled correctly (window is clamped to valid channel range).
+TEST(LRNTest, SizeGreaterThanChannels) {
+  constexpr float alpha = 0.001f;
+  constexpr float beta = 0.75f;
+  constexpr float bias = 1.0f;
+  constexpr int64_t size = 5;
+
+  OpTester test("LRN");
+  test.AddAttribute("alpha", alpha);
+  test.AddAttribute("beta", beta);
+  test.AddAttribute("bias", bias);
+  test.AddAttribute("size", size);
+
+  // N=1, C=3, H=2, W=2 with size=5 > C=3
+  vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f,
+                     5.0f, 6.0f, 7.0f, 8.0f,
+                     9.0f, 10.0f, 11.0f, 12.0f};
+  vector<int64_t> shape = {1, 3, 2, 2};
+
+  vector<float> expected = ComputeLRNReference(X, 1, 3, 2, 2, alpha, beta, bias, size);
+
+  test.AddInput<float>("X", shape, X);
+  test.AddOutput<float>("Y", shape, expected);
+  test.Run();
+}
+
+// Test with minimum valid size (size=3) where size == C for a 3-channel input.
+TEST(LRNTest, SizeEqualsChannels) {
+  constexpr float alpha = 0.0001f;
+  constexpr float beta = 0.75f;
+  constexpr float bias = 1.0f;
+  constexpr int64_t size = 3;
+
+  OpTester test("LRN");
+  test.AddAttribute("alpha", alpha);
+  test.AddAttribute("beta", beta);
+  test.AddAttribute("bias", bias);
+  test.AddAttribute("size", size);
+
+  // N=1, C=3, H=1, W=1
+  vector<float> X = {1.0f, 2.0f, 3.0f};
+  vector<int64_t> shape = {1, 3, 1, 1};
+
+  vector<float> expected = ComputeLRNReference(X, 1, 3, 1, 1, alpha, beta, bias, size);
+
+  test.AddInput<float>("X", shape, X);
+  test.AddOutput<float>("Y", shape, expected);
+  test.Run();
+}
+
+// Test with larger spatial dimensions to verify correctness with non-trivial H and W.
+TEST(LRNTest, LargerSpatialDims) {
+  constexpr float alpha = 0.001f;
+  constexpr float beta = 0.75f;
+  constexpr float bias = 1.0f;
+  constexpr int64_t size = 3;
+
+  OpTester test("LRN");
+  test.AddAttribute("alpha", alpha);
+  test.AddAttribute("beta", beta);
+  test.AddAttribute("bias", bias);
+  test.AddAttribute("size", size);
+
+  constexpr int64_t N = 1, C = 3, H = 128, W = 128;
+  constexpr int64_t total = N * C * H * W;
+  vector<float> X(total);
+  // Fill with a simple pattern
+  for (int64_t i = 0; i < total; ++i) {
+    X[i] = static_cast<float>(i % 7) * 0.1f + 0.1f;
+  }
+  vector<int64_t> shape = {N, C, H, W};
+
+  vector<float> expected = ComputeLRNReference(X, N, C, H, W, alpha, beta, bias, size);
+
+  test.AddInput<float>("X", shape, X);
+  test.AddOutput<float>("Y", shape, expected);
+  test.Run();
+}
+
+// Test with multiple batch items (N > 1) to cover the outer loop with n * image_size arithmetic.
+TEST(LRNTest, MultipleBatches) {
+  constexpr float alpha = 0.01f;
+  constexpr float beta = 0.5f;
+  constexpr float bias = 1.0f;
+  constexpr int64_t size = 3;
+
+  OpTester test("LRN");
+  test.AddAttribute("alpha", alpha);
+  test.AddAttribute("beta", beta);
+  test.AddAttribute("bias", bias);
+  test.AddAttribute("size", size);
+
+  constexpr int64_t N = 2, C = 3, H = 2, W = 2;
+  constexpr int64_t total = N * C * H * W;
+  vector<float> X(total);
+  for (int64_t i = 0; i < total; ++i) {
+    X[i] = static_cast<float>(i + 1) * 0.05f;
+  }
+  vector<int64_t> shape = {N, C, H, W};
+
+  vector<float> expected = ComputeLRNReference(X, N, C, H, W, alpha, beta, bias, size);
+
+  test.AddInput<float>("X", shape, X);
+  test.AddOutput<float>("Y", shape, expected);
+  test.Run();
+}
+
+// Test with more channels than size to exercise the sliding window (add head / subtract tail) path.
+TEST(LRNTest, ManyChannels) {
+  constexpr float alpha = 0.0001f;
+  constexpr float beta = 0.75f;
+  constexpr float bias = 1.0f;
+  constexpr int64_t size = 3;
+
+  OpTester test("LRN");
+  test.AddAttribute("alpha", alpha);
+  test.AddAttribute("beta", beta);
+  test.AddAttribute("bias", bias);
+  test.AddAttribute("size", size);
+
+  // C > size to exercise the c=1..C-1 loop with head/tail updates
+  constexpr int64_t N = 1, C = 8, H = 2, W = 2;
+  constexpr int64_t total = N * C * H * W;
+  vector<float> X(total);
+  for (int64_t i = 0; i < total; ++i) {
+    X[i] = static_cast<float>((i % 5) + 1) * 0.2f;
+  }
+  vector<int64_t> shape = {N, C, H, W};
+
+  vector<float> expected = ComputeLRNReference(X, N, C, H, W, alpha, beta, bias, size);
+
+  test.AddInput<float>("X", shape, X);
+  test.AddOutput<float>("Y", shape, expected);
+  test.Run();
+}
+
+// Test with all-zero input -- edge case where squared values are all zero.
+TEST(LRNTest, ZeroInput) {
+  constexpr float alpha = 0.001f;
+  constexpr float beta = 0.75f;
+  constexpr float bias = 1.0f;
+  constexpr int64_t size = 3;
+
+  OpTester test("LRN");
+  test.AddAttribute("alpha", alpha);
+  test.AddAttribute("beta", beta);
+  test.AddAttribute("bias", bias);
+  test.AddAttribute("size", size);
+
+  constexpr int64_t N = 1, C = 3, H = 2, W = 2;
+  constexpr int64_t total = N * C * H * W;
+  vector<float> X(total, 0.0f);
+  vector<int64_t> shape = {N, C, H, W};
+
+  // With all zeros: scale = bias = 1.0, Y = 0 * pow(1.0, -beta) = 0
+  vector<float> expected(total, 0.0f);
+
+  test.AddInput<float>("X", shape, X);
+  test.AddOutput<float>("Y", shape, expected);
   test.Run();
 }
 

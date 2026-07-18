@@ -26,9 +26,27 @@ struct Node {
     return kernel_info_.GetOperatorType();
   }
 
+  /** Gets the Node's domain. */
+  std::string Domain() const {
+    return kernel_info_.GetOperatorDomain();
+  }
+
   /** Gets the since version of the operator. */
   int SinceVersion() const noexcept {
     return kernel_info_.GetOperatorSinceVersion();
+  }
+
+  /** Gets the number of outputs. */
+  size_t OutputCount() const noexcept {
+    return kernel_info_.GetOutputCount();
+  }
+
+  /** Gets whether an output exists or is an omitted optional output. */
+  bool OutputExists(size_t index) const {
+    // KernelInfo_GetOutputName returns an empty string for omitted optional
+    // outputs, which lets adapter consumers mirror NodeArg::Exists() without
+    // pulling in full NodeArg metadata.
+    return index < OutputCount() && !kernel_info_.GetOutputName(index).empty();
   }
 
  private:
