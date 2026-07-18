@@ -167,8 +167,9 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
   provider_options.do_copy_in_default_stream = true;
   provider_options.use_tf32 = false;
   return CudaExecutionProviderWithOptions(&provider_options);
-#endif
+#else
   return nullptr;
+#endif
 }
 
 #ifdef ENABLE_CUDA_NHWC_OPS
@@ -179,8 +180,9 @@ std::unique_ptr<IExecutionProvider> DefaultCudaNHWCExecutionProvider() {
   provider_options.use_tf32 = false;
   provider_options.prefer_nhwc = true;
   return CudaExecutionProviderWithOptions(&provider_options);
-#endif
+#else
   return nullptr;
+#endif
 }
 #endif
 
@@ -191,11 +193,12 @@ std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const OrtCU
 #else
   if (auto factory = CudaProviderFactoryCreator::Create(provider_options))
     return factory->CreateProvider();
+  return nullptr;
 #endif
 #else
   ORT_UNUSED_PARAMETER(provider_options);
-#endif
   return nullptr;
+#endif
 }
 
 std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider() {

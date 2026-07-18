@@ -44,7 +44,7 @@ Source files:
 | `bits` | Quantization bit width: `4` or `8`. |
 | `block_size` | Quantization group size along `K` (16 / 32 / 64 / 128). One scale (and optional zero point) per group. |
 | `accuracy_level` | Minimum accuracy level for internal handling of `A`; default `0` means unset. |
-| `weight_prepacked` | CUDA fpA_intB weight-layout selector. `0` (default): `B` is in standard MatMulNBits layout and may be runtime-prepacked. `1`: `B` is already prepacked in the CUDA SM80 fpA_intB layout. `2`: `B` is prepacked in the CUDA SM90 (Hopper) fpA_intB layout, consumed by the native SM90 kernel (requires an SM90 device and `block_size` in {64, 128}). |
+| `weight_prepacked` | CUDA fpA_intB weight-layout selector. `0` (default): `B` is in standard MatMulNBits layout and may be runtime-prepacked. `1`: `B` is already prepacked in the CUDA SM80 fpA_intB layout. `2`: `B` is prepacked in the CUDA SM90 (Hopper) fpA_intB layout, consumed by the native SM90 kernel (requires an SM90 device and `block_size` in {64, 128}). The native SM90 kernel is not compiled on Windows/MSVC builds (CUDA 13 host stubs hit MSVC `C2719` with over-aligned TMA parameters — see [moe_qmoe.md §14.1](./moe_qmoe.md)); on those builds the default `0`/`1` layouts run the SM80 compatibility kernel on Hopper instead. |
 
 | Input | Index | Notes |
 |-------|-------|-------|
