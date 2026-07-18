@@ -7,6 +7,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 #include <cmath>
+#include <cstring>
 #include <type_traits>
 
 namespace onnxruntime {
@@ -43,6 +44,13 @@ int64_t get_data<int64_t>(const TensorProto* shapeInitializer) {
 }
 
 template <>
+int16_t get_data<int16_t>(const TensorProto* shapeInitializer) {
+  // ONNX packs INT16 initializer values into the int32_data repeated field.
+  if (shapeInitializer->int32_data_size() > 0) return static_cast<int16_t>(shapeInitializer->int32_data(0));
+  fail_shape_inference("Can not get shape initializer data!");
+}
+
+template <>
 float get_data<float>(const TensorProto* shapeInitializer) {
   if (shapeInitializer->float_data_size() > 0) return shapeInitializer->float_data(0);
   fail_shape_inference("Can not get shape initializer data!");
@@ -60,7 +68,13 @@ static T GetFirstElement(const TensorProto* shapeInitializer) {
 
   if (utils::HasRawData(*shapeInitializer)) {
     const std::string& bytes = shapeInitializer->raw_data();
-    return *reinterpret_cast<const T*>(bytes.c_str());
+    if (bytes.size() < sizeof(T)) {
+      fail_shape_inference("Range: raw_data size is smaller than the element size for the given data type.");
+    }
+    // std::string data is only char-aligned, so copy the bytes into a properly aligned value.
+    T value;
+    std::memcpy(&value, bytes.data(), sizeof(T));
+    return value;
   }
   return get_data<T>(shapeInitializer);
 }
@@ -75,7 +89,24 @@ static int64_t CalcRangeDim(const TensorProto* startShapeInitializer,
   if (delta == 0) {
     fail_shape_inference("delta in Range operator can not be zero!");
   }
-  return static_cast<int64_t>(ceil((1.0 * (limit - start)) / delta));
+  // Mirror the CPU kernel (core/providers/cpu/generator/range.cc ComputeRange) exactly so the
+  // two paths stay byte-consistent: clamp empty or backward ranges to 0 and promote the
+  // operands to double before the subtraction. Keep this expression identical to the kernel.
+  double count = ceil((static_cast<double>(limit) - static_cast<double>(start)) / static_cast<double>(delta));
+  if (!std::isfinite(count)) {
+    fail_shape_inference("Range: the computed number of elements is not a finite value.");
+  }
+  // Empty or backward ranges clamp to 0; handle the non-positive case before the cast so a
+  // large-magnitude negative count can never reach (and overflow) the int64 conversion below.
+  if (count <= 0) {
+    return 0;
+  }
+  // static_cast<double>(INT64_MAX) rounds up to 2^63 (9223372036854775808.0), which is not
+  // representable as int64_t, so reject any count at or above that boundary before the cast.
+  if (count >= 9223372036854775808.0) {
+    fail_shape_inference("Range: the computed number of elements exceeds the supported range.");
+  }
+  return static_cast<int64_t>(count);
 }
 
 static int64_t CalcResultDim(const TensorProto* startShapeInitializer,
