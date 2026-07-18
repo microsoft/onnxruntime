@@ -756,7 +756,7 @@ void PosixTelemetry::LogProcessInfo() const {
                      .AddString("architecture", GetArchitecture())
                      .AddString("cpuModel", GetCpuModel())
                      .AddString("deviceClass", GetDeviceClass())
-                     .AddInt32("cpuCount", GetProcessorCount())
+                     .AddInt32("processorCount", GetProcessorCount())
                      .AddInt64("totalMemoryMB", GetTotalMemoryMB());
 
   LogEventAsync(builder.Build());
@@ -1006,10 +1006,11 @@ void PosixTelemetry::LogProviderOptions(
   }
 
   std::string event_name = captureState ? "ProviderOptions_CaptureState" : "ProviderOptions";
+  const std::string scrubbed_provider_options = ScrubStringForTelemetry(provider_options_string);
 
   auto event = EventBuilder(std::move(event_name), EventPriority::NORMAL)
                    .AddString("providerId", provider_id)
-                   .AddString("providerOptions", provider_options_string)
+                   .AddString("providerOptions", scrubbed_provider_options)
                    .Build();
 
   LogEventAsync(std::move(event));
@@ -1127,9 +1128,10 @@ void PosixTelemetry::LogRegisterEpLibraryWithLibPath(const std::string& registra
     return;
   }
 
+  const std::string scrubbed_lib_path = ScrubStringForTelemetry(lib_path);
   auto event = EventBuilder("RegisterEpLibraryWithLibPath", EventPriority::NORMAL)
                    .AddString("registrationName", registration_name)
-                   .AddString("libPath", lib_path)
+                   .AddString("libPath", scrubbed_lib_path)
                    .Build();
 
   LogEventAsync(std::move(event));

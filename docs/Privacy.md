@@ -6,7 +6,7 @@ The software may collect information about you and your use of the software and 
 ***
 
 ### Private Builds
-On Windows, private builds compiled from source perform no data collection. On the non-Windows platforms, telemetry is enabled by default — including in builds compiled from source — so it is present unless you turn it off (see [Disabling Telemetry](#disabling-telemetry)).
+On Windows, private builds compiled from source perform no data collection. On non-Windows platforms, the standard `build.sh` wrapper enables telemetry for native builds. Direct `build.py` or CMake builds include telemetry only when explicitly configured with `--use_telemetry`.
 
 ### Official Builds
 ONNX Runtime collects trace events with the goal of improving product quality. On Windows it uses the platform's built-in ETW telemetry system; on the non-Windows platforms it uses the cross-platform 1DS telemetry SDK that is built into ONNX Runtime. In all cases, collection is subject to user consent and handled following Microsoft's privacy practices.

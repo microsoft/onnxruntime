@@ -9,6 +9,10 @@
 #include <string>
 #include <string_view>
 
+#ifdef _WIN32
+#include <Windows.h>
+#endif
+
 namespace onnxruntime {
 namespace telemetry_detail {
 
@@ -34,15 +38,22 @@ inline constexpr std::array<const char*, 13> kCiEnvironmentVariableNames = {
 // Read an environment variable, returning an empty string when unset. std::getenv is sufficient here
 // (we only inspect the value for truthiness); the MSVC deprecation warning is suppressed locally.
 inline std::string GetTelemetryEnv(const char* name) {
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
+#ifdef _WIN32
+  const DWORD required_size = ::GetEnvironmentVariableA(name, nullptr, 0);
+  if (required_size == 0) {
+    return {};
+  }
+  std::string value(required_size, '\0');
+  const DWORD written = ::GetEnvironmentVariableA(name, value.data(), required_size);
+  if (written == 0 || written >= required_size) {
+    return {};
+  }
+  value.resize(written);
+  return value;
+#else
   const char* value = std::getenv(name);
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
   return value != nullptr ? std::string(value) : std::string();
+#endif
 }
 
 inline std::string_view TrimAscii(std::string_view s) {

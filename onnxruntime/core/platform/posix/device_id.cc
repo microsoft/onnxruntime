@@ -128,7 +128,9 @@ bool DeviceId::CreateDirectoryTree(const std::string& path, bool leaf) {
       return false;
     }
     if (leaf) {
-      ::chmod(path.c_str(), S_IRWXU);
+      if (::chmod(path.c_str(), S_IRWXU) != 0) {
+        return false;
+      }
     }
     return true;
   }
@@ -149,7 +151,10 @@ bool DeviceId::CreateDirectoryTree(const std::string& path, bool leaf) {
   if (::lstat(path.c_str(), &path_info) != 0 || (leaf && S_ISLNK(path_info.st_mode))) {
     return false;
   }
-  return ::stat(path.c_str(), &path_info) == 0 && S_ISDIR(path_info.st_mode);
+  if (::stat(path.c_str(), &path_info) != 0 || !S_ISDIR(path_info.st_mode)) {
+    return false;
+  }
+  return !leaf || ::chmod(path.c_str(), S_IRWXU) == 0;
 }
 
 void DeviceId::InitializeInternal() {
