@@ -8,6 +8,8 @@
 #include "core/graph/graph.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 
+struct OrtHardwareDevice;
+
 namespace onnxruntime {
 // A structure encodes a subgraph and the method to run it.
 struct ComputeCapability {
@@ -41,5 +43,12 @@ struct ComputeCapability {
   //  - inputs and outputs will be unchanged
   //  - constant_initializers MAY change if we constant fold an initializer during optimization
   std::vector<std::unique_ptr<ComputeCapability>> nodes_to_optimize;
+
+  // Optional hardware device that executes this subgraph, for observability
+  // (e.g., OrtApi::EpAssignedSubgraph_GetHardwareDevices).
+  // Set by plugin execution providers via OrtNodeFusionOptions::fused_node_hardware_device.
+  // When null, the assignment recorder falls back to the EP's first registered OrtEpDevice.
+  // Not owned; points to an OrtHardwareDevice owned by ONNX Runtime that outlives partitioning.
+  const OrtHardwareDevice* ep_hardware_device = nullptr;
 };
 }  // namespace onnxruntime

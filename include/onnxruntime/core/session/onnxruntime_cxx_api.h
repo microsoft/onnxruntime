@@ -1252,7 +1252,7 @@ struct EpAssignedSubgraphImpl : Ort::detail::Base<T> {
   using B::B;
 
   std::string GetEpName() const;
-  OrtHardwareDeviceType GetDeviceType() const;
+  std::vector<ConstHardwareDevice> GetHardwareDevices() const;
   std::vector<ConstEpAssignedNode> GetNodes() const;
 };
 }  // namespace detail

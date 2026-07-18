@@ -730,8 +730,9 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     if (sub_graph_available_for_assignment) {
       if (on_partition_assignment_fn) {
         // Call custom function provided by owner of GraphPartitioner whenever a subgraph is assigned to an EP.
-        // This can be used, for example, to collect partitioning information.
-        on_partition_assignment_fn(graph, *capability, type, current_ep.GetDevice());
+        // This can be used, for example, to collect partitioning information. The owner resolves the hardware
+        // device from the ComputeCapability (ep_hardware_device) and/or the EP's registered OrtEpDevices.
+        on_partition_assignment_fn(graph, *capability, type);
       }
 
       n = PlaceNode(graph, *capability->sub_graph, fusion_style, type, mode, fused_node_unique_id);

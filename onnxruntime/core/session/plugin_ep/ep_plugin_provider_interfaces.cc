@@ -465,6 +465,11 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         }
       }
 
+      // Record the optional per-subgraph hardware device the plugin EP declared for this fused group.
+      // OrtEpGraphSupportInfo::AddNodesToFuse already version-gated this field (it is nullptr for EPs
+      // compiled against a header without it), so it is safe to read directly here.
+      capabilities[0]->ep_hardware_device = node_grouping.fusion_options.fused_node_hardware_device;
+
       result.push_back(std::move(capabilities[0]));
     } else {
       LOGS(logger, ERROR) << "PluginExecutionProvider::GetCapability() has invalid NodeGroupingKind: "

@@ -453,6 +453,9 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
   Ort::ConstEpDevice plugin_ep_device(example_ep.get());
 
+  // The plugin EP's subgraph should resolve to the plugin EP device's own hardware device.
+  const OrtHardwareDeviceType expected_plugin_device_type = plugin_ep_device.Device().Type();
+
   // Create session with example plugin EP
   Ort::SessionOptions session_options;
   std::unordered_map<std::string, std::string> ep_options;
@@ -466,7 +469,7 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
   // - Subgraph 1: Add assigned to CPU EP.
   // - Subgraph 2: Mul assigned to plugin EP.
   // - Subgraph 3: Add assigned to CPU EP.
-  auto check_ep_node_assignment = [](const Ort::Session& session) -> void {
+  auto check_ep_node_assignment = [expected_plugin_device_type](const Ort::Session& session) -> void {
     std::vector<Ort::ConstEpAssignedSubgraph> ep_subgraphs = session.GetEpGraphAssignmentInfo();
     ASSERT_EQ(ep_subgraphs.size(), 3);
 
@@ -474,7 +477,7 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
       std::string ep_name = ep_subgraph.GetEpName();
       ASSERT_TRUE(ep_name == Utils::example_ep_info.ep_name || ep_name == kCpuExecutionProvider);
 
-      OrtHardwareDeviceType device_type = ep_subgraph.GetDeviceType();
+      std::vector<Ort::ConstHardwareDevice> hw_devices = ep_subgraph.GetHardwareDevices();
 
       const std::vector<Ort::ConstEpAssignedNode> ep_nodes = ep_subgraph.GetNodes();
 
@@ -487,12 +490,17 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
 
       // Check that CPU EP has the Adds and that the example EP has the Mul.
       if (ep_name == kCpuExecutionProvider) {
-        ASSERT_EQ(device_type, OrtHardwareDeviceType_CPU);
+        // The default CPU EP is added implicitly via the legacy CPUExecutionProvider constructor and has no
+        // registered OrtEpDevice, so no hardware device can be reliably determined for its subgraphs.
+        // (We intentionally do not fall back to the EP's OrtDevice, which would misreport NPU EPs as CPU.)
+        ASSERT_EQ(hw_devices.size(), 0u);
         ASSERT_EQ(op_type, "Add");
         ASSERT_TRUE(node_name == "add_0" || node_name == "add_1");
       } else {
         ASSERT_TRUE(ep_name == Utils::example_ep_info.ep_name);
-        ASSERT_EQ(device_type, OrtHardwareDeviceType_GPU);  // Example plugin EP uses GPU device type
+        // The example plugin EP is registered with a single OrtEpDevice, so its subgraph resolves to it.
+        ASSERT_EQ(hw_devices.size(), 1u);
+        ASSERT_EQ(hw_devices[0].Type(), expected_plugin_device_type);
         ASSERT_EQ(op_type, "Mul");
         ASSERT_EQ(node_name, "mul_0");
       }
@@ -500,6 +508,68 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
   };
 
   RunAddMulAddModel(session_options, check_ep_node_assignment);
+}
+
+// Verifies that a per-subgraph hardware device declared by a plugin EP via
+// OrtNodeFusionOptions::fused_node_hardware_device is surfaced through EpAssignedSubgraph_GetHardwareDevices,
+// taking precedence over the EP's registered OrtEpDevice fallback.
+TEST(OrtEpLibrary, PluginEp_AppendV2_PerSubgraphHardwareDevice) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ASSERT_NE(api, nullptr);
+  OrtEnv* env = static_cast<OrtEnv*>(*ort_env);
+
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+  const OrtHardwareDevice* ep_own_device = plugin_ep_device.Device();
+
+  // Prefer a hardware device whose identity differs from the EP's own registered device, so that honoring the
+  // plugin-declared per-subgraph device is provably distinct from the ep_devices[0] fallback. Falls back to the
+  // EP's own device on single-device machines (still exercises the per-subgraph resolution path).
+  size_t num_hw_devices = 0;
+  ASSERT_ORTSTATUS_OK(api->GetNumHardwareDevices(env, &num_hw_devices));
+  ASSERT_GT(num_hw_devices, 0u);
+  std::vector<const OrtHardwareDevice*> hw_devices(num_hw_devices);
+  ASSERT_ORTSTATUS_OK(api->GetHardwareDevices(env, hw_devices.data(), num_hw_devices));
+
+  const OrtHardwareDevice* target_device = ep_own_device;
+  for (const OrtHardwareDevice* device : hw_devices) {
+    if (device != ep_own_device) {
+      target_device = device;
+      break;
+    }
+  }
+
+  // Ask the example EP to declare target_device on its fused Mul node; clear it again when the test exits.
+  // The hook is resolved at runtime from the loaded EP library (the test does not link the EP directly).
+  Utils::LoadExampleEpHooksPtr ep_hooks;
+  ASSERT_NO_FATAL_FAILURE(Utils::LoadExampleEpHooks(Utils::example_ep_info, ep_hooks));
+  ASSERT_NE(ep_hooks->set_fused_node_hardware_device, nullptr);
+  ep_hooks->set_fused_node_hardware_device(target_device);
+  auto clear_hook = gsl::finally([&ep_hooks]() { ep_hooks->set_fused_node_hardware_device(nullptr); });
+
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AddConfigEntry(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "1");
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  auto check_per_subgraph_device = [target_device](const Ort::Session& session) -> void {
+    std::vector<Ort::ConstEpAssignedSubgraph> ep_subgraphs = session.GetEpGraphAssignmentInfo();
+    bool found_plugin_subgraph = false;
+    for (Ort::ConstEpAssignedSubgraph ep_subgraph : ep_subgraphs) {
+      if (ep_subgraph.GetEpName() != Utils::example_ep_info.ep_name) {
+        continue;
+      }
+      found_plugin_subgraph = true;
+      std::vector<Ort::ConstHardwareDevice> hw_devices = ep_subgraph.GetHardwareDevices();
+      ASSERT_EQ(hw_devices.size(), 1u);
+      // The plugin-declared per-subgraph device must be honored exactly (by identity).
+      ASSERT_EQ(static_cast<const OrtHardwareDevice*>(hw_devices[0]), target_device);
+    }
+    ASSERT_TRUE(found_plugin_subgraph);
+  };
+
+  RunAddMulAddModel(session_options, check_per_subgraph_device);
 }
 
 // Verifies that GetEpGraphAssignmentInfo() correctly captures the FP16 HardSigmoid node being

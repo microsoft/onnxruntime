@@ -2211,20 +2211,34 @@ execution provider)pbdoc");
           py::return_value_policy::reference_internal,
           R"pbdoc(List of nodes in the subgraph.)pbdoc")
       .def_property_readonly(
-          "device_type",
-          [](const OrtEpAssignedSubgraph* ep_subgraph) -> std::string {
-            switch (ep_subgraph->device_type) {
-              case OrtDevice::GPU:
-              case OrtDevice::DML:  // DML is a GPU-class backend
-                return "GPU";
-              case OrtDevice::NPU:
-                return "NPU";
-              default:
-                return "CPU";
+          "hardware_device_types",
+          [](const OrtEpAssignedSubgraph* ep_subgraph) -> std::vector<std::string> {
+            std::vector<std::string> device_types;
+            device_types.reserve(ep_subgraph->hardware_devices.size());
+            for (const OrtHardwareDevice* device : ep_subgraph->hardware_devices) {
+              if (device == nullptr) {
+                continue;
+              }
+              switch (device->type) {
+                case OrtHardwareDeviceType_GPU:
+                  device_types.emplace_back("GPU");
+                  break;
+                case OrtHardwareDeviceType_NPU:
+                  device_types.emplace_back("NPU");
+                  break;
+                case OrtHardwareDeviceType_CPU:
+                  device_types.emplace_back("CPU");
+                  break;
+                default:
+                  device_types.emplace_back("UNKNOWN");
+                  break;
+              }
             }
+            return device_types;
           },
-          R"pbdoc(The default device type of the execution provider (e.g., "CPU", "GPU", "NPU").
-For EPs that internally manage multiple device types, this is the EP's registered default device.)pbdoc");
+          R"pbdoc(The type(s) (e.g., "CPU", "GPU", "NPU") of the hardware device(s) that run this subgraph.
+Resolved from the plugin EP's per-subgraph device or the EP's first registered OrtEpDevice. Empty if ONNX
+Runtime cannot reliably determine the device (e.g., an execution provider added by name with no OrtEpDevice).)pbdoc");
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
   // Note: Doesn't expose initial_growth_chunk_sizes_bytes/max_power_of_two_extend_bytes option.

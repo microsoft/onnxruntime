@@ -820,8 +820,8 @@ ORT_API_STATUS_IMPL(EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssignedSubgrap
 ORT_API_STATUS_IMPL(EpAssignedNode_GetName, _In_ const OrtEpAssignedNode* ep_node, _Outptr_ const char** out);
 ORT_API_STATUS_IMPL(EpAssignedNode_GetDomain, _In_ const OrtEpAssignedNode* ep_node, _Outptr_ const char** out);
 ORT_API_STATUS_IMPL(EpAssignedNode_GetOperatorType, _In_ const OrtEpAssignedNode* ep_node, _Outptr_ const char** out);
-ORT_API_STATUS_IMPL(EpAssignedSubgraph_GetDeviceType, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
-                    _Out_ OrtHardwareDeviceType* out);
+ORT_API_STATUS_IMPL(EpAssignedSubgraph_GetHardwareDevices, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                    _Outptr_ const OrtHardwareDevice* const** devices, _Out_ size_t* num_hardware_devices);
 
 ORT_API_STATUS_IMPL(GetTensorElementTypeAndShapeDataReference, _In_ const OrtValue* value,
                     _Out_ ONNXTensorElementDataType* elem_type,

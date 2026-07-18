@@ -7,7 +7,9 @@
 #include <string>
 #include <vector>
 #include "core/common/common.h"
-#include "core/framework/ortdevice.h"
+#include "core/common/inlined_containers.h"
+
+struct OrtHardwareDevice;
 
 /// <summary>
 /// Contains information about a node assigned to an EP. This is the definition of an opaque struct in the C API.
@@ -29,7 +31,13 @@ struct OrtEpAssignedSubgraph {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtEpAssignedSubgraph);
 
   std::string ep_name;
-  OrtDevice::DeviceType device_type = OrtDevice::CPU;
+
+  // Hardware device(s) that run this subgraph, for observability. Typically 0 or 1 entry:
+  //  - the plugin EP's per-subgraph device (ComputeCapability::ep_hardware_device), if set; else
+  //  - the EP's first registered OrtEpDevice's hardware device; else
+  //  - empty when ONNX Runtime cannot reliably determine the device.
+  // Not owned; each pointer refers to an OrtHardwareDevice owned by the environment.
+  onnxruntime::InlinedVector<const OrtHardwareDevice*> hardware_devices;
   std::vector<std::unique_ptr<OrtEpAssignedNode>> nodes_storage;
   std::vector<const OrtEpAssignedNode*> nodes;
 };

@@ -780,10 +780,17 @@ inline std::string EpAssignedSubgraphImpl<T>::GetEpName() const {
 }
 
 template <typename T>
-inline OrtHardwareDeviceType EpAssignedSubgraphImpl<T>::GetDeviceType() const {
-  OrtHardwareDeviceType device_type;
-  ThrowOnError(GetApi().EpAssignedSubgraph_GetDeviceType(this->p_, &device_type));
-  return device_type;
+inline std::vector<ConstHardwareDevice> EpAssignedSubgraphImpl<T>::GetHardwareDevices() const {
+  size_t num_devices = 0;
+  const OrtHardwareDevice* const* device_ptrs = nullptr;
+  ThrowOnError(GetApi().EpAssignedSubgraph_GetHardwareDevices(this->p_, &device_ptrs, &num_devices));
+
+  std::vector<ConstHardwareDevice> devices;
+  devices.reserve(num_devices);
+  for (size_t i = 0; i < num_devices; ++i) {
+    devices.emplace_back(device_ptrs[i]);
+  }
+  return devices;
 }
 
 template <typename T>

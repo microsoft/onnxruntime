@@ -1211,35 +1211,30 @@ ORT_API_STATUS_IMPL(OrtApis::EpAssignedNode_GetOperatorType, _In_ const OrtEpAss
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetDeviceType, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
-                    _Out_ OrtHardwareDeviceType* out) {
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetHardwareDevices, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                    _Outptr_ const OrtHardwareDevice* const** devices, _Out_ size_t* num_hardware_devices) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
-  if (out == nullptr) {
+  if (devices == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "EpAssignedSubgraph_GetDeviceType requires a valid (non-null) `out` output parameter "
-                                 "into which to store the device type.");
+                                 "EpAssignedSubgraph_GetHardwareDevices requires a valid (non-null) `devices` output "
+                                 "parameter into which to store the pointer to the hardware device array.");
   }
 
-  switch (ep_subgraph->device_type) {
-    case OrtDevice::GPU:
-    case OrtDevice::DML:  // DML is a GPU-class backend (GPU + Microsoft vendor)
-      *out = OrtHardwareDeviceType_GPU;
-      break;
-    case OrtDevice::NPU:
-      *out = OrtHardwareDeviceType_NPU;
-      break;
-    default:
-      // OrtDevice::FPGA and future types map to CPU since
-      // OrtHardwareDeviceType only defines CPU, GPU, and NPU.
-      *out = OrtHardwareDeviceType_CPU;
-      break;
+  if (num_hardware_devices == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedSubgraph_GetHardwareDevices requires a valid (non-null) "
+                                 "`num_hardware_devices` output parameter into which to store the number of hardware "
+                                 "devices.");
   }
 
+  *devices = ep_subgraph->hardware_devices.data();
+  *num_hardware_devices = ep_subgraph->hardware_devices.size();
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ep_subgraph);
-  ORT_UNUSED_PARAMETER(out);
+  ORT_UNUSED_PARAMETER(devices);
+  ORT_UNUSED_PARAMETER(num_hardware_devices);
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
 #endif  // !defined(ORT_MINIMAL_BUILD)
   API_IMPL_END
@@ -4955,7 +4950,7 @@ static constexpr OrtApi ort_api_1_to_29 = {
     &OrtApis::KernelContext_GetSyncStream,
     // End of Version 28 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    &OrtApis::EpAssignedSubgraph_GetDeviceType,
+    &OrtApis::EpAssignedSubgraph_GetHardwareDevices,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

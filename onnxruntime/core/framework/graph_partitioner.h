@@ -24,10 +24,11 @@ struct ModelGenOptions;
 
 // OnPartitionAssignmentFunction is called by GraphPartitioner when a subgraph is assigned to
 // an execution provider. Can be used to collect partitioning information.
+// The hardware device that runs the subgraph is resolved by the callback owner from the assigned
+// ComputeCapability (ComputeCapability::ep_hardware_device) and/or the EP's registered OrtEpDevices.
 using OnPartitionAssignmentFunction = std::function<void(const Graph& graph,
                                                          const ComputeCapability& assigned_subgraph,
-                                                         const std::string& assigned_ep_type,
-                                                         OrtDevice assigned_ep_device)>;
+                                                         const std::string& assigned_ep_type)>;
 
 class GraphPartitioner {
  public:

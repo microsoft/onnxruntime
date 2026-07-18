@@ -85,6 +85,8 @@ void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
       GetProcAddress(lib, "ExampleEpTestHooks_ResetSyncCount"));
   hooks.get_sync_count = reinterpret_cast<ExampleEpHooks::GetSyncCountFn>(
       GetProcAddress(lib, "ExampleEpTestHooks_GetSyncCount"));
+  hooks.set_fused_node_hardware_device = reinterpret_cast<ExampleEpHooks::SetFusedNodeHardwareDeviceFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_SetFusedNodeHardwareDevice"));
 #else
   void* lib = dlopen(ep_info.library_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
   ASSERT_NE(lib, nullptr);
@@ -93,6 +95,8 @@ void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
       dlsym(lib, "ExampleEpTestHooks_ResetSyncCount"));
   hooks.get_sync_count = reinterpret_cast<Utils::ExampleEpHooks::GetSyncCountFn>(
       dlsym(lib, "ExampleEpTestHooks_GetSyncCount"));
+  hooks.set_fused_node_hardware_device = reinterpret_cast<Utils::ExampleEpHooks::SetFusedNodeHardwareDeviceFn>(
+      dlsym(lib, "ExampleEpTestHooks_SetFusedNodeHardwareDevice"));
 #endif
 
   example_ep_hooks = LoadExampleEpHooksPtr(
