@@ -7,6 +7,8 @@
 #pragma once
 
 #include "../mlasi.h"
+#include <limits>
+#include <vector>
 
 // Fix to ensure compatibility with MSVC build
 #if defined(_MSC_VER)
@@ -23,7 +25,7 @@
 #define KLEIDIAI_KERNEL_LOGGING 0
 #endif
 
-#if KLEIDIAI_DEBUG_LOGGING ||KLEIDIAI_KERNEL_LOGGING
+#if KLEIDIAI_DEBUG_LOGGING || KLEIDIAI_KERNEL_LOGGING
 #include <iostream>
 #define KLEIDIAI_LOG(tag, msg) \
     do { \
@@ -50,6 +52,16 @@
 #endif
 
 namespace ArmKleidiAI {
+
+constexpr size_t MaximumRetainedKleidiAIScratchBytes = 8 * 1024 * 1024;
+
+template <typename T>
+void MlasShrinkKleidiAIScratchIfTooLarge(std::vector<T>& buffer)
+{
+    if (buffer.capacity() > MaximumRetainedKleidiAIScratchBytes / sizeof(T)) {
+        std::vector<T>().swap(buffer);
+    }
+}
 
 // By default we should try for SME2 first before falling back to SME.
 inline const bool UseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
@@ -374,5 +386,100 @@ MlasConvSGemmRoute(const MLAS_CONV_PARAMETERS* Parameters) {
         ? MlasConvSGemmRouteDispatch
         : MlasConvSGemmRouteDirect;
 }
-}
 
+bool
+MLASCALL
+MlasHalfGemmBatch(
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BatchN,
+    const MLAS_HALF_GEMM_DATA_PARAMS* DataParams,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    );
+
+size_t
+MLASCALL
+MlasHalfGemmKleidiAIPackBSize(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K
+    );
+
+// Packs B into the native KleidiAI RHS-packed layout for the supported
+// halfgemm configuration only. This differs from the generic MLAS halfgemm
+// prepacked-B format produced by MlasHalfGemmPackB and
+// MlasHalfGemmConvertPackB, so generic MLAS prepacked weights may need to be
+// repacked into this layout before running the KleidiAI halfgemm path.
+// Unsupported transpose combinations return false/0 so the caller can fall
+// back to the generic MLAS path.
+bool
+MLASCALL
+MlasHalfGemmKleidiAIPackB(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const MLAS_FP16* B,
+    size_t ldb,
+    void* PackedB
+    );
+
+bool
+MLASCALL
+MlasHalfConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
+                    size_t Dimensions,
+                    size_t BatchCount,
+                    size_t GroupCount,
+                    size_t InputChannels,
+                    const int64_t* InputShape,
+                    const int64_t* KernelShape,
+                    const int64_t* DilationShape,
+                    const int64_t* Padding,
+                    const int64_t* StrideShape,
+                    const int64_t* OutputShape,
+                    size_t FilterCount,
+                    const MLAS_ACTIVATION* Activation,
+                    size_t* WorkingBufferSize,
+                    float Beta,
+                    bool InputOutputChannelsLast,
+                    MLAS_THREADPOOL* ThreadPool,
+                    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
+
+bool
+MLASCALL
+MlasHalfConv(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const MLAS_FP16* Input,
+    const MLAS_FP16* Filter,
+    bool FilterAndBiasArePacked,
+    const MLAS_FP16* Bias,
+    MLAS_FP16* WorkingBuffer,
+    MLAS_FP16* Output,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+size_t
+MLASCALL
+MlasHalfConvPackWeightsAndBiasSize(
+    size_t FilterCount,
+    size_t InputChannels,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape
+    );
+
+bool
+MLASCALL
+MlasHalfConvPackWeightsAndBias(
+    size_t FilterCount,
+    size_t InputChannels,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const MLAS_FP16* Filter,
+    const MLAS_FP16* Bias,
+    void* PackedWeightsAndBias,
+    MLAS_THREADPOOL* ThreadPool
+    );
+}
