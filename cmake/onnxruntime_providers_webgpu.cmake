@@ -163,15 +163,13 @@
     # WebAssembly/JavaScript code for WebGPU support.
     target_link_libraries(onnxruntime_providers_webgpu PUBLIC emdawnwebgpu_cpp)
 
-    # Dawn's emdawnwebgpu_cpp target has a bug: it lists ${DAWN_INCLUDE_DIR}/webgpu/webgpu_enum_class_bitmasks.h
-    # in INTERFACE_SOURCES but doesn't add ${DAWN_INCLUDE_DIR} to INTERFACE_INCLUDE_DIRECTORIES.
-    # In emsdk 4.0.11, this was masked because Emscripten bundled its own copy of the WebGPU headers.
-    # In emsdk 4.0.21+, Emscripten removed the bundled WebGPU headers, exposing this bug.
-    # We need to manually add the Dawn include directory to find webgpu_enum_class_bitmasks.h.
+    # We need to manually add the Dawn include directories so that generated Emscripten WebGPU
+    # headers (e.g. webgpu_enum_class_bitmasks.h) are found at compile time.
     #
-    # IMPORTANT: We must also add the generated emdawnwebgpu include directory BEFORE the Dawn source
-    # include directory, because ${dawn_SOURCE_DIR}/include/webgpu/webgpu_cpp.h is a stub that redirects
-    # to dawn/webgpu_cpp.h (native Dawn), but we need the generated Emscripten-specific webgpu_cpp.h.
+    # IMPORTANT: We must add the generated emdawnwebgpu include directory BEFORE the Dawn source
+    # include directory, because ${dawn_SOURCE_DIR}/include/webgpu/webgpu_cpp.h is a stub that
+    # redirects to dawn/webgpu_cpp.h (native Dawn), but we need the generated Emscripten-specific
+    # webgpu_cpp.h.
     target_include_directories(onnxruntime_providers_webgpu PRIVATE
         "${dawn_BINARY_DIR}/gen/src/emdawnwebgpu/include"
         "${dawn_SOURCE_DIR}/include"

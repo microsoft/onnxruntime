@@ -9,3 +9,12 @@ diff --git a/src/emdawnwebgpu/CMakeLists.txt b/src/emdawnwebgpu/CMakeLists.txt
          COMMAND ${CMAKE_COMMAND} -E copy
              "${DAWN_INCLUDE_DIR}/webgpu/${filename}"
              "${EM_BUILD_GEN_DIR}/include/webgpu/${filename}"
+@@ -244,8 +245,7 @@ dawn_add_library(
+         HEADERS
+             "${EM_BUILD_GEN_DIR}/include/dawn/webgpu_cpp_print.h"
+             "${EM_BUILD_GEN_DIR}/include/webgpu/webgpu_cpp.h"
+             "${EM_BUILD_GEN_DIR}/include/webgpu/webgpu_cpp_chained_struct.h"
+-            "${EM_BUILD_GEN_DIR}/include/webgpu/webgpu_enum_class_bitmasks.h"
+         DEPENDS
+             emdawnwebgpu_c
+     )
