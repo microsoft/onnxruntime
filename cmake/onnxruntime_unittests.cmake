@@ -508,18 +508,11 @@ endif()
 
 list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cpu_src})
 
-if (onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
+if (onnxruntime_USE_CUDA AND NOT onnxruntime_BUILD_CUDA_EP_AS_PLUGIN AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
   file(GLOB onnxruntime_test_providers_cuda_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/cuda/*"
     )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_src})
-
-  if (onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
-    file(GLOB onnxruntime_test_providers_cuda_plugin_src CONFIGURE_DEPENDS
-      "${TEST_SRC_DIR}/providers/cuda/plugin/*.cc"
-    )
-    list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_plugin_src})
-  endif()
 
   if (onnxruntime_USE_CUDA_NHWC_OPS AND CUDNN_MAJOR_VERSION GREATER 8)
     file(GLOB onnxruntime_test_providers_cuda_nhwc_src CONFIGURE_DEPENDS
@@ -527,6 +520,13 @@ if (onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_R
     )
     list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_nhwc_src})
   endif()
+endif()
+
+if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
+  file(GLOB onnxruntime_test_providers_cuda_plugin_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/cuda/plugin/*.cc"
+  )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_plugin_src})
 endif()
 
 if (onnxruntime_USE_CANN)
@@ -648,8 +648,12 @@ set(onnxruntime_test_common_libs
 
 set (onnxruntime_test_providers_dependencies ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
-if(onnxruntime_USE_CUDA)
+if(onnxruntime_USE_CUDA AND NOT onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda)
+endif()
+
+if(onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda_plugin)
 endif()
 
 if(onnxruntime_USE_CANN)
@@ -866,6 +870,11 @@ endif()
 add_dependencies(onnxruntime_test_utils ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/include" PRIVATE
         ${ONNXRUNTIME_ROOT})
+if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+  target_compile_definitions(onnxruntime_test_utils PRIVATE
+    ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE
+    ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+endif()
 set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest")
 source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_test_utils_src})
 
@@ -970,7 +979,7 @@ set(all_tests
     ${onnxruntime_test_lora_src}
 )
 
-if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
+if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
   if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
     set(onnxruntime_test_cuda_kernels_src_patterns "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/*.cc")
   endif()
@@ -979,6 +988,14 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
     "${TEST_SRC_DIR}/providers/cuda/test_cases/*"
     ${onnxruntime_test_cuda_kernels_src_patterns}
   )
+
+  # cuda_plugin_test_shims.cc provides onnxruntime::GetEnvironmentVar for the
+  # BUILD_CUDA_EP_AS_PLUGIN unit-test object library, where provider_bridge_provider.cc
+  # is not linked. In the non-plugin onnxruntime_providers_cuda_ut module the symbol is
+  # already defined by provider_bridge_provider.cc (via onnxruntime_providers_cuda_obj),
+  # so exclude the shim here to avoid a duplicate-definition link error.
+  list(REMOVE_ITEM onnxruntime_test_providers_cuda_ut_src
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_plugin_test_shims.cc")
 
   # onnxruntime_providers_cuda_ut is only for unittests.
   onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_ut ${onnxruntime_test_providers_cuda_ut_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
@@ -1009,6 +1026,63 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   endif()
 
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda_ut)
+endif()
+
+if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN AND
+    NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
+  set(onnxruntime_test_providers_cuda_plugin_internal_test_src
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/allocator_cuda_test.cc"
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_utils_test.cc"
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/reduction_functions_test.cc"
+  )
+
+  if (NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    list(APPEND onnxruntime_test_providers_cuda_plugin_internal_test_src
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/softmax_topk_kernel_test.cc"
+    )
+  endif()
+
+  list(APPEND all_tests ${onnxruntime_test_providers_cuda_plugin_internal_test_src})
+
+  if (TARGET onnxruntime_providers_cuda_plugin)
+    set(onnxruntime_providers_cuda_plugin_ut_impl_src
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_allocator.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_call.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_utils.cu"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cudnn_common.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cudnn_loader.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/reduction/reduction_functions.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/reduction/reduction_functions.cu"
+      "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_plugin_test_shims.cc"
+    )
+
+    if (NOT onnxruntime_DISABLE_CONTRIB_OPS)
+      list(APPEND onnxruntime_providers_cuda_plugin_ut_impl_src
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/qmoe_kernels.cu"
+      )
+    endif()
+
+    onnxruntime_add_object_library(onnxruntime_providers_cuda_plugin_ut_impl ${onnxruntime_providers_cuda_plugin_ut_impl_src})
+    set_target_properties(onnxruntime_providers_cuda_plugin_ut_impl PROPERTIES
+      CUDA_STANDARD 20
+      CUDA_STANDARD_REQUIRED ON
+    )
+    target_include_directories(onnxruntime_providers_cuda_plugin_ut_impl PRIVATE
+      $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,INCLUDE_DIRECTORIES>)
+    target_compile_definitions(onnxruntime_providers_cuda_plugin_ut_impl PRIVATE
+      BUILD_CUDA_EP_AS_PLUGIN
+      ONNX_ML=1
+      ONNX_NAMESPACE=onnx
+      ONNX_USE_LITE_PROTO=1
+      ORT_API_MANUAL_INIT
+      ORT_USE_EP_API_ADAPTERS=1)
+    target_compile_options(onnxruntime_providers_cuda_plugin_ut_impl PRIVATE
+      ${_cuda_plugin_shared_compile_options}
+      "$<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-parameter>"
+      "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_plugin_nvcc_threads}\">")
+    add_dependencies(onnxruntime_providers_cuda_plugin_ut_impl ${onnxruntime_EXTERNAL_DEPENDENCIES})
+    set(onnxruntime_providers_cuda_plugin_ut_impl_objects $<TARGET_OBJECTS:onnxruntime_providers_cuda_plugin_ut_impl>)
+  endif()
 endif()
 
 set(all_dependencies ${onnxruntime_test_providers_dependencies} )
@@ -1137,7 +1211,14 @@ target_include_directories(onnxruntime_test_all PRIVATE ${ONNXRUNTIME_ROOT}/core
 onnxruntime_apply_test_target_workarounds(onnxruntime_test_all)
 
 if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
-  target_compile_definitions(onnxruntime_test_all PRIVATE ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+  # ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE is required so that test_main.cc initializes
+  # the dynamic plugin EP infrastructure. onnxruntime_test_utils (which compiles default_providers.cc)
+  # already routes DefaultCudaExecutionProvider() through the plugin infrastructure in plugin builds;
+  # without initializing it here, that routing returns a null EP and tests crash.
+  target_compile_definitions(onnxruntime_test_all PRIVATE
+    ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE
+    ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_providers_cuda_plugin>"
+    ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
 endif()
 
 if (MSVC)
@@ -1292,6 +1373,7 @@ block()
 
   list(APPEND onnxruntime_provider_test_srcs
     ${supporting_test_srcs}
+    ${onnxruntime_providers_cuda_plugin_ut_impl_objects}
     ${onnxruntime_unittest_main_src}
   )
 
@@ -1315,7 +1397,21 @@ block()
   onnxruntime_set_plugin_ep_test_environment(onnxruntime_provider_test)
 
   if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
-    target_compile_definitions(onnxruntime_provider_test PRIVATE ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+    target_compile_definitions(onnxruntime_provider_test PRIVATE
+      ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_providers_cuda_plugin>"
+      ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+  endif()
+
+  if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+    target_link_libraries(onnxruntime_provider_test PRIVATE
+      CUDA::cudart
+      CUDA::cublas
+      CUDA::cublasLt
+      CUDA::curand
+      CUDA::cufft
+      CUDA::cuda_driver
+      CUDNN::cudnn
+      cudnn_frontend)
   endif()
 
   # Expose QNN SDK headers to unit tests via an interface target
@@ -1521,6 +1617,186 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       COMMAND onnx_test_runner ${onnx_SOURCE_DIR}/onnx/backend/test/data/pytorch-converted)
     add_test(NAME onnx_test_pytorch_operator
       COMMAND onnx_test_runner ${onnx_SOURCE_DIR}/onnx/backend/test/data/pytorch-operator)
+  endif()
+
+  # ---------------------------------------------------------------------------
+  # Materialized ONNX node-test corpus.
+  #
+  # ONNX PR #7959 deletes the on-disk node-test corpus (onnx/backend/test/data/node) from the ONNX
+  # source archive, leaving only the in-memory Python generators. To detach ORT from that on-disk
+  # artifact, we regenerate the corpus from ONNX's own generators into the build tree and point the
+  # C++ onnx_test_runner consumers (this ctest + QNN CI) at the materialized copy.
+  #
+  # Gated on onnxruntime_MATERIALIZE_ONNX_NODE_TESTS (opt-in; default OFF -- enabled explicitly on
+  # the provisioned CI legs via --cmake_extra_defines). When ON, the gate
+  # FAILS LOUDLY at configure time if Python/onnx/numpy are missing or mismatched -- it never
+  # silently skips, because a silent skip would recreate the exact "green CI with zero node tests"
+  # coverage gap this feature exists to close.
+  # ---------------------------------------------------------------------------
+  if (onnxruntime_MATERIALIZE_ONNX_NODE_TESTS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # onnx version pin: derive from the archive URL in cmake/deps.txt (single source of truth).
+    string(REGEX MATCH "v([0-9]+\\.[0-9]+\\.[0-9]+)" _onnx_url_ver "${DEP_URL_onnx}")
+    if(CMAKE_MATCH_1)
+      set(_onnx_pinned_version ${CMAKE_MATCH_1})
+    else()
+      message(FATAL_ERROR "Could not parse the pinned onnx version from DEP_URL_onnx='${DEP_URL_onnx}' "
+        "(expected a vX.Y.Z tag). Fix cmake/deps.txt or this regex.")
+    endif()
+
+    # Python interpreter is not guaranteed for static test-only builds (the top-level
+    # find_package(Python) in cmake/CMakeLists.txt is gated on BUILD_SHARED_LIB OR ENABLE_PYTHON).
+    #
+    # Guard on Python_VERSION, NOT Python_EXECUTABLE: Python_EXECUTABLE is a CACHE variable that
+    # persists across reconfigures, whereas Python_VERSION is a normal variable re-derived only when
+    # find_package actually runs. On any second `cmake` pass in an existing build dir, a cached
+    # Python_EXECUTABLE would skip find_package and leave Python_VERSION EMPTY -- and the
+    # numpy-pin-by-version selection below (`Python_VERSION VERSION_LESS 3.11`) treats empty as 0,
+    # silently picking the < 3.11 pin regardless of the real interpreter. Keying the guard on
+    # Python_VERSION forces find_package to repopulate the version before that selection every pass.
+    if(NOT Python_VERSION)
+      find_package(Python 3.10 COMPONENTS Interpreter REQUIRED)
+    endif()
+
+    # Configure-time fail-loud gate: onnx present and at the pinned version?
+    execute_process(
+      COMMAND ${Python_EXECUTABLE} -c "import onnx,sys; sys.stdout.write(onnx.__version__)"
+      RESULT_VARIABLE _onnx_rc OUTPUT_VARIABLE _onnx_ver ERROR_VARIABLE _onnx_err)
+    if(NOT _onnx_rc EQUAL 0)
+      message(FATAL_ERROR
+        "onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON but 'import onnx' failed for ${Python_EXECUTABLE}.\n"
+        "  Fix: pip install onnx==${_onnx_pinned_version} numpy\n"
+        "  OR reconfigure with -Donnxruntime_MATERIALIZE_ONNX_NODE_TESTS=OFF (node-test coverage will be dropped).\n"
+        "  Details: ${_onnx_err}")
+    endif()
+    # onnx version gate: HARD FAIL on a genuine mismatch, but RC / pre-release AWARE.
+    # ONNX's opset-bump workflow ships wheels like 1.23.0rc1 or 1.23.0.dev20240101 whose
+    # COMPILED opset registry already matches the formal 1.23.0 tag, so we compare on the
+    # RELEASE BASE (major.minor.micro) rather than the raw string. This mirrors
+    # materialize_onnx_node_tests.py::_release_base EXACTLY (regex ^(\d+)\.(\d+)\.(\d+), with a
+    # raw-string fallback when there is no leading X.Y.Z) so the cmake and Python layers agree:
+    # an rcN/.devN wheel of the pinned tag passes, while a real major/minor/micro mismatch
+    # (e.g. 1.21.x, or 1.23.0 when pinned at 1.22.0) still FATALs. Both sides are normalized;
+    # _onnx_pinned_version is already a clean X.Y.Z (parsed from the deps.txt vX.Y.Z tag), so
+    # normalizing it is a no-op kept only for symmetry with the Python two-sided compare.
+    string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" _onnx_ver_base "${_onnx_ver}")
+    if(_onnx_ver_base STREQUAL "")
+      set(_onnx_ver_base "${_onnx_ver}")
+    endif()
+    string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" _onnx_pin_base "${_onnx_pinned_version}")
+    if(_onnx_pin_base STREQUAL "")
+      set(_onnx_pin_base "${_onnx_pinned_version}")
+    endif()
+    if(NOT _onnx_ver_base STREQUAL _onnx_pin_base)
+      message(FATAL_ERROR
+        "onnx ${_onnx_ver} (release base ${_onnx_ver_base}) != pinned ${_onnx_pinned_version} "
+        "(cmake/deps.txt). A mismatched wheel bakes the wrong opset/IR into the materialized "
+        "corpus (silent drift).\n"
+        "  Fix: pip install onnx==${_onnx_pinned_version}")
+    endif()
+
+    # numpy version: assert the build's numpy equals the CI-pinned numpy (the SAME pin the QNN
+    # legs install and that the ONNX corpus reproduction is validated under). Kept in sync with
+    # tools/ci_build/github/linux/docker/scripts/requirements.txt (python-conditional):
+    #   numpy==2.2.6 ; python_version <  "3.11"
+    #   numpy==2.4.2 ; python_version >= "3.11"
+    # The version ASSERT (installed == pin) and the equivalence ctest's <=4-ULP output band are
+    # SEPARATE guards: the assert catches env drift (wrong/unexpected numpy) at CONFIGURE time with
+    # a clear, early message; the ULP band separately absorbs the residual float drift between the
+    # pinned numpy and the numpy the archived ONNX release used to recompute reference outputs.
+    # Passing the pin (not the tautological installed value) is what makes the materializer's
+    # --expected-numpy-version assert meaningful. Both import failure AND mismatch FAIL LOUD.
+    if(Python_VERSION VERSION_LESS 3.11)
+      set(_numpy_pinned_version 2.2.6)
+    else()
+      set(_numpy_pinned_version 2.4.2)
+    endif()
+    execute_process(
+      COMMAND ${Python_EXECUTABLE} -c "import numpy,sys; sys.stdout.write(numpy.__version__)"
+      RESULT_VARIABLE _np_rc OUTPUT_VARIABLE _np_ver ERROR_VARIABLE _np_err)
+    if(NOT _np_rc EQUAL 0)
+      message(FATAL_ERROR
+        "onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON but 'import numpy' failed for ${Python_EXECUTABLE}.\n"
+        "  Fix: pip install numpy==${_numpy_pinned_version}\n"
+        "  OR reconfigure with -Donnxruntime_MATERIALIZE_ONNX_NODE_TESTS=OFF.\n"
+        "  Details: ${_np_err}")
+    endif()
+    if(NOT _np_ver STREQUAL _numpy_pinned_version)
+      message(FATAL_ERROR
+        "numpy ${_np_ver} != pinned ${_numpy_pinned_version} (requirements.txt, for Python "
+        "${Python_VERSION}). The materialized corpus must be reproduced under the pinned numpy so "
+        "the equivalence oracle stays within its <=4-ULP band.\n"
+        "  Fix: pip install numpy==${_numpy_pinned_version}\n"
+        "  OR reconfigure with -Donnxruntime_MATERIALIZE_ONNX_NODE_TESTS=OFF.")
+    endif()
+
+    set(_materialize_script ${REPO_ROOT}/tools/python/materialize_onnx_node_tests.py)
+    set(_materialized_node_root ${CMAKE_BINARY_DIR}/onnx_node_tests)
+    set(_materialized_node_dir  ${_materialized_node_root}/node)
+    # Single shared floor VALUE for the "silently-empty/undersized materialization" guard. Wired to
+    # three consumption sites; all use the same 1500 literal, but they DO NOT all count the same
+    # population -- the floor is one stable value, not a claim that the counts are identical:
+    #   * MIN_NODE_CASES in onnxruntime/test/python/onnx_node_test_equivalence_test.py
+    #   * MIN_NODE_CASES in onnxruntime/test/python/onnx_backend_test_series.py -- the PRE-exclude
+    #     population (counted in the base runner's _add_model_test, BEFORE backend_test.exclude()
+    #     drops filtered cases), i.e. the full materialized case count.
+    #   * onnx_test_runner -m (the C++ consumption-point tripwire, wired below) -- checked against
+    #     tests.size() in main.cc, which is the POST-skip COLLECTED count: LoadTests (TestCase.cc)
+    #     already `continue`s past broken/disabled/no-test-data/training-domain cases before they
+    #     reach that tally, so the C++ population is the Python one MINUS the CPU skip set.
+    # These two populations are INTENTIONALLY different; 1500 is a single conservative floor that
+    # clears both today by a wide margin: ~1799 collected minus a handful of CPU skips (~5:
+    # convinteger + 4 dft_*) is ~1794, still >> 1500 (~17% headroom on the smaller C++ count). 1500
+    # is a STABLE floor, not a moving target -- it does not track the corpus size. If the CPU
+    # broken/skip set ever grew past that margin, the C++ `-m` floor would red-fail LOUDLY (the safe
+    # direction) -- never a silent pass. Passed to the build-time materialize step (build fails
+    # loud), the node ctest (-m, consumption-point), AND the equivalence ctest.
+    set(ORT_ONNX_NODE_MIN_CASES 1500)
+
+    add_custom_command(
+      OUTPUT  ${_materialized_node_root}/.stamp
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${_materialized_node_root}
+      COMMAND ${Python_EXECUTABLE} ${_materialize_script}
+                --out ${_materialized_node_root}
+                --expected-onnx-version ${_onnx_pinned_version}
+                --expected-numpy-version ${_numpy_pinned_version}
+                --min-cases ${ORT_ONNX_NODE_MIN_CASES}
+                --stamp ${_materialized_node_root}/.stamp
+      DEPENDS ${_materialize_script} ${REPO_ROOT}/cmake/deps.txt
+      COMMENT "Materializing ONNX node-test corpus -> ${_materialized_node_dir}"
+      VERBATIM)
+    add_custom_target(onnx_node_tests_materialized ALL
+      DEPENDS ${_materialized_node_root}/.stamp)
+
+    if (NOT onnxruntime_REDUCED_OPS_BUILD)
+      # First-class ctest over the materialized node corpus (the durable replacement for the
+      # on-disk corpus; previously node tests were only run via the Python series + QNN CI).
+      # -m enforces the case-count floor at CONSUMPTION (the runner's tally), so a silently
+      # empty/partial/truncated materialized tree fails loud instead of exiting green with
+      # near-zero coverage (onnx_test_runner skips non-existent dirs). Single-sourced with the
+      # build-time --min-cases via ORT_ONNX_NODE_MIN_CASES.
+      add_test(NAME onnx_test_node_materialized
+        COMMAND onnx_test_runner -m ${ORT_ONNX_NODE_MIN_CASES} ${_materialized_node_dir})
+      set_tests_properties(onnx_test_node_materialized PROPERTIES DEPENDS onnx_node_tests_materialized)
+
+      # Equivalence oracle: while pinned BELOW #7959 the on-disk corpus still ships in the archive,
+      # so we byte-compare the materialized copy against it. Gated on if(EXISTS ...) at CONFIGURE
+      # time, so the test simply stops being registered (clean auto-retirement, no perpetual skip,
+      # no red CI) once the pin advances past #7959 and the oracle disappears.
+      set(_onnx_disk_node ${onnx_SOURCE_DIR}/onnx/backend/test/data/node)
+      if(EXISTS ${_onnx_disk_node})
+        add_test(NAME onnx_node_tests_equivalence
+          COMMAND ${Python_EXECUTABLE} ${REPO_ROOT}/tools/python/compare_node_test_corpora.py
+                  --oracle       ${_onnx_disk_node}
+                  --materialized ${_materialized_node_dir}
+                  --expected-onnx-version  ${_onnx_pinned_version}
+                  --expected-numpy-version ${_numpy_pinned_version}
+                  --min-cases ${ORT_ONNX_NODE_MIN_CASES})
+        set_tests_properties(onnx_node_tests_equivalence PROPERTIES DEPENDS onnx_node_tests_materialized)
+      else()
+        message(STATUS "ONNX on-disk node corpus absent (post-#7959 pin) -- equivalence oracle "
+          "retired; skipping onnx_node_tests_equivalence.")
+      endif()
+    endif()
   endif()
 
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")

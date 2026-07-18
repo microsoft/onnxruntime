@@ -43,7 +43,10 @@ bool IsDeviceSupported(const ComputeContextBase& context) {
   const wgpu::AdapterInfo& adapter_info = context.AdapterInfo();
 
   if (adapter_info.vendor == std::string_view("intel")) {
-    if (adapter_info.architecture == std::string_view("xe-2lpg")) {
+    if (adapter_info.architecture == std::string_view("xe-2lpg") ||
+        adapter_info.architecture == std::string_view("xe-2hpg") ||
+        adapter_info.architecture == std::string_view("xe-3lpg") ||
+        adapter_info.architecture == std::string_view("xe-3lpg-xs")) {
       return true;
     }
   }
@@ -167,8 +170,15 @@ bool CanApplyIm2ColMatMulProgram(ComputeContextBase& context,
                                  const bool is_channels_last,
                                  const bool is_fused,
                                  const TensorShape weight_shape,
-                                 const uint32_t group) {
+                                 const uint32_t group,
+                                 const MLDataType data_type) {
   if (!IsDeviceSupported(context)) {
+    return false;
+  }
+
+  // The im2col-matmul kernel is performance-tuned for fp16. Use the default
+  // conv path for fp32.
+  if (data_type != DataTypeImpl::GetType<MLFloat16>()) {
     return false;
   }
 

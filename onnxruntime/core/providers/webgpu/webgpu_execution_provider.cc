@@ -34,6 +34,9 @@
 #include "core/providers/webgpu/tensor/grid_sample.h"
 #include "core/providers/webgpu/generator/range.h"
 #include "core/providers/webgpu/tensor/unsqueeze.h"
+#include "core/providers/webgpu/math/binary_elementwise_ops.h"
+#include "core/providers/webgpu/tensor/where.h"
+#include "core/providers/webgpu/reduction/reduction_ops.h"
 
 namespace onnxruntime {
 
@@ -158,9 +161,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO_VERSIONED(7, 12, Add),
     KERNEL_CREATE_INFO_VERSIONED(13, 13, Add),
     KERNEL_CREATE_INFO(14, Add),
-    KERNEL_CREATE_INFO_VERSIONED(7, 12, Sub),
-    KERNEL_CREATE_INFO_VERSIONED(13, 13, Sub),
-    KERNEL_CREATE_INFO(14, Sub),
+    // Sub: registered via RegisterKernels with conditional int64 support
     KERNEL_CREATE_INFO_VERSIONED(7, 12, Mul),
     KERNEL_CREATE_INFO_VERSIONED(13, 13, Mul),
     KERNEL_CREATE_INFO(14, Mul),
@@ -171,10 +172,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO_VERSIONED(12, 12, Pow),
     KERNEL_CREATE_INFO_VERSIONED(13, 14, Pow),
     KERNEL_CREATE_INFO(15, Pow),
-    KERNEL_CREATE_INFO_VERSIONED(7, 10, Equal),
-    KERNEL_CREATE_INFO_VERSIONED(11, 12, Equal),
-    KERNEL_CREATE_INFO_VERSIONED(13, 18, Equal),
-    KERNEL_CREATE_INFO(19, Equal),
+    // Equal: registered via RegisterKernels with conditional int64 support
     KERNEL_CREATE_INFO_VERSIONED(7, 8, Greater),
     KERNEL_CREATE_INFO_VERSIONED(9, 12, Greater),
     KERNEL_CREATE_INFO(13, Greater),
@@ -243,9 +241,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 17, ReduceProd)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 18, ReduceProd)>,
 
-    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 10, ReduceSum)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, ReduceSum)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, ReduceSum)>,
+    // ReduceSum: registered via RegisterKernels with conditional int64 support
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 10, ReduceL1)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, ReduceL1)>,
@@ -272,8 +268,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 17, ReduceLogSumExp)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 18, ReduceLogSumExp)>,
 
-    KERNEL_CREATE_INFO_VERSIONED(9, 15, Where),
-    KERNEL_CREATE_INFO(16, Where),
+    // Where: registered via RegisterKernels with conditional int64 support
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 12, Transpose)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 20, Transpose)>,
@@ -492,6 +487,26 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandVersionedKernelInfo<8, 12>(enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandKernelInfo<13>(enable_int64)));
 
+  // Register Equal kernels with conditional int64 support
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateEqualVersionedKernelInfo<7, 10>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateEqualVersionedKernelInfo<11, 12>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateEqualVersionedKernelInfo<13, 18>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateEqualKernelInfo<19>(enable_int64)));
+
+  // Register Sub kernels with conditional int64 support
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateSubVersionedKernelInfo<7, 12>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateSubVersionedKernelInfo<13, 13>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateSubKernelInfo<14>(enable_int64)));
+
+  // Register Where kernels with conditional int64 support
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateWhereVersionedKernelInfo<9, 15>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateWhereKernelInfo<16>(enable_int64)));
+
+  // Register ReduceSum kernels with conditional int64 support
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReduceSumVersionedKernelInfo<1, 10>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReduceSumVersionedKernelInfo<11, 12>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReduceSumKernelInfo<13>(enable_int64)));
+
 #ifndef DISABLE_CONTRIB_OPS
   Status status = ::onnxruntime::contrib::webgpu::RegisterWebGpuContribKernels(*kernel_registry, enable_graph_capture);
   ORT_ENFORCE(status.IsOK(), "Failed to register WebGPU contrib kernels: " + status.ErrorMessage());
@@ -681,6 +696,15 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
       const auto& past_present_share_buffer = node.GetAttributes().find("past_present_share_buffer");
       if (past_present_share_buffer != node.GetAttributes().end() &&
           past_present_share_buffer->second.i() != 0) {
+        continue;
+      }
+    }
+
+    // Check for MatMulBnb4
+    if (node.OpType() == "MatMulBnb4" && node.Domain() == kMSDomain) {
+      // Current implementation only supports the forward case (transB=1). transB defaults to 1.
+      const auto& trans_b = node.GetAttributes().find("transB");
+      if (trans_b != node.GetAttributes().end() && trans_b->second.i() == 0) {
         continue;
       }
     }

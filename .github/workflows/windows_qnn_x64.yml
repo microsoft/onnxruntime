@@ -20,7 +20,7 @@ jobs:
     name: Windows x64 QNN CI Pipeline (${{ matrix.QnnLibKind }})
     runs-on: [
       "self-hosted",
-      "1ES.Pool=onnxruntime-github-vs2022-latest",
+      "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
       "JobId=build_test_qnn_ep-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}-${{matrix.QnnLibKind}}"
     ]
     timeout-minutes: 120
@@ -42,6 +42,21 @@ jobs:
         with:
           python-version: '3.12'
           architecture: x64
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          architecture: x64
+
+      # onnx (pinned to cmake/deps.txt) + numpy (pinned to requirements.txt, python-conditional)
+      # are required at configure time by the onnxruntime_MATERIALIZE_ONNX_NODE_TESTS gate, which
+      # regenerates the onnx node-test corpus into the build tree (onnx_node_tests\node) for
+      # onnx_test_runner. The numpy markers self-select the same pin the CMake gate asserts.
+      - name: Install onnx for node-test materialization
+        shell: cmd
+        run: python -m pip install onnx==1.22.0 "numpy==2.2.6; python_version<'3.11'" "numpy==2.4.2; python_version>='3.11'"
 
       - name: Locate vcvarsall and Setup Env
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
@@ -66,13 +81,16 @@ jobs:
       - name: Build and Test
         shell: cmd
         run: |
-          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ runner.temp }}\build --cmake_generator "Visual Studio 17 2022" --build_java --build_shared_lib --use_qnn ${{ matrix.QnnLibKind }} --qnn_home %QNN_SDK_ROOT% --use_binskim_compliant_compile_flags --update --build --test --enable_onnx_tests --parallel
+          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ runner.temp }}\build --cmake_generator "Visual Studio 17 2022" --build_java --build_shared_lib --use_qnn ${{ matrix.QnnLibKind }} --qnn_home %QNN_SDK_ROOT% --use_binskim_compliant_compile_flags --cmake_extra_defines onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON --update --build --test --enable_onnx_tests --parallel
 
       - name: Run ONNX Tests
         shell: cmd
         working-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo
         run: |
-          .\onnx_test_runner -j 1 -e qnn -i "backend_path|%QNN_SDK_ROOT%\lib\x86_64-windows-msvc\QnnCpu.dll" ${{ github.workspace }}\cmake\external\onnx\onnx\backend\test\data\node
+          rem onnx#7959 collapse sentinel: -m 1 fails loud if 0 node tests are collected (e.g. a
+          rem MATERIALIZE=OFF leg still running this dir). Low value (not the 1500 build floor)
+          rem because -e qnn legitimately reduces the set to ~1529; strict count enforced at build via --min-cases.
+          .\onnx_test_runner -j 1 -m 1 -e qnn -i "backend_path|%QNN_SDK_ROOT%\lib\x86_64-windows-msvc\QnnCpu.dll" ${{ runner.temp }}\build\RelWithDebInfo\onnx_node_tests\node
 
       - name: Run float32 model tests
         shell: cmd

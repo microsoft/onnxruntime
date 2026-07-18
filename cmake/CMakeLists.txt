@@ -76,8 +76,9 @@ option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
 cmake_dependent_option(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS "Build with CUDA unit tests" OFF "onnxruntime_USE_CUDA;onnxruntime_BUILD_UNIT_TESTS" OFF)
 
 cmake_dependent_option(onnxruntime_USE_CUDA_NHWC_OPS "Build CUDA with NHWC op support" ON "onnxruntime_USE_CUDA" OFF)
-cmake_dependent_option(onnxruntime_BUILD_CUDA_EP_AS_PLUGIN "Build CUDA EP as a separate plugin shared library" OFF "onnxruntime_USE_CUDA" OFF)
-option(onnxruntime_CUDA_MINIMAL "Build CUDA without any operations apart from memcpy ops. Usefuel for a very minial TRT build" OFF)
+cmake_dependent_option(onnxruntime_BUILD_CUDA_EP_AS_PLUGIN "Build CUDA EP as a separate plugin shared library instead of the legacy in-tree provider" OFF "onnxruntime_USE_CUDA" OFF)
+option(onnxruntime_BUILD_CUDA_QUANT_PREPROCESS "Build CUDA weight-packing module onnxruntime_cuda_quant_preprocess.so" OFF)
+option(onnxruntime_CUDA_MINIMAL "Build CUDA without any operations apart from memcpy ops. Useful for a very minimal TRT build" OFF)
 option(onnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO "When building with CUDA support, generate device code line number information." OFF)
 option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_COREML "Build with CoreML support" OFF)
@@ -96,6 +97,23 @@ option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 option(onnxruntime_USE_QMX_KLEIDIAI_COEXIST "Build with QMX and Arm KLEIDIAI libraries" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
+# Materialize the ONNX node-test corpus from ONNX's Python generators into the build tree at
+# configure/build time, instead of depending on the on-disk corpus shipped in the ONNX source
+# archive. This detaches ORT from ONNX PR #7959 (which deletes onnx/backend/test/data/node).
+#
+# Defaults OFF -- it is an explicit opt-in, enabled only on CI legs that (a) install the pinned
+# onnx + numpy pre-build and (b) actually consume the materialized node corpus (the QNN legs and
+# one Linux CPU leg that runs the equivalence + materialized-node ctests), via
+# `--cmake_extra_defines onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON`. Legs that leave it OFF keep
+# their pre-existing behavior (node tests are read from the FetchContent'd ONNX source tree, which
+# still ships data/node on the pinned version), so the default is a zero-regression no-op today.
+#
+# When explicitly set ON, the configure step FAILS LOUDLY if onnx/numpy are missing or off-pin
+# (it does NOT silently skip) -- the loud contract is preserved exactly where materialization is
+# requested. On reduced/minimal builds the dependent condition forces it OFF regardless.
+cmake_dependent_option(onnxruntime_MATERIALIZE_ONNX_NODE_TESTS
+  "Materialize the ONNX node-test corpus into the build tree (opt-in; needs onnx+numpy)." OFF
+  "onnxruntime_BUILD_UNIT_TESTS;NOT onnxruntime_REDUCED_OPS_BUILD;NOT onnxruntime_MINIMAL_BUILD" OFF)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)
@@ -107,7 +125,7 @@ option(onnxruntime_USE_LEAN_ATTENTION "Build lean attention kernel for scaled do
 cmake_dependent_option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_FP4_QMOE "Build CUDA QMoE FP4 kernels" OFF)
 option(onnxruntime_USE_FP8_QMOE "Build CUDA QMoE FP8 kernels" OFF)
-option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB gemm cuda kernels" OFF)
+cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB gemm cuda kernels" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_INT4_KV_CACHE "Build cuda kernels for int4 kv cache" OFF)
 option(onnxruntime_USE_FP8_KV_CACHE "Build cuda kernels for fp8 kv cache" ON)
 option(onnxruntime_QUICK_BUILD "Speed up build by skipping some kernels for faster development" OFF)
@@ -1800,10 +1818,6 @@ foreach(onnxruntime_cmake_file ${ONNXRUNTIME_CMAKE_FILES})
   include(${onnxruntime_cmake_file}.cmake)
 endforeach()
 
-# CUDA EP Plugin build (independent shared library)
-if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
-  include(onnxruntime_providers_cuda_plugin.cmake)
-endif()
 if (UNIX)
   option(BUILD_PKGCONFIG_FILES "Build and install pkg-config files" ON)
 else()

@@ -23,6 +23,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/threading.cpp
   ${MLAS_SRC_DIR}/sgemm.cpp
   ${MLAS_SRC_DIR}/halfgemm.cpp
+  ${MLAS_SRC_DIR}/halfconv.cpp
   ${MLAS_SRC_DIR}/qgemm.cpp
   ${MLAS_SRC_DIR}/qdwconv.cpp
   ${MLAS_SRC_DIR}/convolve.cpp
@@ -326,6 +327,8 @@ function(setup_kleidiai)
   target_sources(onnxruntime_mlas PRIVATE
     ${MLAS_SRC_DIR}/kai_ukernel_interface.cpp
     ${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp
+    ${MLAS_SRC_DIR}/kleidiai/halfgemm_kleidiai.cpp
+    ${MLAS_SRC_DIR}/kleidiai/halfconv_kleidiai.cpp
     ${MLAS_SRC_DIR}/kleidiai/sbgemm_kleidiai.cpp
     ${MLAS_SRC_DIR}/kleidiai/convolve_kleidiai.cpp
     ${MLAS_SRC_DIR}/kleidiai/qgemm_kleidiai.cpp
@@ -871,13 +874,15 @@ endif()
         )
         set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl")
 
-        # Strip -mavx512vnni from the W2 scalar oracle / pack-helper TU so the
-        # compiler cannot autovectorize its int8 dot-product loops to vpdpbusd.
-        # Needed because this helper runs at model load on AVX-512-only
-        # (non-VNNI) hosts via the AVX-512 W2 dispatch. TU is pure C++ -- no
-        # AVX-512 intrinsics inside.
+        # NOTE: this TU is intrinsic-free scalar helpers reached from both the
+        # AVX2 and AVX-512 W2 dispatch tables at model load. Flags must not
+        # enable any ISA the AVX2-only host lacks, or the compiler may
+        # autovectorize the scalar loops into EVEX instructions and SIGILL.
+        # If the AVX-512 W2 pack ever becomes a perf hot spot, split this
+        # file: keep the scalar pack in a flag-less TU and put an optimized
+        # variant in a separate one only used by the AVX-512 tables.
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp PROPERTIES
-          COMPILE_FLAGS "-mfma -mavx512bw -mavx512dq -mavx512vl")
+          COMPILE_FLAGS "")
 
         set(mlas_platform_srcs_avx512vnni
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
@@ -1004,6 +1009,7 @@ endif()
               ${MLAS_SRC_DIR}/riscv64/layernorm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/qgemm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/activation_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/qnbitgemm_kernel_rvv.cpp
             )
             list(REMOVE_ITEM mlas_platform_srcs
               "${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp")
@@ -1017,6 +1023,7 @@ endif()
               ${MLAS_SRC_DIR}/riscv64/layernorm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/qgemm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/activation_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/qnbitgemm_kernel_rvv.cpp
               PROPERTIES COMPILE_FLAGS "-march=rv64gcv -mabi=lp64d")
             list(APPEND mlas_private_compile_definitions MLAS_USE_RVV=1)
 
@@ -1024,10 +1031,12 @@ endif()
               list(APPEND mlas_platform_srcs
                 ${MLAS_SRC_DIR}/riscv64/halfgemm_kernel_rvv.cpp
                 ${MLAS_SRC_DIR}/riscv64/cast_kernel_rvv.cpp
+                ${MLAS_SRC_DIR}/riscv64/hqnbitgemm_kernel_rvv.cpp
               )
               set_source_files_properties(
                 ${MLAS_SRC_DIR}/riscv64/halfgemm_kernel_rvv.cpp
                 ${MLAS_SRC_DIR}/riscv64/cast_kernel_rvv.cpp
+                ${MLAS_SRC_DIR}/riscv64/hqnbitgemm_kernel_rvv.cpp
                 PROPERTIES COMPILE_FLAGS "-march=rv64gcv_zvfh -mabi=lp64d")
               list(APPEND mlas_private_compile_definitions MLAS_USE_RVV_ZVFH=1)
             endif()

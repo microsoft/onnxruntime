@@ -35,6 +35,7 @@ from torch import nn
 
 import onnxruntime
 from onnxruntime.capi import _pybind_state as _pybind
+from onnxruntime.quantization import CudaQuantizer
 
 try:
     import nvtx
@@ -160,144 +161,79 @@ def print_diff_statistics(diff_tensor: torch.Tensor, prefix: str = ""):
 
 
 def quant_dequant_blockwise(weights, block_size, is_4_bit_quantization: bool = True, asymmetric: bool = False):
-    # DEBUG
-    # print(f"DEBUG: quant_dequant input shape={weights.shape}, 4bit={is_4_bit_quantization}, asym={asymmetric}")
+    bits = 4 if is_4_bit_quantization else 8
+    n, k = weights.shape
+    block_per_k = (k + block_size - 1) // block_size
+    is_symmetric = not asymmetric
+
+    q_weight, scale, zero_point = CudaQuantizer.matmulnbits_blockwise_quantize(
+        weights,
+        bits,
+        block_size,
+        symmetric=is_symmetric,
+        return_zero_points=True,
+        abs_scales=is_symmetric,
+        flatten_qweight=False,
+    )
+    processed_q_weight, _ = CudaQuantizer.qmoe_prepacked_blockwise_quantize(
+        weights,
+        bits,
+        block_size,
+        symmetric=is_symmetric,
+        abs_scales=is_symmetric,
+    )
+
+    scale_torch = scale.to(weights.device).unsqueeze(-1)
+    q_weight_torch = q_weight.to(weights.device)
 
     if is_4_bit_quantization:
-        weights_t = weights.T.contiguous()
-        rows, cols = weights_t.shape
-        k, n = rows, cols
-        block_per_k = (k + block_size - 1) // block_size
-        blob_size = block_size // 2
-
-        q_weight = numpy.zeros((n, block_per_k, blob_size), dtype=numpy.uint8)
-        scale = numpy.zeros((n, block_per_k), dtype=numpy.float32)
-        zero_point = numpy.zeros((n, (block_per_k + 1) // 2), dtype=numpy.uint8)
-
-        is_symmetric = not asymmetric
-
-        # Use existing binding which determines implementation based on type
-        # Assuming weights are float16 or float32. Binding supports both (via overload or check).
-        # We need to pass numpy array.
-        # We need to pass numpy array.
-        if weights_t.dtype == torch.bfloat16:
-            weights_np = weights_t.detach().to(torch.float32).cpu().numpy()
-        else:
-            weights_np = weights_t.detach().cpu().numpy()
-
-        _pybind.quantize_matmul_4bits(q_weight, weights_np, scale, zero_point, block_size, n, k, is_symmetric)
+        q_low = q_weight_torch & 0x0F
+        q_high = (q_weight_torch >> 4) & 0x0F
+        q_unpacked = torch.stack((q_low, q_high), dim=-1).view(n, block_per_k, -1)[:, :, :block_size]
+        q_unpacked = q_unpacked.to(weights.dtype)
         if is_symmetric:
-            scale = numpy.abs(scale)
-
-        q_weight_reshaped = q_weight.reshape(n, -1)
-        processed_q_weight = _pybind.pack_weights_for_cuda_mixed_gemm(q_weight_reshaped, n, k, 4, 80)
-
-        # Dequantize for reference
-        scale_torch = torch.from_numpy(scale).to(weights.device).unsqueeze(-1)
-        q_weight_torch = torch.from_numpy(q_weight).to(weights.device)
-
-        if is_symmetric:
-            # Unpack: low, high
-            q_low = q_weight_torch & 0x0F
-            q_high = (q_weight_torch >> 4) & 0x0F
-            q_unpacked = torch.stack((q_low, q_high), dim=-1).view(n, block_per_k, block_size)
-            q_unpacked = q_unpacked.to(weights.dtype)
             dequantized = (q_unpacked - 8.0) * scale_torch
         else:
-            # Asymmetric
-            # Unpack weights same way
-            q_low = q_weight_torch & 0x0F
-            q_high = (q_weight_torch >> 4) & 0x0F
-            q_unpacked = torch.stack((q_low, q_high), dim=-1).view(n, block_per_k, block_size)
-            q_unpacked = q_unpacked.to(weights.dtype)
-
-            # Unpack ZP
-            zp_torch = torch.from_numpy(zero_point).to(weights.device)
+            zp_torch = zero_point.to(weights.device)
             zp_low = zp_torch & 0x0F
             zp_high = (zp_torch >> 4) & 0x0F
-            zp_unpacked = torch.stack((zp_low, zp_high), dim=-1).flatten(1, 2)
-            zp_unpacked = zp_unpacked[:, :block_per_k].contiguous()
-            zp_unpacked = zp_unpacked.view(n, block_per_k, 1)
-            zp_unpacked = zp_unpacked.to(weights.dtype)
-
+            zp_unpacked = torch.stack((zp_low, zp_high), dim=-1).flatten(1, 2)[:, :block_per_k]
+            zp_unpacked = zp_unpacked.contiguous().view(n, block_per_k, 1).to(weights.dtype)
             dequantized = (q_unpacked - zp_unpacked) * scale_torch
-
-        scale_torch_out = torch.from_numpy(scale).to(weights.device).to(torch.float16)  # N, block_per_K
-
-        # zero_point_storage
-        zero_points_storage = torch.from_numpy(zero_point).to(weights.device) if asymmetric else None
-
-        processed_q_weight_torch = (
-            torch.from_numpy(processed_q_weight).reshape(k, n // 2).to(weights.device).view(torch.uint8)
-        )
-        result = dequantized.view(n, k)
-        return scale_torch_out, processed_q_weight_torch, result, zero_points_storage
-
     else:
-        # 8-bit
-        # C++ binding for 8-bit blockwise quantization (if exists) or use Python implementation
-        # For now, we use a simple Python implementation that matches the 8nd bits format
-        # but in practice, we should use the same logic as the kernel.
-        # Since currently QMoE kernel only supports 4-bit, we don't have a 8-bit PrePack binding yet.
-
-        if _pybind and hasattr(_pybind, "quantize_matmul_8bits"):
-            # Placeholder for future used when 8-bit is supported
-            pass
-        weights_t = weights.T.contiguous()
-        rows, cols = weights_t.shape
-        k, n = rows, cols
-        block_per_k = (k + block_size - 1) // block_size
-
-        q_weight = numpy.zeros((n, block_per_k, block_size), dtype=numpy.uint8)
-        scale = numpy.zeros((n, block_per_k), dtype=numpy.float32)
-        zero_point = numpy.zeros((n, block_per_k), dtype=numpy.uint8)
-
-        is_symmetric = not asymmetric
-        if weights_t.dtype == torch.bfloat16:
-            weights_np = weights_t.detach().to(torch.float32).cpu().numpy()
-        else:
-            weights_np = weights_t.detach().cpu().numpy()
-
-        _pybind.quantize_matmul_8bits(q_weight, weights_np, scale, zero_point, block_size, n, k, is_symmetric)
-
-        q_weight_reshaped = q_weight.reshape(n, -1)
-        processed_q_weight = _pybind.pack_weights_for_cuda_mixed_gemm(q_weight_reshaped, n, k, 8, 80)
-
-        # Use abs() for reference dequant to match Cutlass kernel's positive scales
-        scale_torch = torch.from_numpy(scale).to(weights.device).unsqueeze(-1).abs()
-        q_weight_torch = torch.from_numpy(q_weight).to(weights.device).to(weights.dtype)
-
+        q_unpacked = q_weight_torch.to(weights.dtype)
         if is_symmetric:
-            # Kernel does: (biased_uint8 - 128) * scale for symmetric 8-bit
-            # quantize_matmul_8bits produces biased uint8 values in [0, 255] centered at 128
-            dequantized = (q_weight_torch - 128.0) * scale_torch
+            dequantized = (q_unpacked - 128.0) * scale_torch
         else:
-            zp_torch = torch.from_numpy(zero_point).to(weights.device).to(weights.dtype).unsqueeze(-1)
-            dequantized = (q_weight_torch - zp_torch) * scale_torch
+            zp_torch = zero_point.to(weights.device).to(weights.dtype).unsqueeze(-1)
+            dequantized = (q_unpacked - zp_torch) * scale_torch
 
-        # Scales must be positive for Cutlass kernel (absolute values)
-        scale_torch_out = torch.from_numpy(scale).to(weights.device).to(torch.float16).abs()
+    scale_torch_out = scale.to(weights.device).to(torch.float16)
+    processed_q_weight_torch = processed_q_weight.to(weights.device).view(torch.uint8)
+    result = dequantized.view(n, k)
 
-        processed_q_weight_torch = (
-            torch.from_numpy(processed_q_weight).reshape(k, n).to(weights.device).view(torch.uint8)
-        )  # 8-bit layout is (K, N) after transpose by pack_weights_for_cuda_mixed_gemm
+    if asymmetric:
+        zero_points_storage = zero_point.to(weights.device).to(torch.uint8)
+    elif not is_4_bit_quantization:
+        zero_points_storage = torch.full((n, block_per_k), 128, dtype=torch.uint8, device=weights.device)
+    else:
+        zero_points_storage = None
 
-        result = dequantized.view(n, k)
+    return scale_torch_out, processed_q_weight_torch, result, zero_points_storage
 
-        if not asymmetric and not is_4_bit_quantization:
-            # 8-bit Symmetric: weights are uint8, biased by 128.
-            # Cutlass expects explicit Zero Point = 128 to perform (q - 128) * scale.
-            # ZP must be FP16 (match Scale type).
-            zero_point[:] = 128
-            zero_points_storage = torch.from_numpy(zero_point).to(weights.device).to(torch.uint8)
-        else:
-            zero_points_storage = (
-                torch.from_numpy(zero_point).to(weights.device).to(torch.uint8) if asymmetric else None
-            )
 
-        # Return scale in [N, block_per_k] layout matching operator spec [E, N, B] after stacking
-        # Operator will transpose from [E, N, B] to [E, B, N] for kernel
-        return scale_torch_out, processed_q_weight_torch, result, zero_points_storage
+def _dequantize_unsigned_per_channel_storage(qweight, scales, weights, bits: int):
+    n, k = weights.shape
+    if bits == 4:
+        q_low = qweight & 0x0F
+        q_high = (qweight >> 4) & 0x0F
+        quantized = torch.stack((q_low, q_high), dim=-1).view(n, -1)[:, :k].to(torch.int16)
+        quantized = quantized - 8
+    else:
+        quantized = qweight.view(n, k).to(torch.int16)
+        quantized = quantized - 128
+
+    return quantized.to(weights.device).to(weights.dtype) * scales.to(weights.device).to(weights.dtype).unsqueeze(-1)
 
 
 def quant_dequant(weights, is_4_bit_quantization: bool = True, asymmetric: bool = False):
@@ -310,37 +246,19 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True, asymmetric: bool 
     """
     block_size = weights.shape[1]
     if not asymmetric and block_size > 256:
-        n, k = weights.shape
-        weights_float = weights.detach().float()
-        if is_4_bit_quantization:
-            scale = weights_float.abs().amax(dim=1, keepdim=True) / 7.0
-            scale = torch.clamp(scale, min=torch.finfo(torch.float32).eps)
-            q_weight = torch.clamp(torch.round(weights_float / scale), -8, 7).to(torch.int16) + 8
-            q_weight = q_weight.to(torch.uint8).contiguous()
-            q_low = q_weight[:, 0::2]
-            q_high = q_weight[:, 1::2]
-            if q_high.shape[1] < q_low.shape[1]:
-                q_high = F.pad(q_high, (0, 1))
-            q_packed = q_low | (q_high << 4)
-            processed_q_weight = _pybind.pack_weights_for_cuda_mixed_gemm(q_packed.cpu().numpy(), n, k, 4, 80)
-            processed_q_weight_torch = (
-                torch.from_numpy(processed_q_weight).reshape(k, n // 2).to(weights.device).view(torch.uint8)
-            )
-            dequantized = (q_weight.to(weights.dtype) - 8.0) * scale.to(weights.device).to(weights.dtype)
-            return scale.to(weights.device).to(torch.float16), processed_q_weight_torch, dequantized, None
-        else:
-            # 8-bit per-column (per-channel) symmetric quantization. Weights are biased
-            # uint8 values centered at 128, matching the kernel's (q - 128) * scale dequant.
-            scale = weights_float.abs().amax(dim=1, keepdim=True) / 127.0
-            scale = torch.clamp(scale, min=torch.finfo(torch.float32).eps)
-            q_weight = torch.clamp(torch.round(weights_float / scale), -127, 127).to(torch.int16) + 128
-            q_weight = q_weight.to(torch.uint8).contiguous()
-            processed_q_weight = _pybind.pack_weights_for_cuda_mixed_gemm(q_weight.cpu().numpy(), n, k, 8, 80)
-            processed_q_weight_torch = (
-                torch.from_numpy(processed_q_weight).reshape(k, n).to(weights.device).view(torch.uint8)
-            )
-            dequantized = (q_weight.to(weights.dtype) - 128.0) * scale.to(weights.device).to(weights.dtype)
-            return scale.to(weights.device).to(torch.float16), processed_q_weight_torch, dequantized, None
+        bits = 4 if is_4_bit_quantization else 8
+        qweight, scales = CudaQuantizer.qmoe_symmetric_per_channel_quantize(
+            weights,
+            bits,
+        )
+        processed_q_weight, _ = CudaQuantizer.qmoe_per_channel_quantize(
+            weights,
+            bits,
+            True,
+        )
+        dequantized = _dequantize_unsigned_per_channel_storage(qweight, scales, weights, bits)
+        scales = scales.to(weights.device).to(torch.float16).unsqueeze(-1)
+        return scales, processed_q_weight.to(weights.device), dequantized, None
 
     return quant_dequant_blockwise(weights, block_size, is_4_bit_quantization, asymmetric)
 
@@ -1612,7 +1530,7 @@ def _run_qmoe_cutlass_gemm_second_scale_row_regression(test_case, quant_bits, us
             os.environ["ORT_DISABLE_MOE_GEMV"] = previous_disable_gemv
 
     x = torch.zeros((sequence_length, hidden_size), device=device, dtype=torch_dtype)
-    x[:, block_size : 2 * block_size] = 1.0 if use_asymmetric_quant else -1.0
+    x[:, block_size : 2 * block_size] = 1.0
     router = torch.zeros((sequence_length, num_experts), device=device, dtype=torch_dtype)
 
     ort_output = sess.run(None, {"input": x.cpu().numpy(), "router_probs": router.cpu().numpy()})[0]
@@ -2734,6 +2652,29 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
     that harness honors the runtime SM.
     """
 
+    def test_moe_cuda_quantizer_can_emit_full_range_unsigned_offset_storage(self):
+        cases = [
+            (
+                4,
+                torch.tensor([[-8.0, -7.0, 0.0, 7.0]], dtype=torch.float32),
+                torch.tensor([[0x10, 0xF8]], dtype=torch.uint8),
+            ),
+            (
+                8,
+                torch.tensor([[-128.0, -127.0, 0.0, 127.0]], dtype=torch.float32),
+                torch.tensor([[0x00, 0x01, 0x80, 0xFF]], dtype=torch.uint8),
+            ),
+        ]
+        for bits, weights, expected_qweight in cases:
+            with self.subTest(bits=bits):
+                qweight, scales = CudaQuantizer.qmoe_symmetric_per_channel_quantize(
+                    weights,
+                    bits,
+                )
+
+                self.assertTrue(torch.equal(scales, torch.tensor([1.0])))
+                self.assertTrue(torch.equal(qweight, expected_qweight))
+
     def _run_one(self, *, hidden_size, inter_size, num_experts, top_k, swiglu_fusion, batch_size):
         torch.manual_seed(123)
         numpy.random.seed(123)
@@ -2820,6 +2761,170 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
         self.assertGreater(numpy.abs(out).mean(), 1e-4, "Output is suspiciously close to zero")
         self.assertLess(numpy.abs(out).max(), 10.0, "Output magnitude is implausibly large")
 
+    def _run_default_prepacked_model(
+        self,
+        *,
+        hidden_size,
+        inter_size,
+        num_experts,
+        top_k,
+        batch_size,
+        fc1_weights,
+        fc2_weights,
+        fc1_scales,
+        fc2_scales,
+        x,
+        router,
+    ):
+        onnx_dtype = TensorProto.FLOAT16
+        fc1_n = 2 * inter_size
+        qmoe = helper.make_node(
+            "QMoE",
+            inputs=["x", "router", "fc1_W", "fc1_S", "", "fc2_W", "fc2_S", ""],
+            outputs=["y"],
+            name="qmoe",
+            domain="com.microsoft",
+            k=top_k,
+            normalize_routing_weights=1,
+            activation_type="swiglu",
+            swiglu_fusion=1,
+            expert_weight_bits=4,
+            quant_type="int",
+            # weights_prepacked omitted: default -1 means the INT weights are already in
+            # the CUDA EP's offline-prepacked fpA_intB layout.
+        )
+        graph = helper.make_graph(
+            nodes=[qmoe],
+            name="qmoe_default_prepacked",
+            inputs=[
+                helper.make_tensor_value_info("x", onnx_dtype, [batch_size, hidden_size]),
+                helper.make_tensor_value_info("router", onnx_dtype, [batch_size, num_experts]),
+            ],
+            outputs=[helper.make_tensor_value_info("y", onnx_dtype, [batch_size, hidden_size])],
+            initializer=[
+                helper.make_tensor(
+                    "fc1_W", TensorProto.UINT8, list(fc1_weights.shape), fc1_weights.tobytes(), raw=True
+                ),
+                helper.make_tensor(
+                    "fc2_W", TensorProto.UINT8, list(fc2_weights.shape), fc2_weights.tobytes(), raw=True
+                ),
+                helper.make_tensor("fc1_S", onnx_dtype, [num_experts, fc1_n], fc1_scales.flatten().tolist()),
+                helper.make_tensor("fc2_S", onnx_dtype, [num_experts, hidden_size], fc2_scales.flatten().tolist()),
+            ],
+        )
+        model = helper.make_model(
+            graph, opset_imports=[helper.make_opsetid("", 20), helper.make_opsetid("com.microsoft", 1)]
+        )
+        model.ir_version = 10
+
+        sess = onnxruntime.InferenceSession(model.SerializeToString(), providers=ort_provider)
+        return sess.run(None, {"x": x, "router": router})[0]
+
+    def test_int4_default_prepacked_layout_runs_with_moe_cuda_quantizer(self):
+        torch.manual_seed(123)
+        numpy.random.seed(123)
+
+        hidden_size = 64
+        inter_size = 128
+        num_experts = 4
+        top_k = 2
+        batch_size = 8
+        bits = 4
+        pack = 8 // bits
+
+        fc1_n = 2 * inter_size
+        fc1_k = hidden_size
+        fc2_n = hidden_size
+        fc2_k = inter_size
+
+        cuda_fc1 = numpy.zeros((num_experts, fc1_k, fc1_n // pack), dtype=numpy.uint8)
+        cuda_fc2 = numpy.zeros((num_experts, fc2_k, fc2_n // pack), dtype=numpy.uint8)
+        cuda_fc1_scales = numpy.zeros((num_experts, fc1_n), dtype=numpy.float16)
+        cuda_fc2_scales = numpy.zeros((num_experts, fc2_n), dtype=numpy.float16)
+        cuda_quantizer = CudaQuantizer()
+
+        for e in range(num_experts):
+            w1 = (torch.randn(fc1_n, fc1_k) * 0.05).numpy().astype(numpy.float16)
+            w2 = (torch.randn(fc2_n, fc2_k) * 0.05).numpy().astype(numpy.float16)
+            cuda_fc1_t, cuda_fc1_scales_t = cuda_quantizer.qmoe_per_channel_quantize(torch.from_numpy(w1), bits, True)
+            cuda_fc2_t, cuda_fc2_scales_t = cuda_quantizer.qmoe_per_channel_quantize(torch.from_numpy(w2), bits, True)
+            cuda_fc1[e] = cuda_fc1_t.numpy()
+            cuda_fc2[e] = cuda_fc2_t.numpy()
+            cuda_fc1_scales[e] = cuda_fc1_scales_t.numpy().astype(numpy.float16)
+            cuda_fc2_scales[e] = cuda_fc2_scales_t.numpy().astype(numpy.float16)
+
+        x = numpy.random.randn(batch_size, hidden_size).astype(numpy.float16)
+        router = numpy.random.randn(batch_size, num_experts).astype(numpy.float16)
+        out = self._run_default_prepacked_model(
+            hidden_size=hidden_size,
+            inter_size=inter_size,
+            num_experts=num_experts,
+            top_k=top_k,
+            batch_size=batch_size,
+            fc1_weights=cuda_fc1,
+            fc2_weights=cuda_fc2,
+            fc1_scales=cuda_fc1_scales,
+            fc2_scales=cuda_fc2_scales,
+            x=x,
+            router=router,
+        )
+
+        self.assertFalse(numpy.isnan(out).any(), "QMoE output has NaN")
+        self.assertFalse(numpy.isinf(out).any(), "QMoE output has Inf")
+
+    def test_int4_default_prepacked_gpt_oss_shape_smoke(self):
+        torch.manual_seed(123)
+        numpy.random.seed(123)
+
+        hidden_size = 2880
+        inter_size = 2880
+        num_experts = 32
+        top_k = 4
+        batch_size = 12
+        bits = 4
+
+        fc1_n = 2 * inter_size
+        fc1_k = hidden_size
+        fc2_n = hidden_size
+        fc2_k = inter_size
+        pack = 8 // bits
+        cuda_quantizer = CudaQuantizer()
+
+        fc1_weights = numpy.zeros((num_experts, fc1_k, fc1_n // pack), dtype=numpy.uint8)
+        fc2_weights = numpy.zeros((num_experts, fc2_k, fc2_n // pack), dtype=numpy.uint8)
+        fc1_scales = numpy.zeros((num_experts, fc1_n), dtype=numpy.float16)
+        fc2_scales = numpy.zeros((num_experts, fc2_n), dtype=numpy.float16)
+
+        for e in range(num_experts):
+            w1 = torch.randn(fc1_n, fc1_k, dtype=torch.float16) * 0.01
+            w2 = torch.randn(fc2_n, fc2_k, dtype=torch.float16) * 0.01
+            q1, s1 = cuda_quantizer.qmoe_per_channel_quantize(w1, bits, True)
+            q2, s2 = cuda_quantizer.qmoe_per_channel_quantize(w2, bits, True)
+            fc1_weights[e] = q1.numpy()
+            fc2_weights[e] = q2.numpy()
+            fc1_scales[e] = s1.numpy().astype(numpy.float16)
+            fc2_scales[e] = s2.numpy().astype(numpy.float16)
+
+        x = (numpy.random.randn(batch_size, hidden_size) * 0.01).astype(numpy.float16)
+        router = numpy.random.randn(batch_size, num_experts).astype(numpy.float16)
+        out = self._run_default_prepacked_model(
+            hidden_size=hidden_size,
+            inter_size=inter_size,
+            num_experts=num_experts,
+            top_k=top_k,
+            batch_size=batch_size,
+            fc1_weights=fc1_weights,
+            fc2_weights=fc2_weights,
+            fc1_scales=fc1_scales,
+            fc2_scales=fc2_scales,
+            x=x,
+            router=router,
+        )
+
+        self.assertEqual(out.shape, (batch_size, hidden_size))
+        self.assertFalse(numpy.isnan(out).any(), "QMoE GPT-OSS shape output has NaN")
+        self.assertFalse(numpy.isinf(out).any(), "QMoE GPT-OSS shape output has Inf")
+
     def test_int4_swiglu_interleaved_small(self):
         # inter_size must be a multiple of 64 (the interleaved-weight K tile) for the INT path; a
         # partial final K tile is now rejected up front by QMoE's hardening check.
@@ -2827,6 +2932,165 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
 
     def test_int4_swiglu_interleaved_medium(self):
         self._run_one(hidden_size=128, inter_size=64, num_experts=8, top_k=2, swiglu_fusion=1, batch_size=16)
+
+
+class TestQMoECudaGraph(unittest.TestCase):
+    """Regression test for QMoE under CUDA graph capture/replay.
+
+    Before the profiler capture-safety fix, running an fp16 int4 QMoE node inside
+    a CUDA-graph-capturing session launched grouped-GEMM profiling kernels and
+    temp-allocator traffic on the compute stream *while that stream was being
+    captured*. That corrupted the capture and surfaced as a sticky CUDA 700
+    (illegal memory access) at a downstream MoE kernel launch on replay. The fix
+    detects an in-progress capture, skips profiling, and falls back to a cached /
+    default tactic, so capture + replay must now complete cleanly and produce
+    finite, deterministic output.
+    """
+
+    def _build_int4_qmoe_model(self, *, hidden_size, inter_size, num_experts, top_k, batch_size):
+        onnx_dtype = TensorProto.FLOAT16
+        bits = 4
+        pack = 8 // bits
+        fc1_n = 2 * inter_size  # gate + up packed along N for SwiGLU
+        fc1_k = hidden_size
+        fc2_n = hidden_size
+        fc2_k = inter_size
+
+        fc1_weights = numpy.zeros((num_experts, fc1_k, fc1_n // pack), dtype=numpy.uint8)
+        fc2_weights = numpy.zeros((num_experts, fc2_k, fc2_n // pack), dtype=numpy.uint8)
+        fc1_scales = numpy.zeros((num_experts, fc1_n), dtype=numpy.float16)
+        fc2_scales = numpy.zeros((num_experts, fc2_n), dtype=numpy.float16)
+
+        cuda_quantizer = CudaQuantizer()
+        for e in range(num_experts):
+            w1 = (torch.randn(fc1_n, fc1_k) * 0.05).numpy().astype(numpy.float16)
+            w2 = (torch.randn(fc2_n, fc2_k) * 0.05).numpy().astype(numpy.float16)
+            q1, s1 = cuda_quantizer.qmoe_per_channel_quantize(torch.from_numpy(w1), bits, True)
+            q2, s2 = cuda_quantizer.qmoe_per_channel_quantize(torch.from_numpy(w2), bits, True)
+            fc1_weights[e] = q1.numpy()
+            fc2_weights[e] = q2.numpy()
+            fc1_scales[e] = s1.numpy().astype(numpy.float16)
+            fc2_scales[e] = s2.numpy().astype(numpy.float16)
+
+        qmoe = helper.make_node(
+            "QMoE",
+            inputs=["input", "router_probs", "fc1_W", "fc1_S", "", "fc2_W", "fc2_S", ""],
+            outputs=["output"],
+            name="qmoe",
+            domain="com.microsoft",
+            k=top_k,
+            normalize_routing_weights=1,
+            activation_type="swiglu",
+            swiglu_fusion=1,
+            expert_weight_bits=bits,
+            quant_type="int",
+            # weights_prepacked omitted (default): INT weights are already in the
+            # CUDA EP's offline-prepacked fpA_intB layout emitted by CudaQuantizer.
+        )
+        # Static shapes are required for CUDA graph capture.
+        graph = helper.make_graph(
+            nodes=[qmoe],
+            name="qmoe_cuda_graph",
+            inputs=[
+                helper.make_tensor_value_info("input", onnx_dtype, [batch_size, hidden_size]),
+                helper.make_tensor_value_info("router_probs", onnx_dtype, [batch_size, num_experts]),
+            ],
+            outputs=[helper.make_tensor_value_info("output", onnx_dtype, [batch_size, hidden_size])],
+            initializer=[
+                helper.make_tensor(
+                    "fc1_W", TensorProto.UINT8, list(fc1_weights.shape), fc1_weights.tobytes(), raw=True
+                ),
+                helper.make_tensor(
+                    "fc2_W", TensorProto.UINT8, list(fc2_weights.shape), fc2_weights.tobytes(), raw=True
+                ),
+                helper.make_tensor("fc1_S", onnx_dtype, [num_experts, fc1_n], fc1_scales.flatten().tolist()),
+                helper.make_tensor("fc2_S", onnx_dtype, [num_experts, fc2_n], fc2_scales.flatten().tolist()),
+            ],
+        )
+        model = helper.make_model(
+            graph, opset_imports=[helper.make_opsetid("", 20), helper.make_opsetid("com.microsoft", 1)]
+        )
+        model.ir_version = 10
+        return model.SerializeToString()
+
+    @unittest.skipUnless(torch.cuda.is_available(), "CUDA is required for the QMoE CUDA graph regression test")
+    def test_int4_fp16_qmoe_cuda_graph(self):
+        hidden_size = 64
+        inter_size = 128
+        num_experts = 4
+        top_k = 2
+        batch_size = 8
+
+        torch.manual_seed(123)
+        numpy.random.seed(123)
+        model_bytes = self._build_int4_qmoe_model(
+            hidden_size=hidden_size,
+            inter_size=inter_size,
+            num_experts=num_experts,
+            top_k=top_k,
+            batch_size=batch_size,
+        )
+
+        sess_options = onnxruntime.SessionOptions()
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        sess = None
+        try:
+            sess = onnxruntime.InferenceSession(
+                model_bytes,
+                sess_options,
+                providers=[("CUDAExecutionProvider", {"enable_cuda_graph": True})],
+            )
+        except Exception as e:
+            self.skipTest(f"Could not create a CUDA-graph-enabled CUDA EP session: {e}")
+            return
+
+        x = numpy.random.randn(batch_size, hidden_size).astype(numpy.float16)
+        router = numpy.random.randn(batch_size, num_experts).astype(numpy.float16)
+
+        # CUDA graph capture requires all inputs/outputs to live in fixed GPU buffers.
+        x_ort = onnxruntime.OrtValue.ortvalue_from_numpy(x, "cuda", 0)
+        router_ort = onnxruntime.OrtValue.ortvalue_from_numpy(router, "cuda", 0)
+        y_ort = onnxruntime.OrtValue.ortvalue_from_shape_and_type([batch_size, hidden_size], numpy.float16, "cuda", 0)
+
+        io_binding = sess.io_binding()
+        io_binding.bind_ortvalue_input("input", x_ort)
+        io_binding.bind_ortvalue_input("router_probs", router_ort)
+        io_binding.bind_ortvalue_output("output", y_ort)
+
+        ro = onnxruntime.RunOptions()
+
+        # First run performs the allocation and captures the CUDA graph. Before the
+        # fix, QMoE profiling launched kernels / touched the temp allocator on the
+        # captured compute stream here and triggered CUDA 700 (illegal memory access).
+        io_binding.synchronize_inputs()
+        sess.run_with_iobinding(io_binding, ro)
+        io_binding.synchronize_outputs()
+        out_capture = y_ort.numpy().copy()
+
+        # Replay the captured graph with the same inputs.
+        io_binding.synchronize_inputs()
+        sess.run_with_iobinding(io_binding, ro)
+        io_binding.synchronize_outputs()
+        out_replay = y_ort.numpy().copy()
+
+        for tag, out in (("capture", out_capture), ("replay", out_replay)):
+            self.assertEqual(out.shape, (batch_size, hidden_size))
+            self.assertEqual(out.dtype, numpy.float16)
+            self.assertFalse(numpy.isnan(out).any(), f"QMoE CUDA graph {tag} output has NaN")
+            self.assertFalse(numpy.isinf(out).any(), f"QMoE CUDA graph {tag} output has Inf")
+
+        # Replaying with identical inputs must reproduce the captured output exactly.
+        numpy.testing.assert_array_equal(out_replay, out_capture)
+
+        # Update the input in place and replay again to exercise the graph past capture.
+        x2 = numpy.random.randn(batch_size, hidden_size).astype(numpy.float16)
+        x_ort.update_inplace(x2)
+        io_binding.synchronize_inputs()
+        sess.run_with_iobinding(io_binding, ro)
+        io_binding.synchronize_outputs()
+        out_updated = y_ort.numpy().copy()
+        self.assertFalse(numpy.isnan(out_updated).any(), "QMoE CUDA graph updated-input output has NaN")
+        self.assertFalse(numpy.isinf(out_updated).any(), "QMoE CUDA graph updated-input output has Inf")
 
 
 if __name__ == "__main__":

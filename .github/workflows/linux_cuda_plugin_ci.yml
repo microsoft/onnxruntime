@@ -22,7 +22,7 @@ jobs:
     name: Build Linux CUDA Plugin EP x64 Release
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
-      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
+      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU" # Build pool
       build_config: Release
       architecture: x64
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
@@ -39,8 +39,10 @@ jobs:
         --cudnn_home=/usr/local/cuda-13.0
         --enable_cuda_profiling
         --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON
         --cmake_extra_defines onnxruntime_QUICK_BUILD=ON
         --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
+        --cmake_extra_defines onnxruntime_BUILD_CUDA_QUANT_PREPROCESS=ON
       python_path_prefix: 'PATH=/opt/python/cp312-cp312/bin:$PATH'
       run_tests: false
       upload_build_output: true
@@ -55,7 +57,9 @@ jobs:
     runs-on:
       - self-hosted
       - "1ES.Pool=onnxruntime-github-linux-a10"
+      - "1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10-Test"
       - "JobId=test-linux-cuda-plugin-x64-release-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+    timeout-minutes: 210
     permissions:
       contents: read
       packages: read
@@ -109,63 +113,37 @@ jobs:
             "${{ steps.build_docker_image_step.outputs.full-image-name }}" \
             nvidia-smi
 
-      # --- Install the ORT wheel and run CUDA plugin EP tests ---
-      - name: Run CUDA Plugin EP Python Tests
-        run: |
-          docker run --rm --gpus all \
-            -v ${{ github.workspace }}:/onnxruntime_src \
-            -v ${{ runner.temp }}/Release:/build/Release \
-            -e NVIDIA_VISIBLE_DEVICES=all \
-            ${{ steps.build_docker_image_step.outputs.full-image-name }} \
-            bash -c "
-              set -ex
-              export PATH=/opt/python/cp312-cp312/bin:\$PATH
-              # Ensure libcudart.so.13 is findable regardless of host-runner NVIDIA Container Toolkit configuration.
-              # The CUDA runtime library lives in the container image at /usr/local/cuda-13.0/lib64, but the
-              # LD_LIBRARY_PATH may not include this path when the runner's NVIDIA toolkit only mounts driver
-              # libraries at /usr/local/nvidia/lib64.
-              export LD_LIBRARY_PATH=/usr/local/cuda-13.0/lib64:\${LD_LIBRARY_PATH:-}
-
-              # Install the ORT wheel
-              python -m pip install /build/Release/Release/dist/onnxruntime*.whl
-
-              # Install test dependencies
-              python -m pip install numpy onnx
-              python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-
-              # Set plugin path and run tests
-              export ORT_CUDA_PLUGIN_PATH=/build/Release/Release/libonnxruntime_providers_cuda_plugin.so
-              echo \"ORT_CUDA_PLUGIN_PATH=\$ORT_CUDA_PLUGIN_PATH\"
-              ls -la \$ORT_CUDA_PLUGIN_PATH
-
-              cd /onnxruntime_src/onnxruntime/test/python/transformers
-              python test_cuda_plugin_ep.py
-            "
-
-      # --- Run the CUDA plugin EP C++ GoogleTest binary ---
-      # onnxruntime_provider_test is built into the artifact and links the plugin tests
-      # (gated by ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP). These tests register the plugin .so via
-      # GetSharedLibraryFileName("onnxruntime_providers_cuda_plugin"), which returns the
-      # platform-specific filename without a directory component. Run from /build/Release/Release
-      # so that filename resolves to the plugin .so built there.
-      # The filter covers every CUDA plugin EP suite linked into this binary:
-      #   CudaPlugin*              -> CudaPluginUserStreamGraphTest, CudaPluginArenaTest,
-      #                              CudaPluginPartitioningTest, CudaPluginProfilingTest
-      #   CudaResourcePartitioning* -> CudaResourcePartitioningTest
       - name: Run CUDA Plugin EP C++ Tests
         run: |
           docker run --rm --gpus all \
             -v ${{ github.workspace }}:/onnxruntime_src \
             -v ${{ runner.temp }}/Release:/build/Release \
             -e NVIDIA_VISIBLE_DEVICES=all \
+            -e ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON='{"ep_library_registration_name":"CUDAExecutionProvider","ep_library_path":"libonnxruntime_providers_cuda.so","selected_ep_name":"CUDAExecutionProvider","tests_to_skip":["BeamSearchTest.*","ContribOpAttentionTest.AttentionPastState_dynamic","ContribOpAttentionTest.Attention_Mask1D_Fp32_B2_S64","ContribOpAttentionTest.Attention_Mask2D_Fp32_B2_S32","ConvTest.Conv2D_MatMul_*","CudaPluginArenaTest.DeviceAllocator_ArenaReusesMemory","CudaPluginArenaTest.DeviceAllocator_CudaMemoryIsValid","CudaPluginArenaTest.DeviceAllocator_IsArena","CudaPluginArenaTest.DeviceAllocator_MultipleAllocations","DeformConvTest.Group1OffsetGroup2","GRUTest.*","GreedySearchTest.*","InferenceSessionTests.Test2LayerNestedSubgraph","InferenceSessionTests.Test3LayerNestedSubgraph","InferenceSessionTests.TestArenaShrinkageAfterRun","LSTMTest.*","LogSoftmaxOperator.*","LongformerAttentionTest.*","LoraAdapterTest.VerifyDeviceCopy","PackedAttentionTest.*","PlannerTest.MultiStream","PlannerTest.MultiStream1StreamWaitFor2Streams","PlannerTest.MultiStream2NodesSameStreamConsumedBy1NodeInDifferentStream","PlannerTest.MultiStreamCudaEPNodeCPUOutput","PlannerTest.MultiStreamMultiOutput","RNNTest.*","ReductionOpTest.ArgMax2D_select_last","ReductionOpTest.ArgMin_do_not_keepdims_2_select_last","SamplingTest.*","Scan.MixedExecutionProvidersUnknownDimInSubgraphOutput","Scan8.*","SessionStateTest.TestLayeringPartitioning","SessionStateTest.TestResourceAwarePartitioning_LargeLimit","SessionStateTest.TestResourceAwarePartitioning_NoLimit","SkipGroupNormTest.*","TopKOperator.NthElementBFloat16_NegativeVals"]}' \
+            ${{ steps.build_docker_image_step.outputs.full-image-name }} \
+            bash -c "
+              set -ex
+              export LD_LIBRARY_PATH=/build/Release/Release:/usr/local/cuda-13.0/lib64:\${LD_LIBRARY_PATH:-}
+              cd /build/Release/Release
+              ./onnxruntime_test_all
+              ./onnxruntime_provider_test
+            "
+
+      - name: Run CUDA Plugin EP Python Tests
+        run: |
+          docker run --rm --gpus all \
+            -v ${{ github.workspace }}:/onnxruntime_src \
+            -v ${{ runner.temp }}/Release:/build/Release \
+            -e NVIDIA_VISIBLE_DEVICES=all \
+            -e ORT_TEST_CUDA_PLUGIN_EP=1 \
             ${{ steps.build_docker_image_step.outputs.full-image-name }} \
             bash -c "
               set -ex
               export PATH=/opt/python/cp312-cp312/bin:\$PATH
-              # Make libcudart.so.13 (and the plugin's CUDA deps) findable; see note above.
               export LD_LIBRARY_PATH=/build/Release/Release:/usr/local/cuda-13.0/lib64:\${LD_LIBRARY_PATH:-}
-
-              cd /build/Release/Release
-              ls -la onnxruntime_provider_test libonnxruntime_providers_cuda_plugin.so
-              ./onnxruntime_provider_test --gtest_filter='CudaPlugin*:CudaResourcePartitioning*'
+              python -m pip install /build/Release/Release/dist/onnxruntime*.whl
+              python -m pip install numpy onnx
+              python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+              cd /onnxruntime_src/onnxruntime/test/python/transformers
+              python test_cuda_plugin_ep.py
             "
