@@ -872,7 +872,7 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--use_telemetry",
         action="store_true",
-        help="Enable telemetry (not supported for WebAssembly builds).",
+        help="Enable telemetry (not supported for WebAssembly or external Windows builds).",
     )
 
 
