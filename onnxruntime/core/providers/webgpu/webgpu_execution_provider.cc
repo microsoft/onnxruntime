@@ -436,6 +436,9 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 13, CumSum)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 14, CumSum)>,
 
+    KERNEL_CREATE_INFO_VERSIONED(17, 19, DFT),
+    KERNEL_CREATE_INFO(20, DFT),
+
     KERNEL_CREATE_INFO_VERSIONED(1, 9, TopK),
     KERNEL_CREATE_INFO_VERSIONED(10, 10, TopK),
     KERNEL_CREATE_INFO_VERSIONED(11, 23, TopK),

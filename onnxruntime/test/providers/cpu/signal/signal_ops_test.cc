@@ -509,6 +509,76 @@ TEST(SignalOpsTest, DFT20_RFFT_IRFFT_roundtrip) {
   TestRFFTIRFFTRoundTrip(kOpsetVersion20);
 }
 
+// Length 7 is prime, exercising the non-radix code paths (Bluestein on CPU, direct DFT on GPU EPs).
+static void TestPrimeLengthDFTFloat(bool onesided, int since_version) {
+  OpTester test("DFT", since_version);
+
+  vector<int64_t> shape = {1, 7, 1};
+  vector<float> input = {1, 2, 3, 4, 5, 6, 7};
+
+  vector<int64_t> output_shape = {1, onesided ? 4 : 7, 2};
+  vector<float> expected_output = {28.00000f, 0.00000f, -3.50000f, 7.26782f,
+                                   -3.50000f, 2.79116f, -3.50000f, 0.79885f};
+  if (!onesided) {
+    expected_output.insert(expected_output.end(),
+                           {-3.50000f, -0.79885f, -3.50000f, -2.79116f, -3.50000f, -7.26782f});
+  }
+
+  test.AddInput<float>("input", shape, input);
+  if (since_version == 20) {
+    test.AddInput<int64_t>("dft_length", {}, {7});
+    test.AddInput<int64_t>("axis", {}, {1});
+  }
+  test.AddAttribute<int64_t>("onesided", static_cast<int64_t>(onesided));
+  test.AddOutput<float>("output", output_shape, expected_output);
+  test.SetOutputAbsErr("output", 0.0002f);
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
+}
+
+TEST(SignalOpsTest, DFT17_Float_prime_length) { TestPrimeLengthDFTFloat(false, kMinOpsetVersion); }
+
+TEST(SignalOpsTest, DFT20_Float_prime_length) { TestPrimeLengthDFTFloat(false, kOpsetVersion20); }
+
+TEST(SignalOpsTest, DFT17_Float_prime_length_onesided) { TestPrimeLengthDFTFloat(true, kMinOpsetVersion); }
+
+TEST(SignalOpsTest, DFT20_Float_prime_length_onesided) { TestPrimeLengthDFTFloat(true, kOpsetVersion20); }
+
+// dft_length longer than the signal zero-pads before the transform; padding to 8 stays on radix
+// paths while padding to 7 lands on the non-radix fallback.
+static void TestZeroPaddedDFTFloat(int64_t dft_length, int since_version) {
+  OpTester test("DFT", since_version);
+
+  vector<int64_t> shape = {1, 5, 1};
+  vector<float> input = {1, 2, 3, 4, 5};
+
+  const vector<float> expected_padded_to_8 = {
+      15.00000f, 0.00000f, -5.41421f, -7.24264f, 3.00000f, 2.00000f, -2.58579f, -1.24264f,
+      3.00000f, 0.00000f, -2.58579f, 1.24264f, 3.00000f, -2.00000f, -5.41421f, 7.24264f};
+  const vector<float> expected_padded_to_7 = {
+      15.00000f, 0.00000f, -6.52930f, -4.05456f, 3.46346f, -1.43004f, -0.93416f, 2.45265f,
+      -0.93416f, -2.45265f, 3.46346f, 1.43004f, -6.52930f, 4.05456f};
+  const vector<float>& expected_output = dft_length == 8 ? expected_padded_to_8 : expected_padded_to_7;
+
+  test.AddInput<float>("input", shape, input);
+  test.AddInput<int64_t>("dft_length", {}, {dft_length});
+  if (since_version == 20) {
+    test.AddInput<int64_t>("axis", {}, {1});
+  }
+  test.AddOutput<float>("output", {1, dft_length, 2}, expected_output);
+  test.SetOutputAbsErr("output", 0.0002f);
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
+}
+
+TEST(SignalOpsTest, DFT17_Float_zero_padded_radix2) { TestZeroPaddedDFTFloat(8, kMinOpsetVersion); }
+
+TEST(SignalOpsTest, DFT20_Float_zero_padded_radix2) { TestZeroPaddedDFTFloat(8, kOpsetVersion20); }
+
+TEST(SignalOpsTest, DFT17_Float_zero_padded_prime) { TestZeroPaddedDFTFloat(7, kMinOpsetVersion); }
+
+TEST(SignalOpsTest, DFT20_Float_zero_padded_prime) { TestZeroPaddedDFTFloat(7, kOpsetVersion20); }
+
 // Test 2D complex input (single 1D signal without batch dimension)
 static void TestDFT2DComplex(int since_version) {
   OpTester test("DFT", since_version);
