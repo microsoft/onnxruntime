@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/cpu/math/matmul_helper.h"
@@ -29,12 +31,41 @@ MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKPr
 
 class MatMul final : public WebGpuKernel {
  public:
+  // Abstract base class for alternative optimized MatMul implementations.
+  // Implementations can provide optimized computation paths by deriving from this class.
+  class MatMulOptImpl {
+   public:
+    explicit MatMulOptImpl(const MatMul& parent) : parent_(parent) {}
+    virtual ~MatMulOptImpl() = default;
+
+    // Called during Compute phase to execute implementation-specific computation.
+    // @param context       The WebGPU compute context.
+    // @param handled       Output parameter. Set to true if this implementation handled the computation.
+    // @return Status::OK() on success, or an error status on failure.
+    virtual Status Compute(ComputeContext& context,
+                           /*out*/ bool& handled) = 0;
+
+   protected:
+    const MatMul& parent_;
+  };
+
   MatMul(const OpKernelInfo& info) : WebGpuKernel{info} {}
 
   Status ComputeInternal(ComputeContext& context) const override;
+
+  Status PrePackInternal(ComputeContextBase& context,
+                         const Tensor& tensor,
+                         int input_idx,
+                         AllocatorPtr alloc,
+                         /*out*/ bool& is_packed) override;
+
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_X = 8;
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Y = 8;
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Z = 1;
+
+ private:
+  // Alternative optimized implementation (created during PrePack if applicable)
+  mutable std::unique_ptr<MatMulOptImpl> impl_;
 };
 
 class MatMulNaiveProgram final : public Program<MatMulNaiveProgram> {
