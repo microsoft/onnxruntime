@@ -146,7 +146,8 @@ bool is_moe_gemv_fp4_supported(int sm, int64_t expanded_num_rows, int64_t n, int
   if (n % CtaNForConfig(config) != 0) {  // kInterleave = 1
     return false;
   }
-  // StepK = 128 / activation_bits = 8; k is a multiple of 32, so k % 8 == 0 always holds.
+  // StepK = 128 / activation_bits = 8; is_moe_gemv_fp4_supported requires k % group_size == 0 with
+  // group_size >= 16 (16 for NVFP4, 32 for MXFP4), so k % 8 == 0 always holds.
   if (k % (128 / 16) != 0) {
     return false;
   }

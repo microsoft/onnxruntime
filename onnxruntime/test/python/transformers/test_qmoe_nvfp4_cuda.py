@@ -11,9 +11,11 @@
 # scale (weight_scale_2). Dequant:
 #   w = DecodeFp4E2M1(code) * DecodeE4M3(block_scale) * global_scale[expert]
 #
-# On H200/SM90 this always runs via the dequant-to-A16 fallback (native
-# block-scaled CUTLASS GEMM is Blackwell-only). Requires SM90+ / CUDA / an
-# ENABLE_FP4 + USE_FP4_QMOE build.
+# Two decode paths are exercised: the dequant-to-A16 fallback (native block-scaled
+# CUTLASS GEMM is Blackwell-only, so this is the general path) and, for small-decode
+# SwiGLU shapes, the fused FP4 GEMV kernel (forced on via ORT_ENABLE_FP4_GEMV=1; a
+# gemv_mode="0" companion checks the fallback on the same shape). Both paths are
+# SM-agnostic; the tests require SM80+ / CUDA / an ENABLE_FP4 + USE_FP4_QMOE build.
 # --------------------------------------------------------------------------
 
 import os

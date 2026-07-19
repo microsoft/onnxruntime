@@ -353,6 +353,7 @@ class TestQMoEFP4(unittest.TestCase):
         onnx_dtype,
         use_swiglu=False,
         block_size=32,
+        gemv_mode=None,
     ):
         self._skip_if_no_fp4()
 
@@ -415,6 +416,12 @@ class TestQMoEFP4(unittest.TestCase):
         # ── create ORT session ────────────────────────────────────
         opts = onnxruntime.SessionOptions()
         opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        # gemv_mode toggles the fused FP4 GEMV decode path (read once in the QMoE op ctor during
+        # session creation): "1" forces it on, "0" forces the dequant fallback, None leaves the
+        # default (on). Restore the previous value right after the session is built.
+        prev_gemv_env = os.environ.get("ORT_ENABLE_FP4_GEMV")
+        if gemv_mode is not None:
+            os.environ["ORT_ENABLE_FP4_GEMV"] = gemv_mode
         try:
             session = onnxruntime.InferenceSession(
                 onnx_model, opts, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")]
@@ -423,6 +430,12 @@ class TestQMoEFP4(unittest.TestCase):
             if "FP4" in str(e) or "ENABLE_FP4" in str(e) or "SM" in str(e):
                 self.skipTest(f"FP4 not supported in this build: {e}")
             raise
+        finally:
+            if gemv_mode is not None:
+                if prev_gemv_env is None:
+                    os.environ.pop("ORT_ENABLE_FP4_GEMV", None)
+                else:
+                    os.environ["ORT_ENABLE_FP4_GEMV"] = prev_gemv_env
 
         # ── run inference ──────────────────────────────────────────
         input_tensor = torch.randn(num_tokens, hidden_size, device=device, dtype=torch_dtype)
@@ -687,9 +700,9 @@ class TestQMoEFP4(unittest.TestCase):
         """Decode-shaped SwiGLU (hidden=inter=512, expanded_rows = num_tokens*top_k <= 8).
 
         This shape satisfies is_moe_gemv_fp4_supported (n,k >= 512, expanded_rows in (0, 8]),
-        so with ORT_ENABLE_FP4_GEMV=1 it exercises the fused MXFP4 W4A16 GEMV decode path;
-        without it (the default) it exercises the dequant fallback. Both paths must meet the
-        accuracy tolerance, giving an on/off parity check for the fused GEMV.
+        so forcing ORT_ENABLE_FP4_GEMV=1 exercises the fused MXFP4 W4A16 GEMV decode path.
+        test_fp4_decode_swiglu_fallback runs the identical shape with the dequant fallback
+        (ORT_ENABLE_FP4_GEMV=0); together they give an on/off parity check for the fused GEMV.
         """
         self._run_fp4_moe_test(
             hidden_size=512,
@@ -699,6 +712,28 @@ class TestQMoEFP4(unittest.TestCase):
             num_tokens=num_tokens,
             onnx_dtype=onnx_dtype,
             use_swiglu=True,
+            gemv_mode="1",
+        )
+
+    @parameterized.expand(
+        [
+            (TensorProto.FLOAT16, 1, 4),
+            (TensorProto.BFLOAT16, 1, 4),
+        ]
+    )
+    def test_fp4_decode_swiglu_fallback(self, onnx_dtype, num_tokens, top_k):
+        """Same decode-shaped SwiGLU as test_fp4_decode_swiglu_gemv but with the fused GEMV
+        disabled (ORT_ENABLE_FP4_GEMV=0), so it exercises the dequant fallback on a shape the
+        GEMV path also supports."""
+        self._run_fp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=8,
+            top_k=top_k,
+            num_tokens=num_tokens,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+            gemv_mode="0",
         )
 
     def test_fp4_native_cutlass_row_varying_scales(self):
