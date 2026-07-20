@@ -115,7 +115,7 @@ stages:
                     ('--passive --norestart --log "{0}"' -f $log)
 
           Write-Host "Args: $argLine"
-          $p = Start-Process -FilePath $installer -ArgumentList $argLine -Wait -PassThru
+          $p = Start-Process -FilePath $installer -ArgumentList $argLine -Wait -PassThru | Write-Host
           Write-Host $(Get-Content $log -Raw)
 
           if ($p.ExitCode -notin 0,3010) { throw "VS modify failed with exit code $($p.ExitCode) (see $log)" }
