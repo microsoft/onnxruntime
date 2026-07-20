@@ -43,6 +43,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="runtimes\win-arm64\native\**"
+          Pack="true"
+          PackagePath="runtimes/win-arm64/native/"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('runtimes\win-arm64\native')" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="runtimes\linux-x64\native\**"
           Pack="true"
           PackagePath="runtimes/linux-x64/native/"

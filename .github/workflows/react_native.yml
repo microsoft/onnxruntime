@@ -102,6 +102,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '22.x'
+          registry-url: 'https://packagefeedproxy.microsoft.io/npm/'
 
       - name: Install ninja
         run: sudo apt-get update && sudo apt-get install -y ninja-build
@@ -241,6 +242,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '22.x'
+          registry-url: 'https://packagefeedproxy.microsoft.io/npm/'
 
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
         with:

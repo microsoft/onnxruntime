@@ -7,7 +7,10 @@
 // pre-packed and block-compacted into int4
 //
 #pragma once
+#include <string>
+#include <vector>
 #include "core/common/safeint.h"
+#include "core/common/string_utils.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
@@ -34,15 +37,45 @@ using onnxruntime::llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPlugin
 using GemmProfilerPtr = std::shared_ptr<WeightOnlyGroupwiseQuantGemmPluginProfiler>;
 using WeightOnlyGemmRunnerPtr = std::shared_ptr<onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface>;
 
-// Environment variable to configure fpA_intB_gemm for experiments. Set it to 0 to disable, 1 to eanble all.
+// Environment variable to enable/disable the fpA_intB path: unset/0/off to disable, other value to enable.
+// This only affects nodes whose weights are NOT prepacked (see the constructor).
 constexpr const char* kFpAIntBGemmOption = "ORT_FPA_INTB_GEMM";
-constexpr int kFpAIntBGemmOption_All = 0x01;
-constexpr int kFpAIntBGemmOption_Gemv = 0x02;
-constexpr int kFpAIntBGemmOption_Int4 = 0x04;
-constexpr int kFpAIntBGemmOption_Int8 = 0x08;
+
 constexpr int64_t kMatMulNBitsWeightNotPrepacked = 0;
 constexpr int64_t kMatMulNBitsWeightPrepackedSm80 = 1;
 constexpr int64_t kMatMulNBitsWeightPrepackedSm90 = 2;
+
+// Session-option config keys. These are readable by BOTH the built-in CUDA EP and the CUDA plugin
+// EP: every kernel is created via KernelRegistryManager::CreateKernel, which injects the
+// session-level ConfigOptions, and the plugin CUDA EP wraps a CUDAExecutionProvider that reuses this
+// same kernel. Each key overrides its ORT_* environment-variable equivalent (config wins).
+//   ep.cuda.fpa_intb_gemm       <-> ORT_FPA_INTB_GEMM       (0/off, 1/on)
+//   ep.cuda.fpa_intb_profile_m  <-> ORT_FPA_INTB_PROFILE_M  (initial profile M buckets)
+constexpr const char* kConfigFpAIntBGemm = "ep.cuda.fpa_intb_gemm";
+constexpr const char* kConfigFpAIntBProfileM = "ep.cuda.fpa_intb_profile_m";
+
+// Resolves a setting from the session config first (per-session, EP-agnostic), then the environment
+// variable, else empty. Session config wins so a model/session can override a process-wide env var.
+inline std::string ResolveFpAIntBConfigOrEnv(const OpKernelInfo& info, const char* config_key,
+                                             const char* env_key) {
+  const auto from_config = info.GetConfigOptions().GetConfigEntry(config_key);
+  if (from_config.has_value()) {
+    return *from_config;
+  }
+  return ParseEnvironmentVariableWithDefault<std::string>(env_key, "");
+}
+
+// Parses the fpA_intB enable flag. "on" enables the full fpA_intB path (the CUTLASS GEMM and, where
+// supported, the GEMV decode kernel; they share one weight layout and cannot be split). Accepts
+// (case-insensitive): "" / "0" / "off" -> disabled; otherwise, enabled (a non-zero numeric value
+// still enables, for backward compatibility).
+inline bool ParseFpAIntBEnabled(const std::string& value) {
+  const std::string lowered = onnxruntime::utils::GetLowercaseString(onnxruntime::utils::TrimString(value));
+  if (lowered.empty() || lowered == "0" || lowered == "off") {
+    return false;
+  }
+  return true;
+}
 #endif
 
 template <typename T>
@@ -106,43 +139,55 @@ class MatMulNBits final : public CudaKernel {
     }
 
     if constexpr (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value) {
-      int option = ParseEnvironmentVariableWithDefault<int>(kFpAIntBGemmOption, 0);
-      ORT_ENFORCE(!(weight_prepacked_ != kMatMulNBitsWeightNotPrepacked && option == 0),
-                  "weight_prepacked requires the fpA_intB path, but ORT_FPA_INTB_GEMM is off for this node");
+      const bool prepacked = weight_prepacked_ != kMatMulNBitsWeightNotPrepacked;
+      // The enable flag (session config ep.cuda.fpa_intb_gemm, else ORT_FPA_INTB_GEMM env) only
+      // chooses the path for weights that are NOT prepacked. A prepacked weight is already stored in
+      // the fpA_intB layout, so the choice was made at export time and cannot be turned off here.
+      const bool enable_fpa_intb =
+          prepacked ||
+          ParseFpAIntBEnabled(ResolveFpAIntBConfigOrEnv(info, kConfigFpAIntBGemm, kFpAIntBGemmOption));
       // Note: a fused bias (input[5]) is fully supported by the fpA_intB GEMV, CUTLASS SM80/SM90
       // GEMM (EpilogueOpBias), and the tactic profiler, so bias-bearing nodes (e.g. gpt-oss
       // qkv_proj/o_proj) are eligible. Only g_idx/reorder remains unsupported by this path.
-      if ((option & (static_cast<int>(nbits_) | kFpAIntBGemmOption_All)) != 0 &&
+      if (enable_fpa_intb &&
           (block_size_ == 32 || block_size_ == 64 || block_size_ == 128) &&
           (nbits_ == 4 || nbits_ == 8) &&
           !has_g_idx_ &&
           N_ % (nbits_ == 8 ? 32 : 64) == 0 &&
           K_ % block_size_ == 0 &&
           sm_ >= 75) {
-        if ((option & (kFpAIntBGemmOption_Gemv | kFpAIntBGemmOption_All)) != 0) {
-          using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
-          KernelType cuda_kernel_type;
-          if constexpr (std::is_same<T, MLFloat16>::value) {
-            cuda_kernel_type = (nbits_ == 8) ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
-          } else if constexpr (std::is_same<T, BFloat16>::value) {
-            cuda_kernel_type = (nbits_ == 8) ? KernelType::BF16Int8Groupwise : KernelType::BF16Int4Groupwise;
-          }
-
-          if (onnxruntime::llm::kernels::fpA_intB_gemv::is_supported(sm_, cuda_kernel_type)) {
-            has_fpA_intB_gemv_ = true;
-          }
+        // The CUTLASS GEMM and the GEMV decode kernel consume the same fpA_intB weight layout, so
+        // enable GEMV whenever it is supported; a node cannot mix fpA_intB and legacy layouts.
+        using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
+        KernelType cuda_kernel_type;
+        if constexpr (std::is_same<T, MLFloat16>::value) {
+          cuda_kernel_type = (nbits_ == 8) ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
+        } else if constexpr (std::is_same<T, BFloat16>::value) {
+          cuda_kernel_type = (nbits_ == 8) ? KernelType::BF16Int8Groupwise : KernelType::BF16Int4Groupwise;
+        }
+        if (onnxruntime::llm::kernels::fpA_intB_gemv::is_supported(sm_, cuda_kernel_type)) {
+          has_fpA_intB_gemv_ = true;
         }
 
         InitGemmProfiler(FpAIntBPackingSmForKernel());
 
-        constexpr int max_m = 8291;
+        // Initial profile M buckets from session config (ep.cuda.fpa_intb_profile_m) with
+        // ORT_FPA_INTB_PROFILE_M env fallback; empty -> profiler uses its default bucket set.
+        std::vector<int> profile_m = WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(
+            ResolveFpAIntBConfigOrEnv(info, kConfigFpAIntBProfileM,
+                                      onnxruntime::llm::kernels::weight_only::kEnvProfileM));
+        gemmProfiler_->setProfileMOverride(profile_m);
+
+        int max_m = profile_m.empty() ? onnxruntime::llm::kernels::weight_only::kDefaultProfileMaxM
+                                      : profile_m.back();
         RunGemmProfile(has_fpA_intB_gemv_, 1, max_m);
         has_fpA_intB_gemm_ = true;
       }
 
-      if (weight_prepacked_ != kMatMulNBitsWeightNotPrepacked) {
+      if (prepacked) {
         ORT_ENFORCE(has_fpA_intB_gemm_,
-                    "weight_prepacked requires the fpA_intB path, but it is disabled or unsupported for this node");
+                    "weight_prepacked requires the fpA_intB path, but it is unsupported for this node "
+                    "(check bits, block_size, N/K alignment, g_idx, and compute capability >= 7.5)");
         ORT_ENFORCE(weight_prepacked_ == RequiredWeightPrepackedFormat(),
                     "weight_prepacked=", weight_prepacked_, " does not match the format required by the selected fpA_intB kernel: ",
                     RequiredWeightPrepackedFormat());
