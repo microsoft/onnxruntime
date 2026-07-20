@@ -114,7 +114,7 @@ stages:
                     ('--passive --norestart')
 
           Write-Host "Args: $argLine"
-          & $installer $argLine
+          $installer $argLine | Write-Host
 
           # if ($p.ExitCode -notin 0,3010) { throw "VS modify failed with exit code $($p.ExitCode)" }
 
