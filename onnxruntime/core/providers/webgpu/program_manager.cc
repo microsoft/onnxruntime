@@ -16,9 +16,13 @@
 namespace onnxruntime {
 namespace webgpu {
 
-ProgramArtifact::ProgramArtifact(std::string program_name, wgpu::ComputePipeline&& compute_pipeline, std::vector<int>&& shape_uniform_ranks)
+ProgramArtifact::ProgramArtifact(std::string program_name,
+                                 wgpu::ComputePipeline&& compute_pipeline,
+                                 wgpu::BindGroupLayout&& bind_group_layout,
+                                 std::vector<int>&& shape_uniform_ranks)
     : name{std::move(program_name)},
       compute_pipeline{std::move(compute_pipeline)},
+      bind_group_layout{std::move(bind_group_layout)},
       shape_uniform_ranks{std::move(shape_uniform_ranks)} {}
 
 ProgramManager::ProgramManager(WebGpuContext& webgpu_context)
@@ -76,6 +80,64 @@ Status ProgramManager::CalculateSegmentsForInputsAndOutputs(const ProgramBase& p
   return Status::OK();
 }
 
+wgpu::PipelineLayout ProgramManager::CreatePipelineLayout(const ProgramBase& program,
+                                                          std::span<const uint32_t> inputs_segments,
+                                                          std::span<const uint32_t> outputs_segments,
+                                                          std::span<const int> shape_uniform_ranks,
+                                                          wgpu::BindGroupLayout& bind_group_layout) const {
+  size_t storage_binding_count = 0;
+  for (uint32_t segments : inputs_segments) {
+    storage_binding_count += segments;
+  }
+  for (uint32_t segments : outputs_segments) {
+    storage_binding_count += segments;
+  }
+  const bool has_uniform_binding =
+      std::any_of(shape_uniform_ranks.begin(), shape_uniform_ranks.end(), [](int rank) { return rank > 0; }) ||
+      std::any_of(program.UniformVariables().cbegin(), program.UniformVariables().cend(),
+                  [](const ProgramUniformVariableValue& uniform) { return uniform.length > 0; });
+
+  std::vector<wgpu::BindGroupLayoutEntry> bind_group_layout_entries;
+  bind_group_layout_entries.reserve(storage_binding_count + (has_uniform_binding ? 1 : 0));
+  uint32_t binding = 0;
+  auto append_buffer_bindings = [&bind_group_layout_entries, &binding](std::span<const uint32_t> segments,
+                                                                       wgpu::BufferBindingType type) {
+    for (uint32_t segment_count : segments) {
+      for (uint32_t segment = 0; segment < segment_count; ++segment) {
+        wgpu::BindGroupLayoutEntry entry{};
+        entry.binding = binding++;
+        entry.visibility = wgpu::ShaderStage::Compute;
+        entry.buffer.type = type;
+        bind_group_layout_entries.push_back(entry);
+      }
+    }
+  };
+  append_buffer_bindings(inputs_segments, wgpu::BufferBindingType::ReadOnlyStorage);
+  append_buffer_bindings(outputs_segments, wgpu::BufferBindingType::Storage);
+  if (has_uniform_binding) {
+    wgpu::BindGroupLayoutEntry entry{};
+    entry.binding = binding++;
+    entry.visibility = wgpu::ShaderStage::Compute;
+    entry.buffer.type = wgpu::BufferBindingType::Uniform;
+    bind_group_layout_entries.push_back(entry);
+  }
+
+  ORT_ENFORCE(binding < webgpu_context_.DeviceLimits().maxBindingsPerBindGroup,
+              "Number of bind group entries (", binding,
+              ") exceeds device limit (", webgpu_context_.DeviceLimits().maxBindingsPerBindGroup, ").");
+
+  wgpu::BindGroupLayoutDescriptor bind_group_layout_descriptor{};
+  bind_group_layout_descriptor.label = program.Name().c_str();
+  bind_group_layout_descriptor.entryCount = bind_group_layout_entries.size();
+  bind_group_layout_descriptor.entries = bind_group_layout_entries.data();
+  bind_group_layout = webgpu_context_.Device().CreateBindGroupLayout(&bind_group_layout_descriptor);
+
+  wgpu::PipelineLayoutDescriptor pipeline_layout_descriptor{};
+  pipeline_layout_descriptor.bindGroupLayoutCount = 1;
+  pipeline_layout_descriptor.bindGroupLayouts = &bind_group_layout;
+  return webgpu_context_.Device().CreatePipelineLayout(&pipeline_layout_descriptor);
+}
+
 Status ProgramManager::Build(const ProgramBase& program,
                              const ProgramMetadata& program_metadata,
                              const std::span<uint32_t> inputs_segments,
@@ -85,6 +147,7 @@ Status ProgramManager::Build(const ProgramBase& program,
                              uint32_t normalized_dispatch_y,
                              uint32_t normalized_dispatch_z,
                              wgpu::ComputePipeline& compute_pipeline,
+                             wgpu::BindGroupLayout& bind_group_layout,
                              std::vector<int>& shape_uniform_ranks,
                              wgpu::Future& future,
                              std::unique_ptr<PipelineCallbackContext>& callback_context) const {
@@ -113,6 +176,8 @@ Status ProgramManager::Build(const ProgramBase& program,
   // code is a large std::string that contains the final shader code
   std::string code;
   ORT_RETURN_IF_ERROR(shader_helper.GenerateSourceCode(code, shape_uniform_ranks));
+  auto pipeline_layout = CreatePipelineLayout(program, inputs_segments, outputs_segments,
+                                              shape_uniform_ranks, bind_group_layout);
 
   // Dump shader code, if requested. It is dumped to `shader_dump_fn_` if set or VERBOSE logging otherwise.
   {
@@ -211,6 +276,7 @@ Status ProgramManager::Build(const ProgramBase& program,
   }
 
   wgpu::ComputePipelineDescriptor pipeline_descriptor{};
+  pipeline_descriptor.layout = pipeline_layout;
   pipeline_descriptor.compute = compute_state;
 #ifndef NDEBUG  // if debug build
   pipeline_descriptor.label = program.Name().c_str();

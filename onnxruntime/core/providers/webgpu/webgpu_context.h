@@ -64,8 +64,7 @@ struct PendingKernelInfo {
 // Resources required to replay one dispatch from a captured graph.
 struct CapturedCommandInfo {
   wgpu::ComputePipeline compute_pipeline;
-  WGPUBindGroup bind_group;
-  WGPUBindGroupLayout bind_group_layout;
+  wgpu::BindGroup bind_group;
   std::array<uint32_t, 3> dispatch_group;
   // WGPUBuffer for indirect dispatch, nullptr if not using indirect dispatch
   WGPUBuffer indirect_buffer;
@@ -311,12 +310,17 @@ class WebGpuContext final {
 
   void Initialize(const WebGpuContextConfig& config);
 
+  wgpu::BindGroup CreateBindGroup(const std::vector<WGPUBuffer>& bind_buffers,
+                                  const std::vector<uint32_t>& bind_buffers_segments,
+                                  const wgpu::BindGroupLayout& bind_group_layout,
+                                  std::string_view label) const;
   void LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
-                             const std::vector<WGPUBuffer>& bind_buffers,
-                             const std::vector<uint32_t>& bind_buffers_segments,
                              const ProgramArtifact& program_artifact,
+                             const wgpu::BindGroup& bind_group,
                              uint32_t x, uint32_t y, uint32_t z,
                              WGPUBuffer indirect_buffer = nullptr);
+  void EncodeCommand(const wgpu::ComputePassEncoder& compute_pass_encoder,
+                     const webgpu::CapturedCommandInfo& command) const;
 
   std::vector<const char*> GetEnabledAdapterToggles() const;
   std::vector<const char*> GetEnabledDeviceToggles() const;
@@ -343,66 +347,31 @@ class WebGpuContext final {
     std::string name;
     std::vector<int> shape_uniform_ranks;
     wgpu::ComputePipeline compute_pipeline;
+    wgpu::BindGroupLayout bind_group_layout;
     std::unique_ptr<PipelineCallbackContext> callback_context;
     wgpu::Future future;
   };
 
   // One dispatch recorded while any cache-miss pipeline builds complete. Only the first dispatch
   // for a cache key owns `pending_build`; every dispatch retains its key to resolve the cached
-  // ProgramArtifact when the window is encoded. Each record also retains its raw buffer handles
-  // until the dispatch is encoded or discarded.
+  // ProgramArtifact when the window is encoded. The bind group retains all bound buffers until
+  // the dispatch is encoded or discarded.
   struct DeferredDispatch {
     DeferredDispatch() = default;
-    ~DeferredDispatch() {
-      ReleaseBuffers();
-    }
-
-    DeferredDispatch(DeferredDispatch&& other) noexcept
-        : key{std::move(other.key)},
-          pending_build{std::move(other.pending_build)},
-          bind_buffers{std::move(other.bind_buffers)},
-          bind_buffers_segments{std::move(other.bind_buffers_segments)},
-          uniform_buffer{std::exchange(other.uniform_buffer, nullptr)},
-          x{other.x},
-          y{other.y},
-          z{other.z},
-          indirect_buffer{std::exchange(other.indirect_buffer, nullptr)},
-          pending_kernel_info{std::move(other.pending_kernel_info)} {
-      other.bind_buffers.clear();
-    }
+    DeferredDispatch(DeferredDispatch&&) = default;
 
     DeferredDispatch& operator=(DeferredDispatch&&) = delete;
     ORT_DISALLOW_COPY_AND_ASSIGNMENT(DeferredDispatch);
 
-    void RetainBuffers() const {
-      for (WGPUBuffer buffer : bind_buffers) {
-        wgpuBufferAddRef(buffer);
-      }
-      if (indirect_buffer) {
-        wgpuBufferAddRef(indirect_buffer);
-      }
-    }
-
     std::string key;
     std::unique_ptr<PendingPipelineBuild> pending_build;
-    std::vector<WGPUBuffer> bind_buffers;
-    std::vector<uint32_t> bind_buffers_segments;
-    WGPUBuffer uniform_buffer = nullptr;
+    wgpu::BindGroup bind_group;
     uint32_t x = 1, y = 1, z = 1;
+    // The indirect buffer is also the final bind-group input, so the bind group retains it.
     WGPUBuffer indirect_buffer = nullptr;
     // Profiling info captured at record time (shapes must be read while the tensors are alive);
     // replayed into pending_kernels_ during encoding so GPU profiling stays consistent.
     std::optional<PendingKernelInfo> pending_kernel_info;
-
-   private:
-    void ReleaseBuffers() const {
-      for (WGPUBuffer buffer : bind_buffers) {
-        wgpuBufferRelease(buffer);
-      }
-      if (indirect_buffer) {
-        wgpuBufferRelease(indirect_buffer);
-      }
-    }
   };
 
   // Find the build owner for a cache key in the current deferred window.
@@ -439,7 +408,6 @@ class WebGpuContext final {
 
   // Owns the active dispatch window and the unique pending builds referenced within that window.
   std::vector<DeferredDispatch> deferred_dispatches_;
-  const webgpu::BufferManager* deferred_buffer_mgr_ = nullptr;
 
   std::unique_ptr<SplitKConfig> split_k_config_;
 

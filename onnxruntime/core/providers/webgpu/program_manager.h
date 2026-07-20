@@ -31,10 +31,14 @@ struct PipelineCallbackContext {
 
 class ProgramArtifact {
  public:
-  ProgramArtifact(std::string program_name, wgpu::ComputePipeline&& compute_pipeline, std::vector<int>&& shape_uniform_ranks);
+  ProgramArtifact(std::string program_name,
+                  wgpu::ComputePipeline&& compute_pipeline,
+                  wgpu::BindGroupLayout&& bind_group_layout,
+                  std::vector<int>&& shape_uniform_ranks);
 
   const std::string name;
   const wgpu::ComputePipeline compute_pipeline;
+  const wgpu::BindGroupLayout bind_group_layout;
   const std::vector<int> shape_uniform_ranks;
 
   ProgramArtifact(ProgramArtifact&&) = default;
@@ -52,7 +56,7 @@ class ProgramManager {
   Status CalculateSegmentsForInputsAndOutputs(const ProgramBase& program, std::vector<uint32_t>& inputs_segments, std::vector<uint32_t>& outputs_segments) const;
 
   // Starts building a compute pipeline for `program` and returns immediately. The caller must keep
-  // both `callback_context` and `compute_pipeline` alive until `future` completes.
+  // `callback_context`, `compute_pipeline`, and `bind_group_layout` alive until `future` completes.
   Status Build(const ProgramBase& program,
                const ProgramMetadata& metadata,
                const std::span<uint32_t> inputs_segments,
@@ -62,6 +66,7 @@ class ProgramManager {
                uint32_t normalized_dispatch_y,
                uint32_t normalized_dispatch_z,
                wgpu::ComputePipeline& compute_pipeline,
+               wgpu::BindGroupLayout& bind_group_layout,
                std::vector<int>& shape_uniform_ranks,
                wgpu::Future& future,
                std::unique_ptr<PipelineCallbackContext>& callback_context) const;
@@ -69,6 +74,12 @@ class ProgramManager {
   const ProgramArtifact* Set(const std::string& key, ProgramArtifact&& program);
 
  private:
+    wgpu::PipelineLayout CreatePipelineLayout(const ProgramBase& program,
+                                              std::span<const uint32_t> inputs_segments,
+                                              std::span<const uint32_t> outputs_segments,
+                                              std::span<const int> shape_uniform_ranks,
+                                              wgpu::BindGroupLayout& bind_group_layout) const;
+
   std::unordered_map<std::string, ProgramArtifact> programs_;
   WebGpuContext& webgpu_context_;
 
