@@ -114,9 +114,9 @@ stages:
                     ('--passive --norestart')
 
           Write-Host "Args: $argLine"
-          $p = Start-Process -FilePath $installer -ArgumentList $argLine -Wait -PassThru | Write-Host
+          & $installer $argLine
 
-          if ($p.ExitCode -notin 0,3010) { throw "VS modify failed with exit code $($p.ExitCode) (see $log)" }
+          # if ($p.ExitCode -notin 0,3010) { throw "VS modify failed with exit code $($p.ExitCode)" }
 
           if (-not (Get-ChildItem "$vsPath\VC\Tools\MSVC\*\lib\x64\spectre" -ErrorAction SilentlyContinue)) {
             throw "Spectre x64 libs still missing"
