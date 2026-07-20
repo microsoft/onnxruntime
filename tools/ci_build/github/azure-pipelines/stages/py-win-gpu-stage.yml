@@ -114,7 +114,7 @@ stages:
             '--add','Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre',
             '--add','Microsoft.VisualStudio.Component.VC.Runtimes.ARM64.Spectre',
             '--add','Microsoft.VisualStudio.Component.VC.Tools.ARM64',
-            '--norestart','--wait'
+            '--quiet', '--norestart','--wait'
           )
           $p = Start-Process -FilePath $installer -ArgumentList $addArgs -Wait -PassThru
           if ($p.ExitCode -notin 0,3010) { throw "VS modify failed with exit code $($p.ExitCode)" }
