@@ -360,6 +360,42 @@ MlasDequantizeBlockwise(
     );
 
 /**
+ * @brief Blockwise dequantization for the variant where the zero points are
+ *        floating point values instead of packed quantized integers, as some
+ *        external quantizers emit for MatMulNBits. Only the columnwise layout
+ *        and qbits=2 with float dequantized elements are implemented.
+ *
+ * @tparam ElementT     type of the dequantized matrix element, must be float
+ * @tparam ZeroPointT   float or MLAS_FP16
+ * @tparam qbits        number of bits used for quantization, must be 2
+ *
+ * @param dst           points to dequantized matrix shape [rows, columns] column major
+ * @param src           points to quantized matrix, column major
+ * @param scales        points to quantization scales, column major
+ * @param zero_points   points to floating point quantization zero points, column major;
+ *                      may be nullptr, in which case a zero point of 0 is used for every block
+ * @param block_size    size of the block to quantize, elements from the same block share the same scale and zero point;
+ *                      must be a multiple of 4 so blocks start byte aligned in the packed stream
+ * @param columnwise    must be true; elements in a block are from the same column
+ * @param rows
+ * @param columns
+ * @param thread_pool
+*/
+template <typename ElementT, typename ZeroPointT, int qbits>
+void
+MlasDequantizeBlockwiseFpZeroPoint(
+    ElementT* dst,
+    const uint8_t* src,
+    const ElementT* scales,
+    const ZeroPointT* zero_points,
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    MLAS_THREADPOOL* thread_pool
+    );
+
+/**
  * @brief Blockwise 4 bits quantization. After quantization, the weights and zero points
  *        are packed row-wise. If zero_points is null, quantized type is int4 with default
  *        zero point 0, to align with DQ schema. Otherwise, quantized type is uint4.
