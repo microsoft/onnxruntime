@@ -106,19 +106,21 @@ stages:
           $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
           $vsPath    = & $vswhere -latest -products * -property installationPath
 
+          Write-Host "VS Path: $vsPath"
+          Write-Host "VS Installer: $installer"
+
           $addArgs = @(
             'modify','--installPath',"$vsPath",
             '--add','Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre',
             '--add','Microsoft.VisualStudio.Component.VC.Runtimes.ARM64.Spectre',
             '--add','Microsoft.VisualStudio.Component.VC.Tools.ARM64',
-            '--quiet','--norestart','--norestart','--wait'
+            '--norestart','--wait'
           )
           $p = Start-Process -FilePath $installer -ArgumentList $addArgs -Wait -PassThru
           if ($p.ExitCode -notin 0,3010) { throw "VS modify failed with exit code $($p.ExitCode)" }
 
-          # verify
-          $spectre = Join-Path $vsPath 'VC\Tools\MSVC\14.44.35207\lib\x64\spectre'
-          if (-not (Test-Path $spectre)) { throw "Spectre x64 libs still missing at $spectre" }
+          $spectre = Get-ChildItem "$vsPath\VC\Tools\MSVC\*\lib\x64\spectre" -ErrorAction SilentlyContinue
+          if (-not $spectre) { throw "Spectre x64 libs still missing" }
           Write-Host "OK: Spectre libs present."
 
       - template: ../templates/jobs/download_win_gpu_library.yml
