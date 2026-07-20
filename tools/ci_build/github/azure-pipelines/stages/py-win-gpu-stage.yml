@@ -103,6 +103,11 @@ stages:
       - pwsh: |
           dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"
           dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\*\lib\x64\spectre"
+          dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\"
+          dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\lib\x64"
+          dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\lib\x64\spectre"
+          dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\lib\arm64\spectre"
+
 
       - template: ../templates/jobs/download_win_gpu_library.yml
         parameters:
