@@ -2160,6 +2160,113 @@ MlasDequantizeBlockwise<MLAS_FP16, 8>(
     MLAS_THREADPOOL* thread_pool
 );
 
+//
+// Blockwise dequantization with floating point zero points. The per-block
+// span kernel is platform dispatched on x64; every element computes
+// float(q) * scale + (-scale * zp), matching the arithmetic the CPU
+// MatMulNBits operator historically used for this path.
+//
+
+void
+MLASCALL
+MlasDequantizeBlockwise2BitsKernel(
+    float* Output,
+    const uint8_t* PackedData,
+    size_t N,
+    float Scale,
+    float ZeroPointAdjust
+)
+{
+    for (size_t i = 0; i < N; i++) {
+        const uint8_t packed = PackedData[i >> 2];
+        const float q = static_cast<float>((packed >> (2 * (i & 3))) & 0x3);
+        Output[i] = q * Scale + ZeroPointAdjust;
+    }
+}
+
+template <typename ElementT, typename ZeroPointT, int qbits>
+void
+MlasDequantizeBlockwiseFpZeroPoint(
+    ElementT* dst,
+    const uint8_t* src,
+    const ElementT* scales,
+    const ZeroPointT* zero_points,
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    MLAS_THREADPOOL* thread_pool
+)
+{
+    static_assert(qbits == 2, "only 2 bit is implemented");
+    static_assert(std::is_same_v<ElementT, float>, "only float dequantized elements are implemented");
+
+    // Only the columnwise layout is implemented; the caller validates this.
+    // The MatMulNBits op constrains block_size to a power of two >= 16, so every block
+    // starts byte aligned in the packed stream.
+    MLAS_UNREFERENCED_PARAMETER(columnwise);
+
+    const int k_blocks = (rows + block_size - 1) / block_size;
+    const size_t src_col_stride = static_cast<size_t>(k_blocks) * block_size / 4;
+
+    MLAS_DEQUANTIZE_BLOCKWISE_2BITS_KERNEL* kernel =
+#if defined(MLAS_TARGET_AMD64)
+        GetMlasPlatform().DequantizeBlockwise2BitsKernel;
+#else
+        MlasDequantizeBlockwise2BitsKernel;
+#endif
+
+    MlasTryBatchParallel(
+        thread_pool, static_cast<ptrdiff_t>(columns),
+        [&](ptrdiff_t n) {
+            const uint8_t* src_col = src + static_cast<size_t>(n) * src_col_stride;
+            float* dst_col = dst + static_cast<size_t>(n) * rows;
+            const size_t block_base = static_cast<size_t>(n) * k_blocks;
+            for (int kb = 0; kb < k_blocks; kb++) {
+                const int k_start = kb * block_size;
+                const size_t count = static_cast<size_t>(std::min(block_size, rows - k_start));
+                const float scale = static_cast<float>(scales[block_base + kb]);
+                float zp = 0.0f;
+                if (zero_points != nullptr) {
+                    if constexpr (std::is_same_v<ZeroPointT, MLAS_FP16>) {
+                        zp = zero_points[block_base + kb].ToFloat();
+                    } else {
+                        zp = static_cast<float>(zero_points[block_base + kb]);
+                    }
+                }
+                kernel(dst_col + k_start,
+                       src_col + static_cast<size_t>(kb) * (block_size / 4),
+                       count, scale, -scale * zp);
+            }
+        });
+}
+
+template void
+MlasDequantizeBlockwiseFpZeroPoint<float, float, 2>(
+    float* dst,
+    const uint8_t* src,
+    const float* scales,
+    const float* zero_points,
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    MLAS_THREADPOOL* thread_pool
+);
+
+template void
+MlasDequantizeBlockwiseFpZeroPoint<float, MLAS_FP16, 2>(
+    float* dst,
+    const uint8_t* src,
+    const float* scales,
+    const MLAS_FP16* zero_points,
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    MLAS_THREADPOOL* thread_pool
+);
+
 template <typename Tin, int qbits>
 bool
 MlasQDQQuantizeBlockwise(
