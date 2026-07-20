@@ -112,8 +112,6 @@ stages:
           $addArgs = @(
             'modify','--installPath',"$vsPath",
             '--add','Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre',
-            '--add','Microsoft.VisualStudio.Component.VC.Runtimes.ARM64.Spectre',
-            '--add','Microsoft.VisualStudio.Component.VC.Tools.ARM64',
             '--passive', '--norestart','--wait'
           )
           $p = Start-Process -FilePath $installer -ArgumentList $addArgs -Wait -PassThru
