@@ -114,7 +114,7 @@ stages:
                     ('--passive --norestart')
 
           Write-Host "Args: $argLine"
-          $installer $argLine | Write-Host
+          $installer modify --installPath --add Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre --passive --norestart
 
           # if ($p.ExitCode -notin 0,3010) { throw "VS modify failed with exit code $($p.ExitCode)" }
 
