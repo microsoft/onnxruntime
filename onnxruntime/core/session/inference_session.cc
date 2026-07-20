@@ -24,6 +24,7 @@
 #include "core/framework/bfc_arena.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/device_stream_collection.h"
+#include "core/framework/ep_context_utils.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/graph_partitioner.h"
@@ -1693,10 +1694,15 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     }
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  // Capture the output-model generation options once so the same options are used whether the model is
+  // serialized at the partitioning boundary (EPContext model) or after the Level2+ optimizer loop below
+  // (plain optimized model).
+  const epctx::ModelGenOptions ep_context_gen_options = session_options_.GetEpContextGenerationOptions();
+
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
                                                        session_options_.config_options, *session_logger_, layering_index,
-                                                       mode, session_options_.GetEpContextGenerationOptions(), debug_graph_fn));
+                                                       mode, ep_context_gen_options, debug_graph_fn));
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   if (layering_index) {
@@ -1773,6 +1779,31 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
       break;
     }
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Emit the plain optimized (non-EPContext) output model for a compile-only session that compiled no
+  // nodes (the kGenerateModel case, e.g. WebGPU). Partition() serialized only the EPContext form; this
+  // runs after the Level2+ loop so those optimizations are captured, and before the copy-node insertion
+  // so memcpy nodes aren't baked in. Initializers are still present (FinalizeSessionState runs later).
+  const bool is_compile_only =
+      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionCompileOnly, "0") == "1";
+  if (is_compile_only && ep_context_gen_options.enable && !partitioner.AnyEpContextNodesProduced()) {
+    // No nodes compiled: honor action_if_no_compiled_nodes (the compile API uses kReturnError or
+    // kGenerateModel; kDontGenerateModel never reaches a compile-only session).
+    using ActionIfNoCompiledNodes = epctx::ModelGenOptions::ActionIfNoCompiledNodes;
+    const auto action_if_no_compiled_nodes = ep_context_gen_options.action_if_no_compiled_nodes;
+    ORT_RETURN_IF_ERROR_SESSIONID_(
+        (action_if_no_compiled_nodes == ActionIfNoCompiledNodes::kReturnError
+             ? ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Unable to compile any nodes. Check that the session EPs support compilation "
+                               "and can execute at least one subgraph in the model.")
+             : Status::OK()));
+    if (action_if_no_compiled_nodes == ActionIfNoCompiledNodes::kGenerateModel) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(
+          epctx::BuildAndSaveOptimizedModel(*model_, ep_context_gen_options, *session_logger_));
+    }
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   // Insert copy node/s.
   {
