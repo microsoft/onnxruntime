@@ -661,7 +661,14 @@ set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} ${W
 
 # The source code of onnx_proto is generated, we must build this lib first before starting to compile the other source code that uses ONNX protobuf types.
 # The other libs do not have the problem. All the sources are already there. We can compile them in any order.
-set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto flatbuffers::flatbuffers)
+# When onnx-light is used, onnx_proto is a pre-built (header-only) target with no code-generation step.
+# The ORT flatbuffer schema headers (ort.fbs.h) are also pre-generated and committed, so the
+# flatbuffers::flatbuffers ordering dependency is not required for onnx-light builds.
+if(onnxruntime_USE_ONNX_LIGHT)
+  set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto)
+else()
+  set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto flatbuffers::flatbuffers)
+endif()
 
 if(NOT onnxruntime_USE_ONNX_LIGHT AND NOT (onnx_FOUND OR ONNX_FOUND)) # building ONNX from source
   target_compile_definitions(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_COMPILE_DEFINITIONS> PRIVATE "__ONNX_DISABLE_STATIC_REGISTRATION")
