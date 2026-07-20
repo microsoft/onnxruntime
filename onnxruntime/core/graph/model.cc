@@ -18,17 +18,6 @@
 #include "core/graph/model_load_utils.h"
 #include "core/graph/onnx_proto_serialize.h"
 
-#ifdef _MSC_VER
-#pragma warning(push)
-// 'type' : forcing value to bool 'true' or 'false' (performance warning)
-#pragma warning(disable : 4800)
-#endif
-#include <google/protobuf/io/coded_stream.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
-#include "core/util/protobuf_parsing_utils.h"
-
 #include <gsl/gsl>
 
 #include "core/platform/env.h"
@@ -764,49 +753,14 @@ Status Model::LoadFromBytes(int count, void* p_bytes, const PathString& model_pa
   return Status::OK();
 }
 
-#if !defined(ORT_USE_ONNX_LIGHT)
-using ::google::protobuf::io::CodedInputStream;
-using ::google::protobuf::io::FileInputStream;
-using ::google::protobuf::io::ZeroCopyInputStream;
-#endif
-
 Status Model::Load(int fd, ONNX_NAMESPACE::ModelProto& model_proto) {
   if (fd < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> less than 0.");
   }
 
-#if defined(ORT_USE_ONNX_LIGHT)
-  // onnx-light has no protobuf zero-copy streams; read the whole descriptor and
-  // parse the bytes directly.
   if (!onnxruntime::proto_io::ParseFromFileDescriptor(model_proto, fd)) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
-#elif GOOGLE_PROTOBUF_VERSION >= 3002000
-  size_t file_size = 0;
-  int block_size = -1;
-  Status st = Env::Default().GetFileLength(fd, file_size);
-  if (st.IsOK()) {
-    block_size = std::min(DEFAULT_PROTOBUF_BLOCK_SIZE, static_cast<int>(file_size));
-  }
-  FileInputStream input(fd, block_size);
-  const bool result = model_proto.ParseFromZeroCopyStream(&input) && input.GetErrno() == 0;
-  if (!result) {
-    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
-  }
-#else
-  // CNTK uses ORT as a submodule in order to use its GraphIR code.
-  // CNTK needs to be built with protobuf 3.1.0 for its version specific features.
-  // This code block is needed to support CNTK and any other
-  // GraphIR client that will be built with protobuf at a version older than 3.2.0.
-  FileInputStream fs(fd);
-  CodedInputStream cis(&fs);
-
-  // Allows protobuf library versions < 3.2.0 to parse messages greater than 64MB.
-  cis.SetTotalBytesLimit(INT_MAX);
-  if (!model_proto->ParseFromCodedStream(&cis)) {
-    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
-  }
-#endif
   return Status::OK();
 }
 

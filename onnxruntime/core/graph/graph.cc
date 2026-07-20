@@ -216,11 +216,7 @@ NodeArg::NodeArg(NodeArgInfo&& node_arg_info) {
 }
 
 const std::string& NodeArg::Name() const noexcept {
-#if defined(ORT_USE_ONNX_LIGHT)
-  return node_arg_info_.name().str();
-#else
   return node_arg_info_.name();
-#endif
 }
 
 DataType NodeArg::Type() const noexcept {
@@ -4156,21 +4152,11 @@ Status Graph::RemoveAllLayeringAnnotations() {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 const std::string& Graph::Name() const noexcept {
-#if defined(ORT_USE_ONNX_LIGHT)
-  cached_name_ = graph_proto_->name();
-  return cached_name_;
-#else
   return graph_proto_->name();
-#endif
 }
 
 const std::string& Graph::Description() const noexcept {
-#if defined(ORT_USE_ONNX_LIGHT)
-  cached_description_ = graph_proto_->doc_string();
-  return cached_description_;
-#else
   return graph_proto_->doc_string();
-#endif
 }
 
 const std::filesystem::path& Graph::ModelPath() const {
