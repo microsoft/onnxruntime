@@ -112,7 +112,7 @@ stages:
           $log = "$env:AGENT_TEMPDIRECTORY\vsmodify.log"
           $argLine = ('modify --installPath "{0}" ' -f $vsPath) +
                     '--add Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre ' +
-                    ('--passive --norestart --wait --log "{0}"' -f $log)
+                    ('--passive --norestart --log "{0}"' -f $log)
 
           Write-Host "Args: $argLine"
           $p = Start-Process -FilePath $installer -ArgumentList $argLine -Wait -PassThru
