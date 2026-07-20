@@ -57,6 +57,7 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 #if !defined(ORT_MINIMAL_BUILD)
+
 #define NO_CHANGE_ON_SYNC_FLAG(...)                  \
   do {                                               \
     const bool sync_needed = GraphProtoSyncNeeded(); \
@@ -3179,6 +3180,15 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
   status = subgraph.PerformTypeAndShapeInferencing(options);
   ORT_RETURN_IF_ERROR(status);
 
+  // Record that this subgraph had type/shape inferencing (and thus node/op verification via
+  // VerifyNodeAndOpMatch) performed here through the containing op's inference function
+  // (Scan/If/Loop and similar). The parent's "verify subgraphs" loop uses this to skip a redundant
+  // VerifyNodeAndOpMatch on the same subgraph, avoiding exponential re-traversal of deeply nested
+  // subgraphs.
+  if (subgraph.parent_graph_ != nullptr) {
+    subgraph.parent_graph_->resolve_context_.inferred_subgraphs.insert(&subgraph);
+  }
+
   auto& subgraph_outputs = subgraph.GetOutputs();
   for (const auto* output : subgraph_outputs) {
     output_types.push_back(output->TypeAsProto());
@@ -3672,7 +3682,14 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         }
       }
 
-      ORT_RETURN_IF_ERROR(subgraph->VerifyNodeAndOpMatch(options));
+      // Skip verification if this subgraph already had type/shape inferencing (and node/op
+      // verification) performed via the containing op's inference function (e.g. Scan/If/Loop).
+      // This avoids exponential re-traversal of deeply nested subgraphs. Ops whose inference
+      // function does not descend into subgraphs (e.g. BeamSearch) are not recorded, so their
+      // subgraphs are still verified here.
+      if (!resolve_context_.inferred_subgraphs.contains(subgraph)) {
+        ORT_RETURN_IF_ERROR(subgraph->VerifyNodeAndOpMatch(options));
+      }
     }
   }
 

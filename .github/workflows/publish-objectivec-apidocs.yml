@@ -27,6 +27,7 @@ jobs:
   build:
     name: Generate Objective-C API docs
     runs-on: macos-latest
+    timeout-minutes: 120
     steps:
     - uses: actions/checkout@v6
     - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9

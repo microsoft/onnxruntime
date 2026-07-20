@@ -650,6 +650,7 @@ if (onnxruntime_USE_WEBGPU)
     set(DAWN_ENABLE_NULL OFF CACHE BOOL "" FORCE)
     set(DAWN_BUILD_PROTOBUF OFF CACHE BOOL "" FORCE)
     set(DAWN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(DAWN_SUPPORTS_CXX_MODULES OFF CACHE BOOL "" FORCE)
     if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
         set(DAWN_BUILD_MONOLITHIC_LIBRARY SHARED CACHE BOOL "" FORCE)
@@ -783,18 +784,6 @@ if (onnxruntime_USE_WEBGPU)
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_dxc_output_dir.patch &&
 
-          # The dawn_buffer_fix_injection.patch contains the following changes:
-          #
-          # - (private) Fix importJsBuffer calling wrong WGPUBufferImpl constructor
-          #   Without this patch, importJsBuffer calls emwgpuCreateBuffer which invokes the
-          #   (source, mappedAtCreation=false) constructor instead of the injection constructor
-          #   tagged with kImportedFromJS. This patch adjusts the injection constructor signature
-          #   to disambiguate it from the (source, mappedAtCreation) overload so emwgpuCreateBuffer
-          #   reliably selects the injection constructor and imported buffers are properly tagged
-          #   as kImportedFromJS.
-          #
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_buffer_fix_injection.patch &&
-
           # The dawn_parallel_build_fix.patch contains the following changes:
           #
           # - (private) Fix parallel build race condition in emdawnwebgpu header copy
@@ -880,6 +869,27 @@ endif()
 
 set(onnxruntime_LINK_DIRS)
 if (onnxruntime_USE_CUDA)
+  # Work around a CMake limitation (present through at least CMake 3.31 and current
+  # upstream master) when building natively on a Windows-on-ARM64 host. FindCUDAToolkit
+  # only sets the Windows import-library search suffix when the host is x64:
+  #
+  #   if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+  #     if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "AMD64")
+  #       set(_CUDAToolkit_win_search_dirs lib/x64)
+  #       set(_CUDAToolkit_win_stub_search_dirs lib/x64/stubs)
+  #
+  # On an ARM64 host the suffix is left empty, so find_library() for cudart only looks in
+  # "lib64" and never finds <cuda_home>/lib/.../cudart.lib. find_package(CUDAToolkit) then
+  # fails with: Could NOT find CUDAToolkit (missing: CUDA_CUDART). Pre-seed the (internal)
+  # search-suffix variables with win-arm64 import-library locations (lib/arm64 and
+  # lib/arm64/stubs) so the toolkit's cudart.lib can be found. FindCUDAToolkit unsets
+  # these at the end, so this only affects the search below and is a no-op once CMake
+  # gains native WoA support.
+  if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows" AND CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "ARM64")
+    set(_CUDAToolkit_win_search_dirs lib/arm64)
+    set(_CUDAToolkit_win_stub_search_dirs lib/arm64/stubs)
+  endif()
+
   find_package(CUDAToolkit REQUIRED)
 
   # cuDNN is not needed for minimal CUDA builds (e.g., TensorRT-only builds)
