@@ -57,6 +57,11 @@ class GraphPartitioner {
   }
 
   // Run partitioning.
+  //
+  // If the output is EPContext-based (a compiling EP produced EPContext nodes) it is serialized here at
+  // the partition boundary. If no nodes were compiled it is a plain optimized copy of the graph, NOT
+  // serialized here - InferenceSession emits it after the Level2+ loop (epctx::BuildAndSaveOptimizedModel),
+  // since only that form is affected by those passes. Callers distinguish via AnyEpContextNodesProduced().
   Status Partition(Graph& graph, FuncManager& func_mgr,
                    const layout_transformation::TransformLayoutFunction& transform_layout_function,
                    const ConfigOptions& config_options,
@@ -65,6 +70,13 @@ class GraphPartitioner {
                    Mode mode = Mode::kNormal,
                    const epctx::ModelGenOptions& ep_context_gen_options = {},
                    const layout_transformation::DebugGraphFn& debug_graph_fn = {}) const;
+
+#ifndef ORT_MINIMAL_BUILD
+  // Returns true if any execution provider produced EPContext (compiled) nodes during partitioning -
+  // i.e. the output is an EPContext model (serialized in Partition) rather than a plain optimized copy
+  // (emitted by InferenceSession after the Level2+ loop). Stable once partitioning has run.
+  bool AnyEpContextNodesProduced() const;
+#endif
 
   bool IsLoadCancellationFlagSet() const {
     return check_load_cancellation_fn_ && check_load_cancellation_fn_();
