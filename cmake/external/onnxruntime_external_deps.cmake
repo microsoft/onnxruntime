@@ -915,13 +915,16 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     message(FATAL_ERROR "onnxruntime_USE_TELEMETRY is not supported for WebAssembly/Emscripten builds: "
                         "the 1DS telemetry SDK is excluded on Emscripten. Disable telemetry for WASM builds.")
   endif()
-  if(onnxruntime_USE_VCPKG)
+  if(onnxruntime_USE_VCPKG AND NOT ANDROID)
     # Consume the 1DS SDK from the vcpkg port "cpp-client-telemetry", which exposes the
     # MSTelemetry::mat target with its include directories and transitive dependencies
     # (curl/nlohmann-json/sqlite3/zlib) already wired up via vcpkg. None of the FetchContent
     # workarounds below are needed on this path.
     find_package(MSTelemetry CONFIG REQUIRED)
   else()
+    # Android always uses this path, including vcpkg-based AAR builds. The vcpkg port selects
+    # HttpClient_Curl on Android, while the platform identity and transport used by the AAR require
+    # HttpClient_Android and its Java bridge.
     # The 1DS SDK reads these generic option() names from its own CMakeLists. Nothing else in ORT's
     # build reads them, so set them and leave them (no save/restore). Turn off the SDK's tests and the
     # optional modules whose source may be absent from the release archive; ORT uses the C++ API directly.
@@ -981,7 +984,8 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     if(NOT Patch_FOUND)
       message(FATAL_ERROR
         "onnxruntime_USE_TELEMETRY with the FetchContent cpp_client_telemetry fallback requires the patch tool. "
-        "Install 'patch' or build with --use_vcpkg so MSTelemetry::mat is provided by the vcpkg port.")
+        "Install 'patch' or, for non-Android builds, use --use_vcpkg so MSTelemetry::mat is provided by the "
+        "vcpkg port.")
     endif()
     set(ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND
       ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/cpp_client_telemetry/cpp_client_telemetry.patch)
@@ -993,6 +997,11 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     if(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR (NOT APPLE AND NOT onnxruntime_BUILD_SHARED_LIB))
       set(MATSDK_BUNDLE_VENDORED_DEPS ON)
     endif()
+    if(ANDROID)
+      # The outer vcpkg toolchain would otherwise make the SDK auto-enable its vcpkg mode, which
+      # selects HttpClient_Curl instead of the Java-backed Android transport.
+      set(MATSDK_USE_VCPKG_DEPS OFF CACHE BOOL "Use the 1DS Android Java transport" FORCE)
+    endif()
     onnxruntime_fetchcontent_declare(
       cpp_client_telemetry
       URL ${DEP_URL_cpp_client_telemetry}
@@ -1001,6 +1010,39 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
       EXCLUDE_FROM_ALL
     )
     onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
+    if(ANDROID)
+      unset(MATSDK_USE_VCPKG_DEPS CACHE)
+    endif()
+
+    if(ANDROID)
+      string(CONCAT _ort_android_telemetry_java_source_dir
+          "${cpp_client_telemetry_SOURCE_DIR}/lib/android_build/maesdk/src/main/java/"
+          "com/microsoft/applications/events")
+      file(REMOVE_RECURSE "${CMAKE_BINARY_DIR}/android/telemetry-java")
+      set(_ort_android_telemetry_java_dir
+          "${CMAKE_BINARY_DIR}/android/telemetry-java/ai/onnxruntime/telemetry")
+      file(MAKE_DIRECTORY "${_ort_android_telemetry_java_dir}")
+      foreach(_ort_android_telemetry_java_file HttpClient.java HttpClientRequest.java)
+        file(READ
+             "${_ort_android_telemetry_java_source_dir}/${_ort_android_telemetry_java_file}"
+             _ort_android_telemetry_java_source)
+        string(REPLACE
+               "package com.microsoft.applications.events;"
+               "package ai.onnxruntime.telemetry;"
+               _ort_android_telemetry_java_source
+               "${_ort_android_telemetry_java_source}")
+        file(WRITE
+             "${_ort_android_telemetry_java_dir}/${_ort_android_telemetry_java_file}"
+             "${_ort_android_telemetry_java_source}")
+      endforeach()
+
+      set(_ort_android_telemetry_resource_dir "${CMAKE_BINARY_DIR}/android/telemetry-resources/META-INF")
+      file(MAKE_DIRECTORY "${_ort_android_telemetry_resource_dir}")
+      configure_file(
+        "${cpp_client_telemetry_SOURCE_DIR}/LICENSE"
+        "${_ort_android_telemetry_resource_dir}/LICENSE-1DS"
+        COPYONLY)
+    endif()
 
     if(TARGET mat)
       # cpp_client_telemetry's CMakeLists.txt uses include_directories(${CMAKE_SOURCE_DIR}) to find

@@ -101,12 +101,12 @@
       "dependencies": [
         {
           "name": "cpp-client-telemetry",
-          "platform": "!windows & !emscripten & !uwp"
+          "platform": "!windows & !android & !emscripten & !uwp"
         },
         {
           "name": "sqlite3",
           "default-features": false,
-          "platform": "!windows & !emscripten & !uwp"
+          "platform": "!windows & !android & !emscripten & !uwp"
         }
       ]
     }

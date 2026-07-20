@@ -359,11 +359,8 @@ void PosixTelemetry::Initialize() {
     enabled_.store(false, std::memory_order_release);
   }
 
-  // NOTE: On Android, the Java layer must be initialized before calling this:
-  //   System.loadLibrary("maesdk");
-  //   new HttpClient(getApplicationContext());
-  //   OfflineRoom.connectContext(getApplicationContext());  // if using Room DB
-  // See cpp_client_telemetry/docs/cpp-start-android.md for details.
+  // The official Android AAR initializes the SDK's Java HttpClient before ORT is loaded. Native-only
+  // integrators must provide the same application-context initialization before creating an OrtEnv.
 #if defined(__ANDROID__)
   if (!HttpClient_Android::GetClientInstance()) {
     ORT_TELEMETRY_WARN("Android telemetry is waiting for the 1DS Java HttpClient");

@@ -11,6 +11,12 @@ def parse_arguments():
     parser.add_argument("--version_file", required=True, help="VERSION_NUMBER file")
     parser.add_argument("--style", required=True, choices=["gcc", "vc", "xcode", "aix"])
     parser.add_argument("--config", required=True, nargs="+")
+    parser.add_argument(
+        "--extra_symbol_file",
+        action="append",
+        default=[],
+        help="Additional symbols to export without adding them to GetFunctionEntryByName",
+    )
     return parser.parse_args()
 
 
@@ -21,9 +27,19 @@ with open(args.version_file) as f:
 
 print(f"VERSION:{VERSION_STRING}")
 
-symbols = set()
+provider_symbols = set()
 for c in args.config:
     file_name = os.path.join(args.src_root, "core", "providers", c, "symbols.txt")
+    with open(file_name) as file:
+        for line in file:
+            line = line.strip()  # noqa: PLW2901
+            if line in provider_symbols:
+                print("dup symbol: %s", line)
+                exit(-1)
+            provider_symbols.add(line)
+
+symbols = set(provider_symbols)
+for file_name in args.extra_symbol_file:
     with open(file_name) as file:
         for line in file:
             line = line.strip()  # noqa: PLW2901
@@ -31,6 +47,7 @@ for c in args.config:
                 print("dup symbol: %s", line)
                 exit(-1)
             symbols.add(line)
+
 symbols = sorted(symbols)
 
 symbol_index = 1
@@ -86,7 +103,7 @@ with open(args.output_source, "w") as file:
         ):
             file.write(f"#include <core/providers/{c}/{c}_provider_factory.h>\n")
     file.write("void* GetFunctionEntryByName(const char* name){\n")
-    for symbol in symbols:
+    for symbol in sorted(provider_symbols):
         if symbol != "OrtGetWinMLAdapter":
             file.write(f'if(strcmp(name,"{symbol}") ==0) return (void*)&{symbol};\n')
     file.write("return NULL;\n")
