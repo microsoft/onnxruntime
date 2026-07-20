@@ -35,8 +35,7 @@ inline constexpr std::array<const char*, 13> kCiEnvironmentVariableNames = {
     "SYSTEM_TEAMFOUNDATIONCOLLECTIONURI",  // Azure DevOps
 };
 
-// Read an environment variable, returning an empty string when unset. std::getenv is sufficient here
-// (we only inspect the value for truthiness); the MSVC deprecation warning is suppressed locally.
+// Read an environment variable, returning an empty string when unset.
 inline std::string GetTelemetryEnv(const char* name) {
 #ifdef _WIN32
   const DWORD required_size = ::GetEnvironmentVariableA(name, nullptr, 0);
