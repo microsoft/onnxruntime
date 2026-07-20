@@ -109,14 +109,12 @@ stages:
           if (-not $vsPath) { throw "VS install not found" }
           Write-Host "VS Path: $vsPath"
 
-          $log = "$env:AGENT_TEMPDIRECTORY\vsmodify.log"
           $argLine = ('modify --installPath "{0}" ' -f $vsPath) +
                     '--add Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre ' +
-                    ('--passive --norestart --log "{0}"' -f $log)
+                    ('--passive --norestart')
 
           Write-Host "Args: $argLine"
           $p = Start-Process -FilePath $installer -ArgumentList $argLine -Wait -PassThru | Write-Host
-          Write-Host $(Get-Content $log -Raw)
 
           if ($p.ExitCode -notin 0,3010) { throw "VS modify failed with exit code $($p.ExitCode) (see $log)" }
 
