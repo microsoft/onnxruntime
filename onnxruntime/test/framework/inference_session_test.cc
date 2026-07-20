@@ -45,6 +45,7 @@
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #endif
 #include "core/session/allocator_adapters.h"
+#include "core/framework/ep_context_options.h"
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session_utils.h"
@@ -3200,6 +3201,71 @@ TEST(InferenceSessionTests, SessionLoggerOutlivesEPsWithUserLoggingFunction) {
   ASSERT_TRUE(found_teardown_msg)
       << "Expected EP teardown log message not found via user_logging_function.";
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+// A compile-only session (Compile API path, marked by kOrtSessionOptionCompileOnly) that requests an
+// optimization level above ORT_ENABLE_BASIC must serialize the *fully* optimized graph: Level2+ fusions
+// are deferred and emitted after the optimizer loop rather than captured at the partition boundary.
+// This is EP-agnostic: the CPU EP compiles no nodes, so the kGenerateModel path copies the optimized
+// graph. bias_gelu_fusion.onnx fuses to com.microsoft.BiasGelu only at Level2 (BiasGeluFusion is
+// Level2-only), so its presence in the emitted model proves the Level2 fusion reached the output; at
+// ORT_ENABLE_BASIC (Level1) it must be absent because serialization happens at the pre-Level2 boundary.
+TEST(InferenceSessionTests, CompileOnlySerializesFullyOptimizedGraph) {
+  const std::string input_model = "testdata/transform/fusion/bias_gelu_fusion.onnx";
+
+  auto compile_and_count =
+      [&](TransformerLevel level,
+          const std::basic_string<ORTCHAR_T>& output_path) -> std::map<std::string, int> {
+    std::filesystem::remove(output_path);
+
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.CompileOnlySerializesFullyOptimizedGraph";
+    so.graph_optimization_level = level;
+    // Mark a compile-only session (as the Compile API does internally).
+    EXPECT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+
+    // Configure EPContext model generation to a file, mirroring the explicit Compile API: generate a
+    // model even when no nodes are compiled (the CPU EP compiles nothing, so the plain optimized graph
+    // is copied into the output model).
+    epctx::ModelGenOptions gen_options;
+    gen_options.enable = true;
+    gen_options.error_if_output_file_exists = false;
+    gen_options.action_if_no_compiled_nodes = epctx::ModelGenOptions::ActionIfNoCompiledNodes::kGenerateModel;
+    gen_options.output_model_location = std::filesystem::path(output_path);
+    so.ep_context_gen_options = gen_options;
+    so.has_explicit_ep_context_gen_options = true;
+
+    InferenceSession session{so, GetEnvironment()};
+    EXPECT_STATUS_OK(session.Load(input_model));
+    EXPECT_STATUS_OK(session.Initialize());
+
+    // Load the emitted model in a plain (non-optimizing) session and count ops on the serialized graph.
+    SessionOptions verify_so;
+    verify_so.graph_optimization_level = TransformerLevel::Default;  // do not re-optimize the emitted model
+    InferenceSessionWrapper verify{verify_so, GetEnvironment()};
+    EXPECT_STATUS_OK(verify.Load(output_path));
+    EXPECT_STATUS_OK(verify.Initialize());
+    return CountOpsInGraph(verify.GetGraph());
+  };
+
+  const std::basic_string<ORTCHAR_T> all_path = ORT_TSTR("compile_only_full_opt_all.onnx");
+  const std::basic_string<ORTCHAR_T> basic_path = ORT_TSTR("compile_only_full_opt_basic.onnx");
+  struct RemoveOnExit {
+    std::vector<std::basic_string<ORTCHAR_T>> paths;
+    ~RemoveOnExit() {
+      for (const auto& p : paths) std::filesystem::remove(p);
+    }
+  } remove_on_exit{{all_path, basic_path}};
+
+  // ORT_ENABLE_ALL: the Level2 BiasGelu fusion must be captured in the emitted model (deferral active).
+  const std::map<std::string, int> all_counts = compile_and_count(TransformerLevel::MaxLevel, all_path);
+  EXPECT_EQ(all_counts.count("com.microsoft.BiasGelu") ? all_counts.at("com.microsoft.BiasGelu") : 0, 1);
+
+  // ORT_ENABLE_BASIC (Level1): BiasGeluFusion is Level2-only, so it must not appear (deferral inactive).
+  const std::map<std::string, int> basic_counts = compile_and_count(TransformerLevel::Level1, basic_path);
+  EXPECT_EQ(basic_counts.count("com.microsoft.BiasGelu") ? basic_counts.at("com.microsoft.BiasGelu") : 0, 0);
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -1525,7 +1525,8 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                                    LayeringIndex* layering_index,
                                    Mode mode,
                                    const epctx::ModelGenOptions& ep_context_gen_options,
-                                   const layout_transformation::DebugGraphFn& debug_graph_fn) const {  // Added arg
+                                   const layout_transformation::DebugGraphFn& debug_graph_fn,
+                                   bool defer_ep_context_model_generation) const {  // Added arg
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
   // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.
@@ -1595,13 +1596,17 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                                                  ep_acc_map, *graph_optimizer_registry_, logger,
                                                  disable_model_compile));  // Pass param
 
-    if (ep_context_gen_options.enable) {
+    // Unless deferred, serialize the EPContext model now (at the partitioning boundary). When deferred,
+    // the caller re-issues this after the Level2+ optimizer loop via GenerateEpContextModel() so the
+    // emitted model captures higher-level optimizations.
+    if (ep_context_gen_options.enable && !defer_ep_context_model_generation) {
       ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_gen_options, logger));
     }
 #else
     ORT_UNUSED_PARAMETER(config_options);
     ORT_UNUSED_PARAMETER(logger);
     ORT_UNUSED_PARAMETER(ep_context_gen_options);
+    ORT_UNUSED_PARAMETER(defer_ep_context_model_generation);
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ONNX models are not supported in this build.");
 #endif  //! defined(ORT_MINIMAL_BUILD)
   } else {
@@ -1616,5 +1621,16 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
 
   return Status::OK();
 }
+
+#ifndef ORT_MINIMAL_BUILD
+Status GraphPartitioner::GenerateEpContextModel(const Graph& graph,
+                                                const epctx::ModelGenOptions& ep_context_gen_options,
+                                                const logging::Logger& logger) const {
+  if (!ep_context_gen_options.enable) {
+    return Status::OK();
+  }
+  return CreateEpContextModel(providers_, graph, ep_context_gen_options, logger);
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace onnxruntime
