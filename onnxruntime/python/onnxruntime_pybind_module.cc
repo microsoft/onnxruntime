@@ -13,6 +13,7 @@
 #include "core/session/provider_bridge_ort.h"
 #include "core/framework/provider_options.h"
 #include "core/platform/env.h"
+#include "core/common/inlined_containers.h"
 
 namespace onnxruntime {
 namespace python {
@@ -113,7 +114,30 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
     throw pybind11::import_error(st.ErrorMessage());
   // move it out of shared method since training build has a little different behavior.
   m.def(
-      "get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableExecutionProviderNames(); },
+      "get_available_providers", []() -> std::vector<std::string> {
+        auto available = GetAvailableExecutionProviderNames();
+#if !defined(ORT_MINIMAL_BUILD)
+        const auto& ep_devices = GetEnv().GetOrtEpDevices();
+        available.reserve(available.size() + ep_devices.size());
+
+        InlinedHashSet<std::string> existing;
+        existing.reserve(available.size() + ep_devices.size());
+        for (const auto& ep_name : available) {
+          existing.insert(ep_name);
+        }
+
+        for (const OrtEpDevice* ep_device : ep_devices) {
+          if (!ep_device) {
+            continue;
+          }
+
+          if (existing.insert(ep_device->ep_name).second) {
+            available.push_back(ep_device->ep_name);
+          }
+        }
+#endif
+        return available;
+      },
       "Return list of available Execution Providers in this installed version of Onnxruntime. "
       "The order of elements represents the default priority order of Execution Providers "
       "from highest to lowest.");

@@ -791,7 +791,7 @@ const createResizeProgramInfo = (
 
 const getOpsetVersionFromCustomDataBuffer = (context: ComputeContext): number => {
   const customDataBuffer = context.customDataBuffer;
-  const customDataBuffer32 = new Uint32Array(customDataBuffer, customDataBuffer.byteOffset, 1);
+  const customDataBuffer32 = new Uint32Array(customDataBuffer.buffer as ArrayBuffer, customDataBuffer.byteOffset, 1);
   const opsetVersion = customDataBuffer32[0];
   return opsetVersion;
 };

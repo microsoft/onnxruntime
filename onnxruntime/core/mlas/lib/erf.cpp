@@ -260,9 +260,29 @@ Return Value:
 
 --*/
 {
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_USE_SVE)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_USE_SVE) || defined(MLAS_TARGET_RISCV64)
     GetMlasPlatform().ErfKernelRoutine(Input, Output, N);
 #else
     MlasErfKernel(Input, Output, N);
 #endif
+}
+
+void
+MLASCALL
+MlasComputeFP16Erf(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    float* Input_tmp_fp32,
+    float* Output_tmp_fp32,
+    size_t N
+    )
+{
+    if(GetMlasPlatform().ErfFP16KernelRoutine){
+        GetMlasPlatform().ErfFP16KernelRoutine(Input, Output, N);
+        return;
+    }
+
+    MlasConvertHalfToFloatBuffer(Input, Input_tmp_fp32, N);
+    MlasComputeErf(Input_tmp_fp32, Output_tmp_fp32, N);
+    MlasConvertFloatToHalfBuffer(Output_tmp_fp32, Output, N);
 }

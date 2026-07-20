@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(DISABLE_STRING_TYPE)
+
 #include "string_split.h"
 #include <algorithm>
 #include <limits>
@@ -96,3 +98,5 @@ Status StringSplit::Compute(OpKernelContext* context) const {
 }
 
 }  // namespace onnxruntime
+
+#endif  // !defined(DISABLE_STRING_TYPE)

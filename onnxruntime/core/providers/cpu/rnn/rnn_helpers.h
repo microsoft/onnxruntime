@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <initializer_list>
+
 #ifdef _WIN32
 #pragma warning(disable : 4267)
 #endif
@@ -44,6 +46,27 @@ inline Direction MakeDirection(const std::string& direction) {
             "'. Must be one of 'forward', 'reverse', or 'bidirectional'.");
 }
 
+inline size_t CalculateBufferElementCount(std::initializer_list<int> dimensions) {
+  SafeInt<size_t> count{1};
+
+  for (int dimension : dimensions) {
+    count *= dimension;
+  }
+
+  return count;
+}
+
+inline int CalculateOutputStepLength(int batch_size, int hidden_size, int num_directions, Direction direction) {
+  SafeInt<int> output_step_length{batch_size};
+  output_step_length *= hidden_size;
+
+  if (direction == kForward && num_directions == 2) {
+    output_step_length *= 2;
+  }
+
+  return output_step_length;
+}
+
 /** Allocate a unique_ptr using allocator_, and return a span to the allocated memory so usage is safe
 @param allocator IAllocator to use for the allocation.
 @param size Allocation size. Number of elements of type TAlloc, or total size if TAlloc is 'void'.
@@ -77,7 +100,12 @@ Status ValidateCommonRnnInputs(const Tensor& X,
                                const Tensor* sequence_lens,
                                const Tensor* initial_h,
                                int64_t num_directions,
-                               int64_t hidden_size);
+                               int64_t hidden_size,
+                               // When true, the W and R gate dimension and input/hidden dimension are
+                               // swapped, i.e. W is [num_directions, input_size, mult*hidden_size] and
+                               // R is [num_directions, hidden_size, mult*hidden_size]. This is the layout
+                               // used by the quantized LSTM (DynamicQuantizeLSTM).
+                               bool weights_transposed = false);
 
 /// Copy an input array repeatedly to an output array
 /// @param input_begin Beginning of input
@@ -146,7 +174,8 @@ void ComputeGemm(const int M,
                  TSpanCIter C,
                  TSpanCIter C_end,
                  const int ldc,
-                 concurrency::ThreadPool* thread_pool) {
+                 concurrency::ThreadPool* thread_pool,
+                 const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
   // validate all the inputs
   // need to use the lda/ldb/ldc strides which should be >= the columns for the span
   ORT_ENFORCE(lda >= K && ldb >= K && ldc >= N);
@@ -159,7 +188,7 @@ void ComputeGemm(const int M,
       M, N, K, alpha,
       &*A, lda,
       &*B, ldb, beta,
-      &*C, ldc, thread_pool);
+      &*C, ldc, thread_pool, mlas_backend_kernel_selector_config);
 }
 
 struct PackedWeights {
@@ -241,7 +270,8 @@ void ComputeGemm(const int M,
                  const int ldc,
                  uint8_t* /* quantized_A_buffer */,
                  int32_t* /* quantize_agg_C_buffer */,
-                 concurrency::ThreadPool* thread_pool);
+                 concurrency::ThreadPool* thread_pool,
+                 const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);
 
 void ComputeGemm(const int M,
                  const int N,
@@ -256,7 +286,8 @@ void ComputeGemm(const int M,
                  const int ldc,
                  uint8_t* quantized_A_buffer,
                  int32_t* quantize_agg_C_buffer,
-                 concurrency::ThreadPool* thread_pool);
+                 concurrency::ThreadPool* thread_pool,
+                 const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);
 
 // helper to call the above pointer versions with spans
 template <typename GemmWeightsType>
@@ -271,7 +302,8 @@ inline void ComputeGemm(const int M,
                         const int ldc,
                         uint8_t* quantized_A_buffer,
                         int32_t* quantize_agg_C_buffer,
-                        concurrency::ThreadPool* thread_pool) {
+                        concurrency::ThreadPool* thread_pool,
+                        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
   ComputeGemm(M,
               N,
               K,
@@ -283,7 +315,8 @@ inline void ComputeGemm(const int M,
               ldc,
               quantized_A_buffer,
               quantize_agg_C_buffer,
-              thread_pool);
+              thread_pool,
+              mlas_backend_kernel_selector_config);
 }
 
 // helper to convert a span to a raw pointer

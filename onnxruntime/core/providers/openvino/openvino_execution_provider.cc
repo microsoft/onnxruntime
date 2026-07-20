@@ -343,7 +343,7 @@ common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const ch
 
       // Trigger KVCache Reorder for target Backend with vector arguments
       for (auto& backend : backend_managers_) {
-        backend.ReorderKVCache(std::get<std::vector<int32_t>>(src_indices), std::get<std::vector<int32_t>>(dst_indices));
+        backend.SetReorderKVCacheStatus(std::get<std::vector<int32_t>>(src_indices), std::get<std::vector<int32_t>>(dst_indices));
       }
     } else {
       // Handle unknown options

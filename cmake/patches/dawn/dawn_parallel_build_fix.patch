@@ -1,0 +1,11 @@
+diff --git a/src/emdawnwebgpu/CMakeLists.txt b/src/emdawnwebgpu/CMakeLists.txt
+--- a/src/emdawnwebgpu/CMakeLists.txt
++++ b/src/emdawnwebgpu/CMakeLists.txt
+@@ -36,6 +36,7 @@ macro(emdawnwebgpu_headers_gen_add filename)
+             "${EM_BUILD_GEN_DIR}/include/webgpu/${filename}"
+         MAIN_DEPENDENCY
+             "${DAWN_INCLUDE_DIR}/webgpu/${filename}"
++        COMMAND ${CMAKE_COMMAND} -E make_directory "${EM_BUILD_GEN_DIR}/include/webgpu"
+         COMMAND ${CMAKE_COMMAND} -E copy
+             "${DAWN_INCLUDE_DIR}/webgpu/${filename}"
+             "${EM_BUILD_GEN_DIR}/include/webgpu/${filename}"

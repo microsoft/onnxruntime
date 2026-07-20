@@ -186,9 +186,12 @@ static std::unique_ptr<api::NodeRef> MakeDequantizeOp(api::GraphRef& graph, std:
   return node;
 }
 
-// Returns whether perm is a valid permutation (contains each value from 0 to perm.size() - 1 exactly once)
+// Returns whether perm is a non-empty valid permutation (rank > 0 and contains each value from 0 to perm.size() - 1 exactly once)
 static bool IsValidPerm(const std::vector<int64_t>& perm) {
   size_t rank = perm.size();
+  if (rank == 0) {
+    return false;
+  }
   int64_t rank_int = gsl::narrow_cast<int64_t>(rank);
   std::vector<bool> used_dims(rank);
   for (size_t i = 0; i < rank; ++i) {
@@ -451,6 +454,23 @@ static std::optional<DQToLookPast> GetDQWithConstInitializerInputAndSingleConsum
   return result;
 }
 
+// Element types that ONNX QuantizeLinear can produce as its output.
+static bool IsQuantizeLinearOutputType(api::DataType dtype) {
+  switch (dtype) {
+    case api::DataType::INT8:
+    case api::DataType::UINT8:
+    case api::DataType::INT16:
+    case api::DataType::UINT16:
+    case api::DataType::FLOAT8E4M3FN:
+    case api::DataType::FLOAT8E4M3FNUZ:
+    case api::DataType::FLOAT8E5M2:
+    case api::DataType::FLOAT8E5M2FNUZ:
+      return true;
+    default:
+      return false;
+  }
+}
+
 /// <summary>
 /// Insert a Q -> DQ pair after the node following the DQ by using scale and zp info from the preceding DQ node.
 /// DQ -> next node => DQ -> next node -> Q -> DQ.
@@ -525,9 +545,27 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
     inputs.push_back(zp_input.value());
   }
 
+  // A zero-point-less DQ with a non-uint8 type needs the new Q's output_dtype pinned, or Q type
+  // inference defaults to uint8 and clashes with the int8 value-info copied below. output_dtype is
+  // ONNX opset 21+ only; if it can't be expressed (older opset, non-ONNX domain, or a type that
+  // QuantizeLinear can't output), skip the push-through so the graph stays valid.
+  std::optional<int64_t> q_output_dtype;
+  if (!zp_input.has_value()) {
+    const api::DataType dq_input_dtype = graph.GetValueInfo(dq_inputs[0])->DType();
+    if (dq_input_dtype != api::DataType::UNDEFINED && dq_input_dtype != api::DataType::UINT8) {
+      const std::optional<int64_t> domain_opset = graph.Opset(dq_domain);
+      if (!IsOnnxDomain(dq_domain) || !domain_opset || *domain_opset < 21 ||
+          !IsQuantizeLinearOutputType(dq_input_dtype)) {
+        return false;
+      }
+      q_output_dtype = static_cast<int64_t>(dq_input_dtype);
+    }
+  }
+
   // Add Q
   auto new_q_node = MakeQuantizeOp(graph, dq_domain, inputs, axis, dq_node.GetAttributeInt("block_size"),
-                                   dq_node.GetAttributeInt("output_dtype"), dq_node.GetAttributeInt("saturate"));
+                                   q_output_dtype, dq_node.GetAttributeInt("saturate"));
+  new_q_node->SetLayeringAnnotation(dq_node.GetLayeringAnnotation());
   auto q_node_outputs = new_q_node->Outputs();
 
   // copy value info from the dq input for the type information, and update the shape to match next_node's output
@@ -540,6 +578,7 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
 
   // Add DQ
   auto new_dq_node = MakeDequantizeOp(graph, dq_domain, inputs, axis, dq_node.GetAttributeInt("block_size"));
+  new_dq_node->SetLayeringAnnotation(dq_node.GetLayeringAnnotation());
   auto dq_node_outputs = new_dq_node->Outputs();
 
   // straight copy of value info as the type and shape are the same as next_node's output
@@ -748,7 +787,7 @@ std::vector<int64_t> ChannelLastToFirstPerm(size_t rank) {
   }
 
   std::vector<int64_t> p(rank);
-  p[0] = 0;
+  p[0] = 0;  // This is usually the batch dimension (hence preserve this position)
   p[1] = rank - 1;
   for (size_t i = 2; i < rank; ++i) {
     p[i] = i - 1;
@@ -1004,6 +1043,7 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
     // (see Case 2).
     if (consumers->nodes.size() > 0) {
       auto squeeze_ptr = MakeSqueezeOrUnsqueeze(ctx.opset, ctx.graph, "Squeeze", value_to_modify, axes);
+      squeeze_ptr->SetLayeringAnnotation(node.GetLayeringAnnotation());
       api::NodeRef& squeeze = *squeeze_ptr;
       std::string_view sq_out = squeeze.Outputs()[0];
       ctx.graph.CopyValueInfo(value_to_modify, sq_out);
@@ -1072,6 +1112,7 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
 
   // Case 3: Add an Unsqueeze node.
   auto unsqueeze_ptr = MakeSqueezeOrUnsqueeze(ctx.opset, ctx.graph, "Unsqueeze", input, axes);
+  unsqueeze_ptr->SetLayeringAnnotation(node.GetLayeringAnnotation());
   api::NodeRef& unsqueeze = *unsqueeze_ptr;
   std::string_view unsq_out = unsqueeze.Outputs()[0];
   ctx.graph.CopyValueInfo(input, unsq_out);
@@ -1204,6 +1245,7 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
       // Transpose the initializer. If there are existing consumers, add Transpose nodes to them using perm_inv
       // to counteract the effect. These Transposes will hopefully be optimized out later.
       auto transpose_inv_ptr = MakeTranspose(graph, constant_to_modify, perm_inv);
+      transpose_inv_ptr->SetLayeringAnnotation(node.GetLayeringAnnotation());
       api::NodeRef& transpose_inv = *transpose_inv_ptr;
       std::string_view transpose_out = transpose_inv.Outputs()[0];
       graph.CopyValueInfo(constant_to_modify, transpose_out);
@@ -1264,6 +1306,7 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
         // the other Transpose.
         const std::vector<int64_t>& perm_combined = ComposePerm(*perm2, perm);
         auto transpose_ptr = MakeTranspose(graph, inp_node->Inputs()[0], perm_combined);
+        transpose_ptr->SetLayeringAnnotation(node.GetLayeringAnnotation());
         api::NodeRef& transpose = *transpose_ptr;
         std::string_view transpose_out = transpose.Outputs()[0];
         graph.CopyValueInfo(input, transpose_out);
@@ -1298,6 +1341,7 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
 
   // Case 4: Add a new Transpose op
   auto transpose_ptr = MakeTranspose(graph, input, perm);
+  transpose_ptr->SetLayeringAnnotation(node.GetLayeringAnnotation());
   api::NodeRef& transpose = *transpose_ptr;
   std::string_view transpose_out = transpose.Outputs()[0];
   graph.CopyValueInfo(input, transpose_out);
@@ -1373,6 +1417,7 @@ std::string_view TransposeOutput(api::GraphRef& graph, api::NodeRef& node, size_
 
   // X -> Node -> Y,   Transpose
   auto transpose = MakeTranspose(graph, "", perm);
+  transpose->SetLayeringAnnotation(node.GetLayeringAnnotation());
 
   // X -> Node -> *Y',   Transpose -> Y      *shape/dtype not set
   graph.MoveOutput(node, i, *transpose, 0);
@@ -1727,6 +1772,7 @@ static bool HandleShape(HandlerArgs& args) {
   // X -> Shape -> Y,   Gather
   std::vector<std::string_view> gather_inputs{"", perm_const};
   auto gather_ptr = args.ctx.graph.AddNode("Gather", "Gather", gather_inputs, /*num_outputs*/ 1);
+  gather_ptr->SetLayeringAnnotation(args.node.GetLayeringAnnotation());
   api::NodeRef& gather = *gather_ptr;
   gather.SetAttributeInt("axis", 0);
 
@@ -1770,6 +1816,7 @@ static void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, con
   std::string_view gather_indices_const = AddInitializerInt64(graph, /*shape*/ {rank_int}, perm);
   std::vector<std::string_view> gather_inputs{input_name, gather_indices_const};
   auto gather_ptr = graph.AddNode("Gather", "Gather", gather_inputs, /*num_outputs*/ 1);
+  gather_ptr->SetLayeringAnnotation(node.GetLayeringAnnotation());
   api::NodeRef& gather = *gather_ptr;
   std::string_view gather_output = gather.Outputs()[0];
   graph.CopyValueInfo(input_name, gather_output);
@@ -2192,6 +2239,53 @@ static bool HandleSlice(HandlerArgs& args) {
 
 constexpr HandlerInfo slice_handler = {&FirstInput, &HandleSlice};
 
+// Pushes a Transpose past a Gather, but only for the scalar-indices case (indices is a 0-D
+// constant). Why so narrow:
+//   - General Gather output rank is `data.rank - 1 + indices.rank`. Computing the post-rewrite
+//     output perm correctly for arbitrary indices.rank is fiddly and easy to get wrong without
+//     a dedicated test rig. Scalar-indices is structurally identical to Squeeze along the
+//     gathered axis, which we already trust.
+//   - Requiring a constant indices tensor lets us read its rank from .Shape().empty(); a dynamic
+//     indices input has no statically-known rank in general, so we can't decide if we're in the
+//     scalar case at compile time.
+// Only the `data` input is transposable here (FirstInput selector); `indices` are positions,
+// not values to be permuted.
+static bool HandleGather(HandlerArgs& args) {
+  size_t rank = args.perm.size();
+
+  int64_t axis = args.node.GetAttributeIntDefault("axis", 0);
+  if (!NormalizeAndValidateAxis(axis, rank)) {
+    return false;
+  }
+
+  // Indices must be a constant whose shape is exactly [] (0-D scalar). Bail otherwise -- the
+  // general rank case isn't handled by this handler.
+  auto inputs = args.node.Inputs();
+  if (inputs.size() < 2) {
+    return false;
+  }
+  std::unique_ptr<api::TensorRef> indices_const = args.ctx.graph.GetConstant(inputs[1]);
+  if (indices_const == nullptr) {
+    return false;
+  }
+  if (!indices_const->Shape().empty()) {
+    return false;
+  }
+
+  // Remap axis under the input perm: the user's `Gather(axis=k)` on the transposed data is
+  // equivalent to gathering along original-data axis perm[k]. Output rank drops by 1, exactly
+  // the Squeeze case along axis perm[k].
+  int64_t new_axis = args.perm[gsl::narrow_cast<size_t>(axis)];
+  args.node.SetAttributeInt("axis", new_axis);
+
+  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+  std::vector<int64_t> new_axes{new_axis};
+  TransposeOutputs(args.ctx, args.node, SqueezePerm(new_axes, args.perm));
+  return true;
+}
+
+constexpr HandlerInfo gather_handler = {&FirstInput, &HandleGather};
+
 static bool HandleTile(HandlerArgs& args) {
   size_t rank = args.perm.size();
   std::vector<int64_t> perm_shape{gsl::narrow_cast<int64_t>(rank)};
@@ -2218,6 +2312,7 @@ static bool HandleTile(HandlerArgs& args) {
     std::string_view perm_inv_const = AddInitializerInt64(args.ctx.graph, perm_shape, args.perm_inv);
     std::vector<std::string_view> gather_inputs{repeats_inp, perm_inv_const};
     auto gather_node_ptr = args.ctx.graph.AddNode("Gather", "Gather", gather_inputs, /*num_outputs*/ 1);
+    gather_node_ptr->SetLayeringAnnotation(args.node.GetLayeringAnnotation());
     api::NodeRef& gather_node = *gather_node_ptr;
     std::string_view gather_output = gather_node.Outputs()[0];
     args.ctx.graph.CopyValueInfo(repeats_inp, gather_output);
@@ -2268,6 +2363,7 @@ static void RemoveCancelingTransposeNodes(HandlerArgs& args) {
       // despite computing the same value. Use an Identity op instead.
       std::vector<std::string_view> single_empty_input{""};
       auto identity_ptr = args.ctx.graph.AddNode("Identity", "Identity", single_empty_input, /*num_outputs*/ 1);
+      identity_ptr->SetLayeringAnnotation(args.node.GetLayeringAnnotation());
       api::NodeRef& identity = *identity_ptr;
       args.ctx.graph.MoveOutput(args.node, 0, identity, 0);
       identity.SetInput(0, transpose_input);
@@ -2300,6 +2396,7 @@ static bool HandleTransposeImpl(HandlerArgs& args, const std::vector<int64_t>& n
       // use the same input as the 1st Transpose, move the output from the Reshape to the new Transpose node,
       // and remove the Reshape node.
       new_node = args.ctx.graph.AddNode("Transpose", "Transpose", {args.transpose.Inputs()[0]}, 1);
+      new_node->SetLayeringAnnotation(args.node.GetLayeringAnnotation());
       args.ctx.graph.MoveOutput(args.node, 0, *new_node, 0);
       args.ctx.graph.RemoveNode(args.node);
     } else {
@@ -2582,6 +2679,7 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
     {"Squeeze", squeeze_handler},
     {"Unsqueeze", unsqueeze_handler},
     {"Slice", slice_handler},
+    {"Gather", gather_handler},
     {"Tile", tile_handler},
 
     {"Softmax", soft_hard_max_handler},
@@ -2970,6 +3068,7 @@ static bool TryFixTransposeMissingDQ(OptimizerCtx& ctx, api::NodeRef& transpose_
   // Add Q
   auto new_q_node = MakeQuantizeOp(ctx.graph, q_domain, inputs, axis, q_node.GetAttributeInt("block_size"),
                                    q_node.GetAttributeInt("output_dtype"), q_node.GetAttributeInt("saturate"));
+  new_q_node->SetLayeringAnnotation(transpose_node.GetLayeringAnnotation());
   auto new_q_node_output = new_q_node->Outputs()[0];
 
   // Copy value info from the q output for the type information, and update the shape to match Transpose's input
@@ -2982,6 +3081,7 @@ static bool TryFixTransposeMissingDQ(OptimizerCtx& ctx, api::NodeRef& transpose_
 
   // Add new DQ.
   auto new_dq_node = MakeDequantizeOp(ctx.graph, q_domain, inputs, axis, q_node.GetAttributeInt("block_size"));
+  new_dq_node->SetLayeringAnnotation(transpose_node.GetLayeringAnnotation());
   auto new_dq_node_output = new_dq_node->Outputs()[0];
   ctx.graph.CopyValueInfo(transpose_input_name, new_dq_node_output);
 

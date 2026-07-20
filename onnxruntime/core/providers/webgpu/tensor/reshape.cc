@@ -11,7 +11,31 @@ namespace webgpu {
 ONNX_OPERATOR_KERNEL_EX(
     Reshape,
     kOnnxDomain,
-    21,
+    25,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", WebGpuSupportedNumberTypes())
+        .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>())
+        .Alias(0, 0)
+        .InputMemoryType(OrtMemTypeCPU, 1),
+    Reshape);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Reshape,
+    kOnnxDomain,
+    23, 24,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", WebGpuSupportedNumberTypes())
+        .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>())
+        .Alias(0, 0)
+        .InputMemoryType(OrtMemTypeCPU, 1),
+    Reshape);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Reshape,
+    kOnnxDomain,
+    21, 22,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedNumberTypes())

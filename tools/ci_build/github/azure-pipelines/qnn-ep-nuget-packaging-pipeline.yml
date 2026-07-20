@@ -96,6 +96,5 @@ extends:
         QnnSdk: ${{ parameters.QnnSdk }}
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
         DoEsrp: ${{ parameters.DoEsrp }}
-        ArtifactName: 'drop-nuget-qnn-arm64x'
         StageName: 'OnnxRuntime_QNN_Nuget_Win_Arm64x'
         build_config: ${{ parameters.build_config }}

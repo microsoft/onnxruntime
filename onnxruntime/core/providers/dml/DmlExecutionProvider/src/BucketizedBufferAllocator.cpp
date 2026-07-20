@@ -132,7 +132,7 @@ namespace Dml
         assert(resourceWrapper->GetD3D12Resource()->GetDesc().Width == bucketSize);
         assert(resourceWrapper != nullptr);
 
-        ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(
+        ComPtr<AllocationInfo> allocInfo = Dml::SafeMakeOrThrow<AllocationInfo>(
             this,
             ++m_currentAllocationId,
             resourceId,

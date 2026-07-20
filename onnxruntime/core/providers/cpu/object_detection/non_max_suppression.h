@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/object_detection/non_max_suppression_helper.h"
 
 namespace onnxruntime {
 
@@ -22,14 +22,29 @@ class NonMaxSuppressionBase {
   }
 
  public:
+#ifdef SHARED_PROVIDER
   static Status PrepareCompute(OpKernelContext* ctx, PrepareContext& pc);
+
   static Status GetThresholdsFromInputs(const PrepareContext& pc,
                                         int64_t& max_output_boxes_per_class,
                                         float& iou_threshold,
                                         float& score_threshold);
+#else
+  static Status PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) {
+    return NonMaxSuppressionBaseImpl<OpKernelInfo, OpKernelContext>::PrepareCompute(ctx, pc);
+  }
+
+  static Status GetThresholdsFromInputs(const PrepareContext& pc,
+                                        int64_t& max_output_boxes_per_class,
+                                        float& iou_threshold,
+                                        float& score_threshold) {
+    return NonMaxSuppressionBaseImpl<OpKernelInfo, OpKernelContext>::GetThresholdsFromInputs(
+        pc, max_output_boxes_per_class, iou_threshold, score_threshold);
+  }
+#endif
 
  private:
-  int64_t center_point_box_;
+  int64_t center_point_box_{};
 };
 
 class NonMaxSuppression final : public OpKernel, public NonMaxSuppressionBase {

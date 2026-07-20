@@ -207,6 +207,8 @@ OVExeNetwork OVCore::ImportModel(ModelBlobWrapper& model_blob,
                                  std::string name) {
   return OvExceptionBoundary<true>([&]() {
     ov::CompiledModel obj;
+    // Import from tensor enables file mapping and should be used as primary option. Import from stream is only used for OV versions prior to OV25.3.
+    // TODO: Remove import from stream when OV26.0 support is added and OV 2025.2 support is removed.
 #if (OPENVINO_VERSION_MAJOR > 2025 || (OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR >= 3))
     if (model_blob.tensor_) {
       obj = core.import_model(model_blob.tensor_, hw_target, device_config);
@@ -469,9 +471,41 @@ std::optional<ov::Tensor> StatefulOVInferRequest::FindTensor(const std::string& 
 }
 
 void StatefulOVInferRequest::PreProcessInferRequest() {
-  // Workaround: Setting the value here as it cannot be set at the ORT GenAI layer currently.
-  // TODO(ankit): Address this issue and implement the fix at the appropriate layer.
-  FillTensor("beam_idx", ov::element::i32, {1}, 0);
+  if (is_kvcache_reorder_added) {
+    ov::Shape dst_idx_shape = ovInfReq.get_tensor("dst_idx").get_shape();
+    if (dst_idx_shape.size() < 4) {
+      ORT_THROW(log_tag + "dst_idx tensor shape must have at least 4 dimensions, but got " +
+                std::to_string(dst_idx_shape.size()) + " dimensions");
+    }
+    const auto kv_num_heads = dst_idx_shape[1];
+    const auto kv_head_size = dst_idx_shape[3];
+    if (kv_src_indices.size() > 0) {
+      ov::Tensor src_idx_tensor = ov::Tensor(ov::element::i32, {kv_src_indices.size()});
+      const auto src_idx_ptr = src_idx_tensor.data<int32_t>();
+      for (size_t i = 0; i < kv_src_indices.size(); ++i) {
+        src_idx_ptr[i] = static_cast<int32_t>(kv_src_indices[i]);
+      }
+      ovInfReq.set_tensor("src_idx", src_idx_tensor);
+
+      ov::Tensor dst_idx_tensor = ov::Tensor(ov::element::i32, {1, kv_num_heads, kv_dst_indices.size(), kv_head_size});
+      const auto dst_idx_ptr = dst_idx_tensor.data<int32_t>();
+      for (size_t i = 0; i < kv_num_heads; ++i) {
+        for (size_t j = 0; j < kv_dst_indices.size(); ++j) {
+          std::fill_n(dst_idx_ptr + (i * kv_dst_indices.size() + j) * kv_head_size, kv_head_size, kv_dst_indices[j]);
+        }
+      }
+      ovInfReq.set_tensor("dst_idx", dst_idx_tensor);
+    } else {
+      FillTensor("src_idx", ov::element::i32, {0}, 0);
+      FillTensor("dst_idx", ov::element::i32, {1, kv_num_heads, 0, kv_head_size}, 0);
+    }
+  }
+
+  if (FindTensor("beam_idx")) {
+    // Workaround: Setting the value here as it cannot be set at the ORT GenAI layer currently.
+    // TODO(ankit): Address this issue and implement the fix at the appropriate layer.
+    FillTensor("beam_idx", ov::element::i32, {1}, 0);
+  }
 
   if (is_kvcache_reorder_added) {
     ov::Shape dst_idx_shape = ovInfReq.get_tensor("dst_idx").get_shape();
@@ -539,23 +573,27 @@ void StatefulOVInferRequest::Infer() {
 }
 
 void StatefulOVInferRequest::PostProcessInferRequest() {
+  CleanReorderKVCacheStatus();
+}
+
+void StatefulOVInferRequest::CleanReorderKVCacheStatus() {
   if (is_kvcache_reorder_added) {
     kv_src_indices.clear();
     kv_dst_indices.clear();
   }
 }
 
-void StatefulOVInferRequest::ReorderKVCache(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) {
+void StatefulOVInferRequest::SetReorderKVCacheStatus(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) {
   // Validate input parameters
   if (src_indices.size() != dst_indices.size()) {
     ORT_THROW(log_tag +
-              "ReorderKVCache: src_indices and dst_indices must have the same size. "
+              "SetReorderKVCacheStatus: src_indices and dst_indices must have the same size. "
               "Got src_indices.size()=" +
               std::to_string(src_indices.size()) +
               ", dst_indices.size()=" + std::to_string(dst_indices.size()));
   }
 
-  LOGS_DEFAULT(INFO) << log_tag << "ReorderKVCache: Reordering OpenVINO-internal KVCache state with "
+  LOGS_DEFAULT(INFO) << log_tag << "SetReorderKVCacheStatus: Reordering OpenVINO-internal KVCache state with "
                      << src_indices.size() << " index pairs";
 
   kv_src_indices = src_indices;
@@ -564,6 +602,15 @@ void StatefulOVInferRequest::ReorderKVCache(const std::vector<int32_t>& src_indi
 
 void StatefulOVInferRequest::RewindKVCache(size_t index) {
   LOGS_DEFAULT(INFO) << log_tag << "RewindKVCache: Rewinding OpenVINO-internal KVCache state to index=" << index;
+
+  if (is_kvcache_reorder_added) {
+    if (index > 0) {
+      // TODO: Trigger a KVCache eviction inference pass here to physically compact the KV cache
+      // by running infer_request with the src_idx/dst_idx reorder tensors set.
+      ORT_THROW(log_tag + "KVCache eviction via reorder inference is not yet implemented which is required to rewind KVCache with index > 0 when KVCache reorder optimization is enabled. Requested index: " + std::to_string(index));
+    }
+    CleanReorderKVCacheStatus();
+  }
 
   if (prefill_use_full_chat_history) {
     // Clear the internal KVCache state. For NPU device, this operation is a no-op.

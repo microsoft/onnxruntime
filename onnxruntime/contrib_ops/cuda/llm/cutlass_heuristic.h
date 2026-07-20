@@ -16,7 +16,15 @@
 
 #pragma once
 
+// cute/tensor.hpp contains CuTe/CUTLASS 3.x templates that are incompatible with
+// MSVC when compiled as plain C++ (.cc files). Guard it so it is only parsed by
+// NVCC (which defines __CUDACC__) inside .cu translation units.
+#include <vector>
+
+#ifdef __CUDACC__
 #include "cute/tensor.hpp"
+#endif
+
 #include "contrib_ops/cuda/llm/cutlass_extensions/gemm_configs.h"
 
 namespace onnxruntime::llm {
@@ -25,7 +33,7 @@ namespace cutlass_kernels {
 
 template <class ArchTag, class TileShape, class ClusterShape, class ActivationType>
 struct should_filter_tma_warp_specialized_gemm_problem_shape {
-#ifdef FAST_BUILD
+#if defined(ORT_QUICK_BUILD) && defined(__CUDACC__)
   using SupportedCtaShape = cute::Shape<cute::_128, cute::_128, decltype(cute::get<2>(TileShape{}))>;
   using SupportedCgaShape = cute::Shape<cute::_1, cute::_1, cute::_1>;
 

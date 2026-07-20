@@ -117,14 +117,6 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
-            kArmNNExecutionProvider,
-#ifdef USE_ARMNN
-            true,
-#else
-            false,
-#endif
-        },
-        {
             kAclExecutionProvider,
 #ifdef USE_ACL
             true,
@@ -158,7 +150,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
         },
         {
             kWebGpuExecutionProvider,
-#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
             true,
 #else
             false,

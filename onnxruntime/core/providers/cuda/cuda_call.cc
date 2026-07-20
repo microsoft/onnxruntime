@@ -3,7 +3,17 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "shared_inc/cuda_call.h"
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+#include "ep/adapters.h"
+#include "plugin/provider_api_shims.h"
+#else
 #include <core/platform/env.h>
+#endif
+#ifndef USE_CUDA_MINIMAL
+#include "core/providers/cuda/cudnn_loader.h"
+#endif
+
+#include <type_traits>
 
 #ifdef _WIN32
 #else  // POSIX
@@ -34,20 +44,8 @@ const char* CudaErrString<cudaError_t>(cudaError_t x) {
 template <>
 const char* CudaErrString<cublasStatus_t>(cublasStatus_t e) {
   cudaDeviceSynchronize();
-  switch (e) {
-    CASE_ENUM_TO_STR(CUBLAS_STATUS_SUCCESS);
-    CASE_ENUM_TO_STR(CUBLAS_STATUS_NOT_INITIALIZED);
-    CASE_ENUM_TO_STR(CUBLAS_STATUS_ALLOC_FAILED);
-    CASE_ENUM_TO_STR(CUBLAS_STATUS_INVALID_VALUE);
-    CASE_ENUM_TO_STR(CUBLAS_STATUS_ARCH_MISMATCH);
-    CASE_ENUM_TO_STR(CUBLAS_STATUS_MAPPING_ERROR);
-    CASE_ENUM_TO_STR(CUBLAS_STATUS_EXECUTION_FAILED);
-    CASE_ENUM_TO_STR(CUBLAS_STATUS_INTERNAL_ERROR);
-    CASE_ENUM_TO_STR(CUBLAS_STATUS_NOT_SUPPORTED);
-    CASE_ENUM_TO_STR(CUBLAS_STATUS_LICENSE_ERROR);
-    default:
-      return "(look for CUBLAS_STATUS_xxx in cublas_api.h)";
-  }
+  const char* status_string = cublasGetStatusString(e);
+  return status_string != nullptr ? status_string : "Unknown cuBLAS error status";
 }
 
 template <>
@@ -96,6 +94,20 @@ std::conditional_t<THRW, void, Status> CudaCall(
     ERRTYPE retCode, const char* exprString, const char* libName, SUCCTYPE successCode, const char* msg,
     const char* file, const int line) {
   if (retCode != successCode) {
+#ifndef USE_CUDA_MINIMAL
+    if constexpr (std::is_same_v<ERRTYPE, cudnnStatus_t>) {
+      if (!cuda::CudnnLibrary::Get().Available()) {
+        auto status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                                      "cuDNN is unavailable for CUDA Execution Provider: ",
+                                      cuda::CudnnLibrary::Get().Error());
+        if constexpr (THRW) {
+          ORT_THROW(status.ErrorMessage());
+        } else {
+          return status;
+        }
+      }
+    }
+#endif
     try {
 #ifdef _WIN32
       std::string hostname_str = GetEnvironmentVar("COMPUTERNAME");

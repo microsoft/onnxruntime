@@ -1,0 +1,149 @@
+name: CUDA Plugin Linux CI
+
+on:
+  push:
+    branches: [main, 'rel-*']
+  pull_request:
+    branches: [main, 'rel-*']
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  attestations: write
+  id-token: write
+
+jobs:
+  build-linux-cuda-plugin-x64-release:
+    name: Build Linux CUDA Plugin EP x64 Release
+    uses: ./.github/workflows/reusable_linux_build.yml
+    with:
+      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU" # Build pool
+      build_config: Release
+      architecture: x64
+      dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+      docker_build_args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1'
+      docker_image_repo: onnxruntimecuda13manylinuxbuild
+      extra_build_flags: >-
+        --use_binskim_compliant_compile_flags
+        --build_wheel
+        --parallel
+        --nvcc_threads 4
+        --flash_nvcc_threads 4
+        --cuda_version=13.0
+        --cuda_home=/usr/local/cuda-13.0
+        --cudnn_home=/usr/local/cuda-13.0
+        --enable_cuda_profiling
+        --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON
+        --cmake_extra_defines onnxruntime_QUICK_BUILD=ON
+        --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
+        --cmake_extra_defines onnxruntime_BUILD_CUDA_QUANT_PREPROCESS=ON
+      python_path_prefix: 'PATH=/opt/python/cp312-cp312/bin:$PATH'
+      run_tests: false
+      upload_build_output: true
+      execution_providers: 'cuda'
+      job_identifier: build-linux-cuda-plugin-x64-release
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test-linux-cuda-plugin-x64-release:
+    name: Test Linux CUDA Plugin EP x64 Release
+    needs: build-linux-cuda-plugin-x64-release
+    runs-on:
+      - self-hosted
+      - "1ES.Pool=onnxruntime-github-linux-a10"
+      - "1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10-Test"
+      - "JobId=test-linux-cuda-plugin-x64-release-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+    timeout-minutes: 210
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        id: build_docker_image_step
+        with:
+          dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecuda13manylinuxbuild
+          build-args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1'
+          push: true
+          azure-container-registry-name: onnxruntimebuildcache
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- Download Build Artifact to Runner Temp Directory ---
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: build-output-x64-Release
+          path: ${{ runner.temp }}/Release
+
+      # --- Restore Permissions in the Temp Directory ---
+      - name: Restore Executable Permissions
+        if: success()
+        working-directory: ${{ runner.temp }}/Release
+        run: |
+          if [ -f perms.txt ]; then
+            echo "Restoring executable permissions in ${{ runner.temp }}/Release ..."
+            while IFS= read -r file; do
+              if [ -f "$file" ]; then
+                chmod +x "$file"
+              else
+                echo "Warning: File '$file' listed in perms.txt not found."
+              fi
+            done < perms.txt
+            echo "Permissions restored."
+          else
+            echo "Warning: perms.txt not found in artifact."
+          fi
+
+      # Verify the GPU is accessible inside Docker before running the full test suite.
+      # If the NVIDIA Container Toolkit fails to expose /dev/nvidia* devices,
+      # tests will fail with "CUDA failure 100" and waste 10+ minutes.
+      - name: Verify GPU access in Docker
+        run: |
+          docker run --rm --gpus all \
+            "${{ steps.build_docker_image_step.outputs.full-image-name }}" \
+            nvidia-smi
+
+      - name: Run CUDA Plugin EP C++ Tests
+        run: |
+          docker run --rm --gpus all \
+            -v ${{ github.workspace }}:/onnxruntime_src \
+            -v ${{ runner.temp }}/Release:/build/Release \
+            -e NVIDIA_VISIBLE_DEVICES=all \
+            -e ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON='{"ep_library_registration_name":"CUDAExecutionProvider","ep_library_path":"libonnxruntime_providers_cuda.so","selected_ep_name":"CUDAExecutionProvider","tests_to_skip":["BeamSearchTest.*","ContribOpAttentionTest.AttentionPastState_dynamic","ContribOpAttentionTest.Attention_Mask1D_Fp32_B2_S64","ContribOpAttentionTest.Attention_Mask2D_Fp32_B2_S32","ConvTest.Conv2D_MatMul_*","CudaPluginArenaTest.DeviceAllocator_ArenaReusesMemory","CudaPluginArenaTest.DeviceAllocator_CudaMemoryIsValid","CudaPluginArenaTest.DeviceAllocator_IsArena","CudaPluginArenaTest.DeviceAllocator_MultipleAllocations","DeformConvTest.Group1OffsetGroup2","GRUTest.*","GreedySearchTest.*","InferenceSessionTests.Test2LayerNestedSubgraph","InferenceSessionTests.Test3LayerNestedSubgraph","InferenceSessionTests.TestArenaShrinkageAfterRun","LSTMTest.*","LogSoftmaxOperator.*","LongformerAttentionTest.*","LoraAdapterTest.VerifyDeviceCopy","PackedAttentionTest.*","PlannerTest.MultiStream","PlannerTest.MultiStream1StreamWaitFor2Streams","PlannerTest.MultiStream2NodesSameStreamConsumedBy1NodeInDifferentStream","PlannerTest.MultiStreamCudaEPNodeCPUOutput","PlannerTest.MultiStreamMultiOutput","RNNTest.*","ReductionOpTest.ArgMax2D_select_last","ReductionOpTest.ArgMin_do_not_keepdims_2_select_last","SamplingTest.*","Scan.MixedExecutionProvidersUnknownDimInSubgraphOutput","Scan8.*","SessionStateTest.TestLayeringPartitioning","SessionStateTest.TestResourceAwarePartitioning_LargeLimit","SessionStateTest.TestResourceAwarePartitioning_NoLimit","SkipGroupNormTest.*","TopKOperator.NthElementBFloat16_NegativeVals"]}' \
+            ${{ steps.build_docker_image_step.outputs.full-image-name }} \
+            bash -c "
+              set -ex
+              export LD_LIBRARY_PATH=/build/Release/Release:/usr/local/cuda-13.0/lib64:\${LD_LIBRARY_PATH:-}
+              cd /build/Release/Release
+              ./onnxruntime_test_all
+              ./onnxruntime_provider_test
+            "
+
+      - name: Run CUDA Plugin EP Python Tests
+        run: |
+          docker run --rm --gpus all \
+            -v ${{ github.workspace }}:/onnxruntime_src \
+            -v ${{ runner.temp }}/Release:/build/Release \
+            -e NVIDIA_VISIBLE_DEVICES=all \
+            -e ORT_TEST_CUDA_PLUGIN_EP=1 \
+            ${{ steps.build_docker_image_step.outputs.full-image-name }} \
+            bash -c "
+              set -ex
+              export PATH=/opt/python/cp312-cp312/bin:\$PATH
+              export LD_LIBRARY_PATH=/build/Release/Release:/usr/local/cuda-13.0/lib64:\${LD_LIBRARY_PATH:-}
+              python -m pip install /build/Release/Release/dist/onnxruntime*.whl
+              python -m pip install numpy onnx
+              python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+              cd /onnxruntime_src/onnxruntime/test/python/transformers
+              python test_cuda_plugin_ep.py
+            "

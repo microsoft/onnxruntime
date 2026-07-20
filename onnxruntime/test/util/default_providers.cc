@@ -5,6 +5,7 @@
 #include "test/util/include/default_providers.h"
 
 #include <memory>
+#include <string>
 
 #include "core/framework/session_options.h"
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
@@ -14,12 +15,53 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_options.h"
 #endif
+#if defined(USE_WEBGPU)
+#include "core/graph/constants.h"
+#include "core/session/abi_session_options_impl.h"
+#endif
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/util/include/providers.h"
+#include "test/unittest_util/test_dynamic_plugin_ep.h"
 
 namespace onnxruntime {
 
 namespace test {
+
+namespace {
+
+#if defined(USE_CUDA) && defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) && defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+void AddCudaPluginOption(ConfigOptions& config_options, const char* key, std::string value) {
+  ORT_THROW_IF_ERROR(config_options.AddConfigEntry(key, value.c_str()));
+}
+
+std::unique_ptr<IExecutionProvider> CudaPluginExecutionProviderWithOptions(const OrtCUDAProviderOptionsV2* provider_options) {
+  auto ep_name = dynamic_plugin_ep_infra::GetEpName();
+  if (!ep_name.has_value()) {
+    return nullptr;
+  }
+
+  ORT_ENFORCE(*ep_name == dynamic_plugin_ep_infra::kCudaExecutionProviderPluginName,
+              "Dynamic plugin EP is not the CUDA EP. Expected \"", dynamic_plugin_ep_infra::kCudaExecutionProviderPluginName,
+              "\", got \"", *ep_name, "\"");
+
+  ConfigOptions config_options{};
+  if (provider_options != nullptr) {
+    AddCudaPluginOption(config_options, "do_copy_in_default_stream", std::to_string(provider_options->do_copy_in_default_stream));
+    AddCudaPluginOption(config_options, "cudnn_conv_use_max_workspace", std::to_string(provider_options->cudnn_conv_use_max_workspace));
+    AddCudaPluginOption(config_options, "cudnn_conv1d_pad_to_nc1d", std::to_string(provider_options->cudnn_conv1d_pad_to_nc1d));
+    AddCudaPluginOption(config_options, "enable_cuda_graph", std::to_string(provider_options->enable_cuda_graph));
+    AddCudaPluginOption(config_options, "prefer_nhwc", std::to_string(provider_options->prefer_nhwc));
+    AddCudaPluginOption(config_options, "use_ep_level_unified_stream", std::to_string(provider_options->use_ep_level_unified_stream));
+    AddCudaPluginOption(config_options, "use_tf32", std::to_string(provider_options->use_tf32));
+    AddCudaPluginOption(config_options, "fuse_conv_bias", std::to_string(provider_options->fuse_conv_bias));
+    AddCudaPluginOption(config_options, "sdpa_kernel", std::to_string(provider_options->sdpa_kernel));
+  }
+
+  return dynamic_plugin_ep_infra::MakeEp(nullptr, &config_options);
+}
+#endif
+
+}  // namespace
 
 std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_arena) {
   return CPUProviderFactoryCreator::Create(enable_arena)->CreateProvider();
@@ -124,8 +166,7 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
   OrtCUDAProviderOptionsV2 provider_options{};
   provider_options.do_copy_in_default_stream = true;
   provider_options.use_tf32 = false;
-  if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
-    return factory->CreateProvider();
+  return CudaExecutionProviderWithOptions(&provider_options);
 #endif
   return nullptr;
 }
@@ -137,8 +178,7 @@ std::unique_ptr<IExecutionProvider> DefaultCudaNHWCExecutionProvider() {
   provider_options.do_copy_in_default_stream = true;
   provider_options.use_tf32 = false;
   provider_options.prefer_nhwc = true;
-  if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
-    return factory->CreateProvider();
+  return CudaExecutionProviderWithOptions(&provider_options);
 #endif
   return nullptr;
 }
@@ -146,8 +186,12 @@ std::unique_ptr<IExecutionProvider> DefaultCudaNHWCExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const OrtCUDAProviderOptionsV2* provider_options) {
 #ifdef USE_CUDA
+#if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) && defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+  return CudaPluginExecutionProviderWithOptions(provider_options);
+#else
   if (auto factory = CudaProviderFactoryCreator::Create(provider_options))
     return factory->CreateProvider();
+#endif
 #else
   ORT_UNUSED_PARAMETER(provider_options);
 #endif
@@ -206,15 +250,6 @@ std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_fast
   return ACLProviderFactoryCreator::Create(enable_fast_math)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(enable_fast_math);
-  return nullptr;
-#endif
-}
-
-std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_arena) {
-#ifdef USE_ARMNN
-  return ArmNNProviderFactoryCreator::Create(enable_arena)->CreateProvider();
-#else
-  ORT_UNUSED_PARAMETER(enable_arena);
   return nullptr;
 #endif
 }
@@ -282,19 +317,35 @@ std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 }
 
 std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc) {
-#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#if defined(USE_WEBGPU)
   ConfigOptions config_options{};
+
+  // Helper to strip the EP prefix from config entry keys when building as a plugin EP.
+  // The full key is like "ep.webgpuexecutionprovider.storageBufferCacheMode", and the
+  // config entry expects just "storageBufferCacheMode" in the EP API build.
+  auto normalize_config_key = [](const char* key) -> std::string {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+    std::string normalized_key = key;
+    std::string prefix = OrtSessionOptions::GetProviderOptionPrefix(kWebGpuExecutionProvider);
+    if (normalized_key.starts_with(prefix)) {
+      normalized_key.erase(0, prefix.length());
+    }
+    return normalized_key;
+#else
+    return key;
+#endif
+  };
+
   // Disable storage buffer cache
-  ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kStorageBufferCacheMode,
-                                            webgpu::options::kBufferCacheMode_Disabled)
-                  .IsOK());
+  ORT_THROW_IF_ERROR(config_options.AddConfigEntry(normalize_config_key(webgpu::options::kStorageBufferCacheMode).c_str(),
+                                                   webgpu::options::kBufferCacheMode_Disabled));
   if (!is_nhwc) {
     // Enable NCHW support
-    ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kPreferredLayout,
-                                              webgpu::options::kPreferredLayout_NCHW)
-                    .IsOK());
+    ORT_THROW_IF_ERROR(config_options.AddConfigEntry(normalize_config_key(webgpu::options::kPreferredLayout).c_str(),
+                                                     webgpu::options::kPreferredLayout_NCHW));
   }
-  return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
+
+  return WebGpuExecutionProviderWithOptions(config_options);
 #else
   ORT_UNUSED_PARAMETER(is_nhwc);
   return nullptr;
@@ -302,8 +353,36 @@ std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc)
 }
 
 std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const ConfigOptions& config_options) {
-#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#if defined(USE_WEBGPU)
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  ConfigOptions normalized_config_options{};
+  const std::string prefix = OrtSessionOptions::GetProviderOptionPrefix(kWebGpuExecutionProvider);
+  for (const auto& [key, value] : config_options.GetConfigOptionsMap()) {
+    std::string normalized_key = key;
+    if (normalized_key.starts_with(prefix)) {
+      normalized_key.erase(0, prefix.length());
+    }
+    ORT_THROW_IF_ERROR(normalized_config_options.AddConfigEntry(normalized_key.c_str(), value.c_str()));
+  }
+
+  // Return nullptr (rather than throwing) when the dynamic plugin EP is uninitialized.
+  // Tests interpret nullptr as "WebGPU EP unavailable" and skip themselves, which matches
+  // the behavior of the non-plugin code path below when USE_WEBGPU is undefined.
+  //
+  // If the dynamic plugin EP is initialized to a different EP, fail fast. Many call sites pass
+  // this helper directly into ConfigEp/RegisterExecutionProvider and do not null-check, so
+  // silently returning nullptr here can lead to confusing downstream failures.
+  auto ep_name = dynamic_plugin_ep_infra::GetEpName();
+  if (!ep_name.has_value()) {
+    return nullptr;
+  }
+  ORT_ENFORCE(*ep_name == kWebGpuExecutionProvider,
+              "Dynamic plugin EP is not the WebGPU EP. Expected \"", kWebGpuExecutionProvider,
+              "\", got \"", *ep_name, "\"");
+  return dynamic_plugin_ep_infra::MakeEp(nullptr, &normalized_config_options);
+#else
   return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
+#endif
 #else
   ORT_UNUSED_PARAMETER(config_options);
   return nullptr;

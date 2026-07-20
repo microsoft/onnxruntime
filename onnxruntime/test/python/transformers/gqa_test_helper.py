@@ -21,6 +21,7 @@ ONNX_TENSOR_TYPE_MAP = {
     "int32": TensorProto.INT32,
     "int8": TensorProto.INT8,
     "int4": TensorProto.UINT8,
+    "fp8": TensorProto.FLOAT8E4M3FN,
 }
 
 TORCH_DTYPE_TO_ONNX_MAP = {
@@ -29,6 +30,7 @@ TORCH_DTYPE_TO_ONNX_MAP = {
     torch.bfloat16: TensorProto.BFLOAT16,
     torch.int32: TensorProto.INT32,
     torch.int8: TensorProto.INT8,
+    torch.float8_e4m3fn: TensorProto.FLOAT8E4M3FN,
 }
 
 TORCH_DTYPE_MAP = {
@@ -37,6 +39,7 @@ TORCH_DTYPE_MAP = {
     "bfloat16": torch.bfloat16,
     "int8": torch.int8,
     "int4": torch.uint8,
+    "fp8": torch.float8_e4m3fn,
 }
 
 NUMPY_DTYPE_MAP = {
@@ -45,6 +48,7 @@ NUMPY_DTYPE_MAP = {
     "bfloat16": numpy.uint16,
     "int8": numpy.int8,
     "int4": numpy.uint8,
+    "fp8": numpy.uint8,  # FP8 E4M3 stored as uint8
 }
 
 
@@ -54,6 +58,8 @@ def get_q_range(q_type_str):
         return -128, 127
     if q_type_str.endswith("int4"):
         return -8, 7
+    if q_type_str == "fp8":
+        return -448.0, 448.0  # FP8 E4M3 range
     raise ValueError(f"Unsupported quantization type for range: {q_type_str}")
 
 
@@ -108,8 +114,14 @@ def dequantize_tensor(quantized_tensor, scale, quant_type, q_type_str):
     if isinstance(scale, torch.Tensor):
         scale = scale.to(quantized_tensor.device)
 
-    unpacked_tensor = quantized_tensor
     q_type_str_s = str(q_type_str)
+
+    # FP8 dequantization: cast to float32 and multiply by scale
+    if q_type_str_s == "fp8":
+        # FP8 tensors are already float8_e4m3fn, just cast and scale
+        return quantized_tensor.to(torch.float32) * scale
+
+    unpacked_tensor = quantized_tensor
     if q_type_str_s.endswith("int4"):
         unpacked_tensor = unpack_int4(quantized_tensor)
 
@@ -121,10 +133,20 @@ def quantize_tensor_with_scale(tensor_float, scale, quant_type, q_type_str):
     if quant_type == "NONE":
         return tensor_float
 
+    q_type_str_s = str(q_type_str)
+
+    # FP8 quantization: scale and cast to float8_e4m3fn (no rounding needed)
+    if q_type_str_s == "fp8":
+        # FP8 E4M3 has max representable value of 448.0
+        # Scale the tensor and clamp to FP8 range, then cast
+        scaled = tensor_float / scale
+        clamped = torch.clamp(scaled, -448.0, 448.0)
+        return clamped.to(torch.float8_e4m3fn)
+
+    # INT8/INT4 quantization: scale, round, clamp to integer range
     qmin, qmax = get_q_range(q_type_str)
     quantized = torch.clamp(torch.round(tensor_float / scale), qmin, qmax)
 
-    q_type_str_s = str(q_type_str)
     if q_type_str_s.endswith("int4"):
         quantized = pack_int4(quantized.to(torch.int8))
     else:
@@ -288,6 +310,9 @@ class GroupQueryAttentionConfig(AttentionConfig):
         v_quant_type: str = "NONE",
         kv_cache_type: str = "float16",
         share_kv_scale: bool = False,
+        has_head_sink: bool = False,
+        has_qk_norm: bool = False,
+        qk_norm_epsilon: float = 1e-6,
     ):
         super().__init__(
             "GroupQueryAttention",
@@ -318,10 +343,20 @@ class GroupQueryAttentionConfig(AttentionConfig):
         # Quantization parameters
         self.k_quant_type = k_quant_type
         self.v_quant_type = v_quant_type
-        self.kv_cache_type = kv_cache_type
-        # Determine bit width from cache type if applicable
-        self.kv_cache_bit_width = 4 if kv_cache_type == "int4" else (8 if kv_cache_type == "int8" else 0)
         self.share_kv_scale = share_kv_scale
+        self.has_head_sink = has_head_sink
+        self.has_qk_norm = has_qk_norm
+        self.qk_norm_epsilon = qk_norm_epsilon
+        # Determine bit width from cache type if applicable
+        if kv_cache_type == "int4":
+            self.kv_cache_bit_width = 4
+        elif kv_cache_type == "int8":
+            self.kv_cache_bit_width = 8
+        elif kv_cache_type == "fp8":
+            self.kv_cache_bit_width = 8  # FP8 is 8 bits
+        else:
+            self.kv_cache_bit_width = 0
+        self.kv_cache_type = kv_cache_type
 
     def shape_dict(self):
         shapes = super().shape_dict()
@@ -330,6 +365,11 @@ class GroupQueryAttentionConfig(AttentionConfig):
                 "seqlens_k": (self.batch_size,),
             }
         )
+        if self.has_head_sink:
+            shapes["head_sink"] = (self.num_heads,)
+        if self.has_qk_norm:
+            shapes["q_norm_weight"] = (self.head_size,)
+            shapes["k_norm_weight"] = (self.head_size,)
         # Note: We don't adjust shapes for int4 here because the parent's random_inputs
         # creates float tensors first, then quantization will pack them
         return shapes
@@ -342,6 +382,17 @@ class GroupQueryAttentionConfig(AttentionConfig):
                 "seqlens_k": k_seqlens - 1,
             }
         )
+        if self.has_head_sink:
+            feeds["head_sink"] = torch.rand((self.num_heads,), device=self.device, dtype=self.dtype)
+
+        if self.has_qk_norm:
+            generator = torch.Generator(device=self.device).manual_seed(7)
+            feeds["q_norm_weight"] = (
+                1.0 + 0.1 * torch.randn(self.head_size, generator=generator, device=self.device, dtype=torch.float32)
+            ).to(self.dtype)
+            feeds["k_norm_weight"] = (
+                1.0 + 0.1 * torch.randn(self.head_size, generator=generator, device=self.device, dtype=torch.float32)
+            ).to(self.dtype)
 
         # Generate quantized cache and scales if quantization is enabled
         if self.k_quant_type != "NONE":
@@ -394,9 +445,11 @@ def create_group_query_attention_onnx_model(config: GroupQueryAttentionConfig):
         "sin_cache" if config.do_rotary else "",
         "",  # position_ids (optional, not used in benchmark)
         "",  # attention_bias (optional, not used in benchmark)
-        "",  # head_sink (optional, not used in benchmark)
+        "head_sink" if config.has_head_sink else "",
         "k_scale" if config.k_quant_type != "NONE" else "",
         "v_scale" if config.v_quant_type != "NONE" else "",
+        "q_norm_weight" if config.has_qk_norm else "",
+        "k_norm_weight" if config.has_qk_norm else "",
     ]
     # Remove trailing empty strings
     while node_inputs and node_inputs[-1] == "":
@@ -413,6 +466,9 @@ def create_group_query_attention_onnx_model(config: GroupQueryAttentionConfig):
         "smooth_softmax": 1 if config.use_smooth_softmax else 0,
         "domain": "com.microsoft",
     }
+
+    if config.has_qk_norm:
+        node_attrs["qk_norm_epsilon"] = config.qk_norm_epsilon
 
     # Add quantization attributes if enabled
     if config.k_quant_type != "NONE":
@@ -450,6 +506,8 @@ def create_group_query_attention_onnx_model(config: GroupQueryAttentionConfig):
         cache_type = TensorProto.UINT8
     elif config.kv_cache_type == "int8":
         cache_type = TensorProto.INT8
+    elif config.kv_cache_type == "fp8":
+        cache_type = TensorProto.FLOAT8E4M3FN
 
     # Compute actual cache shapes (packed for INT4)
     past_key_shape = list(shape_dict["past_key"])
@@ -480,6 +538,17 @@ def create_group_query_attention_onnx_model(config: GroupQueryAttentionConfig):
             helper.make_tensor_value_info("cos_cache", float_type, list(shape_dict["cos_cache"])),
             helper.make_tensor_value_info("sin_cache", float_type, list(shape_dict["sin_cache"])),
         ]
+
+    if config.has_head_sink:
+        graph_input.append(helper.make_tensor_value_info("head_sink", float_type, list(shape_dict["head_sink"])))
+
+    if config.has_qk_norm:
+        graph_input.extend(
+            [
+                helper.make_tensor_value_info("q_norm_weight", float_type, list(shape_dict["q_norm_weight"])),
+                helper.make_tensor_value_info("k_norm_weight", float_type, list(shape_dict["k_norm_weight"])),
+            ]
+        )
 
     # Add scale inputs for quantization
     # Shape depends on quantization type:

@@ -80,7 +80,8 @@ Status GemmTransposeFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& m
                                       "Fused Gemm with Transpose",
                                       new_gemm_input_defs,
                                       {},
-                                      {},
+                                      gemm_node,
+                                      nullptr,
                                       gemm_node.Domain());
   new_gemm_node.AddAttribute("transA", static_cast<int64_t>(transA));
   new_gemm_node.AddAttribute("transB", static_cast<int64_t>(transB));

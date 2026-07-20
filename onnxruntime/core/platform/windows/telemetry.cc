@@ -285,6 +285,7 @@ void WindowsTelemetry::LogSessionCreationStart(uint32_t session_id) const {
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
@@ -316,6 +317,9 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                                           const std::string& model_weight_hash,
                                           const std::unordered_map<std::string, std::string>& model_metadata,
                                           const std::string& loaded_from, const std::vector<std::string>& execution_provider_ids,
+                                          const std::string& hardware_device_types,
+                                          const std::string& hardware_vendor_ids,
+                                          const std::string& ep_versions,
                                           bool use_fp16, bool captureState) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
@@ -370,7 +374,9 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
                       TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                       // Telemetry info
-                      TraceLoggingUInt8(0, "schemaVersion"),
+                      // schemaVersion 1: added hardwareDeviceTypes and hardwareVendorIds
+                      // schemaVersion 2: added executionProviderVersions
+                      TraceLoggingUInt8(2, "schemaVersion"),
                       TraceLoggingUInt32(session_id, "sessionId"),
                       TraceLoggingInt64(ir_version, "irVersion"),
                       TraceLoggingUInt32(projection_, "OrtProgrammingProjection"),
@@ -387,6 +393,9 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
                       TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
                       TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"),
+                      TraceLoggingString(hardware_device_types.c_str(), "hardwareDeviceTypes"),
+                      TraceLoggingString(hardware_vendor_ids.c_str(), "hardwareVendorIds"),
+                      TraceLoggingString(ep_versions.c_str(), "executionProviderVersions"),
                       TraceLoggingString(service_names.c_str(), "serviceNames"),
                       TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
   } else {
@@ -398,7 +407,9 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
                       TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                       // Telemetry info
-                      TraceLoggingUInt8(0, "schemaVersion"),
+                      // schemaVersion 1: added hardwareDeviceTypes and hardwareVendorIds
+                      // schemaVersion 2: added executionProviderVersions
+                      TraceLoggingUInt8(2, "schemaVersion"),
                       TraceLoggingUInt32(session_id, "sessionId"),
                       TraceLoggingInt64(ir_version, "irVersion"),
                       TraceLoggingUInt32(projection_, "OrtProgrammingProjection"),
@@ -415,6 +426,9 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
                       TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
                       TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"),
+                      TraceLoggingString(hardware_device_types.c_str(), "hardwareDeviceTypes"),
+                      TraceLoggingString(hardware_vendor_ids.c_str(), "hardwareVendorIds"),
+                      TraceLoggingString(ep_versions.c_str(), "executionProviderVersions"),
                       TraceLoggingString(service_names.c_str(), "serviceNames"),
                       TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
   }
@@ -449,7 +463,7 @@ void WindowsTelemetry::LogCompileModelStart(uint32_t session_id,
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     // Telemetry info
-                    TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingUInt8(1, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingString(input_source.c_str(), "inputSource"),
                     TraceLoggingString(output_target.c_str(), "outputTarget"),
@@ -457,7 +471,9 @@ void WindowsTelemetry::LogCompileModelStart(uint32_t session_id,
                     TraceLoggingInt32(graph_optimization_level, "graphOptimizationLevel"),
                     TraceLoggingBool(embed_ep_context, "embedEpContext"),
                     TraceLoggingBool(has_external_initializers_file, "hasExternalInitializersFile"),
-                    TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"));
+                    TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"),
+                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
 void WindowsTelemetry::LogCompileModelComplete(uint32_t session_id,
@@ -480,7 +496,8 @@ void WindowsTelemetry::LogCompileModelComplete(uint32_t session_id,
                     TraceLoggingBool(success, "success"),
                     TraceLoggingUInt32(error_code, "errorCode"),
                     TraceLoggingUInt32(error_category, "errorCategory"),
-                    TraceLoggingString(error_message.c_str(), "errorMessage"));
+                    TraceLoggingString(error_message.c_str(), "errorMessage"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
 void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
@@ -497,7 +514,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TraceLoggingLevel(WINEVENT_LEVEL_ERROR),
                     // Telemetry info
-                    TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingUInt8(1, "schemaVersion"),
                     TraceLoggingHResult(hr, "hResult"),
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingUInt32(status.Code(), "errorCode"),
@@ -506,10 +523,37 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingString(file, "file"),
                     TraceLoggingString(function, "function"),
                     TraceLoggingInt32(line, "line"),
+                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 #else
   TraceLoggingWrite(telemetry_provider_handle,
                     "RuntimeError",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingLevel(WINEVENT_LEVEL_ERROR),
+                    // Telemetry info
+                    TraceLoggingUInt8(1, "schemaVersion"),
+                    TraceLoggingUInt32(session_id, "sessionId"),
+                    TraceLoggingUInt32(status.Code(), "errorCode"),
+                    TraceLoggingUInt32(status.Category(), "errorCategory"),
+                    TraceLoggingString(status.ErrorMessage().c_str(), "errorMessage"),
+                    TraceLoggingString(file, "file"),
+                    TraceLoggingString(function, "function"),
+                    TraceLoggingInt32(line, "line"),
+                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+#endif
+}
+
+void WindowsTelemetry::LogRuntimeInferenceError(uint32_t session_id, const common::Status& status,
+                                                const std::string& ep_versions,
+                                                const std::string& ep_device_types) const {
+  if (global_register_count_ == 0 || enabled_ == false)
+    return;
+
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "RuntimeInferenceError",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
@@ -520,15 +564,14 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingUInt32(status.Code(), "errorCode"),
                     TraceLoggingUInt32(status.Category(), "errorCategory"),
                     TraceLoggingString(status.ErrorMessage().c_str(), "errorMessage"),
-                    TraceLoggingString(file, "file"),
-                    TraceLoggingString(function, "function"),
-                    TraceLoggingInt32(line, "line"),
+                    TraceLoggingString(ep_versions.c_str(), "executionProviderVersions"),
+                    TraceLoggingString(ep_device_types.c_str(), "executionProviderDeviceTypes"),
+                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
-#endif
 }
 
 void WindowsTelemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last,
-                                      std::unordered_map<int64_t, long long> duration_per_batch_size) const {
+                                      const std::unordered_map<int64_t, long long>& duration_per_batch_size) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
@@ -549,11 +592,51 @@ void WindowsTelemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_s
                     TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     // Telemetry info
-                    TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingUInt8(1, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingUInt32(total_runs_since_last, "totalRuns"),
                     TraceLoggingInt64(total_run_duration_since_last, "totalRunDuration"),
                     TraceLoggingString(total_duration_per_batch_size.c_str(), "totalRunDurationPerBatchSize"),
+                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+}
+
+void WindowsTelemetry::LogEpDeviceUsage(uint32_t session_id,
+                                        const std::string& ep_type,
+                                        const std::string& hardware_device_type,
+                                        uint32_t hardware_vendor_id,
+                                        uint32_t hardware_device_id,
+                                        const std::string& hardware_vendor,
+                                        const std::string& ep_vendor,
+                                        const std::string& ep_version,
+                                        int assigned_node_count,
+                                        uint32_t total_runs_since_last,
+                                        int64_t total_run_duration_since_last) const {
+  if (global_register_count_ == 0 || enabled_ == false)
+    return;
+
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "EpDeviceUsage",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                    // Telemetry info
+                    // schemaVersion 1: added epVersion, runtimeVersion
+                    TraceLoggingUInt8(1, "schemaVersion"),
+                    TraceLoggingUInt32(session_id, "sessionId"),
+                    TraceLoggingString(ep_type.c_str(), "executionProviderType"),
+                    TraceLoggingString(hardware_device_type.c_str(), "hardwareDeviceType"),
+                    TraceLoggingUInt32(hardware_vendor_id, "hardwareVendorId"),
+                    TraceLoggingUInt32(hardware_device_id, "hardwareDeviceId"),
+                    TraceLoggingString(hardware_vendor.c_str(), "hardwareVendor"),
+                    TraceLoggingString(ep_vendor.c_str(), "epVendor"),
+                    TraceLoggingString(ep_version.c_str(), "epVersion"),
+                    TraceLoggingInt32(assigned_node_count, "assignedNodeCount"),
+                    TraceLoggingUInt32(total_runs_since_last, "totalRunsSinceLast"),
+                    TraceLoggingInt64(total_run_duration_since_last, "totalRunDurationSinceLast"),
+                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
@@ -666,6 +749,120 @@ void WindowsTelemetry::LogProviderOptions(const std::string& provider_id, const 
                       TraceLoggingString(provider_options_string.c_str(), "providerOptions"),
                       TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
   }
+}
+
+void WindowsTelemetry::LogModelLoadStart(uint32_t session_id) const {
+  if (global_register_count_ == 0 || enabled_ == false)
+    return;
+
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "ModelLoadStart",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                    // Telemetry info
+                    TraceLoggingUInt8(1, "schemaVersion"),
+                    TraceLoggingUInt32(session_id, "sessionId"),
+                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+}
+
+void WindowsTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& status) const {
+  if (global_register_count_ == 0 || enabled_ == false)
+    return;
+
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "ModelLoadEnd",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                    // Telemetry info
+                    TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingUInt32(session_id, "sessionId"),
+                    TraceLoggingBool(status.IsOK(), "isSuccess"),
+                    TraceLoggingUInt32(status.Code(), "errorCode"),
+                    TraceLoggingUInt32(status.Category(), "errorCategory"),
+                    TraceLoggingString(status.IsOK() ? "" : status.ErrorMessage().c_str(), "errorMessage"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+}
+
+void WindowsTelemetry::LogSessionCreationEnd(uint32_t session_id,
+                                             const common::Status& status) const {
+  if (global_register_count_ == 0 || enabled_ == false)
+    return;
+
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "SessionCreationEnd",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                    // Telemetry info
+                    TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingUInt32(session_id, "sessionId"),
+                    TraceLoggingBool(status.IsOK(), "isSuccess"),
+                    TraceLoggingUInt32(status.Code(), "errorCode"),
+                    TraceLoggingUInt32(status.Category(), "errorCategory"),
+                    TraceLoggingString(status.IsOK() ? "" : status.ErrorMessage().c_str(), "errorMessage"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+}
+
+void WindowsTelemetry::LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
+                                                       const std::string& lib_path) const {
+  if (global_register_count_ == 0 || enabled_ == false)
+    return;
+
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "RegisterEpLibraryWithLibPath",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                    // Telemetry info
+                    TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingString(registration_name.c_str(), "registrationName"),
+                    TraceLoggingString(lib_path.c_str(), "libPath"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+}
+
+void WindowsTelemetry::LogRegisterEpLibraryStart(const std::string& registration_name) const {
+  if (global_register_count_ == 0 || enabled_ == false)
+    return;
+
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "RegisterEpLibraryStart",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                    // Telemetry info
+                    TraceLoggingUInt8(1, "schemaVersion"),
+                    TraceLoggingString(registration_name.c_str(), "registrationName"),
+                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+}
+
+void WindowsTelemetry::LogRegisterEpLibraryEnd(const std::string& registration_name,
+                                               const common::Status& status) const {
+  if (global_register_count_ == 0 || enabled_ == false)
+    return;
+
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "RegisterEpLibraryEnd",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                    // Telemetry info
+                    TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingString(registration_name.c_str(), "registrationName"),
+                    TraceLoggingBool(status.IsOK(), "isSuccess"),
+                    TraceLoggingUInt32(status.Code(), "errorCode"),
+                    TraceLoggingUInt32(status.Category(), "errorCategory"),
+                    TraceLoggingString(status.IsOK() ? "" : status.ErrorMessage().c_str(), "errorMessage"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
 }  // namespace onnxruntime

@@ -132,6 +132,16 @@ Status Transpose_BSNH_to_BNSH(const int batch_size, const int sequence_length, c
 Status Transpose_BSNH_to_BNSH(const int batch_size, const int sequence_length, const int num_heads, const int head_size,
                               const BFloat16* input, BFloat16* output, cudaStream_t stream, const int max_threads_per_block);
 
+// BxNxSxH => BxSxNxH
+Status Transpose_BNSH_to_BSNH(const int batch_size, const int sequence_length, const int num_heads, const int head_size,
+                              const float* input, float* output, cudaStream_t stream, const int max_threads_per_block);
+
+Status Transpose_BNSH_to_BSNH(const int batch_size, const int sequence_length, const int num_heads, const int head_size,
+                              const half* input, half* output, cudaStream_t stream, const int max_threads_per_block);
+
+Status Transpose_BNSH_to_BSNH(const int batch_size, const int sequence_length, const int num_heads, const int head_size,
+                              const BFloat16* input, BFloat16* output, cudaStream_t stream, const int max_threads_per_block);
+
 template <typename T>
 Status ConcatPastToPresent(int batch_size, int num_heads, int qk_head_size, int v_head_size,
                            int sequence_length, int total_sequence_length,

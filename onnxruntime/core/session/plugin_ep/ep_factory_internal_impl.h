@@ -97,6 +97,19 @@ class EpFactoryInternalImpl {
     return nullptr;
   }
 
+  virtual OrtStatus* InitGraphicsInterop(_In_ const OrtEpDevice* /*ep_device*/,
+                                         _In_ const OrtGraphicsInteropConfig* /*config*/) noexcept {
+    // Default implementation: graphics interop not supported
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                                 "InitGraphicsInterop is not implemented for this EP factory.");
+  }
+
+  virtual OrtStatus* DeinitGraphicsInterop(_In_ const OrtEpDevice* /*ep_device*/) noexcept {
+    // Default implementation: graphics interop not supported
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                                 "DeinitGraphicsInterop is not implemented for this EP factory.");
+  }
+
   virtual OrtStatus* GetNumCustomOpDomains(_Out_ size_t* num_domains) const noexcept {
     *num_domains = 0;
     return nullptr;
@@ -106,6 +119,24 @@ class EpFactoryInternalImpl {
                                         _In_ size_t num_domains) const noexcept {
     ORT_UNUSED_PARAMETER(domains);
     ORT_UNUSED_PARAMETER(num_domains);
+    return nullptr;
+  }
+
+  virtual OrtStatus* SelectBestModelCandidate(
+      _In_ const OrtHardwareDevice* device,
+      _In_reads_(num_candidates) const OrtKeyValuePairs* const* candidates,
+      _In_ size_t num_candidates,
+      _In_opt_ const OrtSessionOptions* session_options,
+      _Out_ size_t* selected_index) noexcept {
+    ORT_UNUSED_PARAMETER(device);
+    ORT_UNUSED_PARAMETER(session_options);
+    if (candidates == nullptr || num_candidates == 0 || selected_index == nullptr) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Invalid arguments to SelectBestModelCandidate.");
+    }
+
+    // Default implementation: all candidates are unsupported, sets `selected_index` to SIZE_MAX.
+    *selected_index = SIZE_MAX;
     return nullptr;
   }
 

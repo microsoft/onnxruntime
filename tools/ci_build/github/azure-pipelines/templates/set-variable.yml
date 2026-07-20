@@ -1,0 +1,32 @@
+# Sets an ADO pipeline variable.
+# See https://learn.microsoft.com/en-us/azure/devops/pipelines/process/set-variables-scripts
+
+parameters:
+- name: name
+  type: string
+
+- name: value
+  type: string
+
+steps:
+- task: PythonScript@0
+  displayName: 'Set variable - ${{ parameters.name }}'
+  inputs:
+    scriptSource: inline
+    script: |
+      import os
+
+      variable_name = os.getenv("VARIABLE_NAME")
+      variable_value = os.getenv("VARIABLE_VALUE")
+
+      if not variable_name.isidentifier():
+          raise ValueError(f"Variable name is not a valid identifier: '{variable_name}'")
+
+      if "\n" in variable_value:
+          raise ValueError(f"Variable value should not contain any newlines: '{variable_value}'")
+
+      print(f"Setting variable: {variable_name} = '{variable_value}'")
+      print(f"##vso[task.setvariable variable={variable_name}]{variable_value}")
+  env:
+    VARIABLE_NAME: ${{ parameters.name }}
+    VARIABLE_VALUE: ${{ parameters.value }}

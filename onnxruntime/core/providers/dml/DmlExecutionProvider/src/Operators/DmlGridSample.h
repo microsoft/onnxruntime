@@ -747,7 +747,7 @@ public:
     {
         try
         {
-            auto dftOperator = wil::MakeOrThrow<DmlGridSampleOperator>(context);
+            auto dftOperator = Dml::SafeMakeOrThrow<DmlGridSampleOperator>(context);
             dftOperator.CopyTo(kernel);
             return S_OK;
         }
@@ -832,8 +832,8 @@ public:
         kernelDescription.options = MLOperatorKernelOptions::None;
         kernelDescription.executionOptions = 0;
 
-        auto shareInferrer = wil::MakeOrThrow<GridSampleShapeInferrer>();
-        auto factory = wil::MakeOrThrow<DmlGridSampleOperatorFactory>();
+        auto shareInferrer = Dml::SafeMakeOrThrow<GridSampleShapeInferrer>();
+        auto factory = Dml::SafeMakeOrThrow<DmlGridSampleOperatorFactory>();
 
         ComPtr<IMLOperatorRegistryPrivate> registryPrivate;
         ORT_THROW_IF_FAILED(registry->QueryInterface(IID_PPV_ARGS(&registryPrivate)));

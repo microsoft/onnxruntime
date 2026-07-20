@@ -1,0 +1,17 @@
+diff --git a/third_party/CMakeLists.txt b/third_party/CMakeLists.txt
+--- a/third_party/CMakeLists.txt
++++ b/third_party/CMakeLists.txt
+@@ -338,10 +338,14 @@
+     if (isMultiConfig)
+         set_target_properties(dxc dxcompiler PROPERTIES
+             "RUNTIME_OUTPUT_DIRECTORY_DEBUG" "${CMAKE_BINARY_DIR}/$<CONFIG>"
+             "RUNTIME_OUTPUT_DIRECTORY_RELEASE" "${CMAKE_BINARY_DIR}/$<CONFIG>"
++            "RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO" "${CMAKE_BINARY_DIR}/$<CONFIG>"
++            "RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL" "${CMAKE_BINARY_DIR}/$<CONFIG>"
+             "LIBRARY_OUTPUT_DIRECTORY_DEBUG" "${CMAKE_BINARY_DIR}/$<CONFIG>"
+             "LIBRARY_OUTPUT_DIRECTORY_RELEASE" "${CMAKE_BINARY_DIR}/$<CONFIG>"
++            "LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO" "${CMAKE_BINARY_DIR}/$<CONFIG>"
++            "LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL" "${CMAKE_BINARY_DIR}/$<CONFIG>"
+         )
+     else()
+         set_target_properties(dxc dxcompiler PROPERTIES

@@ -17,6 +17,29 @@ from onnx.checker import check_model
 from onnxruntime import InferenceSession, SessionOptions, get_available_providers, get_device
 from onnxruntime.backend.backend_rep import OnnxRuntimeBackendRep
 
+# Allowlist of SessionOptions attributes that are safe to set via the backend API.
+# Dangerous attributes intentionally excluded:
+#   optimized_model_filepath  — triggers Model::Save(), overwrites arbitrary files
+#   profile_file_prefix       — writes profiling JSON to arbitrary path
+#   enable_profiling          — causes uncontrolled file writes to cwd
+_ALLOWED_SESSION_OPTIONS = frozenset(
+    {
+        "enable_cpu_mem_arena",
+        "enable_mem_pattern",
+        "enable_mem_reuse",
+        "execution_mode",
+        "execution_order",
+        "graph_optimization_level",
+        "inter_op_num_threads",
+        "intra_op_num_threads",
+        "log_severity_level",
+        "log_verbosity_level",
+        "logid",
+        "use_deterministic_compute",
+        "use_per_session_threads",
+    }
+)
+
 
 class OnnxRuntimeBackend(Backend):
     """
@@ -93,16 +116,18 @@ class OnnxRuntimeBackend(Backend):
     @classmethod
     def prepare(cls, model, device=None, **kwargs):
         """
-        Load the model and creates a :class:`onnxruntime.InferenceSession`
+        Load the model and creates an :class:`onnxruntime.backend.backend_rep.OnnxRuntimeBackendRep`
         ready to be used as a backend.
 
-        :param model: ModelProto (returned by `onnx.load`),
-            string for a filename or bytes for a serialized model
+        :param model: the model to prepare — accepts a file path (str), serialized
+            model (bytes), :class:`onnx.ModelProto`, :class:`onnxruntime.InferenceSession`,
+            or :class:`onnxruntime.backend.backend_rep.OnnxRuntimeBackendRep` (returned as-is)
         :param device: requested device for the computation,
             None means the default one which depends on
             the compilation settings
-        :param kwargs: see :class:`onnxruntime.SessionOptions`
-        :return: :class:`onnxruntime.InferenceSession`
+        :param kwargs: only a safe subset of :class:`onnxruntime.SessionOptions` attributes are
+            accepted; see ``_ALLOWED_SESSION_OPTIONS`` for the list
+        :return: :class:`onnxruntime.backend.backend_rep.OnnxRuntimeBackendRep`
         """
         if isinstance(model, OnnxRuntimeBackendRep):
             return model
@@ -111,8 +136,14 @@ class OnnxRuntimeBackend(Backend):
         elif isinstance(model, (str, bytes)):
             options = SessionOptions()
             for k, v in kwargs.items():
-                if hasattr(options, k):
+                if k in _ALLOWED_SESSION_OPTIONS:
                     setattr(options, k, v)
+                elif hasattr(options, k):
+                    raise RuntimeError(
+                        f"SessionOptions attribute '{k}' is not permitted via the backend API. "
+                        f"Allowed attributes: {', '.join(sorted(_ALLOWED_SESSION_OPTIONS))}"
+                    )
+                # else: silently ignore unknown keys
 
             excluded_providers = os.getenv("ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS", default="").split(",")
             providers = [x for x in get_available_providers() if (x not in excluded_providers)]
@@ -148,13 +179,21 @@ class OnnxRuntimeBackend(Backend):
         """
         Compute the prediction.
 
-        :param model: :class:`onnxruntime.InferenceSession` returned
-            by function *prepare*
+        :param model: the model to run — accepts a file path (str), serialized
+            model (bytes), :class:`onnx.ModelProto`, :class:`onnxruntime.InferenceSession`,
+            or :class:`onnxruntime.backend.backend_rep.OnnxRuntimeBackendRep`
         :param inputs: inputs
         :param device: requested device for the computation,
             None means the default one which depends on
             the compilation settings
-        :param kwargs: see :class:`onnxruntime.RunOptions`
+        :param kwargs: ``run_model()`` forwards kwargs to both ``prepare()`` and ``rep.run()``.
+            ``prepare()`` validates and applies ``_ALLOWED_SESSION_OPTIONS`` only when creating
+            a new session from a model path or bytes; if ``model`` is already an
+            ``InferenceSession`` or ``OnnxRuntimeBackendRep``, session-option kwargs are
+            silently ignored. ``rep.run()`` always validates against ``_ALLOWED_RUN_OPTIONS``
+            and raises ``RuntimeError`` for known-but-blocked run attributes.
+            Logging-related kwargs (``log_severity_level``, ``log_verbosity_level``, ``logid``)
+            appear in both allowlists.
         :return: predictions
         """
         rep = cls.prepare(model, device, **kwargs)

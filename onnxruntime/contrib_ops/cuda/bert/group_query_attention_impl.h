@@ -28,6 +28,14 @@ Status LaunchUnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unp
                        const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size,
                        cudaStream_t stream, const int max_threads_per_block);
 
+template <typename T>
+Status LaunchConvertHeadSinkToFloat(
+    const T* input,
+    float* output,
+    int count,
+    cudaStream_t stream,
+    int max_threads_per_block);
+
 // ============================================================================
 // GQABufferRequirements: Centralized buffer size calculation
 // ============================================================================
@@ -68,9 +76,9 @@ struct GQABufferRequirements {
     const size_t v_elements = k_elements;
 
     if (use_xqa) {
-      if (params.do_rotary || params.is_packed_qkv) {
-        // XQA need scratch for rotated/unpacked Q.
-        // RoPE K is written directly to cache by the fused kernel.
+      if (params.do_rotary || params.is_packed_qkv || params.use_qk_norm) {
+        // XQA needs scratch for rotated/unpacked/normalized Q.
+        // RoPE/QK-Norm K is written directly to cache by the fused preprocess kernel.
         req.qkv_buffer_bytes = elem_size * q_elements;
       }
       return req;
@@ -118,9 +126,26 @@ struct GQABufferRequirements {
       }
     }
 
+    // Unfused fallback: needs Q buffer for rotary embedding output.
+    // QK-Norm also requires a materialized Q buffer to hold the normalized (and optionally rotated) Q,
+    // even when rotary is disabled and the input is not packed.
+    if (req.qkv_buffer_bytes == 0 && (params.do_rotary || params.is_packed_qkv || params.use_qk_norm)) {
+      req.qkv_buffer_bytes = elem_size * q_elements;
+    }
+
     return req;
   }
 };
+
+template <typename T>
+// Also used by ONNX Attention (core/providers/cuda/llm/attention.cc) for GQA head expansion in MEA path.
+Status LaunchUngroup(const GroupQueryAttentionParameters& parameters,
+                     float2* k_buff, float2* v_buff,
+                     const float2* k_og, const float2* v_og,
+                     const int buff_seqlen, const int og_seqlen,
+                     const bool is_bsnh,
+                     cudaStream_t stream,
+                     const int max_threads_per_block);
 
 Status LaunchGetSequenceLengths(
     const int* total_seq_lens_minus_one,
@@ -132,18 +157,6 @@ Status LaunchGetSequenceLengths(
     const bool is_first_prompt,
     cudaStream_t stream,
     const int max_threads_per_block);
-
-template <typename T>
-Status LaunchUnpackRoPEAppend(
-    const T* packed_qkv, const T* query, const T* key, const T* value,
-    T* unpacked_q, void* k_cache, void* v_cache,
-    const float* k_scale, const float* v_scale,
-    const int num_heads, const int kv_num_heads, const int head_size,
-    const int sequence_length, const int batch_size, const int max_seqlen,
-    const int* past_seq_lens, const T* cos_cache, const T* sin_cache,
-    const int rotary_dim, const int64_t* position_ids, const bool interleaved,
-    const bool is_cache_bnsh, const KVQuantizationType k_quant_type,
-    const int bit_width, cudaStream_t stream, const int max_threads_per_block);
 
 }  // namespace cuda
 }  // namespace contrib

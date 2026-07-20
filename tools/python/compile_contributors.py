@@ -11,9 +11,15 @@ Description:
 
 Usage:
     python compile_contributors.py [--base <base_branch>] [--target <target_branch>] [--dir <output_dir>]
+                                   [--paths <path> [<path> ...]]
 
 Example:
     python compile_contributors.py --base origin/rel-1.23.2 --target origin/rel-1.24.1 --dir rel-1.24.1_report
+
+    # Limit to commits that touch selected areas (replace with your paths):
+    # Using git pathspec syntax, ":(top)" anchors each path at repository root.
+    python compile_contributors.py --base origin/main~500 --target origin/main \
+        --paths ":(top)path/to/component_a" ":(top)path/to/component_b"
 
 Outputs:
     - detail.csv: Detailed breakdown of PRs, authors, and commit links.
@@ -30,7 +36,15 @@ import datetime
 import json
 import os
 import re
-import subprocess
+
+from cherry_pick_utils import (
+    check_preflight,
+    extract_pr_numbers,
+    run_command,
+)
+from cherry_pick_utils import (
+    get_pr_number_from_subject as get_pr_number,
+)
 
 
 def log_event(message, log_file=None):
@@ -42,98 +56,9 @@ def log_event(message, log_file=None):
         log_file.write(full_message + "\n")
 
 
-def run_command(command_list, cwd=".", silent=False):
-    """Run a command using a list of arguments for security (no shell=True)."""
-    result = subprocess.run(command_list, check=False, capture_output=True, text=True, cwd=cwd, encoding="utf-8")
-    if result.returncode != 0:
-        if not silent:
-            log_str = " ".join(command_list)
-            print(f"Error running command: {log_str}")
-            if result.stderr:
-                print(f"Stderr: {result.stderr.strip()}")
-        return None
-    return result.stdout
-
-
-def check_preflight():
-    """Verify gh CLI and git repository early."""
-    # Check git
-    git_check = run_command(["git", "rev-parse", "--is-inside-work-tree"], silent=True)
-    if not git_check:
-        print("Error: This script must be run inside a git repository.")
-        return False
-
-    # Check gh
-    gh_check = run_command(["gh", "--version"], silent=True)
-    if not gh_check:
-        print("Error: GitHub CLI (gh) not found or not in PATH.")
-        return False
-
-    gh_auth = run_command(["gh", "auth", "status"], silent=True)
-    if not gh_auth:
-        print("Error: GitHub CLI not authenticated. Please run 'gh auth login'.")
-        return False
-
-    return True
-
-
-# Constants
-PR_CACHE = {}  # Cache for PR details to speed up multiple rounds referencing same PRs
 NAME_TO_LOGIN = {}  # Map full names to GitHub logins for consolidation
 VERIFIED_LOGINS = set()  # Track IDs known to be valid GitHub logins (vs free-form names)
-
-# Bots to exclude from contributor lists
-BOT_NAMES = {
-    "Copilot",
-    "dependabot[bot]",
-    "app/dependabot",
-    "github-actions[bot]",
-    "app/copilot-swe-agent",
-    "CI Bot",
-    "github-advanced-security[bot]",
-    "GitHub Actions",
-    "dependabot",
-    "github-actions",
-    "Gemini",
-    "CI",
-}
-
-
-def is_bot(name):
-    if not name:
-        return True
-    name_clean = name.strip().lstrip("@")
-    # Known bots and patterns
-    if name_clean in BOT_NAMES:
-        return True
-    if "[bot]" in name_clean.lower():
-        return True
-    if name_clean.lower().startswith("app/"):
-        return True
-    return False
-
-
-def is_invalid(name):
-    if not name:
-        return True
-    # If it's a bot, it's considered a valid identity for the CSV
-    if is_bot(name):
-        return False
-
-    name_clean = name.strip().lstrip("@")
-    # Paths, brackets, and code extensions
-    if "/" in name_clean or "\\" in name_clean or "[" in name_clean or "]" in name_clean:
-        return True
-    if any(name_clean.lower().endswith(ext) for ext in [".cmake", ".py", ".h", ".cc", ".cpp", ".txt", ".md"]):
-        return True
-    return False
-
-
-def get_pr_number(subject):
-    match = re.search(r"\(#(\d+)\)$", subject.strip())
-    if match:
-        return match.group(1)
-    return None
+PR_CACHE = {}  # Cache for PR details to speed up multiple rounds referencing same PRs
 
 
 def get_pr_details(pr_number):
@@ -209,27 +134,51 @@ def extract_authors_from_commit(commit_id):
     return authors
 
 
-def extract_pr_numbers(text, strict=False):
-    if not text:
-        return []
+# Bots to exclude from contributor lists
+BOT_NAMES = {
+    "Copilot",
+    "dependabot[bot]",
+    "app/dependabot",
+    "github-actions[bot]",
+    "app/copilot-swe-agent",
+    "CI Bot",
+    "github-advanced-security[bot]",
+    "GitHub Actions",
+    "dependabot",
+    "github-actions",
+    "Gemini",
+    "CI",
+}
 
-    if strict:
-        # Strict mode: Only look for (#123) with closing paren or full onnxruntime URLs
-        # This avoids noise from version numbers or external repo PRs
-        # And it avoids matching truncated headlines like (#25... as PR #25
-        patterns = [
-            r"\(#(\d+)\)",  # (#123)
-            r"microsoft/onnxruntime/pull/(\d+)",
-        ]
-        results = []
-        for p in patterns:
-            results.extend(re.findall(p, text))
-        return [int(x) for x in set(results)]
 
-    # Matches patterns like #123 or https://github.com/microsoft/onnxruntime/pull/123
-    # Also handles ( #123) or similar in titles
-    prs = re.findall(r"(?:#|/pull/)(\d+)", text)
-    return [int(x) for x in set(prs)]
+def is_bot(name):
+    if not name:
+        return True
+    name_clean = name.strip().lstrip("@")
+    # Known bots and patterns
+    if name_clean in BOT_NAMES:
+        return True
+    if "[bot]" in name_clean.lower():
+        return True
+    if name_clean.lower().startswith("app/"):
+        return True
+    return False
+
+
+def is_invalid(name):
+    if not name:
+        return True
+    # If it's a bot, it's considered a valid identity for the CSV
+    if is_bot(name):
+        return False
+
+    name_clean = name.strip().lstrip("@")
+    # Paths, brackets, and code extensions
+    if "/" in name_clean or "\\" in name_clean or "[" in name_clean or "]" in name_clean:
+        return True
+    if any(name_clean.lower().endswith(ext) for ext in [".cmake", ".py", ".h", ".cc", ".cpp", ".txt", ".md"]):
+        return True
+    return False
 
 
 def get_prs_from_log(log_output, prs_base=None, log_file=None, scan_depth=100):
@@ -280,7 +229,7 @@ def get_prs_from_log(log_output, prs_base=None, log_file=None, scan_depth=100):
                 # Reuse commits already fetched in get_pr_details to avoid an extra gh CLI call
                 for commit in details.get("commits", []):
                     all_extracted_nums.extend(extract_pr_numbers(commit.get("messageHeadline", ""), strict=True))
-                    all_extracted_nums.extend(extract_pr_numbers(commit.get("messageBody", ""), strict=True))
+                    # DO NOT scan messageBody for expansion to avoid historical context PRs
 
                 # Filter and Normalize
                 current_pr_int = int(pr_num_str)
@@ -371,6 +320,19 @@ def main():
     parser.add_argument("--target", default="origin/rel-1.24.1", help="Target branch/commit to compare to")
     parser.add_argument("--dir", default="contributors", help="Output directory for reports and logs")
     parser.add_argument("--scan-depth", type=int, default=200, help="Depth to scan base/meta-PRs for deduplication")
+    parser.add_argument(
+        "--paths",
+        nargs="+",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Optional list of paths (git pathspec) to limit history to. "
+            "Only commits that touch one of these paths are considered. "
+            "Note: when a 'Cherry-pick round' meta-PR is included because at "
+            "least one of its cherry-picks touched these paths, all its "
+            "sub-PRs are still expanded regardless of paths."
+        ),
+    )
     args = parser.parse_args()
 
     # Early validation
@@ -381,6 +343,9 @@ def main():
     branch_target = args.target
     output_dir = args.dir
     scan_depth = args.scan_depth
+    # Build a pathspec suffix (e.g. ["--", "onnxruntime/core/providers/webgpu", ...]) once,
+    # so it can be appended to each `git log` invocation below.
+    paths_args = (["--", *args.paths]) if args.paths else []
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -388,10 +353,12 @@ def main():
     logs_path = os.path.join(output_dir, "logs.txt")
     with open(logs_path, "w", encoding="utf-8") as log_file:
         log_event(f"Starting comparison: {branch_base} -> {branch_target}", log_file)
+        if args.paths:
+            log_event(f"Limiting history to paths: {args.paths}", log_file)
 
         # 1. Fetch base branch PRs (scan depth controlled by scan_depth)
         log_event(f"Fetching base branch history for {branch_base} (last {scan_depth})...", log_file)
-        log_base = run_command(["git", "log", branch_base, "-n", str(scan_depth), "--oneline"])
+        log_base = run_command(["git", "log", branch_base, "-n", str(scan_depth), "--oneline", *paths_args])
         if log_base is None:
             log_event(
                 f"Error: Could not fetch history for base ref '{branch_base}'. Please check if the ref exists.",
@@ -405,7 +372,7 @@ def main():
         # 2. Fetch target branch PRs (only those not in base)
         log_event(f"Fetching target branch history: {branch_base}..{branch_target}...", log_file)
         # Using A..B syntax for git log
-        log_target = run_command(["git", "log", f"{branch_base}..{branch_target}", "--oneline"])
+        log_target = run_command(["git", "log", f"{branch_base}..{branch_target}", "--oneline", *paths_args])
         if log_target is None:
             log_event(
                 f"Error: Could not fetch history for range '{branch_base}..{branch_target}'. Please check if the refs exist.",

@@ -20,21 +20,28 @@ namespace EinsumOp {
 
 // Holds CUDA assets required for CUDA ops that need to be executed as part of the Einsum flow
 struct EinsumCudaAssets {
-  explicit EinsumCudaAssets(cublasHandle_t cublas_handle,
-                            const CUDAExecutionProvider* cuda_ep,
-                            Stream* ort_stream, AllocatorPtr gpu_allocator) : cublas_handle_(cublas_handle),
-                                                                              cuda_ep_(cuda_ep),
-                                                                              ort_stream_(ort_stream),
-                                                                              gpu_allocator_(gpu_allocator) {}
+  explicit EinsumCudaAssets(Stream* ort_stream,
+                            const cudaDeviceProp& device_prop,
+                            cublasHandle_t cublas_handle,
+                            cudnnHandle_t cudnn_handle,
+                            AllocatorPtr gpu_allocator,
+                            bool use_tf32) : ort_stream_(ort_stream),
+                                             device_prop_(&device_prop),
+                                             cublas_handle_(cublas_handle),
+                                             cudnn_handle_(cudnn_handle),
+                                             gpu_allocator_(gpu_allocator),
+                                             use_tf32_(use_tf32) {}
 
-  cudaStream_t GetCudaStream() {
+  cudaStream_t GetCudaStream() const {
     return ort_stream_ ? static_cast<cudaStream_t>(ort_stream_->GetHandle()) : nullptr;
   }
 
-  cublasHandle_t cublas_handle_;
-  const CUDAExecutionProvider* cuda_ep_;
   Stream* ort_stream_;
+  const cudaDeviceProp* device_prop_;
+  cublasHandle_t cublas_handle_;
+  cudnnHandle_t cudnn_handle_;
   AllocatorPtr gpu_allocator_;
+  bool use_tf32_;
 };
 
 namespace DeviceHelpers {
@@ -47,12 +54,15 @@ Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input
 
 Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets);
 
+std::unique_ptr<Tensor> CreateTensor(const DataTypeImpl* type, const TensorShape& shape, AllocatorPtr allocator);
+
 Status ZeroBuffer(Tensor& input, void* einsum_cuda_assets);
 
 template <typename T>
 Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
               size_t left_stride, size_t right_stride, size_t output_stride,
               size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+              const void* mlas_backend_config,
               void* einsum_cuda_assets);
 
 template <typename T>

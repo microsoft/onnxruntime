@@ -187,7 +187,6 @@ test {
 		'ENABLE_TRAINING_APIS',
 		'JAVA_FULL_TEST',
 		'USE_ACL',
-		'USE_ARMNN',
 		'USE_AZURE',
 		'USE_CANN',
 		'USE_COREML',

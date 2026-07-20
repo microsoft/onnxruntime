@@ -240,7 +240,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
     debug_info.use_flash_attention = use_flash_attention;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
     if (fused_runner != nullptr) {
-      debug_info.SetTrtFusedKernel(false /*causal*/, this->enable_trt_flash_attention_, parameters.sequence_length);
+      debug_info.SetTrtFusedKernel(this->enable_trt_flash_attention_, parameters.sequence_length);
     }
 
     debug_info.Print("PackedMultiHeadAttention",
@@ -267,7 +267,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
                                                    use_flash_attention,
                                                    use_memory_efficient_attention,
                                                    no_qkv_workspace);
-  auto work_space = this->template GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
+  auto work_space = this->template GetScratchBuffer<void>(workSpaceSize, this->GetComputeStream(context));
 
   PackedMultiHeadAttentionData<CudaT> data;
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());

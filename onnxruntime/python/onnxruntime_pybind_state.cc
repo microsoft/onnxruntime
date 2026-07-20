@@ -77,6 +77,7 @@ const OrtDevice::DeviceType OrtDevice::GPU;
 
 #include <iterator>
 #include <algorithm>
+#include <string_view>
 #include <utility>
 
 namespace onnxruntime {
@@ -85,6 +86,56 @@ namespace python {
 namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
+
+namespace {
+
+constexpr std::string_view kEpCudaProviderOptionPrefix{"ep.cuda."};
+
+struct AdaptedProviderOptions {
+  std::vector<std::string> keys;
+  std::vector<std::string> values;
+  std::vector<const char*> key_ptrs;
+  std::vector<const char*> value_ptrs;
+};
+
+AdaptedProviderOptions AdaptProviderOptionsForRegisteredPluginEp(const std::string& ep_name,
+                                                                 const ProviderOptions& provider_options) {
+  AdaptedProviderOptions adapted_options;
+  adapted_options.keys.reserve(provider_options.size());
+  adapted_options.values.reserve(provider_options.size());
+
+  for (const auto& [key, value] : provider_options) {
+    std::string_view adapted_key{key};
+
+    if (adapted_key.rfind(kEpCudaProviderOptionPrefix, 0) == 0) {
+      adapted_key.remove_prefix(kEpCudaProviderOptionPrefix.size());
+    }
+
+    if (ep_name == kCudaExecutionProvider) {
+      if (adapted_key == "device_id") {
+        continue;
+      }
+
+      if (adapted_key == "prefer_nhwc_layout") {
+        adapted_key = "prefer_nhwc";
+      }
+    }
+
+    adapted_options.keys.emplace_back(adapted_key);
+    adapted_options.values.push_back(value);
+  }
+
+  adapted_options.key_ptrs.reserve(adapted_options.keys.size());
+  adapted_options.value_ptrs.reserve(adapted_options.values.size());
+  for (size_t i = 0; i < adapted_options.keys.size(); ++i) {
+    adapted_options.key_ptrs.push_back(adapted_options.keys[i].c_str());
+    adapted_options.value_ptrs.push_back(adapted_options.values[i].c_str());
+  }
+
+  return adapted_options;
+}
+
+}  // namespace
 
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
@@ -264,7 +315,8 @@ pybind11::array PrimitiveTensorToNumpyFromDevice(const OrtValue& ort_value, cons
 // pretty much does what a DataTransferManager does - copy data from device(s) to the host
 py::object GetPyObjFromTensor(const OrtValue& ort_value,
                               const DataTransferManager* data_transfer_manager,
-                              const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions) {
+                              const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions,
+                              bool zero_copy_non_owning) {
   ORT_ENFORCE(ort_value.IsTensor(), "This function only supports tensors");
 
   const auto& tensor = ort_value.Get<Tensor>();
@@ -277,10 +329,21 @@ py::object GetPyObjFromTensor(const OrtValue& ort_value,
     return py::cast<py::object>(result);
   }
 
-  const auto device_type = device.Type();
-  // Create an numpy array on top of the OrtValue memory, no copy
-  if (device_type == OrtDevice::CPU) {
-    py::array result = PrimitiveTensorToNumpyOverOrtValue(ort_value);
+  // Create a numpy array on top of the OrtValue memory, no copy,
+  // but only when the tensor owns the buffer. When the tensor wraps external
+  // memory (e.g. a numpy input array passed through as output), the buffer
+  // lifetime is not tied to the OrtValue and zero-copy would create a
+  // dangling pointer. See https://github.com/microsoft/onnxruntime/issues/21922
+  if (device.UsesCpuMemory()) {
+    if (tensor.OwnsBuffer() || zero_copy_non_owning) {
+      py::array result = PrimitiveTensorToNumpyOverOrtValue(ort_value);
+      return py::cast<py::object>(result);
+    }
+    // Tensor does not own the buffer — must copy to avoid dangling pointers
+    // when the underlying memory (e.g. a numpy input array) is freed.
+    // See https://github.com/microsoft/onnxruntime/issues/21922
+    MemCpyFunc cpu_copy = CpuToCpuMemCpy;
+    py::array result = PrimitiveTensorToNumpyFromDevice(ort_value, cpu_copy);
     return py::cast<py::object>(result);
   }
 
@@ -458,24 +521,6 @@ py::object AddTensorAsPyObj(const OrtValue& val, const DataTransferManager* data
   return GetPyObjFromTensor(val, data_transfer_manager, mem_cpy_to_host_functions);
 }
 
-static std::shared_ptr<onnxruntime::IExecutionProviderFactory> LoadExecutionProviderFactory(
-    const std::string& ep_shared_lib_path,
-    const ProviderOptions& provider_options = {},
-    const std::string& entry_symbol_name = "GetProvider") {
-  void* handle;
-  const auto path_str = ToPathString(ep_shared_lib_path);
-  auto error = Env::Default().LoadDynamicLibrary(path_str, false, &handle);
-  if (!error.IsOK()) {
-    throw std::runtime_error(error.ErrorMessage());
-  }
-
-  Provider* (*PGetProvider)();
-  OrtPybindThrowIfError(Env::Default().GetSymbolFromLibrary(handle, entry_symbol_name, (void**)&PGetProvider));
-
-  Provider* provider = PGetProvider();
-  return provider->CreateExecutionProviderFactory(&provider_options);
-}
-
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* cuda_provider_info,
                                                              const ProviderOptionsMap& provider_options_map) {
@@ -573,6 +618,71 @@ void RegisterNvTensorRTRtxPluginsAsCustomOps(PySessionOptions& so, const Provide
 }
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD)
+// Find a registered plugin EP device matching the given EP name and optional device_id from provider options.
+// Returns nullptr if no matching device is found.
+static const OrtEpDevice* FindRegisteredPluginEpDevice(
+    const std::string& ep_name,
+    const ProviderOptions* provider_options) {
+  const auto& ep_devices = GetEnv().GetOrtEpDevices();
+  if (ep_devices.empty()) {
+    return nullptr;
+  }
+
+  bool has_requested_device_id = false;
+  int requested_device_id = 0;
+  if (provider_options != nullptr) {
+    if (const auto device_id_it = provider_options->find("device_id"); device_id_it != provider_options->end()) {
+      try {
+        requested_device_id = std::stoi(device_id_it->second);
+        has_requested_device_id = requested_device_id >= 0;
+      } catch (const std::exception&) {
+        LOGS_DEFAULT(WARNING) << "Invalid device_id value '" << device_id_it->second
+                              << "' in provider options for EP '" << ep_name << "'; ignoring.";
+      }
+    }
+  }
+
+  for (const OrtEpDevice* ep_device : ep_devices) {
+    if (!ep_device || ep_device->ep_name != ep_name) {
+      continue;
+    }
+
+    if (has_requested_device_id) {
+      Ort::ConstEpDevice current_device(ep_device);
+      std::optional<int> current_device_id{};
+      if (const char* device_id = current_device.EpOptions().GetValue("device_id"); device_id != nullptr) {
+        try {
+          current_device_id = std::stoi(device_id);
+        } catch (const std::exception&) {
+        }
+      }
+
+      if (!current_device_id.has_value()) {
+        if (const char* device_id = current_device.EpMetadata().GetValue("cuda_device_id"); device_id != nullptr) {
+          try {
+            current_device_id = std::stoi(device_id);
+          } catch (const std::exception&) {
+          }
+        }
+      }
+
+      if (!current_device_id.has_value()) {
+        current_device_id = static_cast<int>(current_device.Device().DeviceId());
+      }
+
+      if (*current_device_id != requested_device_id) {
+        continue;
+      }
+    }
+
+    return ep_device;
+  }
+
+  return nullptr;
+}
+#endif
+
 /**
  * Creates an IExecutionProviderFactory instance of the specified type.
  * @param session_options The session options.
@@ -585,6 +695,54 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
     const SessionOptions& session_options,
     const std::string& type,
     const ProviderOptionsMap& provider_options_map) {
+#if !defined(ORT_MINIMAL_BUILD)
+  auto get_registered_plugin_ep_devices = [&]() -> InlinedVector<const OrtEpDevice*> {
+    InlinedVector<const OrtEpDevice*> selected_devices;
+
+    const ProviderOptions* provider_options = nullptr;
+    if (const auto provider_it = provider_options_map.find(type); provider_it != provider_options_map.end()) {
+      provider_options = &provider_it->second;
+    }
+
+    const OrtEpDevice* selected_device = FindRegisteredPluginEpDevice(type, provider_options);
+    if (selected_device == nullptr) {
+      if (provider_options != nullptr) {
+        if (const auto device_id_it = provider_options->find("device_id"); device_id_it != provider_options->end()) {
+          LOGS_DEFAULT(WARNING) << "No registered plugin EP device found for '" << type
+                                << "' with device_id=" << device_id_it->second;
+        }
+      }
+      return selected_devices;
+    }
+
+    selected_devices.push_back(selected_device);
+    return selected_devices;
+  };
+
+  auto try_create_registered_plugin_factory = [&]() -> std::shared_ptr<IExecutionProviderFactory> {
+    auto selected_devices = get_registered_plugin_ep_devices();
+    if (selected_devices.empty()) {
+      return nullptr;
+    }
+
+    std::unique_ptr<IExecutionProviderFactory> ep_factory;
+    const auto status = onnxruntime::CreateIExecutionProviderFactoryForEpDevices(GetEnv(), selected_devices, ep_factory);
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(WARNING) << "Failed to create dynamic EP factory for '" << type
+                            << "' from registered EP devices: " << status;
+      return nullptr;
+    }
+
+    return std::shared_ptr<IExecutionProviderFactory>(std::move(ep_factory));
+  };
+
+  if (type == kCudaExecutionProvider) {
+    if (auto ep_factory = try_create_registered_plugin_factory(); ep_factory) {
+      return ep_factory;
+    }
+  }
+#endif
+
   if (type == kCpuExecutionProvider) {
     return onnxruntime::CPUProviderFactoryCreator::Create(
         session_options.enable_cpu_mem_arena);
@@ -1106,11 +1264,6 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
     }
     return onnxruntime::ACLProviderFactoryCreator::Create(enable_fast_math);
 #endif
-  } else if (type == kArmNNExecutionProvider) {
-#ifdef USE_ARMNN
-    return onnxruntime::ArmNNProviderFactoryCreator::Create(
-        session_options.enable_cpu_mem_arena);
-#endif
   } else if (type == kDmlExecutionProvider) {
 #ifdef USE_DML
     auto cit = provider_options_map.find(type);
@@ -1208,25 +1361,13 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
                           << " to ensure all dependencies are met.";
 #endif
   } else {
-    // check whether it is a dynamic load EP:
-    const auto it = provider_options_map.find(type);
-    if (it != provider_options_map.end()) {
-      auto shared_lib_path_it = it->second.find(kExecutionProviderSharedLibraryPath);
-      if (shared_lib_path_it != it->second.end()) {
-        // this is an EP with dynamic loading
-        // construct the provider option
-        ProviderOptions provider_options;
-        std::string entry_symbol = kDefaultExecutionProviderEntry;
-        for (auto option : it->second) {
-          if (option.first == kExecutionProviderSharedLibraryEntry) {
-            entry_symbol = option.second;
-          } else if (option.first != kExecutionProviderSharedLibraryPath) {
-            provider_options.insert(option);
-          }
-        }
-        return LoadExecutionProviderFactory(shared_lib_path_it->second, provider_options, entry_symbol);
-      }
+#if !defined(ORT_MINIMAL_BUILD)
+    // Try EPs dynamically registered via register_execution_provider_library().
+    if (auto ep_factory = try_create_registered_plugin_factory(); ep_factory) {
+      return ep_factory;
     }
+#endif
+
     // unknown provider
     throw std::runtime_error("Unknown Provider Type: " + type);
   }
@@ -1246,7 +1387,43 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(const Sessio
                                                                     const ProviderOptionsMap& provider_options_map) {
   auto ep_factory = CreateExecutionProviderFactoryInstance(session_options, type, provider_options_map);
   if (ep_factory) {
-    return ep_factory->CreateProvider();
+    const auto& default_logger = GetEnv().GetLoggingManager()->DefaultLogger();
+    OrtSessionOptions ort_session_options;
+    ort_session_options.value = session_options;
+
+#if !defined(ORT_MINIMAL_BUILD)
+    auto add_registered_plugin_ep_options_to_session = [&]() -> Status {
+      const ProviderOptions* provider_options = nullptr;
+      if (const auto provider_it = provider_options_map.find(type); provider_it != provider_options_map.end()) {
+        provider_options = &provider_it->second;
+      }
+
+      if (provider_options == nullptr || provider_options->empty()) {
+        return Status::OK();
+      }
+
+      const OrtEpDevice* selected_device = FindRegisteredPluginEpDevice(type, provider_options);
+      if (selected_device == nullptr) {
+        return Status::OK();
+      }
+
+      InlinedVector<const OrtEpDevice*> selected_devices;
+      selected_devices.push_back(selected_device);
+
+      auto adapted_options = AdaptProviderOptionsForRegisteredPluginEp(type, *provider_options);
+      return AddEpOptionsToSessionOptions(selected_devices,
+                                          adapted_options.key_ptrs,
+                                          adapted_options.value_ptrs,
+                                          ort_session_options.value);
+    };
+
+    auto status = add_registered_plugin_ep_options_to_session();
+    if (!status.IsOK()) {
+      ORT_THROW("Error applying registered plugin EP options: ", status);
+    }
+#endif
+
+    return ep_factory->CreateProvider(ort_session_options, *default_logger.ToExternal());
   }
   return nullptr;
 }
@@ -1268,6 +1445,23 @@ static Status AddExplicitEpFactory(PySessionOptions& py_sess_options, const std:
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to add provider of type '",
                            provider_type, "' to SessionOptions. Provider configuration is not supported.");
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  if (!provider_options.empty()) {
+    const OrtEpDevice* selected_device = FindRegisteredPluginEpDevice(provider_type, &provider_options);
+    if (selected_device != nullptr) {
+      InlinedVector<const OrtEpDevice*> selected_devices;
+      selected_devices.push_back(selected_device);
+
+      auto adapted_options = AdaptProviderOptionsForRegisteredPluginEp(provider_type, provider_options);
+      ORT_RETURN_IF_ERROR(AddEpOptionsToSessionOptions(selected_devices,
+                                                       adapted_options.key_ptrs,
+                                                       adapted_options.value_ptrs,
+                                                       py_sess_options.value));
+    }
+  }
+#endif
+
   py_sess_options.provider_factories.push_back(std::move(ep_factory));
   return Status::OK();
 }
@@ -1327,16 +1521,8 @@ static Status AddEpFactoryFromEpDevices(PySessionOptions& py_sess_options,
                                         const std::vector<const OrtEpDevice*>& ep_devices,
                                         const ProviderOptions& provider_options) {
   onnxruntime::Environment& env = GetEnv();
-  const size_t num_ep_options = provider_options.size();
-  std::vector<const char*> ep_option_keys;
-  std::vector<const char*> ep_option_vals;
-
-  ep_option_keys.reserve(num_ep_options);
-  ep_option_vals.reserve(num_ep_options);
-  for (const auto& [key, val] : provider_options) {
-    ep_option_keys.push_back(key.c_str());
-    ep_option_vals.push_back(val.c_str());
-  }
+  const auto ep_name = ep_devices.empty() ? std::string{} : ep_devices[0]->ep_name;
+  auto adapted_options = AdaptProviderOptionsForRegisteredPluginEp(ep_name, provider_options);
 
   std::unique_ptr<IExecutionProviderFactory> provider_factory = nullptr;
   ORT_RETURN_IF_ERROR(CreateIExecutionProviderFactoryForEpDevices(env,
@@ -1344,8 +1530,8 @@ static Status AddEpFactoryFromEpDevices(PySessionOptions& py_sess_options,
                                                                   /*output*/ provider_factory));
 
   ORT_RETURN_IF_ERROR(AddEpOptionsToSessionOptions(ep_devices,
-                                                   ep_option_keys,
-                                                   ep_option_vals,
+                                                   adapted_options.key_ptrs,
+                                                   adapted_options.value_ptrs,
                                                    py_sess_options.value));
 
   ORT_RETURN_IF_ERROR(AddEpCustomDomainsToSessionOptions(ep_devices,
@@ -1551,6 +1737,88 @@ void addGlobalMethods(py::module& m) {
       R"pbdoc("Validate a compiled model's compatibility information for one or more EP devices.)pbdoc");
 
   m.def(
+      "get_compatibility_info_from_model",
+      [](const std::basic_string<ORTCHAR_T>& model_path, const std::string& ep_type) -> py::object {
+        Ort::AllocatorWithDefaultOptions allocator;
+        Ort::AllocatedStringPtr compat_info = Ort::GetCompatibilityInfoFromModelAllocated(
+            model_path.c_str(), ep_type.c_str(), allocator);
+        if (compat_info.get() == nullptr) {
+          return py::none();
+        }
+        return py::str(compat_info.get());
+      },
+      R"pbdoc(Extract EP compatibility info from a precompiled model file.
+
+Parses the model file to extract the compatibility info string for a specific execution provider
+from the model's metadata properties. Returns None if no compatibility info exists for the EP.
+
+Args:
+    model_path: Path to the ONNX model file.
+    ep_type: The execution provider type string (e.g. "CPUExecutionProvider").
+
+Returns:
+    The compatibility info string, or None if not found.
+)pbdoc");
+
+  m.def(
+      "get_compatibility_info_from_model_bytes",
+      [](const py::buffer& model_data, const std::string& ep_type) -> py::object {
+        py::buffer_info info = model_data.request();
+        Ort::AllocatorWithDefaultOptions allocator;
+        Ort::AllocatedStringPtr compat_info = Ort::GetCompatibilityInfoFromModelBytesAllocated(
+            info.ptr, static_cast<size_t>(info.size * info.itemsize), ep_type.c_str(), allocator);
+        if (compat_info.get() == nullptr) {
+          return py::none();
+        }
+        return py::str(compat_info.get());
+      },
+      R"pbdoc(Extract EP compatibility info from precompiled model bytes in memory.
+
+Same as get_compatibility_info_from_model but reads from a buffer instead of a file.
+Accepts bytes, bytearray, memoryview, or any object supporting the buffer protocol.
+
+Args:
+    model_data: The model data as a buffer (bytes, bytearray, memoryview, etc.).
+    ep_type: The execution provider type string (e.g. "CPUExecutionProvider").
+
+Returns:
+    The compatibility info string, or None if not found.
+)pbdoc");
+
+  m.def(
+      "get_hardware_devices",
+      []() -> const std::vector<const OrtHardwareDevice*>& {
+        return GetEnv().GetSortedOrtHardwareDevices();
+      },
+      R"pbdoc(Get the list of available hardware devices.)pbdoc",
+      py::return_value_policy::reference);
+
+  m.def(
+      "get_hardware_device_ep_incompatibility_details",
+      [](const std::string& ep_name,
+         const OrtHardwareDevice* hw) -> py::dict {
+        std::unique_ptr<OrtDeviceEpIncompatibilityDetails> details;
+        OrtPybindThrowIfError(GetEnv().GetHardwareDeviceEpIncompatibilityDetails(ep_name, hw, details));
+
+        py::dict result;
+        result["reasons_bitmask"] = details->reasons_bitmask;
+        if (!details->notes.empty()) {
+          result["notes"] = py::str(details->notes);
+        } else {
+          result["notes"] = py::none();
+        }
+        result["error_code"] = details->error_code;
+        return result;
+      },
+      R"pbdoc(Check for known incompatibility issues between hardware device and a specific execution provider.
+
+Returns a dictionary with:
+  - reasons_bitmask: Bitmask of OrtDeviceEpIncompatibilityReason values (0 = no known incompatibility)
+  - notes: Optional human-readable notes about the incompatibility
+  - error_code: EP-specific error code (0 = no error code set)
+)pbdoc");
+
+  m.def(
       "copy_tensors",
       [](const std::vector<const OrtValue*>& src, const std::vector<OrtValue*>& dest, py::object& py_arg) {
         const OrtEnv* ort_env = GetOrtEnv();
@@ -1741,6 +2009,13 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .value("EP_SUPPORTED_OPTIMAL", OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL)
       .value("EP_SUPPORTED_PREFER_RECOMPILATION", OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION)
       .value("EP_UNSUPPORTED", OrtCompiledModelCompatibility_EP_UNSUPPORTED);
+
+  py::enum_<OrtDeviceEpIncompatibilityReason>(m, "OrtDeviceEpIncompatibilityReason", py::arithmetic())
+      .value("NONE", OrtDeviceEpIncompatibility_NONE)
+      .value("DRIVER_INCOMPATIBLE", OrtDeviceEpIncompatibility_DRIVER_INCOMPATIBLE)
+      .value("DEVICE_INCOMPATIBLE", OrtDeviceEpIncompatibility_DEVICE_INCOMPATIBLE)
+      .value("MISSING_DEPENDENCY", OrtDeviceEpIncompatibility_MISSING_DEPENDENCY)
+      .value("UNKNOWN", OrtDeviceEpIncompatibility_UNKNOWN);
 
   py::enum_<OrtAllocatorType>(m, "OrtAllocatorType")
       .value("INVALID", OrtInvalidAllocator)

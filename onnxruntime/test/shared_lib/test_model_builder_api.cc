@@ -18,6 +18,7 @@
 
 #include "test/shared_lib/test_fixture.h"
 #include "test/shared_lib/utils.h"
+#include "test/util/include/api_asserts.h"
 #include "test/util/include/test_allocator.h"
 
 #include "onnxruntime_config.h"  // generated file in build output dir
@@ -124,6 +125,7 @@ struct TestAllocator : public OrtAllocator {
 
     GetStats = nullptr;
     AllocOnStream = nullptr;
+    Shrink = nullptr;
   }
 
   // initializers that are used directly by the model. as there's no copy they must remain valid.
@@ -724,4 +726,758 @@ TEST(ModelEditorAPITest, CreateTypeInfo) {
   api.ReleaseTypeInfo(optional_type_info);
 
   api.ReleaseTypeInfo(base_tensor_type_info);
+}
+
+//
+// Tests for Model Editor API + Compile API integration
+//
+
+namespace {
+// Helper to create a simple model for testing with Model Editor API
+// Creates a model with a Gemm operation: Z = X * Y where X is input and Y is initializer
+Ort::Model CreateSimpleGemmModel(std::vector<std::unique_ptr<std::vector<float>>>& weights) {
+  Ort::Graph graph;
+
+  std::vector<ValueInfo> graph_inputs;
+  std::vector<ValueInfo> graph_outputs;
+
+  // Input: X is 3x4
+  std::vector<int64_t> input_dims({3, 4});
+  TensorTypeAndShapeInfo input_tensor_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+                                           input_dims);
+  auto input_type_info = TypeInfo::CreateTensorInfo(input_tensor_info.GetConst());
+  graph_inputs.emplace_back("X", input_type_info.GetConst());
+
+  // Output: Z is 3x8
+  std::vector<int64_t> output_dims = {3, 8};
+  TensorTypeAndShapeInfo output_tensor_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+                                            output_dims);
+  auto output_type_info = TypeInfo::CreateTensorInfo(output_tensor_info.GetConst());
+  graph_outputs.emplace_back("Z", output_type_info.GetConst());
+
+  graph.SetInputs(graph_inputs);
+  graph.SetOutputs(graph_outputs);
+
+  // Gemm node with alpha=2.0
+  std::vector<OpAttr> attributes;
+  float alpha_value = 2.0;
+  attributes.push_back(OpAttr("alpha", &alpha_value, 1, OrtOpAttrType::ORT_OP_ATTR_FLOAT));
+
+  Node node("Gemm", onnxruntime::kOnnxDomain, "Gemm1", {"X", "Y"}, {"Z"}, attributes);
+  graph.AddNode(node);
+
+  // Y initializer: 4x8
+  std::vector<int64_t> y_dims = {4, 8};
+  weights.emplace_back(std::make_unique<std::vector<float>>(32));
+  auto& y_values = *weights.back();
+  std::iota(y_values.begin(), y_values.end(), 1.0f);
+
+  auto info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  auto y_tensor = Value::CreateTensor(info, y_values.data(), y_values.size(), y_dims.data(), y_dims.size());
+  graph.AddInitializer("Y", y_tensor, /*data is external*/ true);
+
+  std::vector<Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 18}};
+  Model model(opsets);
+  model.AddGraph(graph);
+
+  return model;
+}
+
+// Helper to run inference on the simple Gemm model and verify all output values.
+// Model is Z = 2.0 * X * Y where X is 3x4 (all ones) and Y is 4x8 (iota 1..32).
+// Expected output: each row is 2 * column_sums_of_Y = {104, 112, 120, 128, 136, 144, 152, 160}.
+void RunAndVerifySimpleGemmModel(const Ort::Model& model) {
+  Ort::SessionOptions session_options;
+  Ort::Session session(*ort_env, model, session_options);
+  ASSERT_EQ(session.GetInputCount(), 1u);
+  ASSERT_EQ(session.GetOutputCount(), 1u);
+
+  std::vector<float> input_data(3 * 4, 1.0f);
+  std::vector<int64_t> input_dims = {3, 4};
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  auto input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_data.data(), input_data.size(),
+                                                      input_dims.data(), input_dims.size());
+
+  const char* input_names[] = {"X"};
+  const char* output_names[] = {"Z"};
+  auto outputs = session.Run(Ort::RunOptions{}, input_names, &input_tensor, 1, output_names, 1);
+  ASSERT_EQ(outputs.size(), 1u);
+  ASSERT_TRUE(outputs[0].IsTensor());
+
+  auto output_shape = outputs[0].GetTensorTypeAndShapeInfo().GetShape();
+  ASSERT_EQ(output_shape, (std::vector<int64_t>{3, 8}));
+
+  const float* output_data = outputs[0].GetTensorData<float>();
+  // alpha=2.0, X is all ones, so each output row = 2 * sum of each column of Y (iota 1..32 in 4x8)
+  const std::vector<float> expected_row = {104.0f, 112.0f, 120.0f, 128.0f, 136.0f, 144.0f, 152.0f, 160.0f};
+  for (int row = 0; row < 3; ++row) {
+    for (int col = 0; col < 8; ++col) {
+      EXPECT_FLOAT_EQ(output_data[row * 8 + col], expected_row[col])
+          << "Mismatch at row=" << row << " col=" << col;
+    }
+  }
+}
+}  // namespace
+
+// Test basic compilation from OrtModel
+TEST(ModelEditorCompileAPITest, BasicCompileFromOrtModel) {
+  std::vector<std::unique_ptr<std::vector<float>>> weights;
+  auto model = CreateSimpleGemmModel(weights);
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+
+  // Set the OrtModel as input
+  compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+
+  // Set output to buffer - use embed mode for simplicity
+  compile_options.SetEpContextEmbedMode(true);
+
+  std::unique_ptr<MockedOrtAllocator> allocator = std::make_unique<MockedOrtAllocator>();
+  void* output_buffer = nullptr;
+  size_t output_size = 0;
+  compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
+
+  // Compile should succeed (note: may not produce EPContext nodes without specific EP, but validation passes)
+  ASSERT_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+
+  // Verify output was produced
+  EXPECT_NE(output_buffer, nullptr);
+  EXPECT_GT(output_size, 0u);
+
+  // Cleanup
+  if (output_buffer != nullptr) {
+    allocator->Free(output_buffer);
+  }
+
+  // Verify the model still produces correct inference results after compilation
+  RunAndVerifySimpleGemmModel(model);
+}
+TEST(ModelEditorCompileAPITest, CompileFromNullModel_Fails) {
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+
+  try {
+    compile_options.SetInputModel(nullptr);
+    FAIL() << "Expected exception for null model pointer";
+  } catch (const Ort::Exception& e) {
+    EXPECT_THAT(e.what(), ::testing::HasSubstr("null"));
+  }
+}
+
+// Test validation: model with no graph
+TEST(ModelEditorCompileAPITest, CompileFromModelWithNoGraph_Fails) {
+  // Create a model but don't add a graph
+  std::vector<Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 18}};
+  Model model(opsets);
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+
+  compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+  compile_options.SetEpContextEmbedMode(true);
+
+  std::unique_ptr<MockedOrtAllocator> allocator = std::make_unique<MockedOrtAllocator>();
+  void* output_buffer = nullptr;
+  size_t output_size = 0;
+  compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
+
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  EXPECT_FALSE(status.IsOK()) << "Expected CompileModel to fail for model with no graph";
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("graph"));
+}
+
+// Test validation: model with no outputs (one input but zero outputs).
+// 0 outputs is still rejected because compilation produces an output model that
+// would have no consumers for any computed values.
+TEST(ModelEditorCompileAPITest, CompileFromModelWithEmptyOutputs_Fails) {
+  Ort::Graph graph;
+
+  // Provide a single input but no outputs, to isolate the output-count check.
+  std::vector<ValueInfo> graph_inputs;
+  std::vector<int64_t> dims({4});
+  TensorTypeAndShapeInfo tensor_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, dims);
+  auto type_info = TypeInfo::CreateTensorInfo(tensor_info.GetConst());
+  graph_inputs.emplace_back("X", type_info.GetConst());
+  graph.SetInputs(graph_inputs);
+  // Intentionally do not call SetOutputs.
+
+  std::vector<Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 18}};
+  Model model(opsets);
+  model.AddGraph(graph);
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+
+  compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+  compile_options.SetEpContextEmbedMode(true);
+
+  std::unique_ptr<MockedOrtAllocator> allocator = std::make_unique<MockedOrtAllocator>();
+  void* output_buffer = nullptr;
+  size_t output_size = 0;
+  compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
+
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  EXPECT_FALSE(status.IsOK()) << "Expected CompileModel to fail for model with no outputs";
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("at least one output"));
+}
+
+// Test: model with zero graph inputs is now accepted by CompileModel.
+// Mirrors what CreateSessionFromModel already accepts (e.g., a graph composed of
+// zero-input generator ops like RandomNormal that produces output without external input).
+// Regression test for https://github.com/microsoft/onnxruntime/issues/28135.
+//
+// Scope: this test exercises only the ORT-side validation in ModelCompilationOptions::Check().
+// EP-specific validation (e.g., whether the WebNN EP's partitioner accepts a 0-input subgraph)
+// is owned by the respective EP and is not covered here.
+TEST(ModelEditorCompileAPITest, CompileFromModelWithEmptyInputs_Succeeds) {
+  Ort::Graph graph;
+
+  // Zero graph inputs; one graph output produced by a RandomNormal node.
+  // RandomNormal takes 0 inputs and produces a tensor with shape specified via attribute.
+  // Use RandomNormal rather than Constant because Constant nodes are folded into initializers
+  // at load time (see graph.cc Graph::LoadFromModelEditorApiModel) and would not exercise
+  // the true 0-input producer path.
+  std::vector<int64_t> output_dims = {2, 3};
+  TensorTypeAndShapeInfo output_tensor_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+                                            output_dims);
+  auto output_type_info = TypeInfo::CreateTensorInfo(output_tensor_info.GetConst());
+
+  std::vector<ValueInfo> graph_outputs;
+  graph_outputs.emplace_back("Y", output_type_info.GetConst());
+  graph.SetOutputs(graph_outputs);
+  // Intentionally do not call SetInputs (zero graph inputs).
+
+  std::vector<OpAttr> attributes;
+  std::vector<int64_t> shape_attr_value = {2, 3};
+  attributes.push_back(OpAttr("shape", shape_attr_value.data(),
+                              static_cast<int>(shape_attr_value.size()),
+                              OrtOpAttrType::ORT_OP_ATTR_INTS));
+
+  Node node("RandomNormal", onnxruntime::kOnnxDomain, "RandomNormal1",
+            /*input_names*/ {}, /*output_names*/ {"Y"}, attributes);
+  graph.AddNode(node);
+
+  std::vector<Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 18}};
+  Model model(opsets);
+  model.AddGraph(graph);
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+
+  compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+  compile_options.SetEpContextEmbedMode(true);
+
+  std::unique_ptr<MockedOrtAllocator> allocator = std::make_unique<MockedOrtAllocator>();
+  void* output_buffer = nullptr;
+  size_t output_size = 0;
+  compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
+
+  // Compile should succeed. No specific compiling EP is required; the default
+  // kGenerateModel action emits an output model even when no EPContext nodes are produced.
+  ASSERT_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+
+  // Fatal: a compile that returns OK but produces no artifact bytes is a regression.
+  ASSERT_NE(output_buffer, nullptr);
+  ASSERT_GT(output_size, 0u);
+
+  allocator->Free(output_buffer);
+}
+
+// Test: model can be reused after compilation.
+// NOTE: This is not an explicit API guarantee. It documents current behavior so that if a future change
+// breaks model reuse, the regression is surfaced and can be evaluated.
+TEST(ModelEditorCompileAPITest, ModelCanBeReusedAfterCompilation) {
+  std::vector<std::unique_ptr<std::vector<float>>> weights;
+  auto model = CreateSimpleGemmModel(weights);
+
+  // First compilation
+  {
+    Ort::SessionOptions session_options;
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+    compile_options.SetEpContextEmbedMode(true);
+
+    std::unique_ptr<MockedOrtAllocator> allocator = std::make_unique<MockedOrtAllocator>();
+    void* output_buffer = nullptr;
+    size_t output_size = 0;
+    compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
+
+    ASSERT_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+
+    if (output_buffer != nullptr) {
+      allocator->Free(output_buffer);
+    }
+  }
+
+  // Second compilation with same model
+  {
+    Ort::SessionOptions session_options;
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+    compile_options.SetEpContextEmbedMode(true);
+
+    std::unique_ptr<MockedOrtAllocator> allocator = std::make_unique<MockedOrtAllocator>();
+    void* output_buffer = nullptr;
+    size_t output_size = 0;
+    compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
+
+    ASSERT_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+
+    if (output_buffer != nullptr) {
+      allocator->Free(output_buffer);
+    }
+  }
+
+  // Model should still be usable for creating a session and running inference
+  RunAndVerifySimpleGemmModel(model);
+}
+
+// Test: SetInputModel overrides previous input source (file path)
+TEST(ModelEditorCompileAPITest, SetInputModelOverridesPreviousInputPath) {
+  std::vector<std::unique_ptr<std::vector<float>>> weights;
+  auto model = CreateSimpleGemmModel(weights);
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+
+  // First set a file path (doesn't need to exist since we'll override it)
+  compile_options.SetInputModelPath(ORT_TSTR("nonexistent_file.onnx"));
+
+  // Then override with OrtModel
+  compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+  compile_options.SetEpContextEmbedMode(true);
+
+  std::unique_ptr<MockedOrtAllocator> allocator = std::make_unique<MockedOrtAllocator>();
+  void* output_buffer = nullptr;
+  size_t output_size = 0;
+  compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
+
+  // Should use the OrtModel, not the nonexistent file
+  ASSERT_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+
+  if (output_buffer != nullptr) {
+    allocator->Free(output_buffer);
+  }
+}
+
+// Test: SetInputModelPath overrides previous OrtModel setting
+TEST(ModelEditorCompileAPITest, SetInputModelPathOverridesPreviousModel) {
+  std::vector<std::unique_ptr<std::vector<float>>> weights;
+  auto model = CreateSimpleGemmModel(weights);
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+
+  // First set an OrtModel
+  compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+
+  // Then override with a real file path
+  compile_options.SetInputModelPath(ORT_TSTR("testdata/matmul_1.onnx"));
+  compile_options.SetEpContextEmbedMode(true);
+
+  std::unique_ptr<MockedOrtAllocator> allocator = std::make_unique<MockedOrtAllocator>();
+  void* output_buffer = nullptr;
+  size_t output_size = 0;
+  compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
+
+  // Should use the file path, not the OrtModel
+  ASSERT_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+
+  if (output_buffer != nullptr) {
+    allocator->Free(output_buffer);
+  }
+}
+
+// Test: Compile with output to file
+TEST(ModelEditorCompileAPITest, CompileFromOrtModelToFile) {
+  std::vector<std::unique_ptr<std::vector<float>>> weights;
+  auto model = CreateSimpleGemmModel(weights);
+
+  auto output_path = ORT_TSTR("test_compile_from_ortmodel_output.onnx");
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+
+  compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+  compile_options.SetOutputModelPath(output_path);
+  compile_options.SetEpContextEmbedMode(true);
+
+  ASSERT_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+
+  // Verify output file exists
+  EXPECT_TRUE(std::filesystem::exists(output_path));
+
+  // Verify the output model can be loaded
+  Ort::Session session(*ort_env, output_path, Ort::SessionOptions());
+  EXPECT_GE(session.GetInputCount(), 1u);
+  EXPECT_GE(session.GetOutputCount(), 1u);
+
+  // Cleanup
+  std::filesystem::remove(output_path);
+}
+
+// Test: Validation error for OrtModel with no model_path, no output location, and no embed mode.
+TEST(ModelEditorCompileAPITest, NoOutputLocationNoModelPathFails) {
+  std::vector<std::unique_ptr<std::vector<float>>> weights;
+  auto model = CreateSimpleGemmModel(weights);
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+  // Intentionally do NOT call SetEpContextEmbedMode, SetOutputModelPath, or SetOutputModelBuffer
+
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("output"));
+}
+
+// Test: Setting embed mode with buffer output satisfies the output location requirement
+// for OrtModel with no model_path.
+TEST(ModelEditorCompileAPITest, EmbedModeWithBufferOutputSatisfiesValidation) {
+  std::vector<std::unique_ptr<std::vector<float>>> weights;
+  auto model = CreateSimpleGemmModel(weights);
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+  compile_options.SetEpContextEmbedMode(true);
+
+  std::unique_ptr<MockedOrtAllocator> allocator = std::make_unique<MockedOrtAllocator>();
+  void* output_buffer = nullptr;
+  size_t output_size = 0;
+  compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
+
+  ASSERT_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+
+  if (output_buffer != nullptr) {
+    allocator->Free(output_buffer);
+  }
+}
+
+TEST(ModelEditorAPITest, CreateNode_DuplicateAttributePointer_Fails) {
+  const auto& api = Ort::GetApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  float alpha_value = 1.0f;
+  OrtOpAttr* attr = nullptr;
+  Ort::ThrowOnError(api.CreateOpAttr("alpha", &alpha_value, 1, ORT_OP_ATTR_FLOAT, &attr));
+
+  std::vector<const char*> input_names = {"X"};
+  std::vector<const char*> output_names = {"Y"};
+  // Pass the same attribute pointer twice — should fail without releasing it
+  std::vector<OrtOpAttr*> attrs = {attr, attr};
+
+  OrtNode* node = nullptr;
+  Ort::Status status{model_editor_api.CreateNode("Relu", onnxruntime::kOnnxDomain, "relu1",
+                                                 input_names.data(), input_names.size(),
+                                                 output_names.data(), output_names.size(),
+                                                 attrs.data(), attrs.size(), &node)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("Duplicate"));
+  EXPECT_EQ(node, nullptr);
+
+  // Caller still owns the attribute since CreateNode failed before taking ownership
+  api.ReleaseOpAttr(attr);
+}
+
+TEST(ModelEditorAPITest, CreateNode_NullAttributeEntry_Fails) {
+  const auto& api = Ort::GetApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  float alpha_value = 1.0f;
+  OrtOpAttr* attr = nullptr;
+  Ort::ThrowOnError(api.CreateOpAttr("alpha", &alpha_value, 1, ORT_OP_ATTR_FLOAT, &attr));
+
+  std::vector<const char*> input_names = {"X"};
+  std::vector<const char*> output_names = {"Y"};
+  std::vector<OrtOpAttr*> attrs = {attr, nullptr};
+
+  OrtNode* node = nullptr;
+  Ort::Status status{model_editor_api.CreateNode("Relu", onnxruntime::kOnnxDomain, "relu1",
+                                                 input_names.data(), input_names.size(),
+                                                 output_names.data(), output_names.size(),
+                                                 attrs.data(), attrs.size(), &node)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("null"));
+  EXPECT_EQ(node, nullptr);
+
+  api.ReleaseOpAttr(attr);
+}
+
+// Regression: passing the same OrtValue* twice to AddInitializerToGraph must be rejected.
+// Without the duplicate-pointer guard, the graph would own two unique_ptrs to the same allocation
+// and double-free on destruction.
+TEST(ModelEditorAPITest, AddInitializerToGraph_DuplicatePointer_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  Ort::Graph graph;
+
+  // Create a CPU tensor via the C++ API (RAII).
+  std::vector<float> data(4, 0.0f);
+  std::vector<int64_t> dims = {2, 2};
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  Ort::Value value = Ort::Value::CreateTensor<float>(memory_info, data.data(), data.size(),
+                                                     dims.data(), dims.size());
+
+  // First add transfers ownership of the raw OrtValue* to the graph. Detach the C++ wrapper
+  // so it does not also try to release it on destruction.
+  OrtValue* raw = value;
+  Ort::ThrowOnError(model_editor_api.AddInitializerToGraph(graph, "W1", raw, /*data_is_external*/ false));
+  static_cast<void>(value.release());
+
+  // Second add of the same raw pointer (under a different name) must fail without taking ownership.
+  Ort::Status status{model_editor_api.AddInitializerToGraph(graph, "W2", raw, /*data_is_external*/ false)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("already been added"));
+}
+
+// Regression: passing the same OrtNode* twice to AddNodeToGraph must be rejected.
+TEST(ModelEditorAPITest, AddNodeToGraph_DuplicatePointer_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  Ort::Graph graph;
+  Ort::Node node("Relu", onnxruntime::kOnnxDomain, "relu1", {"X"}, {"Y"});
+
+  // First add transfers ownership of the raw OrtNode* to the graph. Detach the C++ wrapper.
+  OrtNode* raw = node;
+  Ort::ThrowOnError(model_editor_api.AddNodeToGraph(graph, raw));
+  static_cast<void>(node.release());
+
+  // Second add of the same raw pointer must fail without taking ownership.
+  Ort::Status status{model_editor_api.AddNodeToGraph(graph, raw)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("already been added"));
+}
+
+namespace {
+// Helper: create a CPU OrtValue tensor of `num_floats` zero floats backed by `storage`.
+// The returned Ort::Value owns only the OrtValue wrapper; the underlying buffer remains in
+// `storage`, so the caller must keep `storage` alive for as long as the tensor may be accessed.
+Ort::Value MakeCpuFloatTensor(std::vector<float>& storage, size_t num_floats,
+                              const std::vector<int64_t>& dims) {
+  storage.assign(num_floats, 0.0f);
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  return Ort::Value::CreateTensor<float>(memory_info, storage.data(), storage.size(),
+                                         dims.data(), dims.size());
+}
+}  // namespace
+
+// Reject a second initializer with the same name (within the regular initializer map).
+TEST(ModelEditorAPITest, AddInitializerToGraph_DuplicateName_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+  Ort::Graph graph;
+
+  std::vector<float> storage_a, storage_b;
+  Ort::Value a = MakeCpuFloatTensor(storage_a, 4, {2, 2});
+  Ort::Value b = MakeCpuFloatTensor(storage_b, 4, {2, 2});
+
+  OrtValue* raw_a = a;
+  Ort::ThrowOnError(model_editor_api.AddInitializerToGraph(graph, "W", raw_a, /*data_is_external*/ false));
+  static_cast<void>(a.release());
+
+  OrtValue* raw_b = b;
+  Ort::Status status{model_editor_api.AddInitializerToGraph(graph, "W", raw_b, /*data_is_external*/ false)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("name"));
+  // Caller still owns `b` and Ort::Value's destructor releases it. No leak, no double-free.
+}
+
+// Reject a duplicate name that collides across the regular/external boundary.
+TEST(ModelEditorAPITest, AddInitializerToGraph_DuplicateNameAcrossExternal_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+  Ort::Graph graph;
+
+  // First initializer: regular, small.
+  std::vector<float> storage_small;
+  Ort::Value small = MakeCpuFloatTensor(storage_small, 4, {2, 2});
+  OrtValue* raw_small = small;
+  Ort::ThrowOnError(model_editor_api.AddInitializerToGraph(graph, "W", raw_small,
+                                                           /*data_is_external*/ false));
+  static_cast<void>(small.release());
+
+  // Second initializer: external, large enough to satisfy the size guard, same name.
+  std::vector<float> storage_big;
+  Ort::Value big = MakeCpuFloatTensor(storage_big, 64, {64});  // 256 bytes, > kSmallTensorExternalDataThreshold
+  OrtValue* raw_big = big;
+  Ort::Status status{model_editor_api.AddInitializerToGraph(graph, "W", raw_big,
+                                                            /*data_is_external*/ true)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("name"));
+}
+
+// data_is_external=true with a tensor at or below kSmallTensorExternalDataThreshold must be rejected
+// because the resulting in-memory external-data reference would be unusable by ONNX shape inferencing.
+TEST(ModelEditorAPITest, AddInitializerToGraph_SmallExternal_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+  Ort::Graph graph;
+
+  std::vector<float> storage;
+  Ort::Value small = MakeCpuFloatTensor(storage, 4, {2, 2});  // 16 bytes
+  OrtValue* raw = small;
+  Ort::Status status{model_editor_api.AddInitializerToGraph(graph, "W", raw,
+                                                            /*data_is_external*/ true)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("data_is_external"));
+  // Ownership not transferred; Ort::Value destructor releases `small`.
+}
+
+// AddInitializerToGraph rejects null arguments without taking ownership.
+TEST(ModelEditorAPITest, AddInitializerToGraph_NullArgs_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+  Ort::Graph graph;
+
+  std::vector<float> storage;
+  Ort::Value v = MakeCpuFloatTensor(storage, 4, {2, 2});
+  OrtValue* raw = v;
+
+  // Null graph.
+  {
+    Ort::Status status{model_editor_api.AddInitializerToGraph(nullptr, "W", raw, false)};
+    EXPECT_FALSE(status.IsOK());
+  }
+  // Null name.
+  {
+    Ort::Status status{model_editor_api.AddInitializerToGraph(graph, nullptr, raw, false)};
+    EXPECT_FALSE(status.IsOK());
+  }
+  // Empty name.
+  {
+    Ort::Status status{model_editor_api.AddInitializerToGraph(graph, "", raw, false)};
+    EXPECT_FALSE(status.IsOK());
+  }
+  // Null tensor.
+  {
+    Ort::Status status{model_editor_api.AddInitializerToGraph(graph, "W", nullptr, false)};
+    EXPECT_FALSE(status.IsOK());
+  }
+  // None of the above transferred ownership; Ort::Value destructor releases `v`.
+}
+
+// AddNodeToGraph rejects null arguments.
+TEST(ModelEditorAPITest, AddNodeToGraph_NullArgs_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+  Ort::Graph graph;
+  Ort::Node node("Relu", onnxruntime::kOnnxDomain, "relu1", {"X"}, {"Y"});
+
+  {
+    Ort::Status status{model_editor_api.AddNodeToGraph(nullptr, node)};
+    EXPECT_FALSE(status.IsOK());
+  }
+  {
+    Ort::Status status{model_editor_api.AddNodeToGraph(graph, nullptr)};
+    EXPECT_FALSE(status.IsOK());
+  }
+  // Ownership not transferred; Ort::Node destructor releases the node.
+}
+
+// AddGraphToModel rejects a second graph and rejects null arguments.
+TEST(ModelEditorAPITest, AddGraphToModel_Twice_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  std::vector<const char*> domains = {onnxruntime::kOnnxDomain};
+  std::vector<int> versions = {18};
+  OrtModel* raw_model = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateModel(domains.data(), versions.data(), domains.size(), &raw_model));
+  Ort::Model model{raw_model};
+
+  Ort::Graph g1;
+  OrtGraph* raw_g1 = g1;
+  Ort::ThrowOnError(model_editor_api.AddGraphToModel(model, raw_g1));
+  static_cast<void>(g1.release());
+
+  // Second AddGraphToModel must fail without taking ownership of g2.
+  Ort::Graph g2;
+  OrtGraph* raw_g2 = g2;
+  Ort::Status status{model_editor_api.AddGraphToModel(model, raw_g2)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("graph"));
+  // g2 destructor releases the still-owned raw_g2.
+}
+
+TEST(ModelEditorAPITest, AddGraphToModel_NullArgs_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  std::vector<const char*> domains = {onnxruntime::kOnnxDomain};
+  std::vector<int> versions = {18};
+  OrtModel* raw_model = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateModel(domains.data(), versions.data(), domains.size(), &raw_model));
+  Ort::Model model{raw_model};
+
+  Ort::Graph graph;
+
+  {
+    Ort::Status status{model_editor_api.AddGraphToModel(nullptr, graph)};
+    EXPECT_FALSE(status.IsOK());
+  }
+  {
+    Ort::Status status{model_editor_api.AddGraphToModel(model, nullptr)};
+    EXPECT_FALSE(status.IsOK());
+  }
+}
+
+namespace {
+// Build a CPU float `Ort::ValueInfo` of rank-1 shape {1} for the given name.
+Ort::ValueInfo MakeFloatValueInfo(const char* name) {
+  Ort::TensorTypeAndShapeInfo tts(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, std::vector<int64_t>{1});
+  Ort::TypeInfo ti = Ort::TypeInfo::CreateTensorInfo(tts.GetConst());
+  return Ort::ValueInfo(name, ti.GetConst());
+}
+}  // namespace
+
+// Reject the same OrtValueInfo* appearing twice within the SetGraphInputs array.
+TEST(ModelEditorAPITest, SetGraphInputs_DuplicatePointerInArray_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  Ort::Graph graph;
+  Ort::ValueInfo vi = MakeFloatValueInfo("X");
+
+  // Implicit Base::operator T*() yields the raw pointer without releasing.
+  OrtValueInfo* raw = vi;
+  std::vector<OrtValueInfo*> inputs = {raw, raw};
+  Ort::Status status{model_editor_api.SetGraphInputs(graph, inputs.data(), inputs.size())};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("Duplicate"));
+  EXPECT_NE(inputs[0], nullptr);  // ownership not transferred on failure
+  EXPECT_NE(inputs[1], nullptr);
+
+  // `vi` destructor releases the still-owned OrtValueInfo. No double-free.
+}
+
+// Reject the same OrtValueInfo* appearing twice within the SetGraphOutputs array.
+TEST(ModelEditorAPITest, SetGraphOutputs_DuplicatePointerInArray_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  Ort::Graph graph;
+  Ort::ValueInfo vi = MakeFloatValueInfo("Y");
+
+  OrtValueInfo* raw = vi;
+  std::vector<OrtValueInfo*> outputs = {raw, raw};
+  Ort::Status status{model_editor_api.SetGraphOutputs(graph, outputs.data(), outputs.size())};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("Duplicate"));
+  EXPECT_NE(outputs[0], nullptr);
+  EXPECT_NE(outputs[1], nullptr);
+}
+
+// Reject reusing an OrtValueInfo* already owned by the graph (input -> output).
+TEST(ModelEditorAPITest, SetGraph_RejectsAlreadyOwnedPointer) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  Ort::Graph graph;
+  Ort::ValueInfo input_vi = MakeFloatValueInfo("X");
+
+  // Transfer to graph as an input via the C++ wrapper (which calls release() on success).
+  OrtValueInfo* still_owned_by_graph = input_vi;  // capture before release()
+  std::vector<Ort::ValueInfo> inputs;
+  inputs.emplace_back(std::move(input_vi));
+  graph.SetInputs(inputs);
+
+  // Re-using the same raw pointer (now owned by graph) as an output must be rejected.
+  std::vector<OrtValueInfo*> outputs = {still_owned_by_graph};
+  Ort::Status status{model_editor_api.SetGraphOutputs(graph, outputs.data(), outputs.size())};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("already been added"));
+  EXPECT_NE(outputs[0], nullptr);  // ownership not transferred on failure
+  // graph still owns the pointer; Graph destructor releases it.
 }

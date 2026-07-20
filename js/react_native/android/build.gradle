@@ -66,7 +66,12 @@ boolean ortExtensionsEnabled = readPackageJsonField('onnxruntimeExtensionsEnable
 boolean useQnn = readPackageJsonField('onnxruntimeUseQnn') == "true"
 
 def REACT_NATIVE_VERSION = ['node', '--print', "JSON.parse(require('fs').readFileSync(require.resolve('react-native/package.json'), 'utf-8')).version"].execute(null, rootDir).text.trim()
-def REACT_NATIVE_MINOR_VERSION = REACT_NATIVE_VERSION.split("\\.")[1].toInteger()
+def versionParts = REACT_NATIVE_VERSION.split("\\.")
+if (versionParts.length < 2) {
+  throw new GradleException("Invalid React Native version format: ${REACT_NATIVE_VERSION}. Expected format: major.minor[.patch]")
+}
+def REACT_NATIVE_MAJOR_VERSION = versionParts[0].toInteger()
+def REACT_NATIVE_MINOR_VERSION = versionParts[1].toInteger()
 
 android {
 // This is needed by the new AndroidManifestNew.xml
@@ -82,7 +87,7 @@ android {
     externalNativeBuild {
       cmake {
         cppFlags "-O2 -frtti -fexceptions -Wall -Wno-unused-variable -fstack-protector-all"
-        if (REACT_NATIVE_MINOR_VERSION >= 71) {
+        if (REACT_NATIVE_MAJOR_VERSION > 0 || REACT_NATIVE_MINOR_VERSION >= 71) {
           // fabricjni required c++_shared
           arguments "-DANDROID_STL=c++_shared",
             "-DNODE_MODULES_DIR=${nodeModules}",
@@ -247,7 +252,7 @@ dependencies {
     extractLibs "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
   }
 
-  if (VersionNumber.parse(REACT_NATIVE_VERSION) < VersionNumber.parse("0.71")) {
+  if (REACT_NATIVE_MAJOR_VERSION == 0 && REACT_NATIVE_MINOR_VERSION < 71) {
     extractLibs "com.facebook.fbjni:fbjni:+:headers"
     extractLibs "com.facebook.fbjni:fbjni:+"
   }

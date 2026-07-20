@@ -20,6 +20,13 @@ file(GLOB onnxruntime_pybind_srcs CONFIGURE_DEPENDS
   ${onnxruntime_pybind_srcs_pattern}
   )
 
+# onnxruntime_pybind_cuda_quant.cc is compiled into the standalone
+# onnxruntime_cuda_quant_preprocess extension module (see below), not into
+# onnxruntime_pybind11_state. It includes <cuda_runtime.h> and links CUDA::cudart,
+# so compiling it into the main pybind module would break CPU-only builds and
+# re-introduce the hard libcudart dependency this design avoids.
+list(REMOVE_ITEM onnxruntime_pybind_srcs ${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_cuda_quant.cc)
+
 if(onnxruntime_ENABLE_TRAINING)
   list(REMOVE_ITEM onnxruntime_pybind_srcs  ${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_module.cc)
 endif()
@@ -88,10 +95,16 @@ if(MSVC)
   target_sources(onnxruntime_pybind11_state PRIVATE "${ONNXRUNTIME_ROOT}/core/dll/delay_load_hook.cc")
 
   target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-  target_compile_options(onnxruntime_pybind11_state PRIVATE "/bigobj")
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/bigobj>")
 endif()
 if(HAS_CAST_FUNCTION_TYPE)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-cast-function-type")
+endif()
+# pybind11 3.0 headers trigger -Wmaybe-uninitialized in GCC's flow analysis
+# of property accessor lambdas. Suppress it for this target only.
+# See https://github.com/microsoft/onnxruntime/issues/25681
+if(HAS_MAYBE_UNINITIALIZED)
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-maybe-uninitialized")
 endif()
 
 # We export symbols using linker and the compiler does not know anything about it
@@ -113,7 +126,10 @@ endif()
 onnxruntime_add_include_to_target(onnxruntime_pybind11_state Python::Module)
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${pybind11_INCLUDE_DIRS})
 if(onnxruntime_USE_CUDA)
-    target_include_directories(onnxruntime_pybind11_state PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${CUDNN_INCLUDE_DIR})
+    target_include_directories(onnxruntime_pybind11_state PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+    if(NOT onnxruntime_CUDA_MINIMAL)
+      target_include_directories(onnxruntime_pybind11_state PRIVATE ${CUDNN_INCLUDE_DIR})
+    endif()
 endif()
 if(onnxruntime_USE_CANN)
     target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CANN_HOME}/include)
@@ -190,7 +206,6 @@ set(onnxruntime_pybind11_state_static_providers
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
-    ${PROVIDERS_ARMNN}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_AZURE}
 )
@@ -198,7 +213,7 @@ set(onnxruntime_pybind11_state_static_providers
 if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_qnn)
 endif()
-if(onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
   list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_webgpu)
 endif()
 if(WIN32)
@@ -222,6 +237,13 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${pybind11_lib}
     Python::NumPy
 )
+
+# The CUDA quantization helpers (pack_weights_for_cuda_mixed_gemm) are built into a
+# separate extension module (onnxruntime_cuda_quant_preprocess) that is imported on
+# demand. Do NOT compile CUDA source files directly into onnxruntime_pybind11_state or
+# link CUDA::cudart from it: that would create a hard libcudart.so dependency that
+# prevents importing the Python module on CPU-only machines.
+
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
     ${pybind11_dep}
@@ -289,6 +311,71 @@ else()
   set_target_properties(onnxruntime_pybind11_state PROPERTIES SUFFIX ".so")
 endif()
 
+# ---------------------------------------------------------------------------
+# Standalone CUDA weight-preprocessing extension module.
+#
+# The CUDA weight-packing kernels (pack_weights_for_cuda_mixed_gemm) are compiled
+# into their OWN Python extension module instead of onnxruntime_pybind11_state.
+# This keeps the hard libcudart dependency out of the main pybind module so that
+# `import onnxruntime` still works on CPU-only machines.
+#
+# Production weight packing is done in PyTorch (cuda_quantizer.py); this module is
+# retained only as a byte-parity oracle for that PyTorch packer. It is gated by
+# onnxruntime_BUILD_CUDA_QUANT_PREPROCESS.
+#
+# It does NOT go through the provider bridge / ProviderInfo_CUDA, so it works for
+# both the legacy in-tree CUDA EP build and the CUDA-EP-as-plugin build.
+#
+# Not built on Windows: matching the previous behavior where CUDA runtime was not
+# linked into Python extension modules (DLL search path constraints since
+# Python 3.8), so pack_weights_for_cuda_mixed_gemm was unavailable there.
+if (onnxruntime_USE_CUDA AND NOT WIN32 AND onnxruntime_BUILD_CUDA_QUANT_PREPROCESS)
+  onnxruntime_add_shared_library_module(onnxruntime_cuda_quant_preprocess
+    "${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_cuda_quant.cc"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.cu"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors_impl.cu"
+  )
+  include(cutlass)
+  onnxruntime_add_include_to_target(onnxruntime_cuda_quant_preprocess Python::Module onnxruntime_common)
+  target_include_directories(onnxruntime_cuda_quant_preprocess PRIVATE
+    ${ONNXRUNTIME_ROOT}
+    ${pybind11_INCLUDE_DIRS}
+    ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+    ${cutlass_SOURCE_DIR}/include
+    ${cutlass_SOURCE_DIR}/tools/util/include
+  )
+  target_compile_definitions(onnxruntime_cuda_quant_preprocess PRIVATE USE_CUDA)
+  target_link_libraries(onnxruntime_cuda_quant_preprocess PRIVATE
+    onnxruntime_common
+    Boost::mp11
+    safeint_interface
+    ${ABSEIL_LIBS}
+    CUDA::cudart
+    ${pybind11_lib}
+    Python::NumPy
+  )
+  if (NOT MSVC)
+    target_compile_options(onnxruntime_cuda_quant_preprocess PRIVATE "-fvisibility=hidden")
+  endif()
+  set_target_properties(onnxruntime_cuda_quant_preprocess PROPERTIES PREFIX "" SUFFIX ".so" FOLDER "ONNXRuntime")
+  if (APPLE)
+    set_target_properties(onnxruntime_cuda_quant_preprocess PROPERTIES
+      INSTALL_RPATH "@loader_path"
+      BUILD_WITH_INSTALL_RPATH TRUE
+      INSTALL_RPATH_USE_LINK_PATH FALSE)
+  elseif (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+    target_link_options(onnxruntime_cuda_quant_preprocess PRIVATE "LINKER:-rpath=\$ORIGIN")
+  endif()
+  # Place the module next to the main pybind module inside onnxruntime/capi.
+  add_custom_command(
+    TARGET onnxruntime_cuda_quant_preprocess POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:onnxruntime_common>/onnxruntime/capi
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_cuda_quant_preprocess>
+        $<TARGET_FILE_DIR:onnxruntime_common>/onnxruntime/capi/
+  )
+endif()
+
 # Generate version_info.py in Windows build.
 # Has to be done before onnxruntime_python_srcs is set.
 if (WIN32)
@@ -299,11 +386,19 @@ if (WIN32)
     if(onnxruntime_CUDNN_HOME)
       # may have x64 in the path
       # may have a path with CUDA toolkit version if multiple installed on the machine
+      # Since CUDA 13.x, Windows cuDNN DLLs live under an architecture-specific subdirectory
+      # (bin/x64 for win-x64, bin/arm64 for win-arm64). A single cuDNN package may ship both
+      # arches, so only search the subdirectory matching the current target platform.
+      if(onnxruntime_target_platform STREQUAL "ARM64" OR onnxruntime_target_platform STREQUAL "ARM64EC")
+        set(_cudnn_arch "arm64")
+      else()
+        set(_cudnn_arch "x64")
+      endif()
       set(CUDNN_SEARCH_PATHS
+        "${onnxruntime_CUDNN_HOME}/bin/${_cudnn_arch}/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/${onnxruntime_CUDA_VERSION}/${_cudnn_arch}/cudnn64_*.dll"
         "${onnxruntime_CUDNN_HOME}/bin/cudnn64_*.dll"
-        "${onnxruntime_CUDNN_HOME}/bin/x64/cudnn64_*.dll"
         "${onnxruntime_CUDNN_HOME}/bin/${onnxruntime_CUDA_VERSION}/cudnn64_*.dll"
-        "${onnxruntime_CUDNN_HOME}/bin/${onnxruntime_CUDA_VERSION}/x64/cudnn64_*.dll"
       )
       set(CUDNN_DLL_PATH "")
       foreach(search_path ${CUDNN_SEARCH_PATHS})
@@ -313,16 +408,19 @@ if (WIN32)
         endif()
       endforeach()
       if(NOT CUDNN_DLL_PATH)
-        message(FATAL_ERROR "cuDNN not found in ${onnxruntime_CUDNN_HOME}")
+        message(STATUS "cuDNN not found in ${onnxruntime_CUDNN_HOME}. Python package metadata will record an empty cuDNN version.")
       endif()
     else()
       file(GLOB CUDNN_DLL_PATH "${onnxruntime_CUDA_HOME}/bin/cudnn64_*.dll")
       if (NOT CUDNN_DLL_PATH)
-        message(FATAL_ERROR "cuDNN not found in ${onnxruntime_CUDA_HOME}")
+        message(STATUS "cuDNN not found in ${onnxruntime_CUDA_HOME}. Python package metadata will record an empty cuDNN version.")
       endif()
     endif()
-    get_filename_component(CUDNN_DLL_NAME ${CUDNN_DLL_PATH} NAME_WE)
-    string(REPLACE "cudnn64_" "" CUDNN_VERSION "${CUDNN_DLL_NAME}")
+    set(CUDNN_VERSION "")
+    if(CUDNN_DLL_PATH)
+      get_filename_component(CUDNN_DLL_NAME ${CUDNN_DLL_PATH} NAME_WE)
+      string(REPLACE "cudnn64_" "" CUDNN_VERSION "${CUDNN_DLL_NAME}")
+    endif()
     if(NOT onnxruntime_CUDA_VERSION)
       set(onnxruntime_CUDA_VERSION ${CUDAToolkit_VERSION})
       message("onnxruntime_CUDA_VERSION=${onnxruntime_CUDA_VERSION}")
@@ -467,6 +565,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   )
   file(GLOB onnxruntime_python_transformers_test_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/test/python/transformers/*.py"
+  )
+  file(GLOB onnxruntime_python_transformers_test_onnx_attention_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/test/python/transformers/test_onnx_attention/*.py"
   )
   file(GLOB onnxruntime_python_transformers_testdata_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/test/python/transformers/test_data/models/*.onnx"
@@ -621,6 +722,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/neural_compressor
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_onnx_attention
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/whisper
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/eager_test
@@ -821,6 +923,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_transformers_test_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/transformers/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_transformers_test_onnx_attention_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_onnx_attention/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_transformers_testdata_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/
@@ -1049,7 +1154,7 @@ if (DEFINED ENV{OPENVINO_MANYLINUX})
     )
 endif()
 
-if (onnxruntime_USE_CUDA)
+if (onnxruntime_USE_CUDA AND NOT onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
@@ -1057,6 +1162,15 @@ if (onnxruntime_USE_CUDA)
           $<TARGET_FILE:onnxruntime_providers_shared>
           $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
     )
+endif()
+
+if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+      $<TARGET_FILE:onnxruntime_providers_cuda_plugin>
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
 endif()
 
 if (onnxruntime_USE_CANN)

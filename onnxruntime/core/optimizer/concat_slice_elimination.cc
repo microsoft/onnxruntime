@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <numeric>
+
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/concat_slice_elimination.h"
@@ -141,6 +143,19 @@ static bool GetSliceInfo(const Graph& graph,
   } else {
     return false;
   }
+  // Materialize defaults for optional axes/steps so callers can safely index them.
+  // This aligns with ONNX Slice defaults in the common case where starts/ends are
+  // provided for leading axes.
+  // Opset v1 : `axes` attribute is optional if absent it is empty
+  // Opset >= 10: if axes input doesn't exist `axes` stays empty
+  if (axes.empty()) {
+    axes.resize(starts.size());
+    std::iota(axes.begin(), axes.end(), 0LL);
+  }
+
+  if (steps.empty()) {
+    steps.assign(starts.size(), 1LL);
+  }
   return true;
 }
 
@@ -219,7 +234,13 @@ bool ConcatSliceElimination::FuseConcatSliceSubgraph(Node& concat, Graph& graph,
   for (auto slice : concat_outputs) {
     InlinedVector<int64_t> starts, ends, axes, steps;
     if (!GetSliceInfo(graph, *slice, logger, starts, ends, axes, steps)) return false;
-    if (starts.size() > 1) return false;
+    // The code already enforces starts.size() == ends.size() (opset == 1 and opset >=10)
+    assert(starts.size() == ends.size());
+    // This check must come before any axes/steps indexing
+    // Other starts sizes are valid for the Slice operator,
+    // but they are intentionally out of scope for this specific fusion.
+    // FuseConcatSliceSubgraph() is a very narrow, pattern-based optimization, not a general Slice normalizer.
+    if (starts.size() != 1) return false;
     if (axes[0] != 0) return false;
     if (steps[0] != 1) return false;
     auto iter = std::find(cumulative_input_len.begin(), cumulative_input_len.end(), starts[0]);

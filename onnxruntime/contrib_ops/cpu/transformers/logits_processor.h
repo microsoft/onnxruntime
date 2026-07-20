@@ -28,7 +28,9 @@ struct NextTokenScores {
   }
 
   void SetScore(int token_id, T score) {
-    assert(token_id >= 0 && token_id < vocab_size);
+    if (token_id < 0 || token_id >= vocab_size) {
+      return;
+    }
     for (int i = 0; i < batch_beam_size; i++) {
       scores[static_cast<gsl::index>(i) * vocab_size + token_id] = score;
     }
@@ -330,7 +332,10 @@ class LogitsProcessorList : public ILogitsProcessorList {
       processor_list_.push_back(prefix_vocab_mask_processor_.get());
     }
 
-    if (parameters.min_length > 0) {
+    // For a negative "no eos" sentinel there is no token to demote, so a MinLength processor here
+    // would be a guaranteed no-op (SetScore ignores negative token ids). Skip constructing it as a
+    // defensive, minor performance optimization, consistent with the other conditional-adds above.
+    if (parameters.min_length > 0 && parameters.eos_token_id >= 0) {
       min_length_processor_ = std::make_unique<MinLengthLogitsProcessor<float>>(parameters.min_length,
                                                                                 parameters.eos_token_id);
       processor_list_.push_back(min_length_processor_.get());

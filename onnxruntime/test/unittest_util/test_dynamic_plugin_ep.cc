@@ -11,6 +11,7 @@
 #include "nlohmann/json.hpp"
 
 #include "core/common/common.h"
+#include "core/framework/config_options.h"
 #include "core/framework/execution_provider.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_env.h"
@@ -134,6 +135,10 @@ Status Initialize(Ort::Env& env, InitializationConfig config) {
                  [&selected_ep_name = std::as_const(config.selected_ep_name)](Ort::ConstEpDevice ep_device) {
                    return ep_device.EpName() == selected_ep_name;
                  });
+
+    if (config.selected_ep_name == kCudaExecutionProviderPluginName && selected_c_ep_devices.size() > 1) {
+      selected_c_ep_devices.resize(1);
+    }
   }
 
   ORT_RETURN_IF(selected_c_ep_devices.empty(), "No EP devices were selected.");
@@ -167,7 +172,23 @@ void Shutdown() {
   g_plugin_ep_infrastructure_state.reset();
 }
 
-std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger) {
+void RunWithTemporaryShutdownForTesting(const std::function<void()>& test_body) {
+  // Save the current global infrastructure state, then present an uninitialized state to `test_body`.
+  // The prior state is restored afterwards (even if `test_body` throws), so a test that exercises the
+  // uninitialized/shutdown behavior does not disturb the shared infrastructure that unit test main set up
+  // and that other tests (e.g. those routing CUDA to the plugin EP) rely on.
+  std::optional<PluginEpInfrastructureState> saved_state = std::move(g_plugin_ep_infrastructure_state);
+  g_plugin_ep_infrastructure_state.reset();
+
+  struct StateRestorer {
+    std::optional<PluginEpInfrastructureState>& saved;
+    ~StateRestorer() { g_plugin_ep_infrastructure_state = std::move(saved); }
+  } restorer{saved_state};
+
+  test_body();
+}
+
+std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger, const ConfigOptions* ep_options) {
   if (!IsInitialized()) {
     return nullptr;
   }
@@ -181,6 +202,13 @@ std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger) {
   std::vector<const char*> default_ep_option_key_cstrs{}, default_ep_option_value_cstrs{};
   StrMapToKeyValueCstrVectors(state.config.default_ep_options,
                               default_ep_option_key_cstrs, default_ep_option_value_cstrs);
+
+  if (ep_options != nullptr) {
+    for (const auto& [key, value] : ep_options->configurations) {
+      default_ep_option_key_cstrs.push_back(key.c_str());
+      default_ep_option_value_cstrs.push_back(value.c_str());
+    }
+  }
 
   OrtSessionOptions ort_session_options{};
   ORT_THROW_IF_ERROR(AddEpOptionsToSessionOptions(state.selected_c_ep_devices,

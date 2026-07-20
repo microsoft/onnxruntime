@@ -63,10 +63,19 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedNumberTypes()),
     Transpose);
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Transpose,
+    kOnnxDomain,
+    23, 23,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", WebGpuSupportedNumberTypes()),
+    Transpose);
+
 ONNX_OPERATOR_KERNEL_EX(
     Transpose,
     kOnnxDomain,
-    23,
+    24,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedNumberTypes()),
@@ -242,6 +251,11 @@ Status Transpose::ComputeInternal(ComputeContext& context) const {
   int64_t output_size = output_shape.Size();
   if (output_size == 0) {
     return Status::OK();
+  }
+
+  // 1D transpose is identity - just copy the GPU buffer.
+  if (rank == 1) {
+    return Info().GetDataTransferManager().CopyTensor(*input_tensor, *output_tensor);
   }
 
   return DoTranspose(context, *p_perm, *input_tensor, *output_tensor);

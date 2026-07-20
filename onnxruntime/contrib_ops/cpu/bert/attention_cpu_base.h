@@ -16,7 +16,8 @@ namespace contrib {
 class AttentionCPUBase : public AttentionBase {
  protected:
   AttentionCPUBase(const OpKernelInfo& info, bool require_same_hidden_size)
-      : AttentionBase(info, require_same_hidden_size) {}
+      : AttentionBase(info, require_same_hidden_size) {
+  }
 
   template <typename T>
   Status ApplyAttention(const T* Q,                // Q data with shape BxNxSxH
@@ -148,6 +149,9 @@ class AttentionCPUBase : public AttentionBase {
                                  OpKernelContext* context,
                                  int beam_width,
                                  Tensor* output_qk) const {
+    ORT_RETURN_IF_ERROR(ValidateCacheIndirectionValues(cache_indir->Data<int32_t>(), batch_size, beam_width,
+                                                       past_sequence_length, max_sequence_length));
+
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
@@ -185,6 +189,33 @@ class AttentionCPUBase : public AttentionBase {
   }
 
  private:
+  static Status ValidateCacheIndirectionValues(const int32_t* cache_indirection_data,
+                                               int batch_beam_size,
+                                               int beam_width,
+                                               int past_sequence_length,
+                                               int max_sequence_length) {
+    if (cache_indirection_data == nullptr || beam_width <= 0 || past_sequence_length <= 0) {
+      return Status::OK();
+    }
+
+    for (int batch_beam_index = 0; batch_beam_index < batch_beam_size; ++batch_beam_index) {
+      const int32_t* beam_indices = cache_indirection_data +
+                                    static_cast<std::ptrdiff_t>(batch_beam_index) * max_sequence_length;
+      for (int position = 0; position < past_sequence_length; ++position) {
+        const int32_t beam_index = beam_indices[position];
+        if (beam_index < 0 || beam_index >= beam_width) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "cache_indirection beam index out of range. Expected [0, ", beam_width,
+                                 "), got ", beam_index,
+                                 " at flattened batch_beam index ", batch_beam_index,
+                                 ", sequence position ", position);
+        }
+      }
+    }
+
+    return Status::OK();
+  }
+
   // Helper function to compute the attention probs. It does 2 things:
   //  attention_probs(B, N, S, T) = 1/sqrt(H) x Q(B, N, S, H) x K'(B, N, T, H -> B, N, H, T) +
   //                                1 x mask_data(B, N, S, T)
@@ -307,7 +338,7 @@ class AttentionCPUBase : public AttentionBase {
           math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_sequence_length, head_size, alpha,
                                     Q + q_input_chunk_length * i, k,
                                     (mask_data != nullptr || attn_bias_data != nullptr) ? 1.0f : 0.0f,
-                                    output, nullptr);
+                                    output, nullptr, &mlas_backend_kernel_selector_config_);
         }
       });
     }
@@ -402,7 +433,7 @@ class AttentionCPUBase : public AttentionBase {
             T* current_tmp_data = reinterpret_cast<T*>(tmp_buffer) + q_input_chunk_length * i;
             ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * total_sequence_length * i;
             math::MatMul<T>(sequence_length, v_head_size, total_sequence_length,
-                            attention_probs + attention_probs_offset, v, current_tmp_data, nullptr);
+                            attention_probs + attention_probs_offset, v, current_tmp_data, nullptr, &mlas_backend_kernel_selector_config_);
 
             // Transpose: out(B, S, N, H_v) -> out_tmp(B, N, S, H_v)
             const int batch_index = static_cast<int>(i / num_heads_);

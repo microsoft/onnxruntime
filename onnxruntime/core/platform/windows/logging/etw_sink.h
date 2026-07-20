@@ -16,7 +16,6 @@
 
 #ifdef ETW_TRACE_LOGGING_SUPPORTED
 
-#include <date/date.h>
 #include <atomic>
 #include <iostream>
 #include <string>

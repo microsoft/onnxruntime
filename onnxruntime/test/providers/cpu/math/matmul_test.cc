@@ -182,6 +182,38 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
        })});
 
   test_cases.push_back(
+      {"test 3D tensors with batchA = 3, M = 2, N = 3",
+       {3, 2, 8},
+       {1, 8, 3},
+       {3, 2, 3},
+       real_expected_vals({
+           // clang-format off
+              420, 448, 476,
+              1092, 1184, 1276,
+              1764, 1920, 2076,
+              2436, 2656, 2876,
+              3108, 3392, 3676,
+              3780, 4128, 4476,
+           // clang-format on
+       })});
+
+  test_cases.push_back(
+      {"test 3D tensors with batchA = 3, M = 2, N = 4",
+       {3, 2, 8},
+       {1, 8, 4},
+       {3, 2, 4},
+       real_expected_vals({
+           // clang-format off
+              560, 588, 616, 644,
+              1456, 1548, 1640, 1732,
+              2352, 2508, 2664, 2820,
+              3248, 3468, 3688, 3908,
+              4144, 4428, 4712, 4996,
+              5040, 5388, 5736, 6084,
+           // clang-format on
+       })});
+
+  test_cases.push_back(
       {"test 4D tensors with M = 1",
        {2, 3, 1, 8},
        {1, 1, 8, 3},
@@ -386,6 +418,8 @@ TEST(MathOpTest, MatMulFloat16) {
 
 TEST(MathOpTest, MatMulDoubleType) {
   RunMatMulTest<double>(7);
+  RunMatMulTest<double>(9);
+  RunMatMulTest<double>(13);
 }
 
 TEST(MathOpTest, MatMulInt32Type) {
@@ -443,6 +477,10 @@ TEST(MathOpTest, MatMulZeroKInt32Type) {
     GTEST_SKIP() << "Skipping because of the following error: Webgpu does not support zero-sized tensor";
   }
   RunMatMulZeroKTest<int32_t>();
+}
+
+TEST(MathOpTest, MatMulZeroKDoubleType) {
+  RunMatMulZeroKTest<double>();
 }
 
 #if defined(USE_CUDA) || defined(USE_COREML) || defined(USE_XNNPACK)
@@ -591,6 +629,169 @@ TEST(MathOpTest, MatMulSharedPrepackedWeights) {
               static_cast<size_t>(number_of_shared_pre_packed_weights_counter));
   }
 }
+
+// Test MatMul with batch_size > 1 that exercises the Split-K path.
+// Split-K is triggered when dim_inner is large relative to dim_a_outer * dim_b_outer,
+// is_vec4 is true, and the GPU supports it. This test validates correctness when
+// batch_size > 1 with dimensions that would trigger Split-K on supported hardware.
+TEST(MathOpTest, MatMulBatchedSplitK) {
+  // Dimensions chosen so dim_inner is large (triggers Split-K) and vec4-compatible.
+  // batch=2, M=4, K=768, N=64
+  constexpr int64_t batch = 2;
+  constexpr int64_t M = 4;
+  constexpr int64_t K = 768;
+  constexpr int64_t N = 64;
+
+  std::vector<int64_t> A_shape = {batch, M, K};
+  std::vector<int64_t> B_shape = {batch, K, N};
+  std::vector<int64_t> Y_shape = {batch, M, N};
+
+  // Generate sequential data so the expected output is deterministic.
+  int64_t a_size = batch * M * K;
+  int64_t b_size = batch * K * N;
+  std::vector<float> A_data(a_size);
+  std::vector<float> B_data(b_size);
+
+  // Use small values to avoid fp32 overflow.
+  for (int64_t i = 0; i < a_size; ++i) {
+    A_data[i] = static_cast<float>((i % 11) - 5) * 0.01f;
+  }
+  for (int64_t i = 0; i < b_size; ++i) {
+    B_data[i] = static_cast<float>((i % 13) - 6) * 0.01f;
+  }
+
+  // Compute expected output on CPU.
+  std::vector<float> expected(batch * M * N, 0.0f);
+  for (int64_t b_idx = 0; b_idx < batch; ++b_idx) {
+    for (int64_t m = 0; m < M; ++m) {
+      for (int64_t n = 0; n < N; ++n) {
+        float sum = 0.0f;
+        for (int64_t k = 0; k < K; ++k) {
+          float a_val = A_data[b_idx * M * K + m * K + k];
+          float b_val = B_data[b_idx * K * N + k * N + n];
+          sum += a_val * b_val;
+        }
+        expected[b_idx * M * N + m * N + n] = sum;
+      }
+    }
+  }
+
+  OpTester test("MatMul", 13);
+  test.AddInput<float>("A", A_shape, A_data);
+  test.AddInput<float>("B", B_shape, B_data);
+  test.AddOutput<float>("Y", Y_shape, expected);
+
+  // Exclude providers that don't support this configuration.
+  test.ConfigExcludeEps({kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider})
+      .Config(run_with_tunable_op)
+      .RunWithConfig();
+}
+
+#if defined(USE_WEBGPU)
+// f16 MatMul cases that exercise the Intel 8x16x16 subgroup-matrix impl.
+// The host picks the tile shape adaptively (TileM in {8,16,32,64}, TileN in
+// {16,32,64}); M and N may be any size and K must be a multiple of 16. When the
+// output has few tiles and K is large, the host also splits K across multiple
+// cooperating subgroups (split_k in {1,2,4,8}) that reduce in shared memory. B
+// is a constant initializer. On non-Intel hardware these fall back to the
+// default impl but still validate correctness.
+static void RunSubgroupMatrixMatMulTest(const std::vector<int64_t>& a_dims, int64_t K, int64_t N) {
+  int64_t M = 1;
+  for (size_t i = 0; i + 1 < a_dims.size(); ++i) {
+    M *= a_dims[i];
+  }
+
+  std::vector<float> A_f32(M * K);
+  std::vector<float> B_f32(K * N);
+  for (int64_t i = 0; i < M * K; ++i) {
+    A_f32[i] = static_cast<float>((i % 7) - 3) * 0.1f;
+  }
+  for (int64_t i = 0; i < K * N; ++i) {
+    B_f32[i] = static_cast<float>((i % 5) - 2) * 0.1f;
+  }
+
+  std::vector<float> Y_f32(M * N, 0.0f);
+  for (int64_t m = 0; m < M; ++m) {
+    for (int64_t n = 0; n < N; ++n) {
+      float sum = 0.0f;
+      for (int64_t k = 0; k < K; ++k) {
+        sum += A_f32[m * K + k] * B_f32[k * N + n];
+      }
+      Y_f32[m * N + n] = sum;
+    }
+  }
+
+  std::vector<MLFloat16> f_A(A_f32.size());
+  std::vector<MLFloat16> f_B(B_f32.size());
+  std::vector<MLFloat16> f_Y(Y_f32.size());
+  ConvertFloatToMLFloat16(A_f32.data(), f_A.data(), static_cast<int>(A_f32.size()));
+  ConvertFloatToMLFloat16(B_f32.data(), f_B.data(), static_cast<int>(B_f32.size()));
+  ConvertFloatToMLFloat16(Y_f32.data(), f_Y.data(), static_cast<int>(Y_f32.size()));
+
+  std::vector<int64_t> y_dims = a_dims;
+  y_dims.back() = N;
+
+  OpTester test("MatMul", 14);
+  test.AddInput<MLFloat16>("A", a_dims, f_A);
+  test.AddInput<MLFloat16>("B", {K, N}, f_B, /*is_initializer=*/true);
+  test.AddOutput<MLFloat16>("Y", y_dims, f_Y);
+  test.SetOutputTolerance(0.02f);
+  test.ConfigExcludeEps({kTensorrtExecutionProvider})
+      .Config(run_with_tunable_op)
+      .RunWithConfig();
+}
+
+// A single test with many sub-cases that just barely cover the tile/split-K
+// candidate space: TileM in {8,16,32,64}, TileN in {16,32,64}, split_k in
+// {1,2,4,8}, plus the partial-edge, batched, and scratch-cap boundaries. Each
+// sub-case runs under a SCOPED_TRACE so a failure names the exact shape.
+TEST(MathOpTest, MatMulSubgroupMatrix) {
+  struct Case {
+    const char* name;
+    std::vector<int64_t> a_dims;
+    int64_t K;
+    int64_t N;
+  };
+
+  const std::vector<Case> cases = {
+      // TileM coverage: M selects the largest TileM candidate <= M.
+      {"TileM8 (M=8 -> TileM=8)", {8, 64}, 64, 64},
+      {"TileM16 (M=16 -> TileM=16)", {16, 64}, 64, 32},
+      {"TileM32 (M=32 -> TileM=32)", {32, 64}, 64, 16},
+      {"TileM64 (M=64 -> TileM=64)", {64, 64}, 64, 64},
+      // TileN coverage: N selects the largest TileN candidate <= N.
+      {"TileN16 (N=16 -> TileN=16)", {32, 64}, 64, 16},
+      {"TileN32 (N=32 -> TileN=32)", {16, 64}, 64, 32},
+      {"TileN64 (N=64 -> TileN=64)", {64, 128}, 128, 64},
+      // Partial edges: M and N not multiples of the tile; bounds-checked stores.
+      {"PartialMN (M=40,N=48)", {40, 64}, 64, 48},
+      {"LargeNonAligned (M=100,N=96)", {100, 80}, 80, 96},
+      // Below-minimum and minimum boundaries.
+      {"TinyM (M=4 -> TileM=8 partial)", {4, 64}, 64, 32},
+      {"MinK (single K block)", {32, 16}, 16, 32},
+      // Batched A folds leading dims into M.
+      {"Batched (2*32 -> M=64)", {2, 32, 64}, 64, 64},
+      // Split-K coverage: one small output tile with growing K drives split_k.
+      // K=64 (4 blocks) -> 2, K=128 (8 blocks) -> 4, K=256 (16 blocks) -> 8.
+      {"SplitK2 (K=64 -> split_k=2)", {8, 64}, 64, 16},
+      {"SplitK4 (K=128 -> split_k=4)", {8, 128}, 128, 16},
+      {"SplitK8 (K=256 -> split_k=8)", {8, 256}, 256, 16},
+      // K=144 -> 9 K-blocks, not divisible by split_k=4; round-robin K split.
+      {"SplitKUnevenBlocks (K=144)", {8, 144}, 144, 16},
+      // Split-K with a partial N edge tile (N=24 -> two TileN=16 tiles).
+      {"SplitKPartialN (N=24)", {8, 256}, 256, 24},
+      // Largest tile (64x64) with K=256: split_k capped at 4 by scratch budget.
+      {"SplitKScratchCap (64x64,K=256)", {64, 256}, 256, 64},
+      // Batched A folds to M=8; one tile + K=256 -> split_k=8.
+      {"SplitKBatched (2*4 -> M=8)", {2, 4, 256}, 256, 16},
+  };
+
+  for (const auto& c : cases) {
+    SCOPED_TRACE(c.name);
+    RunSubgroupMatrixMatMulTest(c.a_dims, c.K, c.N);
+  }
+}
+#endif  // defined(USE_WEBGPU)
 
 #endif
 

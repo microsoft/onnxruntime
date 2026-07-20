@@ -101,7 +101,9 @@ echo "Calling $ROOT_DIR/build.sh to build WebAssembly..."
     --use_webnn \
     --use_webgpu \
     --enable_wasm_jspi \
-    --build_dir "$BUILD_DIR"
+    --build_dir "$BUILD_DIR" \
+    --include_ops_by_config "$ROOT_DIR/onnxruntime/wasm/reduced_types.config" \
+    --enable_reduced_operator_type_support
 
 # The 'set -e' command at the beginning of the script ensures that the script will exit
 # immediately if the build.sh command (or any other command) fails.

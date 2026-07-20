@@ -47,7 +47,7 @@ class EpLibraryInternal : public EpLibrary {
 #if defined(USE_DML)
   static std::unique_ptr<EpLibraryInternal> CreateDmlEp();
 #endif
-#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
   static std::unique_ptr<EpLibraryInternal> CreateWebGpuEp();
 #endif
 

@@ -473,7 +473,7 @@ class Gpt2Helper:
                     input_names=input_names,
                     output_names=output_names,
                     dynamic_axes=dynamic_axes,
-                    opset_version=11,
+                    opset_version=14,
                     do_constant_folding=True,
                     use_external_data_format=True,
                     verbose=verbose,

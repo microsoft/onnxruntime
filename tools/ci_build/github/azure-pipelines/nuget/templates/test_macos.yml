@@ -1,6 +1,10 @@
 parameters:
+  AgentPool : 'macOS-15'
+  UseHostedVmImage: 'true'
   IsMacOS : 'true'
   ArtifactSuffix: ''
+  PoolDemands: ''
+
 stages:
 - stage: NuGet_Test_MacOS
   dependsOn:
@@ -11,7 +15,12 @@ stages:
     workspace:
       clean: all
     pool:
-      vmImage: 'macOS-15'
+      ${{ if eq(parameters.UseHostedVmImage, 'true') }}:
+        vmImage: ${{ parameters.AgentPool }}
+      ${{ else }}:
+        name: ${{ parameters.AgentPool }}
+        ${{ if ne(parameters.PoolDemands, '') }}:
+          demands: ${{ parameters.PoolDemands }}
 
     variables:
     - name: OnnxRuntimeBuildDirectory
@@ -27,18 +36,36 @@ stages:
 
     - script: |
         mv $(Pipeline.Workspace)/build/drop-signed-nuget-${{ parameters.ArtifactSuffix }} $(Build.BinariesDirectory)/nuget-artifact
-        mv $(Pipeline.Workspace)/build/onnxruntime-osx $(Build.BinariesDirectory)/testdata
+
+        # Artifact is a folder containing tgz. Extract it to testdata.
+        mkdir -p $(Build.BinariesDirectory)/testdata
+        for archive in $(Pipeline.Workspace)/build/onnxruntime-osx/*.tgz; do
+          tar -xzf "$archive" -C $(Build.BinariesDirectory)/testdata
+        done
+
+        # Ensure libcustom_op_library.dylib is where EndToEndTests expects it (testdata/testdata)
+        mkdir -p $(Build.BinariesDirectory)/testdata/testdata
+        find $(Build.BinariesDirectory)/testdata -name "libcustom_op_library.dylib" -exec cp {} $(Build.BinariesDirectory)/testdata/testdata/ \;
+
 
     - template: get-nuget-package-version-as-variable.yml
       parameters:
         packageFolder: '$(Build.BinariesDirectory)/nuget-artifact'
 
     - script: |
+        git submodule update --init cmake/external/onnx
+        cd cmake/external/onnx
+        git fetch origin v1.13.1 --depth=1
+        git checkout v1.13.1
+        cd ../../..
+      displayName: 'Initialize ONNX submodule for test data (pinned to v1.13.1 since new data types like float8 is not supported in nuget)'
+
+    - script: |
        $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
                  $(Build.BinariesDirectory)/nuget-artifact \
                  $(NuGetPackageVersionNumber) \
                  true
-  
+
        if [ $? -ne 0 ]; then
            echo "Failed to run test"
            exit 1
@@ -49,3 +76,4 @@ stages:
           DisableContribOps: $(DisableContribOps)
           DisableMlOps: $(DisableMlOps)
           IsReleaseBuild: $(IsReleaseBuild)
+          ORT_LOADER_VERBOSITY: 1

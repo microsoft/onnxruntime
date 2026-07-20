@@ -28,6 +28,14 @@ static inline std::string GetWaitKey(const OrtDevice::DeviceType notification_de
   return std::to_string(notification_device_type) + ":" + std::to_string(executor_device_type);
 }
 
+static const std::shared_ptr<const int>& GetDeviceStreamPoolThreadToken() {
+  // Use a thread-lifetime token instead of std::thread::id so a bucket from a
+  // dead thread cannot be accidentally reused if the runtime later reuses the
+  // same thread id value for a different thread.
+  thread_local const auto thread_token = std::make_shared<const int>(0);
+  return thread_token;
+}
+
 class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
  public:
   // Wait is a little special as we need to consider the source stream the notification generated,
@@ -436,8 +444,8 @@ static Status KernelUseSharedPrePackedBuffers(OpKernel& kernel, int input_idx,
   }
 
   bool used_shared_buffers = false;
-  ORT_RETURN_IF_ERROR(kernel.UseSharedPrePackedBuffers_V2(shared_prepacked_buffers, shared_prepacked_buffer_sizes,
-                                                          input_idx, used_shared_buffers));
+  ORT_RETURN_IF_ERROR(kernel.UseSharedPrePackedBuffers(shared_prepacked_buffers, shared_prepacked_buffer_sizes,
+                                                       input_idx, used_shared_buffers));
 
   // BUG CHECK: Ensure that the kernel used the provided shared buffers
   // Mostly a debug check to ensure that the kernel has an overridden implementation of the
@@ -490,8 +498,15 @@ Status SessionState::PrepackConstantInitializedTensors(
                 auto iter = initializers_to_share_map.find(input_name);
                 bool is_shared_initializer = (iter != initializers_to_share_map.end());
 
-                // Caching pre-packed weights is limited to shared initializers associated with the CPU EP for now
-                if (is_shared_initializer && should_cache_prepacked_weights_for_shared_initializers &&
+                // CPU EP only. An initializer joins the shared pre-packed container either when it was
+                // registered via OrtApi::AddInitializer (is_shared_initializer) or when a graph transformer
+                // tagged this synthesized initializer with a sharing identity. Only the tag's *presence*
+                // matters here: it is the enrollment signal. The container key below is the packed-bytes
+                // hash, never the tag value (see the rationale at the key computation).
+                const bool enroll_tagged_initializer =
+                    (st->graph_.GetSharedPrepackInitializerId(input_name) != nullptr);
+                if ((is_shared_initializer || enroll_tagged_initializer) &&
+                    should_cache_prepacked_weights_for_shared_initializers &&
                     node.GetExecutionProviderType() == kCpuExecutionProvider) {
                   // caching of pre-packed weights' turned ON
 
@@ -522,12 +537,18 @@ Status SessionState::PrepackConstantInitializedTensors(
                     // TODO: Check if some version of the ONNX IR allows op_type to be empty
                     ORT_ENFORCE(!op_type.empty(), "The op type of a node cannot be empty");
 
-                    // The key for the pre-packed weights container lookup is the op_type + hash of the prepacked-weight
-                    // that we just got by invoking PrePack() on this kernel.
-
+                    // Key by the packed-bytes hash (op_type + a hash of the packed buffer), exactly as the
+                    // AddInitializer path does, so only byte-identical packed buffers are ever shared. The
+                    // tag is solely the enrollment signal that opted this fusion-generated initializer into
+                    // the container; it must NOT be used as the key, because it is derived from the
+                    // *unpacked* initializer content and so cannot distinguish packings that differ by node
+                    // options/attributes that change the packed layout (e.g. mlas.use_lut_gemm or a CPU
+                    // backend-selector difference). Two sessions that share a container but differ in such an
+                    // option compute the same tag yet produce different packed bytes; keying by the packed
+                    // bytes gives them distinct keys and prevents reusing an incompatible buffer
+                    // (wrong results/crash).
                     const std::string prepacked_weights_container_key =
-                        GenerateKeyForPrepackedWeightsMap(op_type,
-                                                          weights_to_be_filled_in);
+                        GenerateKeyForPrepackedWeightsMap(op_type, weights_to_be_filled_in);
 
                     bool container_contains_packed_weight = prepacked_weights_container_->HasWeight(
                         prepacked_weights_container_key);
@@ -595,7 +616,16 @@ Status SessionState::PrepackConstantInitializedTensors(
                   // within this session. Or if the weight is not present on disk,
                   // we store the newly minted pre-packed data.
 
-                  AllocatorPtr session_initializer_alloc = GetInitializerAllocator(kernel->Info().GetDevice(OrtMemType::OrtMemTypeDefault));
+                  AllocatorPtr session_initializer_alloc = GetInitializerAllocator(
+                      kernel->Info().GetDevice(OrtMemType::OrtMemTypeDefault));
+                  // A plugin EP registered as a separate library may not have an initializer
+                  // allocator registered under the kernel's device key, so the lookup above can
+                  // return null. Fall back to the kernel's own default-memory allocator (resolved
+                  // through the EP), which is always valid. This keeps PrePack implementations from
+                  // each having to special-case a null allocator at the library boundary.
+                  if (!session_initializer_alloc) {
+                    session_initializer_alloc = kernel->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
+                  }
                   PrePackedWeights weights_to_be_filled_in;
                   // The reason we invoke PrePack() before looking into the container for any pre-packed weight
                   // cached by another instance of the same op_type (for the same constant initializer) is because
@@ -607,11 +637,9 @@ Status SessionState::PrepackConstantInitializedTensors(
                                                       is_packed,
                                                       &weights_to_be_filled_in));
 
-                  // Some kernels (matmul_nbits and non-CPU related kernels) do not share their pre-packed results
+                  // Some kernels (non-CPU related kernels) do not share their pre-packed results
                   // even though they set is_packed = true so we leave it up to them.
                   // We can change their behavior if we wish do so in a separate PR
-                  // XXX: Interestingly enough, matmul_nbits does accept shared pre-packs, but does not
-                  // produce them.
                   if (is_packed && !weights_to_be_filled_in.buffers_.empty()) {
                     const auto& op_type = node.OpType();
                     const std::string prepacked_weights_container_key = GenerateKeyForPrepackedWeightsMap(
@@ -1257,10 +1285,41 @@ using NodePlacementSet = std::unordered_set<std::string>;
 
 static Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_verbose,
                                                  NodePlacementMap& node_placements,
-                                                 NodePlacementSet& node_placement_provider_set) {
+                                                 NodePlacementSet& node_placement_provider_set,
+                                                 const ExecutionProviders& providers) {
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
     if (node_provider.empty()) {
+      // Provide a more descriptive error for EPContext nodes that were not assigned to an EP.
+      if (node.OpType() == "EPContext") {
+        // Get information about who generated the EPContext node from the 'source' attribute.
+        // Commonly, 'source' will be the name of the EP that generated the node, but that is not required.
+        // An EP may choose to use a different source identifier.
+        std::string source = "(unknown)";
+        const auto& attrs = node.GetAttributes();
+        auto it = attrs.find("source");
+
+        if (it != attrs.end() && it->second.has_s()) {
+          source = it->second.s();
+        }
+
+        const auto& ep_ids = providers.GetIds();
+        std::ostringstream session_ep_names;
+
+        for (size_t i = 0; i < ep_ids.size(); ++i) {
+          if (i > 0) {
+            session_ep_names << ", ";
+          }
+          session_ep_names << ep_ids[i];
+        }
+
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                               "EPContext node generated by '", source, "' is not ",
+                               "compatible with any execution provider added to the session. ",
+                               "EPContext node name: '", node.Name(), "'. Available session execution providers: [",
+                               session_ep_names.str(), "].");
+      }
+
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                              "Could not find an implementation for ",
                              node.OpType(), "(", node.SinceVersion(), ") node with name '", node.Name(), "'");
@@ -1280,7 +1339,7 @@ static Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_ver
       const auto subgraphs = node.GetSubgraphs();
       for (const auto& subgraph : subgraphs) {
         ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(*subgraph, is_verbose, node_placements,
-                                                               node_placement_provider_set));
+                                                               node_placement_provider_set, providers));
       }
     }
   }
@@ -1299,7 +1358,8 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
   const bool is_verbose_mode = false;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-  ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(graph, is_verbose_mode, node_placements, node_placement_provider_set));
+  ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(graph, is_verbose_mode, node_placements,
+                                                         node_placement_provider_set, providers));
 
 #if !defined(ORT_MINIMAL_BUILD)
   // print placement info
@@ -1777,16 +1837,25 @@ static void BindToDeviceStream(const SequentialExecutionPlan& execution_plan,
 
 std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollection() const {
   if (has_device_stream_enabled_ep_) {
+    const auto& thread_token = GetDeviceStreamPoolThreadToken();
+    const void* thread_key = thread_token.get();
+
     std::lock_guard<std::mutex> lock(device_stream_pool_mutex_);
-    if (!device_stream_pool_.empty()) {
-      auto device_stream = std::move(device_stream_pool_.back());
-      device_stream_pool_.pop_back();
-      return device_stream;
-    } else {
-      auto device_stream = std::make_unique<DeviceStreamCollection>(this->GetExecutionPlan()->execution_plan.size(), *allocators_, graph_viewer_->ParentNode() == nullptr);
-      BindToDeviceStream(*this->GetExecutionPlan(), *device_stream, *stream_handles_registry_);
+    PruneExpiredDeviceStreamPoolsLocked();
+
+    auto it = device_stream_pools_.find(thread_key);
+    if (it != device_stream_pools_.end() && !it->second.device_streams.empty()) {
+      auto device_stream = std::move(it->second.device_streams.back());
+      it->second.device_streams.pop_back();
+      if (it->second.device_streams.empty()) {
+        device_stream_pools_.erase(it);
+      }
       return device_stream;
     }
+
+    auto device_stream = std::make_unique<DeviceStreamCollection>(this->GetExecutionPlan()->execution_plan.size(), *allocators_, graph_viewer_->ParentNode() == nullptr);
+    BindToDeviceStream(*this->GetExecutionPlan(), *device_stream, *stream_handles_registry_);
+    return device_stream;
   } else {
     // no reusing of device stream is needed, just return nullptr, the caller will handle it
     return nullptr;
@@ -1796,10 +1865,27 @@ std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollect
 void SessionState::RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCollection> device_stream_collection) const {
   // if no need to reuse the device stream, don't perform the recycle
   if (has_device_stream_enabled_ep_) {
+    const auto& thread_token = GetDeviceStreamPoolThreadToken();
+    const void* thread_key = thread_token.get();
+
     std::lock_guard<std::mutex> lock(device_stream_pool_mutex_);
-    device_stream_pool_.push_back(std::move(device_stream_collection));
+    PruneExpiredDeviceStreamPoolsLocked();
+    auto& bucket = device_stream_pools_[thread_key];
+    bucket.thread_token = thread_token;
+    bucket.device_streams.push_back(std::move(device_stream_collection));
   } else {
     device_stream_collection.reset(nullptr);
+  }
+}
+
+void SessionState::PruneExpiredDeviceStreamPoolsLocked() const {
+  for (auto it = device_stream_pools_.begin(); it != device_stream_pools_.end();) {
+    if (it->second.thread_token.expired()) {
+      auto expired_it = it++;
+      device_stream_pools_.erase(expired_it);
+    } else {
+      ++it;
+    }
   }
 }
 #endif

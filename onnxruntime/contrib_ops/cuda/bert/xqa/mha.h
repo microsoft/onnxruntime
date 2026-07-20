@@ -50,7 +50,7 @@ constexpr uint32_t inputSeqLen = 1;  // speculative decoding if > 1
 constexpr bool useKVCache = USE_KV_CACHE;
 
 using SeqLenDataType = uint32_t;
-#endif
+#endif  // MHA_H_COMMON
 
 // Dependent definitions
 #ifndef MHA_H_DEPENDENT

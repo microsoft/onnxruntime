@@ -16,6 +16,7 @@
 namespace onnxruntime {
 struct EpGraph;
 struct EpNode;
+class IResourceAccountant;
 }  // namespace onnxruntime
 
 /// <summary>
@@ -50,4 +51,8 @@ struct OrtEpGraphSupportInfo {
   const onnxruntime::EpGraph& ort_graph;
   std::vector<NodeGrouping> node_groupings;
   const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup;
+
+  // Optional resource accountant for capacity-aware partitioning.
+  // Owned by the graph partitioner; lifetime exceeds this struct.
+  onnxruntime::IResourceAccountant* resource_accountant = nullptr;
 };

@@ -18,7 +18,6 @@ limitations under the License.
 // (1) Does not support global tokens in the middle. All global tokens shall be in the beginning of sequence.
 // (2) Maximum number of global tokens <= one-sided attention window
 
-#include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>

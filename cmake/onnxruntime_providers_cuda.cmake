@@ -6,6 +6,8 @@
     file(GLOB onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
         "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
         "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/ml/*.h"
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/ml/*.cc"
         "${ONNXRUNTIME_ROOT}/core/providers/cuda/tunable/*.h"
         "${ONNXRUNTIME_ROOT}/core/providers/cuda/tunable/*.cc"
     )
@@ -20,6 +22,9 @@
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
     )
   endif()
+  # Exclude plugin directory if it was picked up by GLOB_RECURSE
+  list(FILTER onnxruntime_providers_cuda_cc_srcs EXCLUDE REGEX "core/providers/cuda/plugin/.*")
+
   # Remove pch files
   list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
@@ -41,10 +46,38 @@
   else()
     set(onnxruntime_providers_cuda_cu_srcs
         "${ONNXRUNTIME_ROOT}/core/providers/cuda/math/unary_elementwise_ops_impl.cu"
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/ml/label_encoder_impl.cu"
         )
   endif()
+  # Exclude plugin directory if it was picked up by GLOB_RECURSE
+  list(FILTER onnxruntime_providers_cuda_cu_srcs EXCLUDE REGEX "core/providers/cuda/plugin/.*")
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   set(onnxruntime_providers_cuda_src ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
+
+  # Collect CUDA contrib ops sources
+  file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.h"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
+  )
+
+  file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cu"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
+  )
+
+  include(onnxruntime_cuda_source_filters.cmake)
+  onnxruntime_filter_cuda_cu_sources(onnxruntime_cuda_contrib_ops_cu_srcs)
+  onnxruntime_extract_sm_specific_cuda_sources(onnxruntime_cuda_contrib_ops_cu_srcs
+    SM90_SOURCES onnxruntime_cuda_sm90_tma_srcs
+    SM120_SOURCES onnxruntime_cuda_sm120_tma_srcs
+  )
+  onnxruntime_extract_flash_attention_sources(onnxruntime_cuda_contrib_ops_cu_srcs
+    FLASH_SOURCES onnxruntime_cuda_flash_attention_srcs
+  )
+  onnxruntime_extract_llm_sources(onnxruntime_cuda_contrib_ops_cu_srcs
+    LLM_SOURCES onnxruntime_cuda_llm_srcs
+    LLM_SM90_SOURCES onnxruntime_cuda_llm_sm90_srcs
+  )
 
   # disable contrib ops conditionally
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS AND NOT onnxruntime_CUDA_MINIMAL)
@@ -70,8 +103,18 @@
       )
     endif()
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
-    source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
     list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
+  elseif(onnxruntime_DISABLE_CONTRIB_OPS AND NOT onnxruntime_CUDA_MINIMAL)
+    # The ONNX domain CUDA Attention kernel (core/providers/cuda/llm/attention.cc) depends on
+    # attention infrastructure in contrib_ops/cuda/bert/ (flash attention, memory efficient
+    # attention, unfused attention helpers, etc.). Include the bert attention infrastructure
+    # even when contrib ops are disabled so that the ONNX Attention kernel can compile and link.
+    set(onnxruntime_cuda_bert_cc_srcs ${onnxruntime_cuda_contrib_ops_cc_srcs})
+    list(FILTER onnxruntime_cuda_bert_cc_srcs INCLUDE REGEX ".*/contrib_ops/cuda/bert/.*")
+    set(onnxruntime_cuda_bert_cu_srcs ${onnxruntime_cuda_contrib_ops_cu_srcs})
+    list(FILTER onnxruntime_cuda_bert_cu_srcs INCLUDE REGEX ".*/contrib_ops/cuda/bert/.*")
+    source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_bert_cc_srcs} ${onnxruntime_cuda_bert_cu_srcs})
+    list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_bert_cc_srcs} ${onnxruntime_cuda_bert_cu_srcs})
   endif()
 
   if (onnxruntime_ENABLE_TRAINING_OPS)
@@ -149,10 +192,59 @@
     onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_all_srcs})
   endif()
 
+  if (MSVC)
+    # Use /permissive to work around compilation error from CUTLASS header cute/tensor.hpp:
+    #   cutlass-src\include\cute\stride.hpp(299,46): error C3545: 'Ints': parameter pack expects a non-type
+    #     template argument
+    # See https://github.com/NVIDIA/cutlass/issues/3065
+    target_compile_options(onnxruntime_providers_cuda PRIVATE
+      "$<$<COMPILE_LANGUAGE:CXX>:/permissive>"
+      "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /permissive>"
+    )
+  endif()
+
   if(WIN32)
     # FILE_NAME preprocessor definition is used in onnxruntime_providers_cuda.rc
     target_compile_definitions(onnxruntime_providers_cuda PRIVATE FILE_NAME=\"onnxruntime_providers_cuda.dll\")
   endif()
+
+  # Work around a CUDA 13.3 cudafe++ (EDG front-end) regression that mis-parses CCCL's
+  # global-qualified partial specializations, e.g. in <cub/device/device_transform.cuh>:
+  #   template <typename T>
+  #   struct ::cuda::proclaims_copyable_arguments<...> : ::cuda::std::true_type {};
+  # nvcc fails with "global qualification of class name is invalid before ':' token".
+  # The fix is to write the specialization with the namespace reopened instead of using a
+  # global-qualified name. We cannot edit the (often read-only) toolkit headers, so generate
+  # corrected copies of the affected headers into the build tree and place that directory
+  # ahead of the toolkit cccl include path. This is a no-op on toolkits whose headers do not
+  # contain the offending pattern (e.g. once NVIDIA fixes it), so it is safe to keep enabled.
+  function(ort_cuda133_patch_cccl_header src dst)
+    if (NOT EXISTS "${src}")
+      return()
+    endif()
+    file(READ "${src}" _content)
+    set(_orig "${_content}")
+    # <cub/device/device_transform.cuh>
+    string(REPLACE
+      "template <typename T>\nstruct ::cuda::proclaims_copyable_arguments<CUB_NS_QUALIFIER::detail::__return_constant<T>> : ::cuda::std::true_type\n{};"
+      "_CCCL_BEGIN_NAMESPACE_CUDA\ntemplate <typename T>\nstruct proclaims_copyable_arguments<CUB_NS_QUALIFIER::detail::__return_constant<T>> : ::cuda::std::true_type\n{};\n_CCCL_END_NAMESPACE_CUDA"
+      _content "${_content}")
+    # <cub/device/dispatch/tuning/tuning_transform.cuh>
+    string(REPLACE
+      "template <>\nstruct ::cuda::proclaims_copyable_arguments<CUB_NS_QUALIFIER::detail::transform::always_true_predicate>\n    : ::cuda::std::true_type\n{};"
+      "_CCCL_BEGIN_NAMESPACE_CUDA\ntemplate <>\nstruct proclaims_copyable_arguments<CUB_NS_QUALIFIER::detail::transform::always_true_predicate>\n    : ::cuda::std::true_type\n{};\n_CCCL_END_NAMESPACE_CUDA"
+      _content "${_content}")
+    if (NOT _content STREQUAL _orig)
+      get_filename_component(_dst_dir "${dst}" DIRECTORY)
+      file(MAKE_DIRECTORY "${_dst_dir}")
+      file(WRITE "${dst}" "${_content}")
+    elseif (EXISTS "${dst}")
+      # The toolkit header no longer matches the offending pattern (e.g. after a CUDA
+      # upgrade in an existing build tree). Remove any previously generated copy so a
+      # stale patched header does not keep shadowing the toolkit header.
+      file(REMOVE "${dst}")
+    endif()
+  endfunction()
 
   # config_cuda_provider_shared_module can be used to config onnxruntime_providers_cuda_obj, onnxruntime_providers_cuda & onnxruntime_providers_cuda_ut.
   # This function guarantees that all 3 targets have the same configurations.
@@ -170,15 +262,23 @@
     endif()
 
     foreach(ORT_FLAG ${ORT_WARNING_FLAGS})
+      if (NOT "${ORT_FLAG}" STREQUAL "-Wshorten-64-to-32")
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler \"${ORT_FLAG}\">")
+      endif()
     endforeach()
 
-    # CUDA 11.3+ supports parallel compilation
+    # Note: CUDA 11.3+ supports parallel compilation
     # https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#options-for-guiding-compiler-driver-threads
-    if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.3)
-      set(onnxruntime_NVCC_THREADS "1" CACHE STRING "Number of threads that NVCC can use for compilation.")
-      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
-    endif()
+    # --threads is NOT set here; it is applied per-target after calling this function
+    # so that flash attention can use a different (lower) thread count.
+    set(onnxruntime_NVCC_THREADS "4" CACHE STRING "Number of threads that NVCC can use for compilation.")
+
+    # suppress warnings like this:
+    #   cutlass-src\include\cute/arch/mma_sm120.hpp(3128): error #177-D: variable "tidA" was declared but never
+    #     referenced
+    target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=177>")
+    # suppress cudafe "variable was set but never used" (#550-D) from flatbuffers/adapter headers
+    target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe --diag_suppress=550>")
 
     # Since CUDA 12.8, compiling diagnostics become stricter
     if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
@@ -189,6 +289,10 @@
       endif()
       # skip diagnosis error caused by cuda header files
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>")
+      # NVCC false positive: assigning a [[nodiscard]] Status via operator= is flagged as discarding the value.
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=2810>")
+      # CUDA 12.8 also reports deprecated implicit by-copy 'this' captures from CUTLASS headers.
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=2908>")
     endif()
 
     if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
@@ -198,7 +302,7 @@
       endif()
 
       if (MSVC)
-          target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20199>")
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20199>")
       endif()
     endif()
 
@@ -207,6 +311,38 @@
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
+      if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CXX_COMPILER_ID STREQUAL "IBMClang")
+        foreach(CLANG_WARNING
+          braced-scalar-init
+          defaulted-function-deleted
+          inconsistent-missing-override
+          instantiation-after-specialization
+          logical-op-parentheses
+          mismatched-tags
+          shorten-64-to-32
+          unneeded-internal-declaration
+          unknown-warning-option
+          unused-private-field
+          unused-variable)
+          target_compile_options(${target} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=${CLANG_WARNING}>")
+        endforeach()
+        if (CMAKE_CUDA_HOST_COMPILER_ID STREQUAL "Clang" OR CMAKE_CUDA_HOST_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CUDA_HOST_COMPILER_ID STREQUAL "IBMClang")
+          foreach(CLANG_WARNING
+            braced-scalar-init
+            defaulted-function-deleted
+            inconsistent-missing-override
+            instantiation-after-specialization
+            logical-op-parentheses
+            mismatched-tags
+            shorten-64-to-32
+            unneeded-internal-declaration
+            unknown-warning-option
+            unused-private-field
+            unused-variable)
+            target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=${CLANG_WARNING}>")
+          endforeach()
+        endif()
+      endif()
     else()
       #mutex.cuh(91): warning C4834: discarding return value of function with 'nodiscard' attribute
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4834>")
@@ -217,12 +353,27 @@
         # be used due to `&& not_a_const`. This affects too many places for it to be reasonable to disable at a finer
         # granularity.
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/wd4127>")
+
+        # Warning C4211: nonstandard extension used: redefined extern to static
+        # non_max_suppression_impl.cu
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>")
       endif()
     endif()
 
     if(MSVC)
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/Zc:preprocessor>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>")
-      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>")
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>")
+      # Pass /bigobj to the CUDA host compiler using dash spelling. Raw /bigobj is excluded
+      # from global ARM64 CUDA options in onnxruntime_common.cmake because nvcc parses it as input.
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-bigobj>")
+      # /permissive is required for CUTLASS cute headers and to work around MSVC template resolution
+      # issues with abseil headers when compiled through nvcc.
+      # See https://github.com/NVIDIA/cutlass/issues/3065
+      target_compile_options(${target} PRIVATE
+        "$<$<COMPILE_LANGUAGE:CXX>:/permissive>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /permissive>"
+      )
     endif()
 
     onnxruntime_add_include_to_target(${target} onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers)
@@ -249,7 +400,9 @@
           message( WARNING "To compile with NHWC ops enabled please compile against cuDNN 9 or newer." )
         endif()
       endif()
-      target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas CUDNN::cudnn_all cudnn_frontend CUDA::curand CUDA::cufft CUDA::cudart
+      target_compile_definitions(${target} PRIVATE NV_CUDNN_FRONTEND_USE_DYNAMIC_LOADING)
+      target_include_directories(${target} PRIVATE ${CUDNN_INCLUDE_DIR})
+      target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas cudnn_frontend CUDA::curand CUDA::cufft CUDA::cudart CUDA::cuda_driver
               ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
     endif()
 
@@ -262,6 +415,23 @@
     if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
       foreach(inc_dir ${CUDAToolkit_INCLUDE_DIRS})
         if (EXISTS "${inc_dir}/cccl")
+          if (UNIX AND CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.3 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.4)
+            # Generate cudafe++-parseable copies of the CCCL headers that contain global-qualified
+            # partial specializations (see ort_cuda133_patch_cccl_header above) and put the fixed
+            # directory ahead of the toolkit cccl include so the corrected headers win.
+            set(_ort_cccl_fix_dir "${CMAKE_CURRENT_BINARY_DIR}/cccl_cuda13_fix")
+            ort_cuda133_patch_cccl_header(
+              "${inc_dir}/cccl/cub/device/device_transform.cuh"
+              "${_ort_cccl_fix_dir}/cub/device/device_transform.cuh")
+            ort_cuda133_patch_cccl_header(
+              "${inc_dir}/cccl/cub/device/dispatch/tuning/tuning_transform.cuh"
+              "${_ort_cccl_fix_dir}/cub/device/dispatch/tuning/tuning_transform.cuh")
+            if (EXISTS "${_ort_cccl_fix_dir}/cub/device/device_transform.cuh" OR
+                EXISTS "${_ort_cccl_fix_dir}/cub/device/dispatch/tuning/tuning_transform.cuh")
+              target_include_directories(${target} BEFORE PRIVATE "${_ort_cccl_fix_dir}")
+            endif()
+          endif()
+
           # Add the cccl subdirectory to the include path so <cuda/std/utility> can be found
           target_include_directories(${target} PRIVATE "${inc_dir}/cccl")
         endif()
@@ -272,14 +442,21 @@
     set_target_properties(${target} PROPERTIES LINKER_LANGUAGE CUDA)
     set_target_properties(${target} PROPERTIES FOLDER "ONNXRuntime")
 
-    if("90" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
+    if(ORT_HAS_SM90_OR_LATER)
       target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-w>)
+      target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-DCUTLASS_ENABLE_GDC_FOR_SM90=1>)
       target_compile_definitions(${target} PRIVATE COMPILE_HOPPER_TMA_GEMMS)
+      if(NOT MSVC)
+        target_compile_definitions(${target} PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
+      endif()
       if (MSVC)
-        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>")
-        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=177>")
+        # Do NOT add another /bigobj here: the MSVC block above already forwards it to cl.
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4172>")
       endif()
+    endif()
+
+    if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG AND NOT MSVC)
+      target_compile_definitions(${target} PRIVATE COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS)
     endif()
 
     if (onnxruntime_ENABLE_CUDA_PROFILING) # configure cupti for cuda profiling
@@ -337,8 +514,92 @@
   endfunction()
   if(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
     config_cuda_provider_shared_module(onnxruntime_providers_cuda_obj)
+    target_compile_options(onnxruntime_providers_cuda_obj PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
   endif()
   config_cuda_provider_shared_module(onnxruntime_providers_cuda)
+  target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
+
+  # Create OBJECT libraries for SM-specific contrib CUDA sources that must be compiled
+  # with restricted CUDA architectures. These files use CUTLASS 3.x SM90+/SM120+ features
+  # (GMMA, TMA) that cannot produce useful device code for older architectures.
+  #
+  # SM90/SM120 TMA and LLM OBJECT libraries contain MoE and MatMulNBits kernels (contrib ops).
+  # Flash Attention is also used by the ONNX domain Attention op, so it is included even
+  # when contrib ops are disabled.
+  if(NOT onnxruntime_CUDA_MINIMAL)
+    # Flash Attention OBJECT library: SM80+ only, with independent nvcc_threads.
+    # Flash Attention V2 kernels require SM80 (Ampere) and are memory-intensive to compile.
+    # Isolating them allows the rest of the build to use higher --threads without OOM.
+    # Included even with onnxruntime_DISABLE_CONTRIB_OPS because the ONNX domain Attention
+    # kernel depends on flash attention infrastructure in contrib_ops/cuda/bert/.
+    set(onnxruntime_FLASH_NVCC_THREADS "1" CACHE STRING
+        "Number of NVCC threads for Flash Attention compilation (memory-intensive, keep low).")
+    if(onnxruntime_cuda_flash_attention_srcs)
+      onnxruntime_filter_cuda_archs(_ort_flash_cuda_architectures MIN_SM 80)
+      if(_ort_flash_cuda_architectures)
+        onnxruntime_add_cuda_object_library(
+          NAME onnxruntime_providers_cuda_flash_attention
+          PARENT onnxruntime_providers_cuda
+          CUDA_ARCHITECTURES "${_ort_flash_cuda_architectures}"
+          NVCC_THREADS "${onnxruntime_FLASH_NVCC_THREADS}"
+          SOURCES ${onnxruntime_cuda_flash_attention_srcs})
+      else()
+        # No SM80+ architectures available: compile flash sources in parent target so the
+        # linker can find the host-side symbols referenced by flash_api.cc. The kernels
+        # themselves will be empty stubs due to __CUDA_ARCH__ >= 800 guards.
+        target_sources(onnxruntime_providers_cuda PRIVATE ${onnxruntime_cuda_flash_attention_srcs})
+      endif()
+    endif()
+
+    if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+      # SM90 TMA warp-specialized files use SM90-specific collective operations.
+      # Compile at exactly 90a-real: SM120+ GPUs run SM90 native code via forward compat.
+      # Also includes fpA_intB SM90 launchers (guarded by #ifndef EXCLUDE_SM_90).
+      if(onnxruntime_cuda_sm90_tma_srcs OR onnxruntime_cuda_llm_sm90_srcs)
+        set(_ort_sm90_all_srcs ${onnxruntime_cuda_sm90_tma_srcs} ${onnxruntime_cuda_llm_sm90_srcs})
+        onnxruntime_filter_cuda_archs(_ort_sm90_check MIN_SM 90)
+        if(_ort_sm90_check)
+          onnxruntime_add_cuda_object_library(
+            NAME onnxruntime_providers_cuda_sm90_tma
+            PARENT onnxruntime_providers_cuda
+            CUDA_ARCHITECTURES "90a-real"
+            NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
+            SOURCES ${_ort_sm90_all_srcs})
+        endif()
+      endif()
+
+      if(onnxruntime_cuda_sm120_tma_srcs)
+        onnxruntime_filter_cuda_archs(_ort_sm120_cuda_architectures MIN_SM 120)
+        if(_ort_sm120_cuda_architectures)
+          onnxruntime_add_cuda_object_library(
+            NAME onnxruntime_providers_cuda_sm120_tma
+            PARENT onnxruntime_providers_cuda
+            CUDA_ARCHITECTURES "${_ort_sm120_cuda_architectures}"
+            NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
+            SOURCES ${onnxruntime_cuda_sm120_tma_srcs})
+        endif()
+      endif()
+
+      # LLM OBJECT library: SM75+ (backward compatible with fpA_intB_gemv/gemm which support SM75).
+      # Restricts CUDA_ARCHITECTURES to avoid compiling heavy CUTLASS templates for pre-Turing GPUs.
+      # Excludes SM120+ real (native SASS) architectures because SM120-specific kernels are already
+      # compiled in the separate SM120 TMA OBJECT library, and compiling the general LLM code for
+      # sm_120a triggers CCCL tcgen05 PTX headers that fail on Windows/MSVC. The virtual arch
+      # (PTX) is kept so SM120 devices can JIT-compile the code.
+      if(onnxruntime_cuda_llm_srcs)
+        onnxruntime_filter_cuda_archs(_ort_llm_cuda_architectures MIN_SM 75 EXCLUDE_SM120_REAL)
+        if(_ort_llm_cuda_architectures)
+          onnxruntime_add_cuda_object_library(
+            NAME onnxruntime_providers_cuda_llm
+            PARENT onnxruntime_providers_cuda
+            CUDA_ARCHITECTURES "${_ort_llm_cuda_architectures}"
+            NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
+            SOURCES ${onnxruntime_cuda_llm_srcs})
+        endif()
+      endif()
+    endif()
+  endif()
+
   # Cannot use glob because the file cuda_provider_options.h should not be exposed out.
   set(ONNXRUNTIME_CUDA_PROVIDER_PUBLIC_HEADERS
         "${REPO_ROOT}/include/onnxruntime/core/providers/cuda/cuda_context.h"
@@ -346,6 +607,30 @@
       )
   set_target_properties(onnxruntime_providers_cuda PROPERTIES
     PUBLIC_HEADER "${ONNXRUNTIME_CUDA_PROVIDER_PUBLIC_HEADERS}")
+  if(WIN32 AND NOT onnxruntime_CUDA_MINIMAL)
+    set(ORT_CUDNN_DLL_PATH "")
+    if(onnxruntime_CUDNN_HOME)
+      set(ORT_CUDNN_DLL_SEARCH_PATHS
+        "${onnxruntime_CUDNN_HOME}/bin/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/x64/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/${onnxruntime_CUDA_VERSION}/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/${onnxruntime_CUDA_VERSION}/x64/cudnn64_*.dll"
+      )
+    else()
+      set(ORT_CUDNN_DLL_SEARCH_PATHS "${onnxruntime_CUDA_HOME}/bin/cudnn64_*.dll")
+    endif()
+    foreach(search_path ${ORT_CUDNN_DLL_SEARCH_PATHS})
+      file(GLOB ORT_CUDNN_DLL_PATH "${search_path}")
+      if(ORT_CUDNN_DLL_PATH)
+        break()
+      endif()
+    endforeach()
+    if(ORT_CUDNN_DLL_PATH)
+      add_custom_command(TARGET onnxruntime_providers_cuda POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ORT_CUDNN_DLL_PATH} $<TARGET_FILE_DIR:onnxruntime_providers_cuda>
+      )
+    endif()
+  endif()
   install(TARGETS onnxruntime_providers_cuda
           PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers/cuda
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}

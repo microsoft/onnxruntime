@@ -19,7 +19,6 @@ std::conditional_t<THRW, void, Status> CudaCall(
 #define CU_CALL(expr) (::onnxruntime::CudaCall<CUresult, false>((expr), #expr, "CUDA", CUDA_SUCCESS, "", __FILE__, __LINE__))
 #define CUBLAS_CALL(expr) (::onnxruntime::CudaCall<cublasStatus_t, false>((expr), #expr, "CUBLAS", CUBLAS_STATUS_SUCCESS, "", __FILE__, __LINE__))
 
-#define CUSPARSE_CALL(expr) (::onnxruntime::CudaCall<cusparseStatus_t, false>((expr), #expr, "CUSPARSE", CUSPARSE_STATUS_SUCCESS, "", __FILE__, __LINE__))
 #define CURAND_CALL(expr) (::onnxruntime::CudaCall<curandStatus_t, false>((expr), #expr, "CURAND", CURAND_STATUS_SUCCESS, "", __FILE__, __LINE__))
 #define CUDNN_CALL(expr) (::onnxruntime::CudaCall<cudnnStatus_t, false>((expr), #expr, "CUDNN", CUDNN_STATUS_SUCCESS, "", __FILE__, __LINE__))
 #define CUDNN_CALL2(expr, m) (::onnxruntime::CudaCall<cudnnStatus_t, false>((expr), #expr, "CUDNN", CUDNN_STATUS_SUCCESS, m, __FILE__, __LINE__))
@@ -30,7 +29,6 @@ std::conditional_t<THRW, void, Status> CudaCall(
 #define CU_CALL_THROW(expr) (::onnxruntime::CudaCall<CUresult, true>((expr), #expr, "CUDA", CUDA_SUCCESS, "", __FILE__, __LINE__))
 #define CUBLAS_CALL_THROW(expr) (::onnxruntime::CudaCall<cublasStatus_t, true>((expr), #expr, "CUBLAS", CUBLAS_STATUS_SUCCESS, "", __FILE__, __LINE__))
 
-#define CUSPARSE_CALL_THROW(expr) (::onnxruntime::CudaCall<cusparseStatus_t, true>((expr), #expr, "CUSPARSE", CUSPARSE_STATUS_SUCCESS, "", __FILE__, __LINE__))
 #define CURAND_CALL_THROW(expr) (::onnxruntime::CudaCall<curandStatus_t, true>((expr), #expr, "CURAND", CURAND_STATUS_SUCCESS, "", __FILE__, __LINE__))
 
 // the cudnn configuration call that doesn't need set stream

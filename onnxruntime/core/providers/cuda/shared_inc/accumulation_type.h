@@ -11,7 +11,9 @@ namespace cuda {
 
 // specifies the auxiliary type to use for accumulation of the given type
 template <typename T>
-struct AccumulationType;
+struct AccumulationType {
+  using type = T;
+};
 template <>
 struct AccumulationType<half> {
   using type = float;

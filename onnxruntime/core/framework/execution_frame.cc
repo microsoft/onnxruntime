@@ -154,19 +154,58 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
     p_ort_value = &all_values_[ort_value_idx];
 
     if (p_ort_value->IsAllocated()) {
-      // already allocated. verify shape matches if tensor.
+      // The OrtValue at this index is already allocated. This happens when the caller provides
+      // a pre-allocated OrtValue as an output for Run(). IExecutionFrame::Init() populates
+      // all_values_ with caller-provided outputs (fetches) before any kernel executes.
+      // Each NodeArg in an ONNX graph has exactly one producer, so at this point no kernel
+      // in the current run could have written here — the only source is a value placed
+      // during Init().
+      //
+      // When the shapes match, we reuse the caller's buffer (zero-cost for repeated runs
+      // with the same shapes).
+      //
+      // When they differ, it means the caller supplied an output OrtValue whose shape does
+      // not match what the kernel computed for this run. This typically happens when the
+      // caller reuses the output OrtValue array across Run() calls with different input
+      // shapes on a model with dynamic dimensions. The caller should either supply
+      // unallocated output OrtValues or ensure the pre-allocated shape matches.
+      //
+      // Pre-run validation (ValidateInputsOutputs in inference_session.cc) catches
+      // structural mismatches (element type, rank, fixed dimensions) before execution
+      // begins. Only dynamic dimension differences reach this point, since the actual
+      // shape is only known once the kernel computes it.
+      bool shape_matched = true;
+
       if (p_ort_value->IsTensor()) {
+        ORT_RETURN_IF_NOT(shape != nullptr, "shape must not be null for tensor output that is already allocated");
         const Tensor& tensor = p_ort_value->Get<Tensor>();
-        ORT_ENFORCE(shape && tensor.Shape() == *shape,
-                    "OrtValue shape verification failed. Current shape:", tensor.Shape(),
-                    " Requested shape:", shape ? shape->ToString() : "null");
+        shape_matched = (tensor.Shape() == *shape);
       } else if (p_ort_value->IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
+        ORT_RETURN_IF_NOT(shape != nullptr, "shape must not be null for sparse tensor output that is already allocated");
         const SparseTensor& sp_tensor = p_ort_value->Get<SparseTensor>();
-        ORT_ENFORCE(shape && sp_tensor.DenseShape() == *shape,
-                    "OrtValue shape verification failed. Current shape:", sp_tensor.DenseShape(),
-                    " Requested shape:", shape ? shape->ToString() : "null");
+        shape_matched = (sp_tensor.DenseShape() == *shape);
 #endif
+      }
+
+      if (!shape_matched) {
+        const TensorShape& existing_shape = p_ort_value->IsTensor()
+                                                ? p_ort_value->Get<Tensor>().Shape()
+#if !defined(DISABLE_SPARSE_TENSORS)
+                                                : p_ort_value->Get<SparseTensor>().DenseShape();
+#else
+                                                : *shape;  // unreachable, but satisfies compiler
+#endif
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "The output OrtValue provided for output '",
+                               node.OutputDefs()[output_index]->Name(),
+                               "' of node '", node.Name(),
+                               "' (", node.OpType(), ") has shape ", existing_shape,
+                               " but the computed output shape for this run is ", *shape,
+                               ". When calling Run() with pre-allocated output OrtValues on a model "
+                               "with dynamic output shapes, either supply unallocated output OrtValues "
+                               "or ensure the pre-allocated shapes match the expected output shapes "
+                               "for each run.");
       }
     } else {
       // shape is nullptr for traditional ML output values

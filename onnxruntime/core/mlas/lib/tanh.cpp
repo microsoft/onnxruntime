@@ -178,7 +178,7 @@ Return Value:
 
 --*/
 {
-#if defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_RISCV64)
     GetMlasPlatform().TanhKernelRoutine(Input, Output, N);
 #else
     MlasTanhKernel(Input, Output, N);
@@ -193,6 +193,10 @@ MlasComputeTanh<MLAS_FP16>(
     MLAS_FP16* Output,
     size_t N
 ) {
+    if(GetMlasPlatform().TanhFP16KernelRoutine){
+        GetMlasPlatform().TanhFP16KernelRoutine(Input, Output, N);
+        return;
+    }
     const auto* dispatch = GetMlasPlatform().SoftmaxDispatch;
     if (dispatch == nullptr || dispatch->Tanh_Fp16 == nullptr) {
         MLAS_THROW_EX(std::runtime_error, "Tanh_Fp16 is not supported.");

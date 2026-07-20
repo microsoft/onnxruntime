@@ -93,7 +93,7 @@ Status Sample(AllocatorPtr& allocator,
 #endif
 
   gsl::span<float>& d_sorted_softmaxed_score = sampling_state->d_sorted_softmaxed_score;
-  ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, false>(stream,
+  ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
                                                                                       d_sorted_softmaxed_score.data(),
                                                                                       reinterpret_cast<CudaT*>(d_sorted_score.data()),
                                                                                       parameters->vocab_size,
@@ -127,7 +127,7 @@ Status Sample(AllocatorPtr& allocator,
 #endif
 
   gsl::span<float>& d_softmaxed_score = sampling_state->d_softmaxed_score;
-  ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, false>(stream,
+  ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
                                                                                       d_softmaxed_score.data(),
                                                                                       reinterpret_cast<CudaT*>(next_token_scores.data()),
                                                                                       parameters->vocab_size,

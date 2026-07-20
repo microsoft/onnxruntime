@@ -48,7 +48,12 @@ __global__ void banRepeatedTokens(const int64_t* __restrict__ tokens,
   }
   if (is_banned == true) {
     auto token_to_be_banned = tokens_shm[col + no_repeat_ngram_size - 1];
-    lprobs[lprob_start + token_to_be_banned] = -std::numeric_limits<float>::infinity();
+    CUDA_KERNEL_ASSERT(token_to_be_banned >= 0 && token_to_be_banned < vocab_size);
+    // In release builds, silently skip OOB tokens rather than writing out of bounds.
+    // CUDA kernels cannot propagate Status errors to the host.
+    if (token_to_be_banned >= 0 && token_to_be_banned < vocab_size) {
+      lprobs[lprob_start + token_to_be_banned] = -std::numeric_limits<float>::infinity();
+    }
   }
 }
 

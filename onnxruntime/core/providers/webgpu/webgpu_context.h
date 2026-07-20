@@ -95,7 +95,9 @@ struct WebGpuContextConfig {
       webgpu::ValidationMode::Basic  // for release build, enable basic validation by default
 #endif  // !NDEBUG
   };
+  bool validation_mode_explicitly_set{false};
   bool preserve_device{false};
+  uint32_t max_num_pending_dispatches{16};
   uint64_t max_storage_buffer_binding_size{0};
   WebGpuBufferCacheConfig buffer_cache_config{};
   int power_preference{static_cast<int>(WGPUPowerPreference_HighPerformance)};
@@ -147,10 +149,18 @@ class WebGpuContextFactory {
  private:
   WebGpuContextFactory() {}
 
-  static std::unordered_map<int32_t, WebGpuContextInfo> contexts_;
   static std::mutex mutex_;
   static std::once_flag init_default_flag_;
-  static wgpu::Instance default_instance_;
+
+  // Use pointers to heap-allocated objects so that their destructors do NOT run
+  // during static destruction at process exit. This avoids crashes when dependent
+  // DLLs (e.g. dxcompiler.dll) have already been unloaded by the OS.
+  // Cleanup() explicitly deletes them during normal unload. In the shared-library
+  // build this is reached via ReleaseEpFactory, and in the WebGPU static-lib build
+  // it is reached from OrtEnv::~OrtEnv via CleanupWebGpuContexts().
+  // On abnormal/process termination they simply leak, which is safe.
+  static std::unordered_map<int32_t, WebGpuContextInfo>* contexts_;
+  static WGPUInstance default_instance_;
 };
 
 // Class WebGpuContext includes all necessary resources for the context.
@@ -162,7 +172,7 @@ class WebGpuContext final {
 
   const wgpu::AdapterInfo& AdapterInfo() const { return adapter_info_; }
   const wgpu::Limits& DeviceLimits() const { return device_limits_; }
-  bool DeviceHasFeature(wgpu::FeatureName feature) const { return device_features_.find(feature) != device_features_.end(); }
+  bool DeviceHasFeature(wgpu::FeatureName feature) const { return device_features_.contains(feature); }
 #if !defined(__wasm__)
   const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const { return subgroup_matrix_configs_; }
 #endif
@@ -230,7 +240,15 @@ class WebGpuContext final {
     return *split_k_config_;
   }
 
+  // Set the CPU time base (ORT profiler's profiling_start_time) used to align GPU
+  // timestamps with ORT CPU events. Pushed in by WebGpuProfiler::StartProfiling, which
+  // is the only place that receives the framework's profiling start time for both
+  // session-level and run-level profiling.
+  void SetProfilingStartTime(TimePoint profiling_start_time) { profiling_start_time_ = profiling_start_time; }
   void StartProfiling();
+  // Collect pending GPU profiling data into the given events vector.
+  void CollectProfilingData(profiling::Events& events);
+  // Collect pending GPU profiling data into the shared events_ vector (run-level).
   void CollectProfilingData();
   void EndProfiling(TimePoint, profiling::Events& events);
 
@@ -267,11 +285,13 @@ class WebGpuContext final {
   WebGpuContext(WGPUInstance instance,
                 WGPUDevice device,
                 webgpu::ValidationMode validation_mode,
+                bool validation_mode_explicitly_set,
                 bool preserve_device,
                 uint64_t max_storage_buffer_binding_size)
       : instance_{instance},
         device_{device},
         validation_mode_{validation_mode},
+        validation_mode_explicitly_set_{validation_mode_explicitly_set},
         query_type_{TimestampQueryType::None},
         preserve_device_{preserve_device},
         max_storage_buffer_binding_size_{max_storage_buffer_binding_size} {
@@ -316,6 +336,7 @@ class WebGpuContext final {
   wgpu::Device device_;
 
   webgpu::ValidationMode validation_mode_;
+  bool validation_mode_explicitly_set_;
 
   wgpu::Queue device_queue_;
   wgpu::AdapterInfo adapter_info_;
@@ -333,7 +354,7 @@ class WebGpuContext final {
   std::unique_ptr<ProgramManager> program_mgr_;
 
   uint32_t num_pending_dispatches_ = 0;
-  const uint32_t max_num_pending_dispatches_ = 16;
+  uint32_t max_num_pending_dispatches_ = 16;
 
   std::unique_ptr<SplitKConfig> split_k_config_;
 
@@ -348,8 +369,15 @@ class WebGpuContext final {
   std::vector<PendingQueryInfo> pending_queries_;
 
   uint64_t gpu_timestamp_offset_ = 0;
+  // ORT profiler's CPU time base, set via SetProfilingStartTime; GPU timestamps are
+  // aligned to it. See SetProfilingStartTime.
+  TimePoint profiling_start_time_;
+  // CPU elapsed time (us) from profiling_start_time_ to the first GPU submit, applied
+  // as an offset to GPU timestamps in CollectProfilingData. -1 until the first submit.
+  int64_t profiling_first_submit_cpu_offset_us_ = -1;
   bool is_profiling_ = false;
-  profiling::Events events_;  // cached GPU profiling events
+  // Shared GPU profiling events for run-level profiling.
+  profiling::Events events_;
   bool preserve_device_;
   uint64_t max_storage_buffer_binding_size_;
   GraphCaptureState graph_capture_state_{GraphCaptureState::Default};

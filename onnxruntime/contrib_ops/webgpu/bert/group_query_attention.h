@@ -16,7 +16,10 @@ using namespace onnxruntime::webgpu;
 
 class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPackedQKVWithRotaryEmbeddingProgram> {
  public:
-  SplitPackedQKVWithRotaryEmbeddingProgram(bool interleaved) : Program{"SplitPackedQKVWithRotaryEmbedding"}, interleaved_{interleaved} {}
+  SplitPackedQKVWithRotaryEmbeddingProgram(bool interleaved, uint32_t multi_rotary_cache_concat_offset)
+      : Program{"SplitPackedQKVWithRotaryEmbedding"},
+        interleaved_{interleaved},
+        multi_rotary_cache_concat_offset_{multi_rotary_cache_concat_offset} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -32,6 +35,7 @@ class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPacke
 
  private:
   const bool interleaved_;
+  const uint32_t multi_rotary_cache_concat_offset_;
 };
 
 class GroupQueryAttention final : public WebGpuKernel {
@@ -54,6 +58,8 @@ class GroupQueryAttention final : public WebGpuKernel {
     use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
 
     local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
+
+    qk_norm_epsilon_ = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
   }
 
   int num_heads_;     // number of attention heads of Q
@@ -65,6 +71,10 @@ class GroupQueryAttention final : public WebGpuKernel {
   int local_window_size_;
 
   bool use_smooth_softmax_;
+  // Epsilon used by per-head RMSNorm when q_norm_weight / k_norm_weight (inputs 14 / 15) are
+  // provided. Consumed whenever those optional norm inputs are used (decode fast path or
+  // prefill fallback), and ignored otherwise.
+  float qk_norm_epsilon_;
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 };
 

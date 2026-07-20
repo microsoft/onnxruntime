@@ -488,6 +488,11 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   enable_file_mapped_weights_ = false;
   LOGS_DEFAULT(WARNING) << "File mapped weights feature is only available on Windows arm64 devices for QNN API versions >= 2.32. "
                         << "Feature will be disabled by default";
+#else
+  if (qnn_context_embed_mode_ && enable_file_mapped_weights_) {
+    enable_file_mapped_weights_ = false;
+    LOGS_DEFAULT(WARNING) << "File mapped weights feature is incompatible with embedded EP contexts. Feature will be disabled by default.";
+  }
 #endif
 
   static const std::string QNN_DEVICE_ID = "device_id";
@@ -570,8 +575,11 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   enable_htp_shared_mem_allocator_ = ParseBoolOption(QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED, false, provider_options_map);
   if (enable_htp_shared_mem_allocator_) {
     // Initialize rpcmem_library_.
-    // This is necessary for HtpSharedMemoryAllocator to function and also indicates that the allocator is available.
-    rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
+    // This library is only necessary for the inference (for the shared memory allocator), if we are in context
+    // generation stage, there is no need to load it as no allocations will be made.
+    if (!context_cache_enabled_) {
+      rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
+    }
     model_settings_.htp_shared_memory = enable_htp_shared_mem_allocator_;
   }
 
@@ -999,8 +1007,18 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
     for (auto& ep_ctx_node : ep_ctx_nodes) {
       NodeAttrHelper node_helper(*ep_ctx_node);
+      std::string ep_cache_context_value = node_helper.Get(qnn::EP_CACHE_CONTEXT, "");
+      if (ep_cache_context_value.empty()) {
+        continue;
+      }
+      auto validate_status = utils::ValidateExternalDataPath(
+          std::filesystem::path(context_model_path), std::filesystem::path(ep_cache_context_value));
+      if (!validate_status.IsOK()) {
+        LOGS(logger, ERROR) << "QNN EP context path validation failed: " << validate_status.ErrorMessage();
+        return result;
+      }
       std::string context_bin_filepath(parent_path.string());
-      context_bin_filepath.append("/").append(node_helper.Get(qnn::EP_CACHE_CONTEXT, ""));
+      context_bin_filepath.append("/").append(ep_cache_context_value);
       if (context_bin_map.find(context_bin_filepath) == context_bin_map.end()) {
         context_bin_map.emplace(context_bin_filepath, std::make_unique<std::vector<std::string>>());
         // Push context bin filepath for lookup between sessions

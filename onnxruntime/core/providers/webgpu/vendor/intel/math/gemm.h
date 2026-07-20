@@ -14,17 +14,17 @@ namespace intel {
 class GemmSubgroupProgram final : public Program<GemmSubgroupProgram> {
  public:
   GemmSubgroupProgram(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul,
-                      int c_components, bool c_is_scalar, bool is_vec4,
-                      const gsl::span<int64_t>& elements_per_thread)
+                      bool c_is_scalar, bool is_vec4, bool a_vec4, bool b_is_fp16, const gsl::span<int64_t>& elements_per_thread)
       : Program{"GemmSubgroup"},
         transA_{transA},
         transB_{transB},
         alpha_{alpha},
         need_handle_bias_{need_handle_bias},
         need_handle_matmul_{need_handle_matmul},
-        c_components_(c_components),
         c_is_scalar_(c_is_scalar),
         is_vec4_(is_vec4),
+        a_vec4_(a_vec4),
+        b_is_fp16_(b_is_fp16),
         elements_per_thread_(elements_per_thread.begin(), elements_per_thread.end()) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -42,9 +42,10 @@ class GemmSubgroupProgram final : public Program<GemmSubgroupProgram> {
   float alpha_;
   bool need_handle_bias_;
   bool need_handle_matmul_;
-  int c_components_;
   bool c_is_scalar_ = false;
   bool is_vec4_ = false;
+  bool a_vec4_ = false;
+  bool b_is_fp16_ = false;
   const InlinedVector<int64_t> elements_per_thread_;
 };
 

@@ -28,8 +28,22 @@ SVMRegressor<T>::SVMRegressor(const OpKernelInfo& info)
   auto onec = info.GetAttrOrDefault<int64_t>("one_class", 0);
   one_class_ = (onec != 0);
 
+  ORT_ENFORCE(!rho_.empty(), "SVMRegressor: rho must not be empty");
+
   if (vector_count_ > 0) {
+    // Validate attribute array sizes against declared dimensions to prevent
+    // out-of-bounds reads from crafted models.
+    ORT_ENFORCE(coefficients_.size() >= static_cast<size_t>(vector_count_),
+                "SVMRegressor: coefficients size (", coefficients_.size(),
+                ") must be >= n_supports (", vector_count_, ")");
+    ORT_ENFORCE(!support_vectors_.empty(),
+                "SVMRegressor: support_vectors must not be empty when n_supports > 0");
+    ORT_ENFORCE(support_vectors_.size() % static_cast<size_t>(vector_count_) == 0,
+                "SVMRegressor: support_vectors size (", support_vectors_.size(),
+                ") must be a multiple of n_supports (", vector_count_, ")");
+
     feature_count_ = support_vectors_.size() / vector_count_;  // length of each support vector
+
     mode_ = SVM_TYPE::SVM_SVC;
   } else {
     feature_count_ = coefficients_.size();
@@ -42,9 +56,17 @@ template <typename T>
 Status SVMRegressor<T>::Compute(OpKernelContext* ctx) const {
   const auto* X = ctx->Input<Tensor>(0);
 
-  ptrdiff_t num_features = X->Shape().NumDimensions() == 1 ? narrow<ptrdiff_t>(X->Shape()[0]) : narrow<ptrdiff_t>(X->Shape()[1]);
-  ptrdiff_t num_batches = X->Shape().NumDimensions() == 1 ? 1 : narrow<ptrdiff_t>(X->Shape()[0]);
-  ORT_RETURN_IF_NOT(num_features == feature_count_ && num_features >= 0 && num_batches >= 0, "Invalid argument");
+  const auto& x_shape = X->Shape();
+  const auto input_rank = x_shape.NumDimensions();
+  ORT_RETURN_IF_NOT(input_rank > 0 && input_rank <= 2, "Input shape must have 1 or 2 dimensions. Dims=", input_rank);
+
+  ptrdiff_t num_features = input_rank == 1 ? narrow<ptrdiff_t>(x_shape[0]) : narrow<ptrdiff_t>(x_shape[1]);
+  ptrdiff_t num_batches = input_rank == 1 ? 1 : narrow<ptrdiff_t>(x_shape[0]);
+  ORT_RETURN_IF_NOT(num_features == feature_count_ && num_features >= 0 && num_batches >= 0,
+                    "Invalid input for SVMRegressor: expected feature_count=", feature_count_,
+                    ", actual num_features=", num_features,
+                    ", input_rank=", input_rank,
+                    ", num_batches=", num_batches);
 
   // X: [num_batches, feature_count_] where features could be coefficients or support vectors
   // coefficients_: [vector_count_]
@@ -78,10 +100,12 @@ Status SVMRegressor<T>::Compute(OpKernelContext* ctx) const {
                                       1.f, tmp_data_span.data(), coefficients_.data(), 1.f,
                                       rho_.data(), &rho_shape,
                                       out.data(),
-                                      threadpool);
+                                      threadpool,
+                                      &mlas_backend_kernel_selector_config_);
   } else if (mode_ == SVM_TYPE::SVM_LINEAR) {
     // combine the coefficients with the input data and apply the kernel type
-    batched_kernel_dot<float>(x_data, coefficients_, num_batches, 1, feature_count_, rho_[0], out, threadpool);
+    batched_kernel_dot<float>(x_data, coefficients_, num_batches, 1, feature_count_, rho_[0], out,
+                              threadpool);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected mode:", static_cast<int>(mode_));
   }

@@ -1,12 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/platform/env_var_utils.h"
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/util/include/scoped_env_vars.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "test/contrib_ops/attention_op_test_helper.h"
 
@@ -521,8 +519,12 @@ TEST(ContribOpAttentionTest, AttentionBatch1_Float16) {
       3.154296875, 0.1082763671875, 4.25, 5.6484375,
       3.970703125, 0.072998046875, 4.25, 5.6484375};
 
+  // WebGPU Attention does not support mask_index input.
+  constexpr bool disable_webgpu = true;
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
-                   batch_size, sequence_length, hidden_size, number_of_heads, true);
+                   batch_size, sequence_length, hidden_size, number_of_heads, true /*use_float16*/,
+                   false, false, 0, nullptr, nullptr, AttentionMaskType::MASK_1D_KEY_SEQ_LEN, 0, 0,
+                   false /*disable_cpu*/, false /*disable_cuda*/, false /*disable_dml*/, disable_webgpu);
 }
 
 TEST(ContribOpAttentionTest, AttentionBatch2) {
@@ -871,41 +873,12 @@ TEST(ContribOpAttentionTest, Causal_EmptyPastState) {
   int past_sequence_length = 0;
   bool use_float16 = true;
 
-  // Unfused kernel
-  {
-    ScopedEnvironmentVariables scoped_env_vars{
-        EnvVarMap{
-            {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
-            {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "0"},
-            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"}}};
-    RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
-                     batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
-                     use_past_state, past_sequence_length, &past_data, &present_data);
-  }
-
-  // Fused kernel
-  {
-    ScopedEnvironmentVariables scoped_env_vars{
-        EnvVarMap{
-            {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
-            {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "1"},
-            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "0"}}};
-    RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
-                     batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
-                     use_past_state, past_sequence_length, &past_data, &present_data);
-  }
-
-  // Fused kernel (fall back to regular fmha since head_size <=64 and sequence_length <= 128)
-  {
-    ScopedEnvironmentVariables scoped_env_vars{
-        EnvVarMap{
-            {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "0"},
-            {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "1"},
-            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "0"}}};
-    RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
-                     batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
-                     use_past_state, past_sequence_length, &past_data, &present_data);
-  }
+  // The TRT fused self attention kernels do not support causal (unidirectional) attention, so the
+  // kDisableTrtFlashAttention / kDisableFusedSelfAttention environment variables do not affect kernel
+  // selection here. A single run is sufficient.
+  RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
+                   batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
+                   use_past_state, past_sequence_length, &past_data, &present_data);
 }
 
 TEST(ContribOpAttentionTest, AttentionEmptyPastState) {
@@ -1450,6 +1423,49 @@ TEST(ContribOpAttentionTest, AttentionBatch2LeftPaddingMaskIndex2) {
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length, past_data, present_data,
                    AttentionMaskType::MASK_1D_END_START);
+}
+
+// Verifies that out-of-range 1D mask_index values are clamped rather than
+// causing out-of-bounds memory access.  end_position > all_sequence_length
+// must clamp to all_sequence_length (no right-side masking), and
+// start_position < 0 must clamp to 0 (no left-side masking).  Both cases
+// should produce the same output as a fully-unmasked sequence.
+TEST(ContribOpAttentionTest, AttentionMaskIndex1DClampOOB) {
+  int batch_size = 1;
+  int sequence_length = 2;
+  int hidden_size = 4;
+  int number_of_heads = 2;
+
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<float> weight_data = {
+      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
+      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
+      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
+      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
+
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
+
+  // end_position=999 is well above sequence_length=2, so it must clamp to 2
+  // (no right-side masking). Expected output equals the fully-unmasked case.
+  std::vector<int32_t> mask_index_data_end_oob = {999};
+  std::vector<float> output_data = {
+      3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
+      3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f};
+
+  RunAttentionTest(input_data, weight_data, bias_data, mask_index_data_end_oob, output_data,
+                   batch_size, sequence_length, hidden_size, number_of_heads);
+
+  // start_position=-5 is below zero, so it must clamp to 0 (no left-side
+  // masking). end_position=2 keeps all tokens unmasked on the right.
+  // Expected output is again the fully-unmasked case.
+  std::vector<int32_t> mask_index_data_start_neg = {2, -5};
+  RunAttentionTest(input_data, weight_data, bias_data, mask_index_data_start_neg, output_data,
+                   batch_size, sequence_length, hidden_size, number_of_heads, false, false, false, 0,
+                   nullptr, nullptr, AttentionMaskType::MASK_1D_END_START);
 }
 
 TEST(ContribOpAttentionTest, Attention3DMask) {
@@ -2007,6 +2023,56 @@ TEST(ContribOpAttentionTest, AttentionMaskIndexOutOfRange) {
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length, past_data, present_data,
                    AttentionMaskType::MASK_1D_END_START);
+}
+
+TEST(ContribOpAttentionTest, AttentionMaskIndexNegativeEndPosition) {
+  // Test that negative end_position in mask_index is rejected (heap underflow prevention).
+  int batch_size = 2;
+  int sequence_length = 2;
+  int hidden_size = 4;
+  int number_of_heads = 2;
+
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f,
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<float> weight_data = {
+      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
+      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
+      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
+      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
+
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
+
+  // Negative end_position values in 1D mask_index
+  std::vector<int32_t> mask_index_data = {-10, -1};
+
+  OpTester tester("Attention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
+  tester.AddAttribute<float>("mask_filter_value", static_cast<float>(-10000.0f));
+
+  std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
+  std::vector<int64_t> weights_dims = {hidden_size, 3 * hidden_size};
+  std::vector<int64_t> bias_dims = {3 * hidden_size};
+  std::vector<int64_t> mask_index_dims = {batch_size};
+  std::vector<int64_t> output_dims = {batch_size, sequence_length, hidden_size};
+
+  tester.AddInput<float>("input", input_dims, input_data);
+  tester.AddInput<float>("weight", weights_dims, weight_data);
+  tester.AddInput<float>("bias", bias_dims, bias_data);
+  tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
+  tester.AddOptionalInputEdge<float>();    // past
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<int32_t>();  // past_sequence_length
+
+  tester.AddOutput<float>("output", output_dims, std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "mask_index value", {}, nullptr, &execution_providers);
 }
 
 #if !defined(__wasm__)

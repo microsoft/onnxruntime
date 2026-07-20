@@ -126,9 +126,9 @@ class PluginEpOpKernel final : public controlflow::IControlFlowKernel {
     return Status::OK();
   }
 
-  Status UseSharedPrePackedBuffers_V2(std::vector<BufferUniquePtr>& buffer_unique_ptrs,
-                                      gsl::span<const size_t> buffer_sizes,
-                                      int input_idx, /*out*/ bool& used_shared_buffers) override {
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& buffer_unique_ptrs,
+                                   gsl::span<const size_t> buffer_sizes,
+                                   int input_idx, /*out*/ bool& used_shared_buffers) override {
     assert(kernel_impl_ != nullptr);  // Should be ensured by PluginEpOpKernel::Create().
 
     if (kernel_impl_->ort_version_supported < 24 || kernel_impl_->SetSharedPrePackedWeight == nullptr) {

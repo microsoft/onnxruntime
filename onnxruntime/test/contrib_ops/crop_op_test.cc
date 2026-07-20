@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -28,6 +29,25 @@ TEST(CropOpTest, Crop_Scale) {
 
   test.AddOutput<float>("y", {1, 1, 2, 2}, {6.0, 7.0, 10.0, 11.0});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(CropOpTest, Crop_Invalid_Scale_Size) {
+  OpTester test("Crop", 1, onnxruntime::kOnnxDomain);
+  test.AddInput<float>("x", {1, 1, 4, 4}, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0});
+
+  std::vector<int64_t> border{1, 1, 1, 1};
+  test.AddAttribute("border", border);
+
+  std::vector<int64_t> scale{2};  // invalid: must be exactly 2 elements
+  test.AddAttribute("scale", scale);
+
+  test.AddOutput<float>("y", {1, 1, 2, 2}, {6.0, 7.0, 10.0, 11.0});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Attribute scale needs to be specified with two elements (height, width), got 1",
+           {}, nullptr, &execution_providers);
 }
 
 }  // namespace test

@@ -19,7 +19,7 @@ set(WINML_TEST_INC_DIR
 function(set_winml_target_properties target)
   set_target_properties(${target} PROPERTIES
     FOLDER "ONNXRuntimeTest/winml"
-    CXX_STANDARD 17
+    CXX_STANDARD 20
     CXX_STANDARD_REQUIRED YES
     CXX_EXTENSIONS NO
   )

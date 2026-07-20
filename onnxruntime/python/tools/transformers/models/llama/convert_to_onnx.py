@@ -235,6 +235,7 @@ def run_torchscript_separate_export(
         opset_version=torch_export_onnx_opset_version,
         do_constant_folding=True,
         verbose=args.verbose,
+        dynamo=False,
     )
 
     # Check decoder_model.onnx and save all external data to one file
@@ -294,6 +295,7 @@ def run_torchscript_separate_export(
         opset_version=torch_export_onnx_opset_version,
         do_constant_folding=True,
         verbose=args.verbose,
+        dynamo=False,
     )
 
     # Check decoder_with_past_model.onnx and save all external data to one file

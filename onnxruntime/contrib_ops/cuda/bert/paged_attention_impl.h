@@ -27,6 +27,11 @@ Status LaunchUnpackQKVCumulative(const T* packed_qkv, T* unpacked_q, T* unpacked
                                  const int kv_num_heads, const int head_size, const int token_count, cudaStream_t stream,
                                  const int max_threads_per_block);
 
+// Exposed so paged_attention.cc can populate cumulative_seqlens_kv on both the FA and MEA
+// dispatch paths (producer hoisted out of FlashAttention/UnfusedAttention in impl.cu).
+Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_t* cumulative_seqlens_q,
+                                    const int32_t* past_seqlens, const int batch_size, cudaStream_t stream);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -85,12 +85,15 @@ struct NchwcTestHelper {
 
   Node& AddNode(const std::string& op_type,
                 const std::vector<NodeArg*>& input_args,
-                const std::vector<NodeArg*>& output_args) {
+                const std::vector<NodeArg*>& output_args,
+                const std::string& domain = kOnnxDomain) {
     return graph_.AddNode(graph_.GenerateNodeName("node"),
                           op_type,
                           "description",
                           input_args,
-                          output_args);
+                          output_args,
+                          nullptr,
+                          domain);
   }
 
   Node& AddConvNode(NodeArg* input_arg, NodeArg* output_arg, const std::vector<int64_t>& weights_shape, bool no_bias = false) {
@@ -168,7 +171,8 @@ struct NchwcTestHelper {
 
 void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& build_test_case,
                           const std::function<void(InferenceSessionWrapper& session)>& check_nchwc_graph,
-                          int opset_version = 13) {
+                          int opset_version = 13,
+                          const std::function<void(const Graph& graph)>& check_pre_optimization_graph = nullptr) {
   // Ignore the test if NCHWc is not supported by the platform.
   if (MlasNchwcGetBlockSize() <= 1) {
     return;
@@ -177,11 +181,16 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
   // Build the model for this test.
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = opset_version;
+  domain_to_version[kMSDomain] = 1;
   Model model("nchwc", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
               domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
   NchwcTestHelper helper(model.MainGraph());
   build_test_case(helper);
   ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  if (check_pre_optimization_graph) {
+    check_pre_optimization_graph(model.MainGraph());
+  }
 
   // Serialize the model to a string.
   std::string model_data;
@@ -193,6 +202,7 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
     session_options.session_logid = "NchwcOptimizerTests";
     InferenceSessionWrapper session{session_options, GetEnvironment()};
     ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+    ASSERT_STATUS_OK(session.FilterEnabledOptimizers({"NhwcTransformer"}));
     ASSERT_STATUS_OK(session.Initialize());
 
     RunOptions run_options;
@@ -488,6 +498,42 @@ TEST(NchwcOptimizerTests, ConvAveragePool) {
   test_case(true);
 }
 
+// PR #29629 (M1): AveragePool with ceil_mode==1 && count_include_pad==1 must NOT be converted to
+// NchwcAveragePool. NchwcAveragePool routes to MlasAveragePoolingIncludePad, which divides by the
+// full kernel size and cannot drop the ceil_mode phantom tail cells — reintroducing the wrong
+// average that the default float CPU kernel was fixed for. The transformer bails out for this
+// combo, leaving the node as the ONNX AveragePool on the fixed CPU path. The Level2-vs-Level3
+// output comparison inside NchwcOptimizerTester additionally guards correctness: if the node were
+// (incorrectly) converted, the buggy NCHWc divisor would diverge from the fixed unconverted kernel
+// and fail the comparison.
+TEST(NchwcOptimizerTests, ConvAveragePoolCeilCountIncludePadNotConverted) {
+  auto build_test_case = [&](NchwcTestHelper& helper) {
+    auto* input_arg = helper.MakeInput<float>({1, 48, 34, 34});
+    auto* conv_output_arg = helper.MakeIntermediate();
+    auto* output_arg = helper.MakeOutput();
+
+    helper.AddConvNode(input_arg, conv_output_arg, {128, 48, 5, 5});
+
+    // kernel 4 / stride 4 over the 30x30 conv output: ceil_mode adds a trailing window that
+    // overruns the input, so the buggy full-kernel divisor and the fixed clamped divisor differ.
+    auto& pool_node = helper.AddNode("AveragePool", {conv_output_arg}, {output_arg});
+    pool_node.AddAttribute("kernel_shape", std::vector<int64_t>{4, 4});
+    pool_node.AddAttribute("strides", std::vector<int64_t>{4, 4});
+    pool_node.AddAttribute("ceil_mode", static_cast<int64_t>(1));
+    pool_node.AddAttribute("count_include_pad", static_cast<int64_t>(1));
+  };
+
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    // Conv still converts; the AveragePool stays on the fixed ONNX CPU path (not NCHWc).
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.AveragePool"], 0);
+    EXPECT_EQ(op_to_count["AveragePool"], 1);
+  };
+
+  NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+}
+
 TEST(NchwcOptimizerTests, ConvGlobalPool) {
   auto test_case = [&](const std::string& op_type) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
@@ -634,6 +680,36 @@ TEST(NchwcOptimizerTests, FusedConvAddFusion) {
   test_case(true, true, 1);
 }
 
+TEST(NchwcOptimizerTests, PreExistingFusedConvWithNchwcSumInput) {
+  auto build_test_case = [&](NchwcTestHelper& helper) {
+    auto* input_arg = helper.MakeInput<float>({1, 32, 28, 28});
+    auto* sum_arg = helper.MakeIntermediate();
+    auto* output_arg = helper.MakeOutput();
+
+    auto& sum_node = helper.AddConvNode(input_arg, sum_arg, {32, 32, 3, 3});
+    sum_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+
+    auto* weights_arg = helper.MakeInitializer({32, 32, 3, 3});
+    auto* bias_arg = helper.MakeInitializer({32});
+    auto& fused_conv_node =
+        helper.AddNode("FusedConv", {input_arg, weights_arg, bias_arg, sum_arg}, {output_arg}, kMSDomain);
+    fused_conv_node.AddAttribute("activation", "Relu");
+    fused_conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+    fused_conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+    fused_conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  };
+
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.FusedConv"], 0);
+  };
+
+  NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+}
+
 TEST(NchwcOptimizerTests, ConvBinary) {
   auto test_case = [&](const std::string& op_type) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
@@ -703,6 +779,62 @@ TEST(NchwcOptimizerTests, ConvBinaryBroadcast) {
   std::vector<std::string> op_types{"Add", "Sum"};
   for (auto& op_type : op_types) {
     test_case(op_type);
+  }
+}
+
+TEST(NchwcOptimizerTests, ConvMulChannelScale) {
+  const int64_t input_channels = static_cast<int64_t>(MlasNchwcGetBlockSize()) * 2;
+
+  auto test_case = [&](int64_t output_channels, bool use_explicit_batch_dim, bool scale_first) {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<float>({1, input_channels, 25, 21});
+      auto* conv_output_arg = helper.MakeIntermediate();
+      auto* quickgelu_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddConvNode(input_arg, conv_output_arg, {output_channels, input_channels, 3, 3});
+      helper.AddNode("QuickGelu", {conv_output_arg}, {quickgelu_output_arg}, kMSDomain);
+      const std::vector<int64_t> scale_shape = use_explicit_batch_dim
+                                                   ? std::vector<int64_t>{1, output_channels, 1, 1}
+                                                   : std::vector<int64_t>{output_channels, 1, 1};
+      auto* scale_arg = helper.MakeInitializer<float>(scale_shape, helper.FillRandomData<float>(scale_shape));
+      if (scale_first) {
+        helper.AddNode("Mul", {scale_arg, quickgelu_output_arg}, {output_arg});
+      } else {
+        helper.AddNode("Mul", {quickgelu_output_arg, scale_arg}, {output_arg});
+      }
+    };
+
+    auto check_pre_optimization_graph = [&](const Graph& graph) {
+      auto op_to_count = CountOpsInGraph(graph);
+      EXPECT_EQ(op_to_count["Conv"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.QuickGelu"], 1);
+      EXPECT_EQ(op_to_count["Mul"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 0);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 0);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 0);
+    };
+
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+      EXPECT_EQ(op_to_count["com.microsoft.QuickGelu"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+      EXPECT_EQ(op_to_count["Mul"], 0);
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph, 13, check_pre_optimization_graph);
+  };
+
+  // Keep Conv input channels aligned so the initial NCHWc transform still
+  // applies, and vary only the logical output channel count to cover both the
+  // aligned path and the padded scale path in the Mul rewrite.
+  for (int64_t output_channels : {input_channels, input_channels + 1}) {
+    test_case(output_channels, false, false);
+    test_case(output_channels, false, true);
+    test_case(output_channels, true, false);
+    test_case(output_channels, true, true);
   }
 }
 
@@ -1342,7 +1474,9 @@ TEST(NchwcOptimizerTests, UpsampleLinear) {
 }
 
 TEST(NchwcOptimizerTests, Activation) {
-  auto test_case = [&](const std::string& activation_op_type) {
+  auto test_case = [&](const std::string& activation_op_type,
+                       const std::string& domain = kOnnxDomain,
+                       int opset_version = 13) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
       auto* input_arg = helper.MakeInput<float>({1, 48, 11, 15});
       auto* conv1_output_arg = helper.MakeIntermediate();
@@ -1351,29 +1485,146 @@ TEST(NchwcOptimizerTests, Activation) {
       auto* output_arg = helper.MakeOutput();
 
       helper.AddConvNode(input_arg, conv1_output_arg, {32, 48, 3, 3});
-      helper.AddNode(activation_op_type, {conv1_output_arg}, {activation_output_arg});
+      helper.AddNode(activation_op_type, {conv1_output_arg}, {activation_output_arg}, domain);
       helper.AddNode("Add", {conv1_output_arg, activation_output_arg}, {mul_output_arg});
       helper.AddConvNode(mul_output_arg, output_arg, {16, 32, 1, 1});
     };
 
     auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const std::string activation_key = domain.empty() ? activation_op_type : domain + "." + activation_op_type;
       EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
       EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
       EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
-      EXPECT_EQ(op_to_count[activation_op_type], 1);
+      EXPECT_EQ(op_to_count[activation_key], 1);
       EXPECT_EQ(op_to_count["Add"], 1);
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph, opset_version);
+  };
+
+  // Verify that the optimizer doesn't add reorders for these activations in
+  // this pattern. Relu/Sigmoid/Tanh/HardSigmoid are generally fusable with a
+  // preceding convolution, but not here because the Conv output is consumed
+  // both by the activation node and directly by the Add node. Gelu/QuickGelu
+  // are also expected to remain as separate nodes.
+  test_case("Relu");
+  test_case("Sigmoid");
+  test_case("Tanh");
+  test_case("HardSigmoid");
+  test_case("Gelu", kOnnxDomain, 20);
+  test_case("Gelu", kMSDomain);
+  test_case("QuickGelu", kMSDomain);
+}
+
+TEST(NchwcOptimizerTests, ActivationSingleConsumerConvFusion) {
+  constexpr float kHardSigmoidAlpha = 0.125f;
+  constexpr float kHardSigmoidBeta = 0.625f;
+
+  auto test_case = [&](const std::string& activation_op_type) {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<float>({1, 48, 11, 15});
+      auto* conv1_output_arg = helper.MakeIntermediate();
+      auto* activation_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddConvNode(input_arg, conv1_output_arg, {32, 48, 3, 3});
+      auto& activation_node = helper.AddNode(activation_op_type, {conv1_output_arg}, {activation_output_arg});
+      if (activation_op_type == "HardSigmoid") {
+        activation_node.AddAttribute("alpha", kHardSigmoidAlpha);
+        activation_node.AddAttribute("beta", kHardSigmoidBeta);
+      }
+      helper.AddConvNode(activation_output_arg, output_arg, {16, 32, 1, 1});
+    };
+
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto& graph = session.GetGraph();
+      auto op_to_count = CountOpsInGraph(graph);
+
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+      EXPECT_EQ(op_to_count[activation_op_type], 0);
+
+      size_t fused_conv_count = 0;
+      for (const auto& node : graph.Nodes()) {
+        if (node.OpType() != "Conv" || node.Domain() != kMSNchwcDomain) {
+          continue;
+        }
+
+        const auto& attributes = node.GetAttributes();
+        auto activation_it = attributes.find("activation");
+        if (activation_it == attributes.end()) {
+          continue;
+        }
+
+        fused_conv_count++;
+        EXPECT_EQ(activation_it->second.s(), activation_op_type);
+
+        auto activation_params_it = attributes.find("activation_params");
+        if (activation_op_type == "HardSigmoid") {
+          ASSERT_NE(activation_params_it, attributes.end());
+          ASSERT_EQ(activation_params_it->second.floats_size(), 2);
+          EXPECT_FLOAT_EQ(activation_params_it->second.floats(0), kHardSigmoidAlpha);
+          EXPECT_FLOAT_EQ(activation_params_it->second.floats(1), kHardSigmoidBeta);
+        } else {
+          EXPECT_EQ(activation_params_it, attributes.end());
+        }
+      }
+
+      EXPECT_EQ(fused_conv_count, 1U);
     };
 
     NchwcOptimizerTester(build_test_case, check_nchwc_graph);
   };
 
-  // Verify that the optimizer doesn't add reorders for these activations that
-  // cannot be fused with a convolution.
-  std::vector<std::string> activation_op_types{"Relu", "Sigmoid", "Tanh"};
-  for (auto& activation_op_type : activation_op_types) {
+  for (const auto& activation_op_type : {"Relu", "Sigmoid", "Tanh", "HardSigmoid"}) {
     test_case(activation_op_type);
   }
+}
+
+TEST(NchwcOptimizerTests, ActivationSingleConsumerConvNoFusion) {
+  auto test_case = [&](const std::string& activation_op_type,
+                       const std::string& domain = kOnnxDomain,
+                       int opset_version = 13) {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<float>({1, 48, 11, 15});
+      auto* conv1_output_arg = helper.MakeIntermediate();
+      auto* activation_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddConvNode(input_arg, conv1_output_arg, {32, 48, 3, 3});
+      helper.AddNode(activation_op_type, {conv1_output_arg}, {activation_output_arg}, domain);
+      helper.AddConvNode(activation_output_arg, output_arg, {16, 32, 1, 1});
+    };
+
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto& graph = session.GetGraph();
+      auto op_to_count = CountOpsInGraph(graph);
+      const std::string activation_key = domain.empty() ? activation_op_type : domain + "." + activation_op_type;
+
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+      EXPECT_EQ(op_to_count[activation_key], 1);
+
+      for (const auto& node : graph.Nodes()) {
+        if (node.OpType() == "Conv" && node.Domain() == kMSNchwcDomain) {
+          EXPECT_EQ(node.GetAttributes().count("activation"), 0U)
+              << activation_op_type << " should not fuse into a single-consumer NCHWc Conv";
+        }
+      }
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph, opset_version);
+  };
+
+  // Gelu/QuickGelu must remain separate even with a single-consumer Conv input,
+  // because the NCHWc Conv activation fuse guard only allows a fixed subset of
+  // activations.
+  test_case("Gelu", kOnnxDomain, 20);
+  test_case("Gelu", kMSDomain);
+  test_case("QuickGelu", kMSDomain);
 }
 
 TEST(NchwcOptimizerTests, MaxPoolTypeCheck) {

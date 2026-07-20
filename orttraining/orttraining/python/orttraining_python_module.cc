@@ -42,35 +42,8 @@ void addObjectMethodsForLazyTensor(py::module& m);
 #endif
 bool InitArray();
 
-bool GetDynamicExecutionProviderHash(
-    const std::string& ep_shared_lib_path,
-    const ProviderOptions& provider_options,
-    size_t& hash,
-    const std::string& entry_symbol_name = "ProviderHashFunc") {
-  void* handle;
-  const auto path_str = ToPathString(ep_shared_lib_path);
-  auto error = Env::Default().LoadDynamicLibrary(path_str, false, &handle);
-  if (!error.IsOK()) {
-    throw std::runtime_error(error.ErrorMessage());
-  }
-
-  try {
-    size_t (*PGetProviderHash)(const void*) = nullptr;
-    OrtPybindThrowIfError(Env::Default().GetSymbolFromLibrary(handle, entry_symbol_name, (void**)&PGetProviderHash));
-
-    if (PGetProviderHash) {
-      hash = PGetProviderHash(&provider_options);
-      return true;
-    }
-    return false;
-  } catch (...) {
-    // there is no ProvideHashFunc provide in the shared lib, which means it doesn't support cache
-    return false;
-  }
-}
-
 bool GetProviderInstanceHash(const std::string& type,
-                             const ProviderOptionsMap& provider_options_map,
+                             [[maybe_unused]] const ProviderOptionsMap& provider_options_map,
                              size_t& hash) {
   // for built-in execution provider, currently only cpu / cuda support hash.
   if (type == kCpuExecutionProvider) {
@@ -86,26 +59,8 @@ bool GetProviderInstanceHash(const std::string& type,
       return true;
     }
 #endif
-  } else {
-    const auto it = provider_options_map.find(type);
-    if (it != provider_options_map.end()) {
-      auto shared_lib_path_it = it->second.find(kExecutionProviderSharedLibraryPath);
-      if (shared_lib_path_it != it->second.end()) {
-        // this is an EP with dynamic loading
-        // construct the provider option
-        ProviderOptions provider_options;
-        std::string entry_symbol = kDefaultExecutionProviderEntry;
-        for (auto option : it->second) {
-          if (option.first == kExecutionProviderSharedLibraryEntry) {
-            entry_symbol = option.second;
-          } else if (option.first != kExecutionProviderSharedLibraryPath) {
-            provider_options.insert(option);
-          }
-        }
-        return GetDynamicExecutionProviderHash(shared_lib_path_it->second, provider_options, hash);
-      }
-    }
   }
+
   return false;
 }
 
@@ -133,14 +88,6 @@ void ORTTrainingPythonEnv::AddExecutionProvider(const std::string& provider_type
                                                 std::unique_ptr<IExecutionProvider> execution_provider) {
   execution_provider_instances_map_.insert({GetExecutionProviderMapKey(provider_type, hash),
                                             std::move(execution_provider)});
-}
-
-void ORTTrainingPythonEnv::RegisterExtExecutionProviderInfo(const std::string& provider_type,
-                                                            const std::string& provider_lib_path,
-                                                            const ProviderOptions& default_options) {
-  ext_execution_provider_info_map_.insert({provider_type, {provider_lib_path, default_options}});
-  if (std::find(available_training_eps_.begin(), available_training_eps_.end(), provider_type) == available_training_eps_.end())
-    available_training_eps_.push_back(provider_type);
 }
 
 const std::vector<std::string>& ORTTrainingPythonEnv::GetAvailableTrainingExecutionProviderTypes() {
@@ -200,30 +147,6 @@ bool CheckIfUsingGlobalThreadPool() {
   return use_global_tp;
 }
 
-void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
-                                 const ProviderOptionsMap& original_provider_options_map,
-                                 ProviderOptionsMap& merged_options) {
-  auto& training_env = GetTrainingEnv();
-  for (auto& provider_type : provider_types) {
-    auto it = training_env.ext_execution_provider_info_map_.find(provider_type);
-    if (it == training_env.ext_execution_provider_info_map_.end()) {
-      // nothing changed.
-      if (original_provider_options_map.find(provider_type) != original_provider_options_map.end())
-        merged_options.insert({provider_type, original_provider_options_map.at(provider_type)});
-    } else {
-      ProviderOptions options = it->second.second;
-      options.insert({kExecutionProviderSharedLibraryPath, it->second.first});
-      auto original_map_it = original_provider_options_map.find(provider_type);
-      if (original_map_it != original_provider_options_map.end()) {
-        for (auto [k, v] : original_map_it->second) {
-          options.insert({k, v});
-        }
-      }
-      merged_options[provider_type] = options;
-    }
-  }
-}
-
 std::unique_ptr<IExecutionProvider> CreateTrainingEP(
     const SessionOptions& session_options,
     const std::string& provider_type,
@@ -236,15 +159,11 @@ std::shared_ptr<IExecutionProvider> GetOrCreateExecutionProvider(const std::stri
                                                                  const ProviderOptionsMap& provider_options_map,
                                                                  const SessionOptions& session_options) {
   ORTTrainingPythonEnv& training_env = GetTrainingEnv();
-  // resolve provider options, because the hash key of ep depends on provider options.
-  ProviderOptionsMap merged_options;
-  ResolveExtraProviderOptions({provider_type}, provider_options_map, merged_options);
-  // search in environment
   size_t hash;
-  if (GetProviderInstanceHash(provider_type, merged_options, hash)) {
+  if (GetProviderInstanceHash(provider_type, provider_options_map, hash)) {
     auto cached_provider_instance = training_env.GetExecutionProviderInstance(provider_type, hash);
     if (!cached_provider_instance) {
-      auto ep = CreateTrainingEP(session_options, provider_type, merged_options);
+      auto ep = CreateTrainingEP(session_options, provider_type, provider_options_map);
       if (ep) {
         training_env.AddExecutionProvider(provider_type, hash, std::move(ep));
         cached_provider_instance = training_env.GetExecutionProviderInstance(provider_type, hash);
@@ -253,7 +172,7 @@ std::shared_ptr<IExecutionProvider> GetOrCreateExecutionProvider(const std::stri
     return cached_provider_instance;
   } else {
     // the EP doesn't support cache, register the instance to session
-    auto ep = CreateTrainingEP(session_options, provider_type, merged_options);
+    auto ep = CreateTrainingEP(session_options, provider_type, provider_options_map);
     return ep;
   }
 }
@@ -296,12 +215,6 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 #ifdef ENABLE_LAZY_TENSOR
   addObjectMethodsForLazyTensor(m);
 #endif
-
-  m.def("_register_provider_lib", [](const std::string& name,
-                                     const std::string& provider_shared_lib_path,
-                                     const ProviderOptions& default_options) {
-    GetTrainingEnv().RegisterExtExecutionProviderInfo(name, provider_shared_lib_path, default_options);
-  });
 
   m.def(
       "get_available_providers", []() -> const std::vector<std::string>& { return GetTrainingEnv().GetAvailableTrainingExecutionProviderTypes(); },

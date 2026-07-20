@@ -72,4 +72,35 @@ class IAllocatorImplWrappingOrtAllocator final : public IAllocator {
   OrtAllocatorUniquePtr ort_allocator_ = nullptr;
 };
 
+/// Wraps an OrtAllocator* that supports Shrink() as an IArena.
+/// This allows session-level code to discover and call Shrink() through the standard IArena interface.
+/// ReleaseStreamBuffers() is intentionally a no-op: plugin EPs handle stream cleanup internally
+/// via OrtSyncStreamImpl::OnSessionRunEnd.
+class IArenaImplWrappingOrtAllocator final : public IArena {
+ public:
+  explicit IArenaImplWrappingOrtAllocator(OrtAllocatorUniquePtr ort_allocator);
+
+  void* Alloc(size_t size) override;
+  void Free(void* p) override;
+  void* Reserve(size_t size) override;
+
+  bool IsStreamAware() const override;
+  void* AllocOnStream(size_t size, Stream* stream) override;
+
+  void GetStats(AllocatorStats* stats) override;
+
+  Status Shrink() override;
+  // ReleaseStreamBuffers is intentionally not overridden — the default IArena no-op is correct.
+  // Plugin EPs handle stream buffer cleanup internally via OnSessionRunEnd.
+
+  const OrtAllocator* GetWrappedOrtAllocator() const {
+    return ort_allocator_.get();
+  }
+
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(IArenaImplWrappingOrtAllocator);
+
+ private:
+  OrtAllocatorUniquePtr ort_allocator_ = nullptr;
+};
+
 }  // namespace onnxruntime

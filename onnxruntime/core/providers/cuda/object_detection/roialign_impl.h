@@ -25,7 +25,8 @@ void RoiAlignImpl(
     T* top_data,
     const bool is_mode_avg,
     const bool half_pixel,
-    const int64_t* batch_indices_ptr);
+    const int64_t* batch_indices_ptr,
+    const int64_t batch_size);  // batch size of the input tensor X
 
 }  // namespace cuda
 }  // namespace onnxruntime

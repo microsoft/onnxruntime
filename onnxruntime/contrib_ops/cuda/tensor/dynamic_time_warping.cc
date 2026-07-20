@@ -35,7 +35,7 @@ Status DynamicTimeWarping::ComputeInternal(OpKernelContext* ctx) const {
   size_t max_index_len = 0;
 
   size_t buffer_size_in_bytes = GetDynamicTimeWarpingBufferSize(1, rows, cols, max_index_len);
-  IAllocatorUniquePtr<int8_t> buffer = GetScratchBuffer<int8_t>(buffer_size_in_bytes, ctx->GetComputeStream());
+  IAllocatorUniquePtr<int8_t> buffer = GetScratchBuffer<int8_t>(buffer_size_in_bytes, GetComputeStream(ctx));
 
   size_t result_len = 0;
   ORT_RETURN_IF_ERROR(LaunchDynamicTimeWarping(

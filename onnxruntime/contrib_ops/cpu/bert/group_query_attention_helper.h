@@ -14,7 +14,8 @@ namespace group_query_attention_helper {
 
 template <typename T>
 Status Check_Q_K_V(const T* query, const T* key, const T* value, const int num_heads, const int kv_num_heads,
-                   int& batch_size, int& sequence_length, int& q_hidden_size, int& kv_hidden_size, int& head_size) {
+                   int& batch_size, int& sequence_length, int& kv_sequence_length,
+                   int& q_hidden_size, int& kv_hidden_size, int& head_size) {
   const auto& query_dims = query->Shape().GetDims();
   if (query_dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 dimensions, got ",
@@ -40,10 +41,8 @@ Status Check_Q_K_V(const T* query, const T* key, const T* value, const int num_h
   } else if (query_dims[0] != key_dims[0]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'query' and 'key' shall have same dim 0 (batch size)");
-  } else if (query_dims[1] != key_dims[1]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'query' and 'key' shall have same dim 1 (sequence length)");
   }
+  kv_sequence_length = static_cast<int>(key_dims[1]);
   kv_hidden_size = static_cast<int>(key_dims[2]);
   if (kv_hidden_size % kv_num_heads != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -61,9 +60,9 @@ Status Check_Q_K_V(const T* query, const T* key, const T* value, const int num_h
   } else if (query_dims[0] != value_dims[0]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'query' and 'value' shall have same dim 0 (batch size)");
-  } else if (query_dims[1] != value_dims[1]) {
+  } else if (key_dims[1] != value_dims[1]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'query' and 'value' shall have same dim 1 (sequence length)");
+                           "Input 'key' and 'value' shall have same dim 1 (sequence length)");
   } else if (value_dims[2] != kv_hidden_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have same hidden size as key.");
   }
@@ -98,7 +97,7 @@ Status Check_QKV(const T* packed_qkv, const T* value, const int num_heads, const
 
 template <typename T>
 Status CheckPast(const T* past_key, const T* past_value, int batch_size, int kv_num_heads, int head_size, int kv_cache_bit_width,
-                 int& past_sequence_length) {
+                 int& past_sequence_length, int kv_cache_extra_bits = 0) {
   const auto& past_key_dims = past_key->Shape().GetDims();
   const auto& past_value_dims = past_value->Shape().GetDims();
 
@@ -141,17 +140,25 @@ Status CheckPast(const T* past_key, const T* past_value, int batch_size, int kv_
   // We assume all sequence in past kv are right-padded to max or past sequence length
   past_sequence_length = static_cast<int>(past_key_dims[2]);
 
-  // For 4-bit quantized KV cache, actual dimension is head_size / 2 because 2 nibbles are packed into one byte.
-  // Note that we have checked that head_size is a multiple of 8 in Check_QKV.
-  int packed_head_size = (kv_cache_bit_width == 4) ? (head_size / 2) : head_size;
+  // Compute expected KV cache head dimension from quantization parameters.
+  // kv_cache_bit_width: bits per element (4 or 8). 0 means no quantization.
+  // kv_cache_extra_bits: additional metadata bits per head
+  // (e.g., 32bits for TurboQuant storing scale).
+  int packed_head_size;
+  if (kv_cache_bit_width == 0) {
+    packed_head_size = head_size;
+  } else {
+    int bits_per_element = static_cast<int>(past_key->DataType()->Size()) * 8;
+    packed_head_size = (head_size * kv_cache_bit_width + kv_cache_extra_bits) / bits_per_element;
+  }
   if (past_key_dims[3] != packed_head_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_key' dimension 3 should be same as head_size, got ",
+                           "Input 'past_key' dimension 3 should match the packed KV head dimension, got ",
                            past_key_dims[3], " expected ", packed_head_size);
   }
   if (past_value_dims[3] != packed_head_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_value' dimension 3 should be same as head_size, got ",
+                           "Input 'past_value' dimension 3 should match the packed KV head dimension, got ",
                            past_value_dims[3], " expected ", packed_head_size);
   }
   return Status::OK();
@@ -207,7 +214,12 @@ Status CheckInputs(const T* query,
                    const T* total_seqlen,
                    float scale,
                    float softcap,
-                   int kv_cache_bit_width) {
+                   int kv_cache_bit_width,
+                   int max_threads_per_block = 0,
+                   int kv_cache_extra_bits = 0) {
+  if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
+  }
   // Note: Here S* is seqlen_past_kv_cache, S+ is seqlen_present_kv_cache
   //     past_key                   : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
   //     past_value                 : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
@@ -225,46 +237,77 @@ Status CheckInputs(const T* query,
                            num_heads % kv_num_heads);
   }
 
-#ifdef USE_INT4_KV_CACHE
   if (kv_cache_bit_width != 0 && kv_cache_bit_width != 4 && kv_cache_bit_width != 8) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "kv_cache_bit_width must be 0, 4 or 8. Got kv_cache_bit_width == ", kv_cache_bit_width);
   }
-#else
-  if (kv_cache_bit_width != 0 && kv_cache_bit_width != 8) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "kv_cache_bit_width must be 0 or 8. Got kv_cache_bit_width == ", kv_cache_bit_width);
-  }
-#endif
 
   int batch_size = 0;
   int sequence_length = 0;
+  int kv_sequence_length = 0;
   int q_hidden_size = 0;
   int kv_hidden_size = 0;
   int head_size = 0;
-  const bool is_packed_qkv = key == nullptr;
+  const bool is_packed_qkv = (key == nullptr);
   if (!is_packed_qkv) {
     ORT_RETURN_IF_ERROR(Check_Q_K_V(query, key, value, num_heads, kv_num_heads, batch_size, sequence_length,
-                                    q_hidden_size, kv_hidden_size, head_size));
+                                    kv_sequence_length, q_hidden_size, kv_hidden_size, head_size));
   } else {
     qkv_format = QKV_BS3NH;
     ORT_RETURN_IF_ERROR(Check_QKV(query, value, num_heads, kv_num_heads, batch_size, sequence_length, q_hidden_size,
                                   kv_hidden_size, head_size));
+    kv_sequence_length = sequence_length;
+  }
+
+  if (kv_cache_extra_bits != 0 && kv_cache_bit_width == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "kv_cache_extra_bits requires kv_cache_bit_width to be non-zero.");
   }
 
   // Check past-present KV
   int32_t past_sequence_length = 0;
   if (past_key != nullptr && past_value != nullptr) {
-    ORT_RETURN_IF_ERROR(CheckPast(past_key, past_value, batch_size, kv_num_heads, head_size, kv_cache_bit_width, past_sequence_length));
+    ORT_RETURN_IF_ERROR(CheckPast(past_key, past_value, batch_size, kv_num_heads, head_size, kv_cache_bit_width, past_sequence_length, kv_cache_extra_bits));
+    // When past KV exists, Q and K/V must have the same sequence length,
+    // UNLESS kv_sequence_length is 0 (shared KV: new K/V are empty, past buffer
+    // already contains the full shared KV cache — no append needed).
+    if (kv_sequence_length != sequence_length && kv_sequence_length != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "query and key must have the same sequence length when past_key is provided, "
+                             "or key sequence length must be 0 for shared KV (no new KV to append). "
+                             "Got sequence_length=",
+                             sequence_length, ", kv_sequence_length=", kv_sequence_length);
+    }
   } else if (past_key != nullptr || past_value != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'past_key' and 'past_value' shall be both present or both absent.");
+  } else if (kv_sequence_length != sequence_length) {
+    // Without past KV, Q and K/V must have the same sequence length.
+    // Cross-attention (different Q/KV lengths) is not supported by GQA.
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "query and key must have the same sequence length when past_key is not provided. "
+                           "Got sequence_length=",
+                           sequence_length, ", kv_sequence_length=", kv_sequence_length);
   }
 
-  const auto& seqlens_k_dim = seqlens_k->Shape().GetDims();
-  if (seqlens_k_dim.size() != 1 && seqlens_k_dim[0] != batch_size) {
+  // Spec requires 1D shape (batch_size), but older model builders may add unit
+  // dimensions (e.g. [B, 1] instead of [B]). Allow shapes where each dim is 1 or batch_size.
+  if (seqlens_k->Shape().NumDimensions() == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "seqlens_k must be shape (batch_size).");
+                           "seqlens_k must be at least 1D, got scalar.");
+  }
+  const auto& seqlens_k_dim = seqlens_k->Shape().GetDims();
+  if (seqlens_k->Shape().Size() != static_cast<int64_t>(batch_size)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "seqlens_k must have batch_size (", batch_size, ") elements, got ",
+                           seqlens_k->Shape().Size(), ".");
+  }
+  for (size_t i = 0; i < seqlens_k_dim.size(); ++i) {
+    if (seqlens_k_dim[i] != 1 && seqlens_k_dim[i] != static_cast<int64_t>(batch_size)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "seqlens_k has unexpected shape. Each dimension must be 1 or batch_size (",
+                             batch_size, "), got dim[", i, "] = ", seqlens_k_dim[i], ".");
+    }
   }
 
   if (!onnxruntime::IsScalarOr1ElementVector(total_seqlen)) {
@@ -275,11 +318,32 @@ Status CheckInputs(const T* query,
   // When graph capture is enabled, total_seqlen is on GPU and cannot be read. Skip validation.
   const bool is_total_seqlen_on_cpu = (total_seqlen->Location().device.Type() == OrtDevice::CPU);
   int total_sequence_length = is_total_seqlen_on_cpu ? *((*total_seqlen).template Data<int32_t>()) : 0;
+  if (is_total_seqlen_on_cpu && total_sequence_length <= 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "total_sequence_length must be positive, got ", total_sequence_length, ".");
+  }
+
   int present_sequence_length = std::max(total_sequence_length, past_sequence_length);
 
   int rotary_dim = 0;
   if (cos_cache != nullptr && sin_cache != nullptr) {
     ORT_RETURN_IF_ERROR(CheckRotaryCaches(cos_cache, sin_cache, head_size, total_sequence_length, rotary_dim));
+
+    // Validate seqlens_k against rotary cache size when rotary embeddings are enabled.
+    // This prevents OOB access when deriving position IDs from seqlens_k during rotary embedding.
+    const bool is_seqlens_k_on_cpu = (seqlens_k->Location().device.Type() == OrtDevice::CPU);
+    if (is_seqlens_k_on_cpu) {
+      const int64_t rotary_cache_max_seq = std::min(cos_cache->Shape().GetDims()[0],
+                                                    sin_cache->Shape().GetDims()[0]);
+      const int32_t* seqlens_k_data = seqlens_k->template Data<int32_t>();
+      for (int b = 0; b < batch_size; b++) {
+        if (seqlens_k_data[b] < 0 || static_cast<int64_t>(seqlens_k_data[b]) >= rotary_cache_max_seq) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "seqlens_k[", b, "] = ", seqlens_k_data[b],
+                                 " is out of range for rotary cache dimension 0 (", rotary_cache_max_seq, ")");
+        }
+      }
+    }
   } else if (cos_cache != nullptr || sin_cache != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'cos_cache' and 'sin_cache' shall be both present or both absent.");
@@ -308,6 +372,7 @@ Status CheckInputs(const T* query,
     GroupQueryAttentionParameters* output_parameters = reinterpret_cast<GroupQueryAttentionParameters*>(parameters);
     output_parameters->batch_size = batch_size;
     output_parameters->sequence_length = sequence_length;                  // sequence length of Q
+    output_parameters->kv_sequence_length = kv_sequence_length;            // sequence length of K/V inputs
     output_parameters->seqlen_past_kv_cache = past_sequence_length;        // max sequence length of past kv tensors
     output_parameters->seqlen_present_kv_cache = present_sequence_length;  // max sequence length of present kv tensors
     output_parameters->total_sequence_length = total_sequence_length;      // total sequence length
@@ -331,30 +396,6 @@ Status CheckInputs(const T* query,
 }
 
 template <typename T = Tensor>
-Status CheckInputs(const T* query,
-                   const T* key,
-                   const T* value,
-                   const T* past_key,
-                   const T* past_value,
-                   const T* cos_cache,
-                   const T* sin_cache,
-                   void* parameters,
-                   int num_heads,
-                   int kv_num_heads,
-                   const T* seqlens_k,
-                   const T* total_seqlen,
-                   float scale,
-                   float softcap,
-                   int kv_cache_bit_width,
-                   int max_threads_per_block) {
-  if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
-  }
-
-  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, scale, softcap, kv_cache_bit_width);
-}
-
-template <typename T = Tensor>
 Status CheckCustomAttentionInputs(const T* position_ids,
                                   const T* attention_bias,
                                   const T* head_sink,
@@ -374,6 +415,12 @@ Status CheckCustomAttentionInputs(const T* position_ids,
 
   if (attention_bias != nullptr) {
     const auto& attn_bias_shape = attention_bias->Shape();
+    // TensorShape::operator[] is unchecked — validate the rank before indexing dims.
+    if (attn_bias_shape.NumDimensions() != 4) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "attention_bias must be a 4D tensor, got ", attn_bias_shape.NumDimensions(),
+                             " dimensions");
+    }
     if ((attn_bias_shape[0] != parameters.batch_size) && (attn_bias_shape[0] != 1)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "attention_bias dimension 0 must be equal to the batch size or 1, got ", attn_bias_shape[0]);
