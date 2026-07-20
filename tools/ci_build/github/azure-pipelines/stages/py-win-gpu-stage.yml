@@ -101,24 +101,26 @@ stages:
           python_version: ${{ parameters.PYTHON_VERSION }}
 
       - pwsh: |
+
           $ErrorActionPreference = 'Stop'
           $vswhere   = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
           $vsPath    = & $vswhere -latest -products * -property installationPath
-
+          if (-not $vsPath) { throw "VS install not found" }
           Write-Host "VS Path: $vsPath"
-          Write-Host "VS Installer: $installer"
 
-          $addArgs = @(
-            'modify','--installPath',"$vsPath",
-            '--add','Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre',
-            '--passive', '--norestart','--wait'
-          )
-          $p = Start-Process -FilePath $installer -ArgumentList $addArgs -Wait -PassThru
-          if ($p.ExitCode -notin 0,3010) { throw "VS modify failed with exit code $($p.ExitCode)" }
+          $log = "$env:AGENT_TEMPDIRECTORY\vsmodify.log"
+          $argLine = ('modify --installPath "{0}" ' -f $vsPath) +
+                    '--add Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre ' +
+                    ('--passive --norestart --wait --log "{0}"' -f $log)
 
-          $spectre = Get-ChildItem "$vsPath\VC\Tools\MSVC\*\lib\x64\spectre" -ErrorAction SilentlyContinue
-          if (-not $spectre) { throw "Spectre x64 libs still missing" }
+          Write-Host "Args: $argLine"
+          $p = Start-Process -FilePath $installer -ArgumentList $argLine -Wait -PassThru
+          if ($p.ExitCode -notin 0,3010) { throw "VS modify failed with exit code $($p.ExitCode) (see $log)" }
+
+          if (-not (Get-ChildItem "$vsPath\VC\Tools\MSVC\*\lib\x64\spectre" -ErrorAction SilentlyContinue)) {
+            throw "Spectre x64 libs still missing"
+          }
           Write-Host "OK: Spectre libs present."
 
       - template: ../templates/jobs/download_win_gpu_library.yml
