@@ -1,0 +1,142 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param components
+#param work_group_size
+#param use_smooth_softmax
+#param has_seqlen_k
+#param has_head_sink
+#param has_sliding_window
+
+#if components == 4
+alias f32_val_t = vec4<f32>;
+#elif components == 2
+alias f32_val_t = vec2<f32>;
+#else
+alias f32_val_t = f32;
+#endif
+
+var<workgroup> thread_max: array<f32, work_group_size>;
+var<workgroup> thread_sum: array<f32, work_group_size>;
+
+$MAIN {
+  let sequence_length = uniforms.sequence_length;
+  let batch_idx = u32(workgroup_idx / sequence_length) / uniforms.num_heads;
+  let head_idx = u32(workgroup_idx / sequence_length) % uniforms.num_heads;
+  var total_sequence_length = uniforms.total_sequence_length_comp * components;
+#if has_seqlen_k
+  total_sequence_length = u32(seqlen_k[batch_idx]) + 1;
+  var past_sequence_length: u32 = select(total_sequence_length - sequence_length, 0u, uniforms.is_first_prompt > 0);
+#else
+  let past_sequence_length = uniforms.past_sequence_length;
+#endif
+#if has_seqlen_k
+  let seq_causal_length = past_sequence_length + workgroup_idx % sequence_length + 1;
+#else
+  let seq_causal_length = uniforms.total_sequence_length_comp;
+#endif
+  let local_offset = local_idx * uniforms.elements_per_thread;
+  let offset = workgroup_idx * uniforms.total_sequence_length_comp + local_offset;
+
+#if has_sliding_window
+  // Sliding window
+  let should_apply_local_window = uniforms.local_window_size >= 0 && seq_causal_length > uniforms.local_window_size;
+  let start_offset = select(0, seq_causal_length - uniforms.local_window_size, should_apply_local_window);
+  let effective_seq_length = select(seq_causal_length, uniforms.local_window_size, should_apply_local_window);
+#else
+  // No sliding window: we keep the code for sliding window in the shader but
+  // using const for start_offset and should_apply_local_window will make the compiler optimize it out.
+  const start_offset = 0;
+  const should_apply_local_window = false;
+  let effective_seq_length = seq_causal_length;
+#endif
+
+  var thread_max_vector = f32_val_t(-3.4028234663852886e+38f);
+  for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {
+    let actual_pos = local_offset + i + start_offset;
+    if (!should_apply_local_window || actual_pos < seq_causal_length) {
+        thread_max_vector = max(f32_val_t(x[offset + i + start_offset]), thread_max_vector);
+    }
+  }
+#if components == 4
+  thread_max[local_idx] = max(max(thread_max_vector.x, thread_max_vector.y), max(thread_max_vector.z, thread_max_vector.w));
+#elif components == 2
+  thread_max[local_idx] = max(thread_max_vector.x, thread_max_vector.y);
+#else
+  thread_max[local_idx] = thread_max_vector;
+#endif
+  workgroupBarrier();
+
+#if has_head_sink
+  // Handle head sink
+  let sink_value: f32 = f32(head_sink[head_idx]);
+  var max_value = sink_value;
+#elif use_smooth_softmax
+  var max_value: f32 = 0.0;
+#else
+  var max_value = f32(-3.4028234663852886e+38f);
+#endif
+
+  for (var i = 0u; i < work_group_size; i++) {
+    max_value = max(thread_max[i], max_value);
+  }
+  var sum_vector = f32_val_t(0);
+  for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {
+    let actual_pos = local_offset + i + start_offset;
+    if (!should_apply_local_window || actual_pos < seq_causal_length) {
+       sum_vector += exp(f32_val_t(x[offset + i + start_offset]) - max_value);
+    }
+  }
+#if components == 4
+  thread_sum[local_idx] = sum_vector.x + sum_vector.y + sum_vector.z + sum_vector.w;
+#elif components == 2
+  thread_sum[local_idx] = sum_vector.x + sum_vector.y;
+#else
+  thread_sum[local_idx] = sum_vector;
+#endif
+  workgroupBarrier();
+  var sum: f32 = 0;
+  for (var i = 0u; i < work_group_size; i++) {
+    sum += thread_sum[i]
+  ;}
+
+#if has_head_sink
+  sum += exp(sink_value - max_value);
+#elif use_smooth_softmax
+  sum += exp(-max_value);
+#endif
+
+  if (sum == 0) {
+    for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {
+    let actual_pos = local_offset + i + start_offset;
+      if (actual_pos < seq_causal_length) {
+        x[offset + i + start_offset] = x_value_t(x_element_t(1.0)/x_element_t(effective_seq_length));
+      }
+    }
+  } else {
+    for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {
+      let actual_pos = local_offset + i + start_offset;
+      let pos = offset + i + start_offset;
+      if (!should_apply_local_window || actual_pos < seq_causal_length) {
+         var f32input = f32_val_t(x[pos]);
+         x[pos] = x_value_t(exp(f32input - max_value) / sum);
+      }
+    }
+  }
+
+  // zero out elements outside the sliding window
+  if (should_apply_local_window) {
+    for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {
+      let global_pos = i + local_offset;
+      if (global_pos < start_offset) {
+        x[offset + i] = x_value_t(x_element_t(0));
+      }
+    }
+  }
+
+#if has_seqlen_k
+  for (var total_seq_id: u32 = seq_causal_length; total_seq_id + local_offset < uniforms.total_sequence_length_comp; total_seq_id++) {
+     x[offset + total_seq_id] = x_value_t(x_element_t(0));
+  }
+#endif
+} // MAIN

@@ -1,0 +1,80 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param feed_past_value
+#param has_present_value
+#param has_seqlen_k
+#param past_present_share_buffer
+#param tile_size_param
+
+var<workgroup> tileQ: array<probs_value_t, tile_size_param * tile_size_param>;
+var<workgroup> tileK: array<v_value_t, tile_size_param * tile_size_param>;
+
+$MAIN {
+  let batch_head_idx = u32(workgroup_idx / (uniforms.num_head_size_tile * uniforms.num_seq_length_tile));
+  let head_idx = batch_head_idx % uniforms.num_heads;
+  let batch_idx = batch_head_idx / uniforms.num_heads;
+  let m = (u32(workgroup_idx / uniforms.num_head_size_tile) % uniforms.num_seq_length_tile) * TILE_SIZE + local_id.y;
+  let n = (workgroup_idx % uniforms.num_head_size_tile) * TILE_SIZE + local_id.x;
+  let offsetA = batch_head_idx * (uniforms.M * uniforms.K) + m * uniforms.K;
+  let sequence_length = uniforms.M;
+  var total_sequence_length = uniforms.K;
+#if has_seqlen_k
+  total_sequence_length = u32(seqlen_k[batch_idx]) + 1;
+  var past_sequence_length: u32 = select(total_sequence_length - sequence_length, 0u, uniforms.is_first_prompt > 0);
+#else
+  let past_sequence_length = uniforms.past_sequence_length;
+#endif
+  let vOffset = (batch_head_idx / uniforms.n_reps) * uniforms.N * uniforms.kv_sequence_length + n;
+#if has_present_value
+  let presentValueOffset = (batch_head_idx / uniforms.n_reps) * uniforms.N * uniforms.present_sequence_length + n;
+#endif
+
+  var value = output_value_t(0);
+  for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
+    if (m < uniforms.M && w + local_id.x < uniforms.K) {
+      tileQ[TILE_SIZE * local_id.y + local_id.x] = probs[offsetA + w + local_id.x];
+    }
+    if (n < uniforms.N && w + local_id.y < uniforms.K) {
+      var idx = TILE_SIZE * local_id.y + local_id.x;
+#if (feed_past_value && has_present_value) || (past_present_share_buffer)
+      if (w + local_id.y < past_sequence_length) {
+        let pastValueOffset = (batch_head_idx / uniforms.n_reps) * uniforms.N * uniforms.past_sequence_length + n;
+ #if past_present_share_buffer
+        tileK[idx] = present_value[pastValueOffset + (w + local_id.y) * uniforms.N];
+ #else
+        tileK[idx] = past_value[pastValueOffset + (w + local_id.y) * uniforms.N];
+ #endif
+      } else if (w + local_id.y - past_sequence_length < uniforms.kv_sequence_length) {
+        tileK[idx] = v[vOffset + (w + local_id.y - past_sequence_length) * uniforms.N];
+      }
+#else
+      if (w + local_id.y < uniforms.kv_sequence_length) {
+        tileK[idx] = v[vOffset + (w + local_id.y) * uniforms.N];
+      }
+#endif
+
+#if has_present_value
+ #if past_present_share_buffer
+      if (w + local_id.y >= past_sequence_length && w + local_id.y < uniforms.kv_sequence_length + past_sequence_length) {
+ #else
+      if (w + local_id.y < uniforms.kv_sequence_length + past_sequence_length) {
+ #endif
+        present_value[presentValueOffset + (w + local_id.y) * uniforms.N] = tileK[idx];
+      }
+#endif
+    }
+    workgroupBarrier();
+    for (var k: u32 = 0u; k < TILE_SIZE && w+k < total_sequence_length; k++) {
+      value += tileQ[TILE_SIZE * local_id.y + k] * tileK[TILE_SIZE * k + local_id.x];
+    }
+    workgroupBarrier();
+  }
+
+  // we need to transpose output from BNSH_v to BSND_v
+  if (m < uniforms.M && n < uniforms.N) {
+    let outputIdx = batch_idx * uniforms.M * uniforms.v_hidden_size +
+        m * uniforms.v_hidden_size + head_idx * uniforms.N + n;
+    output[outputIdx] = value;
+  }
+} // MAIN
