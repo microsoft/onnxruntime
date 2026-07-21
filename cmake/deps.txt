@@ -38,7 +38,7 @@ mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.82.0.zip;9bc9e01
 # workflow yml + VERSION_NUMBER (no operator-schema, opset, or testdata change), so it is
 # pure version plumbing. The 7 CI requirements.txt files are pinned to onnx==1.22.0 (now on PyPI).
 onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.22.0.zip;2b2cd58ac7a26df5371266149e0c76776330cdf1
-onnx_light;https://github.com/xadupre/onnx-light/archive/refs/tags/0.1.6.zip;REPLACE_WITH_0.1.6_SOURCE_ZIP_SHA1
+onnx_light;https://github.com/xadupre/onnx-light/archive/refs/tags/0.1.7.zip;8241f9eb77a3a849d7a182bc7446bf09b53a7630
 # Use the latest commit of 10.9-GA
 onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/d5dce67db7c2e64b07e055571f5ec06f7f254de2.zip;01114d3b67650857281fa50faa2e412130a63b69
 protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v21.12.zip;7cf2733949036c7d52fda017badcab093fe73bfa
