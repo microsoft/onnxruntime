@@ -383,7 +383,6 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody() << "for (var i = 0u; i < " << work_group_size_ << "; i++) {\n"
                             << "  max_value = max(thread_max[i], max_value);\n"
                             << "}\n"
-                            << "workgroupBarrier();\n"
                             << "var sum: f32 = 0.0;\n"
                             << "for (var i = 0u; i < " << work_group_size_ << "; i++) {\n"
                             << "  sum += thread_sum[i] * exp(thread_max[i] - max_value);\n"
