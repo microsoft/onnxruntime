@@ -619,6 +619,11 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
     return;
 
   const std::string scrubbed_error = ScrubStringForTelemetry(status.ErrorMessage());
+  std::string_view file_view = file ? std::string_view{file} : std::string_view{};
+  if (const size_t slash = file_view.find_last_of("/\\"); slash != std::string_view::npos) {
+    file_view.remove_prefix(slash + 1);
+  }
+  const std::string scrubbed_file = ScrubStringForTelemetry(file_view);
 #ifdef _WIN32
   HRESULT hr = common::StatusCodeToHRESULT(static_cast<common::StatusCode>(status.Code()));
   TraceLoggingWrite(telemetry_provider_handle,
@@ -634,7 +639,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingUInt32(status.Code(), "errorCode"),
                     TraceLoggingUInt32(status.Category(), "errorCategory"),
                     TraceLoggingString(scrubbed_error.c_str(), "errorMessage"),
-                    TraceLoggingString(file, "file"),
+                    TraceLoggingString(scrubbed_file.c_str(), "file"),
                     TraceLoggingString(function, "function"),
                     TraceLoggingInt32(line, "line"),
                     TraceLoggingString(ORT_VERSION, "runtimeVersion"),
@@ -652,7 +657,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingUInt32(status.Code(), "errorCode"),
                     TraceLoggingUInt32(status.Category(), "errorCategory"),
                     TraceLoggingString(scrubbed_error.c_str(), "errorMessage"),
-                    TraceLoggingString(file, "file"),
+                    TraceLoggingString(scrubbed_file.c_str(), "file"),
                     TraceLoggingString(function, "function"),
                     TraceLoggingInt32(line, "line"),
                     TraceLoggingString(ORT_VERSION, "runtimeVersion"),

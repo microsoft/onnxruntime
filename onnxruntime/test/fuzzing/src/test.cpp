@@ -5,7 +5,7 @@
 #include "testlog.h"
 #include "OnnxPrediction.h"
 #include "onnxruntime_session_options_config_keys.h"
-#include <cstdlib>
+#include "test/util/include/telemetry_test_environment.h"
 #include <type_traits>
 
 using user_options = struct
@@ -279,11 +279,7 @@ static void fuzz_handle_exception(struct RunStats& run_stats) {
 }
 
 int main(int argc, char* argv[]) {
-#ifdef _WIN32
-  _putenv_s("ORT_RUNNING_UNIT_TESTS", "1");
-#else
-  setenv("ORT_RUNNING_UNIT_TESTS", "1", 1);
-#endif
+  onnxruntime::test::SuppressTelemetryForTests();
   Ort::Env env;
   struct RunStats run_stats{};
   runtimeOpt opt{};
