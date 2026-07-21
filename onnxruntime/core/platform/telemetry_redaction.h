@@ -18,8 +18,8 @@ namespace telemetry_detail {
 // Returns the index of the first filesystem-path anchor in s, or npos. Anchors:
 // a UNC prefix (\\), a home prefix (~/ or ~\), a drive prefix (C:\ or C:/), a relative
 // Windows path with >= 2 '\'-delimited segments (Users\jane\...), or a POSIX path with
-// >= 2 '/'-delimited non-empty segments (a/b, /a/b/c...). Single-separator tokens such as
-// "n/a", "read/write", or "domain\user" are not anchors.
+// >= 2 '/' separators followed by non-empty segments (a/b/c, /a/b...). Single-separator
+// tokens such as "n/a", "read/write", or "domain\user" are not anchors.
 //
 // Detection is anchor-based rather than per-whitespace-token because filesystem paths
 // routinely contain spaces (e.g. C:\Users\First Last\model.onnx). A per-token classifier
@@ -56,7 +56,8 @@ inline size_t FindPathAnchor(std::string_view s) {
       }
     }
     if (c == '/') {
-      // Absolute/relative POSIX path with >= 2 '/'-delimited non-empty, space-free segments.
+      // Absolute/relative POSIX path with >= 2 '/' separators followed by non-empty,
+      // space-free segments.
       // Segments are space-free for DETECTION so unrelated slashes ("n/a ... read/write") are
       // not treated as a path; a real path whose deeper segments contain spaces (e.g.
       // /Users/Jane Doe) is still anchored here and its spaced tail removed by the
