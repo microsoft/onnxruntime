@@ -1018,10 +1018,11 @@ TEST(MatMulNBits, Fp16_Int4_PrepackedWeightRejectedWhenFpAIntBUnsupported) {
 // weight_prepacked=2 selects the native SM90 (Hopper) mixed-GEMM layout. It is rejected up front
 // unless the device is SM90 and block_size is 64 or 128 (the SM90 TMA kernel requires group_size to
 // be a multiple of the 64-element Hopper K tile, so block_size=32 is SM80-only). When the fpA_intB
-// path is compiled in, both rejection messages begin with "weight_prepacked=2 (SM90 layout)", so the
-// check is device-independent: non-Hopper hits the compute-capability guard, Hopper hits the
-// block_size guard. In a build without onnxruntime_USE_FPA_INTB_GEMM the kernel rejects any
-// weight_prepacked!=0 up front with a different ("weight_prepacked requires ...") message.
+// path is compiled in, all rejection messages begin with "weight_prepacked=2 (SM90 layout)", so the
+// assertion is stable across machine/build combinations: non-Hopper hits the compute-capability
+// guard, SM90 without native TMA support hits the build-support guard, and SM90 with native TMA
+// support hits the block_size guard. In a build without onnxruntime_USE_FPA_INTB_GEMM the kernel
+// rejects any weight_prepacked!=0 up front with a different ("weight_prepacked requires ...") message.
 TEST(MatMulNBits, Fp16_Int4_PrepackedSm90BlockSize32Rejected) {
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
 

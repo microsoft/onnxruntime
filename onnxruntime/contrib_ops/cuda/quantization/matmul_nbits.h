@@ -129,6 +129,11 @@ class MatMulNBits final : public CudaKernel {
                 "weight_prepacked must be 0 (not prepacked), 1 (SM80 layout), or 2 (SM90 layout), but got ",
                 weight_prepacked_);
     if (weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90) {
+      // The native SM90 (Hopper TMA/WGMMA) mixed-GEMM kernel requires a compute-capability 9.0
+      // device and a block_size that is a multiple of the Hopper K tile (128 / sizeof(half) = 64).
+      // block_size=32 is only supported by the SM80/Ampere-class kernel + GEMV path.
+      ORT_ENFORCE(sm_ == 90,
+                  "weight_prepacked=2 (SM90 layout) requires a compute capability 9.0 (Hopper) device, but got sm ", sm_);
 #if !defined(COMPILE_HOPPER_TMA_GEMMS)
       // The native SM90 (Hopper) fpA_intB TMA/WGMMA kernel is not compiled in this build (for
       // example Windows/MSVC, where CUDA 13 NVCC host stubs hit MSVC C2719 with over-aligned TMA
@@ -136,15 +141,10 @@ class MatMulNBits final : public CudaKernel {
       // cannot be consumed by the SM80 kernel, so fail early here with a clear message instead of
       // dispatching to the throwing launcher stub during tactic profiling.
       ORT_THROW(
-          "weight_prepacked=2 (native SM90 layout) is not supported by this ONNX Runtime build "
+          "weight_prepacked=2 (SM90 layout) is not supported by this ONNX Runtime build "
           "(the native SM90 Hopper fpA_intB kernel is unavailable, e.g. on Windows/MSVC). "
           "Re-export the model with weight_prepacked=0 or 1 to use the SM80-compatible fpA_intB layout.");
 #endif
-      // The native SM90 (Hopper TMA/WGMMA) mixed-GEMM kernel requires a compute-capability 9.0
-      // device and a block_size that is a multiple of the Hopper K tile (128 / sizeof(half) = 64).
-      // block_size=32 is only supported by the SM80/Ampere-class kernel + GEMV path.
-      ORT_ENFORCE(sm_ == 90,
-                  "weight_prepacked=2 (SM90 layout) requires a compute capability 9.0 (Hopper) device, but got sm ", sm_);
       ORT_ENFORCE(block_size_ == 64 || block_size_ == 128,
                   "weight_prepacked=2 (SM90 layout) supports block_size 64 or 128 only, but got ", block_size_);
     }
