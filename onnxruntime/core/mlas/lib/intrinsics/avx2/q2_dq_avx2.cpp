@@ -20,7 +20,10 @@ Abstract:
     to the scalar kernel. GCC and Clang can fuse the two into an FMA in their
     default configurations, which would change the result, so the build passes
     -ffp-contract=off for this TU; MSVC does not contract under its default
-    /fp:precise.
+    /fp:precise. The scalar kernel's TU is compiled without FMA in the default
+    build and cannot contract; a build that enables FMA globally (for example
+    -march=x86-64-v3) can still fuse there and drift from this kernel by one
+    ulp.
 
 --*/
 
