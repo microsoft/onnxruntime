@@ -307,6 +307,19 @@ present. `ComputeInternal` then:
 
 ## 9. Testing
 
+- CUDA EP internal tests run through `CUDA_EP_Unittest` in
+  [onnxruntime/test/providers/cuda/cuda_provider_test.cc](../../../onnxruntime/test/providers/cuda/cuda_provider_test.cc).
+  Run them from `onnxruntime_provider_test` with:
+
+  ```bash
+  ./onnxruntime_provider_test --gtest_filter=CUDA_EP_Unittest.*
+  ```
+
+  This wrapper executes the internal CUDA-UT shared library and covers the
+  fpA_intB / MatMulNBits groupwise GEMM tests under
+  [onnxruntime/test/contrib_ops/cuda_kernels/fpA_intB_gemm_kernel_test.cc](../../../onnxruntime/test/contrib_ops/cuda_kernels/fpA_intB_gemm_kernel_test.cc)
+  as well as the SM90 validation tests in
+  [onnxruntime/test/contrib_ops/cuda_kernels/matmul_nbits_sm90_validation_test.cc](../../../onnxruntime/test/contrib_ops/cuda_kernels/matmul_nbits_sm90_validation_test.cc).
 - Python operator tests: `onnxruntime/test/python/transformers` (see the QMoE /
   GEMV profiling helpers, e.g. `profile_qmoe_gemv.sh`).
 - CUDA prepacked-weight parity tests:
