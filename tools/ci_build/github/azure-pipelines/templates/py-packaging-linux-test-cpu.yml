@@ -61,8 +61,6 @@ jobs:
       mv "$(Pipeline.Workspace)/build/drop-linux-cpu-${{ parameters.arch }}-${{parameters.ep}}" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
       mv "$(Pipeline.Workspace)/build/onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}" "$(Build.BinariesDirectory)/whl"
 
-  - template: set-cargo-registry-token-step.yml
-
   - template: get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cpu/Dockerfile
