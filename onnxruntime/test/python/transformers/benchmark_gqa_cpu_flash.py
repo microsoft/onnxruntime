@@ -15,6 +15,7 @@ Usage:
 """
 
 import argparse
+import csv
 import os
 import time
 
@@ -465,6 +466,8 @@ def run_benchmarks(args):
     warmup = args.warmup
     repeats = args.repeats
     trials = args.trials
+    csv_output = args.csv_output
+    csv_rows = []
 
     # Save and restore env var to avoid side effects on callers
     saved_env = os.environ.get("ORT_GQA_DISABLE_FLASH_ATTENTION")
@@ -508,10 +511,19 @@ def run_benchmarks(args):
 
             naive_mean_ms = float(np.mean(naive_runs_ms))
             flash_mean_ms = float(np.mean(flash_runs_ms))
+            csv_row = {
+                "group": group_title,
+                "config": label,
+                "naive_ms": naive_mean_ms,
+                "flash_ms": flash_mean_ms,
+            }
 
             if trials <= 1:
                 speedup = speedups[0]
                 print(f"{label:<25} {naive_mean_ms:>10.3f}ms {flash_mean_ms:>10.3f}ms {speedup:>8.2f}x")
+                csv_row["speedup_mean"] = speedup
+                csv_row["speedup_min"] = speedup
+                csv_row["speedup_max"] = speedup
             else:
                 speedup_mean = float(np.mean(speedups))
                 speedup_min = float(np.min(speedups))
@@ -520,6 +532,11 @@ def run_benchmarks(args):
                     f"{label:<25} {naive_mean_ms:>10.3f}ms {flash_mean_ms:>10.3f}ms "
                     f"{speedup_mean:>12.2f}x {speedup_min:>7.2f}x {speedup_max:>7.2f}x"
                 )
+                csv_row["speedup_mean"] = speedup_mean
+                csv_row["speedup_min"] = speedup_min
+                csv_row["speedup_max"] = speedup_max
+
+            csv_rows.append(csv_row)
 
     contiguous_configs = [cfg for cfg in configs if not cfg.get("block_table_mode", False)]
     block_table_configs = [cfg for cfg in configs if cfg.get("block_table_mode", False)]
@@ -529,6 +546,21 @@ def run_benchmarks(args):
 
     run_config_group("Contiguous cache mode", contiguous_configs)
     run_config_group("Block-table cache mode", block_table_configs)
+
+    if csv_output:
+        csv_dir = os.path.dirname(csv_output)
+        if csv_dir:
+            os.makedirs(csv_dir, exist_ok=True)
+
+        with open(csv_output, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(
+                f,
+                fieldnames=["group", "config", "naive_ms", "flash_ms", "speedup_mean", "speedup_min", "speedup_max"],
+            )
+            writer.writeheader()
+            writer.writerows(csv_rows)
+
+        print(f"\nWrote CSV results to: {csv_output}")
 
     # Restore original env state
     if saved_env is not None:
@@ -547,6 +579,12 @@ if __name__ == "__main__":
         type=int,
         default=1,
         help="Number of independent benchmark trials per config (prints mean/min/max speedup when >1).",
+    )
+    parser.add_argument(
+        "--csv_output",
+        type=str,
+        default="",
+        help="Optional path to write benchmark results as CSV.",
     )
     parser.add_argument("--decode_only", action="store_true", help="Only run decode benchmarks")
     parser.add_argument("--prompt_only", action="store_true", help="Only run prompt benchmarks")
