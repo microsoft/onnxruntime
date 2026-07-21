@@ -93,12 +93,8 @@ def create_quantized_gqa_graph(
 
     graph_output = [
         helper.make_tensor_value_info("output", TensorProto.FLOAT, [batch_size, seq_len, hidden_size]),
-        helper.make_tensor_value_info(
-            "present_key", cache_ort_type, [batch_size, kv_num_heads, buffer_seq_len, packed_head_size]
-        ),
-        helper.make_tensor_value_info(
-            "present_value", cache_ort_type, [batch_size, kv_num_heads, buffer_seq_len, packed_head_size]
-        ),
+        helper.make_tensor_value_info("present_key", cache_ort_type, None),
+        helper.make_tensor_value_info("present_value", cache_ort_type, None),
     ]
 
     graph = helper.make_graph([node], "BenchGQA", graph_input, graph_output)
@@ -185,12 +181,8 @@ def create_fp32_gqa_graph(
 
         graph_output = [
             helper.make_tensor_value_info("output", TensorProto.FLOAT, [batch_size, seq_len, hidden_size]),
-            helper.make_tensor_value_info(
-                "present_key", TensorProto.FLOAT, [num_blocks, block_size, kv_num_heads, head_size]
-            ),
-            helper.make_tensor_value_info(
-                "present_value", TensorProto.FLOAT, [num_blocks, block_size, kv_num_heads, head_size]
-            ),
+            helper.make_tensor_value_info("present_key", TensorProto.FLOAT, None),
+            helper.make_tensor_value_info("present_value", TensorProto.FLOAT, None),
         ]
     else:
         graph_input = [
@@ -209,12 +201,8 @@ def create_fp32_gqa_graph(
 
         graph_output = [
             helper.make_tensor_value_info("output", TensorProto.FLOAT, [batch_size, seq_len, hidden_size]),
-            helper.make_tensor_value_info(
-                "present_key", TensorProto.FLOAT, [batch_size, kv_num_heads, buffer_seq_len, head_size]
-            ),
-            helper.make_tensor_value_info(
-                "present_value", TensorProto.FLOAT, [batch_size, kv_num_heads, buffer_seq_len, head_size]
-            ),
+            helper.make_tensor_value_info("present_key", TensorProto.FLOAT, None),
+            helper.make_tensor_value_info("present_value", TensorProto.FLOAT, None),
         ]
 
     graph = helper.make_graph([node], "BenchGQA", graph_input, graph_output)
@@ -247,12 +235,15 @@ def benchmark_gqa(
 
     sess_options = SessionOptions()
     sess_options.intra_op_num_threads = 8
+    # Suppress warning log noise during micro-benchmark loops.
+    sess_options.log_severity_level = 3
 
     np.random.seed(42)
     query = np.random.uniform(-0.5, 0.5, (batch_size, seq_len, hidden_size)).astype(np.float32)
     key = np.random.uniform(-0.5, 0.5, (batch_size, seq_len, kv_hidden_size)).astype(np.float32)
     value = np.random.uniform(-0.5, 0.5, (batch_size, seq_len, kv_hidden_size)).astype(np.float32)
-    seqlens_k = np.array([total_seqlen - 1] * batch_size, dtype=np.int32)
+    # seqlens_k represents the number of existing KV tokens before appending current key/value.
+    seqlens_k = np.array([past_seq_len] * batch_size, dtype=np.int32)
     total_seq = np.array([total_seqlen], dtype=np.int32)
 
     if non_quantized:
@@ -473,20 +464,25 @@ def run_benchmarks(args):
 
     warmup = args.warmup
     repeats = args.repeats
+    trials = args.trials
 
     # Save and restore env var to avoid side effects on callers
     saved_env = os.environ.get("ORT_GQA_DISABLE_FLASH_ATTENTION")
 
     kv_mode = "FP32 (non-quantized)" if args.fp32 else "INT8/INT4 quantized"
     print("\nBenchmark: CPU GroupQueryAttention — Flash vs Naive")
-    print(f"KV cache: {kv_mode}, Threads: {8}, Warmup: {warmup}, Repeats: {repeats}")
+    print(f"KV cache: {kv_mode}, Threads: {8}, Warmup: {warmup}, Repeats: {repeats}, Trials: {trials}")
     def run_config_group(group_title, group_configs):
         if not group_configs:
             return
 
         print(f"\n{group_title}")
-        print(f"{'Config':<25} {'Naive (ms)':>12} {'Flash (ms)':>12} {'Speedup':>10}")
-        print("-" * 62)
+        if trials <= 1:
+            print(f"{'Config':<25} {'Naive (ms)':>12} {'Flash (ms)':>12} {'Speedup':>10}")
+            print("-" * 62)
+        else:
+            print(f"{'Config':<25} {'Naive':>9} {'Flash':>9} {'Mean':>8} {'Min':>7} {'Max':>7}")
+            print("-" * 74)
 
         for cfg in group_configs:
             cfg_copy = dict(cfg)
@@ -494,16 +490,36 @@ def run_benchmarks(args):
             cfg_copy["non_quantized"] = args.fp32
             cfg_copy.setdefault("block_table_mode", False)
 
-            # Flash path (default)
-            os.environ.pop("ORT_GQA_DISABLE_FLASH_ATTENTION", None)
-            flash_ms = benchmark_gqa(**cfg_copy, warmup=warmup, repeats=repeats)
+            naive_runs_ms = []
+            flash_runs_ms = []
+            speedups = []
+            for _ in range(trials):
+                # Flash path (default)
+                os.environ.pop("ORT_GQA_DISABLE_FLASH_ATTENTION", None)
+                flash_ms = benchmark_gqa(**cfg_copy, warmup=warmup, repeats=repeats)
 
-            # Naive path (disabled flash)
-            os.environ["ORT_GQA_DISABLE_FLASH_ATTENTION"] = "1"
-            naive_ms = benchmark_gqa(**cfg_copy, warmup=warmup, repeats=repeats)
+                # Naive path (disabled flash)
+                os.environ["ORT_GQA_DISABLE_FLASH_ATTENTION"] = "1"
+                naive_ms = benchmark_gqa(**cfg_copy, warmup=warmup, repeats=repeats)
 
-            speedup = naive_ms / flash_ms if flash_ms > 0 else float("inf")
-            print(f"{label:<25} {naive_ms:>10.3f}ms {flash_ms:>10.3f}ms {speedup:>8.2f}x")
+                naive_runs_ms.append(naive_ms)
+                flash_runs_ms.append(flash_ms)
+                speedups.append(naive_ms / flash_ms if flash_ms > 0 else float("inf"))
+
+            naive_mean_ms = float(np.mean(naive_runs_ms))
+            flash_mean_ms = float(np.mean(flash_runs_ms))
+
+            if trials <= 1:
+                speedup = speedups[0]
+                print(f"{label:<25} {naive_mean_ms:>10.3f}ms {flash_mean_ms:>10.3f}ms {speedup:>8.2f}x")
+            else:
+                speedup_mean = float(np.mean(speedups))
+                speedup_min = float(np.min(speedups))
+                speedup_max = float(np.max(speedups))
+                print(
+                    f"{label:<25} {naive_mean_ms:>10.3f}ms {flash_mean_ms:>10.3f}ms "
+                    f"{speedup_mean:>12.2f}x {speedup_min:>7.2f}x {speedup_max:>7.2f}x"
+                )
 
     contiguous_configs = [cfg for cfg in configs if not cfg.get("block_table_mode", False)]
     block_table_configs = [cfg for cfg in configs if cfg.get("block_table_mode", False)]
@@ -526,6 +542,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Benchmark GQA flash vs naive on CPU")
     parser.add_argument("--warmup", type=int, default=5, help="Warmup iterations")
     parser.add_argument("--repeats", type=int, default=20, help="Measurement iterations")
+    parser.add_argument(
+        "--trials",
+        type=int,
+        default=1,
+        help="Number of independent benchmark trials per config (prints mean/min/max speedup when >1).",
+    )
     parser.add_argument("--decode_only", action="store_true", help="Only run decode benchmarks")
     parser.add_argument("--prompt_only", action="store_true", help="Only run prompt benchmarks")
     parser.add_argument("--fp32", action="store_true", help="Use non-quantized FP32 KV cache instead of quantized")
