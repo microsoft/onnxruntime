@@ -1034,6 +1034,8 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
     "${TEST_SRC_DIR}/providers/cuda/test_cases/allocator_cuda_test.cc"
     "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_utils_test.cc"
     "${TEST_SRC_DIR}/providers/cuda/test_cases/reduction_functions_test.cc"
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/matmul_nbits_workspace_test.cc"
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/matmul_nbits_e2e_workspace_test.cc"
   )
 
   if (NOT onnxruntime_DISABLE_CONTRIB_OPS)
@@ -1403,6 +1405,18 @@ block()
   # onnxruntime_test_all and export them so the dlopen'd module can resolve them at load time;
   # without this the module fails to load with an undefined-symbol error.
   set_target_properties(onnxruntime_provider_test PROPERTIES ENABLE_EXPORTS 1)
+
+  # On Windows, ENABLE_EXPORTS makes CMake emit an import library (onnxruntime_provider_test.lib)
+  # for the exported symbols, but a MODULE library (onnxruntime_providers_cuda_ut, built via
+  # onnxruntime_add_shared_library_module) cannot have unresolved externals at *link* time the way
+  # a dlopen'd .so can on Linux. Since tests compiled into onnxruntime_providers_cuda_ut (e.g. the
+  # MatMulNBits end-to-end workspace test) call into InferenceSession symbols owned by this
+  # executable, link the module against that import library so those symbols resolve at link time.
+  # On Linux the runtime -rdynamic export path (above) is sufficient, so this is Windows-only.
+  # Note: onnxruntime_providers_cuda_ut only exists in the non-plugin CUDA-EP-internal-tests path.
+  if (WIN32 AND TARGET onnxruntime_providers_cuda_ut)
+    target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE onnxruntime_provider_test)
+  endif()
 
   if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
     target_compile_definitions(onnxruntime_provider_test PRIVATE

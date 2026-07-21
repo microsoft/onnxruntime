@@ -1,11 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// End-to-end test (Major 1, Phase-A memory roadmap, issue microsoft/onnxruntime#29775) that proves
-// the core claim of the two-level MatMulNBits workspace-estimation pilot: that the partition-time
-// estimate, the kernel-instance estimate, and the real runtime workspace request all agree.
+// Cross-level agreement test (Major 1, Phase-A memory roadmap, issue microsoft/onnxruntime#29775)
+// for the two-level MatMulNBits workspace-estimation pilot: it proves that the workspace *estimator
+// function* agrees with the kernel-instance estimate and with the real runtime workspace request.
 //
-//   Level 1  : EstimateMatMulNBitsWorkspace(node, device_prop)   -- partition-time, no kernel.
+//   Level 1  : EstimateMatMulNBitsWorkspace(node, device_prop)   -- the same estimator function that
+//                                                                    CUDAExecutionProvider::GetCapability()
+//                                                                    calls at partition time; here it is
+//                                                                    invoked DIRECTLY (no kernel).
 //   Level 2  : OpKernel::DeclareWorkspaceRequirements(shapes)     -- constructed kernel instance
 //                                                                    (virtual dispatch into MatMulNBits).
 //   Runtime  : MatMulNBits<MLFloat16>::LastComputeWorkspaceBytes  -- recorded inside the CUTLASS GEMM
@@ -13,7 +16,17 @@
 //                                                                    (read through the provider-world
 //                                                                    probe in the .cc companion TU).
 //
+// Scope / what this does NOT prove: this test does not drive a full GetCapability()-based partition-time
+// run with a real IResourceAccountant. It exercises the estimator that GetCapability() delegates to, not
+// GetCapability()'s own partition-time wiring (device_prop plumbing, resource_accountant invocation),
+// which is covered elsewhere / is out of scope for this test's specific claim. In short, it proves the
+// estimator itself is consistent with Level 2 and with the real runtime allocation.
+//
 // This translation unit runs a real InferenceSession, so it includes the core framework headers.
+// Those cannot coexist with the CUDA-provider (shared-provider bridge) headers in one TU, so the two
+// provider-world pieces it needs (the Level-1 estimate and the runtime probe) are reached through
+// slim, bridge-free declarations. It lives in the CUDA-only unit-test module because that is the only
+// place these provider-internal symbols are linkable. Requires a real CUDA device; skips otherwise.
 // Those cannot coexist with the CUDA-provider (shared-provider bridge) headers in one TU, so the two
 // provider-world pieces it needs (the Level-1 estimate and the runtime probe) are reached through
 // slim, bridge-free declarations. It lives in the CUDA-only unit-test module because that is the only
@@ -189,7 +202,8 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
   ASSERT_EQ(mm_node->GetExecutionProviderType(), onnxruntime::kCudaExecutionProvider)
       << "MatMulNBits node was not assigned to the CUDA EP.";
 
-  // ---- Level 1: partition-time estimate from the node + device properties. ----
+  // ---- Level 1: the estimator function GetCapability() uses, invoked directly on the node + device
+  //      properties (this is not a full GetCapability()-driven partition-time run). ----
   const std::optional<size_t> level1 =
       onnxruntime::contrib::cuda::EstimateMatMulNBitsWorkspace(*mm_node, cuda_ep->GetDeviceProp());
   ASSERT_TRUE(level1.has_value()) << "Level-1 estimate returned nullopt for an eligible node.";
