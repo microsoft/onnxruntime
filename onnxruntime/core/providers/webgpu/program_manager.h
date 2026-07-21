@@ -22,10 +22,11 @@ class Tensor;
 namespace webgpu {
 class WebGpuContext;
 
-// Callback state for asynchronous pipeline creation. `pipeline` refers to caller-owned storage,
-// so both this object and that storage must remain alive until the future completes.
+// Callback state for asynchronous pipeline creation. The created pipeline is written into
+// `pipeline` by the callback, so only this (heap-allocated) object must remain alive until the
+// future completes.
 struct PipelineCallbackContext {
-  wgpu::ComputePipeline& pipeline;
+  wgpu::ComputePipeline pipeline;
   Status status;
 };
 
@@ -55,8 +56,9 @@ class ProgramManager {
   Status NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z) const;
   Status CalculateSegmentsForInputsAndOutputs(const ProgramBase& program, std::vector<uint32_t>& inputs_segments, std::vector<uint32_t>& outputs_segments) const;
 
-  // Starts building a compute pipeline for `program` and returns immediately. The caller must keep
-  // `callback_context`, `compute_pipeline`, and `bind_group_layout` alive until `future` completes.
+  // Starts building a compute pipeline for `program` and returns immediately. The compiled pipeline
+  // is delivered via `callback_context.pipeline` once `future` completes. The caller owns
+  // `callback_context` and must keep it (and `bind_group_layout`) alive until `future` completes.
   Status Build(const ProgramBase& program,
                const ProgramMetadata& metadata,
                const std::span<uint32_t> inputs_segments,
@@ -65,11 +67,10 @@ class ProgramManager {
                uint32_t normalized_dispatch_x,
                uint32_t normalized_dispatch_y,
                uint32_t normalized_dispatch_z,
-               wgpu::ComputePipeline& compute_pipeline,
                wgpu::BindGroupLayout& bind_group_layout,
                std::vector<int>& shape_uniform_ranks,
                wgpu::Future& future,
-               std::unique_ptr<PipelineCallbackContext>& callback_context) const;
+               PipelineCallbackContext& callback_context) const;
   const ProgramArtifact* Get(const std::string& key) const;
   const ProgramArtifact* Set(const std::string& key, ProgramArtifact&& program);
 

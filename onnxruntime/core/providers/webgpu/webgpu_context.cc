@@ -238,10 +238,10 @@ Status WebGpuContext::Wait(wgpu::Future f) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to wait for the operation:", uint32_t(status));
 }
 
-WebGpuContext::PendingPipelineBuild* WebGpuContext::FindPendingPipelineBuild(std::string_view key) const {
-  for (const auto& dispatch : deferred_dispatches_) {
+WebGpuContext::PendingPipelineBuild* WebGpuContext::FindPendingPipelineBuild(std::string_view key) {
+  for (auto& dispatch : deferred_dispatches_) {
     if (dispatch.key == key && dispatch.pending_build) {
-      return dispatch.pending_build.get();
+      return &*dispatch.pending_build;
     }
   }
 
@@ -267,8 +267,8 @@ Status WebGpuContext::WaitForDeferredPipelineBuilds() {
       continue;
     }
 
-    ProgramArtifact artifact{std::move(build.name), std::move(build.compute_pipeline),
-                 std::move(build.bind_group_layout),
+    ProgramArtifact artifact{std::move(build.name), std::move(build.callback_context->pipeline),
+                             std::move(build.bind_group_layout),
                              std::move(build.shape_uniform_ranks)};
     program_mgr_->Set(dispatch.key, std::move(artifact));
   }
@@ -444,7 +444,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
   // For cache misses, reuse a pending build already owned by this bounded dispatch window instead
   // of starting another build for the same key.
-  std::unique_ptr<PendingPipelineBuild> pending_build;
+  std::optional<PendingPipelineBuild> pending_build;
   const std::vector<int>* deferred_ranks = nullptr;
   const wgpu::BindGroupLayout* bind_group_layout = nullptr;
   if (program_artifact == nullptr) {
@@ -452,17 +452,16 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
     // Reuse an in-flight same-key build instead of compiling the shader again.
     if (in_flight_build == nullptr) {
-      pending_build = std::make_unique<PendingPipelineBuild>();
-      auto& build = *pending_build;
+      auto& build = pending_build.emplace();
       build.name = program.Name();
+      build.callback_context = std::make_unique<PipelineCallbackContext>();
       ORT_RETURN_IF_ERROR(program_mgr_->Build(program, metadata, inputs_segments, outputs_segments,
                                               key, x, y, z,
-                                              build.compute_pipeline,
                                               build.bind_group_layout,
                                               build.shape_uniform_ranks,
                                               build.future,
-                                              build.callback_context));
-      in_flight_build = pending_build.get();
+                                              *build.callback_context));
+      in_flight_build = &*pending_build;
     }
     deferred_ranks = &in_flight_build->shape_uniform_ranks;
     bind_group_layout = &in_flight_build->bind_group_layout;

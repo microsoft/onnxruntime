@@ -341,12 +341,12 @@ class WebGpuContext final {
     wgpu::Buffer query_buffer;
   };
 
-  // State for one in-flight pipeline build. This object is heap-allocated because the callback
-  // stores a reference to `compute_pipeline`, whose address must remain stable until `future` completes.
+  // State for one in-flight pipeline build. The compiled pipeline is written into
+  // `callback_context->pipeline` by the async callback; only that heap-allocated callback context
+  // must stay put until `future` completes, so this struct itself can be stored inline.
   struct PendingPipelineBuild {
     std::string name;
     std::vector<int> shape_uniform_ranks;
-    wgpu::ComputePipeline compute_pipeline;
     wgpu::BindGroupLayout bind_group_layout;
     std::unique_ptr<PipelineCallbackContext> callback_context;
     wgpu::Future future;
@@ -364,7 +364,7 @@ class WebGpuContext final {
     ORT_DISALLOW_COPY_AND_ASSIGNMENT(DeferredDispatch);
 
     std::string key;
-    std::unique_ptr<PendingPipelineBuild> pending_build;
+    std::optional<PendingPipelineBuild> pending_build;
     wgpu::BindGroup bind_group;
     uint32_t x = 1, y = 1, z = 1;
     // The indirect buffer is also the final bind-group input, so the bind group retains it.
@@ -375,7 +375,7 @@ class WebGpuContext final {
   };
 
   // Find the build owner for a cache key in the current deferred window.
-  PendingPipelineBuild* FindPendingPipelineBuild(std::string_view key) const;
+  PendingPipelineBuild* FindPendingPipelineBuild(std::string_view key);
   Status WaitForDeferredPipelineBuilds();
 
   friend class WebGpuContextFactory;

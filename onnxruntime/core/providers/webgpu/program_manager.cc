@@ -146,11 +146,10 @@ Status ProgramManager::Build(const ProgramBase& program,
                              uint32_t normalized_dispatch_x,
                              uint32_t normalized_dispatch_y,
                              uint32_t normalized_dispatch_z,
-                             wgpu::ComputePipeline& compute_pipeline,
                              wgpu::BindGroupLayout& bind_group_layout,
                              std::vector<int>& shape_uniform_ranks,
                              wgpu::Future& future,
-                             std::unique_ptr<PipelineCallbackContext>& callback_context) const {
+                             PipelineCallbackContext& callback_context) const {
   auto& device = webgpu_context_.Device();
   ShaderHelper shader_helper{program,
                              program_metadata,
@@ -294,12 +293,11 @@ Status ProgramManager::Build(const ProgramBase& program,
         }
       };
 
-  callback_context = std::make_unique<PipelineCallbackContext>(compute_pipeline, Status{});
   future = device.CreateComputePipelineAsync(
       &pipeline_descriptor,
       wgpu::CallbackMode::WaitAnyOnly,
       pipeline_callback,
-      callback_context.get());
+      &callback_context);
   return Status::OK();
 }
 
