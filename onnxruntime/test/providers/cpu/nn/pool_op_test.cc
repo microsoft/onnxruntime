@@ -350,7 +350,7 @@ static void MaxPool1D_12_WithIndexTest_int8_LowestValue(int64_t storage_order) {
   test.AddOutput<int8_t>("Y", expected_dims, expected_vals);
   test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider});
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 static void MaxPool1D_12_WithIndexTest_uint8_LowestValue(int64_t storage_order) {
@@ -372,7 +372,7 @@ static void MaxPool1D_12_WithIndexTest_uint8_LowestValue(int64_t storage_order) 
   test.AddOutput<uint8_t>("Y", expected_dims, expected_vals);
   test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider});
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool1D_12_With_Index_8bits_LowestValue) {
