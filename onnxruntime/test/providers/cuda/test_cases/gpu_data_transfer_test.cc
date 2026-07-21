@@ -28,10 +28,10 @@ namespace cuda {
 namespace test {
 
 namespace {
-// A HOST_ACCESSIBLE (pinned) tensor. Passing the same Tensor as both copy source and
+// A small HOST_ACCESSIBLE (pinned) tensor. Passing the same Tensor as both copy source and
 // destination gives src_data == dst_data (a single physical allocation) — the aliased
-// in-memory initializer condition from the issue.
-// 64 * sizeof(float) = 256 bytes > kSmallTensorExternalDataThreshold (127).
+// self-copy condition from the issue. These tests call CopyTensor{,Async} directly, so the
+// tensor size is arbitrary and does not affect which branch is exercised.
 constexpr int64_t kNumElements = 64;
 
 std::unique_ptr<Tensor> MakePinnedTensor(const AllocatorPtr& pinned_alloc) {
@@ -44,6 +44,8 @@ TEST(GPUDataTransferSameBufferTest, CopyTensorSelfCopyIsNoOp) {
   CUDAExecutionProviderInfo info;
   CUDAExecutionProvider ep(info);
   AllocatorPtr pinned_alloc = ep.CreatePreferredAllocators()[1];
+  // Make the allocator assumption explicit: the copy must go through the host->host branch.
+  ASSERT_EQ(pinned_alloc->Info().device.MemType(), OrtDevice::MemType::HOST_ACCESSIBLE);
 
   auto tensor = MakePinnedTensor(pinned_alloc);
 
@@ -59,6 +61,10 @@ TEST(GPUDataTransferSameBufferTest, CopyTensorAsyncSelfCopyIsNoOp) {
   CUDAExecutionProvider ep(info);
   AllocatorPtr gpu_allocator = ep.CreatePreferredAllocators()[0];
   AllocatorPtr pinned_alloc = ep.CreatePreferredAllocators()[1];
+  // Make the allocator assumptions explicit: default-GPU stream device, HOST_ACCESSIBLE copy buffer.
+  ASSERT_EQ(gpu_allocator->Info().device.Type(), OrtDevice::GPU);
+  ASSERT_EQ(gpu_allocator->Info().device.MemType(), OrtDevice::MemType::DEFAULT);
+  ASSERT_EQ(pinned_alloc->Info().device.MemType(), OrtDevice::MemType::HOST_ACCESSIBLE);
 
   cudaStream_t cuda_stream = nullptr;
   ASSERT_EQ(cudaStreamCreate(&cuda_stream), cudaSuccess);
@@ -81,6 +87,10 @@ TEST(GPUDataTransferSameBufferTest, CopyTensorAsyncSelfCopyDuringCaptureKeepsCap
   CUDAExecutionProvider ep(info);
   AllocatorPtr gpu_allocator = ep.CreatePreferredAllocators()[0];
   AllocatorPtr pinned_alloc = ep.CreatePreferredAllocators()[1];
+  // Make the allocator assumptions explicit: default-GPU stream device, HOST_ACCESSIBLE copy buffer.
+  ASSERT_EQ(gpu_allocator->Info().device.Type(), OrtDevice::GPU);
+  ASSERT_EQ(gpu_allocator->Info().device.MemType(), OrtDevice::MemType::DEFAULT);
+  ASSERT_EQ(pinned_alloc->Info().device.MemType(), OrtDevice::MemType::HOST_ACCESSIBLE);
 
   cudaStream_t cuda_stream = nullptr;
   ASSERT_EQ(cudaStreamCreate(&cuda_stream), cudaSuccess);
