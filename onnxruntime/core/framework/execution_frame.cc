@@ -17,6 +17,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/utils.h"
+#include "core/common/logging/logging.h"
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #include "core/framework/memory_info.h"
 #endif
@@ -189,23 +190,29 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
       }
 
       if (!shape_matched) {
-        const TensorShape& existing_shape = p_ort_value->IsTensor()
-                                                ? p_ort_value->Get<Tensor>().Shape()
-#if !defined(DISABLE_SPARSE_TENSORS)
-                                                : p_ort_value->Get<SparseTensor>().DenseShape();
-#else
-                                                : *shape;  // unreachable, but satisfies compiler
-#endif
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "The output OrtValue provided for output '",
-                               node.OutputDefs()[output_index]->Name(),
-                               "' of node '", node.Name(),
-                               "' (", node.OpType(), ") has shape ", existing_shape,
-                               " but the computed output shape for this run is ", *shape,
-                               ". When calling Run() with pre-allocated output OrtValues on a model "
-                               "with dynamic output shapes, either supply unallocated output OrtValues "
-                               "or ensure the pre-allocated shapes match the expected output shapes "
-                               "for each run.");
+        bool reused_caller_buffer = false;
+        LOGS_DEFAULT(VERBOSE) << "Output shape mismatch for pre-allocated fetch buffer.";
+        if (p_ort_value->IsTensor()) {
+          ORT_RETURN_IF_NOT(shape != nullptr, "shape must not be null for tensor output that is already allocated");
+          auto& tensor = *p_ort_value->GetMutable<Tensor>();
+          // Keep caller-provided buffers for dynamic outputs when only the runtime
+          // dimensions changed and the total element count is unchanged.
+          LOGS_DEFAULT(VERBOSE) << "Trying in-place reshape for caller-provided output buffer.";
+          if (tensor.Shape().Size() == shape->Size()) {
+            LOGS_DEFAULT(VERBOSE) << "Reusing caller buffer by reshape. old_num_elements="
+                                  << tensor.Shape().Size() << " new_num_elements=" << shape->Size();
+            tensor.Reshape(*shape);
+            reused_caller_buffer = true;
+          }
+        }
+
+        if (!reused_caller_buffer) {
+          // For dynamic outputs where the caller-provided buffer cannot represent
+          // the runtime shape, replace with a newly allocated OrtValue.
+          LOGS_DEFAULT(VERBOSE) << "Caller buffer cannot be reused; allocating fresh output OrtValue.";
+          *p_ort_value = OrtValue();
+          status = CreateNodeOutputMLValueImpl(*p_ort_value, ort_value_idx, shape);
+        }
       }
     } else {
       // shape is nullptr for traditional ML output values
