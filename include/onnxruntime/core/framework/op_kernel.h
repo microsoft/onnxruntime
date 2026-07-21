@@ -10,6 +10,7 @@
 // as it doesn't include any pb headers.
 #include "core/framework/buffer_deleter.h"
 #include "core/framework/prepacked_weights_container.h"
+#include "core/framework/workspace_requirement.h"
 
 #ifndef SHARED_PROVIDER
 #include <functional>
@@ -102,6 +103,18 @@ class OpKernel {
   // @param removable_attributes set of attributes the session can safely remove.
   virtual Status GetRemovableAttributes(InlinedVector<std::string>& removable_attributes) const {
     removable_attributes.clear();
+    return Status::OK();
+  }
+
+  // Phase-A memory roadmap (issue microsoft/onnxruntime#29775). Declare Compute()-time scratch
+  // ("workspace") that can be sized statically from shape metadata alone (no live OpKernelContext /
+  // real tensors). Default: declare nothing -> callers MUST fall back to today's dynamic
+  // GetScratchBuffer path. Adding this MUST NOT change behavior for any kernel that does not
+  // override it.
+  [[nodiscard]] virtual Status DeclareWorkspaceRequirements(
+      gsl::span<const TensorShape> /*input_shapes*/,
+      /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const {
+    requirements.clear();  // defensive: never attribute a prior kernel's slots to a no-op kernel
     return Status::OK();
   }
 

@@ -7,6 +7,8 @@
 // pre-packed and block-compacted into int4
 //
 #pragma once
+#include <atomic>
+#include <optional>
 #include <string>
 #include <vector>
 #include "core/common/safeint.h"
@@ -76,6 +78,45 @@ inline bool ParseFpAIntBEnabled(const std::string& value) {
   }
   return true;
 }
+
+// Effective SM architecture that the fpA_intB CUTLASS runner uses for workspace sizing AFTER
+// InitGemmProfiler's setArch() call (matmul_nbits.cc). Must stay in lockstep with
+// MatMulNBits::FpAIntBPackingSmForKernel: the runner targets native SM90 only when the device is
+// SM90 AND the weights were prepacked for the Hopper layout (weight_prepacked == 2); every other
+// case runs the SM80-compat kernel, whose workspace formula ignores sm. If FpAIntBPackingSmForKernel
+// or the setArch() call changes, this must change too (Tests A and C are the regression guard).
+inline int EffectiveFpAIntBWorkspaceSm(int device_sm, int64_t weight_prepacked) {
+  return (device_sm == 90 && weight_prepacked == kMatMulNBitsWeightPrepackedSm90) ? 90 : 80;
+}
+
+// Result of the shared fpA_intB eligibility decision (see CheckFpAIntBEligibility).
+struct FpAIntBEligibility {
+  bool eligible{false};
+  int64_t N{0};
+  int64_t K{0};
+  int64_t nbits{0};
+  int64_t block_size{0};
+  int64_t weight_prepacked{kMatMulNBitsWeightNotPrepacked};
+  bool has_g_idx{false};
+};
+
+// Single source of truth for the fpA_intB / CUTLASS weight-only-GEMM eligibility decision. Reads
+// only node attributes + input-0 dtype + device SM (no kernel instance required). Called from BOTH
+// the MatMulNBits constructor (to compute has_fpA_intB_gemm_) and EstimateMatMulNBitsWorkspace
+// (Level 1), so the two can never disagree about whether a node takes the fpA_intB path.
+//
+// input0_elem_type is an onnx::TensorProto_DataType (FLOAT16 / BFLOAT16 are eligible; FLOAT is not).
+// fpa_intb_option is the resolved ORT_FPA_INTB_GEMM / ep.cuda.fpa_intb_gemm flag (0 = off). A
+// prepacked weight (weight_prepacked != 0) forces the fpA_intB path on regardless of the option.
+FpAIntBEligibility CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
+                                           int64_t nbits, int64_t block_size,
+                                           int64_t weight_prepacked, bool has_g_idx,
+                                           int device_sm, int fpa_intb_option);
+
+// Level 1 partition-time workspace estimate for a MatMulNBits node, callable during GetCapability()
+// before any kernel instance exists. Returns nullopt when the node is not fpA_intB-eligible, when
+// the leading (M) dimension of input A is not statically known, or when the size formula overflows.
+std::optional<size_t> EstimateMatMulNBitsWorkspace(const Node& node, const cudaDeviceProp& device_prop);
 #endif
 
 template <typename T>
@@ -143,19 +184,17 @@ class MatMulNBits final : public CudaKernel {
       // The enable flag (session config ep.cuda.fpa_intb_gemm, else ORT_FPA_INTB_GEMM env) only
       // chooses the path for weights that are NOT prepacked. A prepacked weight is already stored in
       // the fpA_intB layout, so the choice was made at export time and cannot be turned off here.
-      const bool enable_fpa_intb =
-          prepacked ||
-          ParseFpAIntBEnabled(ResolveFpAIntBConfigOrEnv(info, kConfigFpAIntBGemm, kFpAIntBGemmOption));
+      const int fpa_intb_option =
+          ParseFpAIntBEnabled(ResolveFpAIntBConfigOrEnv(info, kConfigFpAIntBGemm, kFpAIntBGemmOption)) ? 1 : 0;
+      // Route the fpA_intB path decision through the single shared eligibility function so the
+      // constructor and the Level-1 EstimateMatMulNBitsWorkspace estimate can never disagree.
+      const FpAIntBEligibility eligibility = CheckFpAIntBEligibility(
+          onnxruntime::utils::ToTensorProtoElementType<T>(), N_, K_, nbits_, block_size_,
+          weight_prepacked_, has_g_idx_, sm_, fpa_intb_option);
       // Note: a fused bias (input[5]) is fully supported by the fpA_intB GEMV, CUTLASS SM80/SM90
       // GEMM (EpilogueOpBias), and the tactic profiler, so bias-bearing nodes (e.g. gpt-oss
       // qkv_proj/o_proj) are eligible. Only g_idx/reorder remains unsupported by this path.
-      if (enable_fpa_intb &&
-          (block_size_ == 32 || block_size_ == 64 || block_size_ == 128) &&
-          (nbits_ == 4 || nbits_ == 8) &&
-          !has_g_idx_ &&
-          N_ % (nbits_ == 8 ? 32 : 64) == 0 &&
-          K_ % block_size_ == 0 &&
-          sm_ >= 75) {
+      if (eligibility.eligible) {
         // The CUTLASS GEMM and the GEMV decode kernel consume the same fpA_intB weight layout, so
         // enable GEMV whenever it is supported; a node cannot mix fpA_intB and legacy layouts.
         using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
@@ -215,6 +254,24 @@ class MatMulNBits final : public CudaKernel {
 #if USE_FPA_INTB_GEMM
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
+
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+  // Level 2 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): instance-level workspace
+  // estimate, callable after CreateKernels(). Uses the same constructed runner state that
+  // ComputeInternal() uses, so it equals the real runtime request when the queried input-A shape
+  // equals the runtime input shape. Declared only for the in-tree hierarchy; the plugin build
+  // inherits the adapter OpKernel's default no-op. See DeclareWorkspaceRequirements in op_kernel.h.
+  Status DeclareWorkspaceRequirements(
+      gsl::span<const TensorShape> input_shapes,
+      /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const override;
+#endif
+
+  // TEST INSTRUMENTATION ONLY - not a runtime API. Records the workspace size the CUTLASS runner
+  // requested on the most recent ComputeInternal() call so a test can verify the Level-2 estimate
+  // against the real runtime request. This atomic is not correlated to a specific Run() when
+  // concurrent Run()s share one kernel instance; it is only meant for this pilot's single-threaded
+  // tests. Do not build anything on top of it.
+  size_t LastComputeWorkspaceBytes() const { return last_compute_workspace_bytes_.load(); }
 #endif
 
  private:
@@ -260,6 +317,9 @@ class MatMulNBits final : public CudaKernel {
   IAllocatorUniquePtr<void> fpA_intB_weight_buffer_;
   IAllocatorUniquePtr<void> fpA_intB_scale_buffer_;
   IAllocatorUniquePtr<void> fpA_intB_zero_buffer_;
+
+  // TEST INSTRUMENTATION ONLY (see LastComputeWorkspaceBytes above).
+  mutable std::atomic<size_t> last_compute_workspace_bytes_{0};
 #endif
 };
 

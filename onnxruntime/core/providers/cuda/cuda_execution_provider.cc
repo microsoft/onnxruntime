@@ -41,6 +41,10 @@
 
 #include "core/providers/cuda/cuda_stream_handle.h"
 
+#if !defined(DISABLE_CONTRIB_OPS) && defined(USE_FPA_INTB_GEMM)
+#include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
+#endif
+
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
@@ -3527,6 +3531,17 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     } else {
       auto* node = graph.GetNode(node_index);
       auto resource_count = std::get<0>(resource_accountant->ComputeResourceCount(*node));
+#if !defined(DISABLE_CONTRIB_OPS) && defined(USE_FPA_INTB_GEMM)
+      // Level 1 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): a partition-time,
+      // kernel-independent workspace estimate for MatMulNBits. For this pilot it is log-only and
+      // does NOT change the budget number used by the accept/reject decision below (see the issue's
+      // "Open decision" (a)); it proves the estimate is available and correct at this pipeline stage.
+      if (node != nullptr && node->OpType() == "MatMulNBits" && node->Domain() == kMSDomain) {
+        if (auto ws = contrib::cuda::EstimateMatMulNBitsWorkspace(*node, GetDeviceProp())) {
+          LOGS(logger, INFO) << "Level-1 workspace estimate for " << node->Name() << ": " << *ws << " bytes";
+        }
+      }
+#endif
       const auto would_be_consumed = resource_count + consumed_memory;
       LOGS(logger, INFO) << "CUDA_EP Node: " << node_index << " Memory usage : " << resource_count
                          << " would be consumed " << static_cast<size_t>(would_be_consumed)
