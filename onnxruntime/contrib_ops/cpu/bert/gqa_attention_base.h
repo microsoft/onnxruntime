@@ -472,10 +472,9 @@ class GQAAttentionBase {
 
       const int32_t* seqlens_k_data = seqlens_k->Data<int32_t>();
       const size_t block_table_width = static_cast<size_t>(parameters.max_num_blocks_per_seq);
-      const size_t contiguous_blocks_per_seq = std::min(
+        const size_t contiguous_blocks_capacity = std::min(
           block_table_width,
           (static_cast<size_t>(total_sequence_length) + parameters.block_size - 1) / parameters.block_size);
-      const size_t seq_capacity = contiguous_blocks_per_seq * parameters.block_size;
 
       constexpr size_t kInlineActiveBlocksBatch = 8;
       std::array<size_t, kInlineActiveBlocksBatch> inline_active_blocks_per_batch{};
@@ -488,14 +487,24 @@ class GQAAttentionBase {
         active_blocks_per_batch = heap_active_blocks_per_batch.get();
       }
 
+      size_t max_active_tokens = 0;
+      size_t max_active_blocks = 0;
       for (int batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
         const size_t active_tokens = std::min(
             static_cast<size_t>(total_sequence_length),
             static_cast<size_t>(std::max<int32_t>(0, seqlens_k_data[batch_idx] + 1)));
+        max_active_tokens = std::max(max_active_tokens, active_tokens);
+
         active_blocks_per_batch[batch_idx] = std::min(
-            contiguous_blocks_per_seq,
+            contiguous_blocks_capacity,
             (active_tokens + parameters.block_size - 1) / parameters.block_size);
+        max_active_blocks = std::max(max_active_blocks, active_blocks_per_batch[batch_idx]);
       }
+
+      const size_t contiguous_blocks_per_seq = std::max<size_t>(1, max_active_blocks);
+      const size_t seq_capacity = contiguous_blocks_per_seq * parameters.block_size;
+      const int effective_total_sequence_length =
+          static_cast<int>(std::max<size_t>(1, std::min(seq_capacity, max_active_tokens)));
 
       const TensorShape contiguous_cache_shape({batch_size, kv_num_heads_, static_cast<int64_t>(seq_capacity), head_size});
       auto element_type = DataTypeImpl::GetType<T>();
@@ -517,6 +526,7 @@ class GQAAttentionBase {
       contiguous_params.num_blocks = 0;
       contiguous_params.block_size = 0;
       contiguous_params.max_num_blocks_per_seq = 0;
+      contiguous_params.total_sequence_length = effective_total_sequence_length;
       contiguous_params.seqlen_past_kv_cache = static_cast<int>(seq_capacity);
       contiguous_params.seqlen_present_kv_cache = static_cast<int>(seq_capacity);
 

@@ -2077,6 +2077,95 @@ TEST(GroupQueryAttentionTest, CpuBlockTableSparseMinusOneAtCapacityBoundary) {
   }
 }
 
+TEST(GroupQueryAttentionTest, CpuBlockTableShortSeqlensPreservesInactiveMappedBlock) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int num_blocks = 2;
+  constexpr int block_size = 2;
+
+  std::vector<float> past_key_data(num_blocks * block_size * kv_num_heads * head_size, 0.0f);
+  std::vector<float> past_value_data(num_blocks * block_size * kv_num_heads * head_size, 0.0f);
+  for (int i = 0; i < head_size; ++i) {
+    // block 0
+    past_key_data[i] = 10.0f + static_cast<float>(i);
+    past_value_data[i] = 110.0f + static_cast<float>(i);
+    past_key_data[head_size + i] = 20.0f + static_cast<float>(i);
+    past_value_data[head_size + i] = 120.0f + static_cast<float>(i);
+
+    // block 1
+    past_key_data[2 * head_size + i] = 30.0f + static_cast<float>(i);
+    past_value_data[2 * head_size + i] = 130.0f + static_cast<float>(i);
+    past_key_data[3 * head_size + i] = 40.0f + static_cast<float>(i);
+    past_value_data[3 * head_size + i] = 140.0f + static_cast<float>(i);
+  }
+
+  std::vector<float> key_data(kv_hidden_size);
+  std::vector<float> value_data(kv_hidden_size);
+  for (int i = 0; i < head_size; ++i) {
+    key_data[i] = 50.0f + static_cast<float>(i);
+    value_data[i] = 150.0f + static_cast<float>(i);
+  }
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
+                         std::vector<float>(batch_size * sequence_length * hidden_size, 0.1f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
+  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
+  tester.AddInput<float>("past_key", {num_blocks, block_size, kv_num_heads, head_size}, past_key_data);
+  tester.AddInput<float>("past_value", {num_blocks, block_size, kv_num_heads, head_size}, past_value_data);
+  // Short seqlens_k keeps active tokens in the first logical block only, while total_sequence_length
+  // is larger and allows extra mapped blocks in block_table.
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {4});
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+  tester.AddOptionalInputEdge<float>();    // k_scale
+  tester.AddOptionalInputEdge<float>();    // v_scale
+  tester.AddOptionalInputEdge<float>();    // q_norm_weight
+  tester.AddOptionalInputEdge<float>();    // k_norm_weight
+  tester.AddInput<int32_t>("block_table", {batch_size, 2}, {0, 1});
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+  tester.AddOutput<float>("present_key", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+
+  tester.SetOutputTolerance(1e6f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+  auto fetches = tester.GetFetches();
+  const float* present_key_data_fetched = fetches[1].Get<Tensor>().Data<float>();
+  const float* present_value_data_fetched = fetches[2].Get<Tensor>().Data<float>();
+
+  // block 1 is mapped in block_table but inactive for this short seqlens_k case.
+  // It must be preserved from past cache exactly.
+  const size_t block1_offset = static_cast<size_t>(block_size) * kv_num_heads * head_size;
+  for (int i = 0; i < head_size * block_size; ++i) {
+    EXPECT_FLOAT_EQ(present_key_data_fetched[block1_offset + static_cast<size_t>(i)],
+                    past_key_data[block1_offset + static_cast<size_t>(i)])
+        << "inactive mapped block1 key mismatch at index " << i;
+    EXPECT_FLOAT_EQ(present_value_data_fetched[block1_offset + static_cast<size_t>(i)],
+                    past_value_data[block1_offset + static_cast<size_t>(i)])
+        << "inactive mapped block1 value mismatch at index " << i;
+  }
+}
+
 TEST(GroupQueryAttentionTest, CpuBlockTableFlashMatchesNonFlash) {
   constexpr int batch_size = 1;
   constexpr int sequence_length = 4;
