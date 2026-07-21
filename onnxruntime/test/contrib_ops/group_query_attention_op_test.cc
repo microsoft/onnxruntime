@@ -1794,6 +1794,60 @@ TEST(GroupQueryAttentionTest, CpuBlockTableRejectsTotalSequenceLengthExceedsCapa
              {}, nullptr, &execution_providers);
 }
 
+TEST(GroupQueryAttentionTest, CpuBlockTableRejectsSeqlensKExceedsTotalSequenceLength) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int num_blocks = 2;
+  constexpr int block_size = 2;
+
+  std::vector<float> query_data(batch_size * sequence_length * hidden_size, 0.1f);
+  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size, 0.2f);
+  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size, 0.3f);
+  std::vector<float> past_key_data(num_blocks * block_size * kv_num_heads * head_size, 0.4f);
+  std::vector<float> past_value_data(num_blocks * block_size * kv_num_heads * head_size, 0.5f);
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, query_data);
+  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
+  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
+  tester.AddInput<float>("past_key", {num_blocks, block_size, kv_num_heads, head_size}, past_key_data);
+  tester.AddInput<float>("past_value", {num_blocks, block_size, kv_num_heads, head_size}, past_value_data);
+  // total_sequence_length is intentionally smaller than seqlens_k + 1.
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {3});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {2});
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+  tester.AddOptionalInputEdge<float>();    // k_scale
+  tester.AddOptionalInputEdge<float>();    // v_scale
+  tester.AddOptionalInputEdge<float>();    // q_norm_weight
+  tester.AddOptionalInputEdge<float>();    // k_norm_weight
+  tester.AddInput<int32_t>("block_table", {batch_size, 2}, {0, 1});
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+  tester.AddOutput<float>("present_key", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "seqlens_k[0] = 3 exceeds total_sequence_length",
+             {}, nullptr, &execution_providers);
+}
+
 TEST(GroupQueryAttentionTest, CpuBlockTableMultiBatchRejectsOneInvalidBlockId) {
   constexpr int batch_size = 2;
   constexpr int sequence_length = 1;

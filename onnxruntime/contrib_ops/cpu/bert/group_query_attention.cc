@@ -148,11 +148,17 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   {
     const int32_t* seqlens_k_data = seqlens_k->Data<int32_t>();
     const int past_kv_seqlen = parameters.seqlen_past_kv_cache;
+    const int total_kv_seqlen = parameters.total_sequence_length;
     for (int b = 0; b < batch_size; b++) {
       if (seqlens_k_data[b] < 0 || seqlens_k_data[b] >= present_kv_seqlen) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "seqlens_k[", b, "] = ", seqlens_k_data[b],
                                " is out of range [0, ", present_kv_seqlen, ")");
+      }
+      if (static_cast<int64_t>(seqlens_k_data[b]) + 1 > total_kv_seqlen) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "seqlens_k[", b, "] = ", seqlens_k_data[b],
+                               " exceeds total_sequence_length ", total_kv_seqlen, ".");
       }
       if (!parameters.is_first_prompt && static_cast<int64_t>(seqlens_k_data[b]) + 1 < sequence_length) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
