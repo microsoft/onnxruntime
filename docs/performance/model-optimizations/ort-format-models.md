@@ -33,7 +33,8 @@ Though we try to maintain backwards compatibility, there have been some breaking
 
 ONNX Runtime version|ORT format version support|Notes
 -|-|-
-1.14+|v5, v4 (limited support)| See [here](https://github.com/microsoft/onnxruntime/blob/rel-1.14.0/docs/ORT_Format_Update_in_1.13.md#onnx-runtime-114) for details about limited v4 support.
+1.15+|v5, v4 (limited support)| No breaking changes from 1.14.
+1.14|v5, v4 (limited support)| See [here](https://github.com/microsoft/onnxruntime/blob/rel-1.14.0/docs/ORT_Format_Update_in_1.13.md#onnx-runtime-114) for details about limited v4 support.
 1.13|v5|v5 breaking change: removed kernel def hashes.
 1.12-1.8|v4|v4 breaking change: updated kernel def hash computation.
 1.7|v3, v2, v1|
