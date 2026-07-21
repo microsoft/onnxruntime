@@ -157,6 +157,8 @@ stages:
           host_cpu_arch: 'x64'
 
       - template: install-vs-spectre-libs-step.yml
+        parameters:
+          architecture: ${{ parameters.msbuildPlatform }}
 
       - ${{ if eq(parameters['buildJava'], 'true') }}:
         # Download and install JDK 17 explicitly instead of relying on a

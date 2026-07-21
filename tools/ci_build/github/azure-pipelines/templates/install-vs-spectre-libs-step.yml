@@ -15,7 +15,7 @@
 
 parameters:
 - name: architecture
-  displayName: 'Target architecture to verify (x64, x86 or arm64)'
+  displayName: 'Target platform to verify (x64, x86, Win32, amd64, arm64, arm64x or ARM64EC)'
   type: string
   default: 'x64'
 
@@ -26,18 +26,32 @@ steps:
   inputs:
     targetType: 'inline'
     script: |
-      $arch = "${{ parameters.architecture }}".ToLowerInvariant()
+      # Normalize the incoming platform name (callers pass MSBuild/sln platform names such
+      # as Win32, amd64, arm64x or ARM64EC) into one of: arm64, x64 or x86.
+      $rawArch = "${{ parameters.architecture }}".ToLowerInvariant()
+      switch -Wildcard ($rawArch) {
+        'arm64*' { $arch = 'arm64' }   # arm64, arm64x, arm64ec
+        'win32'  { $arch = 'x86' }
+        'x86'    { $arch = 'x86' }
+        'amd64'  { $arch = 'x64' }
+        'x64'    { $arch = 'x64' }
+        default  { $arch = 'x64' }
+      }
+      Write-Host "Requested platform '$rawArch' normalized to target architecture '$arch'."
 
       # Determine which VS components must be present for the target architecture and
-      # which files under the MSVC tools directory prove they are installed.
-      # arm64 needs the cross-compiler tools plus the ARM64 Spectre-mitigated runtimes;
-      # x64/x86 only need the x86/x64 Spectre-mitigated runtimes.
+      # which paths under the MSVC tools directory prove they are installed. The paths are
+      # host-independent (they live under lib\...), so the same check works on x64 agents
+      # cross-compiling to arm64 and on native arm64 agents.
+      # - arm64 needs the ARM64 cross-compiler tools (which create lib\arm64) plus the ARM64
+      #   Spectre-mitigated runtimes (which create lib\spectre\arm64).
+      # - x64/x86 only need the x86/x64 Spectre-mitigated runtimes (lib\spectre\<arch>).
       if ($arch -eq 'arm64') {
         $components = @(
           'Microsoft.VisualStudio.Component.VC.Tools.ARM64',
           'Microsoft.VisualStudio.Component.VC.Runtimes.ARM64.Spectre'
         )
-        $requiredRelativePaths = @('bin\Hostx64\arm64\cl.exe', 'lib\spectre\arm64')
+        $requiredRelativePaths = @('lib\arm64', 'lib\spectre\arm64')
       } else {
         $components = @('Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre')
         $requiredRelativePaths = @("lib\spectre\$arch")

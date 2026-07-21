@@ -84,6 +84,8 @@ jobs:
       python_version: $(PythonVersion)
 
   - template: install-vs-spectre-libs-step.yml
+    parameters:
+      architecture: ${{ parameters.architecture }}
 
   - template: set-nightly-build-option-variable-step.yml
 

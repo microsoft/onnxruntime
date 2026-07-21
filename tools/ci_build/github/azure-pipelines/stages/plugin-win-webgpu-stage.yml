@@ -87,6 +87,8 @@ stages:
           TMPDIR: "$(Agent.TempDirectory)"
 
       - template: ../templates/install-vs-spectre-libs-step.yml
+        parameters:
+          architecture: ${{ parameters.arch }}
 
       - task: PythonScript@0
         displayName: 'Build'
