@@ -27,6 +27,7 @@ Abstract:
 
 #ifdef USE_KLEIDIAI
 #include "kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.h"
+#include "kai/ukernels/matmul/pack/kai_lhs_quant_pack_qsi8d32pscalef32_f32_neon.h"
 #include "kai_ukernel_interface.h"
 #endif
 
@@ -134,42 +135,126 @@ QuantizeBlock(
 bool
 UsePacked_CompInt8(size_t K, size_t BlkLen, bool HasZp, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig)
 {
+    // Use KleidiAI packed path for both symmetric and asymmetric.
+    return SelectKleidiAIQ4Backend(K, BlkLen, HasZp, BackendKernelSelectorConfig) != KleidiAIQ4Backend::None;
+}
+
+bool
+NeedsPackedZpCorrection_CompInt8(
+    size_t K,
+    size_t BlkLen,
+    bool HasZp,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+)
+{
+    KleidiAIQ4Backend backend = SelectKleidiAIQ4Backend(K, BlkLen, HasZp, BackendKernelSelectorConfig);
+    return HasZp && backend == KleidiAIQ4Backend::Qai8dxpQsi4c32p;
+}
+
+#ifdef USE_KLEIDIAI
+template <typename KleidiAIKernel>
+size_t GetKleidiAIQ4NAlignment(const KleidiAIKernel& k)
+{
+    const auto& ukernel = k.ukernel;
+    const size_t n_step = ukernel.get_n_step();
+    const size_t nr = ukernel.get_nr();
+    const size_t n_alignment = std::max(n_step, nr);
+
+    // KAI packed RHS ranges must start on both the kernel step and packed-panel boundaries.
+    assert(n_step != 0 && nr != 0);
+    assert((n_alignment % n_step) == 0 && (n_alignment % nr) == 0);
+
+    return n_alignment;
+}
+#endif
+
+size_t
+PackedQ4BitGemmNAlignment_CompInt8(
+    size_t K,
+    size_t BlkLen,
+    bool HasZp,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig)
+{
+#ifdef USE_KLEIDIAI
+    switch (SelectKleidiAIQ4Backend(K, BlkLen, HasZp, BackendKernelSelectorConfig)) {
+        case KleidiAIQ4Backend::Qai8dxpQsi4c32p:
+            return std::max(
+                GetKleidiAIQ4NAlignment(GetKleidiAIGemmUKernel()),
+                GetKleidiAIQ4NAlignment(GetKleidiAIGemvUKernel()));
+        case KleidiAIQ4Backend::Qsi8d32pQai4c32p:
+            return std::max(
+                GetKleidiAIQ4NAlignment(GetKleidiAIQai4GemmUKernel()),
+                GetKleidiAIQ4NAlignment(GetKleidiAIQai4GemvUKernel()));
+        case KleidiAIQ4Backend::None:
+            break;
+    }
+#else
+    MLAS_UNREFERENCED_PARAMETER(K);
+    MLAS_UNREFERENCED_PARAMETER(BlkLen);
     MLAS_UNREFERENCED_PARAMETER(HasZp);
-    // Use KleidiAI packed path for both symmetric and asymmetric (with ZP correction).
-    return UseKleidiAI(K, BlkLen, BackendKernelSelectorConfig);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
+#endif
+    return MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
 }
 
 #ifdef USE_KLEIDIAI
 void
 QuantizeA_Packed_CompInt8(
-    size_t,
+    size_t BlkLen,
     const float* A,
     size_t CountM,
     size_t CountK,
+    bool HasZeroPoint,
     std::byte* QuantA,
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
     // Currently this routine only supports KleidiAI packed quantization of A
     assert(BackendKernelSelectorConfig == nullptr || BackendKernelSelectorConfig->use_kleidiai);
-    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 
-    const auto& k = (CountM == 1) ? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
-    const auto& ukernel = k.ukernel;
+    switch (SelectKleidiAIQ4Backend(CountK, BlkLen, HasZeroPoint, BackendKernelSelectorConfig)) {
+        case KleidiAIQ4Backend::Qai8dxpQsi4c32p: {
+            const auto& k = (CountM == 1) ? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
+            const auto& ukernel = k.ukernel;
 
-    const size_t mr = ukernel.get_mr();
-    const size_t kr = ukernel.get_kr();
-    const size_t sr = ukernel.get_sr();
+            const size_t mr = ukernel.get_mr();
+            const size_t kr = ukernel.get_kr();
+            const size_t sr = ukernel.get_sr();
 
-    const size_t src_stride = CountK * sizeof(float);
-    const size_t lhs_offset = kai_get_lhs_offset_lhs_quant_pack_qai8dxp_f32(0, src_stride);
-    const size_t lhs_packed_offset = kai_get_lhs_packed_offset_lhs_quant_pack_qai8dxp_f32(
-                            0, CountK, mr, kr, sr);
+            const size_t src_stride = CountK * sizeof(float);
+            const size_t lhs_offset = kai_get_lhs_offset_lhs_quant_pack_qai8dxp_f32(0, src_stride);
+            const size_t lhs_packed_offset = kai_get_lhs_packed_offset_lhs_quant_pack_qai8dxp_f32(
+                                    0, CountK, mr, kr, sr);
 
-    const float* src_ptr = reinterpret_cast<const float*>(reinterpret_cast<const std::byte*>(A) + lhs_offset);
-    void* dst_ptr = QuantA + lhs_packed_offset;
+            const float* src_ptr = reinterpret_cast<const float*>(reinterpret_cast<const std::byte*>(A) + lhs_offset);
+            void* dst_ptr = QuantA + lhs_packed_offset;
 
-    kai_run_lhs_quant_pack_qai8dxp_f32(CountM, CountK, mr, kr, sr, 0, src_ptr, src_stride, dst_ptr);
+            kai_run_lhs_quant_pack_qai8dxp_f32(CountM, CountK, mr, kr, sr, 0, src_ptr, src_stride, dst_ptr);
+            return;
+        }
+        case KleidiAIQ4Backend::Qsi8d32pQai4c32p: {
+            const auto& k = (CountM == 1) ? GetKleidiAIQai4GemvUKernel() : GetKleidiAIQai4GemmUKernel();
+            const auto& ukernel = k.ukernel;
+
+            const size_t mr = ukernel.get_mr();
+            const size_t kr = ukernel.get_kr();
+            const size_t sr = ukernel.get_sr();
+
+            const size_t src_stride = CountK * sizeof(float);
+            const size_t lhs_offset = kai_get_lhs_offset_lhs_quant_pack_qsi8d32pscalef32_f32_neon(0, src_stride);
+            const size_t lhs_packed_offset = kai_get_lhs_packed_offset_lhs_quant_pack_qsi8d32pscalef32_f32_neon(0, CountK, BlkLen, mr, kr, sr);
+
+            const float* src_ptr = reinterpret_cast<const float*>(reinterpret_cast<const std::byte*>(A) + lhs_offset);
+            void* dst_ptr = QuantA + lhs_packed_offset;
+
+            kai_run_lhs_quant_pack_qsi8d32pscalef32_f32_neon(CountM, CountK, BlkLen, mr, kr, sr, 0, src_ptr, src_stride, dst_ptr);
+            return;
+        }
+        case KleidiAIQ4Backend::None:
+            // None KleidiAIQ4Backend shouldn't get to this point
+            assert(false);
+            return;
+    }
 }
 
 void
@@ -2502,8 +2587,31 @@ MlasQ8Int8GemmKernelNeon<true>(
 }
 
 #ifdef USE_KLEIDIAI
-void
-SQ4BitGemmKernel_Packed_CompInt8(
+size_t
+GetKleidiAIQ4LhsPackedOffset(
+    const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel,
+    size_t m_idx,
+    size_t k,
+    size_t /* bl */
+)
+{
+    return ukernel.get_lhs_packed_offset(m_idx, k);
+}
+
+size_t
+GetKleidiAIQ4LhsPackedOffset(
+    const kai_matmul_clamp_f32_qsi8d32p_qai4c32p_ukernel& ukernel,
+    size_t m_idx,
+    size_t k,
+    size_t bl
+)
+{
+    return ukernel.get_lhs_packed_offset(m_idx, k, bl);
+}
+
+template <typename KleidiAIKernel>
+void RunKleidiAIQ4Packed(
+    const KleidiAIKernel& k,
     size_t BlkLen,
     const std::byte* QuantA,
     const std::byte* PackedQuantBData,
@@ -2517,12 +2625,11 @@ SQ4BitGemmKernel_Packed_CompInt8(
     const float* Bias
 )
 {
-    const auto& k = (RangeCountM == 1 && RangeStartM == 0) ? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
     const auto& ukernel = k.ukernel;
 
     const size_t dst_stride = ldc * sizeof(float);
 
-    const size_t lhs_packed_offset = ukernel.get_lhs_packed_offset(RangeStartM, CountK);
+    const size_t lhs_packed_offset = GetKleidiAIQ4LhsPackedOffset(ukernel, RangeStartM, CountK, BlkLen);
     const size_t rhs_packed_offset = ukernel.get_rhs_packed_offset(RangeStartN, CountK, BlkLen);
     const size_t dst_offset = ukernel.get_dst_offset(RangeStartM, RangeStartN, dst_stride);
 
@@ -2540,6 +2647,46 @@ SQ4BitGemmKernel_Packed_CompInt8(
                 C[m * ldc + n] += Bias[n];
             }
         }
+    }
+}
+
+void
+SQ4BitGemmKernel_Packed_CompInt8(
+    size_t BlkLen,
+    const std::byte* QuantA,
+    const std::byte* PackedQuantBData,
+    float* C,
+    const size_t RangeStartM,
+    const size_t RangeCountM,
+    const size_t RangeStartN,
+    const size_t RangeCountN,
+    size_t CountK,
+    bool HasQuantBZeroPoint,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig,
+    size_t ldc,
+    const float* Bias
+)
+{
+    switch (SelectKleidiAIQ4Backend(CountK, BlkLen, HasQuantBZeroPoint, BackendKernelSelectorConfig)) {
+        case KleidiAIQ4Backend::Qai8dxpQsi4c32p: {
+            const auto& k = (RangeCountM == 1 && RangeStartM == 0) ? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
+
+            RunKleidiAIQ4Packed(k, BlkLen, QuantA, PackedQuantBData, C, RangeStartM,
+                                RangeCountM, RangeStartN, RangeCountN,
+                                CountK, ldc, Bias);
+            return;
+        }
+        case KleidiAIQ4Backend::Qsi8d32pQai4c32p: {
+            const auto& k = (RangeCountM == 1 && RangeStartM == 0) ? GetKleidiAIQai4GemvUKernel() : GetKleidiAIQai4GemmUKernel();
+
+            RunKleidiAIQ4Packed(k, BlkLen, QuantA, PackedQuantBData, C, RangeStartM,
+                                RangeCountM, RangeStartN, RangeCountN,
+                                CountK, ldc, Bias);
+            return;
+        }
+        case KleidiAIQ4Backend::None:
+            assert(false);
+            return;
     }
 }
 #endif

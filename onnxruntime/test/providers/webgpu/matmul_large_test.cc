@@ -114,5 +114,52 @@ TEST(MatMul_Large, DISABLED_Broadcast4D) {
   RunBothTypes({2, 2, 128, 64}, {2, 64, 1023});
 }
 
+// Batched B (true bmm): A [..., M, K] x B [..., K, N] with matching batch. On the
+// Intel subgroup path each (A, B) slice is dispatched on z. Covers small and
+// larger batch counts with tile-aligned per-slice shapes.
+TEST(MatMul_Large, DISABLED_BatchedB) {
+  RunBothTypes({2, 128, 64}, {2, 64, 1024});
+  RunBothTypes({4, 64, 128}, {4, 128, 256});
+  RunBothTypes({8, 32, 64}, {8, 64, 64});
+  RunBothTypes({16, 64, 64}, {16, 64, 128});
+}
+
+// Batched B with per-slice shapes that are not tile multiples. The odd-N slices
+// (1023, 33) fall back to the generic path (the Intel f16 subgroup kernel needs
+// an even B row stride); the even-N odd-M slice (130 x 65) still exercises the
+// kernel's bounds-checked partial-M stores under z-dispatch. All must be correct.
+TEST(MatMul_Large, DISABLED_BatchedB_Unaligned) {
+  RunBothTypes({3, 127, 64}, {3, 64, 1023});
+  RunBothTypes({5, 65, 96}, {5, 96, 130});
+  RunBothTypes({2, 129, 80}, {2, 80, 33});
+}
+
+// Multi-dimensional batch: leading A/B dims collapse into the z grid.
+TEST(MatMul_Large, DISABLED_BatchedB_4D) {
+  RunBothTypes({2, 2, 64, 128}, {2, 2, 128, 256});
+  RunBothTypes({2, 3, 32, 64}, {2, 3, 64, 96});
+}
+
+// Large batch with a small per-slice M x N grid: batch alone fills the machine,
+// so the selector should retire split-K (ClampSplitKForBatch). Correctness must
+// hold regardless of the chosen config.
+TEST(MatMul_Large, DISABLED_BatchedB_LargeBatchSmallTile) {
+  RunBothTypes({64, 16, 128}, {64, 128, 32});
+  RunBothTypes({128, 8, 256}, {128, 256, 16});
+}
+
+// Broadcasted batch dims that are NOT identical but share the same batch
+// *product* (A=[2,1,...], B=[1,2,...] -> [2,2,...]; A=[1,4,...], B=[4,1,...] ->
+// [4,4,...]). A product-only batch check would wrongly route these onto the
+// Intel subgroup path, which pairs slice i of A with slice i of B and copies A's
+// shape to the output - producing the wrong output shape and mismatched pairing.
+// N is even and every per-slice shape is tile-aligned, so only the
+// identical-batch-dims guard (not the odd-N or partial-tile fallbacks) keeps them
+// on the generic broadcasting MatMul. Results must match the broadcast reference.
+TEST(MatMul_Large, DISABLED_BatchedB_BroadcastEqualProduct) {
+  RunBothTypes({2, 1, 128, 64}, {1, 2, 64, 256});
+  RunBothTypes({1, 4, 64, 128}, {4, 1, 128, 96});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

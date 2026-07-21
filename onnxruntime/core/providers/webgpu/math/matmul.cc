@@ -124,7 +124,15 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
   bool has_bias = context.InputCount() > 2;
 
 #if !defined(__wasm__)
-  // Try the subgroup-matrix implementation (with a vendor-specific tiling policy) first.
+  // Lazily create the subgroup-matrix implementation (with a vendor-specific tiling
+  // policy) on the first Compute call. PrePack is only invoked for constant
+  // initializers, so it cannot be relied on when B is a runtime tensor (e.g. batched
+  // matmul). Creating it here guarantees the subgroup-matrix path is considered for every
+  // MatMul. std::call_once makes the one-time init safe against concurrent Compute
+  // calls on this shared kernel.
+  std::call_once(impl_init_flag_, [&]() {
+    impl_ = CreateSubgroupMatrixMatMulImpl(*this, context);
+  });
   if (impl_) {
     bool handled = false;
     ORT_RETURN_IF_ERROR(impl_->Compute(context, handled));
@@ -186,26 +194,6 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
   }
 
   return ComputeMatMul(&context, Activation(), inputs, output_tensor);
-}
-
-Status MatMul::PrePackInternal(ComputeContextBase& context,
-                               const Tensor& tensor,
-                               int input_idx,
-                               AllocatorPtr alloc,
-                               /*out*/ bool& is_packed) {
-  is_packed = false;
-#if !defined(__wasm__)
-  // Create the subgroup-matrix implementation once based on device capabilities.
-  if (!impl_) {
-    impl_ = CreateSubgroupMatrixMatMulImpl(*this, context);
-  }
-#else
-  ORT_UNUSED_PARAMETER(context);
-#endif
-  ORT_UNUSED_PARAMETER(tensor);
-  ORT_UNUSED_PARAMETER(input_idx);
-  ORT_UNUSED_PARAMETER(alloc);
-  return Status::OK();
 }
 
 Status ComputeMatMul(ComputeContext* context,
