@@ -374,7 +374,7 @@ void PosixTelemetry::Initialize() {
   // integrators must provide the same application-context initialization before creating an OrtEnv.
 #if defined(__ANDROID__)
   if (!HttpClient_Android::GetClientInstance()) {
-    ORT_TELEMETRY_WARN("Android telemetry is waiting for the 1DS Java HttpClient");
+    ORT_TELEMETRY_WARN("Android telemetry is unavailable because the 1DS Java HttpClient was not initialized");
     return;
   }
 #endif

@@ -33,8 +33,10 @@ for c in args.config:
     with open(file_name) as file:
         for line in file:
             line = line.strip()  # noqa: PLW2901
+            if not line:
+                continue
             if line in provider_symbols:
-                print("dup symbol: %s", line)
+                print(f"dup symbol: {line}")
                 exit(-1)
             provider_symbols.add(line)
 
@@ -43,8 +45,10 @@ for file_name in args.extra_symbol_file:
     with open(file_name) as file:
         for line in file:
             line = line.strip()  # noqa: PLW2901
+            if not line:
+                continue
             if line in symbols:
-                print("dup symbol: %s", line)
+                print(f"dup symbol: {line}")
                 exit(-1)
             symbols.add(line)
 
