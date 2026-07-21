@@ -74,18 +74,24 @@ runs:
         Write-Host "Visual Studio installation path: $vsInstallPath"
         Write-Host "Invoking VS Installer to add Spectre-mitigated libs..."
 
-        $process = Start-Process -FilePath $vsInstallerPath -ArgumentList @(
-          "modify",
-          "--installPath", $vsInstallPath,
-          "--add", "Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre",
-          "--includeRecommended",
-          "--passive",
-          "--norestart",
-          "--force"
-        ) -Wait -PassThru -NoNewWindow
+        # Invoke directly so PowerShell preserves the install path as one argument.
+        & $vsInstallerPath modify `
+          --installPath $vsInstallPath `
+          --add "Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre" `
+          --includeRecommended `
+          --passive `
+          --norestart
+        $installerExitCode = $LASTEXITCODE
 
-        if ($process.ExitCode -ne 0) {
-          Write-Error "VS Installer exited with code $($process.ExitCode). Spectre-mitigated library installation failed."
+        if ($installerExitCode -notin @(0, 3010)) {
+          Get-ChildItem -Path $env:TEMP -Filter "dd_*.log" -ErrorAction SilentlyContinue |
+              Sort-Object LastWriteTime -Descending |
+              Select-Object -First 3 |
+              ForEach-Object {
+                Write-Host "Last 50 lines of Visual Studio Installer log: $($_.FullName)"
+                Get-Content $_.FullName -Tail 50
+              }
+          Write-Error "VS Installer exited with code $installerExitCode. Spectre-mitigated library installation failed."
           exit 1
         }
 
