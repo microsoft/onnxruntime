@@ -12,9 +12,12 @@ Abstract:
 
     Checks that the fp16 direct-quantize-A path for the CompInt8 GEMM
     (MLAS_QNBIT_GEMM_DATA_PARAMS::AFp16) produces byte-identical output to
-    converting A to fp32 first and running the float quantizer. Both runs are
-    given the same activations (the fp16 values, and those same values widened to
-    float), so any difference would be a bug in the fused fp16 quantizer.
+    converting A to fp32 first and running the float quantizer, for each
+    CompInt8 bit width (2, 4, 8). Both runs are given the same activations
+    (the fp16 values, and those same values widened to float) and the same
+    quantized B, so any difference would be a bug in the fused fp16
+    quantizer. For 4-bit, the direct fp16 output path is also checked
+    against the fp32 result converted to fp16.
 
 --*/
 
@@ -30,13 +33,10 @@ Abstract:
 
 using onnxruntime::MLFloat16;
 
-template <size_t BlkLen>
+template <size_t BlkBitWidth, size_t BlkLen>
 class MlasQNBitGemmFp16QuantATest : public MlasTestBase {
-  static constexpr size_t BlkBitWidth = 4;
-
   MatrixGuardBuffer<float> BufferAFloat;
   MatrixGuardBuffer<MLFloat16> BufferAFp16;
-  MatrixGuardBuffer<float> BufferB;
   MatrixGuardBuffer<uint8_t> BufferQuantBData;
   MatrixGuardBuffer<float> BufferQuantBScale;
   MatrixGuardBuffer<uint8_t> BufferQuantBZeroPoint;
@@ -57,17 +57,12 @@ class MlasQNBitGemmFp16QuantATest : public MlasTestBase {
     // two GEMM runs below see numerically identical A.
     MLFloat16* AFp16 = BufferAFp16.GetBuffer(M * K);
     float* AFloat = BufferAFloat.GetBuffer(M * K);
-    std::mt19937 gen(static_cast<unsigned>(M * 31 + N * 17 + K * 7 + BlkLen));
+    std::mt19937 gen(static_cast<unsigned>(M * 31 + N * 17 + K * 7 + BlkBitWidth * 97 + BlkLen));
     std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
     for (size_t i = 0; i < M * K; ++i) {
       MLFloat16 h(dist(gen));
       AFp16[i] = h;
       AFloat[i] = h.ToFloat();
-    }
-
-    float* B = BufferB.GetBuffer(N * K);
-    for (size_t i = 0; i < N * K; ++i) {
-      B[i] = dist(gen);
     }
 
     const float* Bias = nullptr;
@@ -79,6 +74,9 @@ class MlasQNBitGemmFp16QuantATest : public MlasTestBase {
       Bias = bias;
     }
 
+    // Random quantized B. Any bit pattern is a valid BlkBitWidth-bit weight, and both
+    // GEMM runs consume the same buffers, so the values need not come from a real
+    // quantization; what is under test is that the two runs handle A identically.
     size_t QuantBDataSizeInBytes, QuantBScaleSize, QuantBZeroPointSizeInBytes;
     MlasBlockwiseQuantizedBufferSizes<BlkBitWidth>(static_cast<int>(BlkLen), /* columnwise */ true,
                                                    static_cast<int>(K), static_cast<int>(N),
@@ -89,10 +87,19 @@ class MlasQNBitGemmFp16QuantATest : public MlasTestBase {
     float* QuantBScale = BufferQuantBScale.GetBuffer(QuantBScaleSize);
     uint8_t* QuantBZeroPoint = Symmetric ? nullptr : BufferQuantBZeroPoint.GetBuffer(QuantBZeroPointSizeInBytes);
 
-    MlasQuantizeBlockwise<float, BlkBitWidth>(QuantBData, QuantBScale, QuantBZeroPoint,
-                                              B, static_cast<int>(BlkLen), /* columnwise */ true,
-                                              static_cast<int>(K), static_cast<int>(N),
-                                              static_cast<int>(N), GetMlasThreadPool());
+    std::uniform_int_distribution<int> byte_dist(0, 255);
+    std::uniform_real_distribution<float> scale_dist(0.05f, 0.5f);
+    for (size_t i = 0; i < QuantBDataSizeInBytes; ++i) {
+      QuantBData[i] = static_cast<uint8_t>(byte_dist(gen));
+    }
+    for (size_t i = 0; i < QuantBScaleSize; ++i) {
+      QuantBScale[i] = scale_dist(gen);
+    }
+    if (!Symmetric) {
+      for (size_t i = 0; i < QuantBZeroPointSizeInBytes; ++i) {
+        QuantBZeroPoint[i] = static_cast<uint8_t>(byte_dist(gen));
+      }
+    }
 
     void* PackedQuantBDataWorkspace = nullptr;
     if (const auto PackedQuantBDataSize =
@@ -139,7 +146,8 @@ class MlasQNBitGemmFp16QuantATest : public MlasTestBase {
 
     for (size_t i = 0; i < M * N; ++i) {
       ASSERT_EQ(CTest[i], CRef[i])
-          << "A-path mismatch at " << i << " (M=" << M << ", N=" << N << ", K=" << K << ", BlkLen=" << BlkLen
+          << "A-path mismatch at " << i << " (M=" << M << ", N=" << N << ", K=" << K
+          << ", BlkBitWidth=" << BlkBitWidth << ", BlkLen=" << BlkLen
           << ", symmetric=" << Symmetric << ", bias=" << WithBias << ", threadpool=" << WithThreadpool << ")";
     }
 
@@ -152,7 +160,8 @@ class MlasQNBitGemmFp16QuantATest : public MlasTestBase {
 
       for (size_t i = 0; i < M * N; ++i) {
         ASSERT_EQ(CTestFp16[i].val, CRefFp16[i].val)
-            << "C-path mismatch at " << i << " (M=" << M << ", N=" << N << ", K=" << K << ", BlkLen=" << BlkLen
+            << "C-path mismatch at " << i << " (M=" << M << ", N=" << N << ", K=" << K
+            << ", BlkBitWidth=" << BlkBitWidth << ", BlkLen=" << BlkLen
             << ", symmetric=" << Symmetric << ", bias=" << WithBias << ", threadpool=" << WithThreadpool << ")";
       }
     }
@@ -160,7 +169,9 @@ class MlasQNBitGemmFp16QuantATest : public MlasTestBase {
 
  public:
   static const char* GetTestSuiteName() {
-    static std::string suite_name = std::string("QNBitGemmFp16QuantA") + "BlkLen" + std::to_string(BlkLen);
+    static std::string suite_name = std::string("QNBitGemmFp16QuantA") +
+                                    "BlkBitWidth" + std::to_string(BlkBitWidth) +
+                                    "BlkLen" + std::to_string(BlkLen);
     return suite_name.c_str();
   }
 
@@ -183,20 +194,23 @@ class MlasQNBitGemmFp16QuantATest : public MlasTestBase {
   }
 };
 
-static size_t QNBitGemmFp16QuantARegisterAll() {
+template <size_t BlkBitWidth>
+static size_t QNBitGemmFp16QuantARegisterBlkLens() {
   size_t count = 0;
-  count += MlasDirectShortExecuteTests<MlasQNBitGemmFp16QuantATest<16>>::RegisterShortExecute();
-  count += MlasDirectShortExecuteTests<MlasQNBitGemmFp16QuantATest<32>>::RegisterShortExecute();
-  count += MlasDirectShortExecuteTests<MlasQNBitGemmFp16QuantATest<64>>::RegisterShortExecute();
-  count += MlasDirectShortExecuteTests<MlasQNBitGemmFp16QuantATest<128>>::RegisterShortExecute();
-  count += MlasDirectShortExecuteTests<MlasQNBitGemmFp16QuantATest<256>>::RegisterShortExecute();
+  count += MlasDirectShortExecuteTests<MlasQNBitGemmFp16QuantATest<BlkBitWidth, 16>>::RegisterShortExecute();
+  count += MlasDirectShortExecuteTests<MlasQNBitGemmFp16QuantATest<BlkBitWidth, 32>>::RegisterShortExecute();
+  count += MlasDirectShortExecuteTests<MlasQNBitGemmFp16QuantATest<BlkBitWidth, 64>>::RegisterShortExecute();
+  count += MlasDirectShortExecuteTests<MlasQNBitGemmFp16QuantATest<BlkBitWidth, 128>>::RegisterShortExecute();
+  count += MlasDirectShortExecuteTests<MlasQNBitGemmFp16QuantATest<BlkBitWidth, 256>>::RegisterShortExecute();
   return count;
 }
 
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister(
     [](bool is_short_execute) -> size_t {
       if (is_short_execute) {
-        return QNBitGemmFp16QuantARegisterAll();
+        return QNBitGemmFp16QuantARegisterBlkLens<2>() +
+               QNBitGemmFp16QuantARegisterBlkLens<4>() +
+               QNBitGemmFp16QuantARegisterBlkLens<8>();
       }
       return 0;
     });
