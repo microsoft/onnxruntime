@@ -72,6 +72,8 @@ stages:
         parameters:
           host_cpu_arch: ${{ parameters.BuildArch }}
 
+      - template: ../templates/install-vs-spectre-libs-step.yml
+
       # need to set PROCESSOR_ARCHITECTURE so the x86 SDK is installed correctly
       - task: UseDotNet@2
         inputs:

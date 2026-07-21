@@ -108,6 +108,8 @@ jobs:
       WithCache: ${{parameters.WITH_CACHE}}
       Today: $(Today)
 
+  - template: ../install-vs-spectre-libs-step.yml
+
   - task: NodeTool@0
     inputs:
       versionSpec: '22.x'

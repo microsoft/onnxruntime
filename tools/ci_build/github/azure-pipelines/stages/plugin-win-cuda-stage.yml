@@ -109,6 +109,8 @@ stages:
         env:
           TMPDIR: "$(Agent.TempDirectory)"
 
+      - template: ../templates/install-vs-spectre-libs-step.yml
+      
       # CUDA SDK download. win-x64 toolkits live at cuda_sdk/v<ver>; win-arm64 toolkits
       # live at cuda_sdk/win-arm64/v<ver> (NVIDIA Windows-on-ARM CUDA is 13.x only).
       - ${{ if ne(parameters.arch, 'arm64') }}:

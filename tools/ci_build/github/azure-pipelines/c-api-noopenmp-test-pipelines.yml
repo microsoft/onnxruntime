@@ -243,6 +243,8 @@ stages:
           parameters:
             host_cpu_arch: 'x64'
 
+        - template: templates/install-vs-spectre-libs-step.yml
+
         - task: CmdLine@2
           inputs:
             script: |
@@ -297,6 +299,8 @@ stages:
         - template: templates/setup-build-tools.yml
           parameters:
             host_cpu_arch: 'x64'
+
+        - template: templates/install-vs-spectre-libs-step.yml
 
         - task: CmdLine@2
           inputs:

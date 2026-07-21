@@ -83,6 +83,8 @@ jobs:
       host_cpu_arch: ${{parameters.architecture}}
       python_version: $(PythonVersion)
 
+  - template: install-vs-spectre-libs-step.yml
+
   - template: set-nightly-build-option-variable-step.yml
 
   - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
