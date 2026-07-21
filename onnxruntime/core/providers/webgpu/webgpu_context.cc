@@ -1002,7 +1002,7 @@ wgpu::BindGroup WebGpuContext::CreateBindGroup(const std::vector<WGPUBuffer>& bi
     }
   }
 
-  ORT_ENFORCE(entry_index < device_limits_.maxBindingsPerBindGroup, "Number of bind group entries (", entry_index,
+  ORT_ENFORCE(entry_index <= device_limits_.maxBindingsPerBindGroup, "Number of bind group entries (", entry_index,
               ") exceeds device limit (", device_limits_.maxBindingsPerBindGroup, ").");
 
   WGPUBindGroupDescriptor bind_group_desc{};

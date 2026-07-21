@@ -75,11 +75,11 @@ class ProgramManager {
   const ProgramArtifact* Set(const std::string& key, ProgramArtifact&& program);
 
  private:
-    wgpu::PipelineLayout CreatePipelineLayout(const ProgramBase& program,
-                                              std::span<const uint32_t> inputs_segments,
-                                              std::span<const uint32_t> outputs_segments,
-                                              std::span<const int> shape_uniform_ranks,
-                                              wgpu::BindGroupLayout& bind_group_layout) const;
+  wgpu::PipelineLayout CreatePipelineLayout(const ProgramBase& program,
+                                            std::span<const uint32_t> inputs_segments,
+                                            std::span<const uint32_t> outputs_segments,
+                                            std::span<const int> shape_uniform_ranks,
+                                            wgpu::BindGroupLayout& bind_group_layout) const;
 
   std::unordered_map<std::string, ProgramArtifact> programs_;
   WebGpuContext& webgpu_context_;

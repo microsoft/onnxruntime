@@ -122,7 +122,7 @@ wgpu::PipelineLayout ProgramManager::CreatePipelineLayout(const ProgramBase& pro
     bind_group_layout_entries.push_back(entry);
   }
 
-  ORT_ENFORCE(binding < webgpu_context_.DeviceLimits().maxBindingsPerBindGroup,
+  ORT_ENFORCE(binding <= webgpu_context_.DeviceLimits().maxBindingsPerBindGroup,
               "Number of bind group entries (", binding,
               ") exceeds device limit (", webgpu_context_.DeviceLimits().maxBindingsPerBindGroup, ").");
 
