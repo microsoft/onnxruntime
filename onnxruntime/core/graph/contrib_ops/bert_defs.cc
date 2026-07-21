@@ -305,13 +305,17 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
     if (past_key_index >= 0 && hasInputShape(ctx, past_key_index)) {
       auto& past_shape = getInputShape(ctx, past_key_index);
       auto& past_dims = past_shape.dim();
+      const bool has_block_table_input = ctx.getNumInputs() > 16 && ctx.hasInput(16) && ctx.getInputType(16) != nullptr;
 
       // past key has shape (batch_size, kv_num_heads, max_cache_sequence_length, head_size)
       if (past_dims.size() != 4) {
         fail_shape_inference("The past_key input shall be 4 dimensions");
       }
 
-      if (use_max_past_present_buffer == 1) {
+      if (has_block_table_input) {
+        ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, past_key_index, 1);
+        ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
+      } else if (use_max_past_present_buffer == 1) {
         // When past and present use max buffer, they have the same shape
         ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, past_key_index, 1);
         ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
@@ -1333,22 +1337,27 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Optional 1D tensor of shape (head_size). See q_norm_weight. Must be provided together with q_norm_weight.",
                "T",
                OpSchema::Optional)
+         .Input(16,
+           "block_table",
+           "Optional 2D tensor with shape (batch_size, max_blocks_per_sequence). When omitted, GroupQueryAttention uses the standard contiguous BNSH KV-cache path. When provided, past_key and past_value are interpreted as block-cache tensors with shape (num_blocks, block_size, kv_num_heads, head_size).",
+           "M",
+           OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
                 "T")
         .Output(1,
                 "present_key",
-                "present state key with support for format BNSH. When past_key uses same tensor as present_key"
-                "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
-                "kv_sequence_length.",
+          "Present state key. In the standard path it uses BNSH layout. When past_key uses the same tensor as present_key"
+          " (k-v buffer), it is of length max_sequence_length; otherwise of length past_sequence_length +"
+          " kv_sequence_length. When block_table is provided, present_key is a block-cache tensor with the same shape as past_key.",
                 "T_CACHE",
                 OpSchema::Optional)
         .Output(2,
                 "present_value",
-                "present state value with support for format BNSH. When past_value uses same tensor as present_value"
-                "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
-                "kv_sequence_length.",
+          "Present state value. In the standard path it uses BNSH layout. When past_value uses the same tensor as present_value"
+          " (k-v buffer), it is of length max_sequence_length; otherwise of length past_sequence_length +"
+          " kv_sequence_length. When block_table is provided, present_value is a block-cache tensor with the same shape as past_value.",
                 "T_CACHE",
                 OpSchema::Optional)
         .Output(3,

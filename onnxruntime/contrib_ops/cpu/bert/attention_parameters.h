@@ -84,13 +84,18 @@ struct DecoderMaskedMultiHeadAttentionParameters : AttentionParameters {
 
 // Parameters deduced from node attributes and inputs/outputs.
 struct GroupQueryAttentionParameters : AttentionParameters {
+  const int32_t* block_table = nullptr;  // optional block-table mapping when use_block_table is enabled
   int kv_num_heads;             // number of heads of key or value
   int kv_hidden_size;           // hidden size of key or value
+  int num_blocks;               // number of KV blocks when block_table is provided
+  int block_size;               // slots per KV block when block_table is provided
   int seqlen_past_kv_cache;     // sequence length of past kv tensor
   int seqlen_present_kv_cache;  // sequence length of present kv tensor
+  int max_num_blocks_per_seq;   // number of block-table entries per sequence when block_table is provided
   int local_window_size;        // Mask out tokens prior to total_sequence_length - local_window_size
   bool is_subsequent_prompt;    // indicates whether we have past context and seqlen > 1
   bool is_first_prompt;         // indicates whether this is first decoding step
+  bool use_block_table = false;
   bool rotary_interleaved;
   bool use_smooth_softmax;
   bool use_qk_norm = false;       // per-head Q/K RMSNorm (QK-Norm) prologue before RoPE (inputs 14/15)

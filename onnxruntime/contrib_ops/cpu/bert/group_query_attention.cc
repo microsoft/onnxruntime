@@ -61,6 +61,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* head_sink = context->Input<Tensor>(11);
   const Tensor* k_scale = context->Input<Tensor>(12);
   const Tensor* v_scale = context->Input<Tensor>(13);
+  const Tensor* block_table = context->InputCount() > 16 ? context->Input<Tensor>(16) : nullptr;
 
   // Validate quantization configuration.
   if (kv_quant_enabled_) {
@@ -104,6 +105,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                                                 past_value,
                                                                 cos_cache,
                                                                 sin_cache,
+                                                                block_table,
                                                                 &parameters,
                                                                 num_heads_,
                                                                 kv_num_heads_,
@@ -188,8 +190,18 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   Tensor* output = context->Output(0, output_shape);
 
   const int packed_head_size = (kv_cache_bit_width_ == 4) ? ((head_size + 1) / 2) : head_size;
-  std::vector<int64_t> present_k_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(kv_num_heads_), static_cast<int64_t>(present_kv_seqlen), static_cast<int64_t>(packed_head_size)});
-  std::vector<int64_t> present_v_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(kv_num_heads_), static_cast<int64_t>(present_kv_seqlen), static_cast<int64_t>(packed_head_size)});
+  std::vector<int64_t> present_k_shape;
+  std::vector<int64_t> present_v_shape;
+  if (parameters.use_block_table) {
+    // In block-table mode, present KV tensors follow the block-cache contract.
+    const auto& past_k_dims = past_key->Shape().GetDims();
+    const auto& past_v_dims = past_value->Shape().GetDims();
+    present_k_shape.assign(past_k_dims.begin(), past_k_dims.end());
+    present_v_shape.assign(past_v_dims.begin(), past_v_dims.end());
+  } else {
+    present_k_shape = {static_cast<int64_t>(batch_size), static_cast<int64_t>(kv_num_heads_), static_cast<int64_t>(present_kv_seqlen), static_cast<int64_t>(packed_head_size)};
+    present_v_shape = {static_cast<int64_t>(batch_size), static_cast<int64_t>(kv_num_heads_), static_cast<int64_t>(present_kv_seqlen), static_cast<int64_t>(packed_head_size)};
+  }
   Tensor* present_k = context->Output(1, present_k_shape);
   Tensor* present_v = context->Output(2, present_v_shape);
 
@@ -323,6 +335,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
 
   // Quantized KV cache path: quantize-on-write + MlasQKGemm / MlasSVGemm.
   if (kv_quant_enabled_) {
+    ORT_RETURN_IF(parameters.use_block_table,
+                  "GroupQueryAttention (CPU): block_table mode is not implemented yet for quantized KV cache.");
     if constexpr (std::is_same_v<T, float>) {
       const float* k_data_q = packed_qkv ? nullptr : k_rotary;
       const float* v_data_q = packed_qkv ? nullptr : V.Get<Tensor>().Data<float>();
@@ -374,6 +388,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   // decode kernel. Both are reached when total_sequence_length > 1.
   if constexpr (std::is_same_v<T, float>) {
     const bool use_flash = !disable_gqa_flash_ &&
+                           !parameters.use_block_table &&
                            parameters.total_sequence_length > 1 &&
                            softcap_ == 0.0f &&
                            !use_smooth_softmax_ &&

@@ -5,6 +5,8 @@
 
 #include <cstring>
 #include <limits>
+#include <array>
+#include <memory>
 #include <string>
 #include "contrib_ops/cpu/bert/attention_base.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
@@ -65,6 +67,322 @@ inline const uint8_t* ConcatQuantStateChunkGQA(
   }
 
   return start;
+}
+
+struct ContiguousKvCacheLayout {
+  int seqlen_past_kv_cache{};
+  int seqlen_present_kv_cache{};
+  bool past_present_share_buffer{};
+};
+
+inline Status ResolveContiguousKvCacheLayout(const Tensor* past_key,
+                                             const Tensor* past_value,
+                                             const Tensor* present_key,
+                                             const Tensor* present_value,
+                                             int kv_sequence_length,
+                                             int total_sequence_length,
+                                             bool require_present_cache,
+                                             const char* missing_present_cache_message,
+                                             ContiguousKvCacheLayout& layout) {
+  if (past_key != nullptr && past_value != nullptr) {
+    layout.seqlen_past_kv_cache = static_cast<int>(past_key->Shape().GetDims()[2]);
+  }
+
+  layout.seqlen_present_kv_cache = present_key != nullptr
+                                       ? static_cast<int>(present_key->Shape().GetDims()[2])
+                                       : total_sequence_length;
+
+  if (kv_sequence_length == 0) {
+    ORT_ENFORCE(total_sequence_length <= layout.seqlen_past_kv_cache,
+                "total_seqlen (", total_sequence_length, ") exceeds past buffer size (",
+                layout.seqlen_past_kv_cache, ") in shared KV mode");
+  }
+
+  if (require_present_cache) {
+    ORT_RETURN_IF(present_key == nullptr || present_value == nullptr, missing_present_cache_message);
+  }
+
+  return Status::OK();
+}
+
+template <typename T>
+inline void ResolveTypedKvCachePointers(const Tensor* past_key,
+                                        const Tensor* past_value,
+                                        Tensor* present_key,
+                                        Tensor* present_value,
+                                        const T*& past_key_data,
+                                        T*& present_key_data,
+                                        const T*& past_value_data,
+                                        T*& present_value_data,
+                                        ContiguousKvCacheLayout& layout) {
+  past_key_data = past_key != nullptr ? past_key->Data<T>() : nullptr;
+  present_key_data = present_key != nullptr ? present_key->MutableData<T>() : nullptr;
+  past_value_data = past_value != nullptr ? past_value->Data<T>() : nullptr;
+  present_value_data = present_value != nullptr ? present_value->MutableData<T>() : nullptr;
+  layout.past_present_share_buffer = past_key_data == present_key_data &&
+                                     past_value_data == present_value_data;
+}
+
+inline void ResolveQuantizedKvCachePointers(const Tensor* past_key,
+                                            const Tensor* past_value,
+                                            Tensor* present_key,
+                                            Tensor* present_value,
+                                            int kv_cache_bit_width,
+                                            const uint8_t*& past_key_data,
+                                            uint8_t*& present_key_data,
+                                            const uint8_t*& past_value_data,
+                                            uint8_t*& present_value_data,
+                                            ContiguousKvCacheLayout& layout) {
+  if (kv_cache_bit_width == 4) {
+    past_key_data = past_key != nullptr ? past_key->Data<uint8_t>() : nullptr;
+    present_key_data = present_key->MutableData<uint8_t>();
+    past_value_data = past_value != nullptr ? past_value->Data<uint8_t>() : nullptr;
+    present_value_data = present_value->MutableData<uint8_t>();
+  } else {
+    past_key_data = past_key != nullptr ? reinterpret_cast<const uint8_t*>(past_key->Data<int8_t>()) : nullptr;
+    present_key_data = reinterpret_cast<uint8_t*>(present_key->MutableData<int8_t>());
+    past_value_data = past_value != nullptr ? reinterpret_cast<const uint8_t*>(past_value->Data<int8_t>()) : nullptr;
+    present_value_data = reinterpret_cast<uint8_t*>(present_value->MutableData<int8_t>());
+  }
+
+  layout.past_present_share_buffer = (past_key_data == present_key_data) &&
+                                     (past_value_data == present_value_data);
+}
+
+template <typename T>
+struct KvCacheAccessor {
+  virtual ~KvCacheAccessor() = default;
+
+  virtual const T* ResolveChunk(const T* new_chunk,
+                                size_t past_chunk_length,
+                                size_t kv_index) const = 0;
+
+  virtual T* PresentData() const = 0;
+};
+
+template <typename T>
+struct ContiguousKvCacheAccessor final : KvCacheAccessor<T> {
+  const T* past_data{};
+  T* present_data{};
+  size_t present_buffer_chunk_length{};
+  size_t past_buffer_chunk_length{};
+  size_t kv_input_chunk_length{};
+  bool past_present_share_buffer{};
+
+  ContiguousKvCacheAccessor() = default;
+
+  ContiguousKvCacheAccessor(const T* past_data_in,
+                            T* present_data_in,
+                            size_t present_buffer_chunk_length_in,
+                            size_t past_buffer_chunk_length_in,
+                            size_t kv_input_chunk_length_in,
+                            bool past_present_share_buffer_in)
+      : past_data(past_data_in),
+        present_data(present_data_in),
+        present_buffer_chunk_length(present_buffer_chunk_length_in),
+        past_buffer_chunk_length(past_buffer_chunk_length_in),
+        kv_input_chunk_length(kv_input_chunk_length_in),
+        past_present_share_buffer(past_present_share_buffer_in) {}
+
+  const T* ResolveChunk(const T* new_chunk,
+                        size_t past_chunk_length,
+                        size_t kv_index) const override {
+    if (present_data == nullptr) {
+      return new_chunk;
+    }
+
+    return ConcatStateChunkGQA(past_data, new_chunk, present_data,
+                               present_buffer_chunk_length, past_buffer_chunk_length,
+                               past_chunk_length, kv_input_chunk_length,
+                               past_present_share_buffer, kv_index);
+  }
+
+  T* PresentData() const override {
+    return present_data;
+  }
+};
+
+struct QuantizedKvCacheAccessor {
+  virtual ~QuantizedKvCacheAccessor() = default;
+
+  virtual const uint8_t* ResolveChunk(const float* new_chunk,
+                                      size_t past_chunk_bytes,
+                                      size_t new_rows,
+                                      size_t kv_index,
+                                      const float* scales) const = 0;
+
+  virtual uint8_t* PresentData() const = 0;
+};
+
+struct QuantizedContiguousKvCacheAccessor final : QuantizedKvCacheAccessor {
+  const uint8_t* past_data{};
+  uint8_t* present_data{};
+  size_t present_buffer_chunk_bytes{};
+  size_t past_buffer_chunk_bytes{};
+  bool past_present_share_buffer{};
+  MLAS_KV_QUANT_TYPE quant_type{};
+  size_t head_size{};
+
+  QuantizedContiguousKvCacheAccessor() = default;
+
+  QuantizedContiguousKvCacheAccessor(const uint8_t* past_data_in,
+                                     uint8_t* present_data_in,
+                                     size_t present_buffer_chunk_bytes_in,
+                                     size_t past_buffer_chunk_bytes_in,
+                                     bool past_present_share_buffer_in,
+                                     MLAS_KV_QUANT_TYPE quant_type_in,
+                                     size_t head_size_in)
+      : past_data(past_data_in),
+        present_data(present_data_in),
+        present_buffer_chunk_bytes(present_buffer_chunk_bytes_in),
+        past_buffer_chunk_bytes(past_buffer_chunk_bytes_in),
+        past_present_share_buffer(past_present_share_buffer_in),
+        quant_type(quant_type_in),
+        head_size(head_size_in) {}
+
+  const uint8_t* ResolveChunk(const float* new_chunk,
+                              size_t past_chunk_bytes,
+                              size_t new_rows,
+                              size_t kv_index,
+                              const float* scales) const override {
+    return ConcatQuantStateChunkGQA(past_data, new_chunk, present_data,
+                                    present_buffer_chunk_bytes, past_buffer_chunk_bytes,
+                                    past_chunk_bytes, new_rows, head_size, head_size,
+                                    quant_type, scales, past_present_share_buffer,
+                                    static_cast<std::ptrdiff_t>(kv_index));
+  }
+
+  uint8_t* PresentData() const override {
+    return present_data;
+  }
+};
+
+template <typename T>
+inline void MaterializeBlockCachesToContiguous(const T* key_block_cache,
+                                               const T* value_block_cache,
+                                               const int32_t* block_table,
+                                               const size_t* active_blocks_per_batch,
+                                               T* key_contiguous_cache,
+                                               T* value_contiguous_cache,
+                                               size_t batch_size,
+                                               size_t kv_num_heads,
+                                               size_t block_table_width,
+                                               size_t contiguous_blocks_per_seq,
+                                               size_t block_size,
+                                               size_t head_size) {
+  const size_t seq_capacity = contiguous_blocks_per_seq * block_size;
+  const size_t head_seq_stride = seq_capacity * head_size;
+  const size_t block_head_bytes = block_size * head_size * sizeof(T);
+  const size_t src_token_stride = kv_num_heads * head_size;
+
+  for (size_t batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
+    const size_t active_blocks = active_blocks_per_batch[batch_idx];
+
+    const int32_t* block_table_row = block_table + batch_idx * block_table_width;
+    for (size_t table_block_idx = 0; table_block_idx < active_blocks; ++table_block_idx) {
+      const int32_t physical_block_id = block_table_row[table_block_idx];
+      const size_t logical_token_base = table_block_idx * block_size;
+      if (physical_block_id < 0) {
+        for (size_t kv_head_idx = 0; kv_head_idx < kv_num_heads; ++kv_head_idx) {
+          const size_t dst_block_offset =
+              ((batch_idx * kv_num_heads + kv_head_idx) * seq_capacity + logical_token_base) * head_size;
+          memset(key_contiguous_cache + dst_block_offset, 0, block_head_bytes);
+          memset(value_contiguous_cache + dst_block_offset, 0, block_head_bytes);
+        }
+        continue;
+      }
+
+      const size_t src_block_base = static_cast<size_t>(physical_block_id) * block_size;
+      for (size_t kv_head_idx = 0; kv_head_idx < kv_num_heads; ++kv_head_idx) {
+        T* key_dst = key_contiguous_cache +
+                     ((batch_idx * kv_num_heads + kv_head_idx) * head_seq_stride + logical_token_base * head_size);
+        T* value_dst = value_contiguous_cache +
+                       ((batch_idx * kv_num_heads + kv_head_idx) * head_seq_stride + logical_token_base * head_size);
+
+        const T* key_src = key_block_cache + (src_block_base * src_token_stride + kv_head_idx * head_size);
+        const T* value_src = value_block_cache + (src_block_base * src_token_stride + kv_head_idx * head_size);
+
+        for (size_t offset_in_block = 0; offset_in_block < block_size; ++offset_in_block) {
+          memcpy(key_dst, key_src, head_size * sizeof(T));
+          memcpy(value_dst, value_src, head_size * sizeof(T));
+          key_dst += head_size;
+          value_dst += head_size;
+          key_src += src_token_stride;
+          value_src += src_token_stride;
+        }
+      }
+    }
+  }
+}
+
+template <typename T>
+inline void ScatterContiguousCachesToBlockCache(const T* key_contiguous_cache,
+                                                const T* value_contiguous_cache,
+                                                const T* key_past_block_cache,
+                                                const T* value_past_block_cache,
+                                                const int32_t* block_table,
+                                                const size_t* active_blocks_per_batch,
+                                                T* key_block_cache,
+                                                T* value_block_cache,
+                                                size_t batch_size,
+                                                size_t kv_num_heads,
+                                                size_t block_table_width,
+                                                size_t contiguous_blocks_per_seq,
+                                                size_t block_size,
+                                                size_t head_size) {
+  const size_t seq_capacity = contiguous_blocks_per_seq * block_size;
+  const size_t head_seq_stride = seq_capacity * head_size;
+  const size_t dst_token_stride = kv_num_heads * head_size;
+  const size_t full_block_elements = block_size * kv_num_heads * head_size;
+  const size_t full_block_bytes = full_block_elements * sizeof(T);
+
+  for (size_t batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
+    const size_t active_blocks = active_blocks_per_batch[batch_idx];
+
+    const int32_t* block_table_row = block_table + batch_idx * block_table_width;
+    for (size_t table_block_idx = 0; table_block_idx < active_blocks; ++table_block_idx) {
+      const int32_t physical_block_id = block_table_row[table_block_idx];
+      if (physical_block_id < 0) {
+        continue;
+      }
+
+      const size_t logical_token_base = table_block_idx * block_size;
+      const size_t dst_block_base = static_cast<size_t>(physical_block_id) * block_size;
+      for (size_t kv_head_idx = 0; kv_head_idx < kv_num_heads; ++kv_head_idx) {
+        const T* key_src = key_contiguous_cache +
+                           ((batch_idx * kv_num_heads + kv_head_idx) * head_seq_stride + logical_token_base * head_size);
+        const T* value_src = value_contiguous_cache +
+                             ((batch_idx * kv_num_heads + kv_head_idx) * head_seq_stride + logical_token_base * head_size);
+
+        T* key_dst = key_block_cache + (dst_block_base * dst_token_stride + kv_head_idx * head_size);
+        T* value_dst = value_block_cache + (dst_block_base * dst_token_stride + kv_head_idx * head_size);
+
+        for (size_t offset_in_block = 0; offset_in_block < block_size; ++offset_in_block) {
+          memcpy(key_dst, key_src, head_size * sizeof(T));
+          memcpy(value_dst, value_src, head_size * sizeof(T));
+          key_src += head_size;
+          value_src += head_size;
+          key_dst += dst_token_stride;
+          value_dst += dst_token_stride;
+        }
+      }
+    }
+
+    if (key_past_block_cache == key_block_cache && value_past_block_cache == value_block_cache) {
+      continue;
+    }
+
+    for (size_t table_block_idx = active_blocks; table_block_idx < block_table_width; ++table_block_idx) {
+      const int32_t physical_block_id = block_table_row[table_block_idx];
+      if (physical_block_id < 0) {
+        continue;
+      }
+
+      const size_t block_base = static_cast<size_t>(physical_block_id) * full_block_elements;
+      memcpy(key_block_cache + block_base, key_past_block_cache + block_base, full_block_bytes);
+      memcpy(value_block_cache + block_base, value_past_block_cache + block_base, full_block_bytes);
+    }
+  }
 }
 
 class GQAAttentionBase {
@@ -146,20 +464,91 @@ class GQAAttentionBase {
 
     auto* tp = context->GetOperatorThreadPool();
 
-    int seqlen_past_kv_cache = 0;
-    if (past_key != nullptr && past_value != nullptr) {
-      seqlen_past_kv_cache = static_cast<int>(past_key->Shape().GetDims()[2]);
-    }
-    int seqlen_present_kv_cache = present_key != nullptr
-                                      ? static_cast<int>(present_key->Shape().GetDims()[2])
-                                      : parameters.total_sequence_length;
+    if (parameters.use_block_table) {
+      ORT_RETURN_IF(parameters.block_table == nullptr,
+            "GroupQueryAttention (CPU): block_table mode requires block_table metadata.");
+      ORT_RETURN_IF(past_key == nullptr || past_value == nullptr || present_key == nullptr || present_value == nullptr,
+            "GroupQueryAttention (CPU): block_table mode requires past_key, past_value, present_key, and present_value.");
 
-    // Shared KV: total_sequence_length must fit within the past buffer.
-    if (kv_sequence_length == 0) {
-      ORT_ENFORCE(total_sequence_length <= seqlen_past_kv_cache,
-                  "total_seqlen (", total_sequence_length, ") exceeds past buffer size (",
-                  seqlen_past_kv_cache, ") in shared KV mode");
+      const int32_t* seqlens_k_data = seqlens_k->Data<int32_t>();
+      const size_t block_table_width = static_cast<size_t>(parameters.max_num_blocks_per_seq);
+      const size_t contiguous_blocks_per_seq = std::min(
+          block_table_width,
+          (static_cast<size_t>(total_sequence_length) + parameters.block_size - 1) / parameters.block_size);
+      const size_t seq_capacity = contiguous_blocks_per_seq * parameters.block_size;
+
+      constexpr size_t kInlineActiveBlocksBatch = 8;
+      std::array<size_t, kInlineActiveBlocksBatch> inline_active_blocks_per_batch{};
+      std::unique_ptr<size_t[]> heap_active_blocks_per_batch;
+      size_t* active_blocks_per_batch = nullptr;
+      if (static_cast<size_t>(batch_size) <= kInlineActiveBlocksBatch) {
+        active_blocks_per_batch = inline_active_blocks_per_batch.data();
+      } else {
+        heap_active_blocks_per_batch = std::make_unique<size_t[]>(batch_size);
+        active_blocks_per_batch = heap_active_blocks_per_batch.get();
+      }
+
+      for (int batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
+        const size_t active_tokens = std::min(
+            static_cast<size_t>(total_sequence_length),
+            static_cast<size_t>(std::max<int32_t>(0, seqlens_k_data[batch_idx] + 1)));
+        active_blocks_per_batch[batch_idx] = std::min(
+            contiguous_blocks_per_seq,
+            (active_tokens + parameters.block_size - 1) / parameters.block_size);
+      }
+
+      const TensorShape contiguous_cache_shape({batch_size, kv_num_heads_, static_cast<int64_t>(seq_capacity), head_size});
+      auto element_type = DataTypeImpl::GetType<T>();
+      OrtValue present_key_contiguous;
+      OrtValue present_value_contiguous;
+      Tensor::InitOrtValue(element_type, contiguous_cache_shape, allocator, present_key_contiguous);
+      Tensor::InitOrtValue(element_type, contiguous_cache_shape, allocator, present_value_contiguous);
+
+      MaterializeBlockCachesToContiguous(
+        past_key->Data<T>(), past_value->Data<T>(), parameters.block_table, active_blocks_per_batch,
+        present_key_contiguous.GetMutable<Tensor>()->MutableData<T>(),
+        present_value_contiguous.GetMutable<Tensor>()->MutableData<T>(),
+        batch_size, kv_num_heads_, block_table_width, contiguous_blocks_per_seq,
+        parameters.block_size, head_size);
+
+      GroupQueryAttentionParameters contiguous_params = parameters;
+      contiguous_params.use_block_table = false;
+      contiguous_params.block_table = nullptr;
+      contiguous_params.num_blocks = 0;
+      contiguous_params.block_size = 0;
+      contiguous_params.max_num_blocks_per_seq = 0;
+      contiguous_params.seqlen_past_kv_cache = static_cast<int>(seq_capacity);
+      contiguous_params.seqlen_present_kv_cache = static_cast<int>(seq_capacity);
+
+      Tensor* present_key_contiguous_tensor = present_key_contiguous.GetMutable<Tensor>();
+      Tensor* present_value_contiguous_tensor = present_value_contiguous.GetMutable<Tensor>();
+      const Tensor* past_key_contiguous_tensor = present_key_contiguous_tensor;
+      const Tensor* past_value_contiguous_tensor = present_value_contiguous_tensor;
+
+      ORT_RETURN_IF_ERROR(ApplyAttention(
+        Q, K, V, head_sink, attention_bias,
+        past_key_contiguous_tensor, past_value_contiguous_tensor,
+        output,
+        present_key_contiguous_tensor, present_value_contiguous_tensor,
+        output_qk, seqlens_k, contiguous_params, allocator, context));
+
+      ScatterContiguousCachesToBlockCache(
+        present_key_contiguous.Get<Tensor>().Data<T>(), present_value_contiguous.Get<Tensor>().Data<T>(),
+        past_key->Data<T>(), past_value->Data<T>(),
+        parameters.block_table, active_blocks_per_batch,
+        present_key->MutableData<T>(), present_value->MutableData<T>(),
+        batch_size, kv_num_heads_, block_table_width, contiguous_blocks_per_seq,
+        parameters.block_size, head_size);
+      return Status::OK();
     }
+
+    ContiguousKvCacheLayout kv_cache_layout;
+    ORT_RETURN_IF_ERROR(ResolveContiguousKvCacheLayout(past_key, past_value,
+                                                       present_key, present_value,
+                                                       kv_sequence_length, total_sequence_length,
+                                                       false, "", kv_cache_layout));
+    const int seqlen_past_kv_cache = kv_cache_layout.seqlen_past_kv_cache;
+    const int seqlen_present_kv_cache = kv_cache_layout.seqlen_present_kv_cache;
 
     // Compute the attention score.
     bool gqa_mlas_supported = MlasGQASupported<T>(CblasNoTrans, CblasTrans) &&
@@ -168,15 +557,18 @@ class GQAAttentionBase {
     auto attention_probs = allocator->Alloc(bytes);
     BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
 
-    const T* past_key_data = past_key != nullptr ? past_key->Data<T>() : nullptr;
-    T* present_key_data = present_key != nullptr ? present_key->MutableData<T>() : nullptr;
-    const T* past_value_data = past_value != nullptr ? past_value->Data<T>() : nullptr;
-    T* present_value_data = present_value != nullptr ? present_value->MutableData<T>() : nullptr;
+    const T* past_key_data = nullptr;
+    T* present_key_data = nullptr;
+    const T* past_value_data = nullptr;
+    T* present_value_data = nullptr;
+    ResolveTypedKvCachePointers(past_key, past_value, present_key, present_value,
+                  past_key_data, present_key_data,
+                  past_value_data, present_value_data,
+                  kv_cache_layout);
 
     const T* attention_bias_data = attention_bias != nullptr ? attention_bias->Data<T>() : nullptr;
     auto attention_bias_shape = attention_bias != nullptr ? attention_bias->Shape().GetDims() : gsl::span<const int64_t>{};
-
-    bool past_present_share_buffer = past_key_data == present_key_data && past_value_data == present_value_data;
+    const bool past_present_share_buffer = kv_cache_layout.past_present_share_buffer;
 
     const T* k = packed_qkv ? Q + num_heads_ * sequence_length * head_size : K;
 
@@ -246,19 +638,15 @@ class GQAAttentionBase {
     auto* tp = context->GetOperatorThreadPool();
     const size_t packed_row_bytes = MlasKVQuantPackedRowBytes(quant_type, head_size);
 
-    int seqlen_past_kv_cache = 0;
-    if (past_key != nullptr && past_value != nullptr) {
-      seqlen_past_kv_cache = static_cast<int>(past_key->Shape().GetDims()[2]);
-    }
-    int seqlen_present_kv_cache = present_key != nullptr
-                                      ? static_cast<int>(present_key->Shape().GetDims()[2])
-                                      : parameters.total_sequence_length;
-
-    if (kv_sequence_length == 0) {
-      ORT_ENFORCE(total_sequence_length <= seqlen_past_kv_cache,
-                  "total_seqlen (", total_sequence_length, ") exceeds past buffer size (",
-                  seqlen_past_kv_cache, ") in shared KV mode");
-    }
+    ContiguousKvCacheLayout kv_cache_layout;
+    ORT_RETURN_IF_ERROR(ResolveContiguousKvCacheLayout(past_key, past_value,
+                                                       present_key, present_value,
+                                                       kv_sequence_length, total_sequence_length,
+                                                       true,
+                                                       "present_key and present_value must be provided for quantized KV cache",
+                                                       kv_cache_layout));
+    const int seqlen_past_kv_cache = kv_cache_layout.seqlen_past_kv_cache;
+    const int seqlen_present_kv_cache = kv_cache_layout.seqlen_present_kv_cache;
 
     // Allocate attention probs buffer (always float)
     size_t probs_bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length *
@@ -267,34 +655,22 @@ class GQAAttentionBase {
     BufferUniquePtr probs_buffer(attention_probs_alloc, BufferDeleter(allocator));
     float* attention_probs = static_cast<float*>(attention_probs_alloc);
 
-    ORT_RETURN_IF(present_key == nullptr || present_value == nullptr,
-                  "present_key and present_value must be provided for quantized KV cache");
-
     // Access cache data as raw bytes — INT4 uses uint8_t (packed nibbles),
     // INT8 uses int8_t. Both are accessed via uint8_t* for the MLAS quantize API.
     const uint8_t* past_key_data = nullptr;
     uint8_t* present_key_data = nullptr;
     const uint8_t* past_value_data = nullptr;
     uint8_t* present_value_data = nullptr;
-    if (kv_cache_bit_width_ == 4) {
-      past_key_data = past_key != nullptr ? past_key->Data<uint8_t>() : nullptr;
-      present_key_data = present_key->MutableData<uint8_t>();
-      past_value_data = past_value != nullptr ? past_value->Data<uint8_t>() : nullptr;
-      present_value_data = present_value->MutableData<uint8_t>();
-    } else {
-      past_key_data = past_key != nullptr ? reinterpret_cast<const uint8_t*>(past_key->Data<int8_t>()) : nullptr;
-      present_key_data = reinterpret_cast<uint8_t*>(present_key->MutableData<int8_t>());
-      past_value_data = past_value != nullptr ? reinterpret_cast<const uint8_t*>(past_value->Data<int8_t>()) : nullptr;
-      present_value_data = reinterpret_cast<uint8_t*>(present_value->MutableData<int8_t>());
-    }
+    ResolveQuantizedKvCachePointers(past_key, past_value, present_key, present_value,
+                                    kv_cache_bit_width_, past_key_data, present_key_data,
+                                    past_value_data, present_value_data, kv_cache_layout);
 
     const float* attention_bias_data = attention_bias != nullptr ? attention_bias->Data<float>() : nullptr;
     auto attention_bias_shape = attention_bias != nullptr
                                     ? attention_bias->Shape().GetDims()
                                     : gsl::span<const int64_t>{};
 
-    bool past_present_share_buffer = (past_key_data == present_key_data) &&
-                                     (past_value_data == present_value_data);
+    const bool past_present_share_buffer = kv_cache_layout.past_present_share_buffer;
 
     const bool per_channel = (quant_type == MLAS_KV_QUANT_TYPE::S8_PerChannel ||
                               quant_type == MLAS_KV_QUANT_TYPE::S4_PerChannel);
@@ -321,10 +697,30 @@ class GQAAttentionBase {
     const float alpha = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
 
     // ---- Concat K + QK^T + Softmax ----
-    if (present_key_data && !past_present_share_buffer) {
+    const QuantizedContiguousKvCacheAccessor key_cache_accessor_impl{
+      past_key_data,
+      present_key_data,
+      present_buff_chunk_bytes,
+      past_buff_chunk_bytes,
+      past_present_share_buffer,
+      quant_type,
+      static_cast<size_t>(head_size)};
+    const QuantizedKvCacheAccessor& key_cache_accessor = key_cache_accessor_impl;
+
+    if (key_cache_accessor.PresentData() != nullptr && !past_present_share_buffer) {
       memset(present_key_data, 0,
              SafeInt<size_t>(batch_size) * kv_num_heads_ * present_buff_chunk_bytes);
     }
+
+    const QuantizedContiguousKvCacheAccessor value_cache_accessor_impl{
+      past_value_data,
+      present_value_data,
+      present_buff_chunk_bytes,
+      past_buff_chunk_bytes,
+      past_present_share_buffer,
+      quant_type,
+      static_cast<size_t>(head_size)};
+    const QuantizedKvCacheAccessor& value_cache_accessor = value_cache_accessor_impl;
 
     {
       TensorOpCost unit_cost;
@@ -374,11 +770,8 @@ class GQAAttentionBase {
                                           ? k_scale + kv_head_within_batch * head_size
                                           : k_scale;
 
-          const uint8_t* k_quantized = ConcatQuantStateChunkGQA(
-              past_key_data, k_new, present_key_data,
-              present_buff_chunk_bytes, past_buff_chunk_bytes,
-              past_chunk_bytes, kv_sequence_length, head_size, head_size,
-              quant_type, head_k_scale, past_present_share_buffer, kv_head_flat);
+            const uint8_t* k_quantized = key_cache_accessor.ResolveChunk(
+              k_new, past_chunk_bytes, kv_sequence_length, kv_head_flat, head_k_scale);
 
           // Q pointer
           const float* q;
@@ -534,11 +927,8 @@ class GQAAttentionBase {
                                           ? v_scale + kv_head_within_batch * head_size
                                           : v_scale;
 
-          const uint8_t* v_quantized = ConcatQuantStateChunkGQA(
-              past_value_data, v_new, present_value_data,
-              present_buff_chunk_bytes, past_buff_chunk_bytes,
-              past_chunk_bytes, kv_sequence_length, head_size, head_size,
-              quant_type, head_v_scale, past_present_share_buffer, kv_head_flat);
+            const uint8_t* v_quantized = value_cache_accessor.ResolveChunk(
+              v_new, past_chunk_bytes, kv_sequence_length, kv_head_flat, head_v_scale);
 
           // S*V GEMM with quantized V cache
           ptrdiff_t probs_offset =
@@ -588,42 +978,26 @@ class GQAAttentionBase {
     auto* tp = context->GetOperatorThreadPool();
     const size_t packed_row_bytes = MlasKVQuantPackedRowBytes(quant_type, head_size);
 
-    int seqlen_past_kv_cache = 0;
-    if (past_key != nullptr && past_value != nullptr) {
-      seqlen_past_kv_cache = static_cast<int>(past_key->Shape().GetDims()[2]);
-    }
-    int seqlen_present_kv_cache = present_key != nullptr
-                                      ? static_cast<int>(present_key->Shape().GetDims()[2])
-                                      : parameters.total_sequence_length;
-
-    if (kv_sequence_length == 0) {
-      ORT_ENFORCE(parameters.total_sequence_length <= seqlen_past_kv_cache,
-                  "total_seqlen (", parameters.total_sequence_length, ") exceeds past buffer size (",
-                  seqlen_past_kv_cache, ") in shared KV mode");
-    }
-
-    ORT_RETURN_IF(present_key == nullptr || present_value == nullptr,
-                  "present_key and present_value must be provided for quantized KV cache");
+    ContiguousKvCacheLayout kv_cache_layout;
+    ORT_RETURN_IF_ERROR(ResolveContiguousKvCacheLayout(past_key, past_value,
+                                                       present_key, present_value,
+                                                       kv_sequence_length, parameters.total_sequence_length,
+                                                       true,
+                                                       "present_key and present_value must be provided for quantized KV cache",
+                                                       kv_cache_layout));
+    const int seqlen_past_kv_cache = kv_cache_layout.seqlen_past_kv_cache;
+    const int seqlen_present_kv_cache = kv_cache_layout.seqlen_present_kv_cache;
 
     // Access cache data as raw bytes
     const uint8_t* past_key_data = nullptr;
     uint8_t* present_key_data = nullptr;
     const uint8_t* past_value_data = nullptr;
     uint8_t* present_value_data = nullptr;
-    if (kv_cache_bit_width_ == 4) {
-      past_key_data = past_key != nullptr ? past_key->Data<uint8_t>() : nullptr;
-      present_key_data = present_key->MutableData<uint8_t>();
-      past_value_data = past_value != nullptr ? past_value->Data<uint8_t>() : nullptr;
-      present_value_data = present_value->MutableData<uint8_t>();
-    } else {
-      past_key_data = past_key != nullptr ? reinterpret_cast<const uint8_t*>(past_key->Data<int8_t>()) : nullptr;
-      present_key_data = reinterpret_cast<uint8_t*>(present_key->MutableData<int8_t>());
-      past_value_data = past_value != nullptr ? reinterpret_cast<const uint8_t*>(past_value->Data<int8_t>()) : nullptr;
-      present_value_data = reinterpret_cast<uint8_t*>(present_value->MutableData<int8_t>());
-    }
+    ResolveQuantizedKvCachePointers(past_key, past_value, present_key, present_value,
+                                    kv_cache_bit_width_, past_key_data, present_key_data,
+                                    past_value_data, present_value_data, kv_cache_layout);
 
-    bool past_present_share_buffer = (past_key_data == present_key_data) &&
-                                     (past_value_data == present_value_data);
+    const bool past_present_share_buffer = kv_cache_layout.past_present_share_buffer;
 
     const bool per_channel = (quant_type == MLAS_KV_QUANT_TYPE::S8_PerChannel ||
                               quant_type == MLAS_KV_QUANT_TYPE::S4_PerChannel);
@@ -656,7 +1030,26 @@ class GQAAttentionBase {
 
     // ---- Phase 1: Concat new K/V into present cache ----
     // We must do this first so the flash attention kernel can read the full present cache.
-    if (present_key_data && !past_present_share_buffer) {
+    const QuantizedContiguousKvCacheAccessor key_cache_accessor_impl{
+      past_key_data,
+      present_key_data,
+      present_buff_chunk_bytes,
+      past_buff_chunk_bytes,
+      past_present_share_buffer,
+      quant_type,
+      static_cast<size_t>(head_size)};
+    const QuantizedKvCacheAccessor& key_cache_accessor = key_cache_accessor_impl;
+    const QuantizedContiguousKvCacheAccessor value_cache_accessor_impl{
+      past_value_data,
+      present_value_data,
+      present_buff_chunk_bytes,
+      past_buff_chunk_bytes,
+      past_present_share_buffer,
+      quant_type,
+      static_cast<size_t>(head_size)};
+    const QuantizedKvCacheAccessor& value_cache_accessor = value_cache_accessor_impl;
+
+    if (key_cache_accessor.PresentData() != nullptr && !past_present_share_buffer) {
       memset(present_key_data, 0,
              SafeInt<size_t>(batch_size) * kv_num_heads_ * present_buff_chunk_bytes);
       memset(present_value_data, 0,
@@ -704,11 +1097,8 @@ class GQAAttentionBase {
           } else {
             k_new = k_base + kv_input_chunk_length * kv_idx;
           }
-          ConcatQuantStateChunkGQA(
-              past_key_data, k_new, present_key_data,
-              present_buff_chunk_bytes, past_buff_chunk_bytes,
-              past_chunk_bytes, kv_sequence_length, head_size, head_size,
-              quant_type, head_k_scale, past_present_share_buffer, kv_idx);
+            key_cache_accessor.ResolveChunk(
+              k_new, past_chunk_bytes, kv_sequence_length, kv_idx, head_k_scale);
 
           // Concat V
           const float* v_new;
@@ -718,11 +1108,8 @@ class GQAAttentionBase {
           } else {
             v_new = v_base + kv_input_chunk_length * kv_idx;
           }
-          ConcatQuantStateChunkGQA(
-              past_value_data, v_new, present_value_data,
-              present_buff_chunk_bytes, past_buff_chunk_bytes,
-              past_chunk_bytes, kv_sequence_length, head_size, head_size,
-              quant_type, head_v_scale, past_present_share_buffer, kv_idx);
+            value_cache_accessor.ResolveChunk(
+              v_new, past_chunk_bytes, kv_sequence_length, kv_idx, head_v_scale);
         }
       });
     }
@@ -946,30 +1333,26 @@ class GQAAttentionBase {
 
     auto* tp = context->GetOperatorThreadPool();
 
-    int seqlen_past_kv_cache = 0;
-    if (past_key != nullptr && past_value != nullptr) {
-      seqlen_past_kv_cache = static_cast<int>(past_key->Shape().GetDims()[2]);
-    }
-    int seqlen_present_kv_cache = present_key != nullptr
-                                      ? static_cast<int>(present_key->Shape().GetDims()[2])
-                                      : parameters.total_sequence_length;
+    ContiguousKvCacheLayout kv_cache_layout;
+    ORT_RETURN_IF_ERROR(ResolveContiguousKvCacheLayout(past_key, past_value,
+                                                       present_key, present_value,
+                                                       kv_sequence_length, parameters.total_sequence_length,
+                                                       true,
+                                                       "present_key and present_value must be provided for flash attention",
+                                                       kv_cache_layout));
+    const int seqlen_past_kv_cache = kv_cache_layout.seqlen_past_kv_cache;
+    const int seqlen_present_kv_cache = kv_cache_layout.seqlen_present_kv_cache;
 
-    if (kv_sequence_length == 0) {
-      ORT_ENFORCE(parameters.total_sequence_length <= seqlen_past_kv_cache,
-                  "total_seqlen (", parameters.total_sequence_length, ") exceeds past buffer size (",
-                  seqlen_past_kv_cache, ") in shared KV mode");
-    }
+    const float* past_key_data = nullptr;
+    float* present_key_data = nullptr;
+    const float* past_value_data = nullptr;
+    float* present_value_data = nullptr;
+    ResolveTypedKvCachePointers(past_key, past_value, present_key, present_value,
+                                past_key_data, present_key_data,
+                                past_value_data, present_value_data,
+                                kv_cache_layout);
 
-    ORT_RETURN_IF(present_key == nullptr || present_value == nullptr,
-                  "present_key and present_value must be provided for flash attention");
-
-    const float* past_key_data = past_key != nullptr ? past_key->Data<float>() : nullptr;
-    float* present_key_data = present_key->MutableData<float>();
-    const float* past_value_data = past_value != nullptr ? past_value->Data<float>() : nullptr;
-    float* present_value_data = present_value->MutableData<float>();
-
-    bool past_present_share_buffer = (past_key_data == present_key_data) &&
-                                     (past_value_data == present_value_data);
+    const bool past_present_share_buffer = kv_cache_layout.past_present_share_buffer;
 
     const int32_t* seqlens_k_data = seqlens_k->Data<int32_t>();
 
@@ -999,7 +1382,24 @@ class GQAAttentionBase {
 
     // ---- Phase 1: Concat new K/V into present cache ----
     // We must do this first so the flash attention kernel can read the full present cache.
-    if (present_key_data && !past_present_share_buffer) {
+    const ContiguousKvCacheAccessor<float> key_cache_accessor_impl{
+      past_key_data,
+      present_key_data,
+      present_buff_chunk_length,
+      past_buff_chunk_length,
+      kv_input_chunk_length,
+      past_present_share_buffer};
+    const KvCacheAccessor<float>& key_cache_accessor = key_cache_accessor_impl;
+    const ContiguousKvCacheAccessor<float> value_cache_accessor_impl{
+      past_value_data,
+      present_value_data,
+      present_buff_chunk_length,
+      past_buff_chunk_length,
+      kv_input_chunk_length,
+      past_present_share_buffer};
+    const KvCacheAccessor<float>& value_cache_accessor = value_cache_accessor_impl;
+
+    if (key_cache_accessor.PresentData() != nullptr && !past_present_share_buffer) {
       memset(present_key_data, 0,
              SafeInt<size_t>(batch_size) * kv_num_heads_ * present_buff_chunk_length * sizeof(float));
       memset(present_value_data, 0,
@@ -1040,10 +1440,7 @@ class GQAAttentionBase {
           } else {
             k_new = k_base + kv_input_chunk_length * kv_idx;
           }
-          ConcatStateChunkGQA(past_key_data, k_new, present_key_data,
-                              present_buff_chunk_length, past_buff_chunk_length,
-                              past_chunk_length, kv_input_chunk_length,
-                              past_present_share_buffer, kv_idx);
+          key_cache_accessor.ResolveChunk(k_new, past_chunk_length, kv_idx);
 
           // Concat V
           const float* v_new;
@@ -1053,10 +1450,7 @@ class GQAAttentionBase {
           } else {
             v_new = v_base + kv_input_chunk_length * kv_idx;
           }
-          ConcatStateChunkGQA(past_value_data, v_new, present_value_data,
-                              present_buff_chunk_length, past_buff_chunk_length,
-                              past_chunk_length, kv_input_chunk_length,
-                              past_present_share_buffer, kv_idx);
+          value_cache_accessor.ResolveChunk(v_new, past_chunk_length, kv_idx);
         }
       });
     }
@@ -1283,6 +1677,15 @@ class GQAAttentionBase {
              batch_size * kv_num_heads_ * present_buffer_sequence_length * head_size * sizeof(T));
     }
 
+    const ContiguousKvCacheAccessor<T> key_cache_accessor_impl{
+      past_key,
+      present_key,
+      present_buff_chunk_length,
+      past_buff_chunk_length,
+      kv_input_chunk_length,
+      past_present_share_buffer};
+    const KvCacheAccessor<T>& key_cache_accessor = key_cache_accessor_impl;
+
     const size_t loop_len = batch_size * num_heads_;
     const float alpha = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
 
@@ -1361,11 +1764,7 @@ class GQAAttentionBase {
         } else {
           k = K + kv_input_chunk_length * (i / kv_num_heads_factor);
         }
-        if (nullptr != present_key) {
-          k = ConcatStateChunkGQA(past_key, k, present_key, present_buff_chunk_length, past_buff_chunk_length,
-                                  past_chunk_length, kv_input_chunk_length, past_present_share_buffer,
-                                  i / kv_num_heads_factor);
-        }
+        k = key_cache_accessor.ResolveChunk(k, past_chunk_length, i / kv_num_heads_factor);
 
         // Compute Q*K' + AttentionMask
         //                     original                 transposed             each iteration
@@ -1534,6 +1933,15 @@ class GQAAttentionBase {
              batch_size * kv_num_heads_ * present_buffer_sequence_length * head_size * sizeof(T));
     }
 
+    const ContiguousKvCacheAccessor<T> value_cache_accessor_impl{
+      past_value,
+      present_value,
+      present_buff_chunk_length,
+      past_buff_chunk_length,
+      kv_input_chunk_length,
+      past_present_share_buffer};
+    const KvCacheAccessor<T>& value_cache_accessor = value_cache_accessor_impl;
+
     const size_t loop_len = batch_size * num_heads_;
 
     // The cost of Gemm
@@ -1585,11 +1993,7 @@ class GQAAttentionBase {
         } else {
           v = V + kv_input_chunk_length * (i / kv_num_heads_factor);
         }
-        if (nullptr != present_value) {
-          v = ConcatStateChunkGQA(past_value, v, present_value, present_buff_chunk_length, past_buff_chunk_length,
-                                  past_chunk_length, kv_input_chunk_length, past_present_share_buffer,
-                                  i / kv_num_heads_factor);
-        }
+        v = value_cache_accessor.ResolveChunk(v, past_chunk_length, i / kv_num_heads_factor);
 
         ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * present_buffer_sequence_length * i;
 

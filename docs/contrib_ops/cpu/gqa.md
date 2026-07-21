@@ -53,6 +53,14 @@ At a high level, the CPU kernel executes GroupQueryAttention in these stages:
 
 The non-quantized and quantized paths share the surrounding validation, masking, softmax, and output flow. Their main difference is how the K/V cache is stored and read during QK and SV GEMMs.
 
+When optional `block_table` input is provided, the CPU non-quantized path executes attention via a contiguous-cache view:
+
+1. Materialize active logical blocks into a temporary contiguous BNSH cache.
+2. Run the existing contiguous CPU attention path unchanged.
+3. Scatter updated contiguous cache back to block-cache outputs.
+
+For sparse block tables (`-1` entries), unmapped logical blocks are zero-filled in the temporary contiguous view.
+
 Both the non-quantized and quantized paths have two execution strategies:
 
 - **Naive (full materialization)**: Computes the full `[S, T]` attention score matrix, applies masking and softmax, then computes the SV product. Simple but memory-intensive for long sequences.
@@ -67,6 +75,22 @@ The flash path is selected by default when conditions are met (see below). Set `
 ### Non-quantized cache
 
 When `k_quant_type` and `v_quant_type` are `NONE`, `kv_cache_bit_width` must be `0`. The past and present K/V tensors use the same floating-point element type as the kernel specialization.
+
+### Block-table cache (CPU, non-quantized)
+
+When `block_table` is present, CPU interprets past/present cache tensors as block-cache layout:
+
+- `past_key`, `past_value`: `[num_blocks, block_size, kv_num_heads, head_size]`
+- `block_table`: `[batch_size, max_num_blocks_per_seq]`
+- `present_key`, `present_value`: same shape as past block-cache tensors
+
+Validation rules include:
+
+- `block_table` must be rank-2 and batch-aligned.
+- Every block id must be in `[-1, num_blocks)`.
+- `total_sequence_length` must not exceed `max_num_blocks_per_seq * block_size`.
+
+`-1` block ids indicate unmapped logical blocks.
 
 ### Quantized cache
 
@@ -350,6 +374,9 @@ cd build/cpu_test/Release
 
 # CPU operator tests for quantized GroupQueryAttention.
 ./onnxruntime_test_all --gtest_filter="*GroupQueryAttentionQuantized*"
+
+# CPU block-table coverage in contrib operator tests.
+./onnxruntime_provider_test --gtest_filter="GroupQueryAttentionTest.CpuBlockTable*"
 ```
 
 The Python integration test can be run from the repository root after activating the build/test environment:
@@ -584,6 +611,7 @@ The current CPU GroupQueryAttention implementation has a few important limitatio
 - The default AVX512 quantized KV-cache GEMM path preserves FP32 query and attention-probability operands; the approximate VNNI QK path is opt-in only.
 - Hardware dispatch affects performance, but should not change default numeric semantics.
 - The flash attention path does not support softcap, smooth softmax, head sink, or QK output capture. These features fall back to the naive path.
+- `block_table` mode is currently non-quantized-only on CPU; quantized KV-cache with `block_table` is rejected.
 - The MLAS quantized GEMM helpers operate on one per-batch/per-head tile at a time; outer parallelism is managed by the GQA kernel (or by the flash attention kernel internally).
 
 ## Future Work

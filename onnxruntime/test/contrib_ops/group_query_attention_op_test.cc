@@ -883,8 +883,14 @@ TEST(GroupQueryAttentionTest, WebGpuQKNormWeightRotaryPrefillFunctional) {
 // ---------------------------------------------------------------------------
 
 // Helper: run GQA with empty K/V and past_key/past_value (shared KV pattern).
-// Returns the attention output.
-static std::vector<float> RunGQASharedKV(
+// Returns the attention output and fetched present KV tensors.
+struct GqaSharedKvFetches {
+  std::vector<float> output;
+  std::vector<float> present_key;
+  std::vector<float> present_value;
+};
+
+static GqaSharedKvFetches RunGQASharedKVFetches(
     int batch_size,
     int q_seq_len,
     int past_seq_len,
@@ -942,7 +948,95 @@ static std::vector<float> RunGQASharedKV(
 
   auto fetches = tester.GetFetches();
   const float* out_data = fetches[0].Get<Tensor>().Data<float>();
-  return std::vector<float>(out_data, out_data + output_size);
+  const float* present_key_fetched = fetches[1].Get<Tensor>().Data<float>();
+  const float* present_value_fetched = fetches[2].Get<Tensor>().Data<float>();
+
+  return {
+      std::vector<float>(out_data, out_data + output_size),
+      std::vector<float>(present_key_fetched, present_key_fetched + present_size),
+      std::vector<float>(present_value_fetched, present_value_fetched + present_size)};
+}
+
+static std::vector<float> RunGQASharedKV(
+    int batch_size,
+    int q_seq_len,
+    int past_seq_len,
+    const std::vector<float>& query_data,
+    const std::vector<float>& past_key_data,
+    const std::vector<float>& past_value_data,
+    int num_heads,
+    int kv_num_heads,
+    int head_size,
+    GqaTargetEp target_ep = GqaTargetEp::kCpu) {
+  return RunGQASharedKVFetches(batch_size, q_seq_len, past_seq_len,
+                               query_data, past_key_data, past_value_data,
+                               num_heads, kv_num_heads, head_size, target_ep)
+      .output;
+}
+
+static GqaSharedKvFetches RunGQAAppendWithPastFetches(
+    int batch_size,
+    int sequence_length,
+    int past_seq_len,
+    const std::vector<float>& query_data,
+    const std::vector<float>& key_data,
+    const std::vector<float>& value_data,
+    const std::vector<float>& past_key_data,
+    const std::vector<float>& past_value_data,
+    int num_heads,
+    int kv_num_heads,
+    int head_size,
+    GqaTargetEp target_ep = GqaTargetEp::kCpu) {
+  const int hidden_size = num_heads * head_size;
+  const int kv_hidden_size = kv_num_heads * head_size;
+  const int total_seq_len = past_seq_len + sequence_length;
+  const int present_seq_len = total_seq_len;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, query_data);
+  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
+  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
+  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, past_seq_len, head_size}, past_key_data);
+  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, past_seq_len, head_size}, past_value_data);
+
+  std::vector<int32_t> seqlens_k_data(batch_size, static_cast<int32_t>(total_seq_len - 1));
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, seqlens_k_data);
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {static_cast<int32_t>(total_seq_len)},
+           true /*is_initializer*/);
+
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+
+  const int output_size = batch_size * sequence_length * hidden_size;
+  const int present_size = batch_size * kv_num_heads * present_seq_len * head_size;
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+          std::vector<float>(output_size, 0.0f));
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, present_seq_len, head_size},
+          std::vector<float>(present_size, 0.0f));
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, present_seq_len, head_size},
+          std::vector<float>(present_size, 0.0f));
+
+  tester.SetOutputTolerance(1e6f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(MakeExecutionProviderForGqaTest(target_ep));
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+  auto fetches = tester.GetFetches();
+  const float* out_data = fetches[0].Get<Tensor>().Data<float>();
+  const float* present_key_fetched = fetches[1].Get<Tensor>().Data<float>();
+  const float* present_value_fetched = fetches[2].Get<Tensor>().Data<float>();
+
+  return {
+  std::vector<float>(out_data, out_data + output_size),
+  std::vector<float>(present_key_fetched, present_key_fetched + present_size),
+  std::vector<float>(present_value_fetched, present_value_fetched + present_size)};
 }
 
 // Helper: run GQA with MLFloat16 tensors for actual CUDA kernel coverage.
@@ -1040,6 +1134,81 @@ TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_CPU) {
     if (output[i] != 0.0f) all_zero = false;
   }
   EXPECT_FALSE(all_zero) << "Output should not be all zeros";
+}
+
+// CPU: shared KV decode must preserve the borrowed past cache in present_key/value
+// when kv_sequence_length == 0. This locks contiguous-cache semantics before
+// block-aware CPU cache access is introduced.
+TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_PresentCacheMatchesPast_CPU) {
+  constexpr int batch_size = 1;
+  constexpr int q_seq_len = 1;
+  constexpr int past_seq_len = 8;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+
+  std::vector<float> query_data(batch_size * q_seq_len * hidden_size);
+  std::vector<float> past_key_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  std::vector<float> past_value_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  for (size_t i = 0; i < query_data.size(); i++) query_data[i] = 0.1f * static_cast<float>(i % 7 + 1);
+  for (size_t i = 0; i < past_key_data.size(); i++) past_key_data[i] = 0.2f * static_cast<float>(i % 5 + 1);
+  for (size_t i = 0; i < past_value_data.size(); i++) past_value_data[i] = 0.3f * static_cast<float>(i % 3 + 1);
+
+  auto fetches = RunGQASharedKVFetches(
+      batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
+      num_heads, kv_num_heads, head_size);
+
+  EXPECT_EQ(fetches.present_key.size(), past_key_data.size());
+  EXPECT_EQ(fetches.present_value.size(), past_value_data.size());
+  for (size_t i = 0; i < past_key_data.size(); ++i) {
+    EXPECT_FLOAT_EQ(fetches.present_key[i], past_key_data[i]) << "present_key mismatch at index " << i;
+  }
+  for (size_t i = 0; i < past_value_data.size(); ++i) {
+    EXPECT_FLOAT_EQ(fetches.present_value[i], past_value_data[i]) << "present_value mismatch at index " << i;
+  }
+}
+
+TEST(GroupQueryAttentionTest, PresentCacheAppendsNewTokens_CPU) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 2;
+  constexpr int past_seq_len = 3;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+
+  std::vector<float> query_data(batch_size * sequence_length * hidden_size);
+  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> past_key_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  std::vector<float> past_value_data(batch_size * kv_num_heads * past_seq_len * head_size);
+
+  for (size_t i = 0; i < query_data.size(); ++i) query_data[i] = 0.1f * static_cast<float>(i + 1);
+  for (size_t i = 0; i < key_data.size(); ++i) key_data[i] = 1.0f + static_cast<float>(i);
+  for (size_t i = 0; i < value_data.size(); ++i) value_data[i] = 10.0f + static_cast<float>(i);
+  for (size_t i = 0; i < past_key_data.size(); ++i) past_key_data[i] = 100.0f + static_cast<float>(i);
+  for (size_t i = 0; i < past_value_data.size(); ++i) past_value_data[i] = 200.0f + static_cast<float>(i);
+
+  auto fetches = RunGQAAppendWithPastFetches(
+      batch_size, sequence_length, past_seq_len,
+      query_data, key_data, value_data, past_key_data, past_value_data,
+      num_heads, kv_num_heads, head_size);
+
+  std::vector<float> expected_present_key = past_key_data;
+  expected_present_key.insert(expected_present_key.end(), key_data.begin(), key_data.end());
+  std::vector<float> expected_present_value = past_value_data;
+  expected_present_value.insert(expected_present_value.end(), value_data.begin(), value_data.end());
+
+  EXPECT_EQ(fetches.present_key.size(), expected_present_key.size());
+  EXPECT_EQ(fetches.present_value.size(), expected_present_value.size());
+  for (size_t i = 0; i < expected_present_key.size(); ++i) {
+    EXPECT_FLOAT_EQ(fetches.present_key[i], expected_present_key[i]) << "present_key append mismatch at index " << i;
+  }
+  for (size_t i = 0; i < expected_present_value.size(); ++i) {
+    EXPECT_FLOAT_EQ(fetches.present_value[i], expected_present_value[i]) << "present_value append mismatch at index " << i;
+  }
 }
 
 // CPU: kv_sequence_length=0 with past, prompt phase (q_seq_len == total_seq_len).
@@ -1235,6 +1404,676 @@ TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_NoPast_Rejected) {
   tester.Run(OpTester::ExpectResult::kExpectFailure,
              "query and key must have the same sequence length",
              {}, nullptr, &execution_providers);
+}
+
+TEST(GroupQueryAttentionTest, CpuBlockTableNonQuantizedExecutes) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int num_blocks = 1;
+  constexpr int block_size = 4;
+  const std::vector<float> query_data(batch_size * sequence_length * hidden_size, 0.1f);
+  const std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size, 0.2f);
+  const std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size, 0.3f);
+  std::vector<float> past_key_data(num_blocks * block_size * kv_num_heads * head_size, 0.0f);
+  std::vector<float> past_value_data(num_blocks * block_size * kv_num_heads * head_size, 0.0f);
+  for (int i = 0; i < head_size; ++i) {
+    past_key_data[i] = 1.0f + static_cast<float>(i);
+    past_value_data[i] = 2.0f + static_cast<float>(i);
+  }
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, query_data);
+  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
+  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
+
+  tester.AddInput<float>("past_key", {num_blocks, block_size, kv_num_heads, head_size}, past_key_data);
+  tester.AddInput<float>("past_value", {num_blocks, block_size, kv_num_heads, head_size}, past_value_data);
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {2});
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+  tester.AddOptionalInputEdge<float>();    // k_scale
+  tester.AddOptionalInputEdge<float>();    // v_scale
+  tester.AddOptionalInputEdge<float>();    // q_norm_weight
+  tester.AddOptionalInputEdge<float>();    // k_norm_weight
+  tester.AddInput<int32_t>("block_table", {batch_size, 1}, {0});
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+  tester.AddOutput<float>("present_key", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+
+  tester.SetOutputTolerance(1e6f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+  auto fetches = tester.GetFetches();
+  const float* output_data = fetches[0].Get<Tensor>().Data<float>();
+  const float* present_key_data_fetched = fetches[1].Get<Tensor>().Data<float>();
+  const float* present_value_data_fetched = fetches[2].Get<Tensor>().Data<float>();
+
+  bool all_zero = true;
+  for (int i = 0; i < batch_size * sequence_length * hidden_size; ++i) {
+    EXPECT_FALSE(std::isnan(output_data[i])) << "NaN at index " << i;
+    if (output_data[i] != 0.0f) all_zero = false;
+  }
+  EXPECT_FALSE(all_zero) << "Output should not be all zeros";
+
+  for (int i = 0; i < head_size; ++i) {
+    EXPECT_FLOAT_EQ(present_key_data_fetched[i], past_key_data[i]) << "present_key slot 0 mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_value_data_fetched[i], past_value_data[i]) << "present_value slot 0 mismatch at channel " << i;
+  }
+  for (int i = 0; i < head_size; ++i) {
+    EXPECT_FLOAT_EQ(present_key_data_fetched[head_size + i], key_data[i]) << "present_key slot 1 mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_value_data_fetched[head_size + i], value_data[i]) << "present_value slot 1 mismatch at channel " << i;
+  }
+}
+
+TEST(GroupQueryAttentionTest, CpuBlockTableNonQuantizedCrossBlockAppend) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int num_blocks = 2;
+  constexpr int block_size = 2;
+
+  const std::vector<float> query_data(batch_size * sequence_length * hidden_size, 0.1f);
+  std::vector<float> key_data(kv_hidden_size);
+  std::vector<float> value_data(kv_hidden_size);
+  for (int i = 0; i < head_size; ++i) {
+    key_data[i] = 40.0f + static_cast<float>(i);
+    value_data[i] = 140.0f + static_cast<float>(i);
+  }
+
+  std::vector<float> past_key_data(num_blocks * block_size * kv_num_heads * head_size, 0.0f);
+  std::vector<float> past_value_data(num_blocks * block_size * kv_num_heads * head_size, 0.0f);
+  for (int i = 0; i < head_size; ++i) {
+    // physical block 1, slot 0 -> logical token 0
+    past_key_data[16 + i] = 10.0f + static_cast<float>(i);
+    past_value_data[16 + i] = 110.0f + static_cast<float>(i);
+    // physical block 1, slot 1 -> logical token 1
+    past_key_data[24 + i] = 20.0f + static_cast<float>(i);
+    past_value_data[24 + i] = 120.0f + static_cast<float>(i);
+    // physical block 0, slot 0 -> logical token 2
+    past_key_data[i] = 30.0f + static_cast<float>(i);
+    past_value_data[i] = 130.0f + static_cast<float>(i);
+  }
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, query_data);
+  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
+  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
+  tester.AddInput<float>("past_key", {num_blocks, block_size, kv_num_heads, head_size}, past_key_data);
+  tester.AddInput<float>("past_value", {num_blocks, block_size, kv_num_heads, head_size}, past_value_data);
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {3});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {4});
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+  tester.AddOptionalInputEdge<float>();    // k_scale
+  tester.AddOptionalInputEdge<float>();    // v_scale
+  tester.AddOptionalInputEdge<float>();    // q_norm_weight
+  tester.AddOptionalInputEdge<float>();    // k_norm_weight
+  tester.AddInput<int32_t>("block_table", {batch_size, 2}, {1, 0});
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+  tester.AddOutput<float>("present_key", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+
+  tester.SetOutputTolerance(1e6f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+  auto fetches = tester.GetFetches();
+  const float* output_data = fetches[0].Get<Tensor>().Data<float>();
+  const float* present_key_data_fetched = fetches[1].Get<Tensor>().Data<float>();
+  const float* present_value_data_fetched = fetches[2].Get<Tensor>().Data<float>();
+
+  bool all_zero = true;
+  for (int i = 0; i < batch_size * sequence_length * hidden_size; ++i) {
+    EXPECT_FALSE(std::isnan(output_data[i])) << "NaN at index " << i;
+    if (output_data[i] != 0.0f) all_zero = false;
+  }
+  EXPECT_FALSE(all_zero) << "Output should not be all zeros";
+
+  for (int i = 0; i < head_size; ++i) {
+    EXPECT_FLOAT_EQ(present_key_data_fetched[16 + i], 10.0f + static_cast<float>(i)) << "block1 slot0 key mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_value_data_fetched[16 + i], 110.0f + static_cast<float>(i)) << "block1 slot0 value mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_key_data_fetched[24 + i], 20.0f + static_cast<float>(i)) << "block1 slot1 key mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_value_data_fetched[24 + i], 120.0f + static_cast<float>(i)) << "block1 slot1 value mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_key_data_fetched[i], 30.0f + static_cast<float>(i)) << "block0 slot0 key mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_value_data_fetched[i], 130.0f + static_cast<float>(i)) << "block0 slot0 value mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_key_data_fetched[8 + i], 40.0f + static_cast<float>(i)) << "block0 slot1 key mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_value_data_fetched[8 + i], 140.0f + static_cast<float>(i)) << "block0 slot1 value mismatch at channel " << i;
+  }
+}
+
+TEST(GroupQueryAttentionTest, CpuBlockTableNonQuantizedMultiBatchAppend) {
+  constexpr int batch_size = 2;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int num_blocks = 4;
+  constexpr int block_size = 2;
+
+  const std::vector<float> query_data(batch_size * sequence_length * hidden_size, 0.1f);
+  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
+  for (int i = 0; i < head_size; ++i) {
+    key_data[i] = 40.0f + static_cast<float>(i);                  // batch 0 append token
+    value_data[i] = 140.0f + static_cast<float>(i);
+    key_data[head_size + i] = 50.0f + static_cast<float>(i);      // batch 1 append token
+    value_data[head_size + i] = 150.0f + static_cast<float>(i);
+  }
+
+  std::vector<float> past_key_data(num_blocks * block_size * kv_num_heads * head_size, 0.0f);
+  std::vector<float> past_value_data(num_blocks * block_size * kv_num_heads * head_size, 0.0f);
+  for (int i = 0; i < head_size; ++i) {
+    // batch 1 block table [2, 0]
+    past_key_data[32 + i] = 10.0f + static_cast<float>(i);
+    past_value_data[32 + i] = 110.0f + static_cast<float>(i);
+    past_key_data[40 + i] = 20.0f + static_cast<float>(i);
+    past_value_data[40 + i] = 120.0f + static_cast<float>(i);
+    past_key_data[i] = 30.0f + static_cast<float>(i);
+    past_value_data[i] = 130.0f + static_cast<float>(i);
+
+    // batch 0 block table [3, 1]
+    past_key_data[48 + i] = 210.0f + static_cast<float>(i);
+    past_value_data[48 + i] = 310.0f + static_cast<float>(i);
+    past_key_data[56 + i] = 220.0f + static_cast<float>(i);
+    past_value_data[56 + i] = 320.0f + static_cast<float>(i);
+    past_key_data[16 + i] = 230.0f + static_cast<float>(i);
+    past_value_data[16 + i] = 330.0f + static_cast<float>(i);
+  }
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, query_data);
+  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
+  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
+  tester.AddInput<float>("past_key", {num_blocks, block_size, kv_num_heads, head_size}, past_key_data);
+  tester.AddInput<float>("past_value", {num_blocks, block_size, kv_num_heads, head_size}, past_value_data);
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {3, 3});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {4});
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+  tester.AddOptionalInputEdge<float>();    // k_scale
+  tester.AddOptionalInputEdge<float>();    // v_scale
+  tester.AddOptionalInputEdge<float>();    // q_norm_weight
+  tester.AddOptionalInputEdge<float>();    // k_norm_weight
+  tester.AddInput<int32_t>("block_table", {batch_size, 2}, {3, 1, 2, 0});
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+  tester.AddOutput<float>("present_key", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+
+  tester.SetOutputTolerance(1e6f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+  auto fetches = tester.GetFetches();
+  const float* output_data = fetches[0].Get<Tensor>().Data<float>();
+  const float* present_key_data_fetched = fetches[1].Get<Tensor>().Data<float>();
+  const float* present_value_data_fetched = fetches[2].Get<Tensor>().Data<float>();
+
+  bool all_zero = true;
+  for (int i = 0; i < batch_size * sequence_length * hidden_size; ++i) {
+    EXPECT_FALSE(std::isnan(output_data[i])) << "NaN at index " << i;
+    if (output_data[i] != 0.0f) all_zero = false;
+  }
+  EXPECT_FALSE(all_zero) << "Output should not be all zeros";
+
+  for (int i = 0; i < head_size; ++i) {
+    // batch 1 existing tokens in block table [2,0]
+    EXPECT_FLOAT_EQ(present_key_data_fetched[32 + i], 10.0f + static_cast<float>(i)) << "block2 slot0 key mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_value_data_fetched[32 + i], 110.0f + static_cast<float>(i)) << "block2 slot0 value mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_key_data_fetched[40 + i], 20.0f + static_cast<float>(i)) << "block2 slot1 key mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_value_data_fetched[40 + i], 120.0f + static_cast<float>(i)) << "block2 slot1 value mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_key_data_fetched[i], 30.0f + static_cast<float>(i)) << "block0 slot0 key mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_value_data_fetched[i], 130.0f + static_cast<float>(i)) << "block0 slot0 value mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_key_data_fetched[8 + i], 50.0f + static_cast<float>(i)) << "block0 slot1 key mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_value_data_fetched[8 + i], 150.0f + static_cast<float>(i)) << "block0 slot1 value mismatch at channel " << i;
+
+    // batch 0 existing tokens in block table [3,1]
+    EXPECT_FLOAT_EQ(present_key_data_fetched[48 + i], 210.0f + static_cast<float>(i)) << "block3 slot0 key mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_value_data_fetched[48 + i], 310.0f + static_cast<float>(i)) << "block3 slot0 value mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_key_data_fetched[56 + i], 220.0f + static_cast<float>(i)) << "block3 slot1 key mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_value_data_fetched[56 + i], 320.0f + static_cast<float>(i)) << "block3 slot1 value mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_key_data_fetched[16 + i], 230.0f + static_cast<float>(i)) << "block1 slot0 key mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_value_data_fetched[16 + i], 330.0f + static_cast<float>(i)) << "block1 slot0 value mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_key_data_fetched[24 + i], 40.0f + static_cast<float>(i)) << "block1 slot1 key mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_value_data_fetched[24 + i], 140.0f + static_cast<float>(i)) << "block1 slot1 value mismatch at channel " << i;
+  }
+}
+
+TEST(GroupQueryAttentionTest, CpuBlockTableRejectsInvalidBlockId) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int num_blocks = 2;
+  constexpr int block_size = 2;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
+                         std::vector<float>(batch_size * sequence_length * hidden_size, 0.1f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.2f));
+  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.3f));
+
+  tester.AddInput<float>("past_key", {num_blocks, block_size, kv_num_heads, head_size},
+                         std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+  tester.AddInput<float>("past_value", {num_blocks, block_size, kv_num_heads, head_size},
+                         std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {0});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {1});
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+  tester.AddOptionalInputEdge<float>();    // k_scale
+  tester.AddOptionalInputEdge<float>();    // v_scale
+  tester.AddOptionalInputEdge<float>();    // q_norm_weight
+  tester.AddOptionalInputEdge<float>();    // k_norm_weight
+  tester.AddInput<int32_t>("block_table", {batch_size, 1}, {2});  // valid range is [-1, 2)
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+  tester.AddOutput<float>("present_key", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "is out of range [-1, 2)",
+             {}, nullptr, &execution_providers);
+}
+
+TEST(GroupQueryAttentionTest, CpuBlockTableRejectsTotalSequenceLengthExceedsCapacity) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int num_blocks = 2;
+  constexpr int block_size = 2;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
+                         std::vector<float>(batch_size * sequence_length * hidden_size, 0.1f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.2f));
+  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.3f));
+
+  tester.AddInput<float>("past_key", {num_blocks, block_size, kv_num_heads, head_size},
+                         std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+  tester.AddInput<float>("past_value", {num_blocks, block_size, kv_num_heads, head_size},
+                         std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {5});  // capacity is 2 * 2 = 4
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+  tester.AddOptionalInputEdge<float>();    // k_scale
+  tester.AddOptionalInputEdge<float>();    // v_scale
+  tester.AddOptionalInputEdge<float>();    // q_norm_weight
+  tester.AddOptionalInputEdge<float>();    // k_norm_weight
+  tester.AddInput<int32_t>("block_table", {batch_size, 2}, {1, 0});
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+  tester.AddOutput<float>("present_key", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "total_sequence_length exceeds block-table cache capacity",
+             {}, nullptr, &execution_providers);
+}
+
+TEST(GroupQueryAttentionTest, CpuBlockTableMultiBatchRejectsOneInvalidBlockId) {
+  constexpr int batch_size = 2;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int num_blocks = 2;
+  constexpr int block_size = 2;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
+                         std::vector<float>(batch_size * sequence_length * hidden_size, 0.1f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.2f));
+  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.3f));
+
+  tester.AddInput<float>("past_key", {num_blocks, block_size, kv_num_heads, head_size},
+                         std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+  tester.AddInput<float>("past_value", {num_blocks, block_size, kv_num_heads, head_size},
+                         std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {0, 0});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {1});
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+  tester.AddOptionalInputEdge<float>();    // k_scale
+  tester.AddOptionalInputEdge<float>();    // v_scale
+  tester.AddOptionalInputEdge<float>();    // q_norm_weight
+  tester.AddOptionalInputEdge<float>();    // k_norm_weight
+  // batch 0: valid [0,1], batch 1: invalid [2,0]
+  tester.AddInput<int32_t>("block_table", {batch_size, 2}, {0, 1, 2, 0});
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+  tester.AddOutput<float>("present_key", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "block_table[1,0] = 2 is out of range",
+             {}, nullptr, &execution_providers);
+}
+
+TEST(GroupQueryAttentionTest, CpuBlockTableRejectsMoreBlocksPerSequenceThanCache) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int num_blocks = 2;
+  constexpr int block_size = 2;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
+                         std::vector<float>(batch_size * sequence_length * hidden_size, 0.1f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.2f));
+  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.3f));
+
+  tester.AddInput<float>("past_key", {num_blocks, block_size, kv_num_heads, head_size},
+                         std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+  tester.AddInput<float>("past_value", {num_blocks, block_size, kv_num_heads, head_size},
+                         std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {0});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {1});
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+  tester.AddOptionalInputEdge<float>();    // k_scale
+  tester.AddOptionalInputEdge<float>();    // v_scale
+  tester.AddOptionalInputEdge<float>();    // q_norm_weight
+  tester.AddOptionalInputEdge<float>();    // k_norm_weight
+  // max_num_blocks_per_seq=3 while only num_blocks=2 exist in cache
+  tester.AddInput<int32_t>("block_table", {batch_size, 3}, {0, 1, -1});
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+  tester.AddOutput<float>("present_key", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "references more blocks per sequence than exist in cache",
+             {}, nullptr, &execution_providers);
+}
+
+TEST(GroupQueryAttentionTest, CpuBlockTableSparseMinusOneSkipsUnmappedBlock) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int num_blocks = 2;
+  constexpr int block_size = 2;
+
+  std::vector<float> past_key_data(num_blocks * block_size * kv_num_heads * head_size, -100.0f);
+  std::vector<float> past_value_data(num_blocks * block_size * kv_num_heads * head_size, -200.0f);
+  for (int i = 0; i < head_size; ++i) {
+    // Mapped block 0, slot 0 is logical token 0.
+    past_key_data[i] = 10.0f + static_cast<float>(i);
+    past_value_data[i] = 110.0f + static_cast<float>(i);
+  }
+
+  std::vector<float> key_data(kv_hidden_size);
+  std::vector<float> value_data(kv_hidden_size);
+  for (int i = 0; i < head_size; ++i) {
+    key_data[i] = 20.0f + static_cast<float>(i);
+    value_data[i] = 120.0f + static_cast<float>(i);
+  }
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
+                         std::vector<float>(batch_size * sequence_length * hidden_size, 0.1f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
+  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
+  tester.AddInput<float>("past_key", {num_blocks, block_size, kv_num_heads, head_size}, past_key_data);
+  tester.AddInput<float>("past_value", {num_blocks, block_size, kv_num_heads, head_size}, past_value_data);
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {2});
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+  tester.AddOptionalInputEdge<float>();    // k_scale
+  tester.AddOptionalInputEdge<float>();    // v_scale
+  tester.AddOptionalInputEdge<float>();    // q_norm_weight
+  tester.AddOptionalInputEdge<float>();    // k_norm_weight
+  tester.AddInput<int32_t>("block_table", {batch_size, 2}, {0, -1});
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+  tester.AddOutput<float>("present_key", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+
+  tester.SetOutputTolerance(1e6f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+  auto fetches = tester.GetFetches();
+  const float* present_key_data_fetched = fetches[1].Get<Tensor>().Data<float>();
+  const float* present_value_data_fetched = fetches[2].Get<Tensor>().Data<float>();
+
+  for (int i = 0; i < head_size; ++i) {
+    EXPECT_FLOAT_EQ(present_key_data_fetched[i], 10.0f + static_cast<float>(i)) << "mapped block slot0 key mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_value_data_fetched[i], 110.0f + static_cast<float>(i)) << "mapped block slot0 value mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_key_data_fetched[head_size + i], 20.0f + static_cast<float>(i)) << "mapped block slot1 key mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_value_data_fetched[head_size + i], 120.0f + static_cast<float>(i)) << "mapped block slot1 value mismatch at channel " << i;
+  }
+
+  // Unmapped physical block 1 is not materialized/scattered and remains zero-initialized
+  // in the freshly allocated present cache output.
+  const size_t block1_offset = static_cast<size_t>(block_size) * kv_num_heads * head_size;
+  for (int i = 0; i < head_size * block_size; ++i) {
+    EXPECT_FLOAT_EQ(present_key_data_fetched[block1_offset + static_cast<size_t>(i)], 0.0f)
+        << "unmapped block key mismatch at index " << i;
+    EXPECT_FLOAT_EQ(present_value_data_fetched[block1_offset + static_cast<size_t>(i)], 0.0f)
+        << "unmapped block value mismatch at index " << i;
+  }
+}
+
+TEST(GroupQueryAttentionTest, CpuBlockTableSparseMinusOneAtCapacityBoundary) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int num_blocks = 2;
+  constexpr int block_size = 2;
+
+  std::vector<float> past_key_data(num_blocks * block_size * kv_num_heads * head_size, -100.0f);
+  std::vector<float> past_value_data(num_blocks * block_size * kv_num_heads * head_size, -200.0f);
+
+  // Logical token 2 is mapped to physical block 1, slot 0.
+  const size_t block1_offset = static_cast<size_t>(block_size) * kv_num_heads * head_size;
+  for (int i = 0; i < head_size; ++i) {
+    past_key_data[block1_offset + static_cast<size_t>(i)] = 30.0f + static_cast<float>(i);
+    past_value_data[block1_offset + static_cast<size_t>(i)] = 130.0f + static_cast<float>(i);
+  }
+
+  std::vector<float> key_data(kv_hidden_size);
+  std::vector<float> value_data(kv_hidden_size);
+  for (int i = 0; i < head_size; ++i) {
+    key_data[i] = 40.0f + static_cast<float>(i);
+    value_data[i] = 140.0f + static_cast<float>(i);
+  }
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
+                         std::vector<float>(batch_size * sequence_length * hidden_size, 0.1f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
+  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
+  tester.AddInput<float>("past_key", {num_blocks, block_size, kv_num_heads, head_size}, past_key_data);
+  tester.AddInput<float>("past_value", {num_blocks, block_size, kv_num_heads, head_size}, past_value_data);
+  // total_sequence_length equals cache capacity (2 * 2 = 4): boundary append should succeed.
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {3});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {4});
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+  tester.AddOptionalInputEdge<float>();    // k_scale
+  tester.AddOptionalInputEdge<float>();    // v_scale
+  tester.AddOptionalInputEdge<float>();    // q_norm_weight
+  tester.AddOptionalInputEdge<float>();    // k_norm_weight
+  // block 0 is intentionally unmapped for this sequence.
+  tester.AddInput<int32_t>("block_table", {batch_size, 2}, {-1, 1});
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+  tester.AddOutput<float>("present_key", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<float>(num_blocks * block_size * kv_num_heads * head_size, 0.0f));
+
+  tester.SetOutputTolerance(1e6f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+  auto fetches = tester.GetFetches();
+  const float* present_key_data_fetched = fetches[1].Get<Tensor>().Data<float>();
+  const float* present_value_data_fetched = fetches[2].Get<Tensor>().Data<float>();
+
+  // Unmapped physical block 0 remains zero in fresh present cache output.
+  for (int i = 0; i < head_size * block_size; ++i) {
+    EXPECT_FLOAT_EQ(present_key_data_fetched[static_cast<size_t>(i)], 0.0f)
+        << "unmapped block0 key mismatch at index " << i;
+    EXPECT_FLOAT_EQ(present_value_data_fetched[static_cast<size_t>(i)], 0.0f)
+        << "unmapped block0 value mismatch at index " << i;
+  }
+
+  // Block 1 slot 0 preserved from past (logical token 2), slot 1 appended from current key/value.
+  for (int i = 0; i < head_size; ++i) {
+    EXPECT_FLOAT_EQ(present_key_data_fetched[block1_offset + static_cast<size_t>(i)], 30.0f + static_cast<float>(i))
+        << "block1 slot0 key mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_value_data_fetched[block1_offset + static_cast<size_t>(i)], 130.0f + static_cast<float>(i))
+        << "block1 slot0 value mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_key_data_fetched[block1_offset + static_cast<size_t>(head_size + i)], 40.0f + static_cast<float>(i))
+        << "block1 slot1 key mismatch at channel " << i;
+    EXPECT_FLOAT_EQ(present_value_data_fetched[block1_offset + static_cast<size_t>(head_size + i)], 140.0f + static_cast<float>(i))
+        << "block1 slot1 value mismatch at channel " << i;
+  }
 }
 
 // CUDA: kv_sequence_length=0 with past, prompt phase. Cross-checks against CPU.
@@ -2195,6 +3034,65 @@ TEST(GroupQueryAttentionTest, QuantizedKV_MissingScale) {
   execution_providers.push_back(DefaultCpuExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectFailure,
              "k_scale must be provided",
+             {}, nullptr, &execution_providers);
+}
+
+// Error: block_table is currently unsupported for quantized KV cache on CPU.
+TEST(GroupQueryAttentionTest, QuantizedKV_BlockTableRejected_CPU) {
+  constexpr int batch_size = 1;
+  constexpr int seq_len = 2;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int num_blocks = 2;
+  constexpr int block_size = 2;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+  tester.AddAttribute<std::string>("k_quant_type", "PER_TENSOR");
+  tester.AddAttribute<std::string>("v_quant_type", "PER_TENSOR");
+  tester.AddAttribute<int64_t>("kv_cache_bit_width", 8);
+
+  tester.AddInput<float>("query", {batch_size, seq_len, hidden_size},
+                         std::vector<float>(batch_size * seq_len * hidden_size, 0.1f));
+  tester.AddInput<float>("key", {batch_size, seq_len, kv_hidden_size},
+                         std::vector<float>(batch_size * seq_len * kv_hidden_size, 0.2f));
+  tester.AddInput<float>("value", {batch_size, seq_len, kv_hidden_size},
+                         std::vector<float>(batch_size * seq_len * kv_hidden_size, 0.3f));
+
+  // Quantized block cache tensors: (num_blocks, block_size, kv_num_heads, head_size)
+  tester.AddInput<int8_t>("past_key", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<int8_t>(num_blocks * block_size * kv_num_heads * head_size, 0));
+  tester.AddInput<int8_t>("past_value", {num_blocks, block_size, kv_num_heads, head_size},
+                          std::vector<int8_t>(num_blocks * block_size * kv_num_heads * head_size, 0));
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {2});
+
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+  tester.AddInput<float>("k_scale", {1}, {0.01f});
+  tester.AddInput<float>("v_scale", {1}, {0.01f});
+  tester.AddOptionalInputEdge<float>();    // q_norm_weight
+  tester.AddOptionalInputEdge<float>();    // k_norm_weight
+  tester.AddInput<int32_t>("block_table", {batch_size, 1}, {0});
+
+  tester.AddOutput<float>("output", {batch_size, seq_len, hidden_size},
+                          std::vector<float>(batch_size * seq_len * hidden_size, 0.0f));
+  tester.AddOutput<int8_t>("present_key", {num_blocks, block_size, kv_num_heads, head_size},
+                           std::vector<int8_t>(num_blocks * block_size * kv_num_heads * head_size, 0));
+  tester.AddOutput<int8_t>("present_value", {num_blocks, block_size, kv_num_heads, head_size},
+                           std::vector<int8_t>(num_blocks * block_size * kv_num_heads * head_size, 0));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "block_table mode is not implemented yet for quantized KV cache",
              {}, nullptr, &execution_providers);
 }
 

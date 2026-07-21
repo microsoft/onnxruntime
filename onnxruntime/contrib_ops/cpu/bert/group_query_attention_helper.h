@@ -165,6 +165,70 @@ Status CheckPast(const T* past_key, const T* past_value, int batch_size, int kv_
 }
 
 template <typename T>
+Status CheckBlockCache(const T* key_cache,
+                       const T* value_cache,
+                       int kv_num_heads,
+                       int head_size,
+                       int kv_cache_bit_width,
+                       int& num_blocks,
+                       int& block_size,
+                       int kv_cache_extra_bits = 0) {
+  const auto& key_cache_dims = key_cache->Shape().GetDims();
+  const auto& value_cache_dims = value_cache->Shape().GetDims();
+
+  if (key_cache_dims.size() != 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'past_key' is expected to have 4 dimensions for block cache, got ",
+                           key_cache_dims.size());
+  }
+  if (value_cache_dims.size() != 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'past_value' is expected to have 4 dimensions for block cache, got ",
+                           value_cache_dims.size());
+  }
+
+  num_blocks = static_cast<int>(key_cache_dims[0]);
+  block_size = static_cast<int>(key_cache_dims[1]);
+  if (num_blocks <= 0 || block_size <= 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Block cache must have positive num_blocks and block_size, got ",
+                           num_blocks, " and ", block_size);
+  }
+
+  if (value_cache_dims[0] != key_cache_dims[0]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'past_value' dimension 0 should match num_blocks, got ",
+                           value_cache_dims[0]);
+  }
+  if (value_cache_dims[1] != key_cache_dims[1]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'past_value' dimension 1 should match block_size, got ",
+                           value_cache_dims[1]);
+  }
+  if (key_cache_dims[2] != kv_num_heads || value_cache_dims[2] != kv_num_heads) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Block cache dimension 2 should be kv_num_heads, got ",
+                           key_cache_dims[2], " and ", value_cache_dims[2]);
+  }
+
+  int packed_head_size;
+  if (kv_cache_bit_width == 0) {
+    packed_head_size = head_size;
+  } else {
+    int bits_per_element = static_cast<int>(key_cache->DataType()->Size()) * 8;
+    packed_head_size = (head_size * kv_cache_bit_width + kv_cache_extra_bits) / bits_per_element;
+  }
+
+  if (key_cache_dims[3] != packed_head_size || value_cache_dims[3] != packed_head_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Block cache dimension 3 should match packed head size ", packed_head_size,
+                           ", got ", key_cache_dims[3], " and ", value_cache_dims[3]);
+  }
+
+  return Status::OK();
+}
+
+template <typename T>
 Status CheckRotaryCaches(const T* cos_cache, const T* sin_cache, int head_size, int total_sequence_length,
                          int& rotary_dim) {
   const auto& cos_dims = cos_cache->Shape().GetDims();
@@ -199,6 +263,28 @@ Status CheckRotaryCaches(const T* cos_cache, const T* sin_cache, int head_size, 
   return Status::OK();
 }
 
+template <typename T>
+Status CheckBlockTable(const T* block_table, int batch_size, int& max_num_blocks_per_seq) {
+  if (block_table == nullptr) {
+    max_num_blocks_per_seq = 0;
+    return Status::OK();
+  }
+
+  const auto& block_table_dims = block_table->Shape().GetDims();
+  if (block_table_dims.size() != 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "block_table must be 2D.");
+  }
+  if (block_table_dims[0] != batch_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "block_table dimension 0 should be batch_size, got ",
+                           block_table_dims[0]);
+  }
+
+  max_num_blocks_per_seq = static_cast<int>(block_table_dims[1]);
+  return Status::OK();
+}
+
 template <typename T = Tensor>
 Status CheckInputs(const T* query,
                    const T* key,
@@ -207,6 +293,7 @@ Status CheckInputs(const T* query,
                    const T* past_value,
                    const T* cos_cache,
                    const T* sin_cache,
+                   const T* block_table,
                    void* parameters,
                    int num_heads,
                    int kv_num_heads,
@@ -220,13 +307,15 @@ Status CheckInputs(const T* query,
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
-  // Note: Here S* is seqlen_past_kv_cache, S+ is seqlen_present_kv_cache
-  //     past_key                   : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
-  //     past_value                 : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
-  // no packing for q/k/v:
-  //     query            (Q)       : (B, S, D) or (B, S, (D_q + 2 D_kv))
-  //     key              (K)       : (B, S, D_kv) or nullptr
-  //     value            (V)       : (B, S, D_kv) or nullptr
+  // GroupQueryAttention currently supports two KV-cache contracts:
+  // 1. Standard contiguous cache (default):
+  //      past_key/past_value      : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
+  // 2. Optional block-cache contract (enabled only when block_table is provided):
+  //      past_key/past_value      : (num_blocks, block_size, N_k, H)
+  // In both modes, query/key/value inputs remain un-packed or packed exactly as before:
+  //      query (Q)                : (B, S, D) or (B, S, (D_q + 2 D_kv))
+  //      key (K)                  : (B, S, D_kv) or nullptr
+  //      value (V)                : (B, S, D_kv) or nullptr
 
   AttentionQkvFormat qkv_format = Q_K_V_BSNH;
   AttentionQkvFormat past_kv_format = Q_K_V_BNSH;
@@ -248,6 +337,8 @@ Status CheckInputs(const T* query,
   int q_hidden_size = 0;
   int kv_hidden_size = 0;
   int head_size = 0;
+  int num_blocks = 0;
+  int block_size = 0;
   const bool is_packed_qkv = (key == nullptr);
   if (!is_packed_qkv) {
     ORT_RETURN_IF_ERROR(Check_Q_K_V(query, key, value, num_heads, kv_num_heads, batch_size, sequence_length,
@@ -264,23 +355,33 @@ Status CheckInputs(const T* query,
                            "kv_cache_extra_bits requires kv_cache_bit_width to be non-zero.");
   }
 
+  const bool use_block_table = (block_table != nullptr);
+
   // Check past-present KV
   int32_t past_sequence_length = 0;
   if (past_key != nullptr && past_value != nullptr) {
-    ORT_RETURN_IF_ERROR(CheckPast(past_key, past_value, batch_size, kv_num_heads, head_size, kv_cache_bit_width, past_sequence_length, kv_cache_extra_bits));
-    // When past KV exists, Q and K/V must have the same sequence length,
-    // UNLESS kv_sequence_length is 0 (shared KV: new K/V are empty, past buffer
-    // already contains the full shared KV cache — no append needed).
-    if (kv_sequence_length != sequence_length && kv_sequence_length != 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "query and key must have the same sequence length when past_key is provided, "
-                             "or key sequence length must be 0 for shared KV (no new KV to append). "
-                             "Got sequence_length=",
-                             sequence_length, ", kv_sequence_length=", kv_sequence_length);
+    if (use_block_table) {
+      ORT_RETURN_IF_ERROR(CheckBlockCache(past_key, past_value, kv_num_heads, head_size,
+                                          kv_cache_bit_width, num_blocks, block_size, kv_cache_extra_bits));
+    } else {
+      ORT_RETURN_IF_ERROR(CheckPast(past_key, past_value, batch_size, kv_num_heads, head_size, kv_cache_bit_width, past_sequence_length, kv_cache_extra_bits));
+      // When past KV exists, Q and K/V must have the same sequence length,
+      // UNLESS kv_sequence_length is 0 (shared KV: new K/V are empty, past buffer
+      // already contains the full shared KV cache — no append needed).
+      if (kv_sequence_length != sequence_length && kv_sequence_length != 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "query and key must have the same sequence length when past_key is provided, "
+                               "or key sequence length must be 0 for shared KV (no new KV to append). "
+                               "Got sequence_length=",
+                               sequence_length, ", kv_sequence_length=", kv_sequence_length);
+      }
     }
   } else if (past_key != nullptr || past_value != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'past_key' and 'past_value' shall be both present or both absent.");
+  } else if (use_block_table) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "block_table requires past_key and past_value block-cache inputs.");
   } else if (kv_sequence_length != sequence_length) {
     // Without past KV, Q and K/V must have the same sequence length.
     // Cross-attention (different Q/KV lengths) is not supported by GQA.
@@ -288,6 +389,34 @@ Status CheckInputs(const T* query,
                            "query and key must have the same sequence length when past_key is not provided. "
                            "Got sequence_length=",
                            sequence_length, ", kv_sequence_length=", kv_sequence_length);
+  }
+
+  int max_num_blocks_per_seq = 0;
+  ORT_RETURN_IF_ERROR(CheckBlockTable(block_table, batch_size, max_num_blocks_per_seq));
+  if (use_block_table) {
+    if (max_num_blocks_per_seq <= 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "block_table must provide at least one block per sequence.");
+    }
+    past_sequence_length = max_num_blocks_per_seq * block_size;
+    if (max_num_blocks_per_seq > num_blocks) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "block_table references more blocks per sequence than exist in cache: ",
+                             max_num_blocks_per_seq, " > ", num_blocks);
+    }
+    if (block_table->Location().device.Type() == OrtDevice::CPU) {
+      const int32_t* block_table_data = block_table->template Data<int32_t>();
+      for (int batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
+        for (int block_idx = 0; block_idx < max_num_blocks_per_seq; ++block_idx) {
+          const int32_t block_id = block_table_data[batch_idx * max_num_blocks_per_seq + block_idx];
+          if (block_id < -1 || block_id >= num_blocks) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                   "block_table[", batch_idx, ",", block_idx, "] = ", block_id,
+                                   " is out of range [-1, ", num_blocks, ").");
+          }
+        }
+      }
+    }
   }
 
   // Spec requires 1D shape (batch_size), but older model builders may add unit
@@ -321,6 +450,12 @@ Status CheckInputs(const T* query,
   if (is_total_seqlen_on_cpu && total_sequence_length <= 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "total_sequence_length must be positive, got ", total_sequence_length, ".");
+  }
+
+  if (use_block_table && is_total_seqlen_on_cpu && total_sequence_length > past_sequence_length) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "total_sequence_length exceeds block-table cache capacity: ",
+                           total_sequence_length, " > ", past_sequence_length);
   }
 
   int present_sequence_length = std::max(total_sequence_length, past_sequence_length);
@@ -373,8 +508,11 @@ Status CheckInputs(const T* query,
     output_parameters->batch_size = batch_size;
     output_parameters->sequence_length = sequence_length;                  // sequence length of Q
     output_parameters->kv_sequence_length = kv_sequence_length;            // sequence length of K/V inputs
+    output_parameters->num_blocks = num_blocks;
+    output_parameters->block_size = block_size;
     output_parameters->seqlen_past_kv_cache = past_sequence_length;        // max sequence length of past kv tensors
     output_parameters->seqlen_present_kv_cache = present_sequence_length;  // max sequence length of present kv tensors
+    output_parameters->max_num_blocks_per_seq = max_num_blocks_per_seq;
     output_parameters->total_sequence_length = total_sequence_length;      // total sequence length
     output_parameters->hidden_size = q_hidden_size;
     output_parameters->num_heads = num_heads;
@@ -386,6 +524,8 @@ Status CheckInputs(const T* query,
     output_parameters->is_unidirectional = true;
     output_parameters->is_subsequent_prompt = is_subsequent_prompt;
     output_parameters->is_first_prompt = is_first_prompt;
+    output_parameters->block_table = block_table != nullptr ? block_table->template Data<int32_t>() : nullptr;
+    output_parameters->use_block_table = (block_table != nullptr);
     output_parameters->scale = scale;
     output_parameters->softcap = softcap;
     output_parameters->qkv_format = qkv_format;
