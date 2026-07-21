@@ -3,6 +3,7 @@
 
 #include "core/platform/posix/telemetry.h"
 #include "core/platform/posix/device_id.h"
+#include "core/platform/posix/telemetry_sampling.h"
 #include "core/platform/telemetry_environment.h"
 #include "core/platform/telemetry_guid.h"
 #include "core/platform/telemetry_redaction.h"
@@ -79,7 +80,6 @@ std::unique_ptr<::Microsoft::Applications::Events::ILogConfiguration> PosixTelem
 std::atomic<bool> PosixTelemetry::enabled_{true};
 std::atomic<uint32_t> PosixTelemetry::projection_{0};
 std::atomic<bool> PosixTelemetry::process_info_logged_{false};
-std::atomic<uint32_t> PosixTelemetry::system_metrics_sample_counter_{0};
 
 #if !defined(ORT_TELEMETRY_TENANT_TOKEN)
 namespace {
@@ -134,11 +134,6 @@ enum class EventPriority {
   CRITICAL = EventLatency_RealTime  // ProcessInfo, SessionCreation
 };
 
-// SystemMetrics is emitted from LogEvaluationStop, i.e. once per inference Run(), which is a hot
-// path for small/high-frequency models. Sample it to bound the per-run getrusage() + event cost:
-// the event is emitted on the first run and then once every kSystemMetricsSampleInterval runs.
-constexpr uint32_t kSystemMetricsSampleInterval = 100;
-
 // Helper class to build events with common properties
 class EventBuilder {
  private:
@@ -149,9 +144,15 @@ class EventBuilder {
       : props_(std::move(event_name)) {
     // Set latency/priority
     props_.SetLatency(static_cast<EventLatency>(priority));
+    props_.SetPopsample(100.0);
 
     // All ORT telemetry is required system metadata (no PII)
     props_.SetLevel(DIAG_LEVEL_REQUIRED);
+  }
+
+  EventBuilder& SetPopsample(double sample_rate_percent) {
+    props_.SetPopsample(sample_rate_percent);
+    return *this;
   }
 
   EventBuilder& AddString(const char* key, const std::string& value) {
@@ -272,6 +273,15 @@ namespace {
 const std::string& GetAppSessionGuid() {
   static const std::string guid = GenerateGuidV4();
   return guid;
+}
+
+bool PrepareSampledEvent(EventBuilder& event, uint32_t session_id) {
+  if (!telemetry_internal::ShouldSampleSession(GetAppSessionGuid(), session_id)) {
+    return false;
+  }
+
+  event.SetPopsample(telemetry_internal::kModelSessionSampleRatePercent);
+  return true;
 }
 
 int32_t GetProcessorCount() {
@@ -764,9 +774,11 @@ void PosixTelemetry::LogSessionCreationStart(uint32_t session_id) const {
     return;
   }
 
-  auto event = EventBuilder("SessionCreationStart", EventPriority::CRITICAL)
-                   .AddUInt32("sessionId", session_id)
-                   .Build();
+  auto builder = EventBuilder("SessionCreationStart", EventPriority::CRITICAL);
+  if (!PrepareSampledEvent(builder, session_id)) {
+    return;
+  }
+  auto event = builder.AddUInt32("sessionId", session_id).Build();
 
   LogEventAsync(std::move(event));
 }
@@ -776,9 +788,11 @@ void PosixTelemetry::LogEvaluationStop(uint32_t session_id) const {
     return;
   }
 
-  auto event = EventBuilder("EvaluationStop", EventPriority::NORMAL)
-                   .AddUInt32("sessionId", session_id)
-                   .Build();
+  auto builder = EventBuilder("EvaluationStop", EventPriority::NORMAL);
+  if (!PrepareSampledEvent(builder, session_id)) {
+    return;
+  }
+  auto event = builder.AddUInt32("sessionId", session_id).Build();
 
   LogEventAsync(std::move(event));
 
@@ -791,9 +805,11 @@ void PosixTelemetry::LogEvaluationStart(uint32_t session_id) const {
     return;
   }
 
-  auto event = EventBuilder("EvaluationStart", EventPriority::NORMAL)
-                   .AddUInt32("sessionId", session_id)
-                   .Build();
+  auto builder = EventBuilder("EvaluationStart", EventPriority::NORMAL);
+  if (!PrepareSampledEvent(builder, session_id)) {
+    return;
+  }
+  auto event = builder.AddUInt32("sessionId", session_id).Build();
 
   LogEventAsync(std::move(event));
 }
@@ -824,26 +840,29 @@ void PosixTelemetry::LogSessionCreation(
   // (LogAllSessions). Kept here for future compatibility if a similar mechanism is added for POSIX.
   std::string event_name = captureState ? "SessionCreation_CaptureState" : "SessionCreation";
 
-  auto builder = EventBuilder(std::move(event_name), EventPriority::CRITICAL)
-                     .AddUInt32("sessionId", session_id)
-                     .AddInt64("irVersion", ir_version)
-                     .AddUInt32("OrtProgrammingProjection", projection_.load())
-                     .AddString("modelProducerName", model_producer_name)
-                     .AddString("modelProducerVersion", model_producer_version)
-                     .AddString("modelDomain", model_domain)
-                     .AddIntMap("domainToVersionMap", domain_to_version_map)
-                     .AddString("modelFileName", model_file_name)
-                     .AddString("modelGraphName", model_graph_name)
-                     .AddString("modelWeightType", model_weight_type)
-                     .AddString("modelGraphHash", model_graph_hash)
-                     .AddString("modelWeightHash", model_weight_hash)
-                     .AddStringMap("modelMetaData", model_metadata)
-                     .AddString("loadedFrom", loadedFrom)
-                     .AddStringList("executionProviderIds", execution_provider_ids)
-                     .AddString("hardwareDeviceTypes", hardware_device_types)
-                     .AddString("hardwareVendorIds", hardware_vendor_ids)
-                     .AddString("executionProviderVersions", ep_versions)
-                     .AddBool("usefp16", use_fp16);
+  auto builder = EventBuilder(std::move(event_name), EventPriority::CRITICAL);
+  if (!PrepareSampledEvent(builder, session_id)) {
+    return;
+  }
+  builder.AddUInt32("sessionId", session_id)
+      .AddInt64("irVersion", ir_version)
+      .AddUInt32("OrtProgrammingProjection", projection_.load())
+      .AddString("modelProducerName", model_producer_name)
+      .AddString("modelProducerVersion", model_producer_version)
+      .AddString("modelDomain", model_domain)
+      .AddIntMap("domainToVersionMap", domain_to_version_map)
+      .AddString("modelFileName", model_file_name)
+      .AddString("modelGraphName", model_graph_name)
+      .AddString("modelWeightType", model_weight_type)
+      .AddString("modelGraphHash", model_graph_hash)
+      .AddString("modelWeightHash", model_weight_hash)
+      .AddStringMap("modelMetaData", model_metadata)
+      .AddString("loadedFrom", loadedFrom)
+      .AddStringList("executionProviderIds", execution_provider_ids)
+      .AddString("hardwareDeviceTypes", hardware_device_types)
+      .AddString("hardwareVendorIds", hardware_vendor_ids)
+      .AddString("executionProviderVersions", ep_versions)
+      .AddBool("usefp16", use_fp16);
 
   LogEventAsync(builder.Build());
 }
@@ -861,8 +880,11 @@ void PosixTelemetry::LogCompileModelStart(
     return;
   }
 
-  auto event = EventBuilder("CompileModelStart", EventPriority::NORMAL)
-                   .AddUInt32("sessionId", session_id)
+  auto builder = EventBuilder("CompileModelStart", EventPriority::NORMAL);
+  if (!PrepareSampledEvent(builder, session_id)) {
+    return;
+  }
+  auto event = builder.AddUInt32("sessionId", session_id)
                    .AddString("inputSource", input_source)
                    .AddString("outputTarget", output_target)
                    .AddUInt32("flags", flags)
@@ -885,8 +907,11 @@ void PosixTelemetry::LogCompileModelComplete(
     return;
   }
 
-  auto event = EventBuilder("CompileModelComplete", EventPriority::NORMAL)
-                   .AddUInt32("sessionId", session_id)
+  auto builder = EventBuilder("CompileModelComplete", EventPriority::NORMAL);
+  if (!PrepareSampledEvent(builder, session_id)) {
+    return;
+  }
+  auto event = builder.AddUInt32("sessionId", session_id)
                    .AddBool("success", success)
                    .AddUInt32("errorCode", error_code)
                    .AddUInt32("errorCategory", error_category)
@@ -910,8 +935,11 @@ void PosixTelemetry::LogRuntimeError(
     file_view.remove_prefix(slash + 1);
   }
 
-  auto event = EventBuilder("RuntimeError", EventPriority::HIGH)
-                   .AddUInt32("sessionId", session_id)
+  auto builder = EventBuilder("RuntimeError", EventPriority::HIGH);
+  if (!PrepareSampledEvent(builder, session_id)) {
+    return;
+  }
+  auto event = builder.AddUInt32("sessionId", session_id)
                    .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                    .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
                    .AddString("errorMessage", ScrubStringForTelemetry(status.ErrorMessage()))
@@ -930,8 +958,11 @@ void PosixTelemetry::LogRuntimeInferenceError(uint32_t session_id, const common:
     return;
   }
 
-  auto event = EventBuilder("RuntimeInferenceError", EventPriority::HIGH)
-                   .AddUInt32("sessionId", session_id)
+  auto builder = EventBuilder("RuntimeInferenceError", EventPriority::HIGH);
+  if (!PrepareSampledEvent(builder, session_id)) {
+    return;
+  }
+  auto event = builder.AddUInt32("sessionId", session_id)
                    .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                    .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
                    .AddString("errorMessage", ScrubStringForTelemetry(status.ErrorMessage()))
@@ -951,8 +982,11 @@ void PosixTelemetry::LogRuntimePerf(
     return;
   }
 
-  auto event = EventBuilder("RuntimePerf", EventPriority::NORMAL)
-                   .AddUInt32("sessionId", session_id)
+  auto builder = EventBuilder("RuntimePerf", EventPriority::NORMAL);
+  if (!PrepareSampledEvent(builder, session_id)) {
+    return;
+  }
+  auto event = builder.AddUInt32("sessionId", session_id)
                    .AddUInt32("totalRuns", total_runs_since_last)
                    .AddInt64("totalRunDuration", total_run_duration_since_last)
                    .AddBatchSizeDurations(duration_per_batch_size)
@@ -984,8 +1018,11 @@ void PosixTelemetry::LogAutoEpSelection(
     return;
   }
 
-  auto event = EventBuilder("EpAutoSelection", EventPriority::NORMAL)
-                   .AddUInt32("sessionId", session_id)
+  auto builder = EventBuilder("EpAutoSelection", EventPriority::NORMAL);
+  if (!PrepareSampledEvent(builder, session_id)) {
+    return;
+  }
+  auto event = builder.AddUInt32("sessionId", session_id)
                    .AddString("selectionPolicy", selection_policy)
                    .AddStringList("requestedExecutionProviderIds", requested_execution_provider_ids)
                    .AddStringList("availableExecutionProviderIds", available_execution_provider_ids)
@@ -1018,9 +1055,11 @@ void PosixTelemetry::LogModelLoadStart(uint32_t session_id) const {
     return;
   }
 
-  auto event = EventBuilder("ModelLoadStart", EventPriority::NORMAL)
-                   .AddUInt32("sessionId", session_id)
-                   .Build();
+  auto builder = EventBuilder("ModelLoadStart", EventPriority::NORMAL);
+  if (!PrepareSampledEvent(builder, session_id)) {
+    return;
+  }
+  auto event = builder.AddUInt32("sessionId", session_id).Build();
 
   LogEventAsync(std::move(event));
 }
@@ -1030,8 +1069,11 @@ void PosixTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& 
     return;
   }
 
-  auto event = EventBuilder("ModelLoadEnd", EventPriority::NORMAL)
-                   .AddUInt32("sessionId", session_id)
+  auto builder = EventBuilder("ModelLoadEnd", EventPriority::NORMAL);
+  if (!PrepareSampledEvent(builder, session_id)) {
+    return;
+  }
+  auto event = builder.AddUInt32("sessionId", session_id)
                    .AddBool("isSuccess", status.IsOK())
                    .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                    .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
@@ -1046,8 +1088,11 @@ void PosixTelemetry::LogSessionCreationEnd(uint32_t session_id, const common::St
     return;
   }
 
-  auto event = EventBuilder("SessionCreationEnd", EventPriority::CRITICAL)
-                   .AddUInt32("sessionId", session_id)
+  auto builder = EventBuilder("SessionCreationEnd", EventPriority::CRITICAL);
+  if (!PrepareSampledEvent(builder, session_id)) {
+    return;
+  }
+  auto event = builder.AddUInt32("sessionId", session_id)
                    .AddBool("isSuccess", status.IsOK())
                    .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                    .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
@@ -1073,8 +1118,11 @@ void PosixTelemetry::LogEpDeviceUsage(
     return;
   }
 
-  auto event = EventBuilder("EpDeviceUsage", EventPriority::NORMAL)
-                   .AddUInt32("sessionId", session_id)
+  auto builder = EventBuilder("EpDeviceUsage", EventPriority::NORMAL);
+  if (!PrepareSampledEvent(builder, session_id)) {
+    return;
+  }
+  auto event = builder.AddUInt32("sessionId", session_id)
                    .AddString("executionProviderType", ep_type)
                    .AddString("hardwareDeviceType", hardware_device_type)
                    .AddUInt32("hardwareVendorId", hardware_vendor_id)
@@ -1139,10 +1187,8 @@ void PosixTelemetry::LogSystemMetrics(uint32_t session_id) const {
     return;
   }
 
-  // Sample to bound per-inference overhead: emit on the first run and every
-  // kSystemMetricsSampleInterval-th run thereafter. fetch_add returns the previous value, so the
-  // first call (0) passes and the getrusage() syscall below is skipped on non-sampled runs.
-  if ((system_metrics_sample_counter_.fetch_add(1, std::memory_order_relaxed) % kSystemMetricsSampleInterval) != 0) {
+  auto builder = EventBuilder("SystemMetrics", EventPriority::NORMAL);
+  if (!PrepareSampledEvent(builder, session_id)) {
     return;
   }
 
@@ -1155,8 +1201,7 @@ void PosixTelemetry::LogSystemMetrics(uint32_t session_id) const {
     int64_t max_rss_kb = usage.ru_maxrss;
 #endif
 
-    auto event = EventBuilder("SystemMetrics", EventPriority::NORMAL)
-                     .AddUInt32("sessionId", session_id)
+    auto event = builder.AddUInt32("sessionId", session_id)
                      .AddInt64("maxRssKb", max_rss_kb)
                      .AddInt64("userCpuTimeSec", usage.ru_utime.tv_sec)
                      .AddInt64("userCpuTimeUsec", usage.ru_utime.tv_usec)
