@@ -7,11 +7,12 @@
 #include "core/platform/telemetry_guid.h"
 
 #include <algorithm>
-#include <fstream>
-#include <cstdint>
+#include <cctype>
 #include <cerrno>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <utility>
 #include <vector>
 
 #include <sys/stat.h>
@@ -21,6 +22,77 @@
 #include <fcntl.h>
 
 namespace onnxruntime {
+
+namespace {
+
+enum class DeviceIdReadResult {
+  Missing,
+  Read,
+  Invalid,
+  Failed,
+};
+
+struct DeviceIdFileRead {
+  DeviceIdReadResult result;
+  std::string content;
+};
+
+void TrimAsciiWhitespace(std::string& value) {
+  value.erase(std::find_if_not(value.rbegin(), value.rend(),
+                               [](unsigned char c) { return std::isspace(c); })
+                  .base(),
+              value.end());
+  value.erase(value.begin(), std::find_if_not(value.begin(), value.end(),
+                                              [](unsigned char c) { return std::isspace(c); }));
+}
+
+DeviceIdFileRead ReadDeviceIdFileNoFollow(const std::string& file_path, size_t max_size) {
+  int flags = O_RDONLY;
+#ifdef O_NOFOLLOW
+  flags |= O_NOFOLLOW;
+#endif
+#ifdef O_NONBLOCK
+  flags |= O_NONBLOCK;
+#endif
+#ifdef O_CLOEXEC
+  flags |= O_CLOEXEC;
+#endif
+
+  const int fd = ::open(file_path.c_str(), flags);
+  if (fd < 0) {
+    return {errno == ENOENT ? DeviceIdReadResult::Missing : DeviceIdReadResult::Failed, {}};
+  }
+
+  struct stat file_info{};
+  if (::fstat(fd, &file_info) != 0 || !S_ISREG(file_info.st_mode)) {
+    ::close(fd);
+    return {DeviceIdReadResult::Failed, {}};
+  }
+
+  std::vector<char> buffer(max_size + 1);
+  size_t total = 0;
+  bool read_ok = true;
+  while (total < buffer.size()) {
+    const ssize_t count = ::read(fd, buffer.data() + total, buffer.size() - total);
+    if (count > 0) {
+      total += static_cast<size_t>(count);
+    } else if (count == 0) {
+      break;
+    } else if (errno != EINTR) {
+      read_ok = false;
+      break;
+    }
+  }
+  if (::close(fd) != 0) read_ok = false;
+  if (!read_ok) return {DeviceIdReadResult::Failed, {}};
+  if (total > max_size) return {DeviceIdReadResult::Invalid, {}};
+
+  std::string content(buffer.data(), total);
+  TrimAsciiWhitespace(content);
+  return {DeviceIdReadResult::Read, std::move(content)};
+}
+
+}  // namespace
 
 DeviceId& DeviceId::Instance() {
   static DeviceId instance;
@@ -175,38 +247,18 @@ void DeviceId::InitializeInternal() {
     std::string file_path = dir_path + "/" + kFileName;
 
     // Try to read existing device ID
-    {
-      struct stat file_info{};
-      if (::lstat(file_path.c_str(), &file_info) == 0 && S_ISLNK(file_info.st_mode)) {
-        status_ = DeviceIdStatus::Failed;
-        return;
-      }
-      std::ifstream infile(file_path);
-      if (infile.good()) {
-        infile.seekg(0, std::ios::end);
-        auto size = infile.tellg();
-        infile.seekg(0, std::ios::beg);
-
-        if (size > static_cast<std::streamoff>(kMaxFileSize)) {
-          status_ = DeviceIdStatus::Corrupted;
-        } else {
-          std::string content;
-          std::getline(infile, content);
-
-          // Trim whitespace
-          while (!content.empty() &&
-                 (content.back() == '\n' || content.back() == '\r' || content.back() == ' ')) {
-            content.pop_back();
-          }
-
-          if (IsValidGUID(content)) {
-            device_id_ = content;
-            status_ = DeviceIdStatus::Existing;
-            return;
-          }
-          status_ = DeviceIdStatus::Corrupted;
-        }
-      }
+    const DeviceIdFileRead existing = ReadDeviceIdFileNoFollow(file_path, kMaxFileSize);
+    if (existing.result == DeviceIdReadResult::Read && IsValidGUID(existing.content)) {
+      device_id_ = existing.content;
+      status_ = DeviceIdStatus::Existing;
+      return;
+    }
+    if (existing.result == DeviceIdReadResult::Failed) {
+      status_ = DeviceIdStatus::Failed;
+      return;
+    }
+    if (existing.result != DeviceIdReadResult::Missing) {
+      status_ = DeviceIdStatus::Corrupted;
     }
 
     // Create directory tree
@@ -230,6 +282,9 @@ void DeviceId::InitializeInternal() {
       size_t remaining = device_id_.size();
       while (remaining > 0) {
         const ssize_t written = ::write(fd, data, remaining);
+        if (written < 0 && errno == EINTR) {
+          continue;
+        }
         if (written <= 0) {
           break;
         }
@@ -257,20 +312,9 @@ void DeviceId::InitializeInternal() {
         } else if (link_error == EEXIST) {
           // Another process won the first-run race. Its complete file was published atomically,
           // so use that value instead of allowing the persisted id to flap.
-          struct stat file_info{};
-          std::ifstream winner;
-          if (::lstat(file_path.c_str(), &file_info) == 0 && !S_ISLNK(file_info.st_mode)) {
-            winner.open(file_path);
-          }
-          std::string content;
-          if (winner.good() && std::getline(winner, content)) {
-            while (!content.empty() &&
-                   (content.back() == '\n' || content.back() == '\r' || content.back() == ' ')) {
-              content.pop_back();
-            }
-          }
-          if (IsValidGUID(content)) {
-            device_id_ = content;
+          const DeviceIdFileRead winner = ReadDeviceIdFileNoFollow(file_path, kMaxFileSize);
+          if (winner.result == DeviceIdReadResult::Read && IsValidGUID(winner.content)) {
+            device_id_ = winner.content;
             status_ = DeviceIdStatus::Existing;
           } else {
             status_ = DeviceIdStatus::Failed;
