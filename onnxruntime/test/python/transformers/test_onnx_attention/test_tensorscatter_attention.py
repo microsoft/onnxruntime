@@ -109,15 +109,17 @@ def _parse_sdpa_kernel(captured_text):
 _CUDNN_DECODE_SUPPORTED_CACHE = {}
 
 
-def _observe_cudnn_decode_dispatch(head_size):
+def _observe_cudnn_decode_dispatch(q_num_heads, kv_num_heads, head_size):
     """Build a minimal q_seq==1 external-KV decode graph, run it once requesting the cuDNN SDPA
     kernel with dispatch debug info enabled, and return the observed SdpaKernel string (or None).
 
     This asks the ORT build itself which tier it selects, so the test's notion of "supported"
-    exactly matches the kernel's own cuDNN gate (cudnn_sdpa::is_stable and the cuDNN version ORT
-    actually dlopened) with no Python-side version reimplementation.
+    exactly matches the kernel's own cuDNN gate (cudnn_sdpa::is_stable, the cuDNN version ORT
+    actually dlopened, and is_supported()'s head-count/head-size checks) with no Python-side
+    reimplementation. The probe uses the same (q_num_heads, kv_num_heads, head_size) as the case
+    being asserted, so the observation can't drift from what that case will actually dispatch.
     """
-    batch_size, total_kv_seq_len, q_num_heads, kv_num_heads = 1, 2, 1, 1
+    batch_size, total_kv_seq_len = 1, 2
     model = build_tensorscatter_attention_graph(
         batch_size=batch_size,
         total_kv_seq_len=total_kv_seq_len,
@@ -153,25 +155,30 @@ def _observe_cudnn_decode_dispatch(head_size):
     return _parse_sdpa_kernel(captured.output.decode(errors="replace"))
 
 
-def cudnn_decode_supported(head_size):
-    """Return True iff this ORT build actually dispatches the cuDNN SDPA decode tier on this machine.
+def cudnn_decode_supported(q_num_heads, kv_num_heads, head_size):
+    """Return True iff this ORT build actually dispatches the cuDNN SDPA decode tier on this machine
+    for the given (q_num_heads, kv_num_heads, head_size) configuration.
 
     Instead of re-implementing the kernel's cuDNN version rule in Python (which would drift from the
     C++ cudnn_sdpa::is_stable gate and from whichever cuDNN ORT dlopened), this OBSERVES the real
-    dispatch: it runs a minimal q_seq==1 decode graph once with the cuDNN kernel requested and the
-    attention-kernel debug info enabled, and reports True only when the observed tier is
-    CUDNN_FLASH_ATTENTION. The result is cached per head_size. Any failure (no CUDA provider,
-    unsupported cuDNN, etc.) yields False so dependent tests skip cleanly rather than false-failing.
+    dispatch: it runs a minimal q_seq==1 decode graph with the requested head configuration once
+    with the cuDNN kernel requested and the attention-kernel debug info enabled, and reports True
+    only when the observed tier is CUDNN_FLASH_ATTENTION. The result is cached per
+    (q_num_heads, kv_num_heads, head_size) so the reported support can never drift from the actual
+    case being asserted (e.g. a non-divisible head ratio or a different head_size that
+    is_supported() would reject). Any failure (no CUDA provider, unsupported cuDNN, etc.) yields
+    False so dependent tests skip cleanly rather than false-failing.
     """
-    if head_size in _CUDNN_DECODE_SUPPORTED_CACHE:
-        return _CUDNN_DECODE_SUPPORTED_CACHE[head_size]
+    cache_key = (q_num_heads, kv_num_heads, head_size)
+    if cache_key in _CUDNN_DECODE_SUPPORTED_CACHE:
+        return _CUDNN_DECODE_SUPPORTED_CACHE[cache_key]
     supported = False
     if has_cuda_provider():
         try:
-            supported = _observe_cudnn_decode_dispatch(head_size) == "CUDNN_FLASH_ATTENTION"
+            supported = _observe_cudnn_decode_dispatch(q_num_heads, kv_num_heads, head_size) == "CUDNN_FLASH_ATTENTION"
         except Exception:
             supported = False
-    _CUDNN_DECODE_SUPPORTED_CACHE[head_size] = supported
+    _CUDNN_DECODE_SUPPORTED_CACHE[cache_key] = supported
     return supported
 
 
@@ -1091,7 +1098,7 @@ class TestTensorScatterAttentionCudnnSdpaDecode(unittest.TestCase):
         # back to MATH), otherwise the cuDNN path and its fully-masked zero-fill guard go untested.
         # Under ORT_TEST_REQUIRE_CUDNN_SDPA=1 (CI gate on a known-good GPU) the assertion is
         # non-skippable so a tier regression fails loudly instead of hiding as an all-green skip.
-        if require_cudnn_sdpa() or cudnn_decode_supported(_CUDNN_DECODE_HEAD_SIZE):
+        if require_cudnn_sdpa() or cudnn_decode_supported(q_heads, kv_heads, _CUDNN_DECODE_HEAD_SIZE):
             self.assertEqual(
                 "CUDNN_FLASH_ATTENTION",
                 sdpa_kernel,
@@ -1145,7 +1152,7 @@ class TestTensorScatterAttentionCudnnSdpaDecode(unittest.TestCase):
         # fall back to MATH), otherwise the cuDNN bf16 path and its fully-masked guard go untested.
         # Under ORT_TEST_REQUIRE_CUDNN_SDPA=1 (CI gate on a known-good GPU) the assertion is
         # non-skippable so a tier regression fails loudly instead of hiding as an all-green skip.
-        if require_cudnn_sdpa() or cudnn_decode_supported(_CUDNN_DECODE_HEAD_SIZE):
+        if require_cudnn_sdpa() or cudnn_decode_supported(q_heads, kv_heads, _CUDNN_DECODE_HEAD_SIZE):
             self.assertEqual(
                 "CUDNN_FLASH_ATTENTION",
                 sdpa_kernel,
@@ -1178,7 +1185,7 @@ class TestTensorScatterAttentionCudnnSdpaDecodeCanary(unittest.TestCase):
     @unittest.skipIf(not has_cuda_provider(), "CUDA provider not available")
     def test_cudnn_sdpa_decode_tier_is_dispatched(self):
         enforce = require_cudnn_sdpa()
-        if not enforce and not cudnn_decode_supported(_CUDNN_DECODE_HEAD_SIZE):
+        if not enforce and not cudnn_decode_supported(1, 1, _CUDNN_DECODE_HEAD_SIZE):
             self.skipTest("cuDNN SDPA decode tier not dispatched; set ORT_TEST_REQUIRE_CUDNN_SDPA=1 to enforce")
 
         # Known-good minimal decode config: q_seq==1, 3-D BSNH, fp16, small dims.
@@ -1385,7 +1392,7 @@ class TestTensorScatterAttentionCudnnSdpaDecodeCudaGraph(unittest.TestCase):
                 os.environ["ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO"] = previous
 
         # A MATH fallback under capture must FAIL this acceptance bar, not pass green.
-        if require_cudnn_sdpa() or cudnn_decode_supported(head_size):
+        if require_cudnn_sdpa() or cudnn_decode_supported(q_heads, kv_heads, head_size):
             self.assertEqual(
                 "CUDNN_FLASH_ATTENTION",
                 sdpa_kernel,
