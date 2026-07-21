@@ -947,9 +947,10 @@ void PosixTelemetry::LogRuntimeError(
     // __FILE__ may be an absolute build path that embeds developer/build directory names; emit only
     // the basename so remote telemetry doesn't leak usernames or local paths.
     std::string_view file_view = file ? std::string_view{file} : std::string_view{};
-    if (const size_t slash = file_view.find_last_of('/'); slash != std::string_view::npos) {
+    if (const size_t slash = file_view.find_last_of("/\\"); slash != std::string_view::npos) {
       file_view.remove_prefix(slash + 1);
     }
+    const std::string scrubbed_file = ScrubStringForTelemetry(file_view);
 
     auto builder = EventBuilder("RuntimeError", EventPriority::HIGH);
     if (!PrepareSampledEvent(builder, session_id)) {
@@ -959,7 +960,7 @@ void PosixTelemetry::LogRuntimeError(
                      .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                      .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
                      .AddString("errorMessage", ScrubStringForTelemetry(status.ErrorMessage()))
-                     .AddString("file", std::string(file_view))
+                     .AddString("file", scrubbed_file)
                      .AddString("function", function ? function : "")
                      .AddUInt32("line", line)
                      .Build();
