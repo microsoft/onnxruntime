@@ -1,35 +1,57 @@
-# Installs the Visual Studio component Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre
-# if the Spectre-mitigated MSVC runtime libraries are not already present.
-# These libraries are required by BinSkim-compliant builds that pass --use_binskim_compliant_compile_flags,
-# which adds /Qspectre to the compiler flags. Without them CMake's compiler probe fails with:
-#   MSB8040: Spectre-mitigated libraries are required for this project.
+# Ensures the Visual Studio components required to build the requested target
+# architecture are present, installing them on demand when they are missing.
+#
+# - For x64/x86 targets this installs Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre.
+#   These Spectre-mitigated MSVC runtime libraries are required by BinSkim-compliant builds that
+#   pass --use_binskim_compliant_compile_flags (which adds /Qspectre). Without them CMake's compiler
+#   probe fails with: MSB8040: Spectre-mitigated libraries are required for this project.
+#
+# - For arm64 targets this additionally installs the ARM64 cross-compiler tools
+#   (Microsoft.VisualStudio.Component.VC.Tools.ARM64) and the ARM64 Spectre-mitigated runtimes
+#   (Microsoft.VisualStudio.Component.VC.Runtimes.ARM64.Spectre). Without the ARM64 tools, CMake's
+#   VCTargetsPath probe fails during configure with:
+#     error : The BaseOutputPath/OutputPath property is not set for project 'VCTargetsPath.vcxproj'.
+#     ... Configuration='Debug'  Platform='ARM64'.
 
 parameters:
 - name: architecture
-  displayName: 'Target architecture to verify (x64 or x86)'
+  displayName: 'Target architecture to verify (x64, x86 or arm64)'
   type: string
   default: 'x64'
 
 steps:
 - task: PowerShell@2
-  displayName: 'Install Visual Studio Spectre-mitigated libs'
+  displayName: 'Install Visual Studio build components for ${{ parameters.architecture }}'
   condition: and(succeeded(), eq(variables['Agent.OS'], 'Windows_NT'))
   inputs:
     targetType: 'inline'
     script: |
-      $arch = "${{ parameters.architecture }}"
+      $arch = "${{ parameters.architecture }}".ToLowerInvariant()
 
-      # Helper: find the Spectre lib directory for the given architecture.
-      # VCToolsInstallDir is exported into the environment by the VS developer
-      # command prompt (vcvarsall). When it is not set we fall back to vswhere.
-      function Find-SpectreLibDir {
-        param([string]$Arch)
+      # Determine which VS components must be present for the target architecture and
+      # which files under the MSVC tools directory prove they are installed.
+      # arm64 needs the cross-compiler tools plus the ARM64 Spectre-mitigated runtimes;
+      # x64/x86 only need the x86/x64 Spectre-mitigated runtimes.
+      if ($arch -eq 'arm64') {
+        $components = @(
+          'Microsoft.VisualStudio.Component.VC.Tools.ARM64',
+          'Microsoft.VisualStudio.Component.VC.Runtimes.ARM64.Spectre'
+        )
+        $requiredRelativePaths = @('bin\Hostx64\arm64\cl.exe', 'lib\spectre\arm64')
+      } else {
+        $components = @('Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre')
+        $requiredRelativePaths = @("lib\spectre\$arch")
+      }
 
+      # Helper: resolve the MSVC tools directory (e.g. ...\VC\Tools\MSVC\<version>\).
+      # VCToolsInstallDir is exported into the environment by the VS developer command
+      # prompt (vcvarsall). When it is not set we fall back to vswhere + the default
+      # tools version file.
+      function Get-VCToolsDir {
         if ($env:VCToolsInstallDir) {
-          return (Join-Path $env:VCToolsInstallDir "lib\spectre\$Arch")
+          return $env:VCToolsInstallDir.TrimEnd('\')
         }
 
-        # Fallback: derive path from vswhere + the default tools version file.
         $vswherePath = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
         if (-not (Test-Path $vswherePath)) { return $null }
 
@@ -40,23 +62,35 @@ steps:
         if (-not (Test-Path $toolsVersionFile)) { return $null }
 
         $toolsVersion = (Get-Content $toolsVersionFile -Raw).Trim()
-        return (Join-Path $vsInstallPath "VC\Tools\MSVC\$toolsVersion\lib\spectre\$Arch")
+        return (Join-Path $vsInstallPath "VC\Tools\MSVC\$toolsVersion")
       }
 
-      $spectreLibDir = Find-SpectreLibDir -Arch $arch
+      # Helper: are all required files/directories present under the MSVC tools dir?
+      function Test-ComponentsPresent {
+        $vcToolsDir = Get-VCToolsDir
+        if (-not $vcToolsDir) { return $false }
 
-      if ($spectreLibDir -and (Test-Path $spectreLibDir)) {
-        Write-Host "Spectre-mitigated libraries already present at: $spectreLibDir"
+        foreach ($relative in $requiredRelativePaths) {
+          $full = Join-Path $vcToolsDir $relative
+          if (-not (Test-Path $full)) {
+            Write-Host "Missing required component file: $full"
+            return $false
+          }
+        }
+        return $true
+      }
+
+      if (Test-ComponentsPresent) {
+        Write-Host "Required Visual Studio components for '$arch' are already present."
         exit 0
       }
 
-      Write-Host "Spectre-mitigated libraries not found (checked: $spectreLibDir)"
-      Write-Host "Installing Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre..."
+      Write-Host "Installing Visual Studio components for '$arch': $($components -join ', ')"
 
       # Locate the Visual Studio Installer.
       $vsInstallerPath = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
       if (-not (Test-Path $vsInstallerPath)) {
-        Write-Error "vs_installer.exe not found at: $vsInstallerPath. Cannot install Spectre-mitigated libraries."
+        Write-Error "vs_installer.exe not found at: $vsInstallerPath. Cannot install required components."
         exit 1
       }
 
@@ -73,15 +107,17 @@ steps:
       }
 
       Write-Host "Visual Studio installation path: $vsInstallPath"
-      Write-Host "Invoking VS Installer to add Spectre-mitigated libs..."
+      Write-Host "Invoking VS Installer to add the required components..."
 
-      # Invoke directly so PowerShell preserves the install path as one argument.
-      & $vsInstallerPath modify `
-        --installPath $vsInstallPath `
-        --add "Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre" `
-        --includeRecommended `
-        --passive `
-        --norestart
+      # Build the argument list: one --add per component. Invoke directly so PowerShell
+      # preserves the install path as a single argument.
+      $installerArgs = @('modify', '--installPath', $vsInstallPath)
+      foreach ($component in $components) {
+        $installerArgs += @('--add', $component)
+      }
+      $installerArgs += @('--includeRecommended', '--passive', '--norestart')
+
+      & $vsInstallerPath @installerArgs
       $installerExitCode = $LASTEXITCODE
 
       if ($installerExitCode -notin @(0, 3010)) {
@@ -92,15 +128,14 @@ steps:
             Write-Host "Last 50 lines of Visual Studio Installer log: $($_.FullName)"
             Get-Content $_.FullName -Tail 50
           }
-        Write-Error "VS Installer exited with code $installerExitCode. Spectre-mitigated library installation failed."
+        Write-Error "VS Installer exited with code $installerExitCode. Component installation failed."
         exit 1
       }
 
-      # Re-derive the path in case VCToolsInstallDir changed after installation.
-      $spectreLibDir = Find-SpectreLibDir -Arch $arch
-      if ($spectreLibDir -and (Test-Path $spectreLibDir)) {
-        Write-Host "Successfully installed Spectre-mitigated libraries at: $spectreLibDir"
+      # Verify the components are now present.
+      if (Test-ComponentsPresent) {
+        Write-Host "Successfully installed the required Visual Studio components for '$arch'."
       } else {
-        Write-Error "Spectre-mitigated libraries still not found at '$spectreLibDir' after installation."
+        Write-Error "Required Visual Studio components for '$arch' still not found after installation."
         exit 1
       }
