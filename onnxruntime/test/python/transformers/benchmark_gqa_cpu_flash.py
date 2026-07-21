@@ -233,6 +233,7 @@ def benchmark_gqa(
     non_quantized=False,
     block_table_mode=False,
     block_size=64,
+    threads=8,
 ):
     """Benchmark a single GQA configuration. Returns elapsed time in ms."""
     hidden_size = num_heads * head_size
@@ -243,7 +244,7 @@ def benchmark_gqa(
     buffer_seq_len = total_seqlen
 
     sess_options = SessionOptions()
-    sess_options.intra_op_num_threads = 8
+    sess_options.intra_op_num_threads = threads
     # Suppress warning log noise during micro-benchmark loops.
     sess_options.log_severity_level = 3
 
@@ -475,6 +476,7 @@ def run_benchmarks(args):
     repeats = args.repeats
     trials = args.trials
     csv_output = args.csv_output
+    threads = args.threads
     csv_rows = []
 
     # Save and restore env var to avoid side effects on callers
@@ -482,7 +484,7 @@ def run_benchmarks(args):
 
     kv_mode = "FP32 (non-quantized)" if args.fp32 else "INT8/INT4 quantized"
     print("\nBenchmark: CPU GroupQueryAttention — Flash vs Naive")
-    print(f"KV cache: {kv_mode}, Threads: {8}, Warmup: {warmup}, Repeats: {repeats}, Trials: {trials}")
+    print(f"KV cache: {kv_mode}, Threads: {threads}, Warmup: {warmup}, Repeats: {repeats}, Trials: {trials}")
     def run_config_group(group_title, group_configs):
         if not group_configs:
             return
@@ -507,11 +509,11 @@ def run_benchmarks(args):
             for _ in range(trials):
                 # Flash path (default)
                 os.environ.pop("ORT_GQA_DISABLE_FLASH_ATTENTION", None)
-                flash_ms = benchmark_gqa(**cfg_copy, warmup=warmup, repeats=repeats)
+                flash_ms = benchmark_gqa(**cfg_copy, warmup=warmup, repeats=repeats, threads=threads)
 
                 # Naive path (disabled flash)
                 os.environ["ORT_GQA_DISABLE_FLASH_ATTENTION"] = "1"
-                naive_ms = benchmark_gqa(**cfg_copy, warmup=warmup, repeats=repeats)
+                naive_ms = benchmark_gqa(**cfg_copy, warmup=warmup, repeats=repeats, threads=threads)
 
                 naive_runs_ms.append(naive_ms)
                 flash_runs_ms.append(flash_ms)
@@ -582,6 +584,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Benchmark GQA flash vs naive on CPU")
     parser.add_argument("--warmup", type=int, default=5, help="Warmup iterations")
     parser.add_argument("--repeats", type=int, default=20, help="Measurement iterations")
+    parser.add_argument("--threads", type=int, default=8, help="intra_op_num_threads for CPUExecutionProvider")
     parser.add_argument(
         "--trials",
         type=int,
