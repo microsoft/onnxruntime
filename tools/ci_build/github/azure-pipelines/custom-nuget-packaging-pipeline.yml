@@ -32,11 +32,15 @@ variables:
       value: $(Agent.TempDirectory)\v12.8
     ${{ if eq(parameters.CudaVersion, '13.0') }}:
       value: $(Agent.TempDirectory)\v13.0
+  # GPU architectures. To reduce onnxruntime_providers_cuda.dll size we ship native SASS
+  # (-real) only for the architectures language models commonly run on (Ampere consumer 86,
+  # Ada 89, Blackwell 120) and provide PTX (-virtual) for older/other architectures so those
+  # GPUs still run via JIT. This mirrors llama.cpp's CUDA release build arch selection.
   - name: CmakeCudaArchitectures
     ${{ if eq(parameters.CudaVersion, '12.8') }}:
-      value: 61-real;75-real;86-real;89-real;120-real;120-virtual
+      value: 50-virtual;61-virtual;70-virtual;75-virtual;80-virtual;86-real;89-real;90-virtual;120-real;120-virtual
     ${{ if eq(parameters.CudaVersion, '13.0') }}:
-      value: 75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual
+      value: 75-virtual;80-virtual;86-real;89-real;90-virtual;100-virtual;120-real;120-virtual
 
 resources:
   repositories:
