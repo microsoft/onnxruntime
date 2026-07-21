@@ -1160,8 +1160,7 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
     // Hitting any of the below is very rare
     ORT_ENFORCE(column_wise_quant_, "Row-wise quantization is not supported for now");
     ORT_ENFORCE(nbits_ == 2 || nbits_ == 4,
-                "Only 2b and 4b quantization is supported for unpacked compute using "
-                "non-MLAS de-quantization for now");
+                "Only 2b and 4b quantization is supported for unpacked compute for now");
 
     // Note: The kernel registration constrains T3 to {uint8_t, T1}, so for
     // MatMulNBits<float> only float (not MLFloat16) ZP can reach this branch.
@@ -1169,7 +1168,7 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
       if (nbits_ == 2) {
         ORT_ENFORCE(reorder_idx_data == nullptr,
                     "g_idx (reorder index) is not supported for 2-bit quantization with floating-point zero points");
-        DequantizeBlockwise2Bits<float, float>(
+        MlasDequantizeBlockwiseFpZeroPoint<float, float, 2>(
             tmp_b_data_ptr.get(),
             b_data,
             scales_data,
@@ -1324,8 +1323,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
     // Hitting any of the below is very rare
     ORT_ENFORCE(column_wise_quant_, "Row-wise quantization is not supported for now");
     ORT_ENFORCE(nbits_ == 2 || nbits_ == 4,
-                "Only 2b and 4b quantization is supported for unpacked compute using "
-                "non-MLAS de-quantization for now");
+                "Only 2b and 4b quantization is supported for unpacked compute for now");
 
     // Note: The kernel registration constrains T3 to {uint8_t, T1}, so for
     // MatMulNBits<MLFloat16> only MLFloat16 (not float) ZP can reach this branch.
@@ -1333,7 +1331,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
       if (nbits_ == 2) {
         ORT_ENFORCE(reorder_idx_data == nullptr,
                     "g_idx (reorder index) is not supported for 2-bit quantization with floating-point zero points");
-        DequantizeBlockwise2Bits<float, MLFloat16>(
+        MlasDequantizeBlockwiseFpZeroPoint<float, MLFloat16, 2>(
             tmp_b_data_ptr.get(),
             b_data,
             scales_ptr,
