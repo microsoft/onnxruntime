@@ -26,11 +26,13 @@ struct SubgroupMatrixTiling {
 };
 
 // Vendor-supplied callback that selects the output tiling for a given problem.
-// Returning nullopt declines the problem, so MatMul falls back to another
-// compute path. An empty selector likewise yields no implementation.
+// batch is the number of z-dispatched slices (1 for a shared 2D weight), used by
+// the policy to scale occupancy. Returning nullopt declines the problem, so
+// MatMul falls back to another compute path. An empty selector likewise yields
+// no implementation.
 using SubgroupMatrixTilingSelector =
     std::function<std::optional<SubgroupMatrixTiling>(const ComputeContext& context,
-                                                      uint32_t M, uint32_t N, uint32_t K)>;
+                                                      uint32_t M, uint32_t N, uint32_t K, uint32_t batch)>;
 
 // Creates a MatMulOptImpl that runs the subgroup-matrix kernel on devices whose
 // vendor policy supports it. The per-problem output tiling comes from a
