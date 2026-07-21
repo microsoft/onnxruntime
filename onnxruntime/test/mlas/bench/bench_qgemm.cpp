@@ -49,7 +49,7 @@ void QGEMM(benchmark::State& state, bool pack_b, bool a_is_signed, bool b_is_sig
       // AIsSigned/BIsSigned combination does not support packing (e.g. the
       // scalar reference dispatch). Calling MlasGemmPackB in that case would
       // dereference a null CopyPackBRoutine, so skip instead of crashing.
-      state.SkipWithError("Packing is not supported for this A/B signedness combination on this target");
+      state.SkipWithMessage("Packing is not supported for this A/B signedness combination on this target");
       return;
     }
     pack_b_holder.resize(packed_b_size * batch);
