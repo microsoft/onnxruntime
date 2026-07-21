@@ -116,10 +116,10 @@ inline constexpr bool CanEnableTelemetryEvents(bool disabled_by_environment) noe
   return !disabled_by_environment;
 }
 
-// True if telemetry should be fully suppressed for this process: explicitly disabled via
-// ORT_TELEMETRY_DISABLED, running in a CI / build-pipeline environment, or in ORT's unit-test harness.
+// True if telemetry should be fully suppressed for this process, including the initialization event.
+// ORT_TELEMETRY_DISABLED is intentionally excluded because it disables only non-essential events.
 inline bool ShouldSuppressTelemetry() {
-  return IsTelemetryDisabledByEnvVar() || IsRunningInCI() || IsRunningUnitTests();
+  return IsRunningInCI() || IsRunningUnitTests();
 }
 
 }  // namespace onnxruntime
