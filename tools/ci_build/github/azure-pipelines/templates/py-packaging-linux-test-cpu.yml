@@ -37,6 +37,7 @@ jobs:
   timeoutInMinutes: ${{ parameters.timeout }}
   variables:
     skipComponentGovernanceDetection: true
+    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
   workspace:
     clean: all
   pool: ${{ parameters.machine_pool }}
@@ -60,11 +61,13 @@ jobs:
       mv "$(Pipeline.Workspace)/build/drop-linux-cpu-${{ parameters.arch }}-${{parameters.ep}}" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
       mv "$(Pipeline.Workspace)/build/onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}" "$(Build.BinariesDirectory)/whl"
 
+  - template: set-cargo-registry-token-step.yml
+
   - template: get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cpu/Dockerfile
       Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cpu
-      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --secret id=PIP_INDEX_URL"
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --secret id=PIP_INDEX_URL --secret id=CARGO_CONFIG,src=$HOME/.cargo/config.toml --secret id=SYSTEM_ACCESSTOKEN"
       Repository: onnxruntimecpubuildpython${{ parameters.arch }}
 
   - task: Bash@3
