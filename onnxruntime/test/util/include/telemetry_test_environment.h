@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <cstdlib>
+#include <stdlib.h>
 
 namespace onnxruntime::test {
 
