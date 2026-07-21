@@ -17,6 +17,10 @@ runs:
       shell: pwsh
       run: |
         $arch = "${{ inputs.architecture }}"
+        if ($arch -notin @("x64", "x86")) {
+          Write-Error "Unsupported architecture '$arch'. Expected one of: x64, x86."
+          exit 1
+        }
 
         # Helper: find the Spectre lib directory for the given architecture.
         # VCToolsInstallDir is exported into the GitHub Actions environment by the
@@ -78,6 +82,7 @@ runs:
         & $vsInstallerPath modify `
           --installPath $vsInstallPath `
           --add "Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre" `
+          --force `
           --includeRecommended `
           --passive `
           --norestart
