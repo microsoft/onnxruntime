@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 #include "core/common/logging/logging.h"
+#include "core/platform/telemetry_environment.h"
 #include "core/platform/telemetry_redaction.h"
 #include "onnxruntime_config.h"
 
@@ -257,6 +258,12 @@ std::mutex WindowsTelemetry::callbacks_mutex_;
 
 WindowsTelemetry::WindowsTelemetry() {
   std::lock_guard<std::mutex> lock(mutex_);
+  // ORT_RUNNING_UNIT_TESTS is an internal hard-suppression signal, unlike the user-facing
+  // non-Windows environment opt-out. Do not register the ETW provider in test processes.
+  if (IsRunningUnitTests()) {
+    enabled_ = false;
+    return;
+  }
   if (global_register_count_ == 0) {
     // TraceLoggingRegister is fancy in that you can only register once GLOBALLY for the whole process
     HRESULT hr = TraceLoggingRegisterEx(telemetry_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
