@@ -472,6 +472,10 @@ MlasHGemmSupported(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB
 ) {
+    if (!MlasFp16AccelerationSupported()) {
+        return false;
+    }
+
     auto* dispatch = GetMlasPlatform().HGemmDispatch;
     if (TransA == CblasNoTrans && TransB == CblasTrans) {
         return dispatch &&
