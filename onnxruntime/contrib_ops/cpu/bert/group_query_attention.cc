@@ -383,6 +383,10 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   // naive path when an unsupported feature is requested (softcap, smooth softmax,
   // head sink, or QK output).
   //
+  // Note: block-table mode is routed through ApplyAttention(), where CPU first
+  // materializes to a contiguous cache view and then applies the same flash
+  // eligibility rules before scattering back to block cache.
+  //
   // Prefill (sequence_length > 1) uses the tiled kernel; single-token decode
   // (sequence_length == 1 with total_sequence_length > 1) uses the dedicated GEMV
   // decode kernel. Both are reached when total_sequence_length > 1.

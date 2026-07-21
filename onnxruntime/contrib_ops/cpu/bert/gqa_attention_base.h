@@ -525,12 +525,66 @@ class GQAAttentionBase {
       const Tensor* past_key_contiguous_tensor = present_key_contiguous_tensor;
       const Tensor* past_value_contiguous_tensor = present_value_contiguous_tensor;
 
-      ORT_RETURN_IF_ERROR(ApplyAttention(
-        Q, K, V, head_sink, attention_bias,
-        past_key_contiguous_tensor, past_value_contiguous_tensor,
-        output,
-        present_key_contiguous_tensor, present_value_contiguous_tensor,
-        output_qk, seqlens_k, contiguous_params, allocator, context));
+      // In block-table mode, materialize into a contiguous cache and reuse the same
+      // flash eligibility checks as the standard FP32 path when supported.
+      if constexpr (std::is_same_v<T, float>) {
+        const bool use_flash = !disable_gqa_flash_ &&
+                               contiguous_params.total_sequence_length > 1 &&
+                               softcap_ == 0.0f &&
+                               !use_smooth_softmax_ &&
+                               head_sink == nullptr &&
+                               output_qk == nullptr;
+        if (use_flash) {
+          ORT_RETURN_IF_ERROR(ApplyAttentionFlash(
+              Q,
+              K,
+              V,
+              attention_bias,
+              past_key_contiguous_tensor,
+              past_value_contiguous_tensor,
+              output,
+              present_key_contiguous_tensor,
+              present_value_contiguous_tensor,
+              seqlens_k,
+              contiguous_params,
+              allocator,
+              context));
+        } else {
+          ORT_RETURN_IF_ERROR(ApplyAttention(
+              Q,
+              K,
+              V,
+              head_sink,
+              attention_bias,
+              past_key_contiguous_tensor,
+              past_value_contiguous_tensor,
+              output,
+              present_key_contiguous_tensor,
+              present_value_contiguous_tensor,
+              output_qk,
+              seqlens_k,
+              contiguous_params,
+              allocator,
+              context));
+        }
+      } else {
+        ORT_RETURN_IF_ERROR(ApplyAttention(
+            Q,
+            K,
+            V,
+            head_sink,
+            attention_bias,
+            past_key_contiguous_tensor,
+            past_value_contiguous_tensor,
+            output,
+            present_key_contiguous_tensor,
+            present_value_contiguous_tensor,
+            output_qk,
+            seqlens_k,
+            contiguous_params,
+            allocator,
+            context));
+      }
 
       ScatterContiguousCachesToBlockCache(
         present_key_contiguous.Get<Tensor>().Data<T>(), present_value_contiguous.Get<Tensor>().Data<T>(),

@@ -14,6 +14,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/scoped_env_vars.h"
 #ifdef USE_WEBGPU
 #include "core/graph/model.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
@@ -2073,6 +2074,103 @@ TEST(GroupQueryAttentionTest, CpuBlockTableSparseMinusOneAtCapacityBoundary) {
         << "block1 slot1 key mismatch at channel " << i;
     EXPECT_FLOAT_EQ(present_value_data_fetched[block1_offset + static_cast<size_t>(head_size + i)], 140.0f + static_cast<float>(i))
         << "block1 slot1 value mismatch at channel " << i;
+  }
+}
+
+TEST(GroupQueryAttentionTest, CpuBlockTableFlashMatchesNonFlash) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 4;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int num_blocks = 1;
+  constexpr int block_size = 4;
+
+  auto run_case = [&](bool disable_flash) -> GqaSharedKvFetches {
+    OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+    tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+    std::vector<float> query_data(batch_size * sequence_length * hidden_size);
+    std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
+    std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
+    std::vector<float> past_key_data(num_blocks * block_size * kv_num_heads * head_size, 0.0f);
+    std::vector<float> past_value_data(num_blocks * block_size * kv_num_heads * head_size, 0.0f);
+
+    for (size_t i = 0; i < query_data.size(); ++i) query_data[i] = 0.01f * static_cast<float>(i + 1);
+    for (size_t i = 0; i < key_data.size(); ++i) key_data[i] = 0.02f * static_cast<float>(i + 1);
+    for (size_t i = 0; i < value_data.size(); ++i) value_data[i] = 0.03f * static_cast<float>(i + 1);
+
+    tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, query_data);
+    tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
+    tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
+    tester.AddInput<float>("past_key", {num_blocks, block_size, kv_num_heads, head_size}, past_key_data);
+    tester.AddInput<float>("past_value", {num_blocks, block_size, kv_num_heads, head_size}, past_value_data);
+    tester.AddInput<int32_t>("seqlens_k", {batch_size}, {sequence_length - 1});
+    tester.AddInput<int32_t>("total_sequence_length", {1}, {sequence_length});
+    tester.AddOptionalInputEdge<float>();    // cos_cache
+    tester.AddOptionalInputEdge<float>();    // sin_cache
+    tester.AddOptionalInputEdge<int64_t>();  // position_ids
+    tester.AddOptionalInputEdge<float>();    // attention_bias
+    tester.AddOptionalInputEdge<float>();    // head_sink
+    tester.AddOptionalInputEdge<float>();    // k_scale
+    tester.AddOptionalInputEdge<float>();    // v_scale
+    tester.AddOptionalInputEdge<float>();    // q_norm_weight
+    tester.AddOptionalInputEdge<float>();    // k_norm_weight
+    tester.AddInput<int32_t>("block_table", {batch_size, 1}, {0});
+
+    const int output_size = batch_size * sequence_length * hidden_size;
+    const int present_size = num_blocks * block_size * kv_num_heads * head_size;
+    tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                            std::vector<float>(output_size, 0.0f));
+    tester.AddOutput<float>("present_key", {num_blocks, block_size, kv_num_heads, head_size},
+                            std::vector<float>(present_size, 0.0f));
+    tester.AddOutput<float>("present_value", {num_blocks, block_size, kv_num_heads, head_size},
+                            std::vector<float>(present_size, 0.0f));
+
+    tester.SetOutputTolerance(1e6f);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+
+    if (disable_flash) {
+      ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_GQA_DISABLE_FLASH_ATTENTION", "1"}}};
+      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    } else {
+      ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_GQA_DISABLE_FLASH_ATTENTION", std::nullopt}}};
+      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
+
+    auto fetches = tester.GetFetches();
+    const float* output = fetches[0].Get<Tensor>().Data<float>();
+    const float* present_key = fetches[1].Get<Tensor>().Data<float>();
+    const float* present_value = fetches[2].Get<Tensor>().Data<float>();
+
+    return {
+        std::vector<float>(output, output + output_size),
+        std::vector<float>(present_key, present_key + present_size),
+        std::vector<float>(present_value, present_value + present_size)};
+  };
+
+  const auto flash_enabled = run_case(false);
+  const auto flash_disabled = run_case(true);
+
+  ASSERT_EQ(flash_enabled.output.size(), flash_disabled.output.size());
+  ASSERT_EQ(flash_enabled.present_key.size(), flash_disabled.present_key.size());
+  ASSERT_EQ(flash_enabled.present_value.size(), flash_disabled.present_value.size());
+
+  for (size_t i = 0; i < flash_enabled.output.size(); ++i) {
+    EXPECT_NEAR(flash_enabled.output[i], flash_disabled.output[i], 1e-5f) << "output mismatch at index " << i;
+  }
+  for (size_t i = 0; i < flash_enabled.present_key.size(); ++i) {
+    EXPECT_NEAR(flash_enabled.present_key[i], flash_disabled.present_key[i], 1e-5f)
+        << "present_key mismatch at index " << i;
+  }
+  for (size_t i = 0; i < flash_enabled.present_value.size(); ++i) {
+    EXPECT_NEAR(flash_enabled.present_value[i], flash_disabled.present_value[i], 1e-5f)
+        << "present_value mismatch at index " << i;
   }
 }
 

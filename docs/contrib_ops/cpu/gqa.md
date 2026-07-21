@@ -56,7 +56,7 @@ The non-quantized and quantized paths share the surrounding validation, masking,
 When optional `block_table` input is provided, the CPU non-quantized path executes attention via a contiguous-cache view:
 
 1. Materialize active logical blocks into a temporary contiguous BNSH cache.
-2. Run the existing contiguous CPU attention path unchanged.
+2. Run the existing contiguous CPU attention path (naive or FP32 flash, based on the same flash eligibility constraints).
 3. Scatter updated contiguous cache back to block-cache outputs.
 
 For sparse block tables (`-1` entries), unmapped logical blocks are zero-filled in the temporary contiguous view.
@@ -281,6 +281,9 @@ The non-quantized flash path is selected when ALL of the following hold:
 - No head sink
 - No output QK capture
 - `present_key` and `present_value` are provided
+
+For `block_table` mode, CPU first materializes block-cache tensors to a contiguous cache
+view and then applies these same flash conditions on that contiguous execution path.
 
 Attention bias, causal masking, local window attention, GQA head grouping (`num_heads != kv_num_heads`), ragged per-batch sequence lengths, shared past/present buffers, and flash decoding are all supported, mirroring the quantized flash path. When any condition is not met, the kernel falls back to the naive full-materialization path.
 
