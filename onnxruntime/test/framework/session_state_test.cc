@@ -1262,12 +1262,9 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, BrokenKernelWithoutCache
                              sess_options,
                              &prepacked_weights_container);
 
-  try {
-    ORT_THROW_IF_ERROR(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(), kernel_registry_manager));
-    FAIL() << "Expected broken PrePack implementation to fail.";
-  } catch (const OnnxRuntimeException& ex) {
-    ASSERT_THAT(ex.what(), testing::HasSubstr("doesn't have an implementation that can cache computed pre-packed weights"));
-  }
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(), kernel_registry_manager),
+      "doesn't have an implementation that can cache computed pre-packed weights");
 }
 
 // Pre-packing enabled + shared initializers +

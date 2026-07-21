@@ -3878,6 +3878,32 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusion) {
   ASSERT_TRUE(op_to_count["com.microsoft.FusedMatMul"] == 1);
 }
 
+TEST_F(GraphTransformationTests, TransposeMatmulNoFusionForCpuFp16) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* q = builder.MakeInput<MLFloat16>({{2, 4, 8, 16}});
+    auto* k = builder.MakeInput<MLFloat16>({{2, 4, 6, 16}});
+    auto* k_transposed = builder.MakeIntermediate<MLFloat16>({{2, 4, 16, 6}});
+    auto* output = builder.MakeOutput<MLFloat16>({{2, 4, 8, 6}});
+
+    builder.AddNode("Transpose", {k}, {k_transposed})
+        .AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
+    builder.AddNode("MatMul", {q, k_transposed}, {output})
+        .SetExecutionProviderType(kCpuExecutionProvider);
+  };
+
+  auto check_unfused = [](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Transpose"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["MatMul"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["com.microsoft.FusedMatMul"] == 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 13, *logger_, std::make_unique<MatmulTransposeFusion>(),
+      TransformerLevel::Level2, 1, check_unfused, check_unfused));
+}
+
 TEST_F(GraphTransformationTests, TransposeCastMatmulFusion) {
   const std::vector<PathString> model_uris = {
       MODEL_FOLDER "fusion/transpose_cast_matmul_4d_fusion0.onnx",  // Test fusion from the right input
