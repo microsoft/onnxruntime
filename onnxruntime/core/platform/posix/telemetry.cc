@@ -794,38 +794,13 @@ void PosixTelemetry::LogSessionCreationStart(uint32_t session_id) const {
 }
 
 void PosixTelemetry::LogEvaluationStop(uint32_t session_id) const {
-  RunTelemetryOperation("LogEvaluationStop", [&]() {
-    if (!IsEnabled()) {
-      return;
-    }
-
-    auto builder = EventBuilder("EvaluationStop", EventPriority::NORMAL);
-    if (!PrepareSampledEvent(builder, session_id)) {
-      return;
-    }
-    auto event = builder.AddUInt32("sessionId", session_id).Build();
-
-    LogEventAsync(std::move(event));
-
-    // Capture system metrics after each inference run to observe impact
-    LogSystemMetrics(session_id);
-  });
+  // Per-run start/stop markers are useful for ETW tracing, but RuntimePerf already aggregates every
+  // successful run for 1DS without putting synchronous telemetry work on the inference hot path.
+  (void)session_id;
 }
 
 void PosixTelemetry::LogEvaluationStart(uint32_t session_id) const {
-  RunTelemetryOperation("LogEvaluationStart", [&]() {
-    if (!IsEnabled()) {
-      return;
-    }
-
-    auto builder = EventBuilder("EvaluationStart", EventPriority::NORMAL);
-    if (!PrepareSampledEvent(builder, session_id)) {
-      return;
-    }
-    auto event = builder.AddUInt32("sessionId", session_id).Build();
-
-    LogEventAsync(std::move(event));
-  });
+  (void)session_id;
 }
 
 void PosixTelemetry::LogSessionCreation(
@@ -1019,6 +994,7 @@ void PosixTelemetry::LogRuntimePerf(
                      .Build();
 
     LogEventAsync(std::move(event));
+    LogSystemMetrics(session_id);
   });
 }
 
