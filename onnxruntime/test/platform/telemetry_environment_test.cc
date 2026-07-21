@@ -52,6 +52,11 @@ TEST(TelemetryEnvironmentTest, EnvVarOptOut) {
   }
 }
 
+TEST(TelemetryEnvironmentTest, EnvironmentOptOutCannotBeReenabled) {
+  EXPECT_TRUE(CanEnableTelemetryEvents(false));
+  EXPECT_FALSE(CanEnableTelemetryEvents(true));
+}
+
 TEST(TelemetryEnvironmentTest, CiDetectionSuppresses) {
   // Only the positive direction is asserted so the test is deterministic whether or not it itself
   // runs in a CI environment. APPVEYOR is not part of ORT's own CI, so save/restore stays clean.

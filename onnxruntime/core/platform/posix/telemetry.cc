@@ -80,6 +80,7 @@ std::shared_mutex PosixTelemetry::mutex_;
 std::atomic<::Microsoft::Applications::Events::ILogger*> PosixTelemetry::logger_{nullptr};
 std::unique_ptr<::Microsoft::Applications::Events::ILogConfiguration> PosixTelemetry::config_;
 std::atomic<bool> PosixTelemetry::enabled_{true};
+std::atomic<bool> PosixTelemetry::env_disabled_{false};
 std::atomic<uint32_t> PosixTelemetry::projection_{0};
 std::atomic<bool> PosixTelemetry::process_info_logged_{false};
 
@@ -364,9 +365,11 @@ void PosixTelemetry::Initialize() {
     return;
   }
 
-  // ORT_TELEMETRY_DISABLED suppresses the usage events but still creates the uploader, so the one-shot
-  // ProcessInfo event is still emitted. DisableTelemetryEvents() behaves the same way at runtime.
+  // ORT_TELEMETRY_DISABLED suppresses usage events for the lifetime of the process but still creates
+  // the uploader, so the one-shot ProcessInfo event is emitted. Runtime disable behaves the same way
+  // for ProcessInfo but remains reversible when there was no environment opt-out.
   if (IsTelemetryDisabledByEnvVar()) {
+    env_disabled_.store(true, std::memory_order_release);
     enabled_.store(false, std::memory_order_release);
   }
 
@@ -708,11 +711,13 @@ int64_t PosixTelemetry::GetTotalMemoryMB() {
 }
 
 void PosixTelemetry::EnableTelemetryEvents() const {
-  enabled_ = true;
+  enabled_.store(
+      CanEnableTelemetryEvents(env_disabled_.load(std::memory_order_acquire)),
+      std::memory_order_release);
 }
 
 void PosixTelemetry::DisableTelemetryEvents() const {
-  enabled_ = false;
+  enabled_.store(false, std::memory_order_release);
 }
 
 void PosixTelemetry::SetLanguageProjection(uint32_t projection) const {

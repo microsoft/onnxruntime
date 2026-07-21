@@ -111,6 +111,11 @@ inline bool IsTelemetryDisabledByEnvVar() {
   return value == "1" || value == "true" || value == "yes" || value == "on" || value == "y";
 }
 
+// Environment opt-out has higher priority than the runtime enable API for the lifetime of the process.
+inline constexpr bool CanEnableTelemetryEvents(bool disabled_by_environment) noexcept {
+  return !disabled_by_environment;
+}
+
 // True if telemetry should be fully suppressed for this process: explicitly disabled via
 // ORT_TELEMETRY_DISABLED, running in a CI / build-pipeline environment, or in ORT's unit-test harness.
 inline bool ShouldSuppressTelemetry() {

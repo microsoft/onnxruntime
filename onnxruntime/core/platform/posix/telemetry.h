@@ -173,6 +173,7 @@ class PosixTelemetry : public Telemetry {
 
   // State tracking
   static std::atomic<bool> enabled_;
+  static std::atomic<bool> env_disabled_;
   static std::atomic<uint32_t> projection_;
 
   // Process info tracking
