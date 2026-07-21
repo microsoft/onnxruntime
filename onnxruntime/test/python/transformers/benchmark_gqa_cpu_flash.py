@@ -477,106 +477,119 @@ def run_benchmarks(args):
     trials = args.trials
     csv_output = args.csv_output
     threads = args.threads
+    run_order = args.run_order
     csv_rows = []
 
     # Save and restore env var to avoid side effects on callers
     saved_env = os.environ.get("ORT_GQA_DISABLE_FLASH_ATTENTION")
+    try:
+        kv_mode = "FP32 (non-quantized)" if args.fp32 else "INT8/INT4 quantized"
+        print("\nBenchmark: CPU GroupQueryAttention — Flash vs Naive")
+        print(
+            f"KV cache: {kv_mode}, Threads: {threads}, Warmup: {warmup}, Repeats: {repeats}, "
+            f"Trials: {trials}, Order: {run_order}"
+        )
 
-    kv_mode = "FP32 (non-quantized)" if args.fp32 else "INT8/INT4 quantized"
-    print("\nBenchmark: CPU GroupQueryAttention — Flash vs Naive")
-    print(f"KV cache: {kv_mode}, Threads: {threads}, Warmup: {warmup}, Repeats: {repeats}, Trials: {trials}")
-    def run_config_group(group_title, group_configs):
-        if not group_configs:
-            return
+        def run_config_group(group_title, group_configs):
+            if not group_configs:
+                return
 
-        print(f"\n{group_title}")
-        if trials <= 1:
-            print(f"{'Config':<25} {'Naive (ms)':>12} {'Flash (ms)':>12} {'Speedup':>10}")
-            print("-" * 62)
-        else:
-            print(f"{'Config':<25} {'Naive':>9} {'Flash':>9} {'Mean':>8} {'Min':>7} {'Max':>7}")
-            print("-" * 74)
-
-        for cfg in group_configs:
-            cfg_copy = dict(cfg)
-            label = cfg_copy.pop("label")
-            cfg_copy["non_quantized"] = args.fp32
-            cfg_copy.setdefault("block_table_mode", False)
-
-            naive_runs_ms = []
-            flash_runs_ms = []
-            speedups = []
-            for _ in range(trials):
-                # Flash path (default)
-                os.environ.pop("ORT_GQA_DISABLE_FLASH_ATTENTION", None)
-                flash_ms = benchmark_gqa(**cfg_copy, warmup=warmup, repeats=repeats, threads=threads)
-
-                # Naive path (disabled flash)
-                os.environ["ORT_GQA_DISABLE_FLASH_ATTENTION"] = "1"
-                naive_ms = benchmark_gqa(**cfg_copy, warmup=warmup, repeats=repeats, threads=threads)
-
-                naive_runs_ms.append(naive_ms)
-                flash_runs_ms.append(flash_ms)
-                speedups.append(naive_ms / flash_ms if flash_ms > 0 else float("inf"))
-
-            naive_mean_ms = float(np.mean(naive_runs_ms))
-            flash_mean_ms = float(np.mean(flash_runs_ms))
-            csv_row = {
-                "group": group_title,
-                "config": label,
-                "naive_ms": naive_mean_ms,
-                "flash_ms": flash_mean_ms,
-            }
-
+            print(f"\n{group_title}")
             if trials <= 1:
-                speedup = speedups[0]
-                print(f"{label:<25} {naive_mean_ms:>10.3f}ms {flash_mean_ms:>10.3f}ms {speedup:>8.2f}x")
-                csv_row["speedup_mean"] = speedup
-                csv_row["speedup_min"] = speedup
-                csv_row["speedup_max"] = speedup
+                print(f"{'Config':<25} {'Naive (ms)':>12} {'Flash (ms)':>12} {'Speedup':>10}")
+                print("-" * 62)
             else:
-                speedup_mean = float(np.mean(speedups))
-                speedup_min = float(np.min(speedups))
-                speedup_max = float(np.max(speedups))
-                print(
-                    f"{label:<25} {naive_mean_ms:>10.3f}ms {flash_mean_ms:>10.3f}ms "
-                    f"{speedup_mean:>12.2f}x {speedup_min:>7.2f}x {speedup_max:>7.2f}x"
+                print(f"{'Config':<25} {'Naive':>9} {'Flash':>9} {'Mean':>8} {'Min':>7} {'Max':>7}")
+                print("-" * 74)
+
+            for cfg in group_configs:
+                cfg_copy = dict(cfg)
+                label = cfg_copy.pop("label")
+                cfg_copy["non_quantized"] = args.fp32
+                cfg_copy.setdefault("block_table_mode", False)
+
+                naive_runs_ms = []
+                flash_runs_ms = []
+                speedups = []
+                for _ in range(trials):
+                    trial_idx = len(speedups)
+                    use_naive_first = run_order == "naive-first" or (run_order == "alternate" and trial_idx % 2 == 1)
+
+                    if use_naive_first:
+                        os.environ["ORT_GQA_DISABLE_FLASH_ATTENTION"] = "1"
+                        naive_ms = benchmark_gqa(**cfg_copy, warmup=warmup, repeats=repeats, threads=threads)
+
+                        os.environ.pop("ORT_GQA_DISABLE_FLASH_ATTENTION", None)
+                        flash_ms = benchmark_gqa(**cfg_copy, warmup=warmup, repeats=repeats, threads=threads)
+                    else:
+                        os.environ.pop("ORT_GQA_DISABLE_FLASH_ATTENTION", None)
+                        flash_ms = benchmark_gqa(**cfg_copy, warmup=warmup, repeats=repeats, threads=threads)
+
+                        os.environ["ORT_GQA_DISABLE_FLASH_ATTENTION"] = "1"
+                        naive_ms = benchmark_gqa(**cfg_copy, warmup=warmup, repeats=repeats, threads=threads)
+
+                    naive_runs_ms.append(naive_ms)
+                    flash_runs_ms.append(flash_ms)
+                    speedups.append(naive_ms / flash_ms if flash_ms > 0 else float("inf"))
+
+                naive_mean_ms = float(np.mean(naive_runs_ms))
+                flash_mean_ms = float(np.mean(flash_runs_ms))
+                csv_row = {
+                    "group": group_title,
+                    "config": label,
+                    "naive_ms": naive_mean_ms,
+                    "flash_ms": flash_mean_ms,
+                }
+
+                if trials <= 1:
+                    speedup = speedups[0]
+                    print(f"{label:<25} {naive_mean_ms:>10.3f}ms {flash_mean_ms:>10.3f}ms {speedup:>8.2f}x")
+                    csv_row["speedup_mean"] = speedup
+                    csv_row["speedup_min"] = speedup
+                    csv_row["speedup_max"] = speedup
+                else:
+                    speedup_mean = float(np.mean(speedups))
+                    speedup_min = float(np.min(speedups))
+                    speedup_max = float(np.max(speedups))
+                    print(
+                        f"{label:<25} {naive_mean_ms:>10.3f}ms {flash_mean_ms:>10.3f}ms "
+                        f"{speedup_mean:>12.2f}x {speedup_min:>7.2f}x {speedup_max:>7.2f}x"
+                    )
+                    csv_row["speedup_mean"] = speedup_mean
+                    csv_row["speedup_min"] = speedup_min
+                    csv_row["speedup_max"] = speedup_max
+
+                csv_rows.append(csv_row)
+
+        contiguous_configs = [cfg for cfg in configs if not cfg.get("block_table_mode", False)]
+        block_table_configs = [cfg for cfg in configs if cfg.get("block_table_mode", False)]
+
+        if args.block_table_only:
+            contiguous_configs = []
+
+        run_config_group("Contiguous cache mode", contiguous_configs)
+        run_config_group("Block-table cache mode", block_table_configs)
+
+        if csv_output:
+            csv_dir = os.path.dirname(csv_output)
+            if csv_dir:
+                os.makedirs(csv_dir, exist_ok=True)
+
+            with open(csv_output, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(
+                    f,
+                    fieldnames=["group", "config", "naive_ms", "flash_ms", "speedup_mean", "speedup_min", "speedup_max"],
                 )
-                csv_row["speedup_mean"] = speedup_mean
-                csv_row["speedup_min"] = speedup_min
-                csv_row["speedup_max"] = speedup_max
+                writer.writeheader()
+                writer.writerows(csv_rows)
 
-            csv_rows.append(csv_row)
-
-    contiguous_configs = [cfg for cfg in configs if not cfg.get("block_table_mode", False)]
-    block_table_configs = [cfg for cfg in configs if cfg.get("block_table_mode", False)]
-
-    if args.block_table_only:
-        contiguous_configs = []
-
-    run_config_group("Contiguous cache mode", contiguous_configs)
-    run_config_group("Block-table cache mode", block_table_configs)
-
-    if csv_output:
-        csv_dir = os.path.dirname(csv_output)
-        if csv_dir:
-            os.makedirs(csv_dir, exist_ok=True)
-
-        with open(csv_output, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(
-                f,
-                fieldnames=["group", "config", "naive_ms", "flash_ms", "speedup_mean", "speedup_min", "speedup_max"],
-            )
-            writer.writeheader()
-            writer.writerows(csv_rows)
-
-        print(f"\nWrote CSV results to: {csv_output}")
-
-    # Restore original env state
-    if saved_env is not None:
-        os.environ["ORT_GQA_DISABLE_FLASH_ATTENTION"] = saved_env
-    else:
-        os.environ.pop("ORT_GQA_DISABLE_FLASH_ATTENTION", None)
+            print(f"\nWrote CSV results to: {csv_output}")
+    finally:
+        # Restore original env state even if any benchmark run fails.
+        if saved_env is not None:
+            os.environ["ORT_GQA_DISABLE_FLASH_ATTENTION"] = saved_env
+        else:
+            os.environ.pop("ORT_GQA_DISABLE_FLASH_ATTENTION", None)
     print()
 
 
@@ -585,6 +598,12 @@ if __name__ == "__main__":
     parser.add_argument("--warmup", type=int, default=5, help="Warmup iterations")
     parser.add_argument("--repeats", type=int, default=20, help="Measurement iterations")
     parser.add_argument("--threads", type=int, default=8, help="intra_op_num_threads for CPUExecutionProvider")
+    parser.add_argument(
+        "--run_order",
+        choices=["flash-first", "naive-first", "alternate"],
+        default="flash-first",
+        help="Execution order of flash and naive runs within each trial.",
+    )
     parser.add_argument(
         "--trials",
         type=int,
