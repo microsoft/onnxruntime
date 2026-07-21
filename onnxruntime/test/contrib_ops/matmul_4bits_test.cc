@@ -1046,6 +1046,12 @@ TEST(MatMulNBits, Fp16_Int4_PrepackedSm90BlockSize32Rejected) {
   RunTest<MLFloat16>(opts, std::move(eps));
 }
 
+// This GTEST_SKIPs without a CUDA device, so it cannot cover the "build without the native SM90
+// kernel" throw on a real Hopper GPU (the only hardware/build combination that reaches it). That
+// throw is instead covered GPU-free, with synthetic (sm, block_size) values, by
+// MatMulNBitsSm90ValidationTest in test/contrib_ops/cuda_kernels/matmul_nbits_sm90_validation_test.cc
+// (see the comment there for why that coverage lives in a separate translation unit).
+
 // Exercises the CUDA small-M batched GEMV tiles: CtaM in {2,4,8,16} (with M values that are not a
 // multiple of CtaM so the row-skip path runs) and CtaN in {1,2} (N divisible / not divisible by 16).
 TEST(MatMulNBits, Fp16_Int4_SmallMBatchedTiles) {
