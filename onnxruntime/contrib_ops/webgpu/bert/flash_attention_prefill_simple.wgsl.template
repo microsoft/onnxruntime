@@ -1,0 +1,296 @@
+
+#param has_attention_bias
+#param has_head_sink
+#param has_local_window
+#param is_fp16
+#param is_unidirectional
+#param kv_step_param
+#param q_BNSH
+#param qkv_head_size
+#param qkv_num_heads
+#param use_seqlen_k
+#param use_seqlens_q
+
+// Bare, single-path flash-attention prefill. One workgroup per (batch, head,
+// query tile); workgroup_size_x threads (host-tunable, 128 or 256), each owning
+// one query row. The K/V sequence streams in tiles of kv_step columns broadcast
+// across the subgroup via subgroupShuffle, and an online (streaming) softmax
+// keeps the full score matrix from ever materializing.
+//
+// The V tile is loaded only just before the PV matmul (deferred V load) so the
+// QK^T + softmax compute overlaps V's global-memory fetch.
+
+const head_size : u32 = qkv_head_size;
+const num_heads : u32 = qkv_num_heads;
+
+#if use_seqlen_k
+// With seqlens_k, total_sequence_length is read per batch from the GPU buffer.
+fn get_total_sequence_length(batch_idx: u32) -> u32 {
+  return u32(seqlens_k[batch_idx]) + 1u;
+}
+#else
+// Without seqlens_k, total_sequence_length comes from uniforms (max across batches).
+fn get_total_sequence_length(batch_idx: u32) -> u32 {
+  return uniforms.total_sequence_length;
+}
+#endif
+
+#if is_fp16
+const min_value = q_element_t(-65504.0);
+#else
+const min_value = q_element_t(-3.4028234663852886e+38f);
+#endif
+
+// Local (sliding) attention window: key k_idx is attended to only when
+// local_window_start <= k_idx < causal_end.
+fn is_key_visible(k_idx: u32, local_window_start: u32, causal_end: u32) -> bool {
+  return k_idx >= local_window_start && k_idx < causal_end;
+}
+
+// Max K/V columns handled per iteration (one per subgroup lane); the host picks
+// 8 or 16 to fit the adapter's guaranteed minimum subgroup size. The head
+// dimension is expressed in vec4 units.
+const kv_step : u32 = kv_step_param;
+const vec_factor : u32 = 4u;
+const head_size_vec : u32 = head_size / vec_factor;
+// Score vec4 lanes per tile: kv_step columns packed 4 per vec4.
+const num_qk_vec : u32 = kv_step / vec_factor;
+
+// K/V tiles shared and shuffled across the subgroup so each lane contributes the
+// column it loaded. Stored as [head_size_vec][kv_step] so the subgroup column
+// (kv_step) is the inner/fastest dimension: adjacent subgroup lanes hit adjacent
+// addresses, avoiding shared-memory bank conflicts.
+var<workgroup> k_tile : array<array<q_value_t, kv_step>, head_size_vec>;
+var<workgroup> v_tile : array<array<q_value_t, kv_step>, head_size_vec>;
+
+// Per-thread query row and output accumulator live as local vars in $MAIN
+// (o_tile is zero-initialized).
+
+// Cooperatively load k_step key columns starting at k_start into shared memory.
+// Columns past total_seq are zeroed so out-of-range lanes contribute nothing.
+fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, k_step : u32, total_seq : u32) {
+  let offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * head_size_vec +
+               k_start * head_size_vec;
+  for (var idx : u32 = local_idx; idx < head_size_vec * k_step; idx += workgroup_size_x) {
+    let slot = u32(idx / head_size_vec);
+    let val = select(q_value_t(0), present_key[offset + idx], k_start + slot < total_seq);
+    k_tile[idx % head_size_vec][slot] = val;
+  }
+}
+
+// Same as loadk, for the value columns.
+fn loadv(v_start : u32, batch_head_idx : u32, local_idx : u32, v_step : u32, total_seq : u32) {
+  let offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * head_size_vec +
+               v_start * head_size_vec;
+  for (var idx : u32 = local_idx; idx < head_size_vec * v_step; idx += workgroup_size_x) {
+    let slot = u32(idx / head_size_vec);
+    let val = select(q_value_t(0), present_value[offset + idx], v_start + slot < total_seq);
+    v_tile[idx % head_size_vec][slot] = val;
+  }
+}
+
+// Additive attention bias for score (q_idx, k_idx).
+#if has_attention_bias
+fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32, total_seq : u32) -> q_element_t {
+  // Stored as [batch_size, num_heads, new_seq_length, total_sequence_length].
+  if (k_idx_global >= total_seq) {
+    return q_element_t(0);
+  }
+  // Broadcasting: if a dimension size is 1, use index 0.
+  let bias_batch_idx = select(batch_idx, 0u, batch_idx >= uniforms.attn_bias_dim0);
+  let bias_head_idx = select(head_idx, 0u, head_idx >= uniforms.attn_bias_dim1);
+  // Stride along the last dim of attention_bias matches its actual shape, which may
+  // differ from the per-step total_sequence_length (e.g. graph-capture sets that
+  // uniform to 0, or batches use a global max). The host passes attn_bias_dim3.
+  let stride_total_seq = uniforms.attn_bias_dim3;
+  let offset_base = bias_batch_idx * uniforms.attn_bias_dim1 * uniforms.new_sequence_length * stride_total_seq +
+                    bias_head_idx * uniforms.new_sequence_length * stride_total_seq + q_idx_global * stride_total_seq;
+  return q_element_t(attention_bias[min(offset_base + k_idx_global, offset_base + stride_total_seq - 1u)]);
+}
+#else
+fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32, total_seq : u32) -> q_element_t {
+  return q_element_t(0);
+}
+#endif
+
+$MAIN {
+  // Decode (batch, head) from the flattened workgroup index.
+  let batch_head_idx = u32(workgroup_idx / uniforms.num_seq_tile);
+  let head_idx = batch_head_idx % num_heads;
+  let batch_idx = batch_head_idx / num_heads;
+
+  if (batch_idx >= uniforms.batch_size) {
+    return;
+  }
+
+  // Per-thread query row and output accumulator (zero-initialized).
+  var q_tile : array<q_value_t, head_size_vec>;
+  var o_tile : array<q_value_t, head_size_vec>;
+
+  // This thread's query row within the tile; may run past the sequence end.
+  let seq_tile_idx = workgroup_idx % uniforms.num_seq_tile;
+  let q_idx_global = seq_tile_idx * workgroup_size_x + local_idx;
+  let valid_q = q_idx_global < uniforms.new_sequence_length;
+  if (valid_q) {
+    // Load this thread's query row into q_tile, pre-scaled by alpha.
+    let alpha = q_element_t(uniforms.alpha);
+#if q_BNSH
+    let q_offset = batch_idx * num_heads * uniforms.new_sequence_length * head_size_vec +
+                   head_idx * uniforms.new_sequence_length * head_size_vec +
+                   q_idx_global * head_size_vec;
+#else
+    let q_offset = batch_idx * uniforms.new_sequence_length * head_size_vec * num_heads +
+                   q_idx_global * head_size_vec * num_heads +
+                   head_idx * head_size_vec;
+#endif
+    for (var idx = 0u; idx < head_size_vec; idx++) {
+      q_tile[idx] = q[idx + q_offset] * alpha;
+    }
+  }
+
+  // Running statistics for the online (streaming) softmax.
+#if has_head_sink
+  let sink_value = q_element_t(head_sink[head_idx]);
+  var previous_max : q_element_t = sink_value;
+  var previous_denom : q_element_t = 1;
+#else
+  var previous_max : q_element_t = min_value;
+  var previous_denom : q_element_t = 0;
+#endif
+  let total_sequence_length = get_total_sequence_length(batch_idx);
+
+#if is_unidirectional
+  // Causal: query i attends to keys [0, i].
+#if use_seqlens_q
+  // LEFT-aligned per-batch Q length: past_len_b = total_kv_b - q_len_b (>= 0).
+  let q_len_b = u32(seqlens_q[batch_idx]);
+  let past_sequence_length = total_sequence_length - q_len_b;
+#else
+  // Uniform q_len path. Right-padded batches with prompt shorter than
+  // new_sequence_length would underflow u32, so clamp to 0. Variable-q_len
+  // callers with past > 0 must set use_seqlens_q instead.
+  let past_sequence_length = select(total_sequence_length - uniforms.new_sequence_length,
+                                    0u,
+                                    total_sequence_length <= uniforms.new_sequence_length);
+#endif
+  let max_causal_len_for_workgroup = past_sequence_length +
+                                     (seq_tile_idx + 1) * workgroup_size_x;
+  let loop_bound = min(total_sequence_length, max_causal_len_for_workgroup);
+  let seq_causal_length = past_sequence_length + q_idx_global + 1;
+#else
+  // Non-causal: every query attends to the whole sequence.
+  let loop_bound = total_sequence_length;
+  let seq_causal_length = total_sequence_length;
+#endif
+
+#if has_local_window
+#if is_unidirectional
+  let first_query_causal_length = past_sequence_length + seq_tile_idx * workgroup_size_x + 1u;
+#else
+  let first_query_causal_length = total_sequence_length;
+#endif
+  let first_query_window_start = first_query_causal_length -
+                                 min(first_query_causal_length, uniforms.local_window_size);
+  let local_window_start = seq_causal_length - min(seq_causal_length, uniforms.local_window_size);
+#else
+  let first_query_window_start = 0u;
+  let local_window_start = 0u;
+#endif
+  // Tiles entirely before the sliding window for every query in this workgroup
+  // are never visible, so skip straight to the first tile the window can reach.
+  let aligned_window_start = (first_query_window_start / kv_step) * kv_step;
+
+  // sg_size >= kv_step is guaranteed by the host gate, so each iteration advances
+  // by a full kv_step and no step cap is needed. sg_size may still exceed kv_step
+  // (e.g. 32): the QK/PV loads index k_tile/v_tile with the raw sg_id, so lanes
+  // >= kv_step read past kv_step (relies on WGSL bounds clamping), but their
+  // k_local is never read by the 0..kv_step-1 shuffles.
+
+  // Stream the K/V sequence one tile at a time.
+  for (var k_start = aligned_window_start; k_start < loop_bound; k_start += kv_step) {
+    // Load only K here; V is deferred until just before the PV matmul so the
+    // QK^T + softmax compute overlaps V's global-memory fetch. The prior
+    // iteration's trailing barrier (after loadv) still guards k_tile from being
+    // overwritten while its readers are in flight, so no leading barrier is needed.
+    loadk(k_start, batch_head_idx, local_idx, kv_step, total_sequence_length);
+    workgroupBarrier();
+
+    // Scores for this tile, held as num_qk_vec vec4 lanes (kv_step columns);
+    // qk[j / 4u][j % 4u] is this query's score against column j. The inner loops
+    // iterate over the compile-time const kv_step so the compiler unrolls them
+    // and each subgroupShuffle lane index folds to a constant. Requires
+    // sg_size >= kv_step, which the host guarantees before selecting this shader
+    // (subgroup_min_size_ge_8 gate; kv_step is 8 or 16 to match).
+    var qk : array<vec4<q_element_t>, num_qk_vec>;
+
+    // 1. QK^T. Each lane owns one K column of this tile; subgroup shuffles let
+    //    every thread read all columns and accumulate the dot products.
+    for (var i = 0u; i < head_size_vec; i++) {
+      let q_own = q_tile[i];
+      let k_local = k_tile[i][sg_id];
+      for (var j = 0u; j < kv_step; j++) {
+        qk[j / 4u][j % 4u] += dot(q_own, subgroupShuffle(k_local, j));
+      }
+    }
+
+    // 2. Add attention bias, then mask columns outside the causal/window boundary.
+    for (var j = 0u; j < kv_step; j++) {
+      qk[j / 4u][j % 4u] += loadAttentionBias(batch_idx, q_idx_global, k_start + j, head_idx, total_sequence_length);
+      qk[j / 4u][j % 4u] = select(min_value, qk[j / 4u][j % 4u], is_key_visible(k_start + j, local_window_start, seq_causal_length));
+    }
+
+    // 3. Online softmax. Refresh the running max over this tile's scores.
+    var local_max_vec = qk[0];
+    for (var m = 1u; m < num_qk_vec; m++) {
+      local_max_vec = max(local_max_vec, qk[m]);
+    }
+    let local_max = max(max(local_max_vec.x, local_max_vec.y), max(local_max_vec.z, local_max_vec.w));
+    let new_max = max(previous_max, local_max);
+
+    // Exponentiate against the new max (in f32 for stability) and accumulate
+    // this tile's denominator contribution.
+    var sum_vec = q_value_t(0);
+    for (var m = 0u; m < num_qk_vec; m++) {
+      qk[m] = q_value_t(exp(vec4<f32>(qk[m]) - f32(new_max)));
+      sum_vec += qk[m];
+    }
+    let sum = sum_vec.x + sum_vec.y + sum_vec.z + sum_vec.w;
+
+    // Rescale the carried-over denominator to the new max, then fold in the
+    // tile. Guard against a zero denominator.
+    let dleft = previous_denom * q_element_t(exp(f32(previous_max) - f32(new_max)));
+    var d = dleft + sum;
+    d = select(d, q_element_t(0.0000001), d == 0);
+    for (var m = 0u; m < num_qk_vec; m++) {
+      qk[m] = qk[m] / d;
+    }
+    previous_max = new_max;
+    previous_denom = d;
+    // Factor to rescale the already-accumulated output for the new denominator.
+    let o_ratio = dleft / d;
+
+    // Deferred V load: fetch this tile's V now, right before it is consumed.
+    loadv(k_start, batch_head_idx, local_idx, kv_step, total_sequence_length);
+    workgroupBarrier();
+
+    // 4. Accumulate softmax(qk) * V into the output tile, rescaling the prior
+    //    partial sum by o_ratio.
+    for (var i = 0u; i < head_size_vec; i++) {
+      let v_local = v_tile[i][sg_id];
+      var acc = q_value_t(0);
+      for (var j = 0u; j < kv_step; j++) {
+        acc += subgroupShuffle(v_local, j) * qk[j / 4u][j % 4u];
+      }
+      o_tile[i] = o_tile[i] * o_ratio + acc;
+    }
+  }
+
+  if (valid_q) {
+    // Write this thread's normalized output row.
+    let o_offset = batch_idx * uniforms.new_sequence_length * num_heads * head_size_vec +
+                   q_idx_global * num_heads * head_size_vec + head_idx * head_size_vec;
+    for (var idx = 0u; idx < head_size_vec; idx++) {
+      output[o_offset + idx] = o_tile[idx];
+    }
+  }
+}  // MAIN
