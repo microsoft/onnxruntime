@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import argparse
 import os
+import sys
 
 
 def parse_arguments():
@@ -36,8 +37,7 @@ for c in args.config:
             if not line:
                 continue
             if line in provider_symbols:
-                print(f"dup symbol: {line}")
-                exit(-1)
+                sys.exit(f"dup symbol: {line}")
             provider_symbols.add(line)
 
 symbols = set(provider_symbols)
@@ -48,8 +48,7 @@ for file_name in args.extra_symbol_file:
             if not line:
                 continue
             if line in symbols:
-                print(f"dup symbol: {line}")
-                exit(-1)
+                sys.exit(f"dup symbol: {line}")
             symbols.add(line)
 
 symbols = sorted(symbols)
