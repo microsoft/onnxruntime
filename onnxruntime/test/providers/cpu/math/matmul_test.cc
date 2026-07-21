@@ -397,6 +397,23 @@ TEST(MathOpTest, MatMulFloatType) {
   RunMatMulTest<float>(7, false, true);
 }
 
+TEST(MathOpTest, MatMulFloat16Cpu) {
+  // M > 2 and a non-constant B exercise the regular HalfGemm dispatch path.
+  OpTester test("MatMul", 14);
+  test.AddInput<MLFloat16>("A", {3, 2},
+                           {MLFloat16(1.0f), MLFloat16(2.0f),
+                            MLFloat16(3.0f), MLFloat16(4.0f),
+                            MLFloat16(5.0f), MLFloat16(6.0f)});
+  test.AddInput<MLFloat16>("B", {2, 2},
+                           {MLFloat16(7.0f), MLFloat16(8.0f),
+                            MLFloat16(9.0f), MLFloat16(10.0f)});
+  test.AddOutput<MLFloat16>("Y", {3, 2},
+                            {MLFloat16(25.0f), MLFloat16(28.0f),
+                             MLFloat16(57.0f), MLFloat16(64.0f),
+                             MLFloat16(89.0f), MLFloat16(100.0f)});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
 #if defined(USE_CUDA) || defined(USE_COREML) || defined(USE_XNNPACK)
 TEST(MathOpTest, MatMulFloat16) {
 #ifdef USE_CUDA
