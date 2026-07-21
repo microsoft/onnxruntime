@@ -19,6 +19,12 @@ Abstract:
 #include "sqnbitgemm_q8_block.h"
 
 #include <cassert>
+#include <vector>
+
+// N-strip width the CompInt8 compute path tiles by, and the M-tile height
+// MlasQNBitGemmBatch's StrideM is derived from.
+constexpr size_t kQNBitGemmComputeStrideM = 128;
+constexpr size_t kQNBitGemmComputeStrideN = 128;
 
 namespace
 {
@@ -817,13 +823,14 @@ SQ4BitGemm_CompInt8(
     const float* ABlockSum = per_gemm_quant_a_workspace->BlockSum + RangeStartM * k_blks;
     const float* QuantBBlkSum = DataParams->QuantBBlkSum + RangeStartN * k_blks;
 
-    // fp16 output: let the kernel write each N-strip into a cache-resident fp32 scratch,
-    // then convert that tile straight to fp16, so the full fp32 result never touches DRAM.
-    // The scratch is thread-local and its pages stay unfaulted unless this path is used.
+    // fp16 output: let the kernel write each N-strip into a per-thread fp32 scratch, then
+    // convert that strip straight to fp16, so the full fp32 result never lands in a caller
+    // buffer. The scratch is grown to the strip actually computed (RangeCountM x CountN) and
+    // reused across calls; it only ever allocates on threads that take this path.
     // In this mode DataParams->C is not a full result buffer, so leave the fp32 C base null.
     const bool to_fp16 = DataParams->CFp16 != nullptr;
     MLAS_FP16* CFp16 = to_fp16 ? DataParams->CFp16 + RangeStartM * ldc + RangeStartN : nullptr;
-    static thread_local float c_scratch[128 * 128];  // StrideM (<=128) rows x CountN (<=128) cols
+    static thread_local std::vector<float> c_scratch;
     float* C = to_fp16 ? nullptr : DataParams->C + RangeStartM * ldc + RangeStartN;
 
     const float* Bias = (DataParams->Bias == nullptr) ? nullptr : DataParams->Bias + RangeStartN;
@@ -853,7 +860,7 @@ SQ4BitGemm_CompInt8(
 
     size_t CountN;
     for (size_t n = 0; n < RangeCountN; n += CountN) {
-        CountN = std::min(RangeCountN - n, size_t{128});
+        CountN = std::min(RangeCountN - n, kQNBitGemmComputeStrideN);
 
         const std::byte* a_row = QuantA;
         const std::byte* b_col = QuantBData + n * ldb;
@@ -888,36 +895,62 @@ SQ4BitGemm_CompInt8(
         else if (GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_BlkSum_CompInt8 != nullptr)
         {
             const float* b_blk_sum = QuantBBlkSum + n * k_blks;
-            assert(!to_fp16 || RangeCountM * CountN <= sizeof(c_scratch) / sizeof(c_scratch[0]));
-            float* kernel_c = to_fp16 ? c_scratch : c_blk;
-            const size_t kernel_ldc = to_fp16 ? CountN : ldc;
-            GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_BlkSum_CompInt8(
-                BlkLen,
-                QuantA,
-                QuantAScale,
-                b_col,
-                b_col_scale,
-                b_col_zp,
-                kernel_c,
-                RangeCountM,
-                CountN,
-                K,
-                k_blks,
-                bias,
-                kernel_ldc,
-                ABlockSum,
-                b_blk_sum
-            );
-
             if (to_fp16) {
-                for (size_t m = 0; m < RangeCountM; ++m) {
-                    MlasConvertFloatToHalfBuffer(c_scratch + m * CountN, CFp16 + n + m * ldc, CountN);
+                // fp16 output: run the int8 kernel over the whole M range into the fp32 scratch
+                // exactly as the fp32 branch below would (same single call, so the scratch holds
+                // values bitwise-identical to the fp32 path), then convert the strip to fp16. The
+                // single-threaded path passes the whole M here, so size the scratch to it rather
+                // than to a fixed tile. fp16 output and a post-processor are never set together by
+                // the operator, so the fp32-branch post-processing does not apply here; assert
+                // rather than silently drop it.
+                assert(DataParams->PostProcessor == nullptr);
+                if (c_scratch.size() < RangeCountM * CountN) {
+                    c_scratch.resize(RangeCountM * CountN);
                 }
-            } else if (DataParams->PostProcessor != nullptr) {
-                DataParams->PostProcessor->Process(
-                    DataParams->C, RangeStartM, RangeStartN + n,
-                    RangeCountM, CountN, ldc
+                GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_BlkSum_CompInt8(
+                    BlkLen,
+                    QuantA,
+                    QuantAScale,
+                    b_col,
+                    b_col_scale,
+                    b_col_zp,
+                    c_scratch.data(),
+                    RangeCountM,
+                    CountN,
+                    K,
+                    k_blks,
+                    bias,
+                    CountN,
+                    ABlockSum,
+                    b_blk_sum
                 );
+                for (size_t m = 0; m < RangeCountM; ++m) {
+                    MlasConvertFloatToHalfBuffer(c_scratch.data() + m * CountN, CFp16 + n + m * ldc, CountN);
+                }
+            } else {
+                GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_BlkSum_CompInt8(
+                    BlkLen,
+                    QuantA,
+                    QuantAScale,
+                    b_col,
+                    b_col_scale,
+                    b_col_zp,
+                    c_blk,
+                    RangeCountM,
+                    CountN,
+                    K,
+                    k_blks,
+                    bias,
+                    ldc,
+                    ABlockSum,
+                    b_blk_sum
+                );
+                if (DataParams->PostProcessor != nullptr) {
+                    DataParams->PostProcessor->Process(
+                        DataParams->C, RangeStartM, RangeStartN + n,
+                        RangeCountM, CountN, ldc
+                    );
+                }
             }
         }
 #endif
@@ -1513,7 +1546,7 @@ MlasQNBitGemmBatch(
         ThreadsPerGemm = 1;
     }
 
-    constexpr size_t StrideM = 128;
+    constexpr size_t StrideM = kQNBitGemmComputeStrideM;
 
     size_t nc = N;
     if (ThreadsPerGemm > 1) {
