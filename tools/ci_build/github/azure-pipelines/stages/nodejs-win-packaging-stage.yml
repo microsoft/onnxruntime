@@ -174,10 +174,7 @@ stages:
       - ${{ if and(eq(parameters.PublishWebGpuBuildTools, true), eq(parameters.sln_platform, 'x64')) }}:
         - script: |
             mkdir $(Build.ArtifactStagingDirectory)\${{ parameters.WebGpuBuildToolsArtifactName }}
-            dir $(Build.BinariesDirectory)\$(BuildConfig)\_deps\dawn-build\third_party\
-            dir $(Build.BinariesDirectory)\$(BuildConfig)\_deps\dawn-build\third_party\directx-shader-compiler
-            dir $(Build.BinariesDirectory)\$(BuildConfig)\_deps\dawn-build\third_party\directx-shader-compiler\RelWithDebInfo
-            dir $(Build.BinariesDirectory)\$(BuildConfig)\_deps\dawn-build\third_party\directx-shader-compiler\RelWithDebInfo\bin
+            dir /s $(Build.BinariesDirectory)\$(BuildConfig)\_deps\dawn-build\third_party\x64
 
             copy $(Build.BinariesDirectory)\$(BuildConfig)\_deps\dawn-build\third_party\directx-shader-compiler\RelWithDebInfo\bin\llvm-tblgen.exe $(Build.ArtifactStagingDirectory)\${{ parameters.WebGpuBuildToolsArtifactName }}
             copy $(Build.BinariesDirectory)\$(BuildConfig)\_deps\dawn-build\third_party\directx-shader-compiler\RelWithDebInfo\bin\clang-tblgen.exe $(Build.ArtifactStagingDirectory)\${{ parameters.WebGpuBuildToolsArtifactName }}
