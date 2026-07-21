@@ -140,10 +140,39 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
     }
   }
 
+  // enable Nsight-Compute-oriented profiling behavior (per-dispatch debug groups,
+  // one compute pass per dispatch, graph-capture disable). Only has effect in a build
+  // with `-Donnxruntime_ENABLE_NSIGHT_FOR_WEBGPU_EP=ON`. In a default build the option
+  // is parsed but ignored, and a WARNING is emitted so the user knows their opt-in is
+  // silently doing nothing.
+  if (std::string enable_nsight_profiling_str;
+      config_options.TryGetConfigEntry(kEnableNsightProfiling, enable_nsight_profiling_str)) {
+    if (enable_nsight_profiling_str == kEnableNsightProfiling_ON) {
+      webgpu_ep_config.enable_nsight_profiling = true;
+    } else if (enable_nsight_profiling_str == kEnableNsightProfiling_OFF) {
+      webgpu_ep_config.enable_nsight_profiling = false;
+    } else {
+      ORT_THROW("Invalid enableNsightProfiling value: ", enable_nsight_profiling_str,
+                ". Must be \"0\" or \"1\".");
+    }
+  }
+#if !defined(ENABLE_NSIGHT_FOR_WEBGPU_EP)
+  if (webgpu_ep_config.enable_nsight_profiling) {
+    LOGS_DEFAULT(WARNING)
+        << "WebGPU EP: provider option \""
+        << kEnableNsightProfiling
+        << "\" is set but this binary was built without ENABLE_NSIGHT_FOR_WEBGPU_EP. "
+           "The option has no effect. To enable, rebuild with "
+           "-Donnxruntime_ENABLE_NSIGHT_FOR_WEBGPU_EP=ON. "
+           "See docs/WebGPU-EP-Nsight-Graphics-Profiling.md.";
+  }
+#endif
+
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP preferred layout: " << int(webgpu_ep_config.data_layout);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP graph capture enable: " << webgpu_ep_config.enable_graph_capture;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP force CPU node count: " << webgpu_ep_config.force_cpu_node_names.size();
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP pix capture enable: " << webgpu_ep_config.enable_pix_capture;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP nsight profiling enable: " << webgpu_ep_config.enable_nsight_profiling;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP enable int64: " << webgpu_ep_config.enable_int64;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP multi rotary cache concat offset: " << webgpu_ep_config.multi_rotary_cache_concat_offset;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP session buffer pool generations: " << webgpu_ep_config.session_buffer_pool_generations;
@@ -325,6 +354,12 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
 
   // prepare WebGpuContextConfig
   WebGpuContextConfig config = ParseWebGpuContextConfig(config_options);
+
+  // Forward session-level Nsight-profiling opt-in from the EP config into the context
+  // config. The context is a shared singleton keyed by context_id, so the first session
+  // to initialize wins; a WARNING is emitted at context init time if later sessions
+  // disagree. See docs/WebGPU-EP-Nsight-Graphics-Profiling.md.
+  config.enable_nsight_profiling = webgpu_ep_config.enable_nsight_profiling;
 
   // Load the Dawn library and create the WebGPU instance.
   auto& context = WebGpuContextFactory::CreateContext(config);

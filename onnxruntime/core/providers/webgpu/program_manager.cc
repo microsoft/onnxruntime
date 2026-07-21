@@ -210,9 +210,10 @@ Status ProgramManager::Build(const ProgramBase& program,
 
   wgpu::ComputePipelineDescriptor pipeline_descriptor{};
   pipeline_descriptor.compute = compute_state;
-#ifndef NDEBUG  // if debug build
+  // Set the label unconditionally (previously debug-only): profiling tools such as
+  // Nsight Compute, Nsight Systems, PIX and RenderDoc key kernel identification off
+  // this string. Cost is a few bytes per compiled pipeline; zero runtime cost.
   pipeline_descriptor.label = program.Name().c_str();
-#endif
 
   struct CreateComputePipelineContext {
     wgpu::ComputePipeline& pipeline;

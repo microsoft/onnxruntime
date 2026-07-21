@@ -42,6 +42,7 @@ namespace webgpu {
 void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, &config]() {
     max_num_pending_dispatches_ = config.max_num_pending_dispatches;
+    nsight_profiling_enabled_ = config.enable_nsight_profiling;
 
     if (device_ == nullptr) {
       // Create wgpu::Adapter
@@ -227,6 +228,15 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
         << ". Requested value "
         << config.max_num_pending_dispatches
         << " will be ignored.";
+  }
+  if (nsight_profiling_enabled_ != config.enable_nsight_profiling) {
+    LOGS_DEFAULT(WARNING)
+        << "WebGPU context is already initialized with "
+        << "enableNsightProfiling="
+        << nsight_profiling_enabled_
+        << ". Requested value "
+        << config.enable_nsight_profiling
+        << " will be ignored (first session to initialize the context wins).";
   }
 }
 
@@ -504,6 +514,38 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
   const auto& compute_pass_encoder = GetComputePassEncoder();
 
+#if defined(ENABLE_NSIGHT_FOR_WEBGPU_EP)
+  // Emit a per-dispatch debug group so profilers (Nsight Compute, Nsight Systems, PIX,
+  // RenderDoc) can identify and filter individual dispatches. Zero cost when the
+  // ENABLE_NSIGHT_FOR_WEBGPU_EP build flag is off, and behind a session-level opt-in
+  // (`enableNsightProfiling` WebGPU EP provider option) even when the flag is on. See
+  // docs/WebGPU-EP-Nsight-Graphics-Profiling.md.
+  //
+  // Label format: op=<op_type>|node=<node_name>|prog=<program_name>|key=<8-char-hash>
+  // |disp=<x>,<y>,<z>. Shape info is intentionally omitted here — it is available in the
+  // ORT profiler JSON side by side with the .ncu-rep.
+  //
+  // Note: during graph capture we build the label but DO NOT push it on the pass encoder
+  // (no dispatch is emitted here — LaunchComputePipeline only appends to captured_commands).
+  // The label is propagated onto the CapturedCommandInfo so Replay() re-emits it.
+  std::string dispatch_label;
+  const bool nsight_emit_group_live =
+      nsight_profiling_enabled_ && graph_capture_state_ != GraphCaptureState::Capturing;
+  if (nsight_profiling_enabled_) {
+    dispatch_label.reserve(128);
+    dispatch_label.append("op=").append(context.OpType());
+    dispatch_label.append("|node=").append(context.NodeName());
+    dispatch_label.append("|prog=").append(program.Name());
+    dispatch_label.append("|key=").append(std::string_view{key}.substr(0, std::min<size_t>(8, key.size())));
+    dispatch_label.append("|disp=").append(std::to_string(x))
+                  .append(",").append(std::to_string(y))
+                  .append(",").append(std::to_string(z));
+    if (nsight_emit_group_live) {
+      compute_pass_encoder.PushDebugGroup(wgpu::StringView{dispatch_label.data(), dispatch_label.size()});
+    }
+  }
+#endif  // ENABLE_NSIGHT_FOR_WEBGPU_EP
+
   WriteTimestamp(num_pending_dispatches_ * 2);
 
   const size_t total_buffer_count = inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0);
@@ -533,6 +575,20 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   WriteTimestamp(num_pending_dispatches_ * 2 + 1);
   ++num_pending_dispatches_;
 
+#if defined(ENABLE_NSIGHT_FOR_WEBGPU_EP)
+  if (nsight_profiling_enabled_) {
+    if (nsight_emit_group_live) {
+      compute_pass_encoder.PopDebugGroup();
+    }
+    // If we are capturing a graph, propagate the label onto the just-appended
+    // CapturedCommandInfo so Replay() re-emits it.
+    if (graph_capture_state_ == GraphCaptureState::Capturing &&
+        external_captured_commands_ && !external_captured_commands_->empty()) {
+      external_captured_commands_->back().debug_label = std::move(dispatch_label);
+    }
+  }
+#endif  // ENABLE_NSIGHT_FOR_WEBGPU_EP
+
   // Update profiling data after LaunchComputePipeline
   if (is_profiling_) {
     PendingKernelInfo pending_kernel_info(context.NodeName(),
@@ -554,7 +610,15 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   }
 
   if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||
-      (is_profiling_ && query_type_ == TimestampQueryType::AtPasses)) {
+      (is_profiling_ && query_type_ == TimestampQueryType::AtPasses)
+#if defined(ENABLE_NSIGHT_FOR_WEBGPU_EP)
+      // Session-level Nsight-profiling opt-in forces one dispatch per compute pass so
+      // ncu's counter replay can isolate a single dispatch without cache-state leakage
+      // from surrounding dispatches in the same pass. See
+      // docs/WebGPU-EP-Nsight-Graphics-Profiling.md.
+      || nsight_profiling_enabled_
+#endif
+  ) {
     EndComputePass();
   }
   if (num_pending_dispatches_ >= max_num_pending_dispatches_) {
@@ -976,6 +1040,20 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
   for (size_t i = 0; i < command_count; ++i) {
     auto& command = captured_commands[i];
     const auto& compute_pass_encoder = GetComputePassEncoder();
+
+#if defined(ENABLE_NSIGHT_FOR_WEBGPU_EP)
+    // Mirror the debug-group emission of the non-capture path so users profiling the
+    // graph-capture replay path see the same labels in ncu / nsys / PIX. The label is
+    // whatever was built at capture time (see WebGpuContext::Run). Gated on the
+    // session-level opt-in.
+    const bool nsight_emit_group_here =
+        nsight_profiling_enabled_ && command.debug_label.has_value();
+    if (nsight_emit_group_here) {
+      compute_pass_encoder.PushDebugGroup(
+          wgpu::StringView{command.debug_label->data(), command.debug_label->size()});
+    }
+#endif  // ENABLE_NSIGHT_FOR_WEBGPU_EP
+
     WriteTimestamp(num_pending_dispatches_ * 2);
 
     // Restore profiling info when profiling is enabled. All commands are expected
@@ -1002,8 +1080,18 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
 
     WriteTimestamp(num_pending_dispatches_ * 2 + 1);
     ++num_pending_dispatches_;
+#if defined(ENABLE_NSIGHT_FOR_WEBGPU_EP)
+    if (nsight_emit_group_here) {
+      compute_pass_encoder.PopDebugGroup();
+    }
+#endif  // ENABLE_NSIGHT_FOR_WEBGPU_EP
     if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||
-        (is_profiling_ && query_type_ == TimestampQueryType::AtPasses)) {
+        (is_profiling_ && query_type_ == TimestampQueryType::AtPasses)
+#if defined(ENABLE_NSIGHT_FOR_WEBGPU_EP)
+        // One dispatch per compute pass — see WebGpuContext::Run for rationale.
+        || nsight_profiling_enabled_
+#endif
+    ) {
       EndComputePass();
     }
     if (num_pending_dispatches_ >= max_num_pending_dispatches_) {

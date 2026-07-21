@@ -596,6 +596,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       enable_graph_capture_{config.enable_graph_capture},
       // enable_int64_ is always true when enable_graph_capture_ is true
       enable_int64_{config.enable_graph_capture || config.enable_int64},
+      enable_nsight_profiling_{config.enable_nsight_profiling},
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
       prepack_allocator_{std::make_shared<webgpu::GpuBufferAllocator>(
@@ -876,6 +877,32 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
 }
 
 bool WebGpuExecutionProvider::IsGraphCaptureEnabled() const {
+#if defined(ENABLE_NSIGHT_FOR_WEBGPU_EP)
+  // In a Nsight-for-WebGPU-EP profiling build, graph capture is disabled ONLY when the
+  // session has opted in via the `enableNsightProfiling` WebGPU EP provider option. Graph capture
+  // makes the number of live dispatches per session.run() non-deterministic from the
+  // profiler's viewpoint, which breaks Nsight Compute's --launch-skip / --launch-count
+  // filters. Users who explicitly need to profile the replay code path can build without
+  // this flag, or run the same profiling binary in a session that does NOT set the opt-in.
+  // See docs/WebGPU-EP-Nsight-Graphics-Profiling.md.
+  //
+  // If the caller had requested graph capture at session-option time AND opted into
+  // Nsight profiling, emit a one-shot warning so they are not surprised by the higher
+  // wall time (host-side latency win from capture is gone in this session).
+  if (enable_nsight_profiling_) {
+    if (enable_graph_capture_) {
+      static std::once_flag warned;
+      std::call_once(warned, []() {
+        LOGS_DEFAULT(WARNING) << "WebGPU EP: graph capture was requested in provider options but "
+                                 "is disabled in this session because enableNsightProfiling is on. "
+                                 "Per-dispatch wall time in the ORT profiler and in Nsight tools "
+                                 "remains correct; total run time will be higher than a "
+                                 "non-profiling session. See docs/WebGPU-EP-Nsight-Graphics-Profiling.md.";
+      });
+    }
+    return false;
+  }
+#endif
   return enable_graph_capture_;
 }
 

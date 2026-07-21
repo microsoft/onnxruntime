@@ -46,6 +46,10 @@ struct WebGpuExecutionProviderConfig {
   bool enable_graph_capture{false};              // graph capture feature is disabled by default
   bool enable_pix_capture{false};                // PIX capture is disabled by default
   bool enable_int64{false};                      // int64 ops are not enabled by default
+  // Session-level opt-in for the Nsight-Compute-oriented profiling behavior. Only has
+  // effect in a build with `-Donnxruntime_ENABLE_NSIGHT_FOR_WEBGPU_EP=ON`; a warning is
+  // logged if the option is set in a default build.
+  bool enable_nsight_profiling{false};
   uint32_t multi_rotary_cache_concat_offset{0};  // offset for concatenated multi rotary cache (0 = disabled)
   // Number of generations of buffers to retain in the per-session pool for reuse
   // across captured-graph lifetimes. 0 disables pooling. Default 1 caches one
@@ -137,6 +141,10 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool enable_graph_capture_ = false;
   bool graph_buffer_mgr_active_ = false;
   bool enable_int64_ = false;
+  // Session-level opt-in for Nsight-Compute-oriented profiling. Only consumed under
+  // `#if defined(ENABLE_NSIGHT_FOR_WEBGPU_EP)`; parsed unconditionally so we can warn
+  // when a user opts in on a binary that was not built with the flag.
+  bool enable_nsight_profiling_ = false;
   uint32_t multi_rotary_cache_concat_offset_ = 0;
   uint32_t kv_cache_quantization_bits_ = 0;
   std::unordered_map<int, int> graph_id_to_run_count_;

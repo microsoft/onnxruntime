@@ -37,6 +37,13 @@ constexpr const char* kValidationMode = "ep.webgpuexecutionprovider.validationMo
 
 constexpr const char* kForceCpuNodeNames = "ep.webgpuexecutionprovider.forceCpuNodeNames";
 constexpr const char* kEnablePIXCapture = "ep.webgpuexecutionprovider.enablePIXCapture";
+// Session-level opt-in for the Nsight-Compute-oriented profiling behavior
+// (per-dispatch debug groups, one compute pass per dispatch, graph-capture disable).
+// Has effect ONLY in a build with `-Donnxruntime_ENABLE_NSIGHT_FOR_WEBGPU_EP=ON`.
+// In a default build the option is parsed but ignored; a WARNING is logged so the
+// user knows their opt-in is not doing anything. See
+// docs/WebGPU-EP-Nsight-Graphics-Profiling.md.
+constexpr const char* kEnableNsightProfiling = "ep.webgpuexecutionprovider.enableNsightProfiling";
 
 constexpr const char* kPreserveDevice = "ep.webgpuexecutionprovider.preserveDevice";
 
@@ -64,6 +71,9 @@ constexpr const char* kEnableInt64_OFF = "0";
 
 constexpr const char* kEnablePIXCapture_ON = "1";
 constexpr const char* kEnablePIXCapture_OFF = "0";
+
+constexpr const char* kEnableNsightProfiling_ON = "1";
+constexpr const char* kEnableNsightProfiling_OFF = "0";
 
 constexpr const char* kPreserveDevice_ON = "1";
 constexpr const char* kPreserveDevice_OFF = "0";

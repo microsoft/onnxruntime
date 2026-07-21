@@ -67,6 +67,17 @@ struct CapturedCommandInfo {
   WGPUBuffer indirect_buffer;
   // Optional profiling data
   std::optional<PendingKernelInfo> pending_kernel_info;
+#if defined(ENABLE_NSIGHT_FOR_WEBGPU_EP)
+  // Pre-built debug-group label. Populated at capture time so Replay() re-emits the same
+  // label used at capture time without needing to reconstruct it from the joined
+  // PendingKernelInfo::name string. See docs/WebGPU-EP-Nsight-Graphics-Profiling.md.
+  //
+  // Note: in an ENABLE_NSIGHT_FOR_WEBGPU_EP build, WebGpuExecutionProvider::IsGraphCaptureEnabled()
+  // is hardcoded to false, so this field is effectively unused today. It is kept here to keep the
+  // capture/replay code paths label-aware for users who explicitly reintroduce graph capture in
+  // this build for debugging purposes.
+  std::optional<std::string> debug_label;
+#endif
 };
 
 struct WebGpuBufferCacheConfig {
@@ -115,6 +126,10 @@ struct WebGpuContextConfig {
       0
 #endif
   };
+  // Session-level opt-in for Nsight-Compute-oriented profiling. First session to
+  // initialize a given context wins; a WARNING is emitted if a later session
+  // disagrees. Consumed under `#if defined(ENABLE_NSIGHT_FOR_WEBGPU_EP)`.
+  bool enable_nsight_profiling{false};
 };
 
 class WebGpuContextFactory {
@@ -381,6 +396,10 @@ class WebGpuContext final {
   bool preserve_device_;
   uint64_t max_storage_buffer_binding_size_;
   GraphCaptureState graph_capture_state_{GraphCaptureState::Default};
+  // Cached Nsight-profiling opt-in from the first session to initialize this context.
+  // Only consumed under `#if defined(ENABLE_NSIGHT_FOR_WEBGPU_EP)`; stored
+  // unconditionally so we can detect and warn about later sessions disagreeing.
+  bool nsight_profiling_enabled_{false};
 
   // External vector to store captured commands, owned by EP
   std::vector<webgpu::CapturedCommandInfo>* external_captured_commands_ = nullptr;

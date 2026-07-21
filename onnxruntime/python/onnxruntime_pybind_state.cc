@@ -1330,7 +1330,23 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
 #endif
   } else if (type == kWebGpuExecutionProvider) {
 #if defined(USE_WEBGPU)
-    return onnxruntime::WebGpuProviderFactoryCreator::Create(session_options.config_options);
+    // Merge the Python-facing provider_options dict (e.g. {'backend_type': 'd3d12',
+    // 'enableNsightProfiling': '1'}) into the session's config_options under the
+    // "ep.webgpuexecutionprovider." prefix. The C-API path
+    // (SessionOptionsAppendExecutionProvider in provider_registration.cc) does this
+    // automatically via AddProviderOptionsToConfigOptions, but the Python-side
+    // CreateExecutionProviderFactoryInstance skips that step, so the WebGPU factory
+    // would only see the pre-existing session_options.config_options entries.
+    // Build a merged ConfigOptions locally so we don't have to mutate the const&.
+    ConfigOptions merged_config = session_options.config_options;
+    if (const auto it = provider_options_map.find(type); it != provider_options_map.end()) {
+      const std::string key_prefix = OrtSessionOptions::GetProviderOptionPrefix(type.c_str());
+      for (const auto& [ep_key, ep_value] : it->second) {
+        const std::string new_key = key_prefix + ep_key;
+        ORT_THROW_IF_ERROR(merged_config.AddConfigEntry(new_key.c_str(), ep_value.c_str()));
+      }
+    }
+    return onnxruntime::WebGpuProviderFactoryCreator::Create(merged_config);
 #endif
   } else if (type == kCannExecutionProvider) {
 #ifdef USE_CANN

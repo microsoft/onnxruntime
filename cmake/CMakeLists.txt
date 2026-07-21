@@ -154,6 +154,11 @@ option(onnxruntime_USE_EXTERNAL_DAWN "Build with treating Dawn as external depen
 option(onnxruntime_CUSTOM_DAWN_SRC_PATH "Path to custom Dawn src dir.")
 option(onnxruntime_BUILD_DAWN_SHARED_LIBRARY "Build Dawn as a shared library" OFF)
 option(onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP "Adding frame present for PIX to capture a frame" OFF)
+option(onnxruntime_ENABLE_NSIGHT_FOR_WEBGPU_EP
+  "Enable Nsight Graphics / Nsight Systems / RenderDoc profiling helpers in the WebGPU EP. \
+Adds per-dispatch debug groups, forces one compute pass per dispatch (so Nsight Graphics's \
+GPU Trace can isolate a single dispatch cleanly), and disables graph capture. Off by default; \
+enable only for local profiling builds. See docs/WebGPU-EP-Nsight-Graphics-Profiling.md." OFF)
 # The following 2 options are only for Windows
 option(onnxruntime_ENABLE_DAWN_BACKEND_VULKAN "Enable Vulkan backend for Dawn (on Windows)" OFF)
 option(onnxruntime_ENABLE_DAWN_BACKEND_D3D12 "Enable D3D12 backend for Dawn (on Windows)" ON)
@@ -1018,6 +1023,15 @@ if (onnxruntime_USE_WEBGPU)
         "Option onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP can only be set on windows with onnxruntime_ENABLE_DAWN_BACKEND_D3D12 is enabled.")
     endif()
     add_compile_definitions(ENABLE_PIX_FOR_WEBGPU_EP)
+  endif()
+  if (onnxruntime_ENABLE_NSIGHT_FOR_WEBGPU_EP)
+    # This is a developer-only build flag for local Nsight Graphics / Nsight Systems / RenderDoc
+    # profiling. See docs/WebGPU-EP-Nsight-Graphics-Profiling.md.
+    #  - Emits a debug group around every WebGPU compute dispatch (op / node / program / key / dispatch dims).
+    #  - Forces one dispatch per compute pass so Nsight Graphics's GPU Trace can isolate a single dispatch.
+    #  - Disables WebGPU EP graph capture (would otherwise bypass per-op debug groups on replay).
+    # Cross-platform: works on Windows (D3D12 / Vulkan) and Linux (Vulkan). No Windows-only checks.
+    add_compile_definitions(ENABLE_NSIGHT_FOR_WEBGPU_EP)
   endif()
 endif()
 if (onnxruntime_USE_CANN)
