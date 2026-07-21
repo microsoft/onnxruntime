@@ -12,6 +12,14 @@ Usage:
     python benchmark_gqa_cpu_flash.py
     python benchmark_gqa_cpu_flash.py --decode_only
     python benchmark_gqa_cpu_flash.py --prompt_only
+    python benchmark_gqa_cpu_flash.py --fp32 --block_table --block_table_only --decode_only --trials 3
+    python benchmark_gqa_cpu_flash.py --fp32 --block_table --decode_only --csv_output .\\gqa_report.csv
+
+Flag notes:
+    --block_table: Include FP32 block_table cache scenarios.
+    --block_table_only: Run only block_table scenarios (requires --fp32 --block_table).
+    --trials: Run independent trial repeats per config and report mean/min/max speedup.
+    --csv_output: Optional CSV file path for exporting benchmark results.
 """
 
 import argparse
