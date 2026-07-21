@@ -1396,6 +1396,14 @@ block()
   onnxruntime_apply_test_target_workarounds(onnxruntime_provider_test)
   onnxruntime_set_plugin_ep_test_environment(onnxruntime_provider_test)
 
+  # The CUDA EP internal unit tests (onnxruntime_providers_cuda_ut) are built as a shared-library
+  # module that is dlopen'd at runtime by this binary (see CUDA_EP_Unittest.All -> TestAll()). Some
+  # of those tests (e.g. the MatMulNBits two-level workspace end-to-end test) run a full
+  # InferenceSession, whose symbols are statically linked into this executable. Mirror
+  # onnxruntime_test_all and export them so the dlopen'd module can resolve them at load time;
+  # without this the module fails to load with an undefined-symbol error.
+  set_target_properties(onnxruntime_provider_test PROPERTIES ENABLE_EXPORTS 1)
+
   if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
     target_compile_definitions(onnxruntime_provider_test PRIVATE
       ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_providers_cuda_plugin>"

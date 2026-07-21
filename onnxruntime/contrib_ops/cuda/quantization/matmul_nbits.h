@@ -80,38 +80,29 @@ inline bool ParseFpAIntBEnabled(const std::string& value) {
 }
 
 // Effective SM architecture that the fpA_intB CUTLASS runner uses for workspace sizing AFTER
-// InitGemmProfiler's setArch() call (matmul_nbits.cc). Must stay in lockstep with
-// MatMulNBits::FpAIntBPackingSmForKernel: the runner targets native SM90 only when the device is
-// SM90 AND the weights were prepacked for the Hopper layout (weight_prepacked == 2); every other
-// case runs the SM80-compat kernel, whose workspace formula ignores sm. If FpAIntBPackingSmForKernel
-// or the setArch() call changes, this must change too (Tests A and C are the regression guard).
+// InitGemmProfiler's setArch() call (matmul_nbits.cc). This is the SINGLE source of the effective-arch
+// rule: MatMulNBits::FpAIntBPackingSmForKernel() delegates to this function, so Level 1 (the
+// EstimateMatMulNBitsWorkspace estimate) and Level 2 / the runtime are compiler-guaranteed to agree.
+// The runner targets native SM90 only when the device is SM90 AND the weights were prepacked for the
+// Hopper layout (weight_prepacked == 2); every other case runs the SM80-compat kernel, whose
+// workspace formula ignores sm.
 inline int EffectiveFpAIntBWorkspaceSm(int device_sm, int64_t weight_prepacked) {
   return (device_sm == 90 && weight_prepacked == kMatMulNBitsWeightPrepackedSm90) ? 90 : 80;
 }
 
-// Result of the shared fpA_intB eligibility decision (see CheckFpAIntBEligibility).
-struct FpAIntBEligibility {
-  bool eligible{false};
-  int64_t N{0};
-  int64_t K{0};
-  int64_t nbits{0};
-  int64_t block_size{0};
-  int64_t weight_prepacked{kMatMulNBitsWeightNotPrepacked};
-  bool has_g_idx{false};
-};
-
 // Single source of truth for the fpA_intB / CUTLASS weight-only-GEMM eligibility decision. Reads
 // only node attributes + input-0 dtype + device SM (no kernel instance required). Called from BOTH
 // the MatMulNBits constructor (to compute has_fpA_intB_gemm_) and EstimateMatMulNBitsWorkspace
-// (Level 1), so the two can never disagree about whether a node takes the fpA_intB path.
+// (Level 1), so the two can never disagree about whether a node takes the fpA_intB path. Returns
+// true iff the node is eligible for the fpA_intB path.
 //
 // input0_elem_type is an onnx::TensorProto_DataType (FLOAT16 / BFLOAT16 are eligible; FLOAT is not).
 // fpa_intb_option is the resolved ORT_FPA_INTB_GEMM / ep.cuda.fpa_intb_gemm flag (0 = off). A
 // prepacked weight (weight_prepacked != 0) forces the fpA_intB path on regardless of the option.
-FpAIntBEligibility CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
-                                           int64_t nbits, int64_t block_size,
-                                           int64_t weight_prepacked, bool has_g_idx,
-                                           int device_sm, int fpa_intb_option);
+bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
+                             int64_t nbits, int64_t block_size,
+                             int64_t weight_prepacked, bool has_g_idx,
+                             int device_sm, int fpa_intb_option);
 
 // Level 1 partition-time workspace estimate for a MatMulNBits node, callable during GetCapability()
 // before any kernel instance exists. Returns nullopt when the node is not fpA_intB-eligible, when
@@ -188,13 +179,13 @@ class MatMulNBits final : public CudaKernel {
           ParseFpAIntBEnabled(ResolveFpAIntBConfigOrEnv(info, kConfigFpAIntBGemm, kFpAIntBGemmOption)) ? 1 : 0;
       // Route the fpA_intB path decision through the single shared eligibility function so the
       // constructor and the Level-1 EstimateMatMulNBitsWorkspace estimate can never disagree.
-      const FpAIntBEligibility eligibility = CheckFpAIntBEligibility(
+      const bool fpa_intb_eligible = CheckFpAIntBEligibility(
           onnxruntime::utils::ToTensorProtoElementType<T>(), N_, K_, nbits_, block_size_,
           weight_prepacked_, has_g_idx_, sm_, fpa_intb_option);
       // Note: a fused bias (input[5]) is fully supported by the fpA_intB GEMV, CUTLASS SM80/SM90
       // GEMM (EpilogueOpBias), and the tactic profiler, so bias-bearing nodes (e.g. gpt-oss
       // qkv_proj/o_proj) are eligible. Only g_idx/reorder remains unsupported by this path.
-      if (eligibility.eligible) {
+      if (fpa_intb_eligible) {
         // The CUTLASS GEMM and the GEMV decode kernel consume the same fpA_intB weight layout, so
         // enable GEMV whenever it is supported; a node cannot mix fpA_intB and legacy layouts.
         using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
@@ -271,6 +262,11 @@ class MatMulNBits final : public CudaKernel {
   // against the real runtime request. This atomic is not correlated to a specific Run() when
   // concurrent Run()s share one kernel instance; it is only meant for this pilot's single-threaded
   // tests. Do not build anything on top of it.
+  //
+  // STALENESS: the value is only updated on the fpA_intB CUTLASS GEMM branch of ComputeInternal().
+  // It is therefore only meaningful immediately after a call that took that branch; a subsequent
+  // call that takes the GEMV (cuda-kernel) path or the non-fpA_intB path leaves it holding the old
+  // value from the previous GEMM call. It is NOT reset between calls.
   size_t LastComputeWorkspaceBytes() const { return last_compute_workspace_bytes_.load(); }
 #endif
 

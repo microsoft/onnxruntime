@@ -42,25 +42,16 @@ constexpr auto kScaleOnly = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY;
 
 // Single source of truth for the fpA_intB / CUTLASS weight-only-GEMM eligibility decision. See the
 // declaration in matmul_nbits.h. Kept in lockstep with the MatMulNBits constructor's path selection.
-FpAIntBEligibility CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
-                                           int64_t nbits, int64_t block_size,
-                                           int64_t weight_prepacked, bool has_g_idx,
-                                           int device_sm, int fpa_intb_option) {
-  FpAIntBEligibility r;
-  r.N = N;
-  r.K = K;
-  r.nbits = nbits;
-  r.block_size = block_size;
-  r.weight_prepacked = weight_prepacked;
-  r.has_g_idx = has_g_idx;
-  r.eligible = false;
-
+bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
+                             int64_t nbits, int64_t block_size,
+                             int64_t weight_prepacked, bool has_g_idx,
+                             int device_sm, int fpa_intb_option) {
   // The fpA_intB path consumes FP16 or BF16 input A only. CUDA also registers an FP32 MatMulNBits
   // variant that must never be reported as fpA_intB-eligible.
   const bool dtype_ok = (input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
                          input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
   if (!dtype_ok) {
-    return r;
+    return false;
   }
 
   // A prepacked weight is already stored in the fpA_intB layout, so the path cannot be turned off
@@ -68,34 +59,34 @@ FpAIntBEligibility CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, 
   const bool prepacked = weight_prepacked != kMatMulNBitsWeightNotPrepacked;
   const bool enable_fpa_intb = prepacked || (fpa_intb_option != 0);
   if (!enable_fpa_intb) {
-    return r;
+    return false;
   }
 
   // weight_prepacked must be one of the three known formats.
   if (weight_prepacked != kMatMulNBitsWeightNotPrepacked &&
       weight_prepacked != kMatMulNBitsWeightPrepackedSm80 &&
       weight_prepacked != kMatMulNBitsWeightPrepackedSm90) {
-    return r;
+    return false;
   }
 
+  // block_size in {32,64,128} already guarantees block_size != 0, so K % block_size is well-defined.
   const bool base_ok = (block_size == 32 || block_size == 64 || block_size == 128) &&
                        (nbits == 4 || nbits == 8) &&
                        !has_g_idx &&
                        N % (nbits == 8 ? 32 : 64) == 0 &&
-                       block_size != 0 && K % block_size == 0 &&
+                       K % block_size == 0 &&
                        device_sm >= 75;
   if (!base_ok) {
-    return r;
+    return false;
   }
 
   // The native SM90 (Hopper) prepacked layout requires an SM90 device and block_size 64 or 128.
   if (weight_prepacked == kMatMulNBitsWeightPrepackedSm90 &&
       !(device_sm == 90 && (block_size == 64 || block_size == 128))) {
-    return r;
+    return false;
   }
 
-  r.eligible = true;
-  return r;
+  return true;
 }
 
 // Product of all leading (non-K) dimensions of input A, i.e. the GEMM "m". Returns nullopt when the
@@ -126,12 +117,17 @@ static std::optional<int64_t> StaticLeadingDimProduct(const NodeArg* input_a) {
 
 std::optional<size_t> EstimateMatMulNBitsWorkspace(const Node& node, const cudaDeviceProp& device_prop) {
   auto get_attr = [&node](const std::string& name, int64_t default_value) -> int64_t {
+    // Iterate rather than use attrs.find(): in the provider-bridge (shared library) build,
+    // NodeAttributes exposes bridged iterators (IteratorHolder) that do not support find()/
+    // operator== or iter->second, but range iteration with attr.first/attr.second works. This
+    // matches how CUDAExecutionProvider reads node attributes elsewhere.
     const auto& attrs = node.GetAttributes();
-    auto it = attrs.find(name);
-    if (it == attrs.end()) {
-      return default_value;
+    for (const auto& attr : attrs) {
+      if (attr.first == name) {
+        return attr.second.i();
+      }
     }
-    return it->second.i();
+    return default_value;
   };
 
   const auto& input_defs = node.InputDefs();
@@ -158,14 +154,26 @@ std::optional<size_t> EstimateMatMulNBitsWorkspace(const Node& node, const cudaD
 
   const int device_sm = device_prop.major * 10 + device_prop.minor;
 
-  // Level 1 reads the process-wide env option only (the per-session config is not available at
-  // partition time); prepacked weights are eligible regardless of the option.
+  // Level 1 KNOWN LIMITATION (Major 2, issue microsoft/onnxruntime#29810): this estimate can only
+  // read the process-wide env var ORT_FPA_INTB_GEMM, NOT the per-session config ep.cuda.fpa_intb_gemm
+  // that the MatMulNBits constructor also honors (and which wins over the env var). The constructor
+  // has the session ConfigOptions via OpKernelInfo, but the only caller of this function -
+  // CUDAExecutionProvider::GetCapability() - does not: the IExecutionProvider::GetCapability()
+  // interface (shared by every EP) is not passed the session ConfigOptions, and CUDAExecutionProvider
+  // does not store them (info_ carries provider options only). Threading ConfigOptions into
+  // GetCapability() would be a cross-cutting change to the EP interface and is deferred.
+  //
+  // Consequence: a node enabled solely via ep.cuda.fpa_intb_gemm (env var unset) is judged eligible
+  // by the real kernel but NOT here, so Level 1 conservatively returns nullopt (no workspace
+  // pre-reservation) rather than over-estimating. Because Level 1 is currently log-only and does not
+  // change the partition budget, this divergence is safe. Prepacked weights are eligible regardless
+  // of the option, so they are unaffected.
   const int fpa_intb_option =
       ParseFpAIntBEnabled(ParseEnvironmentVariableWithDefault<std::string>(kFpAIntBGemmOption, "")) ? 1 : 0;
 
-  const FpAIntBEligibility eligibility = CheckFpAIntBEligibility(
+  const bool fpa_intb_eligible = CheckFpAIntBEligibility(
       input0_elem_type, N, K, nbits, block_size, weight_prepacked, has_g_idx, device_sm, fpa_intb_option);
-  if (!eligibility.eligible) {
+  if (!fpa_intb_eligible) {
     return std::nullopt;
   }
 
@@ -189,10 +197,11 @@ int MatMulNBits<T>::FpAIntBPackingSmForKernel() const {
   // Select the native SM90 (Hopper) mixed-weight layout only when the weights were prepacked for it
   // (weight_prepacked_ == 2) AND the device is SM90. Otherwise use the SM80 layout, which is also
   // used as the SM90 compatibility path for runtime-prepacked (or SM80-prepacked) weights.
-  if (sm_ == 90 && weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90) {
-    return 90;
-  }
-  return 80;
+  //
+  // Delegates to the shared EffectiveFpAIntBWorkspaceSm() (matmul_nbits.h) so the compiler - not a
+  // comment - enforces that this (Level 2 / runtime) and the Level-1 workspace estimate resolve the
+  // effective arch identically. Both must stay a single expression.
+  return EffectiveFpAIntBWorkspaceSm(sm_, weight_prepacked_);
 }
 
 template <typename T>

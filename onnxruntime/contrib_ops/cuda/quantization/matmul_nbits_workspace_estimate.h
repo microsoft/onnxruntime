@@ -11,7 +11,7 @@
 //
 // The whole header body is conditionally compiled: core CUDA EP code is compiled in configurations
 // where DISABLE_CONTRIB_OPS is set, so this must not declare anything there.
-#if !defined(DISABLE_CONTRIB_OPS) && defined(USE_FPA_INTB_GEMM)
+#if !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
 
 #include <cstddef>
 #include <optional>
@@ -29,4 +29,4 @@ std::optional<size_t> EstimateMatMulNBitsWorkspace(const Node& node, const cudaD
 }  // namespace contrib
 }  // namespace onnxruntime
 
-#endif  // !defined(DISABLE_CONTRIB_OPS) && defined(USE_FPA_INTB_GEMM)
+#endif  // !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
