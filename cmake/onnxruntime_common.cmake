@@ -62,6 +62,7 @@ else()
              "${ONNXRUNTIME_ROOT}/core/platform/posix/device_id.cc"
              "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.h"
              "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.cc"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_no_throw.h"
              "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_sampling.h"
         )
     endif()
