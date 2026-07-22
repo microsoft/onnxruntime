@@ -464,8 +464,12 @@ class GQAAttentionBase {
             }
 
             if (attn_bias != nullptr) {
-              for (size_t t = 0; t < win_size; ++t) {
-                sm[start_off + t] += static_cast<float>(attn_bias[start_off + t]);
+              if constexpr (std::is_same_v<T, float>) {
+                ApplyAttentionBias(sm + start_off, attn_bias + start_off, static_cast<int>(win_size));
+              } else {
+                for (size_t t = 0; t < win_size; ++t) {
+                  sm[start_off + t] += static_cast<float>(attn_bias[start_off + t]);
+                }
               }
             }
 

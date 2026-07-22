@@ -24,6 +24,7 @@ Abstract:
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <vector>
 
 #include "mlas_qkv_quant.h"
 #include "mlasi.h"
@@ -602,23 +603,26 @@ MlasFlashDecodingReduceThreaded(
         }
 
         float global_l = 0.0f;
+        std::vector<float> output_accumulator(static_cast<size_t>(head_size), 0.0f);
         for (ptrdiff_t c = 0; c < kv_chunk_count; ++c) {
             const float* partial = partials_base + c * partial_stride;
-            if (partial[1] > 0.0f) {
-                global_l += std::exp(partial[0] - global_m) * partial[1];
+            const float chunk_l = partial[1];
+            if (chunk_l <= 0.0f) {
+                continue;
+            }
+
+            const float rescale = std::exp(partial[0] - global_m);
+            global_l += rescale * chunk_l;
+            const float* chunk_output = partial + 2;
+            for (ptrdiff_t i = 0; i < head_size; ++i) {
+                output_accumulator[static_cast<size_t>(i)] += rescale * chunk_output[i];
             }
         }
 
         const float inv_l = global_l > 0.0f ? 1.0f / global_l : 0.0f;
         for (ptrdiff_t i = 0; i < head_size; ++i) {
-            float output_value = 0.0f;
-            for (ptrdiff_t c = 0; c < kv_chunk_count; ++c) {
-                const float* partial = partials_base + c * partial_stride;
-                if (partial[1] > 0.0f) {
-                    output_value += std::exp(partial[0] - global_m) * partial[2 + i];
-                }
-            }
-            args->output_fp16[output_offset + static_cast<size_t>(i)] = MLAS_FP16(output_value * inv_l);
+            args->output_fp16[output_offset + static_cast<size_t>(i)] =
+                MLAS_FP16(output_accumulator[static_cast<size_t>(i)] * inv_l);
         }
     }
 }
