@@ -97,14 +97,15 @@ jobs:
             done < perms.txt
           fi
 
-      - name: Verify CUDA provider has no direct cuDNN dependency
+      - name: Verify CUDA provider has no direct cuDNN or cuFFT dependency
         run: |
           docker run --rm --gpus all \
             -v "${{ runner.temp }}/Release:/build/Release" \
             "${{ steps.build_docker_image_step.outputs.full-image-name }}" \
             bash -lc 'set -euo pipefail
           ldd /build/Release/Release/libonnxruntime_providers_cuda.so | tee /tmp/ldd.txt
-          ! grep -i cudnn /tmp/ldd.txt'
+          ! grep -i cudnn /tmp/ldd.txt
+          ! grep -i cufft /tmp/ldd.txt'
 
       - name: Run no-cuDNN CUDA EP op smoke test
         run: |
@@ -134,6 +135,24 @@ jobs:
           fi
           if find /usr /opt /lib /lib64 -name "libcudnn*.so*" -print -quit 2>/dev/null | grep -q .; then
             echo "cuDNN runtime libraries remain in the no-cuDNN test container" >&2
+            exit 1
+          fi
+
+          # Likewise remove cuFFT so the smoke test proves the provider loads and runs
+          # non-FFT operators when cuFFT is physically unavailable (it is loaded lazily and
+          # only needed by the Rfft/Irfft contrib ops).
+          for root in /usr /opt /lib /lib64; do
+            if [ -e "$root" ]; then
+              find "$root" -name "libcufft*.so*" -print -delete 2>/dev/null || true
+            fi
+          done
+          ldconfig
+          if ldconfig -p | grep -qi cufft; then
+            echo "cuFFT remains available in the dynamic linker cache" >&2
+            exit 1
+          fi
+          if find /usr /opt /lib /lib64 -name "libcufft*.so*" -print -quit 2>/dev/null | grep -q .; then
+            echo "cuFFT runtime libraries remain in the no-cuDNN test container" >&2
             exit 1
           fi
 
@@ -255,5 +274,32 @@ jobs:
               np.argmin(data, axis=1).reshape(2, 1).astype(np.int64),
           )
 
-          print("CUDA no-cuDNN op smoke tests passed")
+          # Rfft requires cuFFT, which was physically removed above. With CPU fallback
+          # disabled the node must run on CUDA and fail cleanly with NOT_IMPLEMENTED
+          # (proving cuFFT is optional and its absence does not crash the provider).
+          rfft_model = helper.make_model(
+              helper.make_graph(
+                  [helper.make_node("Rfft", ["x"], ["y"], domain="com.microsoft", signal_ndim=1, onesided=1)],
+                  "no_cufft_rfft",
+                  [helper.make_tensor_value_info("x", TensorProto.FLOAT, [2, 4])],
+                    [helper.make_tensor_value_info("y", TensorProto.FLOAT, [2, 3, 2])],
+              ),
+              opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
+          )
+          rfft_model.ir_version = 10
+          rfft_options = ort.SessionOptions()
+          rfft_options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+          try:
+              rfft_sess = ort.InferenceSession(
+                  rfft_model.SerializeToString(), sess_options=rfft_options, providers=providers
+              )
+              rfft_sess.run(None, {"x": np.random.rand(2, 4).astype(np.float32)})
+          except Exception as exc:  # noqa: BLE001
+              message = str(exc).lower()
+              assert "cufft" in message, "Rfft without cuFFT raised an unexpected error: " + str(exc)
+              print("[no-cuFFT] Rfft correctly failed: " + str(exc).splitlines()[0])
+          else:
+              raise AssertionError("Rfft unexpectedly succeeded while cuFFT was unavailable")
+
+          print("CUDA no-cuDNN/no-cuFFT op smoke tests passed")
           PY'
