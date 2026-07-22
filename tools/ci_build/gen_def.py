@@ -37,7 +37,7 @@ for c in args.config:
             if not line:
                 continue
             if line in provider_symbols:
-                sys.exit(f"dup symbol: {line}")
+                sys.exit(f"dup symbol in {file_name}: {line}")
             provider_symbols.add(line)
 
 symbols = set(provider_symbols)
@@ -48,7 +48,7 @@ for file_name in args.extra_symbol_file:
             if not line:
                 continue
             if line in symbols:
-                sys.exit(f"dup symbol: {line}")
+                sys.exit(f"dup symbol in {file_name}: {line}")
             symbols.add(line)
 
 symbols = sorted(symbols)
