@@ -2224,9 +2224,27 @@ TEST(GroupQueryAttentionTest, QuantizedKV_FP16_INT4_Prompt) {
                              /*use_fp16=*/true});
 }
 
+TEST(GroupQueryAttentionTest, QuantizedKV_FP16_INT8_PerChannel_Prompt) {
+  RunQuantizedGQAPromptTest({/*batch_size=*/1, /*seq_len=*/4, /*num_heads=*/2, /*kv_num_heads=*/1,
+                             /*head_size=*/8, /*quant_type=*/"PER_CHANNEL", /*bit_width=*/8,
+                             /*use_fp16=*/true});
+}
+
+TEST(GroupQueryAttentionTest, QuantizedKV_FP16_INT4_PerChannel_Prompt) {
+  RunQuantizedGQAPromptTest({/*batch_size=*/1, /*seq_len=*/4, /*num_heads=*/2, /*kv_num_heads=*/1,
+                             /*head_size=*/8, /*quant_type=*/"PER_CHANNEL", /*bit_width=*/4,
+                             /*use_fp16=*/true});
+}
+
 TEST(GroupQueryAttentionTest, QuantizedKV_FP16_INT8_NaivePrompt) {
   RunQuantizedGQAPromptTest({/*batch_size=*/1, /*seq_len=*/4, /*num_heads=*/2, /*kv_num_heads=*/1,
                              /*head_size=*/8, /*quant_type=*/"PER_TENSOR", /*bit_width=*/8,
+                             /*use_fp16=*/true, /*disable_flash=*/true});
+}
+
+TEST(GroupQueryAttentionTest, QuantizedKV_FP16_INT4_NaivePrompt) {
+  RunQuantizedGQAPromptTest({/*batch_size=*/1, /*seq_len=*/4, /*num_heads=*/2, /*kv_num_heads=*/1,
+                             /*head_size=*/8, /*quant_type=*/"PER_TENSOR", /*bit_width=*/4,
                              /*use_fp16=*/true, /*disable_flash=*/true});
 }
 

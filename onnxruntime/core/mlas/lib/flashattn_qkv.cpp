@@ -24,7 +24,6 @@ Abstract:
 #include <cmath>
 #include <cstring>
 #include <limits>
-#include <vector>
 
 #include "mlas_qkv_quant.h"
 #include "mlasi.h"
@@ -530,6 +529,10 @@ MlasFlashDecodingReduceThreaded(
     const ptrdiff_t thread_count = static_cast<ptrdiff_t>(args->thread_count);
     const ptrdiff_t partial_stride = 2 + head_size;
 
+    char* buffer_ptr = reinterpret_cast<char*>(args->buffer) +
+                       static_cast<size_t>(thread_id) * args->buffer_size_per_thread;
+    float* output_accumulator = reinterpret_cast<float*>(buffer_ptr);
+
     // Total reduction tasks: one per (batch, head)
     const ptrdiff_t total_task_count = batch_size * num_heads;
 
@@ -603,7 +606,7 @@ MlasFlashDecodingReduceThreaded(
         }
 
         float global_l = 0.0f;
-        std::vector<float> output_accumulator(static_cast<size_t>(head_size), 0.0f);
+        memset(output_accumulator, 0, static_cast<size_t>(head_size) * sizeof(float));
         for (ptrdiff_t c = 0; c < kv_chunk_count; ++c) {
             const float* partial = partials_base + c * partial_stride;
             const float chunk_l = partial[1];
@@ -615,14 +618,14 @@ MlasFlashDecodingReduceThreaded(
             global_l += rescale * chunk_l;
             const float* chunk_output = partial + 2;
             for (ptrdiff_t i = 0; i < head_size; ++i) {
-                output_accumulator[static_cast<size_t>(i)] += rescale * chunk_output[i];
+                output_accumulator[i] += rescale * chunk_output[i];
             }
         }
 
         const float inv_l = global_l > 0.0f ? 1.0f / global_l : 0.0f;
         for (ptrdiff_t i = 0; i < head_size; ++i) {
             args->output_fp16[output_offset + static_cast<size_t>(i)] =
-                MLAS_FP16(output_accumulator[static_cast<size_t>(i)] * inv_l);
+                MLAS_FP16(output_accumulator[i] * inv_l);
         }
     }
 }

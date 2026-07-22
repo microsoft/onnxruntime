@@ -819,8 +819,8 @@ class GQAAttentionBase {
     size_t buffer_size_per_thread;
     size_t partials_buffer_bytes = 0;
     if (use_flash_decoding) {
-      // Flash decoding: per-thread scratch only needs scores[kv_block_size]
-      buffer_size_per_thread = static_cast<size_t>(kv_block_size) * sizeof(float);
+      // Phase 1 uses scores[kv_block_size]; phase 2 reuses the scratch for output[head_size].
+      buffer_size_per_thread = static_cast<size_t>(std::max(kv_block_size, head_size)) * sizeof(float);
       // Partials: [batch * num_heads * kv_chunk_count * (2 + head_size)] floats
       partials_buffer_bytes = static_cast<size_t>(batch_size) * num_heads_ *
                               kv_chunk_count * (2 + head_size) * sizeof(float);
