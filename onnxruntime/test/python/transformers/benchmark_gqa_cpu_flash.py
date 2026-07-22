@@ -378,7 +378,7 @@ def run_benchmarks(args):
             naive_ms = benchmark_gqa(**cfg, warmup=warmup, repeats=repeats)
 
             speedup = naive_ms / flash_ms if flash_ms > 0 else float("inf")
-            print(f'{label + " " + input_label:<31} {naive_ms:>10.3f}ms {flash_ms:>10.3f}ms {speedup:>8.2f}x')
+            print(f"{label + ' ' + input_label:<31} {naive_ms:>10.3f}ms {flash_ms:>10.3f}ms {speedup:>8.2f}x")
 
     # Restore original env state
     if saved_env is not None:
