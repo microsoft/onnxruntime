@@ -243,6 +243,76 @@ QKGemm_Neon(
     }
 }
 
+inline float32x4_t
+LoadFp16x4_Neon(const MLAS_FP16* src)
+{
+    float32x4_t value = vdupq_n_f32(static_cast<float>(src[0]));
+    value = vsetq_lane_f32(static_cast<float>(src[1]), value, 1);
+    value = vsetq_lane_f32(static_cast<float>(src[2]), value, 2);
+    return vsetq_lane_f32(static_cast<float>(src[3]), value, 3);
+}
+
+inline void
+StoreFp16x4_Neon(MLAS_FP16* dst, float32x4_t value)
+{
+    dst[0] = MLAS_FP16(vgetq_lane_f32(value, 0));
+    dst[1] = MLAS_FP16(vgetq_lane_f32(value, 1));
+    dst[2] = MLAS_FP16(vgetq_lane_f32(value, 2));
+    dst[3] = MLAS_FP16(vgetq_lane_f32(value, 3));
+}
+
+void
+QKGemmFp16_Neon(
+    size_t M,
+    size_t N,
+    size_t K,
+    float Alpha,
+    const MLAS_FP16* A,
+    size_t lda,
+    const void* B,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    float* C,
+    size_t ldc)
+{
+    const size_t row_bytes = MlasKVQuantPackedRowBytes(QuantType, K);
+    const auto* B_bytes = static_cast<const uint8_t*>(B);
+    const bool int4 = IsInt4Mode(QuantType);
+    const bool per_channel = IsPerChannelMode(QuantType);
+
+    for (size_t n = 0; n < N; ++n) {
+        const uint8_t* b_row = B_bytes + n * row_bytes;
+        for (size_t m = 0; m < M; ++m) {
+            const MLAS_FP16* a_row = A + m * lda;
+            float32x4_t acc0 = vdupq_n_f32(0.0f);
+            float32x4_t acc1 = vdupq_n_f32(0.0f);
+            size_t k = 0;
+
+            for (; k + 8 <= K; k += 8) {
+                float b_values[8];
+                const uint8_t* b_chunk = int4 ? b_row + k / 2 : b_row + k;
+                DequantRow_Neon(b_chunk, b_values, 8, QuantType,
+                                 per_channel ? Scales + k : Scales, true);
+                acc0 = vfmaq_f32(acc0, LoadFp16x4_Neon(a_row + k), vld1q_f32(b_values));
+                acc1 = vfmaq_f32(acc1, LoadFp16x4_Neon(a_row + k + 4), vld1q_f32(b_values + 4));
+            }
+
+            float dot = vaddvq_f32(vaddq_f32(acc0, acc1));
+            for (; k < K; ++k) {
+                const float b = int4
+                                    ? static_cast<float>(((k & 1) == 0 ? (b_row[k / 2] & 0x0F)
+                                                                        : ((b_row[k / 2] >> 4) & 0x0F)) -
+                                                         kInt4Bias) *
+                                          (per_channel ? Scales[k] : Scales[0])
+                                    : static_cast<float>(reinterpret_cast<const int8_t*>(b_row)[k]) *
+                                          (per_channel ? Scales[k] : Scales[0]);
+                dot += static_cast<float>(a_row[k]) * b;
+            }
+            C[m * ldc + n] = Alpha * dot;
+        }
+    }
+}
+
 //
 // SVGemm:  C[M,N] = Beta * C[M,N] + A[M,K] * B[K,N]
 //
@@ -338,11 +408,79 @@ SVGemm_Neon(
     }
 }
 
+void
+SVGemmFp16_Neon(
+    size_t M,
+    size_t N,
+    size_t K,
+    const float* A,
+    size_t lda,
+    const void* B,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    MLAS_FP16* C,
+    size_t ldc,
+    float Beta)
+{
+    const size_t row_bytes = MlasKVQuantPackedRowBytes(QuantType, N);
+    const auto* B_bytes = static_cast<const uint8_t*>(B);
+    const bool int4 = IsInt4Mode(QuantType);
+    const bool per_channel = IsPerChannelMode(QuantType);
+    const size_t vec_end_n = (N / 8) * 8;
+
+    for (size_t m = 0; m < M; ++m) {
+        const float* a_row = A + m * lda;
+        MLAS_FP16* c_row = C + m * ldc;
+
+        for (size_t n = 0; n < vec_end_n; n += 8) {
+            float32x4_t acc0 = Beta == 0.0f ? vdupq_n_f32(0.0f) : LoadFp16x4_Neon(c_row + n);
+            float32x4_t acc1 = Beta == 0.0f ? vdupq_n_f32(0.0f) : LoadFp16x4_Neon(c_row + n + 4);
+            if (Beta != 0.0f && Beta != 1.0f) {
+                const float32x4_t beta = vdupq_n_f32(Beta);
+                acc0 = vmulq_f32(acc0, beta);
+                acc1 = vmulq_f32(acc1, beta);
+            }
+
+            for (size_t k = 0; k < K; ++k) {
+                float b_values[8];
+                const uint8_t* b_row = B_bytes + k * row_bytes;
+                const uint8_t* b_chunk = int4 ? b_row + n / 2 : b_row + n;
+                DequantRow_Neon(b_chunk, b_values, 8, QuantType,
+                                 per_channel ? Scales + n : Scales, true);
+                const float32x4_t a = vdupq_n_f32(a_row[k]);
+                acc0 = vfmaq_f32(acc0, a, vld1q_f32(b_values));
+                acc1 = vfmaq_f32(acc1, a, vld1q_f32(b_values + 4));
+            }
+
+            StoreFp16x4_Neon(c_row + n, acc0);
+            StoreFp16x4_Neon(c_row + n + 4, acc1);
+        }
+
+        for (size_t n = vec_end_n; n < N; ++n) {
+            float acc = Beta == 0.0f ? 0.0f : Beta * static_cast<float>(c_row[n]);
+            for (size_t k = 0; k < K; ++k) {
+                const uint8_t* b_row = B_bytes + k * row_bytes;
+                const float b = int4
+                                    ? static_cast<float>(((n & 1) == 0 ? (b_row[n / 2] & 0x0F)
+                                                                        : ((b_row[n / 2] >> 4) & 0x0F)) -
+                                                         kInt4Bias) *
+                                          (per_channel ? Scales[n] : Scales[0])
+                                    : static_cast<float>(reinterpret_cast<const int8_t*>(b_row)[n]) *
+                                          (per_channel ? Scales[n] : Scales[0]);
+                acc += a_row[k] * b;
+            }
+            c_row[n] = MLAS_FP16(acc);
+        }
+    }
+}
+
 }  // namespace
 
 const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchNeon = []() {
     MLAS_KV_QUANT_GEMM_DISPATCH d;
     d.QKGemm = QKGemm_Neon;
+    d.QKGemmFp16 = QKGemmFp16_Neon;
     d.SVGemm = SVGemm_Neon;
+    d.SVGemmFp16 = SVGemmFp16_Neon;
     return d;
 }();

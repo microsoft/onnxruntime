@@ -464,6 +464,13 @@ void
         return;
     }
 
+    const auto* Dispatch = GetMlasPlatform().KVQuantGemmDispatch;
+    if (GetMlasPlatform().KVQuantGemmFp16Supported_ &&
+        Dispatch != nullptr && Dispatch->QKGemmFp16 != nullptr) {
+        Dispatch->QKGemmFp16(M, N, K, Alpha, A, lda, B, QuantType, Scales, C, ldc);
+        return;
+    }
+
     const bool int4 = IsInt4Mode(QuantType);
     const bool per_channel = IsPerChannelMode(QuantType);
     const size_t row_bytes = MlasKVQuantPackedRowBytes(QuantType, K);
@@ -608,6 +615,13 @@ void
                 C[m * ldc + n] = MLAS_FP16(Beta == 0.0f ? 0.0f : Beta * static_cast<float>(C[m * ldc + n]));
             }
         }
+        return;
+    }
+
+    const auto* Dispatch = GetMlasPlatform().KVQuantGemmDispatch;
+    if (GetMlasPlatform().KVQuantGemmFp16Supported_ &&
+        Dispatch != nullptr && Dispatch->SVGemmFp16 != nullptr) {
+        Dispatch->SVGemmFp16(M, N, K, A, lda, B, QuantType, Scales, C, ldc, Beta);
         return;
     }
 

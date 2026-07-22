@@ -45,6 +45,32 @@ UseApproximateVnniQKGemm()
     return enabled;
 }
 
+inline __m512
+LoadFloat32x16(const float* src)
+{
+    return _mm512_loadu_ps(src);
+}
+
+inline __m512
+LoadFloat32x16(const MLAS_FP16* src)
+{
+    const __m256i fp16 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src));
+    return _mm512_cvtph_ps(fp16);
+}
+
+inline __m512
+LoadFp16Outputx16(const MLAS_FP16* src)
+{
+    return LoadFloat32x16(src);
+}
+
+inline void
+StoreFp16Outputx16(MLAS_FP16* dst, __m512 value)
+{
+    const __m256i fp16 = _mm512_cvtps_ph(value, _MM_FROUND_TO_NEAREST_INT);
+    _mm256_storeu_si256(reinterpret_cast<__m256i*>(dst), fp16);
+}
+
 //
 // Quantize an FP32 row to uint8 with zero-point 128 (so signed range maps to [1,255]).
 // Returns the scale factor: val = (quant[i] - 128) * scale_a.
@@ -181,9 +207,10 @@ VnniDotInt8PerTensor(
 //
 // 512-bit wide FP32 fused dequant-dot for INT8. Processes 16 floats per iteration.
 //
+template <typename AType>
 inline float
 FusedDotInt8_Avx512(
-    const float* a_row,
+    const AType* a_row,
     const int8_t* b_row,
     size_t K,
     bool per_channel,
@@ -203,7 +230,7 @@ FusedDotInt8_Avx512(
             __m512 bf0 = _mm512_cvtepi32_ps(i32_0);
             __m512 sc0 = _mm512_loadu_ps(scales + k);
             bf0 = _mm512_mul_ps(bf0, sc0);
-            __m512 a0 = _mm512_loadu_ps(a_row + k);
+            __m512 a0 = LoadFloat32x16(a_row + k);
             acc0 = _mm512_fmadd_ps(a0, bf0, acc0);
 
             // Chunk 1: next 16 elements
@@ -212,7 +239,7 @@ FusedDotInt8_Avx512(
             __m512 bf1 = _mm512_cvtepi32_ps(i32_1);
             __m512 sc1 = _mm512_loadu_ps(scales + k + 16);
             bf1 = _mm512_mul_ps(bf1, sc1);
-            __m512 a1 = _mm512_loadu_ps(a_row + k + 16);
+            __m512 a1 = LoadFloat32x16(a_row + k + 16);
             acc1 = _mm512_fmadd_ps(a1, bf1, acc1);
         }
         for (; k + 16 <= K; k += 16) {
@@ -221,7 +248,7 @@ FusedDotInt8_Avx512(
             __m512 bf0 = _mm512_cvtepi32_ps(i32_0);
             __m512 sc0 = _mm512_loadu_ps(scales + k);
             bf0 = _mm512_mul_ps(bf0, sc0);
-            __m512 a0 = _mm512_loadu_ps(a_row + k);
+            __m512 a0 = LoadFloat32x16(a_row + k);
             acc0 = _mm512_fmadd_ps(a0, bf0, acc0);
         }
     } else {
@@ -232,20 +259,20 @@ FusedDotInt8_Avx512(
             __m128i raw0 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(b_row + k));
             __m512i i32_0 = _mm512_cvtepi8_epi32(raw0);
             __m512 bf0 = _mm512_cvtepi32_ps(i32_0);
-            __m512 a0 = _mm512_loadu_ps(a_row + k);
+            __m512 a0 = LoadFloat32x16(a_row + k);
             acc0 = _mm512_fmadd_ps(a0, bf0, acc0);
 
             __m128i raw1 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(b_row + k + 16));
             __m512i i32_1 = _mm512_cvtepi8_epi32(raw1);
             __m512 bf1 = _mm512_cvtepi32_ps(i32_1);
-            __m512 a1 = _mm512_loadu_ps(a_row + k + 16);
+            __m512 a1 = LoadFloat32x16(a_row + k + 16);
             acc1 = _mm512_fmadd_ps(a1, bf1, acc1);
         }
         for (; k + 16 <= K; k += 16) {
             __m128i raw0 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(b_row + k));
             __m512i i32_0 = _mm512_cvtepi8_epi32(raw0);
             __m512 bf0 = _mm512_cvtepi32_ps(i32_0);
-            __m512 a0 = _mm512_loadu_ps(a_row + k);
+            __m512 a0 = LoadFloat32x16(a_row + k);
             acc0 = _mm512_fmadd_ps(a0, bf0, acc0);
         }
     }
@@ -303,9 +330,21 @@ DequantInt4x16_Avx512(const uint8_t* src, size_t col, bool per_channel, const fl
     return f32;
 }
 
+inline __m512
+DequantInt8x16_Avx512(const int8_t* src, size_t col, bool per_channel, const float* scales)
+{
+    const __m128i raw = _mm_loadu_si128(reinterpret_cast<const __m128i*>(src + col));
+    __m512 value = _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(raw));
+    if (per_channel) {
+        return _mm512_mul_ps(value, _mm512_loadu_ps(scales + col));
+    }
+    return _mm512_mul_ps(value, _mm512_set1_ps(scales[0]));
+}
+
+template <typename AType>
 inline float
 FusedDotInt4_Avx512(
-    const float* a_row,
+    const AType* a_row,
     const uint8_t* b_row,
     size_t K,
     bool per_channel,
@@ -319,16 +358,16 @@ FusedDotInt4_Avx512(
 
     for (; k < vec_end; k += 32) {
         __m512 bf0 = DequantInt4x16_Avx512(b_row, k, per_channel, scales);
-        __m512 a0 = _mm512_loadu_ps(a_row + k);
+        __m512 a0 = LoadFloat32x16(a_row + k);
         acc0 = _mm512_fmadd_ps(a0, bf0, acc0);
 
         __m512 bf1 = DequantInt4x16_Avx512(b_row, k + 16, per_channel, scales);
-        __m512 a1 = _mm512_loadu_ps(a_row + k + 16);
+        __m512 a1 = LoadFloat32x16(a_row + k + 16);
         acc1 = _mm512_fmadd_ps(a1, bf1, acc1);
     }
     for (; k + 16 <= K; k += 16) {
         __m512 bf0 = DequantInt4x16_Avx512(b_row, k, per_channel, scales);
-        __m512 a0 = _mm512_loadu_ps(a_row + k);
+        __m512 a0 = LoadFloat32x16(a_row + k);
         acc0 = _mm512_fmadd_ps(a0, bf0, acc0);
     }
 
@@ -511,6 +550,38 @@ QKGemm_Avx512Vnni(
     }
 }
 
+void
+QKGemmFp16_Avx512Vnni(
+    size_t M,
+    size_t N,
+    size_t K,
+    float Alpha,
+    const MLAS_FP16* A,
+    size_t lda,
+    const void* B,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    float* C,
+    size_t ldc)
+{
+    const size_t row_bytes = MlasKVQuantPackedRowBytes(QuantType, K);
+    const auto* B_bytes = static_cast<const uint8_t*>(B);
+    const bool int4 = IsInt4Mode(QuantType);
+    const bool per_channel = IsPerChannelMode(QuantType);
+
+    for (size_t n = 0; n < N; ++n) {
+        const uint8_t* b_row = B_bytes + n * row_bytes;
+        for (size_t m = 0; m < M; ++m) {
+            const MLAS_FP16* a_row = A + m * lda;
+            const float dot = int4
+                                  ? FusedDotInt4_Avx512(a_row, b_row, K, per_channel, Scales)
+                                  : FusedDotInt8_Avx512(a_row, reinterpret_cast<const int8_t*>(b_row),
+                                                        K, per_channel, Scales);
+            C[m * ldc + n] = Alpha * dot;
+        }
+    }
+}
+
 // ============================================================================
 // SVGemm:  C[M,N] = Beta * C[M,N] + A[M,K] * B[K,N]
 // B is [K,N] packed row-major.
@@ -672,11 +743,73 @@ SVGemm_Avx512Vnni(
     }
 }
 
+void
+SVGemmFp16_Avx512Vnni(
+    size_t M,
+    size_t N,
+    size_t K,
+    const float* A,
+    size_t lda,
+    const void* B,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    MLAS_FP16* C,
+    size_t ldc,
+    float Beta)
+{
+    const size_t row_bytes = MlasKVQuantPackedRowBytes(QuantType, N);
+    const auto* B_bytes = static_cast<const uint8_t*>(B);
+    const bool int4 = IsInt4Mode(QuantType);
+    const bool per_channel = IsPerChannelMode(QuantType);
+    const size_t vec_end_n = (N / 16) * 16;
+
+    for (size_t m = 0; m < M; ++m) {
+        const float* a_row = A + m * lda;
+        MLAS_FP16* c_row = C + m * ldc;
+
+        for (size_t n = 0; n < vec_end_n; n += 16) {
+            __m512 acc = Beta == 0.0f ? _mm512_setzero_ps() : LoadFp16Outputx16(c_row + n);
+            if (Beta != 0.0f && Beta != 1.0f) {
+                acc = _mm512_mul_ps(acc, _mm512_set1_ps(Beta));
+            }
+
+            for (size_t k = 0; k < K; ++k) {
+                const uint8_t* b_row = B_bytes + k * row_bytes;
+                const __m512 b = int4
+                                     ? DequantInt4x16_Avx512(b_row, n, per_channel, Scales)
+                                     : DequantInt8x16_Avx512(reinterpret_cast<const int8_t*>(b_row), n,
+                                                            per_channel, Scales);
+                acc = _mm512_fmadd_ps(_mm512_set1_ps(a_row[k]), b, acc);
+            }
+
+            StoreFp16Outputx16(c_row + n, acc);
+        }
+
+        for (size_t n = vec_end_n; n < N; ++n) {
+            float acc = Beta == 0.0f ? 0.0f : Beta * static_cast<float>(c_row[n]);
+            for (size_t k = 0; k < K; ++k) {
+                const uint8_t* b_row = B_bytes + k * row_bytes;
+                const float b = int4
+                                    ? static_cast<float>(((n & 1) == 0 ? (b_row[n / 2] & 0x0F)
+                                                                        : ((b_row[n / 2] >> 4) & 0x0F)) -
+                                                         kInt4Bias) *
+                                          (per_channel ? Scales[n] : Scales[0])
+                                    : static_cast<float>(reinterpret_cast<const int8_t*>(b_row)[n]) *
+                                          (per_channel ? Scales[n] : Scales[0]);
+                acc += a_row[k] * b;
+            }
+            c_row[n] = MLAS_FP16(acc);
+        }
+    }
+}
+
 }  // namespace
 
 const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchAvx512Vnni = []() {
     MLAS_KV_QUANT_GEMM_DISPATCH d;
     d.QKGemm = QKGemm_Avx512Vnni;
+    d.QKGemmFp16 = QKGemmFp16_Avx512Vnni;
     d.SVGemm = SVGemm_Avx512Vnni;
+    d.SVGemmFp16 = SVGemmFp16_Avx512Vnni;
     return d;
 }();

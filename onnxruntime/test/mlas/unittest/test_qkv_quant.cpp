@@ -3,6 +3,8 @@
 
 #include "test_util.h"
 #include "mlas_qkv_quant.h"
+#include "core/mlas/lib/mlasi.h"
+#include "core/mlas/lib/qkv_quant_kernel.h"
 #include "core/platform/env_var.h"
 
 #include <algorithm>
@@ -268,8 +270,8 @@ class MlasKVQuantTest : public MlasTestBase {
 
   void TestFp16Apis(MLAS_KV_QUANT_TYPE QuantType) {
     constexpr size_t M = 2;
-    constexpr size_t N = 3;
-    constexpr size_t K = 8;
+    constexpr size_t N = 17;
+    constexpr size_t K = 19;
     const size_t num_scales = IsPerChannel(QuantType) ? K : 1;
     const size_t packed_bytes = N * MlasKVQuantPackedRowBytes(QuantType, K);
 
@@ -304,6 +306,12 @@ class MlasKVQuantTest : public MlasTestBase {
     MlasKVDequantize(quantized_fp16.data(), b_dequantized.data(), N, K, K, QuantType, scales.data(), nullptr);
 
     const float alpha = 1.0f / std::sqrt(static_cast<float>(K));
+    const auto& platform = GetMlasPlatform();
+    if (platform.KVQuantGemmFp16Supported_ && platform.KVQuantGemmDispatch != nullptr) {
+      ASSERT_NE(platform.KVQuantGemmDispatch->QKGemmFp16, nullptr);
+      ASSERT_NE(platform.KVQuantGemmDispatch->SVGemmFp16, nullptr);
+    }
+
     MlasQKGemmFp16(M, N, K, alpha, query_fp16.data(), K, quantized_fp16.data(), QuantType, scales.data(),
                    scores_fp16.data(), N, nullptr);
     RefQKGemm(query_from_fp16.data(), b_dequantized.data(), scores_reference.data(), M, N, K, alpha, K, N);
@@ -320,6 +328,27 @@ class MlasKVQuantTest : public MlasTestBase {
                    output_fp16.data(), K, 0.0f, nullptr);
     for (size_t i = 0; i < output_fp16.size(); ++i) {
       ASSERT_NEAR(static_cast<float>(output_fp16[i]), output_fp32[i], 2e-3f);
+    }
+
+    constexpr float beta = 0.5f;
+    std::vector<MLAS_FP16> output_with_beta(M * K);
+    std::vector<float> output_with_beta_reference(M * K);
+    for (size_t i = 0; i < output_with_beta.size(); ++i) {
+      output_with_beta[i] = MLAS_FP16(static_cast<float>(int(i % 7) - 3) * 0.125f);
+      output_with_beta_reference[i] = beta * static_cast<float>(output_with_beta[i]);
+    }
+    for (size_t row = 0; row < M; ++row) {
+      for (size_t col = 0; col < K; ++col) {
+        for (size_t p = 0; p < N; ++p) {
+          output_with_beta_reference[row * K + col] +=
+              probabilities[row * N + p] * b_dequantized[p * K + col];
+        }
+      }
+    }
+    MlasSVGemmFp16(M, K, N, probabilities.data(), N, quantized_fp16.data(), QuantType, scales.data(),
+                   output_with_beta.data(), K, beta, nullptr);
+    for (size_t i = 0; i < output_with_beta.size(); ++i) {
+      ASSERT_NEAR(static_cast<float>(output_with_beta[i]), output_with_beta_reference[i], 2e-3f);
     }
   }
 

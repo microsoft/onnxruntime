@@ -220,7 +220,9 @@ void
  * @brief FP16-query variant of MlasQKGemm.
  *
  * The FP16 query is consumed directly while scores continue to accumulate in
- * FP32 for softmax. The existing FP32 API retains its SIMD dispatch path.
+ * FP32 for softmax. SIMD backends consume query vectors directly and
+ * dequantize the KV cache on the fly; unsupported platforms use the scalar
+ * fallback without materializing an FP32 query buffer.
  */
 void
     MLASCALL
@@ -287,8 +289,9 @@ void
 /**
  * @brief FP16-output variant of MlasSVGemm.
  *
- * Accumulation is FP32, but C is read and written directly as FP16. This
- * avoids an FP16-to-FP32 output conversion buffer.
+ * Accumulation is FP32, but C is read and written directly as FP16. SIMD
+ * backends retain FP32 accumulators in registers and convert only the final
+ * values, avoiding an FP16-to-FP32 output conversion buffer.
  */
 void
     MLASCALL
