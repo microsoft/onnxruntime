@@ -15,7 +15,7 @@ jobs:
   build_x86_release:
     runs-on: [
       "self-hosted",
-      "1ES.Pool=onnxruntime-github-vs2022-latest",
+      "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
       "JobId=windows-x86-release-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
       ]
     timeout-minutes: 300
@@ -36,6 +36,11 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x86 # x86 architecture for vcvarsall
+
+      - name: Install Visual Studio Spectre-mitigated libs
+        uses: ./.github/actions/install-vs-spectre-libs
+        with:
+          architecture: x86
 
       - name: Install python modules
         shell: cmd

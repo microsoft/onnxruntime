@@ -211,5 +211,112 @@ class TestCudaQuantizerTorchPackerParity(unittest.TestCase):
                         self._check(bits, force_arch, n, k)
 
 
+@unittest.skipIf("CUDAExecutionProvider" not in ort.get_available_providers(), "CUDA is not available")
+@unittest.skipUnless(hasattr(_pybind, "quantize_matmul_4bits"), "MatMulNBits 4-bit quantizer is unavailable")
+class TestFpAIntBConfigKeys(unittest.TestCase):
+    """Session-config keys ep.cuda.fpa_intb_gemm / ep.cuda.fpa_intb_profile_m.
+
+    These do not need the offline weight packer (pack_weights_for_cuda_mixed_gemm), so they run in
+    more build configurations than TestMatMulNBitsPrepackedCuda. They cover: the config key enabling
+    the fpA_intB path (on/off only), session config overriding the ORT_FPA_INTB_GEMM env var, the
+    profile-M key being accepted, and env-var backward compatibility.
+    """
+
+    def setUp(self):
+        # Make sure no env override leaks in from the process / other tests.
+        for name in ("ORT_FPA_INTB_GEMM", "ORT_FPA_INTB_PROFILE_M"):
+            os.environ.pop(name, None)
+
+    def _quantize_weight(self, weight: np.ndarray, bits: int, block_size: int):
+        k, n = weight.shape
+        k_blocks = (k + block_size - 1) // block_size
+        blob_size = block_size * bits // 8
+        q_weight = np.zeros((n, k_blocks, blob_size), dtype=np.uint8)
+        scales = np.zeros((n, k_blocks), dtype=np.float16)
+        zero_points = np.zeros((n, (k_blocks + 1) // 2), dtype=np.uint8)
+        _pybind.quantize_matmul_4bits(q_weight, weight, scales, zero_points, block_size, n, k, True)
+        return q_weight, np.abs(scales)
+
+    def _make_model(self, m, k, n, q_weight, scales, bits, block_size, weight_prepacked=0) -> ModelProto:
+        node = helper.make_node(
+            "MatMulNBits",
+            ["A", "B", "scales"],
+            ["Y"],
+            domain="com.microsoft",
+            K=k,
+            N=n,
+            bits=bits,
+            block_size=block_size,
+            weight_prepacked=weight_prepacked,
+        )
+        graph = helper.make_graph(
+            [node],
+            "fpa_intb_config_keys_test",
+            [helper.make_tensor_value_info("A", TensorProto.FLOAT16, [m, k])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT16, [m, n])],
+            initializer=[
+                numpy_helper.from_array(q_weight, name="B"),
+                numpy_helper.from_array(scales, name="scales"),
+            ],
+        )
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_opsetid("", 21), helper.make_opsetid("com.microsoft", 1)],
+        )
+        model.ir_version = 10
+        return model
+
+    def _run(self, model: ModelProto, a: np.ndarray, config: dict[str, str] | None = None) -> np.ndarray:
+        so = ort.SessionOptions()
+        for key, value in (config or {}).items():
+            so.add_session_config_entry(key, value)
+        sess = ort.InferenceSession(model.SerializeToString(), so, providers=["CUDAExecutionProvider"])
+        return sess.run(None, {"A": a})[0]
+
+    def _make_int4_case(self, m=32, k=256, n=512, block_size=64):
+        rng = np.random.default_rng(2024)
+        a = rng.normal(0.0, 0.25, size=(m, k)).astype(np.float16)
+        weight = rng.normal(0.0, 0.25, size=(k, n)).astype(np.float16)
+        q_weight, scales = self._quantize_weight(weight, 4, block_size)
+        model = self._make_model(m, k, n, q_weight, scales, 4, block_size)
+        return model, a, q_weight, scales
+
+    def test_config_key_enables_fpa_intb(self):
+        # On fpA_intB-capable hardware (compute capability >= 7.5) the baseline (no config) runs the
+        # standard dequant path -- for a non-prepacked node the enable flag defaults to disabled --
+        # while the config key selects the fpA_intB path; the two paths must stay numerically
+        # equivalent. On sm < 75 both fall back to the dequant path, so this asserts equivalence
+        # rather than the switch itself (the prepacked tests force and exercise the fpA_intB kernel).
+        # Only on/off is accepted.
+        model, a, _, _ = self._make_int4_case()
+        ref = self._run(model, a)
+        for value in ("1", "on", "all", "true"):
+            out = self._run(model, a, {"ep.cuda.fpa_intb_gemm": value})
+            np.testing.assert_allclose(out, ref, rtol=2e-2, atol=2e-2, err_msg=f"value={value}")
+
+    def test_profile_m_config_key_accepted(self):
+        model, a, _, _ = self._make_int4_case()
+        ref = self._run(model, a)
+        out = self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1", "ep.cuda.fpa_intb_profile_m": "1,8,32"})
+        np.testing.assert_allclose(out, ref, rtol=2e-2, atol=2e-2)
+
+    def test_session_config_overrides_env(self):
+        # env var says off, session config says on -> the session config must win.
+        model, a, _, _ = self._make_int4_case()
+        ref = self._run(model, a)
+        with set_env("ORT_FPA_INTB_GEMM", "0"):
+            out = self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1"})
+        np.testing.assert_allclose(out, ref, rtol=2e-2, atol=2e-2)
+
+    def test_env_var_backward_compatible(self):
+        model, a, _, _ = self._make_int4_case()
+        ref = self._run(model, a)
+        # "1" plus a legacy non-zero numeric value (previously a bitmask) both mean "enabled" now.
+        for value in ("1", "4"):
+            with set_env("ORT_FPA_INTB_GEMM", value):
+                out = self._run(model, a)
+            np.testing.assert_allclose(out, ref, rtol=2e-2, atol=2e-2, err_msg=f"env={value}")
+
+
 if __name__ == "__main__":
     unittest.main()
