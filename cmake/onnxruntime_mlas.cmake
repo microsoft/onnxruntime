@@ -853,12 +853,19 @@ else()
         set(CMAKE_REQUIRED_FLAGS "${OLD_CMAKE_REQUIRED_FLAGS_AVXVNNI}")
         unset(OLD_CMAKE_REQUIRED_FLAGS_AVXVNNI)
 
+        # Apply the base AVX2 flags to all AVX2 sources.
+        set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c")
+
         if(MLAS_COMPILER_SUPPORTS_AVXVNNI)
-          message(STATUS "Using -mavx2 -mfma -mavxvnni flags")
-          set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c -mavxvnni")
+          message(STATUS "Using -mavx2 -mfma -mf16c -mavxvnni flags for sqnbitgemm_kernel_avx2.cpp")
+          # Apply -mavxvnni only to the single TU that contains AVX-VNNI kernels.
+          # Applying it to the whole mlas_platform_srcs_avx2 set would allow the
+          # auto-vectorizer to emit VNNI instructions in the nominal AVX2 kernels
+          # (e.g. MlasSQNBitGemmDispatchAvx2), which crash on CPUs without AVX-VNNI.
+          set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
+            PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c -mavxvnni")
         else()
-          message(STATUS "Using -mavx2 -mfma flags (AVX-VNNI not supported by compiler/assembler)")
-          set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c")
+          message(STATUS "Using -mavx2 -mfma -mf16c flags (AVX-VNNI not supported by compiler/assembler)")
         endif()
 
         # The 2-bit fp-zero-point dequant kernel relies on separate multiply

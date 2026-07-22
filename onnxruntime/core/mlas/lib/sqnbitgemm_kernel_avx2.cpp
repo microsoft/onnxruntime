@@ -1538,7 +1538,18 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2 = []() {
     d.SQ4BitBlkDequantBForSgemm_CompFp32 = Q4BitBlkDequantBForSgemm_CompFp32_avx2;
 
     d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx2;
+    // When this TU is compiled with -mavxvnni the auto-vectorizer is allowed to
+    // emit VNNI instructions anywhere in the TU, including inside the <false>
+    // template instantiation that is meant to be pure AVX2.  Running those
+    // instructions on a CPU that has AVX2 but not AVX-VNNI raises
+    // EXCEPTION_ILLEGAL_INSTRUCTION.  Guard against this by leaving the pointer
+    // null so the caller falls back to the FP32 path; on VNNI-capable CPUs the
+    // MlasSQNBitGemmDispatchAvx2vnni table (below) supplies the fast int8 kernel.
+#if defined(__AVXVNNI__)
+    d.SQ8BitGemmKernel_BlkSum_CompInt8 = nullptr;
+#else
     d.SQ8BitGemmKernel_BlkSum_CompInt8 = SQ8BitGemmKernel_BlkSum_CompInt8_avx2<false>;
+#endif
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx2;
 
     // 2-bit native CompInt8 path. Reuses the portable block-group packer and
