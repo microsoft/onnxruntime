@@ -249,8 +249,15 @@ if(ORT_HAS_SM90_OR_LATER)
   list(APPEND _cuda_plugin_shared_compile_options
     "$<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-w>"
     "$<$<COMPILE_LANGUAGE:CUDA>:-DCUTLASS_ENABLE_GDC_FOR_SM90=1>")
-  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GEMMS)
   if(NOT MSVC)
+    # The native SM90 (Hopper) TMA/WGMMA launchers pass CUTLASS TMA descriptor types through
+    # NVCC-generated host stubs. With CUDA 13 + MSVC those stubs contain 128-byte over-aligned
+    # by-value formal parameters, which triggers MSVC C2719 ("formal parameter with requested
+    # alignment of 128 won't be aligned"). Disable the native SM90 fpA_intB (COMPILE_HOPPER_TMA_GEMMS)
+    # and grouped MoE (COMPILE_HOPPER_TMA_GROUPED_GEMMS) TMA kernels on MSVC; the launcher bodies
+    # become throwing stubs and the SM80 compatibility path still runs on Hopper at runtime.
+    # See docs/contrib_ops/cuda/moe_qmoe.md section 14.1.
+    target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GEMMS)
     target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
   endif()
 endif()
@@ -386,11 +393,13 @@ onnxruntime_add_include_to_target(
 add_dependencies(onnxruntime_providers_cuda_plugin ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 # Link libraries
+# cuDNN and cuFFT are loaded dynamically at runtime (see cudnn_stub.cc / cufft_stub.cc, which are
+# picked up by the GLOB above), so they are intentionally not linked here to avoid a hard runtime
+# dependency when the related ops are not used.
 target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE
     CUDA::cudart
     CUDA::cublas
     CUDA::cublasLt
-    CUDA::cufft
     CUDA::cuda_driver
     cudnn_frontend
     Boost::mp11

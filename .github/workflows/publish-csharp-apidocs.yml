@@ -27,7 +27,7 @@ jobs:
   build:
     runs-on: [
       "self-hosted",
-      "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
+      "1ES.Pool=onnxruntime-github-vs2022-latest",
       "JobId=publish-csharp-apidocs-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
       ]
     timeout-minutes: 210

@@ -12,8 +12,7 @@
 
 static const std::vector<std::string> qgemm_arg_names = {"M", "N", "K", "Batch", "Threads"};
 
-void QGEMM(benchmark::State& state, bool pack_b, bool a_is_signed) {
-  constexpr bool b_is_signed = true;
+void QGEMM(benchmark::State& state, bool pack_b, bool a_is_signed, bool b_is_signed) {
   constexpr uint8_t a_zero_point = 29;
   constexpr uint8_t b_zero_point = 179;
 
@@ -45,6 +44,14 @@ void QGEMM(benchmark::State& state, bool pack_b, bool a_is_signed) {
   size_t packed_b_size = 0;
   if (pack_b) {
     packed_b_size = MlasGemmPackBSize(N, K, a_is_signed, b_is_signed, nullptr);
+    if (packed_b_size == 0) {
+      // MlasGemmPackBSize returns zero when the active dispatch for this
+      // AIsSigned/BIsSigned combination does not support packing (e.g. the
+      // scalar reference dispatch). Calling MlasGemmPackB in that case would
+      // dereference a null CopyPackBRoutine, so skip instead of crashing.
+      state.SkipWithMessage("Packing is not supported for this A/B signedness combination on this target");
+      return;
+    }
     pack_b_holder.resize(packed_b_size * batch);
   }
 
@@ -103,11 +110,16 @@ static void QGemmSize(benchmark::internal::Benchmark* b) {
   b->Args({3072, 4096, 1024, 1, 16});
 }
 
-BENCHMARK_CAPTURE(QGEMM, UnsignedAPackB, true, false)->Apply(QGemmSize)->UseRealTime();
-BENCHMARK_CAPTURE(QGEMM, UnsignedANoPackB, false, false)->Apply(QGemmSize)->UseRealTime();
+BENCHMARK_CAPTURE(QGEMM, UnsignedAPackB, true, false, true)->Apply(QGemmSize)->UseRealTime();
+BENCHMARK_CAPTURE(QGEMM, UnsignedANoPackB, false, false, true)->Apply(QGemmSize)->UseRealTime();
 #if !defined(MLAS_TARGET_AMD64)
 // QGEMM is not supported for signed A, signed B (Packed) on AMD64 CPU. The
 // benchmark assumes MlasGemmPackBSize return non-zero is not true.
-BENCHMARK_CAPTURE(QGEMM, SignedAPackB, true, true)->Apply(QGemmSize)->UseRealTime();
+BENCHMARK_CAPTURE(QGEMM, SignedAPackB, true, true, true)->Apply(QGemmSize)->UseRealTime();
 #endif
-BENCHMARK_CAPTURE(QGEMM, SignedANoPackB, false, true)->Apply(QGemmSize)->UseRealTime();
+BENCHMARK_CAPTURE(QGEMM, SignedANoPackB, false, true, true)->Apply(QGemmSize)->UseRealTime();
+
+// A=int8(signed), B=uint8(unsigned): on ARM64 this now dispatches through the
+// UDOT kernel (see qgemm_kernel_udot.cpp) instead of falling back to scalar.
+BENCHMARK_CAPTURE(QGEMM, SignedAUnsignedBPackB, true, true, false)->Apply(QGemmSize)->UseRealTime();
+BENCHMARK_CAPTURE(QGEMM, SignedAUnsignedBNoPackB, false, true, false)->Apply(QGemmSize)->UseRealTime();
