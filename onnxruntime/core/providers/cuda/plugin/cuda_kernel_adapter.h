@@ -34,6 +34,7 @@
 #include <cudnn.h>
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/cudnn_loader.h"
+#include "core/providers/cuda/cufft_loader.h"
 #include "contrib_ops/cuda/bert/attention_kernel_options.h"
 
 #ifdef __CUDACC__
@@ -279,6 +280,11 @@ using ::onnxruntime::HandleNegativeAxis;
   {                                                                                                                                                                 \
     cufftResult _status = (expr);                                                                                                                                   \
     if (_status != CUFFT_SUCCESS) {                                                                                                                                 \
+      if (!onnxruntime::cuda::CufftLibrary::Get().Available()) {                                                                                                    \
+        return onnxruntime::common::Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,                                                  \
+                                           std::string("cuFFT is unavailable for CUDA Plugin Execution Provider: ") +                                               \
+                                               onnxruntime::cuda::CufftLibrary::Get().Error());                                                                     \
+      }                                                                                                                                                             \
       return onnxruntime::common::Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, std::string("cuFFT error: ") + std::to_string((int)_status)); \
     }                                                                                                                                                               \
   }
