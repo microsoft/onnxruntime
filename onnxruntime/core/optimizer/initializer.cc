@@ -72,10 +72,6 @@ Initializer::Initializer(const Graph& graph, const ONNX_NAMESPACE::TensorProto& 
       data_ = GetTensor(ort_value_);
       return;
     }
-#if !defined(__wasm__)
-    ORT_ENFORCE(!model_path.empty(),
-                "model_path must not be empty. Ensure that a path is provided when the model is created or loaded.");
-#endif
   }
 
   Tensor tensor;

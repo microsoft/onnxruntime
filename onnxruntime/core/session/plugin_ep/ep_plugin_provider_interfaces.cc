@@ -869,10 +869,11 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
           "EP library should be opaque to ORT");
     }
 
+    auto* ep_factory = &ep_factory_;
     auto ort_allocator = OrtAllocatorUniquePtr(
         ort_allocator_ptr,
-        [this](OrtAllocator* allocator) {
-          ep_factory_.ReleaseAllocator(&ep_factory_, allocator);
+        [ep_factory](OrtAllocator* allocator) {
+          ep_factory->ReleaseAllocator(ep_factory, allocator);
         });
 
     // Use the arena wrapper when the allocator supports Shrink(), matching

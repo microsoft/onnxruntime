@@ -21,6 +21,11 @@ and have been significantly modified for ONNX Runtime — see
 7. [Cross-Architecture Packing Compatibility](#7-cross-architecture-packing-compatibility)
 8. [SwiGLU Fusion](#8-swiglu-fusion)
 9. [FP4 (MXFP4) Details](#9-fp4-mxfp4-details)
+  - [9.9 Runtime environment variables](#99-runtime-environment-variables)
+  - [9.10 Interleaved GEMV layout + dtype-conditional accumulation](#910-interleaved-gemv-layout--dtype-conditional-accumulation)
+9b. [NVFP4 (W4A16, block-16) Details](#9b-nvfp4-w4a16-block-16-details)
+  - [9b.2 Fused GEMV decode (group-16)](#9b2-fused-gemv-decode-group-16)
+  - [9b.3 Fast E2M1 → half/bf16 decode](#9b3-fast-e2m1--halfbf16-decode)
 10. [FP8 (W8A16) Details](#10-fp8-w8a16-details)
 11. [WFP4AFP8 Details](#11-wfp4afp8-details)
 12. [Future / Deferred Modes](#12-future--deferred-modes)
@@ -70,8 +75,8 @@ input tokens → router (top-k softmax) → permute by expert
 | `activation_beta` | float | `0.0` | SwiGLU beta. Default `0.0` (Standard SwiGLU); GPT-OSS uses `1.0`. |
 | `swiglu_limit` | float | unset (`+inf`) | SwiGLU clamp limit. Unset means no clamp (Standard SwiGLU); GPT-OSS uses `7.0`. |
 | `expert_weight_bits` (QMoE only) | int | 4 | 4 (INT4/MXFP4) or 8 (INT8/FP8). |
-| `block_size` (QMoE only) | int | -1 | Group size for INT4/INT8 group-wise quantization. -1 = per-output-channel. |
-| `quant_type` (QMoE only) | string | `"int"` | `"int"`, `"fp4"`, `"fp8"`, `"wfp4afp8"`. See [§3](#3-quantization-modes). |
+| `block_size` (QMoE only) | int | -1 | Group size for INT4/INT8 group-wise quantization. -1 = per-output-channel. FP4/WFP4AFP8 normalize an omitted value to 32 and require 32 when present; NVFP4 normalizes an omitted value to 16 and requires 16 when present. |
+| `quant_type` (QMoE only) | string | `"int"` | `"int"`, `"fp4"`, `"nvfp4"`, `"fp8"`, `"wfp4afp8"`. See [§3](#3-quantization-modes). |
 | `weights_prepacked` (QMoE only) | int | -1 | Tri-state, only meaningful when `quant_type="int"`. The prepacked layouts selected by `-1` and `1` are **EP-determined**. `-1` (default): the INT4/INT8 `fc1`/`fc2` initializers are already prepacked in the EP's default layout (e.g. from `pack_weights_for_cuda_mixed_gemm` for the CUDA EP). `1`: already prepacked in an alternate EP-selected layout. `0`: the initializers are raw `[E, N, K/pack]` tensors (as produced by `quantize_matmul_{4,8}bits`) and the kernel runs the CUTLASS layout transform in `PrePack()`. **Note:** the CUDA EP INT4/INT8 MoE GEMM always runs the Ampere (SM80) kernel — even on SM90 — so it consumes the SM80 `fpA_intB` layout on all architectures; `-1` and `1` are therefore equivalent for the CUDA EP today, and `1` is reserved for a possible future Hopper-specific layout. See [§5.1](#51-weights-input-2--5--8). |
 
 ### 2.2 Type Constraints
@@ -79,8 +84,8 @@ input tokens → router (top-k softmax) → permute by expert
 | Constraint | Allowed Types | Used By |
 |------------|---------------|---------|
 | `T`  | `float`, `float16`, `bfloat16` | input, output, biases, router |
-| `T1` | `uint8`, `float8e4m3fn` | quantized weights and zero points: INT4/INT8/FP4 weights use `uint8`; FP8 weights use `float8e4m3fn` |
-| `T2` | `float`, `float16`, `bfloat16`, `uint8` | INT4/INT8 weight scales use floating-point tensors; MXFP block scales use `uint8` storage |
+| `T1` | `uint8`, `float8e4m3fn` | quantized weights and zero points: INT4/INT8/FP4/NVFP4 weights use `uint8`; FP8 weights use `float8e4m3fn` |
+| `T2` | `float`, `float16`, `bfloat16`, `uint8`, `float8e4m3fn` | INT4/INT8 weight scales use floating-point tensors; MXFP block scales use `uint8` (`float8e8m0`) storage; **NVFP4 block scales use `float8e4m3fn`** |
 | `T4` | `float` | per-expert global scales, FP8 activation scales |
 
 ### 2.3 Inputs
@@ -93,10 +98,10 @@ to the selected `quant_type` are simply omitted (most are `Optional`).
 | 0 | `input` | T | `(num_tokens, hidden_size)` | all |
 | 1 | `router_probs` | T | `(num_tokens, num_experts)` | all |
 | 2 | `fc1_experts_weights` | T1 | `(E, fusion×inter, hidden/pack)` | all |
-| 3 | `fc1_scales` | T2 (Opt) | varies — see [§2.4](#24-input-369-interpretation-by-quant_type) | int, fp4, wfp4afp8 |
+| 3 | `fc1_scales` | T2 (Opt) | varies — see [§2.4](#24-input-369-interpretation-by-quant_type) | int, fp4, nvfp4, wfp4afp8 |
 | 4 | `fc1_experts_bias` | T (Opt) | `(E, fusion×inter)` | optional |
 | 5 | `fc2_experts_weights` | T1 | `(E, hidden, inter/pack)` | all |
-| 6 | `fc2_scales` | T2 (Opt) | varies | int, fp4, wfp4afp8 |
+| 6 | `fc2_scales` | T2 (Opt) | varies | int, fp4, nvfp4, wfp4afp8 |
 | 7 | `fc2_experts_bias` | T (Opt) | `(E, hidden)` | optional |
 | 8 | `fc3_experts_weights` | T1 (Opt) | `(E, inter, hidden/pack)` | optional (SwiGLU split-weight) |
 | 9 | `fc3_scales` | T2 (Opt) | varies | optional |
@@ -105,8 +110,8 @@ to the selected `quant_type` are simply omitted (most are `Optional`).
 | 12 | `fc2_zero_points` | T1 (Opt) | matches `fc2_scales` | int only |
 | 13 | `fc3_zero_points` | T1 (Opt) | matches `fc3_scales` | optional, int only |
 | 14 | `router_weights` | T (Opt) | `(num_tokens, num_experts)` | optional (DeepSeek noaux_tc) |
-| 15 | `fc1_global_scale` | T4 (Opt) | `(num_experts,)` | fp4, fp8, wfp4afp8 |
-| 16 | `fc2_global_scale` | T4 (Opt) | `(num_experts,)` | fp4, fp8, wfp4afp8 |
+| 15 | `fc1_global_scale` | T4 (Opt) | `(num_experts,)` | fp4, nvfp4, fp8, wfp4afp8 |
+| 16 | `fc2_global_scale` | T4 (Opt) | `(num_experts,)` | fp4, nvfp4, fp8, wfp4afp8 |
 | 17 | `fc1_act_scale` | T4 (Opt) | `(1,)` or `(num_experts,)` | wfp4afp8 (Variant A) |
 | 18 | `fc2_act_scale` | T4 (Opt) | `(1,)` or `(num_experts,)` | wfp4afp8 (Variant A) |
 | 19 | `fc1_act_block_scale` | T2 (Opt, float8e8m0) | `(E, M_pad, K/32)` | wfp4afp8 (Variant B) |
@@ -127,11 +132,12 @@ is used for both (backward compatible).
 | `"int"` (group-wise) | float / fp16 / bf16 | `(E, N, K/block_size)` | `w_float = w_int × scale (+ zero)` |
 | `"int"` (per-channel) | float / fp16 / bf16 | `(E, N)` | per-output-channel scale |
 | `"fp4"` | uint8 (`float_ue8m0_t`) | `(E, N, K/32)` | MXFP4 block scale, group=32 |
+| `"nvfp4"` | uint8 (`float8e4m3fn` bytes) | `(E, N, K/16)` | NVFP4 block scale, group=16 (needs `fc*_global_scale`) |
 | `"fp8"` | — | — | not used; only the per-expert global scale (input 15/16/17) is needed |
 | `"wfp4afp8"` | uint8 (`float_ue8m0_t`) | `(E, N, K/32)` | MXFP4 block scale, group=32 |
 
 Inputs 11/12/13 (`fc*_zero_points`) are valid only for `"int"`. FP8 e4m3 and
-FP4 e2m1 are symmetric formats with no zero-point.
+FP4 e2m1 (both MXFP4 and NVFP4) are symmetric formats with no zero-point.
 
 ---
 
@@ -143,19 +149,21 @@ FP4 e2m1 are symmetric formats with no zero-point.
 | `"int"` (8-bit) | W8A16 | FP16/BF16 | INT8 group-wise | SM75+ | — | always |
 | `"fp8"` | W8A16-fp8 | BF16/FP16 | FP8 e4m3 (no packing) | **SM90+** native | dequant→A16 on SM<90 | `ENABLE_FP8` (CUDA ≥ 11.8) |
 | `"fp4"` | W4A16-MXFP4 | BF16/FP16 | MXFP4 e2m1, group=32 | **SM120+** native | dequant→A16 on SM<120 | `ENABLE_FP4` + `USE_FP4_QMOE` (CUDA ≥ 12.8) |
+| `"nvfp4"` | W4A16-NVFP4 | BF16/FP16 | NVFP4 e2m1, group=16, `float8e4m3fn` block scale + per-expert FP32 global scale | dequant→A16 (all SM) + **fused GEMV decode** | `ENABLE_FP4` + `USE_FP4_QMOE` (CUDA ≥ 12.8) |
 | `"wfp4afp8"` | W4A8-MXFP4×FP8 | FP8 e4m3 (quantized in-runner) | MXFP4 e2m1, group=32 | **SM100+** native | dequant→A16 on SM<100 | `ENABLE_FP4` + `USE_FP4_QMOE` + `ENABLE_FP8` |
 
 Selection logic (see [moe_quantization.cc](onnxruntime/contrib_ops/cuda/moe/moe_quantization.cc)):
 
 ```cpp
 if (quant_type_ == "fp4")      use_fp4_dequant_fallback_      = (sm_ < 120);
+if (quant_type_ == "nvfp4")    use_fp4_dequant_fallback_      = true;   // no native block-scaled path yet; fused GEMV decode covers small-decode shapes
 if (quant_type_ == "wfp4afp8") use_wfp4afp8_dequant_fallback_ = (sm_ < 100);
 if (quant_type_ == "fp8")      use_fp8_dequant_fallback_      = (sm_ < 90);
 ```
 
 `expert_weight_bits` validation:
 - `int` → 4 or 8
-- `fp4`, `wfp4afp8` → must be 4
+- `fp4`, `nvfp4`, `wfp4afp8` → must be 4
 - `fp8` → must be 8
 
 When the build is configured without the corresponding flags, `quant_type`
@@ -183,7 +191,7 @@ under [onnxruntime/contrib_ops/cuda/llm/moe_gemm/](onnxruntime/contrib_ops/cuda/
 
 | Path | CUTLASS class | Used for | SM range |
 |------|---------------|----------|----------|
-| **MoE GEMV fast path** | `fpA_intB_gemv`-based custom kernel | INT4/INT8 per-column W*A16 and symmetric INT4/INT8 block-wise W*A16 with FP16 or BF16 activations and true decode row counts | SM80+ |
+| **MoE GEMV fast path** | `fpA_intB_gemv`-based custom kernel | INT4/INT8 per-column W*A16 and symmetric INT4/INT8 block-wise W*A16, and **MXFP4 (group-32) / NVFP4 (group-16) W4A16** decode, with FP16 or BF16 activations and true decode row counts | SM80+ |
 | **Ampere GemmGrouped** | `cutlass::gemm::kernel::GemmGrouped` | INT4/INT8 W*A16, FP8 W8A16 dequant fallback, FP32 | SM75–SM89, plus all mixed-input on SM90/SM120 |
 | **TMA Warp-Specialized (mixed-input)** | `CollectiveBuilderMixedInput` | Same-type FP16×FP16 / BF16×BF16, native MXFP4 W4A16 | SM90 (same-type), SM120 (FP4 W4A16) |
 | **Block-Scaled Tensor Op** | `OpClassBlockScaledTensorOp` | Native FP8×MXFP4 (`wfp4afp8`) | SM100+ (Blackwell) |
@@ -220,6 +228,7 @@ switch is cached on first use.
 | FP16/BF16 (no quant, MoE op) | Ampere GemmGrouped | TMA WS (same-type) | TMA WS / valid Blackwell spec | TMA WS / Ampere fallback |
 | FP8 W8A16 native | dequant fallback | TMA WS | TMA WS | SM89 FP8 kernel redirect |
 | FP4 W4A16 native | dequant fallback | dequant fallback | dequant fallback | TMA WS mixed-input FP4 |
+| NVFP4 W4A16 (group-16) | dequant fallback + fused GEMV decode | dequant fallback + fused GEMV decode | dequant fallback + fused GEMV decode | dequant fallback + fused GEMV decode |
 | WFP4AFP8 native | dequant fallback | dequant fallback | Block-scaled tensor op | Block-scaled tensor op |
 | FP32 | Ampere GemmGrouped (forced) | same | same | same |
 
@@ -751,6 +760,142 @@ switch (hopper_inputs.fusion) {
 | `launchers/generate_moe_gemm_tma_ws_sm90_fp4.py` | Added `k` and `fusion` fields; generates K={128,256} × NONE/FINALIZE |
 | `moe_gemm_template_dispatch_tma_ws_mixed_dtype.h` | `FUSION` param throughout; `PackedScalesNum`-based K tile; direct N tile mapping; workspace calc with `Ntile=128` |
 | `moe_gemm_template_dispatch.h` | FUSION routing in `dispatchToArch`; removed restrictive wfp4a16 config filter |
+
+### 9.9 Runtime environment variables
+
+The FP4 path is gated by several process-start environment variables (read once in the
+QMoE constructor). Defaults give the validated production behavior; the rest are opt-in or
+debug switches.
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `ORT_ENABLE_FP4_GEMV` | on | Fused MXFP4 GEMV decode kernel. Set to `0` to force the dequant-to-dense fallback (debugging/bisecting). Active in the SM<120 fallback regime, and as the decode arm when native CUTLASS prefill is enabled. |
+| `ORT_FP4_GEMV_AUTOTUNE` | `0` | Opt-in per-shape autotune of the GEMV CtaN/Threads tiling. Enabling it synchronizes the first uncached inference for each shape. |
+| `ORT_FP4_GEMV_AUTOTUNE_LOG` | `0` | Set to `1` to log the chosen GEMV configs per shape. |
+| `ORT_FP4_GEMV_INTERLEAVED` | `0` | **Experimental, opt-in.** Routes the MXFP4 decode GEMV through the `ColumnMajorInterleaved` weight layout (`kInterleave=4`, `kStepK=32`) with dtype-conditional accumulation. fp16 gets faster decode; bf16 stays accuracy-safe. Default off keeps the shipping `ColumnMajor` path byte-for-byte unchanged. See [§9.10](#910-interleaved-gemv-layout--dtype-conditional-accumulation). |
+| `ORT_FP4_GEMV_INTERLEAVED_HALFACC` | `0` | **Override.** When `ORT_FP4_GEMV_INTERLEAVED=1`, forces 16-bit accumulation for *both* fp16 and bf16, overriding the dtype-conditional policy; regresses bf16 accuracy, so it is off by default. |
+| `ORT_FP4_SM80_GEMM` | `1` | Routes SM80/Ampere FP4 prefill through the fused-dequant grouped GEMM. Set to `0` to force dense fallback for debugging or comparison. Decode still routes through fused MXFP4 GEMV when supported. |
+| `ORT_ENABLE_FP4_CUTLASS_GEMM` | `0` | Opt-in native SM90 WFP4A16 CUTLASS GEMM (fast prefill). Requires FP16, SM90, and aligned shapes (`hidden`/`inter` divisible by 256). Must be combined with `ORT_ENABLE_FP4_CUTLASS_UNSAFE=1`. |
+| `ORT_ENABLE_FP4_CUTLASS_UNSAFE` | `0` | Confirms use of the experimental native SM90 path. Without it, a request to enable native GEMM logs a warning and falls back to dequant/GEMV. |
+| `ORT_FP4_PREFILL_MIN_TOKENS` | `64` | When native CUTLASS is enabled, the per-node decode threshold. Tokens with `M >= threshold` (prefill) route to native CUTLASS; `M < threshold` (decode) route to the fused GEMV. Both weight/scale layouts are pre-packed so one node serves both regimes. |
+
+When native CUTLASS is enabled, weights and scales are dual-prepacked (native layout plus
+raw e8m0 block scales for GEMV), so `ORT_FP4_PREFILL_MIN_TOKENS` selects per call between the
+prefill and decode kernels with no extra conversion.
+
+### 9.10 Interleaved GEMV layout + dtype-conditional accumulation
+
+**Opt-in (`ORT_FP4_GEMV_INTERLEAVED=1`, default off).** The shipping MXFP4 decode GEMV uses a
+non-interleaved `ColumnMajor` weight layout (`kInterleave=1`, `kStepK=8`). This experimental path
+instead mirrors the INT4 GEMV's `ColumnMajorInterleaved` layout (`kInterleave=4`, `kStepK=32`, 4×
+fewer K-loop trips) and pairs it with a **dtype-conditional accumulator** to balance bf16 accuracy
+against occupancy:
+
+```cpp
+// onnxruntime/contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.cu
+template <typename T>
+using Fp4GemvAccT = std::conditional_t<std::is_same<T, half>::value, half, float>;
+```
+
+| Activation | Accumulator | Rationale |
+|-----------|-------------|-----------|
+| **fp16** | fp16 (`half`) | fp16's 10-bit mantissa tolerates 16-bit accumulation over the longer `kStepK=32` chains; the cheaper accumulator keeps register use low so the interleaved layout's K-trip savings translate into a real speedup. |
+| **bf16** | fp32 (`float`) | bf16's 7-bit mantissa loses too much precision under 16-bit accumulation (fails tolerance), so it must accumulate in fp32 — at the cost of the extra registers that erase the speedup. |
+
+The interleaved weights are produced by the `gemv_interleaved` branch of
+[`PrePackRepackFP4Weights`](onnxruntime/contrib_ops/cuda/moe/moe_quantization.cc), which routes the
+raw e2m1 codes per-expert through the CUTLASS fpA_intB SM80 `W4_A16` preprocessor with
+`apply_bias_interleave=false` (the integer-only `+8`/pair-interleave step would corrupt the
+floating-point e2m1 codes; the layout-only steps apply unchanged). Block scales are unchanged
+(`kStepK=32` equals the MXFP4 block size). The shape gate requires `n % (CtaN*4)==0` and
+`k % 64==0`; `CtaN`/`Threads` are pinned (`4`/`128`) so the kernel always matches the prepacked
+weights.
+
+The interleaved layout speeds up fp16 decode; bf16 gets no speedup (the fp32 register cost cancels
+it) but stays accurate. The path is opt-in so fp16 deployments can take the win without affecting
+bf16 or the shipping default.
+
+---
+
+## 9b. NVFP4 (W4A16, block-16) Details
+
+`quant_type="nvfp4"` is a second FP4 weight-only mode, distinct from MXFP4 (`"fp4"`):
+
+| | MXFP4 (`"fp4"`) | **NVFP4 (`"nvfp4"`)** |
+|---|---|---|
+| Weight codes | E2M1, 2 codes/byte (`uint8`) | E2M1, 2 codes/byte (`uint8`) — same |
+| Block size | 32 | **16** |
+| Block scale | `float8e8m0` (E8M0, pow-of-two), stored `uint8` | **`float8e4m3fn`** (E4M3) |
+| Global scale | 1.0 (implicit) | **per-expert FP32** `fc*_global_scale` (`weight_scale_2`) |
+| Reconstruct | `w = e2m1(code) · e8m0(block_scale)` | `w = e2m1(code) · e4m3(block_scale[n, k/16]) · global_scale[e]` |
+
+NVFP4 is the format emitted by NVIDIA Model-Optimizer (e.g. `nvidia/Qwen3.6-35B-A3B-NVFP4`).
+
+### 9b.1 Dispatch
+
+There is no native block-scaled CUTLASS path for NVFP4 today (that is Blackwell-only and not yet
+wired), so NVFP4 **always** uses the dequant-to-A16 fallback ([§4.3](#43-dequant-to-a16-fallback))
+for prefill / GEMV-unsupported shapes, and the **fused GEMV decode fast path**
+([§4](#4-architecture-dispatch--kernel-paths)) for small-decode shapes. `enable_fp4_gemv_` is on by
+default for NVFP4 (opt-out `ORT_ENABLE_FP4_GEMV=0`); `enable_fp4_sm80_gemm_` stays off (the SM80
+grouped-GEMM FP4 prefill path is MXFP4-only).
+
+### 9b.2 Fused GEMV decode (group-16)
+
+The MXFP4 decode GEMV ([§9.10](#910-interleaved-gemv-layout--dtype-conditional-accumulation)) is
+block-size generic: the kernel indexes scales as `scales[e][k/group_size][n]`, and `GroupSize` is a
+compile-time template (`static_assert((CtaK/kInterleave) % GroupSize == 0)`). NVFP4 reuses it with
+`group_size = 16`:
+
+- `is_moe_gemv_fp4_supported` accepts `group_size ∈ {16, 32}`; the dispatch instantiates the
+  `GroupSize=16` cases in `dispatch_moe_gemv_group_size` /
+  `dispatch_moe_gemv_interleaved_swiglu_group_size` ([moe_gemv_device.cuh](onnxruntime/contrib_ops/cuda/llm/moe_gemm/moe_gemv_device.cuh)).
+- NVFP4 uses **only** the non-interleaved `ColumnMajor` layout; the opt-in interleaved path
+  ([§9.10](#910-interleaved-gemv-layout--dtype-conditional-accumulation)) is MXFP4-only because its
+  `kStepK=32` tile is tied to the block-32 scale layout.
+- `QMoECombineNvfp4ScalesForGemv` ([qmoe_kernels.cu](onnxruntime/contrib_ops/cuda/moe/qmoe_kernels.cu))
+  decodes the `float8e4m3fn` block scales, folds in the per-expert FP32 global scale, and rewrites
+  `[E, n, k/16] → [E, k/16, n]` in the activation dtype (`TypeA`) that the GEMV expects.
+- The decode gate ([moe_quantization.cc](onnxruntime/contrib_ops/cuda/moe/moe_quantization.cc)) fires
+  when `expanded = num_tokens·top_k ∈ (0, 8]`, SwiGLU is fused, and both FC1
+  (`n=2·inter`, `k=hidden`) and FC2 (`n=hidden`, `k=inter`) satisfy `n,k ≥ 512` and group-16 block
+  alignment. For Qwen3.6-35B-A3B (`hidden=2048`, `inter=512`, `E=256`, `top_k=8`) both GEMMs qualify.
+
+### 9b.3 Fast E2M1 → half/bf16 decode
+
+Profiling the NVFP4 decode GEMV on H200 (SM90) at the Qwen shapes showed the FC1/FC2 kernels are
+**ALU-pipeline bound** (ncu: ALU ≈ 79%, DRAM ≈ 7%), i.e. the per-element FP4 dequantization — not
+memory or tiling — dominates. The original `Fp4I2FConverter::decode` used a `float` lookup table,
+a sign branch, and a per-element `float → half/bf16` conversion. It is replaced by a **branchless
+`prmt.b32` byte-select** that builds the 16-bit float bit pattern directly (E2M1 has only eight
+magnitudes, so the half/bf16 encodings are packed into two 32-bit constants and selected by the
+low three code bits, with the sign bit shifted into place):
+
+```cpp
+// onnxruntime/contrib_ops/cuda/llm/fpA_intB_gemv/details.h — Fp4I2FConverter::decode (bit-identical to the LUT)
+uint32_t sel = code & 0x7u, sign = uint32_t(code & 0x8u) << 12;  // sign -> bit 15
+// half: low byte always 0 -> one prmt; bf16: two prmt (high + low byte).
+```
+
+This is numerically bit-identical to the previous LUT. Measured decode speedup (H200, `tokens=1`,
+`top_k=8`, `hidden=2048`, `inter=512`, `E=256`, bf16, autotuned tiling):
+
+| kernel | before | after | Δ |
+|--------|-------:|------:|---|
+| FC1 GEMV (SwiGLU-fused, `n=1024 k=2048`) | 20.6 µs | **13.25 µs** | **−36%** |
+| FC2 GEMV (`n=2048 k=512`) | 10.7 µs | **7.55 µs** | **−29%** |
+
+ncu confirms the mechanism: FC1 compute (SM) throughput dropped 68.8% → 55.9% and DRAM rose
+7.3% → 10.2% (a more balanced kernel). Full-node latency (incl. expand / sort / finalize /
+softmax-topk overhead) fell 66.8 µs → 56.1 µs, and end-to-end Qwen3.6 decode reaches ~131 tok/s on
+H200.
+
+### 9b.4 Testing & benchmarking
+
+- Parity: [test_qmoe_nvfp4_cuda.py](onnxruntime/test/python/transformers/test_qmoe_nvfp4_cuda.py)
+  (`-k gemv` compares `ORT_ENABLE_FP4_GEMV=1` vs `=0` vs a torch reference).
+- Kernel microbench: `bench_qmoe_nvfp4_gemv.py` builds the QMoE node at the Qwen decode shape and
+  times GEMV vs the dequant fallback (with `ORT_FP4_GEMV_AUTOTUNE_LOG=1` for the chosen tiling).
 
 ---
 
