@@ -149,14 +149,14 @@ FP4 e2m1 (both MXFP4 and NVFP4) are symmetric formats with no zero-point.
 | `"int"` (8-bit) | W8A16 | FP16/BF16 | INT8 group-wise | SM75+ | — | always |
 | `"fp8"` | W8A16-fp8 | BF16/FP16 | FP8 e4m3 (no packing) | **SM90+** native | dequant→A16 on SM<90 | `ENABLE_FP8` (CUDA ≥ 11.8) |
 | `"fp4"` | W4A16-MXFP4 | BF16/FP16 | MXFP4 e2m1, group=32 | **SM120+** native | dequant→A16 on SM<120 | `ENABLE_FP4` + `USE_FP4_QMOE` (CUDA ≥ 12.8) |
-| `"nvfp4"` | W4A16-NVFP4 | BF16/FP16 | NVFP4 e2m1, group=16, `float8e4m3fn` block scale + per-expert FP32 global scale | dequant→A16 (all SM) + **fused GEMV decode** | `ENABLE_FP4` + `USE_FP4_QMOE` (CUDA ≥ 12.8) |
+| `"nvfp4"` | W4A16-NVFP4 | BF16/FP16 | NVFP4 e2m1, group=16, `float8e4m3fn` block scale + per-expert FP32 global scale | **SM120+** native (block-scaled FP4×FP4 prefill) + **fused GEMV decode** | dequant→A16 on SM<120 | `ENABLE_FP4` + `USE_FP4_QMOE` (CUDA ≥ 12.8) |
 | `"wfp4afp8"` | W4A8-MXFP4×FP8 | FP8 e4m3 (quantized in-runner) | MXFP4 e2m1, group=32 | **SM100+** native | dequant→A16 on SM<100 | `ENABLE_FP4` + `USE_FP4_QMOE` + `ENABLE_FP8` |
 
 Selection logic (see [moe_quantization.cc](onnxruntime/contrib_ops/cuda/moe/moe_quantization.cc)):
 
 ```cpp
 if (quant_type_ == "fp4")      use_fp4_dequant_fallback_      = (sm_ < 120);
-if (quant_type_ == "nvfp4")    use_fp4_dequant_fallback_      = true;   // no native block-scaled path yet; fused GEMV decode covers small-decode shapes
+if (quant_type_ == "nvfp4")    use_fp4_dequant_fallback_      = !enable_nvfp4_cutlass_gemm_;  // native SM120+ block-scaled FP4xFP4 prefill (ORT_ENABLE_NVFP4_CUTLASS_GEMM, shape-gated); fused GEMV decode still covers small-decode shapes
 if (quant_type_ == "wfp4afp8") use_wfp4afp8_dequant_fallback_ = (sm_ < 100);
 if (quant_type_ == "fp8")      use_fp8_dequant_fallback_      = (sm_ < 90);
 ```
@@ -228,7 +228,7 @@ switch is cached on first use.
 | FP16/BF16 (no quant, MoE op) | Ampere GemmGrouped | TMA WS (same-type) | TMA WS / valid Blackwell spec | TMA WS / Ampere fallback |
 | FP8 W8A16 native | dequant fallback | TMA WS | TMA WS | SM89 FP8 kernel redirect |
 | FP4 W4A16 native | dequant fallback | dequant fallback | dequant fallback | TMA WS mixed-input FP4 |
-| NVFP4 W4A16 (group-16) | dequant fallback + fused GEMV decode | dequant fallback + fused GEMV decode | dequant fallback + fused GEMV decode | dequant fallback + fused GEMV decode |
+| NVFP4 W4A16 (group-16) | dequant fallback + fused GEMV decode | dequant fallback + fused GEMV decode | dequant fallback + fused GEMV decode | TMA WS block-scaled FP4×FP4 prefill + fused GEMV decode |
 | WFP4AFP8 native | dequant fallback | dequant fallback | Block-scaled tensor op | Block-scaled tensor op |
 | FP32 | Ampere GemmGrouped (forced) | same | same | same |
 
@@ -831,19 +831,32 @@ bf16 or the shipping default.
 
 NVFP4 is the format emitted by NVIDIA Model-Optimizer (e.g. `nvidia/Qwen3.6-35B-A3B-NVFP4`).
 
-> **Execution behavior (this PR):** NVFP4 has **no native block-scaled CUTLASS prefill path** — that
-> is Blackwell-only and not yet wired. NVFP4 currently runs the **fused GEMV decode fast path** for
-> supported small-decode shapes and the **dequant-to-A16 fallback** for everything else (prefill and
-> any GEMV-unsupported shape). Details in [§9b.1](#9b1-dispatch).
+> **Execution behavior:** On **SM120+ (Blackwell)** NVFP4 runs a **native block-scaled CUTLASS
+> FP4×FP4 grouped-GEMM prefill path** (activations dynamically quantized to NVFP4 in-runner), gated
+> by `ORT_ENABLE_NVFP4_CUTLASS_GEMM` (default on) and the CUTLASS shape requirements. On SM<120, or
+> when the native path is disabled / shape-unsupported, NVFP4 falls back to the **dequant-to-A16**
+> path. The **fused GEMV decode fast path** additionally handles supported small-decode shapes on all
+> SMs. Details in [§9b.1](#9b1-dispatch).
 
 ### 9b.1 Dispatch
 
-There is no native block-scaled CUTLASS path for NVFP4 today (that is Blackwell-only and not yet
-wired), so NVFP4 **always** uses the dequant-to-A16 fallback ([§4.3](#43-dequant-to-a16-fallback))
-for prefill / GEMV-unsupported shapes, and the **fused GEMV decode fast path**
-([§4](#4-architecture-dispatch--kernel-paths)) for small-decode shapes. `enable_fp4_gemv_` is on by
-default for NVFP4 (opt-out `ORT_ENABLE_FP4_GEMV=0`); `enable_fp4_sm80_gemm_` stays off (the SM80
-grouped-GEMM FP4 prefill path is MXFP4-only).
+On **SM120+** NVFP4 selects a **native block-scaled CUTLASS FP4×FP4 grouped-GEMM prefill path**
+(`CutlassMoeFCRunner<__nv_fp4_e2m1, __nv_fp4_e2m1, ...>`, runner instantiated in
+[moe_gemm_kernels_fp4_fp4.cu](onnxruntime/contrib_ops/cuda/llm/moe_gemm/moe_gemm_kernels_fp4_fp4.cu)).
+Activations are dynamically quantized to NVFP4 (block-16 E4M3 scale, global scale 1.0) inside the
+runner (`expandInputRowsKernel`), and the prepacked weight block scales are consumed as the
+Blackwell 128×4 swizzled SF atom. The path is enabled when `sm_ >= 120`,
+`ORT_ENABLE_NVFP4_CUTLASS_GEMM` is on (default), and the CUTLASS shape requirements hold
+(`hidden`/`inter` multiple of 64); it sets `use_fp4_dequant_fallback_ = false`.
+`ORT_FP4_PREFILL_MIN_TOKENS` (default 64) splits the workload: prefill-shaped batches take the
+native grouped GEMM while small-decode shapes still take the fused GEMV path; an A16 dense fallback
+runner covers batches routed away from native.
+
+When the native path is unavailable (SM<120, disabled, or shape-unsupported), NVFP4 uses the
+dequant-to-A16 fallback ([§4.3](#43-dequant-to-a16-fallback)) for prefill / GEMV-unsupported shapes,
+and the **fused GEMV decode fast path** ([§4](#4-architecture-dispatch--kernel-paths)) for
+small-decode shapes. `enable_fp4_gemv_` is on by default for NVFP4 (opt-out `ORT_ENABLE_FP4_GEMV=0`);
+`enable_fp4_sm80_gemm_` stays off (the SM80 grouped-GEMM FP4 prefill path is MXFP4-only).
 
 ### 9b.2 Fused GEMV decode (group-16)
 

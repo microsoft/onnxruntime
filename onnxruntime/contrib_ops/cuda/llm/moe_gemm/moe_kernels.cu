@@ -956,13 +956,10 @@ __global__ void computeStridesTmaWarpSpecializedKernel(int64_t const* expert_fir
     }
   };
 
-#if defined(ENABLE_FP4)
-  if constexpr (!std::is_same_v<WeightType, __nv_fp4_e2m1>) {
-    setupIfSelected(TmaWarpSpecializedGroupedGemmInput::NVFP4BlockScaledConfig{}, quant_params.fp4);
-  }
-#else
+  // NVFP4 native FP4xFP4 sets quant_params.fp4 (WeightType == __nv_fp4_e2m1); the WFP4AFP8 and
+  // MXFP4 fp4-weight paths leave it null and use mxfp8_mxfp4 instead, so this stays a runtime no-op
+  // for them. Run unconditionally (matching TRT-LLM) so the fp4-weight NVFP4 path is wired.
   setupIfSelected(TmaWarpSpecializedGroupedGemmInput::NVFP4BlockScaledConfig{}, quant_params.fp4);
-#endif
   setupIfSelected(TmaWarpSpecializedGroupedGemmInput::MXFPXBlockScaledConfig{}, quant_params.fp8_mxfp4);
   setupIfSelected(TmaWarpSpecializedGroupedGemmInput::MXFPXBlockScaledConfig{}, quant_params.mxfp8_mxfp4);
 
@@ -3302,6 +3299,13 @@ template class CutlassMoeFCRunner<half, cutlass::uint4b_t>;
 template class CutlassMoeFCRunner<half, __nv_fp4_e2m1>;
 #ifdef ENABLE_BF16
 template class CutlassMoeFCRunner<__nv_bfloat16, __nv_fp4_e2m1>;
+#endif
+// Native NVFP4 (W4A16-NVFP4) block-scaled prefill: FP4 e2m1 weights + FP4 e2m1 activations
+// (activations dynamically quantized to NVFP4 inside expandInputRowsKernel). InputType/OutputType
+// are the BF16/FP16 user tensor types. Native CUTLASS FP4xFP4 grouped GEMM requires SM120+.
+template class CutlassMoeFCRunner<__nv_fp4_e2m1, __nv_fp4_e2m1, half, half>;
+#ifdef ENABLE_BF16
+template class CutlassMoeFCRunner<__nv_fp4_e2m1, __nv_fp4_e2m1, __nv_bfloat16, __nv_bfloat16>;
 #endif
 #if defined(ENABLE_FP8) && defined(USE_FP8_QMOE)
 // W4A8 (WFP4AFP8): FP8 e4m3 activations + MXFP4 weights, BF16/FP16 input/output.

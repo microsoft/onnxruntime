@@ -266,6 +266,22 @@ def _cuda_sm():
     return cc[0] * 10 + cc[1]
 
 
+def _routes_native_fp4_prefill(num_tokens):
+    """Predict whether a run routes to the native block-scaled FP4xFP4 CUTLASS prefill kernel.
+
+    Mirrors the CUDA-side routing in moe_quantization.cc: the native path requires SM120+,
+    the native GEMM to be enabled (ORT_ENABLE_NVFP4_CUTLASS_GEMM, default on), and the token
+    count to reach the prefill threshold (ORT_FP4_PREFILL_MIN_TOKENS, default 64). Below the
+    threshold the run uses the GEMV-decode / dequant-fallback path instead.
+    """
+    if _cuda_sm() < 120:
+        return False
+    if os.environ.get("ORT_ENABLE_NVFP4_CUTLASS_GEMM", "1") == "0":
+        return False
+    prefill_min_tokens = int(os.environ.get("ORT_FP4_PREFILL_MIN_TOKENS", "64"))
+    return prefill_min_tokens > 0 and num_tokens >= prefill_min_tokens
+
+
 @unittest.skipIf(not torch.cuda.is_available(), "CUDA not available")
 @unittest.skipIf(not has_onnx, "ONNX not available")
 @unittest.skipIf(not has_fp4_qmoe, "CUDA QMoE FP4 kernels not enabled in this build")
@@ -416,6 +432,16 @@ class TestQMoENVFP4(unittest.TestCase):
         )
 
         atol = 0.15 if torch_dtype == torch.bfloat16 else 0.12
+        # The native block-scaled FP4xFP4 CUTLASS prefill kernel (Blackwell / SM120+, taken
+        # only when the per-run token count reaches the prefill threshold) additionally
+        # quantizes the *activations* to 4-bit NVFP4 (block-16 with E4M3 block scales). The
+        # reference above uses full-precision activations, so that path carries an extra,
+        # deterministic quantization error that the dequant-fallback / GEMV-decode paths do
+        # not. Allow the corresponding headroom only for shapes that actually route native;
+        # every other shape keeps the strict bound. A genuinely broken kernel still produces
+        # error far above this (order 1.0+), so gross regressions are still caught.
+        if _routes_native_fp4_prefill(num_tokens):
+            atol = 0.25 if torch_dtype == torch.float16 else 0.28
         self.assertLess(
             max_diff,
             atol,
