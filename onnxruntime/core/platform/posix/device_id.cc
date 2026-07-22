@@ -9,21 +9,34 @@
 #include <algorithm>
 #include <cctype>
 #include <cerrno>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <optional>
+#include <thread>
 #include <utility>
 #include <vector>
 
+#include <fcntl.h>
+#include <pwd.h>
+#if defined(__has_include)
+#if __has_include(<sys/file.h>)
+#include <sys/file.h>
+#define ORT_DEVICE_ID_USE_FLOCK 1
+#endif
+#endif
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <pwd.h>
-#include <fcntl.h>
 
 namespace onnxruntime {
 
 namespace {
+
+// ORT and OGA share this file and use the same flock-first protocol so corruption repair is
+// serialized even when both libraries are loaded in one process.
+constexpr char kDeviceIdLockFileName[] = "deviceid.lock";
 
 enum class DeviceIdReadResult {
   Missing,
@@ -37,6 +50,128 @@ struct DeviceIdFileRead {
   std::string content;
 };
 
+class ScopedFileDescriptor {
+ public:
+  explicit ScopedFileDescriptor(int fd = -1) : fd_(fd) {}
+  ~ScopedFileDescriptor() {
+    if (fd_ >= 0) {
+      ::close(fd_);
+    }
+  }
+
+  ScopedFileDescriptor(const ScopedFileDescriptor&) = delete;
+  ScopedFileDescriptor& operator=(const ScopedFileDescriptor&) = delete;
+
+  int Get() const { return fd_; }
+  explicit operator bool() const { return fd_ >= 0; }
+
+ private:
+  int fd_;
+};
+
+ScopedFileDescriptor OpenStorageDirectoryNoFollow(const std::string& path) {
+  int flags = O_RDONLY;
+#ifdef O_DIRECTORY
+  flags |= O_DIRECTORY;
+#endif
+#ifdef O_NOFOLLOW
+  flags |= O_NOFOLLOW;
+#endif
+#ifdef O_CLOEXEC
+  flags |= O_CLOEXEC;
+#endif
+
+  const int fd = ::open(path.c_str(), flags);
+  if (fd < 0) {
+    return ScopedFileDescriptor{};
+  }
+
+  struct stat directory_info{};
+  if (::fstat(fd, &directory_info) != 0 ||
+      !S_ISDIR(directory_info.st_mode) ||
+      directory_info.st_uid != ::geteuid() ||
+      ::fchmod(fd, S_IRWXU) != 0) {
+    ::close(fd);
+    return ScopedFileDescriptor{};
+  }
+
+  return ScopedFileDescriptor(fd);
+}
+
+bool AcquireExclusiveFileLock(int fd) {
+  constexpr auto kRetryDelay = std::chrono::milliseconds(10);
+  constexpr auto kTimeout = std::chrono::seconds(1);
+  const auto deadline = std::chrono::steady_clock::now() + kTimeout;
+
+  while (true) {
+#if defined(ORT_DEVICE_ID_USE_FLOCK)
+    if (::flock(fd, LOCK_EX | LOCK_NB) == 0) {
+      return true;
+    }
+#else
+    struct flock lock{};
+    lock.l_type = F_WRLCK;
+    lock.l_whence = SEEK_SET;
+    if (::fcntl(fd, F_SETLK, &lock) == 0) {
+      return true;
+    }
+#endif
+
+    if (errno == EINTR) {
+      continue;
+    }
+    if (errno != EACCES && errno != EAGAIN && errno != EWOULDBLOCK) {
+      return false;
+    }
+    if (std::chrono::steady_clock::now() >= deadline) {
+      return false;
+    }
+    std::this_thread::sleep_for(kRetryDelay);
+  }
+}
+
+class ScopedDeviceIdFileLock {
+ public:
+  explicit ScopedDeviceIdFileLock(int directory_fd) {
+    int flags = O_RDWR | O_CREAT;
+#ifdef O_NOFOLLOW
+    flags |= O_NOFOLLOW;
+#endif
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+
+    fd_ = ::openat(directory_fd, kDeviceIdLockFileName, flags, S_IRUSR | S_IWUSR);
+    if (fd_ < 0) {
+      return;
+    }
+
+    struct stat file_info{};
+    if (::fstat(fd_, &file_info) != 0 ||
+        !S_ISREG(file_info.st_mode) ||
+        file_info.st_uid != ::geteuid() ||
+        ::fchmod(fd_, S_IRUSR | S_IWUSR) != 0 ||
+        !AcquireExclusiveFileLock(fd_)) {
+      ::close(fd_);
+      fd_ = -1;
+    }
+  }
+
+  ~ScopedDeviceIdFileLock() {
+    if (fd_ >= 0) {
+      ::close(fd_);
+    }
+  }
+
+  ScopedDeviceIdFileLock(const ScopedDeviceIdFileLock&) = delete;
+  ScopedDeviceIdFileLock& operator=(const ScopedDeviceIdFileLock&) = delete;
+
+  explicit operator bool() const { return fd_ >= 0; }
+
+ private:
+  int fd_{-1};
+};
+
 void TrimAsciiWhitespace(std::string& value) {
   value.erase(std::find_if_not(value.rbegin(), value.rend(),
                                [](unsigned char c) { return std::isspace(c); })
@@ -46,7 +181,7 @@ void TrimAsciiWhitespace(std::string& value) {
                                               [](unsigned char c) { return std::isspace(c); }));
 }
 
-DeviceIdFileRead ReadDeviceIdFileNoFollow(const std::string& file_path, size_t max_size) {
+DeviceIdFileRead ReadDeviceIdFileNoFollow(int directory_fd, const char* file_name, size_t max_size) {
   int flags = O_RDONLY;
 #ifdef O_NOFOLLOW
   flags |= O_NOFOLLOW;
@@ -58,7 +193,7 @@ DeviceIdFileRead ReadDeviceIdFileNoFollow(const std::string& file_path, size_t m
   flags |= O_CLOEXEC;
 #endif
 
-  const int fd = ::open(file_path.c_str(), flags);
+  const int fd = ::openat(directory_fd, file_name, flags);
   if (fd < 0) {
     return {errno == ENOENT ? DeviceIdReadResult::Missing : DeviceIdReadResult::Failed, {}};
   }
@@ -143,10 +278,18 @@ bool DeviceId::IsValidGUID(const std::string& str) {
 }
 
 std::string DeviceId::GetStorageDirectory() {
-  // Prefer $HOME; fall back to the password database (getpwuid) for contexts where HOME is unset,
-  // e.g. system services/daemons under systemd/launchd.
+#if !defined(__APPLE__)
+  // XDG requires absolute paths. Ignore relative values so telemetry state is never written below
+  // the process working directory.
+  if (const char* xdg = std::getenv("XDG_CACHE_HOME"); xdg != nullptr && xdg[0] == '/') {
+    return std::string(xdg) + "/" + kDeviceIdDir;
+  }
+#endif
+
+  // Prefer an absolute $HOME; fall back to the password database for contexts where HOME is unset
+  // or invalid, e.g. system services/daemons under systemd/launchd.
   std::string home;
-  if (const char* h = std::getenv("HOME"); h != nullptr && h[0] != '\0') {
+  if (const char* h = std::getenv("HOME"); h != nullptr && h[0] == '/') {
     home = h;
   } else {
     // getpwuid() returns a pointer to shared static storage and is not thread-safe; use the
@@ -160,7 +303,7 @@ std::string DeviceId::GetStorageDirectory() {
         sc > 0 ? std::min(static_cast<size_t>(sc), kMaxPwBufferSize) : kDefaultPwBufferSize;
     std::vector<char> buf(pw_buffer_size);
     if (::getpwuid_r(::getuid(), &pwd, buf.data(), buf.size(), &result) == 0 &&
-        result != nullptr && result->pw_dir != nullptr && result->pw_dir[0] != '\0') {
+        result != nullptr && result->pw_dir != nullptr && result->pw_dir[0] == '/') {
       home = result->pw_dir;
     }
   }
@@ -169,14 +312,7 @@ std::string DeviceId::GetStorageDirectory() {
 #if defined(__APPLE__)
   return home + "/Library/Application Support/" + kDeviceIdDir;
 #else
-  // Follow the XDG Base Directory spec: prefer $XDG_CACHE_HOME, otherwise ~/.cache.
-  std::string cache_base;
-  if (const char* xdg = std::getenv("XDG_CACHE_HOME"); xdg != nullptr && xdg[0] != '\0') {
-    cache_base = xdg;
-  } else {
-    cache_base = home + "/.cache";
-  }
-  return cache_base + "/" + kDeviceIdDir;
+  return home + "/.cache/" + kDeviceIdDir;
 #endif
 }
 
@@ -244,10 +380,18 @@ void DeviceId::InitializeInternal() {
       return;
     }
 
-    std::string file_path = dir_path + "/" + kFileName;
+    if (!CreateDirectoryTree(dir_path)) {
+      status_ = DeviceIdStatus::Failed;
+      return;
+    }
+    ScopedFileDescriptor directory = OpenStorageDirectoryNoFollow(dir_path);
+    if (!directory) {
+      status_ = DeviceIdStatus::Failed;
+      return;
+    }
 
     // Try to read existing device ID
-    const DeviceIdFileRead existing = ReadDeviceIdFileNoFollow(file_path, kMaxFileSize);
+    const DeviceIdFileRead existing = ReadDeviceIdFileNoFollow(directory.Get(), kFileName, kMaxFileSize);
     if (existing.result == DeviceIdReadResult::Read && IsValidGUID(existing.content)) {
       device_id_ = existing.content;
       status_ = DeviceIdStatus::Existing;
@@ -261,13 +405,29 @@ void DeviceId::InitializeInternal() {
       status_ = DeviceIdStatus::Corrupted;
     }
 
-    // Create directory tree
-    if (!CreateDirectoryTree(dir_path)) {
-      status_ = DeviceIdStatus::Failed;
-      return;
-    }
     const bool regenerated_from_corruption = (status_ == DeviceIdStatus::Corrupted);
-    const std::string temp_path = file_path + ".tmp." + GenerateGuidV4();
+    std::optional<ScopedDeviceIdFileLock> repair_lock;
+    if (regenerated_from_corruption) {
+      repair_lock.emplace(directory.Get());
+      if (!*repair_lock) {
+        status_ = DeviceIdStatus::Failed;
+        return;
+      }
+
+      // Another ORT or OGA process may have repaired the shared file while this process waited.
+      const DeviceIdFileRead repaired = ReadDeviceIdFileNoFollow(directory.Get(), kFileName, kMaxFileSize);
+      if (repaired.result == DeviceIdReadResult::Read && IsValidGUID(repaired.content)) {
+        device_id_ = repaired.content;
+        status_ = DeviceIdStatus::Existing;
+        return;
+      }
+      if (repaired.result == DeviceIdReadResult::Failed) {
+        status_ = DeviceIdStatus::Failed;
+        return;
+      }
+    }
+
+    const std::string temp_name = std::string(kFileName) + ".tmp." + GenerateGuidV4();
     int flags = O_WRONLY | O_CREAT | O_EXCL;
 #ifdef O_NOFOLLOW
     flags |= O_NOFOLLOW;
@@ -275,44 +435,45 @@ void DeviceId::InitializeInternal() {
 #ifdef O_CLOEXEC
     flags |= O_CLOEXEC;
 #endif
-    const int fd = ::open(temp_path.c_str(), flags, S_IRUSR | S_IWUSR);
+    const int fd = ::openat(directory.Get(), temp_name.c_str(), flags, S_IRUSR | S_IWUSR);
     if (fd >= 0) {
-      ::fchmod(fd, S_IRUSR | S_IWUSR);
+      bool wrote = ::fchmod(fd, S_IRUSR | S_IWUSR) == 0;
       const char* data = device_id_.data();
       size_t remaining = device_id_.size();
-      while (remaining > 0) {
+      while (wrote && remaining > 0) {
         const ssize_t written = ::write(fd, data, remaining);
         if (written < 0 && errno == EINTR) {
           continue;
         }
         if (written <= 0) {
+          wrote = false;
           break;
         }
         data += written;
         remaining -= static_cast<size_t>(written);
       }
       const int close_result = ::close(fd);
-      const bool wrote = remaining == 0 && close_result == 0;
+      wrote = wrote && remaining == 0 && close_result == 0;
       if (!wrote) {
-        ::unlink(temp_path.c_str());
+        ::unlinkat(directory.Get(), temp_name.c_str(), 0);
         status_ = DeviceIdStatus::Failed;
       } else if (regenerated_from_corruption) {
-        if (::rename(temp_path.c_str(), file_path.c_str()) == 0) {
+        if (::renameat(directory.Get(), temp_name.c_str(), directory.Get(), kFileName) == 0) {
           status_ = DeviceIdStatus::Corrupted;
         } else {
-          ::unlink(temp_path.c_str());
+          ::unlinkat(directory.Get(), temp_name.c_str(), 0);
           status_ = DeviceIdStatus::Failed;
         }
       } else {
-        const int link_result = ::link(temp_path.c_str(), file_path.c_str());
+        const int link_result = ::linkat(directory.Get(), temp_name.c_str(), directory.Get(), kFileName, 0);
         const int link_error = errno;
-        ::unlink(temp_path.c_str());
+        ::unlinkat(directory.Get(), temp_name.c_str(), 0);
         if (link_result == 0) {
           status_ = DeviceIdStatus::New;
         } else if (link_error == EEXIST) {
           // Another process won the first-run race. Its complete file was published atomically,
           // so use that value instead of allowing the persisted id to flap.
-          const DeviceIdFileRead winner = ReadDeviceIdFileNoFollow(file_path, kMaxFileSize);
+          const DeviceIdFileRead winner = ReadDeviceIdFileNoFollow(directory.Get(), kFileName, kMaxFileSize);
           if (winner.result == DeviceIdReadResult::Read && IsValidGUID(winner.content)) {
             device_id_ = winner.content;
             status_ = DeviceIdStatus::Existing;
@@ -334,3 +495,7 @@ void DeviceId::InitializeInternal() {
 }
 
 }  // namespace onnxruntime
+
+#if defined(ORT_DEVICE_ID_USE_FLOCK)
+#undef ORT_DEVICE_ID_USE_FLOCK
+#endif
