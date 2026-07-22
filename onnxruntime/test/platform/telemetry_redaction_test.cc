@@ -105,7 +105,7 @@ TEST(TelemetryRedactionTest, RelativeWindowsPathReplaced) {
 TEST(TelemetryRedactionTest, SingleSegmentAndNonPathSlashesKept) {
   // A single "/x" segment is not enough to anchor a path, so ordinary text with slashes is preserved.
   EXPECT_EQ(ScrubStringForTelemetry("models/foo.onnx"), "models/foo.onnx");
-  EXPECT_EQ(ScrubStringForTelemetry("ratio 3/4 and and/or"), "ratio 3/4 and and/or");
+  EXPECT_EQ(ScrubStringForTelemetry("ratio 3/4 and/or"), "ratio 3/4 and/or");
   // A single backslash is likewise not a path anchor, so a Windows account name (DOMAIN\user) and other
   // one-backslash tokens are kept verbatim rather than over-redacted.
   EXPECT_EQ(ScrubStringForTelemetry("domain\\user"), "domain\\user");

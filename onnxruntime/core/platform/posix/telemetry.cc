@@ -273,6 +273,37 @@ class EventBuilder {
 
 namespace {
 
+class PendingLogManager {
+ public:
+  PendingLogManager(std::unique_ptr<ILogConfiguration> config, ILogManager* manager)
+      : config_(std::move(config)), manager_(manager) {}
+
+  ~PendingLogManager() noexcept {
+    if (manager_ != nullptr && config_ != nullptr) {
+      ORT_TRY {
+        LogManagerProvider::Release(*config_);
+      }
+      ORT_CATCH(...) {
+      }
+    }
+  }
+
+  ILogManager* Get() const { return manager_; }
+
+  void Commit(std::unique_ptr<ILogConfiguration>& config, ILogManager*& manager) noexcept {
+    config = std::move(config_);
+    manager = manager_;
+    manager_ = nullptr;
+  }
+
+  PendingLogManager(const PendingLogManager&) = delete;
+  PendingLogManager& operator=(const PendingLogManager&) = delete;
+
+ private:
+  std::unique_ptr<ILogConfiguration> config_;
+  ILogManager* manager_;
+};
+
 const std::string& GetAppSessionGuid() {
   static const std::string guid = GenerateGuidV4();
   return guid;
@@ -382,10 +413,10 @@ void PosixTelemetry::Initialize() {
   }
 #endif
 
-  // Create SDK configuration — stored as member because LogManagerImpl holds a reference
-  // and the configuration must remain valid for the lifetime of the log manager.
-  config_ = std::make_unique<ILogConfiguration>();
-  auto& config = *config_;
+  // Keep configuration and manager local until setup completes. If any later operation throws,
+  // PendingLogManager releases the partial SDK state before the outer no-throw boundary handles it.
+  auto pending_config = std::make_unique<ILogConfiguration>();
+  auto& config = *pending_config;
 
   config[CFG_STR_COLLECTOR_URL] = "https://mobile.events.data.microsoft.com/OneCollector/1.0";
   config[CFG_INT_TRACE_LEVEL_MASK] = 0;                      // Disable SDK internal logging
@@ -412,16 +443,10 @@ void PosixTelemetry::Initialize() {
   // Create log manager via LogManagerProvider (recommended for production use,
   // per LogManager_Creation_and_Lifecycle_Management.md).
   status_t status;
-  log_manager_ = LogManagerProvider::CreateLogManager("OnnxRuntime", true, *config_, status);
-  if (status != STATUS_SUCCESS || !log_manager_) {
+  auto* pending_manager = LogManagerProvider::CreateLogManager("OnnxRuntime", true, config, status);
+  PendingLogManager pending_log_manager(std::move(pending_config), pending_manager);
+  if (status != STATUS_SUCCESS || pending_log_manager.Get() == nullptr) {
     ORT_TELEMETRY_WARN("Failed to create telemetry LogManager, status: " << status);
-    // CreateLogManager can return a live manager alongside a non-success status; release it (and
-    // drop our reference) before destroying config_, which the manager holds a reference to.
-    if (log_manager_ != nullptr) {
-      LogManagerProvider::Release(*config_);
-      log_manager_ = nullptr;
-    }
-    config_.reset();
     return;
   }
 
@@ -432,18 +457,15 @@ void PosixTelemetry::Initialize() {
 #else
   const std::string tenant_token = GetToken();
 #endif
-  auto* logger = log_manager_->GetLogger(tenant_token.c_str());
+  auto* logger = pending_log_manager.Get()->GetLogger(tenant_token.c_str());
   if (logger == nullptr) {
     ORT_TELEMETRY_WARN("Failed to get telemetry logger");
-    LogManagerProvider::Release(*config_);
-    log_manager_ = nullptr;
-    config_.reset();
     return;
   }
 
   // Use BEST_EFFORT transmit profile to minimize battery and network impact.
   // Events are batched and uploaded at a lower cadence.
-  log_manager_->SetTransmitProfile(TransmitProfile_BestEffort);
+  pending_log_manager.Get()->SetTransmitProfile(TransmitProfile_BestEffort);
 
   // Device ID.
 #if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
@@ -474,6 +496,7 @@ void PosixTelemetry::Initialize() {
   // Publish the fully-configured logger atomically; concurrent readers observe it only now.
   // enabled_ is left to its default / the runtime EnableTelemetryEvents()/DisableTelemetryEvents()
   // opt-in state rather than being force-set here.
+  pending_log_manager.Commit(config_, log_manager_);
   logger_.store(logger, std::memory_order_release);
 }
 
