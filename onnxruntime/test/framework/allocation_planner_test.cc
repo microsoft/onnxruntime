@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -14,6 +15,7 @@ using json = nlohmann::json;
 
 #include "core/framework/session_state.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/murmurhash3.h"
 #include "core/framework/op_kernel.h"
 #include "test/framework/model_builder_utils.h"
 #include "core/framework/allocation_planner.h"
@@ -24,6 +26,7 @@ using json = nlohmann::json;
 #include "core/util/thread_utils.h"
 
 #include "test/test_environment.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #ifdef USE_CUDA
@@ -120,11 +123,16 @@ class SequentialPlannerTestContext : public ISequentialPlannerContext {
 
 class ParallelPlannerTestContext : public SequentialPlannerTestContext {
  public:
-  ParallelPlannerTestContext(ShapeMap* shape_map) : SequentialPlannerTestContext(shape_map) {
+  ParallelPlannerTestContext(ShapeMap* shape_map, size_t max_num_streams)
+      : SequentialPlannerTestContext(shape_map), max_num_streams_(max_num_streams) {
   }
   bool IsParallelExecutionEnabled() const override { return true; }
+  size_t GetMaxNumStreams() const override { return max_num_streams_; }
   ExecutionOrder GetExecutionOrder() const override { return ExecutionOrder::DEFAULT; }
   bool GetEnableMemoryReuse() const override { return false; }
+
+ private:
+  size_t max_num_streams_;
 };
 
 class PlannerTest : public ::testing::Test {
@@ -278,7 +286,8 @@ class PlannerTest : public ::testing::Test {
   }
 
   void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {},
-                  bool invoke_createPlan_explicityly = true) {
+                  bool invoke_createPlan_explicityly = true,
+                  size_t max_num_streams = 1) {
     state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_, edlm_,
                                   DefaultLoggingManager().DefaultLogger(), profiler_, *sess_options_));
     EXPECT_EQ(graph_.Resolve(), Status::OK());
@@ -302,7 +311,12 @@ class PlannerTest : public ::testing::Test {
     status = state_->FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, {}, remove_initializers);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-    SequentialPlannerTestContext test_context(&shape_map_);
+    SequentialPlannerTestContext sequential_test_context(&shape_map_);
+    ParallelPlannerTestContext parallel_test_context(&shape_map_, max_num_streams);
+    const ISequentialPlannerContext& test_context =
+        max_num_streams > 1
+            ? static_cast<const ISequentialPlannerContext&>(parallel_test_context)
+            : static_cast<const ISequentialPlannerContext&>(sequential_test_context);
     plan_.emplace();
 
     class MockStreamHandleRegsitry : public IStreamCommandHandleRegistry {
@@ -1459,6 +1473,48 @@ TEST_F(PlannerTest, MultiStream2NodesSameStreamConsumedBy1NodeInDifferentStream)
 #endif
 
 #if !defined(__wasm__) && defined(ORT_ENABLE_STREAM)
+TEST_F(PlannerTest, TopologyAwareCpuPartitionerRespectsStreamLimit) {
+  std::string input_0 = "input_0";
+  std::string branch_0_mid = "branch_0_mid";
+  std::string branch_0_out = "branch_0_out";
+  const auto* branch_0_first = AddNormalNode(input_0, branch_0_mid);
+  const auto* branch_0_second = AddNormalNode(branch_0_mid, branch_0_out);
+
+  std::string input_1 = "input_1";
+  std::string branch_1_mid = "branch_1_mid";
+  std::string branch_1_out = "branch_1_out";
+  const auto* branch_1_first = AddNormalNode(input_1, branch_1_mid);
+  const auto* branch_1_second = AddNormalNode(branch_1_mid, branch_1_out);
+
+  std::string input_2 = "input_2";
+  std::string branch_2_mid = "branch_2_mid";
+  std::string branch_2_out = "branch_2_out";
+  const auto* branch_2_first = AddNormalNode(input_2, branch_2_mid);
+  const auto* branch_2_second = AddNormalNode(branch_2_mid, branch_2_out);
+
+  CreatePlan({}, true, 2);
+
+  const auto& plan = GetPlan();
+  EXPECT_EQ(plan.NumberOfValidStreams(), 2U);
+  EXPECT_EQ(plan.node_stream_map_[branch_0_first->Index()], plan.node_stream_map_[branch_0_second->Index()]);
+  EXPECT_EQ(plan.node_stream_map_[branch_1_first->Index()], plan.node_stream_map_[branch_1_second->Index()]);
+  EXPECT_EQ(plan.node_stream_map_[branch_2_first->Index()], plan.node_stream_map_[branch_2_second->Index()]);
+}
+
+TEST_F(PlannerTest, TopologyAwareCpuPartitionerKeepsLinearGraphOnOneStream) {
+  std::string input = "input";
+  std::string first_out = "first_out";
+  std::string second_out = "second_out";
+  std::string third_out = "third_out";
+  AddNormalNode(input, first_out);
+  AddNormalNode(first_out, second_out);
+  AddNormalNode(second_out, third_out);
+
+  CreatePlan({}, true, 4);
+
+  EXPECT_EQ(GetPlan().NumberOfValidStreams(), 1U);
+}
+
 TEST_F(PlannerTest, ParaPlanCreation) {
   TypeProto graph_in_type;
   graph_in_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -1898,6 +1954,75 @@ TEST_F(PlannerTest, ParaPlanCreation) {
     }  // if
   }  // for
   ASSERT_TRUE(reuse_pairs.empty());
+}
+
+TEST_F(PlannerTest, ParallelSessionAutomaticallyPartitionsCpuBranches) {
+  const std::vector<int64_t> input_dims{3, 3, 300, 300};
+  const std::vector<float> input_values(3 * 3 * 300 * 300, 0.1f);
+  OrtValue input;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                       input_dims, input_values, &input);
+  const NameMLValMap feeds{{"graph_in", input}};
+  const std::vector<std::string> output_names{"graph_out"};
+
+  struct SessionResult {
+    size_t num_streams;
+    size_t output_size;
+    std::array<uint32_t, 4> output_hash;
+  };
+
+  const auto run_session = [&](ExecutionMode execution_mode) {
+    SessionOptions sess_options;
+    sess_options.execution_mode = execution_mode;
+    sess_options.intra_op_param.thread_pool_size = 1;
+    sess_options.inter_op_param.thread_pool_size = 2;
+    sess_options.graph_optimization_level = TransformerLevel::Default;
+
+    InferenceSession session(sess_options, GetEnvironment(),
+                             ORT_TSTR("./testdata/multi_stream_models/simplified_ssd.onnx"));
+    ORT_THROW_IF_ERROR(session.RegisterExecutionProvider(DefaultCpuExecutionProvider()));
+    ORT_THROW_IF_ERROR(session.Load());
+    ORT_THROW_IF_ERROR(session.Initialize());
+
+    const auto* execution_plan = session.GetSessionState().GetExecutionPlan();
+    ORT_ENFORCE(execution_plan);
+    std::vector<OrtValue> fetches;
+    ORT_THROW_IF_ERROR(session.Run(RunOptions{}, feeds, output_names, &fetches));
+    ORT_ENFORCE(fetches.size() == 1);
+    const auto& output_tensor = fetches[0].Get<Tensor>();
+    std::array<uint32_t, 4> output_hash{};
+    MurmurHash3::x86_128(output_tensor.DataRaw(), output_tensor.SizeInBytes(), 0, output_hash.data());
+    return SessionResult{
+        execution_plan->NumberOfValidStreams(),
+        output_tensor.SizeInBytes(),
+        output_hash};
+  };
+
+  const auto sequential_result = run_session(ExecutionMode::ORT_SEQUENTIAL);
+  const auto parallel_result = run_session(ExecutionMode::ORT_PARALLEL);
+
+  EXPECT_EQ(sequential_result.num_streams, 1U);
+  EXPECT_EQ(parallel_result.num_streams, 2U);
+  EXPECT_EQ(sequential_result.output_size, parallel_result.output_size);
+  EXPECT_EQ(sequential_result.output_hash, parallel_result.output_hash);
+}
+
+TEST_F(PlannerTest, ParallelSessionKeepsLinearCpuGraphOnOneStream) {
+  SessionOptions sess_options;
+  sess_options.execution_mode = ExecutionMode::ORT_PARALLEL;
+  sess_options.intra_op_param.thread_pool_size = 1;
+  sess_options.inter_op_param.thread_pool_size = 4;
+  sess_options.graph_optimization_level = TransformerLevel::Default;
+
+  InferenceSession session(sess_options, GetEnvironment(),
+                           ORT_TSTR("./testdata/multi_stream_models/conv_add_relu.onnx"));
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCpuExecutionProvider()));
+  ASSERT_STATUS_OK(session.Load());
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto* execution_plan = session.GetSessionState().GetExecutionPlan();
+  ASSERT_NE(execution_plan, nullptr);
+  EXPECT_EQ(execution_plan->NumberOfValidStreams(), 1U);
 }
 
 TEST_F(PlannerTest, TestMultiStreamConfig) {
