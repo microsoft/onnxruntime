@@ -58,7 +58,14 @@ jobs:
         mkdir -p android_test/android/app/libs
         cd android_test/android
         cp -av $(Build.SourcesDirectory)/java/src/test/android/* ./
-        cp $(Pipeline.Workspace)/build/${{parameters.artifactName}}/${{parameters.packageName}}-$(OnnxRuntimeVersion)${{parameters.ReleaseVersionSuffix}}.aar app/libs/${{parameters.packageName}}.aar
+        # Use a more robust way to copy the AAR, picking the first one found if multiple exist
+        # Check if the file exists to provide a better error message
+        AAR_SOURCE=$(ls $(Pipeline.Workspace)/build/${{parameters.artifactName}}/*.aar 2>/dev/null | head -n 1)
+        if [ -z "$AAR_SOURCE" ]; then
+            echo "Error: No .aar file found in $(Pipeline.Workspace)/build/${{parameters.artifactName}}"
+            exit 1
+        fi
+        cp "$AAR_SOURCE" app/libs/${{parameters.packageName}}.aar
     displayName: Copy Android test files and AAR to android_test directory
     workingDirectory: $(Build.BinariesDirectory)
 
