@@ -26,12 +26,15 @@ and have been significantly modified for ONNX Runtime — see
 9b. [NVFP4 (W4A16, block-16) Details](#9b-nvfp4-w4a16-block-16-details)
   - [9b.2 Fused GEMV decode (group-16)](#9b2-fused-gemv-decode-group-16)
   - [9b.3 Fast E2M1 → half/bf16 decode](#9b3-fast-e2m1--halfbf16-decode)
+  - [9b.5 Native prefill accuracy & routing](#9b5-native-prefill-accuracy--routing)
 10. [FP8 (W8A16) Details](#10-fp8-w8a16-details)
 11. [WFP4AFP8 Details](#11-wfp4afp8-details)
 12. [Future / Deferred Modes](#12-future--deferred-modes)
   - [12.1 MoE GEMV Optimization Summary](#121-moe-gemv-optimization-summary)
 13. [Testing](#13-testing)
 14. [Build Configuration](#14-build-configuration)
+  - [14.1 MSVC and TMA grouped MoE GEMM](#141-msvc-and-tma-grouped-moe-gemm)
+  - [14.2 LLM object library and SM120 native SASS](#142-llm-object-library-and-sm120-native-sass)
 15. [Limitations & Known Issues](#15-limitations--known-issues)
 16. [Differences vs. TensorRT-LLM](#16-differences-vs-tensorrt-llm)
 
@@ -915,6 +918,34 @@ H200.
 - Kernel microbench: `bench_qmoe_nvfp4_gemv.py` builds the QMoE node at the Qwen decode shape and
   times GEMV vs the dequant fallback (with `ORT_FP4_GEMV_AUTOTUNE_LOG=1` for the chosen tiling).
 
+### 9b.5 Native prefill accuracy & routing
+
+The native FP4×FP4 prefill path quantizes **both** operands to 4-bit NVFP4: weights are
+pre-quantized offline, and **activations are dynamically quantized to NVFP4** (block-16 E4M3 scale,
+global scale 1.0) inside `expandInputRowsKernel`. This is a true W4A4 GEMM, so it carries more
+quantization error than the weight-only (W4A16) dequant-fallback / GEMV paths, which keep activations
+in FP16/BF16. Against a full-precision-activation reference the native prefill output therefore
+differs by a small but non-negligible amount (order ~0.2 absolute on unit-scale outputs), coming
+entirely from the activation quantization — **not** a kernel bug. Forcing the same shape through the
+dequant fallback (`ORT_FP4_PREFILL_MIN_TOKENS` very large) reduces the difference to ~1e-3, which
+confirms the native GEMM arithmetic is correct.
+
+Routing between the native and weight-only paths is governed by `ORT_FP4_PREFILL_MIN_TOKENS`
+(default 64):
+
+- `num_rows >= ORT_FP4_PREFILL_MIN_TOKENS` → native block-scaled FP4×FP4 prefill (when enabled and
+  shape-supported on SM120+).
+- `num_rows <  ORT_FP4_PREFILL_MIN_TOKENS` → small-decode shapes stay on the fused GEMV decode /
+  dequant fallback (W4A16), keeping the latency-sensitive decode path off the extra activation-quant
+  error.
+
+`ORT_ENABLE_NVFP4_CUTLASS_GEMM=0` disables the native path entirely (all shapes route to
+GEMV/fallback). The parity test
+[test_qmoe_nvfp4_cuda.py](onnxruntime/test/python/transformers/test_qmoe_nvfp4_cuda.py) mirrors this
+gate: it applies a looser tolerance **only** to shapes that route native (SM120+, native enabled,
+`num_rows >= ORT_FP4_PREFILL_MIN_TOKENS`) and keeps the strict bound for all decode/fallback shapes,
+so a genuinely broken native kernel (error order ~1.0+) is still caught.
+
 ---
 
 ## 10. FP8 (W8A16) Details
@@ -1335,6 +1366,36 @@ TMA/block-scaled kernels. Re-enable these switches for MSVC only after the CUDA
 host-stub alignment issue is fixed or the launcher ABI is changed to avoid
 over-aligned by-value parameters.
 
+### 14.2 LLM object library and SM120 native SASS
+
+The CUDA provider is split into per-architecture OBJECT libraries
+([cmake/onnxruntime_providers_cuda.cmake](cmake/onnxruntime_providers_cuda.cmake)). The general
+**LLM object library** (`onnxruntime_providers_cuda_llm`, SM75+) holds the ordinary LLM/MoE kernels
+(MoE expand/finalize, `fpA_intB` GEMV/GEMM, NVFP4 dequant, ...). The SM120-specific TMA
+warp-specialized grouped-GEMM kernels are compiled separately in
+`onnxruntime_providers_cuda_sm120_tma` and their bodies are gated behind
+`COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS`, so the LLM library itself contains **no SM120-only
+device code** — building it at `120-real` simply produces native SASS for the ordinary kernels
+instead of leaving them as `compute_120` PTX that must be JIT-compiled on first use.
+
+Architecture filtering of the LLM library (`onnxruntime_filter_cuda_archs`):
+
+| Platform / config | LLM library archs | Rationale |
+|---|---|---|
+| Linux (any) | includes `120-real` (native SASS) | LLM kernels run natively on SM120; no JIT warm-up; robust to real-only arch lists. |
+| Windows/MSVC, `USE_FP4_QMOE=OFF` | excludes `120-real`, keeps virtual `compute_120` PTX (`EXCLUDE_SM120_REAL`) | native `sm_120a` pulls CCCL `tcgen05` PTX headers that fail to compile with the MSVC host toolchain; SM120 devices JIT from the kept PTX. |
+| any platform, `USE_FP4_QMOE=ON` | includes `120-real` | the NVFP4 native path emits `cvt.e2m1x2` in `expandInputRowsKernel`, valid only for real `sm_120a` and **not** expressible in virtual `compute_120` PTX. |
+
+> **CUDA 209 gotcha (real-only arch list).** If the LLM library excludes `120-real` **and** the
+> configured arch list carries no virtual `compute_120` PTX entry (e.g.
+> `CMAKE_CUDA_ARCHITECTURES="86-real;120-real"`), the library ends up with no loadable SM120 image at
+> all, and an SM120 GPU fails at EP load / first kernel launch with `no kernel image is available for
+> execution on the device` (CUDA error 209). On Linux this cannot happen because the LLM library
+> keeps `120-real`. On Windows/MSVC, ensure a virtual `compute_120` PTX arch is present (e.g.
+> `86-real;120-real;120-virtual`) so the JIT fallback works. Verify native SASS is present with
+> `cuobjdump libonnxruntime_providers_cuda.so | grep 'arch ='` (use the toolkit-matched `cuobjdump`;
+> an older one in `PATH` may misparse the multi-arch fatbin and abort).
+
 ---
 
 ## 15. Limitations & Known Issues
@@ -1354,6 +1415,13 @@ over-aligned by-value parameters.
   because CUDA 13 host stubs hit MSVC `C2719` with over-aligned TMA parameters.
   Standard MoE can fall back to SM80 kernels; native QMoE FP4/block-scaled modes
   cannot. See [§14.1](#141-msvc-and-tma-grouped-moe-gemm).
+- **Windows/MSVC SM120 LLM library**: the general LLM object library excludes
+  native `sm_120a` on MSVC (CCCL `tcgen05` PTX headers do not compile with the
+  MSVC host toolchain) and relies on virtual `compute_120` PTX + JIT. As a result
+  a real-only SM120 arch list can leave the library with no loadable image
+  (CUDA error 209) — keep a `compute_120` (virtual) arch on MSVC. NVFP4 QMoE
+  (`USE_FP4_QMOE`) requires native `sm_120a` for `cvt.e2m1x2` and is therefore a
+  non-MSVC configuration in practice. See [§14.2](#142-llm-object-library-and-sm120-native-sass).
 - **WFP4AFP8 native** requires SM100+ hardware; only the dequant fallback path
   is validated end-to-end so far.
 - **In-`PrePack` INT weight layout transform** (`weights_prepacked=0`) is
