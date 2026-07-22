@@ -38,17 +38,22 @@ inline constexpr std::array<const char*, 13> kCiEnvironmentVariableNames = {
 // Read an environment variable, returning an empty string when unset.
 inline std::string GetTelemetryEnv(const char* name) {
 #ifdef _WIN32
-  const DWORD required_size = ::GetEnvironmentVariableA(name, nullptr, 0);
-  if (required_size == 0) {
-    return {};
+  DWORD required_size = ::GetEnvironmentVariableA(name, nullptr, 0);
+  while (required_size != 0) {
+    std::string value(required_size, '\0');
+    const DWORD written = ::GetEnvironmentVariableA(name, value.data(), required_size);
+    if (written == 0) {
+      return {};
+    }
+    if (written < required_size) {
+      value.resize(written);
+      return value;
+    }
+
+    // The value grew between calls. Windows returns its new required size, including the null.
+    required_size = written;
   }
-  std::string value(required_size, '\0');
-  const DWORD written = ::GetEnvironmentVariableA(name, value.data(), required_size);
-  if (written == 0 || written >= required_size) {
-    return {};
-  }
-  value.resize(written);
-  return value;
+  return {};
 #else
   const char* value = std::getenv(name);
   return value != nullptr ? std::string(value) : std::string();
@@ -102,9 +107,9 @@ inline bool IsRunningUnitTests() {
   return telemetry_detail::IsTruthyCiValue(telemetry_detail::GetTelemetryEnv("ORT_RUNNING_UNIT_TESTS"));
 }
 
-// True if ORT_TELEMETRY_DISABLED is set to a truthy value (1/true/yes/on/y, case-insensitive). This
-// is the explicit, cross-platform opt-out and is honored on every platform (a no-op only in the sense
-// that Windows ETW events are already inert without a listener).
+// True if ORT_TELEMETRY_DISABLED is set to a truthy value (1/true/yes/on/y, case-insensitive).
+// The POSIX 1DS provider latches this opt-out during initialization. Windows ETW intentionally
+// retains its separate API/trace-session control model and does not consult this environment variable.
 inline bool IsTelemetryDisabledByEnvVar() {
   const std::string value = telemetry_detail::ToLowerAscii(
       telemetry_detail::TrimAscii(telemetry_detail::GetTelemetryEnv("ORT_TELEMETRY_DISABLED")));
