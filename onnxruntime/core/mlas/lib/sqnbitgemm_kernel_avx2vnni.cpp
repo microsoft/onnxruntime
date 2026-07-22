@@ -80,6 +80,16 @@ QuantizeARow_CompInt8_avx2(
     float* AScaledBlkSum
 );
 
+void MLASCALL
+QuantizeARow_CompInt8_Fp16_avx2(
+    size_t BlkLen,
+    const MLAS_FP16* A,
+    size_t CountK,
+    std::byte* QuantA,
+    float* QuantAScale,
+    float* AScaledBlkSum
+);
+
 //
 // Local packer functions (mirrors of the static functions in
 // sqnbitgemm_kernel_avx2.cpp; identical implementation, separate static copy).
@@ -332,6 +342,7 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2vnni = []() {
     d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx2vnni;
     d.SQ8BitGemmKernel_BlkSum_CompInt8 = SQ8BitGemmKernel_BlkSum_CompInt8_avx2vnni;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx2;
+    d.QuantizeARowComputeBlkSum_CompInt8_Fp16 = QuantizeARow_CompInt8_Fp16_avx2;
 
     // 2-bit native CompInt8 path (AVX-VNNI compute).
     static_assert(

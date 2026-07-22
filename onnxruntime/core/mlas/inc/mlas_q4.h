@@ -374,9 +374,8 @@ MlasDequantizeBlockwise(
  * @param scales        points to quantization scales, column major
  * @param zero_points   points to floating point quantization zero points, column major;
  *                      may be nullptr, in which case a zero point of 0 is used for every block
- * @param block_size    size of the block to quantize, elements from the same block share the same scale and zero point;
+ * @param block_size    number of elements in each quantization block; elements in the same block share the same scale and zero point;
  *                      must be a multiple of 4 so blocks start byte aligned in the packed stream
- * @param columnwise    must be true; elements in a block are from the same column
  * @param rows
  * @param columns
  * @param thread_pool
@@ -389,7 +388,6 @@ MlasDequantizeBlockwiseFpZeroPoint(
     const ElementT* scales,
     const ZeroPointT* zero_points,
     int block_size,
-    bool columnwise,
     int rows,
     int columns,
     MLAS_THREADPOOL* thread_pool
