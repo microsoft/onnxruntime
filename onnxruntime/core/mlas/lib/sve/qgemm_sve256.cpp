@@ -9,8 +9,10 @@
 #include "mlasi_sve.h"
 #include "mlasi_sve_i8.h"
 
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
 
 extern "C" {
 
@@ -932,4 +934,7 @@ MlasSveQgemmU8X8KernelUmmlaAdd(
         A, B, C, PackedCountK, CountM, CountN, ldc,
         RowSumBuffer, ColumnSumBuffer, ZeroPointB);
 }
+
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic pop
+#endif

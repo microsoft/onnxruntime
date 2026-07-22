@@ -21,6 +21,11 @@ Abstract:
 
 #include "mlasi_sve.h"
 
+#ifdef __clang__
+#undef MLAS_SVE_TARGET
+#define MLAS_SVE_TARGET __attribute__((target("arch=armv8.2-a+sve+i8mm")))
+#endif
+
 #ifndef __clang__
 #pragma GCC push_options
 #pragma GCC target("arch=armv8.2-a+sve+i8mm")
