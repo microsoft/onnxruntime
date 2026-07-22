@@ -266,6 +266,63 @@ class MlasKVQuantTest : public MlasTestBase {
     }
   }
 
+  void TestFp16Apis(MLAS_KV_QUANT_TYPE QuantType) {
+    constexpr size_t M = 2;
+    constexpr size_t N = 3;
+    constexpr size_t K = 8;
+    const size_t num_scales = IsPerChannel(QuantType) ? K : 1;
+    const size_t packed_bytes = N * MlasKVQuantPackedRowBytes(QuantType, K);
+
+    std::vector<float> query_fp32(M * K);
+    std::vector<float> query_from_fp16(M * K);
+    std::vector<MLAS_FP16> query_fp16(M * K);
+    std::vector<float> b_fp32(N * K);
+    std::vector<float> b_from_fp16(N * K);
+    std::vector<MLAS_FP16> b_fp16(N * K);
+    std::vector<float> scales(num_scales);
+    std::vector<uint8_t> quantized_fp16(packed_bytes);
+    std::vector<uint8_t> quantized_fp32(packed_bytes);
+    std::vector<float> b_dequantized(N * K);
+    std::vector<float> scores_fp16(M * N);
+    std::vector<float> scores_reference(M * N);
+
+    FillRandom(query_fp32.data(), query_fp32.size(), 19);
+    FillRandom(b_fp32.data(), b_fp32.size(), 23);
+    for (size_t i = 0; i < query_fp32.size(); ++i) {
+      query_fp16[i] = MLAS_FP16(query_fp32[i]);
+      query_from_fp16[i] = static_cast<float>(query_fp16[i]);
+    }
+    for (size_t i = 0; i < b_fp32.size(); ++i) {
+      b_fp16[i] = MLAS_FP16(b_fp32[i]);
+      b_from_fp16[i] = static_cast<float>(b_fp16[i]);
+    }
+
+    ComputeScales(b_from_fp16.data(), N, K, QuantType, scales.data());
+    MlasKVQuantizeFp16(b_fp16.data(), quantized_fp16.data(), N, K, K, QuantType, scales.data(), nullptr);
+    MlasKVQuantize(b_from_fp16.data(), quantized_fp32.data(), N, K, K, QuantType, scales.data(), nullptr);
+    ASSERT_EQ(quantized_fp16, quantized_fp32);
+    MlasKVDequantize(quantized_fp16.data(), b_dequantized.data(), N, K, K, QuantType, scales.data(), nullptr);
+
+    const float alpha = 1.0f / std::sqrt(static_cast<float>(K));
+    MlasQKGemmFp16(M, N, K, alpha, query_fp16.data(), K, quantized_fp16.data(), QuantType, scales.data(),
+                   scores_fp16.data(), N, nullptr);
+    RefQKGemm(query_from_fp16.data(), b_dequantized.data(), scores_reference.data(), M, N, K, alpha, K, N);
+    for (size_t i = 0; i < scores_fp16.size(); ++i) {
+      ASSERT_NEAR(scores_fp16[i], scores_reference[i], 1e-5f);
+    }
+
+    std::vector<float> probabilities(M * N);
+    FillRandom(probabilities.data(), probabilities.size(), 29, 0.0f, 1.0f);
+    std::vector<float> output_fp32(M * K);
+    std::vector<MLAS_FP16> output_fp16(M * K);
+    RefSVGemm(probabilities.data(), b_dequantized.data(), output_fp32.data(), M, K, N, N, K);
+    MlasSVGemmFp16(M, K, N, probabilities.data(), N, quantized_fp16.data(), QuantType, scales.data(),
+                   output_fp16.data(), K, 0.0f, nullptr);
+    for (size_t i = 0; i < output_fp16.size(); ++i) {
+      ASSERT_NEAR(static_cast<float>(output_fp16[i]), output_fp32[i], 2e-3f);
+    }
+  }
+
  public:
   static const char* GetTestSuiteName() {
     static const std::string suite_name("KVQuant");
@@ -311,6 +368,10 @@ class MlasKVQuantTest : public MlasTestBase {
           }
         }
       }
+    }
+
+    for (auto qt : AllQuantTypes) {
+      TestFp16Apis(qt);
     }
   }
 };

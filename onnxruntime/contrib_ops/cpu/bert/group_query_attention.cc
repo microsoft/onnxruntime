@@ -68,9 +68,6 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                   "CPU GroupQueryAttention requires k_quant_type == v_quant_type, got different types");
     ORT_RETURN_IF(kv_cache_bit_width_ != 4 && kv_cache_bit_width_ != 8,
                   "kv_cache_bit_width must be 4 or 8 when quantization is enabled, got ", kv_cache_bit_width_);
-    constexpr bool is_float = std::is_same_v<T, float>;
-    ORT_RETURN_IF(!is_float,
-                  "CPU GroupQueryAttention only supports float Q dtype with quantized KV cache");
     ORT_RETURN_IF(k_scale == nullptr,
                   "k_scale must be provided when k_quant_type is not NONE");
     ORT_RETURN_IF(v_scale == nullptr,
@@ -321,43 +318,38 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
 
   const T* head_sink_data = (head_sink != nullptr) ? head_sink->Data<T>() : nullptr;
 
-  // Quantized KV cache path: quantize-on-write + MlasQKGemm / MlasSVGemm.
+  // Quantized KV cache path: quantize-on-write + direct MLAS QK/SV.
   if (kv_quant_enabled_) {
-    if constexpr (std::is_same_v<T, float>) {
-      const float* k_data_q = packed_qkv ? nullptr : k_rotary;
-      const float* v_data_q = packed_qkv ? nullptr : V.Get<Tensor>().Data<float>();
-      auto mlas_quant_type = ToMlasKVQuantType(k_quant_type_, kv_cache_bit_width_);
+    const T* k_data_q = packed_qkv ? nullptr : k_rotary;
+    const T* v_data_q = packed_qkv ? nullptr : V.Get<Tensor>().Data<T>();
+    auto mlas_quant_type = ToMlasKVQuantType(k_quant_type_, kv_cache_bit_width_);
 
-      // Use flash attention path when:
-      // 1. Total sequence length is long enough to benefit from tiling
-      // 2. No features that flash path doesn't support (softcap, smooth softmax, output_qk)
-      const bool use_flash = !disable_gqa_flash_ &&
-                             parameters.total_sequence_length > 1 &&
-                             softcap_ == 0.0f &&
-                             !use_smooth_softmax_ &&
-                             head_sink_data == nullptr &&
-                             output_qk == nullptr;
+    // Use flash attention path when:
+    // 1. Total sequence length is long enough to benefit from tiling
+    // 2. No features that flash path doesn't support (softcap, smooth softmax, output_qk)
+    const bool use_flash = !disable_gqa_flash_ &&
+                           parameters.total_sequence_length > 1 &&
+                           softcap_ == 0.0f &&
+                           !use_smooth_softmax_ &&
+                           head_sink_data == nullptr &&
+                           output_qk == nullptr;
 
-      if (use_flash) {
-        return ApplyAttentionQuantizedFlash(
-            q_rotary, k_data_q, v_data_q,
-            attention_bias,
-            past_key, past_value,
-            output, present_k, present_v, seqlens_k,
-            k_scale->Data<float>(), v_scale->Data<float>(),
-            mlas_quant_type, parameters, allocator, context);
-      }
-
-      return ApplyAttentionQuantized(
-          q_rotary, k_data_q, v_data_q, head_sink_data,
-          attention_bias, past_key, past_value,
-          output, present_k, present_v, output_qk, seqlens_k,
+    if (use_flash) {
+      return ApplyAttentionQuantizedFlash(
+          q_rotary, k_data_q, v_data_q,
+          attention_bias,
+          past_key, past_value,
+          output, present_k, present_v, seqlens_k,
           k_scale->Data<float>(), v_scale->Data<float>(),
           mlas_quant_type, parameters, allocator, context);
-    } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Quantized KV cache requires float Q dtype");
     }
+
+    return ApplyAttentionQuantized(
+        q_rotary, k_data_q, v_data_q, head_sink_data,
+        attention_bias, past_key, past_value,
+        output, present_k, present_v, output_qk, seqlens_k,
+        k_scale->Data<float>(), v_scale->Data<float>(),
+        mlas_quant_type, parameters, allocator, context);
   }
 
   // Compute the attention score and apply the score to V

@@ -46,9 +46,9 @@ Abstract:
 
 #pragma once
 
-#include "mlas.h"
-
 #include <cstddef>
+
+#include "mlas.h"
 
 /**
  * @brief Quantization mode for the KV-cache GEMM kernels.
@@ -72,9 +72,9 @@ enum class MLAS_KV_QUANT_TYPE {
  *        platform. Always true for the portable reference implementation.
  */
 bool
-MLASCALL
-MlasIsKVQuantGemmSupported(
-    MLAS_KV_QUANT_TYPE QuantType
+    MLASCALL
+    MlasIsKVQuantGemmSupported(
+        MLAS_KV_QUANT_TYPE QuantType
     );
 
 /**
@@ -85,10 +85,10 @@ MlasIsKVQuantGemmSupported(
  *        INT4: (cols + 1) / 2 bytes per row (low nibble = even element).
  */
 size_t
-MLASCALL
-MlasKVQuantPackedRowBytes(
-    MLAS_KV_QUANT_TYPE QuantType,
-    size_t Cols
+    MLASCALL
+    MlasKVQuantPackedRowBytes(
+        MLAS_KV_QUANT_TYPE QuantType,
+        size_t Cols
     );
 
 /**
@@ -111,16 +111,36 @@ MlasKVQuantPackedRowBytes(
  * @param ThreadPool Optional thread pool. May be null.
  */
 void
-MLASCALL
-MlasKVQuantize(
-    const float* Src,
-    void* Dst,
-    size_t Rows,
-    size_t Cols,
-    size_t lda,
-    MLAS_KV_QUANT_TYPE QuantType,
-    const float* Scales,
-    MLAS_THREADPOOL* ThreadPool
+    MLASCALL
+    MlasKVQuantize(
+        const float* Src,
+        void* Dst,
+        size_t Rows,
+        size_t Cols,
+        size_t lda,
+        MLAS_KV_QUANT_TYPE QuantType,
+        const float* Scales,
+        MLAS_THREADPOOL* ThreadPool
+    );
+
+/**
+ * @brief Symmetrically quantize a row-major FP16 matrix into the packed
+ *        INT8 / INT4 KV-cache layout.
+ *
+ * This is the FP16 counterpart of MlasKVQuantize. It reads FP16 values
+ * directly and does not materialize an FP32 source matrix.
+ */
+void
+    MLASCALL
+    MlasKVQuantizeFp16(
+        const MLAS_FP16* Src,
+        void* Dst,
+        size_t Rows,
+        size_t Cols,
+        size_t lda,
+        MLAS_KV_QUANT_TYPE QuantType,
+        const float* Scales,
+        MLAS_THREADPOOL* ThreadPool
     );
 
 /**
@@ -138,16 +158,16 @@ MlasKVQuantize(
  * @param ThreadPool Optional thread pool.
  */
 void
-MLASCALL
-MlasKVDequantize(
-    const void* Src,
-    float* Dst,
-    size_t Rows,
-    size_t Cols,
-    size_t ldb,
-    MLAS_KV_QUANT_TYPE QuantType,
-    const float* Scales,
-    MLAS_THREADPOOL* ThreadPool
+    MLASCALL
+    MlasKVDequantize(
+        const void* Src,
+        float* Dst,
+        size_t Rows,
+        size_t Cols,
+        size_t ldb,
+        MLAS_KV_QUANT_TYPE QuantType,
+        const float* Scales,
+        MLAS_THREADPOOL* ThreadPool
     );
 
 /**
@@ -180,20 +200,43 @@ MlasKVDequantize(
  * @param ThreadPool Optional thread pool.
  */
 void
-MLASCALL
-MlasQKGemm(
-    size_t M,
-    size_t N,
-    size_t K,
-    float Alpha,
-    const float* A,
-    size_t lda,
-    const void* B,
-    MLAS_KV_QUANT_TYPE QuantType,
-    const float* Scales,
-    float* C,
-    size_t ldc,
-    MLAS_THREADPOOL* ThreadPool
+    MLASCALL
+    MlasQKGemm(
+        size_t M,
+        size_t N,
+        size_t K,
+        float Alpha,
+        const float* A,
+        size_t lda,
+        const void* B,
+        MLAS_KV_QUANT_TYPE QuantType,
+        const float* Scales,
+        float* C,
+        size_t ldc,
+        MLAS_THREADPOOL* ThreadPool
+    );
+
+/**
+ * @brief FP16-query variant of MlasQKGemm.
+ *
+ * The FP16 query is consumed directly while scores continue to accumulate in
+ * FP32 for softmax. The existing FP32 API retains its SIMD dispatch path.
+ */
+void
+    MLASCALL
+    MlasQKGemmFp16(
+        size_t M,
+        size_t N,
+        size_t K,
+        float Alpha,
+        const MLAS_FP16* A,
+        size_t lda,
+        const void* B,
+        MLAS_KV_QUANT_TYPE QuantType,
+        const float* Scales,
+        float* C,
+        size_t ldc,
+        MLAS_THREADPOOL* ThreadPool
     );
 
 /**
@@ -225,20 +268,43 @@ MlasQKGemm(
  * @param ThreadPool Optional thread pool.
  */
 void
-MLASCALL
-MlasSVGemm(
-    size_t M,
-    size_t N,
-    size_t K,
-    const float* A,
-    size_t lda,
-    const void* B,
-    MLAS_KV_QUANT_TYPE QuantType,
-    const float* Scales,
-    float* C,
-    size_t ldc,
-    float Beta,
-    MLAS_THREADPOOL* ThreadPool
+    MLASCALL
+    MlasSVGemm(
+        size_t M,
+        size_t N,
+        size_t K,
+        const float* A,
+        size_t lda,
+        const void* B,
+        MLAS_KV_QUANT_TYPE QuantType,
+        const float* Scales,
+        float* C,
+        size_t ldc,
+        float Beta,
+        MLAS_THREADPOOL* ThreadPool
+    );
+
+/**
+ * @brief FP16-output variant of MlasSVGemm.
+ *
+ * Accumulation is FP32, but C is read and written directly as FP16. This
+ * avoids an FP16-to-FP32 output conversion buffer.
+ */
+void
+    MLASCALL
+    MlasSVGemmFp16(
+        size_t M,
+        size_t N,
+        size_t K,
+        const float* A,
+        size_t lda,
+        const void* B,
+        MLAS_KV_QUANT_TYPE QuantType,
+        const float* Scales,
+        MLAS_FP16* C,
+        size_t ldc,
+        float Beta,
+        MLAS_THREADPOOL* ThreadPool
     );
 
 /**
@@ -250,10 +316,10 @@ MlasSVGemm(
  */
 struct MlasFlashAttentionQuantizedKVArgs {
     int batch_size = 0;
-    int num_heads = 0;           // Q heads
-    int kv_num_heads = 0;        // KV heads (for GQA sharing)
-    int sequence_length = 0;     // Q sequence length (new tokens)
-    int total_seqlen = 0;        // Total KV sequence length (past + new)
+    int num_heads = 0;        // Q heads
+    int kv_num_heads = 0;     // KV heads (for GQA sharing)
+    int sequence_length = 0;  // Q sequence length (new tokens)
+    int total_seqlen = 0;     // Total KV sequence length (past + new)
     int head_size = 0;
     int past_seqlen = 0;         // For computing causal positions
     int local_window_size = -1;  // -1 = disabled
@@ -270,21 +336,24 @@ struct MlasFlashAttentionQuantizedKVArgs {
     float* buffer = nullptr;
     size_t buffer_size_per_thread = 0;
 
-    const float* query = nullptr;      // [B, N, S, H] FP32
-    size_t q_batch_stride = 0;         // element stride between consecutive batches in `query`
-                                       // (num_heads*S*H for unpacked, (num_heads+2*kv_num_heads)*S*H for packed QKV)
-    const uint8_t* k_cache = nullptr;  // [B, kv_N, seqlen_present, packed_row_bytes] quantized
-    const uint8_t* v_cache = nullptr;  // [B, kv_N, seqlen_present, packed_row_bytes] quantized
-    const float* k_scale = nullptr;    // Scalar or per-channel scales for K
-    const float* v_scale = nullptr;    // Scalar or per-channel scales for V
-    float* output = nullptr;           // [B, S, N, H] FP32
+    const float* query = nullptr;           // [B, N, S, H] FP32
+    const MLAS_FP16* query_fp16 = nullptr;  // [B, N, S, H] FP16
+    size_t q_batch_stride = 0;              // element stride between consecutive batches in `query`
+                                            // (num_heads*S*H for unpacked, (num_heads+2*kv_num_heads)*S*H for packed QKV)
+    const uint8_t* k_cache = nullptr;       // [B, kv_N, seqlen_present, packed_row_bytes] quantized
+    const uint8_t* v_cache = nullptr;       // [B, kv_N, seqlen_present, packed_row_bytes] quantized
+    const float* k_scale = nullptr;         // Scalar or per-channel scales for K
+    const float* v_scale = nullptr;         // Scalar or per-channel scales for V
+    float* output = nullptr;                // [B, S, N, H] FP32
+    MLAS_FP16* output_fp16 = nullptr;       // [B, S, N, H] FP16
 
     // Attention bias (additive, applied after QK GEMM before masking/softmax).
     // Shape: [B|1, N|1, S, T] where dimensions of size 1 are broadcast.
-    const float* attention_bias = nullptr;            // nullptr if no bias
-    int attention_bias_seqlen_stride = 0;             // stride along the T (total_seqlen) dimension = shape[3]
-    bool attention_bias_broadcast_batch = true;       // true if shape[0] == 1
-    bool attention_bias_broadcast_head = true;        // true if shape[1] == 1
+    const float* attention_bias = nullptr;           // nullptr if no bias
+    const MLAS_FP16* attention_bias_fp16 = nullptr;  // nullptr if no FP16 bias
+    int attention_bias_seqlen_stride = 0;            // stride along the T (total_seqlen) dimension = shape[3]
+    bool attention_bias_broadcast_batch = true;      // true if shape[0] == 1
+    bool attention_bias_broadcast_head = true;       // true if shape[1] == 1
 
     // Flash decoding fields (used when sequence_length == 1 and KV is split across threads).
     // Partials buffer stores per-(batch, head, kv_chunk) intermediate results:
@@ -304,8 +373,8 @@ struct MlasFlashAttentionQuantizedKVArgs {
  * @param ThreadPool Optional thread pool for parallelization.
  */
 void
-MLASCALL
-MlasFlashAttentionQuantizedKV(
-    MlasFlashAttentionQuantizedKVArgs* args,
-    MLAS_THREADPOOL* ThreadPool
+    MLASCALL
+    MlasFlashAttentionQuantizedKV(
+        MlasFlashAttentionQuantizedKVArgs* args,
+        MLAS_THREADPOOL* ThreadPool
     );

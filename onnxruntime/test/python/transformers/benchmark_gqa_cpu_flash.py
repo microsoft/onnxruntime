@@ -33,6 +33,7 @@ def create_quantized_gqa_graph(
     quant_type,
     bit_width,
     buffer_seq_len=None,
+    use_fp16=False,
 ):
     """Create an ONNX graph for GroupQueryAttention with quantized KV cache."""
     if buffer_seq_len is None:
@@ -42,6 +43,7 @@ def create_quantized_gqa_graph(
     kv_hidden_size = kv_num_heads * head_size
     packed_head_size = head_size // 2 if bit_width == 4 else head_size
     cache_ort_type = TensorProto.UINT8 if bit_width == 4 else TensorProto.INT8
+    data_ort_type = TensorProto.FLOAT16 if use_fp16 else TensorProto.FLOAT
 
     inputs = [
         "query",
@@ -76,9 +78,9 @@ def create_quantized_gqa_graph(
     )
 
     graph_input = [
-        helper.make_tensor_value_info("query", TensorProto.FLOAT, [batch_size, seq_len, hidden_size]),
-        helper.make_tensor_value_info("key", TensorProto.FLOAT, [batch_size, seq_len, kv_hidden_size]),
-        helper.make_tensor_value_info("value", TensorProto.FLOAT, [batch_size, seq_len, kv_hidden_size]),
+        helper.make_tensor_value_info("query", data_ort_type, [batch_size, seq_len, hidden_size]),
+        helper.make_tensor_value_info("key", data_ort_type, [batch_size, seq_len, kv_hidden_size]),
+        helper.make_tensor_value_info("value", data_ort_type, [batch_size, seq_len, kv_hidden_size]),
         helper.make_tensor_value_info(
             "past_key", cache_ort_type, [batch_size, kv_num_heads, buffer_seq_len, packed_head_size]
         ),
@@ -92,7 +94,7 @@ def create_quantized_gqa_graph(
     ]
 
     graph_output = [
-        helper.make_tensor_value_info("output", TensorProto.FLOAT, [batch_size, seq_len, hidden_size]),
+        helper.make_tensor_value_info("output", data_ort_type, [batch_size, seq_len, hidden_size]),
         helper.make_tensor_value_info(
             "present_key", cache_ort_type, [batch_size, kv_num_heads, buffer_seq_len, packed_head_size]
         ),
@@ -182,6 +184,7 @@ def benchmark_gqa(
     warmup=5,
     repeats=20,
     non_quantized=False,
+    use_fp16=False,
 ):
     """Benchmark a single GQA configuration. Returns elapsed time in ms."""
     hidden_size = num_heads * head_size
@@ -195,9 +198,10 @@ def benchmark_gqa(
     sess_options.intra_op_num_threads = 8
 
     np.random.seed(42)
-    query = np.random.uniform(-0.5, 0.5, (batch_size, seq_len, hidden_size)).astype(np.float32)
-    key = np.random.uniform(-0.5, 0.5, (batch_size, seq_len, kv_hidden_size)).astype(np.float32)
-    value = np.random.uniform(-0.5, 0.5, (batch_size, seq_len, kv_hidden_size)).astype(np.float32)
+    input_dtype = np.float16 if use_fp16 else np.float32
+    query = np.random.uniform(-0.5, 0.5, (batch_size, seq_len, hidden_size)).astype(input_dtype)
+    key = np.random.uniform(-0.5, 0.5, (batch_size, seq_len, kv_hidden_size)).astype(input_dtype)
+    value = np.random.uniform(-0.5, 0.5, (batch_size, seq_len, kv_hidden_size)).astype(input_dtype)
     seqlens_k = np.array([total_seqlen - 1] * batch_size, dtype=np.int32)
     total_seq = np.array([total_seqlen], dtype=np.int32)
 
@@ -234,6 +238,7 @@ def benchmark_gqa(
             quant_type,
             bit_width,
             buffer_seq_len=buffer_seq_len,
+            use_fp16=use_fp16,
         )
         sess = InferenceSession(onnx_model_str, sess_options, providers=["CPUExecutionProvider"])
 
@@ -351,26 +356,29 @@ def run_benchmarks(args):
     # Save and restore env var to avoid side effects on callers
     saved_env = os.environ.get("ORT_GQA_DISABLE_FLASH_ATTENTION")
 
-    kv_mode = "FP32 (non-quantized)" if args.fp32 else "INT8/INT4 quantized"
+    kv_mode = "FP32 (non-quantized)" if args.fp32 else "INT8/INT4 quantized (FP32 and FP16 inputs)"
     print("\nBenchmark: CPU GroupQueryAttention — Flash vs Naive")
     print(f"KV cache: {kv_mode}, Threads: {8}, Warmup: {warmup}, Repeats: {repeats}")
-    print(f"{'Config':<25} {'Naive (ms)':>12} {'Flash (ms)':>12} {'Speedup':>10}")
+    print(f"{'Config':<31} {'Naive (ms)':>12} {'Flash (ms)':>12} {'Speedup':>10}")
     print("-" * 62)
 
     for cfg in configs:
         label = cfg.pop("label")
-        cfg["non_quantized"] = args.fp32
+        input_variants = [("FP32", False)] if args.fp32 else [("FP32", False), ("FP16", True)]
+        for input_label, use_fp16 in input_variants:
+            cfg["non_quantized"] = args.fp32
+            cfg["use_fp16"] = use_fp16
 
-        # Flash path (default)
-        os.environ.pop("ORT_GQA_DISABLE_FLASH_ATTENTION", None)
-        flash_ms = benchmark_gqa(**cfg, warmup=warmup, repeats=repeats)
+            # Flash path (default)
+            os.environ.pop("ORT_GQA_DISABLE_FLASH_ATTENTION", None)
+            flash_ms = benchmark_gqa(**cfg, warmup=warmup, repeats=repeats)
 
-        # Naive path (disabled flash)
-        os.environ["ORT_GQA_DISABLE_FLASH_ATTENTION"] = "1"
-        naive_ms = benchmark_gqa(**cfg, warmup=warmup, repeats=repeats)
+            # Naive path (disabled flash)
+            os.environ["ORT_GQA_DISABLE_FLASH_ATTENTION"] = "1"
+            naive_ms = benchmark_gqa(**cfg, warmup=warmup, repeats=repeats)
 
-        speedup = naive_ms / flash_ms if flash_ms > 0 else float("inf")
-        print(f"{label:<25} {naive_ms:>10.3f}ms {flash_ms:>10.3f}ms {speedup:>8.2f}x")
+            speedup = naive_ms / flash_ms if flash_ms > 0 else float("inf")
+            print(f'{label + " " + input_label:<31} {naive_ms:>10.3f}ms {flash_ms:>10.3f}ms {speedup:>8.2f}x')
 
     # Restore original env state
     if saved_env is not None:
