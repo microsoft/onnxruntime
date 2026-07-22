@@ -199,8 +199,6 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
 #endif
           bool reused_caller_buffer = false;
           LOGS_DEFAULT(VERBOSE) << "Output shape mismatch for pre-allocated fetch buffer.";
-          std::cout << "Output shape mismatch for pre-allocated fetch buffer." << std::endl;
-
           auto& tensor = *p_ort_value->GetMutable<Tensor>();
           // Keep caller-provided buffers for dynamic outputs when only the runtime
           // dimensions changed and the total element count is unchanged.
