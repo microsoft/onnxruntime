@@ -4,7 +4,6 @@
 #include <iostream>
 
 #include "core/session/onnxruntime_cxx_api.h"
-#include "test/util/include/telemetry_test_environment.h"
 
 #include <google/protobuf/stubs/common.h>
 
@@ -15,7 +14,6 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
-  onnxruntime::test::SuppressTelemetryForTests();
   bool no_proc_table = argc > 0 &&
 #ifdef _WIN32
                        wcscmp(L"--no_proc_table", argv[argc - 1]) == 0;
