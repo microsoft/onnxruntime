@@ -143,7 +143,7 @@ extends:
             ${{ if eq(parameters.cuda_version, '12.8') }}:
               python_package_name: 'onnxruntime-ep-cuda12'
               docker_base_image: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
-              cmake_x64_cuda_archs: '61-virtual;75-virtual;86-real;89-real;120-real;120-virtual'
+              cmake_x64_cuda_archs: '50-virtual;61-virtual;70-virtual;75-virtual;80-virtual;86-real;89-real;90-virtual;120-real;120-virtual'
               cmake_arm64_cuda_archs: '61-virtual;75-virtual;86-real;89-real;120-real;120-virtual'
             ${{ if eq(parameters.cuda_version, '13.x') }}:
               python_package_name: 'onnxruntime-ep-cuda13'
