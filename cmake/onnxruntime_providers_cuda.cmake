@@ -447,8 +447,15 @@
     if(ORT_HAS_SM90_OR_LATER)
       target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-w>)
       target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-DCUTLASS_ENABLE_GDC_FOR_SM90=1>)
-      target_compile_definitions(${target} PRIVATE COMPILE_HOPPER_TMA_GEMMS)
       if(NOT MSVC)
+        # The native SM90 (Hopper) TMA/WGMMA launchers pass CUTLASS TMA descriptor types through
+        # NVCC-generated host stubs. With CUDA 13 + MSVC those stubs contain 128-byte over-aligned
+        # by-value formal parameters, which triggers MSVC C2719 ("formal parameter with requested
+        # alignment of 128 won't be aligned"). Disable the native SM90 fpA_intB (COMPILE_HOPPER_TMA_GEMMS)
+        # and grouped MoE (COMPILE_HOPPER_TMA_GROUPED_GEMMS) TMA kernels on MSVC; the launcher bodies
+        # become throwing stubs and the SM80 compatibility path still runs on Hopper at runtime.
+        # See docs/contrib_ops/cuda/moe_qmoe.md section 14.1.
+        target_compile_definitions(${target} PRIVATE COMPILE_HOPPER_TMA_GEMMS)
         target_compile_definitions(${target} PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
       endif()
       if (MSVC)
