@@ -961,8 +961,9 @@ The plugin API's `StartEvent`/`StopEvent` receive **absolute epoch-based** corre
 When ORT calls `EndProfiling`:
 1. CUPTI activity buffers are flushed (`cuptiActivityFlushAll`).
 2. GPU activity records are processed — kernel names, timestamps, durations, and stream/grid metadata are extracted.
-3. Events are converted to `Ort::ProfilingEvent` instances with `OrtProfilingEventCategory_KERNEL`.
-4. Events are appended to the `OrtProfilingEventsContainer` via `AddEvents`.
+3. The plugin runs an **annotation pass**: while flattening the per-correlation-ID event buckets returned by `CUPTIManager::Consume`, it stamps each GPU event with an explicit `ort_correlation_id` arg, and — when the correlation ID matches a NODE-category ORT event captured during `StopEvent` — also stamps `ort_event_name`, `ort_op_name`, and `ort_node_index`. See §14.6 for the lifecycle of the correlation-to-node map.
+4. Events are converted to `Ort::ProfilingEvent` instances with `OrtProfilingEventCategory_KERNEL`.
+5. Events are appended to the `OrtProfilingEventsContainer` via `AddEvents`.
 
 The plugin does **not** perform the post-hoc merge/sort that the in-tree `GPUProfilerBase::EndProfiling` does. The plugin API is append-only, and the `PluginEpProfiler` bridge on the ORT side likewise appends EP events to ORT's profiling event collection without merge/sort by timestamp or correlation ID. Any ordering or interleaving into a global timeline is handled by downstream trace consumers.
 
@@ -972,11 +973,44 @@ The plugin does **not** perform the post-hoc merge/sort that the in-tree `GPUPro
 |--------|----------------|----------------|
 | Event merge | `GPUProfilerBase::MergeEvents` interleaves GPU events into ORT's array (has known sort-order bug) | Append-only; ORT-side bridge appends only, and trace consumers handle ordering |
 | Correlation IDs | Relative → absolute conversion in `GPUTracerManager::PushCorrelation` | Bridge provides absolute IDs directly; plugin pushes to CUPTI as-is |
-| `StopEvent` metadata | Ignored (just pops correlation) | ORT event metadata available; currently unused, can annotate GPU events in future |
-| GPU→ORT event linkage | Implicit via CUPTI external correlation IDs merged into timeline | GPU events carry only CUPTI metadata (`stream`, `grid_*`, `block_*`); no ORT correlation or parent identifier is attached. Downstream consumers must relate GPU kernels to ORT nodes via timestamp proximity. This is a known limitation; future work may attach `correlation_id` or parent event name via `StopEvent`'s `OrtProfilingEvent` parameter |
+| `StopEvent` metadata | Ignored (just pops correlation) | Reads category, name, `op_name`, and `node_index` via `OrtEpApi::ProfilingEvent_*` for NODE-category events and records them in a correlation → node-info map (see §14.6) |
+| GPU→ORT event linkage | Implicit via CUPTI external correlation IDs merged into timeline | Explicit — every GPU event carries `ort_correlation_id`; node-attributed events additionally carry `ort_event_name`, `ort_op_name`, and `ort_node_index` |
 | Singleton scope | Process-wide `CUPTIManager` in main ORT DLL | DLL-local `CUPTIManager` in plugin (process isolation) |
 
-### 14.6 Build Configuration
+### 14.6 Per-Node Attribution
+
+The plugin annotates GPU events with the identity of the ORT graph node that triggered them, so consumers can answer "which node ran this kernel?" without timestamp-proximity heuristics.
+
+**Map lifecycle.** `CudaPluginEpProfiler` holds an `std::unordered_map<uint64_t, OrtNodeInfo>` keyed by the absolute, epoch-based correlation ID the bridge passes to `StartEvent`/`StopEvent`. The map is guarded by `std::mutex node_info_mutex_` because ORT may execute nodes on multiple inter-op threads concurrently:
+
+1. `StopEventImpl` is called once per ORT event. For each `OrtProfilingEvent` it queries `ProfilingEvent_GetCategory`; if the category is `OrtProfilingEventCategory_NODE`, it reads the event name (`ProfilingEvent_GetName`) plus the `op_name` and `node_index` args (`ProfilingEvent_GetArgValue`) and inserts an `OrtNodeInfo` under the correlation-ID key. Accessor failures release any returned `OrtStatus*` and continue; the event simply falls back to `ort_correlation_id`-only linkage. The CUPTI external-correlation pop is always performed regardless of accessor outcome.
+2. `EndProfilingImpl` swaps the map into a local container under the mutex (so subsequent lookups during event flattening run lock-free), then iterates the per-correlation buckets returned by `CUPTIManager::Consume`. For each bucket it stringifies the correlation ID once and, for every GPU event in the bucket, appends `ort_correlation_id` plus — if the lookup hit — `ort_event_name`, `ort_op_name`, and `ort_node_index`. The arg strings are copied by `OrtEpApi::ProfilingEventsContainer_AddEvents`, so local-scope storage is sufficient.
+
+**Why NODE-only.** CUPTI external correlation IDs are pushed in `StartEvent` and popped in `StopEvent` for *all* event categories, so non-NODE events (e.g. `SESSION` or `API`) can still produce attributed GPU activity buckets. Filtering to `OrtProfilingEventCategory_NODE` in `StopEventImpl` means only graph-node executions populate the map — GPU events captured under, say, a session-init scope carry just `ort_correlation_id` and no `ort_op_name`. This keeps the annotation precise: an `ort_op_name` value always corresponds to an actual ONNX op type.
+
+**Example.** A GPU kernel event for a `MatMul` node at graph index 7 now looks like (Chrome trace JSON):
+
+```json
+{
+  "cat": "Kernel",
+  "name": "ampere_sgemm_64x32_nn",
+  "ts": 1234567,
+  "dur": 42,
+  "args": {
+    "stream": "0x55ab…",
+    "grid_x": "12",
+    "block_x": "32",
+    "ort_correlation_id": "1718000000000000007",
+    "ort_event_name": "MatMul_0_kernel_time",
+    "ort_op_name": "MatMul",
+    "ort_node_index": "7"
+  }
+}
+```
+
+The `ort_*`-prefixed keys are chosen to avoid colliding with existing CUPTI arg names (`stream`, `grid_*`, `block_*`, `name`, `correlation_id`).
+
+### 14.7 Build Configuration
 
 CUPTI profiling is conditional:
 - **CMake flag**: `onnxruntime_ENABLE_CUDA_PROFILING=ON`
@@ -986,7 +1020,7 @@ CUPTI profiling is conditional:
 
 When profiling is disabled (default), `CudaEp::CreateProfiler` is set to `nullptr` and no CUPTI code is compiled.
 
-### 14.7 Files
+### 14.8 Files
 
 | File | Role |
 |------|------|
