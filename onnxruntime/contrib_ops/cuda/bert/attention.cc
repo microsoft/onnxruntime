@@ -6,6 +6,7 @@
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/attention.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
+#include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 
@@ -53,6 +54,9 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionB
   disable_memory_efficient_attention_ = kIsBf16 || !kernel_options_->UseEfficientAttention();
 
   disable_flash_attention_ = !kIs16bit || !kernel_options_->UseFlashAttention();
+
+  enable_cudnn_flash_attention_ = kIs16bit && kernel_options_->UseCudnnFlashAttention();
+  auto_enable_cudnn_flash_attention_ = kIs16bit && kernel_options_->AllowCudnnFlashAttentionAuto();
 }
 
 template <typename T>
@@ -110,8 +114,28 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
 
+  const bool cudnn_sdpa_enabled = enable_cudnn_flash_attention_ ||
+                                  (auto_enable_cudnn_flash_attention_ && sm >= 90);
+  // attention_bias is safe here because the no-cache self-attention path has
+  // sequence_length == total_sequence_length, so cuDNN uses top-left causal alignment.
+  const bool cudnn_sdpa_supported = cudnn_sdpa_enabled &&
+                                    (parameters.mask_type == AttentionMaskType::MASK_NONE ||
+                                     is_mask_1d_seq_len) &&
+                                    nullptr == past &&
+                                    nullptr == present &&
+                                    onnxruntime::cudnn_sdpa::is_stable() &&
+                                    onnxruntime::cudnn_sdpa::is_supported(device_prop,
+                                                                          parameters.num_heads,
+                                                                          parameters.num_heads,
+                                                                          parameters.head_size,
+                                                                          parameters.v_head_size,
+                                                                          parameters.sequence_length,
+                                                                          parameters.total_sequence_length,
+                                                                          is_unidirectional_);
+
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = !disable_flash_attention_ &&
+                             !cudnn_sdpa_supported &&
                              (nullptr == attention_bias) &&
                              nullptr == past &&
                              nullptr == present &&
@@ -151,7 +175,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 #endif
 
   if (!use_flash_attention && !is_unidirectional_) {  // BERT
-    bool use_fused_runner = !disable_fused_self_attention_ &&
+    bool use_fused_runner = !cudnn_sdpa_supported &&
+                            !disable_fused_self_attention_ &&
                             (nullptr == mask_index || is_mask_1d_seq_len) &&
                             nullptr == past &&
                             nullptr == present &&
@@ -180,6 +205,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 #if USE_MEMORY_EFFICIENT_ATTENTION
   bool use_memory_efficient_attention =
       !use_flash_attention &&
+      !cudnn_sdpa_supported &&
       fused_runner == nullptr &&
       !disable_memory_efficient_attention_ &&
       nullptr == past &&
@@ -197,6 +223,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     AttentionKernelDebugInfo debug_info;
     debug_info.use_flash_attention = use_flash_attention;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
+    debug_info.use_cudnn_flash_attention = cudnn_sdpa_supported;
     if (fused_runner != nullptr) {
       debug_info.SetTrtFusedKernel(enable_trt_flash_attention_, sequence_length);
     }
@@ -229,7 +256,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   constexpr size_t element_size = sizeof(T);
   constexpr bool use_fused_cross_attention = false;
-  constexpr bool use_cudnn_flash_attention = false;
   constexpr bool use_lean_attention = false;
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    parameters.batch_size,
@@ -244,7 +270,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    use_lean_attention,
                                                    use_fused_cross_attention,
                                                    use_memory_efficient_attention,
-                                                   use_cudnn_flash_attention,
+                                                   cudnn_sdpa_supported,
                                                    false);
   IAllocatorUniquePtr<void> work_space = GetScratchBuffer<void>(workSpaceSize, GetComputeStream(context));
 
@@ -272,6 +298,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
+  if (cudnn_sdpa_supported) {
+    data.kernel_type = AttentionKernelType::AttentionKernel_CudnnFlashAttention;
+    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&data.allocator));
+  }
   if (softmax_lse_buffer != nullptr) {
     data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse_buffer.get());
   }

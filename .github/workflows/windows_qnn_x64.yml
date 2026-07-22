@@ -63,6 +63,11 @@ jobs:
         with:
           architecture: x64
 
+      - name: Install Visual Studio Spectre-mitigated libs
+        uses: ./.github/actions/install-vs-spectre-libs
+        with:
+          architecture: x64
+
       - name: Download QNN SDK
         working-directory: ${{ runner.temp }}
         run: |
