@@ -2201,8 +2201,9 @@ MlasDequantizeBlockwiseFpZeroPoint(
     static_assert(std::is_same_v<ElementT, float>, "only float dequantized elements are implemented");
 
     // The packed stream is columnwise: elements in a block come from the same column.
-    // The MatMulNBits op constrains block_size to a power of two >= 16, so every block
-    // starts byte aligned in the packed stream.
+    // This routine only needs block_size to be a multiple of 4 so each block starts byte
+    // aligned in the packed stream; the MatMulNBits op passes a power of two >= 16, which
+    // satisfies that.
 
     const int k_blocks = (rows + block_size - 1) / block_size;
     const size_t src_col_stride = static_cast<size_t>(k_blocks) * block_size / 4;
