@@ -498,6 +498,16 @@ if (NOT MSVC AND NOT (CMAKE_SYSTEM_NAME STREQUAL "iOS"))
   endif()
   set(CMAKE_REQUIRED_FLAGS ${OLD_CMAKE_REQUIRED_FLAGS})
 endif()
+# Toolchains that default to "ld --as-needed" (e.g. Debian/Raspberry Pi OS) drop
+# libatomic when it appears before the objects that reference __atomic_* in the
+# link line, so wrap it with --no-as-needed to keep the DT_NEEDED entry.
+if (onnxruntime_LINK_LIBATOMIC)
+  if (CMAKE_SYSTEM_NAME MATCHES "Linux|Android")
+    set(onnxruntime_LIBATOMIC_LINK_LIBS -Wl,--push-state,--no-as-needed atomic -Wl,--pop-state)
+  else()
+    set(onnxruntime_LIBATOMIC_LINK_LIBS atomic)
+  endif()
+endif()
 
 
 file (STRINGS "${REPO_ROOT}/VERSION_NUMBER" ORT_VERSION)
