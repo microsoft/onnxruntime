@@ -807,12 +807,9 @@ else()
           )
         endif()
 
-message(STATUS "CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
-message(STATUS "CMAKE_CXX_COMPILER_VERSION: ${CMAKE_CXX_COMPILER_VERSION}")
-
         include(CheckCXXSourceCompiles)
         set(OLD_CMAKE_REQUIRED_FLAGS_AVXVNNI "${CMAKE_REQUIRED_FLAGS}")
-        set(CMAKE_REQUIRED_FLAGS "${OLD_CMAKE_REQUIRED_FLAGS_AVXVNNI} -mavxvnni")
+        set(CMAKE_REQUIRED_FLAGS "${OLD_CMAKE_REQUIRED_FLAGS_AVXVNNI} -mavx2 -mfma -mf16c -mavxvnni")
         check_cxx_source_compiles("
           #include <immintrin.h>
           int main() {
