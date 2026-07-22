@@ -191,11 +191,11 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
 
       if (!shape_matched) {
           const TensorShape& existing_shape = p_ort_value->IsTensor()
-              ? p_ort_value->Get<Tensor>().Shape()
+                                                  ? p_ort_value->Get<Tensor>().Shape()
 #if !defined(DISABLE_SPARSE_TENSORS)
-              : p_ort_value->Get<SparseTensor>().DenseShape();
+                                                  : p_ort_value->Get<SparseTensor>().DenseShape();
 #else
-              : *shape;  // unreachable, but satisfies compiler
+                                                  : *shape;  // unreachable, but satisfies compiler
 #endif
           bool reused_caller_buffer = false;
           LOGS_DEFAULT(VERBOSE) << "Output shape mismatch for pre-allocated fetch buffer.";
@@ -214,15 +214,15 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
           }
           else {
               return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                  "The output OrtValue provided for output '",
-                  node.OutputDefs()[output_index]->Name(),
-                  "' of node '", node.Name(),
-                  "' (", node.OpType(), ") has shape ", existing_shape,
-                  " but the computed output shape for this run is ", *shape,
-                  ". When calling Run() with pre-allocated output OrtValues on a model "
-                  "with dynamic output shapes, either supply unallocated output OrtValues "
-                  "or ensure the pre-allocated shapes match the expected output shapes "
-                  "for each run.");
+                                    "The output OrtValue provided for output '",
+                                    node.OutputDefs()[output_index]->Name(),
+                                    "' of node '", node.Name(),
+                                    "' (", node.OpType(), ") has shape ", existing_shape,
+                                    " but the computed output shape for this run is ", *shape,
+                                    ". When calling Run() with pre-allocated output OrtValues on a model "
+                                    "with dynamic output shapes, either supply unallocated output OrtValues "
+                                    "or ensure the pre-allocated shapes match the expected output shapes "
+                                    "for each run.");
           }
       }
     } else {
