@@ -611,6 +611,58 @@ TEST_F(GraphTransformationTests, ConstantFolding) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
 }
 
+TEST_F(GraphTransformationTests, ConstantFoldingCopiesAliasedTensorBuffer) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    std::vector<float> values(64);
+    for (size_t i = 0; i < values.size(); ++i) {
+      values[i] = static_cast<float>(i + 1);
+    }
+
+    auto* input = builder.MakeInitializer<float>({64}, values);
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{64});
+    builder.AddNode("Identity", {input}, std::vector<NodeArg*>{output});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Identity"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    ORT_RETURN_IF_ERROR(graph.Resolve());
+
+    const auto& outputs = graph.GetOutputs();
+    TEST_RETURN_IF_NOT(outputs.size() == 1U);
+    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 1U);
+
+    const ONNX_NAMESPACE::TensorProto* folded_tensor = nullptr;
+    TEST_RETURN_IF_NOT(graph.GetInitializedTensor(outputs[0]->Name(), folded_tensor));
+    TEST_RETURN_IF_NOT(folded_tensor != nullptr);
+
+    Initializer initializer{graph, *folded_tensor, graph.ModelPath()};
+    TEST_RETURN_IF_NOT(initializer.size() == 64U);
+    const float* data = initializer.data<float>();
+    for (size_t i = 0; i < 64; ++i) {
+      TEST_RETURN_IF_NOT(data[i] == static_cast<float>(i + 1));
+    }
+
+    return Status::OK();
+  };
+
+  const ConfigOptions empty_config_options;
+  auto cpu_ep = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case,
+      13,
+      *logger_,
+      std::make_unique<ConstantFolding>(*cpu_ep, false, empty_config_options),
+      TransformerLevel::Level1,
+      1,
+      pre_graph_checker,
+      post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, ConstantFoldingNodesOnDifferentEP) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
   std::shared_ptr<Model> model;
