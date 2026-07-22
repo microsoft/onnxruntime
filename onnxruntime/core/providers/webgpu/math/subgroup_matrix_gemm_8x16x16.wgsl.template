@@ -32,8 +32,16 @@
 // Preconditions enforced by the host: K % sg_mat_k == 0; the load row stride is
 // even (Intel f16 subgroupMatrixLoad reads columns as 32-bit pairs), i.e. N even
 // when trans_b == 0 and M even when trans_a == 1. M and N may otherwise be any
-// size; partial tiles are handled by bounds-checked stores at write-out. Gemm is
-// strictly 2D (no batching).
+// size; partial tiles are handled by bounds-checked stores at write-out. The
+// matching loads in the last partial M/N tiles do read A rows >= M and B columns
+// >= N, but since K is never partial those over-read values only feed output
+// elements with m >= M or n >= N, which the bounds-checked stores discard - so
+// they can never corrupt a valid result, on any GPU. The out-of-range reads
+// themselves are made safe by WebGPU robust buffer access in the wasm/browser
+// build; the native (Dawn) build enables the disable_robustness device toggle, so
+// there they instead rely on backend-level bounds (e.g. D3D12 returns 0 for
+// out-of-range buffer reads), which holds on the Intel backends this
+// subgroup-matrix path is gated to. Gemm is strictly 2D (no batching).
 
 #param has_c
 #param trans_a
