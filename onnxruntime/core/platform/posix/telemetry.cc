@@ -718,7 +718,7 @@ int64_t PosixTelemetry::GetTotalMemoryMB() {
   if (sysctlbyname("hw.memsize", &mem, &len, nullptr, 0) == 0) {
     return mem / (1024 * 1024);
   }
-  return -1;
+  return 0;
 
 #elif defined(__linux__) || defined(__ANDROID__)
   long pages = sysconf(_SC_PHYS_PAGES);
@@ -726,10 +726,10 @@ int64_t PosixTelemetry::GetTotalMemoryMB() {
   if (pages > 0 && page_size > 0) {
     return static_cast<int64_t>(pages) * page_size / (1024 * 1024);
   }
-  return -1;
+  return 0;
 
 #else
-  return -1;
+  return 0;
 #endif
 }
 
