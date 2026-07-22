@@ -831,6 +831,11 @@ bf16 or the shipping default.
 
 NVFP4 is the format emitted by NVIDIA Model-Optimizer (e.g. `nvidia/Qwen3.6-35B-A3B-NVFP4`).
 
+> **Execution behavior (this PR):** NVFP4 has **no native block-scaled CUTLASS prefill path** — that
+> is Blackwell-only and not yet wired. NVFP4 currently runs the **fused GEMV decode fast path** for
+> supported small-decode shapes and the **dequant-to-A16 fallback** for everything else (prefill and
+> any GEMV-unsupported shape). Details in [§9b.1](#9b1-dispatch).
+
 ### 9b.1 Dispatch
 
 There is no native block-scaled CUTLASS path for NVFP4 today (that is Blackwell-only and not yet

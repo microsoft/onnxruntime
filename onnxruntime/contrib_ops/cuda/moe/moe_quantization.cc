@@ -253,8 +253,8 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       // ORT_ENABLE_FP4_GEMV=0 to force the dequant fallback (e.g. for debugging). Prefill and
       // any unsupported shape still fall through to the dequant path at dispatch time.
       if (use_fp4_dequant_fallback_) {
-        const char* v = std::getenv("ORT_ENABLE_FP4_GEMV");
-        enable_fp4_gemv_ = (v == nullptr || v[0] == '\0' || v[0] != '0');
+        enable_fp4_gemv_ =
+            onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_FP4_GEMV", 1) != 0;
       } else if (enable_fp4_cutlass_gemm_) {
         // Native CUTLASS WFP4A16 scales well with M but is underfilled for decode (small M):
         // route prefill (M >= ORT_FP4_PREFILL_MIN_TOKENS) through native, and small-decode
@@ -310,10 +310,8 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       // shapes route through the fused GEMV instead of re-dequantizing every expert to dense
       // BF16/FP16 each token, and any unsupported shape (prefill / large batch) falls through to
       // the dequant fallback. NVFP4 has no native CUTLASS/SM80 path, so those stay disabled.
-      {
-        const char* v = std::getenv("ORT_ENABLE_FP4_GEMV");
-        enable_fp4_gemv_ = (v == nullptr || v[0] == '\0' || v[0] != '0');
-      }
+      enable_fp4_gemv_ =
+          onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_FP4_GEMV", 1) != 0;
       enable_fp4_gemv_autotune_ = Fp4GemvAutotuneEnabled();
       enable_fp4_gemv_autotune_log_ = Fp4GemvAutotuneLogEnabled();
 #endif
