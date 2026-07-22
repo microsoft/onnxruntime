@@ -312,6 +312,11 @@ Status LaunchMatMulBlockScaledFp4Gemv(void* y,
   if (m <= 0 || n <= 0 || k <= 0) {
     return Status::OK();
   }
+  // This kernel is hard-coded for block_size == 16 and assumes K is a multiple of 32 so that each
+  // warp lane always owns a full 32-element slice (and one E4M3 scale per 16-element block). Guard
+  // against misuse if this helper is ever reused outside the callers that already check these.
+  ORT_RETURN_IF_NOT(block_size == 16, "MatMulBlockScaledFp4 GEMV requires block_size == 16, got ", block_size, ".");
+  ORT_RETURN_IF_NOT(k % 32 == 0, "MatMulBlockScaledFp4 GEMV requires K divisible by 32, got ", k, ".");
   const int k_blocks = (k + block_size - 1) / block_size;
   constexpr int kWarpsPerBlock = 8;
   const dim3 threads{32, kWarpsPerBlock};

@@ -248,8 +248,12 @@ Status RunGemm(void* y,
 }
 
 bool UseM256Config(int m) {
-  const auto m_unsigned = static_cast<unsigned int>(std::max(m - 1, 1));
-  const int next_power_of_two_m = static_cast<int>(1u << (32 - __builtin_clz(m_unsigned)));
+  // Smallest power of two >= m, computed portably (no compiler builtins so this
+  // also compiles under MSVC host compilation for CUDA builds on Windows).
+  int next_power_of_two_m = 1;
+  while (next_power_of_two_m < m) {
+    next_power_of_two_m <<= 1;
+  }
   return std::max(16, next_power_of_two_m) <= 256;
 }
 

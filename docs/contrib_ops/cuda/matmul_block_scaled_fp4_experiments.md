@@ -128,43 +128,51 @@ unswizzled scale layout.
 
 ## 4. Benchmark Commands
 
+The commands below use `ORT_REPO` and `ORT_BUILD` so they can be copied without
+editing developer-specific paths. Set them once:
+
+```bash
+export ORT_REPO=$(git rev-parse --show-toplevel)
+export ORT_BUILD="$ORT_REPO/build/cu130/Release"
+```
+
 Provider rebuild and Python-provider sync:
 
 ```bash
-cmake --build build/cu130/Release --target onnxruntime_providers_cuda --parallel
-cp build/cu130/Release/libonnxruntime_providers_cuda.so \
-  build/cu130/Release/onnxruntime/capi/libonnxruntime_providers_cuda.so
-cp build/cu130/Release/libonnxruntime_providers_cuda.so \
-  build/cu130/Release/build/lib/onnxruntime/capi/libonnxruntime_providers_cuda.so
+cmake --build "$ORT_BUILD" --target onnxruntime_providers_cuda --parallel
+cp "$ORT_BUILD/libonnxruntime_providers_cuda.so" \
+  "$ORT_BUILD/onnxruntime/capi/libonnxruntime_providers_cuda.so"
+cp "$ORT_BUILD/libonnxruntime_providers_cuda.so" \
+  "$ORT_BUILD/build/lib/onnxruntime/capi/libonnxruntime_providers_cuda.so"
 ```
 
 Decode benchmarks:
 
 ```bash
-cd /tmp && PYTHONPATH=/home/tlwu/onnxruntime/build/cu130/Release CUDA_VISIBLE_DEVICES=0 \
+cd /tmp && PYTHONPATH="$ORT_BUILD" CUDA_VISIBLE_DEVICES=0 \
   ORT_MATMUL_BLOCK_SCALED_FP4_NATIVE_SM120=1 \
-  python /home/tlwu/onnxruntime/onnxruntime/test/python/contrib_ops/profile_matmul_block_scaled.py \
+  python "$ORT_REPO/onnxruntime/test/python/contrib_ops/profile_matmul_block_scaled.py" \
   --op fp4 --activation-dtype fp16 --m 1 --n 11008 --k 4096 --warmup 100 --repeat 500
 
-cd /tmp && PYTHONPATH=/home/tlwu/onnxruntime/build/cu130/Release CUDA_VISIBLE_DEVICES=0 \
+cd /tmp && PYTHONPATH="$ORT_BUILD" CUDA_VISIBLE_DEVICES=0 \
   ORT_MATMUL_BLOCK_SCALED_FP4_NATIVE_SM120=1 \
-  python /home/tlwu/onnxruntime/onnxruntime/test/python/contrib_ops/profile_matmul_block_scaled.py \
+  python "$ORT_REPO/onnxruntime/test/python/contrib_ops/profile_matmul_block_scaled.py" \
   --op fp4 --activation-dtype fp16 --m 8 --n 11008 --k 4096 --warmup 100 --repeat 500
 ```
 
 Native prefill benchmark:
 
 ```bash
-cd /tmp && PYTHONPATH=/home/tlwu/onnxruntime/build/cu130/Release CUDA_VISIBLE_DEVICES=0 \
+cd /tmp && PYTHONPATH="$ORT_BUILD" CUDA_VISIBLE_DEVICES=0 \
   ORT_MATMUL_BLOCK_SCALED_FP4_NATIVE_SM120=1 \
-  python /home/tlwu/onnxruntime/onnxruntime/test/python/contrib_ops/profile_matmul_block_scaled.py \
+  python "$ORT_REPO/onnxruntime/test/python/contrib_ops/profile_matmul_block_scaled.py" \
   --op fp4 --activation-dtype fp16 --m 16 --n 11008 --k 4096 --warmup 50 --repeat 200
 ```
 
 Focused C++ tests:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 build/cu130/Release/onnxruntime_provider_test \
+CUDA_VISIBLE_DEVICES=0 "$ORT_BUILD/onnxruntime_provider_test" \
   --gtest_filter='MatMulBlockScaledFp4OpTest.*'
 ```
 

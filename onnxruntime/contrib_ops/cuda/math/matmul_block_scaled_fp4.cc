@@ -63,8 +63,10 @@ Status MatMulBlockScaledFp4::PrePack(const Tensor& tensor, int input_idx, Alloca
   }
 
   const int64_t k_blocks = K_ / 16;
-  ORT_RETURN_IF_NOT(tensor.Shape().Size() >= N_ * k_blocks,
-                    "weight_scale tensor is too small; expected at least ", N_ * k_blocks, " E4M3 scales.");
+  const auto& scale_shape = tensor.Shape();
+  ORT_RETURN_IF_NOT(scale_shape.NumDimensions() == 2 && scale_shape[0] == N_ && scale_shape[1] == k_blocks,
+                    "weight_scale must have shape [N, K/16] = [", N_, ", ", k_blocks, "], got ",
+                    scale_shape.ToString(), ".");
 
   const int64_t rounded_k_blocks = RoundUp(k_blocks, 4);
   const int64_t rounded_n = RoundUp(N_, 128);
@@ -112,10 +114,14 @@ Status MatMulBlockScaledFp4::ComputeImpl(OpKernelContext* context) const {
 
   const int64_t k_packed = K_ / 2;
   const int64_t k_blocks = (K_ + block_size_ - 1) / block_size_;
-  ORT_ENFORCE(b->Shape().Size() >= N_ * k_packed,
-              "B tensor is too small; expected at least ", N_ * k_packed, " packed bytes.");
-  ORT_ENFORCE(weight_scale->Shape().Size() >= N_ * k_blocks,
-              "weight_scale tensor is too small; expected at least ", N_ * k_blocks, " E4M3 scales.");
+  const auto& b_shape = b->Shape();
+  ORT_ENFORCE(b_shape.NumDimensions() == 2 && b_shape[0] == N_ && b_shape[1] == k_packed,
+              "B must have shape [N, K/2] = [", N_, ", ", k_packed, "], got ", b_shape.ToString(), ".");
+  const auto& weight_scale_shape = weight_scale->Shape();
+  ORT_ENFORCE(weight_scale_shape.NumDimensions() == 2 && weight_scale_shape[0] == N_ &&
+                  weight_scale_shape[1] == k_blocks,
+              "weight_scale must have shape [N, ceil(K/block_size)] = [", N_, ", ", k_blocks, "], got ",
+              weight_scale_shape.ToString(), ".");
   ORT_ENFORCE(weight_scale_2->Shape().Size() == 1, "weight_scale_2 must be a scalar.");
   if (input_scale != nullptr) {
     ORT_ENFORCE(input_scale->Shape().Size() == 1, "input_scale must be a scalar.");
@@ -123,7 +129,8 @@ Status MatMulBlockScaledFp4::ComputeImpl(OpKernelContext* context) const {
     // weight-only FP16/BF16 activation path keeps full-precision activations.
   }
   if (bias != nullptr) {
-    ORT_ENFORCE(bias->Shape().Size() == N_, "bias must have shape [N].");
+    ORT_ENFORCE(bias->Shape().NumDimensions() == 1 && bias->Shape()[0] == N_,
+                "bias must have shape [N] = [", N_, "], got ", bias->Shape().ToString(), ".");
   }
 
   constexpr bool transa = false;

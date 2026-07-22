@@ -200,10 +200,19 @@ The default remains the existing weight-only semantics: decode GEMV for small
 
 ## 9. Testing and Benchmarking
 
+The commands below use two environment variables so they can be copied without
+editing developer-specific paths. Set them once to your repo root and build
+output directory:
+
+```bash
+export ORT_REPO=$(git rev-parse --show-toplevel)
+export ORT_BUILD="$ORT_REPO/build/cu130/Release"
+```
+
 Focused C++ tests:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 build/cu130/Release/onnxruntime_provider_test \
+CUDA_VISIBLE_DEVICES=0 "$ORT_BUILD/onnxruntime_provider_test" \
   --gtest_filter='MatMulBlockScaledFp4OpTest.*'
 ```
 
@@ -211,19 +220,19 @@ Python harness examples:
 
 ```bash
 # Decode GEMV
-cd /tmp && PYTHONPATH=/home/tlwu/onnxruntime/build/cu130/Release CUDA_VISIBLE_DEVICES=0 \
-  python /home/tlwu/onnxruntime/onnxruntime/test/python/contrib_ops/profile_matmul_block_scaled.py \
+cd /tmp && PYTHONPATH="$ORT_BUILD" CUDA_VISIBLE_DEVICES=0 \
+  python "$ORT_REPO/onnxruntime/test/python/contrib_ops/profile_matmul_block_scaled.py" \
   --op fp4 --activation-dtype fp16 --m 1 --n 11008 --k 4096 --warmup 100 --repeat 500
 
 # Default prefill: dequantize + cuBLAS
-cd /tmp && PYTHONPATH=/home/tlwu/onnxruntime/build/cu130/Release CUDA_VISIBLE_DEVICES=0 \
-  python /home/tlwu/onnxruntime/onnxruntime/test/python/contrib_ops/profile_matmul_block_scaled.py \
+cd /tmp && PYTHONPATH="$ORT_BUILD" CUDA_VISIBLE_DEVICES=0 \
+  python "$ORT_REPO/onnxruntime/test/python/contrib_ops/profile_matmul_block_scaled.py" \
   --op fp4 --activation-dtype fp16 --m 16 --n 11008 --k 4096 --warmup 50 --repeat 200
 
 # Native SM120 prefill
-cd /tmp && PYTHONPATH=/home/tlwu/onnxruntime/build/cu130/Release CUDA_VISIBLE_DEVICES=0 \
+cd /tmp && PYTHONPATH="$ORT_BUILD" CUDA_VISIBLE_DEVICES=0 \
   ORT_MATMUL_BLOCK_SCALED_FP4_NATIVE_SM120=1 \
-  python /home/tlwu/onnxruntime/onnxruntime/test/python/contrib_ops/profile_matmul_block_scaled.py \
+  python "$ORT_REPO/onnxruntime/test/python/contrib_ops/profile_matmul_block_scaled.py" \
   --op fp4 --activation-dtype fp16 --m 16 --n 11008 --k 4096 --warmup 50 --repeat 200
 ```
 
@@ -231,8 +240,8 @@ After rebuilding `libonnxruntime_providers_cuda.so`, sync the provider into the
 Python load locations before Python benchmarks:
 
 ```bash
-cp build/cu130/Release/libonnxruntime_providers_cuda.so \
-  build/cu130/Release/onnxruntime/capi/libonnxruntime_providers_cuda.so
-cp build/cu130/Release/libonnxruntime_providers_cuda.so \
-  build/cu130/Release/build/lib/onnxruntime/capi/libonnxruntime_providers_cuda.so
+cp "$ORT_BUILD/libonnxruntime_providers_cuda.so" \
+  "$ORT_BUILD/onnxruntime/capi/libonnxruntime_providers_cuda.so"
+cp "$ORT_BUILD/libonnxruntime_providers_cuda.so" \
+  "$ORT_BUILD/build/lib/onnxruntime/capi/libonnxruntime_providers_cuda.so"
 ```
