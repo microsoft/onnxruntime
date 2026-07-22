@@ -21,7 +21,7 @@ void RunHardSwishTest() {
     GTEST_SKIP() << "WebGPU execution provider is not available.";
   }
 
-  constexpr std::array<int64_t, 2> kDims{2, 5};
+  const std::vector<int64_t> kDims{2, 5};
   const std::vector<float> input_values{-6.0f, -3.0f, -1.0f, 0.0f, 1.0f, 3.0f, 6.0f, 8.0f, -8.0f, 0.5f};
   std::vector<float> expected_values;
   expected_values.reserve(input_values.size());
