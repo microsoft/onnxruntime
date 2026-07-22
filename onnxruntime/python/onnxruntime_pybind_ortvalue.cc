@@ -74,6 +74,29 @@ std::unique_ptr<OrtValue> OrtValueFromShapeAndType(const std::vector<int64_t>& s
   Tensor::InitOrtValue(element_type, gsl::make_span(shape), std::move(allocator), *ml_value);
   return ml_value;
 }
+
+// Allocate an OrtValue using the shared allocator matching the given OrtMemoryInfo.
+// This allows callers to specify the exact memory type (e.g. HOST_ACCESSIBLE) rather than
+// relying on OrtDevice.make() which always uses DEFAULT.
+//
+// Uses the full OrtMemoryInfo for the lookup (including mem_type) rather than just the OrtDevice,
+// because the registered allocator's OrtMemoryInfo has a specific mem_type (e.g. OrtMemTypeCPU
+// for HOST_ACCESSIBLE) that must match for FindExistingAllocator to succeed.
+std::unique_ptr<OrtValue> OrtValueFromShapeAndTypeWithMemoryInfo(const std::vector<int64_t>& shape,
+                                                                 MLDataType element_type,
+                                                                 const OrtMemoryInfo& memory_info) {
+  auto& env = GetOrtEnv()->GetEnvironment();
+  AllocatorPtr allocator = env.GetRegisteredSharedAllocator(memory_info);
+
+  if (!allocator) {
+    throw std::runtime_error("No shared allocator found for: " + memory_info.ToString());
+  }
+
+  auto ml_value = std::make_unique<OrtValue>();
+  Tensor::InitOrtValue(element_type, gsl::make_span(shape), std::move(allocator), *ml_value);
+  return ml_value;
+}
+
 }  // namespace
 
 void addOrtValueMethods(pybind11::module& m) {
@@ -181,15 +204,24 @@ void addOrtValueMethods(pybind11::module& m) {
         } else if (device.Type() == OrtDevice::GPU) {
 #ifdef USE_CUDA
           if (device.Vendor() == OrtDevice::VendorIds::NVIDIA) {
-            if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-              throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+            MemCpyFunc cpu_to_device_copy_fn = CpuToCudaMemCpy;
+            if (TryGetProviderInfo_CUDA() != nullptr) {
+              if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+                throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+              }
+            } else {
+              cpu_to_device_copy_fn = CreateDataTransferMemCpy(OrtDevice{}, device);
+              if (!cpu_to_device_copy_fn) {
+                throw std::runtime_error(
+                    "Unsupported GPU device: Cannot find the supported GPU device.");
+              }
             }
 
             onnxruntime::python::CopyDataToTensor(
                 py_values,
                 values_type,
                 *(ml_value->GetMutable<Tensor>()),
-                CpuToCudaMemCpy);
+                cpu_to_device_copy_fn);
           } else
 #endif
 #if USE_MIGRAPHX
@@ -288,6 +320,32 @@ void addOrtValueMethods(pybind11::module& m) {
 
         auto element_type = OnnxTypeToOnnxRuntimeTensorType(onnx_element_type);
         return OrtValueFromShapeAndType(shape, element_type, device);
+      })
+      // Factory methods to create an OrtValue using an OrtMemoryInfo to select the allocator.
+      // This enables allocation with a specific memory type (e.g. HOST_ACCESSIBLE) from plugin EPs.
+      .def_static("ortvalue_from_shape_and_type_for_memory_info", [](const std::vector<int64_t>& shape, py::object& numpy_element_type, const OrtMemoryInfo& memory_info) -> std::unique_ptr<OrtValue> {
+        PyArray_Descr* dtype;
+        if (!PyArray_DescrConverter(numpy_element_type.ptr(), &dtype)) {
+          throw std::runtime_error("Not a valid numpy type");
+        }
+
+        int type_num = dtype->type_num;
+        Py_DECREF(dtype);
+
+        if (!IsNumericNumpyType(type_num)) {
+          throw std::runtime_error("Creation of OrtValues is currently only supported from non-string numpy arrays");
+        }
+
+        auto element_type = NumpyTypeToOnnxRuntimeTensorType(type_num);
+        return OrtValueFromShapeAndTypeWithMemoryInfo(shape, element_type, memory_info);
+      })
+      .def_static("ortvalue_from_shape_and_onnx_type_for_memory_info", [](const std::vector<int64_t>& shape, int32_t onnx_element_type, const OrtMemoryInfo& memory_info) -> std::unique_ptr<OrtValue> {
+        if (onnx_element_type == onnx::TensorProto_DataType::TensorProto_DataType_STRING) {
+          throw std::runtime_error("Creation of OrtValues is currently only supported from non-string numpy arrays");
+        }
+
+        auto element_type = OnnxTypeToOnnxRuntimeTensorType(onnx_element_type);
+        return OrtValueFromShapeAndTypeWithMemoryInfo(shape, element_type, memory_info);
       })
 
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -402,6 +460,10 @@ void addOrtValueMethods(pybind11::module& m) {
         switch (device.Vendor()) {
 #ifdef USE_CUDA
           case OrtDevice::VendorIds::NVIDIA:
+            if (TryGetProviderInfo_CUDA() == nullptr) {
+              return GetPyObjFromTensor(*ml_value, nullptr, nullptr,
+                                        /*zero_copy_non_owning=*/true);
+            }
             return GetPyObjFromTensor(*ml_value, nullptr, GetCudaToHostMemCpyFunction(device),
                                       /*zero_copy_non_owning=*/true);
 #endif

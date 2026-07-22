@@ -16,6 +16,16 @@
 #include <limits>
 #include <math.h>
 
+#if defined(USE_WEBGPU)
+// Pull in the deviceless shared-trailing-dimension helper from the WebGPU EP so it can be
+// unit-tested without a device. This lightweight header carries only the inline helper (no
+// Dawn/WebGPU headers), so including it here keeps this CPU test translation unit free of Dawn
+// and adds no link dependency on the webgpu provider library (which is not linked into
+// onnxruntime_provider_test in every build configuration, e.g. the plugin build). See issue #28969.
+#include "core/providers/webgpu/math/binary_elementwise_broadcast_utils.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#endif
+
 namespace onnxruntime {
 namespace test {
 
@@ -1501,6 +1511,123 @@ TEST(MathOpTest, Pow_float_float16) {
 #endif
 
 #if defined(USE_WEBGPU)
+// Deviceless regression for issue #28969: the shared-trailing-dimension count must never exceed
+// either operand's rank. When operands have unequal ranks, an exhausted operand's implicit size-1
+// dimension is a broadcast, not a shared dimension, and previously over-extended the shared run,
+// underflowing the downstream reshape math (size_t wrap to SIZE_MAX).
+TEST(MathOpTest, WebGpu_CountSharedTrailingDimensions) {
+  int64_t shared_product = -1;
+
+  // The crashing corner: lhs=[1,1,6,6], rhs=[6,6]. Only the two trailing 6s are shared; once rhs
+  // is exhausted, lhs's leading unit dims are broadcasts and must not be counted.
+  const TensorShape lhs_4d({1, 1, 6, 6});
+  const TensorShape rhs_2d({6, 6});
+  size_t num_shared = onnxruntime::webgpu::CountSharedTrailingDimensions(
+      lhs_4d, rhs_2d, /*output_rank=*/4, shared_product);
+  EXPECT_EQ(num_shared, static_cast<size_t>(2));
+  EXPECT_EQ(shared_product, static_cast<int64_t>(36));
+  // The core invariant: the count never exceeds the smaller operand's rank (derived from the
+  // shapes, not hard-coded), which is exactly what keeps the downstream reshape from underflowing.
+  EXPECT_LE(num_shared, std::min(lhs_4d.NumDimensions(), rhs_2d.NumDimensions()));
+
+  // Operand-order symmetry: shorter operand on the left ([6,6] vs [1,1,6,6]) exercises the
+  // ns == lhs_rank branch and must yield the same count/product and respect the same invariant.
+  num_shared = onnxruntime::webgpu::CountSharedTrailingDimensions(
+      rhs_2d, lhs_4d, /*output_rank=*/4, shared_product);
+  EXPECT_EQ(num_shared, static_cast<size_t>(2));
+  EXPECT_EQ(shared_product, static_cast<int64_t>(36));
+  EXPECT_LE(num_shared, std::min(rhs_2d.NumDimensions(), lhs_4d.NumDimensions()));
+
+  // Equal ranks: counting stops at output_rank - 1, leaving at least one outer dimension.
+  num_shared = onnxruntime::webgpu::CountSharedTrailingDimensions(
+      TensorShape({2, 3, 4}), TensorShape({2, 3, 4}), /*output_rank=*/3, shared_product);
+  EXPECT_EQ(num_shared, static_cast<size_t>(2));
+  EXPECT_EQ(shared_product, static_cast<int64_t>(12));
+
+  // A genuine mismatch stops the run immediately.
+  num_shared = onnxruntime::webgpu::CountSharedTrailingDimensions(
+      TensorShape({2, 3, 4}), TensorShape({1, 4}), /*output_rank=*/3, shared_product);
+  EXPECT_EQ(num_shared, static_cast<size_t>(1));
+  EXPECT_EQ(shared_product, static_cast<int64_t>(4));
+}
+
+// End-to-end regression for issue #28969 on the WebGPU EP. Pre-fix this crashed with an
+// ORT_ENFORCE in TensorShape::SizeFromDimension: the trailing product 36 is divisible by 4
+// (taking the vectorized shared-dim path) while the last dim 6 is not, and the unequal ranks plus
+// leading unit dims caused num_shared_dimension to exceed rhs's rank, underflowing the reshape.
+TEST(MathOpTest, Add_Broadcast_WebGpu_UnequalRank_LeadingUnitDims) {
+  OpTester test("Add");
+  const std::vector<int64_t> lhs_dims{1, 1, 6, 6};
+  const std::vector<int64_t> rhs_dims{6, 6};
+  std::vector<float> lhs_values(36);
+  std::vector<float> rhs_values(36);
+  std::vector<float> out_values(36);
+  for (int i = 0; i < 36; ++i) {
+    lhs_values[i] = static_cast<float>(i);
+    rhs_values[i] = static_cast<float>(2 * i);
+    out_values[i] = static_cast<float>(3 * i);
+  }
+  test.AddInput<float>("A", lhs_dims, lhs_values);
+  test.AddInput<float>("B", rhs_dims, rhs_values);
+  test.AddOutput<float>("C", lhs_dims, out_values);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Companion to the regression above: the leading dim is REAL (2), not a unit dim. It must survive
+// the trailing reshape (the shared run is only the two trailing 6s), guarding against
+// over-collapsing the outer dimension when it is not a broadcast. Trailing product 36 still hits
+// the divisible-by-4 vectorized reshape path.
+TEST(MathOpTest, Add_Broadcast_WebGpu_UnequalRank_LeadingNonUnitDim) {
+  OpTester test("Add");
+  const std::vector<int64_t> lhs_dims{2, 1, 6, 6};  // 72 elements
+  const std::vector<int64_t> rhs_dims{6, 6};        // 36 elements, broadcast over the leading [2,1]
+  std::vector<float> lhs_values(72);
+  std::vector<float> rhs_values(36);
+  std::vector<float> out_values(72);
+  for (int i = 0; i < 36; ++i) {
+    rhs_values[i] = static_cast<float>(2 * i);
+  }
+  for (int i = 0; i < 72; ++i) {
+    lhs_values[i] = static_cast<float>(i);
+    out_values[i] = lhs_values[i] + rhs_values[i % 36];
+  }
+  test.AddInput<float>("A", lhs_dims, lhs_values);
+  test.AddInput<float>("B", rhs_dims, rhs_values);
+  test.AddOutput<float>("C", lhs_dims, out_values);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Operand-order symmetry for the regression: the shorter operand is on the LHS ([6,6] + [1,1,6,6]),
+// exercising the ns == lhs_rank branch of the reshape. Must produce correct results without
+// underflowing, mirroring Add_Broadcast_WebGpu_UnequalRank_LeadingUnitDims.
+TEST(MathOpTest, Add_Broadcast_WebGpu_UnequalRank_ShorterLhs) {
+  OpTester test("Add");
+  const std::vector<int64_t> lhs_dims{6, 6};        // 36 elements
+  const std::vector<int64_t> rhs_dims{1, 1, 6, 6};  // 36 elements
+  const std::vector<int64_t> out_dims{1, 1, 6, 6};
+  std::vector<float> lhs_values(36);
+  std::vector<float> rhs_values(36);
+  std::vector<float> out_values(36);
+  for (int i = 0; i < 36; ++i) {
+    lhs_values[i] = static_cast<float>(i);
+    rhs_values[i] = static_cast<float>(2 * i);
+    out_values[i] = static_cast<float>(3 * i);
+  }
+  test.AddInput<float>("A", lhs_dims, lhs_values);
+  test.AddInput<float>("B", rhs_dims, rhs_values);
+  test.AddOutput<float>("C", out_dims, out_values);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 // WebGPU EP currently handles a special case for supporting Pow op:
 // A Pow followed by a Cast to int64 type.
 TEST(MathOpTest, Pow_float_sqrt) {
@@ -4926,6 +5053,164 @@ TEST(MathOpTest, BitwiseNot_uint8) {
   test.AddOutput<uint8_t>("Y", dims, {254, 251, 250, 252});
   test.Run();
 }
+
+#ifdef USE_WEBGPU
+TEST(MathOpTest, Sub_webgpu_int64) {
+  OpTester test("Sub", 14);
+  test.AddInput<int64_t>("A", {4}, {10, 5, -3, 0});
+  test.AddInput<int64_t>("B", {4}, {3, 5, 1, -7});
+  test.AddOutput<int64_t>("C", {4}, {7, 0, -4, 7});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// INT64 Sub with broadcast: A [1,3] broadcasts against B [2,3] -> output [2,3].
+TEST(MathOpTest, Sub_webgpu_int64_broadcast) {
+  OpTester test("Sub", 14);
+  test.AddInput<int64_t>("A", {1, 3}, {10, 20, 30});
+  test.AddInput<int64_t>("B", {2, 3}, {1, 2, 3, 4, 5, 6});
+  test.AddOutput<int64_t>("C", {2, 3}, {9, 18, 27, 6, 15, 24});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Size divisible by 4: catches future vec4 optimizations that might break INT64.
+TEST(MathOpTest, Sub_webgpu_int64_size_div4) {
+  OpTester test("Sub", 14);
+  test.AddInput<int64_t>("A", {8}, {10, 20, 30, 40, 50, 60, 70, 80});
+  test.AddInput<int64_t>("B", {8}, {1, 2, 3, 4, 5, 6, 7, 8});
+  test.AddOutput<int64_t>("C", {8}, {9, 18, 27, 36, 45, 54, 63, 72});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Scalar LHS: exercises is_lhs_scalar_ path for INT64 Sub.
+TEST(MathOpTest, Sub_webgpu_int64_lhs_scalar) {
+  OpTester test("Sub", 14);
+  test.AddInput<int64_t>("A", {1}, {100});
+  test.AddInput<int64_t>("B", {5}, {1, 2, 3, 4, 5});
+  test.AddOutput<int64_t>("C", {5}, {99, 98, 97, 96, 95});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Scalar RHS: exercises is_rhs_scalar_ path for INT64 Sub.
+TEST(MathOpTest, Sub_webgpu_int64_rhs_scalar) {
+  OpTester test("Sub", 14);
+  test.AddInput<int64_t>("A", {5}, {10, 20, 30, 40, 50});
+  test.AddInput<int64_t>("B", {1}, {7});
+  test.AddOutput<int64_t>("C", {5}, {3, 13, 23, 33, 43});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Shape broadcast, size divisible by 4: A [1,4] broadcasts against B [2,4] -> output [2,4].
+TEST(MathOpTest, Sub_webgpu_int64_broadcast_size_div4) {
+  OpTester test("Sub", 14);
+  test.AddInput<int64_t>("A", {1, 4}, {10, 20, 30, 40});
+  test.AddInput<int64_t>("B", {2, 4}, {1, 2, 3, 4, 5, 6, 7, 8});
+  test.AddOutput<int64_t>("C", {2, 4}, {9, 18, 27, 36, 5, 14, 23, 32});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+TEST(MathOpTest, Equal_webgpu_int64) {
+  OpTester test("Equal", 13);
+  test.AddInput<int64_t>("A", {5}, {1, 0, -1, -1, 3});
+  test.AddInput<int64_t>("B", {5}, {1, 1, 2, -1, 3});
+  test.AddOutput<bool>("C", {5}, {true, false, false, true, true});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Size divisible by 4: exercises the packed-bool path without tail padding.
+TEST(MathOpTest, Equal_webgpu_int64_size_div4) {
+  OpTester test("Equal", 13);
+  test.AddInput<int64_t>("A", {8}, {1, 2, 3, 4, 5, 6, 7, 8});
+  test.AddInput<int64_t>("B", {8}, {1, 0, 3, 0, 5, 0, 7, 0});
+  test.AddOutput<bool>("C", {8}, {true, false, true, false, true, false, true, false});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Scalar LHS: lhs is a scalar, rhs is a vector; exercises is_lhs_scalar_ path.
+TEST(MathOpTest, Equal_webgpu_int64_lhs_scalar) {
+  OpTester test("Equal", 13);
+  test.AddInput<int64_t>("A", {1}, {3});
+  test.AddInput<int64_t>("B", {5}, {1, 2, 3, 4, 3});
+  test.AddOutput<bool>("C", {5}, {false, false, true, false, true});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Scalar RHS: rhs is a scalar, lhs is a vector; exercises is_rhs_scalar_ path.
+TEST(MathOpTest, Equal_webgpu_int64_rhs_scalar) {
+  OpTester test("Equal", 13);
+  test.AddInput<int64_t>("A", {5}, {1, 2, 3, 4, 3});
+  test.AddInput<int64_t>("B", {1}, {3});
+  test.AddOutput<bool>("C", {5}, {false, false, true, false, true});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Shape broadcast, size not divisible by 4: A [1,3] broadcasts against B [2,3] -> output [2,3].
+// Exercises the INT64 broadcast path with tail padding in the packed-bool output.
+TEST(MathOpTest, Equal_webgpu_int64_broadcast) {
+  OpTester test("Equal", 13);
+  test.AddInput<int64_t>("A", {1, 3}, {1, 2, 3});
+  test.AddInput<int64_t>("B", {2, 3}, {1, 0, 3, 1, 2, 3});
+  test.AddOutput<bool>("C", {2, 3}, {true, false, true, true, true, true});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Shape broadcast, size divisible by 4: A [1,4] broadcasts against B [2,4] -> output [2,4].
+// Exercises the INT64 broadcast path without tail padding.
+TEST(MathOpTest, Equal_webgpu_int64_broadcast_size_div4) {
+  OpTester test("Equal", 13);
+  test.AddInput<int64_t>("A", {1, 4}, {1, 2, 3, 4});
+  test.AddInput<int64_t>("B", {2, 4}, {1, 0, 3, 0, 1, 2, 3, 4});
+  test.AddOutput<bool>("C", {2, 4}, {true, false, true, false, true, true, true, true});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -15,6 +15,14 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
+// Standalone MLAS builds don't have access to the ORT-internal SafeInt
+// wrapper; fall back to the SafeInt.hpp header directly (its default
+// exception handler still throws on overflow).
+#include "SafeInt.hpp"
+#else
+#include "core/common/safeint.h"
+#endif
 
 //
 // Define the number of working buffer elements required per thread.
@@ -574,6 +582,9 @@ Return Value:
     const size_t FilterCount = Parameters->FilterCount;
     const size_t OutputSize = Parameters->OutputSize;
     const size_t K = Parameters->K;
+    const bool use_gemm_batch_override =
+        GetMlasPlatform().MlasConvSGemmRouteOverride != nullptr &&
+        GetMlasPlatform().MlasConvSGemmRouteOverride(Parameters) == MlasConvSGemmRouteDispatch;
 
     //
     // Compute the strides to step through slices of the local segment.
@@ -637,9 +648,15 @@ Return Value:
                     SegmentStartN + n, CountN);
             }
 
-            MlasSgemmOperation(CblasNoTrans, CblasNoTrans, FilterCount, CountN,
-                CountK, 1.0f, Filter + k, K, ColumnBuffer, CountN, beta,
-                SegmentOutput, OutputSize);
+            if (use_gemm_batch_override) {
+                MlasGemm(CblasNoTrans, CblasNoTrans, FilterCount, CountN,
+                    CountK, 1.0f, Filter + k, K, ColumnBuffer, CountN, beta,
+                    SegmentOutput, OutputSize, nullptr, Parameters->BackendKernelSelectorConfig);
+            } else {
+                MlasSgemmOperation(CblasNoTrans, CblasNoTrans, FilterCount, CountN,
+                    CountK, 1.0f, Filter + k, K, ColumnBuffer, CountN, beta,
+                    SegmentOutput, OutputSize);
+            }
 
             beta = 1.0f;
         }
@@ -1319,11 +1336,6 @@ Return Value:
         }
     }
 }
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(push)
-// Chance of arithmetic overflow could be reduced
-#pragma warning(disable : 26451)
-#endif
 
 namespace {
 
@@ -1345,7 +1357,7 @@ static constexpr size_t ComputeChannelsLastConvOutSize(size_t input, size_t kern
 
 bool
 MLASCALL
-MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
+MlasConvSupportsDenseChannelsLast2DFloatKernel(
     size_t Dimensions,
     size_t BatchCount,
     size_t GroupCount,
@@ -1377,11 +1389,20 @@ MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
         return false;
     }
 
-    if (Dimensions != 2 || BatchCount != 1 || GroupCount != 1 || Beta != 0.0f) {
+    if (Dimensions != 2 || BatchCount != 1 || Beta != 0.0f) {
         return false;
     }
 
-    if (Padding[0] != Padding[2] || Padding[1] != Padding[3]) {
+    if (GroupCount != 1 || FilterCount <= 1) {
+        return false;
+    }
+
+    // The channels-last float convolution path is only implemented by the Arm® KleidiAI™
+    // SME conv override, which currently uses a single padding value in its LHS indirection table.
+    // Require uniform padding until separate H/W padding is supported there.
+    if (Padding[0] != Padding[2] ||
+        Padding[1] != Padding[3] ||
+        Padding[0] != Padding[1]) {
         return false;
     }
 
@@ -1395,13 +1416,71 @@ MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
         return false;
     }
 
-    if (FilterCount <= 1 || KernelShape[0] < 3 || KernelShape[1] < 3) {
+    if (KernelShape[0] < 3 || KernelShape[1] < 3) {
         return false;
     }
 
     return true;
 #endif
 }
+
+bool
+MLASCALL
+MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    size_t InputChannelsPerGroup,
+    const size_t* InputShape,
+    const size_t* KernelShape,
+    const size_t* DilationShape,
+    const size_t* Padding,
+    const size_t* StrideShape,
+    size_t FilterCount,
+    float Beta)
+{
+#if !defined(USE_KLEIDIAI) || !defined(MLAS_TARGET_ARM64)
+    MLAS_UNREFERENCED_PARAMETER(Dimensions);
+    MLAS_UNREFERENCED_PARAMETER(BatchCount);
+    MLAS_UNREFERENCED_PARAMETER(GroupCount);
+    MLAS_UNREFERENCED_PARAMETER(InputChannelsPerGroup);
+    MLAS_UNREFERENCED_PARAMETER(InputShape);
+    MLAS_UNREFERENCED_PARAMETER(KernelShape);
+    MLAS_UNREFERENCED_PARAMETER(DilationShape);
+    MLAS_UNREFERENCED_PARAMETER(Padding);
+    MLAS_UNREFERENCED_PARAMETER(StrideShape);
+    MLAS_UNREFERENCED_PARAMETER(FilterCount);
+    MLAS_UNREFERENCED_PARAMETER(Beta);
+    return false;
+#else
+    MLAS_UNREFERENCED_PARAMETER(Dimensions);
+    MLAS_UNREFERENCED_PARAMETER(BatchCount);
+    MLAS_UNREFERENCED_PARAMETER(GroupCount);
+    MLAS_UNREFERENCED_PARAMETER(InputChannelsPerGroup);
+    MLAS_UNREFERENCED_PARAMETER(InputShape);
+    MLAS_UNREFERENCED_PARAMETER(KernelShape);
+    MLAS_UNREFERENCED_PARAMETER(DilationShape);
+    MLAS_UNREFERENCED_PARAMETER(Padding);
+    MLAS_UNREFERENCED_PARAMETER(StrideShape);
+    MLAS_UNREFERENCED_PARAMETER(FilterCount);
+    MLAS_UNREFERENCED_PARAMETER(Beta);
+
+    // TODO: enable only for shapes supported by the dedicated
+    // depthwise kernel. Until then, keep depthwise/grouped convolutions out of
+    // the Arm® KleidiAI™ NHWC path.
+    return false;
+#endif
+}
+
+// The shape-derived products inside MlasConvPrepare are now checked via
+// SafeInt, but MSVC's /analyze (26451) still flags the size_t multiplies
+// that feed into SafeInt. Scope the historical suppression narrowly to this
+// function so it doesn't apply to unrelated helpers above.
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
 
 void
 MLASCALL
@@ -1494,9 +1573,14 @@ Return Value:
     Parameters->FilterCount = FilterCount;
     Parameters->Beta = Beta;
 
-    size_t InputSize = 1;
-    size_t OutputSize = 1;
-    size_t K = InputChannels;
+    // Accumulate dimension products in SafeInt's checked domain. The raw size_t multiplies
+    // here are reachable from attacker-controlled tensor shapes, and the cross-tensor product
+    // is not otherwise guarded (per-tensor element counts are SafeInt-checked elsewhere, but
+    // the product across tensors is not). On overflow SafeInt throws and the caller propagates
+    // it as a Status failure.
+    SafeInt<size_t> SafeInputSize = 1;
+    SafeInt<size_t> SafeOutputSize = 1;
+    SafeInt<size_t> SafeK = SafeInt<size_t>(InputChannels);
 
     bool AllStridesAreOne = true;
     bool AllDilationsAreOne = true;
@@ -1512,14 +1596,18 @@ Return Value:
         Parameters->Padding[dim + Dimensions] = size_t(Padding[dim + Dimensions]);
         Parameters->StrideShape[dim] = size_t(StrideShape[dim]);
 
-        InputSize *= Parameters->InputShape[dim];
-        OutputSize *= Parameters->OutputShape[dim];
-        K *= Parameters->KernelShape[dim];
+        SafeInputSize *= Parameters->InputShape[dim];
+        SafeOutputSize *= Parameters->OutputShape[dim];
+        SafeK *= Parameters->KernelShape[dim];
 
         AllStridesAreOne &= (Parameters->StrideShape[dim] == 1);
         AllDilationsAreOne &= (Parameters->DilationShape[dim] == 1);
         AllPaddingIsZero &= (Parameters->Padding[dim] == 0 && Parameters->Padding[dim + Dimensions] == 0);
     }
+
+    const size_t InputSize = SafeInputSize;
+    const size_t OutputSize = SafeOutputSize;
+    const size_t K = SafeK;
 
     Parameters->InputSize = InputSize;
     Parameters->OutputSize = OutputSize;
@@ -1609,7 +1697,10 @@ Return Value:
 
         Parameters->Algorithm = MlasConvAlgorithmExpandThenGemm;
 
-        *WorkingBufferSize = OutputSize * K;
+        // SafeInt guards against wrap of the cross-tensor product; the raw size_t multiply
+        // is reachable from attacker-controlled shapes and would otherwise under-size the
+        // im2col working buffer (heap-buffer-overflow on the downstream MlasConvIm2Col write).
+        *WorkingBufferSize = SafeInt<size_t>(OutputSize) * K;
 
     } else {
 
@@ -1708,15 +1799,18 @@ Return Value:
         Parameters->Algorithm = MlasConvAlgorithmExpandThenGemmSegmented;
         Parameters->u.ExpandThenGemmSegmented.ThreadStrideN = StrideN;
 
-        *WorkingBufferSize = TargetThreadCount * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
+        // SafeInt-guarded products: TargetThreadCount and the BatchCount*GroupCount product
+        // are both reachable from attacker-controlled inputs.
+        *WorkingBufferSize = SafeInt<size_t>(TargetThreadCount) * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
 
         if (Parameters->BatchCount > 1 || Parameters->GroupCount > 1) {
 
             TargetThreadCount = MaximumThreadCount;
-            if (static_cast<size_t>(TargetThreadCount) >= Parameters->BatchCount * Parameters->GroupCount) {
-                TargetThreadCount = static_cast<ptrdiff_t>(Parameters->BatchCount * Parameters->GroupCount);
+            const size_t BatchGroupProduct = SafeInt<size_t>(Parameters->BatchCount) * Parameters->GroupCount;
+            if (static_cast<size_t>(TargetThreadCount) >= BatchGroupProduct) {
+                TargetThreadCount = static_cast<ptrdiff_t>(BatchGroupProduct);
             }
-            *WorkingBufferSize = TargetThreadCount * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
+            *WorkingBufferSize = SafeInt<size_t>(TargetThreadCount) * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
         }
     }
 }

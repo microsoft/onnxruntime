@@ -185,7 +185,7 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
       kernel_registry_(std::move(kernel_registry)) {
   generate_ep_ctx_model_ = session_options.value.GetEpContextGenerationOptions().enable;
 
-  // Extract EP-scoped session config entries (ep.<ep_name>.* keys).
+  // Extract EP-scoped session config entries.
   // Arena options go to session_arena_options_; the rest go to provider_options_.
   {
     const std::string ep_prefix = OrtSessionOptions::GetProviderOptionPrefix(ort_ep_->GetName(ort_ep_.get()));
@@ -207,7 +207,7 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
         continue;
       }
 
-      // Store the bare option name (strip the ep.<ep_name>. prefix) for GetProviderOptions().
+      // Store the bare option name (strip the EP-specific prefix) for GetProviderOptions().
       provider_options_[key.substr(ep_prefix.size())] = value;
     }
   }
@@ -869,10 +869,11 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
           "EP library should be opaque to ORT");
     }
 
+    auto* ep_factory = &ep_factory_;
     auto ort_allocator = OrtAllocatorUniquePtr(
         ort_allocator_ptr,
-        [this](OrtAllocator* allocator) {
-          ep_factory_.ReleaseAllocator(&ep_factory_, allocator);
+        [ep_factory](OrtAllocator* allocator) {
+          ep_factory->ReleaseAllocator(ep_factory, allocator);
         });
 
     // Use the arena wrapper when the allocator supports Shrink(), matching

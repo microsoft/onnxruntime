@@ -28,7 +28,7 @@ class CudaEpFactory;
 /// or wraps an external stream for graph-mode registration/lifecycle tracking.
 class CudaSyncStream : public OrtSyncStreamImpl {
  public:
-  CudaSyncStream(CudaEpFactory& factory, int device_id,
+  CudaSyncStream(CudaEpFactory& factory, int device_id, bool enable_cudnn,
                  const OrtEp* ep);
   ~CudaSyncStream();
 
@@ -70,6 +70,7 @@ class CudaSyncStream : public OrtSyncStreamImpl {
 
   CudaEpFactory& factory_;
   int device_id_;
+  bool enable_cudnn_ = true;
   cudaStream_t cuda_stream_ = nullptr;
   bool owns_stream_ = true;  ///< False when wrapping an external stream (e.g., for CUDA graph).
   cublasHandle_t cublas_handle_ = nullptr;

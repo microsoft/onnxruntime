@@ -1507,18 +1507,30 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("block_size",
               "Size of each quantization block along the K (input feature) dimension. "
               "Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). "
-              "If provided, both hidden_size and inter_size must be divisible by the block size. "
-              "Otherwise, there is no blocking and a whole column shares one scaling factor. ",
+              "Both hidden_size and inter_size must be divisible by the block size. "
+              "The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 "
+              "and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. "
+              "For integer quantization ('int'), omitting block_size means there is no blocking "
+              "and a whole column shares one scaling factor. ",
               AttributeProto::INT,
               OPTIONAL_VALUE)
         .Attr("quant_type",
               "Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, "
-              "'fp8' for FP8 e4m3 weight-only quantization, "
+              "'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, "
               "or 'wfp4afp8' for MXFP4 weight with FP8 activation. "
-              "When quant_type is 'fp4', weights are stored in MXFP4 format (2 values per byte), "
-              "fc*_scales inputs contain MXFP4 block scales, and fc*_global_scale inputs must be provided.",
+              "When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), "
+              "fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. "
+              "'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales "
+              "with block_size 16.",
               AttributeProto::STRING,
               std::string("int"))
+        .Attr("weights_prepacked",
+              "Only meaningful when quant_type='int'. Tri-state control over the layout of the "
+              "int4/int8 fc1/fc2 weight initializers. The concrete prepacked layouts selected by "
+              "-1 and 1 are determined by the execution provider. 0: the initializers are raw, "
+              "un-prepacked [E, N, K/pack] tensors as produced by quantize_matmul_{4,8}bits. Defaults to -1.",
+              AttributeProto::INT,
+              static_cast<int64_t>(-1))
         .Input(0,
                "input",
                "2D tensor with shape (num_tokens, hidden_size), or "
@@ -1539,7 +1551,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "(num_experts, fusion_size * inter_size), or a 3D tensor with shape "
                "(num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided. "
                "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
-               "(num_experts, fusion_size * inter_size, hidden_size / 32). Not used for quant_type='fp8'.",
+               "(num_experts, fusion_size * inter_size, hidden_size / 32). "
+               "For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape "
+               "(num_experts, fusion_size * inter_size, hidden_size / 16). Not used for quant_type='fp8'.",
                "T2",
                OpSchema::Optional)
         .Input(4,
@@ -1555,7 +1569,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "(num_experts, hidden_size), or a 3D tensor with shape "
                "(num_experts, hidden_size, inter_size / block_size) when block_size is provided. "
                "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
-               "(num_experts, hidden_size, inter_size / 32). Not used for quant_type='fp8'.",
+               "(num_experts, hidden_size, inter_size / 32). "
+               "For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape "
+               "(num_experts, hidden_size, inter_size / 16). Not used for quant_type='fp8'.",
                "T2",
                OpSchema::Optional)
         .Input(7,
@@ -1613,13 +1629,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(15,
                "fc1_global_scale",
                "1D optional tensor with shape (num_experts,). "
-               "Per-expert global weight scale for FC1. Required when quant_type is 'fp4', 'fp8', or 'wfp4afp8'.",
+               "Per-expert global weight scale for FC1. Required when quant_type is 'fp4', 'nvfp4', 'fp8', or 'wfp4afp8'.",
                "T4",
                OpSchema::Optional)
         .Input(16,
                "fc2_global_scale",
                "1D optional tensor with shape (num_experts,). "
-               "Per-expert global weight scale for FC2. Required when quant_type is 'fp4', 'fp8', or 'wfp4afp8'.",
+               "Per-expert global weight scale for FC2. Required when quant_type is 'fp4', 'nvfp4', 'fp8', or 'wfp4afp8'.",
                "T4",
                OpSchema::Optional)
         .Input(17,
@@ -1649,9 +1665,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
         .TypeConstraint("T1", {"tensor(uint8)", "tensor(float8e4m3fn)"},
                         "Constrain quantized weight types. Integer and FP4 weights use uint8. FP8 weights use float8e4m3fn.")
-        .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)", "tensor(float8e8m0)"},
+        .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)", "tensor(float8e8m0)", "tensor(float8e4m3fn)"},
                         "Constrain scale types. Float tensors are used for integer quantization scales. "
-                        "Float8e8m0 tensors are used for MXFP block scales.")
+                        "Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.")
         .TypeConstraint("T4", {"tensor(float)"}, "Constrain FP4 global scale type to float32 tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
@@ -1995,11 +2011,21 @@ ONNX_MS_OPERATOR_SET_SCHEMA(ExpandDims, 1,
                                   const ONNX_NAMESPACE::TensorProto* axis_initializer = ctx.getInputData(1);
                                   if (!axis_initializer)
                                     return;
-                                  const int axis = axis_initializer->int32_data()[0];
+                                  // Read the scalar axis robustly. ParseScalar handles both raw_data and
+                                  // int32_data encodings and validates the element count, avoiding an
+                                  // out-of-bounds read when the value is stored as raw_data. A present but
+                                  // malformed initializer (wrong element type or not a single scalar) is a
+                                  // model error, so fail shape inference rather than silently skipping it.
+                                  int axis = 0;
+                                  if (!ParseScalar(axis_initializer, axis)) {
+                                    fail_shape_inference("Input axis must be a single int32 scalar initializer");
+                                  }
                                   if (axis > rank || axis < -rank - 1) {
                                     fail_shape_inference("Input axis is invalid: ", axis);
                                   }
-                                  int pos = axis >= 0 ? axis : rank + axis - 1;
+                                  // The output has rank + 1 dimensions, so a negative axis is normalized
+                                  // against the output rank: pos = axis + (rank + 1).
+                                  int pos = axis >= 0 ? axis : rank + axis + 1;
                                   ONNX_NAMESPACE::TensorShapeProto output_shape;
                                   for (int i = 0; i < pos; ++i) {
                                     output_shape.add_dim();
@@ -2847,6 +2873,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(CropAndResize, 1,
                                   if (crop_size_shape.dim_size() != 1) {
                                     fail_shape_inference("crop_size shape input tensor has wrong dimension");
                                   }
+                                  if (crop_size_shape.dim(0).has_dim_value() &&
+                                      crop_size_shape.dim(0).dim_value() != 2) {
+                                    fail_shape_inference("crop_size input tensor must have exactly 2 elements; got ",
+                                                         crop_size_shape.dim(0).dim_value());
+                                  }
                                 })
                                 .SetDoc(R"DOC(
         Extracts crops from the input image tensor and resizes them using bilinear sampling or nearest neighbor sampling
@@ -3640,6 +3671,12 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
             "doing computation, for example: 0 means input A will not be quantized or downcast while doing "
             "computation. 4 means input A can be quantized with the same block_size to int8 internally from "
             "type T1.",
+            AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("weight_prepacked",
+            "If set, input B is already prepacked into an EP-specific layout and the EP skips runtime "
+            "weight prepacking. 0 (default): not prepacked. 1: prepacked in the CUDA SM80 fpA_intB layout. "
+            "2: prepacked in the CUDA SM90 (Hopper) fpA_intB layout, consumed by the native SM90 kernel "
+            "(requires a compute capability 9.0 device and block_size in {64, 128}).",
             AttributeProto::INT, static_cast<int64_t>(0))
       .Input(0, "A", "The input tensor, not quantized.", "T1")
       .Input(1, "B",

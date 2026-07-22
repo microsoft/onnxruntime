@@ -90,26 +90,40 @@ class MoeGemmProfiler {
     sm_ = sm;
   }
 
-  // Profile tactics for a GEMM problem using GemmProfilerBackend
-  void profileTactics(CutlassMoeFCRunnerInterface* runner, onnxruntime::llm::nvinfer::DataType dtype,
-                      weight_only::GemmDims const& dims, MoeGemmId const& gemmId);
+  // Profile tactics for a GEMM problem using GemmProfilerBackend.
+  // Profiles (and caches) the best config for the M bucket that contains dims.maxM. The first
+  // call for a new (GemmId, M-bucket) pair runs the profiler; subsequent calls return immediately.
+  // The data/weight types are taken from gemmId, so no separate dtype argument is needed.
+  // `timing_stream` (the ORT compute stream) is required: the profiler runs its kernels on it so
+  // they are strictly ordered with the surrounding compute-stream work and share the same temp
+  // arena, avoiding the cross-stream scratch race that a private side stream would introduce.
+  // Must not be called while `timing_stream` is being captured into a CUDA graph.
+  void profileTactics(CutlassMoeFCRunnerInterface* runner,
+                      weight_only::GemmDims const& dims, MoeGemmId const& gemmId,
+                      cudaStream_t timing_stream);
 
-  // Get best config for a given M and GemmId
+  // Get best config for a given M and GemmId. Selects the config profiled for the M bucket that
+  // contains m, so small-M (decode) GEMMs use a decode-tuned tile instead of a prefill-tuned one.
   std::optional<Config> getBestConfig(int m, MoeGemmId const& id) const;
+
+  // Snap a row count M to a representative profiling bucket. Decode (small M) and prefill
+  // (large M) favor very different CUTLASS tile shapes, so we keep a separate best config per
+  // bucket rather than reusing a single shape-only config. Buckets are powers of two.
+  static int bucketM(int64_t m);
 
  private:
   // Initialize backend for profiling
   void initBackend(CutlassMoeFCRunnerInterface* runner, MoeGemmId const& gemmId);
 
   // Run profiling for all tactics
-  std::optional<Config> runProfiling(int maxM, MoeGemmId const& gemmId);
+  std::optional<Config> runProfiling(int maxM, MoeGemmId const& gemmId, cudaStream_t timing_stream);
 
   AllocatorPtr allocator_;
   GemmProfilerBackend backend_;
   CutlassMoeFCRunnerInterface* runner_{nullptr};
 
-  // Cached results: (M, GemmId) -> best config
-  mutable std::unordered_map<MoeGemmId, std::optional<Config>, MoeGemmIdHash> config_cache_;
+  // Cached results: GemmId -> (M bucket -> best config)
+  mutable std::unordered_map<MoeGemmId, std::unordered_map<int, std::optional<Config>>, MoeGemmIdHash> config_cache_;
 
   // Profiler parameters
   int num_experts_{0};

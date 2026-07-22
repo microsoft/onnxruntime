@@ -9,6 +9,7 @@
 
 #include <memory>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "core/framework/allocator.h"
@@ -164,6 +165,14 @@ struct OpKernelContext {
   void* GetGPUComputeStream() const {
     return context_.GetGPUComputeStream();
   }
+  OrtSyncStream* GetSyncStream() const {
+    static constexpr uint32_t kOrtKernelContextGetSyncStreamMinVersion = 28;
+    if (CurrentOrtApiVersion() < kOrtKernelContextGetSyncStreamMinVersion) {
+      return nullptr;
+    }
+
+    return context_.GetSyncStream();
+  }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpKernelContext);
@@ -214,14 +223,15 @@ struct KernelImpl : OrtKernelImpl {
   static OrtStatus* ORT_API_CALL PrePackWeightImpl(_In_ OrtKernelImpl* this_ptr,
                                                    _In_ const OrtValue* weight,
                                                    int input_index,
-                                                   _In_ OrtAllocator* /* allocator */,
+                                                   _In_ OrtAllocator* allocator,
                                                    _In_opt_ OrtSharedPrePackedWeightCache* /* prepacked_weight_cache */,
                                                    _Out_ bool* is_packed) noexcept {
     Status status;
     ORT_TRY {
       auto* kernel_impl = static_cast<KernelImpl*>(this_ptr)->impl_.get();
       const auto tensor = CreateTensorFromApiValue(const_cast<OrtValue*>(weight));
-      status = kernel_impl->PrePack(tensor, input_index, AllocatorPtr{}, *is_packed, nullptr);
+      auto allocator_wrapper = std::make_shared<IAllocatorWrappingOrtAllocator>(allocator);
+      status = kernel_impl->PrePack(tensor, input_index, std::move(allocator_wrapper), *is_packed, nullptr);
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {

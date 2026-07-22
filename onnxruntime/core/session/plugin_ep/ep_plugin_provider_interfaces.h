@@ -175,11 +175,11 @@ class PluginExecutionProvider : public IExecutionProvider {
   std::vector<const OrtMemoryInfo*> allocator_mem_infos_;
   bool generate_ep_ctx_model_ = false;
 
-  // Provider options extracted from session-level config (ep.<ep_name>.* keys, excluding arena.*).
+  // Provider options extracted from session-level config (excluding arena.*).
   // Exposed through GetProviderOptions() so the framework reports the effective EP configuration.
   ProviderOptions provider_options_;
 
-  // Arena options extracted from session-level config (ep.<ep_name>.arena.* keys).
+  // Arena options extracted from session-level config.
   // Built once at construction; passed directly to ep_factory_.CreateAllocator.
   std::optional<OrtKeyValuePairs> session_arena_options_;
 

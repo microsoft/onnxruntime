@@ -1890,7 +1890,7 @@ Status PRelu<float>::Compute(OpKernelContext* context) const {
   ProcessBroadcastSpanFuncs funcs{
       [](BroadcastHelper& per_iter_bh) {
         float input0 = per_iter_bh.ScalarInput0<float>();
-        if (input0 > 0)
+        if (input0 >= 0)
           per_iter_bh.OutputEigen<float>().array() = input0;
         else
           per_iter_bh.OutputEigen<float>() = input0 * per_iter_bh.EigenInput1<float>().array();
@@ -1901,7 +1901,7 @@ Status PRelu<float>::Compute(OpKernelContext* context) const {
         float* output = per_iter_bh.OutputEigen<float>().data();
         size_t size = per_iter_bh.OutputEigen<float>().size();
         for (size_t i = 0; i < size; i++) {
-          output[i] = input0[i] > 0 ? input0[i] : input0[i] * input1;
+          output[i] = (input0[i] >= 0) ? input0[i] : input0[i] * input1;
         }
       },
       [](BroadcastHelper& per_iter_bh) {
@@ -1910,7 +1910,7 @@ Status PRelu<float>::Compute(OpKernelContext* context) const {
         float* output = per_iter_bh.OutputEigen<float>().data();
         size_t size = per_iter_bh.OutputEigen<float>().size();
         for (size_t i = 0; i < size; i++) {
-          output[i] = input0[i] > 0 ? input0[i] : input0[i] * input1[i];
+          output[i] = (input0[i] >= 0) ? input0[i] : input0[i] * input1[i];
         }
       }};
 

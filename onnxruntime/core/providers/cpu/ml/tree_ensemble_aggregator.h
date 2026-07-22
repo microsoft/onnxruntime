@@ -242,7 +242,7 @@ class TreeAggregator {
     ORT_ENFORCE(predictions.size() == (size_t)n_targets_or_classes_);
     ThresholdType val;
     auto it = predictions.begin();
-    for (size_t jt = 0; jt < onnxruntime::narrow<size_t>(n_targets_or_classes_); ++jt, ++it) {
+    for (size_t jt = 0; jt < narrow<size_t>(n_targets_or_classes_); ++jt, ++it) {
       val = use_base_values_ ? base_values_[jt] : 0.f;
       val += it->has_score ? it->score : 0;
       it->score = val;
@@ -290,9 +290,10 @@ class TreeAggregatorSum : public TreeAggregator<InputType, ThresholdType, Output
                                  gsl::span<const SparseValue<ThresholdType>> weights) const {
     auto it = weights.begin() + root.truenode_or_weight.weight_data.weight;
     for (int32_t i = 0; i < root.truenode_or_weight.weight_data.n_weights; ++i, ++it) {
-      ORT_ENFORCE(it->i < (int64_t)predictions.size());
-      predictions[onnxruntime::narrow<size_t>(it->i)].score += it->value;
-      predictions[onnxruntime::narrow<size_t>(it->i)].has_score = 1;
+      const size_t target_id = narrow<size_t>(it->i);
+      ORT_ENFORCE(target_id < predictions.size());
+      predictions[target_id].score += it->value;
+      predictions[target_id].has_score = 1;
     }
   }
 
@@ -393,11 +394,13 @@ class TreeAggregatorMin : public TreeAggregator<InputType, ThresholdType, Output
                                  gsl::span<const SparseValue<ThresholdType>> weights) const {
     auto it = weights.begin() + root.truenode_or_weight.weight_data.weight;
     for (int32_t i = 0; i < root.truenode_or_weight.weight_data.n_weights; ++i, ++it) {
-      predictions[onnxruntime::narrow<size_t>(it->i)].score =
-          (!predictions[onnxruntime::narrow<size_t>(it->i)].has_score || it->value < predictions[onnxruntime::narrow<size_t>(it->i)].score)
+      const size_t target_id = narrow<size_t>(it->i);
+      ORT_ENFORCE(target_id < predictions.size());
+      predictions[target_id].score =
+          (!predictions[target_id].has_score || it->value < predictions[target_id].score)
               ? it->value
-              : predictions[onnxruntime::narrow<size_t>(it->i)].score;
-      predictions[onnxruntime::narrow<size_t>(it->i)].has_score = 1;
+              : predictions[target_id].score;
+      predictions[target_id].has_score = 1;
     }
   }
 
@@ -449,11 +452,13 @@ class TreeAggregatorMax : public TreeAggregator<InputType, ThresholdType, Output
                                  gsl::span<const SparseValue<ThresholdType>> weights) const {
     auto it = weights.begin() + root.truenode_or_weight.weight_data.weight;
     for (int32_t i = 0; i < root.truenode_or_weight.weight_data.n_weights; ++i, ++it) {
-      predictions[onnxruntime::narrow<size_t>(it->i)].score =
-          (!predictions[onnxruntime::narrow<size_t>(it->i)].has_score || it->value > predictions[onnxruntime::narrow<size_t>(it->i)].score)
+      const size_t target_id = narrow<size_t>(it->i);
+      ORT_ENFORCE(target_id < predictions.size());
+      predictions[target_id].score =
+          (!predictions[target_id].has_score || it->value > predictions[target_id].score)
               ? it->value
-              : predictions[onnxruntime::narrow<size_t>(it->i)].score;
-      predictions[onnxruntime::narrow<size_t>(it->i)].has_score = 1;
+              : predictions[target_id].score;
+      predictions[target_id].has_score = 1;
     }
   }
 
@@ -480,6 +485,7 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<InputType, ThresholdTy
  private:
   const std::vector<int64_t>& class_labels_;
   bool binary_case_;
+  bool weights_are_all_positive_;
   int64_t positive_label_;
   int64_t negative_label_;
 
@@ -490,11 +496,13 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<InputType, ThresholdTy
                            const std::vector<ThresholdType>& base_values,
                            const std::vector<int64_t>& class_labels,
                            bool binary_case,
+                           bool weights_are_all_positive,
                            int64_t positive_label = 1,
                            int64_t negative_label = 0) : TreeAggregatorSum<InputType, ThresholdType, OutputType>(n_trees, n_targets_or_classes,
                                                                                                                  post_transform, base_values),
                                                          class_labels_(class_labels),
                                                          binary_case_(binary_case),
+                                                         weights_are_all_positive_(weights_are_all_positive),
                                                          positive_label_(positive_label),
                                                          negative_label_(negative_label) {}
 
@@ -523,12 +531,22 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<InputType, ThresholdTy
                             ThresholdType score1, unsigned char has_score1) const {
     ThresholdType pos_weight = has_score1 ? score1 : (has_score0 ? score0 : 0);  // only 1 class
     if (binary_case_) {
-      if (pos_weight > 0) {
-        write_additional_scores = 2;
-        return class_labels_[1];  // positive label
+      if (weights_are_all_positive_) {
+        if (pos_weight > 0.5) {
+          write_additional_scores = 0;
+          return class_labels_[1];  // positive label
+        } else {
+          write_additional_scores = 1;
+          return class_labels_[0];  // negative label
+        }
       } else {
-        write_additional_scores = 3;
-        return class_labels_[0];  // negative label
+        if (pos_weight > 0) {
+          write_additional_scores = 2;
+          return class_labels_[1];  // positive label
+        } else {
+          write_additional_scores = 3;
+          return class_labels_[0];  // negative label
+        }
       }
     }
     return (pos_weight > 0)
@@ -589,7 +607,7 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<InputType, ThresholdTy
         }
       }
       get_max_weight(predictions, maxclass, maxweight);
-      *Y = class_labels_[onnxruntime::narrow<size_t>(maxclass)];
+      *Y = class_labels_[narrow<size_t>(maxclass)];
     } else {  // binary case
       ORT_ENFORCE(predictions.size() == 2);
       if (this->base_values_.size() == 2) {

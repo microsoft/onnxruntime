@@ -8,6 +8,9 @@
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
 #include "contrib_ops/cuda/llm/common/env_utils.h"
+#include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
+
+#include <mutex>
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -16,6 +19,16 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+namespace {
+void LogSwigluFusionRemapOnce() {
+  static std::once_flag log_warning;
+  std::call_once(log_warning, []() {
+    LOGS_DEFAULT(WARNING) << "MoE swiglu_fusion is 0 with no fc3_experts_weights; assuming interleaved "
+                             "SwiGLU layout for backward compatibility.";
+  });
+}
+}  // namespace
 
 #define REGISTER_KERNEL_TYPED(T)                    \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                    \
@@ -42,8 +55,21 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(7);
 
   using onnxruntime::llm::kernels::cutlass_kernels::ActivationType;
+
+  // Backward compatibility: the published gpt-oss-20b model (and any model exported by ORT < 1.27)
+  // hard-coded the interleaved SwiGLU fusion layout and did not emit a swiglu_fusion attribute, so it
+  // falls back to the default of 0 ("not fused"). When the activation is SwiGLU, swiglu_fusion is 0,
+  // and there is no separate FC3 weight, the gate and value projections are actually pre-fused into FC1
+  // (interleaved layout). Treat this as swiglu_fusion == 1 so those legacy models keep working.
+  int swiglu_fusion = swiglu_fusion_;
+  if (activation_type_ == ActivationType::Swiglu && swiglu_fusion == 0 &&
+      fc3_experts_weights_optional == nullptr) {
+    swiglu_fusion = 1;
+    LogSwigluFusionRemapOnce();
+  }
+
   bool is_fused_swiglu = (activation_type_ == ActivationType::Swiglu) &&
-                         (swiglu_fusion_ != 0) &&
+                         (swiglu_fusion != 0) &&
                          (fc3_experts_weights_optional == nullptr);
 
   MoEParameters moe_params;
@@ -55,6 +81,9 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       1,  //  no quantization so pack size is 1
       is_fused_swiglu,
       0));  // no block-wise quantization for regular MoE
+  ORT_RETURN_IF_NOT(k_ > 0 && k_ <= moe_params.num_experts,
+                    "MoE requires 0 < k <= num_experts, got k=", k_,
+                    " and num_experts=", moe_params.num_experts);
 
   using CudaT = typename OrtToCudaType<T>::type;
 
@@ -118,6 +147,13 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
                                     static_cast<int64_t>(this->block_size_), kernel_activation_type,
                                     false, true, parallelism_config, sm);
 
+    // Profiling launches grouped-GEMM kernels, records/synchronizes CUDA events, and
+    // allocates/frees scratch from the temp allocator on the compute stream. All of these are
+    // illegal while that stream is being captured into a CUDA graph; performing them corrupts the
+    // capture. During capture we therefore skip profiling and reuse a config cached from an earlier
+    // non-capturing run, falling back to the default tactic when nothing is cached.
+    const bool stream_is_capturing = onnxruntime::llm::common::isCapturing(stream);
+
     onnxruntime::llm::nvinfer::DataType dtype = onnxruntime::llm::nvinfer::DataType::kFLOAT;
     if constexpr (std::is_same_v<CudaT, half>) {
       dtype = onnxruntime::llm::nvinfer::DataType::kHALF;
@@ -130,23 +166,38 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
     // GEMM 1
     MoeGemmId id1(static_cast<int>(moe_params.inter_size), static_cast<int>(moe_params.hidden_size), dtype, MoeGemmId::GemmType::Gemm1);
-    if (mGemmId1 != id1) {
-      mGemmId1 = id1;
+    if (!stream_is_capturing) {
+      // profileTactics caches per (GemmId, M bucket); calling it every forward lets decode
+      // (small M) and prefill (large M) each profile and select their own best tile shape.
       GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
                     static_cast<int64_t>(moe_params.inter_size), static_cast<int64_t>(moe_params.hidden_size));
-      mGemmProfiler.profileTactics(&moe_runner, dtype, dims, id1);
+      mGemmProfiler.profileTactics(&moe_runner, dims, id1, stream);
     }
-    auto config1 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), mGemmId1);
+    auto config1 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), id1);
 
     // GEMM 2
     MoeGemmId id2(static_cast<int>(moe_params.hidden_size), static_cast<int>(moe_params.inter_size), dtype, MoeGemmId::GemmType::Gemm2);
-    if (mGemmId2 != id2) {
-      mGemmId2 = id2;
+    if (!stream_is_capturing) {
       GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
                     static_cast<int64_t>(moe_params.hidden_size), static_cast<int64_t>(moe_params.inter_size));
-      mGemmProfiler.profileTactics(&moe_runner, dtype, dims, id2);
+      mGemmProfiler.profileTactics(&moe_runner, dims, id2, stream);
     }
-    auto config2 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), mGemmId2);
+    auto config2 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), id2);
+
+    // Capture-safe fallback: if profiling was skipped (graph capture) and no tuned config was
+    // cached from a prior non-capturing run, use the runner's default tactic instead of leaving
+    // the config unset.
+    if (!config1 || !config2) {
+      auto tactics = moe_runner.getTactics();
+      if (!tactics.empty()) {
+        if (!config1) {
+          config1 = tactics[0];
+        }
+        if (!config2) {
+          config2 = tactics[0];
+        }
+      }
+    }
 
     moe_runner.setTactic(config1, config2);
   }
@@ -156,11 +207,13 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       static_cast<size_t>(moe_params.inter_size), static_cast<size_t>(moe_params.num_experts), static_cast<size_t>(k_),
       kernel_activation_type, parallelism_config, use_awq);
 
-  // Scratch buffer for workspace + expert_scales + expert_indices + permutation_map
-  size_t scales_bytes = moe_params.num_rows * k_ * sizeof(float);
-  size_t indices_bytes = moe_params.num_rows * k_ * sizeof(int);
-  size_t permutation_bytes = moe_params.num_rows * k_ * sizeof(int);
-  size_t total_scratch_bytes = ws_size + scales_bytes + indices_bytes + permutation_bytes;
+  // Scratch buffer for workspace + expert_scales + expert_indices + permutation_map.
+  // Use checked arithmetic: these byte counts derive adjacent pointer offsets inside one allocation.
+  size_t expanded_rows = SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_);
+  size_t scales_bytes = expanded_rows * sizeof(float);
+  size_t indices_bytes = expanded_rows * sizeof(int);
+  size_t permutation_bytes = expanded_rows * sizeof(int);
+  size_t total_scratch_bytes = SafeInt<size_t>(ws_size) + scales_bytes + indices_bytes + permutation_bytes;
 
   auto work_space = GetScratchBuffer<void>(total_scratch_bytes, stream_obj);
   char* workspace_ptr = reinterpret_cast<char*>(work_space.get());
@@ -298,7 +351,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
         onnxruntime::llm::kernels::cutlass_kernels::ActivationParams params(kernel_activation_type);
         params.alpha = activation_alpha_;
         params.beta = activation_beta_;
-        params.swiglu_fusion = swiglu_fusion_;
+        params.swiglu_fusion = swiglu_fusion;
         params.limit = swiglu_limit_;
         return params;
       }(),

@@ -183,12 +183,23 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node
     return false;
   }
 
-  // Resize with mode != "nearest" (linear/cubic) is not order-preserving on integers,
-  // so dropping the surrounding Q/DQ pair would change numerical results. Only the
-  // default nearest-neighbor mode is safe to fold. See issue #21319.
+  // Resize output depends on both the interpolation mode and the coordinate transformation mode:
+  //   - "nearest" mode copies existing input values, so it can operate directly on quantized integers.
+  //   - Non-nearest modes (e.g., "linear", "cubic") interpolate using float arithmetic, which is only
+  //     correct in the dequantized (float) domain, so QDQ must be preserved.
+  //   - "tf_crop_and_resize" writes extrapolation_value (authored in the float domain) into out-of-crop
+  //     positions; dropping QDQ would store that float value raw in the quantized domain, even for nearest.
+  // Only allow dropping QDQ for nearest mode without tf_crop_and_resize coordinate transformation.
   if (node.OpType() == "Resize") {
-    const auto* mode_attr = graph_utils::GetNodeAttribute(node, "mode");
-    if (mode_attr != nullptr && mode_attr->s() != "nearest") {
+    const auto& attrs = node.GetAttributes();
+    // "mode" defaults to "nearest" when absent. It is always present after Graph::Resolve() injects
+    // schema defaults; the absence check is a defensive fallback for hand-built/unresolved graphs.
+    const auto mode_iter = attrs.find("mode");
+    if (mode_iter != attrs.end() && mode_iter->second.s() != "nearest") {
+      return false;
+    }
+    const auto coord_mode_iter = attrs.find("coordinate_transformation_mode");
+    if (coord_mode_iter != attrs.end() && coord_mode_iter->second.s() == "tf_crop_and_resize") {
       return false;
     }
   }
@@ -951,12 +962,102 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Nod
   return ValidateDQForMatMulNBits(graph, *weight_dq);
 }
 
+// Check if a QDQ node's scale/zero_point shape is scalar or 1D with a compatible size.
+// When expected_n <= 0 (default), only accepts scalar or 1D with size 1 (per-tensor quantization).
+// When expected_n > 0, also accepts 1D with size equal to expected_n (per-column quantization).
+// Rejects when shape or dim is unknown to avoid incorrect fusion.
+static bool IsScalarOr1DWithSizeOneOrN(const NodeArg* arg, int64_t expected_n = -1) {
+  if (!arg || !arg->Exists()) {
+    return true;  // absent optional input is OK
+  }
+
+  const auto* shape = arg->Shape();
+  if (!shape) {
+    return false;  // unknown shape, reject to avoid incorrect fusion
+  }
+
+  int rank = shape->dim_size();
+  if (rank == 0) {
+    return true;  // scalar
+  }
+
+  if (rank == 1) {
+    const auto& dim = shape->dim(0);
+    if (!dim.has_dim_value()) {
+      return false;  // unknown dim, reject to avoid incorrect fusion
+    }
+
+    if (expected_n > 0) {
+      return dim.dim_value() == 1 || dim.dim_value() == expected_n;
+    } else {
+      return dim.dim_value() == 1;
+    }
+  }
+
+  return false;  // rank > 1
+}
+
 bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
                                   const std::vector<const Node*>& dq_nodes,
                                   const std::vector<const Node*>& q_nodes) const {
   if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes, -1 /*num_dq_inputs*/,
                      true /*is_empty_q_nodes_allowed*/)) {
     return false;
+  }
+
+  // Validate scale/zero_point shapes are compatible with QGemm.
+  // QGemm requires:
+  //   A: scale/zero_point must be scalar or 1D with size 1
+  //   B: scale/zero_point must be scalar or 1D with size 1 or N, scale and zero_point must have the same shape size
+  //   Y: scale/zero_point must be scalar or 1D with size 1
+  //
+  // QGemm requires a_zero_point and b_zero_point as mandatory inputs.
+  // DQ nodes must have zero_point (input 2) that actually exists.
+  const auto& a_defs = dq_nodes[0]->InputDefs();
+  if (a_defs.size() <= 2 || !a_defs[2]->Exists()) {
+    return false;  // DQ_A missing zero_point, QGemm requires it
+  }
+
+  if (!IsScalarOr1DWithSizeOneOrN(a_defs[1]) ||
+      !IsScalarOr1DWithSizeOneOrN(a_defs[2])) {
+    return false;
+  }
+
+  const auto& b_defs = dq_nodes[1]->InputDefs();
+  if (b_defs.size() <= 2 || !b_defs[2]->Exists()) {
+    return false;  // DQ_B missing zero_point, QGemm requires it
+  }
+
+  // Try to get N for validating per-column scale/zero_point size.
+  // N depends on transB: if transB=1, N=B.shape[0]; otherwise N=B.shape[1].
+  int64_t expected_n = -1;
+  const auto* b_weight_shape = b_defs[0]->Shape();
+  if (b_weight_shape && b_weight_shape->dim_size() == 2) {
+    const auto* trans_b_attr = graph_utils::GetNodeAttribute(node, "transB");
+    bool trans_b = trans_b_attr && trans_b_attr->i() != 0;
+    int n_dim = trans_b ? 0 : 1;
+    if (b_weight_shape->dim(n_dim).has_dim_value()) {
+      expected_n = b_weight_shape->dim(n_dim).dim_value();
+    }
+  }
+
+  if (!IsScalarOr1DWithSizeOneOrN(b_defs[1], expected_n) ||
+      !IsScalarOr1DWithSizeOneOrN(b_defs[2], expected_n)) {
+    return false;
+  }
+
+  // B's scale and zero_point must have the same rank and the same dim value.
+  const auto* b_scale_shape = b_defs[1]->Shape();
+  const auto* b_zp_shape = b_defs[2]->Shape();
+  if (b_scale_shape && b_zp_shape) {
+    if (b_scale_shape->dim_size() != b_zp_shape->dim_size()) {
+      return false;
+    }
+
+    if (b_scale_shape->dim_size() == 1 &&
+        b_scale_shape->dim(0).dim_value() != b_zp_shape->dim(0).dim_value()) {
+      return false;
+    }
   }
 
   // input and output types need to be same
@@ -974,6 +1075,13 @@ bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& n
     if (dt_A != dt_Y) {  // activation and output must be same type
       return false;
     }
+
+    // QGemm requires Y's scale and zero_point to be scalar or 1D with size 1.
+    const auto& y_defs = q_nodes[0]->InputDefs();
+    if (!IsScalarOr1DWithSizeOneOrN(y_defs[1]) ||
+        (y_defs.size() > 2 && !IsScalarOr1DWithSizeOneOrN(y_defs[2]))) {
+      return false;
+    }
   }
 
   // 16-bit int types must be explicitly allowed.
@@ -987,6 +1095,13 @@ bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& n
 
   if (dq_nodes.size() < 3) {  // no bias
     return true;
+  }
+
+  // When bias is present, QGemm folds bias into the int32 accumulator before
+  // applying the alpha*sa*sb output scale, which would incorrectly scale the
+  // bias by alpha. Require alpha==1 and beta==1 so the fused path is exact.
+  if (node.GetAttributes().at("alpha").f() != 1.0) {
+    return false;
   }
 
   if (node.GetAttributes().at("beta").f() != 1.0) {  // beta needs to be 1.0
@@ -1043,7 +1158,7 @@ bool PadNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& no
   // Pad can have 1 or 2 dq input, the optional input constant_value can be quantized or non-quantized.
   // QNN supports data input quantized with constant_value input non-quantized.
   int num_dq_inputs = static_cast<int>(dq_nodes.size());
-  if (num_dq_inputs > 2) {
+  if (num_dq_inputs < 1 || num_dq_inputs > 2) {
     return false;
   }
 

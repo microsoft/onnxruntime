@@ -454,6 +454,23 @@ static std::optional<DQToLookPast> GetDQWithConstInitializerInputAndSingleConsum
   return result;
 }
 
+// Element types that ONNX QuantizeLinear can produce as its output.
+static bool IsQuantizeLinearOutputType(api::DataType dtype) {
+  switch (dtype) {
+    case api::DataType::INT8:
+    case api::DataType::UINT8:
+    case api::DataType::INT16:
+    case api::DataType::UINT16:
+    case api::DataType::FLOAT8E4M3FN:
+    case api::DataType::FLOAT8E4M3FNUZ:
+    case api::DataType::FLOAT8E5M2:
+    case api::DataType::FLOAT8E5M2FNUZ:
+      return true;
+    default:
+      return false;
+  }
+}
+
 /// <summary>
 /// Insert a Q -> DQ pair after the node following the DQ by using scale and zp info from the preceding DQ node.
 /// DQ -> next node => DQ -> next node -> Q -> DQ.
@@ -528,9 +545,26 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
     inputs.push_back(zp_input.value());
   }
 
+  // A zero-point-less DQ with a non-uint8 type needs the new Q's output_dtype pinned, or Q type
+  // inference defaults to uint8 and clashes with the int8 value-info copied below. output_dtype is
+  // ONNX opset 21+ only; if it can't be expressed (older opset, non-ONNX domain, or a type that
+  // QuantizeLinear can't output), skip the push-through so the graph stays valid.
+  std::optional<int64_t> q_output_dtype;
+  if (!zp_input.has_value()) {
+    const api::DataType dq_input_dtype = graph.GetValueInfo(dq_inputs[0])->DType();
+    if (dq_input_dtype != api::DataType::UNDEFINED && dq_input_dtype != api::DataType::UINT8) {
+      const std::optional<int64_t> domain_opset = graph.Opset(dq_domain);
+      if (!IsOnnxDomain(dq_domain) || !domain_opset || *domain_opset < 21 ||
+          !IsQuantizeLinearOutputType(dq_input_dtype)) {
+        return false;
+      }
+      q_output_dtype = static_cast<int64_t>(dq_input_dtype);
+    }
+  }
+
   // Add Q
   auto new_q_node = MakeQuantizeOp(graph, dq_domain, inputs, axis, dq_node.GetAttributeInt("block_size"),
-                                   dq_node.GetAttributeInt("output_dtype"), dq_node.GetAttributeInt("saturate"));
+                                   q_output_dtype, dq_node.GetAttributeInt("saturate"));
   new_q_node->SetLayeringAnnotation(dq_node.GetLayeringAnnotation());
   auto q_node_outputs = new_q_node->Outputs();
 
@@ -2205,6 +2239,53 @@ static bool HandleSlice(HandlerArgs& args) {
 
 constexpr HandlerInfo slice_handler = {&FirstInput, &HandleSlice};
 
+// Pushes a Transpose past a Gather, but only for the scalar-indices case (indices is a 0-D
+// constant). Why so narrow:
+//   - General Gather output rank is `data.rank - 1 + indices.rank`. Computing the post-rewrite
+//     output perm correctly for arbitrary indices.rank is fiddly and easy to get wrong without
+//     a dedicated test rig. Scalar-indices is structurally identical to Squeeze along the
+//     gathered axis, which we already trust.
+//   - Requiring a constant indices tensor lets us read its rank from .Shape().empty(); a dynamic
+//     indices input has no statically-known rank in general, so we can't decide if we're in the
+//     scalar case at compile time.
+// Only the `data` input is transposable here (FirstInput selector); `indices` are positions,
+// not values to be permuted.
+static bool HandleGather(HandlerArgs& args) {
+  size_t rank = args.perm.size();
+
+  int64_t axis = args.node.GetAttributeIntDefault("axis", 0);
+  if (!NormalizeAndValidateAxis(axis, rank)) {
+    return false;
+  }
+
+  // Indices must be a constant whose shape is exactly [] (0-D scalar). Bail otherwise -- the
+  // general rank case isn't handled by this handler.
+  auto inputs = args.node.Inputs();
+  if (inputs.size() < 2) {
+    return false;
+  }
+  std::unique_ptr<api::TensorRef> indices_const = args.ctx.graph.GetConstant(inputs[1]);
+  if (indices_const == nullptr) {
+    return false;
+  }
+  if (!indices_const->Shape().empty()) {
+    return false;
+  }
+
+  // Remap axis under the input perm: the user's `Gather(axis=k)` on the transposed data is
+  // equivalent to gathering along original-data axis perm[k]. Output rank drops by 1, exactly
+  // the Squeeze case along axis perm[k].
+  int64_t new_axis = args.perm[gsl::narrow_cast<size_t>(axis)];
+  args.node.SetAttributeInt("axis", new_axis);
+
+  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+  std::vector<int64_t> new_axes{new_axis};
+  TransposeOutputs(args.ctx, args.node, SqueezePerm(new_axes, args.perm));
+  return true;
+}
+
+constexpr HandlerInfo gather_handler = {&FirstInput, &HandleGather};
+
 static bool HandleTile(HandlerArgs& args) {
   size_t rank = args.perm.size();
   std::vector<int64_t> perm_shape{gsl::narrow_cast<int64_t>(rank)};
@@ -2598,6 +2679,7 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
     {"Squeeze", squeeze_handler},
     {"Unsqueeze", unsqueeze_handler},
     {"Slice", slice_handler},
+    {"Gather", gather_handler},
     {"Tile", tile_handler},
 
     {"Softmax", soft_hard_max_handler},

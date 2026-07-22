@@ -164,6 +164,7 @@ def create_quantized_gqa_graph(
     bit_width,
     buffer_seq_len=None,
     is_past=False,
+    packed_qkv=False,
 ):
     """Create an ONNX graph for GroupQueryAttention with quantized KV cache."""
     if buffer_seq_len is None:
@@ -171,6 +172,7 @@ def create_quantized_gqa_graph(
 
     hidden_size = num_heads * head_size
     kv_hidden_size = kv_num_heads * head_size
+    query_hidden_size = (num_heads + 2 * kv_num_heads) * head_size if packed_qkv else hidden_size
     packed_head_size = head_size // 2 if bit_width == 4 else head_size
 
     cache_ort_type = TensorProto.UINT8 if bit_width == 4 else TensorProto.INT8
@@ -186,8 +188,8 @@ def create_quantized_gqa_graph(
     # Inputs
     inputs = [
         "query",
-        "key",
-        "value",
+        "" if packed_qkv else "key",
+        "" if packed_qkv else "value",
         "past_key",
         "past_value",
         "seqlens_k",
@@ -220,20 +222,29 @@ def create_quantized_gqa_graph(
 
     # Graph inputs
     graph_input = [
-        helper.make_tensor_value_info("query", TensorProto.FLOAT, [batch_size, seq_len, hidden_size]),
-        helper.make_tensor_value_info("key", TensorProto.FLOAT, [batch_size, seq_len, kv_hidden_size]),
-        helper.make_tensor_value_info("value", TensorProto.FLOAT, [batch_size, seq_len, kv_hidden_size]),
-        helper.make_tensor_value_info(
-            "past_key", cache_ort_type, [batch_size, kv_num_heads, past_kv_seqlen, packed_head_size]
-        ),
-        helper.make_tensor_value_info(
-            "past_value", cache_ort_type, [batch_size, kv_num_heads, past_kv_seqlen, packed_head_size]
-        ),
-        helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, [batch_size]),
-        helper.make_tensor_value_info("total_sequence_length", TensorProto.INT32, [1]),
-        helper.make_tensor_value_info("k_scale", TensorProto.FLOAT, None),
-        helper.make_tensor_value_info("v_scale", TensorProto.FLOAT, None),
+        helper.make_tensor_value_info("query", TensorProto.FLOAT, [batch_size, seq_len, query_hidden_size]),
     ]
+    if not packed_qkv:
+        graph_input.extend(
+            [
+                helper.make_tensor_value_info("key", TensorProto.FLOAT, [batch_size, seq_len, kv_hidden_size]),
+                helper.make_tensor_value_info("value", TensorProto.FLOAT, [batch_size, seq_len, kv_hidden_size]),
+            ]
+        )
+    graph_input.extend(
+        [
+            helper.make_tensor_value_info(
+                "past_key", cache_ort_type, [batch_size, kv_num_heads, past_kv_seqlen, packed_head_size]
+            ),
+            helper.make_tensor_value_info(
+                "past_value", cache_ort_type, [batch_size, kv_num_heads, past_kv_seqlen, packed_head_size]
+            ),
+            helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, [batch_size]),
+            helper.make_tensor_value_info("total_sequence_length", TensorProto.INT32, [1]),
+            helper.make_tensor_value_info("k_scale", TensorProto.FLOAT, None),
+            helper.make_tensor_value_info("v_scale", TensorProto.FLOAT, None),
+        ]
+    )
 
     # Graph outputs
     graph_output = [
@@ -468,6 +479,110 @@ def run_quantized_gqa_prompt_test(
     )
 
 
+def run_quantized_gqa_packed_qkv_test(
+    batch_size, seq_len, num_heads, kv_num_heads, head_size, quant_type, bit_width, atol=None
+):
+    """Run a packed-QKV quantized GQA prompt test and compare against FP32 reference with quantization noise."""
+    np.random.seed(43)
+
+    hidden_size = num_heads * head_size
+    kv_hidden_size = kv_num_heads * head_size
+
+    query = np.random.uniform(-0.5, 0.5, (batch_size, seq_len, hidden_size)).astype(np.float32)
+    key_input = np.random.uniform(-0.5, 0.5, (batch_size, seq_len, kv_hidden_size)).astype(np.float32)
+    value_input = np.random.uniform(-0.5, 0.5, (batch_size, seq_len, kv_hidden_size)).astype(np.float32)
+    packed_qkv = np.concatenate([query, key_input, value_input], axis=2)
+
+    k_bnsh = key_input.reshape(batch_size, seq_len, kv_num_heads, head_size).transpose(0, 2, 1, 3)
+    v_bnsh = value_input.reshape(batch_size, seq_len, kv_num_heads, head_size).transpose(0, 2, 1, 3)
+
+    if bit_width == 8:
+        if quant_type == "PER_TENSOR":
+            _, k_scale = quantize_int8_per_tensor(k_bnsh)
+            _, v_scale = quantize_int8_per_tensor(v_bnsh)
+        else:
+            _, k_scale = quantize_int8_per_channel(k_bnsh)
+            _, v_scale = quantize_int8_per_channel(v_bnsh)
+    else:
+        if quant_type == "PER_TENSOR":
+            _, k_scale = quantize_int4_per_tensor(k_bnsh)
+            _, v_scale = quantize_int4_per_tensor(v_bnsh)
+        else:
+            _, k_scale = quantize_int4_per_channel(k_bnsh)
+            _, v_scale = quantize_int4_per_channel(v_bnsh)
+
+    packed_head_size = head_size // 2 if bit_width == 4 else head_size
+    if bit_width == 4:
+        past_k = np.zeros((batch_size, kv_num_heads, seq_len, packed_head_size), dtype=np.uint8)
+        past_v = np.zeros((batch_size, kv_num_heads, seq_len, packed_head_size), dtype=np.uint8)
+    else:
+        past_k = np.zeros((batch_size, kv_num_heads, seq_len, packed_head_size), dtype=np.int8)
+        past_v = np.zeros((batch_size, kv_num_heads, seq_len, packed_head_size), dtype=np.int8)
+
+    seqlens_k = np.array([seq_len - 1] * batch_size, dtype=np.int32)
+    total_seq = np.array([seq_len], dtype=np.int32)
+
+    onnx_model_str = create_quantized_gqa_graph(
+        batch_size, seq_len, num_heads, kv_num_heads, head_size, quant_type, bit_width, packed_qkv=True
+    )
+    sess_options = SessionOptions()
+    sess = InferenceSession(onnx_model_str, sess_options, providers=["CPUExecutionProvider"])
+
+    feeds = {
+        "query": packed_qkv,
+        "past_key": past_k,
+        "past_value": past_v,
+        "seqlens_k": seqlens_k,
+        "total_sequence_length": total_seq,
+        "k_scale": k_scale,
+        "v_scale": v_scale,
+    }
+
+    outputs = sess.run(None, feeds)
+    out_ort = outputs[0]
+
+    if bit_width == 8 and quant_type == "PER_TENSOR":
+        k_q = np.clip(np.round(k_bnsh / k_scale[0]), -128, 127).astype(np.int8)
+        v_q = np.clip(np.round(v_bnsh / v_scale[0]), -128, 127).astype(np.int8)
+        k_deq = dequantize_int8_per_tensor(k_q, k_scale[0])
+        v_deq = dequantize_int8_per_tensor(v_q, v_scale[0])
+    elif bit_width == 8 and quant_type == "PER_CHANNEL":
+        k_q = np.clip(np.round(k_bnsh / k_scale.reshape(1, kv_num_heads, 1, head_size)), -128, 127).astype(np.int8)
+        v_q = np.clip(np.round(v_bnsh / v_scale.reshape(1, kv_num_heads, 1, head_size)), -128, 127).astype(np.int8)
+        k_deq = dequantize_int8_per_channel(k_q, k_scale, kv_num_heads, head_size)
+        v_deq = dequantize_int8_per_channel(v_q, v_scale, kv_num_heads, head_size)
+    elif bit_width == 4 and quant_type == "PER_TENSOR":
+        k_q = np.clip(np.round(k_bnsh / k_scale[0]), -8, 7).astype(np.int8)
+        v_q = np.clip(np.round(v_bnsh / v_scale[0]), -8, 7).astype(np.int8)
+        k_deq = k_q.astype(np.float32) * k_scale[0]
+        v_deq = v_q.astype(np.float32) * v_scale[0]
+    elif bit_width == 4 and quant_type == "PER_CHANNEL":
+        k_q = np.clip(np.round(k_bnsh / k_scale.reshape(1, kv_num_heads, 1, head_size)), -8, 7).astype(np.int8)
+        v_q = np.clip(np.round(v_bnsh / v_scale.reshape(1, kv_num_heads, 1, head_size)), -8, 7).astype(np.int8)
+        k_deq = k_q.astype(np.float32) * k_scale.reshape(1, kv_num_heads, 1, head_size)
+        v_deq = v_q.astype(np.float32) * v_scale.reshape(1, kv_num_heads, 1, head_size)
+    else:
+        raise ValueError(f"Unsupported config: bit_width={bit_width}, quant_type={quant_type}")
+
+    out_ref = reference_gqa(query, k_deq, v_deq, num_heads, kv_num_heads, head_size, causal=True)
+
+    if atol is None:
+        atol = 0.15 if bit_width == 4 else 0.05
+
+    if np.any(np.isnan(out_ort)):
+        raise AssertionError(f"NaN in output (quant={quant_type}, bit={bit_width}, packed QKV)")
+    if np.allclose(out_ort, 0.0):
+        raise AssertionError(f"Output is all zeros (quant={quant_type}, bit={bit_width}, packed QKV)")
+
+    np.testing.assert_allclose(
+        out_ort,
+        out_ref,
+        atol=atol,
+        rtol=0.1,
+        err_msg=f"Packed-QKV quantized GQA output mismatch (quant={quant_type}, bit={bit_width})",
+    )
+
+
 # ---- Test class ----
 
 
@@ -522,6 +637,17 @@ class TestGQACPUQuantizedKV(unittest.TestCase):
         run_quantized_gqa_prompt_test(
             batch_size=2,
             seq_len=4,
+            num_heads=4,
+            kv_num_heads=2,
+            head_size=16,
+            quant_type="PER_TENSOR",
+            bit_width=8,
+        )
+
+    def test_int8_packed_qkv_multi_batch(self):
+        run_quantized_gqa_packed_qkv_test(
+            batch_size=3,
+            seq_len=8,
             num_heads=4,
             kv_num_heads=2,
             head_size=16,
@@ -821,6 +947,24 @@ class TestGQACPUQuantizedKVWithBias(unittest.TestCase):
         """Bias shape [B, 1, S, T] with num_heads > 1."""
         run_quantized_gqa_bias_test(
             batch_size=1,
+            seq_len=8,
+            num_heads=4,
+            kv_num_heads=2,
+            head_size=16,
+            quant_type="PER_TENSOR",
+            bit_width=8,
+            bias_broadcast_head=True,
+        )
+
+    def test_int8_bias_broadcast_head_multi_batch(self):
+        """Bias shape [B, 1, S, T] with batch_size > 1 and num_heads > 1.
+
+        Regression test: the bias batch stride must use the head extent (1 when the
+        head dimension is broadcast), not num_heads. With batch_size == 1 the bug is
+        masked because batch_idx is always 0.
+        """
+        run_quantized_gqa_bias_test(
+            batch_size=3,
             seq_len=8,
             num_heads=4,
             kv_num_heads=2,

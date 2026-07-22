@@ -13,6 +13,10 @@
 #include "core/providers/cpu/reduction/reduction_ops.h"
 #include "test/util/include/default_providers.h"
 
+#ifdef USE_WEBGPU
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#endif
+
 namespace onnxruntime {
 namespace test {
 
@@ -2859,6 +2863,31 @@ TEST(ReductionOpTest, ReduceSum_int64) {
   test.Run();
 }
 
+#if defined(USE_CUDA)
+TEST(ReductionOpTest, ReduceSum_int64_omitted_optional_axes) {
+  OpTester test("ReduceSum", 13, onnxruntime::kOnnxDomain);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<int64_t>("data", {3}, {1, 2, 3});
+  test.AddOptionalInputEdge<int64_t>();
+  test.AddOutput<int64_t>("reduced", {}, {6});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ReductionOpTest, ReduceSum_int64_cancellation) {
+  OpTester test("ReduceSum", 13, onnxruntime::kOnnxDomain);
+  test.AddAttribute("keepdims", (int64_t)0);
+  const int64_t large = int64_t{1} << 53;
+  test.AddInput<int64_t>("data", {3}, {large, 1, -large});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  test.AddOutput<int64_t>("reduced", {}, {1});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
+
 TEST(ReductionOpTest, ReduceSum_default_axes_keepdims) {
   OpTester test("ReduceSum");
   test.AddAttribute("keepdims", (int64_t)1);
@@ -4012,8 +4041,6 @@ TEST(ReductionOpTest, ReduceDimWithZero1) {
                // TODO: fix reduce kernel for zero set cases. see: https://github.com/microsoft/onnxruntime/issues/18588
                {
                    kCoreMLExecutionProvider,
-                   kCudaExecutionProvider,
-                   kCudaNHWCExecutionProvider,
                    kDnnlExecutionProvider,
                    kMIGraphXExecutionProvider,
                    kOpenVINOExecutionProvider,
@@ -6517,6 +6544,62 @@ TEST(ReductionOpTest, ReduceLogSumExp_NoopWithEmptyAxes_3D_Identity) {
   test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
+// Edge case: all -inf input should produce -inf (log(sum(exp(-inf))) = log(0) = -inf)
+TEST(ReductionOpTest, ReduceLogSumExp_AllNegInf) {
+  OpTester test("ReduceLogSumExp", 18);
+  float neg_inf = -std::numeric_limits<float>::infinity();
+  test.AddInput<float>("data", {5}, {neg_inf, neg_inf, neg_inf, neg_inf, neg_inf});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  test.AddOutput<float>("reduced", {1}, {neg_inf});
+  test.Run();
+}
+
+// Edge case: all -inf input with keepdims=0
+TEST(ReductionOpTest, ReduceLogSumExp_AllNegInf_NoKeepDims) {
+  OpTester test("ReduceLogSumExp", 18);
+  test.AddAttribute<int64_t>("keepdims", 0);
+  float neg_inf = -std::numeric_limits<float>::infinity();
+  test.AddInput<float>("data", {2, 3},
+                       {neg_inf, neg_inf, neg_inf,
+                        neg_inf, neg_inf, neg_inf});
+  test.AddInput<int64_t>("axes", {1}, {1});
+  test.AddOutput<float>("reduced", {2}, {neg_inf, neg_inf});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider});
+}
+
+// Edge case: mixed -inf and finite values
+TEST(ReductionOpTest, ReduceLogSumExp_MixedNegInfAndFinite) {
+  OpTester test("ReduceLogSumExp", 18);
+  float neg_inf = -std::numeric_limits<float>::infinity();
+  // log(exp(-inf) + exp(0)) = log(0 + 1) = 0
+  test.AddInput<float>("data", {2}, {neg_inf, 0.f});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  test.AddOutput<float>("reduced", {1}, {0.f});
+  test.Run();
+}
+
+// Edge case: +inf input
+TEST(ReductionOpTest, ReduceLogSumExp_PosInf) {
+  OpTester test("ReduceLogSumExp", 18);
+  float pos_inf = std::numeric_limits<float>::infinity();
+  // log(exp(+inf) + exp(0)) = log(+inf) = +inf
+  test.AddInput<float>("data", {2}, {pos_inf, 0.f});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  test.AddOutput<float>("reduced", {1}, {pos_inf});
+  test.Run();
+}
+
+// Edge case: all -inf double precision
+TEST(ReductionOpTest, ReduceLogSumExp_AllNegInf_Double) {
+  OpTester test("ReduceLogSumExp", 18);
+  double neg_inf = -std::numeric_limits<double>::infinity();
+  test.AddInput<double>("data", {4}, {neg_inf, neg_inf, neg_inf, neg_inf});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  test.AddOutput<double>("reduced", {1}, {neg_inf});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ReduceSumSquare_NoopWithAxesNotProvided_ElementwiseSquare) {
   OpTester test("ReduceSumSquare", 18);
   test.AddInput<float>("data", {2}, {2.f, 3.f});
@@ -6728,6 +6811,241 @@ TEST(ReductionOpTest, ReduceMin_float_Opset20_NoKeepdims_Cuda) {
 }
 
 #endif  // defined(USE_CUDA)
+
+// =============================================================================
+// Integer overflow saturation tests.
+// These test the double-accumulation + saturation paths added to prevent
+// signed integer overflow UB in reduction aggregators. Most tests run on
+// CPU and CUDA; some are CPU-only where CUDA uses a different code path
+// (e.g., ReduceLogSumExp, ReduceSumSquare) or where int64 precision > 2^53
+// makes cross-EP comparison unreliable. Other EPs are excluded per-test.
+// =============================================================================
+
+TEST(ReductionOpTest, ReduceSum_int32_Overflow_Saturates) {
+  OpTester test("ReduceSum", 13);
+  // 3 values of ~INT32_MAX/2 + 1 that sum to > INT32_MAX
+  int32_t big = 1'100'000'000;
+  test.AddInput<int32_t>("data", {3}, {big, big, big});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  // Expected: saturates to INT32_MAX (3.3B > 2.147B)
+  test.AddOutput<int32_t>("reduced", {1}, {std::numeric_limits<int32_t>::max()});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceSum_int32_NegativeOverflow_Saturates) {
+  OpTester test("ReduceSum", 13);
+  int32_t neg = -1'100'000'000;
+  test.AddInput<int32_t>("data", {3}, {neg, neg, neg});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  // Expected: saturates to INT32_MIN (-3.3B < -2.147B)
+  test.AddOutput<int32_t>("reduced", {1}, {std::numeric_limits<int32_t>::min()});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceSum_int64_Overflow_Saturates) {
+  OpTester test("ReduceSum", 13);
+  int64_t big = 4'000'000'000'000'000'000LL;  // ~4e18
+  test.AddInput<int64_t>("data", {3}, {big, big, big});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  // 12e18 > INT64_MAX (~9.2e18)
+  test.AddOutput<int64_t>("reduced", {1}, {std::numeric_limits<int64_t>::max()});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceMean_int32_LargeValues_NoOverflow) {
+  OpTester test("ReduceMean", 18);
+  // Values that would overflow if summed naively in int32, but mean fits in range.
+  int32_t big = 2'000'000'000;
+  test.AddInput<int32_t>("data", {3}, {big, big, big});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  // Mean = 2B (fits in int32). Sum would be 6B (overflow).
+  test.AddOutput<int32_t>("reduced", {1}, {big});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceMean_int64_LargeValues_NoOverflow) {
+  OpTester test("ReduceMean", 18);
+  int64_t big = 4'000'000'000'000'000'000LL;
+  test.AddInput<int64_t>("data", {3}, {big, big, big});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  // Mean = 4e18 (fits in int64). Sum = 12e18 (overflows int64).
+  test.AddOutput<int64_t>("reduced", {1}, {big});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(ReductionOpTest, ReduceProd_int32_Overflow_Saturates) {
+  OpTester test("ReduceProd", 18);
+  // 100000 * 100000 * 100000 = 1e15 > INT32_MAX
+  test.AddInput<int32_t>("data", {3}, {100'000, 100'000, 100'000});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  test.AddOutput<int32_t>("reduced", {1}, {std::numeric_limits<int32_t>::max()});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceProd_int32_NegativeOverflow_Saturates) {
+  OpTester test("ReduceProd", 18);
+  // -100000 * 100000 * 100000 = -1e15 < INT32_MIN
+  test.AddInput<int32_t>("data", {3}, {-100'000, 100'000, 100'000});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  test.AddOutput<int32_t>("reduced", {1}, {std::numeric_limits<int32_t>::min()});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceSumSquare_int32_Overflow_Saturates) {
+  OpTester test("ReduceSumSquare", 18);
+  // 50000^2 = 2.5e9 > INT32_MAX for a single element
+  test.AddInput<int32_t>("data", {2}, {50'000, 50'000});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  // 50000^2 + 50000^2 = 5e9 > INT32_MAX → saturate
+  test.AddOutput<int32_t>("reduced", {1}, {std::numeric_limits<int32_t>::max()});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(ReductionOpTest, ReduceLogSumExp_int32_Saturation) {
+  OpTester test("ReduceLogSumExp", 18);
+  // For integers: log(count_of_max) + max. With all same values:
+  // log(3) + INT32_MAX ≈ 1.1 + 2147483647 → saturates to INT32_MAX
+  int32_t big = std::numeric_limits<int32_t>::max();
+  test.AddInput<int32_t>("data", {3}, {big, big, big});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  test.AddOutput<int32_t>("reduced", {1}, {std::numeric_limits<int32_t>::max()});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(ReductionOpTest, ReduceLogSumExp_int32_NormalCase) {
+  OpTester test("ReduceLogSumExp", 18);
+  // For integers: exp(v - max) truncates to 0 unless v == max.
+  // With input {5, 5, 3}: max=5, count_of_5=2, result=log(2)+5=5 (truncated)
+  test.AddInput<int32_t>("data", {3}, {5, 5, 3});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  // log(2) ≈ 0.693, truncates to 0 in int, so result = 0 + 5 = 5
+  test.AddOutput<int32_t>("reduced", {1}, {5});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(ReductionOpTest, ReduceMax_int32_EmptySet) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int32_t>("data", {0, 3}, {});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  // Empty reduction should return lowest() for integers
+  test.AddOutput<int32_t>("reduced", {1, 3},
+                          {std::numeric_limits<int32_t>::lowest(),
+                           std::numeric_limits<int32_t>::lowest(),
+                           std::numeric_limits<int32_t>::lowest()});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kDmlExecutionProvider, kWebGpuExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceMin_int32_EmptySet) {
+  OpTester test("ReduceMin", 20);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int32_t>("data", {0, 3}, {});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  // Empty reduction should return max() for integers
+  test.AddOutput<int32_t>("reduced", {1, 3},
+                          {std::numeric_limits<int32_t>::max(),
+                           std::numeric_limits<int32_t>::max(),
+                           std::numeric_limits<int32_t>::max()});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kDmlExecutionProvider, kWebGpuExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceMax_int64_EmptySet) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int64_t>("data", {0, 2}, {});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  test.AddOutput<int64_t>("reduced", {1, 2},
+                          {std::numeric_limits<int64_t>::lowest(),
+                           std::numeric_limits<int64_t>::lowest()});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kDmlExecutionProvider, kWebGpuExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceMin_int64_EmptySet) {
+  OpTester test("ReduceMin", 20);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int64_t>("data", {0, 2}, {});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  test.AddOutput<int64_t>("reduced", {1, 2},
+                          {std::numeric_limits<int64_t>::max(),
+                           std::numeric_limits<int64_t>::max()});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kDmlExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// Test empty-set reduction with default axes (reduce all dims) and keepdims=1.
+// Validates that CUDA PrepareForReduce produces output shape {1,1,1} (not {1,0,1})
+// and fills identity values correctly.
+TEST(ReductionOpTest, ReduceSum_EmptySet_DefaultAxes_KeepDims) {
+  OpTester test("ReduceSum", 13);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 0, 2}, {});
+  test.AddInput<int64_t>("axes", {0}, {}, true);  // empty axes = reduce all
+  test.AddOutput<float>("reduced", {1, 1, 1}, {0.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCoreMLExecutionProvider, kDmlExecutionProvider, kDnnlExecutionProvider,
+            kMIGraphXExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider,
+            kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceMax_EmptySet_DefaultAxes_KeepDims) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {2, 0, 3}, {});
+  test.AddInput<int64_t>("axes", {0}, {}, true);  // empty axes = reduce all
+  test.AddOutput<float>("reduced", {1, 1, 1}, {-std::numeric_limits<float>::infinity()});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCoreMLExecutionProvider, kDmlExecutionProvider, kDnnlExecutionProvider,
+            kMIGraphXExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider,
+            kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceProd_EmptySet_DefaultAxes_KeepDims) {
+  OpTester test("ReduceProd", 18);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {2, 0}, {});
+  test.AddInput<int64_t>("axes", {0}, {}, true);  // empty axes = reduce all
+  test.AddOutput<float>("reduced", {1, 1}, {1.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCoreMLExecutionProvider, kDmlExecutionProvider, kDnnlExecutionProvider,
+            kMIGraphXExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider,
+            kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+}
+
+#ifdef USE_WEBGPU
+TEST(ReductionOpTest, ReduceSum_WebGpu_EnableInt64) {
+  OpTester test("ReduceSum", 13);
+  test.AddInput<int64_t>("data", {3}, {10, 20, 30});
+  test.AddInput<int64_t>("axes", {1}, {0}, true);
+  test.AddOutput<int64_t>("reduced", {1}, {60});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Size divisible by 4: catches issues if the shader is ever accidentally vectorized for INT64.
+TEST(ReductionOpTest, ReduceSum_WebGpu_EnableInt64_SizeDiv4) {
+  OpTester test("ReduceSum", 13);
+  test.AddInput<int64_t>("data", {4}, {10, 20, 30, 40});
+  test.AddInput<int64_t>("axes", {1}, {0}, true);
+  test.AddOutput<int64_t>("reduced", {1}, {100});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

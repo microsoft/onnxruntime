@@ -26,6 +26,7 @@
 
 namespace onnxruntime {
 class IExecutionProvider;
+class ExecutionProviders;
 
 namespace optimizer_utils {
 
@@ -57,7 +58,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     const IExecutionProvider& execution_provider /*required by constant folding*/,
     const logging::Logger& logger,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable = {},
-    concurrency::ThreadPool* intra_op_thread_pool = nullptr);
+    concurrency::ThreadPool* intra_op_thread_pool = nullptr,
+    const ExecutionProviders* execution_providers = nullptr);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

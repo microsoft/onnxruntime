@@ -64,6 +64,7 @@ void Telemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, cons
                                    const std::string& loadedFrom, const std::vector<std::string>& execution_provider_ids,
                                    const std::string& hardware_device_types,
                                    const std::string& hardware_vendor_ids,
+                                   const std::string& ep_versions,
                                    bool use_fp16, bool captureState) const {
   ORT_UNUSED_PARAMETER(session_id);
   ORT_UNUSED_PARAMETER(ir_version);
@@ -81,6 +82,7 @@ void Telemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, cons
   ORT_UNUSED_PARAMETER(execution_provider_ids);
   ORT_UNUSED_PARAMETER(hardware_device_types);
   ORT_UNUSED_PARAMETER(hardware_vendor_ids);
+  ORT_UNUSED_PARAMETER(ep_versions);
   ORT_UNUSED_PARAMETER(use_fp16);
   ORT_UNUSED_PARAMETER(captureState);
 }
@@ -124,6 +126,15 @@ void Telemetry::LogRuntimeError(uint32_t session_id, const common::Status& statu
   ORT_UNUSED_PARAMETER(line);
 }
 
+void Telemetry::LogRuntimeInferenceError(uint32_t session_id, const common::Status& status,
+                                         const std::string& ep_versions,
+                                         const std::string& ep_device_types) const {
+  ORT_UNUSED_PARAMETER(session_id);
+  ORT_UNUSED_PARAMETER(status);
+  ORT_UNUSED_PARAMETER(ep_versions);
+  ORT_UNUSED_PARAMETER(ep_device_types);
+}
+
 void Telemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last,
                                const std::unordered_map<int64_t, long long>& duration_per_batch_size) const {
   ORT_UNUSED_PARAMETER(session_id);
@@ -139,6 +150,7 @@ void Telemetry::LogEpDeviceUsage(uint32_t session_id,
                                  uint32_t hardware_device_id,
                                  const std::string& hardware_vendor,
                                  const std::string& ep_vendor,
+                                 const std::string& ep_version,
                                  int assigned_node_count,
                                  uint32_t total_runs_since_last,
                                  int64_t total_run_duration_since_last) const {
@@ -149,6 +161,7 @@ void Telemetry::LogEpDeviceUsage(uint32_t session_id,
   ORT_UNUSED_PARAMETER(hardware_device_id);
   ORT_UNUSED_PARAMETER(hardware_vendor);
   ORT_UNUSED_PARAMETER(ep_vendor);
+  ORT_UNUSED_PARAMETER(ep_version);
   ORT_UNUSED_PARAMETER(assigned_node_count);
   ORT_UNUSED_PARAMETER(total_runs_since_last);
   ORT_UNUSED_PARAMETER(total_run_duration_since_last);

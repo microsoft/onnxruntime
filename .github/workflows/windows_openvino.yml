@@ -26,7 +26,7 @@ jobs:
     timeout-minutes: 240
     env:
       AZCOPY_AUTO_LOGIN_TYPE: MSI
-      AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
+      AZCOPY_MSI_CLIENT_ID: d712a4c7-a0cf-4e87-af75-31510eba0a8e
       OnnxRuntimeBuildDirectory: ${{ github.workspace }}
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
@@ -51,12 +51,17 @@ jobs:
         with:
           architecture: x64
 
-      - name: Download OpenVINO Toolkit v2026.1.0
+      - name: Install Visual Studio Spectre-mitigated libs
+        uses: ./.github/actions/install-vs-spectre-libs
+        with:
+          architecture: x64
+
+      - name: Download OpenVINO Toolkit v2026.2.1
         env:
-          OpenVINOVersion: 2026.1.0
+          OpenVINOVersion: 2026.2.1
         shell: pwsh
         run: |
-          $Url ="https://storage.openvinotoolkit.org/repositories/openvino/packages/2026.1/windows_vc_mt/openvino_toolkit_windows_vc_mt_2026.1.0.21367.63e31528c62_x86_64.zip"
+          $Url ="https://storage.openvinotoolkit.org/repositories/openvino/packages/2026.2.1/windows_vc_mt/openvino_toolkit_windows_vc_mt_2026.2.1.21919.ede283a88e3_x86_64.zip"
           $OutputPath = "$env:RUNNER_TEMP\openvino.zip"
           $ExtractPath = "$env:RUNNER_TEMP\openvino-v$env:OpenVINOVersion"
           $TempExtractPath = "$env:RUNNER_TEMP\openvino_temp"
@@ -99,7 +104,7 @@ jobs:
         shell: pwsh
         # Use $GITHUB_ENV to set the variable for subsequent steps
         run: |
-          $openVinoRootDir = Join-Path $env:RUNNER_TEMP "openvino-v2026.1.0"
+          $openVinoRootDir = Join-Path $env:RUNNER_TEMP "openvino-v2026.2.1"
           echo "OpenVINORootDir=$openVinoRootDir" >> $env:GITHUB_ENV
 
       - name: Print OpenVINORootDir after downloading OpenVINO

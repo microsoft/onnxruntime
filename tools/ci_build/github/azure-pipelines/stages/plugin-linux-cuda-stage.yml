@@ -43,7 +43,7 @@ parameters:
 
 - name: cmake_cuda_archs
   type: string
-  default: '52-real;61-real;75-real;86-real;89-real;90-virtual'
+  default: '61-real;75-real;86-real;89-real;120-real;120-virtual'
 
 - name: python_version
   type: string
@@ -120,7 +120,7 @@ stages:
       - script: |
           set -e -x
           mkdir -p $(Build.ArtifactStagingDirectory)/bin
-          plugin_path="$(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}/libonnxruntime_providers_cuda_plugin.so"
+          plugin_path="$(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}/libonnxruntime_providers_cuda.so"
           if [ ! -f "$plugin_path" ]; then
             echo "Error: Expected plugin binary not found at '$plugin_path'. Failing build to avoid publishing an invalid package."
             exit 1

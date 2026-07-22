@@ -29,7 +29,7 @@ namespace contrib {
 void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-  if (ctx.getNumOutputs() > 1) {
+  if (ctx.getNumOutputs() > 2) {  // has new_key_cache and new_value_cache outputs; a pair, so present only when > 2
     ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
     ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 2);
   }
@@ -38,7 +38,7 @@ void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx
     auto& query_shape = getInputShape(ctx, 0);
     updateOutputShape(ctx, 0, query_shape);
   }
-  if (ctx.getNumOutputs() > 1) {
+  if (ctx.getNumOutputs() > 2) {  // has new_key_cache and new_value_cache outputs; a pair, so present only when > 2
     if (hasInputShape(ctx, 6) && hasInputShape(ctx, 7)) {
       auto& cache_shape = getInputShape(ctx, 6);
       auto& cache_dims = cache_shape.dim();
@@ -199,7 +199,7 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
     }
   }
 
-  if (ctx.getNumOutputs() > 1) {  // has present output
+  if (ctx.getNumOutputs() > 2) {  // has present_key and present_value outputs; a pair, so present only when > 2
     if (hasInputShape(ctx, past_key_index)) {
       auto& past_shape = getInputShape(ctx, past_key_index);
       auto& past_dims = past_shape.dim();
@@ -1250,6 +1250,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("k_quant_type", "Quantization type for K cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL'.", AttributeProto::STRING, std::string("NONE"))
         .Attr("v_quant_type", "Quantization type for V cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL'.", AttributeProto::STRING, std::string("NONE"))
         .Attr("kv_cache_bit_width", "Bit width of quantized KV cache. Supported values are 8 and 4.", AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("qk_norm_epsilon",
+              "Epsilon used by the per-head RMS norm applied to Q and K when q_norm_weight and k_norm_weight inputs are provided. "
+              "Default value is 1e-6.",
+              AttributeProto::FLOAT,
+              1e-6f)
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape"
@@ -1314,6 +1319,20 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(12, "k_scale", "Scale tensor for past_key.", "T_KV_SCALE", OpSchema::Optional)
         .Input(13, "v_scale", "Scale tensor for past_value.", "T_KV_SCALE", OpSchema::Optional)
+        .Input(14,
+               "q_norm_weight",
+               "Optional 1D tensor of shape (head_size). When provided together with k_norm_weight, the kernel applies a "
+               "per-head RMS normalization to Q (and K) before any rotary embedding. Used by Qwen3-style models that wrap "
+               "their Q/K projections in a Reshape -> SimplifiedLayerNormalization -> Reshape stack; downstream graph fusion "
+               "folds that pattern into this input. Currently honored by the CUDA and native WebGPU execution providers; "
+               "JSEP WebGPU/JS and other EPs must reject the node when this input is set.",
+               "T",
+               OpSchema::Optional)
+        .Input(15,
+               "k_norm_weight",
+               "Optional 1D tensor of shape (head_size). See q_norm_weight. Must be provided together with q_norm_weight.",
+               "T",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
@@ -1937,7 +1956,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("U", {"tensor(int64)"}, "Constrain sequence_length to int tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
           auto& bias_table_shape = getInputShape(ctx, 0);
+          if (bias_table_shape.dim_size() < 2) {
+            fail_shape_inference("RelativePositionBias: bias_table must have rank >= 2");
+          }
           TensorShapeProto output_shape;
           output_shape.add_dim()->set_dim_value(1);
           *output_shape.add_dim() = bias_table_shape.dim(1);
@@ -2200,6 +2225,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           // Output shape: (batch_size, num_heads, seq_len, seq_len)
           if (hasInputShape(ctx, 6)) {
             auto& token_offset_shape = getInputShape(ctx, 6);
+            if (token_offset_shape.dim_size() < 2) {
+              fail_shape_inference("GatedRelativePositionBias: token_offset must have rank >= 2");
+            }
             TensorShapeProto output_shape;
             *output_shape.add_dim() = token_offset_shape.dim(0);
             output_shape.add_dim()->set_dim_value(num_heads);
@@ -2298,6 +2326,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1)) {
             auto& input_shape = getInputShape(ctx, 0);
             auto& weight_shape = getInputShape(ctx, 1);
+            if (input_shape.dim_size() < 2) {
+              fail_shape_inference("CausalConvWithState: input must have rank >= 2");
+            }
+            if (weight_shape.dim_size() < 2) {
+              fail_shape_inference("CausalConvWithState: weight must have rank >= 2");
+            }
             int64_t ndim = getAttribute(ctx, "ndim", 1);
             TensorShapeProto state_shape;
             *state_shape.add_dim() = input_shape.dim(0);  // batch_size
@@ -2423,6 +2457,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2) && q_num_heads > 0 && kv_num_heads > 0) {
             auto& query_shape = getInputShape(ctx, 0);
             auto& value_shape = getInputShape(ctx, 2);
+            if (query_shape.dim_size() < 3) {
+              fail_shape_inference("LinearAttention: query must have rank >= 3");
+            }
+            if (value_shape.dim_size() < 3) {
+              fail_shape_inference("LinearAttention: value must have rank >= 3");
+            }
             TensorShapeProto output_shape;
             *output_shape.add_dim() = query_shape.dim(0);  // B
             *output_shape.add_dim() = query_shape.dim(1);  // T
@@ -2440,6 +2480,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2) && q_num_heads > 0 && kv_num_heads > 0) {
             auto& query_shape = getInputShape(ctx, 0);
             auto& value_shape = getInputShape(ctx, 2);
+            if (query_shape.dim_size() < 3 || value_shape.dim_size() < 3) {
+              // Already validated in Output 0 block above; skip if shapes are invalid.
+              return;
+            }
             TensorShapeProto state_shape;
             *state_shape.add_dim() = query_shape.dim(0);         // B
             state_shape.add_dim()->set_dim_value(kv_num_heads);  // H_kv

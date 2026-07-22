@@ -124,6 +124,13 @@ struct IndexedSubGraph {
     nodes_costs.emplace_back(cost);
   }
 
+  // Read-only access to the pre-computed resource cost for the node at cost_index.
+  // Should call IsAccountingEnabled() first.
+  const ResourceCount& GetNodeCost(size_t cost_index) const {
+    assert(cost_index < nodes_costs.size());
+    return nodes_costs[cost_index];
+  }
+
  private:
   // subgraph meta definition.
   std::unique_ptr<MetaDef> meta_def_;

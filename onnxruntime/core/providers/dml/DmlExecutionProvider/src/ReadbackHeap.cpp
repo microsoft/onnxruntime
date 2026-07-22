@@ -7,6 +7,22 @@
 
 namespace Dml
 {
+    namespace detail
+    {
+        size_t ComputeTotalReadbackSize(gsl::span<const size_t> sizes)
+        {
+            // Batched readback heap sizing must not wrap at the former uint32_t boundary.
+            size_t totalSize = 0;
+            for (auto size : sizes)
+            {
+                ORT_THROW_HR_IF(E_INVALIDARG, size > std::numeric_limits<size_t>::max() - totalSize);
+                totalSize += size;
+            }
+
+            return totalSize;
+        }
+    }
+
     static ComPtr<ID3D12Resource> CreateReadbackHeap(ID3D12Device* device, size_t size)
     {
         ComPtr<ID3D12Resource> readbackHeap;
@@ -103,30 +119,28 @@ namespace Dml
 
     void ReadbackHeap::ReadbackFromGpu(
         gsl::span<void*> dst,
-        gsl::span<const uint32_t > dstSizes,
+        gsl::span<const size_t> dstSizes,
         gsl::span<ID3D12Resource*> src,
         D3D12_RESOURCE_STATES srcState)
     {
         assert(dst.size() == src.size());
         assert(dstSizes.size() == src.size());
+        ORT_THROW_HR_IF(E_INVALIDARG, dst.size() != src.size());
+        ORT_THROW_HR_IF(E_INVALIDARG, dstSizes.size() != src.size());
 
         if (dst.empty())
         {
             return;
         }
 
-        uint32_t totalSize = 0;
-        for (auto size : dstSizes)
-        {
-            totalSize += size;
-        }
-
+        const size_t totalSize = detail::ComputeTotalReadbackSize(dstSizes);
         EnsureReadbackHeap(totalSize);
 
         // Copy from the source resource into the readback heap
-        uint32_t offset = 0;
-        for (uint32_t i = 0; i < dst.size(); ++i)
+        size_t offset = 0;
+        for (size_t i = 0; i < dst.size(); ++i)
         {
+            ORT_THROW_HR_IF(E_INVALIDARG, src[i] == nullptr);
             m_executionContext->CopyBufferRegion(
                 m_readbackHeap.Get(),
                 offset,
@@ -147,15 +161,15 @@ namespace Dml
         // Map the readback heap and copy it into the destination
         void* readbackHeapData = nullptr;
         ORT_THROW_IF_FAILED(m_readbackHeap->Map(0, nullptr, &readbackHeapData));
+        [[maybe_unused]] auto unmapReadbackHeap = gsl::finally([this]() { m_readbackHeap->Unmap(0, nullptr); });
 
-        // Copy from the source resource into the readback heap
+        // Copy from the readback heap into the destination buffers.
         offset = 0;
-        for (uint32_t i = 0; i < dst.size(); ++i)
+        for (size_t i = 0; i < dst.size(); ++i)
         {
+            ORT_THROW_HR_IF(E_INVALIDARG, dst[i] == nullptr);
             memcpy(dst[i], static_cast<uint8_t*>(readbackHeapData) + offset, dstSizes[i]);
             offset += dstSizes[i];
         }
-
-        m_readbackHeap->Unmap(0, nullptr);
     }
 } // namespace Dml

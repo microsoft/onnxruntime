@@ -207,6 +207,7 @@ MlasActivation(
 
 struct MLAS_BACKEND_KERNEL_SELECTOR_CONFIG {
     bool use_kleidiai = true; /**< Flag to use KleidiAI backend kernels if available */
+    size_t kleidiai_conv_igemm_max_work = 0; /**< Optional SME IGEMM route threshold override; 0 uses default */
 };
 
 //
@@ -892,6 +893,10 @@ struct MLAS_CONV_PARAMETERS {
     size_t BatchCount;
     size_t GroupCount;
     size_t InputChannels;
+    /**
+     * Existing Conv layout flag from MlasConvPrepare; for HalfConv this matches
+     * InputOutputChannelsLast.
+     */
     bool ChannelsLast;
     size_t InputShape[3];
     size_t KernelShape[3];
@@ -910,6 +915,12 @@ struct MLAS_CONV_PARAMETERS {
     const void* PackedFilter = nullptr;
     size_t PackedFilterGroupStride = 0;
     bool FilterIsPacked = false;
+    /**
+     * HalfConv-specific: true means caller-provided input and output tensors
+     * are channels-last (NHWC); false means NCHW public tensors with any NHWC
+     * staging handled internally.
+     */
+    bool InputOutputChannelsLast = false;
     union {
         struct {
             CBLAS_TRANSPOSE TransB;
@@ -942,10 +953,25 @@ MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
 
 bool
 MLASCALL
-MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
+MlasConvSupportsDenseChannelsLast2DFloatKernel(
     size_t Dimensions,
     size_t BatchCount,
     size_t GroupCount,
+    const size_t* InputShape,
+    const size_t* KernelShape,
+    const size_t* DilationShape,
+    const size_t* Padding,
+    const size_t* StrideShape,
+    size_t FilterCount,
+    float Beta);
+
+bool
+MLASCALL
+MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    size_t InputChannelsPerGroup,
     const size_t* InputShape,
     const size_t* KernelShape,
     const size_t* DilationShape,
@@ -1919,11 +1945,26 @@ struct MLAS_HALF_GEMM_DATA_PARAMS {
     const MLAS_HALF_GEMM_POSTPROCESSOR* OutputProcessor = nullptr;
     bool AIsfp32 = false;             /**< matrix A is fp32, needs to be casted into fp16*/
     bool BIsfp32 = false;             /**< matrix B is fp32, needs to be casted into fp16*/
+    bool BIsPacked = false;           /**< matrix B is pre-packed by MlasHalfGemmPackB/MlasHalfGemmConvertPackB */
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig = nullptr;
+    /**
+     * Matrix B uses a backend-specific direct-consumption packed layout.
+     * When true, B must be produced by MlasHalfGemmNativePackB, ldb must be 0,
+     * Bias must be nullptr, and OutputProcessor must be nullptr.
+     */
+    bool BIsBackendNativePacked = false;
 };
 
 /**
  * @brief Half precision Batched GEMM:  C = A * B + Bias
- *        Either A or B can be fp32 or fp16
+ *        Either A or B can be fp32 or fp16.
+ *        Backend-native packed B is a constrained direct-consumption layout
+ *        and does not support runtime Bias or OutputProcessor.
+ *
+ * Uses MLAS_THROW_EX(std::runtime_error, ...) for contract violations that
+ * cannot be safely ignored: non-empty work with null DataParams, malformed
+ * backend-native packed-B parameters on the K == 0 path, or backend-native
+ * packed B reaching the generic MLAS kernels when no backend override consumes it.
  *
  * Note:  We only support uniform batching, so shapes and types of the
  *        input must be same across all parameter blocks.
@@ -1969,6 +2010,9 @@ MlasHalfGemmPackBSize(
  * @brief For half precision GEMM, pack the right hand
  *        side matrix B
  *
+ * @pre For non-zero N and K, B and PackedB must be non-null and ldb must be at
+ *      least N.
+ *
  * @param[in]  N        Number of columns
  * @param[in]  K        Number of rows
  * @param[in]  B        Address of matrix B
@@ -1984,6 +2028,106 @@ MlasHalfGemmPackB(
     size_t ldb,
     void* PackedB
     );
+
+/**
+ * @brief For half precision GEMM, returns the size of a backend-native
+ *        direct-consumption packing buffer for right hand side B.
+ *
+ * The returned layout is only valid when MlasHalfGemmBatch consumes
+ * MLAS_HALF_GEMM_DATA_PARAMS with BIsBackendNativePacked set to true, ldb set
+ * to 0, Bias set to nullptr, and OutputProcessor set to nullptr. Returns 0
+ * when no backend-native format is available for the given transpose/shape/config.
+ */
+size_t
+MLASCALL
+MlasHalfGemmNativePackBSize(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    );
+
+/**
+ * @brief For half precision GEMM, pack right hand side B into the
+ *        backend-native direct-consumption format.
+ *
+ * Returns false when the backend-native format is unavailable for the given
+ * transpose/shape/config. The resulting buffer must be passed to
+ * MlasHalfGemmBatch with ldb set to 0, BIsBackendNativePacked set to true,
+ * Bias set to nullptr, and OutputProcessor set to nullptr.
+ */
+bool
+MLASCALL
+MlasHalfGemmNativePackB(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const MLAS_FP16* B,
+    size_t ldb,
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    );
+
+bool
+MLASCALL
+MlasHalfConvPrepare(
+    MLAS_CONV_PARAMETERS* Parameters,
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    size_t InputChannels,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    size_t FilterCount,
+    const MLAS_ACTIVATION* Activation,
+    size_t* WorkingBufferSize,
+    float Beta,
+    bool InputOutputChannelsLast,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
+
+bool
+MLASCALL
+MlasHalfConv(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const MLAS_FP16* Input,
+    const MLAS_FP16* Filter,
+    // When true, Filter must point to a packed weights+bias buffer produced by
+    // MlasHalfConvPackWeightsAndBias and Bias must be nullptr.
+    bool FilterAndBiasArePacked,
+    const MLAS_FP16* Bias,
+    MLAS_FP16* WorkingBuffer,
+    MLAS_FP16* Output,
+    MLAS_THREADPOOL* ThreadPool);
+
+size_t
+MLASCALL
+MlasHalfConvPackWeightsAndBiasSize(
+    size_t FilterCount,
+    size_t InputChannels,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
+
+bool
+MLASCALL
+MlasHalfConvPackWeightsAndBias(
+    size_t FilterCount,
+    size_t InputChannels,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const MLAS_FP16* Filter,
+    // Optional bias to bake into the packed direct-consumption buffer.
+    const MLAS_FP16* Bias,
+    void* PackedWeightsAndBias,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
 /**
  * @brief For half precision GEMM, convert the float matrix B
@@ -2278,6 +2422,63 @@ void
 MLASCALL
 MlasFlashAttention(
     MlasFlashAttentionThreadedArgs* args,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+//
+// Flash Attention for non-quantized (FP32) GroupQueryAttention KV cache.
+//
+// Adapts the online-softmax tiled algorithm to operate on an FP32 present
+// K/V cache laid out as BNSH ([batch, kv_num_heads, seqlen_present, head_size]).
+// Supports GQA head grouping, causal masking, local window attention,
+// additive attention bias, and an optional flash-decoding split over the KV
+// sequence dimension for the single-token decode case.
+//
+struct MlasFlashAttentionGQAArgs {
+    int batch_size;
+    int num_heads;            // number of query heads
+    int kv_num_heads;         // number of key/value heads (num_heads % kv_num_heads == 0)
+    int sequence_length;      // number of new query tokens (S)
+    int total_seqlen;         // total tokens (past + new) for this invocation (T)
+    int head_size;            // per-head size (H)
+    int past_seqlen;          // causal offset (number of cached tokens before the new ones)
+    int local_window_size;    // -1 disables local window masking
+    int seqlen_present_kv;    // sequence dimension of the present K/V buffer
+    int q_block_size;         // query tile size (Br)
+    int kv_block_size;        // key/value tile size (Bc)
+    float scale;              // QK scaling factor
+    int thread_count;         // number of partitions / threads
+    float* buffer;            // per-thread scratch (+ optional flash-decoding partials)
+    size_t buffer_size_per_thread;
+
+    const float* query;       // [batch, num_heads, sequence_length, head_size] BNSH
+    size_t q_batch_stride;    // element stride between consecutive batches in `query`
+                              // (num_heads*S*H for unpacked, (num_heads+2*kv_num_heads)*S*H for packed QKV)
+    const float* k_cache;     // [batch, kv_num_heads, seqlen_present, head_size] FP32
+    const float* v_cache;     // [batch, kv_num_heads, seqlen_present, head_size] FP32
+    float* output;            // [batch, sequence_length, num_heads, head_size] BSNH
+
+    const float* attention_bias;  // [batch|1, num_heads|1, S, T] additive bias, or nullptr
+    int attention_bias_seqlen_stride;
+    bool attention_bias_broadcast_batch;
+    bool attention_bias_broadcast_head;
+
+    // Flash decoding (sequence_length == 1): partition KV across threads.
+    // Set flash_decoding_partials != nullptr to enable; otherwise the standard
+    // per-(batch, head, q_block) partitioning is used.
+    float* flash_decoding_partials;
+    int kv_chunk_count;
+};
+
+/**
+ * @brief FP32 Flash Attention for GroupQueryAttention with an FP32 KV cache.
+ * @param args         Arguments
+ * @param ThreadPool   Thread pool
+ */
+void
+MLASCALL
+MlasFlashAttentionGQA(
+    MlasFlashAttentionGQAArgs* args,
     MLAS_THREADPOOL* ThreadPool
 );
 

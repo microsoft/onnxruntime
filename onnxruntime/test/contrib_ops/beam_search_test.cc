@@ -11,6 +11,7 @@
 #include "test/unittest_util/model_tester.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
+#include "contrib_ops/cpu/transformers/beam_search_parameters.h"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_options.h"
@@ -20,6 +21,33 @@ extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
 namespace test {
+
+TEST(BeamSearchParametersTest, SetSubgraphParametersRejectsOversizedVocabSize) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = 150;
+
+  EXPECT_THROW(parameters.SetSubgraphParameters(128, 1, 1, 1), OnnxRuntimeException);
+}
+
+TEST(BeamSearchParametersTest, SetSubgraphParametersAllowsPaddedVocabSize) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = 64;
+
+  parameters.SetSubgraphParameters(128, 2, 4, 6);
+
+  EXPECT_EQ(parameters.vocab_size, 64);
+  EXPECT_EQ(parameters.num_heads, 2);
+}
+
+TEST(BeamSearchParametersTest, SetSubgraphParametersUsesSubgraphSizeWhenAttributeIsDefault) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = -1;
+
+  parameters.SetSubgraphParameters(128, 2, 4, 6);
+
+  EXPECT_EQ(parameters.vocab_size, 128);
+  EXPECT_EQ(parameters.num_heads, 2);
+}
 
 void RunGptBeamSearchFp32() {
   std::vector<int64_t> input_ids_shape{3, 12};
@@ -412,6 +440,29 @@ TEST(BeamSearchTest, DummyT5WithSequenceInputIds) {
   tester.ConfigEp(DefaultCpuExecutionProvider());
   tester.AddInput("encoder_input_ids", {1, 5}, {16, 17, 1, 0, 8});
   tester.AddOutput("sequences", {1, 3, 10}, {2, 19, 18, 3, 8, 8, 8, 8, 8, 8, 2, 19, 18, 3, 10, 19, 18, 3, 8, 8, 2, 19, 18, 15, 13, 13, 13, 13, 13, 13});
+#ifdef USE_CUDA
+  tester.ConfigEp(DefaultCudaExecutionProvider());
+#endif
+  tester.RunWithConfig();
+}
+
+TEST(BeamSearchTest, DummyWhisperWithSequenceInputIds) {
+  // dummy_whisper_with_sequence_input_ids.onnx model generated using following command:
+  // python onnxruntime/test/testdata/dummy_whisper_model_generator.py
+  //     --output-path dummy_whisper_with_sequence_input_ids.onnx --sequence-as-input
+  // The decoder subgraph leaves input_ids second dim symbolic, so the decoder feeds are built from the
+  // running sequence (use_sequence_as_input_ids_ == true), exercising the multi-token initial feed path.
+  ModelTester tester(CurrentTestName(), ORT_TSTR("testdata/dummy_whisper_with_sequence_input_ids.onnx"));
+  tester.ConfigEp(DefaultCpuExecutionProvider());
+  tester.AddInput("input_features", {1, 8, 5},
+                  {-0.3f, -0.2f, -0.1f, 0.0f, 0.1f, 0.2f, 0.3f, -0.3f, -0.2f, -0.1f,
+                   0.0f, 0.1f, 0.2f, 0.3f, -0.3f, -0.2f, -0.1f, 0.0f, 0.1f, 0.2f,
+                   0.3f, -0.3f, -0.2f, -0.1f, 0.0f, 0.1f, 0.2f, 0.3f, -0.3f, -0.2f,
+                   -0.1f, 0.0f, 0.1f, 0.2f, 0.3f, -0.3f, -0.2f, -0.1f, 0.0f, 0.1f});
+  tester.AddInput("decoder_input_ids", {1, 2}, {2, 5});
+  tester.AddOutput("sequences", {1, 1, 10}, {2, 5, 1, 1, 1, 1, 1, 1, 1, 1});
+  tester.AddOutput<float>("scores", {1, 1}, {-0.05625312775373459f}, false /* sort_output */, 1e-4f /* rel_error */,
+                          1e-4f /* abs_error */);
 #ifdef USE_CUDA
   tester.ConfigEp(DefaultCudaExecutionProvider());
 #endif

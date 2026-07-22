@@ -13,6 +13,7 @@
 #include "core/graph/model_editor_api_types.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/onnxruntime_experimental_c_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
@@ -96,6 +97,13 @@ class ModelCompilationOptions {
   /// <param name="state">The user's state.</param>
   void SetOutputModelGetInitializerLocationFunc(OrtGetInitializerLocationFunc get_initializer_location_func,
                                                 void* state);
+
+  /// <summary>
+  /// Sets a user-provided function to handle EPContext binary data writes.
+  /// </summary>
+  /// <param name="write_func">The user-provided OrtWriteNamedBufferFunc callback used to write EPContext data.</param>
+  /// <param name="state">The user's state.</param>
+  void SetEpContextDataWriteFunc(OrtWriteNamedBufferFunc write_func, void* state);
 
   /// <summary>
   /// Sets information relate to EP context binary file.

@@ -41,6 +41,8 @@ namespace webgpu {
 
 void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, &config]() {
+    max_num_pending_dispatches_ = config.max_num_pending_dispatches;
+
     if (device_ == nullptr) {
       // Create wgpu::Adapter
       wgpu::RequestAdapterOptions req_adapter_options = {};
@@ -57,16 +59,33 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       req_adapter_options.nextInChain = &adapter_toggles_desc;
 #endif
 
-      wgpu::Adapter adapter;
+      // Capture adapter request result without throwing inside the Dawn callback.
+      // Throwing C++ exceptions inside Dawn callbacks leaves Dawn's internal mutexes locked,
+      // which causes a self-deadlock when the WGPUInstance is later released (e.g., during
+      // OrtEnv teardown via EventManager::ShutDown()).
+      struct RequestAdapterResult {
+        wgpu::RequestAdapterStatus status = wgpu::RequestAdapterStatus::Error;
+        wgpu::Adapter adapter;
+        std::string message;
+      };
+      RequestAdapterResult adapter_result;
       ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(instance_.RequestAdapter(
                                                                      &req_adapter_options,
                                                                      wgpu::CallbackMode::WaitAnyOnly,
-                                                                     [](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter, wgpu::StringView message, wgpu::Adapter* ptr) {
-                                                                       ORT_ENFORCE(status == wgpu::RequestAdapterStatus::Success, "Failed to get a WebGPU adapter: ", std::string_view{message});
-                                                                       *ptr = std::move(adapter);
+                                                                     [](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter, wgpu::StringView message,
+                                                                        RequestAdapterResult* result) noexcept {
+                                                                       result->status = status;
+                                                                       if (status == wgpu::RequestAdapterStatus::Success) {
+                                                                         result->adapter = std::move(adapter);
+                                                                       } else {
+                                                                         result->message = std::string{message};
+                                                                       }
                                                                      },
-                                                                     &adapter),
+                                                                     &adapter_result),
                                                                  UINT64_MAX));
+      ORT_ENFORCE(adapter_result.status == wgpu::RequestAdapterStatus::Success,
+                  "Failed to get a WebGPU adapter: ", adapter_result.message);
+      wgpu::Adapter adapter = std::move(adapter_result.adapter);
       ORT_ENFORCE(adapter != nullptr, "Failed to get a WebGPU adapter.");
 
       // Create wgpu::Device
@@ -94,27 +113,50 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       device_desc.requiredLimits = &required_limits;
 
       // TODO: revise temporary error handling
-      device_desc.SetUncapturedErrorCallback([](const wgpu::Device& /*device*/, wgpu::ErrorType type, wgpu::StringView message) {
-        if (logging::LoggingManager::HasDefaultLogger()) {
-          LOGS_DEFAULT(ERROR) << "WebGPU device error(" << int(type) << "): " << std::string_view{message};
-        }
-      });
+      device_desc.SetUncapturedErrorCallback(
+          // Note: Don't throw from a Dawn callback.
+          [](const wgpu::Device& /*device*/, wgpu::ErrorType type,
+             wgpu::StringView message) noexcept {
+            if (logging::LoggingManager::HasDefaultLogger()) {
+              LOGS_DEFAULT(ERROR) << "WebGPU device error(" << int(type) << "): " << std::string_view{message};
+            }
+          });
       // TODO: revise temporary device lost handling
-      device_desc.SetDeviceLostCallback(wgpu::CallbackMode::AllowSpontaneous, [](const wgpu::Device& /*device*/, wgpu::DeviceLostReason reason, wgpu::StringView message) {
-        if (logging::LoggingManager::HasDefaultLogger()) {
-          LOGS_DEFAULT(INFO) << "WebGPU device lost (" << int(reason) << "): " << std::string_view{message};
-        }
-      });
+      device_desc.SetDeviceLostCallback(
+          wgpu::CallbackMode::AllowSpontaneous,
+          // Note: Don't throw from a Dawn callback.
+          [](const wgpu::Device& /*device*/, wgpu::DeviceLostReason reason, wgpu::StringView message) noexcept {
+            if (logging::LoggingManager::HasDefaultLogger()) {
+              LOGS_DEFAULT(INFO) << "WebGPU device lost (" << int(reason) << "): " << std::string_view{message};
+            }
+          });
 
+      struct RequestDeviceResult {
+        wgpu::RequestDeviceStatus status = wgpu::RequestDeviceStatus::Error;
+        wgpu::Device device;
+        std::string message;
+      };
+      RequestDeviceResult device_result;
       ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(adapter.RequestDevice(
                                                                      &device_desc,
                                                                      wgpu::CallbackMode::WaitAnyOnly,
-                                                                     [](wgpu::RequestDeviceStatus status, wgpu::Device device, wgpu::StringView message, wgpu::Device* ptr) {
-                                                                       ORT_ENFORCE(status == wgpu::RequestDeviceStatus::Success, "Failed to get a WebGPU device: ", std::string_view{message});
-                                                                       *ptr = std::move(device);
+                                                                     // Note: Don't throw from a Dawn callback.
+                                                                     [](wgpu::RequestDeviceStatus status,
+                                                                        wgpu::Device device,
+                                                                        wgpu::StringView message,
+                                                                        RequestDeviceResult* result) noexcept {
+                                                                       result->status = status;
+                                                                       if (status == wgpu::RequestDeviceStatus::Success) {
+                                                                         result->device = std::move(device);
+                                                                       } else {
+                                                                         result->message = std::string{message};
+                                                                       }
                                                                      },
-                                                                     &device_),
+                                                                     &device_result),
                                                                  UINT64_MAX));
+      ORT_ENFORCE(device_result.status == wgpu::RequestDeviceStatus::Success,
+                  "Failed to get a WebGPU device: ", device_result.message);
+      device_ = std::move(device_result.device);
       ORT_ENFORCE(device_ != nullptr, "Failed to get a WebGPU device.");
     }
 
@@ -148,12 +190,14 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     buffer_mgr_ = BufferManagerFactory::Create(*this,
                                                config.buffer_cache_config.storage.mode,
                                                config.buffer_cache_config.uniform.mode,
-                                               config.buffer_cache_config.query_resolve.mode);
+                                               config.buffer_cache_config.query_resolve.mode,
+                                               config.buffer_cache_config.default_entry.mode);
 
     // create initializer buffer manager.
     initializer_buffer_mgr_ = BufferManagerFactory::Create(*this,
                                                            BufferCacheMode::LazyRelease,
                                                            BufferCacheMode::LazyRelease,
+                                                           BufferCacheMode::Disabled,
                                                            BufferCacheMode::Disabled);
 
     // create program manager
@@ -174,6 +218,16 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       query_type_ = TimestampQueryType::None;
     }
   });
+
+  if (max_num_pending_dispatches_ != config.max_num_pending_dispatches) {
+    LOGS_DEFAULT(WARNING)
+        << "WebGPU context is already initialized with "
+        << "maxNumPendingDispatches="
+        << max_num_pending_dispatches_
+        << ". Requested value "
+        << config.max_num_pending_dispatches
+        << " will be ignored.";
+  }
 }
 
 Status WebGpuContext::Wait(wgpu::Future f) {
@@ -531,14 +585,29 @@ std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
   // Enable / disable other toggles that may affect the performance.
   // Other toggles that may be useful: "dump_shaders", "disable_symbol_renaming"
   constexpr const char* toggles[] = {
-      "skip_validation",  // only use "skip_validation" when ValidationMode is set to "Disabled"
+      "skip_validation",
       "disable_robustness",
       "d3d_disable_ieee_strictness",
   };
+#ifndef NDEBUG
+  // validation_mode_explicitly_set_ only changes release behavior; mark it used in debug builds
+  // to avoid -Wunused-private-field on toolchains that treat warnings as errors.
+  ORT_UNUSED_PARAMETER(validation_mode_explicitly_set_);
   return std::vector<const char*>(ValidationMode() >= ValidationMode::WGPUOnly
                                       ? std::begin(toggles) + 1
                                       : std::begin(toggles),
                                   std::end(toggles));
+#else
+  // In release/relwithdebinfo builds, default to skip_validation for performance,
+  // but honor explicit validationMode overrides.
+  if (!validation_mode_explicitly_set_) {
+    return std::vector<const char*>(std::begin(toggles), std::end(toggles));
+  }
+  return std::vector<const char*>(ValidationMode() >= ValidationMode::WGPUOnly
+                                      ? std::begin(toggles) + 1
+                                      : std::begin(toggles),
+                                  std::end(toggles));
+#endif
 }
 
 std::vector<const char*> WebGpuContext::GetDisabledDeviceToggles() const {
@@ -612,6 +681,11 @@ void WebGpuContext::StartProfiling() {
   }
 
   is_profiling_ = true;
+  // profiling_start_time_ is supplied separately via SetProfilingStartTime, which is
+  // driven by WebGpuProfiler::StartProfiling and carries the ORT profiler's CPU time
+  // base for both session-level and run-level profiling.
+  gpu_timestamp_offset_ = 0;
+  profiling_first_submit_cpu_offset_us_ = -1;
 
   const uint32_t query_count = max_num_pending_dispatches_ * 2;
 
@@ -635,17 +709,41 @@ void WebGpuContext::StartProfiling() {
 
 void WebGpuContext::CollectProfilingData(profiling::Events& events) {
   if (!pending_queries_.empty()) {
+    // Shift GPU timestamps (which start from 0 at the first submit) onto the ORT
+    // profiler's CPU timeline by adding the CPU elapsed time from profiling_start_time_
+    // to that first submit. This keeps GPU events aligned with ORT CPU events.
+    int64_t cpu_offset_us = profiling_first_submit_cpu_offset_us_ > 0
+                                ? profiling_first_submit_cpu_offset_us_
+                                : 0;
+
     for (const auto& pending_query : pending_queries_) {
       const auto& pending_kernels = pending_query.kernels;
       const auto& query_read_buffer = pending_query.query_buffer;
 
-      ORT_ENFORCE(Wait(query_read_buffer.MapAsync(wgpu::MapMode::Read,
-                                                  0,
-                                                  static_cast<size_t>(query_read_buffer.GetSize()),
-                                                  wgpu::CallbackMode::WaitAnyOnly,
-                                                  [](wgpu::MapAsyncStatus status, wgpu::StringView message) {
-                                                    ORT_ENFORCE(status == wgpu::MapAsyncStatus::Success, "Failed to download data from buffer: ", std::string_view{message});
-                                                  })) == Status::OK());
+      struct MapAsyncResult {
+        wgpu::MapAsyncStatus status{};
+        std::string message{};
+      } map_async_result;
+
+      ORT_THROW_IF_ERROR(Wait(query_read_buffer.MapAsync(
+          wgpu::MapMode::Read,
+          0,
+          static_cast<size_t>(query_read_buffer.GetSize()),
+          wgpu::CallbackMode::WaitAnyOnly,
+          // Note: Don't throw from a Dawn callback.
+          [](wgpu::MapAsyncStatus status, wgpu::StringView message, MapAsyncResult* result) noexcept {
+            result->status = status;
+            if (auto message_sv = static_cast<std::string_view>(message);
+                !message_sv.empty()) {
+              result->message = std::string{message_sv};
+            }
+          },
+          &map_async_result)));
+
+      ORT_ENFORCE(map_async_result.status == wgpu::MapAsyncStatus::Success,
+                  "Failed to download data from buffer. wgpu::MapAsyncStatus value: ",
+                  static_cast<int>(map_async_result.status), ", message: ", map_async_result.message);
+
       auto mapped_data = static_cast<const uint64_t*>(query_read_buffer.GetConstMappedRange());
 
       for (size_t i = 0; i < pending_kernels.size(); i++) {
@@ -663,7 +761,6 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
 
         if (gpu_timestamp_offset_ == 0) {
           gpu_timestamp_offset_ = mapped_data[i * 2];
-          // TODO: apply CPU-GPU time offset so that timestamps are aligned
         }
         uint64_t start_time = mapped_data[i * 2] - gpu_timestamp_offset_;
         uint64_t end_time = mapped_data[i * 2 + 1] - gpu_timestamp_offset_;
@@ -677,7 +774,7 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
                                      -1,
                                      -1,
                                      pending_kernel_info.name,
-                                     static_cast<int64_t>(std::round(start_time / 1000.0)),
+                                     static_cast<int64_t>(std::round(start_time / 1000.0)) + cpu_offset_us,
                                      static_cast<int64_t>(std::round((end_time - start_time) / 1000.0)),
                                      event_args);
         events.emplace_back(std::move(event));
@@ -720,12 +817,15 @@ Status WebGpuContext::PopErrorScope() {
   Status status{};
   ORT_RETURN_IF_ERROR(Wait(device_.PopErrorScope(
       wgpu::CallbackMode::WaitAnyOnly,
-      [](wgpu::PopErrorScopeStatus pop_status, wgpu::ErrorType error_type, char const* message, Status* status) {
-        ORT_ENFORCE(pop_status == wgpu::PopErrorScopeStatus::Success, "Instance dropped.");
-        if (error_type == wgpu::ErrorType::NoError) {
-          return;
+      // Note: Don't throw from a Dawn callback.
+      [](wgpu::PopErrorScopeStatus pop_status, wgpu::ErrorType error_type, wgpu::StringView message,
+         Status* status) noexcept {
+        if (pop_status != wgpu::PopErrorScopeStatus::Success) {
+          *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to pop WebGPU error scope. status=",
+                                    static_cast<uint32_t>(pop_status));
+        } else if (error_type != wgpu::ErrorType::NoError) {
+          *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU validation failed. ", std::string_view(message));
         }
-        *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU validation failed. ", message);
       },
       &status)));
   return status;
@@ -742,6 +842,12 @@ void WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
     ORT_ENFORCE(num_pending_dispatches_ == pending_kernels_.size(),
                 "Number of pending dispatches (", num_pending_dispatches_,
                 ") does not match pending kernels size (", pending_kernels_.size(), ")");
+
+    // Capture the CPU elapsed time from the ORT profiler's start to this first submit.
+    // Used in CollectProfilingData to offset GPU timestamps onto the ORT CPU timeline.
+    if (profiling_first_submit_cpu_offset_us_ < 0) {
+      profiling_first_submit_cpu_offset_us_ = TimeDiffMicroSeconds(profiling_start_time_);
+    }
 
     uint32_t query_count = num_pending_dispatches_ * 2;
     current_command_encoder_.ResolveQuerySet(
@@ -1006,6 +1112,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance,
                                                                     device,
                                                                     config.validation_mode,
+                                                                    config.validation_mode_explicitly_set,
                                                                     config.preserve_device,
                                                                     config.max_storage_buffer_binding_size));
     it = contexts_->emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
@@ -1016,8 +1123,18 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
   }
   it->second.ref_count++;
 
-  // perform initialization
-  it->second.context->Initialize(config);
+  // perform initialization; on failure, undo the ref_count increment and remove the entry
+  // if this was the first (and only) reference, so we don't leave a zombie context in the map
+  // that would later deadlock during Cleanup().
+  ORT_TRY {
+    it->second.context->Initialize(config);
+  }
+  ORT_CATCH(...) {
+    if (--it->second.ref_count == 0) {
+      contexts_->erase(it);
+    }
+    ORT_RETHROW;
+  }
 
   return *it->second.context;
 }

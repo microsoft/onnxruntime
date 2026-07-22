@@ -15,9 +15,11 @@
 
 #include "onnx/defs/parser.h"
 #include "onnx/defs/printer.h"
+#include "onnx/defs/schema.h"
 
 #include "core/common/span_utils.h"
 #include "core/framework/data_types.h"
+#include "core/framework/int4.h"
 #include "core/framework/ort_value.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
@@ -94,6 +96,7 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "test/util/include/temp_dir.h"
 #include "test/util/include/test_utils.h"
 #ifdef ENABLE_TRAINING
@@ -1642,6 +1645,185 @@ TEST_F(GraphTransformationTests, ConstantFoldingConfiguredLimitBlocksLargeConsta
                                         pre_graph_checker, post_graph_checker));
 }
 
+// Verify that ConstantOfShape output size is estimated directly from the input shape
+// initializer (and not just from shape inference) so that excessive constant-folded
+// allocations are blocked before kernel execution. The 'value' attribute uses int64
+// elements (8 bytes) so that 100M * 8 = 800 MB exceeds the configured 256 MB cap.
+TEST_F(GraphTransformationTests, ConstantFoldingConstantOfShapeUsesInputInitializerForSizeCheck) {
+  constexpr int64_t kLargeDim = 100 * 1024 * 1024;  // 100M elements
+
+  auto build_model = [&](ModelTestBuilder& builder) {
+    auto* shape_data = builder.MakeInitializer<int64_t>({1}, {kLargeDim});
+    auto* output_arg = builder.MakeOutput();
+
+    auto& node = builder.AddNode("ConstantOfShape", {shape_data}, {output_arg});
+    ONNX_NAMESPACE::AttributeProto value_attr;
+    value_attr.set_name("value");
+    value_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+    auto* tensor = value_attr.mutable_t();
+    tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    tensor->add_dims(1);
+    tensor->add_int64_data(0);
+    node.AddAttributeProto(std::move(value_attr));
+  };
+
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["ConstantOfShape"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    auto op_to_count = CountOpsInGraph(graph);
+    // 800 MB output exceeds the 256 MB cap, so the node must not be folded
+    // (and crucially, the 800 MB allocation must not have happened during folding).
+    TEST_RETURN_IF_NOT(op_to_count["ConstantOfShape"] == 1);
+    return Status::OK();
+  };
+
+  std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  ConfigOptions config_options;
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(
+      kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes, "268435456"));  // 256 MB
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_model, 14, *logger_,
+                                        std::make_unique<ConstantFolding>(*e.get(), false, config_options),
+                                        TransformerLevel::Level1, 1,
+                                        pre_graph_checker, post_graph_checker));
+}
+
+// Companion to the test above that isolates the new input-initializer-based size estimator
+// from the pre-existing shape-inference-based path. After Graph::Resolve() has populated
+// the ConstantOfShape output shape from the constant shape initializer, we explicitly clear
+// the output NodeArg shape in pre_graph_checker. This simulates the documented attack where
+// shape inference fails to propagate the output shape, so the generic shape-based estimator
+// would return -1 and the only thing that can still block folding is the new
+// EstimateConstantOfShapeOutputSizeInBytes path that reads the shape input initializer directly.
+TEST_F(GraphTransformationTests, ConstantFoldingConstantOfShapeBlockedWhenOutputShapeMissing) {
+  constexpr int64_t kLargeDim = 100 * 1024 * 1024;  // 100M elements
+
+  auto build_model = [&](ModelTestBuilder& builder) {
+    auto* shape_data = builder.MakeInitializer<int64_t>({1}, {kLargeDim});
+    auto* output_arg = builder.MakeOutput();
+
+    auto& node = builder.AddNode("ConstantOfShape", {shape_data}, {output_arg});
+    // int64 'value' so derived size is 100M * 8 = 800 MB, exceeding the 256 MB cap below.
+    ONNX_NAMESPACE::AttributeProto value_attr;
+    value_attr.set_name("value");
+    value_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+    auto* tensor = value_attr.mutable_t();
+    tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    tensor->add_dims(1);
+    tensor->add_int64_data(0);
+    node.AddAttributeProto(std::move(value_attr));
+  };
+
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["ConstantOfShape"] == 1);
+    // Strip the shape that ONNX shape inference propagated onto the ConstantOfShape output.
+    // This forces the size-cap check to rely on the new initializer-based estimator.
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "ConstantOfShape") {
+        for (auto* output_def : node.MutableOutputDefs()) {
+          if (output_def != nullptr && output_def->Exists()) {
+            output_def->ClearShape();
+          }
+        }
+      }
+    }
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    auto op_to_count = CountOpsInGraph(graph);
+    // The new initializer-based estimator must still derive 800 MB and refuse to fold,
+    // even though the output NodeArg has no shape for the generic estimator to use.
+    TEST_RETURN_IF_NOT(op_to_count["ConstantOfShape"] == 1);
+    return Status::OK();
+  };
+
+  std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  ConfigOptions config_options;
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(
+      kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes, "268435456"));  // 256 MB
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_model, 14, *logger_,
+                                        std::make_unique<ConstantFolding>(*e.get(), false, config_options),
+                                        TransformerLevel::Level1, 1,
+                                        pre_graph_checker, post_graph_checker));
+}
+
+// The constant-folding output-size estimate must be packing-aware for sub-byte types.
+// A QuantizeLinear node that produces a packed int4 output stores 2 elements per byte, so its
+// real storage size is ceil(num_elements / 2) bytes. The pre-execution size estimate previously
+// used num_elements * 1 byte, over-counting by ~2x and needlessly blocking folding of sub-byte
+// outputs that actually fit within the configured limit.
+TEST_F(GraphTransformationTests, ConstantFoldingSubByteOutputSizeIsPacked) {
+  // 20000 int4 elements -> 10000 packed bytes of real storage (the old estimate was 20000 bytes).
+  constexpr int64_t kNumElements = 20000;
+
+  auto build_model = [&](ModelTestBuilder& builder) {
+    auto* input_data = builder.MakeInitializer<float>({kNumElements}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+    builder.AddQuantizeLinearNode<Int4x2>(input_data, 1.0f, Int4x2(0, 0), output_arg);
+  };
+
+  // Case 1: limit (15000 bytes) sits between the packed size (10000) and the old over-estimate
+  // (20000). With the packing-aware estimate the node SHOULD be folded. Under the old estimate
+  // it would have been (incorrectly) skipped.
+  {
+    auto pre_graph_checker = [](Graph& graph) -> Status {
+      auto op_to_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_to_count["QuantizeLinear"] == 1);
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [](Graph& graph) -> Status {
+      auto op_to_count = CountOpsInGraph(graph);
+      // Real packed size (10000 bytes) is within the 15000 byte limit, so folding proceeds.
+      TEST_RETURN_IF_NOT(op_to_count["QuantizeLinear"] == 0);
+      return Status::OK();
+    };
+
+    std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    ConfigOptions config_options;
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(
+        kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes, "15000"));
+
+    ASSERT_STATUS_OK(TestGraphTransformer(build_model, 21, *logger_,
+                                          std::make_unique<ConstantFolding>(*e.get(), false, config_options),
+                                          TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
+  }
+
+  // Case 2: limit (5000 bytes) is below even the packed size (10000), so folding is blocked.
+  {
+    auto pre_graph_checker = [](Graph& graph) -> Status {
+      auto op_to_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_to_count["QuantizeLinear"] == 1);
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [](Graph& graph) -> Status {
+      auto op_to_count = CountOpsInGraph(graph);
+      // Real packed size (10000 bytes) exceeds the 5000 byte limit, so the node is not folded.
+      TEST_RETURN_IF_NOT(op_to_count["QuantizeLinear"] == 1);
+      return Status::OK();
+    };
+
+    std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    ConfigOptions config_options;
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(
+        kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes, "5000"));
+
+    ASSERT_STATUS_OK(TestGraphTransformer(build_model, 21, *logger_,
+                                          std::make_unique<ConstantFolding>(*e.get(), false, config_options),
+                                          TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
+  }
+}
+
 // Test that small constant folding still works with the size limit.
 TEST_F(GraphTransformationTests, ConstantFoldingSmallOutputAllowed) {
   // Build a model with a small Expand: scalar -> [4, 4] = 16 * 4 = 64 bytes.
@@ -2101,6 +2283,141 @@ TEST_F(GraphTransformationTests, FusePadWithAvgPoolWithPadNoInclude) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_to_count["Pad"], 1);
   ASSERT_EQ(op_to_count["AveragePool"], 1);
+}
+
+// Verify PadFusion does not fuse and does not crash when the Pad node's `pads` initializer carries
+// fewer than four elements (which violates the 2*rank requirement of the ONNX Pad spec). The data
+// input uses an unspecified rank so ONNX shape inference cannot pre-validate the pads length.
+TEST_F(GraphTransformationTests, PadFusionRejectsShortPadsInitializer) {
+  auto run_case = [&](const std::vector<int64_t>& pads_data) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* data_arg = builder.MakeInput<float>(std::nullopt);
+      auto* weight_arg = builder.MakeInitializer<float>({1, 1, 1, 1}, {1.0f});
+      auto* pads_arg = builder.MakeInitializer<int64_t>(
+          {static_cast<int64_t>(pads_data.size())}, pads_data);
+      auto* pad_out = builder.MakeIntermediate();
+      auto* conv_out = builder.MakeOutput();
+
+      builder.AddNode("Pad", {data_arg, pads_arg}, {pad_out});
+      builder.AddNode("Conv", {pad_out, weight_arg}, {conv_out});
+    };
+
+    auto pre_graph_checker = [](Graph&) { return Status::OK(); };
+    auto post_graph_checker = [](Graph& graph) {
+      // Fusion must not have run; both nodes remain.
+      std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+      ORT_RETURN_IF_NOT(op_to_count["Pad"] == 1, "Pad should not be fused away");
+      ORT_RETURN_IF_NOT(op_to_count["Conv"] == 1, "Conv should remain");
+      return Status::OK();
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<PadFusion>()));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(rule_transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+  };
+
+  // Cover empty, 1, 2, and 3 element pads vectors as well as an odd-length vector.
+  run_case({});
+  run_case({0});
+  run_case({0, 0});
+  run_case({0, 0, 0});
+  run_case({0, 0, 0, 0, 0});
+}
+
+// Verify PadFusion bails out when the Pad node's pads contain a negative value.
+TEST_F(GraphTransformationTests, PadFusionRejectsNegativePads) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* data_arg = builder.MakeInput<float>(std::nullopt);
+    auto* weight_arg = builder.MakeInitializer<float>({1, 1, 1, 1}, {1.0f});
+    auto* pads_arg = builder.MakeInitializer<int64_t>({8}, {0, 0, 1, 1, 0, 0, -1, 1});
+    auto* pad_out = builder.MakeIntermediate();
+    auto* conv_out = builder.MakeOutput();
+
+    builder.AddNode("Pad", {data_arg, pads_arg}, {pad_out});
+    builder.AddNode("Conv", {pad_out, weight_arg}, {conv_out});
+  };
+
+  auto pre_graph_checker = [](Graph&) { return Status::OK(); };
+  auto post_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ORT_RETURN_IF_NOT(op_to_count["Pad"] == 1, "Pad with negative pads should not be fused");
+    ORT_RETURN_IF_NOT(op_to_count["Conv"] == 1, "Conv should remain");
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<PadFusion>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(rule_transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
+// Verify PadFusion bails out when the child Conv already has an explicit `pads` attribute whose
+// length does not match the spatial rank implied by the Pad node.
+TEST_F(GraphTransformationTests, PadFusionRejectsMismatchedChildPadsRank) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    // Pad pads length 8 implies spatial rank 2 (expected child pads length 4),
+    // but Conv carries a `pads` attribute of length 6, simulating a rank mismatch
+    // that could arise from a malformed model. Data uses unspecified rank so shape
+    // inference does not reject the model before the transformer runs.
+    auto* data_arg = builder.MakeInput<float>(std::nullopt);
+    auto* weight_arg = builder.MakeInitializer<float>({1, 1, 1, 1}, {1.0f});
+    auto* pads_arg = builder.MakeInitializer<int64_t>({8}, {0, 0, 1, 1, 0, 0, 1, 1});
+    auto* pad_out = builder.MakeIntermediate();
+    auto* conv_out = builder.MakeOutput();
+
+    builder.AddNode("Pad", {data_arg, pads_arg}, {pad_out});
+    auto& conv = builder.AddNode("Conv", {pad_out, weight_arg}, {conv_out});
+    conv.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0, 0, 0});
+  };
+
+  auto pre_graph_checker = [](Graph&) { return Status::OK(); };
+  auto post_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ORT_RETURN_IF_NOT(op_to_count["Pad"] == 1, "Pad should not be fused into a rank-mismatched Conv");
+    ORT_RETURN_IF_NOT(op_to_count["Conv"] == 1, "Conv should remain");
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<PadFusion>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(rule_transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
+// Verify PadFusion does not crash for the opset-10 attribute form of Pad when the `pads` attribute
+// has fewer than four elements.
+TEST_F(GraphTransformationTests, PadFusionRejectsShortPadsAttributeOpset10) {
+  auto run_case = [&](const std::vector<int64_t>& pads_data) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* data_arg = builder.MakeInput<float>(std::nullopt);
+      auto* weight_arg = builder.MakeInitializer<float>({1, 1, 1, 1}, {1.0f});
+      auto* pad_out = builder.MakeIntermediate();
+      auto* conv_out = builder.MakeOutput();
+
+      auto& pad_node = builder.AddNode("Pad", {data_arg}, {pad_out});
+      pad_node.AddAttribute("pads", pads_data);
+      pad_node.AddAttribute("mode", "constant");
+      builder.AddNode("Conv", {pad_out, weight_arg}, {conv_out});
+    };
+
+    auto pre_graph_checker = [](Graph&) { return Status::OK(); };
+    auto post_graph_checker = [](Graph& graph) {
+      std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+      ORT_RETURN_IF_NOT(op_to_count["Pad"] == 1, "Pad should not be fused away");
+      ORT_RETURN_IF_NOT(op_to_count["Conv"] == 1, "Conv should remain");
+      return Status::OK();
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<PadFusion>()));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 10, *logger_, std::move(rule_transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+  };
+
+  run_case({});
+  run_case({0, 0});
+  run_case({0, 0, 0});
 }
 
 TEST_F(GraphTransformationTests, FuseMatmulBNWithInBetweenNodes) {
@@ -6353,6 +6670,26 @@ TEST_F(GraphTransformationTests, AttentionFusionDistilBertTest) {
   EXPECT_EQ(op_to_count["Shape"], 0);
 }
 
+// These tests verify that attention fusions fire at the CURRENT max ONNX opset.
+// When the ONNX opset advances (e.g., via submodule update), nodes will report a new
+// SinceVersion(). If the optimizer's version lists are not updated, the fusion will
+// fail to match and these tests will fail.
+//
+// To fix: update the EdgeEndToMatch version lists in the indicated optimizer file
+// to include the new opset version for each affected op type.
+//
+// NOTE: GPT-2 and DistilBert attention models use attribute-based Unsqueeze/Squeeze
+// in their mask subgraphs (opset <= 12 only). Those patterns cannot be converted to
+// current opset without rewriting the mask matching logic. The MobileCLIP test
+// (programmatically built) covers the current-opset attention fusion paths.
+
+static int GetCurrentOnnxOpset() {
+  const auto& map = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().Map();
+  auto it = map.find(ONNX_NAMESPACE::ONNX_DOMAIN);
+  EXPECT_TRUE(it != map.end()) << "ONNX domain not found in OpSchemaRegistry";
+  return it != map.end() ? it->second.second : 0;
+}
+
 enum class MobileClipProjectionType {
   MatMulAdd,
   GemmWithReshapes,
@@ -6639,6 +6976,27 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaTest) {
                     std::make_unique<AttentionFusion>());
 }
 
+TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaCurrentOpsetTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::MatMulAdd);
+  };
+
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
+  TransformerTester(build_test_case,
+                    CheckMobileClipAttentionFusedSession,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    GetCurrentOnnxOpset(),
+                    1e-3,
+                    0.0,
+                    std::make_unique<AttentionFusion>(),
+                    /*add_session_options*/ {},
+                    /*disabled_optimizers*/ {},
+                    /*ep*/ nullptr,
+                    ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false});
+}
+
 TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmTest) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::GemmWithReshapes);
@@ -6729,6 +7087,273 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionRewriteFa
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(),
                                         TransformerLevel::Level2, 1, nullptr,
                                         CheckMobileClipAttentionUnfusedMatMulGraph));
+}
+
+// Current-opset regression tests for fusion optimizers.
+// These construct minimal graphs at the current ONNX opset and verify the optimizer fires.
+// If ONNX bumps an op's since_version, the optimizer's version list will miss it and the test fails.
+
+TEST_F(GraphTransformationTests, GeluFusionCurrentOpsetTest) {
+  // Pattern: x -> Div(sqrt2) -> Erf -> Add(1) -> Mul(x) -> Mul(0.5) -> output
+  int current_opset = GetCurrentOnnxOpset();
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2, 3, 64}});
+    auto* sqrt2 = builder.MakeInitializer<float>({}, {1.4142135f});
+    auto* one = builder.MakeInitializer<float>({}, {1.0f});
+    auto* half = builder.MakeInitializer<float>({}, {0.5f});
+
+    auto* div_out = builder.MakeIntermediate();
+    auto* erf_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* mul1_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Div", {input, sqrt2}, {div_out});
+    builder.AddNode("Erf", {div_out}, {erf_out});
+    builder.AddNode("Add", {erf_out, one}, {add_out});
+    builder.AddNode("Mul", {input, add_out}, {mul1_out});
+    builder.AddNode("Mul", {mul1_out, half}, {output});
+  };
+
+  auto post_graph_checker = [current_opset](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    if (op_to_count["Gelu"] == 1 || op_to_count["com.microsoft.Gelu"] == 1) {
+      TEST_RETURN_IF_NOT(op_to_count["Div"] == 0);
+      TEST_RETURN_IF_NOT(op_to_count["Erf"] == 0);
+      TEST_RETURN_IF_NOT(op_to_count["Add"] == 0);
+      TEST_RETURN_IF_NOT(op_to_count["Mul"] == 0);
+      return Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Gelu fusion failed at opset ", current_opset,
+                           ". Remaining ops: Div=", op_to_count["Div"],
+                           " Erf=", op_to_count["Erf"],
+                           " Add=", op_to_count["Add"],
+                           " Mul=", op_to_count["Mul"],
+                           ". Either update version lists in "
+                           "onnxruntime/core/optimizer/gelu_fusion.cc"
+                           " or skip this opset in the test if the fusion is not expected to apply.");
+  };
+
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
+                                        std::make_unique<GeluFusion>(),
+                                        TransformerLevel::Level1, 1, nullptr, post_graph_checker,
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
+}
+
+TEST_F(GraphTransformationTests, FastGeluFusionCurrentOpsetTest) {
+  // FastGelu pattern: x*x*0.044715 + x -> mul(sqrt(2/pi)) -> tanh -> add(1) -> mul(0.5) -> mul(x)
+  int current_opset = GetCurrentOnnxOpset();
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2, 3, 64}});
+    auto* coeff = builder.MakeInitializer<float>({}, {0.044715f});
+    auto* sqrt2pi = builder.MakeInitializer<float>({}, {0.7978845f});  // sqrt(2/pi)
+    auto* one = builder.MakeInitializer<float>({}, {1.0f});
+    auto* half = builder.MakeInitializer<float>({}, {0.5f});
+    auto* three = builder.MakeInitializer<float>({}, {3.0f});
+
+    auto* pow_out = builder.MakeIntermediate();
+    auto* mul1_out = builder.MakeIntermediate();
+    auto* add1_out = builder.MakeIntermediate();
+    auto* mul2_out = builder.MakeIntermediate();
+    auto* tanh_out = builder.MakeIntermediate();
+    auto* add2_out = builder.MakeIntermediate();
+    auto* mul_half_out = builder.MakeIntermediate();
+    auto* mul_final_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Pow", {input, three}, {pow_out});
+    builder.AddNode("Mul", {pow_out, coeff}, {mul1_out});
+    builder.AddNode("Add", {input, mul1_out}, {add1_out});
+    builder.AddNode("Mul", {add1_out, sqrt2pi}, {mul2_out});
+    builder.AddNode("Tanh", {mul2_out}, {tanh_out});
+    builder.AddNode("Add", {tanh_out, one}, {add2_out});
+    builder.AddNode("Mul", {input, half}, {mul_half_out});
+    builder.AddNode("Mul", {mul_half_out, add2_out}, {mul_final_out});
+    builder.AddNode("Identity", {mul_final_out}, {output});
+  };
+
+  auto post_graph_checker = [current_opset](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    if (op_to_count["com.microsoft.FastGelu"] == 1) {
+      TEST_RETURN_IF_NOT(op_to_count["Tanh"] == 0);
+      TEST_RETURN_IF_NOT(op_to_count["Pow"] == 0);
+      return Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "FastGelu fusion failed at opset ", current_opset,
+                           ". Remaining ops: Tanh=", op_to_count["Tanh"],
+                           " Pow=", op_to_count["Pow"],
+                           " Mul=", op_to_count["Mul"],
+                           " Add=", op_to_count["Add"],
+                           ". Either update version lists in "
+                           "onnxruntime/core/optimizer/fast_gelu_fusion.cc"
+                           " or skip this opset in the test if the fusion is not expected to apply.");
+  };
+
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
+                                        std::make_unique<FastGeluFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker,
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
+}
+
+TEST_F(GraphTransformationTests, BiasGeluFusionCurrentOpsetTest) {
+  // BiasGelu pattern: Add(input, bias) -> Gelu -> output (requires opset >= 20 for ONNX Gelu)
+  int current_opset = GetCurrentOnnxOpset();
+  if (current_opset < 20) {
+    GTEST_SKIP() << "BiasGelu with ONNX Gelu requires opset >= 20";
+  }
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2, 3, 64}});
+    auto* bias = builder.MakeInitializer<float>({64}, -0.5f, 0.5f);
+    auto* add_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Add", {input, bias}, {add_out});
+    builder.AddNode("Gelu", {add_out}, {output});
+  };
+
+  auto post_graph_checker = [current_opset](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    if (op_to_count["com.microsoft.BiasGelu"] == 1) {
+      TEST_RETURN_IF_NOT(op_to_count["Add"] == 0);
+      TEST_RETURN_IF_NOT(op_to_count["Gelu"] == 0);
+      return Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "BiasGelu fusion failed at opset ", current_opset,
+                           ". Remaining ops: Add=", op_to_count["Add"],
+                           " Gelu=", op_to_count["Gelu"],
+                           ". Either update version lists in "
+                           "onnxruntime/core/optimizer/bias_gelu_fusion.cc"
+                           " or skip this opset in the test if the fusion is not expected to apply.");
+  };
+
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
+                                        std::make_unique<BiasGeluFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker,
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
+}
+
+TEST_F(GraphTransformationTests, MatMulAddFusionCurrentOpsetTest) {
+  // MatMul + Add -> Gemm fusion
+  int current_opset = GetCurrentOnnxOpset();
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2, 64}});
+    auto* weights = builder.MakeInitializer<float>({64, 32}, -1.0f, 1.0f);
+    auto* bias = builder.MakeInitializer<float>({32}, -0.5f, 0.5f);
+    auto* matmul_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("MatMul", {input, weights}, {matmul_out});
+    builder.AddNode("Add", {matmul_out, bias}, {output});
+  };
+
+  auto post_graph_checker = [current_opset](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    if (op_to_count["Gemm"] == 1) {
+      TEST_RETURN_IF_NOT(op_to_count["MatMul"] == 0);
+      TEST_RETURN_IF_NOT(op_to_count["Add"] == 0);
+      return Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "MatMulAdd fusion failed at opset ", current_opset,
+                           ". Remaining ops: MatMul=", op_to_count["MatMul"],
+                           " Add=", op_to_count["Add"],
+                           ". Either update version lists in "
+                           "onnxruntime/core/optimizer/matmul_add_fusion.cc"
+                           " or skip this opset in the test if the fusion is not expected to apply.");
+  };
+
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
+                                        std::make_unique<MatMulAddFusion>(),
+                                        TransformerLevel::Level1, 1, nullptr, post_graph_checker,
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
+}
+
+TEST_F(GraphTransformationTests, DivMulFusionCurrentOpsetTest) {
+  // 1/x * y -> y/x fusion
+  int current_opset = GetCurrentOnnxOpset();
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_x = builder.MakeInput<float>({{2, 64}});
+    auto* input_y = builder.MakeInput<float>({{2, 64}});
+    auto* one = builder.MakeInitializer<float>({}, {1.0f});
+    auto* div_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Div", {one, input_x}, {div_out});
+    builder.AddNode("Mul", {div_out, input_y}, {output});
+  };
+
+  auto post_graph_checker = [current_opset](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    if (op_to_count["Div"] == 1 && op_to_count["Mul"] == 0) {
+      return Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "DivMul fusion failed at opset ", current_opset,
+                           ". Remaining ops: Div=", op_to_count["Div"],
+                           " Mul=", op_to_count["Mul"],
+                           ". Either update version lists in "
+                           "onnxruntime/core/optimizer/div_mul_fusion.cc"
+                           " or skip this opset in the test if the fusion is not expected to apply.");
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("DivMulFusionCurrentOpset");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<DivMulFusion>()));
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
+                                        std::move(rule_transformer),
+                                        TransformerLevel::Level1, 1, nullptr, post_graph_checker,
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
+}
+
+TEST_F(GraphTransformationTests, QuickGeluFusionCurrentOpsetTest) {
+  // x * Sigmoid(alpha * x) -> QuickGelu(x, alpha) fusion
+  int current_opset = GetCurrentOnnxOpset();
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2, 3, 64}});
+    auto* alpha = builder.MakeInitializer<float>({}, {1.702f});
+    auto* mul1_out = builder.MakeIntermediate();
+    auto* sigmoid_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Mul", {input, alpha}, {mul1_out});
+    builder.AddNode("Sigmoid", {mul1_out}, {sigmoid_out});
+    builder.AddNode("Mul", {input, sigmoid_out}, {output});
+  };
+
+  auto post_graph_checker = [current_opset](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    if (op_to_count["com.microsoft.QuickGelu"] == 1) {
+      TEST_RETURN_IF_NOT(op_to_count["Mul"] == 0);
+      TEST_RETURN_IF_NOT(op_to_count["Sigmoid"] == 0);
+      return Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "QuickGelu fusion failed at opset ", current_opset,
+                           ". Remaining ops: Mul=", op_to_count["Mul"],
+                           " Sigmoid=", op_to_count["Sigmoid"],
+                           ". Either update version lists in "
+                           "onnxruntime/core/optimizer/quick_gelu_fusion.cc"
+                           " or skip this opset in the test if the fusion is not expected to apply.");
+  };
+
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
+                                        std::make_unique<QuickGeluFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker,
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, GeluFusionTest) {
@@ -7975,8 +8600,14 @@ TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
     return Status::OK();
   };
 
-  const std::vector<int> opsets{11, 12, 13, 14, 15, 18};
-  bool shape_test_for_opset15 = false;
+  // Include the current max opset to ensure the fusion stays up-to-date.
+  // If this test fails at the current opset, update version lists in
+  // onnxruntime/core/optimizer/reshape_fusion.cc.
+  std::vector<int> opsets{11, 12, 13, 14, 15, 18, 19, 21, 23, 24, 25};
+  int current_opset = GetCurrentOnnxOpset();
+  if (std::find(opsets.begin(), opsets.end(), current_opset) == opsets.end()) {
+    opsets.push_back(current_opset);
+  }
 
   for (auto& opset : opsets) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -8001,14 +8632,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
 
       builder.AddNode("Add", {input_arg0, input_arg1}, {add_out});
       if (opset_version >= 15) {
-        if (shape_test_for_opset15) {
-          auto& shape_1 = builder.AddNode("Shape", {add_out}, {shape_out});
-          shape_1.AddAttribute("start", (int64_t)1);
-          shape_1.AddAttribute("end", (int64_t)2);
-        } else {
-          builder.AddNode("Shape", {add_out}, {shape_out}).AddAttribute("start", (int64_t)0);
-          shape_test_for_opset15 = true;
-        }
+        builder.AddNode("Shape", {add_out}, {shape_out}).AddAttribute("start", (int64_t)0);
       } else {
         builder.AddNode("Shape", {add_out}, {shape_out});
       }
@@ -8027,17 +8651,217 @@ TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
       builder.AddNode("Reshape", {add_out, concattraining1_out}, {out});
     };
 
+    // Test that the fusion fires for every opset.
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ReshapeFusion>();
-    if (opset >= 15 && shape_test_for_opset15) {
-      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                            pre_graph_checker, pre_graph_checker));
-    } else {
-      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                            pre_graph_checker, post_graph_checker));
+    // The opset list includes the current ONNX opset, which may still be under development
+    // (e.g. opset 27 in ONNX 1.22). Allow the unreleased opset so the model loads on strict legs.
+    // Remove once opset 27 is released. Tracked by #28966.
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker,
+                                          ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
+
+    // For opset >= 15, also test that partial Shape (start=1, end=2) prevents fusion.
+    if (opset >= 15) {
+      auto build_partial_shape_case = [&](ModelTestBuilder& builder) {
+        auto* input_arg0 = builder.MakeInput<float>({{batch_size, seq_lenth, hidden_size}});
+        auto* input_arg1 = builder.MakeInput<float>({{hidden_size}});
+        auto* scalar_int_0 = builder.MakeInitializer<int64_t>({}, {0});
+        auto* scalar_int_1 = builder.MakeInitializer<int64_t>({}, {1});
+        auto* single_value_1d_int_0 = builder.MakeInitializer<int64_t>({1}, {0});
+        auto* single_value_1d_int_16 = builder.MakeInitializer<int64_t>({1}, {16});
+        auto* single_value_1d_int_64 = builder.MakeInitializer<int64_t>({1}, {64});
+        auto* add_out = builder.MakeIntermediate();
+        auto* shape_out = builder.MakeIntermediate();
+        auto* gather_out_0 = builder.MakeIntermediate();
+        auto* gather_out_1 = builder.MakeIntermediate();
+        auto* unsqueeze_out_0 = builder.MakeIntermediate();
+        auto* unsqueeze_out_1 = builder.MakeIntermediate();
+        auto* concattraining1_out = builder.MakeIntermediate();
+        auto* concattraining1_length = builder.MakeIntermediate();
+        auto* out = builder.MakeOutput();
+
+        builder.AddNode("Add", {input_arg0, input_arg1}, {add_out});
+        auto& shape_1 = builder.AddNode("Shape", {add_out}, {shape_out});
+        shape_1.AddAttribute("start", (int64_t)1);
+        shape_1.AddAttribute("end", (int64_t)2);
+        builder.AddNode("Gather", {shape_out, scalar_int_0}, {gather_out_0});
+        builder.AddNode("Gather", {shape_out, scalar_int_1}, {gather_out_1});
+        builder.AddNode("Unsqueeze", {gather_out_0, single_value_1d_int_0}, {unsqueeze_out_0});
+        builder.AddNode("Unsqueeze", {gather_out_1, single_value_1d_int_0}, {unsqueeze_out_1});
+        builder.AddNode("ConcatTraining", {unsqueeze_out_0, unsqueeze_out_1, single_value_1d_int_16, single_value_1d_int_64},
+                        {concattraining1_out, concattraining1_length}, "com.microsoft")
+            .AddAttribute("axis", static_cast<int64_t>(0));
+        builder.AddNode("Reshape", {add_out, concattraining1_out}, {out});
+      };
+
+      std::unique_ptr<GraphTransformer> transformer_no_fuse = std::make_unique<ReshapeFusion>();
+      // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+      // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
+      ASSERT_STATUS_OK(TestGraphTransformer(build_partial_shape_case, opset, *logger_, std::move(transformer_no_fuse),
+                                            TransformerLevel::Level1, 1, pre_graph_checker, pre_graph_checker,
+                                            ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
     }
   }
 }
 #endif
+
+// Test reshape fusion when Shape feeds from a tensor with the same symbolic dim_param names
+// as the reshape root (e.g., position_ids reshaped using Shape from input_ids in Qwen).
+TEST_F(GraphTransformationTests, ReshapeFusionDimParamMatch) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    // input_ids: [batch_size, sequence_length] — symbolic dims
+    auto* input_ids = builder.MakeSymbolicInput<float>({std::string("batch_size"), std::string("sequence_length")});
+    // position_ids: [batch_size, sequence_length] — same symbolic dims
+    auto* position_ids = builder.MakeSymbolicInput<float>({std::string("batch_size"), std::string("sequence_length")});
+
+    auto* shape_out = builder.MakeIntermediate();
+    auto* gather_out = builder.MakeIntermediate();
+    auto* unsqueeze_out = builder.MakeIntermediate();
+    auto* concat_out = builder.MakeIntermediate();
+    auto* out = builder.MakeOutput();
+
+    auto* scalar_int_0 = builder.MakeInitializer<int64_t>({}, {0});
+    auto* unsqueeze_axes = builder.MakeInitializer<int64_t>({1}, {0});
+    auto* const_neg1 = builder.MakeInitializer<int64_t>({1}, {-1});
+
+    // Shape(input_ids) -> Gather(0) -> Unsqueeze -> Concat([unsqueeze, -1]) -> Reshape(position_ids)
+    builder.AddNode("Shape", {input_ids}, {shape_out});
+    builder.AddNode("Gather", {shape_out, scalar_int_0}, {gather_out});
+    builder.AddNode("Unsqueeze", {gather_out, unsqueeze_axes}, {unsqueeze_out});
+    builder.AddNode("Concat", {unsqueeze_out, const_neg1}, {concat_out}).AddAttribute("axis", static_cast<int64_t>(0));
+    builder.AddNode("Reshape", {position_ids, concat_out}, {out});
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Shape"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Concat"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Reshape"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Shape"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Concat"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Reshape"] == 1);
+    return Status::OK();
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<ReshapeFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
+// Test reshape fusion when Shape feeds from a different tensor than the reshape root,
+// but the gathered dimension matches by symbolic dim_param (moondream2 vision encoder pattern:
+// Shape from pre-projection tensor, Reshape on post-projection output).
+TEST_F(GraphTransformationTests, ReshapeFusionCrossTensorDimMatch) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    // pre_proj: [batch_size, seq_len, 768] — pre-projection (layernorm output)
+    auto* pre_proj = builder.MakeSymbolicInput<float>(
+        {std::string("batch_size"), std::string("seq_len"), int64_t(768)});
+    // post_proj: [batch_size, seq_len, 2304] — post-projection (qkv linear output, different last dim)
+    auto* post_proj = builder.MakeSymbolicInput<float>(
+        {std::string("batch_size"), std::string("seq_len"), int64_t(2304)});
+
+    auto* shape_out = builder.MakeIntermediate();
+    auto* gather_out = builder.MakeIntermediate();
+    auto* unsqueeze_out = builder.MakeIntermediate();
+    auto* concat_out = builder.MakeIntermediate();
+    auto* out = builder.MakeOutput();
+
+    auto* scalar_int_0 = builder.MakeInitializer<int64_t>({}, {0});
+    auto* unsqueeze_axes = builder.MakeInitializer<int64_t>({1}, {0});
+    auto* const_neg1 = builder.MakeInitializer<int64_t>({1}, {-1});
+    auto* const_3 = builder.MakeInitializer<int64_t>({1}, {3});
+    auto* const_256 = builder.MakeInitializer<int64_t>({1}, {256});
+
+    // Shape(pre_proj) -> Gather(0) -> Unsqueeze -> Concat([unsqueeze, -1, 3, 256]) -> Reshape(post_proj)
+    builder.AddNode("Shape", {pre_proj}, {shape_out});
+    builder.AddNode("Gather", {shape_out, scalar_int_0}, {gather_out});
+    builder.AddNode("Unsqueeze", {gather_out, unsqueeze_axes}, {unsqueeze_out});
+    builder.AddNode("Concat", {unsqueeze_out, const_neg1, const_3, const_256}, {concat_out})
+        .AddAttribute("axis", static_cast<int64_t>(0));
+    builder.AddNode("Reshape", {post_proj, concat_out}, {out});
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Shape"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Concat"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Reshape"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Shape"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Concat"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Reshape"] == 1);
+    return Status::OK();
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<ReshapeFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
+// Test reshape fusion with GlobalAveragePool passthrough pattern (MobileNetV2):
+// Shape is taken from the pre-pool input, Reshape operates on the pool output,
+// and only batch dim (gather index 0) is extracted.
+TEST_F(GraphTransformationTests, ReshapeFusionGlobalAveragePoolPassthrough) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{1, 1280, 7, 7}});
+    auto* pool_out = builder.MakeIntermediate();
+    auto* shape_out = builder.MakeIntermediate();
+    auto* gather_out = builder.MakeIntermediate();
+    auto* unsqueeze_out = builder.MakeIntermediate();
+    auto* concat_out = builder.MakeIntermediate();
+    auto* out = builder.MakeOutput();
+
+    auto* scalar_int_0 = builder.MakeInitializer<int64_t>({}, {0});
+    auto* unsqueeze_axes = builder.MakeInitializer<int64_t>({1}, {0});
+    auto* const_neg1 = builder.MakeInitializer<int64_t>({1}, {-1});
+
+    // input -> GlobalAveragePool -> pool_out
+    builder.AddNode("GlobalAveragePool", {input}, {pool_out});
+    // Shape(input) -> Gather(0) -> Unsqueeze -> Concat([unsqueeze, -1]) -> Reshape(pool_out)
+    builder.AddNode("Shape", {input}, {shape_out});
+    builder.AddNode("Gather", {shape_out, scalar_int_0}, {gather_out});
+    builder.AddNode("Unsqueeze", {gather_out, unsqueeze_axes}, {unsqueeze_out});
+    builder.AddNode("Concat", {unsqueeze_out, const_neg1}, {concat_out}).AddAttribute("axis", static_cast<int64_t>(0));
+    builder.AddNode("Reshape", {pool_out, concat_out}, {out});
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["GlobalAveragePool"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Shape"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Concat"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Reshape"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["GlobalAveragePool"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Shape"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Unsqueeze"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Concat"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Reshape"] == 1);
+    return Status::OK();
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<ReshapeFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
 
 TEST_F(GraphTransformationTests, DynamicQuantizeMatMulTest) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/dynamic_quantize_matmul.onnx";
@@ -10145,6 +10969,51 @@ TEST_F(GraphTransformationTests, GatherToSliceFusion) {
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
                                           TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
+
+  // OpSet-27, Tind is int64. Range gained an opset-27 schema in ONNX 1.22; ensure the fusion still matches it.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* data_arg = builder.MakeInput<float>({{8, 8, 8, 8}});
+      auto* range_input_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(0)});
+      auto* range_input_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(8)});
+      auto* range_input_3 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
+      auto* range_output = builder.MakeIntermediate();
+      auto* gather_output = builder.MakeOutput();
+
+      builder.AddNode("Range", {range_input_1, range_input_2, range_input_3}, {range_output});
+      builder.AddNode("Gather", {data_arg, range_output}, {gather_output})
+          .AddAttribute("axis", static_cast<int64_t>(2));
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      auto op_count_map = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_count_map["Range"] == 0);
+      TEST_RETURN_IF_NOT(op_count_map["Gather"] == 0);
+      TEST_RETURN_IF_NOT(op_count_map["Slice"] == 1);
+      for (auto& node : graph.Nodes()) {
+        if (node.OpType() == "Slice") {
+          const NodeArg& input_arg = *(node.InputDefs()[3]);
+          const ONNX_NAMESPACE::TensorProto* tensor_proto =
+              graph_utils::GetConstantInitializer(graph, input_arg.Name());
+          TEST_RETURN_IF_NOT(tensor_proto != nullptr);
+          Initializer init_const{graph, *tensor_proto, graph.ModelPath()};
+          TEST_RETURN_IF_NOT(tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64);
+          TEST_RETURN_IF_NOT(2 == static_cast<int32_t>(*(init_const.data<int64_t>())));
+        }
+      }
+      return Status::OK();
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSliceFusion>();
+    // Opset 27 is still under development in ONNX 1.22, so the default released-opset-only model load
+    // would throw on strict (ALLOW_RELEASED_ONNX_OPSET_ONLY!=0) legs. Allow the unreleased opset here so
+    // this sub-block exercises the opset-27 Range schema on every CI leg, not just the relaxed ones.
+    const ModelOptions allow_unreleased_opset{kAllowReleasedOpsetsOnly,
+                                              /*strict_shape_type_inference*/ false};
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 27, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker,
+                                          allow_unreleased_opset));
+  }
 }
 
 #if !defined(DISABLE_CONTRIB_OPS)
@@ -10153,26 +11022,32 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
   struct TestOptions {
     bool bias_is_first_add_input{false};
     bool add_produces_graph_output{false};
+    bool use_cuda_ep{false};
+    bool use_gpt_oss_router_shape{false};
   };
 
   auto run_test = [&logger = *logger_](const TestOptions& opts) {
     SCOPED_TRACE(MakeString("bias_is_first_add_input:", opts.bias_is_first_add_input,
-                            ", add_produces_graph_output:", opts.add_produces_graph_output));
+                            ", add_produces_graph_output:", opts.add_produces_graph_output,
+                            ", use_cuda_ep:", opts.use_cuda_ep,
+                            ", use_gpt_oss_router_shape:", opts.use_gpt_oss_router_shape));
 
     auto build_test_case = [&](ModelTestBuilder& builder) {
       constexpr size_t qbits = 4;
       constexpr size_t block_size = 32;
 
-      constexpr int64_t M = 2, K = 4, N = 8;
+      const int64_t M = opts.use_gpt_oss_router_shape ? 1 : 2;
+      const int64_t K = opts.use_gpt_oss_router_shape ? 2880 : 4;
+      const int64_t N = opts.use_gpt_oss_router_shape ? 32 : 8;
 
       int q_rows, q_cols;
       MlasBlockwiseQuantizedShape<float, qbits>(block_size, /* columnwise */ true,
-                                                K, N,
+                                                static_cast<int>(K), static_cast<int>(N),
                                                 q_rows, q_cols);
 
       size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
       MlasBlockwiseQuantizedBufferSizes<qbits>(block_size, /* columnwise */ true,
-                                               K, N,
+                                               static_cast<int>(K), static_cast<int>(N),
                                                q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
       auto* A = builder.MakeInput<float>(std::vector{M, K}, "A");
@@ -10181,8 +11056,10 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
                                                       uint8_t{0}, uint8_t{255});
       auto* B_scales = builder.MakeInitializer<float>({static_cast<int64_t>(q_scale_size)},
                                                       1.0f, 2.0f);
-      auto* B_zero_points = builder.MakeInitializer<uint8_t>({static_cast<int64_t>(q_zp_size_in_bytes)},
-                                                             uint8_t{0}, uint8_t{255});
+      NodeArg* B_zero_points = opts.use_gpt_oss_router_shape
+                                   ? builder.MakeEmptyInput()
+                                   : builder.MakeInitializer<uint8_t>({static_cast<int64_t>(q_zp_size_in_bytes)},
+                                                                      uint8_t{0}, uint8_t{255});
 
       auto* matmul_output = builder.MakeIntermediate();
 
@@ -10194,6 +11071,9 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
       matmul.AddAttribute("K", K);
       matmul.AddAttribute("block_size", static_cast<int64_t>(block_size));
       matmul.AddAttribute("bits", static_cast<int64_t>(qbits));
+      if (opts.use_cuda_ep) {
+        matmul.SetExecutionProviderType(kCudaExecutionProvider);
+      }
 
       auto* Bias = builder.MakeInput<float>(std::vector{N}, "Bias");
 
@@ -10201,15 +11081,21 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
 
       auto* add_output = opts.add_produces_graph_output ? graph_output : builder.MakeIntermediate();
 
-      builder.AddNode("Add",
-                      {opts.bias_is_first_add_input ? Bias : matmul_output,
-                       opts.bias_is_first_add_input ? matmul_output : Bias},
-                      {add_output});
+      auto& add = builder.AddNode("Add",
+                                  {opts.bias_is_first_add_input ? Bias : matmul_output,
+                                   opts.bias_is_first_add_input ? matmul_output : Bias},
+                                  {add_output});
+      if (opts.use_cuda_ep) {
+        add.SetExecutionProviderType(kCudaExecutionProvider);
+      }
 
       if (!opts.add_produces_graph_output) {
-        builder.AddNode("Identity",
-                        {add_output},
-                        {graph_output});
+        auto& identity = builder.AddNode("Identity",
+                                         {add_output},
+                                         {graph_output});
+        if (opts.use_cuda_ep) {
+          identity.SetExecutionProviderType(kCudaExecutionProvider);
+        }
       }
     };
 
@@ -10234,6 +11120,14 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
       TestOptions opts{};
       opts.bias_is_first_add_input = bias_is_first_add_input;
       opts.add_produces_graph_output = add_produces_graph_output;
+      run_test(opts);
+
+      // CUDA now fuses bias generically for any shape (the kernel adds the bias with a
+      // separate kernel when the fused GEMV fast path does not apply).
+      opts.use_cuda_ep = true;
+      run_test(opts);
+
+      opts.use_gpt_oss_router_shape = true;
       run_test(opts);
     }
   }

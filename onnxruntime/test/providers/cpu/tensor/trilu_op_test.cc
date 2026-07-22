@@ -62,6 +62,23 @@ TEST(TriluOpTest, two_by_two_long_lower) {
   test.Run();
 }
 
+TEST(TriluOpTest, two_by_two_int32_upper) {
+  OpTester test("Trilu", 14, kOnnxDomain);
+  test.AddInput<int32_t>("X", {2, 2}, {4, 7, 2, 6});
+  test.AddInput<int64_t>("k", {1}, {1});
+  test.AddOutput<int32_t>("Y", {2, 2}, {0, 7, 0, 0});
+  test.Run();
+}
+
+TEST(TriluOpTest, two_by_two_int32_lower) {
+  OpTester test("Trilu", 14, kOnnxDomain);
+  int64_t up = 0;
+  test.AddAttribute("upper", up);
+  test.AddInput<int32_t>("X", {2, 2}, {4, 7, 2, 6});
+  test.AddOutput<int32_t>("Y", {2, 2}, {4, 0, 2, 6});
+  test.Run();
+}
+
 TEST(TriluOpTest, two_by_two_bool_upper) {
   OpTester test("Trilu", 14, kOnnxDomain);
   int64_t up = 1;

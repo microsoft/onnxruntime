@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "activation_op_test.h"
 #include <limits>
 #include "core/providers/cpu/activation/activations.h"
@@ -624,6 +626,66 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel4D) {
   test(false, 3, 1, 1, 1);
 }
 
+// Edge case: PRelu with +inf and -inf inputs should not produce NaN
+TEST_F(ActivationOpTest, PRelu_InfiniteInputs) {
+  float pos_inf = std::numeric_limits<float>::infinity();
+  float neg_inf = -std::numeric_limits<float>::infinity();
+
+  OpTester test("PRelu");
+  test.AddInput<float>("X", {6}, {pos_inf, neg_inf, pos_inf, neg_inf, 5e30f, -2.5f});
+  test.AddInput<float>("slope", {6}, {0.25f, 0.5f, 0.0f, 0.25f, 0.25f, 0.25f});
+  // +inf >= 0: return +inf
+  // -inf < 0: return -inf * 0.5 = -inf
+  // +inf >= 0: return +inf
+  // -inf < 0: return -inf * 0.25 = -inf
+  // 5e30 >= 0: return 5e30
+  // -2.5 < 0: return -2.5 * 0.25 = -0.625
+  test.AddOutput<float>("Y", {6}, {pos_inf, neg_inf, pos_inf, neg_inf, 5e30f, -0.625f});
+  test.Run();
+}
+
+// Edge case: PRelu with scalar slope and infinite input
+TEST_F(ActivationOpTest, PRelu_InfiniteInputs_ScalarSlope) {
+  float pos_inf = std::numeric_limits<float>::infinity();
+  float neg_inf = -std::numeric_limits<float>::infinity();
+
+  OpTester test("PRelu");
+  test.AddInput<float>("X", {4}, {pos_inf, neg_inf, 1.0f, -1.0f});
+  test.AddInput<float>("slope", {1}, {0.5f});
+  // +inf >= 0: return +inf
+  // -inf < 0: return -inf * 0.5 = -inf
+  // 1.0 >= 0: return 1.0
+  // -1.0 < 0: return -1.0 * 0.5 = -0.5
+  test.AddOutput<float>("Y", {4}, {pos_inf, neg_inf, 1.0f, -0.5f});
+  test.Run();
+}
+
+// Edge case: PRelu with NaN input propagates NaN
+TEST_F(ActivationOpTest, PRelu_NaNPropagation) {
+  float nan_val = std::numeric_limits<float>::quiet_NaN();
+
+  OpTester test("PRelu");
+  test.AddInput<float>("X", {3}, {nan_val, nan_val, 1.0f});
+  test.AddInput<float>("slope", {3}, {0.5f, 0.5f, 0.5f});
+  // NaN propagation: NaN in either branch should remain NaN
+  test.AddOutput<float>("Y", {3}, {nan_val, nan_val, 1.0f});
+  test.Run();
+}
+
+// Edge case: -inf * 0 = NaN per IEEE 754 (indeterminate form).
+// PRelu spec says y = slope * x for x < 0, so -inf with slope=0 is 0 * -inf = NaN.
+TEST_F(ActivationOpTest, PRelu_NegInf_ZeroSlope) {
+  float neg_inf = -std::numeric_limits<float>::infinity();
+  float nan_val = std::numeric_limits<float>::quiet_NaN();
+
+  OpTester test("PRelu");
+  test.AddInput<float>("X", {3}, {neg_inf, neg_inf, 1.0f});
+  test.AddInput<float>("slope", {3}, {0.0f, 0.5f, 0.0f});
+  // -inf * 0 = NaN (IEEE 754); -inf * 0.5 = -inf; 1.0 >= 0 → 1.0
+  test.AddOutput<float>("Y", {3}, {nan_val, neg_inf, 1.0f});
+  test.Run();
+}
+
 TEST_F(ActivationOpTest, Softplus) {
   TestActivationOp<float>("Softplus",
                           input_values,
@@ -634,6 +696,37 @@ TEST_F(ActivationOpTest, Softplus) {
                               return log1pf(expf(x));
                           });
 }
+
+TEST_F(ActivationOpTest, Softplus_Opset22) {
+  TestActivationOp<float>("Softplus", {{-1.0f, 0.0f, 1.0f, -5.0f, 5.0f, -100.0f, 100.0f}}, [](float x) {
+                            if (x > 0)
+                              return x + log1pf(expf(-x));
+                            else
+                              return log1pf(expf(x)); }, {}, {}, /*is_tensorrt_supported=*/true, /*opset_version=*/22);
+}
+
+#if defined(USE_CUDA)
+TEST_F(ActivationOpTest, Softplus_bfloat16_Opset22) {
+  if (!HasCudaEnvironment(530)) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+
+  OpTester test("Softplus", 22);
+  std::vector<float> X = {-1.0f, 0.0f, 1.0f, -5.0f, 5.0f, -100.0f, 100.0f};
+  std::vector<float> Y;
+  for (float x : X) {
+    Y.push_back(x > 0 ? x + log1pf(expf(-x)) : log1pf(expf(x)));
+  }
+  std::vector<int64_t> dims{static_cast<int64_t>(X.size())};
+
+  test.AddInput<BFloat16>("X", dims, FloatsToBFloat16s(X));
+  test.AddOutput<BFloat16>("Y", dims, FloatsToBFloat16s(Y));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  // USE_CUDA
 
 TEST_F(ActivationOpNoInfTest, Softsign) {
   if constexpr (!SessionOptions::DEFAULT_USE_PER_SESSION_THREADS) {
@@ -675,6 +768,41 @@ TEST_F(ActivationOpNoInfTest, Softsign) {
       },
       {}, {}, false);  // Disable TensorRT because result mismatches
 }
+
+TEST_F(ActivationOpNoInfTest, Softsign_Opset22) {
+  if constexpr (!SessionOptions::DEFAULT_USE_PER_SESSION_THREADS) {
+    GTEST_SKIP() << "Skipping the test";
+  }
+
+  TestActivationOp<float>(
+      "Softsign",
+      {{-1.0f, 0.0f, 1.0f, -5.0f, 5.0f, -100.0f, 100.0f}},
+      [](float x) { return x / (1 + std::abs(x)); },
+      {}, {}, /*is_tensorrt_supported=*/false, /*opset_version=*/22);
+}
+
+#if defined(USE_CUDA)
+TEST_F(ActivationOpNoInfTest, Softsign_bfloat16_Opset22) {
+  if (!HasCudaEnvironment(530)) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+
+  OpTester test("Softsign", 22);
+  std::vector<float> X = {-1.0f, 0.0f, 1.0f, -5.0f, 5.0f, -100.0f, 100.0f};
+  std::vector<float> Y;
+  for (float x : X) {
+    Y.push_back(x / (1 + std::abs(x)));
+  }
+  std::vector<int64_t> dims{static_cast<int64_t>(X.size())};
+
+  test.AddInput<BFloat16>("X", dims, FloatsToBFloat16s(X));
+  test.AddOutput<BFloat16>("Y", dims, FloatsToBFloat16s(Y));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  // USE_CUDA
 
 #if defined(ENABLE_TRAINING_OPS)
 TEST(ReluGradInferenceTest, Basic) {

@@ -30,7 +30,7 @@ Status MatMulSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
   MatMulReadFnSource(shader, a, b, &batch_dims, /*transA = */ false, /*transB = */ false);
   MatMulWriteFnSourceForMatMul(shader, output, bias, apply_activation, /*is_channels_last = */ false);
   // generate the main function
-  ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, elements_per_thread_, &batch_dims, is_vec4_));
+  ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, elements_per_thread_, &batch_dims, is_vec4_, a_vec4_, b_is_fp16_));
   return Status::OK();
 }
 
@@ -52,21 +52,31 @@ Status ApplyMatMulIntel(ComputeContext& context,
   ORT_THROW_IF_ERROR(helper.Compute(a_shape, b_shape));
   int64_t batchA = a_shape.SizeToDimension(a_shape.NumDimensions() - 2);
   int64_t batchB = b_shape.SizeToDimension(b_shape.NumDimensions() - 2);
-
   TensorShape output_shape = helper.OutputShape();
 
   // When B is a matrix (batch is 1), we fold batchA into the M dimension for better
   // performance (e.g., [2,3,5] → [1,6,5]).
-  if (batchA != 1 && batchB == 1) {
-    // dimensions of A: [1,`batchA`, M, K]
+  // On Xe-LPG/3LPG, folding a batched matmul into a single large M loses Z-dispatch
+  // parallelism. Only fold when each per-batch M leaves a large fraction of invalid
+  // threads in its trailing workgroup (m_mod_32 ∈ [1, 24] = 25%–97% wasted), so the
+  // fold actually claws that waste back. Otherwise the Z-dispatch path wins.
+  const int64_t M = output_shape[output_shape.NumDimensions() - 2];
+  const auto& arch = context.AdapterInfo().architecture;
+  const bool is_xe_lpg_or_xe_3lpg = arch == gpu_arch::kXeLpg ||
+                                    arch == gpu_arch::kXe3Lpg;
+  // 32 = kSubgroupLogicalWorkGroupSizeY * ElementsPerThreadY(M > 32) on Xe-LPG/3LPG
+  const int64_t m_mod_32 = M % 32;
+  const bool xe_lpg_or_xe_3lpg_fold_ok = (m_mod_32 > 0 && m_mod_32 <= 24);
+  if (batchA != 1 && batchB == 1 && (!is_xe_lpg_or_xe_3lpg || xe_lpg_or_xe_3lpg_fold_ok)) {
+    // dimensions of A: [`batchA` * M, K]
     int64_t batchAndM = a_shape.SizeToDimension(a_shape.NumDimensions() - 1);
-    TensorShapeVector dims_a = {1, batchAndM, helper.K()};
-    // dimensions of B: [1,K,N]
-    TensorShapeVector dims_b = {1, helper.K(), helper.N()};
+    TensorShapeVector dims_a = {batchAndM, helper.K()};
+    // dimensions of B: [K, N]
+    TensorShapeVector dims_b = {helper.K(), helper.N()};
 
     a_shape = TensorShape(dims_a);
     b_shape = TensorShape(dims_b);
-    output_shape = {1, batchAndM, helper.N()};
+    output_shape = {batchAndM, helper.N()};
   }
 
   // helpful dimension variables
@@ -91,7 +101,13 @@ Status ApplyMatMulIntel(ComputeContext& context,
 
   // Always access A with 1-component when using subgroup.
   const bool is_vec4 = dim_b_outer % 4 == 0;
-  InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, intel::ElementsPerThreadY(is_vec4, dim_a_outer), 1});
+  // vec4 A loads and double-buffering of the B tile are only enabled on Xe-3LPG.
+  const bool is_xe_3lpg = arch == gpu_arch::kXe3Lpg;
+  // Load A from global memory as vec4 when K is a multiple of 4; otherwise fall back to scalar load.
+  const bool a_vec4 = is_xe_3lpg && dim_inner % 4 == 0;
+  // Double-buffering of the B tile (held in workgroup memory) is only enabled for float16 B inputs.
+  const bool b_is_fp16 = is_xe_3lpg && b->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, ElementsPerThreadY(context, dim_a_outer), 1});
 
   const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0] - 1) /
                                                (kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0]));
@@ -102,15 +118,15 @@ Status ApplyMatMulIntel(ComputeContext& context,
                                                (kSubgroupLogicalWorkGroupSizeZ * elements_per_thread[2]));
 
   const int components = is_vec4 ? 4 : 1;
-  const int a_components = 1;
+  const int a_components = a_vec4 ? 4 : 1;
   const int b_components = components;
   const TensorShape a_shape_temp = CreateMatMulIntermediateShape(outer_dims_a, dim_a_outer, dim_inner, a_components);
   const TensorShape b_shape_temp = CreateMatMulIntermediateShape(outer_dims_b, dim_inner, dim_b_outer, b_components);
   const TensorShape output_shape_temp = TensorShape({batch_size, dim_a_outer, dim_b_outer / components});
 
-  MatMulSubgroupProgram program{activation, has_bias, is_vec4, elements_per_thread};
+  MatMulSubgroupProgram program{activation, has_bias, is_vec4, a_vec4, b_is_fp16, elements_per_thread};
   program
-      .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"))
+      .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), a_vec4, b_is_fp16)
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, a_components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, b_components}})
       .AddOutputs({{output, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})

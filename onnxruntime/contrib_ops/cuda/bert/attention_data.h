@@ -157,6 +157,17 @@ struct GroupQueryAttentionData {
   const T* sin_cache = nullptr;
   const T* head_sink = nullptr;
 
+  // Optional additive attention bias, shape (batch_size or 1, num_heads or 1, sequence_length,
+  // total_sequence_length). Broadcast on dims 0/1 is carried by
+  // parameters.broadcast_attn_bias_dim_0/1. Only consumed by the unfused fallback path.
+  const T* attention_bias = nullptr;
+
+  // Optional per-head Q/K RMSNorm (QK-Norm) weights, shape (head_size,), shared across heads.
+  // Both are non-null together (validated in the op) and trigger the fused normalization before RoPE.
+  const T* q_norm_weight = nullptr;
+  const T* k_norm_weight = nullptr;
+  float qk_norm_epsilon = 1e-6f;
+
   const float* k_scale = nullptr;
   const float* v_scale = nullptr;
 
@@ -197,6 +208,8 @@ struct GroupQueryAttentionData {
   bool use_memory_efficient_attention = false;
   bool use_flash_attention_fast_decode = false;
   bool use_xqa = false;
+  // cuDNN SDPA (cudnn_frontend) path: preferred on SM>=90 for non-quantized FP16/BF16 GQA.
+  bool use_cudnn_sdpa = false;
   // GQA-capable unfused fallback (issue #28195): used when Flash/MEA/XQA are all ineligible,
   // e.g. fp16 head_size > 256 with past_key, or GQA on old GPUs without MEA/Flash support.
   bool use_unfused = false;
@@ -204,6 +217,12 @@ struct GroupQueryAttentionData {
   // XQA buffer
   void* xqa_buffer = nullptr;
   size_t xqa_buffer_bytes = 0;
+  // FP32 per-head attention sink consumed by the XQA kernel (nullptr when no head_sink input).
+  // Either points to a PrePack-cached buffer or to scratch that is filled at launch time.
+  float* xqa_head_sink = nullptr;
+  // When true, head_sink was not prepacked (e.g. dynamic/non-initializer input) and the FP16/BF16
+  // head_sink must be converted to xqa_head_sink (FP32 scratch) before launching XQA.
+  bool xqa_head_sink_needs_conversion = false;
 
   // Unfused fallback buffers (see LaunchUnfusedAttention in unfused_attention.h):
   //   unfused_q_bnsh : [B, N_q, S_q, H]   (Q transposed from BSNH to BNSH)
@@ -213,6 +232,11 @@ struct GroupQueryAttentionData {
   T* unfused_q_bnsh = nullptr;
   T* unfused_y_bnsh = nullptr;
   void* unfused_workspace = nullptr;
+
+  // cuDNN SDPA path: temp-space allocator and cuDNN handle (stored as void* to avoid pulling the
+  // cuDNN headers into this file; cast to cudnnHandle_t in the .cu runner).
+  AllocatorPtr allocator = nullptr;
+  void* cudnn_handle = nullptr;
 };
 
 template <typename T>

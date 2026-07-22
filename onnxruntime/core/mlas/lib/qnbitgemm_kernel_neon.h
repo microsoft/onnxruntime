@@ -141,6 +141,22 @@ UsePacked_CompInt8(
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
 
+bool
+NeedsPackedZpCorrection_CompInt8(
+    size_t K,
+    size_t BlkLen,
+    bool HasZp,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
+
+size_t
+PackedQ4BitGemmNAlignment_CompInt8(
+    size_t K,
+    size_t BlkLen,
+    bool HasZp,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
+
 void
 QuantizeARow_CompInt8(
     size_t BlkLen,
@@ -195,6 +211,28 @@ SQ4BitGemmKernel_CompInt8(
     const float* Bias
 );
 
+// W2 CompInt8 kernel entry point (DotProd backend). Implemented in
+// sqnbitgemm_kernel_neon_int8_2bit.cpp. Signature matches the
+// SQ4BitGemmKernel_BlkSum_CompInt8_Fn typedef in qnbitgemm.h.
+size_t
+SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd(
+    size_t BlkLen,
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* QuantBZeroPoint,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t CountK,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc,
+    const float* ABlockSum,
+    const float* QuantBBlkSum
+);
+
 #ifdef USE_KLEIDIAI
 void
 QuantizeA_Packed_CompInt8(
@@ -202,6 +240,7 @@ QuantizeA_Packed_CompInt8(
     const float* A,
     size_t CountM,
     size_t CountK,
+    bool HasZeroPoint,
     std::byte* QuantA,
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
@@ -217,6 +256,8 @@ SQ4BitGemmKernel_Packed_CompInt8(
     const size_t RangeStartN,
     const size_t RangeCountN,
     size_t CountK,
+    bool HasQuantBZeroPoint,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig,
     size_t ldc,
     const float *Bias
 );
@@ -244,7 +285,16 @@ ApplyBZpCorrection(
 #endif
 
 bool
-UseKleidiAI(size_t K, size_t BlkLen, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
+IsKleidiAIQ4ShapeSupported(size_t K, size_t BlkLen, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
+
+enum class KleidiAIQ4Backend {
+    None,
+    Qai8dxpQsi4c32p, // 4-bit symmetric block-quantized RHS
+    Qsi8d32pQai4c32p, // 4-bit asymmetric block-quantized RHS
+};
+
+KleidiAIQ4Backend
+SelectKleidiAIQ4Backend(size_t K, size_t BlkLen, bool HasZp, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
 //
 // General helpers.

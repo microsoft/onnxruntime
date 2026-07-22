@@ -160,5 +160,11 @@ class ArgMax final : public ReduceKernel<false> {
   ArgMax(const OpKernelInfo& info) : ReduceKernel<false>(info, "ArgMax", true) {}
 };
 
+// Factory functions for ReduceSum with conditional int64 support (registered via RegisterKernels).
+template <int StartVersion, int EndVersion>
+KernelCreateInfo CreateReduceSumVersionedKernelInfo(bool enable_int64);
+template <int SinceVersion>
+KernelCreateInfo CreateReduceSumKernelInfo(bool enable_int64);
+
 }  // namespace webgpu
 }  // namespace onnxruntime

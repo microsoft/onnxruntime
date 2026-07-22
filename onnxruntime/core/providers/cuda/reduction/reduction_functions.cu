@@ -4,6 +4,8 @@
 #include "core/providers/cuda/reduction/reduction_functions.h"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <limits>
 #include <type_traits>
 
@@ -513,6 +515,236 @@ INSTANTIATE_REDUCE_MATRIX_COLUMNS(double);
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(BFloat16);
 #undef INSTANTIATE_REDUCE_MATRIX_COLUMNS
 
+namespace detail {
+constexpr int kMaxReduceRank = 16;
+
+struct ReduceSumNdMetadata {
+  int output_segment_count{};
+  int reduction_segment_count{};
+  int64_t output_segment_sizes[kMaxReduceRank]{};
+  int64_t output_segment_strides[kMaxReduceRank]{};
+  int64_t reduction_segment_sizes[kMaxReduceRank]{};
+  int64_t reduction_segment_strides[kMaxReduceRank]{};
+  int64_t output_count{};
+  int64_t reduction_count{};
+};
+
+template <typename T>
+struct SumState {
+  T sum{};
+
+  __device__ __forceinline__ void Add(T value) { sum += value; }
+  __device__ __forceinline__ T Result() const { return sum; }
+};
+
+template <>
+struct SumState<double> {
+  double sum{};
+  double correction{};
+
+  // Neumaier compensation is used instead of Kahan so that independently accumulated
+  // thread partials can be merged without losing a small value between large values.
+  __device__ __forceinline__ void Add(double value) {
+    const double next = __dadd_rn(sum, value);
+    const double error = fabs(sum) >= fabs(value)
+                             ? __dadd_rn(__dsub_rn(sum, next), value)
+                             : __dadd_rn(__dsub_rn(value, next), sum);
+    correction = __dadd_rn(correction, error);
+    sum = next;
+  }
+
+  __device__ __forceinline__ double Result() const { return __dadd_rn(sum, correction); }
+};
+
+template <typename T>
+struct MergeSumState {
+  __device__ __forceinline__ SumState<T> operator()(SumState<T> lhs, const SumState<T>& rhs) const {
+    lhs.Add(rhs.sum);
+    if constexpr (std::is_same_v<T, double>) {
+      lhs.Add(rhs.correction);
+    }
+    return lhs;
+  }
+};
+
+template <typename T, typename TAccum>
+__device__ __forceinline__ T CastReduceSumResult(TAccum value) {
+  if constexpr (std::is_integral_v<T>) {
+    const double value_as_double = static_cast<double>(value);
+    const double max_value = static_cast<double>(std::numeric_limits<T>::max());
+    const double min_value = static_cast<double>(std::numeric_limits<T>::min());
+    if (value_as_double >= max_value) return std::numeric_limits<T>::max();
+    if (value_as_double <= min_value) return std::numeric_limits<T>::min();
+  }
+  return static_cast<T>(value);
+}
+
+template <typename T, int BlockSize>
+__global__ void reduce_sum_nd_kernel(const T* input, T* output, ReduceSumNdMetadata metadata) {
+  using TAccum = std::conditional_t<std::is_integral_v<T>, double, AccumulationType_t<T>>;
+  using BlockReduce = cub::BlockReduce<SumState<TAccum>, BlockSize>;
+  __shared__ typename BlockReduce::TempStorage reduce_storage;
+  __shared__ int64_t input_base;
+
+  // One cooperative block reduces each output. Grid-striding keeps the launch bounded for
+  // large outputs while retaining enough blocks to saturate the device.
+  for (int64_t output_index = blockIdx.x;
+       output_index < metadata.output_count;
+       output_index += gridDim.x) {
+    if (threadIdx.x == 0) {
+      int64_t remaining = output_index;
+      int64_t base = 0;
+      for (int segment = metadata.output_segment_count - 1; segment >= 0; --segment) {
+        const int64_t coordinate = segment == 0 ? remaining : remaining % metadata.output_segment_sizes[segment];
+        if (segment != 0) remaining /= metadata.output_segment_sizes[segment];
+        base += coordinate * metadata.output_segment_strides[segment];
+      }
+      input_base = base;
+    }
+    __syncthreads();
+
+    SumState<TAccum> thread_sum{};
+    for (int64_t reduction_index = threadIdx.x; reduction_index < metadata.reduction_count;
+         reduction_index += BlockSize) {
+      int64_t remaining = reduction_index;
+      int64_t input_index = input_base;
+      // Adjacent reduced dimensions are collapsed on the host, so this loop performs
+      // divisions only at reduced/non-reduced boundaries rather than once per rank.
+      for (int segment = metadata.reduction_segment_count - 1; segment >= 0; --segment) {
+        const int64_t coordinate = segment == 0 ? remaining : remaining % metadata.reduction_segment_sizes[segment];
+        if (segment != 0) remaining /= metadata.reduction_segment_sizes[segment];
+        input_index += coordinate * metadata.reduction_segment_strides[segment];
+      }
+      thread_sum.Add(static_cast<TAccum>(input[input_index]));
+    }
+
+    const SumState<TAccum> block_sum = BlockReduce(reduce_storage).Reduce(thread_sum, MergeSumState<TAccum>{});
+    if (threadIdx.x == 0) {
+      output[output_index] = CastReduceSumResult<T>(block_sum.Result());
+    }
+    __syncthreads();  // reduce_storage is reused by the next grid-stride iteration.
+  }
+}
+}  // namespace detail
+
+template <typename T>
+Status reduce_sum_nd(cudaStream_t stream, const T* input, T* output,
+                     gsl::span<const int64_t> dims, gsl::span<const int64_t> axes) {
+  ORT_RETURN_IF_NOT(dims.size() <= detail::kMaxReduceRank,
+                    "The general CUDA ReduceSum kernel supports ranks up to ", detail::kMaxReduceRank, ".");
+
+  detail::ReduceSumNdMetadata metadata;
+  const int rank = gsl::narrow_cast<int>(dims.size());
+  std::array<int64_t, detail::kMaxReduceRank> strides{};
+  SafeInt<int64_t> stride = 1;
+  for (int axis = rank - 1; axis >= 0; --axis) {
+    ORT_RETURN_IF_NOT(dims[axis] > 0, "ReduceSum dimensions must be positive.");
+    strides[axis] = static_cast<int64_t>(stride);
+    stride *= dims[axis];
+  }
+
+  std::array<bool, detail::kMaxReduceRank> reduced{};
+  if (axes.empty()) {
+    for (int axis = 0; axis < rank; ++axis) reduced[axis] = true;
+  } else {
+    for (int64_t axis : axes) {
+      if (axis < 0) axis += rank;
+      ORT_RETURN_IF_NOT(axis >= 0 && axis < rank, "ReduceSum axis is out of range.");
+      ORT_RETURN_IF_NOT(!reduced[axis], "ReduceSum axes must not contain duplicates.");
+      reduced[axis] = true;
+    }
+  }
+
+  SafeInt<int64_t> output_count = 1;
+  SafeInt<int64_t> reduction_count = 1;
+  for (int axis = 0; axis < rank;) {
+    const bool is_reduced = reduced[axis];
+    SafeInt<int64_t> segment_size = 1;
+    int last_axis = axis;
+    do {
+      segment_size *= dims[axis];
+      last_axis = axis++;
+    } while (axis < rank && reduced[axis] == is_reduced);
+
+    if (is_reduced) {
+      const int segment = metadata.reduction_segment_count++;
+      metadata.reduction_segment_sizes[segment] = static_cast<int64_t>(segment_size);
+      metadata.reduction_segment_strides[segment] = strides[last_axis];
+      reduction_count *= static_cast<int64_t>(segment_size);
+    } else {
+      const int segment = metadata.output_segment_count++;
+      metadata.output_segment_sizes[segment] = static_cast<int64_t>(segment_size);
+      metadata.output_segment_strides[segment] = strides[last_axis];
+      output_count *= static_cast<int64_t>(segment_size);
+    }
+  }
+  metadata.output_count = static_cast<int64_t>(output_count);
+  metadata.reduction_count = static_cast<int64_t>(reduction_count);
+
+  constexpr int block_size = 256;
+  constexpr int max_blocks = 65535;
+  const int grid_size = static_cast<int>(std::min<int64_t>(max_blocks, metadata.output_count));
+  detail::reduce_sum_nd_kernel<T, block_size><<<grid_size, block_size, 0, stream>>>(input, output, metadata);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+#define INSTANTIATE_REDUCE_SUM_ND(T)                                               \
+  template Status reduce_sum_nd<T>(cudaStream_t stream, const T* input, T* output, \
+                                   gsl::span<const int64_t> dims, gsl::span<const int64_t> axes)
+INSTANTIATE_REDUCE_SUM_ND(half);
+INSTANTIATE_REDUCE_SUM_ND(float);
+INSTANTIATE_REDUCE_SUM_ND(double);
+INSTANTIATE_REDUCE_SUM_ND(BFloat16);
+INSTANTIATE_REDUCE_SUM_ND(int32_t);
+INSTANTIATE_REDUCE_SUM_ND(int64_t);
+#undef INSTANTIATE_REDUCE_SUM_ND
+
+namespace detail {
+template <typename TIn, bool IsArgMax>
+__global__ void arg_min_max_last_axis_kernel(const TIn* input, int64_t* output, int m, int n) {
+  const int row = blockIdx.x * blockDim.x + threadIdx.x;
+  if (row >= m) return;
+
+  const int64_t row_offset = static_cast<int64_t>(row) * n;
+  TIn best_value = input[row_offset];
+  int64_t best_index = 0;
+  for (int i = 1; i < n; ++i) {
+    const TIn value = input[row_offset + i];
+    if constexpr (IsArgMax) {
+      if (value > best_value) {
+        best_value = value;
+        best_index = i;
+      }
+    } else {
+      if (value < best_value) {
+        best_value = value;
+        best_index = i;
+      }
+    }
+  }
+
+  output[row] = best_index;
+}
+}  // namespace detail
+
+template <typename TIn, bool IsArgMax>
+Status arg_min_max_last_axis(cudaStream_t stream, const TIn* input, int64_t* output, int m, int n) {
+  // The kernel reads input[row_offset] unconditionally, so a non-empty reduction axis is required.
+  if (m == 0 || n <= 0) return Status::OK();
+  constexpr int block_size = 256;
+  const int grid_size = (m + block_size - 1) / block_size;
+  detail::arg_min_max_last_axis_kernel<TIn, IsArgMax><<<grid_size, block_size, 0, stream>>>(input, output, m, n);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+#define INSTANTIATE_ARG_MIN_MAX_LAST_AXIS(T)                                                                          \
+  template Status arg_min_max_last_axis<T, true>(cudaStream_t stream, const T* input, int64_t* output, int m, int n); \
+  template Status arg_min_max_last_axis<T, false>(cudaStream_t stream, const T* input, int64_t* output, int m, int n)
+INSTANTIATE_ARG_MIN_MAX_LAST_AXIS(half);
+INSTANTIATE_ARG_MIN_MAX_LAST_AXIS(float);
+INSTANTIATE_ARG_MIN_MAX_LAST_AXIS(double);
+#undef INSTANTIATE_ARG_MIN_MAX_LAST_AXIS
+
 }  // namespace cuda
 }  // namespace onnxruntime
 
@@ -597,6 +829,42 @@ template void Impl_SaturatingCastFromDouble<int32_t>(cudaStream_t, const double*
 template void Impl_SaturatingCastFromDouble<int64_t>(cudaStream_t, const double*, int64_t*, size_t);
 template void Impl_SaturatingCastFromDouble<int8_t>(cudaStream_t, const double*, int8_t*, size_t);
 template void Impl_SaturatingCastFromDouble<uint8_t>(cudaStream_t, const double*, uint8_t*, size_t);
+
+// FixExpForReduceLogSumExp: after computing exp(X - max), fix NaN results
+// that arise from inf - inf or -inf - (-inf).
+// For each element:
+//   - If original X[i] is -inf: exp should be 0 (exp(-inf) = 0)
+//   - If original X[i] is +inf: exp should be 1 (exp(+inf - +inf) = exp(0) = 1)
+//   - If original X[i] is NaN: preserve NaN (propagate)
+//   - Otherwise: keep exp_result[i] as-is
+template <typename T>
+__global__ void _FixExpForReduceLogSumExp(const T* original_input, T* exp_result, size_t count) {
+  size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= count) return;
+  if (_IsNan<T>{}(exp_result[idx])) {
+    T x = original_input[idx];
+    if (_IsInf<T, true, true>{}(x)) {
+      // +inf input: exp(+inf - (+inf)) should be 1
+      // -inf input: exp(-inf - (-inf)) should be 0
+      exp_result[idx] = _IsInf<T, true, false>{}(x) ? T(1) : T(0);
+    }
+    // else: x is NaN, keep NaN in exp_result (propagate)
+  }
+}
+
+template <typename T>
+void Impl_FixExpForReduceLogSumExp(cudaStream_t stream, const T* original_input,
+                                   T* exp_result, size_t count) {
+  if (count == 0) return;
+  constexpr int block_size = 256;
+  int grid_size = static_cast<int>((count + block_size - 1) / block_size);
+  _FixExpForReduceLogSumExp<T><<<grid_size, block_size, 0, stream>>>(original_input, exp_result, count);
+}
+
+template void Impl_FixExpForReduceLogSumExp<float>(cudaStream_t, const float*, float*, size_t);
+template void Impl_FixExpForReduceLogSumExp<double>(cudaStream_t, const double*, double*, size_t);
+template void Impl_FixExpForReduceLogSumExp<half>(cudaStream_t, const half*, half*, size_t);
+template void Impl_FixExpForReduceLogSumExp<BFloat16>(cudaStream_t, const BFloat16*, BFloat16*, size_t);
 
 }  // namespace cuda
 }  // namespace onnxruntime
