@@ -65,6 +65,8 @@ steps:
             --container-registry onnxruntimebuildcache \
             --repository "${{ parameters.Repository }}"
         displayName: "Get ${{ parameters.Repository }} image for ${{ parameters.Dockerfile }}"
+        env:
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
       ContainerRegistry: onnxruntimebuildcache
 - ${{ if eq(parameters.UseImageCacheContainerRegistry, false) }}:
   # the difference is no --container-registry
@@ -78,6 +80,8 @@ steps:
             --docker-build-args "${{ parameters.DockerBuildArgs }}" \
             --repository "${{ parameters.Repository }}"
         displayName: "Get ${{ parameters.Repository }} image for ${{ parameters.Dockerfile }}"
+        env:
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
       ContainerRegistry: onnxruntimebuildcache
 
 - script: |
@@ -86,4 +90,3 @@ steps:
     docker system df
     df -h
   displayName: Check Docker Images
-

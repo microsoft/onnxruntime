@@ -819,6 +819,7 @@ else()
           ${MLAS_SRC_DIR}/intrinsics/avx2/qladd_avx2.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx2/qdwconv_avx2.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx2/saturation_check_avx2.cpp
+          ${MLAS_SRC_DIR}/intrinsics/avx2/q2_dq_avx2.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.h
           ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.cpp
@@ -846,6 +847,12 @@ else()
           message(STATUS "Using -mavx2 -mfma flags")
           set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c")
 endif()
+
+        # The 2-bit fp-zero-point dequant kernel relies on separate multiply
+        # and add rounding to stay bit-identical to the scalar kernel, so keep
+        # the compiler from contracting them into an FMA.
+        set_property(SOURCE ${MLAS_SRC_DIR}/intrinsics/avx2/q2_dq_avx2.cpp
+          APPEND PROPERTY COMPILE_OPTIONS "-ffp-contract=off")
         set(mlas_platform_srcs_avx512f
           ${MLAS_SRC_DIR}/x86_64/DgemmKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/SgemmKernelAvx512F.S
