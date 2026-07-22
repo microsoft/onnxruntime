@@ -451,6 +451,29 @@ stages:
         FolderPath: '$(Build.ArtifactStagingDirectory)'
         DoEsrp: true
 
+    # Validate that the C# API documentation still generates, using the maintained
+    # 'docfx' .NET global tool. This replaces the deprecated 'docfx.console' NuGet
+    # package (last release 2.59.4), which used to run as an MSBuild target during
+    # the 'Build C# bindings' step and broke against current MSBuild/VS. Mirrors
+    # .github/workflows/publish-csharp-apidocs.yml. Runs last because it re-restores
+    # Microsoft.ML.OnnxRuntime.csproj with IncludeMobileTargets=false, which must not
+    # disturb the multi-targeted restore used by the NuGet packaging steps above.
+    - task: PowerShell@2
+      displayName: 'Generate C# API docs (docfx global tool)'
+      inputs:
+        targetType: 'inline'
+        script: |
+          dotnet tool update -g docfx
+          $env:PATH = "$env:USERPROFILE\.dotnet\tools;$env:PATH"
+          # docfx cannot correctly restore the multi-targeted (mobile) project itself,
+          # so restore it explicitly with the mobile targets disabled first.
+          dotnet restore csharp\ApiDocs\ApiDocs.csproj
+          dotnet restore -p:IncludeMobileTargets=false csharp\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj
+          docfx metadata csharp\ApiDocs\docfx.json
+          dotnet build csharp\ApiDocs\ApiDocs.csproj --no-restore
+          docfx build csharp\ApiDocs\docfx.json
+        workingDirectory: '$(Build.SourcesDirectory)'
+
 
 - template: ../stages/nodejs-npm-packaging-stage.yml
   parameters:

@@ -402,7 +402,9 @@
       endif()
       target_compile_definitions(${target} PRIVATE NV_CUDNN_FRONTEND_USE_DYNAMIC_LOADING)
       target_include_directories(${target} PRIVATE ${CUDNN_INCLUDE_DIR})
-      target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas cudnn_frontend CUDA::curand CUDA::cufft CUDA::cudart CUDA::cuda_driver
+      # cuDNN and cuFFT are loaded dynamically at runtime (see cudnn_stub.cc / cufft_stub.cc), so they are
+      # intentionally not linked here to avoid a hard runtime dependency when the related ops are not used.
+      target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas cudnn_frontend CUDA::curand CUDA::cudart CUDA::cuda_driver
               ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
     endif()
 

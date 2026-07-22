@@ -393,11 +393,13 @@ onnxruntime_add_include_to_target(
 add_dependencies(onnxruntime_providers_cuda_plugin ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 # Link libraries
+# cuDNN and cuFFT are loaded dynamically at runtime (see cudnn_stub.cc / cufft_stub.cc, which are
+# picked up by the GLOB above), so they are intentionally not linked here to avoid a hard runtime
+# dependency when the related ops are not used.
 target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE
     CUDA::cudart
     CUDA::cublas
     CUDA::cublasLt
-    CUDA::cufft
     CUDA::cuda_driver
     cudnn_frontend
     Boost::mp11
