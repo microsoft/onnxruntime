@@ -252,6 +252,7 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.h
       ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
+      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2vnni.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen64.h
@@ -854,18 +855,24 @@ else()
         unset(OLD_CMAKE_REQUIRED_FLAGS_AVXVNNI)
 
         # Apply the base AVX2 flags to all AVX2 sources.
+        # sqnbitgemm_kernel_avx2.cpp is now in this set and compiled without
+        # -mavxvnni, preventing the auto-vectorizer from emitting AVX-VNNI
+        # instructions in the pure-AVX2 kernels.
         set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c")
 
         if(MLAS_COMPILER_SUPPORTS_AVXVNNI)
-          message(STATUS "Using -mavx2 -mfma -mf16c -mavxvnni flags for sqnbitgemm_kernel_avx2.cpp")
-          # Apply -mavxvnni only to the single TU that contains AVX-VNNI kernels.
-          # Applying it to the whole mlas_platform_srcs_avx2 set would allow the
-          # auto-vectorizer to emit VNNI instructions in the nominal AVX2 kernels
-          # (e.g. MlasSQNBitGemmDispatchAvx2), which crash on CPUs without AVX-VNNI.
-          set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
+          message(STATUS "AVX-VNNI supported: adding sqnbitgemm_kernel_avx2vnni.cpp with -mavx2 -mfma -mf16c -mavxvnni")
+          # AVX-VNNI kernels live in a dedicated TU compiled with -mavxvnni.
+          # Keeping them separate prevents the auto-vectorizer from emitting
+          # VNNI instructions in the pure-AVX2 kernels in sqnbitgemm_kernel_avx2.cpp.
+          set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2vnni.cpp
             PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c -mavxvnni")
+          set(mlas_platform_srcs_avx2vnni
+            ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2vnni.cpp
+          )
         else()
-          message(STATUS "Using -mavx2 -mfma -mf16c flags (AVX-VNNI not supported by compiler/assembler)")
+          message(STATUS "AVX-VNNI not supported by compiler/assembler: using -mavx2 -mfma -mf16c only")
+          set(mlas_platform_srcs_avx2vnni)
         endif()
 
         # The 2-bit fp-zero-point dequant kernel relies on separate multiply
@@ -926,6 +933,7 @@ else()
           ${mlas_platform_srcs_sse2}
           ${mlas_platform_srcs_avx}
           ${mlas_platform_srcs_avx2}
+          ${mlas_platform_srcs_avx2vnni}
           ${mlas_platform_srcs_avx512f}
           ${mlas_platform_srcs_avx512core}
           ${mlas_platform_srcs_avx512vnni}
