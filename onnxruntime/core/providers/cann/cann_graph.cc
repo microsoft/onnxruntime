@@ -4,6 +4,9 @@
 
 #include <map>
 #include <set>
+#include <exception>
+#include <future>
+#include <thread>
 
 #include "core/providers/cann/cann_graph.h"
 
@@ -13,6 +16,12 @@ namespace cann {
 static int lower_bound = 8;  // Supported domain version lower bounds
 
 std::once_flag flag;
+
+static std::promise<void> ge_promise_init;
+std::promise<void> g_ge_promise_final;
+static std::future<void> ge_future_init = ge_promise_init.get_future();
+static std::future<void> ge_future_final = g_ge_promise_final.get_future();
+std::thread g_ge_thread;
 
 /**
  * This function will been changed with the evolution of ONNX and CANN
@@ -96,19 +105,45 @@ Status ParserONNXModel(std::string string_model, ge::Graph& graph) {
 
 Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc_name, std::string file_name,
                       CANNExecutionProviderInfo& info, ge::ModelBufferData& model) {
+  static std::exception_ptr call_once_ex_ptr = nullptr;
   std::call_once(flag, [&soc_name, &info]() {
-    std::map<ge::AscendString, ge::AscendString> options;
-    options.emplace(ge::ir_option::SOC_VERSION, soc_name);
+    try {
+      // Both aclgrphBuildInitialize and aclgrphBuildFinalize
+      // need to be called from the same thread
+      g_ge_thread = std::thread([&]() {
+        try {
+          std::map<ge::AscendString, ge::AscendString> options;
+          options.emplace(ge::ir_option::SOC_VERSION, soc_name);
 
-    if (!info.precision_mode.empty())
-      options.emplace(ge::ir_option::PRECISION_MODE, info.precision_mode.c_str());
-    if (!info.op_select_impl_mode.empty())
-      options.emplace(ge::ir_option::OP_SELECT_IMPL_MODE, info.op_select_impl_mode.c_str());
-    if (!info.optypelist_for_implmode.empty())
-      options.emplace(ge::ir_option::OPTYPELIST_FOR_IMPLMODE, info.optypelist_for_implmode.c_str());
+          if (!info.precision_mode.empty())
+            options.emplace(ge::ir_option::PRECISION_MODE, info.precision_mode.c_str());
+          if (!info.op_select_impl_mode.empty())
+            options.emplace(ge::ir_option::OP_SELECT_IMPL_MODE, info.op_select_impl_mode.c_str());
+          if (!info.optypelist_for_implmode.empty())
+            options.emplace(ge::ir_option::OPTYPELIST_FOR_IMPLMODE, info.optypelist_for_implmode.c_str());
 
-    CANN_CALL_THROW(ge::aclgrphBuildInitialize(options));
+          CANN_CALL_THROW(ge::aclgrphBuildInitialize(options));
+          ge_promise_init.set_value();
+
+          ge_future_final.wait();
+          ge::aclgrphBuildFinalize();
+        } catch (...) {
+          call_once_ex_ptr = std::current_exception();
+          ge_promise_init.set_value();
+        }
+      });
+
+      if (ge_future_init.valid()) {
+        ge_future_init.wait();
+      }
+    } catch (...) {
+      call_once_ex_ptr = std::current_exception();
+    }
   });
+
+  if (call_once_ex_ptr) {
+    std::rethrow_exception(call_once_ex_ptr);
+  }
 
   std::map<ge::AscendString, ge::AscendString> options;
   options.emplace(ge::ir_option::INPUT_SHAPE, input_shape.c_str());
