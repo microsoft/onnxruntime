@@ -357,6 +357,18 @@ export const hardSigmoid = (context: ComputeContext, attributes: HardSigmoidAttr
   );
 };
 
+export const hardSwish = (context: ComputeContext): void => {
+  const dataType = tensorTypeToWsglValueType(context.inputs[0].dataType);
+  context.compute(
+    createElementwiseProgramInfo(
+      context.inputs[0],
+      'HardSwish',
+      (a) =>
+        `${a} * max(vec4<${dataType}>(0.0), min(vec4<${dataType}>(1.0), vec4<${dataType}>(${dataType}(1.0 / 6.0)) * ${a} + vec4<${dataType}>(0.5)))`,
+    ),
+  );
+};
+
 export const sin = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfo(context.inputs[0], 'Sin', 'sin'));
 };
