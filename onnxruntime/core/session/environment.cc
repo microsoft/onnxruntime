@@ -871,9 +871,10 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
                            "EP library should be opaque to ORT");
   }
 
+  auto* ep_factory = ep_device.ep_factory;
   auto ort_allocator = OrtAllocatorUniquePtr(allocator,
-                                             [&ep_device](OrtAllocator* allocator) {
-                                               ep_device.ep_factory->ReleaseAllocator(ep_device.ep_factory, allocator);
+                                             [ep_factory](OrtAllocator* allocator) {
+                                               ep_factory->ReleaseAllocator(ep_factory, allocator);
                                              });
 
   shared_ort_allocators_.insert(allocator);

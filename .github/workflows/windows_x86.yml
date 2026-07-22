@@ -37,6 +37,11 @@ jobs:
         with:
           architecture: x86 # x86 architecture for vcvarsall
 
+      - name: Install Visual Studio Spectre-mitigated libs
+        uses: ./.github/actions/install-vs-spectre-libs
+        with:
+          architecture: x86
+
       - name: Install python modules
         shell: cmd
         run: python -m pip install -r "${{ github.workspace }}\tools\ci_build\github\windows\python\requirements.txt"
