@@ -18,7 +18,7 @@ const uint32_t kSubgroupLogicalWorkGroupSizeX = 32;
 const uint32_t kSubgroupLogicalWorkGroupSizeY = 8;
 const uint32_t kSubgroupLogicalWorkGroupSizeZ = 1;
 
-bool CanApplySubgroup(const ComputeContext& context, int64_t M, int64_t N, int64_t K, bool transA = false, bool transB = false);
+bool CanApplySubgroup(const ComputeContext& context, int64_t batch, int64_t M, int64_t N, int64_t K, bool transA = false, bool transB = false);
 
 int64_t ElementsPerThreadY(ComputeContext& context, uint32_t M);
 

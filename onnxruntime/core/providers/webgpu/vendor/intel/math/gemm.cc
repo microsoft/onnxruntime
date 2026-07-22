@@ -35,7 +35,7 @@ Status GemmSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 bool CanApplyGemmIntel(const ComputeContext& context, int64_t M, int64_t N, int64_t K, bool transA, bool transB) {
-  return CanApplySubgroup(context, M, N, K, transA, transB);
+  return CanApplySubgroup(context, 1, M, N, K, transA, transB);
 }
 
 Status ApplyGemmIntel(const Tensor* a,
