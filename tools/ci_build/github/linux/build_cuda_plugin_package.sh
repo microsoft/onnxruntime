@@ -69,7 +69,7 @@ docker run --rm \
         --skip_tests \
         --disable_ml_ops \
         --include_ops_by_config /onnxruntime_src/tools/ci_build/github/azure-pipelines/custom_nuget_reduced_ops.config \
-        --cmake_extra_defines onnxruntime_DISABLE_GENERATION_OPS=ON onnxruntime_USE_FP8_KV_CACHE=OFF onnxruntime_DISABLE_SPARSE_TENSORS=ON onnxruntime_DISABLE_FLOAT8_TYPES=ON onnxruntime_DISABLE_FLOAT4_TYPES=ON onnxruntime_USE_FPA_INTB_GEMM=OFF onnxruntime_DISABLE_STRING_TYPE=ON \
+        --cmake_extra_defines onnxruntime_DISABLE_GENERATION_OPS=ON onnxruntime_USE_FP8_KV_CACHE=OFF onnxruntime_DISABLE_FLOAT8_TYPES=ON onnxruntime_DISABLE_FLOAT4_TYPES=ON onnxruntime_USE_FPA_INTB_GEMM=OFF onnxruntime_DISABLE_STRING_TYPE=ON \
         --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES='${CMAKE_CUDA_ARCHS}' \
         --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON \
         ${EXTRA_CMAKE_DEFINES:+--cmake_extra_defines ${EXTRA_CMAKE_DEFINES}}"
