@@ -1779,6 +1779,32 @@ TEST_F(GraphTest, VariadicOutput) {
   CheckTensorEltType(Z.TypeAsProto(), TensorProto_DataType_FLOAT);
 }
 
+// When an operator receives an input whose type is not one of the operator's permitted
+// types, the resolve error should list the expected types to aid debugging. See issue #4429.
+TEST_F(GraphTest, TypeErrorMessageListsExpectedTypes) {
+  Model model("graph_type_error", false, *logger_);
+  auto& graph = model.MainGraph();
+
+  TypeProto int64_tensor;
+  int64_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+
+  auto& X = graph.GetOrCreateNodeArg("X", &int64_tensor);
+  auto& Y = graph.GetOrCreateNodeArg("Y", nullptr);
+  graph.SetInputs({&X});
+
+  // Sin only supports floating point types, so an int64 input is invalid.
+  graph.AddNode("node_1", "Sin", "node 1.", {&X}, {&Y});
+
+  auto status = graph.Resolve();
+  ASSERT_FALSE(status.IsOK());
+  const std::string msg = status.ErrorMessage();
+  // The existing context is preserved.
+  EXPECT_NE(msg.find("of operator (Sin)"), std::string::npos) << msg;
+  // The improved message lists the operator's permitted types.
+  EXPECT_NE(msg.find("Expected one of the following types:"), std::string::npos) << msg;
+  EXPECT_NE(msg.find("tensor(float)"), std::string::npos) << msg;
+}
+
 // test that we prefer the graph input shape for a non-const initializer (initializer with matching graph input)
 TEST_F(GraphTest, NonConstInitializer) {
   Model model("graph_1", false, *logger_);
