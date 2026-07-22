@@ -17,6 +17,7 @@ Abstract:
 
 #include <algorithm>
 #include <cassert>
+#include <cstring>
 #include <utility>
 
 #include "qnbitgemm.h"
@@ -91,6 +92,25 @@ load_float_n_avx2(const float* data, int n)
     static const int32_t mask_buffer[16] = {-1, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0};
     const __m256i load_mask = _mm256_loadu_si256((const __m256i*)(mask_buffer + 8 - n));
     return _mm256_maskload_ps(data, load_mask);
+}
+
+// Load n (<= 8) fp16 values and widen to float, zero-filling the unused lanes. The
+// zero fill matches load_float_n_avx2 so the max-abs and block-sum reductions see the
+// same trailing zeros a float A row would.
+MLAS_FORCEINLINE
+__m256
+load_fp16_n_avx2(const MLAS_FP16* data, int n)
+{
+    assert(n <= 8);
+    if (n <= 0) {
+        return _mm256_setzero_ps();
+    }
+    if (n == 8) {
+        return _mm256_cvtph_ps(_mm_loadu_si128(reinterpret_cast<const __m128i*>(data)));
+    }
+    uint16_t bits[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    std::memcpy(bits, data, static_cast<size_t>(n) * sizeof(uint16_t));
+    return _mm256_cvtph_ps(_mm_loadu_si128(reinterpret_cast<const __m128i*>(bits)));
 }
 
 MLAS_FORCEINLINE void
@@ -1390,6 +1410,91 @@ QuantizeARow_CompInt8_avx2(
     }
 }
 
+// fp16-input twin of QuantizeARow_CompInt8_avx2. Widens each fp16 A element to float
+// with F16C and runs the identical quantize + block-sum arithmetic, so the output
+// (int8 data, per-block scale, scale * sum(a_i)) is bit-for-bit what the float
+// quantizer produces from the same values converted fp16 -> fp32 first. Lets the fp16
+// MatMulNBits path quantize A in one pass with no fp32 activation copy.
+void MLASCALL
+QuantizeARow_CompInt8_Fp16_avx2(
+    size_t BlkLen,
+    const MLAS_FP16* A,
+    size_t CountK,
+    std::byte* QuantA,
+    float* QuantAScale,
+    float* AScaledBlkSum // scale_k * Sum_blklen(a_i)
+)
+{
+    assert(BlkLen % 16 == 0);
+    const __m256 signBit = _mm256_set1_ps(-0.0f);
+    const __m256i one_16_epi16 = _mm256_srli_epi16(
+        _mm256_cmpeq_epi16(_mm256_castps_si256(signBit), _mm256_castps_si256(signBit)), 15);
+    int8_t* blob = reinterpret_cast<int8_t*>(QuantA);
+    float* scale_ptr = QuantAScale;
+    for (size_t k = 0; k < CountK; k += BlkLen) {
+        const size_t step = std::min(BlkLen, CountK - k);
+
+        __m256 maxAbs = _mm256_setzero_ps();
+        for (size_t kk = 0; kk < step; kk += 8) {
+            const int klen = std::min(8, (int)(step - kk));
+
+            __m256 v0 = load_fp16_n_avx2(A + k + kk, klen);
+
+            // Compute max(abs(e)) for the block
+            maxAbs = _mm256_max_ps(maxAbs, _mm256_andnot_ps(signBit, v0));
+        }
+
+        __m128 max4 = _mm_max_ps(_mm256_extractf128_ps(maxAbs, 1), _mm256_castps256_ps128(maxAbs));
+        max4 = _mm_max_ps(max4, _mm_movehl_ps(max4, max4));
+        max4 = _mm_max_ss(max4, _mm_shuffle_ps(max4, max4, 1));
+        const float maxScalar = _mm_cvtss_f32(max4);
+
+        // Quantize these floats
+        const float scale = maxScalar / 127.f;
+        *scale_ptr = scale;
+        scale_ptr++;
+
+        const float inverse_scale = (maxScalar != 0.0f) ? 127.f / maxScalar : 0.0f;
+        const __m256 mul = _mm256_set1_ps(inverse_scale);
+        __m128i* dst = reinterpret_cast<__m128i*>(blob);
+
+        __m256i sum_16_epi16 = _mm256_setzero_si256();
+        for (size_t kk = 0; kk < step; kk += 16) {
+            const int klen = std::min(16, (int)(step - kk));
+
+            int n_to_read = std::min(klen, 8);
+            __m256 v0 = load_fp16_n_avx2(A + k + kk, n_to_read);
+            v0 = _mm256_mul_ps(v0, mul);
+            v0 = _mm256_round_ps(v0, _MM_ROUND_NEAREST);
+
+            __m256 v1;
+            n_to_read = std::min(klen - 8, 8);
+            if (n_to_read <= 0) {
+                v1 = _mm256_setzero_ps();
+            } else {
+                v1 = load_fp16_n_avx2(A + k + kk + 8, n_to_read);
+                v1 = _mm256_mul_ps(v1, mul);
+                v1 = _mm256_round_ps(v1, _MM_ROUND_NEAREST);
+            }
+
+            __m128i i_16_epi8 = convert_2_ps_to_epi8(v0, v1);
+            _mm_storeu_si128(dst++, i_16_epi8);
+
+            // accumulate Sum(a_i)
+            __m256i i_16_epi16 = _mm256_cvtepi8_epi16(i_16_epi8);
+            sum_16_epi16 = _mm256_hadds_epi16(sum_16_epi16, i_16_epi16);
+        }
+        if (step < BlkLen) {
+            memset(blob + step, 0, BlkLen - step);
+        }
+
+        const __m256i sum_8_epi32 = _mm256_madd_epi16(one_16_epi16, sum_16_epi16);
+        *AScaledBlkSum = scale * hsum_8_epi32(sum_8_epi32);
+        AScaledBlkSum++;
+        blob += BlkLen;
+    }
+}
+
 static void
 SQ4BitGemmPackQuantBDataAndBlkSum(
     size_t N,
@@ -1540,6 +1645,7 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2 = []() {
     d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx2;
     d.SQ8BitGemmKernel_BlkSum_CompInt8 = SQ8BitGemmKernel_BlkSum_CompInt8_avx2<false>;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx2;
+    d.QuantizeARowComputeBlkSum_CompInt8_Fp16 = QuantizeARow_CompInt8_Fp16_avx2;
 
     // 2-bit native CompInt8 path. Reuses the portable block-group packer and
     // effective-K helper (shared with AVX-512); the AVX2 kernel supplies the
@@ -1574,6 +1680,7 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2vnni = []() {
     d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx2vnni;
     d.SQ8BitGemmKernel_BlkSum_CompInt8 = SQ8BitGemmKernel_BlkSum_CompInt8_avx2<true>;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx2;
+    d.QuantizeARowComputeBlkSum_CompInt8_Fp16 = QuantizeARow_CompInt8_Fp16_avx2;
 
     // 2-bit native CompInt8 path (AVX-VNNI compute). See the AVX2 table above.
     static_assert(
