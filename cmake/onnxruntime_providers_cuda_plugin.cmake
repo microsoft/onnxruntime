@@ -102,6 +102,36 @@ list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/tensor/shr
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/transformers/.*")
 list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/transformers/.*")
 
+# --- Model-specific kernel trimming (decoder-only LLM package) ---
+# The target package serves quantized decoder-only language models whose CUDA ops
+# are MatMulNBits (dequant path, onnxruntime_USE_FPA_INTB_GEMM=OFF), GroupQueryAttention,
+# GatherBlockQuantized and SkipSimplifiedLayerNormalization. The families below are never
+# reached by such models, so their .cu/.cc are excluded from compilation entirely. Because
+# the plugin build self-registers kernels per-file (the central cuda_contrib_kernels.cc
+# table is excluded above), dropping these sources removes both the compiled device code
+# and the kernel registrations — no runtime "op not found" for ops the package still ships.
+#
+# Safe to exclude (verified no kept source links their symbols):
+#   * contrib_ops/cuda/moe/                  Mixture-of-Experts ops (QMoE/MoE).
+#   * contrib_ops/cuda/diffusion/            Stable-diffusion ops (GroupNorm, NhwcConv, ...).
+#   * contrib_ops/cuda/llm/moe_gemm/         MoE CUTLASS grouped-GEMM (used only by moe/ above).
+#   * contrib_ops/cuda/llm/fpA_intB_gemm*   Weight-only-quant GEMM (incl. the root
+#                                            fpA_intB_gemm_adaptor.cu / _preprocessors_impl.cu), and
+#   * contrib_ops/cuda/llm/fpA_intB_gemv/    its decode GEMV — both reached only under
+#                                            onnxruntime_USE_FPA_INTB_GEMM=ON (OFF here); all
+#                                            matmul_nbits.cc/.h references are #if-guarded.
+# Intentionally KEPT: contrib_ops/cuda/llm/common/ (GroupQueryAttention includes
+# llm/common/cuda_runtime_utils.h) and llm/cutlass_extensions|kernels/ (header utilities).
+foreach(_llm_pkg_excl_dir
+        "/contrib_ops/cuda/moe/"
+        "/contrib_ops/cuda/diffusion/"
+        "/contrib_ops/cuda/llm/moe_gemm/"
+        "/contrib_ops/cuda/llm/fpA_intB_gemm"
+        "/contrib_ops/cuda/llm/fpA_intB_gemv/")
+  list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*${_llm_pkg_excl_dir}.*")
+  list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*${_llm_pkg_excl_dir}.*")
+endforeach()
+
 # Apply shared CUDA .cu source filtering (flash attention quick build, MoE GEMM FP4/FP8).
 include(onnxruntime_cuda_source_filters.cmake)
 onnxruntime_filter_cuda_cu_sources(CUDA_PLUGIN_EP_CU_SRCS)
