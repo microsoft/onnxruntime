@@ -572,8 +572,8 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
   }
 
   bool have_remote_display_adapter = false;  // set if we see the RdpIdd_IndirectDisplay hardware ID.
-  std::unordered_map<uint64_t, DeviceInfo> setupapi_info;  // setupapi_info. key is vendor_id+device_id
-  std::unordered_map<uint64_t, DeviceInfo> luid_to_d3d12_info;  // d3d12 info. key is luid
+  std::unordered_map<uint64_t, DeviceInfo> setupapi_info;  // key is vendor_id+device_id
+  std::unordered_map<uint64_t, DeviceInfo> luid_to_d3d12_info;  // key is luid
   if (!Win32kSystemCallsDisallowed()) {
     setupapi_info = GetDeviceInfoSetupApi(npus, have_remote_display_adapter);
     luid_to_d3d12_info = GetDeviceInfoD3D12(have_remote_display_adapter);
