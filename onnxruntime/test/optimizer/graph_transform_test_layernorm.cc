@@ -1141,6 +1141,44 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionTest) {
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_different_head_sizes.onnx", 1, 0, logger_.get());
 }
 
+// The fusion must skip the ONNX-domain (opset 23) RotaryEmbedding: its input layout differs from
+// the contrib op's, and its position_ids input is optional (issue #28604).
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsOnnxDomainRotaryEmbedding) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto fp16_input = [&](std::vector<int64_t> shape) {
+      return builder.MakeInput<MLFloat16>(shape, MLFloat16(-1.0f), MLFloat16(1.0f));
+    };
+    NodeArg* cos_cache = builder.MakeInitializer<MLFloat16>({8, 2}, MLFloat16(1.0f), MLFloat16(1.0f));
+    NodeArg* sin_cache = builder.MakeInitializer<MLFloat16>({8, 2}, MLFloat16(1.0f), MLFloat16(1.0f));
+    NodeArg* q = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, 1, 8});
+    builder.AddNode("RotaryEmbedding", {fp16_input({1, 1, 8}), cos_cache, sin_cache}, {q})
+        .AddAttribute("num_heads", static_cast<int64_t>(2));
+
+    Node& gqa = builder.AddNode(
+        "GroupQueryAttention",
+        {q, fp16_input({1, 1, 4}), fp16_input({1, 1, 4}), fp16_input({1, 1, 4, 4}), fp16_input({1, 1, 4, 4}),
+         builder.MakeInput<int32_t>(std::vector<int64_t>{1}, std::vector<int32_t>{0}),
+         builder.MakeInput<int32_t>(std::vector<int64_t>{1}, std::vector<int32_t>{1})},
+        {builder.MakeOutput<MLFloat16>(std::vector<int64_t>{1, 1, 8}),
+         builder.MakeOutput<MLFloat16>(std::vector<int64_t>{1, 1, 4, 4}),
+         builder.MakeOutput<MLFloat16>(std::vector<int64_t>{1, 1, 4, 4})},
+        kMSDomain);
+    gqa.AddAttribute("num_heads", static_cast<int64_t>(2));
+    gqa.AddAttribute("kv_num_heads", static_cast<int64_t>(1));
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count["RotaryEmbedding"] == 1);
+    TEST_RETURN_IF_NOT(op_count["com.microsoft.GroupQueryAttention"] == 1);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
+                                        std::make_unique<GroupQueryAttentionFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, SkipLayerNormFusionWithCastTest) {
   TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format1_with_cast.onnx", 0, 0, 1, 3, logger_.get());
   TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2_with_cast.onnx", 0, 0, 1, 3, logger_.get());
