@@ -176,23 +176,21 @@ Status MatMulBlockScaledFp4::ComputeImpl(OpKernelContext* context) const {
     const int64_t rounded_m = RoundUp(m_i, 128);
     const int64_t rounded_n = RoundUp(n_i, 128);
 
-    auto a_packed = GetScratchBuffer<uint8_t>(SafeInt<size_t>(m_i) * SafeInt<size_t>(k_i / 2),
-                                              context->GetComputeStream());
-    auto a_scale = GetScratchBuffer<uint8_t>(SafeInt<size_t>(rounded_m) * SafeInt<size_t>(k_scale_blocks),
-                                             context->GetComputeStream());
+    onnxruntime::Stream* stream = GetComputeStream(context);
+    auto a_packed = GetScratchBuffer<uint8_t>(SafeInt<size_t>(m_i) * SafeInt<size_t>(k_i / 2), stream);
+    auto a_scale = GetScratchBuffer<uint8_t>(SafeInt<size_t>(rounded_m) * SafeInt<size_t>(k_scale_blocks), stream);
     IAllocatorUniquePtr<uint8_t> b_scale;
     const void* b_scale_data = b_scale_prepacked_.get();
     if (b_scale_data == nullptr) {
-      b_scale = GetScratchBuffer<uint8_t>(SafeInt<size_t>(rounded_n) * SafeInt<size_t>(k_scale_blocks),
-                                          context->GetComputeStream());
+      b_scale = GetScratchBuffer<uint8_t>(SafeInt<size_t>(rounded_n) * SafeInt<size_t>(k_scale_blocks), stream);
       ORT_RETURN_IF_ERROR(LaunchRepackWeightScaleNvFp4ForNativeSm120(
           b_scale.get(), weight_scale->DataRaw(), n_i, k_i, SafeInt<int>(block_size_), Stream(context)));
       b_scale_data = b_scale.get();
     }
-    auto alpha = GetScratchBuffer<float>(1, context->GetComputeStream());
+    auto alpha = GetScratchBuffer<float>(1, stream);
     const size_t workspace_size = GetMatMulBlockScaledFp4NativeSm120WorkspaceSize(
         m_i, n_i, k_i, std::is_same<T, BFloat16>::value);
-    auto workspace = GetScratchBuffer<uint8_t>(workspace_size, context->GetComputeStream());
+    auto workspace = GetScratchBuffer<uint8_t>(workspace_size, stream);
 
     ORT_RETURN_IF_ERROR(LaunchMatMulBlockScaledFp4NativeSm120(
         Y->MutableDataRaw(),

@@ -66,6 +66,19 @@ function(onnxruntime_extract_sm_specific_cuda_sources CU_SRC_LIST)
 
   set(_list "${${CU_SRC_LIST}}")
 
+  # MatMulBlockScaledFp4 native SM120 path must never be compiled in the default
+  # CUDA source list (e.g., SM86-only builds). Keep it only in SM120-specific
+  # object libraries when SM120 is requested.
+  set(_matmul_block_scaled_fp4_sm120_srcs)
+  foreach(_src IN LISTS _list)
+    if(_src MATCHES "matmul_block_scaled_fp4_sm120\\.cu$")
+      list(APPEND _matmul_block_scaled_fp4_sm120_srcs "${_src}")
+    endif()
+  endforeach()
+  if(_matmul_block_scaled_fp4_sm120_srcs)
+    list(REMOVE_ITEM _list ${_matmul_block_scaled_fp4_sm120_srcs})
+  endif()
+
   # Extract SM90 TMA WS generated files
   set(_sm90_srcs)
   if(ORT_HAS_SM90_OR_LATER)
@@ -82,9 +95,11 @@ function(onnxruntime_extract_sm_specific_cuda_sources CU_SRC_LIST)
   # Extract SM120 TMA WS generated files
   set(_sm120_srcs)
   if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
+    if(_matmul_block_scaled_fp4_sm120_srcs)
+      list(APPEND _sm120_srcs ${_matmul_block_scaled_fp4_sm120_srcs})
+    endif()
     foreach(_src IN LISTS _list)
-      if(_src MATCHES "moe_gemm_tma_ws_sm120_.*\\.generated\\.cu$" OR
-         _src MATCHES "matmul_block_scaled_fp4_sm120\\.cu$")
+      if(_src MATCHES "moe_gemm_tma_ws_sm120_.*\\.generated\\.cu$")
         list(APPEND _sm120_srcs "${_src}")
       endif()
     endforeach()
