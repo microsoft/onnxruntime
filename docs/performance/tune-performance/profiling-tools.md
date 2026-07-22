@@ -20,11 +20,34 @@ The onnxruntime_perf_test.exe tool (available from the build drop) can be used t
 
 You can enable ONNX Runtime latency profiling in code:
 
+Python:
 ```python
 import onnxruntime as rt
 
 sess_options = rt.SessionOptions()
 sess_options.enable_profiling = True
+```
+
+C++:
+```c++
+Ort::SessionOptions session_options;
+...
+// Enable profiling.
+//
+// EnableProfiling() enables profiling.
+// It takes a C-style string as the profile file path's prefix.
+// The prefix can include the directory.
+// The final profile file path will be <profile_file_prefix>_<timestamp>.json.
+session_options.EnableProfiling((profile_directory + "/profile_file_name_prefix").c_str());
+...
+Ort::Session inference_session(env, model_path, session_options);
+...
+// End profiling.
+//
+// EndProfilingAllocated() ends profiling and returns a copy of the profile file path.
+// It takes a pointer to an allocator and uses the allocator to allocate the memory for the copy of the string returned.
+auto profile_file_location = inference_session.EndProfilingAllocated(allocator);
+printf("Profiling data saved to %s\n", profile_file_location.get());
 ```
 
 If you are using the onnxruntime_perf_test.exe tool, you can add `-p [profile_file]` to enable performance profiling.
