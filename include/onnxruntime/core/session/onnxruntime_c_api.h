@@ -7521,6 +7521,45 @@ struct OrtApi {
    */
   ORT_API2_STATUS(KernelContext_GetSyncStream, _In_ const OrtKernelContext* context,
                   _Outptr_result_maybenull_ OrtSyncStream** out);
+
+  /** \brief Set the file path of the original (source) ONNX model for weightless EPContext sessions.
+   *
+   * When creating a session from a weightless EPContext model, the EP may need access to the source model's
+   * initializer data. This function sets the file path to the source model, overriding the
+   * "onnx_model_filename" attribute in the EPContext node if one is present.
+   *
+   * This is useful when the source model is deployed to a different location than where it was at compile time.
+   *
+   * The file must remain accessible for the lifetime of the session.
+   *
+   * \param[in] options The OrtSessionOptions instance.
+   * \param[in] source_model_path Null terminated string of the file path (wchar on Windows, char otherwise).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.29.
+   */
+  ORT_API2_STATUS(SessionOptionsSetWeightlessSourceModelPath, _Inout_ OrtSessionOptions* options,
+                  _In_ const ORTCHAR_T* source_model_path);
+
+  /** \brief Set the source ONNX model as a byte buffer for weightless EPContext sessions.
+   *
+   * When creating a session from a weightless EPContext model, the EP may need access to the source model's
+   * initializer data. This function provides the source model as an in-memory byte buffer, for scenarios
+   * where the source model is not available as a file on disk (e.g., loaded from a package or downloaded).
+   *
+   * The caller retains ownership of the buffer and must ensure it remains valid for the lifetime of the session.
+   *
+   * \param[in] options The OrtSessionOptions instance.
+   * \param[in] source_model_data Pointer to the source model byte buffer.
+   * \param[in] source_model_data_length Size of the byte buffer in bytes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.29.
+   */
+  ORT_API2_STATUS(SessionOptionsSetWeightlessSourceModelFromBuffer, _Inout_ OrtSessionOptions* options,
+                  _In_ const void* source_model_data, _In_ size_t source_model_data_length);
 };
 
 /*
@@ -8366,6 +8405,30 @@ struct OrtCompileApi {
   ORT_API2_STATUS(ModelCompilationOptions_SetInputModel,
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ const OrtModel* model);
+
+  /** \brief Enable weightless mode for model compilation.
+   *
+   * When enabled, the compiled EPContext model will not embed constant initializer data in the EP's
+   * compiled binary. Instead, the initializer data must be provided when creating a session from the
+   * compiled model, either from the source model (via the "onnx_model_filename" EPContext node attribute
+   * or the "ep.context_source_model_path" session option) or from externalized weights.
+   *
+   * This enables smaller compiled models and allows sharing initializer data across multiple compiled
+   * model variants (e.g., multi-platform caches for different hardware generations).
+   *
+   * ORT verifies that the target EP supports weightless mode by calling OrtEpApi::GetWeightlessSupport().
+   * If the EP does not support weightless mode, an error is returned.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] use_weightless If true, enable weightless mode for the compiled model.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.29.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetWeightlessCache,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ bool use_weightless);
 };
 
 /**

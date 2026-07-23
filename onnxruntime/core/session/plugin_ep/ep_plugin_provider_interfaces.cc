@@ -29,6 +29,7 @@
 #include "core/session/plugin_ep/ep_event_profiling.h"
 #include "core/session/ort_apis.h"
 #include "core/providers/partitioning_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 
@@ -184,6 +185,20 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
       ep_devices_(ep_devices.begin(), ep_devices.end()),
       kernel_registry_(std::move(kernel_registry)) {
   generate_ep_ctx_model_ = session_options.value.GetEpContextGenerationOptions().enable;
+
+  // Check if the app requested weightless mode and the EP supports it.
+  {
+    const auto weightless_requested =
+        session_options.value.config_options.GetConfigOrDefault(kOrtSessionOptionEpEnableWeightless, "0") != "0";
+    if (weightless_requested && ort_ep_->ort_version_supported >= 29 && ort_ep_->GetWeightlessSupport != nullptr) {
+      OrtWeightlessSupport support = OrtWeightlessSupport_NONE;
+      auto* ort_status = ort_ep_->GetWeightlessSupport(ort_ep_.get(), &support);
+      if (ort_status == nullptr && support != OrtWeightlessSupport_NONE) {
+        weightless_enabled_ = true;
+      }
+      OrtApis::ReleaseStatus(ort_status);
+    }
+  }
 
   // Extract EP-scoped session config entries.
   // Arena options go to session_arena_options_; the rest go to provider_options_.

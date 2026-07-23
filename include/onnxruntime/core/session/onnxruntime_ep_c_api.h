@@ -2112,6 +2112,26 @@ typedef enum OrtGraphCaptureNodeAssignmentPolicy {
 } OrtGraphCaptureNodeAssignmentPolicy;
 
 /**
+ * \brief Describes the scope of an EP's weightless mode support.
+ *
+ * Returned by OrtEp::GetWeightlessSupport() to indicate which types of initializers
+ * the EP can operate on without copying.
+ *
+ * \since Version 1.29.
+ */
+typedef enum OrtWeightlessSupport {
+  /** EP does not support weightless mode. */
+  OrtWeightlessSupport_NONE = 0,
+
+  /** EP supports weightless mode for external initializers only.
+   *  Internal initializers are still copied by the EP during compilation. */
+  OrtWeightlessSupport_EXTERNAL_ONLY = 1,
+
+  /** EP supports weightless mode for all initializers (internal and external). */
+  OrtWeightlessSupport_ALL = 2,
+} OrtWeightlessSupport;
+
+/**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
  * \since Version 1.22.
  */
@@ -2630,6 +2650,38 @@ struct OrtEp {
    * \since Version 1.27.
    */
   ORT_API2_STATUS(ReleaseCapturedGraph, _In_ OrtEp* this_ptr, _In_ int graph_annotation_id);
+
+  /** \brief Query the execution provider's weightless mode support.
+   *
+   * When weightless mode is enabled (via the "ep.enable_weightless" session option), ORT calls this function
+   * to determine the scope of the EP's weightless support. The EP returns an OrtWeightlessSupport value
+   * indicating whether it supports weightless mode for all initializers, external initializers only, or not
+   * at all.
+   *
+   * The EP's response may depend on the underlying hardware or driver capabilities. For example, an EP may
+   * support weightless mode for all initializers on newer hardware but only for external initializers on
+   * older hardware that requires weight transformation.
+   *
+   * EPs that support weightless mode should set drop_constant_initializers to false in OrtNodeFusionOptions
+   * so that ORT provides the initializer data as inputs to the compiled/fused node. The EP can then access
+   * these initializers at Compute() time via KernelContext_GetInput().
+   *
+   * \note Extending the lifetime of initializer data obtained via ValueInfo_GetInitializerValue() during
+   *       Compile() so that the EP can cache and reuse data pointers directly (without going through
+   *       KernelContext) is planned but not yet implemented. Until then, KernelContext_GetInput() is the
+   *       only supported way to access initializer data at Compute() time.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] support Output parameter set to the EP's weightless support scope.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT assumes the EP does not
+   *       support weightless mode (equivalent to OrtWeightlessSupport_NONE).
+   *
+   * \since Version 1.29.
+   */
+  ORT_API2_STATUS(GetWeightlessSupport, _In_ const OrtEp* this_ptr, _Out_ OrtWeightlessSupport* support);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

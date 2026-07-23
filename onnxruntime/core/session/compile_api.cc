@@ -327,6 +327,22 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetInputModel,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetWeightlessCache,
+                    _In_ OrtModelCompilationOptions* ort_model_compile_options,
+                    _In_ bool use_weightless) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(model_compile_options->SetWeightlessCache(use_weightless));
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ort_model_compile_options);
+  ORT_UNUSED_PARAMETER(use_weightless);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtCompileAPI::CompileModel, _In_ const OrtEnv* env,
                     _In_ const OrtModelCompilationOptions* ort_model_compile_options) {
   API_IMPL_BEGIN
@@ -367,6 +383,8 @@ static constexpr OrtCompileApi ort_compile_api = {
 
     &OrtCompileAPI::ModelCompilationOptions_SetInputModel,
     // End of Version 24 - DO NOT MODIFY ABOVE
+
+    &OrtCompileAPI::ModelCompilationOptions_SetWeightlessCache,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
