@@ -79,8 +79,8 @@ std::shared_mutex PosixTelemetry::mutex_;
 ::Microsoft::Applications::Events::ILogManager* PosixTelemetry::log_manager_ = nullptr;
 std::atomic<::Microsoft::Applications::Events::ILogger*> PosixTelemetry::logger_{nullptr};
 std::unique_ptr<::Microsoft::Applications::Events::ILogConfiguration> PosixTelemetry::config_;
-std::atomic<bool> PosixTelemetry::detailed_telemetry_enabled_{true};
-std::atomic<bool> PosixTelemetry::minimal_telemetry_requested_by_environment_{false};
+std::atomic<bool> PosixTelemetry::enabled_{true};
+std::atomic<bool> PosixTelemetry::env_disabled_{false};
 std::atomic<uint32_t> PosixTelemetry::projection_{0};
 std::atomic<bool> PosixTelemetry::process_info_logged_{false};
 
@@ -392,16 +392,16 @@ void PosixTelemetry::Initialize() {
   // all: skip creating the 1DS uploader entirely so no events (not even ProcessInfo) are emitted and
   // no device id is written.
   if (IsRunningInCI() || IsRunningUnitTests()) {
-    detailed_telemetry_enabled_.store(false, std::memory_order_release);
+    enabled_.store(false, std::memory_order_release);
     return;
   }
 
-  // ORT_MINIMAL_TELEMETRY suppresses non-essential events for the process lifetime while retaining
-  // the one-shot ProcessInfo event. Runtime disable selects the same minimal mode but remains
-  // reversible when the environment did not request it.
-  if (IsMinimalTelemetryRequestedByEnvVar()) {
-    minimal_telemetry_requested_by_environment_.store(true, std::memory_order_release);
-    detailed_telemetry_enabled_.store(false, std::memory_order_release);
+  // ORT_TELEMETRY_DISABLED suppresses usage events for the lifetime of the process but still creates
+  // the uploader, so the one-shot ProcessInfo event is emitted. Runtime disable behaves the same way
+  // for ProcessInfo but remains reversible when there was no environment opt-out.
+  if (IsTelemetryDisabledByEnvVar()) {
+    env_disabled_.store(true, std::memory_order_release);
+    enabled_.store(false, std::memory_order_release);
   }
 
   // The official Android AAR initializes the SDK's Java HttpClient before ORT is loaded. Native-only
@@ -494,7 +494,8 @@ void PosixTelemetry::Initialize() {
   }
 
   // Publish the fully-configured logger atomically; concurrent readers observe it only now.
-  // Preserve the detailed/minimal mode selected by the environment or runtime API.
+  // enabled_ is left to its default / the runtime EnableTelemetryEvents()/DisableTelemetryEvents()
+  // opt-in state rather than being force-set here.
   pending_log_manager.Commit(config_, log_manager_);
   logger_.store(logger, std::memory_order_release);
 }
@@ -503,8 +504,9 @@ void PosixTelemetry::Shutdown() {
   std::unique_lock<std::shared_mutex> lock(mutex_);
 
   // Clear the logger so concurrent LogEventAsync() readers (which take the shared lock) observe
-  // nullptr and skip. Keep the selected detailed/minimal mode so a later Initialize() (e.g. in tests
-  // or dynamic load/unload of the last instance) resumes without changing the process-level control.
+  // nullptr and skip. enabled_ is intentionally left untouched: it reflects the user's
+  // EnableTelemetryEvents()/DisableTelemetryEvents() opt-in state, so a later Initialize() (e.g. in
+  // tests or dynamic load/unload of the last instance) can resume telemetry without a forced re-enable.
   logger_ = nullptr;  // Owned by log_manager_, will be destroyed with it
 
   if (log_manager_ && config_) {
@@ -732,13 +734,13 @@ int64_t PosixTelemetry::GetTotalMemoryMB() {
 }
 
 void PosixTelemetry::EnableTelemetryEvents() const {
-  detailed_telemetry_enabled_.store(
-      CanEnableDetailedTelemetry(minimal_telemetry_requested_by_environment_.load(std::memory_order_acquire)),
+  enabled_.store(
+      CanEnableTelemetryEvents(env_disabled_.load(std::memory_order_acquire)),
       std::memory_order_release);
 }
 
 void PosixTelemetry::DisableTelemetryEvents() const {
-  detailed_telemetry_enabled_.store(false, std::memory_order_release);
+  enabled_.store(false, std::memory_order_release);
 }
 
 void PosixTelemetry::SetLanguageProjection(uint32_t projection) const {
@@ -746,9 +748,8 @@ void PosixTelemetry::SetLanguageProjection(uint32_t projection) const {
 }
 
 bool PosixTelemetry::IsEnabled() const {
-  // Reflect detailed-event readiness: detailed mode AND a successfully initialized logger.
-  return detailed_telemetry_enabled_.load(std::memory_order_acquire) &&
-         logger_.load(std::memory_order_acquire) != nullptr;
+  // Reflect actual readiness: the opt-out flag AND a successfully-initialized logger.
+  return enabled_.load(std::memory_order_acquire) && logger_.load(std::memory_order_acquire) != nullptr;
 }
 
 unsigned char PosixTelemetry::Level() const {
@@ -762,9 +763,9 @@ uint64_t PosixTelemetry::Keyword() const {
 
 void PosixTelemetry::LogProcessInfo() const {
   RunTelemetryOperation("LogProcessInfo", [&]() {
-    // ProcessInfo fires whenever telemetry is initialized (i.e. not in a CI build), including minimal
-    // mode selected by ORT_MINIMAL_TELEMETRY or DisableTelemetryEvents(). It only needs a live logger;
-    // CI suppression already prevents one from being created.
+    // ProcessInfo fires whenever telemetry is initialized (i.e. not in a CI build), even when the usage
+    // events are disabled via ORT_TELEMETRY_DISABLED or DisableTelemetryEvents(). It only needs a live
+    // logger; CI suppression already prevents one from being created.
     if (logger_.load(std::memory_order_acquire) == nullptr) {
       return;
     }

@@ -107,22 +107,22 @@ inline bool IsRunningUnitTests() {
   return telemetry_detail::IsTruthyCiValue(telemetry_detail::GetTelemetryEnv("ORT_RUNNING_UNIT_TESTS"));
 }
 
-// True if ORT_MINIMAL_TELEMETRY is set to a truthy value (1/true/yes/on/y, case-insensitive).
-// The POSIX 1DS provider latches this mode during initialization. Windows ETW intentionally retains
-// its separate API/trace-session control model and does not consult this environment variable.
-inline bool IsMinimalTelemetryRequestedByEnvVar() {
+// True if ORT_TELEMETRY_DISABLED is set to a truthy value (1/true/yes/on/y, case-insensitive).
+// The POSIX 1DS provider latches this opt-out during initialization. Windows ETW intentionally
+// retains its separate API/trace-session control model and does not consult this environment variable.
+inline bool IsTelemetryDisabledByEnvVar() {
   const std::string value = telemetry_detail::ToLowerAscii(
-      telemetry_detail::TrimAscii(telemetry_detail::GetTelemetryEnv("ORT_MINIMAL_TELEMETRY")));
+      telemetry_detail::TrimAscii(telemetry_detail::GetTelemetryEnv("ORT_TELEMETRY_DISABLED")));
   return value == "1" || value == "true" || value == "yes" || value == "on" || value == "y";
 }
 
-// Environment-selected minimal mode has higher priority than the runtime API for the process lifetime.
-inline constexpr bool CanEnableDetailedTelemetry(bool minimal_telemetry_requested_by_environment) noexcept {
-  return !minimal_telemetry_requested_by_environment;
+// Environment opt-out has higher priority than the runtime enable API for the lifetime of the process.
+inline constexpr bool CanEnableTelemetryEvents(bool disabled_by_environment) noexcept {
+  return !disabled_by_environment;
 }
 
 // True if telemetry should be fully suppressed for this process, including the initialization event.
-// Minimal mode is intentionally excluded because it still emits the initialization event.
+// ORT_TELEMETRY_DISABLED is intentionally excluded because it disables only non-essential events.
 inline bool ShouldSuppressTelemetry() {
   return IsRunningInCI() || IsRunningUnitTests();
 }

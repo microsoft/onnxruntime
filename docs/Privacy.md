@@ -11,20 +11,20 @@ ONNX Runtime collects trace events with the goal of improving product quality. O
 Telemetry is turned **ON** by default in the official builds ([see here](../README.md#binaries)). Both providers are accessed through ONNX Runtime's common telemetry interface (see [telemetry.h](../onnxruntime/core/platform/telemetry.h)).
 
 ### Private Builds
-On Windows, private builds compiled from source perform no data collection. On non-Windows platforms besides WebAssembly, the standard `build.sh` wrapper enables telemetry for native builds. For information on how to control telemetry, see [Controlling Telemetry](#controlling-telemetry) below.
+On Windows, private builds compiled from source perform no data collection. On non-Windows platforms besides WebAssembly, the standard `build.sh` wrapper enables telemetry for native builds. For information on how to disable telemetry, see [Disabling Telemetry](#disabling-telemetry) below.
 
 #### Technical Details
 
 **Windows.** The Windows provider uses the [TraceLogging](https://docs.microsoft.com/en-us/windows/win32/tracelogging/trace-logging-about) API for its implementation. This enables ONNX Runtime trace events to be collected by the operating system, and based on user consent, this data may be periodically sent to Microsoft servers following GDPR and privacy regulations for anonymity and data access controls. Windows ML and ONNX Runtime C APIs allow Trace Logging to be turned on/off (see [API pages](../README.md#api-documentation) for details); there are equivalent APIs in the C#, Python, and Java language bindings as well.
 
-**Non-Windows (Linux, macOS, Android, iOS).** These platforms use the cross-platform 1DS SDK (cpp_client_telemetry) to send the same trace events to Microsoft's telemetry backend over HTTPS. Based on user consent, this data is handled following GDPR and privacy regulations for anonymity and data access controls. ONNX Runtime C APIs switch 1DS between detailed and minimal modes (see [API pages](../README.md#api-documentation) for details); there are equivalent APIs in the C#, Python, and Java language bindings as well.
+**Non-Windows (Linux, macOS, Android, iOS).** These platforms use the cross-platform 1DS SDK (cpp_client_telemetry) to send the same trace events to Microsoft's telemetry backend over HTTPS. Based on user consent, this data is handled following GDPR and privacy regulations for anonymity and data access controls. ONNX Runtime C APIs allow 1DS to be turned on/off (see [API pages](../README.md#api-documentation) for details); there are equivalent APIs in the C#, Python, and Java language bindings as well.
 
-For ways to control telemetry, see the [Controlling Telemetry](#controlling-telemetry) section below.
+For ways to disable telemetry, see the [Disabling Telemetry](#disabling-telemetry) section below.
 
-### Controlling Telemetry
+### Disabling Telemetry
 
-Telemetry can be controlled in these ways:
+Telemetry can be disabled in any of these ways:
 
-- **Disable it completely at build time.** The telemetry provider is only compiled when configuring with `--use_telemetry`, so a build configured without it collects no data.
-- **Select minimal mode via environment variable (non-Windows).** Set `ORT_MINIMAL_TELEMETRY=1` (also accepts `true`/`yes`/`on`/`y`, case-insensitive) before ONNX Runtime initializes. Minimal mode emits the initialization event but suppresses non-essential telemetry for the process lifetime; the runtime API cannot re-enable detailed events.
-- **Select minimal mode via the runtime API.** The C API (and the C#, Python, and Java bindings) expose calls to turn non-essential telemetry on/off. On non-Windows platforms, minimal mode still emits the initialization event and can be reversed unless the environment variable selected it. On **Windows**, ETW events are still emitted if an external trace session is collecting.
+- **Don't build it in.** The telemetry provider is only compiled when configuring with `--use_telemetry`, so a build configured without it collects no data.
+- **At runtime, via environment variable (non-Windows).** Set `ORT_TELEMETRY_DISABLED=1` (also accepts `true`/`yes`/`on`/`y`, case-insensitive) before ONNX Runtime initializes to disable non-essential telemetry. ONNX Runtime may still send a minimal initialization event.
+- **At runtime, via the API.** The C API (and the C#, Python, and Java bindings) expose calls to turn telemetry on/off for non-essential telemetry. For non-Windows platforms, ONNX Runtime may still send a minimal initialization event. On **Windows**, ETW events are still emitted if an external trace session is collecting.
