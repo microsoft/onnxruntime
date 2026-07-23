@@ -4095,7 +4095,10 @@ TEST(MathOpTest, Mean_8) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
-#ifdef _LIBCPP_VERSION
+#if defined(_LIBCPP_VERSION) || (defined(__clang__) && defined(_MSC_VER))
+// libc++ and clang-cl (clang targeting the MSVC UCRT) do not treat the global-namespace
+// C math functions (::sinf, ::cosf, ...) as noexcept, so the reference template parameter
+// must not carry a noexcept specifier for these declarations to bind.
 #define MATH_NO_EXCEPT
 #else
 #define MATH_NO_EXCEPT noexcept
