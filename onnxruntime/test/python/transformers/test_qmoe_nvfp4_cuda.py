@@ -276,10 +276,10 @@ def _routes_native_fp4_prefill(num_tokens):
     """
     if _cuda_sm() not in (120, 121):
         return False
-    if os.environ.get("ORT_ENABLE_NVFP4_CUTLASS_GEMM", "1") == "0":
+    if int(os.environ.get("ORT_ENABLE_NVFP4_CUTLASS_GEMM", "1")) != 1:
         return False
     prefill_min_tokens = int(os.environ.get("ORT_FP4_PREFILL_MIN_TOKENS", "64"))
-    return prefill_min_tokens > 0 and num_tokens >= prefill_min_tokens
+    return prefill_min_tokens <= 0 or num_tokens >= prefill_min_tokens
 
 
 @unittest.skipIf(not torch.cuda.is_available(), "CUDA not available")
