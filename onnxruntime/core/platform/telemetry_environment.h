@@ -107,26 +107,13 @@ inline bool IsRunningUnitTests() {
   return telemetry_detail::IsTruthyCiValue(telemetry_detail::GetTelemetryEnv("ORT_RUNNING_UNIT_TESTS"));
 }
 
-// True if ORT_TELEMETRY_DISABLED is set to a truthy value (1/true/yes/on/y, case-insensitive).
-// The POSIX 1DS provider latches this opt-out during initialization. Windows ETW intentionally
-// retains its separate API/trace-session control model and does not consult this environment variable.
-inline bool IsTelemetryDisabledByEnvVar() {
+// True if ORT_DISABLE_TELEMETRY is set to a truthy value (1/true/yes/on/y, case-insensitive).
+// The POSIX 1DS provider latches this full opt-out during initialization. Windows ETW retains its
+// separate API/trace-session control model and does not consult this environment variable.
+inline bool IsTelemetryDisabledByEnvironment() {
   const std::string value = telemetry_detail::ToLowerAscii(
-      telemetry_detail::TrimAscii(telemetry_detail::GetTelemetryEnv("ORT_TELEMETRY_DISABLED")));
+      telemetry_detail::TrimAscii(telemetry_detail::GetTelemetryEnv("ORT_DISABLE_TELEMETRY")));
   return value == "1" || value == "true" || value == "yes" || value == "on" || value == "y";
-}
-
-// Environment opt-out has higher priority than the runtime enable API for the lifetime of the process.
-inline constexpr bool CanEnableTelemetryEvents(bool disabled_by_environment) noexcept {
-  return !disabled_by_environment;
-}
-
-// True if telemetry should be fully suppressed for this process, including the initialization event:
-// a CI / build-pipeline environment, ORT's own unit-test binaries, or an explicit
-// ORT_TELEMETRY_DISABLED opt-out. In every case the provider skips creating the uploader entirely, so
-// no events (not even ProcessInfo) are emitted and no persistent device id is written to disk.
-inline bool ShouldSuppressTelemetry() {
-  return IsRunningInCI() || IsRunningUnitTests() || IsTelemetryDisabledByEnvVar();
 }
 
 }  // namespace onnxruntime

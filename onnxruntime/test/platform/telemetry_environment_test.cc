@@ -30,33 +30,25 @@ TEST(TelemetryEnvironmentTest, IsTruthyCiValue) {
 
 TEST(TelemetryEnvironmentTest, EnvVarOptOut) {
   {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TELEMETRY_DISABLED", "1"}}};
-    EXPECT_TRUE(IsTelemetryDisabledByEnvVar());
-    // The environment opt-out fully suppresses telemetry (no uploader, no init event, no device id).
-    EXPECT_TRUE(ShouldSuppressTelemetry());
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_DISABLE_TELEMETRY", "1"}}};
+    EXPECT_TRUE(IsTelemetryDisabledByEnvironment());
   }
   {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TELEMETRY_DISABLED", "TRUE"}}};
-    EXPECT_TRUE(IsTelemetryDisabledByEnvVar());
-    EXPECT_TRUE(ShouldSuppressTelemetry());
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_DISABLE_TELEMETRY", "TRUE"}}};
+    EXPECT_TRUE(IsTelemetryDisabledByEnvironment());
   }
   {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TELEMETRY_DISABLED", "0"}}};
-    EXPECT_FALSE(IsTelemetryDisabledByEnvVar());
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_DISABLE_TELEMETRY", "0"}}};
+    EXPECT_FALSE(IsTelemetryDisabledByEnvironment());
   }
   {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TELEMETRY_DISABLED", "random"}}};
-    EXPECT_FALSE(IsTelemetryDisabledByEnvVar());
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_DISABLE_TELEMETRY", "random"}}};
+    EXPECT_FALSE(IsTelemetryDisabledByEnvironment());
   }
   {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TELEMETRY_DISABLED", nullopt}}};
-    EXPECT_FALSE(IsTelemetryDisabledByEnvVar());
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_DISABLE_TELEMETRY", nullopt}}};
+    EXPECT_FALSE(IsTelemetryDisabledByEnvironment());
   }
-}
-
-TEST(TelemetryEnvironmentTest, EnvironmentOptOutCannotBeReenabled) {
-  EXPECT_TRUE(CanEnableTelemetryEvents(false));
-  EXPECT_FALSE(CanEnableTelemetryEvents(true));
 }
 
 TEST(TelemetryEnvironmentTest, CiDetectionSuppresses) {
@@ -64,7 +56,6 @@ TEST(TelemetryEnvironmentTest, CiDetectionSuppresses) {
   // runs in a CI environment. APPVEYOR is not part of ORT's own CI, so save/restore stays clean.
   ScopedEnvironmentVariables env_vars{EnvVarMap{{"APPVEYOR", "true"}}};
   EXPECT_TRUE(IsRunningInCI());
-  EXPECT_TRUE(ShouldSuppressTelemetry());
 }
 
 TEST(TelemetryEnvironmentTest, RunningUnitTestsSuppresses) {
@@ -73,10 +64,7 @@ TEST(TelemetryEnvironmentTest, RunningUnitTestsSuppresses) {
   {
     ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_RUNNING_UNIT_TESTS", "1"}}};
     EXPECT_TRUE(IsRunningUnitTests());
-    EXPECT_TRUE(ShouldSuppressTelemetry());
   }
-  // Only IsRunningUnitTests() is asserted in the negative direction; ShouldSuppressTelemetry() may
-  // still hold from a CI variable when this test itself runs in CI.
   {
     ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_RUNNING_UNIT_TESTS", "0"}}};
     EXPECT_FALSE(IsRunningUnitTests());

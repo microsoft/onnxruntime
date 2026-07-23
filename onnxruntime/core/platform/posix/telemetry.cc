@@ -80,7 +80,7 @@ std::shared_mutex PosixTelemetry::mutex_;
 std::atomic<::Microsoft::Applications::Events::ILogger*> PosixTelemetry::logger_{nullptr};
 std::unique_ptr<::Microsoft::Applications::Events::ILogConfiguration> PosixTelemetry::config_;
 std::atomic<bool> PosixTelemetry::enabled_{true};
-std::atomic<bool> PosixTelemetry::env_disabled_{false};
+std::atomic<bool> PosixTelemetry::telemetry_disabled_{false};
 std::atomic<uint32_t> PosixTelemetry::projection_{0};
 std::atomic<bool> PosixTelemetry::process_info_logged_{false};
 
@@ -388,15 +388,11 @@ void PosixTelemetry::LogEventAsync(Microsoft::Applications::Events::EventPropert
 void PosixTelemetry::Initialize() {
   std::unique_lock<std::shared_mutex> lock(mutex_);
 
-  // Collect nothing at all — skip creating the 1DS uploader entirely so no events (not even the
-  // one-shot ProcessInfo) are emitted and no device id is written to disk — when telemetry is fully
-  // suppressed for this process: a CI / build-pipeline environment, ORT's own unit-test binaries, or
-  // an explicit ORT_TELEMETRY_DISABLED opt-out. The environment opt-out is additionally latched so the
-  // runtime EnableTelemetryEvents() API cannot re-enable telemetry for the lifetime of the process.
-  if (ShouldSuppressTelemetry()) {
-    if (IsTelemetryDisabledByEnvVar()) {
-      env_disabled_.store(true, std::memory_order_release);
-    }
+  // Full suppression is process-wide and irreversible: never create the uploader, emit an event, or
+  // persist a device id. Latching also covers later ORT reinitialization after an environment change.
+  if (telemetry_disabled_.load(std::memory_order_acquire) ||
+      IsRunningInCI() || IsRunningUnitTests() || IsTelemetryDisabledByEnvironment()) {
+    telemetry_disabled_.store(true, std::memory_order_release);
     enabled_.store(false, std::memory_order_release);
     return;
   }
@@ -731,9 +727,9 @@ int64_t PosixTelemetry::GetTotalMemoryMB() {
 }
 
 void PosixTelemetry::EnableTelemetryEvents() const {
-  enabled_.store(
-      CanEnableTelemetryEvents(env_disabled_.load(std::memory_order_acquire)),
-      std::memory_order_release);
+  if (!telemetry_disabled_.load(std::memory_order_acquire)) {
+    enabled_.store(true, std::memory_order_release);
+  }
 }
 
 void PosixTelemetry::DisableTelemetryEvents() const {
@@ -760,10 +756,8 @@ uint64_t PosixTelemetry::Keyword() const {
 
 void PosixTelemetry::LogProcessInfo() const {
   RunTelemetryOperation("LogProcessInfo", [&]() {
-    // ProcessInfo fires whenever a live logger exists, even when usage events are suppressed at
-    // runtime via DisableTelemetryEvents(); it only needs a live logger. An ORT_TELEMETRY_DISABLED
-    // opt-out (as well as CI / unit-test suppression) prevents the uploader from being created at all,
-    // so no logger exists and this returns early.
+    // Runtime API suppression leaves the uploader live, so ProcessInfo still fires. Full process
+    // suppression never creates a logger and returns here.
     if (logger_.load(std::memory_order_acquire) == nullptr) {
       return;
     }
