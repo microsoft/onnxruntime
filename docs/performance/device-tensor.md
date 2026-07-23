@@ -17,6 +17,31 @@ Tile based inference for high resolution images is another use-case where custom
 
 <img src="../../images/pipeline_pci_processing.png" alt="Image of sequential PCI->Processing->PCI and another image of it being interleaved."/>
 
+## Genric Tensor creation
+
+Latest versions of ONNX Runtime introduce an EP agnostic way of creating device tensors. This is done using the `CreateMemoryInfo_V2` API, which enables developers to create memory info objects without specifying EP-specific strings.
+
+A tensor may be allocated using the `Ort::Sessions`'s allocator using the C++ API which directly maps to the C API.
+
+```c++
+OrtMemoryInfo* memory_info_agnostic_io = nullptr;
+ortApi.CreateMemoryInfo_V2("EP_Agnostic_Memory_Info", OrtMemoryInfoDeviceType_GPU, /*vendor_id*/0, /*device_id*/0, OrtDeviceMemoryType_DEFAULT, /*default alignment*/0, OrtArenaAllocator, &memory_info_agnostic_io);
+
+OrtAllocator* gpu_allocator = nullptr;
+ortApi.GetSharedAllocator(ortEnvironment, memory_info_agnostic_io, &gpu_allocator);
+
+Ort::Value full_gpu_tensor = Ort::Value::CreateTensor<float>(gpu_allocator, shape.data(), shape.size());
+```
+
+Alternatively, the allocated data can be directly wrapped to an `Ort::Value` without copying it
+
+```c++
+OrtMemoryInfo* memory_info_agnostic_io = nullptr;
+ortApi.CreateMemoryInfo_V2("EP_Agnostic_Memory_Info", OrtMemoryInfoDeviceType_GPU, /*vendor_id*/0, /*device_id*/0, OrtDeviceMemoryType_DEFAULT, /*default alignment*/0, OrtArenaAllocator, &memory_info_agnostic_io);
+
+auto ort_value = Ort::Value::CreateTensor(memory_info_agnostic_io, resource, resource_size, shape.data(), shape.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+```
+
 ## CUDA
 
 CUDA in ONNX Runtime has two custom memory types.
