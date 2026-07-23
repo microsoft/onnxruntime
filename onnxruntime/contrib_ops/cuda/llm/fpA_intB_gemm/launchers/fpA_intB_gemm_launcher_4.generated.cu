@@ -9,7 +9,7 @@ namespace cutlass_kernels {
 
 
 template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
-cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
 cute::Shape<cute::Int<128>, cute::Int<16>, cute::Int<64>>, cute::Shape<cute::Int<1>, cute::Int<1>, cute::Int<1>>,
 cutlass::gemm::KernelTmaWarpSpecializedCooperative, cutlass::epilogue::TmaWarpSpecializedCooperative> (
 const half*, const cutlass::uint4b_t*, const half*, const half*, const half*, const float,
@@ -18,7 +18,7 @@ half*, int, int, int, const int, onnxruntime::llm::cutlass_extensions::CutlassGe
 
 
 template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
-cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
 cute::Shape<cute::Int<128>, cute::Int<16>, cute::Int<64>>, cute::Shape<cute::Int<2>, cute::Int<1>, cute::Int<1>>,
 cutlass::gemm::KernelTmaWarpSpecializedCooperative, cutlass::epilogue::TmaWarpSpecializedCooperative> (
 const half*, const cutlass::uint4b_t*, const half*, const half*, const half*, const float,
@@ -27,7 +27,7 @@ half*, int, int, int, const int, onnxruntime::llm::cutlass_extensions::CutlassGe
 
 
 template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
-cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
 cute::Shape<cute::Int<128>, cute::Int<32>, cute::Int<64>>, cute::Shape<cute::Int<1>, cute::Int<1>, cute::Int<1>>,
 cutlass::gemm::KernelTmaWarpSpecializedCooperative, cutlass::epilogue::TmaWarpSpecializedCooperative> (
 const half*, const cutlass::uint4b_t*, const half*, const half*, const half*, const float,
@@ -36,7 +36,7 @@ half*, int, int, int, const int, onnxruntime::llm::cutlass_extensions::CutlassGe
 
 
 template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
-cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
 cute::Shape<cute::Int<128>, cute::Int<32>, cute::Int<64>>, cute::Shape<cute::Int<2>, cute::Int<1>, cute::Int<1>>,
 cutlass::gemm::KernelTmaWarpSpecializedCooperative, cutlass::epilogue::TmaWarpSpecializedCooperative> (
 const half*, const cutlass::uint4b_t*, const half*, const half*, const half*, const float,
@@ -45,7 +45,7 @@ half*, int, int, int, const int, onnxruntime::llm::cutlass_extensions::CutlassGe
 
 
 template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
-cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
 cute::Shape<cute::Int<128>, cute::Int<64>, cute::Int<64>>, cute::Shape<cute::Int<1>, cute::Int<1>, cute::Int<1>>,
 cutlass::gemm::KernelTmaWarpSpecializedCooperative, cutlass::epilogue::TmaWarpSpecializedCooperative> (
 const half*, const cutlass::uint4b_t*, const half*, const half*, const half*, const float,
@@ -54,7 +54,7 @@ half*, int, int, int, const int, onnxruntime::llm::cutlass_extensions::CutlassGe
 
 
 template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
-cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
 cute::Shape<cute::Int<128>, cute::Int<64>, cute::Int<64>>, cute::Shape<cute::Int<2>, cute::Int<1>, cute::Int<1>>,
 cutlass::gemm::KernelTmaWarpSpecializedCooperative, cutlass::epilogue::TmaWarpSpecializedCooperative> (
 const half*, const cutlass::uint4b_t*, const half*, const half*, const half*, const float,
@@ -63,7 +63,7 @@ half*, int, int, int, const int, onnxruntime::llm::cutlass_extensions::CutlassGe
 
 
 template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
-cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
 cute::Shape<cute::Int<128>, cute::Int<128>, cute::Int<64>>, cute::Shape<cute::Int<1>, cute::Int<1>, cute::Int<1>>,
 cutlass::gemm::KernelTmaWarpSpecializedCooperative, cutlass::epilogue::TmaWarpSpecializedCooperative> (
 const half*, const cutlass::uint4b_t*, const half*, const half*, const half*, const float,
@@ -72,7 +72,7 @@ half*, int, int, int, const int, onnxruntime::llm::cutlass_extensions::CutlassGe
 
 
 template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
-cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
 cute::Shape<cute::Int<128>, cute::Int<128>, cute::Int<64>>, cute::Shape<cute::Int<1>, cute::Int<2>, cute::Int<1>>,
 cutlass::gemm::KernelTmaWarpSpecializedCooperative, cutlass::epilogue::TmaWarpSpecializedCooperative> (
 const half*, const cutlass::uint4b_t*, const half*, const half*, const half*, const float,
@@ -81,7 +81,7 @@ half*, int, int, int, const int, onnxruntime::llm::cutlass_extensions::CutlassGe
 
 
 template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
-cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
 cute::Shape<cute::Int<128>, cute::Int<128>, cute::Int<64>>, cute::Shape<cute::Int<2>, cute::Int<1>, cute::Int<1>>,
 cutlass::gemm::KernelTmaWarpSpecializedCooperative, cutlass::epilogue::TmaWarpSpecializedCooperative> (
 const half*, const cutlass::uint4b_t*, const half*, const half*, const half*, const float,
@@ -90,7 +90,7 @@ half*, int, int, int, const int, onnxruntime::llm::cutlass_extensions::CutlassGe
 
 
 template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
-cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
 cute::Shape<cute::Int<128>, cute::Int<128>, cute::Int<64>>, cute::Shape<cute::Int<2>, cute::Int<2>, cute::Int<1>>,
 cutlass::gemm::KernelTmaWarpSpecializedCooperative, cutlass::epilogue::TmaWarpSpecializedCooperative> (
 const half*, const cutlass::uint4b_t*, const half*, const half*, const half*, const float,
@@ -99,7 +99,7 @@ half*, int, int, int, const int, onnxruntime::llm::cutlass_extensions::CutlassGe
 
 
 template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
-cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
 cute::Shape<cute::Int<128>, cute::Int<256>, cute::Int<64>>, cute::Shape<cute::Int<1>, cute::Int<1>, cute::Int<1>>,
 cutlass::gemm::KernelTmaWarpSpecializedCooperative, cutlass::epilogue::TmaWarpSpecializedCooperative> (
 const half*, const cutlass::uint4b_t*, const half*, const half*, const half*, const float,
@@ -108,7 +108,7 @@ half*, int, int, int, const int, onnxruntime::llm::cutlass_extensions::CutlassGe
 
 
 template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
-cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
 cute::Shape<cute::Int<128>, cute::Int<256>, cute::Int<64>>, cute::Shape<cute::Int<1>, cute::Int<2>, cute::Int<1>>,
 cutlass::gemm::KernelTmaWarpSpecializedCooperative, cutlass::epilogue::TmaWarpSpecializedCooperative> (
 const half*, const cutlass::uint4b_t*, const half*, const half*, const half*, const float,
@@ -117,7 +117,7 @@ half*, int, int, int, const int, onnxruntime::llm::cutlass_extensions::CutlassGe
 
 
 template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
-cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
 cute::Shape<cute::Int<128>, cute::Int<256>, cute::Int<64>>, cute::Shape<cute::Int<2>, cute::Int<1>, cute::Int<1>>,
 cutlass::gemm::KernelTmaWarpSpecializedCooperative, cutlass::epilogue::TmaWarpSpecializedCooperative> (
 const half*, const cutlass::uint4b_t*, const half*, const half*, const half*, const float,
@@ -126,7 +126,7 @@ half*, int, int, int, const int, onnxruntime::llm::cutlass_extensions::CutlassGe
 
 
 template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
-cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY, onnxruntime::llm::cutlass_extensions::EpilogueOpBias,
 cute::Shape<cute::Int<128>, cute::Int<256>, cute::Int<64>>, cute::Shape<cute::Int<2>, cute::Int<2>, cute::Int<1>>,
 cutlass::gemm::KernelTmaWarpSpecializedCooperative, cutlass::epilogue::TmaWarpSpecializedCooperative> (
 const half*, const cutlass::uint4b_t*, const half*, const half*, const half*, const float,
