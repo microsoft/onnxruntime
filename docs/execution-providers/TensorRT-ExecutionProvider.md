@@ -195,6 +195,7 @@ Ort::ThrowOnError(api.GetTensorRTProviderOptionsAsString(tensorrt_options,      
 | **Precision and Performance**                      |                                                                                            |        |
 | Set TensorRT EP GPU memory usage limit             | [trt_max_workspace_size](./TensorRT-ExecutionProvider.md#trt_max_workspace_size)           | int    |
 | Enable FP16 precision for faster performance       | [trt_fp16_enable](./TensorRT-ExecutionProvider.md#trt_fp16_enable)                         | bool   |
+| Enable BF16 precision for faster performance       | [trt_bf16_enable](./TensorRT-ExecutionProvider.md#trt_bf16_enable)                         | bool   |
 | Enable INT8 precision for quantized inference      | [trt_int8_enable](./TensorRT-ExecutionProvider.md#trt_int8_enable)                         | bool   |
 | Name INT8 calibration table for non-QDQ models     | [trt_int8_calibration_table_name](./TensorRT-ExecutionProvider.md#trt_int8_calibration_table_name) | string |
 | Use native TensorRT calibration tables             | [trt_int8_use_native_calibration_table](./TensorRT-ExecutionProvider.md#trt_int8_use_native_calibration_table) | bool   |
@@ -303,6 +304,13 @@ TensorRT configurations can be set by execution provider options. It's useful wh
 
   > Note: not all Nvidia GPUs support FP16 precision.
 
+##### trt_bf16_enable
+
+
+* Description: enable BF16 mode in TensorRT.
+
+  > Note: not all Nvidia GPUs support BF16 precision.
+
 ##### trt_int8_enable
 
 * Description:  enable INT8 mode in TensorRT.
@@ -347,7 +355,7 @@ TensorRT configurations can be set by execution provider options. It's useful wh
 
 * Engine will be cached when it's built for the first time so next time when new inference session is created the engine can be loaded directly from cache. In order to validate that the loaded engine is usable for current inference, engine profile is also cached and loaded along with engine. If current input shapes are in the range of the engine profile, the loaded engine can be safely used. Otherwise if input shapes are out of range, profile cache will be updated to cover the new shape and engine will be recreated based on the new profile (and also refreshed in the engine cache).
 
-  * Note each engine is created for specific settings such as model path/name, precision (FP32/FP16/INT8 etc), workspace, profiles etc, and specific GPUs and it's not portable, so it's essential to make sure those settings are not changing, otherwise the engine needs to be rebuilt and cached again.
+  * Note each engine is created for specific settings such as model path/name, precision (FP32/FP16/BF16/INT8 etc), workspace, profiles etc, and specific GPUs and it's not portable, so it's essential to make sure those settings are not changing, otherwise the engine needs to be rebuilt and cached again.
 
   > **Warning: Please clean up any old engine and profile cache files (.engine and .profile) if any of the following changes:**
   >
@@ -501,6 +509,8 @@ Following environment variables can be set for TensorRT execution provider. Clic
 
 * `ORT_TENSORRT_FP16_ENABLE`: Enable FP16 mode in TensorRT. 1: enabled, 0: disabled. Default value: 0. Note not all Nvidia GPUs support FP16 precision.
 
+* `ORT_TENSORRT_BF16_ENABLE`: Enable BF16 mode in TensorRT. 1: enabled, 0: disabled. Default value: 0. Note not all Nvidia GPUs support BF16 precision.
+
 * `ORT_TENSORRT_INT8_ENABLE`: Enable INT8 mode in TensorRT. 1: enabled, 0: disabled. Default value: 0. Note not all Nvidia GPUs support INT8 precision.
 
 * `ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME`: Specify INT8 calibration table file for non-QDQ models in INT8 mode. Note calibration table should not be provided for QDQ model because TensorRT doesn't allow calibration table to be loded if there is any Q/DQ node in the model. By default the name is empty.
@@ -512,7 +522,7 @@ Following environment variables can be set for TensorRT execution provider. Clic
 
 * `ORT_TENSORRT_DLA_CORE`: Specify DLA core to execute on. Default value: 0.
 
-* `ORT_TENSORRT_ENGINE_CACHE_ENABLE`: Enable TensorRT engine caching. The purpose of using engine caching is to save engine build time in the case that TensorRT may take long time to optimize and build engine. Engine will be cached when it's built for the first time so next time when new inference session is created the engine can be loaded directly from cache. In order to validate that the loaded engine is usable for current inference, engine profile is also cached and loaded along with engine. If current input shapes are in the range of the engine profile, the loaded engine can be safely used. Otherwise if input shapes are out of range, profile cache will be updated to cover the new shape and engine will be recreated based on the new profile (and also refreshed in the engine cache). Note each engine is created for specific settings such as model path/name, precision (FP32/FP16/INT8 etc), workspace, profiles etc, and specific GPUs and it's not portable, so it's essential to make sure those settings are not changing, otherwise the engine needs to be rebuilt and cached again. 1: enabled, 0: disabled. Default value: 0.
+* `ORT_TENSORRT_ENGINE_CACHE_ENABLE`: Enable TensorRT engine caching. The purpose of using engine caching is to save engine build time in the case that TensorRT may take long time to optimize and build engine. Engine will be cached when it's built for the first time so next time when new inference session is created the engine can be loaded directly from cache. In order to validate that the loaded engine is usable for current inference, engine profile is also cached and loaded along with engine. If current input shapes are in the range of the engine profile, the loaded engine can be safely used. Otherwise if input shapes are out of range, profile cache will be updated to cover the new shape and engine will be recreated based on the new profile (and also refreshed in the engine cache). Note each engine is created for specific settings such as model path/name, precision (FP32/FP16/BF16/INT8 etc), workspace, profiles etc, and specific GPUs and it's not portable, so it's essential to make sure those settings are not changing, otherwise the engine needs to be rebuilt and cached again. 1: enabled, 0: disabled. Default value: 0.
     * **Warning: Please clean up any old engine and profile cache files (.engine and .profile) if any of the following changes:**
         * Model changes (if there are any changes to the model topology, opset version, operators etc.)
         * ORT version changes (i.e. moving from ORT version 1.8 to 1.9)
@@ -563,6 +573,9 @@ export ORT_TENSORRT_MIN_SUBGRAPH_SIZE=5
 
 # Enable FP16 mode in TensorRT
 export ORT_TENSORRT_FP16_ENABLE=1
+
+# Enable BF16 mode in TensorRT
+export ORT_TENSORRT_BF16_ENABLE=1
 
 # Enable INT8 mode in TensorRT
 export ORT_TENSORRT_INT8_ENABLE=1
