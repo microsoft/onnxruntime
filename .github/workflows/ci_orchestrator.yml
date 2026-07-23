@@ -1,0 +1,356 @@
+# Pilot for staged CI gating (see design discussion / rollout plan).
+#
+# Stage 1 (lint):            Reuses lint.yml. Must succeed before anything else runs.
+# Stage 2 (targeted gates):  ONLY the CI job(s) that actually cover the changed area run here,
+#                            gated on Stage 1. Kept intentionally narrow - no generic/catch-all
+#                            builds live in Stage 2, so a PR only pays for the runners its change
+#                            actually needs:
+#                              - "framework" gate (onnxruntime/core/** excluding core/providers/**
+#                                and core/platform/**, plus include/onnxruntime/core/** and cmake/**)
+#                                -> linux_ci.yml only (Linux CPU build+test, cheapest/fastest full
+#                                leg, highest-signal predictor of framework-level breakage).
+#                              - "<provider>" gate (onnxruntime/core/providers/<provider>/**) -> that
+#                                provider's own CI workflow(s), Linux and Windows legs alike. Wired
+#                                so far: cuda (Linux CUDA CI, ONNX Runtime CUDA Builds, CUDA Plugin
+#                                Windows CI), tensorrt (Linux + Windows GPU TensorRT CI Pipeline),
+#                                openvino (Linux + Windows OpenVINO CI Pipeline), webgpu (Linux +
+#                                ONNX Runtime WebGPU Builds), dml, qnn, xnnpack, vitisai, coreml,
+#                                nnapi, js/webnn. Not yet wired (no obvious
+#                                reusable CI workflow or low PR volume): acl, azure, cann, dnnl,
+#                                migraphx, rknpu, snpe, vsinpu, winml.
+#                            Multiple gates can run in parallel when a PR touches more than one area
+#                            (e.g. framework + cuda).
+# Stage 3 (everything else):  Runs after all Stage 2 gates that were triggered succeed (skipped
+#                            gates count as pass-through, via the shared `&stage3_gate` anchor).
+#                            Fans out to the remaining CI workflows that aren't tied to a single
+#                            provider area and so have no path-filter of their own:
+#                            windows_x64_release, windows_x64_debug,
+#                            windows_x64_release_ep_generic_interface, windows_x86 (x64 CPU
+#                            Pipeline), windows_x64_asan, windows_gpu_doc_gen.yml (Windows GPU
+#                            Kernel Documentation Validation), CUDA Plugin Linux CI, Linux CPU
+#                            Minimal Build E2E, iOS CI on Mac, React Native CI Pipeline. Note the
+#                            first five all run on the contended Win2022-GPU-A10 pool despite being
+#                            "generic"/near-unfiltered (windows_gpu_doc_gen.yml's own `paths: '**'`
+#                            match is effectively no filter at all) - they deliberately live in
+#                            Stage 3, not Stage 2, so a broad "framework" match (e.g. touching
+#                            .github/workflows/** or a big chunk of onnxruntime/core/**) doesn't put
+#                            them on the hook for every PR; they still build/test on every PR, just
+#                            gated behind Stage 2 succeeding (or being skipped) instead of racing it
+#                            or being mislabeled as a "targeted" gate. Not included here (left as
+#                            standalone, independently-triggered workflows): CodeQL and
+#                            gradle-wrapper-validation (security/policy checks, kept independent of
+#                            build gating on purpose), pr_checks.yml (lightweight bot job), the
+#                            publish-*-apidocs.yml workflows and linux/windows_cuda_no_cudnn.yml
+#                            (each already has its own narrow `paths:` filter so isn't a backlog
+#                            contributor).
+#
+# NOTE: Every workflow wired into Stage 2 and Stage 3 above has had its standalone `pull_request:`
+# trigger removed (see each workflow's `on:` block) - ci_orchestrator.yml is now the sole PR entry
+# point for those workflows, so unrelated PRs no longer queue Windows/Linux GPU runners they don't
+# need. This is what actually reduces contention on the self-hosted runner pools, not just a
+# cosmetic gate.
+
+name: CI Orchestrator
+
+on:
+  pull_request:
+    branches: [main, 'rel-*']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # Reusable workflows are capped at the permissions the caller grants, so this must be a superset
+  # of what every Stage 1-3 callee (and its jobs) requests: lint.yml's Python-format job asks for
+  # security-events: write and its optional-lint job's reviewdog reporters need checks: write;
+  # linux_ci.yml/linux_cuda_ci.yml/android.yml/etc. ask for packages: write, attestations: write,
+  # and id-token: write. Without these, GitHub can reject the call outright (startup failure) or
+  # individual steps fail with permission errors instead of a clear message.
+  packages: write
+  attestations: write
+  id-token: write
+  security-events: write
+  checks: write
+
+jobs:
+  lint:
+    name: "Stage 1: Lint"
+    uses: ./.github/workflows/lint.yml
+
+  detect-changes:
+    name: "Detect changed areas"
+    needs: lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # dorny/paths-filter needs this to query the PR's changed files via the API on
+      # pull_request events; without it the filter step can fail and no Stage 2/3 job would run.
+      pull-requests: read
+    outputs:
+      framework: ${{ steps.filter.outputs.framework }}
+      cuda: ${{ steps.filter.outputs.cuda }}
+      tensorrt: ${{ steps.filter.outputs.tensorrt }}
+      openvino: ${{ steps.filter.outputs.openvino }}
+      dml: ${{ steps.filter.outputs.dml }}
+      webgpu: ${{ steps.filter.outputs.webgpu }}
+      qnn: ${{ steps.filter.outputs.qnn }}
+      xnnpack: ${{ steps.filter.outputs.xnnpack }}
+      vitisai: ${{ steps.filter.outputs.vitisai }}
+      coreml: ${{ steps.filter.outputs.coreml }}
+      nnapi: ${{ steps.filter.outputs.nnapi }}
+      js: ${{ steps.filter.outputs.js }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            framework:
+              - 'onnxruntime/core/**'
+              - '!onnxruntime/core/providers/**'
+              - '!onnxruntime/core/platform/**'
+              - 'include/onnxruntime/core/**'
+              - 'cmake/**'
+              - '.github/workflows/**' # CI infra changes are treated as framework-level
+            cuda:
+              - 'onnxruntime/core/providers/cuda/**'
+              - 'onnxruntime/contrib_ops/cuda/**'
+            tensorrt:
+              - 'onnxruntime/core/providers/tensorrt/**'
+              - 'onnxruntime/core/providers/nv_tensorrt_rtx/**'
+            openvino:
+              - 'onnxruntime/core/providers/openvino/**'
+            dml:
+              - 'onnxruntime/core/providers/dml/**'
+            webgpu:
+              - 'onnxruntime/core/providers/webgpu/**'
+              - 'onnxruntime/contrib_ops/webgpu/**'
+            qnn:
+              - 'onnxruntime/core/providers/qnn/**'
+            xnnpack:
+              - 'onnxruntime/core/providers/xnnpack/**'
+            vitisai:
+              - 'onnxruntime/core/providers/vitisai/**'
+            coreml:
+              - 'onnxruntime/core/providers/coreml/**'
+            nnapi:
+              - 'onnxruntime/core/providers/nnapi/**'
+            js:
+              - 'onnxruntime/core/providers/js/**'
+              - 'onnxruntime/core/providers/webnn/**'
+              - 'js/**'
+            # Providers intentionally not yet wired to a Stage 2 gate (no reusable CI workflow
+            # identified / low PR volume): acl, azure, cann, dnnl, migraphx, rknpu, snpe, vsinpu,
+            # winml. Add filters + jobs here the same way once their workflow is converted.
+            #
+            # NOTE (deliberate trade-off): provider filters intentionally match only that
+            # provider's *source* paths, not its own CI workflow file. A PR that edits only e.g.
+            # windows_cuda.yml (no onnxruntime/core/providers/cuda/** change) will trip the broad
+            # "framework" gate (via .github/workflows/**) but not the cuda gate - accepted because
+            # the alternative (matching each provider's own workflow file) makes any PR that edits
+            # many workflow files at once - such as this CI-gating PR itself, which touches nearly
+            # every provider's workflow file purely for the workflow_call conversion, with zero
+            # provider source changes - trigger every single Stage 2 gate simultaneously. That
+            # defeats the entire point of narrow gating for exactly the kind of PR most likely to
+            # touch these files. YAML/schema issues in a provider's own workflow file are still
+            # caught the next time that gate is exercised by a real source change, or can be
+            # smoke-tested manually via workflow_dispatch.
+
+  stage2-linux-cpu:
+    name: "Stage 2: Linux CI CPU (framework gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.framework == 'true'
+    uses: ./.github/workflows/linux_ci.yml
+
+  stage2-cuda:
+    name: "Stage 2: Linux CUDA CI (cuda provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.cuda == 'true'
+    uses: ./.github/workflows/linux_cuda_ci.yml
+
+  stage2-windows-cuda:
+    name: "Stage 2: Windows CUDA Builds (cuda provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.cuda == 'true'
+    uses: ./.github/workflows/windows_cuda.yml
+
+  stage2-windows-cuda-plugin:
+    name: "Stage 2: CUDA Plugin Windows CI (cuda provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.cuda == 'true'
+    uses: ./.github/workflows/windows_cuda_plugin.yml
+
+  stage2-tensorrt:
+    name: "Stage 2: Linux TensorRT CI (tensorrt provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.tensorrt == 'true'
+    uses: ./.github/workflows/linux_tensorrt_ci.yml
+
+  stage2-windows-tensorrt:
+    name: "Stage 2: Windows GPU TensorRT CI Pipeline (tensorrt provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.tensorrt == 'true'
+    uses: ./.github/workflows/windows_tensorrt.yml
+
+  stage2-openvino:
+    name: "Stage 2: Linux OpenVINO CI (openvino provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.openvino == 'true'
+    uses: ./.github/workflows/linux_openvino_ci.yml
+
+  stage2-windows-openvino:
+    name: "Stage 2: Windows OpenVINO CI Pipeline (openvino provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.openvino == 'true'
+    uses: ./.github/workflows/windows_openvino.yml
+
+  stage2-dml:
+    name: "Stage 2: Windows DML CI (dml provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.dml == 'true'
+    uses: ./.github/workflows/windows_dml.yml
+
+  stage2-webgpu:
+    name: "Stage 2: Linux WebGPU CI (webgpu provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.webgpu == 'true'
+    uses: ./.github/workflows/linux_webgpu.yml
+
+  stage2-windows-webgpu:
+    name: "Stage 2: ONNX Runtime WebGPU Builds (webgpu provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.webgpu == 'true'
+    uses: ./.github/workflows/windows_webgpu.yml
+
+  stage2-qnn:
+    name: "Stage 2: Windows QNN CI (qnn provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.qnn == 'true'
+    uses: ./.github/workflows/windows_qnn_x64.yml
+
+  stage2-xnnpack:
+    name: "Stage 2: Windows XNNPACK CI (xnnpack provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.xnnpack == 'true'
+    uses: ./.github/workflows/windows_x64_release_xnnpack.yml
+
+  stage2-vitisai:
+    name: "Stage 2: Windows VitisAI CI (vitisai provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.vitisai == 'true'
+    uses: ./.github/workflows/windows_x64_release_vitisai_build_x64_release.yml
+
+  stage2-coreml:
+    name: "Stage 2: macOS CI (coreml provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.coreml == 'true'
+    uses: ./.github/workflows/mac.yml
+
+  stage2-nnapi:
+    name: "Stage 2: Android CI (nnapi provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.nnapi == 'true'
+    uses: ./.github/workflows/android.yml
+
+  stage2-js:
+    name: "Stage 2: Web CI (js/webnn provider gate)"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.js == 'true'
+    uses: ./.github/workflows/web.yml
+
+  # Stage 3: fan out to the remaining CI workflows that aren't tied to one provider area, so they
+  # don't waste a runner if Stage 2 already found a break. These still run for every PR (no
+  # path-filter gate of their own), just after Stage 2 instead of racing it independently.
+  # This includes windows_x64_release / windows_x64_debug / windows_x64_release_ep_generic_interface
+  # / windows_x86 - these are generic full-ORT builds that all run on the contended
+  # Win2022-GPU-A10 pool, so they belong here (behind the cheap/targeted Stage 2 gates) rather than
+  # in Stage 2 itself, where they'd fire on almost every PR (they'd previously been misclassified as
+  # a "framework" gate, which - via the broad onnxruntime/core/** and .github/workflows/** filters -
+  # defeated the point of gating: they still ran on nearly every PR, just now labeled as a "gate").
+  stage3-windows-release:
+    name: "Stage 3: Windows x64 Release"
+    needs: &stage3_needs [detect-changes, stage2-linux-cpu, stage2-cuda, stage2-windows-cuda,
+            stage2-windows-cuda-plugin, stage2-tensorrt, stage2-windows-tensorrt, stage2-openvino,
+            stage2-windows-openvino, stage2-dml, stage2-webgpu, stage2-windows-webgpu, stage2-qnn,
+            stage2-xnnpack, stage2-vitisai, stage2-coreml, stage2-nnapi, stage2-js]
+    if: &stage3_gate |
+      always() &&
+      needs.detect-changes.result == 'success' &&
+      (needs.stage2-linux-cpu.result == 'success' || needs.stage2-linux-cpu.result == 'skipped') &&
+      (needs.stage2-cuda.result == 'success' || needs.stage2-cuda.result == 'skipped') &&
+      (needs.stage2-windows-cuda.result == 'success' || needs.stage2-windows-cuda.result == 'skipped') &&
+      (needs.stage2-windows-cuda-plugin.result == 'success' || needs.stage2-windows-cuda-plugin.result == 'skipped') &&
+      (needs.stage2-tensorrt.result == 'success' || needs.stage2-tensorrt.result == 'skipped') &&
+      (needs.stage2-windows-tensorrt.result == 'success' || needs.stage2-windows-tensorrt.result == 'skipped') &&
+      (needs.stage2-openvino.result == 'success' || needs.stage2-openvino.result == 'skipped') &&
+      (needs.stage2-windows-openvino.result == 'success' || needs.stage2-windows-openvino.result == 'skipped') &&
+      (needs.stage2-dml.result == 'success' || needs.stage2-dml.result == 'skipped') &&
+      (needs.stage2-webgpu.result == 'success' || needs.stage2-webgpu.result == 'skipped') &&
+      (needs.stage2-windows-webgpu.result == 'success' || needs.stage2-windows-webgpu.result == 'skipped') &&
+      (needs.stage2-qnn.result == 'success' || needs.stage2-qnn.result == 'skipped') &&
+      (needs.stage2-xnnpack.result == 'success' || needs.stage2-xnnpack.result == 'skipped') &&
+      (needs.stage2-vitisai.result == 'success' || needs.stage2-vitisai.result == 'skipped') &&
+      (needs.stage2-coreml.result == 'success' || needs.stage2-coreml.result == 'skipped') &&
+      (needs.stage2-nnapi.result == 'success' || needs.stage2-nnapi.result == 'skipped') &&
+      (needs.stage2-js.result == 'success' || needs.stage2-js.result == 'skipped')
+    uses: ./.github/workflows/windows_x64_release_build_x64_release.yml
+
+  stage3-windows-debug:
+    name: "Stage 3: Windows x64 Debug"
+    needs: *stage3_needs
+    if: *stage3_gate
+    uses: ./.github/workflows/windows_x64_debug_build_x64_debug.yml
+
+  stage3-windows-ep-generic:
+    name: "Stage 3: Windows x64 Release EP Generic Interface"
+    needs: *stage3_needs
+    if: *stage3_gate
+    uses: ./.github/workflows/windows_x64_release_ep_generic_interface_build_x64_release_ep_generic_interface.yml
+
+  stage3-windows-cpu:
+    name: "Stage 3: Windows CPU CI Pipeline"
+    needs: *stage3_needs
+    if: *stage3_gate
+    uses: ./.github/workflows/windows_x86.yml
+
+  stage3-windows-asan:
+    name: "Stage 3: Windows x64 ASan"
+    needs: *stage3_needs
+    if: *stage3_gate
+    uses: ./.github/workflows/windows_build_x64_asan.yml
+
+  # windows_gpu_doc_gen.yml has a near-unfiltered `paths: '**'` match and runs on the contended
+  # Win2022-GPU-A10 pool (300 min timeout) - it belongs in Stage 3, not left standalone, so it
+  # doesn't race every PR independently of Stage 2.
+  stage3-windows-gpu-doc-gen:
+    name: "Stage 3: Windows GPU Kernel Documentation Validation"
+    needs: *stage3_needs
+    if: *stage3_gate
+    uses: ./.github/workflows/windows_gpu_doc_gen.yml
+
+  stage3-linux-cuda-plugin:
+    name: "Stage 3: CUDA Plugin Linux CI"
+    needs: *stage3_needs
+    if: *stage3_gate
+    uses: ./.github/workflows/linux_cuda_plugin_ci.yml
+
+  stage3-linux-minimal-build:
+    name: "Stage 3: Linux CPU Minimal Build E2E"
+    needs: *stage3_needs
+    if: *stage3_gate
+    uses: ./.github/workflows/linux_minimal_build.yml
+
+  stage3-ios:
+    name: "Stage 3: iOS CI on Mac"
+    needs: *stage3_needs
+    if: *stage3_gate
+    uses: ./.github/workflows/ios.yml
+
+  stage3-react-native:
+    name: "Stage 3: React Native CI Pipeline"
+    needs: *stage3_needs
+    if: *stage3_gate
+    uses: ./.github/workflows/react_native.yml
+

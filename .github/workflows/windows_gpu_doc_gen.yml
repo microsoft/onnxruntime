@@ -15,25 +15,22 @@ on:
       - '!BUILD.md'
       - '!js/web/**'
       - '!onnxruntime/core/providers/js/**'
-  pull_request:
-    branches:
-      - main
-      - rel-*
-    paths:
-      - '**'
-      - '!docs/**'
-      - 'docs/OperatorKernels.md'
-      - 'docs/ContribOperators.md'
-      - '!README.md'
-      - '!CONTRIBUTING.md'
-      - '!BUILD.md'
-      - '!js/web/**'
-      - '!onnxruntime/core/providers/js/**'
+  # NOTE: standalone pull_request: trigger removed - this runs on the contended Win2022-GPU-A10
+  # pool with a near-unfiltered `paths: '**'` match, so it belongs in Stage 3 of
+  # ci_orchestrator.yml (gated behind Stage 2 succeeding/skipping) rather than racing every PR
+  # independently. push: (main/rel-*) is left as-is since the orchestrator only runs on
+  # pull_request.
+  workflow_call:
+    # Allows this workflow to be invoked as part of Stage 3 by ci_orchestrator.yml
   workflow_dispatch:
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: true
+# NOTE: no standalone `concurrency:` block here - this workflow's own group would be
+# `${{ github.workflow }}-<ref>`, but github.workflow resolves to the *caller's* name
+# ("CI Orchestrator") when invoked via workflow_call, which is identical to the
+# orchestrator's own top-level group and causes GitHub to detect a deadlock and cancel
+# this job outright. ci_orchestrator.yml's top-level `concurrency:` already covers
+# cancel-in-progress for the whole PR run; standalone push/workflow_dispatch triggers
+# here are keyed off github.sha, which is always unique, so no dedicated group is needed.
 
 jobs:
   kernel_documentation:
