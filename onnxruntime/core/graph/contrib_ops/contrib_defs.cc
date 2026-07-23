@@ -3558,7 +3558,7 @@ void RegisterContribSchemas() {
           "T",
           OpSchema::Variadic,
           false,
-          1,
+          0,
           OpSchema::NonDifferentiable)
       .Output(
           0,
