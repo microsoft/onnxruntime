@@ -1,13 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <memory>
+#include <algorithm>
 #include <cmath>
+#include <condition_variable>
+#include <memory>
+#include <queue>
 #include <string>
+#include <thread>
+#include <vector>
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
+// Dawn's DawnPlatform.h has unused parameters in its inline CachingInterface default methods,
+// which trips ORT's -Werror=unused-parameter under GCC.
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
 #if !defined(__wasm__)
@@ -15,6 +23,7 @@
 #include "dawn/dawn_proc.h"
 #endif
 #if !defined(USE_EXTERNAL_DAWN)
+#include "dawn/platform/DawnPlatform.h"
 #include "dawn/native/DawnNative.h"
 #endif
 #endif
@@ -38,6 +47,163 @@
 
 namespace onnxruntime {
 namespace webgpu {
+
+#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
+namespace {
+
+// Scale the pipeline-compilation worker pool with the CPU, following ORT's convention of sizing
+// thread pools from the core count. Uses half the logical processors (approximating physical
+// cores) with a floor of 2, which also covers hardware_concurrency() reporting 0.
+uint32_t GetDawnWorkerThreadCount() {
+  return std::max(2u, std::thread::hardware_concurrency() / 2u);
+}
+
+class DawnWaitableEventState {
+ public:
+  void Wait() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    condition_.wait(lock, [this] { return complete_; });
+  }
+
+  bool IsComplete() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return complete_;
+  }
+
+  void SetComplete() {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      complete_ = true;
+    }
+    condition_.notify_all();
+  }
+
+ private:
+  std::mutex mutex_;
+  std::condition_variable condition_;
+  bool complete_{false};
+};
+
+class DawnWaitableEvent final : public dawn::platform::WaitableEvent {
+ public:
+  DawnWaitableEvent() : state_(std::make_shared<DawnWaitableEventState>()) {}
+
+  void Wait() override {
+    state_->Wait();
+  }
+
+  bool IsComplete() override {
+    return state_->IsComplete();
+  }
+
+  std::shared_ptr<DawnWaitableEventState> GetState() const {
+    return state_;
+  }
+
+ private:
+  std::shared_ptr<DawnWaitableEventState> state_;
+};
+
+class DawnWorkerTaskPool final : public dawn::platform::WorkerTaskPool {
+ public:
+  explicit DawnWorkerTaskPool(uint32_t max_thread_count) : max_thread_count_(max_thread_count) {
+    threads_.reserve(max_thread_count_);
+  }
+
+  ~DawnWorkerTaskPool() override {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      is_destroyed_ = true;
+    }
+    condition_.notify_all();
+
+    for (auto& thread : threads_) {
+      thread.join();
+    }
+  }
+
+  std::unique_ptr<dawn::platform::WaitableEvent> PostWorkerTask(
+      dawn::platform::PostWorkerTaskCallback callback,
+      void* userdata) override {
+    auto waitable_event = std::make_unique<DawnWaitableEvent>();
+
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      pending_tasks_.push(Task{callback, userdata, waitable_event->GetState()});
+      EnsureThreads();
+    }
+    condition_.notify_one();
+
+    return waitable_event;
+  }
+
+ private:
+  struct Task {
+    dawn::platform::PostWorkerTaskCallback callback;
+    void* userdata;
+    std::shared_ptr<DawnWaitableEventState> waitable_event_state;
+  };
+
+  void EnsureThreads() {
+    const size_t outstanding_task_count = active_task_count_ + pending_tasks_.size();
+    if (threads_.size() == max_thread_count_ || threads_.size() >= outstanding_task_count) {
+      return;
+    }
+
+    threads_.emplace_back(&DawnWorkerTaskPool::ThreadLoop, this);
+  }
+
+  void ThreadLoop() {
+    while (true) {
+      Task task;
+      {
+        std::unique_lock<std::mutex> lock(mutex_);
+        condition_.wait(lock, [this] { return is_destroyed_ || !pending_tasks_.empty(); });
+
+        if (is_destroyed_ && pending_tasks_.empty()) {
+          return;
+        }
+
+        task = pending_tasks_.front();
+        pending_tasks_.pop();
+        ++active_task_count_;
+      }
+
+      task.callback(task.userdata);
+      task.waitable_event_state->SetComplete();
+
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        --active_task_count_;
+      }
+    }
+  }
+
+  const uint32_t max_thread_count_;
+  std::vector<std::thread> threads_;
+  std::queue<Task> pending_tasks_;
+  std::mutex mutex_;
+  std::condition_variable condition_;
+  size_t active_task_count_{0};
+  bool is_destroyed_{false};
+};
+
+class DawnPlatform final : public dawn::platform::Platform {
+ public:
+  std::unique_ptr<dawn::platform::WorkerTaskPool> CreateWorkerTaskPool() override {
+    return std::make_unique<DawnWorkerTaskPool>(GetDawnWorkerThreadCount());
+  }
+};
+
+DawnPlatform& GetDawnPlatform() {
+  // The Dawn instance retains this non-owning pointer. Keep it alive for the process lifetime to
+  // avoid static destruction order issues with Dawn's instance teardown.
+  static DawnPlatform* platform = new DawnPlatform();
+  return *platform;
+}
+
+}  // namespace
+#endif  // !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
 
 void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, &config]() {
@@ -1084,6 +1250,11 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     wgpu::InstanceDescriptor instance_desc{};
     instance_desc.requiredFeatures = required_instance_features;
     instance_desc.requiredFeatureCount = sizeof(required_instance_features) / sizeof(required_instance_features[0]);
+#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
+    dawn::native::DawnInstanceDescriptor dawn_instance_desc{};
+    dawn_instance_desc.platform = &GetDawnPlatform();
+    instance_desc.nextInChain = &dawn_instance_desc;
+#endif
     default_instance_ = wgpu::CreateInstance(&instance_desc).MoveToCHandle();
 
     ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");
