@@ -140,7 +140,7 @@ __device__ __forceinline__ void LoadFp4Gemv32A<nv_bfloat16>(const nv_bfloat16* p
 }
 
 template <typename T>
-__global__ void MatMulBlockScaledFp4GemvKernel(T* __restrict__ y,
+__global__ void MatMulBlockQuantizedFp4WeightGemvKernel(T* __restrict__ y,
                                                const T* __restrict__ a,
                                                const uint8_t* __restrict__ b_packed,
                                                const uint8_t* __restrict__ weight_scale,
@@ -260,7 +260,7 @@ Status LaunchDequantizeNvFp4(void* b_dequant,
   ORT_UNUSED_PARAMETER(block_size);
   ORT_UNUSED_PARAMETER(is_bf16);
   ORT_UNUSED_PARAMETER(stream);
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MatMulBlockScaledFp4 requires CUDA 12.8 or newer for NVFP4 support.");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MatMulBlockQuantizedFp4Weight requires CUDA 12.8 or newer for NVFP4 support.");
 #endif
 }
 
@@ -292,11 +292,11 @@ Status LaunchAddBiasNvFp4(void* y,
   ORT_UNUSED_PARAMETER(n);
   ORT_UNUSED_PARAMETER(is_bf16);
   ORT_UNUSED_PARAMETER(stream);
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MatMulBlockScaledFp4 requires CUDA 12.8 or newer for NVFP4 support.");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MatMulBlockQuantizedFp4Weight requires CUDA 12.8 or newer for NVFP4 support.");
 #endif
 }
 
-Status LaunchMatMulBlockScaledFp4Gemv(void* y,
+Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
                                       const void* a,
                                       const void* b_packed,
                                       const void* weight_scale,
@@ -315,8 +315,8 @@ Status LaunchMatMulBlockScaledFp4Gemv(void* y,
   // This kernel is hard-coded for block_size == 16 and assumes K is a multiple of 32 so that each
   // warp lane always owns a full 32-element slice (and one E4M3 scale per 16-element block). Guard
   // against misuse if this helper is ever reused outside the callers that already check these.
-  ORT_RETURN_IF_NOT(block_size == 16, "MatMulBlockScaledFp4 GEMV requires block_size == 16, got ", block_size, ".");
-  ORT_RETURN_IF_NOT(k % 32 == 0, "MatMulBlockScaledFp4 GEMV requires K divisible by 32, got ", k, ".");
+  ORT_RETURN_IF_NOT(block_size == 16, "MatMulBlockQuantizedFp4Weight GEMV requires block_size == 16, got ", block_size, ".");
+  ORT_RETURN_IF_NOT(k % 32 == 0, "MatMulBlockQuantizedFp4Weight GEMV requires K divisible by 32, got ", k, ".");
   const int k_blocks = (k + block_size - 1) / block_size;
   constexpr int kWarpsPerBlock = 8;
   const dim3 threads{32, kWarpsPerBlock};
@@ -325,11 +325,11 @@ Status LaunchMatMulBlockScaledFp4Gemv(void* y,
   const uint8_t* bp = reinterpret_cast<const uint8_t*>(b_packed);
   const uint8_t* ws = reinterpret_cast<const uint8_t*>(weight_scale);
   if (is_bf16) {
-    MatMulBlockScaledFp4GemvKernel<nv_bfloat16><<<blocks, threads, 0, stream>>>(
+    MatMulBlockQuantizedFp4WeightGemvKernel<nv_bfloat16><<<blocks, threads, 0, stream>>>(
         reinterpret_cast<nv_bfloat16*>(y), reinterpret_cast<const nv_bfloat16*>(a), bp, ws, weight_scale_2,
         reinterpret_cast<const nv_bfloat16*>(bias), m, n, k, k_blocks);
   } else {
-    MatMulBlockScaledFp4GemvKernel<half><<<blocks, threads, 0, stream>>>(
+    MatMulBlockQuantizedFp4WeightGemvKernel<half><<<blocks, threads, 0, stream>>>(
         reinterpret_cast<half*>(y), reinterpret_cast<const half*>(a), bp, ws, weight_scale_2,
         reinterpret_cast<const half*>(bias), m, n, k, k_blocks);
   }
@@ -347,7 +347,7 @@ Status LaunchMatMulBlockScaledFp4Gemv(void* y,
   ORT_UNUSED_PARAMETER(block_size);
   ORT_UNUSED_PARAMETER(is_bf16);
   ORT_UNUSED_PARAMETER(stream);
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MatMulBlockScaledFp4 requires CUDA 12.8 or newer for NVFP4 support.");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MatMulBlockQuantizedFp4Weight requires CUDA 12.8 or newer for NVFP4 support.");
 #endif
 }
 

@@ -1,7 +1,7 @@
-# MatMulBlockScaledFp4 - CUDA Experiments
+# MatMulBlockQuantizedFp4Weight - CUDA Experiments
 
 This document records CUDA experiments for
-**MatMulBlockScaledFp4** (`com.microsoft::MatMulBlockScaledFp4`) that are useful
+**MatMulBlockQuantizedFp4Weight** (`com.microsoft::MatMulBlockQuantizedFp4Weight`) that are useful
 for future performance work but are not part of the final dispatch chain.
 
 Related documentation:
@@ -173,7 +173,7 @@ Focused C++ tests:
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 "$ORT_BUILD/onnxruntime_provider_test" \
-  --gtest_filter='MatMulBlockScaledFp4OpTest.*'
+  --gtest_filter='MatMulBlockQuantizedFp4WeightOpTest.*'
 ```
 
 ---

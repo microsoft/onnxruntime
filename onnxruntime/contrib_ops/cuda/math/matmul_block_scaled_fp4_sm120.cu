@@ -287,7 +287,7 @@ Status DispatchRunGemm(void* y,
 
 }  // namespace
 
-size_t GetMatMulBlockScaledFp4NativeSm120WorkspaceSize(int m, int n, int k, bool is_bf16) {
+size_t GetMatMulBlockQuantizedFp4WeightNativeSm120WorkspaceSize(int m, int n, int k, bool is_bf16) {
   return is_bf16 ? DispatchWorkspaceSize<cutlass::bfloat16_t>(m, n, k)
                  : DispatchWorkspaceSize<cutlass::half_t>(m, n, k);
 }
@@ -314,7 +314,7 @@ Status LaunchRepackWeightScaleNvFp4ForNativeSm120(void* b_scale,
   return CUDA_CALL(cudaGetLastError());
 }
 
-Status LaunchMatMulBlockScaledFp4NativeSm120(void* y,
+Status LaunchMatMulBlockQuantizedFp4WeightNativeSm120(void* y,
                                              const void* a,
                                              const void* b_packed,
                                              const void* weight_scale,

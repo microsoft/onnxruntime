@@ -21,9 +21,9 @@ namespace onnxruntime::test {
 
 // A -> [M, K] all ones per row scaled by (m + 1); weights are constant per row, so the
 // operator must reproduce Y[m, n] = W_val[n] * sum_k A[m, k].
-TEST(MatMulBlockScaledFp4OpTest, WeightOnlyBasicFp16) {
+TEST(MatMulBlockQuantizedFp4WeightOpTest, WeightOnlyBasicFp16) {
   if (!HasCudaEnvironment(800)) {
-    GTEST_SKIP() << "CUDA device is required for MatMulBlockScaledFp4.";
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp4Weight.";
   }
 
   constexpr int64_t m = 2;
@@ -49,7 +49,7 @@ TEST(MatMulBlockScaledFp4OpTest, WeightOnlyBasicFp16) {
   // W[0, :] = 1.0, W[1, :] = 2.0; sum_k A[0, :] = 16, sum_k A[1, :] = 32.
   std::vector<float> expected = {16.0f, 32.0f, 32.0f, 64.0f};
 
-  OpTester test("MatMulBlockScaledFp4", 1, onnxruntime::kMSDomain);
+  OpTester test("MatMulBlockQuantizedFp4Weight", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("K", k);
   test.AddAttribute<int64_t>("N", n);
   test.AddAttribute<int64_t>("block_size", 16);
@@ -66,9 +66,9 @@ TEST(MatMulBlockScaledFp4OpTest, WeightOnlyBasicFp16) {
 
 // Exercises non-unit per-block E4M3 scales, a global weight_scale_2, negative weights, bias and
 // a skipped optional input_scale, with BF16 activations/output.
-TEST(MatMulBlockScaledFp4OpTest, WeightOnlyScalesBiasBf16) {
+TEST(MatMulBlockQuantizedFp4WeightOpTest, WeightOnlyScalesBiasBf16) {
   if (!HasCudaEnvironment(800)) {
-    GTEST_SKIP() << "CUDA device is required for MatMulBlockScaledFp4.";
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp4Weight.";
   }
 
   constexpr int64_t m = 1;
@@ -91,7 +91,7 @@ TEST(MatMulBlockScaledFp4OpTest, WeightOnlyScalesBiasBf16) {
   std::vector<float> bias = {1.0f, 2.0f};
   std::vector<float> expected = {97.0f, -46.0f};
 
-  OpTester test("MatMulBlockScaledFp4", 1, onnxruntime::kMSDomain);
+  OpTester test("MatMulBlockQuantizedFp4Weight", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("K", k);
   test.AddAttribute<int64_t>("N", n);
   test.AddAttribute<int64_t>("block_size", 16);
@@ -111,9 +111,9 @@ TEST(MatMulBlockScaledFp4OpTest, WeightOnlyScalesBiasBf16) {
 
 // Exercises the fused decode GEMV fast path (small M) with a multi-block K (K = 64 == 4 blocks,
 // K % 32 == 0), FP16 activations. Weights are constant per row so Y[m, n] = W_val[n] * sum_k A[m, k].
-TEST(MatMulBlockScaledFp4OpTest, GemvDecodeMultiBlockFp16) {
+TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvDecodeMultiBlockFp16) {
   if (!HasCudaEnvironment(800)) {
-    GTEST_SKIP() << "CUDA device is required for MatMulBlockScaledFp4.";
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp4Weight.";
   }
 
   constexpr int64_t m = 2;
@@ -140,7 +140,7 @@ TEST(MatMulBlockScaledFp4OpTest, GemvDecodeMultiBlockFp16) {
   // W[0, :] = 1.0, W[1, :] = 2.0; sum_k A[0, :] = 64, sum_k A[1, :] = 128.
   std::vector<float> expected = {64.0f, 128.0f, 128.0f, 256.0f};
 
-  OpTester test("MatMulBlockScaledFp4", 1, onnxruntime::kMSDomain);
+  OpTester test("MatMulBlockQuantizedFp4Weight", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("K", k);
   test.AddAttribute<int64_t>("N", n);
   test.AddAttribute<int64_t>("block_size", 16);
@@ -158,9 +158,9 @@ TEST(MatMulBlockScaledFp4OpTest, GemvDecodeMultiBlockFp16) {
 
 // Exercises the fused decode GEMV fast path with M == 1, per-block scales, a global weight_scale_2,
 // negative weights and bias (BF16). K = 32 == 2 blocks, K % 32 == 0 -> GEMV path.
-TEST(MatMulBlockScaledFp4OpTest, GemvDecodeScalesBiasBf16) {
+TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvDecodeScalesBiasBf16) {
   if (!HasCudaEnvironment(800)) {
-    GTEST_SKIP() << "CUDA device is required for MatMulBlockScaledFp4.";
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp4Weight.";
   }
 
   constexpr int64_t m = 1;
@@ -184,7 +184,7 @@ TEST(MatMulBlockScaledFp4OpTest, GemvDecodeScalesBiasBf16) {
   std::vector<float> bias = {1.0f, 2.0f};
   std::vector<float> expected = {193.0f, -94.0f};
 
-  OpTester test("MatMulBlockScaledFp4", 1, onnxruntime::kMSDomain);
+  OpTester test("MatMulBlockQuantizedFp4Weight", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("K", k);
   test.AddAttribute<int64_t>("N", n);
   test.AddAttribute<int64_t>("block_size", 16);

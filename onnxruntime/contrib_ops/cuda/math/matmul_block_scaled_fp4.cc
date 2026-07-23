@@ -16,7 +16,7 @@ namespace onnxruntime::contrib::cuda {
 using namespace onnxruntime::cuda;
 
 ONNX_OPERATOR_KERNEL_EX(
-    MatMulBlockScaledFp4,
+    MatMulBlockQuantizedFp4Weight,
     kMSDomain,
     1,
     kCudaExecutionProvider,
@@ -25,7 +25,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T1", BuildKernelDefConstraints<uint8_t>())
         .TypeConstraint("T2", BuildKernelDefConstraints<uint8_t>())
         .TypeConstraint("T3", BuildKernelDefConstraints<float>()),
-    MatMulBlockScaledFp4);
+    MatMulBlockQuantizedFp4Weight);
 
 namespace {
 
@@ -41,7 +41,7 @@ int64_t RoundUp(int64_t value, int64_t alignment) {
 
 }  // namespace
 
-MatMulBlockScaledFp4::MatMulBlockScaledFp4(const OpKernelInfo& info) : CudaKernel(info) {
+MatMulBlockQuantizedFp4Weight::MatMulBlockQuantizedFp4Weight(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(info.GetAttr<int64_t>("K", &K_).IsOK());
   ORT_ENFORCE(info.GetAttr<int64_t>("N", &N_).IsOK());
   block_size_ = info.GetAttrOrDefault<int64_t>("block_size", static_cast<int64_t>(16));
@@ -52,7 +52,7 @@ MatMulBlockScaledFp4::MatMulBlockScaledFp4(const OpKernelInfo& info) : CudaKerne
   sm_ = GetDeviceProp().major * 10 + GetDeviceProp().minor;
 }
 
-Status MatMulBlockScaledFp4::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+Status MatMulBlockQuantizedFp4Weight::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                                      bool& is_packed, PrePackedWeights* /*prepacked_weights*/) {
   is_packed = false;
 
@@ -97,7 +97,7 @@ Status MatMulBlockScaledFp4::PrePack(const Tensor& tensor, int input_idx, Alloca
 }
 
 template <typename T>
-Status MatMulBlockScaledFp4::ComputeImpl(OpKernelContext* context) const {
+Status MatMulBlockQuantizedFp4Weight::ComputeImpl(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   const Tensor* a = context->Input<Tensor>(0);
@@ -153,7 +153,7 @@ Status MatMulBlockScaledFp4::ComputeImpl(OpKernelContext* context) const {
   // [N, K] dequant scratch buffer and the cuBLAS GEMM (which is underutilized at M == 1).
   constexpr int kGemvMaxM = 8;
   if (m_i > 0 && m_i <= kGemvMaxM && block_size_ == 16 && (k_i % 32 == 0)) {
-    return LaunchMatMulBlockScaledFp4Gemv(
+    return LaunchMatMulBlockQuantizedFp4WeightGemv(
         Y->MutableDataRaw(),
         a->DataRaw(),
         b->DataRaw(),
@@ -188,11 +188,11 @@ Status MatMulBlockScaledFp4::ComputeImpl(OpKernelContext* context) const {
       b_scale_data = b_scale.get();
     }
     auto alpha = GetScratchBuffer<float>(1, stream);
-    const size_t workspace_size = GetMatMulBlockScaledFp4NativeSm120WorkspaceSize(
+    const size_t workspace_size = GetMatMulBlockQuantizedFp4WeightNativeSm120WorkspaceSize(
         m_i, n_i, k_i, std::is_same<T, BFloat16>::value);
     auto workspace = GetScratchBuffer<uint8_t>(workspace_size, stream);
 
-    ORT_RETURN_IF_ERROR(LaunchMatMulBlockScaledFp4NativeSm120(
+    ORT_RETURN_IF_ERROR(LaunchMatMulBlockQuantizedFp4WeightNativeSm120(
         Y->MutableDataRaw(),
         a->DataRaw(),
         b->DataRaw(),
@@ -274,7 +274,7 @@ Status MatMulBlockScaledFp4::ComputeImpl(OpKernelContext* context) const {
   return Status::OK();
 }
 
-Status MatMulBlockScaledFp4::ComputeInternal(OpKernelContext* context) const {
+Status MatMulBlockQuantizedFp4Weight::ComputeInternal(OpKernelContext* context) const {
   const Tensor* a = context->Input<Tensor>(0);
   if (a->IsDataType<MLFloat16>()) {
     return ComputeImpl<MLFloat16>(context);
@@ -283,7 +283,7 @@ Status MatMulBlockScaledFp4::ComputeInternal(OpKernelContext* context) const {
     return ComputeImpl<BFloat16>(context);
   }
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                         "MatMulBlockScaledFp4 only supports FP16 or BF16 activations.");
+                         "MatMulBlockQuantizedFp4Weight only supports FP16 or BF16 activations.");
 }
 
 }  // namespace onnxruntime::contrib::cuda

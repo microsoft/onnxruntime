@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 """
-Accuracy and latency harness for the CUDA MatMulBlockScaledFp4 contrib op.
+Accuracy and latency harness for the CUDA MatMulBlockQuantizedFp4Weight contrib op.
 
 The script builds a single-node com.microsoft contrib-op model, binds CUDA tensors with
 I/O binding, compares the output with an FP32 dequantized reference, and prints one JSON
@@ -184,7 +184,7 @@ def _make_fp4_model(case: Case, b_packed: torch.Tensor, weight_scale: torch.Tens
         initializers.append(_make_float_initializer("bias", bias, activation_onnx_type))
 
     node = helper.make_node(
-        "MatMulBlockScaledFp4",
+        "MatMulBlockQuantizedFp4Weight",
         inputs,
         ["Y"],
         domain="com.microsoft",
@@ -194,7 +194,7 @@ def _make_fp4_model(case: Case, b_packed: torch.Tensor, weight_scale: torch.Tens
     )
     graph_inputs = [helper.make_tensor_value_info("A", activation_onnx_type, [case.m, case.k])]
     graph_outputs = [helper.make_tensor_value_info("Y", activation_onnx_type, [case.m, case.n])]
-    return _model_bytes([node], graph_inputs, graph_outputs, initializers, "MatMulBlockScaledFp4_Profile")
+    return _model_bytes([node], graph_inputs, graph_outputs, initializers, "MatMulBlockQuantizedFp4Weight_Profile")
 
 
 def _fp4_reference(a: torch.Tensor, b_dequantized: torch.Tensor, bias: torch.Tensor | None) -> torch.Tensor:

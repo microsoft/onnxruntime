@@ -14,9 +14,9 @@ namespace onnxruntime::contrib::cuda {
 // The weight is dequantized to the activation type (FP16/BF16) and multiplied with the FP16/BF16
 // activation via cuBLAS. This path works on any CUDA architecture (including Hopper/SM90) because
 // it does not rely on native NVFP4 block-scaled tensor cores (SM100/SM120 only).
-class MatMulBlockScaledFp4 final : public onnxruntime::cuda::CudaKernel {
+class MatMulBlockQuantizedFp4Weight final : public onnxruntime::cuda::CudaKernel {
  public:
-  explicit MatMulBlockScaledFp4(const OpKernelInfo& info);
+  explicit MatMulBlockQuantizedFp4Weight(const OpKernelInfo& info);
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
@@ -62,7 +62,7 @@ Status LaunchAddBiasNvFp4(void* y,
 // uint8 (raw E4M3 bytes), weight_scale_2 is a device fp32 scalar, bias is an optional [N] vector
 // (may be null). Output y is [M, N] in the activation type. Requires block_size == 16 and
 // k % 32 == 0. Runs on any architecture with NVFP4 conversion intrinsics (CUDA >= 12.8).
-Status LaunchMatMulBlockScaledFp4Gemv(void* y,
+Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
                                       const void* a,
                                       const void* b_packed,
                                       const void* weight_scale,
@@ -86,7 +86,7 @@ Status LaunchRepackWeightScaleNvFp4ForNativeSm120(void* b_scale,
                                                   int block_size,
                                                   cudaStream_t stream);
 
-Status LaunchMatMulBlockScaledFp4NativeSm120(void* y,
+Status LaunchMatMulBlockQuantizedFp4WeightNativeSm120(void* y,
                                              const void* a,
                                              const void* b_packed,
                                              const void* weight_scale,
@@ -104,6 +104,6 @@ Status LaunchMatMulBlockScaledFp4NativeSm120(void* y,
                                              void* workspace,
                                              size_t workspace_size,
                                              cudaStream_t stream);
-size_t GetMatMulBlockScaledFp4NativeSm120WorkspaceSize(int m, int n, int k, bool is_bf16);
+size_t GetMatMulBlockQuantizedFp4WeightNativeSm120WorkspaceSize(int m, int n, int k, bool is_bf16);
 
 }  // namespace onnxruntime::contrib::cuda

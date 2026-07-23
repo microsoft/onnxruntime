@@ -1,11 +1,11 @@
-# MatMulBlockScaledFp4 - CUDA Operator Documentation
+# MatMulBlockQuantizedFp4Weight - CUDA Operator Documentation
 
 This document describes the CUDA execution-provider implementation of
-**MatMulBlockScaledFp4** (`com.microsoft::MatMulBlockScaledFp4`): its tensor
+**MatMulBlockQuantizedFp4Weight** (`com.microsoft::MatMulBlockQuantizedFp4Weight`): its tensor
 format, dispatch chain, native Blackwell path, prepacking behavior, and test /
 benchmark workflow.
 
-MatMulBlockScaledFp4 computes `Y = A * dequant(B)^T (+ bias)` where `A` is
+MatMulBlockQuantizedFp4Weight computes `Y = A * dequant(B)^T (+ bias)` where `A` is
 FP16 or BF16 and `B` is an `N x K` weight matrix stored as packed NVIDIA FP4
 E2M1 values with block-wise E4M3 scales. The default semantics are
 weight-only FP4: activations stay FP16/BF16. An opt-in SM120 path quantizes
@@ -79,7 +79,7 @@ native SM120 paths additionally require `block_size == 16` and `K % 32 == 0`.
 
 ## 3. Dispatch Chain
 
-`MatMulBlockScaledFp4::ComputeImpl` tries the cheapest applicable path first:
+`MatMulBlockQuantizedFp4Weight::ComputeImpl` tries the cheapest applicable path first:
 
 ```mermaid
 flowchart TD
@@ -100,7 +100,7 @@ quantization, CUTLASS setup, and underutilized tensor-core GEMM work.
 
 ## 4. Decode Path - Fused GEMV
 
-`LaunchMatMulBlockScaledFp4Gemv` is used when:
+`LaunchMatMulBlockQuantizedFp4WeightGemv` is used when:
 
 - `0 < M <= 8`,
 - `block_size == 16`,
@@ -213,7 +213,7 @@ Focused C++ tests:
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 "$ORT_BUILD/onnxruntime_provider_test" \
-  --gtest_filter='MatMulBlockScaledFp4OpTest.*'
+  --gtest_filter='MatMulBlockQuantizedFp4WeightOpTest.*'
 ```
 
 Python harness examples:

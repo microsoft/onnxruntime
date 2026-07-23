@@ -3006,7 +3006,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloat8, 1,
                                 }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    MatMulBlockScaledFp4, 1,
+    MatMulBlockQuantizedFp4Weight, 1,
     OpSchema()
         .SetDoc(R"DOC(Weight-only NVFP4 (E2M1) matrix multiplication.
 

@@ -66,7 +66,7 @@ function(onnxruntime_extract_sm_specific_cuda_sources CU_SRC_LIST)
 
   set(_list "${${CU_SRC_LIST}}")
 
-  # MatMulBlockScaledFp4 native SM120 path must never be compiled in the default
+  # MatMulBlockQuantizedFp4Weight native SM120 path must never be compiled in the default
   # CUDA source list (e.g., SM86-only builds). Keep it only in SM120-specific
   # object libraries when SM120 is requested.
   set(_matmul_block_scaled_fp4_sm120_srcs)
