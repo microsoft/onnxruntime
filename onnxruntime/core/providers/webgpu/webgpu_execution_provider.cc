@@ -851,7 +851,27 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
 }
 
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
+  // When capturing, draining creates the replay-ready CapturedCommandInfo entries before
+  // CaptureEnd() detaches their external storage.
+  Status deferred_status = context_.WaitForDeferredPipelineBuildsAndEncodeDispatches();
+
   context_.Flush(BufferManager());
+
+  if (!deferred_status.IsOK()) {
+    if (IsGraphCaptureEnabled()) {
+      context_.CaptureEnd();
+      auto commands_it = captured_graphs_.find(current_graph_annotation_id_);
+      if (commands_it != captured_graphs_.end()) {
+        context_.ReleaseGraphResources(commands_it->second);
+        commands_it->second.clear();
+      }
+    }
+    graph_buffer_mgr_active_ = false;
+    if (context_.ValidationMode() >= ValidationMode::Basic) {
+      static_cast<void>(context_.PopErrorScope());
+    }
+    return deferred_status;
+  }
 
   if (IsGraphCaptureEnabled() && !IsGraphCaptured(current_graph_annotation_id_)) {
     if (current_graph_annotation_id_ != -1 && IsGraphCaptureAllowed()) {

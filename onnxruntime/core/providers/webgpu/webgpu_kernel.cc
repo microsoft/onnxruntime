@@ -48,11 +48,14 @@ Status WebGpuKernel::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr /
   // Use the EP's prepack allocator which creates unmapped GPU buffers.
 
   Status s = PrePackInternal(context, tensor, input_idx, ep_.PrepackAllocator(), is_packed);
+  Status encode_status = webgpu_context_.WaitForDeferredPipelineBuildsAndEncodeDispatches();
 
-  if (is_packed) {
-    // Flush pending commands to ensure GPU buffer creations are completed.
-    // This allows the initializer buffer manager to release temporary buffers and reduce memory usage.
-    webgpu_context_.Flush(webgpu_context_.InitializerBufferManager());
+  // PrePack has no OnRunEnd hook, so finish its deferred pipeline builds and submit any encoded
+  // GPU work before returning and allowing ORT to release the original initializer tensor.
+  webgpu_context_.Flush(webgpu_context_.InitializerBufferManager());
+
+  if (s.IsOK()) {
+    s = encode_status;
   }
 
   if (webgpu_context_.ValidationMode() >= ValidationMode::Full) {
