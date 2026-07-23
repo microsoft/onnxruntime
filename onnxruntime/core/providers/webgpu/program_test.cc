@@ -5,6 +5,9 @@
 // These static_asserts verify that is_const_std_array, the has_member_* variable templates,
 // and has_*_correct_type concepts correctly detect static const std::array members.
 
+#include <type_traits>
+#include <utility>
+
 #include "core/providers/webgpu/program.h"
 
 namespace onnxruntime {
@@ -29,6 +32,13 @@ static_assert(is_const_std_array<const std::array<int, 0>>::value);
 struct NoMembers {};
 static_assert(!has_member_constants<NoMembers>);
 static_assert(!has_constants_correct_type<NoMembers>);
+
+static_assert(std::is_same_v<decltype(std::declval<ProgramBase&>().ReserveInputCapacity(size_t{0})),
+                             ProgramBase&>);
+static_assert(std::is_same_v<decltype(std::declval<ProgramBase&>().ReserveOutputCapacity(size_t{0})),
+                             ProgramBase&>);
+static_assert(std::is_same_v<decltype(std::declval<ProgramBase&>().ReserveUniformVariableCapacity(size_t{0})),
+                             ProgramBase&>);
 
 struct Constants_WrongName {
   static constexpr std::array<int, 1> not_constants = {1};
