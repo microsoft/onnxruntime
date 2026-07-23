@@ -19,7 +19,7 @@
 #include <cuda_runtime_api.h>
 
 namespace onnxruntime {
-class Node;
+struct Node;
 namespace contrib {
 namespace cuda {
 
