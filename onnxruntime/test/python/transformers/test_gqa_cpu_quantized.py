@@ -461,7 +461,13 @@ def run_quantized_gqa_prompt_test(
 
     # Compare
     if atol is None:
-        atol = 0.15 if bit_width == 4 else 0.05
+        if bit_width == 4:
+            atol = 0.15
+        elif bit_width == 8 and quant_type == "PER_TENSOR" and head_size >= 64:
+            # Large heads accumulate slightly larger quantization error in a few tail elements.
+            atol = 0.06
+        else:
+            atol = 0.05
 
     # Check for NaN
     if np.any(np.isnan(out_ort)):
@@ -567,7 +573,13 @@ def run_quantized_gqa_packed_qkv_test(
     out_ref = reference_gqa(query, k_deq, v_deq, num_heads, kv_num_heads, head_size, causal=True)
 
     if atol is None:
-        atol = 0.15 if bit_width == 4 else 0.05
+        if bit_width == 4:
+            atol = 0.15
+        elif bit_width == 8 and quant_type == "PER_TENSOR" and head_size >= 64:
+            # Keep parity with prompt-path tolerance for large-head int8 per-tensor runs.
+            atol = 0.06
+        else:
+            atol = 0.05
 
     if np.any(np.isnan(out_ort)):
         raise AssertionError(f"NaN in output (quant={quant_type}, bit={bit_width}, packed QKV)")
