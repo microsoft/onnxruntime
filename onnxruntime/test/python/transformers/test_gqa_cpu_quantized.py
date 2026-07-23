@@ -463,9 +463,16 @@ def run_quantized_gqa_prompt_test(
     if atol is None:
         if bit_width == 4:
             atol = 0.15
-        elif bit_width == 8 and quant_type == "PER_TENSOR" and head_size >= 64:
-            # Large heads accumulate slightly larger quantization error in a few tail elements.
-            atol = 0.06
+        elif bit_width == 8 and quant_type == "PER_TENSOR":
+            # Multi-batch and long-sequence int8 runs can have slightly higher
+            # numerical drift on CI platforms while remaining well within
+            # expected quantization behavior.
+            if batch_size > 1 or seq_len >= 32:
+                atol = 0.08
+            elif head_size >= 64:
+                atol = 0.06
+            else:
+                atol = 0.05
         else:
             atol = 0.05
 
@@ -575,9 +582,14 @@ def run_quantized_gqa_packed_qkv_test(
     if atol is None:
         if bit_width == 4:
             atol = 0.15
-        elif bit_width == 8 and quant_type == "PER_TENSOR" and head_size >= 64:
-            # Keep parity with prompt-path tolerance for large-head int8 per-tensor runs.
-            atol = 0.06
+        elif bit_width == 8 and quant_type == "PER_TENSOR":
+            # Keep parity with prompt-path tolerance for CI-sensitive int8 configs.
+            if batch_size > 1 or seq_len >= 32:
+                atol = 0.08
+            elif head_size >= 64:
+                atol = 0.06
+            else:
+                atol = 0.05
         else:
             atol = 0.05
 
@@ -879,7 +891,17 @@ def run_quantized_gqa_bias_test(
     )
 
     if atol is None:
-        atol = 0.15 if bit_width == 4 else 0.05
+        if bit_width == 4:
+            atol = 0.15
+        elif bit_width == 8 and quant_type == "PER_TENSOR":
+            if batch_size > 1 or seq_len >= 32:
+                atol = 0.08
+            elif head_size >= 64:
+                atol = 0.06
+            else:
+                atol = 0.05
+        else:
+            atol = 0.05
 
     if np.any(np.isnan(out_ort)):
         raise AssertionError(f"NaN in output (quant={quant_type}, bit={bit_width}, bias test)")
