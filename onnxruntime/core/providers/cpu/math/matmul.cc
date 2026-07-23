@@ -405,6 +405,25 @@ Status MatMul<MLFloat16>::Compute(OpKernelContext* ctx) const {
   const size_t lda = helper.Lda(false);
   const size_t ldb = helper.Ldb(false);
 
+  // Guard against using generic half GEMM when no accelerated implementation is
+  // available. Native packing support currently also signals an accelerated
+  // backend path.
+  const bool has_accelerated_half_gemm =
+      MlasFp16AccelerationSupported() ||
+      MlasHalfGemmNativePackBSize(CblasNoTrans, CblasNoTrans, N, K,
+                                  &mlas_backend_kernel_selector_config_) != 0;
+  if (!has_accelerated_half_gemm && packed_b_ == nullptr) {
+    for (size_t i = 0; i < max_len; ++i) {
+      math::MatMul<MLFloat16>(narrow<ptrdiff_t>(M), narrow<ptrdiff_t>(N), narrow<ptrdiff_t>(K),
+                              a_data + helper.LeftOffsets()[i],
+                              b_data + helper.RightOffsets()[i],
+                              y_data + helper.OutputOffsets()[i],
+                              thread_pool,
+                              &mlas_backend_kernel_selector_config_);
+    }
+    return Status::OK();
+  }
+
   if (M <= 2 && packed_b_ == nullptr && MlasHGemmSupported(CblasNoTrans, CblasNoTrans)) {
     const auto alpha = MLFloat16(1.0f);
     const auto beta = MLFloat16(0.0f);
