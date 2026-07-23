@@ -59,12 +59,6 @@ LoadFloat32x16(const MLAS_FP16* src)
     return _mm512_cvtph_ps(fp16);
 }
 
-inline __m512
-LoadFp16Outputx16(const MLAS_FP16* src)
-{
-    return LoadFloat32x16(src);
-}
-
 inline void
 StoreFp16Outputx16(MLAS_FP16* dst, __m512 value)
 {
@@ -329,17 +323,6 @@ DequantInt4x16_Avx512(const uint8_t* src, size_t col, bool per_channel, const fl
         f32 = _mm512_mul_ps(f32, sc);
     }
     return f32;
-}
-
-inline __m512
-DequantInt8x16_Avx512(const int8_t* src, size_t col, bool per_channel, const float* scales)
-{
-    const __m128i raw = _mm_loadu_si128(reinterpret_cast<const __m128i*>(src + col));
-    __m512 value = _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(raw));
-    if (per_channel) {
-        return _mm512_mul_ps(value, _mm512_loadu_ps(scales + col));
-    }
-    return _mm512_mul_ps(value, _mm512_set1_ps(scales[0]));
 }
 
 template <typename AType>

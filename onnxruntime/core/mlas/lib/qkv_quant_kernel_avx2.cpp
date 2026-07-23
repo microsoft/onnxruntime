@@ -76,17 +76,6 @@ DequantInt4x8(const uint8_t* src, size_t col, bool per_channel, const float* sca
 }
 
 inline __m256
-DequantInt8x8(const int8_t* src, size_t col, bool per_channel, const float* scales)
-{
-    const __m128i raw = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(src + col));
-    __m256 value = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(raw));
-    if (per_channel) {
-        return _mm256_mul_ps(value, _mm256_loadu_ps(scales + col));
-    }
-    return _mm256_mul_ps(value, _mm256_broadcast_ss(scales));
-}
-
-inline __m256
 LoadFloat32x8(const float* src)
 {
     return _mm256_loadu_ps(src);
@@ -97,12 +86,6 @@ LoadFloat32x8(const MLAS_FP16* src)
 {
     const __m128i fp16 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(src));
     return _mm256_cvtph_ps(fp16);
-}
-
-inline __m256
-LoadFp16Outputx8(const MLAS_FP16* src)
-{
-    return LoadFloat32x8(src);
 }
 
 inline void
