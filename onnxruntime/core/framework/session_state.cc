@@ -1329,8 +1329,33 @@ static Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_ver
 
 #if !defined(ORT_MINIMAL_BUILD)
     if (is_verbose) {  // TODO: should we disable this if the number of nodes is above a certain threshold?
-      const std::string node_str = node.OpType() + " (" + node.Name() + ")";
-      node_placements[node_provider].push_back(node_str);
+      // Include the op set version and the input/output types so that unexpected CPU fallbacks are
+      // easy to diagnose (e.g. a node stays on the CPU EP because it is int64-typed and the target
+      // EP only registered kernels for other element types).
+      auto append_arg_types = [](std::ostringstream& os, const auto& defs) {
+        os << '[';
+        bool first = true;
+        for (const auto* def : defs) {
+          if (!first) {
+            os << ", ";
+          }
+          first = false;
+          if (def == nullptr || !def->Exists()) {
+            os << "(missing)";
+          } else {
+            const std::string* type_str = def->Type();
+            os << (type_str != nullptr ? *type_str : "(unknown)");
+          }
+        }
+        os << ']';
+      };
+
+      std::ostringstream node_desc;
+      node_desc << node.OpType() << '(' << node.SinceVersion() << ") (" << node.Name() << ") inputs=";
+      append_arg_types(node_desc, node.InputDefs());
+      node_desc << " outputs=";
+      append_arg_types(node_desc, node.OutputDefs());
+      node_placements[node_provider].push_back(node_desc.str());
     }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

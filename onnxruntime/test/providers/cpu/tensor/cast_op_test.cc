@@ -18,6 +18,7 @@
 
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -191,6 +192,27 @@ using CastNonStringTypes =
 TEST(CastOpTest, NonStringTypes) {
   boost::mp11::mp_for_each<boost::mp11::mp_product<std::pair, CastNonStringTypes, CastNonStringTypes>>(
       CastNonStringTester{});
+}
+
+// bool -> uint8 Cast, run explicitly on the WebGPU EP. WebNN has no bool type and represents a bool
+// graph output as uint8, so models (e.g. the SD safety checker) end in terminal bool->uint8 casts.
+// WebGPU stores uint8 packed (4 per u32); the Cast writes it via the Uint8x4 SetByOffset packing.
+// The 6-element shape deliberately isn't a multiple of 4, exercising the final partial packed word.
+TEST(CastOpTest, BoolToUint8_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available in this build.";
+  }
+
+  const std::vector<int64_t> dims{2, 3};
+  OpTester test("Cast", 13);
+  test.AddAttribute<int64_t>("to", utils::ToTensorProtoElementType<uint8_t>());
+  test.AddInput<bool>("input", dims, {true, false, true, false, true, true});
+  test.AddOutput<uint8_t>("output", dims, {1, 0, 1, 0, 1, 1});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(CastOpTest, FromString) {

@@ -53,8 +53,12 @@ POOLING_KERNEL_VERSIONED(AveragePool, kOnnxDomain, false, AveragePool, 7, 9)
 POOLING_KERNEL_VERSIONED(AveragePool, kMSInternalNHWCDomain, true, AveragePool, 7, 9)
 POOLING_KERNEL_VERSIONED(AveragePool, kOnnxDomain, false, AveragePool, 10, 10)
 POOLING_KERNEL_VERSIONED(AveragePool, kMSInternalNHWCDomain, true, AveragePool, 10, 10)
-POOLING_KERNEL(AveragePool, kOnnxDomain, false, AveragePool, 11)
-POOLING_KERNEL(AveragePool, kMSInternalNHWCDomain, true, AveragePool, 11)
+POOLING_KERNEL_VERSIONED(AveragePool, kOnnxDomain, false, AveragePool, 11, 18)
+POOLING_KERNEL_VERSIONED(AveragePool, kMSInternalNHWCDomain, true, AveragePool, 11, 18)
+POOLING_KERNEL_VERSIONED(AveragePool, kOnnxDomain, false, AveragePool, 19, 21)
+POOLING_KERNEL_VERSIONED(AveragePool, kMSInternalNHWCDomain, true, AveragePool, 19, 21)
+POOLING_KERNEL(AveragePool, kOnnxDomain, false, AveragePool, 22)
+POOLING_KERNEL(AveragePool, kMSInternalNHWCDomain, true, AveragePool, 22)
 POOLING_KERNEL(GlobalAveragePool, kOnnxDomain, false, AveragePool, 1)
 POOLING_KERNEL(GlobalAveragePool, kMSInternalNHWCDomain, true, AveragePool, 1)
 
@@ -79,6 +83,8 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string var_decl_code;
   // Process each element in the pooling window.
   std::string sampling_code;
+  // Accumulate the AveragePool divisor (`count`) for the current window.
+  std::string counting_code;
   // Calculate the output value for each pooling window.
   std::string downsampling_code;
 
@@ -95,19 +101,21 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
   } else {
     SS(var_decl_ss, kStringInitialSize);
     var_decl_ss << "  var value = " << (is_float16_ ? "f16(0)" : "f32(0)") << ";\n";
-    if (!count_include_pad_) {
-      var_decl_ss << "  var count = u32(0);\n";
-    } else {
-      var_decl_ss << "  var count = uniforms.kernel_size;\n";
-    }
+    // count (the averaging divisor) is accumulated in the kernel loop for both modes. A fixed
+    // kernel_size divisor would be wrong under count_include_pad + ceil_mode: ceil_mode can extend
+    // the last window past the padded region, and those overflow cells must not be counted.
+    var_decl_ss << "  var count = u32(0);\n";
     var_decl_code = SS_GET(var_decl_ss);
 
-    SS(sampling_ss, kStringInitialSize);
-    sampling_ss << "      value += x_val;\n";
-    if (!count_include_pad_) {
-      sampling_ss << "      count++;\n";
-    }
-    sampling_code = SS_GET(sampling_ss);
+    // Only real (non-pad) input cells contribute to the sum.
+    sampling_code = "      value += x_val;\n";
+
+    // Divisor: with count_include_pad, count every cell inside the padded region (excluding only the
+    // ceil_mode overflow cells, flagged by is_outside_padded_region); otherwise count real input
+    // cells only. is_pad / is_outside_padded_region are computed in the kernel loop below.
+    counting_code = count_include_pad_
+                        ? "    if (!is_outside_padded_region) {\n      count++;\n    }\n"
+                        : "    if (!is_pad) {\n      count++;\n    }\n";
 
     SS(downsampling_ss, kStringInitialSize);
     if (are_small_output_big_kernel_) {
@@ -126,6 +134,26 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // The dimension index after W or Dn
   auto data_dim_end = input.Rank();
   data_dim_end = is_nhwc_ ? data_dim_end - 1 : data_dim_end;
+
+  // For AveragePool with count_include_pad, detect window cells that fall beyond the padded region
+  // (input + end padding). ceil_mode can round the output size up and push the last window past that
+  // boundary; such cells must be excluded from the divisor. x_indices are u32 and underflow for the
+  // begin-pad cells (which ARE inside the padded region), so use signed arithmetic; only the end side
+  // can overflow, since the smallest window position is -pad_begin.
+  std::string outside_flag_decl;
+  std::string overflow_check_code;
+  if (!is_max_pool_ && count_include_pad_) {
+    outside_flag_decl = "    var is_outside_padded_region = false;\n";
+    SS(overflow_ss, kStringInitialSize);
+    overflow_ss
+        << "      let signed_pos = i32(y_indices[j]) * i32(" << GetElementAt("uniforms.strides", "d_idx", kernel_rank) << ")"
+        << " + i32(k_indices[d_idx]) - i32(" << GetElementAt("uniforms.pads", "d_idx", pads_rank) << ");\n"
+        << "      if (signed_pos >= i32(j_dim_len) + i32("
+        << GetElementAt("uniforms.pads", "d_idx + " + std::to_string(kernel_rank), pads_rank) << ")) {\n"
+        << "        is_outside_padded_region = true;\n"
+        << "      }\n";
+    overflow_check_code = SS_GET(overflow_ss);
+  }
 
   std::string sum_or_max_shared;
   if (are_small_output_big_kernel_) {
@@ -186,6 +214,7 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
        << "      k_indices[j] *= " << GetElementAt("uniforms.dilations", "j", kernel_rank) << ";\n"
        << "    }\n"
        << "    var is_pad = false;\n"
+       << outside_flag_decl
        // ---- Compute x_indices in each data dimension
        << "    for (var j = " << data_dim_begin << "; j < " << data_dim_end << "; j++) {\n"
        << "      let d_idx = j - " << data_dim_begin << ";\n"
@@ -193,16 +222,18 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
        << "      x_indices[j] += k_indices[d_idx];\n"
        << "      x_indices[j] -= " << GetElementAt("uniforms.pads", "d_idx", pads_rank) << ";\n"
        << "      let j_dim_len = " << input.IndicesGet("uniforms.input_shape", "j") << ";\n"
-       // ------ Check if x_indices[j] is out of bounds to handle padding.
+       // ------ Check if x_indices[j] is out of bounds to handle padding. (No early break: the
+       //        count_include_pad overflow check below must run for every spatial dimension.)
        << "      if (x_indices[j] < 0 || x_indices[j] >= j_dim_len) {\n"
        << "        is_pad = true;\n"
-       << "        break;\n"
        << "      }\n"
+       << overflow_check_code
        << "    }\n"
        << "    if (!is_pad) {\n"
        << "      let x_val = " << input.GetByIndices("x_indices") << ";\n"
        << sampling_code
        << "    }\n"
+       << counting_code
        << "  }\n"
        << downsampling_code
        << sum_or_max_shared
