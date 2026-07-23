@@ -2458,8 +2458,12 @@ TEST(MathOpTest, Max_12_Float_Nan_WebGpu) {
                          std::numeric_limits<float>::quiet_NaN(),
                          -0.5f, 0.0f, -1.0f,
                          1.0f, 1.0f, 2.0f});
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  execution_providers.push_back(std::move(webgpu_ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
