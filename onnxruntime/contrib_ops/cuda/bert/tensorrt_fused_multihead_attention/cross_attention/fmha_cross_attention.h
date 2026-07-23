@@ -116,6 +116,20 @@ struct Fused_multihead_attention_params_mhca {
   }
 };
 
+struct FusedMultiHeadCrossAttentionKernelMetaInfoV2 {
+  Data_type mDataType;
+  int32_t mS;
+  int32_t mD;
+  int32_t mSM;
+  unsigned char const* mCubin;
+  uint32_t mCubinSize;
+  char const* mFuncName;
+  int32_t mSharedMemBytes;
+  int32_t mThreadsPerCTA;
+  int32_t mUnrollStep;
+  bool mInterleaved;
+};
+
 #if defined(USE_TRT_FUSED_ATTENTION)
 extern const unsigned char cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin[];
 extern const unsigned char cubin_fmha_mhca_fp16_128_64_sm80_cu_cubin[];
@@ -143,19 +157,7 @@ extern const uint32_t cubin_fmha_mhca_fp16_128_256_sm80_cu_cubin_len;
 extern const uint32_t cubin_fmha_mhca_fp16_128_256_sm86_cu_cubin_len;
 extern const uint32_t cubin_fmha_mhca_fp16_128_256_sm89_cu_cubin_len;
 
-static const struct FusedMultiHeadCrossAttentionKernelMetaInfoV2 {
-  Data_type mDataType;
-  int32_t mS;
-  int32_t mD;
-  int32_t mSM;
-  unsigned char const* mCubin;
-  uint32_t mCubinSize;
-  char const* mFuncName;
-  int32_t mSharedMemBytes;
-  int32_t mThreadsPerCTA;
-  int32_t mUnrollStep;
-  bool mInterleaved;
-} sMhaKernelMetaInfos[] = {
+static const FusedMultiHeadCrossAttentionKernelMetaInfoV2 sMhaKernelMetaInfos[] = {
     {DATA_TYPE_FP16, 128, 64, kSM_75, cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin, cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin_len, "fmha_mhca_fp16_128_64_sm75_kernel", 40960, 128, 0, false},
     {DATA_TYPE_FP16, 128, 64, kSM_75, cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin, cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin_len, "fmha_mhca_fp16_128_64_sm75_kernel_nl", 36864, 128, 32, false},
 
