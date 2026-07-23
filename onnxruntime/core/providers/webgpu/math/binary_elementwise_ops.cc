@@ -342,9 +342,47 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
       KERNEL_CLASS);
 
 WEBGPU_BINARY_IMPL(Add, "a + b")
-WEBGPU_BINARY_VERSIONED_KERNEL(Add, 7, 12, Add, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_VERSIONED_KERNEL(Add, 13, 13, Add, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_KERNEL(Add, 14, Add, WebGpuSupportedNumberTypes())
+
+// NOTE: int64 arithmetic in the WebGPU shader operates on the low 32 bits only (i32 element type).
+// Values outside the int32 range [-2^31, 2^31-1] will produce incorrect results.
+// This matches the same limitation documented in Range/Sub and is acceptable for token-position workloads.
+template <int StartVersion, int EndVersion>
+KernelCreateInfo CreateAddVersionedKernelInfo(bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Add>(info);
+    return Status::OK();
+  };
+  return {KernelDefBuilder()
+              .SetName("Add")
+              .SetDomain(kOnnxDomain)
+              .SinceVersion(StartVersion, EndVersion)
+              .Provider(kWebGpuExecutionProvider)
+              .TypeConstraint("T", type_constraints)
+              .Build(),
+          kernel_create_fn};
+}
+
+template <int SinceVersion>
+KernelCreateInfo CreateAddKernelInfo(bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Add>(info);
+    return Status::OK();
+  };
+  return {KernelDefBuilder()
+              .SetName("Add")
+              .SetDomain(kOnnxDomain)
+              .SinceVersion(SinceVersion)
+              .Provider(kWebGpuExecutionProvider)
+              .TypeConstraint("T", type_constraints)
+              .Build(),
+          kernel_create_fn};
+}
+
+template KernelCreateInfo CreateAddVersionedKernelInfo<7, 12>(bool);
+template KernelCreateInfo CreateAddVersionedKernelInfo<13, 13>(bool);
+template KernelCreateInfo CreateAddKernelInfo<14>(bool);
 
 WEBGPU_BINARY_IMPL(Div, "a / b")
 WEBGPU_BINARY_VERSIONED_KERNEL(Div, 7, 12, Div, WebGpuSupportedNumberTypes())

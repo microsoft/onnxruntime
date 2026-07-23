@@ -159,9 +159,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO(22, Softplus),
 
     // // binary - math
-    KERNEL_CREATE_INFO_VERSIONED(7, 12, Add),
-    KERNEL_CREATE_INFO_VERSIONED(13, 13, Add),
-    KERNEL_CREATE_INFO(14, Add),
+    // Add: registered via RegisterKernels with conditional int64 support
     // Sub: registered via RegisterKernels with conditional int64 support
     KERNEL_CREATE_INFO_VERSIONED(7, 12, Mul),
     KERNEL_CREATE_INFO_VERSIONED(13, 13, Mul),
@@ -487,6 +485,11 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   // Register Expand kernels with conditional int64 support
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandVersionedKernelInfo<8, 12>(enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandKernelInfo<13>(enable_int64)));
+
+  // Register Add kernels with conditional int64 support
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateAddVersionedKernelInfo<7, 12>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateAddVersionedKernelInfo<13, 13>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateAddKernelInfo<14>(enable_int64)));
 
   // Register Equal kernels with conditional int64 support
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateEqualVersionedKernelInfo<7, 10>(enable_int64)));
