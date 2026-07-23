@@ -237,9 +237,14 @@ class GpuDataManagerImpl implements GpuDataManager {
       throw new Error(`inconsistent data size. gpu data size=${gpuDataCache.originalSize}, data size=${srcLength}`);
     }
 
-    const uploadData = new Uint8Array(size);
-    uploadData.set(new Uint8Array(srcArrayBuffer, srcOffset, srcLength));
-    this.backend.device.queue.writeBuffer(gpuDataCache.gpuData.buffer, 0, uploadData, 0, size);
+    if (size === srcLength && srcOffset % 4 === 0) {
+      // Fast path: already aligned; avoid allocating/copying a padded buffer.
+      this.backend.device.queue.writeBuffer(gpuDataCache.gpuData.buffer, 0, srcArrayBuffer, srcOffset, srcLength);
+    } else {
+      const uploadData = new Uint8Array(size);
+      uploadData.set(data);
+      this.backend.device.queue.writeBuffer(gpuDataCache.gpuData.buffer, 0, uploadData, 0, size);
+    }
 
     LOG_DEBUG('verbose', () => `[WebGPU] GpuDataManager.upload(id=${id})`);
   }
