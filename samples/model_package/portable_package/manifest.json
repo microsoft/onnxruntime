@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0",
+  "package_name": "tiny-mlp-portable",
+  "package_version": "1.0.0",
+  "description": "Tiny MLP, two shape specializations (prefill/iter), each with cpu and ov-npu variants. Portable: base and compiled assets are content-addressed shared assets inside the package.",
+  "layout": "portable",
+  "components": {
+    "prefill": {
+      "component_name": "prefill",
+      "variants": {
+        "cpu": {
+          "variant_directory": "prefill/cpu",
+          "ep": "CPUExecutionProvider",
+          "executor_info": {
+            "ort": "ort_info.json"
+          }
+        },
+        "ov": {
+          "variant_directory": "prefill/ov",
+          "ep": "OpenVINOExecutionProvider",
+          "device": "npu",
+          "compatibility_string": "{\"ovep_compat_ver\":\"1.0\",\"ovep_ver\":\"1.5.2+c6549bd\",\"ovep_bin_ver\":\"1.0\",\"ov_compat_string\":\"meta=2.6;ov=2026.2.1;desc=[compiler=8.1;npu=4000;t=4;elf=1.2.2;mi=11.4.10]\"}",
+          "executor_info": {
+            "ort": "ort_info.json"
+          }
+        }
+      }
+    },
+    "iter": {
+      "component_name": "iter",
+      "variants": {
+        "cpu": {
+          "variant_directory": "iter/cpu",
+          "ep": "CPUExecutionProvider",
+          "executor_info": {
+            "ort": "ort_info.json"
+          }
+        },
+        "ov": {
+          "variant_directory": "iter/ov",
+          "ep": "OpenVINOExecutionProvider",
+          "device": "npu",
+          "compatibility_string": "{\"ovep_compat_ver\":\"1.0\",\"ovep_ver\":\"1.5.2+c6549bd\",\"ovep_bin_ver\":\"1.0\",\"ov_compat_string\":\"meta=2.6;ov=2026.2.1;desc=[compiler=8.1;npu=4000;t=4;elf=1.2.2;mi=11.4.10]\"}",
+          "executor_info": {
+            "ort": "ort_info.json"
+          }
+        }
+      }
+    }
+  }
+}

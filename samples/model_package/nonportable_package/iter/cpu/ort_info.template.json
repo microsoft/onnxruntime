@@ -1,0 +1,6 @@
+{
+  "model_file": "__ASSETS_DIR__/base/iter.onnx",
+  "session_options": {
+    "session.model_external_initializers_file_folder_path": "__ASSETS_DIR__/base"
+  }
+}

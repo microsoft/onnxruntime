@@ -1,0 +1,8 @@
+{
+  "model_file": "sha256:8ed73bf75e82ee80618b44c0f483bfb32ba461954f6720082c25db2dd00053ce/iter.ctx.onnx",
+  "session_options": {
+    "ep.share_ep_contexts": "1",
+    "session.model_external_initializers_file_folder_path": "sha256:9b6fd98ff4fecf05d93ac2748fd04ea3f5d39e0ae79dec2b32ec14f222dac095",
+    "ep.context_file_path": "sha256:8ed73bf75e82ee80618b44c0f483bfb32ba461954f6720082c25db2dd00053ce/iter.ctx.onnx"
+  }
+}

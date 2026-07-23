@@ -1,0 +1,8 @@
+{
+  "model_file": "__ASSETS_DIR__/compiled/prefill.ctx.onnx",
+  "session_options": {
+    "ep.share_ep_contexts": "1",
+    "session.model_external_initializers_file_folder_path": "__ASSETS_DIR__/base",
+    "ep.context_file_path": "__ASSETS_DIR__/compiled/prefill.ctx.onnx"
+  }
+}

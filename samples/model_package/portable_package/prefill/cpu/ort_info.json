@@ -1,0 +1,6 @@
+{
+  "model_file": "sha256:9b6fd98ff4fecf05d93ac2748fd04ea3f5d39e0ae79dec2b32ec14f222dac095/prefill.onnx",
+  "session_options": {
+    "session.model_external_initializers_file_folder_path": "sha256:9b6fd98ff4fecf05d93ac2748fd04ea3f5d39e0ae79dec2b32ec14f222dac095"
+  }
+}
