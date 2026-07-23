@@ -2570,6 +2570,37 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_ExceedsTotalSeqLen) {
            {}, nullptr, &execution_providers);
 }
 
+// Validation: in a multi-batch nonpad_kv_seqlen, a bad entry in a LATER batch must still be
+// rejected — a valid batch-0 must not mask a bad batch-1. This proves the host-validation loop
+// (core/providers/cpu/llm/attention_helper.h:126-134) indexes the right batch, mirroring GQA's
+// MultiBatchOneBadSeqlensK_OOB.
+// The existing NegativeValue / ExceedsTotalSeqLen rejection tests are single-batch only.
+TEST(AttentionTest, Attention_NonPadKVSeqLen_MultiBatchOneBad_Rejected_CPU) {
+  // batch_size=2, kv_seq_len=4 => valid range [0, 4]. Batch 0 valid (0), batch 1 bad (-3).
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  std::vector<int64_t> q_shape = {2, 1, 1, 2};
+  std::vector<int64_t> k_shape = {2, 1, 4, 2};
+  std::vector<int64_t> v_shape = {2, 1, 4, 2};
+
+  test.AddInput<float>("Q", q_shape, std::vector<float>(4, 1.0f));
+  test.AddInput<float>("K", k_shape, std::vector<float>(16, 1.0f));
+  test.AddInput<float>("V", v_shape, std::vector<float>(16, 1.0f));
+  test.AddOptionalInputEdge<bool>();   // attn_mask
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {2}, {0, -3});
+
+  test.AddOutput<float>("Y", {2, 1, 1, 2}, std::vector<float>(4, 0.0f));
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "nonpad_kv_seqlen[1] = -3 is out of range",
+           {}, nullptr, &execution_providers);
+}
+
 // Test combined nonpad_kv_seqlen + bool attn_mask.
 // Both masks should compose additively: nonpad_kv_seqlen masks positions >= valid_len,
 // and attn_mask further masks positions within the valid range.
