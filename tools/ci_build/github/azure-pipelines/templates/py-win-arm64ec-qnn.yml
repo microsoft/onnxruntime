@@ -41,9 +41,9 @@ jobs:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
   steps:
-  - checkout: self
-    clean: true
-    submodules: recursive
+  - template: jobs/checkout-and-git-redirect.yml
+    parameters:
+      submodules: true
 
   - template: setup-build-tools.yml
     parameters:

@@ -39,9 +39,7 @@ jobs:
     value: '14.0'
 
   steps:
-  - checkout: self
-    clean: true
-    submodules: none
+  - template: jobs/checkout-and-git-redirect.yml
 
   - template: use-xcode-version.yml
 

@@ -51,8 +51,7 @@ stages:
         NpmPackagingMode: '<INVALID/UNSUPPORTED COMBINATION>'
 
     steps:
-    - checkout: self
-      submodules: true
+    - template: ../templates/jobs/checkout-and-git-redirect.yml
 
     - template: ../templates/setup-feeds-and-python-steps.yml
 

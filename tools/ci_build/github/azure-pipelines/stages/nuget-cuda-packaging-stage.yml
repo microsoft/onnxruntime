@@ -36,8 +36,7 @@ stages:
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
 
     steps:
-    - checkout: self
-      submodules: true
+    - template: ../templates/jobs/checkout-and-git-redirect.yml
 
     - template: ../templates/setup-feeds-and-python-steps.yml
 

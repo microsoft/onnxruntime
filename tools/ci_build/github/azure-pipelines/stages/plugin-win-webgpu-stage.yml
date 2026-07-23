@@ -64,9 +64,7 @@ stages:
       - name: VSGenerator
         value: 'Visual Studio 17 2022'
       steps:
-      - checkout: self
-        clean: true
-        submodules: none
+      - template: ../templates/jobs/checkout-and-git-redirect.yml
 
       - template: ../templates/setup-build-tools.yml
         parameters:
@@ -91,22 +89,25 @@ stages:
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
           arguments: >-
-            --config ${{ parameters.cmake_build_type }}
-            --build_dir $(Build.BinariesDirectory)
-            --skip_submodule_sync
-            --cmake_generator "$(VSGenerator)"
-            --parallel
-            --use_vcpkg
-            --use_vcpkg_ms_internal_asset_cache
-            --use_binskim_compliant_compile_flags
-            --update
             --build
-            --enable_onnx_tests
-            --use_webgpu shared_lib
-            --wgsl_template static
+            --build_dir $(Build.BinariesDirectory)
+            --cmake_extra_defines 'onnxruntime_BUILD_UNIT_TESTS=OFF'
+            --cmake_extra_defines 'onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1'
+            --cmake_extra_defines 'onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1'
+            --cmake_extra_defines $(PluginEpVersionDefine)
+            --cmake_generator "$(VSGenerator)"
+            --config ${{ parameters.cmake_build_type }}
             --disable_rtti
             --enable_lto
-            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1 $(PluginEpVersionDefine)
+            --enable_onnx_tests
+            --parallel
+            --skip_submodule_sync
+            --update
+            --use_binskim_compliant_compile_flags
+            --use_vcpkg
+            --use_vcpkg_ms_internal_asset_cache
+            --use_webgpu shared_lib
+            --wgsl_template static
             $(TelemetryOption)
           workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -211,9 +212,7 @@ stages:
       variables:
       - template: ../templates/common-variables.yml
       steps:
-      - checkout: self
-        clean: true
-        submodules: none
+      - template: ../templates/jobs/checkout-and-git-redirect.yml
 
       - template: ../templates/setup-build-tools.yml
         parameters:

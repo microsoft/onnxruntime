@@ -86,9 +86,7 @@ jobs:
   pool: ${{ parameters.MachinePool }}
   timeoutInMinutes:  300
   steps:
-  - checkout: self
-    clean: true
-    submodules: none
+  - template: jobs/checkout-and-git-redirect.yml
 
   - template: win-ci-prebuild-steps.yml
     parameters:
