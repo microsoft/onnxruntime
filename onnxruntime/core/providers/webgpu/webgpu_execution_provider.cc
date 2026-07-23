@@ -33,6 +33,7 @@
 #include "core/providers/webgpu/tensor/expand.h"
 #include "core/providers/webgpu/tensor/grid_sample.h"
 #include "core/providers/webgpu/generator/range.h"
+#include "core/providers/webgpu/tensor/trilu.h"
 #include "core/providers/webgpu/tensor/unsqueeze.h"
 #include "core/providers/webgpu/math/binary_elementwise_ops.h"
 #include "core/providers/webgpu/tensor/where.h"
@@ -382,6 +383,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 21, Flatten)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 6, 12, Tile)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, Tile)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 14, Trilu)>,
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 17, LayerNormalization)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 23, RMSNormalization)>,
