@@ -179,6 +179,28 @@ class MatMulNBits final : public CudaKernel {
                                       : profile_m.back();
         RunGemmProfile(has_fpA_intB_gemv_, 1, max_m);
         has_fpA_intB_gemm_ = true;
+
+        // The fpA_intB fast path serves large m (prefill, m >= 16) exclusively through the
+        // CUTLASS weight-only GEMM: the fused CUDA GEMV kernel only supports small m and throws
+        // "unsupported m" otherwise. For narrow-N models the CUTLASS heuristic can fail to find a
+        // valid GEMM tile for one or more m buckets, so no tactic can serve that prefill shape
+        // (getBestConfig returns nullopt, or only the small-m CUDA GEMV kernel), which fails the
+        // node at runtime. When the model did not ship pre-prepacked weights there is a viable
+        // fallback (the default MatMulNBits kernel), so verify here that every profiled m >= 16
+        // bucket has a usable CUTLASS GEMM tactic; if any cannot be served, disable the fast path
+        // (skipping PrePack, which keeps the quantized weights) so the default kernel runs instead
+        // of failing at prefill. Tactics are profiled per rounded power-of-two m bucket, so
+        // probing powers of two covers the whole range.
+        if (has_fpA_intB_gemm_ && weight_prepacked_ == kMatMulNBitsWeightNotPrepacked) {
+          for (int probe_m = 16; probe_m <= max_m; probe_m *= 2) {
+            auto probe = gemmProfiler_->getBestConfig(probe_m, gemmId_);
+            if (!probe.has_value() || probe->enableCudaKernel) {
+              has_fpA_intB_gemm_ = false;
+              has_fpA_intB_gemv_ = false;
+              break;
+            }
+          }
+        }
       }
 
       if (prepacked) {
