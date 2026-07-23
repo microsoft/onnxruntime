@@ -80,9 +80,9 @@ Status Trilu::ComputeInternal(ComputeContext& context) const {
 
   const int64_t matrix_h = input_shape[input_shape.NumDimensions() - 2];
   const int64_t matrix_w = input_shape[input_shape.NumDimensions() - 1];
-  ORT_RETURN_IF_NOT(matrix_h > 0 && matrix_h <= static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
+  ORT_RETURN_IF_NOT(matrix_h > 0 && matrix_h <= static_cast<int64_t>(std::numeric_limits<int32_t>::max()),
                     "Trilu matrix height is out of supported range.");
-  ORT_RETURN_IF_NOT(matrix_w > 0 && matrix_w <= static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
+  ORT_RETURN_IF_NOT(matrix_w > 0 && matrix_w <= static_cast<int64_t>(std::numeric_limits<int32_t>::max()),
                     "Trilu matrix width is out of supported range.");
 
   int32_t k = 0;
