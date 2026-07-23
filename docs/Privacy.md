@@ -26,5 +26,5 @@ For ways to disable telemetry, see the [Disabling Telemetry](#disabling-telemetr
 Telemetry can be disabled in any of these ways:
 
 - **Don't build it in.** The telemetry provider is only compiled when configuring with `--use_telemetry`, so a build configured without it collects no data.
-- **At runtime, via environment variable (non-Windows).** Set `ORT_TELEMETRY_DISABLED=1` (also accepts `true`/`yes`/`on`/`y`, case-insensitive) before ONNX Runtime initializes to disable non-essential telemetry. ONNX Runtime may still send a minimal initialization event.
+- **At runtime, via environment variable (non-Windows).** Set `ORT_TELEMETRY_DISABLED=1` (also accepts `true`/`yes`/`on`/`y`, case-insensitive) before ONNX Runtime initializes. This is a full opt-out: the telemetry uploader is never created, no events (including the initialization event) are sent, and no persistent device identifier is written to disk. The opt-out is latched for the lifetime of the process and cannot be re-enabled via the runtime API.
 - **At runtime, via the API.** The C API (and the C#, Python, and Java bindings) expose calls to turn telemetry on/off for non-essential telemetry. For non-Windows platforms, ONNX Runtime may still send a minimal initialization event. On **Windows**, ETW events are still emitted if an external trace session is collecting.

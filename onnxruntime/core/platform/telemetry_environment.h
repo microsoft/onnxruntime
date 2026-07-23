@@ -121,10 +121,12 @@ inline constexpr bool CanEnableTelemetryEvents(bool disabled_by_environment) noe
   return !disabled_by_environment;
 }
 
-// True if telemetry should be fully suppressed for this process, including the initialization event.
-// ORT_TELEMETRY_DISABLED is intentionally excluded because it disables only non-essential events.
+// True if telemetry should be fully suppressed for this process, including the initialization event:
+// a CI / build-pipeline environment, ORT's own unit-test binaries, or an explicit
+// ORT_TELEMETRY_DISABLED opt-out. In every case the provider skips creating the uploader entirely, so
+// no events (not even ProcessInfo) are emitted and no persistent device id is written to disk.
 inline bool ShouldSuppressTelemetry() {
-  return IsRunningInCI() || IsRunningUnitTests();
+  return IsRunningInCI() || IsRunningUnitTests() || IsTelemetryDisabledByEnvVar();
 }
 
 }  // namespace onnxruntime

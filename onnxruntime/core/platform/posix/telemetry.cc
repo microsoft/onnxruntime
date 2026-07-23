@@ -388,20 +388,17 @@ void PosixTelemetry::LogEventAsync(Microsoft::Applications::Events::EventPropert
 void PosixTelemetry::Initialize() {
   std::unique_lock<std::shared_mutex> lock(mutex_);
 
-  // In a CI / build-pipeline environment, or inside ORT's own unit-test binaries, collect nothing at
-  // all: skip creating the 1DS uploader entirely so no events (not even ProcessInfo) are emitted and
-  // no device id is written.
-  if (IsRunningInCI() || IsRunningUnitTests()) {
+  // Collect nothing at all — skip creating the 1DS uploader entirely so no events (not even the
+  // one-shot ProcessInfo) are emitted and no device id is written to disk — when telemetry is fully
+  // suppressed for this process: a CI / build-pipeline environment, ORT's own unit-test binaries, or
+  // an explicit ORT_TELEMETRY_DISABLED opt-out. The environment opt-out is additionally latched so the
+  // runtime EnableTelemetryEvents() API cannot re-enable telemetry for the lifetime of the process.
+  if (ShouldSuppressTelemetry()) {
+    if (IsTelemetryDisabledByEnvVar()) {
+      env_disabled_.store(true, std::memory_order_release);
+    }
     enabled_.store(false, std::memory_order_release);
     return;
-  }
-
-  // ORT_TELEMETRY_DISABLED suppresses usage events for the lifetime of the process but still creates
-  // the uploader, so the one-shot ProcessInfo event is emitted. Runtime disable behaves the same way
-  // for ProcessInfo but remains reversible when there was no environment opt-out.
-  if (IsTelemetryDisabledByEnvVar()) {
-    env_disabled_.store(true, std::memory_order_release);
-    enabled_.store(false, std::memory_order_release);
   }
 
   // The official Android AAR initializes the SDK's Java HttpClient before ORT is loaded. Native-only
@@ -763,9 +760,10 @@ uint64_t PosixTelemetry::Keyword() const {
 
 void PosixTelemetry::LogProcessInfo() const {
   RunTelemetryOperation("LogProcessInfo", [&]() {
-    // ProcessInfo fires whenever telemetry is initialized (i.e. not in a CI build), even when the usage
-    // events are disabled via ORT_TELEMETRY_DISABLED or DisableTelemetryEvents(). It only needs a live
-    // logger; CI suppression already prevents one from being created.
+    // ProcessInfo fires whenever a live logger exists, even when usage events are suppressed at
+    // runtime via DisableTelemetryEvents(); it only needs a live logger. An ORT_TELEMETRY_DISABLED
+    // opt-out (as well as CI / unit-test suppression) prevents the uploader from being created at all,
+    // so no logger exists and this returns early.
     if (logger_.load(std::memory_order_acquire) == nullptr) {
       return;
     }
