@@ -32,9 +32,10 @@ class GatherBlockQuantizedOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override;
 };
 
-// The quantized data (T1) is one of {int4, uint4, uint8}. Only uint8 with bits==4 is bit-packed
-// (two 4-bit values per byte) and must be reinterpreted as a WebNN uint4 constant with the logical
-// (unpacked) shape. uint8 with bits==8 is genuine 8-bit; int4/uint4 are already at their logical shape.
+// The quantized data (T1) is one of {int4, uint4, uint8}. int4/uint4 map to WebNN's int4/uint4 dtypes
+// directly. uint8 with bits==4 packs two 4-bit values per byte and has no matching WebNN dtype, so it is
+// relabeled as a uint4 constant with the logical (unpacked) shape, leaving the raw bytes unchanged.
+// uint8 with bits==8 stays as 8-bit.
 static bool RequiresUint4Reinterpret(int32_t data_type, int64_t bits) {
   return data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8 && bits == 4;
 }
@@ -42,7 +43,8 @@ static bool RequiresUint4Reinterpret(int32_t data_type, int64_t bits) {
 void GatherBlockQuantizedOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   const auto& input_defs = node.InputDefs();
   NodeAttrHelper helper(node);
-  // No logger is available in this callback, so read the declared element type from the proto.
+  // The GetType() helper takes a logger for diagnostics, but this callback isn't given one, so read
+  // the declared element type straight from the proto instead.
   const int32_t data_type = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
   if (!RequiresUint4Reinterpret(data_type, helper.Get("bits", 4))) {
     return;
@@ -73,12 +75,12 @@ Status GatherBlockQuantizedOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_
   const int64_t bits = helper.Get("bits", 4);
   const uint32_t gather_axis = SafeInt<uint32_t>(HandleNegativeAxis(helper.Get("gather_axis", 0), input_rank));
   const bool has_zero_points = TensorExists(input_defs, 3);
-  const bool reinterpret_u4 = RequiresUint4Reinterpret(input_type, bits);
+  const bool requires_reinterpret_u4 = RequiresUint4Reinterpret(input_type, bits);
 
   emscripten::val input = emscripten::val::undefined();
   emscripten::val zero_points = emscripten::val::undefined();
 
-  if (reinterpret_u4) {
+  if (requires_reinterpret_u4) {
     // Reinterpret the uint8-packed data/zero_point as WebNN uint4 constants. The raw bytes are
     // unchanged; only the element type and logical shape differ (2 uint4 values per byte). The data's
     // last (quantize) axis doubles; the zero_point takes the scales shape, which dequantizeLinear
@@ -114,20 +116,20 @@ Status GatherBlockQuantizedOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_
   // GatherBlockQuantized only supports block-wise quantization, the input and scales should have the same rank.
   // So we don't need to reshape scales for broadcasting.
   if (zero_points.isUndefined()) {
-    // No zero_point input was provided. Build a default matching the scales shape, with a dtype
-    // matching the (possibly reinterpreted) input.
+    // Create a default zero_point with the same shape as scales.
     const std::vector<uint32_t> zp_shape = GetNarrowedIntFromInt64<uint32_t>(scales_shape);
-    if (reinterpret_u4) {
-      // uint8-packed 4-bit: the default zero_point must also be a uint4 constant (two values per byte).
+    if (requires_reinterpret_u4) {
+      // Default zero_point for uint8-packed 4-bit is 8, stored as uint4 (two per byte, so 0x88).
       emscripten::val zp_desc = emscripten::val::object();
       zp_desc.set("dataType", emscripten::val("uint4"));
       zp_desc.set("shape", emscripten::val::array(zp_shape));
       zp_desc.set("dimensions", emscripten::val::array(zp_shape));
       emscripten::val zp_buffer = emscripten::val::global("Uint8Array").new_((Product(scales_shape) + 1) / 2);
+      zp_buffer.call<void>("fill", emscripten::val(0x88));
       zero_points = model_builder.GetBuilder().call<emscripten::val>("constant", zp_desc, zp_buffer);
     } else {
-      const uint8_t default_zero_point = bits == 4 ? 0 : 128;
-      // Create a constant for zero_points, which has the same shape as scales and same type as input.
+      // Default zero_point is 128 for uint8, 0 for int4/uint4.
+      const uint8_t default_zero_point = input_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ? 128 : 0;
       zero_points = model_builder.CreateOrGetConstant<uint8_t>(input_type, default_zero_point, zp_shape);
     }
   }
