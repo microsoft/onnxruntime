@@ -1,7 +1,9 @@
 parameters:
 - name: MacosArch
   type: string
-  default: 'arm64'
+  values:
+  - 'x86_64'
+  - 'arm64'
 
 - name: AdditionalBuildFlags
   displayName: Additional build flags for build.py
@@ -59,6 +61,9 @@ steps:
 
 - template: nodejs-artifacts-package-and-publish-steps-posix.yml
   parameters:
-      arch: arm64
+      ${{ if eq(parameters.MacosArch, 'x86_64') }}:
+          arch: x64
+      ${{ if eq(parameters.MacosArch, 'arm64') }}:
+          arch: arm64
       os: 'darwin'
       artifactName: 'drop-onnxruntime-nodejs-osx-${{ parameters.MacosArch }}'
