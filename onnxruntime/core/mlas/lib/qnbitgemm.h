@@ -377,7 +377,10 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      * @param       RangeStartN         Start of N range.
      * @param       RangeCountN         Number of columns of B and C.
      * @param       CountK              Number of columns of A and rows of B.
+     * @param       HasQuantBZeroPoint  Whether RHS zero points were present during B packing.
+     * @param       BackendKernelSelectorConfig  Optional backend kernel selector configuration.
      * @param       ldc                 Number of elements between adjacent rows of C.
+     * @param       Bias                Bias vector of length N. Optional.
      */
     typedef void(SQ4BitGemmKernel_Packed_CompInt8_Fn)(
         size_t BlkLen,
@@ -389,6 +392,8 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         const size_t RangeStartN,
         const size_t RangeCountN,
         size_t CountK,
+        bool HasQuantBZeroPoint,
+        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig,
         size_t ldc,
         const float* Bias
     );
@@ -583,15 +588,40 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     UsePacked_CompInt8_Fn* UsePacked_CompInt8 = nullptr;
 
     /**
+     * @brief Required N-start alignment for SQ4BitGemmKernel_Packed_CompInt8 ranges.
+     */
+    typedef size_t(PackedQ4BitGemmNAlignment_CompInt8_Fn)(
+        size_t K,
+        size_t BlkLen,
+        bool HasZp,
+        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    );
+
+    PackedQ4BitGemmNAlignment_CompInt8_Fn* PackedQ4BitGemmNAlignment_CompInt8 = nullptr;
+
+    /**
+     * @brief Whether to correct for asymmetric zero-point in RHS packed CompInt8 workloads
+     */
+    typedef bool(NeedsPackedZpCorrection_CompInt8_Fn)(
+        size_t K,
+        size_t BlkLen,
+        bool HasZp,
+        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    );
+
+    NeedsPackedZpCorrection_CompInt8_Fn* NeedsPackedZpCorrection_CompInt8 = nullptr;
+
+    /**
      * @brief Block quantize values from matrix A from floats to quantized 8-bit integers.
      *        Used in conjunction with SQ4BitGemmKernel_Packed_CompInt8.
      *
-     * @param       BlkLen  Number of values in a block.
-     * @param       A       Supplies the A matrix.
-     * @param       CountM  Number of rows of A.
-     * @param       CountK  Number of columns of A.
-     * @param[out]  QuantA  Supplies the output quantized A matrix.
-     *                      Binary data containing block quantized int8 data and scale values.
+     * @param       BlkLen           Number of values in a block.
+     * @param       A                Supplies the A matrix.
+     * @param       CountM           Number of rows of A.
+     * @param       CountK           Number of columns of A.
+     * @param       RHSHasZeroPoint  Whether packing happens for asymmetric or symmetric RHS
+     * @param[out]  QuantA           Supplies the output quantized A matrix.
+     *                               Binary data containing block quantized int8 data and scale values.
      * @param       BackendKernelSelectorConfig  Optional configuration for selecting backend kernels.
      */
     typedef void(QuantizeA_Packed_CompInt8_Fn)(
@@ -599,6 +629,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         const float* A,
         size_t CountM,
         size_t CountK,
+        bool RHSHasZeroPoint,
         std::byte* QuantA,
         const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     );
@@ -685,6 +716,21 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     // When set, the W2 dispatch in InitializeWorkspace_CompInt8 uses this in
     // preference to the shared field; otherwise it falls back to the shared one.
     QuantizeARowComputeBlkSum_CompInt8_Fn* QuantizeARowComputeBlkSum_CompInt8_W2 = nullptr;
+
+    // Same output as QuantizeARowComputeBlkSum_CompInt8 (block quantized int8, per-block
+    // scale, and scale * sum(a_i)), but reads A as fp16 and converts each element to
+    // float before quantizing. Lets a fp16 activation input be quantized in one pass
+    // instead of a separate fp16 -> fp32 conversion followed by the float quantizer.
+    // Only set where the CompInt8 kernels are available (x64 AVX2 and up).
+    typedef void(QuantizeARowComputeBlkSum_CompInt8_Fp16_Fn)(
+        size_t BlkLen,
+        const MLAS_FP16* A,
+        size_t CountK,
+        std::byte* QuantA,
+        float* QuantAScale,
+        float* AScaledGroupSum  // scale_k * Sum_blklen(a_i)
+    );
+    QuantizeARowComputeBlkSum_CompInt8_Fp16_Fn* QuantizeARowComputeBlkSum_CompInt8_Fp16 = nullptr;
 
     /**
      * @brief Multiply fp16 matrix A rows with fp16 matrix B columns.

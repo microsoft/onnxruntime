@@ -121,6 +121,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Sigmoid),
     KERNEL_CREATE_INFO(13, Sigmoid),
     KERNEL_CREATE_INFO(6, HardSigmoid),
+    KERNEL_CREATE_INFO(14, HardSwish),
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Log),
     KERNEL_CREATE_INFO(13, Log),
 

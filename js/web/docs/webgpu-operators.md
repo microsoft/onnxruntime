@@ -60,6 +60,7 @@ Do not modify directly.*
 | GridSample | ai.onnx(16-19); com.ms.internal.nhwc(16-19) |  |
 | GroupQueryAttention | com.microsoft(1+) |  |
 | HardSigmoid | ai.onnx(6+) |  |
+| HardSwish | ai.onnx(14+) |  |
 | If | ai.onnx(1-10,11-12,13-18,19-20,21+) |  |
 | InstanceNormalization | ai.onnx(6+); com.ms.internal.nhwc(6+) |  |
 | LayerNormalization | ai.onnx(1-16,17+) |  |

@@ -24,7 +24,7 @@ jobs:
     name: Windows CUDA Plugin EP Build without cuDNN
     runs-on: [
         "self-hosted",
-        "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
+        "1ES.Pool=onnxruntime-github-vs2022-latest",
         "JobId=windows-cuda-plugin-no-cudnn-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
     timeout-minutes: 210
@@ -214,10 +214,20 @@ jobs:
           dir
         shell: pwsh
 
+      - name: Remove cuFFT runtime DLLs
+        shell: pwsh
+        run: |
+          $cudaRoot = Join-Path $env:RUNNER_TEMP "v13.0"
+          Get-ChildItem -Path $cudaRoot -Recurse -Include "cufft*.dll" | Remove-Item -Force
+          if (Get-ChildItem -Path $cudaRoot -Recurse -Include "cufft*.dll" -ErrorAction SilentlyContinue) {
+            Write-Error "cuFFT runtime DLLs must not be present in the no-cuDNN test environment"
+            exit 1
+          }
+
       - name: Add CUDA to PATH
         shell: pwsh
         run: |
-          Write-Host "Adding CUDA to PATH without adding any cuDNN directory"
+          Write-Host "Adding CUDA to PATH without cuDNN or cuFFT runtime DLLs"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\bin\x64"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\extras\CUPTI\lib64"
@@ -237,7 +247,7 @@ jobs:
         shell: pwsh
         run: nvidia-smi
 
-      - name: Verify CUDA plugin has no direct cuDNN dependency
+      - name: Verify CUDA plugin has no direct cuDNN or cuFFT dependency
         shell: pwsh
         run: |
           $pluginPath = "${{ runner.temp }}\build\Release\Release\onnxruntime_providers_cuda.dll"
@@ -249,6 +259,10 @@ jobs:
           dumpbin /dependents $pluginPath | Tee-Object -FilePath $env:RUNNER_TEMP\cuda_plugin_dependents.txt
           if (Select-String -Path $env:RUNNER_TEMP\cuda_plugin_dependents.txt -Pattern "cudnn" -SimpleMatch -Quiet) {
             Write-Error "CUDA plugin EP has a direct cuDNN dependency"
+            exit 1
+          }
+          if (Select-String -Path $env:RUNNER_TEMP\cuda_plugin_dependents.txt -Pattern "cufft" -SimpleMatch -Quiet) {
+            Write-Error "CUDA plugin EP has a direct cuFFT dependency"
             exit 1
           }
 

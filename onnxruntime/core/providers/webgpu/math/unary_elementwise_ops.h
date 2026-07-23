@@ -114,6 +114,15 @@ fn hard_sigmoid_v(v: vec4<x_element_t>) -> vec4<x_element_t> {
 }
 )";
 
+constexpr const char HardSwishImpl[] = R"(
+fn hard_swish_v(v: vec4<x_element_t>) -> vec4<x_element_t> {
+  let alpha = x_element_t(1.0 / 6.0);
+  let beta_v = vec4<x_element_t>(x_element_t(0.5));
+  return v * max(vec4<x_element_t>(0.0),
+                 min(vec4<x_element_t>(1.0), alpha * v + beta_v));
+}
+)";
+
 // built-in function tanh() does not work with large input (f32 88.7 or f16 11.09)
 // https://github.com/gpuweb/gpuweb/issues/4458
 constexpr const char TanhImpl[] = R"(

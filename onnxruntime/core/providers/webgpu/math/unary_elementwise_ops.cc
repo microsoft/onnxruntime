@@ -132,6 +132,9 @@ class HardSigmoid final : public UnaryElementwise {
 
 WEBGPU_ELEMENTWISE_KERNEL(HardSigmoid, 6, WebGpuSupportedFloatTypes())
 
+WEBGPU_ELEMENTWISE_IMPL(HardSwish, "hard_swish_v(a)", HardSwishImpl, ShaderUsage::UseElementTypeAlias)
+WEBGPU_ELEMENTWISE_KERNEL(HardSwish, 14, WebGpuSupportedFloatTypes())
+
 WEBGPU_ELEMENTWISE_IMPL(Sin, "sin(a)")
 WEBGPU_ELEMENTWISE_KERNEL(Sin, 7, WebGpuSupportedFloatTypes())
 
