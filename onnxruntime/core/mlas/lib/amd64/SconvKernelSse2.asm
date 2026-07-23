@@ -17,10 +17,8 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
 INCLUDE SconvKernelCommon.inc
-        .list
 
 ;
 ; Macro Description:
@@ -159,7 +157,6 @@ ENDIF
 ;
 
 ProcessFilterCountN MACRO KernelFrame, KernelType, FilterCount
-
         LOCAL   ProcessNextOutputCount
 
         mov     r10,KernelFrame.OutputCountLeftPad[rsp]
@@ -202,7 +199,6 @@ ProcessNextOutputCount:
 ;
 
 ProcessPointwiseFilterCountN MACRO FilterCount
-
         LOCAL   ProcessNextOutputCount
 
 ProcessNextOutputCount:
@@ -251,7 +247,7 @@ ENDIF
 ;
 
         test    dl,MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT
-        jz      SkipAccumulateOutput
+        jz      SkipAccumulateOutput&FilterCount&Output&OutputCount
         EmitIfCount2GE FilterCount, 1, OutputCount, 1, <movups xmm8,XMMWORD PTR [r8]>
         EmitIfCount2GE FilterCount, 1, OutputCount, 1, <movups xmm9,XMMWORD PTR [r8+16]>
         EmitIfCount2GE FilterCount, 2, OutputCount, 1, <movups xmm10,XMMWORD PTR [r8+rax]>
@@ -269,14 +265,14 @@ ENDIF
         EmitIfCount2GE FilterCount, 4, OutputCount, 1, <addps xmm6,xmm14>
         EmitIfCount2GE FilterCount, 4, OutputCount, 1, <addps xmm7,xmm15>
 
-SkipAccumulateOutput:
+SkipAccumulateOutput&FilterCount&Output&OutputCount:
 
 ;
 ; Test if the bias buffer should be accumulated with the output block.
 ;
 
         test    dl,MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION
-        jz      SkipBiasAddition
+        jz      SkipBiasAddition&FilterCount&Output&OutputCount
         EmitIfCount2GE FilterCount, 1, OutputCount, 1, <movups xmm8,XMMWORD PTR [rcx]>
         EmitIfCount2GE FilterCount, 1, OutputCount, 1, <movups xmm9,XMMWORD PTR [rcx+16]>
         EmitIfCount2GE FilterCount, 2, OutputCount, 1, <movups xmm10,XMMWORD PTR [rcx+32]>
@@ -294,14 +290,14 @@ SkipAccumulateOutput:
         EmitIfCount2GE FilterCount, 4, OutputCount, 1, <addps xmm6,xmm14>
         EmitIfCount2GE FilterCount, 4, OutputCount, 1, <addps xmm7,xmm15>
 
-SkipBiasAddition:
+SkipBiasAddition&FilterCount&Output&OutputCount:
 
 ;
 ; Test for fused ReLU activation.
 ;
 
         test    dl,MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION
-        jz      SkipReluActivation
+        jz      SkipReluActivation&FilterCount&Output&OutputCount
         xorps   xmm15,xmm15
         EmitIfCount2GE FilterCount, 1, OutputCount, 1, <maxps xmm0,xmm15>
         EmitIfCount2GE FilterCount, 1, OutputCount, 1, <maxps xmm1,xmm15>
@@ -312,7 +308,7 @@ SkipBiasAddition:
         EmitIfCount2GE FilterCount, 4, OutputCount, 1, <maxps xmm6,xmm15>
         EmitIfCount2GE FilterCount, 4, OutputCount, 1, <maxps xmm7,xmm15>
 
-SkipReluActivation:
+SkipReluActivation&FilterCount&Output&OutputCount:
 
 ;
 ; Store the output block in the output buffer.

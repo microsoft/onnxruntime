@@ -17,10 +17,8 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
 INCLUDE SconvKernelAvxCommon.inc
-        .list
 
 ;
 ; Macro Description:
@@ -136,11 +134,7 @@ ENDIF
 ;
 
 ProcessFilterCountN MACRO KernelFrame, KernelType, FilterCount
-
-        LOCAL   ProcessOutputCount
-        LOCAL   ProcessNextOutputCountBy2
-        LOCAL   ProcessRemainingOutputCount
-        LOCAL   ProcessOutputCountRightPadAndRemaining
+        LOCAL   ProcessOutputCount, ProcessNextOutputCountBy2, ProcessRemainingOutputCount, ProcessOutputCountRightPadAndRemaining
 
 ;
 ; Process the output blocks that include left padding.
@@ -176,7 +170,7 @@ ProcessRemainingOutputCount:
 
 ProcessOutputCountRightPadAndRemaining:
         add     r10,KernelFrame.OutputCountRightPad[rsp]
-        jz      ExitKernel
+        jz      ExitKernel&KernelType&
         call    MlasConv&KernelType&FloatSingleAvxFilter&FilterCount
 
         ENDM
@@ -209,9 +203,7 @@ ProcessOutputCountRightPadAndRemaining:
 ;
 
 ProcessPointwiseFilterCountN MACRO FilterCount
-
-        LOCAL   ProcessNextOutputCountBy2
-        LOCAL   ProcessRemainingOutputCount
+        LOCAL   ProcessNextOutputCountBy2, ProcessRemainingOutputCount
 
         sub     r10,2
         jb      ProcessRemainingOutputCount
@@ -224,7 +216,7 @@ ProcessNextOutputCountBy2:
 
 ProcessRemainingOutputCount:
         add     r10,2                       ; correct for over-subtract above
-        jz      ExitKernel
+        jz      ExitKernelPointwise
         ProcessPointwiseOutputCountN Avx, 8, FilterCount, 1
 
         ENDM
@@ -258,7 +250,19 @@ SconvKernelPointwiseFunction Avx, BiasFilter
         LEAF_ENTRY MlasConvPostProcessFloatAvxFilter&FilterCount&Output&OutputCount, _TEXT
 
         PUBLIC  MlasConvPostProcessFloatFma3Filter&FilterCount&Output&OutputCount
+;
+; This alternate entry point shares the AVX post-processing code with the FMA3
+; kernel. ml64 requires the double-colon form (a module-visible label defined
+; inside a PROC under the default OPTION SCOPED); llvm-ml does not parse "::",
+; but treats every label as global, so a single-colon label plus PUBLIC is
+; equivalent. LLVM_ML is defined on the llvm-ml command line (see the MLAS
+; cross-assembler CI workflow).
+;
+IFDEF LLVM_ML
+MlasConvPostProcessFloatFma3Filter&FilterCount&Output&OutputCount:
+ELSE
 MlasConvPostProcessFloatFma3Filter&FilterCount&Output&OutputCount::
+ENDIF
 
 IF FilterCount GT 2
         lea     rbx,[r8+rax*2]              ; compute output plus 2 rows
@@ -270,7 +274,7 @@ ENDIF
 ;
 
         test    dl,MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT
-        jz      SkipAccumulateOutput
+        jz      SkipAccumulateOutput&FilterCount&Output&OutputCount
         EmitIfCount2GE FilterCount, 1, OutputCount, 1, <vaddps ymm0,ymm0,YMMWORD PTR [r8]>
         EmitIfCount2GE FilterCount, 1, OutputCount, 2, <vaddps ymm4,ymm4,YMMWORD PTR [r8+32]>
         EmitIfCount2GE FilterCount, 1, OutputCount, 3, <vaddps ymm8,ymm8,YMMWORD PTR [r8+64]>
@@ -284,14 +288,14 @@ ENDIF
         EmitIfCount2GE FilterCount, 4, OutputCount, 2, <vaddps ymm7,ymm7,YMMWORD PTR [rbx+rax+32]>
         EmitIfCount2GE FilterCount, 4, OutputCount, 3, <vaddps ymm11,ymm11,YMMWORD PTR [rbx+rax+64]>
 
-SkipAccumulateOutput:
+SkipAccumulateOutput&FilterCount&Output&OutputCount:
 
 ;
 ; Test if the bias buffer should be accumulated with the output block.
 ;
 
         test    dl,MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION
-        jz      SkipBiasAddition
+        jz      SkipBiasAddition&FilterCount&Output&OutputCount
 IF OutputCount EQ 1
         EmitIfCountGE FilterCount, 1, <vaddps ymm0,ymm0,YMMWORD PTR [rcx]>
         EmitIfCountGE FilterCount, 2, <vaddps ymm1,ymm1,YMMWORD PTR [rcx+32]>
@@ -316,14 +320,14 @@ ELSE
         EmitIfCount2GE FilterCount, 4, OutputCount, 3, <vaddps ymm11,ymm11,ymm15>
 ENDIF
 
-SkipBiasAddition:
+SkipBiasAddition&FilterCount&Output&OutputCount:
 
 ;
 ; Test for fused ReLU activation.
 ;
 
         test    dl,MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION
-        jz      SkipReluActivation
+        jz      SkipReluActivation&FilterCount&Output&OutputCount
         vxorps  xmm15,xmm15,xmm15
         EmitIfCount2GE FilterCount, 1, OutputCount, 1, <vmaxps ymm0,ymm15,ymm0>
         EmitIfCount2GE FilterCount, 1, OutputCount, 2, <vmaxps ymm4,ymm15,ymm4>
@@ -338,7 +342,7 @@ SkipBiasAddition:
         EmitIfCount2GE FilterCount, 4, OutputCount, 2, <vmaxps ymm7,ymm15,ymm7>
         EmitIfCount2GE FilterCount, 4, OutputCount, 3, <vmaxps ymm11,ymm15,ymm11>
 
-SkipReluActivation:
+SkipReluActivation&FilterCount&Output&OutputCount:
 
 ;
 ; Store the output block in the output buffer.

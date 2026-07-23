@@ -30,16 +30,16 @@ MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION      EQU     00000008h
 
 SconvKernelFrame STRUCT
 
-        SavedXmm6 OWORD ?
-        SavedXmm7 OWORD ?
-        SavedXmm8 OWORD ?
-        SavedXmm9 OWORD ?
-        SavedXmm10 OWORD ?
-        SavedXmm11 OWORD ?
-        SavedXmm12 OWORD ?
-        SavedXmm13 OWORD ?
-        SavedXmm14 OWORD ?
-        SavedXmm15 OWORD ?
+        SavedXmm6 QWORD 2 DUP (?)
+        SavedXmm7 QWORD 2 DUP (?)
+        SavedXmm8 QWORD 2 DUP (?)
+        SavedXmm9 QWORD 2 DUP (?)
+        SavedXmm10 QWORD 2 DUP (?)
+        SavedXmm11 QWORD 2 DUP (?)
+        SavedXmm12 QWORD 2 DUP (?)
+        SavedXmm13 QWORD 2 DUP (?)
+        SavedXmm14 QWORD 2 DUP (?)
+        SavedXmm15 QWORD 2 DUP (?)
         Padding QWORD ?
         SavedR12 QWORD ?
         SavedR13 QWORD ?
@@ -75,22 +75,22 @@ SconvKernelFrame ENDS
 SconvKernelSingleFrame STRUCT
 
         ReturnAddress QWORD ?
-        KernelFrame SconvKernelFrame <>
+        KernelFrame SconvKernelFrame {}
 
 SconvKernelSingleFrame ENDS
 
 SconvKernelDepthwiseFrame STRUCT
 
-        SavedXmm6 OWORD ?
-        SavedXmm7 OWORD ?
-        SavedXmm8 OWORD ?
-        SavedXmm9 OWORD ?
-        SavedXmm10 OWORD ?
-        SavedXmm11 OWORD ?
-        SavedXmm12 OWORD ?
-        SavedXmm13 OWORD ?
-        SavedXmm14 OWORD ?
-        SavedXmm15 OWORD ?
+        SavedXmm6 QWORD 2 DUP (?)
+        SavedXmm7 QWORD 2 DUP (?)
+        SavedXmm8 QWORD 2 DUP (?)
+        SavedXmm9 QWORD 2 DUP (?)
+        SavedXmm10 QWORD 2 DUP (?)
+        SavedXmm11 QWORD 2 DUP (?)
+        SavedXmm12 QWORD 2 DUP (?)
+        SavedXmm13 QWORD 2 DUP (?)
+        SavedXmm14 QWORD 2 DUP (?)
+        SavedXmm15 QWORD 2 DUP (?)
         Padding QWORD ?
         SavedR12 QWORD ?
         SavedR13 QWORD ?
@@ -123,22 +123,22 @@ SconvKernelDepthwiseFrame ENDS
 SconvKernelDepthwiseSingleFrame STRUCT
 
         ReturnAddress QWORD ?
-        KernelFrame SconvKernelDepthwiseFrame <>
+        KernelFrame SconvKernelDepthwiseFrame {}
 
 SconvKernelDepthwiseSingleFrame ENDS
 
 SconvKernelPointwiseFrame STRUCT
 
-        SavedXmm6 OWORD ?
-        SavedXmm7 OWORD ?
-        SavedXmm8 OWORD ?
-        SavedXmm9 OWORD ?
-        SavedXmm10 OWORD ?
-        SavedXmm11 OWORD ?
-        SavedXmm12 OWORD ?
-        SavedXmm13 OWORD ?
-        SavedXmm14 OWORD ?
-        SavedXmm15 OWORD ?
+        SavedXmm6 QWORD 2 DUP (?)
+        SavedXmm7 QWORD 2 DUP (?)
+        SavedXmm8 QWORD 2 DUP (?)
+        SavedXmm9 QWORD 2 DUP (?)
+        SavedXmm10 QWORD 2 DUP (?)
+        SavedXmm11 QWORD 2 DUP (?)
+        SavedXmm12 QWORD 2 DUP (?)
+        SavedXmm13 QWORD 2 DUP (?)
+        SavedXmm14 QWORD 2 DUP (?)
+        SavedXmm15 QWORD 2 DUP (?)
         Padding QWORD ?
         SavedR12 QWORD ?
         SavedR14 QWORD ?
@@ -204,11 +204,7 @@ SconvKernelPointwiseFrame ENDS
 ;
 
 ProcessOutputCountN MACRO Isa, KernelFrame, KernelType, BlockSize, FilterCount, OutputCount
-
-        LOCAL   ProcessNextRow
-        LOCAL   ProcessNextColumn
-        LOCAL   HandlePostProcessing
-        LOCAL   SkipOverPadding
+        LOCAL   ProcessNextRow, ProcessNextColumn, HandlePostProcessing, SkipOverPadding
 
         mov     rcx,rdi
 IFIDNI <KernelType>, <Depthwise>
@@ -307,6 +303,7 @@ ENDIF
 ;
 
 SconvKernelFunction MACRO KernelType, BlockSize, Isa, BiasFilter
+        LOCAL   ProcessFilterCount3, ProcessFilterCountLessThan3, ProcessFilterCount1
 
 ;++
 ;
@@ -424,17 +421,17 @@ ENDIF
         je      ProcessFilterCount3
         jb      ProcessFilterCountLessThan3
         ProcessFilterCountN SconvKernelFrame, KernelType, 4
-        jmp     ExitKernel
+        jmp     ExitKernel&KernelType&
 
 ProcessFilterCount3:
         ProcessFilterCountN SconvKernelFrame, KernelType, 3
-        jmp     ExitKernel
+        jmp     ExitKernel&KernelType&
 
 ProcessFilterCountLessThan3:
         cmp     r11,2
         jb      ProcessFilterCount1
         ProcessFilterCountN SconvKernelFrame, KernelType, 2
-        jmp     ExitKernel
+        jmp     ExitKernel&KernelType&
 
 ProcessFilterCount1:
         ProcessFilterCountN SconvKernelFrame, KernelType, 1
@@ -443,20 +440,20 @@ ProcessFilterCount1:
 ; Restore non-volatile registers and return.
 ;
 
-ExitKernel:
+ExitKernel&KernelType&:
 IFDIFI <Isa>, <Sse>
         vzeroupper
 ENDIF
-        movaps  xmm6,SconvKernelFrame.SavedXmm6[rsp]
-        movaps  xmm7,SconvKernelFrame.SavedXmm7[rsp]
-        movaps  xmm8,SconvKernelFrame.SavedXmm8[rsp]
-        movaps  xmm9,SconvKernelFrame.SavedXmm9[rsp]
-        movaps  xmm10,SconvKernelFrame.SavedXmm10[rsp]
-        movaps  xmm11,SconvKernelFrame.SavedXmm11[rsp]
-        movaps  xmm12,SconvKernelFrame.SavedXmm12[rsp]
-        movaps  xmm13,SconvKernelFrame.SavedXmm13[rsp]
-        movaps  xmm14,SconvKernelFrame.SavedXmm14[rsp]
-        movaps  xmm15,SconvKernelFrame.SavedXmm15[rsp]
+        movaps  xmm6,XMMWORD PTR SconvKernelFrame.SavedXmm6[rsp]
+        movaps  xmm7,XMMWORD PTR SconvKernelFrame.SavedXmm7[rsp]
+        movaps  xmm8,XMMWORD PTR SconvKernelFrame.SavedXmm8[rsp]
+        movaps  xmm9,XMMWORD PTR SconvKernelFrame.SavedXmm9[rsp]
+        movaps  xmm10,XMMWORD PTR SconvKernelFrame.SavedXmm10[rsp]
+        movaps  xmm11,XMMWORD PTR SconvKernelFrame.SavedXmm11[rsp]
+        movaps  xmm12,XMMWORD PTR SconvKernelFrame.SavedXmm12[rsp]
+        movaps  xmm13,XMMWORD PTR SconvKernelFrame.SavedXmm13[rsp]
+        movaps  xmm14,XMMWORD PTR SconvKernelFrame.SavedXmm14[rsp]
+        movaps  xmm15,XMMWORD PTR SconvKernelFrame.SavedXmm15[rsp]
         add     rsp,(SconvKernelFrame.SavedR12)
 
         BEGIN_EPILOGUE
@@ -483,11 +480,11 @@ IFDIFI <Isa>, <Sse>
 
         LEAF_ENTRY MlasConv&KernelType&FloatSingle&Isa&Filter&FilterCount, _TEXT
 
-ProcessNextOutputCount:
+@@:
         ProcessOutputCountN Isa, SconvKernelSingleFrame.KernelFrame, KernelType, BlockSize, FilterCount, 1
         add     rdi,r9                      ; advance input by 1 element
         dec     r10                         ; decrement output count remaining
-        jnz     ProcessNextOutputCount
+        jnz     @B
         ret
 
         LEAF_END MlasConv&KernelType&FloatSingle&Isa&Filter&FilterCount, _TEXT
@@ -621,20 +618,20 @@ SconvKernelDepthwiseFunction MACRO BlockSize, Isa
 ; Restore non-volatile registers and return.
 ;
 
-ExitKernel:
+ExitKernelDepthwise:
 IFDIFI <Isa>, <Sse>
         vzeroupper
 ENDIF
-        movaps  xmm6,SconvKernelDepthwiseFrame.SavedXmm6[rsp]
-        movaps  xmm7,SconvKernelDepthwiseFrame.SavedXmm7[rsp]
-        movaps  xmm8,SconvKernelDepthwiseFrame.SavedXmm8[rsp]
-        movaps  xmm9,SconvKernelDepthwiseFrame.SavedXmm9[rsp]
-        movaps  xmm10,SconvKernelDepthwiseFrame.SavedXmm10[rsp]
-        movaps  xmm11,SconvKernelDepthwiseFrame.SavedXmm11[rsp]
-        movaps  xmm12,SconvKernelDepthwiseFrame.SavedXmm12[rsp]
-        movaps  xmm13,SconvKernelDepthwiseFrame.SavedXmm13[rsp]
-        movaps  xmm14,SconvKernelDepthwiseFrame.SavedXmm14[rsp]
-        movaps  xmm15,SconvKernelDepthwiseFrame.SavedXmm15[rsp]
+        movaps  xmm6,XMMWORD PTR SconvKernelDepthwiseFrame.SavedXmm6[rsp]
+        movaps  xmm7,XMMWORD PTR SconvKernelDepthwiseFrame.SavedXmm7[rsp]
+        movaps  xmm8,XMMWORD PTR SconvKernelDepthwiseFrame.SavedXmm8[rsp]
+        movaps  xmm9,XMMWORD PTR SconvKernelDepthwiseFrame.SavedXmm9[rsp]
+        movaps  xmm10,XMMWORD PTR SconvKernelDepthwiseFrame.SavedXmm10[rsp]
+        movaps  xmm11,XMMWORD PTR SconvKernelDepthwiseFrame.SavedXmm11[rsp]
+        movaps  xmm12,XMMWORD PTR SconvKernelDepthwiseFrame.SavedXmm12[rsp]
+        movaps  xmm13,XMMWORD PTR SconvKernelDepthwiseFrame.SavedXmm13[rsp]
+        movaps  xmm14,XMMWORD PTR SconvKernelDepthwiseFrame.SavedXmm14[rsp]
+        movaps  xmm15,XMMWORD PTR SconvKernelDepthwiseFrame.SavedXmm15[rsp]
         add     rsp,(SconvKernelDepthwiseFrame.SavedR12)
 
         BEGIN_EPILOGUE
@@ -659,11 +656,11 @@ IFDIFI <Isa>, <Sse>
 
         LEAF_ENTRY MlasConvDepthwiseFloatSingle&Isa&Filter1, _TEXT
 
-ProcessNextOutputCount:
+@@:
         ProcessOutputCountN Isa, SconvKernelDepthwiseSingleFrame.KernelFrame, Depthwise, BlockSize, 1, 1
         add     rdi,r9                      ; advance input by 1 element
         dec     r10                         ; decrement output count remaining
-        jnz     ProcessNextOutputCount
+        jnz     @B
         ret
 
         LEAF_END MlasConvDepthwiseFloatSingle&Isa&Filter1, _TEXT
@@ -705,11 +702,7 @@ ENDIF
 ;
 
 ProcessPointwiseOutputCountN MACRO Isa, BlockSize, FilterCount, OutputCount
-
-        LOCAL   ProcessNextInputBlock
-        LOCAL   SkipAccumulateOutput
-        LOCAL   SkipBiasAddition
-        LOCAL   SkipReluActivation
+        LOCAL   ProcessNextInputBlock, SkipAccumulateOutput, SkipBiasAddition, SkipReluActivation
 
         mov     rcx,rdi
         mov     rdx,r12
@@ -769,6 +762,7 @@ ENDIF
 ;--
 
 SconvKernelPointwiseFunction MACRO Isa, BiasFilter
+        LOCAL   ProcessFilterCount3, ProcessFilterCountLessThan3, ProcessFilterCount1
 
 ;++
 ;
@@ -859,17 +853,17 @@ ENDIF
         je      ProcessFilterCount3
         jb      ProcessFilterCountLessThan3
         ProcessPointwiseFilterCountN 4
-        jmp     ExitKernel
+        jmp     ExitKernelPointwise
 
 ProcessFilterCount3:
         ProcessPointwiseFilterCountN 3
-        jmp     ExitKernel
+        jmp     ExitKernelPointwise
 
 ProcessFilterCountLessThan3:
         cmp     r11,2
         jb      ProcessFilterCount1
         ProcessPointwiseFilterCountN 2
-        jmp     ExitKernel
+        jmp     ExitKernelPointwise
 
 ProcessFilterCount1:
         ProcessPointwiseFilterCountN 1
@@ -878,20 +872,20 @@ ProcessFilterCount1:
 ; Restore non-volatile registers and return.
 ;
 
-ExitKernel:
+ExitKernelPointwise:
 IFDIFI <Isa>, <Sse>
         vzeroupper
 ENDIF
-        movaps  xmm6,SconvKernelPointwiseFrame.SavedXmm6[rsp]
-        movaps  xmm7,SconvKernelPointwiseFrame.SavedXmm7[rsp]
-        movaps  xmm8,SconvKernelPointwiseFrame.SavedXmm8[rsp]
-        movaps  xmm9,SconvKernelPointwiseFrame.SavedXmm9[rsp]
-        movaps  xmm10,SconvKernelPointwiseFrame.SavedXmm10[rsp]
-        movaps  xmm11,SconvKernelPointwiseFrame.SavedXmm11[rsp]
-        movaps  xmm12,SconvKernelPointwiseFrame.SavedXmm12[rsp]
-        movaps  xmm13,SconvKernelPointwiseFrame.SavedXmm13[rsp]
-        movaps  xmm14,SconvKernelPointwiseFrame.SavedXmm14[rsp]
-        movaps  xmm15,SconvKernelPointwiseFrame.SavedXmm15[rsp]
+        movaps  xmm6,XMMWORD PTR SconvKernelPointwiseFrame.SavedXmm6[rsp]
+        movaps  xmm7,XMMWORD PTR SconvKernelPointwiseFrame.SavedXmm7[rsp]
+        movaps  xmm8,XMMWORD PTR SconvKernelPointwiseFrame.SavedXmm8[rsp]
+        movaps  xmm9,XMMWORD PTR SconvKernelPointwiseFrame.SavedXmm9[rsp]
+        movaps  xmm10,XMMWORD PTR SconvKernelPointwiseFrame.SavedXmm10[rsp]
+        movaps  xmm11,XMMWORD PTR SconvKernelPointwiseFrame.SavedXmm11[rsp]
+        movaps  xmm12,XMMWORD PTR SconvKernelPointwiseFrame.SavedXmm12[rsp]
+        movaps  xmm13,XMMWORD PTR SconvKernelPointwiseFrame.SavedXmm13[rsp]
+        movaps  xmm14,XMMWORD PTR SconvKernelPointwiseFrame.SavedXmm14[rsp]
+        movaps  xmm15,XMMWORD PTR SconvKernelPointwiseFrame.SavedXmm15[rsp]
         add     rsp,(SconvKernelPointwiseFrame.SavedR12)
 
         BEGIN_EPILOGUE

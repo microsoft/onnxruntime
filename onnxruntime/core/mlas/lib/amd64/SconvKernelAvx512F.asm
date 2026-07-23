@@ -17,10 +17,8 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
 INCLUDE SconvKernelCommon.inc
-        .list
 
 ;
 ; Macro Description:
@@ -117,12 +115,12 @@ IFIDNI <KernelType>, <Depthwise>
 ELSE
 IF FilterCount EQ 1
         vmovups zmm24,ZMMWORD PTR [rdx+VectorOffset]
-        EmitIfCountGE OutputCount, 1, <vfmadd231ps zmm0,zmm24,DWORD BCST [rcx+BroadcastOffset]>
-        EmitIfCountGE OutputCount, 2, <vfmadd231ps zmm4,zmm24,DWORD BCST [rcx+r9+BroadcastOffset]>
-        EmitIfCountGE OutputCount, 3, <vfmadd231ps zmm8,zmm24,DWORD BCST [rcx+r9*2+BroadcastOffset]>
-        EmitIfCountGE OutputCount, 4, <vfmadd231ps zmm12,zmm24,DWORD BCST [r14+BroadcastOffset]>
-        EmitIfCountGE OutputCount, 5, <vfmadd231ps zmm16,zmm24,DWORD BCST [r14+r9+BroadcastOffset]>
-        EmitIfCountGE OutputCount, 6, <vfmadd231ps zmm20,zmm24,DWORD BCST [r14+r9*2+BroadcastOffset]>
+        EmitIfCountGE OutputCount, 1, <vfmadd231ps zmm0,zmm24,MlasBcstD [rcx+BroadcastOffset]MlasBcstDSuffix>
+        EmitIfCountGE OutputCount, 2, <vfmadd231ps zmm4,zmm24,MlasBcstD [rcx+r9+BroadcastOffset]MlasBcstDSuffix>
+        EmitIfCountGE OutputCount, 3, <vfmadd231ps zmm8,zmm24,MlasBcstD [rcx+r9*2+BroadcastOffset]MlasBcstDSuffix>
+        EmitIfCountGE OutputCount, 4, <vfmadd231ps zmm12,zmm24,MlasBcstD [r14+BroadcastOffset]MlasBcstDSuffix>
+        EmitIfCountGE OutputCount, 5, <vfmadd231ps zmm16,zmm24,MlasBcstD [r14+r9+BroadcastOffset]MlasBcstDSuffix>
+        EmitIfCountGE OutputCount, 6, <vfmadd231ps zmm20,zmm24,MlasBcstD [r14+r9*2+BroadcastOffset]MlasBcstDSuffix>
 ELSE
         EmitIfCountGE OutputCount, 1, <vbroadcastss zmm26,DWORD PTR [rcx+BroadcastOffset]>
         EmitIfCountGE OutputCount, 2, <vbroadcastss zmm27,DWORD PTR [rcx+r9+BroadcastOffset]>
@@ -203,13 +201,7 @@ ENDIF
 ;
 
 ProcessFilterCountN MACRO KernelFrame, KernelType, FilterCount
-
-        LOCAL   ProcessOutputCount
-        LOCAL   ProcessNextOutputCountBy6
-        LOCAL   ProcessRemainingOutputCount
-        LOCAL   ProcessRemainingOutputCountLessThan3
-        LOCAL   ProcessRemainingOutputCount1
-        LOCAL   ProcessOutputCountRightPadAndRemaining
+        LOCAL   ProcessOutputCount, ProcessNextOutputCountBy6, ProcessRemainingOutputCount, ProcessRemainingOutputCountLessThan3, ProcessRemainingOutputCount1, ProcessOutputCountRightPadAndRemaining
 
 ;
 ; Process the output blocks that include left padding.
@@ -261,7 +253,7 @@ ProcessRemainingOutputCountLessThan3:
 
 ProcessOutputCountRightPadAndRemaining:
         add     r10,KernelFrame.OutputCountRightPad[rsp]
-        jz      ExitKernel
+        jz      ExitKernel&KernelType&
         call    MlasConv&KernelType&FloatSingleAvx512FFilter&FilterCount
 
         ENDM
@@ -294,11 +286,7 @@ ProcessOutputCountRightPadAndRemaining:
 ;
 
 ProcessPointwiseFilterCountN MACRO FilterCount
-
-        LOCAL   ProcessNextOutputCountBy6
-        LOCAL   ProcessRemainingOutputCount
-        LOCAL   ProcessRemainingOutputCountLessThan3
-        LOCAL   ProcessRemainingOutputCount1
+        LOCAL   ProcessNextOutputCountBy6, ProcessRemainingOutputCount, ProcessRemainingOutputCountLessThan3, ProcessRemainingOutputCount1
 
         sub     r10,6
         jb      ProcessRemainingOutputCount
@@ -312,20 +300,20 @@ ProcessNextOutputCountBy6:
 
 ProcessRemainingOutputCount:
         add     r10,6                       ; correct for over-subtract above
-        jz      ExitKernel
+        jz      ExitKernelPointwise
         cmp     r10,3
         jb      ProcessRemainingOutputCountLessThan3
         ProcessPointwiseOutputCountN Avx512F, 16, FilterCount, 3
         lea     rax,[r9*2+r9]
         add     rdi,rax                     ; advance input by 3 elements
         sub     r10,3
-        jz      ExitKernel
+        jz      ExitKernelPointwise
 
 ProcessRemainingOutputCountLessThan3:
         cmp     r10,2
         jb      ProcessRemainingOutputCount1
         ProcessPointwiseOutputCountN Avx512F, 16, FilterCount, 2
-        jmp     ExitKernel
+        jmp     ExitKernelPointwise
 
 ProcessRemainingOutputCount1:
         ProcessPointwiseOutputCountN Avx512F, 16, FilterCount, 1
@@ -373,7 +361,7 @@ ENDIF
 ;
 
         test    dl,MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT
-        jz      SkipAccumulateOutput
+        jz      SkipAccumulateOutput&FilterCount&Output&OutputCount
         EmitIfCount2GE FilterCount, 1, OutputCount, 1, <vaddps zmm0,zmm0,ZMMWORD PTR [r8]>
         EmitIfCount2GE FilterCount, 1, OutputCount, 2, <vaddps zmm4,zmm4,ZMMWORD PTR [r8+16*4]>
         EmitIfCount2GE FilterCount, 1, OutputCount, 3, <vaddps zmm8,zmm8,ZMMWORD PTR [r8+32*4]>
@@ -399,14 +387,14 @@ ENDIF
         EmitIfCount2GE FilterCount, 4, OutputCount, 5, <vaddps zmm19,zmm19,ZMMWORD PTR [rbx+rax+64*4]>
         EmitIfCount2GE FilterCount, 4, OutputCount, 6, <vaddps zmm23,zmm23,ZMMWORD PTR [rbx+rax+80*4]>
 
-SkipAccumulateOutput:
+SkipAccumulateOutput&FilterCount&Output&OutputCount:
 
 ;
 ; Test if the bias buffer should be accumulated with the output block.
 ;
 
         test    dl,MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION
-        jz      SkipBiasAddition
+        jz      SkipBiasAddition&FilterCount&Output&OutputCount
 IF OutputCount EQ 1
         EmitIfCountGE FilterCount, 1, <vaddps zmm0,zmm0,ZMMWORD PTR [rcx]>
         EmitIfCountGE FilterCount, 2, <vaddps zmm1,zmm1,ZMMWORD PTR [rcx+16*4]>
@@ -443,14 +431,14 @@ ELSE
         EmitIfCount2GE FilterCount, 4, OutputCount, 6, <vaddps zmm23,zmm23,zmm31>
 ENDIF
 
-SkipBiasAddition:
+SkipBiasAddition&FilterCount&Output&OutputCount:
 
 ;
 ; Test for fused ReLU activation.
 ;
 
         test    dl,MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION
-        jz      SkipReluActivation
+        jz      SkipReluActivation&FilterCount&Output&OutputCount
         vpxord  zmm24,zmm24,zmm24
         EmitIfCount2GE FilterCount, 1, OutputCount, 1, <vmaxps zmm0,zmm24,zmm0>
         EmitIfCount2GE FilterCount, 1, OutputCount, 2, <vmaxps zmm4,zmm24,zmm4>
@@ -477,7 +465,7 @@ SkipBiasAddition:
         EmitIfCount2GE FilterCount, 2, OutputCount, 5, <vmaxps zmm19,zmm24,zmm19>
         EmitIfCount2GE FilterCount, 2, OutputCount, 6, <vmaxps zmm23,zmm24,zmm23>
 
-SkipReluActivation:
+SkipReluActivation&FilterCount&Output&OutputCount:
 
 ;
 ; Store the output block in the output buffer.

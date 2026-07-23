@@ -40,7 +40,7 @@ limitations under the License.
 #include "core/platform/windows/hardware_core_enumerator.h"
 #endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
-#include <wil/Resource.h>
+#include <wil/resource.h>
 
 #include "core/platform/path_lib.h"  // for LoopDir()
 #include "core/platform/windows/dll_load_error.h"

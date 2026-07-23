@@ -14,20 +14,18 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
-        .list
 
-        .const
+CONST   SEGMENT READONLY ALIGN(16) 'CONST'
 
-        ALIGN   16
 MlasFp16MaskSign                DD      4 DUP (00007FFFh)
 MlasFp16CompareInfinity         DD      4 DUP (00007C00h)
 MlasFp16CompareSmallest         DD      4 DUP (00000400h)
 MlasFp16AdjustExponent          DD      4 DUP (38000000h)
 MlasFp16MagicDenormal           DD      4 DUP (38800000h)
 
-        SUBTTL  "Convert buffer of half-precision floats to single-precision floats"
+CONST   ENDS
+
 ;++
 ;
 ; Routine Description:

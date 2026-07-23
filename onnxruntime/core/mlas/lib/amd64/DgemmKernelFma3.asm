@@ -17,11 +17,9 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
 INCLUDE DgemmKernelCommon.inc
 INCLUDE FgemmKernelFma3Common.inc
-        .list
 
 ;
 ; Generate the GEMM kernel.

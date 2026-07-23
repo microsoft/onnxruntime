@@ -15,9 +15,127 @@
 ;
 ;--
 
-        .xlist
-INCLUDE macamd64.inc
-        .list
+;
+; Dual-assembler prologue/epilogue macros.
+;
+; These replace the Windows SDK macamd64.inc entry and unwind macros so the
+; amd64 kernels assemble with BOTH ml64.exe and the LLVM MASM assembler
+; (llvm-ml), enabling a Windows x64 cross-build from a non-Windows host. Each
+; macro emits the same instructions and the same built-in structured-exception
+; unwind directives (.pushreg/.allocstack/.savereg/.savexmm128/.setframe/
+; .endprolog/.beginepilog) that macamd64.inc emits, so the generated code and
+; .pdata/.xdata are identical. The only omission is macamd64.inc's
+; ifdif <Section>, _CurrentSection_ same-module section check, a diagnostic-only
+; construct that llvm-ml cannot parse.
+;
+
+;
+;
+
+;
+; AVX-512 embedded-broadcast operand forms.
+;
+; ml64 uses the MASM 'DWORD/QWORD BCST [mem]' keyword; llvm-ml uses the
+; NASM-style 'DWORD/QWORD PTR [mem]{1toN}' decorator. Use these text equates so
+; a broadcast operand is written as  MlasBcstD [mem]MlasBcstDSuffix  and expands
+; to the correct form for whichever assembler is building.
+;
+IFDEF LLVM_ML
+MlasBcstD       TEXTEQU <DWORD PTR>
+MlasBcstDSuffix TEXTEQU <{1to16}>
+MlasBcstQ       TEXTEQU <QWORD PTR>
+MlasBcstQSuffix TEXTEQU <{1to8}>
+ELSE
+MlasBcstD       TEXTEQU <DWORD BCST>
+MlasBcstDSuffix TEXTEQU <>
+MlasBcstQ       TEXTEQU <QWORD BCST>
+MlasBcstQSuffix TEXTEQU <>
+ENDIF
+
+push_reg MACRO Reg
+        push    Reg
+        .pushreg Reg
+        ENDM
+
+rex_push_reg MACRO Reg
+        db      048h
+        push    Reg
+        .pushreg Reg
+        ENDM
+
+alloc_stack MACRO Size
+        sub     rsp, Size
+        .allocstack Size
+        ENDM
+
+save_reg MACRO Reg, Offset
+        mov     Offset[rsp], Reg
+        .savereg Reg, Offset
+        ENDM
+
+save_xmm128 MACRO Reg, Offset
+        movaps  XMMWORD PTR Offset[rsp], Reg
+        .savexmm128 Reg, Offset
+        ENDM
+
+set_frame MACRO Reg, Offset
+IF Offset
+        lea     Reg, Offset[rsp]
+ELSE
+        mov     Reg, rsp
+ENDIF
+        .setframe Reg, Offset
+        ENDM
+
+END_PROLOGUE MACRO
+        .endprolog
+        ENDM
+
+;
+; BEGIN_EPILOGUE emits no unwind marker. ml64.exe's macamd64.inc form emits
+; .beginepilog, but llvm-ml lowers that to .seh_startepilogue which then requires
+; a matching .seh_endepilogue that ml64 does not emit. The amd64 kernels use only
+; standard epilogs (stack restore, pops, ret), which the Windows unwinder resolves
+; via legacy epilog detection without explicit epilog unwind codes, so omitting the
+; marker keeps unwind correct under both assemblers.
+;
+BEGIN_EPILOGUE MACRO
+        ENDM
+
+LEAF_ENTRY MACRO Name, Section, NoPad
+Section segment para 'CODE'
+IFB <NoPad>
+        db      6 dup (0cch)
+ENDIF
+        align   16
+        public  Name
+Name    proc    frame
+        END_PROLOGUE
+        ENDM
+
+LEAF_END MACRO Name, Section
+Name    endp
+Section ends
+        ENDM
+
+NESTED_ENTRY MACRO Name, Section, Handler, NoPad
+Section segment para 'CODE'
+IFB <NoPad>
+        db      6 dup (0cch)
+ENDIF
+        align   16
+        public  Name
+IFB <Handler>
+Name    proc    frame
+ELSE
+Name    proc    frame:Handler
+ENDIF
+        ENDM
+
+NESTED_END MACRO Name, Section
+Name    endp
+Section ends
+        ENDM
 
 ;
 ; Macro Description:

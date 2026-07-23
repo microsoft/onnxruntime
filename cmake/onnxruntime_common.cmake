@@ -143,6 +143,16 @@ if(NOT WIN32 AND NOT APPLE AND NOT ANDROID AND CMAKE_SYSTEM_PROCESSOR MATCHES "x
     )
 endif()
 
+if(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64|AMD64)")
+    # clang-cl (used when cross-compiling ORT for Windows) enforces the waitpkg
+    # target feature for the _tpause intrinsic, which SpinPause uses behind a
+    # runtime HasTPAUSE() guard. MSVC allows the intrinsic unconditionally.
+    set_source_files_properties(
+      ${ONNXRUNTIME_ROOT}/core/common/spin_pause.cc
+      PROPERTIES COMPILE_FLAGS "-mwaitpkg"
+    )
+endif()
+
 if (onnxruntime_USE_TELEMETRY)
   set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
 endif()

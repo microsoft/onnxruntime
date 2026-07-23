@@ -17,13 +17,11 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
 INCLUDE AssembleAvxVnni.inc
-        .list
 
-        EXTERN  MlasMaskMoveAvx:NEAR
-        EXTERN  MlasTranspose4x4BytesAvx:NEAR
+        EXTERN  MlasMaskMoveAvx:PROC
+        EXTERN  MlasTranspose4x4BytesAvx:PROC
 
 ;
 ; Stack frame layout for the U8S8 kernel.
@@ -31,11 +29,11 @@ INCLUDE AssembleAvxVnni.inc
 
 GemvU8S8KernelFrame STRUCT
 
-        SavedXmm6 OWORD ?
-        SavedXmm7 OWORD ?
-        SavedXmm8 OWORD ?
-        SavedXmm9 OWORD ?
-        SavedXmm10 OWORD ?
+        SavedXmm6 QWORD 2 DUP (?)
+        SavedXmm7 QWORD 2 DUP (?)
+        SavedXmm8 QWORD 2 DUP (?)
+        SavedXmm9 QWORD 2 DUP (?)
+        SavedXmm10 QWORD 2 DUP (?)
         Padding QWORD ?
         SavedRdi QWORD ?
         SavedRsi QWORD ?
@@ -186,11 +184,11 @@ ProcessRemainingRows:
 
 ExitKernel:
         vzeroupper
-        movaps  xmm6,GemvU8S8KernelFrame.SavedXmm6[rsp]
-        movaps  xmm7,GemvU8S8KernelFrame.SavedXmm7[rsp]
-        movaps  xmm8,GemvU8S8KernelFrame.SavedXmm8[rsp]
-        movaps  xmm9,GemvU8S8KernelFrame.SavedXmm9[rsp]
-        movaps  xmm10,GemvU8S8KernelFrame.SavedXmm10[rsp]
+        movaps  xmm6,XMMWORD PTR GemvU8S8KernelFrame.SavedXmm6[rsp]
+        movaps  xmm7,XMMWORD PTR GemvU8S8KernelFrame.SavedXmm7[rsp]
+        movaps  xmm8,XMMWORD PTR GemvU8S8KernelFrame.SavedXmm8[rsp]
+        movaps  xmm9,XMMWORD PTR GemvU8S8KernelFrame.SavedXmm9[rsp]
+        movaps  xmm10,XMMWORD PTR GemvU8S8KernelFrame.SavedXmm10[rsp]
         add     rsp,(GemvU8S8KernelFrame.SavedRdi)
 
         BEGIN_EPILOGUE
