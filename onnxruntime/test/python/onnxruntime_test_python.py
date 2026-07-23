@@ -2305,6 +2305,9 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(len(ep_subgraphs), 3)
         for ep_subgraph in ep_subgraphs:
             self.assertEqual(ep_subgraph.ep_name, "CPUExecutionProvider")
+            # The default CPU EP is added implicitly and has no registered OrtEpDevice, so no hardware device
+            # can be reliably determined (ORT does not guess from the EP's OrtDevice).
+            self.assertEqual(ep_subgraph.hardware_device_types, [])
             self.assertEqual(len(ep_subgraph.get_nodes()), 1)
 
         # Serialize each node to an identifier (concatenates domain, operator type, and node name)

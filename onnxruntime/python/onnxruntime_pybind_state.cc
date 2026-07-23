@@ -2209,7 +2209,23 @@ execution provider)pbdoc");
             return ep_subgraph->nodes;
           },
           py::return_value_policy::reference_internal,
-          R"pbdoc(List of nodes in the subgraph.)pbdoc");
+          R"pbdoc(List of nodes in the subgraph.)pbdoc")
+      .def_property_readonly(
+          "hardware_device_types",
+          [](const OrtEpAssignedSubgraph* ep_subgraph) -> std::vector<OrtHardwareDeviceType> {
+            std::vector<OrtHardwareDeviceType> device_types;
+            device_types.reserve(ep_subgraph->hardware_devices.size());
+            for (const OrtHardwareDevice* device : ep_subgraph->hardware_devices) {
+              if (device == nullptr) {
+                continue;
+              }
+              device_types.push_back(device->type);
+            }
+            return device_types;
+          },
+          R"pbdoc(The OrtHardwareDeviceType(s) of the hardware device(s) that run this subgraph.
+Resolved from the plugin EP's per-subgraph device or the EP's first registered OrtEpDevice. Empty if ONNX
+Runtime cannot reliably determine the device (e.g., an execution provider added by name with no OrtEpDevice).)pbdoc");
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
   // Note: Doesn't expose initial_growth_chunk_sizes_bytes/max_power_of_two_extend_bytes option.

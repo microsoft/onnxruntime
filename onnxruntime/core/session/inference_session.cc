@@ -1484,9 +1484,11 @@ common::Status InferenceSession::ApplyUpdates(const OrtModel& model_editor_api_m
 #if !defined(ORT_MINIMAL_BUILD)
 static std::unique_ptr<OrtEpAssignedSubgraph> CreateEpAssignedSubgraph(const Graph& graph,
                                                                        const ComputeCapability& capability,
-                                                                       const std::string& ep_name) {
+                                                                       const std::string& ep_name,
+                                                                       gsl::span<const OrtHardwareDevice* const> hardware_devices) {
   auto assigned_subgraph = std::make_unique<OrtEpAssignedSubgraph>();
   assigned_subgraph->ep_name = ep_name;
+  assigned_subgraph->hardware_devices.assign(hardware_devices.begin(), hardware_devices.end());
 
   gsl::span<NodeIndex> node_indices = capability.sub_graph->nodes;
 
@@ -1528,9 +1530,31 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   if (record_ep_graph_assignment) {
     on_partition_assignment_fn = [this](const Graph& graph, const ComputeCapability& compute_capability,
                                         const std::string& ep_name) {
+      // Resolve the hardware device(s) that run this subgraph for observability. Order:
+      //  1. the plugin EP's per-subgraph device declared via OrtNodeFusionOptions, if set;
+      //  2. else the EP's first registered OrtEpDevice's hardware device;
+      //  3. else leave empty (ORT cannot reliably determine the device).
+      // Note: we intentionally do not fall back to IExecutionProvider::GetDevice()'s OrtDevice,
+      // because NPU EPs (e.g., QNN) register a CPU OrtDevice for input placement, which would
+      // misreport NPU subgraphs as CPU.
+      InlinedVector<const OrtHardwareDevice*> hardware_devices;
+      const OrtHardwareDevice* hardware_device = compute_capability.ep_hardware_device;
+      if (hardware_device == nullptr) {
+        if (const IExecutionProvider* ep = this->execution_providers_.Get(ep_name); ep != nullptr) {
+          const auto& ep_devices = ep->GetEpDevices();
+          if (!ep_devices.empty() && ep_devices[0] != nullptr) {
+            hardware_device = ep_devices[0]->device;
+          }
+        }
+      }
+      if (hardware_device != nullptr) {
+        hardware_devices.push_back(hardware_device);
+      }
+
       std::unique_ptr<OrtEpAssignedSubgraph> assigned_subgraph = CreateEpAssignedSubgraph(graph,
                                                                                           compute_capability,
-                                                                                          ep_name);
+                                                                                          ep_name,
+                                                                                          hardware_devices);
 
       this->ep_graph_assignment_info_.push_back(assigned_subgraph.get());
       this->ep_graph_assignment_info_storage_.push_back(std::move(assigned_subgraph));
