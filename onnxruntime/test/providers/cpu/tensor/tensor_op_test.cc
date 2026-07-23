@@ -88,7 +88,7 @@ TEST(TensorOpTest, ReshapeWithInitializer) {
 
 #ifdef USE_WEBGPU
 TEST(TensorOpTest, Reshape_int64_webgpu) {
-  OpTester test("Reshape", 14);
+  OpTester test("Reshape", 25);
 
   test.AddInput<int64_t>("data", {2, 3}, {1, 2, 3, 4, 5, 6});
   test.AddInput<int64_t>("shape", {3}, {3, 1, 2});
