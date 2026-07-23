@@ -525,24 +525,96 @@ else()
 endif()
 
 endif()
-onnxruntime_fetchcontent_declare(
-  onnx
-  URL ${DEP_URL_onnx}
-  URL_HASH SHA1=${DEP_SHA1_onnx}
-  PATCH_COMMAND ${ONNXRUNTIME_ONNX_PATCH_COMMAND}
-  EXCLUDE_FROM_ALL
-  FIND_PACKAGE_ARGS NAMES ONNX onnx
-)
+if(onnxruntime_USE_ONNX_LIGHT)
+  # onnx-light provides drop-in `onnx` / `onnx_proto` targets without a protobuf
+  # code-generation step. Force the options it needs to expose those targets and
+  # to build the reference kernels / backend-test registry (so backend tests can
+  # be implemented with onnx-light).
+  set(ONNX_LIGHT_PROVIDE_ONNX_TARGETS ON CACHE BOOL "" FORCE)
+  set(ONNX_LIGHT_BUILD_PYTHON OFF CACHE BOOL "" FORCE)
+  set(ONNX_LIGHT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(ONNX_LIGHT_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+  set(ONNX_LIGHT_INSTALL OFF CACHE BOOL "" FORCE)
+  set(ONNX_LIGHT_BUILD_KERNELS ON CACHE BOOL "" FORCE)
 
-onnxruntime_fetchcontent_makeavailable(onnx)
+  if(onnxruntime_ONNX_LIGHT_SOURCE_DIR)
+    # Build a local (possibly modified) onnx-light checkout instead of the
+    # pinned release. Useful while iterating on the onnx-light side.
+    onnxruntime_fetchcontent_declare(
+      onnx_light
+      SOURCE_DIR ${onnxruntime_ONNX_LIGHT_SOURCE_DIR}
+      EXCLUDE_FROM_ALL
+      FIND_PACKAGE_ARGS NAMES onnx_light
+    )
+  else()
+    onnxruntime_fetchcontent_declare(
+      onnx_light
+      URL ${DEP_URL_onnx_light}
+      URL_HASH SHA1=${DEP_SHA1_onnx_light}
+      EXCLUDE_FROM_ALL
+      FIND_PACKAGE_ARGS NAMES onnx_light
+    )
+  endif()
 
-if(TARGET ONNX::onnx AND NOT TARGET onnx)
-  message(STATUS "Aliasing ONNX::onnx to onnx")
-  add_library(onnx ALIAS ONNX::onnx)
-endif()
-if(TARGET ONNX::onnx_proto AND NOT TARGET onnx_proto)
-  message(STATUS "Aliasing ONNX::onnx_proto to onnx_proto")
-  add_library(onnx_proto ALIAS ONNX::onnx_proto)
+  onnxruntime_fetchcontent_makeavailable(onnx_light)
+
+  # Let ORT C++ sources detect at compile time that the protobuf-free onnx-light
+  # backend is in use, so they can call onnx-light's native (de)serialization API
+  # instead of the google::protobuf message/stream API.
+  add_compile_definitions(ORT_USE_ONNX_LIGHT)
+
+  # The upstream onnx package exports ONNX_NAMESPACE / ONNX_ML as PUBLIC compile
+  # definitions on its onnx/onnx_proto targets, which propagate to every ORT
+  # translation unit. Many ORT headers (e.g. core/graph/basic_types.h) forward
+  # declare protos with `namespace ONNX_NAMESPACE { class ValueInfoProto; }`
+  # WITHOUT first including an onnx header, so ONNX_NAMESPACE must be defined
+  # globally or those decls land in a bogus literal `ONNX_NAMESPACE` namespace
+  # (yielding "undefined class" and type-mismatch errors). onnx-light lives in
+  # the onnx_light namespace, so mirror the upstream behaviour with onnx_light.
+  add_compile_definitions(ONNX_NAMESPACE=onnx_light ONNX_ML=1)
+
+  # When onnx-light is consumed as a prebuilt CMake package (e.g. the
+  # onnx-light-cpp-*.tar.gz release artifact) find_package(onnx_light) only
+  # exposes the onnx_light::* targets. The drop-in onnx::onnx / onnx::onnx_proto
+  # compatibility targets live in a separate `onnx` package config that depends
+  # on onnx_light, so pull it in when it is available and not already provided.
+  # (When onnx-light is built from source the unqualified onnx / onnx_proto
+  # targets already exist and this find_package is skipped.)
+  if(NOT TARGET onnx::onnx AND NOT TARGET onnx)
+    find_package(onnx CONFIG QUIET)
+  endif()
+
+  # When resolved via find_package the compatibility targets are namespaced
+  # (onnx::onnx / onnx::onnx_proto); alias them to the unqualified names
+  # onnxruntime links against. When built from source they already exist.
+  if(TARGET onnx::onnx AND NOT TARGET onnx)
+    message(STATUS "Aliasing onnx::onnx (onnx-light) to onnx")
+    add_library(onnx ALIAS onnx::onnx)
+  endif()
+  if(TARGET onnx::onnx_proto AND NOT TARGET onnx_proto)
+    message(STATUS "Aliasing onnx::onnx_proto (onnx-light) to onnx_proto")
+    add_library(onnx_proto ALIAS onnx::onnx_proto)
+  endif()
+else()
+  onnxruntime_fetchcontent_declare(
+    onnx
+    URL ${DEP_URL_onnx}
+    URL_HASH SHA1=${DEP_SHA1_onnx}
+    PATCH_COMMAND ${ONNXRUNTIME_ONNX_PATCH_COMMAND}
+    EXCLUDE_FROM_ALL
+    FIND_PACKAGE_ARGS NAMES ONNX onnx
+  )
+
+  onnxruntime_fetchcontent_makeavailable(onnx)
+
+  if(TARGET ONNX::onnx AND NOT TARGET onnx)
+    message(STATUS "Aliasing ONNX::onnx to onnx")
+    add_library(onnx ALIAS ONNX::onnx)
+  endif()
+  if(TARGET ONNX::onnx_proto AND NOT TARGET onnx_proto)
+    message(STATUS "Aliasing ONNX::onnx_proto to onnx_proto")
+    add_library(onnx_proto ALIAS ONNX::onnx_proto)
+  endif()
 endif()
 if(onnxruntime_USE_VCPKG)
   find_package(Eigen3 CONFIG REQUIRED)
@@ -589,9 +661,16 @@ set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} ${W
 
 # The source code of onnx_proto is generated, we must build this lib first before starting to compile the other source code that uses ONNX protobuf types.
 # The other libs do not have the problem. All the sources are already there. We can compile them in any order.
-set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto flatbuffers::flatbuffers)
+# When onnx-light is used, onnx_proto is a pre-built (header-only) target with no code-generation step.
+# The ORT flatbuffer schema headers (ort.fbs.h) are also pre-generated and committed, so the
+# flatbuffers::flatbuffers ordering dependency is not required for onnx-light builds.
+if(onnxruntime_USE_ONNX_LIGHT)
+  set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto)
+else()
+  set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto flatbuffers::flatbuffers)
+endif()
 
-if(NOT (onnx_FOUND OR ONNX_FOUND)) # building ONNX from source
+if(NOT onnxruntime_USE_ONNX_LIGHT AND NOT (onnx_FOUND OR ONNX_FOUND)) # building ONNX from source
   target_compile_definitions(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_COMPILE_DEFINITIONS> PRIVATE "__ONNX_DISABLE_STATIC_REGISTRATION")
   if (NOT onnxruntime_USE_FULL_PROTOBUF)
     target_compile_definitions(onnx PUBLIC "__ONNX_NO_DOC_STRINGS")

@@ -24,6 +24,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/graph/onnx_proto_serialize.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/util/protobuf_parsing_utils.h"
@@ -1223,7 +1224,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
 
     AllocatorPtr allocator = output_buffer_holder->buffer_allocator;
     IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(allocator, buffer_size);
-    model_proto.SerializeToArray(buffer.get(), static_cast<int>(buffer_size));
+    onnxruntime::proto_io::SerializeToArray(model_proto, buffer.get(), static_cast<int>(buffer_size));
 
     *output_buffer_holder->buffer_size_ptr = buffer_size;
     *output_buffer_holder->buffer_ptr = buffer.release();
@@ -1236,7 +1237,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     auto out_stream_buf = std::make_unique<epctx::OutStreamBuf>(*output_write_func_holder);
     std::ostream out_stream(out_stream_buf.get());
 
-    model_proto.SerializeToOstream(&out_stream);
+    onnxruntime::proto_io::SerializeToOStream(model_proto, out_stream);
     out_stream.flush();
     ORT_RETURN_IF_ERROR(out_stream_buf->GetStatus());
   } else {
@@ -1246,8 +1247,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     ORT_RETURN_IF_ERROR(status);
 
     ORT_TRY {
-      google::protobuf::io::FileOutputStream output(fd);
-      bool serialize_result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
+      bool serialize_result = onnxruntime::proto_io::SaveToFileDescriptor(model_proto, fd);
       if (!serialize_result) {
         status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_PROTOBUF,
                                  "Protobuf serialization failed when generating EPContext model ",

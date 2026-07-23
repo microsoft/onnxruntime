@@ -15,7 +15,6 @@ import tempfile
 import warnings
 from itertools import chain
 
-import onnx
 import torch
 from benchmark_helper import Precision, prepare_environment, setup_logger
 from convert_generation import replace_mha_with_gqa
@@ -34,6 +33,7 @@ from transformers import AutoConfig, AutoModelForCausalLM
 
 from onnxruntime import __version__ as ort_version
 from onnxruntime import quantization as ort_quantization
+from onnxruntime._onnx_shim import onnx
 
 if version.parse(ort_version) < version.parse("1.22.0"):
     from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer as MatMulNBitsQuantizer
@@ -494,8 +494,9 @@ def smooth_quant(
 ):
     from neural_compressor import PostTrainingQuantConfig, set_workspace  # noqa: PLC0415
     from neural_compressor import quantization as intel_quantization  # noqa: PLC0415
-    from onnx.external_data_helper import load_external_data_for_model  # noqa: PLC0415
     from quant_kv_dataloader import QuantKVDataLoader  # noqa: PLC0415
+
+    from onnxruntime._onnx_shim.onnx.external_data_helper import load_external_data_for_model  # noqa: PLC0415
 
     set_workspace(args.nc_workspace)
     quantization_config = PostTrainingQuantConfig(

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections import deque
 
-import onnx
+from onnxruntime._onnx_shim import onnx
 
 from ..onnx_model import ONNXModel
 

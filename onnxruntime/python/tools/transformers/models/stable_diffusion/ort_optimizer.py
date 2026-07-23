@@ -14,9 +14,9 @@ import shutil
 import tempfile
 from pathlib import Path
 
-import onnx
 from packaging import version
 
+from onnxruntime._onnx_shim import onnx
 from onnxruntime.transformers.fusion_options import FusionOptions
 from onnxruntime.transformers.onnx_model_clip import ClipOnnxModel
 from onnxruntime.transformers.onnx_model_unet import UnetOnnxModel

@@ -30,6 +30,7 @@
 
 #include "pb_helper.h"
 
+#if !defined(ORT_USE_ONNX_LIGHT)
 namespace onnxruntime {
 bool ParseDelimitedFromCodedStream(google::protobuf::MessageLite* message,
                                    google::protobuf::io::CodedInputStream* input,
@@ -57,3 +58,4 @@ bool ParseDelimitedFromCodedStream(google::protobuf::MessageLite* message,
   return true;
 }
 }  // namespace onnxruntime
+#endif  // !defined(ORT_USE_ONNX_LIGHT)

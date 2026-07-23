@@ -16,17 +16,7 @@
 #include "core/graph/model_editor_api_types.h"
 #include "core/graph/model_helpers.h"
 #include "core/graph/model_load_utils.h"
-
-#ifdef _MSC_VER
-#pragma warning(push)
-// 'type' : forcing value to bool 'true' or 'false' (performance warning)
-#pragma warning(disable : 4800)
-#endif
-#include <google/protobuf/io/coded_stream.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
-#include "core/util/protobuf_parsing_utils.h"
+#include "core/graph/onnx_proto_serialize.h"
 
 #include <gsl/gsl>
 
@@ -457,8 +447,7 @@ Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Null model_proto ptr.");
   }
 
-  google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
-  const bool result = p_model_proto->ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
+  const bool result = onnxruntime::proto_io::ParseFromIStream(*p_model_proto, model_istream);
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Failed to load model because protobuf parsing failed.");
   }
@@ -621,7 +610,7 @@ static Status SaveModel(Model& model, const T& file_path) {
   auto model_proto = model.ToProto();
   auto buffer_size = model_proto.ByteSizeLong();
   void* buffer = malloc(buffer_size);
-  model_proto.SerializeToArray(buffer, buffer_size);
+  onnxruntime::proto_io::SerializeToArray(model_proto, buffer, buffer_size);
 
   EM_ASM(({
            const buffer = Number($0);
@@ -731,7 +720,7 @@ Status Model::SaveWithExternalInitializers(Model& model, const std::filesystem::
 }
 
 Status Model::LoadFromBytes(int count, const void* p_bytes, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) {
-  const bool result = model_proto.ParseFromArray(p_bytes, count);
+  const bool result = onnxruntime::proto_io::ParseFromArray(model_proto, p_bytes, count);
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
@@ -764,41 +753,14 @@ Status Model::LoadFromBytes(int count, void* p_bytes, const PathString& model_pa
   return Status::OK();
 }
 
-using ::google::protobuf::io::CodedInputStream;
-using ::google::protobuf::io::FileInputStream;
-using ::google::protobuf::io::ZeroCopyInputStream;
-
 Status Model::Load(int fd, ONNX_NAMESPACE::ModelProto& model_proto) {
   if (fd < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> less than 0.");
   }
 
-#if GOOGLE_PROTOBUF_VERSION >= 3002000
-  size_t file_size = 0;
-  int block_size = -1;
-  Status st = Env::Default().GetFileLength(fd, file_size);
-  if (st.IsOK()) {
-    block_size = std::min(DEFAULT_PROTOBUF_BLOCK_SIZE, static_cast<int>(file_size));
-  }
-  FileInputStream input(fd, block_size);
-  const bool result = model_proto.ParseFromZeroCopyStream(&input) && input.GetErrno() == 0;
-  if (!result) {
+  if (!onnxruntime::proto_io::ParseFromFileDescriptor(model_proto, fd)) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
-#else
-  // CNTK uses ORT as a submodule in order to use its GraphIR code.
-  // CNTK needs to be built with protobuf 3.1.0 for its version specific features.
-  // This code block is needed to support CNTK and any other
-  // GraphIR client that will be built with protobuf at a version older than 3.2.0.
-  FileInputStream fs(fd);
-  CodedInputStream cis(&fs);
-
-  // Allows protobuf library versions < 3.2.0 to parse messages greater than 64MB.
-  cis.SetTotalBytesLimit(INT_MAX);
-  if (!model_proto->ParseFromCodedStream(&cis)) {
-    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
-  }
-#endif
   return Status::OK();
 }
 
@@ -907,8 +869,7 @@ Status Model::Save(Model& model, int p_fd) {
   ORT_RETURN_IF_ERROR(model.MainGraph().Resolve());
 
   auto model_proto = model.ToProto();
-  google::protobuf::io::FileOutputStream output(p_fd);
-  const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
+  const bool result = onnxruntime::proto_io::SaveToFileDescriptor(model_proto, p_fd);
   if (result) {
     return Status::OK();
   }
@@ -928,8 +889,7 @@ Status Model::SaveWithExternalInitializers(Model& model,
 
   auto model_proto = model.ToGraphProtoWithExternalInitializers(external_file_name, file_path,
                                                                 model_saving_options);
-  google::protobuf::io::FileOutputStream output(fd);
-  const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
+  const bool result = onnxruntime::proto_io::SaveToFileDescriptor(model_proto, fd);
   if (result) {
     return Status::OK();
   }

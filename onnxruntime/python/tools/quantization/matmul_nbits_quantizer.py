@@ -14,10 +14,10 @@ import os
 import ml_dtypes
 import numpy as np
 import numpy.typing as npt
-import onnx
 import onnx_ir as ir
-from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 from onnxruntime.capi._pybind_state import (
     quantize_matmul_2bits,
     quantize_matmul_4bits,

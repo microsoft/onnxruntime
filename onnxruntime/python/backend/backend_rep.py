@@ -6,9 +6,8 @@
 Implements ONNX's backend API.
 """
 
-from onnx.backend.base import BackendRep
-
 from onnxruntime import RunOptions
+from onnxruntime._onnx_shim.onnx.backend.base import BackendRep
 
 # Allowlist of RunOptions attributes that are safe to set via the backend API.
 # 'terminate' excluded: setting it True would deny the current inference call.

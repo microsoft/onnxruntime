@@ -34,7 +34,9 @@
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
+#if !defined(ORT_USE_ONNX_LIGHT)
 using google::protobuf::RepeatedPtrField;
+#endif
 
 static constexpr int protobuf_block_size_in_bytes = 4 * 1024 * 1024;
 
@@ -68,8 +70,10 @@ inline Ort::Value CreateTensorWithDataAsOrtValue(const Ort::MemoryInfo&,
   return tensor_value;
 }
 
-template <typename key_type, typename value_type>
-Ort::Value PbMapToOrtValue(const google::protobuf::Map<key_type, value_type>& map) {
+template <typename MapT>
+Ort::Value PbMapToOrtValue(const MapT& map) {
+  using key_type = typename MapT::key_type;
+  using value_type = typename MapT::mapped_type;
   auto info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
   Ort::AllocatorWithDefaultOptions allocator;
   const size_t ele_count = map.size();
@@ -89,13 +93,13 @@ Ort::Value PbMapToOrtValue(const google::protobuf::Map<key_type, value_type>& ma
   return Ort::Value::CreateMap(ort_keys, ort_values);
 }
 
-template <typename T>
-Ort::Value VectorProtoToOrtValue(const RepeatedPtrField<T>& input) {
+template <typename Container>
+Ort::Value VectorProtoToOrtValue(const Container& input) {
   auto info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
   Ort::AllocatorWithDefaultOptions allocator;
   std::vector<Ort::Value> seq;
   seq.reserve(input.size());
-  for (const T& v : input) {
+  for (const auto& v : input) {
     // create key tensor
     const auto& map = v.v();
     size_t ele_count = map.size();
@@ -442,9 +446,14 @@ static void LoadTensor(const PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::TensorPr
   }
   google::protobuf::io::FileInputStream f(tensor_fd, protobuf_block_size_in_bytes);
   f.SetCloseOnDelete(true);
+#if defined(ORT_USE_ONNX_LIGHT)
+  ONNX_LIGHT_NAMESPACE::ParseOptions parse_opts;
+  input_pb.ParseFromZeroCopyStream(&f, parse_opts);
+#else
   if (!input_pb.ParseFromZeroCopyStream(&f)) {
     ORT_THROW("parse file '", ToUTF8String(pb_file), "' failed");
   }
+#endif
 }
 
 // save tensors to disk
@@ -457,9 +466,14 @@ static void SaveTensor(const PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::TensorPr
   }
   google::protobuf::io::FileOutputStream f(tensor_fd, protobuf_block_size_in_bytes);
   f.SetCloseOnDelete(true);
+#if defined(ORT_USE_ONNX_LIGHT)
+  ONNX_LIGHT_NAMESPACE::SerializeOptions serialize_opts;
+  result_pb.SerializeToStream(f, serialize_opts);
+#else
   if (!result_pb.SerializeToZeroCopyStream(&f)) {
     ORT_THROW("serialize file '", ToUTF8String(pb_file), "' failed");
   }
+#endif
 }
 
 // load sequence tensors from disk
@@ -472,9 +486,14 @@ static void LoadSequenceTensor(const PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::
   }
   google::protobuf::io::FileInputStream f(tensor_fd, protobuf_block_size_in_bytes);
   f.SetCloseOnDelete(true);
+#if defined(ORT_USE_ONNX_LIGHT)
+  ONNX_LIGHT_NAMESPACE::ParseOptions parse_opts;
+  input_pb.ParseFromZeroCopyStream(&f, parse_opts);
+#else
   if (!input_pb.ParseFromZeroCopyStream(&f)) {
     ORT_THROW("parse file '", ToUTF8String(pb_file), "' failed");
   }
+#endif
 }
 
 #if !defined(DISABLE_OPTIONAL_TYPE)
@@ -488,9 +507,14 @@ static void LoadOptional(const PATH_STRING_TYPE& pb_file,
   }
   google::protobuf::io::FileInputStream f(tensor_fd, protobuf_block_size_in_bytes);
   f.SetCloseOnDelete(true);
+#if defined(ORT_USE_ONNX_LIGHT)
+  ONNX_LIGHT_NAMESPACE::ParseOptions parse_opts;
+  input_pb.ParseFromZeroCopyStream(&f, parse_opts);
+#else
   if (!input_pb.ParseFromZeroCopyStream(&f)) {
     ORT_THROW("parse file '", ToUTF8String(pb_file), "' failed");
   }
+#endif
 }
 #endif
 

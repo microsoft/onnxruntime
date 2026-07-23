@@ -7,11 +7,11 @@ import logging
 from typing import Any
 
 import numpy as np
-import onnx
-import onnx.numpy_helper
+
+from onnxruntime._onnx_shim import onnx
 
 try:
-    from onnx.reference.op_run import to_array_extended
+    from onnxruntime._onnx_shim.onnx.reference.op_run import to_array_extended
 except ImportError:
     # old version of onnx.
     to_array_extended = None

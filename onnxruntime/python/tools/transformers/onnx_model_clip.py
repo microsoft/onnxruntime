@@ -6,8 +6,9 @@
 from logging import getLogger
 
 from fusion_attention_clip import FusionAttentionClip
-from onnx import ModelProto
 from onnx_model_bert import BertOnnxModel
+
+from onnxruntime._onnx_shim.onnx import ModelProto
 
 logger = getLogger(__name__)
 

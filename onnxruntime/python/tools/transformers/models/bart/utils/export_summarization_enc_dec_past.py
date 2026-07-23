@@ -9,10 +9,9 @@ import os
 import time
 
 import torch
+from onnxruntime import InferenceSession, SessionOptions
 from transformers import BartConfig, BartForConditionalGeneration, file_utils
 from utils import export_helper
-
-from onnxruntime import InferenceSession, SessionOptions
 
 
 def decoder_config_update(config: BartConfig):

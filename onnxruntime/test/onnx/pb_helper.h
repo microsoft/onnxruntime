@@ -38,17 +38,55 @@
 #pragma GCC diagnostic ignored "-Wshorten-64-to-32"
 #endif
 #endif
-#include <google/protobuf/message_lite.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <onnx/onnx_pb.h>
 #include <onnx/onnx-data.pb.h>
+#if defined(ORT_USE_ONNX_LIGHT)
+#include <cstdint>
+#include "tml_onnx_light.h"
+#else
+#include <google/protobuf/message_lite.h>
 #include "tml.pb.h"
+#endif
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
 namespace onnxruntime {
+#if defined(ORT_USE_ONNX_LIGHT)
+// onnx-light build: MessageLite / MergeFromCodedStream do not exist, so the
+// length-delimited parse is driven directly through the BinaryStream that backs
+// the (compat) CodedInputStream. Templated on the concrete message type.
+template <typename Msg>
+bool ParseDelimitedFromCodedStream(Msg* message,
+                                   google::protobuf::io::CodedInputStream* input,
+                                   bool* clean_eof) {
+  if (clean_eof != nullptr) *clean_eof = false;
+  int start = input->CurrentPosition();
+
+  // Read the size.
+  uint32_t size;
+  if (!input->ReadVarint32(&size)) {
+    if (clean_eof != nullptr) *clean_eof = input->CurrentPosition() == start;
+    return false;
+  }
+
+  // Tell the stream not to read beyond that size.
+  google::protobuf::io::CodedInputStream::Limit limit = input->PushLimit(static_cast<int>(size));
+
+  // Parse the message from the underlying onnx-light stream.
+  ONNX_LIGHT_NAMESPACE::ParseOptions opts;
+  message->ParseFromStream(*input->stream(), opts);
+  if (!input->ConsumedEntireMessage()) return false;
+
+  // Release the limit.
+  input->PopLimit(limit);
+
+  return true;
+}
+#else
 bool ParseDelimitedFromCodedStream(google::protobuf::MessageLite* message,
                                    google::protobuf::io::CodedInputStream* input,
                                    bool* clean_eof);
+#endif
 }

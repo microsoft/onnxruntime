@@ -6,15 +6,17 @@ import argparse
 import logging
 
 import numpy as np
-import onnx
+
+from onnxruntime._onnx_shim import onnx
 
 try:
     import sympy
 except ImportError:
     raise ImportError("sympy is required for symbolic shape inference. Install with: pip install sympy") from None
 
-from onnx import helper, numpy_helper, shape_inference
 from packaging import version
+
+from onnxruntime._onnx_shim.onnx import helper, numpy_helper, shape_inference
 
 assert version.parse(onnx.__version__) >= version.parse("1.8.0")
 

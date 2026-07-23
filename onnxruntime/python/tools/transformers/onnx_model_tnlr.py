@@ -6,9 +6,10 @@ import logging
 
 from fusion_attention import AttentionMask, FusionAttention
 from fusion_utils import NumpyHelper
-from onnx import NodeProto, helper
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
+
+from onnxruntime._onnx_shim.onnx import NodeProto, helper
 
 logger = logging.getLogger(__name__)
 

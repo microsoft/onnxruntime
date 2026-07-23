@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/graph/onnx_protobuf.h"
+#include "core/graph/onnx_proto_serialize.h"
 #include "core/session/inference_session.h"
 
 #include <memory>
@@ -868,7 +869,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
                                    const void* model_data, int model_data_len)
     : graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
       environment_(session_env) {
-  const bool result = model_proto_.ParseFromArray(model_data, model_data_len);
+  const bool result = onnxruntime::proto_io::ParseFromArray(model_proto_, model_data, model_data_len);
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
   is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
@@ -1284,7 +1285,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
   auto loader = [this, model_data, model_data_len](std::shared_ptr<onnxruntime::Model>& model) {
     ModelProto model_proto;
 
-    const bool result = model_proto.ParseFromArray(model_data, model_data_len);
+    const bool result = onnxruntime::proto_io::ParseFromArray(model_proto, model_data, model_data_len);
     if (!result) {
       return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
                     "Failed to load model because protobuf parsing failed.");

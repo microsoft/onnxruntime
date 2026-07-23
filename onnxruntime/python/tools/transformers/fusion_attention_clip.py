@@ -6,8 +6,9 @@ from logging import getLogger
 
 from fusion_attention import AttentionMask, FusionAttention
 from fusion_options import AttentionMaskFormat
-from onnx import NodeProto
 from onnx_model import OnnxModel
+
+from onnxruntime._onnx_shim.onnx import NodeProto
 
 logger = getLogger(__name__)
 

@@ -7,8 +7,9 @@ from logging import getLogger
 
 from fusion_base import Fusion
 from fusion_utils import NumpyHelper
-from onnx import NodeProto, TensorProto, helper
 from onnx_model import OnnxModel
+
+from onnxruntime._onnx_shim.onnx import NodeProto, TensorProto, helper
 
 logger = getLogger(__name__)
 

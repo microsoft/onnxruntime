@@ -3,7 +3,8 @@ import os
 
 import numpy
 import psutil
-from onnx import TensorProto
+
+from onnxruntime._onnx_shim.onnx import TensorProto
 
 """
 This profiler tool could run a transformer model and print out the kernel time spent on each Node of the model.
@@ -366,8 +367,9 @@ def run(args):
     if "OMP_NUM_THREADS" not in os.environ:
         os.environ["OMP_NUM_THREADS"] = str(num_threads)
 
-    from onnx import load  # noqa: PLC0415
     from onnx_model import OnnxModel  # noqa: PLC0415
+
+    from onnxruntime._onnx_shim.onnx import load  # noqa: PLC0415
 
     onnx_model = OnnxModel(load(args.model))
 

@@ -1,0 +1,5 @@
+# onnx-light dependency variant (protobuf-free ONNX reimplementation).
+# Used when building with USE_ONNX_LIGHT=1 / --use_onnx_light.
+# Selected via: pip install onnxruntime[onnx-light]
+# Not yet published on PyPI; installed from the GitHub release archive.
+onnx-light @ https://github.com/xadupre/onnx-light/archive/refs/tags/0.1.5.zip

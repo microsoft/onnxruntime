@@ -4,8 +4,9 @@
 # --------------------------------------------------------------------------
 
 from fusion_base import Fusion
-from onnx import helper
 from onnx_model import OnnxModel
+
+from onnxruntime._onnx_shim.onnx import helper
 
 
 class FusionGeluApproximation(Fusion):

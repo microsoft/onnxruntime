@@ -24,7 +24,6 @@ import tempfile
 from pathlib import Path
 
 from fusion_options import FusionOptions
-from onnx import ModelProto, load_model
 from onnx_model import OnnxModel
 from onnx_model_bart import BartOnnxModel
 from onnx_model_bert import BertOnnxModel
@@ -43,6 +42,7 @@ from onnx_model_vae import VaeOnnxModel
 from onnx_utils import extract_raw_data_from_model, has_external_data
 
 import onnxruntime
+from onnxruntime._onnx_shim.onnx import ModelProto, load_model
 
 logger = logging.getLogger(__name__)
 

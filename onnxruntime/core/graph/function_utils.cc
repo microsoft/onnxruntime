@@ -374,7 +374,8 @@ class Inliner {
 
   // Replace given name with a unique version of the name, and cache the
   // renaming-binding in current scope.
-  void make_unique(std::string& name) {
+  template <typename Str>
+  void make_unique(Str& name) {
     auto new_name{prefix_};
     new_name.append("_").append(name);
     auto& current_scope = rename_scopes_.back();
@@ -382,7 +383,8 @@ class Inliner {
     name = std::move(new_name);
   }
 
-  void rename(std::string& name, bool is_new_def) {
+  template <typename Str>
+  void rename(Str& name, bool is_new_def) {
     if (name.empty()) return;
     for (auto i = rename_scopes_.size(); i > 0; --i) {
       const auto& map = rename_scopes_[i - 1];
@@ -398,8 +400,8 @@ class Inliner {
     // Otherwise, it is a reference to an outer-scope variable that should not be renamed.
   }
 
-  template <bool isOutput>
-  void bind(google::protobuf::RepeatedPtrField<string>& formals, const google::protobuf::RepeatedPtrField<string>& actuals) {
+  template <bool isOutput, typename Formals, typename Actuals>
+  void bind(Formals& formals, const Actuals& actuals) {
     // Every formal parameter name FP should be replace by the corresponding actual parameter name AP.
     // However, if AP is empty, it is a missing optional parameter. This does not make any difference
     // for inputs. However, for outputs we use a unique dummy name to handle the case that it
@@ -409,7 +411,7 @@ class Inliner {
     auto& current_scope = rename_scopes_.back();
     int i = 0;
     for (; i < actuals.size(); ++i) {
-      std::string& formal = *formals.Mutable(i);
+      auto& formal = *formals.Mutable(i);
       std::string rename_as = actuals.Get(i);
       if constexpr (isOutput) {
         if (rename_as.empty())
@@ -420,7 +422,7 @@ class Inliner {
         formal = std::move(rename_as);
     }
     for (; i < formals.size(); ++i) {
-      std::string& formal = *formals.Mutable(i);
+      auto& formal = *formals.Mutable(i);
       std::string rename_as;
       if constexpr (isOutput) {
         rename_as.assign(prefix_).append("_").append(formal);

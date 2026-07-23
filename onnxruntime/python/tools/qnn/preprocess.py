@@ -8,8 +8,7 @@
 import argparse
 import pathlib
 
-import onnx
-
+from onnxruntime._onnx_shim import onnx
 from onnxruntime.quantization.execution_providers import qnn
 
 

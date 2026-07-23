@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-import onnx
+from onnxruntime._onnx_shim import onnx
 
 from ...quant_utils import QuantType
 from ...tensor_quant_overrides import QuantTypeInfo, TensorQuantOverridesHelper

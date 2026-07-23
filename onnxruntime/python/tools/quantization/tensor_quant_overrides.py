@@ -10,7 +10,7 @@ from collections.abc import MutableMapping
 from dataclasses import dataclass
 from typing import Any
 
-import onnx
+from onnxruntime._onnx_shim import onnx
 
 from .quant_utils import QuantType
 

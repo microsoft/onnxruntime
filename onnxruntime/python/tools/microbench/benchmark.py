@@ -9,9 +9,9 @@ from abc import ABC, abstractmethod
 from argparse import ArgumentParser
 
 import numpy
-import torch
-
 import onnxruntime as ort
+
+import torch
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

@@ -6,8 +6,8 @@
 
 import os
 
-import onnx
-from onnx import TensorProto, helper
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 from utils import export_helper
 
 

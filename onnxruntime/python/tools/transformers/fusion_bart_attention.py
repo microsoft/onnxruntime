@@ -6,8 +6,9 @@ import logging
 
 import numpy as np
 from fusion_attention import AttentionMask, FusionAttention
-from onnx import helper
 from onnx_model import OnnxModel
+
+from onnxruntime._onnx_shim.onnx import helper
 
 logger = logging.getLogger(__name__)
 

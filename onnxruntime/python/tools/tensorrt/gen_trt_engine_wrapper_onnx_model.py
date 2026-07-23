@@ -4,9 +4,9 @@
 
 from argparse import ArgumentParser
 
-import onnx
 import tensorrt as trt
-from onnx import TensorProto, helper
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 
 class TensorRTEngineWrapperCreator:

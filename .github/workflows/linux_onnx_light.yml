@@ -1,0 +1,262 @@
+# This workflow builds ONNX Runtime against onnx-light instead of the upstream
+# onnx package. onnx-light is a protobuf-free, drop-in reimplementation of the
+# `onnx` / `onnx_proto` CMake targets (https://github.com/xadupre/onnx-light).
+#
+# Goals of this job:
+#   * Prove ONNX Runtime can be compiled WITHOUT the `onnx` and `protobuf`
+#     Python packages installed.
+#   * Consume the PREBUILT onnx-light C++ artifact (onnx-light-cpp-*.tar.gz from
+#     the 0.1.5 release) via find_package, i.e. onnx-light itself is NOT compiled
+#     from source during the ORT build.
+#
+# The job installs only the minimal build dependencies, asserts that neither
+# `onnx` nor `protobuf` is importable, points CMake at the extracted prebuilt
+# package, asserts that CMake resolved onnx-light through find_package rather
+# than downloading/compiling it, and finally runs a small inference smoke test
+# (mul_1.onnx) to prove the resulting onnxruntime actually executes a model
+# without onnx or protobuf installed.
+#
+# The C++ unit tests ARE built and run: onnx-light now provides a protobuf-free
+# tml replacement (test/proto/tml_onnx_light.h) plus the google::protobuf::Map /
+# FileInputStream / CodedInputStream / onnx-data.pb.h compatibility surface the
+# test tooling needs, so onnx_test_data_proto no longer requires protoc or the
+# upstream onnx .proto sources. Correctness is proven by both the C++ unit tests
+# (onnxruntime_test_all) and the inference smoke test on the wheel.
+
+name: Linux CPU ONNX-Light Build
+
+on:
+  push:
+    branches:
+      - main
+      - rel-*
+  pull_request:
+    branches:
+      - main
+      - rel-*
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Prebuilt onnx-light C++ release artifact (0.1.6). Pinned by sha256.
+  # NOTE: 0.1.6 adds the protobuf-compat surface the C++ unit tests need
+  # (google::protobuf::Map, io::FileInputStream, delimited CodedInputStream and
+  # onnx/onnx-data.pb.h). Update ONNX_LIGHT_CPP_SHA256 to the published 0.1.6
+  # linux artifact's sha256 once the release is cut.
+  ONNX_LIGHT_VERSION: "0.1.6"
+  ONNX_LIGHT_CPP_ASSET: "onnx-light-cpp-linux-x86_64.tar.gz"
+  ONNX_LIGHT_CPP_SHA256: "REPLACE_WITH_0.1.6_LINUX_ARTIFACT_SHA256"
+
+jobs:
+  build-linux-onnx-light:
+    name: Build Linux x64 CPU with prebuilt onnx-light (no onnx, no protobuf)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools (no onnx, no protobuf)
+        run: |
+          set -e -x
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+          # Minimal Python build dependencies. Deliberately excludes `onnx` and
+          # `protobuf`: onnx-light provides the ONNX targets and needs no protobuf.
+          python -m pip install --upgrade pip
+          python -m pip install cmake numpy setuptools wheel flatbuffers packaging
+
+      - name: Download and extract prebuilt onnx-light C++ artifact
+        run: |
+          set -e -x
+          url="https://github.com/xadupre/onnx-light/releases/download/${ONNX_LIGHT_VERSION}/${ONNX_LIGHT_CPP_ASSET}"
+          curl -sSL -o "${RUNNER_TEMP}/${ONNX_LIGHT_CPP_ASSET}" "$url"
+          echo "${ONNX_LIGHT_CPP_SHA256}  ${RUNNER_TEMP}/${ONNX_LIGHT_CPP_ASSET}" | sha256sum -c -
+          mkdir -p "${RUNNER_TEMP}/onnx-light-prebuilt"
+          tar -xzf "${RUNNER_TEMP}/${ONNX_LIGHT_CPP_ASSET}" -C "${RUNNER_TEMP}/onnx-light-prebuilt"
+          # The archive extracts to a top-level onnx-light-cpp/ directory that is a
+          # CMAKE_PREFIX_PATH root (lib/cmake/onnx_light, lib/cmake/onnx).
+          prefix="${RUNNER_TEMP}/onnx-light-prebuilt/onnx-light-cpp"
+          test -f "${prefix}/lib/cmake/onnx_light/onnx_lightConfig.cmake"
+          test -f "${prefix}/lib/cmake/onnx/onnxConfig.cmake"
+          echo "ONNX_LIGHT_PREFIX=${prefix}" >> "$GITHUB_ENV"
+
+      - name: Assert onnx and protobuf are NOT installed (pre-build)
+        run: |
+          set -e -x
+          python - <<'PY'
+          import importlib.util
+          import sys
+
+          forbidden = ["onnx", "google.protobuf"]
+
+          def _is_installed(name):
+              # find_spec raises ModuleNotFoundError if a parent package (e.g.
+              # `google`) is missing; that means the module is absent, not an error.
+              try:
+                  return importlib.util.find_spec(name) is not None
+              except ModuleNotFoundError:
+                  return False
+
+          present = [name for name in forbidden if _is_installed(name)]
+          if present:
+              print(f"ERROR: forbidden packages are installed: {present}")
+              sys.exit(1)
+          print("OK: neither onnx nor protobuf is installed.")
+          PY
+
+      - name: Configure with prebuilt onnx-light (build.py --update)
+        run: |
+          set -e -x
+          python ./tools/ci_build/build.py \
+            --build_dir build/Release \
+            --config Release \
+            --use_onnx_light \
+            --build_shared_lib \
+            --build_wheel \
+            --parallel \
+            --skip_submodule_sync \
+            --skip_tests \
+            --compile_no_warning_as_error \
+            --cmake_generator Ninja \
+            --cmake_extra_defines "CMAKE_PREFIX_PATH=${ONNX_LIGHT_PREFIX}" \
+            --update
+
+      - name: Assert onnx-light was consumed as a prebuilt package (not compiled)
+        run: |
+          set -e -x
+          cache="build/Release/Release/CMakeCache.txt"
+          # find_package(onnx_light) must have resolved to our prebuilt prefix.
+          if ! grep -q "onnx_light_DIR:PATH=${ONNX_LIGHT_PREFIX}" "$cache"; then
+            echo "ERROR: onnx_light was not resolved from the prebuilt package."
+            grep -i "onnx_light_DIR" "$cache" || true
+            exit 1
+          fi
+          # FetchContent must NOT have downloaded/populated onnx-light sources.
+          if [ -d "build/Release/Release/_deps/onnx_light-src" ]; then
+            echo "ERROR: onnx-light was fetched/compiled from source; prebuilt not used."
+            exit 1
+          fi
+          echo "OK: onnx-light resolved from prebuilt package, not compiled from source."
+
+      - name: Build (build.py --build)
+        run: |
+          set -e -x
+          python ./tools/ci_build/build.py \
+            --build_dir build/Release \
+            --config Release \
+            --use_onnx_light \
+            --build_shared_lib \
+            --build_wheel \
+            --parallel \
+            --skip_submodule_sync \
+            --skip_tests \
+            --compile_no_warning_as_error \
+            --cmake_generator Ninja \
+            --cmake_extra_defines "CMAKE_PREFIX_PATH=${ONNX_LIGHT_PREFIX}" \
+            --build
+
+      - name: Assert onnx and protobuf are still NOT installed (post-build)
+        run: |
+          set -e -x
+          python - <<'PY'
+          import importlib.util
+          import sys
+
+          forbidden = ["onnx", "google.protobuf"]
+
+          def _is_installed(name):
+              # find_spec raises ModuleNotFoundError if a parent package (e.g.
+              # `google`) is missing; that means the module is absent, not an error.
+              try:
+                  return importlib.util.find_spec(name) is not None
+              except ModuleNotFoundError:
+                  return False
+
+          present = [name for name in forbidden if _is_installed(name)]
+          if present:
+              print(f"ERROR: forbidden packages were installed during the build: {present}")
+              sys.exit(1)
+          print("OK: build completed without pulling in onnx or protobuf.")
+          PY
+
+      - name: Run C++ unit tests (no onnx, no protobuf)
+        run: |
+          set -e -x
+          # The gtest unit-test binary links the protobuf-free tml replacement and
+          # exercises the onnx-light compat surface. Run it directly (build.py's
+          # test phase would pull in Python packages we deliberately exclude).
+          test_bin="build/Release/Release/onnxruntime_test_all"
+          test -x "$test_bin"
+          "$test_bin"
+
+      - name: Install the built onnxruntime wheel (no deps, so protobuf is not pulled)
+        run: |
+          set -e -x
+          wheel=$(ls build/Release/Release/dist/*.whl)
+          echo "Installing ${wheel}"
+          # --no-deps: the onnxruntime wheel declares protobuf as a runtime dependency,
+          # but the onnx-light build does not need it. Installing without deps keeps the
+          # "no onnx / no protobuf" invariant intact while still letting us run inference.
+          python -m pip install --no-deps --force-reinstall "${wheel}"
+
+      - name: Assert onnx and protobuf are still NOT installed (after wheel install)
+        run: |
+          set -e -x
+          python - <<'PY'
+          import importlib.util
+          import sys
+
+          forbidden = ["onnx", "google.protobuf"]
+
+          def _is_installed(name):
+              # find_spec raises ModuleNotFoundError if a parent package (e.g.
+              # `google`) is missing; that means the module is absent, not an error.
+              try:
+                  return importlib.util.find_spec(name) is not None
+              except ModuleNotFoundError:
+                  return False
+
+          present = [name for name in forbidden if _is_installed(name)]
+          if present:
+              print(f"ERROR: forbidden packages were pulled in by the wheel: {present}")
+              sys.exit(1)
+          print("OK: onnxruntime wheel installed without onnx or protobuf.")
+          PY
+
+      - name: Smoke test - run inference with onnx-light-built onnxruntime
+        run: |
+          set -e -x
+          python - <<'PY'
+          import numpy as np
+          import onnxruntime as ort
+
+          # Prove that an onnxruntime built against onnx-light (no onnx, no protobuf)
+          # can load a real .onnx model and run inference. mul_1.onnx computes Y = X * X.
+          model = "onnxruntime/test/testdata/mul_1.onnx"
+          sess = ort.InferenceSession(model, providers=["CPUExecutionProvider"])
+          iname = sess.get_inputs()[0].name
+          oname = sess.get_outputs()[0].name
+
+          x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+          (y,) = sess.run([oname], {iname: x})
+
+          expected = x * x
+          np.testing.assert_allclose(y, expected, rtol=1e-6, atol=1e-6)
+          print("OK: inference produced", y.tolist())
+          print("onnxruntime device:", ort.get_device())
+          PY

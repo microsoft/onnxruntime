@@ -24,9 +24,9 @@ import os
 from collections import deque
 from pathlib import Path
 
-import onnx
-import onnx.external_data_helper
 import onnx_ir as ir
+
+from onnxruntime._onnx_shim import onnx
 
 from .util import MAXIMUM_PROTOBUF, find_by_name
 

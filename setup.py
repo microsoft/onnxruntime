@@ -866,9 +866,25 @@ save_build_and_package_info(package_name, version_number, cuda_version, qnn_vers
 
 # sympy is optional - only needed for symbolic shape inference
 # ml_dtypes is optional - needed for quantization utilities
+def read_requirements_extra(fname):
+    # Read a requirements file into a list of dependency specifiers,
+    # dropping blank lines and comments. Used for the onnx / onnx-light extras.
+    fpath = path.join(getcwd(), fname)
+    if not path.exists(fpath):
+        fpath = path.join(path.dirname(__file__), fname)
+    if not path.exists(fpath):
+        return []
+    with open(fpath) as req_file:
+        return [line.strip() for line in req_file if line.strip() and not line.lstrip().startswith("#")]
+
+
 extras_require = {
     "symbolic": ["sympy"],
     "quantization": ["ml_dtypes"],
+    # onnx dependency variants: `pip install onnxruntime[onnx]` (default onnx)
+    # or `pip install onnxruntime[onnx-light]` (protobuf-free onnx-light, USE_ONNX_LIGHT).
+    "onnx": read_requirements_extra("requirements-onnx.txt"),
+    "onnx-light": read_requirements_extra("requirements-onnx-light.txt"),
 }
 if package_name == "onnxruntime-gpu" and cuda_major_version:
     # Determine cufft version: CUDA 13 uses cufft 12, CUDA 12 uses cufft 11

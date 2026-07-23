@@ -21,6 +21,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/graph/onnx_proto_serialize.h"
 #include "core/framework/utils.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/sequential_executor.h"
