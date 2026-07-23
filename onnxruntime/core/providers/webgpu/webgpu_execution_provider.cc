@@ -147,6 +147,8 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 11, MLFloat16, Clip)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, 12, MLFloat16, Clip)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, MLFloat16, Clip)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, 12, int64_t, Clip)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, int64_t, Clip)>,
     KERNEL_CREATE_INFO(6, Elu),
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Relu),
     KERNEL_CREATE_INFO_VERSIONED(13, 13, Relu),
