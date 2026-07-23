@@ -7531,7 +7531,7 @@ struct OrtApi {
    *   2. otherwise the first OrtEpDevice the execution provider was registered with.
    *
    * If ONNX Runtime cannot reliably determine the device (e.g., an execution provider added by name
-   * that exposes no OrtEpDevice, or one that does not declare a per-subgraph device), `*num_devices`
+   * that exposes no OrtEpDevice, or one that does not declare a per-subgraph device), `*num_hardware_devices`
    * is set to 0. ONNX Runtime intentionally does not guess from the execution provider's OrtDevice,
    * because some NPU execution providers register a CPU OrtDevice for input placement.
    *

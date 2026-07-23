@@ -6,7 +6,6 @@
 #include "core/common/common.h"
 #include "core/graph/graph.h"
 #include "core/framework/fuse_nodes_funcs.h"
-#include "core/framework/ortdevice.h"
 #include "core/framework/transform_layout_functions.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 
