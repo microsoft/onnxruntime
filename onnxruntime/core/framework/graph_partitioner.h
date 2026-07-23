@@ -57,6 +57,11 @@ class GraphPartitioner {
   }
 
   // Run partitioning.
+  //
+  // When defer_ep_context_model_generation is true, partitioning still assigns nodes to EPs and lets
+  // compiling EPs produce their EPContext nodes, but does NOT serialize the EPContext model here.
+  // Callers use this to defer generation until after the Level2+ optimizer loop (see
+  // GenerateEpContextModel) so that higher-level graph optimizations are captured in the output model.
   Status Partition(Graph& graph, FuncManager& func_mgr,
                    const layout_transformation::TransformLayoutFunction& transform_layout_function,
                    const ConfigOptions& config_options,
@@ -64,7 +69,18 @@ class GraphPartitioner {
                    LayeringIndex* layering_index,
                    Mode mode = Mode::kNormal,
                    const epctx::ModelGenOptions& ep_context_gen_options = {},
-                   const layout_transformation::DebugGraphFn& debug_graph_fn = {}) const;
+                   const layout_transformation::DebugGraphFn& debug_graph_fn = {},
+                   bool defer_ep_context_model_generation = false) const;
+
+#ifndef ORT_MINIMAL_BUILD
+  // Serialize the current (already partitioned) graph as an EPContext model to the location configured
+  // in ep_context_gen_options. This is normally done inside Partition(), but can be deferred and invoked
+  // explicitly after the Level2+ optimizer loop so the emitted model reflects the fully optimized graph
+  // (used by compile-only sessions requesting an optimization level above ORT_ENABLE_BASIC).
+  Status GenerateEpContextModel(const Graph& graph,
+                                const epctx::ModelGenOptions& ep_context_gen_options,
+                                const logging::Logger& logger) const;
+#endif
 
   bool IsLoadCancellationFlagSet() const {
     return check_load_cancellation_fn_ && check_load_cancellation_fn_();

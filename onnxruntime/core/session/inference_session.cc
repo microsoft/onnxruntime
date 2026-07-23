@@ -1693,10 +1693,25 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     }
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  // Capture the EPContext generation options once so the same options are used whether the model is
+  // serialized at the partitioning boundary or deferred to after the Level2+ optimizer loop below.
+  const epctx::ModelGenOptions ep_context_gen_options = session_options_.GetEpContextGenerationOptions();
+
+  // A compile-only session that requested an optimization level above ORT_ENABLE_BASIC (Level1) defers
+  // EPContext-model serialization until after the Level2+ optimizer loop, so the emitted model reflects
+  // those higher-level optimizations rather than the partition-boundary snapshot. For the default
+  // compile level (TransformerLevel::Default, used by the OpenVINO/QNN/TensorRT EPContext paths) this is
+  // false, keeping their behavior byte-for-byte unchanged.
+  const bool defer_ep_context_model_generation =
+      ep_context_gen_options.enable &&
+      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionCompileOnly, "0") == "1" &&
+      session_options_.graph_optimization_level >= TransformerLevel::Level2;
+
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
                                                        session_options_.config_options, *session_logger_, layering_index,
-                                                       mode, session_options_.GetEpContextGenerationOptions(), debug_graph_fn));
+                                                       mode, ep_context_gen_options, debug_graph_fn,
+                                                       defer_ep_context_model_generation));
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   if (layering_index) {
@@ -1773,6 +1788,17 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
       break;
     }
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Deferred EPContext-model serialization: emit it here, after the Level2+ optimizer loop has run, so
+  // the output model captures those optimizations. This runs before the copy-node insertion below so
+  // device-placement (memcpy) nodes are not baked into the serialized graph; the consuming session
+  // re-derives them.
+  if (defer_ep_context_model_generation) {
+    ORT_RETURN_IF_ERROR_SESSIONID_(
+        partitioner.GenerateEpContextModel(graph, ep_context_gen_options, *session_logger_));
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   // Insert copy node/s.
   {
