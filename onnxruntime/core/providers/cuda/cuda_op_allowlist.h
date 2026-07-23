@@ -4,6 +4,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 
 #if defined(ORT_ENABLE_CUDA_OP_ALLOWLIST)
 #include <unordered_set>
@@ -36,6 +37,27 @@ inline bool IsCudaOpAllowed([[maybe_unused]] const std::string& op_type) {
 #include "cuda_op_allowlist_data.inc"
   };
   return allowed.find(op_type) != allowed.end();
+#else
+  return true;
+#endif
+}
+
+// Compile-time counterpart of IsCudaOpAllowed, usable in constant expressions
+// (e.g. as a template argument). The CUDA plugin EP uses this in its kernel
+// registration macros so that registrations for excluded operators are
+// discarded at compile time via `if constexpr`; the excluded kernel code then
+// becomes unreferenced and is removed by the linker (--gc-sections).
+constexpr bool IsCudaOpAllowedCompileTime([[maybe_unused]] std::string_view op_type) {
+#if defined(ORT_ENABLE_CUDA_OP_ALLOWLIST)
+  constexpr std::string_view kAllowed[] = {
+#include "cuda_op_allowlist_data.inc"
+  };
+  for (const std::string_view allowed : kAllowed) {
+    if (allowed == op_type) {
+      return true;
+    }
+  }
+  return false;
 #else
   return true;
 #endif

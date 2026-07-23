@@ -317,6 +317,9 @@ class PluginKernelCollector {
   }
 
   void Add(BuildKernelCreateInfoFn fn) {
+    if (fn == nullptr) {
+      return;  // operator excluded by the build-time allow-list
+    }
     std::lock_guard<std::mutex> lock(mutex_);
     entries_.push_back(fn);
   }
@@ -329,6 +332,20 @@ class PluginKernelCollector {
   std::vector<BuildKernelCreateInfoFn> entries_;
   mutable std::mutex mutex_;
 };
+
+// Compile-time-gated build-info selector. When Allowed is false (operator excluded
+// by the build-time allow-list), the `&BuildKernelCreateInfo<K>` in the discarded
+// `if constexpr` branch is never referenced, so K and its kernel code become
+// unreachable and are removed by the linker (--gc-sections). Excluded entries
+// resolve to nullptr, which PluginKernelCollector::Add ignores.
+template <bool Allowed, typename KernelClass>
+inline BuildKernelCreateInfoFn MaybeBuildFn() {
+  if constexpr (Allowed) {
+    return &BuildKernelCreateInfo<KernelClass>;
+  } else {
+    return nullptr;
+  }
+}
 
 }  // namespace cuda
 }  // namespace onnxruntime
@@ -360,7 +377,7 @@ class PluginKernelCollector {
   }                                                                                                  \
   static const bool ORT_ADAPTER_CONCAT(ORT_ADAPTER_AUTOREG_##name##_, __COUNTER__) =                 \
       (::onnxruntime::cuda::PluginKernelCollector::Instance().Add(                                   \
-           &BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)>),    \
+           ::onnxruntime::cuda::MaybeBuildFn<::onnxruntime::cuda::IsCudaOpAllowedCompileTime(#name), ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)>()),    \
        true);
 
 #undef ONNX_OPERATOR_VERSIONED_KERNEL_EX
@@ -379,8 +396,8 @@ class PluginKernelCollector {
   }                                                                                                               \
   static const bool ORT_ADAPTER_CONCAT(ORT_ADAPTER_AUTOREG_##name##_, __COUNTER__) =                              \
       (::onnxruntime::cuda::PluginKernelCollector::Instance().Add(                                                \
-           &BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(                                      \
-               provider, domain, startver, endver, name)>),                                                       \
+           ::onnxruntime::cuda::MaybeBuildFn<::onnxruntime::cuda::IsCudaOpAllowedCompileTime(#name), ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(                                      \
+               provider, domain, startver, endver, name)>()),                                                       \
        true);
 
 #undef ONNX_OPERATOR_TYPED_KERNEL_EX
@@ -399,7 +416,7 @@ class PluginKernelCollector {
   }                                                                                                           \
   static const bool ORT_ADAPTER_CONCAT(ORT_ADAPTER_AUTOREG_##name##_##type##_, __COUNTER__) =                 \
       (::onnxruntime::cuda::PluginKernelCollector::Instance().Add(                                            \
-           &BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type, name)>), \
+           ::onnxruntime::cuda::MaybeBuildFn<::onnxruntime::cuda::IsCudaOpAllowedCompileTime(#name), ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type, name)>()), \
        true);
 
 #undef ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX
@@ -419,8 +436,8 @@ class PluginKernelCollector {
   }                                                                                                               \
   static const bool ORT_ADAPTER_CONCAT(ORT_ADAPTER_AUTOREG_##name##_##type##_, __COUNTER__) =                     \
       (::onnxruntime::cuda::PluginKernelCollector::Instance().Add(                                                \
-           &BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(                                \
-               provider, domain, startver, endver, type, name)>),                                                 \
+           ::onnxruntime::cuda::MaybeBuildFn<::onnxruntime::cuda::IsCudaOpAllowedCompileTime(#name), ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(                                \
+               provider, domain, startver, endver, type, name)>()),                                                 \
        true);
 
 #undef ONNX_OPERATOR_TWO_TYPED_KERNEL_EX
@@ -439,7 +456,7 @@ class PluginKernelCollector {
   }                                                                                                                       \
   static const bool ORT_ADAPTER_CONCAT(ORT_ADAPTER_AUTOREG_##name##_##type1##_##type2##_, __COUNTER__) =                  \
       (::onnxruntime::cuda::PluginKernelCollector::Instance().Add(                                                        \
-           &BuildKernelCreateInfo<ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, name)>), \
+           ::onnxruntime::cuda::MaybeBuildFn<::onnxruntime::cuda::IsCudaOpAllowedCompileTime(#name), ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, name)>()), \
        true);
 
 #undef ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX
@@ -460,8 +477,8 @@ class PluginKernelCollector {
   }                                                                                                                  \
   static const bool ORT_ADAPTER_CONCAT(ORT_ADAPTER_AUTOREG_##name##_##type1##_##type2##_, __COUNTER__) =             \
       (::onnxruntime::cuda::PluginKernelCollector::Instance().Add(                                                   \
-           &BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(                               \
-               provider, domain, startver, endver, type1, type2, name)>),                                            \
+           ::onnxruntime::cuda::MaybeBuildFn<::onnxruntime::cuda::IsCudaOpAllowedCompileTime(#name), ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(                               \
+               provider, domain, startver, endver, type1, type2, name)>()),                                            \
        true);
 
 #undef ONNX_OPERATOR_THREE_TYPED_KERNEL_EX
@@ -480,8 +497,8 @@ class PluginKernelCollector {
   }                                                                                                                        \
   static const bool ORT_ADAPTER_CONCAT(ORT_ADAPTER_AUTOREG_##name##_##type1##_##type2##_##type3##_, __COUNTER__) =         \
       (::onnxruntime::cuda::PluginKernelCollector::Instance().Add(                                                         \
-           &BuildKernelCreateInfo<ONNX_OPERATOR_THREE_TYPED_KERNEL_CLASS_NAME(                                             \
-               provider, domain, ver, type1, type2, type3, name)>),                                                        \
+           ::onnxruntime::cuda::MaybeBuildFn<::onnxruntime::cuda::IsCudaOpAllowedCompileTime(#name), ONNX_OPERATOR_THREE_TYPED_KERNEL_CLASS_NAME(                                             \
+               provider, domain, ver, type1, type2, type3, name)>()),                                                        \
        true);
 
 // ===================================================================

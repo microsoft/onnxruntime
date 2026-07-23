@@ -449,6 +449,18 @@ if (onnxruntime_DISABLE_DOUBLE_TYPE)
     target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE DISABLE_DOUBLE_TYPE)
 endif()
 
+if (onnxruntime_CUDA_OP_ALLOWLIST_FILE)
+    # Operators excluded by the allow-list are compiled out of registration via the
+    # compile-time gate in cuda_kernel_adapter.h, leaving their kernel code
+    # unreferenced. -ffunction-sections/-fdata-sections are already set globally for
+    # C/C++; add them for CUDA host code too, and enable --gc-sections at link so the
+    # dead kernel code is removed from the shared library (real size reduction).
+    target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+        "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-ffunction-sections>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-fdata-sections>")
+    target_link_options(onnxruntime_providers_cuda_plugin PRIVATE "LINKER:--gc-sections")
+endif()
+
 if(WIN32)
   # Windows: use .def file for symbol exports
   set(CUDA_PLUGIN_DEF_FILE ${CUDA_PLUGIN_EP_DIR}/cuda_plugin_ep_symbols.def)
