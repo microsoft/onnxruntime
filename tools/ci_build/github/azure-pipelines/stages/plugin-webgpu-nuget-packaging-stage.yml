@@ -1,6 +1,6 @@
 # NuGet packaging stage for WebGPU plugin EP.
-# Downloads platform-specific build artifacts, packs them into a single multi-platform NuGet package,
-# signs it, and runs a basic test.
+# Downloads platform-specific build artifacts, packs them into a single multi-platform NuGet package, and handles ESRP
+# signing if `DoEsrp` is set.
 
 parameters:
 - name: package_version
