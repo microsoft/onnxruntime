@@ -103,4 +103,52 @@ by specifying its name into a list.
     pred_onx = sess.run([label_name], {input_name: X_test.astype(numpy.float32)})[0]
     print(pred_onx)
 
+Exporting a PyTorch model
++++++++++++++++++++++++++
 
+You can also export PyTorch models to ONNX format using
+``torch.onnx.export()``:
+
+.. code-block:: python
+
+    import torch
+    import onnxruntime
+
+    class MyModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.linear = torch.nn.Linear(10, 5)
+
+        def forward(self, x):
+            return self.linear(x)
+
+    model = MyModel()
+    dummy_input = torch.randn(1, 10)
+    torch.onnx.export(
+        model, dummy_input, "model.onnx",
+        input_names=["input"],
+        output_names=["output"],
+        dynamic_axes={"input": {0: "batch_size"}, "output": {0: "batch_size"}},
+    )
+
+    sess = onnxruntime.InferenceSession("model.onnx")
+    results = sess.run(None, {"input": dummy_input.numpy()})
+    print(results)
+
+When exporting large models with opset 17+, ONNX
+automatically creates a second file ``model.onnx.data``
+containing the raw tensor data.
+Both files must be deployed together or merged into a single
+``.onnx`` file using the ``onnx`` library:
+
+.. code-block:: python
+
+    import onnx
+
+    model = onnx.load("model.onnx", load_external_data=False)
+    onnx.save(
+        model, "model_combined.onnx",
+        save_external_data=False,
+        all_tensors_to_one_file=True,
+        convert_attribute=True,
+    )
