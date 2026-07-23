@@ -725,6 +725,87 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
 
+    def test_reshape_allowzero_default(self):
+        # allowzero is absent: a 0 in the shape tensor means "copy the
+        # corresponding input dim" (legacy ONNX <14 behaviour).
+        graph = helper.make_graph(
+            [helper.make_node("Reshape", ["input", "shape"], ["output"])],
+            "Reshape_AllowZero_Default",
+            [helper.make_tensor_value_info("input", TensorProto.FLOAT, [3, 4, 5])],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, [3, 4, 5])],
+            [helper.make_tensor("shape", TensorProto.INT64, [3], [0, 4, 5])],
+        )
+        model = helper.make_model(graph)
+        model.opset_import[0].version = 18
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        expected_shapes = [
+            helper.make_tensor_value_info("output", TensorProto.FLOAT, [3, 4, 5]),
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def test_reshape_allowzero_zero(self):
+        # allowzero=0 explicit: same as the default — 0 means copy from input.
+        graph = helper.make_graph(
+            [helper.make_node("Reshape", ["input", "shape"], ["output"], allowzero=0)],
+            "Reshape_AllowZero_0",
+            [helper.make_tensor_value_info("input", TensorProto.FLOAT, [3, 4, 5])],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, [3, 4, 5])],
+            [helper.make_tensor("shape", TensorProto.INT64, [3], [0, 4, 5])],
+        )
+        model = helper.make_model(graph)
+        model.opset_import[0].version = 18
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        expected_shapes = [
+            helper.make_tensor_value_info("output", TensorProto.FLOAT, [3, 4, 5]),
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def test_reshape_allowzero_one(self):
+        # allowzero=1: a 0 in the shape tensor means a literal zero dim.
+        # On a non-zero-element input this combination is invalid per the
+        # ONNX spec, so use a 0-element input to keep the model resolvable.
+        graph = helper.make_graph(
+            [helper.make_node("Reshape", ["input", "shape"], ["output"], allowzero=1)],
+            "Reshape_AllowZero_1",
+            [helper.make_tensor_value_info("input", TensorProto.FLOAT, [0, 4, 5])],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, [0, 4, 5])],
+            [helper.make_tensor("shape", TensorProto.INT64, [3], [0, 4, 5])],
+        )
+        model = helper.make_model(graph)
+        model.opset_import[0].version = 18
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        expected_shapes = [
+            helper.make_tensor_value_info("output", TensorProto.FLOAT, [0, 4, 5]),
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def test_reshape_allowzero_chained_zero_element(self):
+        # Regression for the chained-Reshape case reported in #28449.
+        # Reshape([0,8,2] -> [4,2,-1]) -> mid (4, 2, 0) -> Reshape([0,0,4], allowzero=1)
+        # The second Reshape must preserve the explicit zeros from its shape input
+        # instead of copying mid's dims (which would yield [4, 2, 4]).
+        graph = helper.make_graph(
+            [
+                helper.make_node("Reshape", ["input", "shape1"], ["mid"]),
+                helper.make_node("Reshape", ["mid", "shape2"], ["output"], allowzero=1),
+            ],
+            "Reshape_AllowZero_Chained",
+            [helper.make_tensor_value_info("input", TensorProto.FLOAT, [0, 8, 2])],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, [0, 0, 4])],
+            [
+                helper.make_tensor("shape1", TensorProto.INT64, [3], [4, 2, -1]),
+                helper.make_tensor("shape2", TensorProto.INT64, [3], [0, 0, 4]),
+            ],
+        )
+        model = helper.make_model(graph)
+        model.opset_import[0].version = 18
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        expected_shapes = [
+            helper.make_tensor_value_info("mid", TensorProto.FLOAT, [4, 2, 0]),
+            helper.make_tensor_value_info("output", TensorProto.FLOAT, [0, 0, 4]),
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
 
 class TestSymbolicShapeInferenceForSlice(unittest.TestCase):
     def check_slice_of_concat(self, input_dims, start, end, step, expected_output_dim):
@@ -781,7 +862,7 @@ class TestSymbolicShapeInferenceForSlice(unittest.TestCase):
         graph_def = onnx.helper.make_graph(nodes, "graph", inputs, [output], initializer=initializers)
         model = SymbolicShapeInference.infer_shapes(onnx.helper.make_model(graph_def))
         output = unique_element(model.graph.output)
-        shape = [d.dim_param if d.dim_param else d.dim_value for d in output.type.tensor_type.shape.dim]
+        shape = [d.dim_param or d.dim_value for d in output.type.tensor_type.shape.dim]
         self.assertEqual(shape, ["B", expected_output_dim])
 
     def test_numeric_negative_indices_forward(self):
