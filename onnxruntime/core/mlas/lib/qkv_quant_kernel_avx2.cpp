@@ -22,6 +22,7 @@ Abstract:
 
 #include <cstring>
 #include <immintrin.h>
+#include <memory>
 
 using namespace MlasKVQuantInternal;
 
@@ -325,11 +326,33 @@ QKGemmFp16_Avx2(
     const bool int4 = IsInt4Mode(QuantType);
     const bool per_channel = IsPerChannelMode(QuantType);
 
+    if (!int4 && M == 1) {
+        for (size_t n = 0; n < N; ++n) {
+            const auto* b_row = reinterpret_cast<const int8_t*>(B_bytes + n * row_bytes);
+            for (size_t m = 0; m < M; ++m) {
+                const float dot = FusedDotInt8(A + m * lda, b_row, K, per_channel, Scales);
+                C[m * ldc + n] = Alpha * dot;
+            }
+        }
+        return;
+    }
+
+    const size_t a_count = M * K;
+    float a_stack[256];
+    float* a_buf = a_stack;
+    std::unique_ptr<float[]> heap_buf;
+    if (a_count > 256) {
+        heap_buf = std::make_unique<float[]>(a_count);
+        a_buf = heap_buf.get();
+    }
+
+    for (size_t m = 0; m < M; ++m) {
+        MlasConvertHalfToFloatBuffer(A + m * lda, a_buf + m * K, K);
+    }
     for (size_t n = 0; n < N; ++n) {
         const uint8_t* b_row = B_bytes + n * row_bytes;
-
         for (size_t m = 0; m < M; ++m) {
-            const MLAS_FP16* a_row = A + m * lda;
+            const float* a_row = a_buf + m * K;
             const float dot = int4
                                   ? FusedDotInt4(a_row, b_row, K, per_channel, Scales)
                                   : FusedDotInt8(a_row, reinterpret_cast<const int8_t*>(b_row),
@@ -511,48 +534,26 @@ SVGemmFp16_Avx2(
     size_t ldc,
     float Beta)
 {
-    const size_t row_bytes = MlasKVQuantPackedRowBytes(QuantType, N);
-    const auto* B_bytes = static_cast<const uint8_t*>(B);
-    const bool int4 = IsInt4Mode(QuantType);
-    const bool per_channel = IsPerChannelMode(QuantType);
-    const size_t vec_end_n = (N / 8) * 8;
+    float c_stack[256];
+    float* c_buf = c_stack;
+    std::unique_ptr<float[]> heap_buf;
+    if (N > 256) {
+        heap_buf = std::make_unique<float[]>(N);
+        c_buf = heap_buf.get();
+    }
 
     for (size_t m = 0; m < M; ++m) {
-        const float* a_row = A + m * lda;
         MLAS_FP16* c_row = C + m * ldc;
-
-        for (size_t n = 0; n < vec_end_n; n += 8) {
-            __m256 acc = Beta == 0.0f ? _mm256_setzero_ps() : LoadFp16Outputx8(c_row + n);
-            if (Beta != 0.0f && Beta != 1.0f) {
-                acc = _mm256_mul_ps(acc, _mm256_broadcast_ss(&Beta));
-            }
-
-            for (size_t k = 0; k < K; ++k) {
-                const uint8_t* b_row = B_bytes + k * row_bytes;
-                const __m256 b = int4
-                                    ? DequantInt4x8(b_row, n, per_channel, Scales)
-                                    : DequantInt8x8(reinterpret_cast<const int8_t*>(b_row), n,
-                                                     per_channel, Scales);
-                acc = _mm256_fmadd_ps(_mm256_broadcast_ss(a_row + k), b, acc);
-            }
-
-            StoreFp16Outputx8(c_row + n, acc);
+        if (Beta != 0.0f) {
+            MlasConvertHalfToFloatBuffer(c_row, c_buf, N);
         }
-
-        for (size_t n = vec_end_n; n < N; ++n) {
-            float acc = Beta == 0.0f ? 0.0f : Beta * static_cast<float>(c_row[n]);
-            for (size_t k = 0; k < K; ++k) {
-                const uint8_t* b_row = B_bytes + k * row_bytes;
-                const float b = int4
-                                    ? static_cast<float>(((n & 1) == 0 ? (b_row[n / 2] & 0x0F)
-                                                                        : ((b_row[n / 2] >> 4) & 0x0F)) -
-                                                         kInt4Bias) *
-                                          (per_channel ? Scales[n] : Scales[0])
-                                    : static_cast<float>(reinterpret_cast<const int8_t*>(b_row)[n]) *
-                                          (per_channel ? Scales[n] : Scales[0]);
-                acc += a_row[k] * b;
-            }
-            c_row[n] = MLAS_FP16(acc);
+        SVGemm_Avx2(1, N, K, A + m * lda, lda, B, QuantType, Scales, c_buf, N, Beta);
+        size_t n = 0;
+        for (; n + 8 <= N; n += 8) {
+            StoreFp16Outputx8(c_row + n, _mm256_loadu_ps(c_buf + n));
+        }
+        for (; n < N; ++n) {
+            c_row[n] = MLAS_FP16(c_buf[n]);
         }
     }
 }

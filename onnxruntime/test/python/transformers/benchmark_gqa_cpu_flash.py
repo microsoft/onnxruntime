@@ -185,6 +185,7 @@ def benchmark_gqa(
     repeats=20,
     non_quantized=False,
     use_fp16=False,
+    intra_op_num_threads=8,
 ):
     """Benchmark a single GQA configuration. Returns elapsed time in ms."""
     hidden_size = num_heads * head_size
@@ -195,7 +196,7 @@ def benchmark_gqa(
     buffer_seq_len = total_seqlen
 
     sess_options = SessionOptions()
-    sess_options.intra_op_num_threads = 8
+    sess_options.intra_op_num_threads = intra_op_num_threads
 
     np.random.seed(42)
     input_dtype = np.float16 if use_fp16 else np.float32
@@ -358,7 +359,7 @@ def run_benchmarks(args):
 
     kv_mode = "FP32 (non-quantized)" if args.fp32 else "INT8/INT4 quantized (FP32 and FP16 inputs)"
     print("\nBenchmark: CPU GroupQueryAttention — Flash vs Naive")
-    print(f"KV cache: {kv_mode}, Threads: {8}, Warmup: {warmup}, Repeats: {repeats}")
+    print(f"KV cache: {kv_mode}, Threads: {args.intra_op_num_threads}, Warmup: {warmup}, Repeats: {repeats}")
     print(f"{'Config':<31} {'Naive (ms)':>12} {'Flash (ms)':>12} {'Speedup':>10}")
     print("-" * 62)
 
@@ -368,6 +369,7 @@ def run_benchmarks(args):
         for input_label, use_fp16 in input_variants:
             cfg["non_quantized"] = args.fp32
             cfg["use_fp16"] = use_fp16
+            cfg["intra_op_num_threads"] = args.intra_op_num_threads
 
             # Flash path (default)
             os.environ.pop("ORT_GQA_DISABLE_FLASH_ATTENTION", None)
@@ -395,5 +397,6 @@ if __name__ == "__main__":
     parser.add_argument("--decode_only", action="store_true", help="Only run decode benchmarks")
     parser.add_argument("--prompt_only", action="store_true", help="Only run prompt benchmarks")
     parser.add_argument("--fp32", action="store_true", help="Use non-quantized FP32 KV cache instead of quantized")
+    parser.add_argument("--intra_op_num_threads", type=int, default=8, help="Number of intra-op threads")
     args = parser.parse_args()
     run_benchmarks(args)
