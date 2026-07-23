@@ -787,13 +787,27 @@ if (onnxruntime_USE_WEBGPU)
           # The dawn_parallel_build_fix.patch contains the following changes:
           #
           # - (private) Fix parallel build race condition in emdawnwebgpu header copy
-          #   The emdawnwebgpu_headers_gen_add macro's add_custom_command uses cmake -E copy
-          #   without ensuring the destination directory exists first. When building with
-          #   parallel jobs (-j32), the copy commands for webgpu_glfw.h and
-          #   webgpu_enum_class_bitmasks.h can run before any DawnJSONGenerator command
-          #   has created gen/src/emdawnwebgpu/include/webgpu/, causing the copy to fail.
-          #   This patch adds cmake -E make_directory before the copy so the directory is
-          #   always present regardless of parallel build ordering.
+          #   Two separate fixes address this race:
+          #
+          #   1. The emdawnwebgpu_headers_gen_add macro's add_custom_command uses cmake -E copy
+          #      without ensuring the destination directory exists first. When building with
+          #      parallel jobs (-j32), the copy commands for webgpu_glfw.h and
+          #      webgpu_enum_class_bitmasks.h can run before any DawnJSONGenerator command
+          #      has created gen/src/emdawnwebgpu/include/webgpu/, causing the copy to fail.
+          #      This patch adds cmake -E make_directory before the copy so the directory is
+          #      always present regardless of parallel build ordering.
+          #
+          #   2. webgpu_enum_class_bitmasks.h is listed in emdawnwebgpu_cpp's HEADERS, which
+          #      causes CMake to add it to INTERFACE_SOURCES. When ORT targets link to
+          #      emdawnwebgpu_cpp, CMake propagates this generated file to ORT's directory scope
+          #      and generates a second copy of the cmake -E copy recipe for that file.
+          #      With parallel make (-jN), both the Dawn-directory recipe and the ORT-directory
+          #      recipe run concurrently for the same output file, causing the copy to fail.
+          #      Removing webgpu_enum_class_bitmasks.h from emdawnwebgpu_cpp's HEADERS
+          #      eliminates the duplicate recipe. The header remains accessible via the include
+          #      directory set on emdawnwebgpu_c_include (${EM_BUILD_GEN_DIR}/include), and
+          #      build ordering is preserved through the emdawnwebgpu_c -> emdawnwebgpu_c_include
+          #      -> emdawnwebgpu_headers_gen dependency chain.
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_parallel_build_fix.patch &&
 
