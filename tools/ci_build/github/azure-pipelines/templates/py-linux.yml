@@ -59,6 +59,8 @@ jobs:
       artifactName: drop-linux-cpu-${{ parameters.arch }}-${{ parameters.ep }}
 
   variables:
+  - name: SYSTEM_ACCESSTOKEN
+    value: $(System.AccessToken)
   - name: extra_build_args
     ${{ if ne(parameters.extra_build_arg, '') }}:
       value: '-x "${{ parameters.extra_build_arg }}"'
@@ -84,7 +86,7 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cpu/Dockerfile
       Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cpu
-      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --secret id=PIP_INDEX_URL --secret id=CARGO_CONFIG,src=$HOME/.cargo/config.toml --secret id=SYSTEM_ACCESSTOKEN"
       Repository: onnxruntimecpubuildpython${{ parameters.arch }}
 
   - task: Bash@3

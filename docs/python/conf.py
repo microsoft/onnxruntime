@@ -121,7 +121,7 @@ def setup(app):
     if not os.path.exists(dest):
         import urllib.request  # noqa: PLC0415
 
-        url = "https://raw.githubusercontent.com/onnx/onnx/master/onnx/backend/test/data/node/test_sigmoid/model.onnx"
+        url = "https://raw.githubusercontent.com/onnx/onnx/v1.22.0/onnx/backend/test/data/node/test_sigmoid/model.onnx"
         urllib.request.urlretrieve(url, dest)
     loc = os.path.split(dest)[-1]
     if not os.path.exists(loc):

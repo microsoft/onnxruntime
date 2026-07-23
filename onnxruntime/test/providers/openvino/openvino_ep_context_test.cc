@@ -302,5 +302,148 @@ INSTANTIATE_TEST_SUITE_P(
       return std::string("embed_") + (info.param ? "on" : "off");
     });
 
+// Regression test for the float16 branch of FillOutputsWithConstantData
+// (backend_utils.cc), which used to call FillOutputHelper<float> and so wrote
+// 4-byte floats into a 2-byte-per-element f16 output tensor, corrupting the
+// values and overrunning the buffer by 2x.
+//
+// That path (OVEP filling a constant graph output) only runs when all of:
+//   - device is "AUTO:CPU": a plain "CPU" device takes OVEP's unified-compile
+//     fast path and never reaches CreateOVModel, where the folding lives;
+//   - the graph is not wholly supported, so partitioning runs the folding pass
+//     (RandomUniformLike is the unsupported op that forces this);
+//   - the constant branch C = Add(A, B) shares a cluster with a runtime input,
+//     so it isn't dropped as an all-initializer cluster (via Y = Add(X, C));
+//   - ORT optimizations are off, so OpenVINO (not ORT) folds Add(A, B).
+// C is then emitted as an f16 Constant output filled by the code under test.
+// Only C is asserted on; Y and Z exist only to shape the partition.
+TEST(OVEPConstantOutputTests, FillsFloat16ConstantOutput) {
+  const std::vector<int64_t> shape = {3, 2};
+  const std::vector<float> a_f = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  const std::vector<float> b_f = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
+
+  std::vector<float> expected;
+  for (size_t i = 0; i < a_f.size(); ++i) {
+    expected.push_back(a_f[i] + b_f[i]);
+  }
+
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  auto* opset = model.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+
+  auto* graph = model.mutable_graph();
+  graph->set_name("const_f16_add");
+
+  auto add_f16_initializer = [&](const std::string& name, const std::vector<float>& values) {
+    auto* init = graph->add_initializer();
+    init->set_name(name);
+    init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    for (int64_t d : shape) {
+      init->add_dims(d);
+    }
+    std::vector<uint16_t> bits;
+    for (float v : values) {
+      bits.push_back(MLFloat16(v).val);
+    }
+    init->set_raw_data(bits.data(), bits.size() * sizeof(uint16_t));
+  };
+  add_f16_initializer("A", a_f);
+  add_f16_initializer("B", b_f);
+
+  auto add_tensor_value_info = [&](const std::string& name,
+                                   ONNX_NAMESPACE::TensorProto_DataType elem_type,
+                                   ONNX_NAMESPACE::ValueInfoProto* vi) {
+    vi->set_name(name);
+    auto* type = vi->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(elem_type);
+    auto* vi_shape = type->mutable_shape();
+    for (int64_t d : shape) {
+      vi_shape->add_dim()->set_dim_value(d);
+    }
+  };
+
+  // Runtime input; only exists so the constant branch shares a cluster with a
+  // non-initializer input. Its values do not affect C.
+  add_tensor_value_info("X", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, graph->add_input());
+
+  // Constant branch: OpenVINO folds Add(A, B) into the f16 Constant output C.
+  {
+    auto* n = graph->add_node();
+    n->set_op_type("Add");
+    n->set_name("add_const");
+    n->add_input("A");
+    n->add_input("B");
+    n->add_output("C");
+  }
+  // Pulls C into a cluster that has a runtime input (X), so it isn't dropped.
+  {
+    auto* n = graph->add_node();
+    n->set_op_type("Add");
+    n->set_name("add_runtime");
+    n->add_input("X");
+    n->add_input("C");
+    n->add_output("Y");
+  }
+  // Unsupported by OVEP -> forces partitioning so the folding pass runs.
+  // dtype=float selects the CPU fallback kernel; the values are unused.
+  {
+    auto* n = graph->add_node();
+    n->set_op_type("RandomUniformLike");
+    n->set_name("unsupported_sink");
+    n->add_input("X");
+    n->add_output("Z");
+    auto* attr = n->add_attribute();
+    attr->set_name("dtype");
+    attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    attr->set_i(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  }
+
+  add_tensor_value_info("C", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, graph->add_output());
+  add_tensor_value_info("Y", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, graph->add_output());
+  add_tensor_value_info("Z", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, graph->add_output());
+
+  std::string model_data;
+  model.SerializeToString(&model_data);
+
+  Ort::SessionOptions session_options;
+  // Disable ORT-side graph optimizations so Add(A, B) is not constant-folded by
+  // ORT before the OpenVINO EP sees it; OVEP must be the one that folds it, which
+  // is what routes C through the constant-output fill path.
+  session_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+  std::unordered_map<std::string, std::string> ov_options = {{"device_type", "AUTO:CPU"}};
+  session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
+
+  Ort::Session session(*ort_env, model_data.data(), model_data.size(), session_options);
+
+  // Provide the runtime input X; its values are irrelevant to C.
+  const std::array<int64_t, 2> x_shape = {3, 2};
+  std::vector<uint16_t> x_bits(6, MLFloat16(0.0f).val);
+  Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtDeviceAllocator, OrtMemTypeDefault);
+  Ort::Value x_tensor = Ort::Value::CreateTensor(
+      mem_info, x_bits.data(), x_bits.size() * sizeof(uint16_t), x_shape.data(), x_shape.size(),
+      ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
+
+  const std::array<const char*, 1> input_names = {"X"};
+  const std::array<const char*, 1> output_names = {"C"};
+  std::vector<Ort::Value> output_tensors(1);
+  session.Run(Ort::RunOptions{nullptr}, input_names.data(), &x_tensor, 1,
+              output_names.data(), output_tensors.data(), 1);
+
+  ASSERT_TRUE(output_tensors[0].IsTensor());
+  auto type_shape = output_tensors[0].GetTensorTypeAndShapeInfo();
+  ASSERT_EQ(type_shape.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
+  ASSERT_EQ(type_shape.GetElementCount(), expected.size());
+
+  const MLFloat16* out_data = output_tensors[0].GetTensorData<MLFloat16>();
+  std::vector<float> actual;
+  for (size_t i = 0; i < expected.size(); ++i) {
+    actual.push_back(out_data[i].ToFloat());
+  }
+
+  EXPECT_THAT(actual, ::testing::ElementsAreArray(expected));
+}
+
 }  // namespace test
 }  // namespace onnxruntime

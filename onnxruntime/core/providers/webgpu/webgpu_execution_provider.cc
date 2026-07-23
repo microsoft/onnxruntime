@@ -121,6 +121,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Sigmoid),
     KERNEL_CREATE_INFO(13, Sigmoid),
     KERNEL_CREATE_INFO(6, HardSigmoid),
+    KERNEL_CREATE_INFO(14, HardSwish),
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Log),
     KERNEL_CREATE_INFO(13, Log),
 
@@ -696,6 +697,15 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
       const auto& past_present_share_buffer = node.GetAttributes().find("past_present_share_buffer");
       if (past_present_share_buffer != node.GetAttributes().end() &&
           past_present_share_buffer->second.i() != 0) {
+        continue;
+      }
+    }
+
+    // Check for MatMulBnb4
+    if (node.OpType() == "MatMulBnb4" && node.Domain() == kMSDomain) {
+      // Current implementation only supports the forward case (transB=1). transB defaults to 1.
+      const auto& trans_b = node.GetAttributes().find("transB");
+      if (trans_b != node.GetAttributes().end() && trans_b->second.i() == 0) {
         continue;
       }
     }

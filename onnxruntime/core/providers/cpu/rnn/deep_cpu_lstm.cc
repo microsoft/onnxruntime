@@ -291,6 +291,16 @@ Status DeepCpuLstmOp::Compute(OpKernelContext* context) const {
     const auto& W_shape = (W != nullptr) ? W->Shape() : packed_W_.shape_;
     const auto& R_shape = (R != nullptr) ? R->Shape() : packed_R_.shape_;
 
+    // Validate that the W and R weight shapes are consistent with the hidden_size attribute and the
+    // input shape, matching the RNN and GRU kernels. ONNX shape inference does not verify this
+    // relationship, so an inconsistent model (e.g. a bogus hidden_size) would otherwise reach the
+    // compute below and cause an out-of-bounds access instead of a clean error.
+    const auto* B = context->Input<Tensor>(3);              // bias. [num_directions, 8*hidden_size]
+    const auto* sequence_lens = context->Input<Tensor>(4);  // [batch_size]
+    const auto* initial_h = context->Input<Tensor>(5);      // initial hidden. [num_directions, batch_size, hidden_size]
+    ORT_RETURN_IF_ERROR(rnn::detail::ValidateCommonRnnInputs(X, W_shape, R_shape, B, 4, sequence_lens,
+                                                             initial_h, num_directions_, hidden_size_));
+
     const auto* input_weights = (W != nullptr) ? W->Data<float>() : nullptr;
     const auto* recurrent_weights = (R != nullptr) ? R->Data<float>() : nullptr;
 

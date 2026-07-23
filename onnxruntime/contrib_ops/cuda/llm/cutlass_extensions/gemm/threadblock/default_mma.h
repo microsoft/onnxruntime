@@ -221,6 +221,91 @@ struct DefaultMma<cutlass::half_t, LayoutA, kAlignmentA, uint4b_t, LayoutB, kAli
   using ThreadblockMma = typename Mma::ThreadblockMma;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+/// Specialization for row-major output (OperatorClass TensorOp), fp16 activation & MXFP4 (e2m1) weight,
+/// mma pipelined (stage=2)
+template <
+    /// Layout type for A matrix operand
+    typename LayoutA,
+    /// Access granularity of A matrix in units of elements
+    int kAlignmentA,
+    /// Layout type for B matrix operand
+    typename LayoutB,
+    /// Access granularity of B matrix in units of elements
+    int kAlignmentB,
+    /// Element type for internal accumulation
+    typename ElementAccumulator,
+    /// Tag indicating architecture to tune for
+    typename ArchTag,
+    /// Threadblock-level tile size (concept: GemmShape)
+    typename ThreadblockShape,
+    /// Warp-level tile size (concept: GemmShape)
+    typename WarpShape,
+    /// Instruction-level tile size (concept: GemmShape)
+    typename InstructionShape,
+    /// Operation performed by GEMM
+    typename Operator>
+struct DefaultMma<cutlass::half_t, LayoutA, kAlignmentA, cutlass::float_e2m1_t, LayoutB, kAlignmentB, ElementAccumulator,
+                  layout::RowMajor, arch::OpClassTensorOp, ArchTag, ThreadblockShape, WarpShape, InstructionShape, 2, Operator> {
+ private:
+  static constexpr int kAlignmentScale = 128 / sizeof_bits<half_t>::value;
+
+  using Mma = DqMma<half_t, LayoutA, kAlignmentA, cutlass::float_e2m1_t, LayoutB, kAlignmentB, half_t, layout::RowMajor,
+                    kAlignmentScale, ElementAccumulator, layout::RowMajor, arch::OpClassTensorOp, ArchTag, ThreadblockShape,
+                    WarpShape, InstructionShape, 2, Operator>;
+
+ public:
+  using MmaCore = typename Mma::MmaCore;
+  using IteratorA = typename Mma::IteratorA;
+  using IteratorB = typename Mma::IteratorB;
+  using ThreadblockMma = typename Mma::ThreadblockMma;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+/// Specialization for row-major output (OperatorClass TensorOp), fp16 activation & MXFP4 (e2m1) weight,
+/// mma multistage (stage>=3)
+template <
+    /// Layout type for A matrix operand
+    typename LayoutA,
+    /// Access granularity of A matrix in units of elements
+    int kAlignmentA,
+    /// Layout type for B matrix operand
+    typename LayoutB,
+    /// Access granularity of B matrix in units of elements
+    int kAlignmentB,
+    /// Element type for internal accumulation
+    typename ElementAccumulator,
+    /// Tag indicating architecture to tune for
+    typename ArchTag,
+    /// Threadblock-level tile size (concept: GemmShape)
+    typename ThreadblockShape,
+    /// Warp-level tile size (concept: GemmShape)
+    typename WarpShape,
+    /// Instruction-level tile size (concept: GemmShape)
+    typename InstructionShape,
+    /// Operation performed by GEMM
+    typename Operator,
+    ///
+    int kStages,
+    /// Shared memory clear option
+    SharedMemoryClearOption SharedMemoryClear>
+struct DefaultMma<cutlass::half_t, LayoutA, kAlignmentA, cutlass::float_e2m1_t, LayoutB, kAlignmentB, ElementAccumulator,
+                  layout::RowMajor, arch::OpClassTensorOp, ArchTag, ThreadblockShape, WarpShape, InstructionShape, kStages, Operator,
+                  false, SharedMemoryClear> {
+ private:
+  static constexpr int kAlignmentScale = 128 / sizeof_bits<half_t>::value;
+
+  using Mma = DqMma<half_t, LayoutA, kAlignmentA, cutlass::float_e2m1_t, LayoutB, kAlignmentB, half_t, layout::RowMajor,
+                    kAlignmentScale, ElementAccumulator, layout::RowMajor, arch::OpClassTensorOp, ArchTag, ThreadblockShape,
+                    WarpShape, InstructionShape, kStages, Operator, SharedMemoryClear>;
+
+ public:
+  using MmaCore = typename Mma::MmaCore;
+  using IteratorA = typename Mma::IteratorA;
+  using IteratorB = typename Mma::IteratorB;
+  using ThreadblockMma = typename Mma::ThreadblockMma;
+};
+
 #ifdef ENABLE_FP8
 ////////////////////////////////////////////////////////////////////////////////
 /// Specialization for row-major output (OperatorClass TensorOp), fp8 activation & int4 weight, mma multistage

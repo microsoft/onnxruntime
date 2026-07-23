@@ -43,6 +43,12 @@ There is intentionally no provider option for a custom cuDNN DLL/SO path. Provid
 
 No-cuDNN plugin validation runs `test_cuda_plugin_ep.py` with `ORT_TEST_CUDA_PLUGIN_EP=1` and `ORT_TEST_CUDA_PLUGIN_NO_CUDNN=1`. That mode passes `enable_cudnn=0` to plugin sessions and skips tests for operators that still require cuDNN in the current implementation. Non-cuDNN operator coverage, plugin registration, device enumeration, graph assignment, CUDA graph, I/O binding, and profiling tests continue to run.
 
+### 2.1.2 Optional cuFFT Runtime Dependency
+
+The CUDA Plugin EP applies the same optional-dependency model to **cuFFT**. cuFFT is only used by the FFT contrib operators (`Rfft` / `Irfft`), so the plugin shared library must not link directly to cuFFT or contain a cuFFT DLL/SO in its dynamic dependency table. cuFFT is loaded lazily through the ORT cuFFT loader (`CufftLibrary`, `core/providers/cuda/cufft_loader.{h,cc}`) on first FFT-op use; the entry points ORT calls are provided by `cufft_stub.cc` trampolines that forward to the resolved symbols.
+
+Unlike cuDNN, there is **no provider option** for cuFFT (no `enable_cufft`) and no frontend library to configure. When cuFFT is unavailable, `CUFFT_RETURN_IF_ERROR` (and `CudaCall<cufftResult>`) return `NOT_IMPLEMENTED` with an actionable message, so FFT ops fail cleanly while all other operators keep working. cuFFT headers (part of the CUDA toolkit) are still required at build time, but `CUDA::cufft` is no longer linked. The loader picks the cuFFT library name at compile time from the `CUDA_VERSION` macro (cuFFT 12 for CUDA 13.x, cuFFT 11 for CUDA 12.x); unsupported CUDA major versions fail at compile time until their mapping is added.
+
 ### 2.2 Preprocessor Defines
 
 Each build target uses different preprocessor defines that control how framework types are resolved:
@@ -344,10 +350,12 @@ This is intentionally conservative and correct for the plugin EP's first sync in
 
 The Python `OrtValue` helpers (`update_inplace()` for host-to-device and `numpy()` for device-to-host) historically reached CUDA copies through the legacy provider bridge (`GetProviderInfo_CUDA()`). That bridge requires the provider shared library to export `GetProvider()`, which the CUDA plugin intentionally does not export.
 
-The fallback path is platform-specific:
+To keep working when the bridge is absent (as with the plugin EP), the pybind can reach CUDA copies two ways: the legacy provider bridge (`TryGetProviderInfo_CUDA()`) and a plugin-registered `OrtDataTransfer` copy function (`CreateDataTransferMemCpy()`, backed by the plugin EP's `IDataTransfer`). It tries whichever is available and throws if neither is, in which case a CUDA `OrtValue` copy cannot be performed.
 
-- On non-Windows CUDA builds, `onnxruntime_pybind11_state` links `CUDA::cudart`. If `TryGetProviderInfo_CUDA()` fails, pybind can copy directly with `cudaMemcpy`; host-to-device copies synchronize the default stream, matching `ProviderInfo_CUDA::cudaMemcpy_HostToDevice()`.
-- On Windows CUDA builds, pybind is compiled with `ORT_NO_CUDA_IN_PYBIND` and does not link CUDA runtime APIs. If `TryGetProviderInfo_CUDA()` fails, pybind must obtain an `OrtDataTransfer` copy function from the registered plugin EP. Without a registered plugin data-transfer implementation, CUDA `OrtValue.update_inplace()` cannot copy host data into the plugin-owned device tensor.
+The two code paths differ only in which mechanism they try first, and this does not change the outcome (exactly one applies in a given build):
+
+- `OrtValue.update_inplace(numpy_array)` / `OrtValue.numpy()` (in `onnxruntime_pybind_ortvalue.cc`) try the provider bridge first, then fall back to the plugin `OrtDataTransfer`.
+- `OrtValue.update_inplace(OrtValue)` (`UpdateOrtValueInplace` in `onnxruntime_pybind_mlvalue.cc`) tries the plugin `OrtDataTransfer` first, then falls back to the built-in CUDA provider copy functions.
 
 ### 5.2 Handle Access Path
 
@@ -649,7 +657,7 @@ Use `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=OFF` when you need to build the origina
 
 ### 9.3 Plugin Independence
 
-The plugin build's `libonnxruntime_providers_cuda.so` is **fully self-contained**. It does not depend on `libonnxruntime_providers_shared.so` at load time. It statically links against `onnxruntime_framework`, `onnxruntime_graph`, `onnxruntime_common`, `onnxruntime_mlas`, `onnxruntime_flatbuffers`, and links dynamically against CUDA (`cudart`, `cublas`, `cublasLt`, `cufft`) and protobuf. cuDNN is loaded lazily only when enabled and available at runtime. Communication with the ORT runtime happens exclusively through the C API (`OrtApi`/`OrtEpApi`) passed at load time.
+The plugin build's `libonnxruntime_providers_cuda.so` is **fully self-contained**. It does not depend on `libonnxruntime_providers_shared.so` at load time. It statically links against `onnxruntime_framework`, `onnxruntime_graph`, `onnxruntime_common`, `onnxruntime_mlas`, `onnxruntime_flatbuffers`, and links dynamically against CUDA (`cudart`, `cublas`, `cublasLt`) and protobuf. cuDNN and cuFFT are loaded lazily only when available at runtime (cuDNN additionally gated by `enable_cudnn`), so neither appears in the library's dynamic dependency table. Communication with the ORT runtime happens exclusively through the C API (`OrtApi`/`OrtEpApi`) passed at load time.
 
 ### 9.4 Build Outputs
 

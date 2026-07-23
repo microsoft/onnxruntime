@@ -247,7 +247,7 @@ struct GemmFpAIntB {
     }
 
     if constexpr (isFinegrained(Mma::QuantOp)) {
-      if (args.group_size != 64 && args.group_size != 128) {
+      if (args.group_size != 32 && args.group_size != 64 && args.group_size != 128) {
         return Status::kErrorNotSupported;
       }
     }
@@ -442,11 +442,16 @@ struct GemmFpAIntB {
     run_kernel<arch::Sm80>(params, shared_storage);
 #elif (__CUDA_ARCH__ == 890)
     run_kernel<arch::Sm89>(params, shared_storage);
-#elif (__CUDA_ARCH__ >= 1000)
-    // Use SM80 implementation for GB10x, GB20x.
+#elif (__CUDA_ARCH__ >= 900)
+    // Reuse the SM80 (Ampere) mixed-GEMM kernel on Hopper (SM90) and Blackwell (SM100+, e.g.
+    // GB10x/GB20x). The Ampere tensor-core mixed-input path is valid on these archs, so callers
+    // that pack the SM80 weight layout and dispatch KernelArch=Sm80 (see MatMulNBits) get a real
+    // kernel here instead of a stub. The dedicated CUTLASS 3.x Hopper TMA warp-specialized
+    // mixed-input kernels are reached through the separate sm90_dispatch path, not this operator.
+    // Mirrors MoeFCGemm::operator() which already reuses the SM80 kernel for SM90+.
     run_kernel<arch::Sm80>(params, shared_storage);
 #else
-    CUTLASS_NOT_IMPLEMENTED();  // Don't compile these for Hopper or later. Use CUTLASS 3.x kernels.
+    CUTLASS_NOT_IMPLEMENTED();
 #endif
 #else
     CUTLASS_NOT_IMPLEMENTED();

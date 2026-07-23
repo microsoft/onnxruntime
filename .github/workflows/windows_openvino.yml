@@ -51,6 +51,11 @@ jobs:
         with:
           architecture: x64
 
+      - name: Install Visual Studio Spectre-mitigated libs
+        uses: ./.github/actions/install-vs-spectre-libs
+        with:
+          architecture: x64
+
       - name: Download OpenVINO Toolkit v2026.2.1
         env:
           OpenVINOVersion: 2026.2.1

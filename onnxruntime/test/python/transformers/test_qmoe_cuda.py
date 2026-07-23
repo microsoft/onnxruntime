@@ -1861,9 +1861,10 @@ class TestSwigluQMoE(unittest.TestCase):
         # NaN-hardening regression: the INT4/INT8 weight-only path stores B in the column-interleaved
         # layout, whose CUTLASS K iterator requires each GEMM reduction dim to be a whole multiple of the
         # 64-element interleave tile (fc1.K == hidden_size, fc2.K == inter_size). A partial final K tile
-        # is read past the valid range and silently produces garbage/NaN. QMoE now rejects such shapes up
-        # front with a clear error instead of computing wrong results. Here inter_size 544 (== 17*32) is
-        # block-quant valid (block_size=32) but 544 % 64 == 32, so the op must raise.
+        # is read past the valid range and silently produces garbage/NaN. The CUTLASS mixed-GEMM weight
+        # prepacking (shared by the offline CudaQuantizer and ORT's PrePack) therefore rejects such shapes
+        # up front instead of computing wrong results. Here inter_size 544 (== 17*32) is block-quant valid
+        # (block_size=32) but 544 % 64 == 32, so building the quantized model must raise.
         torch.manual_seed(4321)
         numpy.random.seed(4321)
 
@@ -1879,12 +1880,11 @@ class TestSwigluQMoE(unittest.TestCase):
             use_asymmetric_quant=False,
         )
 
-        # Build the ONNX model + session (the interleaved-layout guard fires at run time in
-        # ComputeInternal, not during session creation), then assert the run is rejected.
-        self.assertTrue(swiglu_moe.recreate_onnx_model())
-        hidden_states = torch.randn(1, 1, config.hidden_size).to(device).to(torch.float16)
-        with self.assertRaisesRegex(Exception, "inter_size to be a multiple of 64"):
-            swiglu_moe.ort_forward(hidden_states)
+        # The partial-K-tile guard fires while prepacking the expert weights into the CUTLASS
+        # column-interleaved layout, so recreating the ONNX model is rejected before a session
+        # is ever created.
+        with self.assertRaisesRegex(Exception, "incompatible with column-interleave tiling"):
+            swiglu_moe.recreate_onnx_model()
 
     @parameterized.expand(swiglu_test_cases)
     def test_swiglu_qmoe_parity_bf16(self, batch_size, sequence_length, quant_bits):
@@ -2932,6 +2932,165 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
 
     def test_int4_swiglu_interleaved_medium(self):
         self._run_one(hidden_size=128, inter_size=64, num_experts=8, top_k=2, swiglu_fusion=1, batch_size=16)
+
+
+class TestQMoECudaGraph(unittest.TestCase):
+    """Regression test for QMoE under CUDA graph capture/replay.
+
+    Before the profiler capture-safety fix, running an fp16 int4 QMoE node inside
+    a CUDA-graph-capturing session launched grouped-GEMM profiling kernels and
+    temp-allocator traffic on the compute stream *while that stream was being
+    captured*. That corrupted the capture and surfaced as a sticky CUDA 700
+    (illegal memory access) at a downstream MoE kernel launch on replay. The fix
+    detects an in-progress capture, skips profiling, and falls back to a cached /
+    default tactic, so capture + replay must now complete cleanly and produce
+    finite, deterministic output.
+    """
+
+    def _build_int4_qmoe_model(self, *, hidden_size, inter_size, num_experts, top_k, batch_size):
+        onnx_dtype = TensorProto.FLOAT16
+        bits = 4
+        pack = 8 // bits
+        fc1_n = 2 * inter_size  # gate + up packed along N for SwiGLU
+        fc1_k = hidden_size
+        fc2_n = hidden_size
+        fc2_k = inter_size
+
+        fc1_weights = numpy.zeros((num_experts, fc1_k, fc1_n // pack), dtype=numpy.uint8)
+        fc2_weights = numpy.zeros((num_experts, fc2_k, fc2_n // pack), dtype=numpy.uint8)
+        fc1_scales = numpy.zeros((num_experts, fc1_n), dtype=numpy.float16)
+        fc2_scales = numpy.zeros((num_experts, fc2_n), dtype=numpy.float16)
+
+        cuda_quantizer = CudaQuantizer()
+        for e in range(num_experts):
+            w1 = (torch.randn(fc1_n, fc1_k) * 0.05).numpy().astype(numpy.float16)
+            w2 = (torch.randn(fc2_n, fc2_k) * 0.05).numpy().astype(numpy.float16)
+            q1, s1 = cuda_quantizer.qmoe_per_channel_quantize(torch.from_numpy(w1), bits, True)
+            q2, s2 = cuda_quantizer.qmoe_per_channel_quantize(torch.from_numpy(w2), bits, True)
+            fc1_weights[e] = q1.numpy()
+            fc2_weights[e] = q2.numpy()
+            fc1_scales[e] = s1.numpy().astype(numpy.float16)
+            fc2_scales[e] = s2.numpy().astype(numpy.float16)
+
+        qmoe = helper.make_node(
+            "QMoE",
+            inputs=["input", "router_probs", "fc1_W", "fc1_S", "", "fc2_W", "fc2_S", ""],
+            outputs=["output"],
+            name="qmoe",
+            domain="com.microsoft",
+            k=top_k,
+            normalize_routing_weights=1,
+            activation_type="swiglu",
+            swiglu_fusion=1,
+            expert_weight_bits=bits,
+            quant_type="int",
+            # weights_prepacked omitted (default): INT weights are already in the
+            # CUDA EP's offline-prepacked fpA_intB layout emitted by CudaQuantizer.
+        )
+        # Static shapes are required for CUDA graph capture.
+        graph = helper.make_graph(
+            nodes=[qmoe],
+            name="qmoe_cuda_graph",
+            inputs=[
+                helper.make_tensor_value_info("input", onnx_dtype, [batch_size, hidden_size]),
+                helper.make_tensor_value_info("router_probs", onnx_dtype, [batch_size, num_experts]),
+            ],
+            outputs=[helper.make_tensor_value_info("output", onnx_dtype, [batch_size, hidden_size])],
+            initializer=[
+                helper.make_tensor(
+                    "fc1_W", TensorProto.UINT8, list(fc1_weights.shape), fc1_weights.tobytes(), raw=True
+                ),
+                helper.make_tensor(
+                    "fc2_W", TensorProto.UINT8, list(fc2_weights.shape), fc2_weights.tobytes(), raw=True
+                ),
+                helper.make_tensor("fc1_S", onnx_dtype, [num_experts, fc1_n], fc1_scales.flatten().tolist()),
+                helper.make_tensor("fc2_S", onnx_dtype, [num_experts, fc2_n], fc2_scales.flatten().tolist()),
+            ],
+        )
+        model = helper.make_model(
+            graph, opset_imports=[helper.make_opsetid("", 20), helper.make_opsetid("com.microsoft", 1)]
+        )
+        model.ir_version = 10
+        return model.SerializeToString()
+
+    @unittest.skipUnless(torch.cuda.is_available(), "CUDA is required for the QMoE CUDA graph regression test")
+    def test_int4_fp16_qmoe_cuda_graph(self):
+        hidden_size = 64
+        inter_size = 128
+        num_experts = 4
+        top_k = 2
+        batch_size = 8
+
+        torch.manual_seed(123)
+        numpy.random.seed(123)
+        model_bytes = self._build_int4_qmoe_model(
+            hidden_size=hidden_size,
+            inter_size=inter_size,
+            num_experts=num_experts,
+            top_k=top_k,
+            batch_size=batch_size,
+        )
+
+        sess_options = onnxruntime.SessionOptions()
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        sess = None
+        try:
+            sess = onnxruntime.InferenceSession(
+                model_bytes,
+                sess_options,
+                providers=[("CUDAExecutionProvider", {"enable_cuda_graph": True})],
+            )
+        except Exception as e:
+            self.skipTest(f"Could not create a CUDA-graph-enabled CUDA EP session: {e}")
+            return
+
+        x = numpy.random.randn(batch_size, hidden_size).astype(numpy.float16)
+        router = numpy.random.randn(batch_size, num_experts).astype(numpy.float16)
+
+        # CUDA graph capture requires all inputs/outputs to live in fixed GPU buffers.
+        x_ort = onnxruntime.OrtValue.ortvalue_from_numpy(x, "cuda", 0)
+        router_ort = onnxruntime.OrtValue.ortvalue_from_numpy(router, "cuda", 0)
+        y_ort = onnxruntime.OrtValue.ortvalue_from_shape_and_type([batch_size, hidden_size], numpy.float16, "cuda", 0)
+
+        io_binding = sess.io_binding()
+        io_binding.bind_ortvalue_input("input", x_ort)
+        io_binding.bind_ortvalue_input("router_probs", router_ort)
+        io_binding.bind_ortvalue_output("output", y_ort)
+
+        ro = onnxruntime.RunOptions()
+
+        # First run performs the allocation and captures the CUDA graph. Before the
+        # fix, QMoE profiling launched kernels / touched the temp allocator on the
+        # captured compute stream here and triggered CUDA 700 (illegal memory access).
+        io_binding.synchronize_inputs()
+        sess.run_with_iobinding(io_binding, ro)
+        io_binding.synchronize_outputs()
+        out_capture = y_ort.numpy().copy()
+
+        # Replay the captured graph with the same inputs.
+        io_binding.synchronize_inputs()
+        sess.run_with_iobinding(io_binding, ro)
+        io_binding.synchronize_outputs()
+        out_replay = y_ort.numpy().copy()
+
+        for tag, out in (("capture", out_capture), ("replay", out_replay)):
+            self.assertEqual(out.shape, (batch_size, hidden_size))
+            self.assertEqual(out.dtype, numpy.float16)
+            self.assertFalse(numpy.isnan(out).any(), f"QMoE CUDA graph {tag} output has NaN")
+            self.assertFalse(numpy.isinf(out).any(), f"QMoE CUDA graph {tag} output has Inf")
+
+        # Replaying with identical inputs must reproduce the captured output exactly.
+        numpy.testing.assert_array_equal(out_replay, out_capture)
+
+        # Update the input in place and replay again to exercise the graph past capture.
+        x2 = numpy.random.randn(batch_size, hidden_size).astype(numpy.float16)
+        x_ort.update_inplace(x2)
+        io_binding.synchronize_inputs()
+        sess.run_with_iobinding(io_binding, ro)
+        io_binding.synchronize_outputs()
+        out_updated = y_ort.numpy().copy()
+        self.assertFalse(numpy.isnan(out_updated).any(), "QMoE CUDA graph updated-input output has NaN")
+        self.assertFalse(numpy.isinf(out_updated).any(), "QMoE CUDA graph updated-input output has Inf")
 
 
 if __name__ == "__main__":

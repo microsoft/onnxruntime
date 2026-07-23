@@ -22,6 +22,32 @@ Abstract:
 
 #include <exception>
 
+static void
+MlasHalfGemmZeroKBatch(
+    const size_t M,
+    const size_t N,
+    const size_t BatchN,
+    const MLAS_HALF_GEMM_DATA_PARAMS* DataParams
+    )
+{
+    for (size_t gemm_i = 0; gemm_i < BatchN; gemm_i++) {
+        const auto* Data = &DataParams[gemm_i];
+        auto* C = reinterpret_cast<MLAS_FP16*>(Data->C);
+        const auto* Bias = reinterpret_cast<const MLAS_FP16*>(Data->Bias);
+        const size_t ldc = Data->ldc;
+
+        for (size_t m = 0; m < M; m++) {
+            for (size_t n = 0; n < N; n++) {
+                C[m * ldc + n] = Bias == nullptr ? MLAS_FP16::FromBits(0) : Bias[n];
+            }
+        }
+
+        if (Data->OutputProcessor != nullptr) {
+            Data->OutputProcessor->Process(Data->C, 0, 0, M, N, ldc);
+        }
+    }
+}
+
 bool MLASCALL
 MlasFp16AccelerationSupported()
 {
@@ -34,6 +60,32 @@ MlasFp16AccelerationSupported()
 #endif
 }
 
+static bool
+TryGetHalfGemmBackendSelectorConfig(
+    size_t BatchN,
+    const MLAS_HALF_GEMM_DATA_PARAMS* DataParams,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG*& BackendKernelSelectorConfig
+    )
+{
+    BackendKernelSelectorConfig = nullptr;
+
+    for (size_t gemm_i = 0; gemm_i < BatchN; ++gemm_i) {
+        const auto* config = DataParams[gemm_i].BackendKernelSelectorConfig;
+        if (config == nullptr) {
+            continue;
+        }
+
+        if (!config->use_kleidiai) {
+            return false;
+        }
+
+        if (BackendKernelSelectorConfig == nullptr) {
+            BackendKernelSelectorConfig = config;
+        }
+    }
+
+    return true;
+}
 
 void
 MLASCALL
@@ -46,6 +98,48 @@ MlasHalfGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     )
 {
+    if (BatchN == 0 || M == 0 || N == 0) {
+        return;
+    }
+
+    if (DataParams == nullptr) {
+        MLAS_THROW_EX(std::runtime_error, "HalfGemm requires non-null DataParams.");
+    }
+
+    if (K == 0) {
+        for (size_t gemm_i = 0; gemm_i < BatchN; gemm_i++) {
+            const auto& data = DataParams[gemm_i];
+            if (data.BIsBackendNativePacked &&
+                (data.ldb != 0 || data.Bias != nullptr || data.OutputProcessor != nullptr)) {
+                MLAS_THROW_EX(
+                    std::runtime_error,
+                    "backend-native halfgemm packed B with K==0 requires ldb == 0, Bias == nullptr, and "
+                    "OutputProcessor == nullptr");
+            }
+        }
+        MlasHalfGemmZeroKBatch(M, N, BatchN, DataParams);
+        return;
+    }
+
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig = nullptr;
+    if (TryGetHalfGemmBackendSelectorConfig(BatchN, DataParams, BackendKernelSelectorConfig) &&
+        GetMlasPlatform().MlasHalfGemmBatchOverride != nullptr &&
+        GetMlasPlatform().MlasHalfGemmBatchOverride(
+            M, N, K, BatchN, DataParams, ThreadPool, BackendKernelSelectorConfig)) {
+        return;
+    }
+
+    // BIsPacked denotes the generic MLAS halfgemm packed-B layout and can be
+    // consumed here. Backend-native packed layouts are separate and must not
+    // silently fall through to the generic kernels.
+    for (size_t gemm_i = 0; gemm_i < BatchN; gemm_i++) {
+        if (DataParams[gemm_i].BIsBackendNativePacked) {
+            MLAS_THROW_EX(
+                std::runtime_error,
+                "backend-native halfgemm packed B is not supported by generic MLAS halfgemm");
+        }
+    }
+
     const MLAS_HALFGEMM_DISPATCH* dispatch = MlasHalfGemmGetDispatch();
     MLAS_HALFGEMM_OPERATION* operation = dispatch->Operation;
 
@@ -130,12 +224,13 @@ MlasHalfGemmPackBSize(
         // No packing routine provided
         return 0;
     }
-    const size_t AlignedK = (K + PackedK - 1) & ~(PackedK - 1);
-    const size_t BytesRequired = N * AlignedK * FP16_SIZE + padding;
-    const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
-    const size_t AlignedBytesRequired =
-        (BytesRequired + BufferAlignment - 1) & ~(BufferAlignment - 1);
-    return AlignedBytesRequired;
+
+    size_t packed_b_size = 0;
+    if (!MlasHalfGemmTryGetPackedBSize(N, K, PackedK, padding, &packed_b_size)) {
+        return 0;
+    }
+
+    return packed_b_size;
 }
 
 void
@@ -149,7 +244,52 @@ MlasHalfGemmPackB(
     )
 {
     const auto* dispatch = MlasHalfGemmGetDispatch();
+    assert(N == 0 || K == 0 || (B != nullptr && PackedB != nullptr && ldb >= N));
+    if (B == nullptr || PackedB == nullptr || ldb < N ||
+        dispatch->CopyPackBRoutine == nullptr || MlasHalfGemmPackBSize(N, K, false) == 0) {
+        return;
+    }
+
     dispatch->CopyPackBRoutine((_mlas_fp16_*)PackedB, (const _mlas_fp16_*)B, ldb, N, K);
+}
+
+size_t
+MLASCALL
+MlasHalfGemmNativePackBSize(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    )
+{
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+        GetMlasPlatform().MlasHalfGemmPackBSizeOverride != nullptr) {
+        return GetMlasPlatform().MlasHalfGemmPackBSizeOverride(TransA, TransB, N, K);
+    }
+
+    return 0;
+}
+
+bool
+MLASCALL
+MlasHalfGemmNativePackB(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const MLAS_FP16* B,
+    size_t ldb,
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    )
+{
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+        GetMlasPlatform().MlasHalfGemmPackBOverride != nullptr) {
+        return GetMlasPlatform().MlasHalfGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB);
+    }
+
+    return false;
 }
 
 void
@@ -576,7 +716,7 @@ MlasGemmBatch(
 
 const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchDefault = {
     MlasHalfGemmOperation<MLAS_HALF_GEMM_KERNEL_DEFAULT>,
-    nullptr,
+    MlasHalfGemmCopyPackB<MLAS_HALF_GEMM_KERNEL_DEFAULT>,
     MlasHalfGemmConvertPackB<MLAS_HALF_GEMM_KERNEL_DEFAULT>,
     MLAS_HALF_GEMM_KERNEL_DEFAULT::PackedK,
     MLAS_HALF_GEMM_KERNEL_DEFAULT::KernelMaxM,

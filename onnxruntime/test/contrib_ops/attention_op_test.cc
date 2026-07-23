@@ -5,6 +5,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "test/contrib_ops/attention_op_test_helper.h"
 
@@ -881,6 +882,71 @@ TEST(ContribOpAttentionTest, Causal_EmptyPastState) {
                    use_past_state, past_sequence_length, &past_data, &present_data);
 }
 
+TEST(ContribOpAttentionTest, CudnnFlashAttentionWithKeySequenceLengthMask) {
+#if !defined(USE_CUDA) || !GTEST_HAS_STREAM_REDIRECTION
+  GTEST_SKIP() << "Kernel selection verification requires CUDA and stdout capture support.";
+#else
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "cuDNN SDPA requires a CUDA device with compute capability 8.0 or later.";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 2;
+  constexpr int hidden_size = 64;
+  constexpr int number_of_heads = 2;
+
+  std::vector<float> input_data(sequence_length * hidden_size);
+  for (int i = 0; i < hidden_size; ++i) {
+    input_data[i] = static_cast<float>((i % 7) - 3) / 8.0f;
+    input_data[hidden_size + i] = static_cast<float>((i % 5) - 2) / 4.0f;
+  }
+
+  std::vector<float> weight_data(hidden_size * 3 * hidden_size, 0.0f);
+  for (int i = 0; i < hidden_size; ++i) {
+    weight_data[i * 3 * hidden_size + i] = 1.0f;
+    weight_data[i * 3 * hidden_size + hidden_size + i] = 1.0f;
+    weight_data[i * 3 * hidden_size + 2 * hidden_size + i] = 1.0f;
+  }
+  std::vector<float> bias_data(3 * hidden_size, 0.0f);
+
+  // Only the first key/value token is valid, so both output tokens must equal its value.
+  // Use a non-zero attention bias to cover bias forwarding through the cuDNN path.
+  std::vector<int32_t> mask_index_data = {1};
+  std::vector<float> attention_bias_data = {
+      0.25f, -0.5f, 0.75f, -1.0f,
+      -0.25f, 0.5f, -0.75f, 1.0f};
+  std::vector<float> output_data(2 * hidden_size);
+  std::copy_n(input_data.begin(), hidden_size, output_data.begin());
+  std::copy_n(input_data.begin(), hidden_size, output_data.begin() + hidden_size);
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  constexpr bool use_float16 = true;
+  constexpr bool is_unidirectional = false;
+  testing::internal::CaptureStdout();
+  RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
+                   batch_size, sequence_length, hidden_size, number_of_heads,
+                   use_float16, is_unidirectional,
+                   false /*use_past_state*/, 0 /*past_sequence_length*/, nullptr, nullptr,
+                   AttentionMaskType::MASK_1D_KEY_SEQ_LEN, 0 /*input_hidden_size*/, 0 /*max_sequence_length*/,
+                   false /*disable_cpu*/, false /*disable_cuda*/, false /*disable_dml*/, false /*disable_webgpu*/,
+                   {} /*qkv_sizes*/, attention_bias_data);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (debug_output.find("cuDNN Flash Attention is disabled") != std::string::npos) {
+    GTEST_SKIP() << debug_output;
+  }
+  EXPECT_NE(debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos)
+      << debug_output;
+#endif
+}
+
 TEST(ContribOpAttentionTest, AttentionEmptyPastState) {
   RawAttentionEmptyPastState(false);
 }
@@ -1423,6 +1489,49 @@ TEST(ContribOpAttentionTest, AttentionBatch2LeftPaddingMaskIndex2) {
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length, past_data, present_data,
                    AttentionMaskType::MASK_1D_END_START);
+}
+
+// Verifies that out-of-range 1D mask_index values are clamped rather than
+// causing out-of-bounds memory access.  end_position > all_sequence_length
+// must clamp to all_sequence_length (no right-side masking), and
+// start_position < 0 must clamp to 0 (no left-side masking).  Both cases
+// should produce the same output as a fully-unmasked sequence.
+TEST(ContribOpAttentionTest, AttentionMaskIndex1DClampOOB) {
+  int batch_size = 1;
+  int sequence_length = 2;
+  int hidden_size = 4;
+  int number_of_heads = 2;
+
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<float> weight_data = {
+      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
+      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
+      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
+      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
+
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
+
+  // end_position=999 is well above sequence_length=2, so it must clamp to 2
+  // (no right-side masking). Expected output equals the fully-unmasked case.
+  std::vector<int32_t> mask_index_data_end_oob = {999};
+  std::vector<float> output_data = {
+      3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
+      3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f};
+
+  RunAttentionTest(input_data, weight_data, bias_data, mask_index_data_end_oob, output_data,
+                   batch_size, sequence_length, hidden_size, number_of_heads);
+
+  // start_position=-5 is below zero, so it must clamp to 0 (no left-side
+  // masking). end_position=2 keeps all tokens unmasked on the right.
+  // Expected output is again the fully-unmasked case.
+  std::vector<int32_t> mask_index_data_start_neg = {2, -5};
+  RunAttentionTest(input_data, weight_data, bias_data, mask_index_data_start_neg, output_data,
+                   batch_size, sequence_length, hidden_size, number_of_heads, false, false, false, 0,
+                   nullptr, nullptr, AttentionMaskType::MASK_1D_END_START);
 }
 
 TEST(ContribOpAttentionTest, Attention3DMask) {

@@ -444,7 +444,10 @@ void check_pointer(Params& params, cudaStream_t s) {
 template <bool isGroupwise, typename Details>
 void select_gs(Params& params, cudaStream_t s) {
   if constexpr (isGroupwise) {
-    if (params.groupsize == 64) {
+    if (params.groupsize == 32) {
+      check_pointer<Details, 32>(params, s);
+      return;
+    } else if (params.groupsize == 64) {
       check_pointer<Details, 64>(params, s);
       return;
     } else if (params.groupsize == 128) {
