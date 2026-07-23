@@ -190,6 +190,7 @@ stages:
               --cuda_home="$(Agent.TempDirectory)\v${{ parameters.cuda_version }}"
               --skip_tests
               --disable_ml_ops
+              --disable_types double
               --cmake_extra_defines onnxruntime_DISABLE_GENERATION_OPS=ON onnxruntime_USE_FP8_KV_CACHE=OFF onnxruntime_DISABLE_FLOAT4_TYPES=ON onnxruntime_USE_FPA_INTB_GEMM=OFF onnxruntime_DISABLE_STRING_TYPE=ON
               --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="${{ parameters.cmake_cuda_archs }}"
               --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
@@ -221,6 +222,7 @@ stages:
               --cudnn_home="$(Agent.TempDirectory)\$(cuda13_cudnn_folder)"
               --skip_tests
               --disable_ml_ops
+              --disable_types double
               --cmake_extra_defines onnxruntime_DISABLE_GENERATION_OPS=ON onnxruntime_USE_FP8_KV_CACHE=OFF onnxruntime_DISABLE_FLOAT4_TYPES=ON onnxruntime_USE_FPA_INTB_GEMM=OFF onnxruntime_DISABLE_STRING_TYPE=ON
               --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="${{ parameters.cmake_cuda_archs }}"
               --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
@@ -253,6 +255,7 @@ stages:
               --cudnn_home="$(Agent.TempDirectory)\${{ parameters.arm64_cudnn_folder }}"
               --skip_tests
               --disable_ml_ops
+              --disable_types double
               --cmake_extra_defines onnxruntime_DISABLE_GENERATION_OPS=ON onnxruntime_USE_FP8_KV_CACHE=OFF onnxruntime_DISABLE_FLOAT4_TYPES=ON onnxruntime_USE_FPA_INTB_GEMM=OFF onnxruntime_DISABLE_STRING_TYPE=ON
               --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="${{ parameters.cmake_cuda_archs }}"
               --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON

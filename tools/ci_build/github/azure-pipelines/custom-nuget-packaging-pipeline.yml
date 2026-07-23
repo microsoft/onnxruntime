@@ -101,7 +101,7 @@ extends:
           msbuildPlatform: x64
           packageName: x64-cuda
           CudaVersion: ${{ parameters.CudaVersion }}
-          buildparameter: --use_cuda --cuda_home=${{ variables.win_cuda_home }} --enable_onnx_tests --disable_ml_ops --nvcc_threads 1 --flash_nvcc_threads 1 --caller_framework WinAI --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ variables.CmakeCudaArchitectures }}" onnxruntime_DISABLE_GENERATION_OPS=ON onnxruntime_USE_FP8_KV_CACHE=OFF onnxruntime_DISABLE_FLOAT4_TYPES=ON onnxruntime_USE_FPA_INTB_GEMM=OFF onnxruntime_DISABLE_STRING_TYPE=ON
+          buildparameter: --use_cuda --cuda_home=${{ variables.win_cuda_home }} --enable_onnx_tests --disable_ml_ops --disable_types double --nvcc_threads 1 --flash_nvcc_threads 1 --caller_framework WinAI --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ variables.CmakeCudaArchitectures }}" onnxruntime_DISABLE_GENERATION_OPS=ON onnxruntime_USE_FP8_KV_CACHE=OFF onnxruntime_DISABLE_FLOAT4_TYPES=ON onnxruntime_USE_FPA_INTB_GEMM=OFF onnxruntime_DISABLE_STRING_TYPE=ON
           runTests: false
           buildJava: false
           java_artifact_id: onnxruntime_gpu
