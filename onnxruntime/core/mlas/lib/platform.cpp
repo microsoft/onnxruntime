@@ -595,6 +595,7 @@ Return Value:
                             this->Q8Q4GemmDispatch = &MlasQ8Q4GemmDispatchAvx512vnni;
                             this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512vnni;
                             this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchAvx512Vnni;
+                            this->KVQuantGemmFp16Supported_ = (Cpuid1[2] & (1u << 29)) != 0;  // F16C
                         }
                     }
                 }

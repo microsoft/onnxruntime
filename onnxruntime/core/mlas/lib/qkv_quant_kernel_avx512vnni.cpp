@@ -564,6 +564,9 @@ QKGemmFp16_Avx512Vnni(
         return;
     }
 
+    // INT4 path: convert the FP16 query tile to FP32 once and reuse it. The INT8
+    // path (any M) returns above, so only wider prefill tiles whose M * K exceeds
+    // the stack scratch spill to the heap.
     const size_t a_count = M * K;
     float a_stack[256];
     float* a_buf = a_stack;
@@ -764,6 +767,8 @@ SVGemmFp16_Avx512Vnni(
     size_t ldc,
     float Beta)
 {
+    // FP32 accumulation scratch for one output row (N == head_size). Stays on the
+    // stack for typical head sizes and only spills to the heap when N > 256.
     float c_stack[256];
     float* c_buf = c_stack;
     std::unique_ptr<float[]> heap_buf;

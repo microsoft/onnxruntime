@@ -25,8 +25,8 @@ Abstract:
 #include <cstring>
 #include <limits>
 
-#include "mlas_qkv_quant.h"
 #include "mlasi.h"
+#include "mlas_qkv_quant.h"
 
 void
 MlasFlashAttentionQuantizedKVThreaded(
@@ -121,11 +121,11 @@ MlasFlashAttentionQuantizedKVThreaded(
 
         // K/V scale pointers
         const float* head_k_scale = args->per_channel_k
-                                        ? args->k_scale + kv_head_idx * static_cast<size_t>(head_size)
-                                        : args->k_scale;
+            ? args->k_scale + kv_head_idx * static_cast<size_t>(head_size)
+            : args->k_scale;
         const float* head_v_scale = args->per_channel_v
-                                        ? args->v_scale + kv_head_idx * static_cast<size_t>(head_size)
-                                        : args->v_scale;
+            ? args->v_scale + kv_head_idx * static_cast<size_t>(head_size)
+            : args->v_scale;
 
         // Q pointer: layout [batch, num_heads, seq, head_size]. The batch stride is
         // supplied separately (args->q_batch_stride) so the kernel works with both the
@@ -257,18 +257,18 @@ MlasFlashAttentionQuantizedKVThreaded(
             // Step 4: Accumulate O += S_exp * V_block using fused dequant+GEMM
             const uint8_t* v_block = v_cache_head + static_cast<size_t>(ir) * packed_row_bytes;
             MlasSVGemm(
-                row_size_q,                      // M
-                static_cast<size_t>(head_size),  // N
-                row_size_kv,                     // K
-                scores,                          // A (exp softmax scores)
-                row_size_kv,                     // lda
-                v_block,                         // B (quantized V block)
+                row_size_q,                         // M
+                static_cast<size_t>(head_size),     // N
+                row_size_kv,                        // K
+                scores,                             // A (exp softmax scores)
+                row_size_kv,                        // lda
+                v_block,                            // B (quantized V block)
                 quant_type,
                 head_v_scale,
-                temp_output,                     // C (accumulated output)
-                static_cast<size_t>(head_size),  // ldc
-                1.0f,                            // Beta (accumulate)
-                nullptr                          // no thread pool (already threaded)
+                temp_output,                        // C (accumulated output)
+                static_cast<size_t>(head_size),     // ldc
+                1.0f,                               // Beta (accumulate)
+                nullptr                             // no thread pool (already threaded)
             );
         }
 
@@ -383,11 +383,11 @@ MlasFlashDecodingQuantizedKVThreaded(
 
         // K/V scale pointers
         const float* head_k_scale = args->per_channel_k
-                                        ? args->k_scale + kv_head_idx * static_cast<size_t>(head_size)
-                                        : args->k_scale;
+            ? args->k_scale + kv_head_idx * static_cast<size_t>(head_size)
+            : args->k_scale;
         const float* head_v_scale = args->per_channel_v
-                                        ? args->v_scale + kv_head_idx * static_cast<size_t>(head_size)
-                                        : args->v_scale;
+            ? args->v_scale + kv_head_idx * static_cast<size_t>(head_size)
+            : args->v_scale;
 
         // Q pointer: layout [batch, num_heads, 1, head_size] (sequence_length=1).
         // The batch stride is supplied separately to support packed-QKV input.
@@ -494,17 +494,17 @@ MlasFlashDecodingQuantizedKVThreaded(
         const uint8_t* v_block = v_cache_head + static_cast<size_t>(ir) * packed_row_bytes;
         memset(partial_output, 0, static_cast<size_t>(head_size) * sizeof(float));
         MlasSVGemm(
-            1,                               // M
-            static_cast<size_t>(head_size),  // N
-            row_size_kv,                     // K
-            scores,                          // A (exp softmax scores)
-            row_size_kv,                     // lda
-            v_block,                         // B (quantized V block)
+            1,                                  // M
+            static_cast<size_t>(head_size),     // N
+            row_size_kv,                        // K
+            scores,                             // A (exp softmax scores)
+            row_size_kv,                        // lda
+            v_block,                            // B (quantized V block)
             quant_type,
             head_v_scale,
-            partial_output,                  // C (output for this chunk)
-            static_cast<size_t>(head_size),  // ldc
-            0.0f,                            // Beta=0 (overwrite)
+            partial_output,                     // C (output for this chunk)
+            static_cast<size_t>(head_size),     // ldc
+            0.0f,                               // Beta=0 (overwrite)
             nullptr
         );
     }
@@ -554,7 +554,7 @@ MlasFlashDecodingReduceThreaded(
 
         // Pointer to this (batch, head)'s partials: kv_chunk_count entries
         const float* partials_base = args->flash_decoding_partials +
-                                     task_index * kv_chunk_count * partial_stride;
+            task_index * kv_chunk_count * partial_stride;
 
         // Find global max across all chunks
         float global_m = std::numeric_limits<float>::lowest();

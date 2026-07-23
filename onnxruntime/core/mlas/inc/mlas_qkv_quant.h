@@ -46,9 +46,9 @@ Abstract:
 
 #pragma once
 
-#include <cstddef>
-
 #include "mlas.h"
+
+#include <cstddef>
 
 /**
  * @brief Quantization mode for the KV-cache GEMM kernels.
@@ -72,9 +72,9 @@ enum class MLAS_KV_QUANT_TYPE {
  *        platform. Always true for the portable reference implementation.
  */
 bool
-    MLASCALL
-    MlasIsKVQuantGemmSupported(
-        MLAS_KV_QUANT_TYPE QuantType
+MLASCALL
+MlasIsKVQuantGemmSupported(
+    MLAS_KV_QUANT_TYPE QuantType
     );
 
 /**
@@ -85,10 +85,10 @@ bool
  *        INT4: (cols + 1) / 2 bytes per row (low nibble = even element).
  */
 size_t
-    MLASCALL
-    MlasKVQuantPackedRowBytes(
-        MLAS_KV_QUANT_TYPE QuantType,
-        size_t Cols
+MLASCALL
+MlasKVQuantPackedRowBytes(
+    MLAS_KV_QUANT_TYPE QuantType,
+    size_t Cols
     );
 
 /**
@@ -111,16 +111,16 @@ size_t
  * @param ThreadPool Optional thread pool. May be null.
  */
 void
-    MLASCALL
-    MlasKVQuantize(
-        const float* Src,
-        void* Dst,
-        size_t Rows,
-        size_t Cols,
-        size_t lda,
-        MLAS_KV_QUANT_TYPE QuantType,
-        const float* Scales,
-        MLAS_THREADPOOL* ThreadPool
+MLASCALL
+MlasKVQuantize(
+    const float* Src,
+    void* Dst,
+    size_t Rows,
+    size_t Cols,
+    size_t lda,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 /**
@@ -131,16 +131,16 @@ void
  * directly and does not materialize an FP32 source matrix.
  */
 void
-    MLASCALL
-    MlasKVQuantizeFp16(
-        const MLAS_FP16* Src,
-        void* Dst,
-        size_t Rows,
-        size_t Cols,
-        size_t lda,
-        MLAS_KV_QUANT_TYPE QuantType,
-        const float* Scales,
-        MLAS_THREADPOOL* ThreadPool
+MLASCALL
+MlasKVQuantizeFp16(
+    const MLAS_FP16* Src,
+    void* Dst,
+    size_t Rows,
+    size_t Cols,
+    size_t lda,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 /**
@@ -158,16 +158,16 @@ void
  * @param ThreadPool Optional thread pool.
  */
 void
-    MLASCALL
-    MlasKVDequantize(
-        const void* Src,
-        float* Dst,
-        size_t Rows,
-        size_t Cols,
-        size_t ldb,
-        MLAS_KV_QUANT_TYPE QuantType,
-        const float* Scales,
-        MLAS_THREADPOOL* ThreadPool
+MLASCALL
+MlasKVDequantize(
+    const void* Src,
+    float* Dst,
+    size_t Rows,
+    size_t Cols,
+    size_t ldb,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 /**
@@ -200,20 +200,20 @@ void
  * @param ThreadPool Optional thread pool.
  */
 void
-    MLASCALL
-    MlasQKGemm(
-        size_t M,
-        size_t N,
-        size_t K,
-        float Alpha,
-        const float* A,
-        size_t lda,
-        const void* B,
-        MLAS_KV_QUANT_TYPE QuantType,
-        const float* Scales,
-        float* C,
-        size_t ldc,
-        MLAS_THREADPOOL* ThreadPool
+MLASCALL
+MlasQKGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    float Alpha,
+    const float* A,
+    size_t lda,
+    const void* B,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    float* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 /**
@@ -225,20 +225,20 @@ void
  * fallback without materializing an FP32 query buffer.
  */
 void
-    MLASCALL
-    MlasQKGemmFp16(
-        size_t M,
-        size_t N,
-        size_t K,
-        float Alpha,
-        const MLAS_FP16* A,
-        size_t lda,
-        const void* B,
-        MLAS_KV_QUANT_TYPE QuantType,
-        const float* Scales,
-        float* C,
-        size_t ldc,
-        MLAS_THREADPOOL* ThreadPool
+MLASCALL
+MlasQKGemmFp16(
+    size_t M,
+    size_t N,
+    size_t K,
+    float Alpha,
+    const MLAS_FP16* A,
+    size_t lda,
+    const void* B,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    float* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 /**
@@ -270,20 +270,20 @@ void
  * @param ThreadPool Optional thread pool.
  */
 void
-    MLASCALL
-    MlasSVGemm(
-        size_t M,
-        size_t N,
-        size_t K,
-        const float* A,
-        size_t lda,
-        const void* B,
-        MLAS_KV_QUANT_TYPE QuantType,
-        const float* Scales,
-        float* C,
-        size_t ldc,
-        float Beta,
-        MLAS_THREADPOOL* ThreadPool
+MLASCALL
+MlasSVGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const float* A,
+    size_t lda,
+    const void* B,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    float* C,
+    size_t ldc,
+    float Beta,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 /**
@@ -294,20 +294,20 @@ void
  * values, avoiding an FP16-to-FP32 output conversion buffer.
  */
 void
-    MLASCALL
-    MlasSVGemmFp16(
-        size_t M,
-        size_t N,
-        size_t K,
-        const float* A,
-        size_t lda,
-        const void* B,
-        MLAS_KV_QUANT_TYPE QuantType,
-        const float* Scales,
-        MLAS_FP16* C,
-        size_t ldc,
-        float Beta,
-        MLAS_THREADPOOL* ThreadPool
+MLASCALL
+MlasSVGemmFp16(
+    size_t M,
+    size_t N,
+    size_t K,
+    const float* A,
+    size_t lda,
+    const void* B,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    MLAS_FP16* C,
+    size_t ldc,
+    float Beta,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 /**
@@ -319,10 +319,10 @@ void
  */
 struct MlasFlashAttentionQuantizedKVArgs {
     int batch_size = 0;
-    int num_heads = 0;        // Q heads
-    int kv_num_heads = 0;     // KV heads (for GQA sharing)
-    int sequence_length = 0;  // Q sequence length (new tokens)
-    int total_seqlen = 0;     // Total KV sequence length (past + new)
+    int num_heads = 0;           // Q heads
+    int kv_num_heads = 0;        // KV heads (for GQA sharing)
+    int sequence_length = 0;     // Q sequence length (new tokens)
+    int total_seqlen = 0;        // Total KV sequence length (past + new)
     int head_size = 0;
     int past_seqlen = 0;         // For computing causal positions
     int local_window_size = -1;  // -1 = disabled
@@ -339,6 +339,10 @@ struct MlasFlashAttentionQuantizedKVArgs {
     float* buffer = nullptr;
     size_t buffer_size_per_thread = 0;
 
+    // FP32 vs FP16 activation pointers are mutually exclusive. For each pair below
+    // (query/query_fp16, output/output_fp16, attention_bias/attention_bias_fp16),
+    // exactly one member is set and the other stays null; the kernel selects the
+    // path from the non-null query/output pointer. Do not set both members of a pair.
     const float* query = nullptr;           // [B, N, S, H] FP32
     const MLAS_FP16* query_fp16 = nullptr;  // [B, N, S, H] FP16
     size_t q_batch_stride = 0;              // element stride between consecutive batches in `query`
@@ -376,8 +380,8 @@ struct MlasFlashAttentionQuantizedKVArgs {
  * @param ThreadPool Optional thread pool for parallelization.
  */
 void
-    MLASCALL
-    MlasFlashAttentionQuantizedKV(
-        MlasFlashAttentionQuantizedKVArgs* args,
-        MLAS_THREADPOOL* ThreadPool
+MLASCALL
+MlasFlashAttentionQuantizedKV(
+    MlasFlashAttentionQuantizedKVArgs* args,
+    MLAS_THREADPOOL* ThreadPool
     );

@@ -19,21 +19,20 @@ Abstract:
 
 --*/
 
+#include "mlas_qkv_quant.h"
+#include "mlasi.h"
+#include "qkv_quant_kernel.h"
+#include "qkv_quant_common.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <memory>
 
-#include "mlas_qkv_quant.h"
-#include "mlasi.h"
-#include "qkv_quant_common.h"
-#include "qkv_quant_kernel.h"
-
 using namespace MlasKVQuantInternal;
 
-namespace
-{
+namespace {
 
 constexpr int kInt4Min = -8;
 constexpr int kInt4Max = 7;
@@ -45,7 +44,8 @@ inline int8_t
 QuantizeInt8(float x, float inv_scale)
 {
     const float q = std::rintf(x * inv_scale);
-    const int qi = static_cast<int>(std::max(static_cast<float>(kInt8Min), std::min(static_cast<float>(kInt8Max), q)));
+    const int qi = static_cast<int>(std::max(static_cast<float>(kInt8Min),
+                                             std::min(static_cast<float>(kInt8Max), q)));
     return static_cast<int8_t>(qi);
 }
 
@@ -53,7 +53,8 @@ inline int
 QuantizeInt4Nibble(float x, float inv_scale)
 {
     const float q = std::rintf(x * inv_scale);
-    const int qi = static_cast<int>(std::max(static_cast<float>(kInt4Min), std::min(static_cast<float>(kInt4Max), q)));
+    const int qi = static_cast<int>(std::max(static_cast<float>(kInt4Min),
+                                             std::min(static_cast<float>(kInt4Max), q)));
     return qi;
 }
 
@@ -87,8 +88,7 @@ QuantizeRowInt8(
     int8_t* dst,
     size_t cols,
     bool per_channel,
-    const float* scales
-)
+    const float* scales)
 {
     if (per_channel) {
         for (size_t c = 0; c < cols; ++c) {
@@ -113,8 +113,7 @@ QuantizeRowInt4(
     uint8_t* dst,
     size_t cols,
     bool per_channel,
-    const float* scales
-)
+    const float* scales)
 {
     const size_t out_bytes = (cols + 1) / 2;
     for (size_t b = 0; b < out_bytes; ++b) {
@@ -132,8 +131,7 @@ QuantizeRowInt4(
         }
         dst[b] = static_cast<uint8_t>(
             (((q0 + kInt4Bias) & 0x0F)) |
-            ((((q1 + kInt4Bias) & 0x0F)) << 4)
-        );
+            ((((q1 + kInt4Bias) & 0x0F)) << 4));
     }
 }
 
@@ -143,8 +141,7 @@ QuantizeRowInt8Fp16(
     int8_t* dst,
     size_t cols,
     bool per_channel,
-    const float* scales
-)
+    const float* scales)
 {
     if (per_channel) {
         for (size_t c = 0; c < cols; ++c) {
@@ -164,8 +161,7 @@ QuantizeRowInt4Fp16(
     uint8_t* dst,
     size_t cols,
     bool per_channel,
-    const float* scales
-)
+    const float* scales)
 {
     const size_t out_bytes = (cols + 1) / 2;
     for (size_t b = 0; b < out_bytes; ++b) {
@@ -182,8 +178,7 @@ QuantizeRowInt4Fp16(
         }
         dst[b] = static_cast<uint8_t>(
             (((q0 + kInt4Bias) & 0x0F)) |
-            ((((q1 + kInt4Bias) & 0x0F)) << 4)
-        );
+            ((((q1 + kInt4Bias) & 0x0F)) << 4));
     }
 }
 
@@ -194,8 +189,7 @@ DequantizeRowInt8(
     float* dst,
     size_t cols,
     bool per_channel,
-    const float* scales
-)
+    const float* scales)
 {
     if (per_channel) {
         for (size_t c = 0; c < cols; ++c) {
@@ -216,8 +210,7 @@ DequantizeRowInt4(
     float* dst,
     size_t cols,
     bool per_channel,
-    const float* scales
-)
+    const float* scales)
 {
     for (size_t c = 0; c < cols; ++c) {
         const uint8_t packed = src[c / 2];
@@ -229,32 +222,31 @@ DequantizeRowInt4(
 }  // namespace
 
 bool
-    MLASCALL
-    MlasIsKVQuantGemmSupported(MLAS_KV_QUANT_TYPE /*QuantType*/)
+MLASCALL
+MlasIsKVQuantGemmSupported(MLAS_KV_QUANT_TYPE /*QuantType*/)
 {
     // The portable reference path supports every mode on every platform.
     return true;
 }
 
 size_t
-    MLASCALL
-    MlasKVQuantPackedRowBytes(MLAS_KV_QUANT_TYPE QuantType, size_t Cols)
+MLASCALL
+MlasKVQuantPackedRowBytes(MLAS_KV_QUANT_TYPE QuantType, size_t Cols)
 {
     return IsInt4Mode(QuantType) ? (Cols + 1) / 2 : Cols;
 }
 
 void
-    MLASCALL
-    MlasKVQuantize(
-        const float* Src,
-        void* Dst,
-        size_t Rows,
-        size_t Cols,
-        size_t lda,
-        MLAS_KV_QUANT_TYPE QuantType,
-        const float* Scales,
-        MLAS_THREADPOOL* ThreadPool
-    )
+MLASCALL
+MlasKVQuantize(
+    const float* Src,
+    void* Dst,
+    size_t Rows,
+    size_t Cols,
+    size_t lda,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    MLAS_THREADPOOL* ThreadPool)
 {
     if (Rows == 0 || Cols == 0) {
         return;
@@ -274,24 +266,23 @@ void
             if (int4) {
                 QuantizeRowInt4(src_row, dst_row, Cols, per_channel, Scales);
             } else {
-                QuantizeRowInt8(src_row, reinterpret_cast<int8_t*>(dst_row), Cols, per_channel, Scales);
+                QuantizeRowInt8(src_row, reinterpret_cast<int8_t*>(dst_row),
+                                Cols, per_channel, Scales);
             }
-        }
-    );
+        });
 }
 
 void
-    MLASCALL
-    MlasKVQuantizeFp16(
-        const MLAS_FP16* Src,
-        void* Dst,
-        size_t Rows,
-        size_t Cols,
-        size_t lda,
-        MLAS_KV_QUANT_TYPE QuantType,
-        const float* Scales,
-        MLAS_THREADPOOL* ThreadPool
-    )
+MLASCALL
+MlasKVQuantizeFp16(
+    const MLAS_FP16* Src,
+    void* Dst,
+    size_t Rows,
+    size_t Cols,
+    size_t lda,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    MLAS_THREADPOOL* ThreadPool)
 {
     if (Rows == 0 || Cols == 0) {
         return;
@@ -311,24 +302,23 @@ void
             if (int4) {
                 QuantizeRowInt4Fp16(src_row, dst_row, Cols, per_channel, Scales);
             } else {
-                QuantizeRowInt8Fp16(src_row, reinterpret_cast<int8_t*>(dst_row), Cols, per_channel, Scales);
+                QuantizeRowInt8Fp16(src_row, reinterpret_cast<int8_t*>(dst_row),
+                                    Cols, per_channel, Scales);
             }
-        }
-    );
+        });
 }
 
 void
-    MLASCALL
-    MlasKVDequantize(
-        const void* Src,
-        float* Dst,
-        size_t Rows,
-        size_t Cols,
-        size_t ldb,
-        MLAS_KV_QUANT_TYPE QuantType,
-        const float* Scales,
-        MLAS_THREADPOOL* ThreadPool
-    )
+MLASCALL
+MlasKVDequantize(
+    const void* Src,
+    float* Dst,
+    size_t Rows,
+    size_t Cols,
+    size_t ldb,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    MLAS_THREADPOOL* ThreadPool)
 {
     if (Rows == 0 || Cols == 0) {
         return;
@@ -348,28 +338,27 @@ void
             if (int4) {
                 DequantizeRowInt4(src_row, dst_row, Cols, per_channel, Scales);
             } else {
-                DequantizeRowInt8(reinterpret_cast<const int8_t*>(src_row), dst_row, Cols, per_channel, Scales);
+                DequantizeRowInt8(reinterpret_cast<const int8_t*>(src_row),
+                                  dst_row, Cols, per_channel, Scales);
             }
-        }
-    );
+        });
 }
 
 void
-    MLASCALL
-    MlasQKGemm(
-        size_t M,
-        size_t N,
-        size_t K,
-        float Alpha,
-        const float* A,
-        size_t lda,
-        const void* B,
-        MLAS_KV_QUANT_TYPE QuantType,
-        const float* Scales,
-        float* C,
-        size_t ldc,
-        MLAS_THREADPOOL* ThreadPool
-    )
+MLASCALL
+MlasQKGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    float Alpha,
+    const float* A,
+    size_t lda,
+    const void* B,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    float* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool)
 {
     if (M == 0 || N == 0) {
         return;
@@ -422,7 +411,8 @@ void
             if (int4) {
                 DequantizeRowInt4(b_row, b_buf, K, per_channel, Scales);
             } else {
-                DequantizeRowInt8(reinterpret_cast<const int8_t*>(b_row), b_buf, K, per_channel, Scales);
+                DequantizeRowInt8(reinterpret_cast<const int8_t*>(b_row),
+                                  b_buf, K, per_channel, Scales);
             }
 
             for (size_t m = 0; m < M; ++m) {
@@ -433,26 +423,24 @@ void
                 }
                 C[m * ldc + n] = Alpha * acc;
             }
-        }
-    );
+        });
 }
 
 void
-    MLASCALL
-    MlasQKGemmFp16(
-        size_t M,
-        size_t N,
-        size_t K,
-        float Alpha,
-        const MLAS_FP16* A,
-        size_t lda,
-        const void* B,
-        MLAS_KV_QUANT_TYPE QuantType,
-        const float* Scales,
-        float* C,
-        size_t ldc,
-        MLAS_THREADPOOL* ThreadPool
-    )
+MLASCALL
+MlasQKGemmFp16(
+    size_t M,
+    size_t N,
+    size_t K,
+    float Alpha,
+    const MLAS_FP16* A,
+    size_t lda,
+    const void* B,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    float* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool)
 {
     if (M == 0 || N == 0) {
         return;
@@ -492,26 +480,24 @@ void
                 }
                 C[m * ldc + n] = Alpha * acc;
             }
-        }
-    );
+        });
 }
 
 void
-    MLASCALL
-    MlasSVGemm(
-        size_t M,
-        size_t N,
-        size_t K,
-        const float* A,
-        size_t lda,
-        const void* B,
-        MLAS_KV_QUANT_TYPE QuantType,
-        const float* Scales,
-        float* C,
-        size_t ldc,
-        float Beta,
-        MLAS_THREADPOOL* ThreadPool
-    )
+MLASCALL
+MlasSVGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const float* A,
+    size_t lda,
+    const void* B,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    float* C,
+    size_t ldc,
+    float Beta,
+    MLAS_THREADPOOL* ThreadPool)
 {
     if (M == 0 || N == 0) {
         return;
@@ -578,33 +564,33 @@ void
                 if (int4) {
                     DequantizeRowInt4(b_row_packed, b_buf, N, per_channel, Scales);
                 } else {
-                    DequantizeRowInt8(reinterpret_cast<const int8_t*>(b_row_packed), b_buf, N, per_channel, Scales);
+                    DequantizeRowInt8(reinterpret_cast<const int8_t*>(b_row_packed),
+                                      b_buf, N, per_channel, Scales);
                 }
                 const float a_val = a_row[k];
                 for (size_t n = 0; n < N; ++n) {
                     c_row[n] += a_val * b_buf[n];
                 }
             }
-        }
-    );
+        });
 }
 
+
 void
-    MLASCALL
-    MlasSVGemmFp16(
-        size_t M,
-        size_t N,
-        size_t K,
-        const float* A,
-        size_t lda,
-        const void* B,
-        MLAS_KV_QUANT_TYPE QuantType,
-        const float* Scales,
-        MLAS_FP16* C,
-        size_t ldc,
-        float Beta,
-        MLAS_THREADPOOL* ThreadPool
-    )
+MLASCALL
+MlasSVGemmFp16(
+    size_t M,
+    size_t N,
+    size_t K,
+    const float* A,
+    size_t lda,
+    const void* B,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    MLAS_FP16* C,
+    size_t ldc,
+    float Beta,
+    MLAS_THREADPOOL* ThreadPool)
 {
     if (M == 0 || N == 0) {
         return;
@@ -647,6 +633,5 @@ void
                 }
                 c_row[n] = MLAS_FP16(acc);
             }
-        }
-    );
+        });
 }

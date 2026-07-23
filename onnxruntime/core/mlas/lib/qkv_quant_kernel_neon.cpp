@@ -257,6 +257,9 @@ QKGemmFp16_Neon(
     float* C,
     size_t ldc)
 {
+    // NEON converts the FP16 query tile to FP32 once and reuses the FP32 kernel.
+    // Decode (M == 1) fits the stack scratch; only wider multi-row prefill tiles
+    // whose M * K exceeds it spill to the heap.
     const size_t a_count = M * K;
     float a_stack[256];
     float* a_buf = a_stack;
@@ -381,6 +384,8 @@ SVGemmFp16_Neon(
     size_t ldc,
     float Beta)
 {
+    // FP32 accumulation scratch for one output row (N == head_size). Stays on the
+    // stack for typical head sizes and only spills to the heap when N > 256.
     float c_stack[256];
     float* c_buf = c_stack;
     std::unique_ptr<float[]> heap_buf;

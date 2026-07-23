@@ -74,9 +74,11 @@ slower than the equivalent FP32 kernel for INT8 caches.
 
 ### Changes
 
-- QK converts an FP16 query tile to FP32 once when conversion is profitable. On x86,
+- QK converts an FP16 query tile to FP32 once when conversion is profitable. On AVX2,
   single-row INT8 decode keeps direct FP16 vector loads, while INT4 decode and multi-row
-  prefill reuse the converted tile. NEON converts once and reuses its existing FP32 kernel.
+  prefill reuse the converted tile. On AVX-512 VNNI, INT8 uses direct FP16 loads for any row
+  count and only INT4 reuses the converted tile. NEON converts once and reuses its existing
+  FP32 kernel.
 - SV reuses the cache-friendly FP32 accumulation kernel with one FP32 scratch row, then writes
   the result to FP16 with vectorized conversion.
 - Equivalent algorithmic changes are applied to AVX2, AVX-512, and NEON dispatches.
