@@ -79,10 +79,13 @@ macro(setup_cuda_architectures)
   # Special values:
   # (1) `native` is resolved to HIGHEST available architecture. Fallback to `all` if detection failed.
   # (2) `all` / `all-major` / unset is resolved to a default set of architectures we optimized and compiler supports.
-  # Numerical architectures:
-  #  * For `-virtual` architectures, the last one is kept as it is, and the others are ignored.
-  #  * `-real` suffix is automatically added for other cases.
-  #  * Always use accelerated (`-a` suffix) target for supported real architectures.
+  # Numerical architectures follow standard CMake semantics:
+  #  * A suffix-less architecture (e.g. `86`) enables BOTH `86-real` (SASS) and `86-virtual` (PTX).
+  #  * A `-real` architecture is kept real only, and a `-virtual` architecture is kept virtual only.
+  #    Every `-virtual` entry embeds its own PTX (the whole list is preserved, not just the last one).
+  #  * Supported real (SASS) architectures (SM >= 90) use the accelerated (`-a` suffix) target for
+  #    features like WGMMA and TMA. Virtual (PTX) architectures keep the user-specified variant so the
+  #    embedded PTX stays forward compatible on newer GPUs.
   # cmake-format: on
 
   # Allow override via CUDAARCHS environment variable (standard CMake variable)
@@ -137,28 +140,33 @@ macro(setup_cuda_architectures)
     endif()
   endif()
 
-  unset(CMAKE_CUDA_ARCHITECTURES_CLEAN)
-  unset(CMAKE_CUDA_ARCHITECTURES_LAST_VIRTUAL)
+  unset(CMAKE_CUDA_ARCHITECTURES_REAL_CLEAN)
+  unset(CMAKE_CUDA_ARCHITECTURES_VIRTUAL_CLEAN)
   foreach(CUDA_ARCH IN LISTS CMAKE_CUDA_ARCHITECTURES)
     if(CUDA_ARCH STREQUAL "")
       continue()
     endif()
 
-    if(CUDA_ARCH MATCHES "^([1-9])([0-9])+[af]?-virtual$")
-      set(CMAKE_CUDA_ARCHITECTURES_LAST_VIRTUAL ${CUDA_ARCH})
-    elseif(CUDA_ARCH MATCHES "^(([1-9])([0-9])+)[af]?-real$")
-      list(APPEND CMAKE_CUDA_ARCHITECTURES_CLEAN ${CMAKE_MATCH_1})
+    if(CUDA_ARCH MATCHES "^(([1-9])([0-9])+[af]?)-virtual$")
+      list(APPEND CMAKE_CUDA_ARCHITECTURES_VIRTUAL_CLEAN ${CMAKE_MATCH_1})
+    elseif(CUDA_ARCH MATCHES "^(([1-9])([0-9])+[af]?)-real$")
+      list(APPEND CMAKE_CUDA_ARCHITECTURES_REAL_CLEAN ${CMAKE_MATCH_1})
     elseif(CUDA_ARCH MATCHES "^(([1-9])([0-9])+)([af]?)$")
-      list(APPEND CMAKE_CUDA_ARCHITECTURES_CLEAN ${CMAKE_MATCH_1}${CMAKE_MATCH_4})
+      # Suffix-less architecture: standard CMake enables both real (SASS) and virtual (PTX).
+      list(APPEND CMAKE_CUDA_ARCHITECTURES_REAL_CLEAN ${CMAKE_MATCH_1}${CMAKE_MATCH_4})
+      list(APPEND CMAKE_CUDA_ARCHITECTURES_VIRTUAL_CLEAN ${CMAKE_MATCH_1}${CMAKE_MATCH_4})
     else()
       message(FATAL_ERROR "Unrecognized CUDA architecture: ${CUDA_ARCH}")
     endif()
   endforeach()
-  list(REMOVE_DUPLICATES CMAKE_CUDA_ARCHITECTURES_CLEAN)
-  set(CMAKE_CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES_CLEAN})
+  list(REMOVE_DUPLICATES CMAKE_CUDA_ARCHITECTURES_REAL_CLEAN)
+  list(REMOVE_DUPLICATES CMAKE_CUDA_ARCHITECTURES_VIRTUAL_CLEAN)
+  set(CMAKE_CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES_REAL_CLEAN})
 
   # CMAKE_CUDA_ARCHITECTURES_ORIG contains all architectures enabled, without automatically added -real or -a suffix.
-  set(CMAKE_CUDA_ARCHITECTURES_ORIG "${CMAKE_CUDA_ARCHITECTURES}")
+  set(CMAKE_CUDA_ARCHITECTURES_ORIG "${CMAKE_CUDA_ARCHITECTURES_REAL_CLEAN}")
+  list(APPEND CMAKE_CUDA_ARCHITECTURES_ORIG ${CMAKE_CUDA_ARCHITECTURES_VIRTUAL_CLEAN})
+  list(REMOVE_DUPLICATES CMAKE_CUDA_ARCHITECTURES_ORIG)
   message(STATUS "GPU architectures: ${CMAKE_CUDA_ARCHITECTURES_ORIG}")
 
   unset(ORT_HAS_SM80_OR_LATER)
@@ -205,7 +213,7 @@ macro(setup_cuda_architectures)
   # Enable accelerated features (like WGMMA, TMA and setmaxnreg) for SM >= 90.
   set(ARCHITECTURES_WITH_ACCEL "90" "100" "101" "110" "120")
   unset(CMAKE_CUDA_ARCHITECTURES_NORMALIZED)
-  foreach(CUDA_ARCH IN LISTS CMAKE_CUDA_ARCHITECTURES)
+  foreach(CUDA_ARCH IN LISTS CMAKE_CUDA_ARCHITECTURES_REAL_CLEAN)
     if(CUDA_ARCH MATCHES "^([0-9]+)f$")
       # Family code, no -real suffix
       list(APPEND CMAKE_CUDA_ARCHITECTURES_NORMALIZED "${CUDA_ARCH}")
@@ -216,9 +224,18 @@ macro(setup_cuda_architectures)
     endif()
   endforeach()
 
-  if(DEFINED CMAKE_CUDA_ARCHITECTURES_LAST_VIRTUAL)
-    list(APPEND CMAKE_CUDA_ARCHITECTURES_NORMALIZED "${CMAKE_CUDA_ARCHITECTURES_LAST_VIRTUAL}")
-  endif()
+  foreach(CUDA_ARCH IN LISTS CMAKE_CUDA_ARCHITECTURES_VIRTUAL_CLEAN)
+    if(CUDA_ARCH MATCHES "^([0-9]+)f$")
+      # Family code, no -virtual suffix
+      list(APPEND CMAKE_CUDA_ARCHITECTURES_NORMALIZED "${CUDA_ARCH}")
+    else()
+      # Keep the user-specified virtual arch and do not force the accelerated `a` suffix:
+      # `Na-virtual` PTX is not forward compatible, while `N-virtual` PTX JITs onto newer GPUs.
+      list(APPEND CMAKE_CUDA_ARCHITECTURES_NORMALIZED "${CUDA_ARCH}-virtual")
+    endif()
+  endforeach()
+
+  list(REMOVE_DUPLICATES CMAKE_CUDA_ARCHITECTURES_NORMALIZED)
 
   set(CMAKE_CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES_NORMALIZED})
 
