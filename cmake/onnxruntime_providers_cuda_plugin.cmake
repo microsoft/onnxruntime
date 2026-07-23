@@ -135,6 +135,7 @@ endforeach()
 # Apply shared CUDA .cu source filtering (flash attention quick build, MoE GEMM FP4/FP8).
 include(onnxruntime_cuda_source_filters.cmake)
 onnxruntime_filter_cuda_cu_sources(CUDA_PLUGIN_EP_CU_SRCS)
+onnxruntime_filter_trt_fused_attention_sources(CUDA_PLUGIN_EP_CC_SRCS CUDA_PLUGIN_EP_CU_SRCS)
 onnxruntime_extract_sm_specific_cuda_sources(CUDA_PLUGIN_EP_CU_SRCS
   SM90_SOURCES _cuda_plugin_sm90_tma_srcs
   SM120_SOURCES _cuda_plugin_sm120_tma_srcs

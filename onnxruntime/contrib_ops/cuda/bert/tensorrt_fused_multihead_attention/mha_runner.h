@@ -66,6 +66,7 @@ class FusedMHARunnerFP16v2 : public MHARunner {
 
   ~FusedMHARunnerFP16v2() = default;  // for impl_
 
+#if defined(USE_TRT_FUSED_ATTENTION)
   static bool IsSupported(int sm, int head_size, int sequence_length, bool enable_flash_attention);
 
   static std::unique_ptr<MHARunner> Create(int num_heads,
@@ -73,6 +74,23 @@ class FusedMHARunnerFP16v2 : public MHARunner {
                                            int sm,
                                            bool enable_flash_attention,
                                            float scale);
+#else
+  // The TensorRT fused multi-head attention cubins are excluded from this build
+  // (onnxruntime_USE_TRT_FUSED_ATTENTION=OFF). Provide inline stubs so all op
+  // call-sites still compile and link; the runner is simply never selected.
+  static bool IsSupported(int /*sm*/, int /*head_size*/, int /*sequence_length*/,
+                          bool /*enable_flash_attention*/) {
+    return false;
+  }
+
+  static std::unique_ptr<MHARunner> Create(int /*num_heads*/,
+                                           int /*head_size*/,
+                                           int /*sm*/,
+                                           bool /*enable_flash_attention*/,
+                                           float /*scale*/) {
+    return nullptr;
+  }
+#endif
 
   bool IsValid(int normalized_sequence_length) const override;
 

@@ -46,7 +46,42 @@ function(onnxruntime_filter_cuda_cu_sources CU_SRC_LIST)
   set("${CU_SRC_LIST}" "${_list}" PARENT_SCOPE)
 endfunction()
 
-# Extract SM90/SM120 TMA warp-specialized generated source files from a CUDA source list.
+# Exclude the TensorRT fused multi-head attention cubin byte-array sources when
+# onnxruntime_USE_TRT_FUSED_ATTENTION is OFF. These are ~70 MB of raw embedded
+# SASS (the .cubin.cc cross/flash byte arrays and the fused_multihead_attention_v2
+# fp16 kernel .sm*.cc byte arrays) reached only by the contrib
+# Attention/MultiHeadAttention/PackedAttention "trt_fused" path
+# (FusedMHARunnerFP16v2 + fused cross-attention). Decoder-only LLM ops
+# (GroupQueryAttention, etc.) never use them. The loader entry points are stubbed
+# inline in mha_runner.h / fmha_cross_attention.h when USE_TRT_FUSED_ATTENTION is
+# undefined, so all op call-sites still compile and link.
+#
+# Removed:
+#   * <trt_dir>/**/*.cubin.cc                                  (cross + flash cubins, ~67 MB)
+#   * <trt_dir>/fused_multihead_attention_v2_fp16_*_kernel.sm*.cc (v2 kernel cubins, ~24 MB)
+#   * <trt_dir>/mha_runner.cu   (defines FusedMHARunnerFP16v2; odr-uses the cubins)
+# Kept (still needed by the inline run_fused_cross_attention chain / headers):
+#   * <trt_dir>/cudaDriverWrapper.cc and all headers.
+#
+# Usage:
+#   onnxruntime_filter_trt_fused_attention_sources(<cc_src_list_var> <cu_src_list_var>)
+function(onnxruntime_filter_trt_fused_attention_sources CC_SRC_LIST CU_SRC_LIST)
+  if(onnxruntime_USE_TRT_FUSED_ATTENTION)
+    return()
+  endif()
+
+  message(STATUS "onnxruntime_USE_TRT_FUSED_ATTENTION=OFF: excluding TensorRT fused MHA cubin sources")
+
+  set(_cc "${${CC_SRC_LIST}}")
+  set(_cu "${${CU_SRC_LIST}}")
+
+  list(FILTER _cc EXCLUDE REGEX "/tensorrt_fused_multihead_attention/.*\\.cubin\\.cc$")
+  list(FILTER _cc EXCLUDE REGEX "/tensorrt_fused_multihead_attention/fused_multihead_attention_v2_fp16_.*_kernel\\.sm[0-9]+\\.cc$")
+  list(FILTER _cu EXCLUDE REGEX "/tensorrt_fused_multihead_attention/mha_runner\\.cu$")
+
+  set("${CC_SRC_LIST}" "${_cc}" PARENT_SCOPE)
+  set("${CU_SRC_LIST}" "${_cu}" PARENT_SCOPE)
+endfunction()
 # These files use CUTLASS 3.x features (GMMA, TMA) that are specific to SM90+ or SM120+.
 # They are compiled in separate OBJECT libraries with restricted CUDA_ARCHITECTURES to:
 #   1. Reduce compile time (avoid compiling heavy templates for unused architectures)

@@ -67,6 +67,7 @@
 
   include(onnxruntime_cuda_source_filters.cmake)
   onnxruntime_filter_cuda_cu_sources(onnxruntime_cuda_contrib_ops_cu_srcs)
+  onnxruntime_filter_trt_fused_attention_sources(onnxruntime_cuda_contrib_ops_cc_srcs onnxruntime_cuda_contrib_ops_cu_srcs)
   onnxruntime_extract_sm_specific_cuda_sources(onnxruntime_cuda_contrib_ops_cu_srcs
     SM90_SOURCES onnxruntime_cuda_sm90_tma_srcs
     SM120_SOURCES onnxruntime_cuda_sm120_tma_srcs
