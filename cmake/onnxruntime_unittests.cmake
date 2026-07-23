@@ -1034,9 +1034,13 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
     "${TEST_SRC_DIR}/providers/cuda/test_cases/allocator_cuda_test.cc"
     "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_utils_test.cc"
     "${TEST_SRC_DIR}/providers/cuda/test_cases/reduction_functions_test.cc"
-    "${TEST_SRC_DIR}/providers/cuda/test_cases/matmul_nbits_workspace_test.cc"
-    "${TEST_SRC_DIR}/providers/cuda/test_cases/matmul_nbits_e2e_workspace_test.cc"
   )
+  # matmul_nbits_workspace_test.cc / matmul_nbits_e2e_workspace_test.cc are intentionally excluded
+  # from the plugin-internal test list: they construct the concrete in-tree CUDAExecutionProvider
+  # and MatMulNBits<T> kernel types and downcast a plugin-world OpKernel to MatMulNBits<MLFloat16>,
+  # which is undefined behavior against a real PluginEpOpKernel (whose DeclareWorkspaceRequirements()
+  # is the default no-op under BUILD_CUDA_EP_AS_PLUGIN). Re-enable them here once workspace
+  # estimation/declaration is bridged through OrtKernelImpl for plugin kernels.
 
   if (NOT onnxruntime_DISABLE_CONTRIB_OPS)
     list(APPEND onnxruntime_test_providers_cuda_plugin_internal_test_src
