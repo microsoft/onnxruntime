@@ -135,6 +135,14 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
       });
     });
   }
+
+  runSync(
+    feeds: SessionHandler.FeedsType,
+    fetches: SessionHandler.FetchesType,
+    options: InferenceSession.RunOptions,
+  ): SessionHandler.ReturnType {
+    return this.#inferenceSession.run(feeds, fetches, options);
+  }
 }
 
 class OnnxruntimeBackend implements Backend {
