@@ -183,6 +183,7 @@ static const FusedMultiHeadCrossAttentionKernelMetaInfoV2 sMhaKernelMetaInfos[] 
     {DATA_TYPE_FP16, 128, 256, kSM_89, cubin_fmha_mhca_fp16_128_256_sm89_cu_cubin, cubin_fmha_mhca_fp16_128_256_sm89_cu_cubin_len, "fmha_mhca_fp16_128_256_sm89_kernel_nl", 81920, 256, 16, false}};
 #endif  // USE_TRT_FUSED_ATTENTION
 
+#if defined(USE_TRT_FUSED_ATTENTION)
 static Fused_multihead_attention_params_mhca getMHCAParams(
     // sizes
     int32_t b, int32_t s_q, int32_t s_kv, int32_t h, int32_t d,
@@ -231,6 +232,7 @@ static Fused_multihead_attention_params_mhca getMHCAParams(
 
   return params;
 }
+#endif  // USE_TRT_FUSED_ATTENTION
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 class FusedMultiHeadCrossAttentionKernel
@@ -315,10 +317,28 @@ inline void run_fused_cross_attention(
     int32_t seqQ = 4096,                                // sequence length of Q
     int32_t seqKV = 77,                                 // sequence lenth of KV
     cudaStream_t stream = 0) {                          // cuda stream
+#if defined(USE_TRT_FUSED_ATTENTION)
   Fused_multihead_attention_params_mhca params = getMHCAParams(
       b, seqQ, seqKV, h, d, devQ, devKV, cuSeqlensQ, cuSeqlensKV, devOutput);
 
   kernels->run(params, stream);
+#else
+  // TensorRT fused cross-attention cubins are excluded from this build; this path is unreachable
+  // because has_fused_cross_attention_kernel() returns false and no kernel is ever selected.
+  ORT_UNUSED_PARAMETER(devQ);
+  ORT_UNUSED_PARAMETER(devKV);
+  ORT_UNUSED_PARAMETER(cuSeqlensQ);
+  ORT_UNUSED_PARAMETER(cuSeqlensKV);
+  ORT_UNUSED_PARAMETER(devOutput);
+  ORT_UNUSED_PARAMETER(kernels);
+  ORT_UNUSED_PARAMETER(b);
+  ORT_UNUSED_PARAMETER(h);
+  ORT_UNUSED_PARAMETER(d);
+  ORT_UNUSED_PARAMETER(seqQ);
+  ORT_UNUSED_PARAMETER(seqKV);
+  ORT_UNUSED_PARAMETER(stream);
+  ORT_THROW("TensorRT fused cross-attention is disabled in this build (USE_TRT_FUSED_ATTENTION=OFF).");
+#endif
 }
 
 }  // namespace cuda
