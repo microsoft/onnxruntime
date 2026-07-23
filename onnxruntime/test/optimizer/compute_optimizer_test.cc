@@ -1773,12 +1773,13 @@ TEST(ComputeOptimizerTests, GatherRobertaE2E) {
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
 
-    // CPU now executes these MatMuls in fp16, so allow for backend-specific
-    // fp16 rounding when Gather changes their input shapes.
-    const double tolerance = provider_type == onnxruntime::kCpuExecutionProvider ? 1e-2 : 2e-3;
+    // Moving Gather before MatMul changes the MatMul shapes and may alter the
+    // floating-point accumulation order, so allow a small numerical difference.
+    constexpr double per_sample_tolerance = 2e-3;
+    constexpr double relative_per_sample_tolerance = 2e-3;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
       auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
-                                 tolerance, tolerance, false);
+                                 per_sample_tolerance, relative_per_sample_tolerance, false);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
     }
   }

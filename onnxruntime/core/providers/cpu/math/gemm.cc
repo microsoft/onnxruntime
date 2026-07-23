@@ -205,7 +205,15 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
 
   if (c_data == nullptr)
     beta = onnxruntime::MLFloat16::Zero;
-#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+
+  // Guard against using generic half GEMM when no accelerated implementation is
+  // available. Native packing support currently also signals an accelerated
+  // backend path.
+  const bool has_accelerated_half_gemm =
+      MlasFp16AccelerationSupported() ||
+      MlasHalfGemmNativePackBSize(CblasNoTrans, CblasNoTrans,
+                                  static_cast<size_t>(N), static_cast<size_t>(K),
+                                  mlas_backend_kernel_selector_config) != 0;
   bool support_mlas_bias = false;
   if (c_shape == nullptr) {
     support_mlas_bias = true;
@@ -217,7 +225,7 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
   }
   const bool use_mlas_no_bias = beta == onnxruntime::MLFloat16::Zero;
   const bool use_mlas_bias = beta == onnxruntime::MLFloat16::One && support_mlas_bias;
-  if (trans_a == CblasNoTrans && trans_b == CblasNoTrans &&
+  if (has_accelerated_half_gemm && trans_a == CblasNoTrans && trans_b == CblasNoTrans &&
       alpha == onnxruntime::MLFloat16::One && (use_mlas_no_bias || use_mlas_bias)) {
     MLAS_HALF_GEMM_DATA_PARAMS data{};
     data.A = a_data;
@@ -233,7 +241,6 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
     MlasHalfGemmBatch(M, N, K, 1, &data, thread_pool);
     return;
   }
-#endif
   // Fallback to Eigen
   // Broadcast the bias as needed if bias is given
   GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);

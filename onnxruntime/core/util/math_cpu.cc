@@ -219,8 +219,11 @@ void MatMul<MLFloat16>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const MLFloat16* A
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
 #endif
   auto C_mat = EigenMatrixMap<Eigen::half>(reinterpret_cast<Eigen::half*>(C), N, M);
-  C_mat.noalias() = ConstEigenMatrixMap<Eigen::half>(reinterpret_cast<const Eigen::half*>(B), N, K) *
-                    ConstEigenMatrixMap<Eigen::half>(reinterpret_cast<const Eigen::half*>(A), K, M);
+  // Accumulate the fallback in fp32 and round only the result to fp16.
+  C_mat.noalias() =
+      (ConstEigenMatrixMap<Eigen::half>(reinterpret_cast<const Eigen::half*>(B), N, K).cast<float>() *
+       ConstEigenMatrixMap<Eigen::half>(reinterpret_cast<const Eigen::half*>(A), K, M).cast<float>())
+          .cast<Eigen::half>();
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
