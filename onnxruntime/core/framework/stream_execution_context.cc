@@ -5,9 +5,29 @@
 #include "core/framework/execution_frame.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/session_state.h"
-#include "core/common/spin_pause.h"
 
 namespace onnxruntime {
+void StreamExecutionContext::FirstFailureStatus::SetStatus(const Status& status) {
+  if (status.IsOK()) {
+    return;
+  }
+
+  std::lock_guard lock(mutex_);
+  if (status_.IsOK()) {
+    status_ = status;
+  }
+}
+
+Status StreamExecutionContext::FirstFailureStatus::GetStatus() const {
+  std::lock_guard lock(mutex_);
+  return status_;
+}
+
+void StreamExecutionContext::FirstFailureStatus::Reset() {
+  std::lock_guard lock(mutex_);
+  status_ = Status::OK();
+}
+
 #ifdef ORT_ENABLE_STREAM
 StreamExecutionContext::StreamExecutionContext(const SessionState& sess_state,
                                                int32_t num_streams,
@@ -20,6 +40,7 @@ StreamExecutionContext::StreamExecutionContext(const SessionState& sess_state,
                                                const std::unordered_map<size_t, IExecutor::CustomAllocator>&
                                                    fetch_allocators,
                                                const logging::Logger& sess_logger,
+                                               onnxruntime::CancellationToken terminate_token,
                                                bool single_thread_mode)
     : session_state_(&sess_state),
       frame_(feed_mlvalue_idxs,
@@ -57,8 +78,7 @@ StreamExecutionContext::StreamExecutionContext(const SessionState& sess_state,
   for (size_t i = 0; i < num_barriers; ++i) {
     count_down_barriers_[i].Set(2);
   }
-  // init remain task to number of streams
-  remain_tasks_.Set(num_streams);
+  ResetForExecution(num_streams, terminate_token);
   // generate release plan (the ref counts)
   auto& release_actions = sess_state.GetExecutionPlan()->release_actions;
   for (size_t i = 0; i < release_actions.size(); ++i) {
@@ -92,6 +112,7 @@ StreamExecutionContext::StreamExecutionContext(const SessionState& sess_state,
                                                const std::unordered_map<size_t, IExecutor::CustomAllocator>&
                                                    fetch_allocators,
                                                const logging::Logger& sess_logger,
+                                               onnxruntime::CancellationToken terminate_token,
                                                bool single_thread_mode)
     : session_state_(&sess_state),
       frame_(feed_mlvalue_idxs,
@@ -111,8 +132,7 @@ StreamExecutionContext::StreamExecutionContext(const SessionState& sess_state,
 #ifdef _WIN32
 #pragma warning(pop)
 #endif
-  // init remain task to number of streams
-  remain_tasks_.Set(num_streams);
+  ResetForExecution(num_streams, terminate_token);
   // generate release plan (the ref counts)
   auto& release_actions = sess_state.GetExecutionPlan()->release_actions;
   for (size_t i = 0; i < release_actions.size(); ++i) {
@@ -139,8 +159,8 @@ const logging::Logger& StreamExecutionContext ::GetLogger() const { return *logg
 
 ExecutionFrame& StreamExecutionContext ::GetExecutionFrame() { return frame_; }
 
-const Status& StreamExecutionContext ::TaskStatus() const {
-  return task_status_;
+Status StreamExecutionContext ::TaskStatus() const {
+  return task_status_.GetStatus();
 }
 
 void StreamExecutionContext ::CompleteTask() {
@@ -152,17 +172,24 @@ void StreamExecutionContext ::AddTask() {
 }
 
 void StreamExecutionContext ::WaitAll() {
-  while (remain_tasks_.Get())
-    onnxruntime::concurrency::SpinPause();
+  remain_tasks_.Wait();
 }
 
-void StreamExecutionContext ::SetStatus(Status& status) {
-  // TODO: if multiple worker report non-ok status,
-  // what is our strategy? currently we just keep
-  // a random one. as long as it is not OK, the
-  // execution will fail.
-  if (task_status_.IsOK() && !status.IsOK())
-    task_status_ = status;
+void StreamExecutionContext ::SetStatus(const Status& status) {
+  if (!status.IsOK()) {
+    task_status_.SetStatus(status);
+    stop_source_.request_stop();
+  }
+}
+
+void StreamExecutionContext::ResetForExecution(int32_t num_tasks, onnxruntime::CancellationToken terminate_token) {
+  ORT_ENFORCE(remain_tasks_.Get() == 0);
+
+  external_stop_callback_.reset();
+  stop_source_ = onnxruntime::CancellationSource{};
+  task_status_.Reset();
+  remain_tasks_.Set(num_tasks);
+  external_stop_callback_.emplace(terminate_token, RequestStop{stop_source_});
 }
 
 StreamExecutionContext::~StreamExecutionContext() {}
@@ -177,10 +204,12 @@ void StreamExecutionContext::RecycleNodeInputs(onnxruntime::NodeIndex node_index
   }
 }
 
-void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& session_scope, const bool& terminate_flag, size_t since) {
-  if (!ctx.TaskStatus().IsOK()) {
-    // already in bad status, terminate it
-    ctx.CompleteTask();
+void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& session_scope,
+              onnxruntime::CancellationToken terminate_token, size_t since) {
+  [[maybe_unused]] auto complete_task = gsl::finally([&ctx]() { ctx.CompleteTask(); });
+
+  if (terminate_token.stop_requested()) {
+    ctx.SetStatus(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true."));
     return;
   }
 
@@ -225,20 +254,14 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
 #endif
 
   while (since < end) {
-    if (!ctx.TaskStatus().IsOK()) {
-      ctx.CompleteTask();
-      return;
-    }
-    if (terminate_flag) {
-      Status status_made = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
-      ctx.SetStatus(status_made);
-      ctx.CompleteTask();
+    if (terminate_token.stop_requested()) {
+      ctx.SetStatus(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true."));
       return;
     }
     bool continue_flag = true;
     Status status;
     ORT_TRY {
-      status = logic_stream->steps_[since]->Execute(ctx, stream_idx, session_scope, terminate_flag, continue_flag);
+      status = logic_stream->steps_[since]->Execute(ctx, stream_idx, session_scope, terminate_token, continue_flag);
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {
@@ -246,25 +269,19 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
       });
     }
     if (!status.IsOK()) {
-      // terminate it
       ctx.SetStatus(status);
-      ctx.CompleteTask();
       return;
     }
     if (!continue_flag) {
-      // break but not terminate
-      ctx.CompleteTask();
       return;
     }
     since++;
   }
   ORT_ENFORCE(since == end);
-  ctx.CompleteTask();
-  return;
 }
 
 void ScheduleDownstream(StreamExecutionContext& ctx, size_t trigger, bool single_thread_mode,
-                        const bool& terminate_flag, SessionScope& session_scope) {
+                        onnxruntime::CancellationToken terminate_token, SessionScope& session_scope) {
   auto* plan = ctx.GetSessionState().GetExecutionPlan();
   auto& downstream_map = plan->downstream_map;
   auto* tp = single_thread_mode ? nullptr : ctx.GetSessionState().GetInterOpThreadPool();
@@ -273,8 +290,8 @@ void ScheduleDownstream(StreamExecutionContext& ctx, size_t trigger, bool single
     for (auto downstream : it->second) {
       // increase the task count before schedule down-stream
       ctx.AddTask();
-      concurrency::ThreadPool::Schedule(tp, [&ctx, downstream, &terminate_flag, &session_scope]() {
-        RunSince(downstream.first, ctx, session_scope, terminate_flag, downstream.second);
+      concurrency::ThreadPool::Schedule(tp, [&ctx, downstream, terminate_token, &session_scope]() {
+        RunSince(downstream.first, ctx, session_scope, terminate_token, downstream.second);
       });
     }
   }

@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "core/framework/cancellation.h"
+
 #include "core/graph/basic_types.h"
 #include "core/common/inlined_containers.h"
 #include "core/framework/alloc_kind.h"
@@ -114,7 +116,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
     virtual Status Execute(StreamExecutionContext& ctx,
                            size_t stream_idx,
                            SessionScope& session_scope,
-                           const bool& terminate_flag,
+                           onnxruntime::CancellationToken terminate_token,
                            bool& continue_flag) = 0;
     virtual std::string ToString() const = 0;
     inline NodeIndex GetNodeIndex() { return node_index_; }

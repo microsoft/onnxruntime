@@ -271,7 +271,7 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
 
     // Create Executor and run graph.
     status = utils::ExecuteSubgraph(session_state, ffm, feeds, fetches, fetch_allocators,
-                                    ExecutionMode::ORT_SEQUENTIAL, context.GetTerminateFlag(), context.Logger(),
+                                    ExecutionMode::ORT_SEQUENTIAL, context.GetCancellationToken(), context.Logger(),
                                     context.GetComputeStream(),
                                     /*sync_subgraph_fetches*/ false,
                                     context.GetRunProfiler());
