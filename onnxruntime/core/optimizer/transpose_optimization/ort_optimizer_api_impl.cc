@@ -648,7 +648,13 @@ static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_nam
                               std::string_view domain, int since_version, std::string_view node_ep) {
   const std::string op_type_str(op_type);
   const std::string op_name_str(op_name);
-  std::string name = graph.GenerateNodeName(op_name_str);
+  // Use op_type as seed when op_name is empty (e.g., after function inlining) to avoid
+  // output NodeArg name collisions. When the source node's name is empty,
+  // Graph::GenerateNodeName("") can legally return "" (if no prior empty-named node has been
+  // registered). That empty base then seeds output arg names as "_out0", "_out1", ..., which
+  // can collide with existing NodeArgs already present in the graph.
+  const std::string& name_seed = op_name_str.empty() ? op_type_str : op_name_str;
+  std::string name = graph.GenerateNodeName(name_seed);
   std::vector<NodeArg*> input_args;
   std::vector<NodeArg*> output_args;
 
@@ -832,7 +838,9 @@ void ApiGraph::MoveOutput(api::NodeRef& src_node, size_t src_idx, api::NodeRef& 
 
   graph_utils::GraphEdge::RemoveGraphEdges(graph_, output_edges);
 
-  std::string new_name = graph_.GenerateNodeArgName(src_ort_node.Name());
+  // Use op type as seed when node name is empty to avoid colliding generated arg names.
+  const std::string& base = src_ort_node.Name().empty() ? src_ort_node.OpType() : src_ort_node.Name();
+  std::string new_name = graph_.GenerateNodeArgName(base);
   src_output_defs[src_idx] = &graph_.GetOrCreateNodeArg(new_name, nullptr);
   graph_.UpdateProducerNode(new_name, src_node_idx);
 }
