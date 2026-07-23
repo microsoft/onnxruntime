@@ -1958,6 +1958,167 @@ TEST_F(GraphTransformationTests, FuseConvBNNoBias) {
   }
 }
 
+static void RunConvTransposeBNFusionTest(bool add_conv_bias, int64_t group, bool add_epsilon = true) {
+  const int64_t input_channels_per_group = 2;
+  const int64_t input_channels = input_channels_per_group * group;
+  const int64_t output_channels_per_group = 3;
+  const int64_t output_channels = output_channels_per_group * group;
+  const int64_t input_h = 4;
+  const int64_t input_w = 4;
+  const int64_t kernel_h = 3;
+  const int64_t kernel_w = 3;
+  const int64_t output_h = input_h + kernel_h - 1;
+  const int64_t output_w = input_w + kernel_w - 1;
+
+  auto make_values = [](size_t size, float scale, float offset) {
+    std::vector<float> values(size);
+    for (size_t i = 0; i < values.size(); ++i) {
+      values[i] = offset + scale * static_cast<float>(static_cast<int64_t>(i % 17) - 8);
+    }
+
+    return values;
+  };
+
+  const auto weight_data = make_values(static_cast<size_t>(input_channels) *
+                                           static_cast<size_t>(output_channels_per_group) *
+                                           static_cast<size_t>(kernel_h) *
+                                           static_cast<size_t>(kernel_w),
+                                       0.02f,
+                                       0.01f);
+  const auto conv_bias_data = make_values(static_cast<size_t>(output_channels), 0.03f, -0.02f);
+  const auto bn_scale_data = make_values(static_cast<size_t>(output_channels), 0.04f, 0.9f);
+  const auto bn_bias_data = make_values(static_cast<size_t>(output_channels), 0.05f, -0.1f);
+  const auto bn_mean_data = make_values(static_cast<size_t>(output_channels), 0.02f, 0.12f);
+  std::vector<float> bn_var_data(static_cast<size_t>(output_channels));
+  for (size_t i = 0; i < bn_var_data.size(); ++i) {
+    bn_var_data[i] = 0.7f + 0.05f * static_cast<float>(i);
+  }
+
+  std::string bn_output_name;
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>(std::vector<int64_t>{1, input_channels, input_h, input_w}, -1.0f, 1.0f);
+    auto* weight = builder.MakeInitializer<float>({input_channels, output_channels_per_group, kernel_h, kernel_w},
+                                                  weight_data);
+
+    std::vector<NodeArg*> conv_inputs{input, weight};
+    if (add_conv_bias) {
+      conv_inputs.push_back(builder.MakeInitializer<float>({output_channels}, conv_bias_data));
+    }
+
+    auto* conv_output =
+        builder.MakeIntermediate<float>(std::vector<int64_t>{1, output_channels, output_h, output_w});
+    auto& conv_transpose = builder.AddNode("ConvTranspose", conv_inputs, {conv_output});
+    if (group != 1) {
+      conv_transpose.AddAttribute("group", group);
+    }
+
+    auto* bn_scale = builder.MakeInitializer<float>({output_channels}, bn_scale_data);
+    auto* bn_bias = builder.MakeInitializer<float>({output_channels}, bn_bias_data);
+    auto* bn_mean = builder.MakeInitializer<float>({output_channels}, bn_mean_data);
+    auto* bn_var = builder.MakeInitializer<float>({output_channels}, bn_var_data);
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{1, output_channels, output_h, output_w});
+    bn_output_name = output->Name();
+
+    auto& batch_norm = builder.AddNode("BatchNormalization", {conv_output, bn_scale, bn_bias, bn_mean, bn_var}, {output});
+    if (add_epsilon) {
+      batch_norm.AddAttribute("epsilon", 1e-5f);
+    }
+  };
+
+  auto check_transformed_graph = [&bn_output_name](InferenceSessionWrapper& session) {
+    const Graph& graph = session.GetGraph();
+    auto op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["BatchNormalization"], 0);
+    ASSERT_EQ(op_to_count["ConvTranspose"], 1);
+
+    bool found_conv_transpose = false;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "ConvTranspose") {
+        found_conv_transpose = true;
+        ASSERT_EQ(node.InputDefs().size(), 3U);
+        ASSERT_EQ(node.OutputDefs()[0]->Name(), bn_output_name)
+            << "fusion should produce the same output name as the last node";
+      }
+    }
+    ASSERT_TRUE(found_conv_transpose);
+  };
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<ConvBNFusion>()));
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    14,
+                    1e-4,
+                    1e-4,
+                    std::move(rule_transformer_L1));
+}
+
+TEST_F(GraphTransformationTests, FuseConvTransposeBNNoBias) {
+  RunConvTransposeBNFusionTest(false, 1);
+}
+
+TEST_F(GraphTransformationTests, FuseConvTransposeBNWithDefaultEpsilon) {
+  RunConvTransposeBNFusionTest(false, 1, false);
+}
+
+TEST_F(GraphTransformationTests, FuseConvTransposeBNWithBias) {
+  RunConvTransposeBNFusionTest(true, 1);
+}
+
+TEST_F(GraphTransformationTests, FuseGroupedConvTransposeBN) {
+  RunConvTransposeBNFusionTest(true, 2);
+}
+
+TEST_F(GraphTransformationTests, DontFuseConvTransposeWithBNWithNonConstantWeight) {
+  const int64_t input_channels = 2;
+  const int64_t output_channels = 3;
+  const int64_t kernel_h = 3;
+  const int64_t kernel_w = 3;
+  const int64_t output_h = 6;
+  const int64_t output_w = 6;
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>(std::vector<int64_t>{1, input_channels, 4, 4}, -1.0f, 1.0f);
+    auto* weight =
+        builder.MakeInput<float>(std::vector<int64_t>{input_channels, output_channels, kernel_h, kernel_w},
+                                 -0.2f,
+                                 0.2f);
+
+    auto* conv_output =
+        builder.MakeIntermediate<float>(std::vector<int64_t>{1, output_channels, output_h, output_w});
+    builder.AddNode("ConvTranspose", {input, weight}, {conv_output});
+
+    auto* bn_scale = builder.MakeInitializer<float>({output_channels}, {0.8f, 0.9f, 1.0f});
+    auto* bn_bias = builder.MakeInitializer<float>({output_channels}, {-0.1f, 0.0f, 0.1f});
+    auto* bn_mean = builder.MakeInitializer<float>({output_channels}, {0.2f, 0.3f, 0.4f});
+    auto* bn_var = builder.MakeInitializer<float>({output_channels}, {0.7f, 0.8f, 0.9f});
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{1, output_channels, output_h, output_w});
+
+    builder.AddNode("BatchNormalization", {conv_output, bn_scale, bn_bias, bn_mean, bn_var}, {output})
+        .AddAttribute("epsilon", 1e-5f);
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    const Graph& graph = session.GetGraph();
+    auto op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["BatchNormalization"], 1);
+    ASSERT_EQ(op_to_count["ConvTranspose"], 1);
+  };
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<ConvBNFusion>()));
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    14,
+                    0.0,
+                    0.0,
+                    std::move(rule_transformer_L1));
+}
+
 TEST_F(GraphTransformationTests, FusePadWithConv) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-pad-conv.onnx";
 
