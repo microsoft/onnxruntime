@@ -32,10 +32,13 @@ TEST(TelemetryEnvironmentTest, EnvVarOptOut) {
   {
     ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TELEMETRY_DISABLED", "1"}}};
     EXPECT_TRUE(IsTelemetryDisabledByEnvVar());
+    // The environment opt-out fully suppresses telemetry (no uploader, no init event, no device id).
+    EXPECT_TRUE(ShouldSuppressTelemetry());
   }
   {
     ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TELEMETRY_DISABLED", "TRUE"}}};
     EXPECT_TRUE(IsTelemetryDisabledByEnvVar());
+    EXPECT_TRUE(ShouldSuppressTelemetry());
   }
   {
     ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TELEMETRY_DISABLED", "0"}}};
