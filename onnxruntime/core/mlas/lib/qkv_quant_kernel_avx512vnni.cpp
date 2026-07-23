@@ -511,7 +511,7 @@ QKGemm_Avx512Vnni(
         return;
     }
 
-    if (!int4 && M == 1) {
+    if (!int4) {
         // INT8 per-tensor and per-channel: use 512-bit FP32 FMA path.
         for (size_t n = 0; n < N; ++n) {
             const int8_t* b_row = reinterpret_cast<const int8_t*>(B_bytes + n * row_bytes);
