@@ -3,8 +3,12 @@
 
 #include "gtest/gtest.h"
 
+#include <algorithm>
+#include <cctype>
 #include <iterator>
 #include <limits>
+#include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "core/providers/cpu/rnn/deep_cpu_gru.h"
@@ -106,12 +110,21 @@ static void RunGruTest(const std::vector<float>& X_data,
     test.AddOptionalOutputEdge<float>();
   }
 
-// TensorRT, OpenVINO failed on GRU tests
+  // TensorRT, OpenVINO failed on GRU tests
+  std::unordered_set<std::string> excluded_providers{kTensorrtExecutionProvider};
 #if defined(USE_OPENVINO)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
-#else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  excluded_providers.insert(kOpenVINOExecutionProvider);
 #endif
+  // The WebGPU GRU kernel only implements the Sigmoid/Tanh/Relu activations; skip it for others.
+  auto webgpu_supports = [](const std::string& a) {
+    std::string l;
+    for (char c : a) l += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return l == "sigmoid" || l == "tanh" || l == "relu";
+  };
+  if (!std::all_of(activations.cbegin(), activations.cend(), webgpu_supports)) {
+    excluded_providers.insert(kWebGpuExecutionProvider);
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
 void DefaultActivationsSimpleWeightsNoBias(std::string direction,
