@@ -152,7 +152,7 @@ FP4 e2m1 (both MXFP4 and NVFP4) are symmetric formats with no zero-point.
 | `"int"` (8-bit) | W8A16 | FP16/BF16 | INT8 group-wise | SM75+ | — | always |
 | `"fp8"` | W8A16-fp8 | BF16/FP16 | FP8 e4m3 (no packing) | **SM90+** native | dequant→A16 on SM<90 | `ENABLE_FP8` (CUDA ≥ 11.8) |
 | `"fp4"` | W4A16-MXFP4 | BF16/FP16 | MXFP4 e2m1, group=32 | **SM120+** native | dequant→A16 on SM<120 | `ENABLE_FP4` + `USE_FP4_QMOE` (CUDA ≥ 12.8) |
-| `"nvfp4"` | W4A16-NVFP4 | BF16/FP16 | NVFP4 e2m1, group=16, `float8e4m3fn` block scale + per-expert FP32 global scale | **SM120+** native (block-scaled FP4×FP4 prefill) + **fused GEMV decode** | dequant→A16 on SM<120 | `ENABLE_FP4` + `USE_FP4_QMOE` (CUDA ≥ 12.8) |
+| `"nvfp4"` | W4A16-NVFP4 | BF16/FP16 | NVFP4 e2m1, group=16, `float8e4m3fn` block scale + per-expert FP32 global scale | **SM120/SM121** native (block-scaled FP4×FP4 prefill) + **fused GEMV decode** | dequant→A16 on other SMs | `ENABLE_FP4` + `USE_FP4_QMOE` (CUDA ≥ 12.8) |
 | `"wfp4afp8"` | W4A8-MXFP4×FP8 | FP8 e4m3 (quantized in-runner) | MXFP4 e2m1, group=32 | **SM100+** native | dequant→A16 on SM<100 | `ENABLE_FP4` + `USE_FP4_QMOE` + `ENABLE_FP8` |
 
 Selection logic (see [moe_quantization.cc](onnxruntime/contrib_ops/cuda/moe/moe_quantization.cc)):
@@ -834,7 +834,7 @@ bf16 or the shipping default.
 
 NVFP4 is the format emitted by NVIDIA Model-Optimizer (e.g. `nvidia/Qwen3.6-35B-A3B-NVFP4`).
 
-> **Execution behavior:** On **SM120+ (Blackwell)** NVFP4 runs a **native block-scaled CUTLASS
+> **Execution behavior:** On **SM120/SM121 (Blackwell)** NVFP4 runs a **native block-scaled CUTLASS
 > FP4×FP4 grouped-GEMM prefill path** (activations dynamically quantized to NVFP4 in-runner), gated
 > by `ORT_ENABLE_NVFP4_CUTLASS_GEMM` (default on) and the CUTLASS shape requirements. On SM<120, or
 > when the native path is disabled / shape-unsupported, NVFP4 falls back to the **dequant-to-A16**
@@ -843,12 +843,12 @@ NVFP4 is the format emitted by NVIDIA Model-Optimizer (e.g. `nvidia/Qwen3.6-35B-
 
 ### 9b.1 Dispatch
 
-On **SM120+** NVFP4 selects a **native block-scaled CUTLASS FP4×FP4 grouped-GEMM prefill path**
+On **SM120/SM121** NVFP4 selects a **native block-scaled CUTLASS FP4×FP4 grouped-GEMM prefill path**
 (`CutlassMoeFCRunner<__nv_fp4_e2m1, __nv_fp4_e2m1, ...>`, runner instantiated in
 [moe_gemm_kernels_fp4_fp4.cu](onnxruntime/contrib_ops/cuda/llm/moe_gemm/moe_gemm_kernels_fp4_fp4.cu)).
 Activations are dynamically quantized to NVFP4 (block-16 E4M3 scale, global scale 1.0) inside the
 runner (`expandInputRowsKernel`), and the prepacked weight block scales are consumed as the
-Blackwell 128×4 swizzled SF atom. The path is enabled when `sm_ >= 120`,
+Blackwell 128×4 swizzled SF atom. The path is enabled when `sm_` is 120 or 121,
 `ORT_ENABLE_NVFP4_CUTLASS_GEMM` is on (default), and the CUTLASS shape requirements hold
 (`hidden`/`inter` multiple of 64); it sets `use_fp4_dequant_fallback_ = false`.
 `ORT_FP4_PREFILL_MIN_TOKENS` (default 64) splits the workload: prefill-shaped batches take the
@@ -915,8 +915,8 @@ H200.
 
 - Parity: [test_qmoe_nvfp4_cuda.py](onnxruntime/test/python/transformers/test_qmoe_nvfp4_cuda.py)
   (`-k gemv` compares `ORT_ENABLE_FP4_GEMV=1` vs `=0` vs a torch reference).
-- Kernel microbench: `bench_qmoe_nvfp4_gemv.py` builds the QMoE node at the Qwen decode shape and
-  times GEMV vs the dequant fallback (with `ORT_FP4_GEMV_AUTOTUNE_LOG=1` for the chosen tiling).
+- Profiling: `profile_qmoe_gemv.py` builds the QMoE node at configurable decode shapes and compares
+  GEMV with the grouped-GEMM path (with `ORT_FP4_GEMV_AUTOTUNE_LOG=1` for the chosen tiling).
 
 ### 9b.5 Native prefill accuracy & routing
 
@@ -934,7 +934,7 @@ Routing between the native and weight-only paths is governed by `ORT_FP4_PREFILL
 (default 64):
 
 - `num_rows >= ORT_FP4_PREFILL_MIN_TOKENS` → native block-scaled FP4×FP4 prefill (when enabled and
-  shape-supported on SM120+).
+  shape-supported on SM120/SM121).
 - `num_rows <  ORT_FP4_PREFILL_MIN_TOKENS` → small-decode shapes stay on the fused GEMV decode /
   dequant fallback (W4A16), keeping the latency-sensitive decode path off the extra activation-quant
   error.
@@ -942,7 +942,7 @@ Routing between the native and weight-only paths is governed by `ORT_FP4_PREFILL
 `ORT_ENABLE_NVFP4_CUTLASS_GEMM=0` disables the native path entirely (all shapes route to
 GEMV/fallback). The parity test
 [test_qmoe_nvfp4_cuda.py](onnxruntime/test/python/transformers/test_qmoe_nvfp4_cuda.py) mirrors this
-gate: it applies a looser tolerance **only** to shapes that route native (SM120+, native enabled,
+gate: it applies a looser tolerance **only** to shapes that route native (SM120/SM121, native enabled,
 `num_rows >= ORT_FP4_PREFILL_MIN_TOKENS`) and keeps the strict bound for all decode/fallback shapes,
 so a genuinely broken native kernel (error order ~1.0+) is still caught.
 

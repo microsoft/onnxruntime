@@ -82,7 +82,7 @@ function(onnxruntime_extract_sm_specific_cuda_sources CU_SRC_LIST)
 
   # Extract SM120 TMA WS generated files
   set(_sm120_srcs)
-  if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
+  if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG OR "121" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
     foreach(_src IN LISTS _list)
       if(_src MATCHES "moe_gemm_tma_ws_sm120_.*\\.generated\\.cu$")
         list(APPEND _sm120_srcs "${_src}")

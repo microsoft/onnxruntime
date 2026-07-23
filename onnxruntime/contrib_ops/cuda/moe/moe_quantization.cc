@@ -299,7 +299,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
 #endif
     } else if (quant_type_ == "nvfp4") {
       ORT_ENFORCE(expert_weight_bits_ == 4, "NVFP4 quantization requires expert_weight_bits=4");
-      // Native block-scaled CUTLASS FP4xFP4 grouped GEMM for NVFP4 is Blackwell SM120+. There the
+      // Native block-scaled CUTLASS FP4xFP4 grouped GEMM for NVFP4 is supported on SM120 and SM121. There the
       // BF16/FP16 activation is quantized to NVFP4 (block size 16, E4M3 block scales) inside the
       // runner's expandInputRowsKernel and the E2M1 weights + E4M3 block scales feed the native
       // block-scaled tensor op. On older GPUs (and for shapes the native tile alignment does not
@@ -310,7 +310,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       const bool nvfp4_cutlass_shape_supported = StaticFp4CutlassShapeSupported(
           op_kernel_info, activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu);
       enable_nvfp4_cutlass_gemm_ =
-          sm_ >= 120 && nvfp4_cutlass_shape_supported &&
+          (sm_ == 120 || sm_ == 121) && nvfp4_cutlass_shape_supported &&
           onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_NVFP4_CUTLASS_GEMM", 1) == 1;
       if (enable_nvfp4_cutlass_gemm_) {
         use_fp4_dequant_fallback_ = false;

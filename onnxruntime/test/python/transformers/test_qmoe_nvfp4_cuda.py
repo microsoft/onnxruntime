@@ -269,12 +269,12 @@ def _cuda_sm():
 def _routes_native_fp4_prefill(num_tokens):
     """Predict whether a run routes to the native block-scaled FP4xFP4 CUTLASS prefill kernel.
 
-    Mirrors the CUDA-side routing in moe_quantization.cc: the native path requires SM120+,
+    Mirrors the CUDA-side routing in moe_quantization.cc: the native path requires SM120 or SM121,
     the native GEMM to be enabled (ORT_ENABLE_NVFP4_CUTLASS_GEMM, default on), and the token
     count to reach the prefill threshold (ORT_FP4_PREFILL_MIN_TOKENS, default 64). Below the
     threshold the run uses the GEMV-decode / dequant-fallback path instead.
     """
-    if _cuda_sm() < 120:
+    if _cuda_sm() not in (120, 121):
         return False
     if os.environ.get("ORT_ENABLE_NVFP4_CUTLASS_GEMM", "1") == "0":
         return False
