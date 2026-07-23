@@ -247,12 +247,27 @@ int CudaDeviceComputeCapabilityOrNegative() {
 // Minimum compute capability for the fpA_intB path (mirrors the production eligibility gate).
 constexpr int kMinFpAIntBSm = 75;
 
+// Returns the first node in `graph` whose op type matches `op_type`, or nullptr if none.
+const Node* FindNodeByOpType(const Graph& graph, const std::string& op_type) {
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == op_type) {
+      return &node;
+    }
+  }
+  return nullptr;
+}
+
 }  // namespace
 
 TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
-  int device_count = 0;
-  if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count == 0) {
+  const int device_sm = CudaDeviceComputeCapabilityOrNegative();
+  if (device_sm < 0) {
     GTEST_SKIP() << "No CUDA device available; skipping end-to-end workspace test.";
+  }
+  if (device_sm < kMinFpAIntBSm) {
+    GTEST_SKIP() << "Device compute capability " << device_sm << " < " << kMinFpAIntBSm
+                 << "; MatMulNBits fpA_intB path is not eligible, so the eligible-path assertions "
+                    "cannot hold. Skipping.";
   }
 
   // Enable the fpA_intB path via the ENV var (not the session config) so that BOTH Level 1 - which
@@ -273,13 +288,7 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
 
   // Locate the MatMulNBits node and confirm it was assigned to the CUDA EP (fpA_intB eligible).
   const Graph& graph = session.GetGraph();
-  const Node* mm_node = nullptr;
-  for (const auto& node : graph.Nodes()) {
-    if (node.OpType() == "MatMulNBits") {
-      mm_node = &node;
-      break;
-    }
-  }
+  const Node* mm_node = FindNodeByOpType(graph, "MatMulNBits");
   ASSERT_NE(mm_node, nullptr) << "MatMulNBits node not found in the graph.";
   ASSERT_EQ(mm_node->GetExecutionProviderType(), onnxruntime::kCudaExecutionProvider)
       << "MatMulNBits node was not assigned to the CUDA EP.";
@@ -371,13 +380,7 @@ TEST(MatMulNBitsWorkspace, FixedShapeViaFreeDimensionOverride) {
   ASSERT_STATUS_OK(session.Initialize());
 
   const Graph& graph = session.GetGraph();
-  const Node* mm_node = nullptr;
-  for (const auto& node : graph.Nodes()) {
-    if (node.OpType() == "MatMulNBits") {
-      mm_node = &node;
-      break;
-    }
-  }
+  const Node* mm_node = FindNodeByOpType(graph, "MatMulNBits");
   ASSERT_NE(mm_node, nullptr) << "MatMulNBits node not found in the graph.";
   ASSERT_EQ(mm_node->GetExecutionProviderType(), onnxruntime::kCudaExecutionProvider)
       << "MatMulNBits node was not assigned to the CUDA EP.";
@@ -471,13 +474,7 @@ TEST(MatMulNBitsWorkspace, DynamicShapeNoOverrideFallsBack) {
   ASSERT_STATUS_OK(session.Initialize());
 
   const Graph& graph = session.GetGraph();
-  const Node* mm_node = nullptr;
-  for (const auto& node : graph.Nodes()) {
-    if (node.OpType() == "MatMulNBits") {
-      mm_node = &node;
-      break;
-    }
-  }
+  const Node* mm_node = FindNodeByOpType(graph, "MatMulNBits");
   ASSERT_NE(mm_node, nullptr) << "MatMulNBits node not found in the graph.";
   ASSERT_EQ(mm_node->GetExecutionProviderType(), onnxruntime::kCudaExecutionProvider)
       << "MatMulNBits node was not assigned to the CUDA EP.";
@@ -539,8 +536,10 @@ TEST(MatMulNBitsWorkspace, DynamicShapeNoOverrideFallsBack) {
 // the base default is a true no-op and that the new virtual does not affect unrelated kernels.
 // ---------------------------------------------------------------------------
 TEST(MatMulNBitsWorkspace, NonMatMulNBitsKernelDeclaresNoWorkspace) {
-  int device_count = 0;
-  if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count == 0) {
+  // Add is a plain elementwise kernel available on every CUDA GPU, so this control test only needs a
+  // device to be present -- it deliberately does NOT apply the SM>=7.5 fpA_intB guard used by the
+  // MatMulNBits tests, because Add has no compute-capability requirement.
+  if (CudaDeviceComputeCapabilityOrNegative() < 0) {
     GTEST_SKIP() << "No CUDA device available; skipping Add control workspace test.";
   }
 
@@ -555,13 +554,7 @@ TEST(MatMulNBitsWorkspace, NonMatMulNBitsKernelDeclaresNoWorkspace) {
   ASSERT_STATUS_OK(session.Initialize());
 
   const Graph& graph = session.GetGraph();
-  const Node* add_node = nullptr;
-  for (const auto& node : graph.Nodes()) {
-    if (node.OpType() == "Add") {
-      add_node = &node;
-      break;
-    }
-  }
+  const Node* add_node = FindNodeByOpType(graph, "Add");
   ASSERT_NE(add_node, nullptr) << "Add node not found in the graph.";
   ASSERT_EQ(add_node->GetExecutionProviderType(), onnxruntime::kCudaExecutionProvider)
       << "Add node was not assigned to the CUDA EP.";

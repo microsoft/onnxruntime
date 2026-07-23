@@ -19,7 +19,17 @@
 #include <cuda_runtime_api.h>
 
 namespace onnxruntime {
-struct Node;
+// NOTE: we deliberately do NOT forward-declare Node here. This header has exactly two includers,
+// and they live in genuinely different Node "worlds":
+//   - core/providers/cuda/cuda_execution_provider.cc includes provider_api.h first, where the
+//     shared-provider bridge declares `struct Node;` (provider_wrappedtypes.h defines `struct Node`).
+//   - test/providers/cuda/test_cases/matmul_nbits_e2e_workspace_test.cc includes core/graph/graph.h
+//     first, where the in-tree `Node` is a `class` (core/graph/graph.h: `class Node { ... }`).
+// Forward-declaring Node ourselves would force us to pick a single tag (class or struct); either
+// choice mismatches one of the two includers and triggers MSVC C4099 / GCC-Clang -Wmismatched-tags
+// there. Both real includers already bring in a correct Node declaration (via their own core/bridge
+// headers) BEFORE including this header, so the `const Node&` parameter below is already visible and
+// no declaration of our own is needed. Keep this header included AFTER a Node-declaring header.
 namespace contrib {
 namespace cuda {
 
