@@ -243,24 +243,6 @@ QKGemm_Neon(
     }
 }
 
-inline float32x4_t
-LoadFp16x4_Neon(const MLAS_FP16* src)
-{
-    float32x4_t value = vdupq_n_f32(static_cast<float>(src[0]));
-    value = vsetq_lane_f32(static_cast<float>(src[1]), value, 1);
-    value = vsetq_lane_f32(static_cast<float>(src[2]), value, 2);
-    return vsetq_lane_f32(static_cast<float>(src[3]), value, 3);
-}
-
-inline void
-StoreFp16x4_Neon(MLAS_FP16* dst, float32x4_t value)
-{
-    dst[0] = MLAS_FP16(vgetq_lane_f32(value, 0));
-    dst[1] = MLAS_FP16(vgetq_lane_f32(value, 1));
-    dst[2] = MLAS_FP16(vgetq_lane_f32(value, 2));
-    dst[3] = MLAS_FP16(vgetq_lane_f32(value, 3));
-}
-
 void
 QKGemmFp16_Neon(
     size_t M,
