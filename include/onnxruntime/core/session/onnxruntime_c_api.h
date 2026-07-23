@@ -7549,7 +7549,7 @@ struct OrtApi {
    * \since Version 1.29.
    */
   ORT_API2_STATUS(EpAssignedSubgraph_GetHardwareDevices, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
-                  _Outptr_ const OrtHardwareDevice* const** devices, _Out_ size_t* num_hardware_devices);
+                  _Outptr_result_maybenull_ const OrtHardwareDevice* const** devices, _Out_ size_t* num_hardware_devices);
 };
 
 /*

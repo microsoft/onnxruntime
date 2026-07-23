@@ -1212,7 +1212,7 @@ ORT_API_STATUS_IMPL(OrtApis::EpAssignedNode_GetOperatorType, _In_ const OrtEpAss
 }
 
 ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetHardwareDevices, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
-                    _Outptr_ const OrtHardwareDevice* const** devices, _Out_ size_t* num_hardware_devices) {
+                    _Outptr_result_maybenull_ const OrtHardwareDevice* const** devices, _Out_ size_t* num_hardware_devices) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
   if (devices == nullptr) {
