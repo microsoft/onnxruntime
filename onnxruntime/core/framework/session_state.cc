@@ -1621,9 +1621,14 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   SubgraphsKernelCreateInfoMaps subgraphs_kernel_create_info_maps;
   AccumulateAllNestedSubgraphsInfo(*this, "", 0, subgraphs_kernel_create_info_maps);
 
+  const size_t max_num_streams =
+      session_options.execution_mode == ExecutionMode::ORT_PARALLEL
+          ? static_cast<size_t>(concurrency::ThreadPool::WorkerThreadCount(GetInterOpThreadPool()) + 1)
+          : 1;
   SequentialPlannerContext context(session_options.execution_mode,
                                    session_options.execution_order,
-                                   session_options.enable_mem_reuse);
+                                   session_options.enable_mem_reuse,
+                                   max_num_streams);
 
 #ifdef _WIN32
 

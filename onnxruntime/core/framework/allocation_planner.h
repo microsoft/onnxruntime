@@ -43,6 +43,8 @@ class ISequentialPlannerContext {
   // see PlannerImpl::ComputeReusePlan
   virtual bool IsParallelExecutionEnabled() const { return false; }
 
+  virtual size_t GetMaxNumStreams() const { return 1; }
+
   virtual ExecutionOrder GetExecutionOrder() const { return ExecutionOrder::DEFAULT; }
 
   virtual bool GetEnableMemoryReuse() const { return true; }
@@ -51,10 +53,12 @@ class ISequentialPlannerContext {
 
 class SequentialPlannerContext : public ISequentialPlannerContext {
  public:
-  SequentialPlannerContext(ExecutionMode execution_mode, ExecutionOrder execution_order, bool enable_memory_reuse)
+  SequentialPlannerContext(ExecutionMode execution_mode, ExecutionOrder execution_order, bool enable_memory_reuse,
+                           size_t max_num_streams = 1)
       : execution_mode_(execution_mode),
         execution_order_(execution_order),
-        enable_memory_reuse_(enable_memory_reuse) {
+        enable_memory_reuse_(enable_memory_reuse),
+        max_num_streams_(max_num_streams == 0 ? 1 : max_num_streams) {
   }
 
   const ONNX_NAMESPACE::TensorShapeProto* GetShape(const onnxruntime::NodeArg& arg) const override {
@@ -62,6 +66,8 @@ class SequentialPlannerContext : public ISequentialPlannerContext {
   }
 
   bool IsParallelExecutionEnabled() const override { return execution_mode_ == ExecutionMode::ORT_PARALLEL; }
+
+  size_t GetMaxNumStreams() const override { return max_num_streams_; }
 
   ExecutionOrder GetExecutionOrder() const override { return execution_order_; }
 
@@ -71,6 +77,7 @@ class SequentialPlannerContext : public ISequentialPlannerContext {
   ExecutionMode execution_mode_ = ExecutionMode::ORT_SEQUENTIAL;
   ExecutionOrder execution_order_ = ExecutionOrder::DEFAULT;
   bool enable_memory_reuse_ = true;
+  size_t max_num_streams_ = 1;
 };
 
 #ifdef ORT_ENABLE_STREAM
@@ -79,10 +86,8 @@ class SequentialPlannerContext : public ISequentialPlannerContext {
 // but we can't assume any execution order between sequences, unless there is a data dependency.
 class IGraphPartitioner {
  public:
-  // DeviceBasedPartitioner is the default, who partitions a graph based off device information.
-  // i.e., given a graph which has CPU EP nodes, Cuda EP nodes and TRT EP nodes,
-  // it will be partitioned as two sequences, one is for CPU EP nodes, another is for TRT and Cuda nodes.
-  // We will add more optimized partitioner later.
+  // DeviceBasedPartitioner is the default. It groups non-CPU nodes by device type and, for parallel
+  // execution, splits independent CPU paths across streams up to the available inter-op concurrency.
   enum GraphPartitioningStrategy {
     DeviceBasedPartition = 0,
     Unknown,
@@ -95,7 +100,9 @@ class IGraphPartitioner {
   virtual Status PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
                                 const ExecutionProviders& execution_providers,
                                 std::vector<InlinedVector<NodeIndex>>& stream_nodes,
-                                ExecutionOrder execution_order) = 0;
+                                ExecutionOrder execution_order,
+                                bool enable_parallel_execution,
+                                size_t max_num_streams) = 0;
   virtual const char* Type() const = 0;
   // return total number of streams
   virtual size_t Streams() const = 0;
