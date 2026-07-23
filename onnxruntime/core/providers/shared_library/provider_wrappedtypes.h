@@ -627,6 +627,9 @@ struct KernelDef final {
   void SinceVersion(/*out*/ int* start, /*out*/ int* end) const { g_host->KernelDef__SinceVersion(this, start, end); }
   const std::string& Domain() const { return g_host->KernelDef__Domain(this); }
   const std::string& OpName() const { return g_host->KernelDef__OpName(this); }
+  const std::unordered_map<std::string, std::vector<MLDataType>>& TypeConstraints() const {
+    return g_host->KernelDef__TypeConstraints(this);
+  }
 
   KernelDef() = delete;
   KernelDef(const KernelDef*) = delete;

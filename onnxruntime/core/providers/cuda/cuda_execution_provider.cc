@@ -12,6 +12,7 @@
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel_build_config.h"
 #include "core/providers/cuda/cuda_nhwc_ops.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/cuda_fwd.h"
@@ -592,7 +593,8 @@ Status RegisterOnnxMLOperatorKernels(KernelRegistry& kernel_registry) {
 
   for (auto& function_table_entry : function_table) {
     KernelCreateInfo info = function_table_entry();
-    if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
+    if (info.kernel_def != nullptr &&  // filter disabled entries where type is void
+        !::onnxruntime::cuda::IsCudaKernelDisabledByType(*info.kernel_def)) {
       ORT_RETURN_IF_ERROR(kernel_registry.Register(std::move(info)));
     }
   }
@@ -3182,7 +3184,8 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
 
   for (auto& function_table_entry : function_table) {
     KernelCreateInfo info = function_table_entry();
-    if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
+    if (info.kernel_def != nullptr &&  // filter disabled entries where type is void
+        !::onnxruntime::cuda::IsCudaKernelDisabledByType(*info.kernel_def)) {
       ORT_RETURN_IF_ERROR(kernel_registry.Register(std::move(info)));
     }
   }

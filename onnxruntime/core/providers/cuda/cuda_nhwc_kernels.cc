@@ -10,6 +10,7 @@
 #include "core/providers/cuda/cuda_fwd.h"
 
 #include "core/providers/cuda/cuda_nhwc_kernels.h"
+#include "core/providers/cuda/cuda_kernel_build_config.h"
 
 // Macros to avoid long line length
 #define CUDA_NHWC_OP_CLASS_NAME(ver, name) \
@@ -165,7 +166,8 @@ Status RegisterCudaNhwcKernels(KernelRegistry& kernel_registry) {
 
   for (auto& function_table_entry : nhwc_function_table) {
     KernelCreateInfo info = function_table_entry();
-    if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
+    if (info.kernel_def != nullptr &&  // filter disabled entries where type is void
+        !::onnxruntime::cuda::IsCudaKernelDisabledByType(*info.kernel_def)) {
       ORT_RETURN_IF_ERROR(kernel_registry.Register(std::move(info)));
     }
   }
@@ -191,7 +193,8 @@ onnxruntime::common::Status RegisterCudaNhwcContribKernels(KernelRegistry& kerne
 
   for (auto& function_table_entry : nhwc_function_table) {
     KernelCreateInfo info = function_table_entry();
-    if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
+    if (info.kernel_def != nullptr &&  // filter disabled entries where type is void
+        !::onnxruntime::cuda::IsCudaKernelDisabledByType(*info.kernel_def)) {
       ORT_RETURN_IF_ERROR(kernel_registry.Register(std::move(info)));
     }
   }

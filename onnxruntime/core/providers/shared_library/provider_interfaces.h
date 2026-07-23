@@ -704,6 +704,7 @@ struct ProviderHost {
   virtual void KernelDef__SinceVersion(const KernelDef* p, int* start, int* end) = 0;
   virtual const std::string& KernelDef__Domain(const KernelDef* p) = 0;
   virtual const std::string& KernelDef__OpName(const KernelDef* p) = 0;
+  virtual const std::unordered_map<std::string, std::vector<MLDataType>>& KernelDef__TypeConstraints(const KernelDef* p) = 0;
 
   // KernelDefBuilder
   virtual std::unique_ptr<KernelDefBuilder> KernelDefBuilder__construct() = 0;

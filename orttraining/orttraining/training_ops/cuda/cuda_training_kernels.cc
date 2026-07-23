@@ -3,6 +3,7 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_fwd.h"
+#include "core/providers/cuda/cuda_kernel_build_config.h"
 #include "core/providers/cuda/cuda_pch.h"
 
 using namespace onnxruntime::common;
@@ -529,7 +530,8 @@ Status RegisterCudaTrainingKernels(KernelRegistry& kernel_registry) {
 
   for (auto& function_table_entry : function_table) {
     KernelCreateInfo info = function_table_entry();
-    if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
+    if (info.kernel_def != nullptr &&  // filter disabled entries where type is void
+        !::onnxruntime::cuda::IsCudaKernelDisabledByType(*info.kernel_def)) {
       ORT_RETURN_IF_ERROR(kernel_registry.Register(std::move(info)));
     }
   }

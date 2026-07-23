@@ -476,6 +476,11 @@ if (onnxruntime_USE_CUDA_NHWC_OPS)
     target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ENABLE_CUDA_NHWC_OPS)
 endif()
 
+if (onnxruntime_DISABLE_DOUBLE_TYPE)
+    # Skip registering double (float64) CUDA kernels via the adapter KernelDefBuilder.
+    target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE DISABLE_DOUBLE_TYPE)
+endif()
+
 if(WIN32)
   # Windows: use .def file for symbol exports
   set(CUDA_PLUGIN_DEF_FILE ${CUDA_PLUGIN_EP_DIR}/cuda_plugin_ep_symbols.def)

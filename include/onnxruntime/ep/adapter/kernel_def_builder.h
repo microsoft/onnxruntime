@@ -105,6 +105,14 @@ struct KernelDefBuilder {
     std::vector<const OrtDataType*> ort_types;
     ort_types.reserve(types.size());
     for (const auto& type : types) {
+#if defined(DISABLE_DOUBLE_TYPE)
+      // `double` CUDA kernels are disabled in this build (--disable_types double).
+      // Drop double from the advertised type set; if it was the only type, the
+      // constraint becomes empty below and the kernel is skipped.
+      if (type == DataTypeImpl::GetTensorType<double>()) {
+        continue;
+      }
+#endif
       const OrtDataType* ort_type = TryMLDataTypeToOrtDataType(type);
       if (ort_type != nullptr) {
         ort_types.push_back(ort_type);
@@ -119,6 +127,14 @@ struct KernelDefBuilder {
   }
 
   KernelDefBuilder& TypeConstraint(const char* arg_name, MLDataType type) {
+#if defined(DISABLE_DOUBLE_TYPE)
+    // A `double`-only constraint cannot be satisfied when double is disabled, so
+    // the whole kernel is skipped (Build() returns a null KernelDef).
+    if (type == DataTypeImpl::GetTensorType<double>()) {
+      valid_ = false;
+      return *this;
+    }
+#endif
     const OrtDataType* ort_type = TryMLDataTypeToOrtDataType(type);
     if (ort_type != nullptr) {
       builder_.AddTypeConstraint(arg_name, ort_type);

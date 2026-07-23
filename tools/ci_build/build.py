@@ -391,6 +391,8 @@ def generate_build_tree(
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
     disable_string_type = "string" in types_to_disable
+    # enable/disable double (float64) CUDA kernels
+    disable_double_type = "double" in types_to_disable
     if is_windows():
         cmake_args += [
             "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
@@ -528,6 +530,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
         "-Donnxruntime_DISABLE_FLOAT8_TYPES=" + ("ON" if disable_float8_types else "OFF"),
         "-Donnxruntime_DISABLE_FLOAT4_TYPES=" + ("ON" if disable_float4_types else "OFF"),
+        "-Donnxruntime_DISABLE_DOUBLE_TYPE=" + ("ON" if disable_double_type else "OFF"),
         "-Donnxruntime_DISABLE_SPARSE_TENSORS=" + ("ON" if disable_sparse_tensors else "OFF"),
         "-Donnxruntime_DISABLE_OPTIONAL_TYPE=" + ("ON" if disable_optional_type else "OFF"),
         "-Donnxruntime_DISABLE_STRING_TYPE=" + ("ON" if disable_string_type else "OFF"),

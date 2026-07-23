@@ -936,6 +936,9 @@ struct ProviderHostImpl : ProviderHost {
   void KernelDef__SinceVersion(const KernelDef* p, int* start, int* end) override { return p->SinceVersion(start, end); }
   const std::string& KernelDef__Domain(const KernelDef* p) override { return p->Domain(); }
   const std::string& KernelDef__OpName(const KernelDef* p) override { return p->OpName(); }
+  const std::unordered_map<std::string, std::vector<MLDataType>>& KernelDef__TypeConstraints(const KernelDef* p) override {
+    return p->TypeConstraints();
+  }
   int KernelDef__ExecQueueId(const KernelDef* p) override { return p->ExecQueueId(); }
 
   // KernelDefBuilder (wrapped)
