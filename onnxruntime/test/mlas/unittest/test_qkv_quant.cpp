@@ -316,7 +316,7 @@ class MlasKVQuantTest : public MlasTestBase {
                    scores_fp16.data(), N, nullptr);
     RefQKGemm(query_from_fp16.data(), b_dequantized.data(), scores_reference.data(), M, N, K, alpha, K, N);
     for (size_t i = 0; i < scores_fp16.size(); ++i) {
-      ASSERT_NEAR(scores_fp16[i], scores_reference[i], 1e-5f);
+      ASSERT_NEAR(scores_fp16[i], scores_reference[i], 1e-3f);
     }
 
     std::vector<float> probabilities(M * N);

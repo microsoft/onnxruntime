@@ -164,7 +164,7 @@ taskset -c 0-3 "$VIRTUAL_ENV/bin/python" \
   --decode_only --warmup 50 --repeats 500 --intra_op_num_threads 4
 
 taskset -c 0-7 "$VIRTUAL_ENV/bin/python" \
-  /home/tlwu/onnxruntime/onnxruntime/test/python/transformers/benchmark_gqa_cpu_flash.py \
+  ~/onnxruntime/onnxruntime/test/python/transformers/benchmark_gqa_cpu_flash.py \
   --decode_only --warmup 50 --repeats 500 --intra_op_num_threads 8
 ```
 
