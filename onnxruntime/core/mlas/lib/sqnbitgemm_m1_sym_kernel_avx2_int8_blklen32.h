@@ -501,7 +501,7 @@ MlasQ4Int8GemmM1KernelBlkLen32Avx2(
 }
 
 //#define SQ4BitGemmM1Kernel_BlkLen32_CompInt8_NewLayout 1
-void SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl2(
+inline void SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl2(
     const std::byte* QuantA,
     const float* QuantAScale,
     const std::byte* QuantBData,
