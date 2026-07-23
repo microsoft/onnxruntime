@@ -73,6 +73,34 @@ struct KernelRegistryAndStatus {
   std::shared_ptr<onnxruntime::KernelRegistry> kernel_registry = std::make_shared<onnxruntime::KernelRegistry>();
   onnxruntime::Status st;
 };
+
+std::filesystem::path FindRvqDecoderModelPath() {
+  constexpr const char* kModelFileName = "rvq_decoder_v1.onnx";
+
+  std::filesystem::path current_path = std::filesystem::current_path();
+  for (int i = 0; i < 8; ++i) {
+    auto candidate = current_path / kModelFileName;
+    if (std::filesystem::exists(candidate)) {
+      return candidate;
+    }
+
+    if (!current_path.has_parent_path() || current_path == current_path.parent_path()) {
+      break;
+    }
+
+    current_path = current_path.parent_path();
+  }
+
+  const std::filesystem::path source_file_path{__FILE__};
+  if (source_file_path.is_absolute()) {
+    auto candidate = source_file_path.parent_path().parent_path().parent_path().parent_path() / kModelFileName;
+    if (std::filesystem::exists(candidate)) {
+      return candidate;
+    }
+  }
+
+  return {};
+}
 }  // namespace
 namespace onnxruntime {
 
@@ -1202,6 +1230,59 @@ TEST(InferenceSessionTests, TestWithIstream) {
   RunOptions run_options;
   run_options.run_tag = "InferenceSessionTests.TestWithIstream";
   RunModel(session_object, run_options);
+}
+
+TEST(InferenceSessionTests, RvqDecoderRunsWithDynamicTopK) {
+  const auto model_path = FindRvqDecoderModelPath();
+  if (model_path.empty()) {
+    GTEST_SKIP() << "rvq_decoder_v1.onnx is not available in this checkout.";
+  }
+
+  SessionOptions session_options;
+  InferenceSession session_object{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_path.string()));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  NameMLValMap feeds;
+
+  OrtValue pre_emb;
+  CreateMLValue<float>(allocator, std::vector<int64_t>{1, 128, 300}, std::vector<float>(1 * 128 * 300, 0.0f),
+                       &pre_emb);
+  feeds.insert({"pre_emb", pre_emb});
+
+  OrtValue tokens;
+  CreateMLValue<int32_t>(allocator, std::vector<int64_t>{1, 300, 2}, std::vector<int32_t>(1 * 300 * 2, 0),
+                         &tokens);
+  feeds.insert({"tokens", tokens});
+
+  OrtValue dur;
+  CreateMLValue<int32_t>(allocator, std::vector<int64_t>{1, 300}, std::vector<int32_t>(1 * 300, 1), &dur);
+  feeds.insert({"dur", dur});
+
+  OrtValue text_mask;
+  CreateMLValue<bool>(allocator, std::vector<int64_t>{1, 1, 300}, std::vector<bool>(1 * 1 * 300, true),
+                      &text_mask);
+  feeds.insert({"text_mask", text_mask});
+
+  OrtValue mel_mask;
+  CreateMLValue<bool>(allocator, std::vector<int64_t>{1, 1, 4096}, std::vector<bool>(1 * 1 * 4096, true),
+                      &mel_mask);
+  feeds.insert({"mel_mask", mel_mask});
+
+  OrtValue spk_id;
+  CreateMLValue<int32_t>(allocator, std::vector<int64_t>{1}, std::vector<int32_t>{0}, &spk_id);
+  feeds.insert({"spk_id", spk_id});
+
+  OrtValue mel_len;
+  CreateMLValue<int64_t>(allocator, std::vector<int64_t>{}, std::vector<int64_t>{4096}, &mel_len);
+  feeds.insert({"mel_len", mel_len});
+
+  RunOptions run_options;
+  std::vector<std::string> output_names{"mel"};
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
+  ASSERT_EQ(fetches.size(), 1U);
 }
 
 TEST(InferenceSessionTests, TestRegisterExecutionProvider) {
