@@ -27,10 +27,6 @@
 // provider-world pieces it needs (the Level-1 estimate and the runtime probe) are reached through
 // slim, bridge-free declarations. It lives in the CUDA-only unit-test module because that is the only
 // place these provider-internal symbols are linkable. Requires a real CUDA device; skips otherwise.
-// Those cannot coexist with the CUDA-provider (shared-provider bridge) headers in one TU, so the two
-// provider-world pieces it needs (the Level-1 estimate and the runtime probe) are reached through
-// slim, bridge-free declarations. It lives in the CUDA-only unit-test module because that is the only
-// place these provider-internal symbols are linkable. Requires a real CUDA device; skips otherwise.
 
 #include "gtest/gtest.h"
 

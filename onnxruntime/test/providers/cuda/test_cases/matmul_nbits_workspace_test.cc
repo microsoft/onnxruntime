@@ -25,7 +25,7 @@
 
 #include "gtest/gtest.h"
 
-#if defined(USE_FPA_INTB_GEMM) && USE_FPA_INTB_GEMM
+#if !defined(DISABLE_CONTRIB_OPS) && defined(USE_FPA_INTB_GEMM) && USE_FPA_INTB_GEMM
 
 #include <cstring>
 
@@ -186,4 +186,4 @@ size_t GetMatMulNBitsLastComputeWorkspaceBytes(const OpKernel* kernel) {
 }  // namespace test
 }  // namespace onnxruntime
 
-#endif  // USE_FPA_INTB_GEMM
+#endif  // !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
