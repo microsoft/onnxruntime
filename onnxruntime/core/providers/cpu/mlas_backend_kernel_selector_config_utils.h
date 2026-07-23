@@ -18,6 +18,7 @@ namespace onnxruntime {
 inline void SetupMlasBackendKernelSelectorFromConfigOptions(MLAS_BACKEND_KERNEL_SELECTOR_CONFIG& config,
                                                             const ConfigOptions& config_options) {
   config.use_kleidiai = config_options.GetConfigOrDefault(kOrtSessionOptionsMlasDisableKleidiAi, "0") != "1";
+  config.enable_sve_sgemm = config_options.GetConfigOrDefault(kOrtSessionOptionsMlasEnableSveSgemm, "0") == "1";
 
   if (auto conv_igemm_max_work =
           config_options.GetConfigEntry(kOrtSessionOptionsMlasKleidiAiConvIgemmMaxWork)) {

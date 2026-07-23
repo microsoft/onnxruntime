@@ -225,7 +225,8 @@ MlasFlashAttentionGQAThreaded(
                 static_cast<size_t>(head_size),     // ldb
                 0.0f,                               // beta
                 scores,                             // C (output scores)
-                row_size_kv                         // ldc
+                row_size_kv,                        // ldc
+                args->BackendKernelSelectorConfig
             );
 
             // Step 1b: Apply attention bias (additive) if present
@@ -339,7 +340,8 @@ MlasFlashAttentionGQAThreaded(
                 static_cast<size_t>(head_size),     // ldb
                 ir == 0 ? 0.0f : 1.0f,              // beta (accumulate after first block)
                 temp_output,                        // C (accumulated output)
-                static_cast<size_t>(head_size)      // ldc
+                static_cast<size_t>(head_size),      // ldc
+                args->BackendKernelSelectorConfig
             );
         }
 
