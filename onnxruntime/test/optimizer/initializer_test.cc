@@ -17,6 +17,11 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/file_util.h"
 
+#include "core/framework/data_types.h"
+#include "core/framework/tensor.h"
+#include "core/graph/model.h"
+#include "test/test_environment.h"
+
 namespace onnxruntime {
 namespace test {
 #if !defined(__wasm__)
@@ -268,6 +273,27 @@ TEST(OptimizerInitializerTest, DataField) {
   TestInitializerDataField<BFloat16>();
   TestInitializerDataField<float>();
   TestInitializerDataField<double>();
+}
+
+// An in-memory external-data initializer with no registered OrtValue must load without a model_path.
+TEST(OptimizerInitializerTest, InMemoryExternalDataWithoutOrtValueOrModelPath) {
+  std::vector<float> backing(64);  // 256 bytes > kSmallTensorExternalDataThreshold
+  std::iota(backing.begin(), backing.end(), 1.0f);
+
+  Tensor src(DataTypeImpl::GetType<float>(), TensorShape({static_cast<int64_t>(backing.size())}),
+             backing.data(), CPUAllocator::DefaultInstance()->Info());
+  auto tensor_proto = utils::TensorToTensorProto(src, "in_memory_init", /*use_tensor_buffer=*/true);
+  ASSERT_TRUE(utils::HasExternalDataInMemory(tensor_proto));
+
+  Model model("InMemoryExternalDataInitializer", false, DefaultLoggingManager().DefaultLogger());
+  const Graph& graph = model.MainGraph();
+  const Initializer init(graph, tensor_proto, std::filesystem::path{}, /*check_outer_scope=*/false);
+
+  ASSERT_EQ(init.size(), backing.size());
+  const auto values = init.DataAsSpan<float>();
+  for (size_t i = 0; i < backing.size(); ++i) {
+    EXPECT_EQ(values[i], backing[i]) << "Mismatch at index " << i;
+  }
 }
 
 }  // namespace test

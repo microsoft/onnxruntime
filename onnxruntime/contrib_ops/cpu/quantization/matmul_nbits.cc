@@ -965,7 +965,7 @@ Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
       // Bulk convert A from fp16 to fp32.
       auto a_size = static_cast<size_t>(a->Shape().Size());
       auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, a_size, true);
-      MlasConvertHalfToFloatBuffer(a_data_fp16, tmp_a_data_ptr.get(), a_size);
+      MlasConvertHalfToFloatBufferInParallel(a_data_fp16, tmp_a_data_ptr.get(), a_size, thread_pool);
 
       // Use pre-converted fp32 scales, or nullptr if scales are baked into packed B (KleidiAI).
       // For non-KleidiAI 4-bit: scales_fp32_ was set during PrePack.
@@ -1028,7 +1028,7 @@ Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
                          thread_pool, &mlas_backend_kernel_selector_config_);
 
       // Bulk convert output from fp32 to fp16.
-      MlasConvertFloatToHalfBuffer(tmp_c.get(), y_data, c_size);
+      MlasConvertFloatToHalfBufferInParallel(tmp_c.get(), y_data, c_size, thread_pool);
       return Status::OK();
     }
   }
@@ -1096,9 +1096,19 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
     workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size, true);
   }
 
-  auto a_size = static_cast<size_t>(a->Shape().Size());
-  auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, a_size, true);
-  MlasConvertHalfToFloatBuffer(a_data, tmp_a_data_ptr.get(), a_size);
+  // On the int8 path the workspace init quantizes A. If the platform can quantize
+  // straight from fp16, hand it the fp16 A and skip the fp32 copy of A entirely; the
+  // quantized A is bit-identical either way. The fp32 (CompFp32) path reads A as float
+  // directly, so it still needs the conversion.
+  const bool quantize_a_from_fp16 =
+      compute_type_ == SQNBIT_CompInt8 && MlasQNBitGemmFp16DirectQuantASupported();
+
+  IAllocatorUniquePtr<float> tmp_a_data_ptr;
+  if (!quantize_a_from_fp16) {
+    auto a_size = static_cast<size_t>(a->Shape().Size());
+    tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, a_size, true);
+    MlasConvertHalfToFloatBufferInParallel(a_data, tmp_a_data_ptr.get(), a_size, thread_pool);
+  }
 
   float* scales_ptr = nullptr;
   IAllocatorUniquePtr<float> scales_temp;
@@ -1128,11 +1138,23 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
   }
 
   const size_t c_size = static_cast<size_t>(y->Shape().Size());
-  std::vector<float> c_v(c_size);
+  // When the int8 path can emit fp16 directly, skip the full fp32 copy of the result:
+  // each worker converts its own output tile to fp16 in place. Otherwise compute into an
+  // fp32 buffer and convert once at the end. No zero-init: the GEMM writes every element.
+  const bool output_fp16_direct =
+      compute_type_ == SQNBIT_CompInt8 && MlasQNBitGemmFp16DirectCOutputSupported(nbits_);
+  IAllocatorUniquePtr<float> c_v;
+  if (!output_fp16_direct) {
+    c_v = IAllocator::MakeUniquePtr<float>(allocator, c_size, true);
+  }
 
   InlinedVector<MLAS_QNBIT_GEMM_DATA_PARAMS<float>> data(batch_count);
   for (size_t i = 0; i < batch_count; ++i) {
-    data[i].A = tmp_a_data_ptr.get() + helper.LeftOffsets()[i];
+    if (quantize_a_from_fp16) {
+      data[i].AFp16 = a_data + helper.LeftOffsets()[i];
+    } else {
+      data[i].A = tmp_a_data_ptr.get() + helper.LeftOffsets()[i];
+    }
     data[i].lda = lda;
     if (effective_compute_type == SQNBIT_CompInt8) {
       data[i].QuantBDataWorkspace = packed_b_.get();
@@ -1141,12 +1163,18 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
     data[i].QuantBScale = scales_ptr;
     data[i].QuantBZeroPoint = zero_points_data;
     data[i].Bias = bias ? bias_ptr : nullptr;
-    data[i].C = c_v.data() + helper.OutputOffsets()[i];
+    if (output_fp16_direct) {
+      data[i].CFp16 = y_data + helper.OutputOffsets()[i];
+    } else {
+      data[i].C = c_v.get() + helper.OutputOffsets()[i];
+    }
     data[i].ldc = N;
   }
   MlasQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, effective_compute_type, data.data(), workspace.get(),
                      thread_pool, &mlas_backend_kernel_selector_config_);
-  MlasConvertFloatToHalfBuffer(c_v.data(), y_data, c_size);
+  if (!output_fp16_direct) {
+    MlasConvertFloatToHalfBufferInParallel(c_v.get(), y_data, c_size, thread_pool);
+  }
   return Status::OK();
 }
 #endif  // end of !MLAS_F16VEC_INTRINSICS_SUPPORTED || !MLAS_TARGET_AMD64
@@ -1234,7 +1262,6 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
             scales_data,
             static_cast<const float*>(zero_points_data),
             static_cast<int32_t>(block_size_),
-            column_wise_quant_,
             static_cast<int32_t>(K_),
             static_cast<int32_t>(N_),
             thread_pool);
@@ -1397,7 +1424,6 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
             scales_ptr,
             static_cast<const MLFloat16*>(zero_points_data),
             static_cast<int32_t>(block_size_),
-            column_wise_quant_,
             static_cast<int32_t>(K_),
             static_cast<int32_t>(N_),
             thread_pool);

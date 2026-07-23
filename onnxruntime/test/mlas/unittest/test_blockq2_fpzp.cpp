@@ -99,10 +99,10 @@ class MlasBlockwise2BitsFpZpTest : public MlasTestBase {
 
     if (zp_mode == ZeroPointMode::Fp16) {
       MlasDequantizeBlockwiseFpZeroPoint<float, MLAS_FP16, 2>(
-          dst, q_data, scales, zp_fp16, block_size, /*columnwise=*/true, rows, columns, GetMlasThreadPool());
+          dst, q_data, scales, zp_fp16, block_size, rows, columns, GetMlasThreadPool());
     } else {
       MlasDequantizeBlockwiseFpZeroPoint<float, float, 2>(
-          dst, q_data, scales, zp_fp32, block_size, /*columnwise=*/true, rows, columns, GetMlasThreadPool());
+          dst, q_data, scales, zp_fp32, block_size, rows, columns, GetMlasThreadPool());
     }
 
     for (size_t i = 0; i < out_count; i++) {

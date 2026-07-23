@@ -717,6 +717,21 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     // preference to the shared field; otherwise it falls back to the shared one.
     QuantizeARowComputeBlkSum_CompInt8_Fn* QuantizeARowComputeBlkSum_CompInt8_W2 = nullptr;
 
+    // Same output as QuantizeARowComputeBlkSum_CompInt8 (block quantized int8, per-block
+    // scale, and scale * sum(a_i)), but reads A as fp16 and converts each element to
+    // float before quantizing. Lets a fp16 activation input be quantized in one pass
+    // instead of a separate fp16 -> fp32 conversion followed by the float quantizer.
+    // Only set where the CompInt8 kernels are available (x64 AVX2 and up).
+    typedef void(QuantizeARowComputeBlkSum_CompInt8_Fp16_Fn)(
+        size_t BlkLen,
+        const MLAS_FP16* A,
+        size_t CountK,
+        std::byte* QuantA,
+        float* QuantAScale,
+        float* AScaledGroupSum  // scale_k * Sum_blklen(a_i)
+    );
+    QuantizeARowComputeBlkSum_CompInt8_Fp16_Fn* QuantizeARowComputeBlkSum_CompInt8_Fp16 = nullptr;
+
     /**
      * @brief Multiply fp16 matrix A rows with fp16 matrix B columns.
      *        Results are written to fp16 matrix C.
