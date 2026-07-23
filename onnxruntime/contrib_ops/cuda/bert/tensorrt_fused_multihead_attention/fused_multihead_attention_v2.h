@@ -78,6 +78,23 @@ struct Fused_multihead_attention_params_v2 {
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+struct FusedMultiHeadAttentionKernelMetaInfoV2 {
+  Data_type mDataType;
+  unsigned int mS;
+  unsigned int mD;
+  unsigned int mSM;
+  const unsigned char* mCubin;
+  unsigned int mCubinSize;
+  const char* mFuncName;
+  unsigned int mSharedMemBytes;
+  unsigned int mThreadsPerCTA;
+  unsigned int mUnrollStep;
+  bool mInterleaved;
+  bool mWithRelativePositionBias = false;
+  bool mFlashAttention = false;
+};
+
+#if defined(USE_TRT_FUSED_ATTENTION)
 extern const unsigned char cubin_fmha_v2_fp16_384_32_sm80_cu_cubin[];
 extern const unsigned char cubin_fmha_v2_fp16_256_32_sm80_cu_cubin[];
 extern const unsigned char cubin_fmha_v2_fp16_192_32_sm80_cu_cubin[];
@@ -154,21 +171,7 @@ extern const unsigned int fused_multihead_attention_v2_fp16_128_64_kernel_sm70_c
 extern const unsigned int fused_multihead_attention_v2_fp16_256_64_kernel_sm70_cubin_len;
 extern const unsigned int fused_multihead_attention_v2_fp16_384_64_kernel_sm70_cubin_len;
 
-static const struct FusedMultiHeadAttentionKernelMetaInfoV2 {
-  Data_type mDataType;
-  unsigned int mS;
-  unsigned int mD;
-  unsigned int mSM;
-  const unsigned char* mCubin;
-  unsigned int mCubinSize;
-  const char* mFuncName;
-  unsigned int mSharedMemBytes;
-  unsigned int mThreadsPerCTA;
-  unsigned int mUnrollStep;
-  bool mInterleaved;
-  bool mWithRelativePositionBias = false;
-  bool mFlashAttention = false;
-} sMhaKernelMetaInfosV2[] = {
+static const FusedMultiHeadAttentionKernelMetaInfoV2 sMhaKernelMetaInfosV2[] = {
     // Volta
     {DATA_TYPE_FP16,
      64,
@@ -1094,6 +1097,7 @@ static const struct FusedMultiHeadAttentionKernelMetaInfoV2 {
      false},
 #endif
 };
+#endif  // USE_TRT_FUSED_ATTENTION
 
 class FusedMultiHeadAttentionXMMAKernelV2 : public TFusedMultiHeadAttentionXMMAKernel<FusedMultiHeadAttentionKernelMetaInfoV2,
                                                                                       Fused_multihead_attention_params_v2> {
@@ -1230,8 +1234,14 @@ class FusedMultiHeadAttentionXMMAKernelV2 : public TFusedMultiHeadAttentionXMMAK
 using FusedMHAKernelFactoryV2 = TFusedMHAKernelFactory<FusedMultiHeadAttentionXMMAKernelV2>;
 
 inline const FusedMultiHeadAttentionXMMAKernelV2* getXMMAKernelsV2(Data_type type, unsigned int sm) {
+#if defined(USE_TRT_FUSED_ATTENTION)
   return FusedMHAKernelFactoryV2::Get().getXMMAKernels(
       sMhaKernelMetaInfosV2, sizeof(sMhaKernelMetaInfosV2) / sizeof(sMhaKernelMetaInfosV2[0]), type, sm);
+#else
+  (void)type;
+  (void)sm;
+  return nullptr;
+#endif
 }
 
 }  // namespace cuda
