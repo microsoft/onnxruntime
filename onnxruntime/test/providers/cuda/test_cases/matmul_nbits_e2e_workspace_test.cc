@@ -50,6 +50,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensor_shape.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/framework/workspace_requirement.h"
 #include "core/graph/graph.h"
 #include "core/graph/onnx_protobuf.h"
@@ -83,7 +84,13 @@ constexpr uint16_t kHalfOne = 0x3C00;  // 1.0 in IEEE-754 half precision.
 
 // Builds a minimal single-node MatMulNBits model (A[M,K] fp16, B int4 initializer, scales fp16
 // initializer, Y[M,N] fp16) and returns its serialized ModelProto bytes.
-std::string BuildMatMulNBitsModelBytes() {
+//
+// When `m_dim_param` is null (default), input A's leading dimension is the fully-static value
+// `kE2eM` (a concrete dim_value). When `m_dim_param` is non-null, that leading dimension is instead
+// a *symbolic* dim (dim_param, e.g. "seq") with NO dim_value -- a genuinely dynamic shape. This is
+// used by Test D (dynamic, no override -> graceful fallback) and by Test C, where a
+// FreeDimensionOverrideByName later rewrites the symbolic dim into a concrete value at session init.
+std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr) {
   const int64_t k_blocks = (kE2eK + kE2eBlockSize - 1) / kE2eBlockSize;  // 32
   const int64_t blob_size = (kE2eBlockSize * kE2eBits + 7) / 8;          // 16
 
@@ -101,21 +108,30 @@ std::string BuildMatMulNBitsModelBytes() {
   auto* graph = model.mutable_graph();
   graph->set_name("matmul_nbits_workspace_e2e");
 
-  auto set_fp16_shape = [](ONNX_NAMESPACE::ValueInfoProto* vi, int64_t d0, int64_t d1) {
+  // Sets a rank-2 fp16 shape. The leading dim is symbolic (dim_param) when `d0_param` is non-null,
+  // otherwise it is the concrete value `d0`. The trailing dim is always the concrete value `d1`.
+  auto set_fp16_shape = [](ONNX_NAMESPACE::ValueInfoProto* vi, const char* d0_param, int64_t d0,
+                           int64_t d1) {
     auto* tt = vi->mutable_type()->mutable_tensor_type();
     tt->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
     auto* shape = tt->mutable_shape();
-    shape->add_dim()->set_dim_value(d0);
+    auto* dim0 = shape->add_dim();
+    if (d0_param != nullptr) {
+      dim0->set_dim_param(d0_param);
+    } else {
+      dim0->set_dim_value(d0);
+    }
     shape->add_dim()->set_dim_value(d1);
   };
 
-  // Graph input A and output Y (both fp16, static shapes).
+  // Graph input A and output Y (both fp16). A's leading dim mirrors `m_dim_param`; Y's leading dim
+  // mirrors it too so the declared output shape stays consistent with shape inference.
   auto* a = graph->add_input();
   a->set_name("A");
-  set_fp16_shape(a, kE2eM, kE2eK);
+  set_fp16_shape(a, m_dim_param, kE2eM, kE2eK);
   auto* y = graph->add_output();
   y->set_name("Y");
-  set_fp16_shape(y, kE2eM, kE2eN);
+  set_fp16_shape(y, m_dim_param, kE2eM, kE2eN);
 
   // B initializer: uint8 {N, k_blocks, blob_size}, zero-filled.
   auto* b = graph->add_initializer();
@@ -164,6 +180,72 @@ std::string BuildMatMulNBitsModelBytes() {
   model.SerializeToString(&bytes);
   return bytes;
 }
+
+// Builds a trivial single-node fp32 Add model (X + Y -> Z, all [kAddM, kAddN]) and returns its
+// serialized ModelProto bytes. Used by Test E as a control: Add does NOT override
+// DeclareWorkspaceRequirements, so it must hit the OpKernel base-class no-op.
+constexpr int64_t kAddM = 4;
+constexpr int64_t kAddN = 8;
+
+std::string BuildAddModelBytes() {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  auto* onnx_opset = model.add_opset_import();
+  onnx_opset->set_domain("");
+  onnx_opset->set_version(17);
+
+  auto* graph = model.mutable_graph();
+  graph->set_name("add_workspace_control");
+
+  auto set_fp32_shape = [](ONNX_NAMESPACE::ValueInfoProto* vi, int64_t d0, int64_t d1) {
+    auto* tt = vi->mutable_type()->mutable_tensor_type();
+    tt->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto* shape = tt->mutable_shape();
+    shape->add_dim()->set_dim_value(d0);
+    shape->add_dim()->set_dim_value(d1);
+  };
+
+  auto* x = graph->add_input();
+  x->set_name("X");
+  set_fp32_shape(x, kAddM, kAddN);
+  auto* y = graph->add_input();
+  y->set_name("Y");
+  set_fp32_shape(y, kAddM, kAddN);
+  auto* z = graph->add_output();
+  z->set_name("Z");
+  set_fp32_shape(z, kAddM, kAddN);
+
+  auto* node = graph->add_node();
+  node->set_op_type("Add");
+  node->set_domain("");
+  node->set_name("add");
+  node->add_input("X");
+  node->add_input("Y");
+  node->add_output("Z");
+
+  std::string bytes;
+  model.SerializeToString(&bytes);
+  return bytes;
+}
+
+// fpA_intB eligibility requires compute capability >= 7.5 (see CheckFpAIntBEligibility in
+// matmul_nbits.cc). Returns the compute capability (major*10+minor) of CUDA device 0, or -1 when no
+// device is present. Tests that exercise the fpA_intB-eligible path must skip on older GPUs (rather
+// than fail) so they stay portable across the varying-compute-capability CI GPUs.
+int CudaDeviceComputeCapabilityOrNegative() {
+  int device_count = 0;
+  if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count == 0) {
+    return -1;
+  }
+  cudaDeviceProp prop{};
+  if (cudaGetDeviceProperties(&prop, 0) != cudaSuccess) {
+    return -1;
+  }
+  return prop.major * 10 + prop.minor;
+}
+
+// Minimum compute capability for the fpA_intB path (mirrors the production eligibility gate).
+constexpr int kMinFpAIntBSm = 75;
 
 }  // namespace
 
@@ -248,6 +330,253 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
       << "Level 2 (" << level2 << ") != runtime request (" << runtime << "). A runtime value of 0 "
       << "usually means the GEMV path was taken instead of the CUTLASS GEMM branch.";
   EXPECT_EQ(*level1, runtime) << "Level 1 (" << *level1 << ") != runtime request (" << runtime << ")";
+}
+
+// ---------------------------------------------------------------------------
+// Test C - fixed-shape specialization via free-dimension override.
+// Input A is declared with a symbolic leading dim ("seq"); SessionOptions overrides "seq" -> 512
+// before Initialize(). The override rewrites the NodeArg shape into a concrete value that flows into
+// BOTH Level 1 (reads the node shape) and Level 2 (given the same static shape), and matches the
+// real runtime request. This is *fixed-shape* specialization (exactly 512, not an upper bound).
+// ---------------------------------------------------------------------------
+TEST(MatMulNBitsWorkspace, FixedShapeViaFreeDimensionOverride) {
+  const int device_sm = CudaDeviceComputeCapabilityOrNegative();
+  if (device_sm < 0) {
+    GTEST_SKIP() << "No CUDA device available; skipping free-dimension-override workspace test.";
+  }
+  if (device_sm < kMinFpAIntBSm) {
+    GTEST_SKIP() << "Device compute capability " << device_sm << " < " << kMinFpAIntBSm
+                 << "; MatMulNBits fpA_intB path is not eligible, so the eligible-path assertions "
+                    "cannot hold. Skipping.";
+  }
+
+  constexpr int64_t kOverrideM = 512;
+  constexpr const char* kSeqDim = "seq";
+
+  ScopedEnvironmentVariables scoped_env(EnvVarMap{{"ORT_FPA_INTB_GEMM", optional<std::string>{"1"}}});
+
+  // A declared as ["seq", K] -- genuinely dynamic until the override is applied.
+  const std::string model_bytes = BuildMatMulNBitsModelBytes(kSeqDim);
+
+  SessionOptions so;
+  so.session_logid = "MatMulNBitsWorkspaceFixedOverride";
+  // Fixed-shape specialization: bind the symbolic "seq" dim to exactly kOverrideM at session init.
+  so.free_dimension_overrides.push_back(
+      FreeDimensionOverride{kSeqDim, FreeDimensionOverrideType::Name, kOverrideM});
+
+  InferenceSessionWrapper session(so, GetEnvironment());
+  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const Graph& graph = session.GetGraph();
+  const Node* mm_node = nullptr;
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "MatMulNBits") {
+      mm_node = &node;
+      break;
+    }
+  }
+  ASSERT_NE(mm_node, nullptr) << "MatMulNBits node not found in the graph.";
+  ASSERT_EQ(mm_node->GetExecutionProviderType(), onnxruntime::kCudaExecutionProvider)
+      << "MatMulNBits node was not assigned to the CUDA EP.";
+
+  // Confirm the override actually rewrote the symbolic leading dim into the concrete value: this is
+  // what makes Level 1 estimable (StaticLeadingDimProduct requires a dim_value).
+  const NodeArg* a_arg = mm_node->InputDefs()[0];
+  ASSERT_NE(a_arg, nullptr);
+  const ONNX_NAMESPACE::TensorShapeProto* a_shape = a_arg->Shape();
+  ASSERT_NE(a_shape, nullptr);
+  ASSERT_EQ(a_shape->dim_size(), 2);
+  ASSERT_TRUE(a_shape->dim(0).has_dim_value())
+      << "Free-dimension override did not rewrite the symbolic 'seq' dim into a concrete value.";
+  ASSERT_EQ(a_shape->dim(0).dim_value(), kOverrideM);
+
+  // ---- Level 1: estimator reads the (now-overridden) node shape directly. ----
+  const std::optional<size_t> level1 =
+      onnxruntime::contrib::cuda::EstimateMatMulNBitsWorkspace(*mm_node, cuda_ep->GetDeviceProp());
+  ASSERT_TRUE(level1.has_value())
+      << "Level-1 estimate returned nullopt after the fixed override made the shape static.";
+
+  // ---- Level 2: constructed-kernel estimate for the same fixed shape. Derive the TensorShape from
+  //      the actual (overridden) NodeArg proto via the SAME production converter Level-2 wiring would
+  //      use, so this exercises the real TensorShapeProto -> TensorShape path (not a hand-built copy).
+  const OpKernel* op_kernel = session.GetSessionState().GetKernel(mm_node->Index());
+  ASSERT_NE(op_kernel, nullptr) << "No kernel constructed for the MatMulNBits node.";
+  const TensorShape a_tensor_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*a_shape);
+  ASSERT_EQ(a_tensor_shape.NumDimensions(), static_cast<size_t>(2));
+  ASSERT_EQ(a_tensor_shape[0], kOverrideM)
+      << "Overridden NodeArg leading dim did not convert to the fixed value " << kOverrideM << ".";
+  const std::vector<TensorShape> input_shapes{a_tensor_shape};
+  InlinedVector<WorkspaceRequirement> requirements;
+  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(AsSpan(input_shapes), requirements));
+  ASSERT_EQ(requirements.size(), static_cast<size_t>(1))
+      << "Level-2 DeclareWorkspaceRequirements did not report exactly one workspace slot.";
+  // MatMulNBits::DeclareWorkspaceRequirements assigns the single split-K workspace slot_id 0.
+  EXPECT_EQ(requirements[0].slot_id, 0) << "Unexpected workspace slot_id.";
+  const size_t level2 = requirements[0].size_bytes;
+
+  // ---- Runtime: run once at the fixed M and read the workspace the CUTLASS runner requested. ----
+  std::vector<MLFloat16> a_data(static_cast<size_t>(kOverrideM * kE2eK), MLFloat16(0.0f));
+  OrtValue a_value;
+  CreateMLValue<MLFloat16>(std::array<int64_t, 2>{kOverrideM, kE2eK}, a_data.data(), OrtMemoryInfo(),
+                           &a_value);
+  NameMLValMap feeds;
+  feeds.emplace("A", a_value);
+  const std::vector<std::string> output_names{"Y"};
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+
+  const size_t runtime = GetMatMulNBitsLastComputeWorkspaceBytes(op_kernel);
+
+  std::cout << "[ WORKSPACE ] (fixed override seq=" << kOverrideM << ") Level1=" << *level1
+            << " bytes, Level2=" << level2 << " bytes, runtime=" << runtime << " bytes" << std::endl;
+
+  EXPECT_GT(runtime, static_cast<size_t>(0))
+      << "Runtime workspace request was 0 - the CUTLASS GEMM branch did not run (GEMV path?).";
+  EXPECT_EQ(*level1, level2) << "Level 1 (" << *level1 << ") != Level 2 (" << level2 << ")";
+  EXPECT_EQ(level2, runtime) << "Level 2 (" << level2 << ") != runtime request (" << runtime << ")";
+  EXPECT_EQ(*level1, runtime) << "Level 1 (" << *level1 << ") != runtime request (" << runtime << ")";
+}
+
+// ---------------------------------------------------------------------------
+// Test D - dynamic, no override -> graceful fallback.
+// Input A declared ["seq", K] with NO override. Level 1 returns nullopt (leading dim is symbolic);
+// Level 2 returns empty requirements (symbolic dim -> negative extent -> fallback); and the kernel
+// still runs correctly using its live GetScratchBuffer path.
+// ---------------------------------------------------------------------------
+TEST(MatMulNBitsWorkspace, DynamicShapeNoOverrideFallsBack) {
+  const int device_sm = CudaDeviceComputeCapabilityOrNegative();
+  if (device_sm < 0) {
+    GTEST_SKIP() << "No CUDA device available; skipping dynamic-shape fallback workspace test.";
+  }
+  if (device_sm < kMinFpAIntBSm) {
+    GTEST_SKIP() << "Device compute capability " << device_sm << " < " << kMinFpAIntBSm
+                 << "; MatMulNBits fpA_intB path is not eligible, so the runtime>0 assertion cannot "
+                    "hold. Skipping.";
+  }
+
+  ScopedEnvironmentVariables scoped_env(EnvVarMap{{"ORT_FPA_INTB_GEMM", optional<std::string>{"1"}}});
+
+  // A declared as ["seq", K] and NO free-dimension override -> stays dynamic.
+  const std::string model_bytes = BuildMatMulNBitsModelBytes("seq");
+
+  SessionOptions so;
+  so.session_logid = "MatMulNBitsWorkspaceDynamicFallback";
+  InferenceSessionWrapper session(so, GetEnvironment());
+  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const Graph& graph = session.GetGraph();
+  const Node* mm_node = nullptr;
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "MatMulNBits") {
+      mm_node = &node;
+      break;
+    }
+  }
+  ASSERT_NE(mm_node, nullptr) << "MatMulNBits node not found in the graph.";
+  ASSERT_EQ(mm_node->GetExecutionProviderType(), onnxruntime::kCudaExecutionProvider)
+      << "MatMulNBits node was not assigned to the CUDA EP.";
+
+  // Sanity: the leading dim really is still symbolic (no dim_value), i.e. genuinely dynamic.
+  const NodeArg* a_arg = mm_node->InputDefs()[0];
+  ASSERT_NE(a_arg, nullptr);
+  const ONNX_NAMESPACE::TensorShapeProto* a_shape = a_arg->Shape();
+  ASSERT_NE(a_shape, nullptr);
+  ASSERT_EQ(a_shape->dim_size(), 2);
+  ASSERT_FALSE(a_shape->dim(0).has_dim_value())
+      << "Leading dim unexpectedly became static; the dynamic-fallback path would not be exercised.";
+
+  // ---- Level 1: dynamic leading dim -> not estimable -> nullopt. ----
+  const std::optional<size_t> level1 =
+      onnxruntime::contrib::cuda::EstimateMatMulNBitsWorkspace(*mm_node, cuda_ep->GetDeviceProp());
+  EXPECT_FALSE(level1.has_value())
+      << "Level-1 estimate must be nullopt for a dynamic (symbolic) leading dim.";
+
+  // ---- Level 2: derive the TensorShape from the actual NodeArg proto via the SAME production
+  //      converter Level-2 wiring would use. A symbolic dim must convert to a negative extent (-1),
+  //      which drives the dynamic fallback -> empty requirements. ----
+  const OpKernel* op_kernel = session.GetSessionState().GetKernel(mm_node->Index());
+  ASSERT_NE(op_kernel, nullptr) << "No kernel constructed for the MatMulNBits node.";
+  const TensorShape a_tensor_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*a_shape);
+  ASSERT_EQ(a_tensor_shape.NumDimensions(), static_cast<size_t>(2));
+  ASSERT_LT(a_tensor_shape[0], 0)
+      << "Symbolic NodeArg leading dim did not convert to a negative (unknown) extent.";
+  const std::vector<TensorShape> input_shapes{a_tensor_shape};
+  InlinedVector<WorkspaceRequirement> requirements;
+  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(AsSpan(input_shapes), requirements));
+  EXPECT_TRUE(requirements.empty())
+      << "Level-2 DeclareWorkspaceRequirements must be empty for an unknown (symbolic) leading dim.";
+
+  // ---- Runtime: with a concrete feed the kernel still runs via the live GetScratchBuffer path. ----
+  constexpr int64_t kRunM = 256;
+  std::vector<MLFloat16> a_data(static_cast<size_t>(kRunM * kE2eK), MLFloat16(0.0f));
+  OrtValue a_value;
+  CreateMLValue<MLFloat16>(std::array<int64_t, 2>{kRunM, kE2eK}, a_data.data(), OrtMemoryInfo(), &a_value);
+  NameMLValMap feeds;
+  feeds.emplace("A", a_value);
+  const std::vector<std::string> output_names{"Y"};
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+
+  // The runtime still allocated its scratch dynamically (behavior unchanged); it must be > 0 for the
+  // CUTLASS GEMM branch, proving Run() works even though both static levels declined to pre-size it.
+  const size_t runtime = GetMatMulNBitsLastComputeWorkspaceBytes(op_kernel);
+  std::cout << "[ WORKSPACE ] (dynamic, no override) Level1=nullopt, Level2=empty, runtime=" << runtime
+            << " bytes (live GetScratchBuffer)" << std::endl;
+  EXPECT_GT(runtime, static_cast<size_t>(0))
+      << "Runtime workspace request was 0 - the CUTLASS GEMM branch did not run (GEMV path?).";
+}
+
+// ---------------------------------------------------------------------------
+// Test E - regression safety / control.
+// A non-MatMulNBits kernel (Add) does not override DeclareWorkspaceRequirements, so calling it must
+// hit the OpKernel base-class default: Status::OK() with an empty requirements vector. This confirms
+// the base default is a true no-op and that the new virtual does not affect unrelated kernels.
+// ---------------------------------------------------------------------------
+TEST(MatMulNBitsWorkspace, NonMatMulNBitsKernelDeclaresNoWorkspace) {
+  int device_count = 0;
+  if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count == 0) {
+    GTEST_SKIP() << "No CUDA device available; skipping Add control workspace test.";
+  }
+
+  const std::string model_bytes = BuildAddModelBytes();
+
+  SessionOptions so;
+  so.session_logid = "AddWorkspaceControl";
+  InferenceSessionWrapper session(so, GetEnvironment());
+  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const Graph& graph = session.GetGraph();
+  const Node* add_node = nullptr;
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "Add") {
+      add_node = &node;
+      break;
+    }
+  }
+  ASSERT_NE(add_node, nullptr) << "Add node not found in the graph.";
+  ASSERT_EQ(add_node->GetExecutionProviderType(), onnxruntime::kCudaExecutionProvider)
+      << "Add node was not assigned to the CUDA EP.";
+
+  const OpKernel* op_kernel = session.GetSessionState().GetKernel(add_node->Index());
+  ASSERT_NE(op_kernel, nullptr) << "No kernel constructed for the Add node.";
+
+  // Add does not override DeclareWorkspaceRequirements -> base-class no-op: OK() + empty output.
+  const std::vector<TensorShape> input_shapes{TensorShape({kAddM, kAddN}), TensorShape({kAddM, kAddN})};
+  InlinedVector<WorkspaceRequirement> requirements;
+  // Pre-populate to prove the no-op default clears rather than appends.
+  requirements.push_back(WorkspaceRequirement{123, /*slot_id=*/7});
+  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(AsSpan(input_shapes), requirements));
+  EXPECT_TRUE(requirements.empty())
+      << "A kernel that does not override DeclareWorkspaceRequirements must report no workspace.";
 }
 
 }  // namespace test
