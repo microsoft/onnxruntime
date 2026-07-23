@@ -54,16 +54,32 @@ def directory_setup_factory(tmp_path):
 
         # --- macOS and other platforms (for CPU test) ---
         if package_type == "cpu":
-            # Add linux-aarch64 and osx-arm64 for CPU test
+            # Add linux-aarch64, osx-x86_64, and osx-arm64 for CPU test
             linux_aarch64_dir = java_artifact_dir / "onnxruntime-java-linux-aarch64"
             linux_aarch64_native_dir = linux_aarch64_dir / "ai" / "onnxruntime" / "native" / "linux-aarch64"
             linux_aarch64_native_dir.mkdir(parents=True, exist_ok=True)
             create_empty_file(linux_aarch64_dir / "libcustom_op_library.so")
+            create_empty_file(linux_aarch64_native_dir / "libonnxruntime.so")
+            create_empty_file(linux_aarch64_native_dir / "libonnxruntime4j_jni.so")
+
+            # The outer artifact directory keeps the CI arch tag (osx-x86_64 /
+            # osx-arm64) to match jar_packaging.py's platform list, but the inner
+            # ai/onnxruntime/native/<arch> path uses the Java-convention arch
+            # names (osx-x64 / osx-aarch64) applied by
+            # linux_java_copy_strip_binary.py for .dylib builds.
+            osx_x86_64_dir = java_artifact_dir / "onnxruntime-java-osx-x86_64"
+            osx_x86_64_native_dir = osx_x86_64_dir / "ai" / "onnxruntime" / "native" / "osx-x64"
+            osx_x86_64_native_dir.mkdir(parents=True, exist_ok=True)
+            (osx_x86_64_dir / "libcustom_op_library.dylib").write_bytes(b"x86_64-custom-op-marker")
+            create_empty_file(osx_x86_64_native_dir / "libonnxruntime.dylib")
+            create_empty_file(osx_x86_64_native_dir / "libonnxruntime4j_jni.dylib")
 
             osx_arm64_dir = java_artifact_dir / "onnxruntime-java-osx-arm64"
-            osx_arm64_native_dir = osx_arm64_dir / "ai" / "onnxruntime" / "native" / "osx-arm64"
+            osx_arm64_native_dir = osx_arm64_dir / "ai" / "onnxruntime" / "native" / "osx-aarch64"
             osx_arm64_native_dir.mkdir(parents=True, exist_ok=True)
-            create_empty_file(osx_arm64_dir / "libcustom_op_library.dylib")
+            (osx_arm64_dir / "libcustom_op_library.dylib").write_bytes(b"arm64-custom-op-marker")
+            create_empty_file(osx_arm64_native_dir / "libonnxruntime.dylib")
+            create_empty_file(osx_arm64_native_dir / "libonnxruntime4j_jni.dylib")
 
         return tmp_path
 
@@ -126,6 +142,17 @@ def test_cpu_packaging(directory_setup_factory, version_string):
         # Linux libs
         assert "ai/onnxruntime/native/linux-x64/libonnxruntime.so" in jar_contents
         assert "ai/onnxruntime/native/linux-x64/libonnxruntime4j_jni.so" in jar_contents
+        assert "ai/onnxruntime/native/linux-aarch64/libonnxruntime.so" in jar_contents
+        assert "ai/onnxruntime/native/linux-aarch64/libonnxruntime4j_jni.so" in jar_contents
+        # macOS libs -- under the Java-convention arch paths (osx-x64 /
+        # osx-aarch64) produced by linux_java_copy_strip_binary.py.
+        assert "ai/onnxruntime/native/osx-x64/libonnxruntime.dylib" in jar_contents
+        assert "ai/onnxruntime/native/osx-x64/libonnxruntime4j_jni.dylib" in jar_contents
+        assert "ai/onnxruntime/native/osx-aarch64/libonnxruntime.dylib" in jar_contents
+        assert "ai/onnxruntime/native/osx-aarch64/libonnxruntime4j_jni.dylib" in jar_contents
+        # The pre-rename CI-arch paths must NOT appear in the JAR.
+        assert "ai/onnxruntime/native/osx-x86_64/libonnxruntime.dylib" not in jar_contents
+        assert "ai/onnxruntime/native/osx-arm64/libonnxruntime.dylib" not in jar_contents
         # GPU libs should NOT be present
         assert "ai/onnxruntime/native/linux-x64/libonnxruntime_providers_cuda.so" not in jar_contents
 
@@ -134,11 +161,17 @@ def test_cpu_packaging(directory_setup_factory, version_string):
         jar_contents = zf.namelist()
         assert "libcustom_op_library.so" in jar_contents
         assert "libcustom_op_library.dylib" in jar_contents
+        # Both osx platforms produce a same-named dylib; only arm64 must be archived so that
+        # its entry is not silently overwritten by a subsequent x86_64 archive call.
+        assert jar_contents.count("libcustom_op_library.dylib") == 1
+        assert zf.read("libcustom_op_library.dylib") == b"arm64-custom-op-marker"
 
     # 3. Verify the custom op libraries were removed from the source directories
     linux_dir = temp_build_dir / "java-artifact" / "onnxruntime-java-linux-x64"
     linux_aarch64_dir = temp_build_dir / "java-artifact" / "onnxruntime-java-linux-aarch64"
+    osx_x86_64_dir = temp_build_dir / "java-artifact" / "onnxruntime-java-osx-x86_64"
     osx_arm64_dir = temp_build_dir / "java-artifact" / "onnxruntime-java-osx-arm64"
     assert not (linux_dir / "libcustom_op_library.so").exists()
     assert not (linux_aarch64_dir / "libcustom_op_library.so").exists()
+    assert not (osx_x86_64_dir / "libcustom_op_library.dylib").exists()
     assert not (osx_arm64_dir / "libcustom_op_library.dylib").exists()
