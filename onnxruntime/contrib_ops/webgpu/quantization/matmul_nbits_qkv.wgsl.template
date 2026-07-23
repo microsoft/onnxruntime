@@ -21,9 +21,10 @@
 var<workgroup> sum_squared_shared : array<f32, workgroup_size_x>;
 #endif
 var<workgroup> tile_A : array<input_a_value_t, a_length_per_tile>;
-var<workgroup> q_inter_results : array<array<q_output_element_t, tile_size_k_vec + 1>, tile_size>;
-var<workgroup> k_inter_results : array<array<q_output_element_t, tile_size_k_vec + 1>, tile_size>;
-var<workgroup> v_inter_results : array<array<q_output_element_t, tile_size_k_vec + 1>, tile_size>;
+// Accumulate in f32 to avoid f16 overflow (max ~65504) when summing long K dot products.
+var<workgroup> q_inter_results : array<array<f32, tile_size_k_vec + 1>, tile_size>;
+var<workgroup> k_inter_results : array<array<f32, tile_size_k_vec + 1>, tile_size>;
+var<workgroup> v_inter_results : array<array<f32, tile_size_k_vec + 1>, tile_size>;
 
 const default_zero_point = vec4<q_output_element_t>(q_output_element_t(8));
 
@@ -95,8 +96,8 @@ fn loadSHMA(batch: u32, b_global_base: u32, kidx: u32, col: u32, inv_std: f32) {
 
 fn compute_projection_sum(weight: q_b_value_t,
                           scale: q_output_element_t,
-                          idx: u32) -> q_output_element_t {
-  var sum = q_output_element_t(0);
+                          idx: u32) -> f32 {
+  var sum = f32(0);
   var a_offset = idx * (8 / component_a) * component_b;
 #if component_b == 1
   let weight_lower = unpack_nibble_values(weight & 0x0F0F0F0Fu) - default_zero_point;
@@ -106,15 +107,15 @@ fn compute_projection_sum(weight: q_b_value_t,
 #if component_a == 1
   let a0 = load_a_vec4(a_offset);
   let a1 = load_a_vec4(a_offset + 4);
-  sum += dot(a0, w0) + dot(a1, w1);
+  sum += dot(vec4<f32>(a0), vec4<f32>(w0)) + dot(vec4<f32>(a1), vec4<f32>(w1));
 #elif component_a == 2
   let a0 = load_a_vec4(a_offset);
   let a1 = load_a_vec4(a_offset + 2);
-  sum += dot(a0, w0) + dot(a1, w1);
+  sum += dot(vec4<f32>(a0), vec4<f32>(w0)) + dot(vec4<f32>(a1), vec4<f32>(w1));
 #elif component_a == 4
   let a0 = load_a_vec4(a_offset);
   let a1 = load_a_vec4(a_offset + 1);
-  sum += dot(a0, w0) + dot(a1, w1);
+  sum += dot(vec4<f32>(a0), vec4<f32>(w0)) + dot(vec4<f32>(a1), vec4<f32>(w1));
 #endif
 #else
   for (var i = 0u; i < component_b; i++) {
@@ -125,17 +126,17 @@ fn compute_projection_sum(weight: q_b_value_t,
 #if component_a == 1
   let a0 = load_a_vec4(a_offset);
   let a1 = load_a_vec4(a_offset + 4);
-    sum += dot(a0, w0) + dot(a1, w1);
+    sum += dot(vec4<f32>(a0), vec4<f32>(w0)) + dot(vec4<f32>(a1), vec4<f32>(w1));
     a_offset += 8;
 #elif component_a == 2
   let a0 = load_a_vec4(a_offset);
   let a1 = load_a_vec4(a_offset + 2);
-    sum += dot(a0, w0) + dot(a1, w1);
+    sum += dot(vec4<f32>(a0), vec4<f32>(w0)) + dot(vec4<f32>(a1), vec4<f32>(w1));
     a_offset += 4;
 #elif component_a == 4
   let a0 = load_a_vec4(a_offset);
   let a1 = load_a_vec4(a_offset + 1);
-    sum += dot(a0, w0) + dot(a1, w1);
+    sum += dot(vec4<f32>(a0), vec4<f32>(w0)) + dot(vec4<f32>(a1), vec4<f32>(w1));
     a_offset += 2;
 #endif
   }
@@ -193,9 +194,9 @@ $MAIN {
 
   if (local_idx < tile_size) {
     for (var b = 0u; b < tile_size_k_vec; b++) {
-      q_inter_results[local_idx][b] = q_output_element_t(0);
-      k_inter_results[local_idx][b] = q_output_element_t(0);
-      v_inter_results[local_idx][b] = q_output_element_t(0);
+      q_inter_results[local_idx][b] = f32(0);
+      k_inter_results[local_idx][b] = f32(0);
+      v_inter_results[local_idx][b] = f32(0);
     }
   }
 
@@ -262,9 +263,9 @@ $MAIN {
 
   if (local_idx < tile_size) {
     let b_global = b_global_base + local_idx;
-    var q_output_value = q_output_element_t(0);
-    var k_output_value = q_output_element_t(0);
-    var v_output_value = q_output_element_t(0);
+    var q_output_value = f32(0);
+    var k_output_value = f32(0);
+    var v_output_value = f32(0);
     for (var b = 0u; b < tile_size_k_vec; b++) {
       q_output_value += q_inter_results[local_idx][b];
       k_output_value += k_inter_results[local_idx][b];

@@ -180,8 +180,8 @@ export const createMatMulNBitsProgramInfo = (
               (_, i) =>
                 `${
                   aComponents === 1
-                    ? `a_data${pass > 0 ? pass : ''}[${i}] * b_dequantized_values[${i}]`
-                    : `dot(a_data${pass > 0 ? pass : ''}[${i}], b_dequantized_values[${i}])`
+                    ? `f32(a_data${pass > 0 ? pass : ''}[${i}]) * f32(b_dequantized_values[${i}])`
+                    : `dot(vec${aComponents}<f32>(a_data${pass > 0 ? pass : ''}[${i}]), vec${aComponents}<f32>(b_dequantized_values[${i}]))`
                 }`,
             ).join(' + ')};
           `;
@@ -242,8 +242,13 @@ export const createMatMulNBitsProgramInfo = (
             var b_dequantized_values: ${qDqDataType};`;
       return calcStr;
     };
+    // Accumulate in f32 to prevent fp16 overflow in long dot products (issue #26732).
+    // Weights and activations stay in their original dtype; explicit f32 casts on each
+    // operand are required because Dawn/D3D12 re-demotes temporaries to f16 when
+    // 'enable f16;' is active. The result is downcast to the output type only at the write.
+    const accType = components === 1 ? 'f32' : `vec${components}<f32>`;
     return `
-        var<workgroup> workgroup_shared: array<${output.type.value}, ${outputNumber * workgroupSize}>;
+        var<workgroup> workgroup_shared: array<${accType}, ${outputNumber * workgroupSize}>;
         ${shaderHelper.declareVariables(...inputVariables, output)}
         ${shaderHelper.mainStart([workgroupSize, 1, 1])}
           let output_indices = ${output.offsetToIndices(`(global_idx / ${workgroupSize}) * ${outputNumber}`)};
@@ -267,13 +272,13 @@ export const createMatMulNBitsProgramInfo = (
           workgroupBarrier();
 
           if (local_id.x < ${outputNumber}) {
-            var output_value: ${output.type.value} = ${output.type.value}(0);
+            var output_value: ${accType} = ${accType}(0);
             var workgroup_shared_offset: u32 = local_id.x;
             for (var b: u32 = 0u; b < ${workgroupSize}u; b++) {
               output_value += workgroup_shared[workgroup_shared_offset];
               workgroup_shared_offset += ${outputNumber};
             }
-            ${output.setByIndices(`${output.type.indices}(batch, row, col + local_id.x)`, 'output_value')};
+            ${output.setByIndices(`${output.type.indices}(batch, row, col + local_id.x)`, `${output.type.value}(output_value)`)};
           }
         }`;
   };
@@ -368,7 +373,8 @@ export const createMatMulNBitsBlockSize32ProgramInfo = (
 
     return `
         var<workgroup> sub_a: array<${a.type.value}, ${aLengthPerTile}>;
-        var<workgroup> inter_results: array<array<${output.type.value}, ${workgroupX}>, ${workgroupY}>;
+        // Accumulate in f32 to prevent fp16 overflow in long dot products (issue #26732).
+        var<workgroup> inter_results: array<array<f32, ${workgroupX}>, ${workgroupY}>;
         ${shaderHelper.declareVariables(...inputVariables, output)}
         ${shaderHelper.mainStart([workgroupX, workgroupY, 1])}
           let output_indices = ${output.offsetToIndices(`workgroup_index * ${workgroupY}`)};
@@ -444,9 +450,11 @@ export const createMatMulNBitsBlockSize32ProgramInfo = (
                   (_, i) => `${dataType}(b_value_lower[${i}]), ${dataType}(b_value_upper[${i}])`,
                 ).join(', ')});
                 let b_dequantized_values = (b_quantized_values - mat2x4<${dataType}>(${Array(8).fill('zero_point').join(',')})) * scale;
+                // Explicit f32 casts on each operand are required: Dawn/D3D12 re-demotes
+                // temporaries to f16 when 'enable f16;' is active (issue #26732).
                 inter_results[local_id.y][local_id.x] += ${Array.from(
                   { length: 2 },
-                  (_, i) => `${`dot(a_data${i}, b_dequantized_values[${i}])`}`,
+                  (_, i) => `${`dot(vec4<f32>(a_data${i}), vec4<f32>(b_dequantized_values[${i}]))`}`,
                 ).join(' + ')};
               }
               word_offset += ${8 / aComponents};`;
@@ -458,13 +466,13 @@ export const createMatMulNBitsBlockSize32ProgramInfo = (
           }
 
           if (local_idx < ${workgroupY}) {
-            var output_value: ${output.type.value} = ${output.type.value}(0);
+            var output_value: f32 = f32(0);
             for (var b = 0u; b < ${workgroupX}; b++) {
               output_value += inter_results[local_idx][b];
             }
             if (col + local_idx < uniforms.output_shape[2])
             {
-              ${output.setByIndices(`${output.type.indices}(batch, row, col + local_idx)`, 'output_value')}
+              ${output.setByIndices(`${output.type.indices}(batch, row, col + local_idx)`, `${output.type.value}(output_value)`)}
             }
           }
         }`;
