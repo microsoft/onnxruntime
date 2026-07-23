@@ -14,6 +14,7 @@
 #include "cuda_plugin_kernels.h"
 #include "cuda_stream_plugin.h"
 #include "cuda_kernel_adapter.h"
+#include "core/providers/cuda/cuda_op_allowlist.h"
 
 // Define the BuildKernelCreateInfo<void>() sentinel in onnxruntime::cuda.
 // This is normally defined in cuda_execution_provider.cc (excluded from plugin).
@@ -44,7 +45,10 @@ OrtStatus* CreateCudaKernelRegistry(const OrtEpApi& /*ep_api*/,
   auto entries = ::onnxruntime::cuda::PluginKernelCollector::Instance().Entries();
   for (auto build_fn : entries) {
     ::onnxruntime::ep::adapter::KernelCreateInfo info = build_fn();
-    if (info.kernel_def != nullptr) {  // filter the BuildKernelCreateInfo<void> sentinel
+    // Skip the BuildKernelCreateInfo<void> sentinel and any op excluded by the
+    // build-time CUDA operator allow-list (Stage 2).
+    if (info.kernel_def != nullptr &&
+        ::onnxruntime::cuda::IsCudaOpAllowed(info.kernel_def.GetOperatorType())) {
       ORT_THROW_IF_ERROR(registry.Register(std::move(info)));
     }
   }

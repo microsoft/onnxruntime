@@ -9,6 +9,8 @@
 
 #include "core/framework/execution_providers.h"
 
+#include "core/providers/cuda/cuda_op_allowlist.h"
+
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/matmul_nbits_fusion.h"
 #include "core/optimizer/nhwc_transformer.h"
@@ -410,7 +412,12 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<GatherToSliceFusion>(cpu_cuda_eps));
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_dml_eps));
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_acl_cuda_dml_eps));
-      transformers.emplace_back(std::make_unique<GroupQueryAttentionFusion>(cuda_eps));
+      // GroupQueryAttentionFusion is CUDA-only; skip it if GroupQueryAttention is
+      // excluded by the CUDA operator allow-list so the graph does not end up with
+      // an unassignable CUDA-only fused node (no-op unless the allow-list is set).
+      if (onnxruntime::cuda::IsCudaOpAllowed("GroupQueryAttention")) {
+        transformers.emplace_back(std::make_unique<GroupQueryAttentionFusion>(cuda_eps));
+      }
       // Run MatMulAddFusion again after *AttentionFusion transforms with `preserve_attention_pattern = false`,
       // to cleanup the remaining MatMul-Add that were part of the attention pattern but not detected or fused.
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(no_limit_empty_ep_list, false));
@@ -435,7 +442,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 #endif  // ENABLE_TRITON
 
       transformers.emplace_back(std::make_unique<BiasSoftmaxFusion>(cpu_cuda_eps));
-      transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_eps));
+      // BiasDropoutFusion is CUDA-only; skip it if BiasDropout is excluded by the
+      // CUDA operator allow-list (no-op unless the allow-list is set).
+      if (onnxruntime::cuda::IsCudaOpAllowed("BiasDropout")) {
+        transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_eps));
+      }
 #ifdef ENABLE_TRAINING
       transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_eps));
       transformers.emplace_back(std::make_unique<BiasSoftmaxDropoutFusion>(cuda_eps));

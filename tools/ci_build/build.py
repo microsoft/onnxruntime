@@ -536,6 +536,11 @@ def generate_build_tree(
         "-Donnxruntime_DISABLE_STRING_TYPE=" + ("ON" if disable_string_type else "OFF"),
         "-Donnxruntime_CUDA_MINIMAL=" + ("ON" if args.enable_cuda_minimal_build else "OFF"),
     ]
+    if args.cuda_op_allowlist:
+        allowlist_path = os.path.abspath(args.cuda_op_allowlist)
+        if not os.path.isfile(allowlist_path):
+            raise BuildError(f"--cuda_op_allowlist file does not exist: {allowlist_path}")
+        cmake_args.append("-Donnxruntime_CUDA_OP_ALLOWLIST_FILE=" + allowlist_path)
     if args.minimal_build is not None:
         add_default_definition(cmake_extra_defines, "ONNX_MINIMAL_BUILD", "ON")
     if args.rv64:

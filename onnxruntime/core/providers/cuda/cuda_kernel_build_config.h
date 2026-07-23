@@ -10,27 +10,26 @@
 // provider_api.h (KernelDef, MLDataType, DataTypeImpl) rather than the real
 // framework headers. The CUDA plugin EP does not use this header.
 #include "core/providers/shared_library/provider_api.h"
+#include "core/providers/cuda/cuda_op_allowlist.h"
 
 namespace onnxruntime {
 namespace cuda {
 
-// Stage 1 build-time data-type filter for CUDA kernels.
-//
-// When a floating point element type is disabled at build time (currently only
-// `double`, enabled via the `--disable_types double` build option which defines
-// the DISABLE_DOUBLE_TYPE macro), CUDA kernels that can only run in that type are
-// skipped at registration time, so the type becomes unavailable on the CUDA EP.
-//
-// This helper is used by the in-tree CUDA EP kernel registration tables. The CUDA
-// plugin EP achieves the same effect inside its adapter KernelDefBuilder (which
-// returns a null KernelDef for disabled-type kernels), because the plugin's
-// registration loop only sees an opaque KernelDef that does not expose kernel type
-// constraints.
+// Build-time filter that decides whether a CUDA kernel should be dropped at
+// registration time. It combines the Stage 1 data-type filter (e.g. drop
+// `double` when DISABLE_DOUBLE_TYPE is defined) and the Stage 2 operator
+// allow-list (drop ops not present in the configured allow-list). It is a no-op
+// unless one of those build options is enabled.
 //
 // Note: this removes the kernel *registration* only. Reclaiming the disabled
 // kernels' device code additionally relies on linker dead-code elimination
 // (--gc-sections) or on excluding the kernel sources from compilation.
 inline bool IsCudaKernelDisabledByType([[maybe_unused]] const KernelDef& kernel_def) {
+  // Stage 2: operator allow-list. Drop kernels whose op type is not allowed.
+  if (!IsCudaOpAllowed(kernel_def.OpName())) {
+    return true;
+  }
+
 #if defined(DISABLE_DOUBLE_TYPE)
   const MLDataType disabled_type = DataTypeImpl::GetTensorType<double>();
 

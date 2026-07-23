@@ -566,6 +566,14 @@ def add_size_reduction_args(parser: argparse.ArgumentParser) -> None:
         help="Disable selected data types.",
     )
     parser.add_argument(
+        "--cuda_op_allowlist",
+        type=str,
+        default=None,
+        help="Path to a file listing the operator types to keep on the CUDA EP (one per line; "
+        "'#' comments allowed). When set, all other CUDA operators are excluded from registration "
+        "and CUDA-only fusions producing excluded operators are disabled.",
+    )
+    parser.add_argument(
         "--disable_exceptions",
         action="store_true",
         help="Disable exceptions (requires --minimal_build).",

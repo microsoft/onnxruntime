@@ -186,6 +186,36 @@ option(onnxruntime_DISABLE_FLOAT8_TYPES "Disable float 8 types" OFF)
 option(onnxruntime_DISABLE_FLOAT4_TYPES "Disable float 4 types" OFF)
 option(onnxruntime_DISABLE_DOUBLE_TYPE "Disable double (float64) CUDA kernels" OFF)
 option(onnxruntime_DISABLE_STRING_TYPE "Disable string type" OFF)
+
+# Stage 2: CUDA operator allow-list. When a file is provided, only the operator
+# types listed in it (one per line, '#' comments allowed) are registered on the
+# CUDA EP (both in-tree and plugin); all other CUDA operators are excluded and
+# CUDA-only fusions producing excluded operators are disabled.
+set(onnxruntime_CUDA_OP_ALLOWLIST_FILE "" CACHE FILEPATH
+    "Path to a file listing the operator types to keep on the CUDA EP. Empty disables the allow-list.")
+if (onnxruntime_CUDA_OP_ALLOWLIST_FILE)
+  if (NOT EXISTS "${onnxruntime_CUDA_OP_ALLOWLIST_FILE}")
+    message(FATAL_ERROR "onnxruntime_CUDA_OP_ALLOWLIST_FILE not found: ${onnxruntime_CUDA_OP_ALLOWLIST_FILE}")
+  endif()
+  # Reconfigure when the allow-list file changes.
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${onnxruntime_CUDA_OP_ALLOWLIST_FILE}")
+  file(STRINGS "${onnxruntime_CUDA_OP_ALLOWLIST_FILE}" _cuda_allowlist_lines)
+  set(_cuda_allowlist_generated "// Generated from ${onnxruntime_CUDA_OP_ALLOWLIST_FILE}. Do not edit.\n")
+  foreach(_cuda_allowlist_line IN LISTS _cuda_allowlist_lines)
+    string(STRIP "${_cuda_allowlist_line}" _cuda_allowlist_line)
+    if(_cuda_allowlist_line STREQUAL "" OR _cuda_allowlist_line MATCHES "^#")
+      continue()
+    endif()
+    string(APPEND _cuda_allowlist_generated "\"${_cuda_allowlist_line}\",\n")
+  endforeach()
+  set(_cuda_allowlist_dir "${CMAKE_BINARY_DIR}/cuda_op_allowlist_generated")
+  file(MAKE_DIRECTORY "${_cuda_allowlist_dir}")
+  file(WRITE "${_cuda_allowlist_dir}/cuda_op_allowlist_data.inc" "${_cuda_allowlist_generated}")
+  include_directories("${_cuda_allowlist_dir}")
+  add_compile_definitions(ORT_ENABLE_CUDA_OP_ALLOWLIST)
+  message(STATUS "CUDA operator allow-list enabled from ${onnxruntime_CUDA_OP_ALLOWLIST_FILE}")
+endif()
+
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
 option(onnxruntime_CLIENT_PACKAGE_BUILD "Enables default settings that are more appropriate for client/on-device workloads." OFF)
 option(onnxruntime_ENABLE_SESSION_THREADPOOL_CALLBACKS "Enable per-session thread pool work callbacks." OFF)
