@@ -172,8 +172,8 @@ class PosixTelemetry : public Telemetry {
   static std::unique_ptr<::Microsoft::Applications::Events::ILogConfiguration> config_;
 
   // State tracking
-  static std::atomic<bool> enabled_;
-  static std::atomic<bool> env_disabled_;
+  static std::atomic<bool> detailed_telemetry_enabled_;
+  static std::atomic<bool> minimal_telemetry_requested_by_environment_;
   static std::atomic<uint32_t> projection_;
 
   // Process info tracking

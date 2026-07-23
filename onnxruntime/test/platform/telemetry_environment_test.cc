@@ -28,32 +28,32 @@ TEST(TelemetryEnvironmentTest, IsTruthyCiValue) {
   EXPECT_FALSE(IsTruthyCiValue("off"));
 }
 
-TEST(TelemetryEnvironmentTest, EnvVarOptOut) {
+TEST(TelemetryEnvironmentTest, MinimalTelemetryEnvironmentMode) {
   {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TELEMETRY_DISABLED", "1"}}};
-    EXPECT_TRUE(IsTelemetryDisabledByEnvVar());
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_MINIMAL_TELEMETRY", "1"}}};
+    EXPECT_TRUE(IsMinimalTelemetryRequestedByEnvVar());
   }
   {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TELEMETRY_DISABLED", "TRUE"}}};
-    EXPECT_TRUE(IsTelemetryDisabledByEnvVar());
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_MINIMAL_TELEMETRY", "TRUE"}}};
+    EXPECT_TRUE(IsMinimalTelemetryRequestedByEnvVar());
   }
   {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TELEMETRY_DISABLED", "0"}}};
-    EXPECT_FALSE(IsTelemetryDisabledByEnvVar());
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_MINIMAL_TELEMETRY", "0"}}};
+    EXPECT_FALSE(IsMinimalTelemetryRequestedByEnvVar());
   }
   {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TELEMETRY_DISABLED", "random"}}};
-    EXPECT_FALSE(IsTelemetryDisabledByEnvVar());
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_MINIMAL_TELEMETRY", "random"}}};
+    EXPECT_FALSE(IsMinimalTelemetryRequestedByEnvVar());
   }
   {
-    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_TELEMETRY_DISABLED", nullopt}}};
-    EXPECT_FALSE(IsTelemetryDisabledByEnvVar());
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_MINIMAL_TELEMETRY", nullopt}}};
+    EXPECT_FALSE(IsMinimalTelemetryRequestedByEnvVar());
   }
 }
 
-TEST(TelemetryEnvironmentTest, EnvironmentOptOutCannotBeReenabled) {
-  EXPECT_TRUE(CanEnableTelemetryEvents(false));
-  EXPECT_FALSE(CanEnableTelemetryEvents(true));
+TEST(TelemetryEnvironmentTest, EnvironmentMinimalModeCannotEnableDetailedTelemetry) {
+  EXPECT_TRUE(CanEnableDetailedTelemetry(false));
+  EXPECT_FALSE(CanEnableDetailedTelemetry(true));
 }
 
 TEST(TelemetryEnvironmentTest, CiDetectionSuppresses) {
