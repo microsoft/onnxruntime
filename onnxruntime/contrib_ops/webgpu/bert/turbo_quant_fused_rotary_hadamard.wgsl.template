@@ -42,9 +42,26 @@ var<workgroup> scale_reduction_buffer : array<f32, 64>;
 var<workgroup> index_buffer : array<u32, HEAD_SIZE>;
 
 $MAIN {
-  // Compute total_seq_length.
+  // Map flat workgroup index to logical component (Q, K, or V).
+  let num_kv_slices = uniforms.num_kv_slices;
+  let is_q = workgroup_idx >= 2u * num_kv_slices;
+  let is_value = !is_q && workgroup_idx >= num_kv_slices;
+
+  // Compute batch based on workgroup type.
+  var batch: u32;
+  if (is_q) {
+    let q_slice = workgroup_idx - 2u * num_kv_slices;
+    if (q_slice >= uniforms.num_q_slices) { return; }
+    batch = q_slice / (uniforms.kv_sequence_length * uniforms.num_heads);
+  } else {
+    let kv_slice = select(workgroup_idx, workgroup_idx - num_kv_slices, is_value);
+    if (kv_slice >= num_kv_slices) { return; }
+    batch = kv_slice / (uniforms.kv_num_heads * uniforms.kv_sequence_length);
+  }
+
+  // Compute total_seq_length (per batch if using seqlen_k).
 #if use_seqlen_k
-  let total_seq_length = u32(seqlen_k[0u]) + 1u;
+  let total_seq_length = u32(seqlen_k[batch]) + 1u;
 #else
   let total_seq_length = uniforms.total_sequence_length;
 #endif
@@ -66,18 +83,12 @@ $MAIN {
   }
 #endif
 
-  // Map flat workgroup index to logical component (Q, K, or V).
-  let num_kv_slices = uniforms.num_kv_slices;
-  let is_q = workgroup_idx >= 2u * num_kv_slices;
-  let is_value = !is_q && workgroup_idx >= num_kv_slices;
-
   // ============ Q WORKGROUP PATH (early return, no shared memory/barriers) ============
   if (is_q) {
     let q_slice = workgroup_idx - 2u * num_kv_slices;
     if (q_slice >= uniforms.num_q_slices) { return; }
 
     // Unflatten q_slice into (batch, seq, head).
-    let batch = q_slice / (uniforms.kv_sequence_length * uniforms.num_heads);
     let head = (q_slice / uniforms.kv_sequence_length) % uniforms.num_heads;
     let seq = q_slice % uniforms.kv_sequence_length;
 
@@ -120,8 +131,7 @@ $MAIN {
   let kv_slice = select(workgroup_idx, workgroup_idx - num_kv_slices, is_value);
   if (kv_slice >= num_kv_slices) { return; }
 
-  // Unflatten kv_slice into (batch, head, seq).
-  let batch = kv_slice / (uniforms.kv_num_heads * uniforms.kv_sequence_length);
+  // Unflatten kv_slice into (head, seq) — batch already computed above.
   let head = (kv_slice / uniforms.kv_sequence_length) % uniforms.kv_num_heads;
   let seq = kv_slice % uniforms.kv_sequence_length;
 
