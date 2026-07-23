@@ -383,7 +383,12 @@ Status WindowsEnv::ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* const file_path, c
 
   size_t total_bytes_read = 0;
   while (total_bytes_read < length) {
-    constexpr DWORD k_max_bytes_to_read = 1 << 30;  // read at most 1GB each time
+    // Cap each ReadFile transfer. A 1 GB ReadFile locks a large MDL into physical
+    // memory for the transfer; under Windows AppContainer / UWP memory pressure
+    // (e.g. Xbox) this can fail with ERROR_NO_SYSTEM_RESOURCES (errcode 1450).
+    // 16 MB chunks keep the same total I/O with far fewer locked pages.
+    // See microsoft/onnxruntime#29730 (validated on Xbox Series S AppContainer).
+    constexpr DWORD k_max_bytes_to_read = 1 << 24;  // read at most 16 MB each time
     const size_t bytes_remaining = length - total_bytes_read;
     const DWORD bytes_to_read = static_cast<DWORD>(std::min<size_t>(bytes_remaining, k_max_bytes_to_read));
     DWORD bytes_read;
