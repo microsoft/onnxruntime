@@ -197,7 +197,6 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
 #else
                                                 : *shape;  // unreachable, but satisfies compiler
 #endif
-        bool reused_caller_buffer = false;
         LOGS_DEFAULT(VERBOSE) << "Output shape mismatch for pre-allocated fetch buffer.";
         auto& tensor = *p_ort_value->GetMutable<Tensor>();
         // Keep caller-provided buffers for dynamic outputs when only the runtime
@@ -210,7 +209,6 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
           LOGS_DEFAULT(VERBOSE) << "Reusing caller buffer by reshape. old_num_elements="
                                 << tensor.Shape().Size() << " new_num_elements=" << shape->Size();
           tensor.Reshape(*shape);
-          reused_caller_buffer = true;
         } else {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                  "The output OrtValue provided for output '",
