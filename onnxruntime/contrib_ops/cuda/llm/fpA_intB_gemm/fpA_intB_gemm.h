@@ -18,7 +18,9 @@
 
 #include "contrib_ops/cuda/llm/cutlass_extensions/gemm_configs.h"
 #include "contrib_ops/cuda/llm/cutlass_extensions/weight_only_quant_op.h"
+#include "core/common/safeint.h"
 #include <cuda_runtime_api.h>
+#include <optional>
 #include <vector>
 
 namespace tkc = onnxruntime::llm::cutlass_extensions;
@@ -87,7 +89,9 @@ class CutlassFpAIntBGemmRunnerInterface {
   // the weights were prepacked for the Hopper layout. Default: no-op (keep the SM80 kernel).
   virtual void setUseSm90Native(bool /*use*/) {}
 
- protected:
+  // These tile constants are public (not protected) so the free/namespace-scope helper
+  // ComputeFpAIntBGemmWorkspaceSize below - which is not a member of this class - can read them.
+  // They are template/dtype-independent (they describe the launch grid, not the element type).
   static constexpr int SPLIT_K_LIMIT = 7;
   static constexpr int MIN_M_TILE = 16;
   static constexpr int MIN_N_TILE = 64;
@@ -95,6 +99,51 @@ class CutlassFpAIntBGemmRunnerInterface {
   static constexpr int MAX_M_TILE_SM90 = 128;
   static constexpr int MAX_N_TILE_SM90 = 256;
 };
+
+// Shared, stateless workspace-size formula for the fpA_intB / weight-only CUTLASS GEMM. This is the
+// single source of truth funnelled through by all three call sites (Phase-A memory roadmap, issue
+// microsoft/onnxruntime#29775):
+//   - CutlassFpAIntBGemmRunner<...>::getWorkspaceSize (runtime, via the constructed runner);
+//   - MatMulNBits::DeclareWorkspaceRequirements (Level 2, instance-level, after CreateKernels);
+//   - EstimateMatMulNBitsWorkspace (Level 1, partition-time, before any kernel instance exists).
+// It is pure arithmetic: no CUDA calls, no device state, no tensor data - it depends only on
+// m, n, sm and multi_processor_count (k is unused, matching the CUTLASS runner). Every intermediate
+// is computed with SafeInt<size_t> so adversarial (untrusted-model) dimensions cannot silently
+// overflow; on overflow this returns std::nullopt instead of throwing.
+inline std::optional<size_t> ComputeFpAIntBGemmWorkspaceSize(int m, int n, int /*k*/, int sm,
+                                                             int multi_processor_count) {
+  try {
+    using Interface = CutlassFpAIntBGemmRunnerInterface;
+#ifndef EXCLUDE_SM_90
+    if (sm == 90) {
+      // For Hopper, reserve a large workspace for the potential stream-K partial-sum reduction.
+      // sk_tiles <= 2 * ctas_per_wave (== 2 * multi_processor_count); sk_units <= multi_processor_count;
+      // the final scaled sk_tiles is at most 2 * max_sk_tiles + max_sk_units. Each entry is one float.
+      SafeInt<size_t> mpc(multi_processor_count);
+      SafeInt<size_t> max_sk_tiles = mpc * 2;
+      SafeInt<size_t> max_sk_units = mpc;
+      SafeInt<size_t> max_sk_tiles_with_separate_reduction = max_sk_tiles * 2 + max_sk_units;
+      SafeInt<size_t> bytes = max_sk_tiles_with_separate_reduction *
+                              static_cast<size_t>(Interface::MAX_M_TILE_SM90) *
+                              static_cast<size_t>(Interface::MAX_N_TILE_SM90) * sizeof(float);
+      return static_cast<size_t>(bytes);
+    }
+#else
+    (void)sm;
+    (void)multi_processor_count;
+#endif
+    // These are the min tile sizes for each config, which launch the maximum number of blocks.
+    // ceil_div(a, b) == (a + b - 1) / b; compute the numerator with SafeInt too so it cannot
+    // overflow before the division.
+    SafeInt<size_t> max_grid_m = (SafeInt<size_t>(m) + (Interface::MIN_M_TILE - 1)) / Interface::MIN_M_TILE;
+    SafeInt<size_t> max_grid_n = (SafeInt<size_t>(n) + (Interface::MIN_N_TILE - 1)) / Interface::MIN_N_TILE;
+    // We need 4 bytes per block in the worst case, launched split_k_limit deep in the z dimension.
+    SafeInt<size_t> bytes = max_grid_m * max_grid_n * Interface::SPLIT_K_LIMIT * 4;
+    return static_cast<size_t>(bytes);
+  } catch (const OnnxRuntimeException&) {
+    return std::nullopt;
+  }
+}
 
 template <typename ActivationType, typename WeightType, cutlass::WeightOnlyQuantOp QuantOp,
           typename ScaleZeroType = ActivationType, typename BiasType = ActivationType, typename OutputType = ActivationType>
