@@ -1873,6 +1873,7 @@ inline std::vector<std::string> ConstSessionImpl<T>::GetOverridableInitializerNa
     char* name;
     ThrowOnError(GetApi().SessionGetOverridableInitializerName(this->p_, i, allocator, &name));
     initializer_names.emplace_back(name);
+    allocator.Free(name);
   }
 
   return initializer_names;
