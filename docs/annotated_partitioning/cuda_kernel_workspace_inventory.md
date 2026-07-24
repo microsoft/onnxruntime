@@ -407,7 +407,10 @@ GEMM); see that entry. Not re-verified independently of MatMulNBits's call sites
 | **Shapes + device properties** | 3 | ✅ Exact | Attention (SM count), DeformConv (totalGlobalMem), Contrib Attention (SM version) |
 | **Shapes + cuDNN/cuBLAS handle** | 4 | ✅* Exact via API query | Conv, ConvTranspose, Reduction, RNN |
 | **Shapes + closed-form GEMM formula** | 2 | ✅ Exact (confirmed PR #29811) | MatMulNBits, fpA_intB_GEMM |
-| **Shapes + tactic profiling** | 1 | ⚠️ Upper bound only | MOE (not re-investigated; different runner from the fpA_intB pair above — do not assume it shares their exact-formula property) |
+| **Shapes + tactic profiling** | 1 | ⚠️† Upper bound only | MOE |
+
+† MOE was not re-investigated as part of PR #29811 (different runner from the fpA_intB pair above) —
+do not assume it shares their exact-formula property.
 
 ### Key takeaways
 
@@ -417,11 +420,9 @@ GEMM); see that entry. Not re-verified independently of MatMulNBits's call sites
    - Use worst-case workspace across all tactics (safe upper bound)
    - Run tactic selection eagerly at estimation time (expensive but exact)
    - Accept a safety multiplier for this one kernel
-   - MatMulNBits and fpA_intB_GEMM were previously grouped here too; PR #29811 (issue #29775 Phase-A
-     pilot) showed their workspace size is actually a closed-form function of `(m, n, k, sm,
-     multiProcessorCount)` and does not depend on the selected tactic — see entries #20/#21 above.
-     MOE uses a different runner (`moe_runner->getWorkspaceSize`) that was not investigated as part of
-     that pilot, so it should not be assumed to have the same property.
+
+   MatMulNBits and fpA_intB_GEMM were previously grouped here too; see entries #20/#21 above for why
+   PR #29811 moved them to the closed-form-exact row instead.
 
 3. **The cuDNN handle requirement** affects only 4 kernel types (Conv, ConvTranspose, Reduction, RNN). All are standard cuDNN API queries that are fast and deterministic given the handle + tensor descriptors.
 
@@ -438,9 +439,12 @@ GEMM); see that entry. Not re-verified independently of MatMulNBits's call sites
 |---------------|-------------|------------------------|
 | `Node_GetInputShape()` | OrtEpApi (generic) | All 25 kernels |
 | `Node_GetAttributeInt/Ints()` | OrtEpApi (generic) | Conv, Attention, RNN, MOE |
-| `device_prop.multiProcessorCount` | Cast `OrtEp*` to concrete EP type | Attention, DeformConv |
+| `device_prop.multiProcessorCount` | Cast `OrtEp*` to concrete EP type | Attention, DeformConv, MatMulNBits, fpA_intB |
 | `device_prop.totalGlobalMem` | Cast `OrtEp*` to concrete EP type | DeformConv |
 | cuDNN handle | Cast `OrtEp*` to concrete EP type | Conv, ConvTranspose, Reduction, RNN |
-| Tactic profiler state (or worst-case constant) | Cast `OrtEp*` to concrete EP type | MOE only (see "Key takeaways" — MatMulNBits/fpA_intB need only `device_prop.multiProcessorCount`, no profiler state) |
+| Tactic profiler state (or worst-case constant) | Cast `OrtEp*` to concrete EP type | MOE only† |
+
+† MatMulNBits/fpA_intB need only `device_prop.multiProcessorCount` (see "Key takeaways" above), not
+profiler state — they moved out of this row in PR #29811.
 
 **API surface:** Only `Node_GetInputShape` and `Node_GetAttributeInt/Ints` need to be added to `OrtEpApi` (generic, EP-agnostic). All device-specific state (cuDNN handles, device properties, profiler state) is accessed by casting `OrtEp*` to the EP's concrete type — no public API needed since the estimation function is EP-specific code.

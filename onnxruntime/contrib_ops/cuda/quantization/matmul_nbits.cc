@@ -547,7 +547,7 @@ Status MatMulNBits<T>::DeclareWorkspaceRequirements(
   if (!ws.has_value()) {
     return Status::OK();
   }
-  requirements.push_back(WorkspaceRequirement{*ws, /*slot_id=*/0, /*alignment=*/std::nullopt});
+  requirements.push_back(WorkspaceRequirement{*ws, /*slot_id=*/0, /*alignment_bytes=*/0});
   return Status::OK();
 }
 #endif

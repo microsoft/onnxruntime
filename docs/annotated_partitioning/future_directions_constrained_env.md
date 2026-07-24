@@ -994,14 +994,7 @@ struct WorkspaceRequirement {
   size_t size_bytes;        // Size of this workspace buffer
   int slot_id;             // Kernel-defined slot identifier (0, 1, 2, ...)
                            // Unique within a single kernel instance
-  std::optional<size_t> alignment;  // Added in PR #29811 (issue #29775 Phase-A pilot). Reserved for a
-                                     // future shared-arena packer that co-locates multiple kernels'
-                                     // declared slots and needs per-slot alignment metadata. Unused by
-                                     // any kernel today: the CUDA allocator's default ≥256-byte
-                                     // alignment already satisfies every current kernel's needs
-                                     // (each gets its own `GetScratchBuffer` call, or — like GQA's
-                                     // unfused path — hand-rolls sub-offsets assuming the outer
-                                     // buffer is already ≥256-byte aligned). Defaults to `nullopt`.
+  size_t alignment_bytes;   // 0 = allocator default is sufficient. See prose below.
 };
 
 // Optional override on OpKernel (called during FinalizeSessionState):
@@ -1012,7 +1005,16 @@ virtual Status DeclareWorkspaceRequirements(
 }
 ```
 
-**Shape source is not yet wired (issue #29775 Phase-A pilot, PR #29811):** as implemented today, neither
+**`alignment_bytes` (added in PR #29811):** reserved for a future shared-arena packer that co-locates
+multiple kernels' declared slots and needs per-slot alignment metadata. Unused by any kernel today — the
+CUDA allocator's default ≥256-byte alignment already satisfies every current kernel's needs (each gets
+its own `GetScratchBuffer` call, or — like GQA's unfused path — hand-rolls sub-offsets assuming the
+outer buffer is already ≥256-byte aligned). A plain `size_t` with a `0` sentinel is used rather than
+`std::optional<size_t>` because this struct is meant to be usable across a plugin-DLL boundary
+eventually, and `std::optional`'s layout is not guaranteed stable across compilers/STL versions the way
+a scalar with a sentinel value is.
+
+**Shape source is not yet wired:** as implemented today, neither
 `EstimateWorkspace` (Level 1) nor `DeclareWorkspaceRequirements` (Level 2) automatically receives "real"
 runtime tensor shapes. Both simply operate on whatever `TensorShape`/shape info a caller passes in. As of
 PR #29811, the *only* caller is that PR's own test harness, which hand-constructs shapes (including a
@@ -1025,7 +1027,6 @@ symbolic for dynamic models), or worst-case/user-declared shapes for constrained
 estimation"). The two-level split (Level 1 vs. Level 2) does not by itself resolve this — it only changes
 *when* the estimate can be computed relative to kernel construction, not *what* shape information is
 available.
-
 
 A kernel can declare multiple workspace slots (e.g., attention needs separate Q transpose buffer, output buffer, seqlens buffer). The `slot_id` is defined by the kernel author and is stable across calls — it identifies *which* buffer within that kernel's logic.
 

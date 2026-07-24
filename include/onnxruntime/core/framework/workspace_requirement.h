@@ -4,7 +4,6 @@
 #pragma once
 
 #include <cstddef>
-#include <optional>
 
 namespace onnxruntime {
 
@@ -22,15 +21,15 @@ struct WorkspaceRequirement {
   size_t size_bytes;  // upper-bound scratch bytes for this slot
   int slot_id;        // kernel-defined, stable across runs; unique within one kernel instance
 
-  // Optional pointer-alignment requirement for this slot's buffer, in bytes (e.g. 128, 256). Unset
-  // (nullopt) means "the allocator's default alignment is sufficient" - true for every kernel using
-  // this API today, since CUDA's allocator already guarantees >= 256-byte aligned allocations and no
-  // current workspace consumer needs a stricter or non-default alignment. This field exists so a
-  // future kernel with an exotic alignment need (e.g. a stricter tensor-core/WMMA layout constraint),
-  // or a future shared-arena packer that co-locates multiple kernels' slots into one allocation (see
-  // the "shared per-node memory-budget tracker" direction in issue #29775), can express that need
-  // without an ABI-breaking change to this struct. No kernel currently sets this.
-  std::optional<size_t> alignment;
+  // Pointer-alignment requirement for this slot's buffer, in bytes (e.g. 128, 256). 0 means "the
+  // allocator's default alignment is sufficient" - true for every kernel using this API today, since
+  // CUDA's allocator already guarantees >= 256-byte aligned allocations. Reserved for a future kernel
+  // with a stricter/exotic alignment need, or a future shared-arena packer that co-locates multiple
+  // kernels' slots (see the "shared per-node memory-budget tracker" direction in issue #29775).
+  // A plain size_t (not std::optional<size_t>) is used deliberately: this struct is meant to be usable
+  // across a plugin-DLL boundary eventually, and std::optional's layout is not guaranteed stable across
+  // compilers/STL versions the way a scalar with a sentinel value is.
+  size_t alignment_bytes;
 };
 
 }  // namespace onnxruntime

@@ -55,6 +55,12 @@ graph type (even just to read one field), you've made it impossible to reuse fro
 either (a) linking in-tree graph headers into the plugin DLL (defeats the purpose of a plugin boundary) or
 (b) duplicating the whole function. Keep the split clean from the start.
 
+**How to confirm you're clear:** grep the pure-math function's signature and body for any ORT graph type
+(`Node`, `NodeArg`, `TensorShape`, `GraphViewer`, etc.) — it should only ever see plain scalars
+(`int`/`int64_t`/`size_t`) and, at most, opaque device-property values already extracted by the caller.
+If you find a graph type anywhere in that function, the split has leaked and needs to be pulled apart
+before a plugin implementation can reuse it.
+
 Related, not yet built: `docs/annotated_partitioning/future_directions_constrained_env.md` (Phase A /
 plugin-ABI sections) describes the intended plugin-side C ABI surface for `DeclareWorkspaceRequirements`,
 but as of PR #29811 no plugin-side implementation exists yet — see that doc's "Cost of a Real
