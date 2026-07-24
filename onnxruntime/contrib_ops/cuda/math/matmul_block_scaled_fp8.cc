@@ -91,7 +91,7 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
   IAllocatorUniquePtr<CudaT> a_dequant;
   if (a_scale != nullptr) {
     a_dequant = GetScratchBuffer<CudaT>(SafeInt<size_t>(m_i) * SafeInt<size_t>(k_i),
-                                        context->GetComputeStream());
+                                        GetComputeStream(context));
     ORT_RETURN_IF_ERROR(LaunchQuantizeDequantizeActivationFp8(
         a_dequant.get(),
         a->DataRaw(),
