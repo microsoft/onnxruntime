@@ -2489,7 +2489,7 @@ static bool FinalizeReshapeShape(const std::vector<int64_t>& input_shape,      /
   return true;
 }
 
-bool HandleReshape(HandlerArgs& args) {
+static bool HandleReshapeAsTranspose(HandlerArgs& args) {
   // A Reshape can be logically equivalent to a Transpose if all dims with a value > 1 remain in the same order
   // and do not change size. If so, we can use HandleTransposeImpl to merge them.
   //  e.g. Reshape(input {1, 512, 4, 1}, shape {1, 1, 512, 4}) is equivalent to Transpose with perms { 0, 3, 1, 2 }
@@ -2577,6 +2577,143 @@ bool HandleReshape(HandlerArgs& args) {
   }
 
   return HandleTransposeImpl(args, perms);
+}
+
+// Push a Transpose past a Reshape when the Reshape *splits* one or more
+// post-transpose axes into contiguous groups of output axes.
+//
+// Example (motivating case):
+//   input {1, 12, 20, 24} -> Transpose(perm=[0,3,1,2]) -> {1, 24, 12, 20}
+//                         -> Reshape({1, 3, 8, 12, 20}) -> {1, 3, 8, 12, 20}
+//
+//   After: input -> Reshape({1, 12, 20, 3, 8}) -> Transpose(perm=[0,3,4,1,2])
+//                                              -> {1, 3, 8, 12, 20}
+//
+// Restrictions enforced:
+//   - Both transpose input shape and Reshape output shape (from shape
+//     inference on the Reshape's value_info) must be fully concrete
+//     (no symbolic / -1 / 0 dims). We drive off the output shape rather
+//     than the shape-input initializer so -1 / 0 have already been resolved
+//     by upstream shape inference.
+//   - Reshape output rank must exceed the transpose rank; equal or smaller
+//     ranks are covered by HandleReshapeAsTranspose.
+//   - The reshape output must partition into exactly one contiguous group per
+//     post-transpose axis, using every output dim.
+static bool HandleReshapeSplit(HandlerArgs& args) {
+  auto transpose_input_shape_opt = args.ctx.graph.GetValueInfo(args.transpose.Inputs()[0])->Shape();
+  if (!transpose_input_shape_opt.has_value()) {
+    return false;
+  }
+  const std::vector<int64_t>& transpose_input_shape = *transpose_input_shape_opt;
+  for (int64_t d : transpose_input_shape) {
+    if (d < 0) {
+      return false;
+    }
+  }
+
+  size_t rank = args.perm.size();
+  if (transpose_input_shape.size() != rank) {
+    return false;
+  }
+  std::vector<int64_t> transposed_shape(rank);
+  for (size_t i = 0; i < rank; ++i) {
+    transposed_shape[i] = transpose_input_shape[gsl::narrow_cast<size_t>(args.perm[i])];
+  }
+
+  auto reshape_output_shape_opt = args.ctx.graph.GetValueInfo(args.node.Outputs()[0])->Shape();
+  if (!reshape_output_shape_opt.has_value()) {
+    return false;
+  }
+  const std::vector<int64_t>& requested_shape = *reshape_output_shape_opt;
+  for (int64_t d : requested_shape) {
+    if (d <= 0) {
+      return false;  // symbolic / -1 / 0 — inference didn't resolve; bail.
+    }
+  }
+
+  // This handler is for pure splits (output rank > post-transpose rank).
+  // Equal or smaller ranks are the domain of HandleReshapeAsTranspose.
+  if (requested_shape.size() <= rank) {
+    return false;
+  }
+
+  // Partition requested_shape into `rank` contiguous groups: group j's product
+  // must equal transposed_shape[j], consuming output dims left-to-right.
+  // Consume at least one output dim per group so that size-1 post-transpose
+  // axes get a unique home rather than an empty group (which would leave the
+  // next group's assignment ambiguous when the requested shape also contains
+  // leading 1s).
+  std::vector<std::pair<size_t, size_t>> groups;  // [start, end) in reshape-output axis space
+  groups.reserve(rank);
+  size_t cursor = 0;
+  for (size_t j = 0; j < rank; ++j) {
+    int64_t target = transposed_shape[j];
+    size_t group_start = cursor;
+    int64_t prod = 1;
+    do {
+      if (cursor >= requested_shape.size()) {
+        return false;
+      }
+      prod *= requested_shape[cursor];
+      ++cursor;
+    } while (prod < target);
+    if (prod != target) {
+      return false;
+    }
+    groups.emplace_back(group_start, cursor);
+  }
+  if (cursor != requested_shape.size()) {
+    return false;
+  }
+
+  // Build the new (pre-Transpose) Reshape shape: iterate pre-transpose axes
+  // in order 0..rank-1. For each pre-transpose axis i, the post-transpose axis
+  // that carries it is args.perm_inv[i]; append that group's dims from
+  // requested_shape. This is the shape the Reshape emits when applied
+  // directly to the pre-transpose tensor. new_perm[k] records the position
+  // that requested_shape[k] ends up at, giving the Transpose that restores
+  // the original Reshape's externally-observed ordering.
+  std::vector<int64_t> new_reshape_shape;
+  new_reshape_shape.reserve(requested_shape.size());
+  std::vector<int64_t> new_perm(requested_shape.size());
+  for (size_t i = 0; i < rank; ++i) {
+    size_t j = gsl::narrow_cast<size_t>(args.perm_inv[i]);
+    const auto& [gs, ge] = groups[j];
+    for (size_t k = gs; k < ge; ++k) {
+      new_perm[k] = gsl::narrow_cast<int64_t>(new_reshape_shape.size());
+      new_reshape_shape.push_back(requested_shape[k]);
+    }
+  }
+
+  // Rewrite the graph:
+  //   1) Point the Reshape at the pre-transpose tensor with the new shape.
+  //   2) Insert a Transpose(new_perm) on the Reshape's output unless it's
+  //      identity (only possible when the original Transpose was a no-op).
+  //   3) Drop the original Transpose if nothing else consumes it.
+  std::string_view transpose_input = args.transpose.Inputs()[0];
+  std::vector<int64_t> shape_initializer_shape{gsl::narrow_cast<int64_t>(new_reshape_shape.size())};
+  std::string_view new_shape_init =
+      AddInitializerInt64(args.ctx.graph, shape_initializer_shape, new_reshape_shape);
+
+  args.node.SetInput(0, transpose_input);
+  args.node.SetInput(1, new_shape_init);
+
+  if (!IsIdentityPerm(new_perm)) {
+    TransposeOutput(args.ctx.graph, args.node, 0, new_perm, InvertPerm(new_perm));
+  }
+
+  if (!args.ctx.graph.HasValueConsumers(args.transpose.Outputs()[0])) {
+    args.ctx.graph.RemoveNode(args.transpose);
+  }
+
+  return true;
+}
+
+bool HandleReshape(HandlerArgs& args) {
+  if (HandleReshapeAsTranspose(args)) {
+    return true;
+  }
+  return HandleReshapeSplit(args);
 }
 
 constexpr HandlerInfo reshape_handler = {&FirstInput, &HandleReshape, /*transposes_outputs*/ false};

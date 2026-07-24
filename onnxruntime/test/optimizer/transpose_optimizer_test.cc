@@ -12,6 +12,7 @@
 #include "core/framework/op_node_proto_helper.h"
 #include "core/graph/graph.h"
 #include "core/graph/node_attr_utils.h"
+#include "core/optimizer/initializer.h"
 #include "core/optimizer/transpose_optimization/onnx_transpose_optimization.h"
 #include "core/optimizer/transpose_optimization/optimizer_api.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
@@ -4334,6 +4335,181 @@ TEST(TransposeOptimizerTests, TestReshapeWithZero) {
                        TransposeReshapeResult::kUnchanged,
                        {},
                        true);  // allow_zero
+}
+
+// Transpose -> Reshape where the Reshape splits one or more post-transpose axes
+// into contiguous groups of output axes. HandleReshapeSplit should rewrite this
+// as Reshape (on the pre-transpose tensor) followed by a Transpose whose perm
+// restores the original externally-observed ordering. The original Transpose
+// should be removed and the new Transpose's perm captured in `expected_new_perms`.
+static void TestTransposeReshapeSplit(const std::vector<int64_t>& input_shape,
+                                      const std::vector<int64_t>& perms,
+                                      const std::vector<int64_t>& reshape_shape,
+                                      const std::vector<int64_t>& expected_new_perms) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>(input_shape, 0.0, 1.0);
+    auto* mul_arg1 = builder.MakeInput<float>({1}, 0.0, 1.0);
+    auto* reshape_shape_value =
+        builder.MakeInitializer<int64_t>({int64_t(reshape_shape.size())}, reshape_shape);
+
+    auto* mul_out_0 = builder.MakeOutput();
+    auto* transpose_out_0 = builder.MakeIntermediate();
+    auto* reshape_out_0 = builder.MakeIntermediate();
+    auto* identity_out_0 = builder.MakeOutput();
+
+    builder.AddNode("Mul", {input_arg, mul_arg1}, {mul_out_0});
+
+    auto& transpose_1 = builder.AddNode("Transpose", {mul_out_0}, {transpose_out_0});
+    transpose_1.AddAttribute("perm", perms);
+
+    builder.AddNode("Reshape", {transpose_out_0, reshape_shape_value}, {reshape_out_0});
+    builder.AddNode("Identity", {reshape_out_0}, {identity_out_0});
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    const auto& graph = session.GetGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+    ASSERT_EQ(op_to_count["Transpose"], 1);
+    ASSERT_EQ(op_to_count["Reshape"], 1);
+
+    const auto& nodes = graph.Nodes();
+    const Node& transpose = *std::find_if(nodes.begin(), nodes.end(),
+                                          [](const auto& node) { return node.OpType() == "Transpose"; });
+    ProtoHelperNodeContext proto_helper_ctx(transpose);
+    OpNodeProtoHelper<ProtoHelperNodeContext> proto_helper(&proto_helper_ctx);
+    std::vector<int64_t> actual_perms;
+    ASSERT_STATUS_OK(proto_helper.GetAttrs<int64_t>("perm", actual_perms));
+    ASSERT_THAT(actual_perms, testing::ContainerEq(expected_new_perms));
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ {15, 23});
+}
+
+// Negative-case variant: assert HandleReshapeSplit bails and the graph is
+// unchanged (Transpose still upstream of Reshape).
+static void TestTransposeReshapeSplitUnchanged(const std::vector<int64_t>& input_shape,
+                                               const std::vector<int64_t>& perms,
+                                               const std::vector<int64_t>& reshape_shape) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>(input_shape, 0.0, 1.0);
+    auto* mul_arg1 = builder.MakeInput<float>({1}, 0.0, 1.0);
+    auto* reshape_shape_value =
+        builder.MakeInitializer<int64_t>({int64_t(reshape_shape.size())}, reshape_shape);
+
+    auto* mul_out_0 = builder.MakeOutput();
+    auto* transpose_out_0 = builder.MakeIntermediate();
+    auto* reshape_out_0 = builder.MakeIntermediate();
+    auto* identity_out_0 = builder.MakeOutput();
+
+    builder.AddNode("Mul", {input_arg, mul_arg1}, {mul_out_0});
+
+    auto& transpose_1 = builder.AddNode("Transpose", {mul_out_0}, {transpose_out_0});
+    transpose_1.AddAttribute("perm", perms);
+
+    builder.AddNode("Reshape", {transpose_out_0, reshape_shape_value}, {reshape_out_0});
+    builder.AddNode("Identity", {reshape_out_0}, {identity_out_0});
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    const auto& graph = session.GetGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Transpose"], 1);
+    ASSERT_EQ(op_to_count["Reshape"], 1);
+
+    // Reshape's data input should still be the Transpose's output. If the
+    // split-handler had fired, the Reshape would be fed by the pre-transpose
+    // tensor instead.
+    const auto& nodes = graph.Nodes();
+    const Node& transpose = *std::find_if(nodes.begin(), nodes.end(),
+                                          [](const auto& node) { return node.OpType() == "Transpose"; });
+    const Node& reshape = *std::find_if(nodes.begin(), nodes.end(),
+                                        [](const auto& node) { return node.OpType() == "Reshape"; });
+    ASSERT_EQ(reshape.InputDefs()[0]->Name(), transpose.OutputDefs()[0]->Name());
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ {15, 23});
+}
+
+// Transpose -> Reshape(split) is rewritten to Reshape -> Transpose. The
+// motivating case (documented in HandleReshapeSplit):
+//   input {1,12,20,24} -Transpose[0,3,1,2]-> {1,24,12,20}
+//     -Reshape({1,3,8,12,20})-> {1,3,8,12,20}
+//   becomes
+//   input {1,12,20,24} -Reshape({1,12,20,3,8})-> {1,12,20,3,8}
+//     -Transpose[0,3,4,1,2]-> {1,3,8,12,20}
+TEST(TransposeOptimizerTests, TestReshapeSplit) {
+  // Motivating case: split the transposed channel axis into (3, 8).
+  // new_reshape_shape (pre-transpose) = {1, 12, 20, 3, 8}.
+  TestTransposeReshapeSplit(/*input_shape*/ {1, 12, 20, 24},
+                            /*perms*/ {0, 3, 1, 2},
+                            /*reshape_shape*/ {1, 3, 8, 12, 20},
+                            /*expected_new_perms*/ {0, 3, 4, 1, 2});
+
+  // Split multiple post-transpose axes. Transpose (2,4,6) with perm [2,0,1]
+  // gives (6,2,4); splitting 6->(2,3) and 4->(2,2) yields output (2,3,2,2,2).
+  // perm_inv=[1,2,0]. New Reshape emits groups in pre-transpose order:
+  //   i=0 -> groups[1]=[2,3) -> req[2]=2         new_perm[2]=0
+  //   i=1 -> groups[2]=[3,5) -> req[3]=2,req[4]=2 new_perm[3]=1,new_perm[4]=2
+  //   i=2 -> groups[0]=[0,2) -> req[0]=2,req[1]=3 new_perm[0]=3,new_perm[1]=4
+  // => new_reshape_shape={2,2,2,2,3}, new_perm={3,4,0,1,2}.
+  TestTransposeReshapeSplit(/*input_shape*/ {2, 4, 6},
+                            /*perms*/ {2, 0, 1},
+                            /*reshape_shape*/ {2, 3, 2, 2, 2},
+                            /*expected_new_perms*/ {3, 4, 0, 1, 2});
+
+  // Size-1 post-transpose axis gets its own group.
+  //   input {1, 6, 4} -Transpose[2,0,1]-> {4, 1, 6}
+  //   -Reshape({2, 2, 1, 2, 3})- (groups: 4->(2,2), 1->(1), 6->(2,3))
+  // Pre-transpose axes 0,1,2 map to post-transpose axes 1,2,0 (perm_inv=[1,2,0]).
+  // Pre-transpose order picks groups[1]=(1), groups[2]=(2,3), groups[0]=(2,2)
+  //   => new_reshape_shape = {1, 2, 3, 2, 2}
+  //   requested[0..1]=(2,2) sit at new positions 3,4 (from group 0)
+  //   requested[2]=1        sits at new position 0 (from group 1)
+  //   requested[3..4]=(2,3) sit at new positions 1,2 (from group 2)
+  //   new_perm = {3, 4, 0, 1, 2}
+  TestTransposeReshapeSplit(/*input_shape*/ {1, 6, 4},
+                            /*perms*/ {2, 0, 1},
+                            /*reshape_shape*/ {2, 2, 1, 2, 3},
+                            /*expected_new_perms*/ {3, 4, 0, 1, 2});
+}
+
+// Negative cases for HandleReshapeSplit: the split rewrite must bail so the
+// Transpose -> Reshape order is preserved.
+TEST(TransposeOptimizerTests, TestReshapeSplitBails) {
+  // Rank-shrinking reshape (flatten). HandleReshapeSplit only handles pure
+  // splits (output rank > post-transpose rank). Shrinks / same-rank shapes
+  // are out of scope and the graph must be left alone.
+  //   input {2,3,4} -Transpose[1,0,2]-> {3,2,4} -Reshape({6,4})-> {6,4}
+  // requested_shape.size()=2 <= rank=3, so the handler bails immediately.
+  TestTransposeReshapeSplitUnchanged(/*input_shape*/ {2, 3, 4},
+                                     /*perms*/ {1, 0, 2},
+                                     /*reshape_shape*/ {6, 4});
+
+  // Partition impossible: no contiguous prefix of output dims multiplies to
+  // the first transposed dim exactly.
+  //   input {2,3} -Transpose[1,0]-> {3,2} -Reshape({2,3,1})- ...
+  // rank=2, requested rank=3, so the size guard passes. Then target=3:
+  //   consume req[0]=2, prod=2 (<3); consume req[1]=3, prod=6 (!=3) -> bail.
+  TestTransposeReshapeSplitUnchanged(/*input_shape*/ {2, 3},
+                                     /*perms*/ {1, 0},
+                                     /*reshape_shape*/ {2, 3, 1});
+
+  // Split that would require re-ordering across the boundary of a transposed
+  // axis. Transposed shape (6,4); requested {2,12,1} tries to combine part of
+  // axis-0 with all of axis-1, which is not expressible as a per-axis split.
+  //   target=6: prod=2 (<6); prod=2*12=24 (!=6) -> bail.
+  TestTransposeReshapeSplitUnchanged(/*input_shape*/ {4, 6},
+                                     /*perms*/ {1, 0},
+                                     /*reshape_shape*/ {2, 12, 1});
 }
 
 // test Reshape with an inferred dim due to value of -1
