@@ -26,6 +26,9 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  var value : output_value_t;\n"
                             << "  var data_offset : u32;\n";
   for (int comp = 0; comp < (pack_as_bytes ? 4 : 1); comp++) {
+    if (pack_as_bytes) {
+      shader.MainFunctionBody() << "  if (" << comp << "u + 4u * global_idx < uniforms.output_size) {\n";
+    }
     shader.MainFunctionBody() << "  output_indices = " << output_indices.OffsetToIndices(pack_as_bytes ? (std::to_string(comp) + " + 4 * global_idx") : "global_idx") << ";\n";
 
     for (int i = 0; i < indices.Rank(); i++) {
@@ -58,6 +61,9 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
     } else {
       shader.MainFunctionBody() << "  value = " << data.GetByOffset("data_offset") << ";\n";
     }
+    if (pack_as_bytes) {
+      shader.MainFunctionBody() << "  }\n";
+    }
   }
 
   shader.MainFunctionBody() << "  " << output.SetByOffset("global_idx", "value");
@@ -75,6 +81,7 @@ Status Gather::ComputeInternal(ComputeContext& context) const {
 
   bool pack_as_bytes = p.input_tensor->DataType() == DataTypeImpl::GetType<bool>() ||
                        p.input_tensor->DataType() == DataTypeImpl::GetType<uint8_t>();
+  uint32_t output_size = data_size;
   if (pack_as_bytes) {
     // Shader packs four 1-byte elements into one u32 (4 components per thread).
     data_size = (data_size + 3) / 4;
@@ -90,7 +97,7 @@ Status Gather::ComputeInternal(ComputeContext& context) const {
       .CacheHint(std::to_string(axis))
       .AddIndices(p.input_tensor->Shape())
       .AddIndices(p.output_tensor->Shape())
-      .AddUniformVariables({{data_size}});
+      .AddUniformVariables({{data_size}, {output_size}});
   return context.RunProgram(program);
 }
 
