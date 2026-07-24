@@ -1652,6 +1652,74 @@ TEST(PoolTest, AveragePool_18_ceil_count_exclude_pad_2d) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCountIncludePadTests);
 }
 
+TEST(PoolTest, AveragePool_19_ceil_count_include_pad_1d_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available in this build.";
+  }
+
+  OpTester test("AveragePool", 19);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3});
+  test.AddAttribute("pads", std::vector<int64_t>{3, 3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{7});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals = {2.0903f, 4.6493f, 1.6320f, -3.2051f, 4.6975f, 4.7296f, 3.3653f, -1.5815f, -2.3832f, 0.9628f, -1.5899f, -2.6820f, 5.7529f, 7.7346f, -0.8910f, -2.0151f, 0.1313f, -0.5374f};
+  std::vector<int64_t> x_dims = {1, 2, 9};
+  std::vector<int64_t> expected_dims = {1, 2, 4};
+  std::vector<float> expected_vals = {0.73807144f, 2.5655572f, 0.8032287f, -0.09990001f, 0.34911433f, 1.0389f, 1.4536142f, -0.40353334f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// AveragePool registered on WebGPU for opsets 11-18, 19-21 and 22 (a single kernel). The opset-19
+// test above exercises the 19-21 registration (and pins the count_include_pad divisor fix); the two
+// tests below exercise the other two registration ranges so none is left unverified. All three use
+// the same shared kernel, so these use a trivially hand-verifiable case (kernel 2, stride 2, no pad)
+// and just confirm the registration for that opset resolves and runs on WebGPU.
+// Window means of {1,2,3,4}: (1+2)/2=1.5, (3+4)/2=3.5.
+TEST(PoolTest, AveragePool_11_1d_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available in this build.";
+  }
+
+  OpTester test("AveragePool", 11);  // exercises the 11-18 registration
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddInput<float>("X", {1, 1, 4}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddOutput<float>("Y", {1, 1, 2}, {1.5f, 3.5f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(PoolTest, AveragePool_22_1d_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available in this build.";
+  }
+
+  OpTester test("AveragePool", 22);  // exercises the opset-22 registration
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddInput<float>("X", {1, 1, 4}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddOutput<float>("Y", {1, 1, 2}, {1.5f, 3.5f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(PoolTest, GlobalAveragePool) {
   OpTester test("GlobalAveragePool");
 
