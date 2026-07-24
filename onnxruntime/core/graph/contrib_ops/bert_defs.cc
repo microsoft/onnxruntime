@@ -1391,6 +1391,9 @@ This packing omits padding tokens.
 The query, key and value tensors contain result of hidden embedding of real tokens after input projections.
 cumulative_sequence_length records cumulated length of each sequence length.
 
+Provider-specific execution constraints (for example, alignment and backend availability)
+are validated by each Execution Provider implementation.
+
 )DOC";
 
 // Shape inference for PagedAttention. Here are the shapes of inputs and output:
@@ -1544,7 +1547,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Output(0,
                 "output",
-                "3D output tensor with shape (num_tokens, hidden_size)",
+          "2D output tensor with shape (num_tokens, hidden_size)",
                 "T")
         .Output(1,
                 "key_cache_out",

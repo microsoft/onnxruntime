@@ -91,6 +91,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                           scale_,
                                                           softcap_,
                                                           device_prop.maxThreadsPerBlock));
+
   parameters.local_window_size = local_window_size_;
   parameters.do_rotary = do_rotary_;
   parameters.rotary_interleaved = rotary_interleaved_;

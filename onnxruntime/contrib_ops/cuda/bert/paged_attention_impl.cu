@@ -204,13 +204,22 @@ __global__ void ReshapeAndCache(const T* __restrict__ key, const T* __restrict__
   }
   const int token_id = tid / kv_hidden_size;
   const int hidden_offset = tid % kv_hidden_size;
-  int batch_id = 0;
-  for (int i = 0; i < batch_size; ++i) {
-    if (token_id < cumulative_seqlens_q[i + 1]) {
-      batch_id = i;
-      break;
+
+  // Find sequence owner for token_id using binary search over cumulative boundaries.
+  // This replaces a linear scan over batch entries and lowers lookup cost from O(batch)
+  // to O(log batch) per token.
+  int left = 0;
+  int right = batch_size;
+  while (left < right) {
+    const int mid = (left + right) >> 1;
+    if (token_id < cumulative_seqlens_q[mid + 1]) {
+      right = mid;
+    } else {
+      left = mid + 1;
     }
   }
+  const int batch_id = left;
+
   const int token_offset = token_id - cumulative_seqlens_q[batch_id];
   const int past_length = past_seqlens[batch_id];
   const int block_id = block_table[batch_id * max_num_blocks_per_seq + (past_length + token_offset) / block_size];
@@ -230,7 +239,12 @@ Status LaunchReshapeAndCache(const T* key, const T* value, T* key_cache, T* valu
                              const int block_size, const int key_stride, const int value_stride, cudaStream_t stream,
                              const int max_threads_per_block) {
   const int total_size = token_count * kv_hidden_size;
-  const int threads(std::min(total_size, max_threads_per_block));
+  if (total_size == 0) {
+    return Status::OK();
+  }
+  // Prefer 256 threads for better occupancy/latency tradeoff on most GPUs.
+  const int preferred_threads = std::min(256, max_threads_per_block);
+  const int threads = std::min(total_size, preferred_threads);
   const int blocks((total_size + threads - 1) / threads);
   ReshapeAndCache<T><<<blocks, threads, 0, stream>>>(key, value, key_cache, value_cache, block_table, past_seqlens,
                                                      cumulative_seqlens_q, batch_size, max_num_blocks_per_seq,
@@ -323,7 +337,8 @@ Status LaunchGatherAndExpandPagedKVCache(const T* key_cache, const T* value_cach
   // within int range for any realistic input, so no explicit clamp is needed. The kernel
   // uses a grid-stride loop so launching fewer blocks than total_elems / threads would
   // also be correct — we don't need an artificial "keep SMs busy" cap.
-  const int threads = static_cast<int>(std::min<int64_t>(max_threads_per_block, total_elems));
+  const int preferred_threads = std::min(256, max_threads_per_block);
+  const int threads = static_cast<int>(std::min<int64_t>(preferred_threads, total_elems));
   const int blocks = static_cast<int>((total_elems + threads - 1) / threads);
   GatherAndExpandPagedKVCache<T><<<blocks, threads, 0, stream>>>(
       key_cache, value_cache, gathered_key, gathered_value,
