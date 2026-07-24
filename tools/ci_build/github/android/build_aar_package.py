@@ -68,6 +68,9 @@ def _parse_build_settings(args):
         )
 
     build_settings["build_params"] = build_params
+    build_settings["use_telemetry"] = any(
+        build_param.split("=", 1)[0] == "--use_telemetry" for build_param in build_params
+    )
 
     return build_settings
 
@@ -99,6 +102,8 @@ def _build_aar(args):
         + ["--config=" + build_config, "--use_vcpkg", "--use_vcpkg_ms_internal_asset_cache"]
     )
     header_files_path = ""
+    telemetry_java_src_dir = ""
+    telemetry_resource_dir = ""
 
     if qnn_android_build:
         qnn_home = args.qnn_path
@@ -152,6 +157,12 @@ def _build_aar(args):
         if not header_files_path:
             header_files_path = os.path.join(abi_build_dir, build_config, "android", "headers")
 
+        if build_settings["use_telemetry"] and not telemetry_java_src_dir:
+            telemetry_java_src_dir = os.path.join(abi_build_dir, build_config, "android", "telemetry-java")
+            telemetry_resource_dir = os.path.join(abi_build_dir, build_config, "android", "telemetry-resources")
+            if not os.path.isdir(telemetry_java_src_dir) or not os.path.isdir(telemetry_resource_dir):
+                raise FileNotFoundError("Android telemetry Java bridge output was not generated")
+
     # The directory to publish final AAR
     aar_publish_dir = os.path.join(build_dir, "aar_out", build_config)
     os.makedirs(aar_publish_dir, exist_ok=True)
@@ -181,6 +192,12 @@ def _build_aar(args):
     # Add qnn specific parameters
     if qnn_android_build:
         gradle_command.append(f"-DqnnVersion={qnn_sdk_version}")
+
+    if build_settings["use_telemetry"]:
+        gradle_command += [
+            "-DtelemetryJavaSrcDir=" + telemetry_java_src_dir,
+            "-DtelemetryResourceDir=" + telemetry_resource_dir,
+        ]
 
     # clean, build, and publish to a local directory
     subprocess.run([*gradle_command, "clean"], env=temp_env, shell=False, check=True, cwd=JAVA_ROOT)

@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
-#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -32,6 +31,7 @@
 #include "core/platform/env_var_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/util/thread_utils.h"
+#include "test/util/include/telemetry_test_environment.h"
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 #define TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE
@@ -61,6 +61,9 @@ constexpr const char* kDynamicPluginEpConfigJsonFile = "ORT_UNIT_TEST_MAIN_DYNAM
 
 // ortenv_setup() and ortenv_teardown() are used by onnxruntime/test/xctest/xcgtest.mm so can't be file local
 extern "C" void ortenv_setup() {
+  // Fully suppress telemetry for the unit-test process before any Ort::Env (and therefore the platform
+  // telemetry provider) is created, so local non-CI runs never spin up the uploader or emit events.
+  onnxruntime::test::SuppressTelemetryForTests();
   ORT_TRY {
 #ifdef _WIN32
     // Set the locale to UTF-8 to ensure proper handling of wide characters on Windows
