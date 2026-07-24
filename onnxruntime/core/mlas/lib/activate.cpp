@@ -242,13 +242,18 @@ struct MLAS_ACTIVATION_FUNCTION<MlasHardSwishActivation>
     MLAS_FLOAT32X4 MinimumBroadcast;
     MLAS_FLOAT32X4 MaximumBroadcast;
 
+    static constexpr float Alpha = 1.0f / 6.0f;
+    static constexpr float Beta = 0.5f;
+    static constexpr float Minimum = 0.0f;
+    static constexpr float Maximum = 1.0f;
+
     MLAS_ACTIVATION_FUNCTION(const MLAS_ACTIVATION* Activation)
     {
         MLAS_UNREFERENCED_PARAMETER(Activation);
-        AlphaBroadcast = MlasBroadcastFloat32x4(1.0f / 6.0f);
-        BetaBroadcast = MlasBroadcastFloat32x4(0.5f);
+        AlphaBroadcast = MlasBroadcastFloat32x4(Alpha);
+        BetaBroadcast = MlasBroadcastFloat32x4(Beta);
         MinimumBroadcast = MlasZeroFloat32x4();
-        MaximumBroadcast = MlasBroadcastFloat32x4(1.0f);
+        MaximumBroadcast = MlasBroadcastFloat32x4(Maximum);
     }
 
     MLAS_FLOAT32X4 Activate(MLAS_FLOAT32X4 Value)
@@ -264,9 +269,9 @@ struct MLAS_ACTIVATION_FUNCTION<MlasHardSwishActivation>
 #if defined(MLAS_SSE2_INTRINSICS)
         return _mm_cvtss_f32(Activate(_mm_set_ss(Value)));
 #else
-        float Gate = MlasExtractLaneFloat32x4<0>(AlphaBroadcast) * Value + MlasExtractLaneFloat32x4<0>(BetaBroadcast);
-        Gate = std::min(Gate, MlasExtractLaneFloat32x4<0>(MaximumBroadcast));
-        Gate = std::max(Gate, MlasExtractLaneFloat32x4<0>(MinimumBroadcast));
+        float Gate = Alpha * Value + Beta;
+        Gate = std::min(Gate, Maximum);
+        Gate = std::max(Gate, Minimum);
         return Value * Gate;
 #endif
     }
