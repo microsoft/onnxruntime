@@ -840,6 +840,17 @@ ORT_API_STATUS_IMPL(OrtApis::CustomOpDomain_Add, _Inout_ OrtCustomOpDomain* cust
 ORT_API_STATUS_IMPL(OrtApis::AddCustomOpDomain, _Inout_ OrtSessionOptions* options,
                     _In_ OrtCustomOpDomain* custom_op_domain) {
   API_IMPL_BEGIN
+  // Skip duplicate domain names. SetBaselineAndOpsetVersionForDomain in schema_registry.cc rejects any
+  // domain name that has already been registered, regardless of EP or op content. This can happen when
+  // an EP provides custom ops through multiple paths (e.g., OrtEpFactory::GetCustomOpDomains and a
+  // separate custom op DLL via RegisterCustomOpsLibrary/AddCustomOpDomain).
+  for (const auto* existing : options->custom_op_domains_) {
+    if (existing->domain_ == custom_op_domain->domain_) {
+      LOGS_DEFAULT(WARNING) << "Skipping custom op domain '" << custom_op_domain->domain_
+                            << "': a domain with this name has already been added to the session options.";
+      return nullptr;
+    }
+  }
   options->custom_op_domains_.emplace_back(custom_op_domain);
   return nullptr;
   API_IMPL_END
