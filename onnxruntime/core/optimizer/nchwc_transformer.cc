@@ -127,16 +127,17 @@ class NchwcTransformerImpl {
   void TransformMul(Node& node);
   void TransformConcat(Node& node);
   void TransformActivation(Node& node);
+  void TransformBatchNormalization(Node& node);
+  void TransformTransposeToNhwc(Node& node);
+  void TransformResize(Node& node);
+  void TrackTransposeFromNhwc(Node& node);
+
   // Attempt to fuse the decomposed-HardSwish diamond Mul(x, HardSigmoid(x)) into
   // the producing NCHWc conv as a HardSwish activation. `hardsigmoid` is the
   // current activation node, `conv_output_arg` its original (pre-rewrite) input,
   // and `nchwc_input` the NchwcArgument for that conv output. Returns true if the
   // fusion was applied (and both the HardSigmoid and Mul were removed).
   bool TryFuseNchwcHardSwish(Node& hardsigmoid, NodeArg* conv_output_arg, NchwcArgument& nchwc_input);
-  void TransformBatchNormalization(Node& node);
-  void TransformTransposeToNhwc(Node& node);
-  void TransformResize(Node& node);
-  void TrackTransposeFromNhwc(Node& node);
 
   Graph& graph_;
 
