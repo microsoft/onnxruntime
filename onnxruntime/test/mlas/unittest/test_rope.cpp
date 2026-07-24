@@ -128,7 +128,7 @@ class RoPEShortExecuteTest : public MlasTestFixture<MlasRoPETest<T>> {
 #if defined(MLAS_TARGET_AMD64) || (defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)) || defined(MLAS_TARGET_ARM64)
 static size_t RoPERegisterAllShortExecuteTests() {
   size_t tests_registered = RoPEShortExecuteTest<float>::RegisterShortExecuteTests();
-// fp16 RoPE on ARM64 already has dedicated coverage in test_rope_neon_fp16.cpp.
+  // fp16 RoPE on ARM64 already has dedicated coverage in test_rope_neon_fp16.cpp.
 #if defined(MLAS_TARGET_AMD64) || (defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV))
   tests_registered += RoPEShortExecuteTest<MLFloat16>::RegisterShortExecuteTests();
 #endif
