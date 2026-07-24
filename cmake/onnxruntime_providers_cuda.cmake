@@ -586,6 +586,10 @@
             CUDA_ARCHITECTURES "${_ort_sm120_cuda_architectures}"
             NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
             SOURCES ${onnxruntime_cuda_sm120_tma_srcs})
+          target_compile_definitions(onnxruntime_providers_cuda PRIVATE ORT_ENABLE_BLOCKQUANT_SM120)
+          if(TARGET onnxruntime_providers_cuda_obj)
+            target_compile_definitions(onnxruntime_providers_cuda_obj PRIVATE ORT_ENABLE_BLOCKQUANT_SM120)
+          endif()
         endif()
       endif()
 

@@ -327,6 +327,7 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
         NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
         COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
         SOURCES ${_cuda_plugin_sm120_tma_srcs})
+      target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ORT_ENABLE_BLOCKQUANT_SM120)
     endif()
   endif()
 
