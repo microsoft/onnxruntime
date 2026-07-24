@@ -350,7 +350,12 @@ Status VariadicElementwise::ComputeInternal(ComputeContext& context) const {
     additional_impl = get_additional_impl_(input_0->GetElementType(), input_0->GetElementType());
   }
   InlinedVector<Tensor> intermediate_tensors;
-  intermediate_tensors.reserve(static_cast<size_t>(input_count) - 2);
+  // input_count >= 2 here (the single-input case returned above), so the last fold targets the
+  // kernel output and there are input_count - 2 intermediates. Guard the subtraction anyway so a
+  // future refactor can't turn it into an unsigned underflow.
+  if (input_count > 2) {
+    intermediate_tensors.reserve(static_cast<size_t>(input_count) - 2);
+  }
 
   const Tensor* lhs_tensor = input_0;
   for (int i = 1; i < input_count; ++i) {
