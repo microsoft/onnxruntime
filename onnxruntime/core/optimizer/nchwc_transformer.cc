@@ -998,18 +998,20 @@ bool NchwcTransformerImpl::TryFuseNchwcHardSwish(Node& hardsigmoid,
 void NchwcTransformerImpl::TransformActivation(Node& node) {
   auto& input_defs = node.MutableInputDefs();
 
-  // Capture the original (pre-rewrite) input NodeArg so we can match the
-  // HardSwish diamond pattern below.
-  NodeArg* orig_input_arg = input_defs[0];
-
   auto* nchwc_input = LookupNchwcArgument(input_defs[0]);
   if (nchwc_input != nullptr) {
+    // Capture the original (pre-rewrite) input NodeArg so we can match the
+    // HardSwish diamond pattern below.
+    NodeArg* orig_input_arg = input_defs[0];
+
     // HardSwish diamond: ONNX decomposes HardSwish(x) into Mul(x, HardSigmoid(x)).
     // When this activation node is that HardSigmoid and it (a) uses the HardSwish
     // gate params alpha=1/6,beta=1/2, (b) reads a single-conv NCHWc output that is
     // used by exactly this HardSigmoid and one Mul, and (c) that Mul's other input
     // is the same conv output, then fuse the whole thing into the conv as a
     // HardSwish activation and drop both the HardSigmoid and the Mul.
+    // If the pattern does not match (returns false), fall through to the normal
+    // activation transform path below.
     if (TryFuseNchwcHardSwish(node, orig_input_arg, *nchwc_input)) {
       return;
     }
