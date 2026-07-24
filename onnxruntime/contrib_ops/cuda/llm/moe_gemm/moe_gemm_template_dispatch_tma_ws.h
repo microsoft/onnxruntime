@@ -189,18 +189,8 @@ constexpr bool are_tile_shapes_supported_sm120() {
   constexpr auto TileN = size<1>(CtaShape{});
   constexpr auto TileK = size<2>(CtaShape{});
 
-  // FP8xFP4 (WFP4AFP8): only the 128x128x128 tile is instantiated. It is the
-  // only shape that fits in shared memory with >=2 pipeline stages (see the
-  // launcher generator generate_moe_gemm_tma_ws_sm120_fp4.py) and the only
-  // config the SM120 heuristic (get_candidate_configs_sm120) ever selects.
-  // Restricting the compile-time dispatch here avoids referencing launcher
-  // symbols that are never generated, which otherwise breaks linking when both
-  // FP8 and FP4 QMoE are enabled.
-  if constexpr (std::is_same_v<DataType, __nv_fp8_e4m3>) {
-    return TileM == 128 && TileN == 128 && TileK == 128;
-  }
-
   // FP4xFP4 element counts: K=128 (64B) or K=256 (128B)
+  // FP8xFP4 element counts: K=128 (128B)
   // Byte-based: 64B, 128B, 256B tile K supported
   return (TileM == 128 && TileN == 128 && (TileK == 64 || TileK == 128 || TileK == 256)) ||
          (TileM == 128 && TileN == 256 && (TileK == 64 || TileK == 128)) ||
