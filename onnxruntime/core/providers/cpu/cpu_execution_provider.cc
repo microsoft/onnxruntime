@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/providers/cpu/cpu_kernel_registration.h"
 
 #include "core/framework/allocator_utils.h"
 #include "core/framework/memcpy.h"
@@ -1562,7 +1563,7 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
 }
 
 Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
-  static const BuildKernelCreateInfoFn function_table[] = {
+  static constexpr BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
@@ -3714,6 +3715,9 @@ Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
       // opset 27
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 27, Range)>,
   };
+  static_assert(cpu::registration_internal::IsKernelRegistrationTableValid(
+      function_table, BuildKernelCreateInfo<void>));
+
   for (auto& function_table_entry : function_table) {
     KernelCreateInfo info = function_table_entry();
     if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
@@ -3726,7 +3730,7 @@ Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 Status RegisterFp16Kernels(KernelRegistry& kernel_registry) {
-  static const BuildKernelCreateInfoFn function_table[] = {
+  static constexpr BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 1, 21, MLFloat16,
                                                                             GlobalAveragePool)>,
@@ -3765,6 +3769,8 @@ Status RegisterFp16Kernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 14, MLFloat16, Div)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 20, MLFloat16,
                                                                   Gelu)>};
+  static_assert(cpu::registration_internal::IsKernelRegistrationTableValid(
+      function_table, BuildKernelCreateInfo<void>));
 
   for (auto& function_table_entry : function_table) {
     KernelCreateInfo info = function_table_entry();
@@ -3874,7 +3880,7 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
 }
 
 Status RegisterOnnxMLOperatorKernels(KernelRegistry& kernel_registry) {
-  static const BuildKernelCreateInfoFn function_table[] = {
+  static constexpr BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMLDomain, 1, float,
                                                                   ArrayFeatureExtractor)>,
@@ -4004,6 +4010,8 @@ Status RegisterOnnxMLOperatorKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMLDomain, 4, double_double,
                                                                   LabelEncoder)>,
   };
+  static_assert(cpu::registration_internal::IsKernelRegistrationTableValid(
+      function_table, BuildKernelCreateInfo<void>));
 
   for (auto& function_table_entry : function_table) {
     KernelCreateInfo info = function_table_entry();
