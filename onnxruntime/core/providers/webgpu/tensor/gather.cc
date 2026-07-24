@@ -15,8 +15,9 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   const auto& data_indices = shader.AddIndices("data_indices", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& output_indices = shader.AddIndices("output_indices", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
-  bool pack_as_bytes = Inputs()[0].var_type == ProgramVariableDataType::Boolx4 ||
-                       Inputs()[0].var_type == ProgramVariableDataType::Uint8x4;
+  bool is_bool = Inputs()[0].var_type == ProgramVariableDataType::Boolx4;
+  bool is_uint8 = Inputs()[0].var_type == ProgramVariableDataType::Uint8x4;
+  bool pack_as_bytes = is_bool || is_uint8;
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.data_size")
                             << "  var idx : input_indices_value_t;\n"
                             << "  var output_indices : output_indices_indices_t;\n"
@@ -47,8 +48,13 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
 
     shader.MainFunctionBody() << "  data_offset = " << data_indices.IndicesToOffset("data_indices") << ";\n";
-    if (pack_as_bytes) {
+    if (is_bool) {
       shader.MainFunctionBody() << "  value[" << comp << "] = " << data.GetByOffset("data_offset / 4") << "[data_offset % 4];\n";
+    } else if (is_uint8) {
+      // Extract one byte from the packed u32: shift right by (data_offset % 4) * 8 bits, then mask.
+      // Accumulate into output packed u32 by shifting into the correct byte position.
+      shader.MainFunctionBody() << "  value = value | (((" << data.GetByOffset("data_offset / 4u")
+                                << " >> ((data_offset % 4u) * 8u)) & 0xFFu) << (" << comp << "u * 8u));\n";
     } else {
       shader.MainFunctionBody() << "  value = " << data.GetByOffset("data_offset") << ";\n";
     }
@@ -70,7 +76,7 @@ Status Gather::ComputeInternal(ComputeContext& context) const {
   bool pack_as_bytes = p.input_tensor->DataType() == DataTypeImpl::GetType<bool>() ||
                        p.input_tensor->DataType() == DataTypeImpl::GetType<uint8_t>();
   if (pack_as_bytes) {
-    // Shader will pack four bytes into one uint, so we consider the types of input and output as vec4.
+    // Shader packs four 1-byte elements into one u32 (4 components per thread).
     data_size = (data_size + 3) / 4;
   }
 
