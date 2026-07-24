@@ -22,6 +22,7 @@ Abstract:
 
 #include <cstring>
 #include <immintrin.h>
+#include <memory>
 
 using namespace MlasKVQuantInternal;
 
@@ -74,6 +75,26 @@ DequantInt4x8(const uint8_t* src, size_t col, bool per_channel, const float* sca
     return f32;
 }
 
+inline __m256
+LoadFloat32x8(const float* src)
+{
+    return _mm256_loadu_ps(src);
+}
+
+inline __m256
+LoadFloat32x8(const MLAS_FP16* src)
+{
+    const __m128i fp16 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(src));
+    return _mm256_cvtph_ps(fp16);
+}
+
+inline void
+StoreFp16Outputx8(MLAS_FP16* dst, __m256 value)
+{
+    const __m128i fp16 = _mm256_cvtps_ph(value, _MM_FROUND_TO_NEAREST_INT);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(dst), fp16);
+}
+
 //
 // Fused dequant-dot: dequantize B[n,:] directly into FMA accumulators without
 // storing to an intermediate FP32 buffer. This saves one store+reload round-trip
@@ -82,9 +103,10 @@ DequantInt4x8(const uint8_t* src, size_t col, bool per_channel, const float* sca
 
 // Fused dot product for INT8 B row against FP32 A row.
 // Returns dot(A[0..K-1], dequant(B_row[0..K-1])).
+template <typename AType>
 inline float
 FusedDotInt8(
-    const float* a_row,
+    const AType* a_row,
     const int8_t* b_row,
     size_t K,
     bool per_channel,
@@ -104,7 +126,7 @@ FusedDotInt8(
             __m256 bf0 = _mm256_cvtepi32_ps(i32_0);
             __m256 sc0 = _mm256_loadu_ps(scales + k);
             bf0 = _mm256_mul_ps(bf0, sc0);
-            __m256 a0 = _mm256_loadu_ps(a_row + k);
+            __m256 a0 = LoadFloat32x8(a_row + k);
             acc0 = _mm256_fmadd_ps(a0, bf0, acc0);
 
             // Chunk 1
@@ -113,7 +135,7 @@ FusedDotInt8(
             __m256 bf1 = _mm256_cvtepi32_ps(i32_1);
             __m256 sc1 = _mm256_loadu_ps(scales + k + 8);
             bf1 = _mm256_mul_ps(bf1, sc1);
-            __m256 a1 = _mm256_loadu_ps(a_row + k + 8);
+            __m256 a1 = LoadFloat32x8(a_row + k + 8);
             acc1 = _mm256_fmadd_ps(a1, bf1, acc1);
         }
         for (; k + 8 <= K; k += 8) {
@@ -122,7 +144,7 @@ FusedDotInt8(
             __m256 bf0 = _mm256_cvtepi32_ps(i32_0);
             __m256 sc0 = _mm256_loadu_ps(scales + k);
             bf0 = _mm256_mul_ps(bf0, sc0);
-            __m256 a0 = _mm256_loadu_ps(a_row + k);
+            __m256 a0 = LoadFloat32x8(a_row + k);
             acc0 = _mm256_fmadd_ps(a0, bf0, acc0);
         }
     } else {
@@ -133,20 +155,20 @@ FusedDotInt8(
             __m128i raw0 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(b_row + k));
             __m256i i32_0 = _mm256_cvtepi8_epi32(raw0);
             __m256 bf0 = _mm256_cvtepi32_ps(i32_0);
-            __m256 a0 = _mm256_loadu_ps(a_row + k);
+            __m256 a0 = LoadFloat32x8(a_row + k);
             acc0 = _mm256_fmadd_ps(a0, bf0, acc0);
 
             __m128i raw1 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(b_row + k + 8));
             __m256i i32_1 = _mm256_cvtepi8_epi32(raw1);
             __m256 bf1 = _mm256_cvtepi32_ps(i32_1);
-            __m256 a1 = _mm256_loadu_ps(a_row + k + 8);
+            __m256 a1 = LoadFloat32x8(a_row + k + 8);
             acc1 = _mm256_fmadd_ps(a1, bf1, acc1);
         }
         for (; k + 8 <= K; k += 8) {
             __m128i raw0 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(b_row + k));
             __m256i i32_0 = _mm256_cvtepi8_epi32(raw0);
             __m256 bf0 = _mm256_cvtepi32_ps(i32_0);
-            __m256 a0 = _mm256_loadu_ps(a_row + k);
+            __m256 a0 = LoadFloat32x8(a_row + k);
             acc0 = _mm256_fmadd_ps(a0, bf0, acc0);
         }
     }
@@ -174,9 +196,10 @@ FusedDotInt8(
 }
 
 // Fused dot product for INT4 B row against FP32 A row.
+template <typename AType>
 inline float
 FusedDotInt4(
-    const float* a_row,
+    const AType* a_row,
     const uint8_t* b_row,
     size_t K,
     bool per_channel,
@@ -191,17 +214,17 @@ FusedDotInt4(
     for (; k < vec_end; k += 16) {
         // Chunk 0: 8 elements from 4 packed bytes
         __m256 bf0 = DequantInt4x8(b_row, k, per_channel, scales);
-        __m256 a0 = _mm256_loadu_ps(a_row + k);
+        __m256 a0 = LoadFloat32x8(a_row + k);
         acc0 = _mm256_fmadd_ps(a0, bf0, acc0);
 
         // Chunk 1: next 8 elements
         __m256 bf1 = DequantInt4x8(b_row, k + 8, per_channel, scales);
-        __m256 a1 = _mm256_loadu_ps(a_row + k + 8);
+        __m256 a1 = LoadFloat32x8(a_row + k + 8);
         acc1 = _mm256_fmadd_ps(a1, bf1, acc1);
     }
     for (; k + 8 <= K; k += 8) {
         __m256 bf0 = DequantInt4x8(b_row, k, per_channel, scales);
-        __m256 a0 = _mm256_loadu_ps(a_row + k);
+        __m256 a0 = LoadFloat32x8(a_row + k);
         acc0 = _mm256_fmadd_ps(a0, bf0, acc0);
     }
 
@@ -262,6 +285,64 @@ QKGemm_Avx2(
                 dot = FusedDotInt8(a_row, reinterpret_cast<const int8_t*>(b_row),
                                    K, per_channel, Scales);
             }
+            C[m * ldc + n] = Alpha * dot;
+        }
+    }
+}
+
+void
+QKGemmFp16_Avx2(
+    size_t M,
+    size_t N,
+    size_t K,
+    float Alpha,
+    const MLAS_FP16* A,
+    size_t lda,
+    const void* B,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    float* C,
+    size_t ldc)
+{
+    const size_t row_bytes = MlasKVQuantPackedRowBytes(QuantType, K);
+    const auto* B_bytes = static_cast<const uint8_t*>(B);
+    const bool int4 = IsInt4Mode(QuantType);
+    const bool per_channel = IsPerChannelMode(QuantType);
+
+    if (!int4 && M == 1) {
+        for (size_t n = 0; n < N; ++n) {
+            const auto* b_row = reinterpret_cast<const int8_t*>(B_bytes + n * row_bytes);
+            for (size_t m = 0; m < M; ++m) {
+                const float dot = FusedDotInt8(A + m * lda, b_row, K, per_channel, Scales);
+                C[m * ldc + n] = Alpha * dot;
+            }
+        }
+        return;
+    }
+
+    // Convert the FP16 query tile to FP32 once and reuse it across columns. The
+    // decode fast path (M == 1, INT8) returns above, so only wider multi-row
+    // prefill tiles whose M * K exceeds the stack scratch spill to the heap.
+    const size_t a_count = M * K;
+    float a_stack[256];
+    float* a_buf = a_stack;
+    std::unique_ptr<float[]> heap_buf;
+    if (a_count > 256) {
+        heap_buf = std::make_unique<float[]>(a_count);
+        a_buf = heap_buf.get();
+    }
+
+    for (size_t m = 0; m < M; ++m) {
+        MlasConvertHalfToFloatBuffer(A + m * lda, a_buf + m * K, K);
+    }
+    for (size_t n = 0; n < N; ++n) {
+        const uint8_t* b_row = B_bytes + n * row_bytes;
+        for (size_t m = 0; m < M; ++m) {
+            const float* a_row = a_buf + m * K;
+            const float dot = int4
+                                  ? FusedDotInt4(a_row, b_row, K, per_channel, Scales)
+                                  : FusedDotInt8(a_row, reinterpret_cast<const int8_t*>(b_row),
+                                                 K, per_channel, Scales);
             C[m * ldc + n] = Alpha * dot;
         }
     }
@@ -425,11 +506,53 @@ SVGemm_Avx2(
     }
 }
 
+void
+SVGemmFp16_Avx2(
+    size_t M,
+    size_t N,
+    size_t K,
+    const float* A,
+    size_t lda,
+    const void* B,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    MLAS_FP16* C,
+    size_t ldc,
+    float Beta)
+{
+    // FP32 accumulation scratch for one output row (N == head_size). Stays on the
+    // stack for typical head sizes and only spills to the heap when N > 256.
+    float c_stack[256];
+    float* c_buf = c_stack;
+    std::unique_ptr<float[]> heap_buf;
+    if (N > 256) {
+        heap_buf = std::make_unique<float[]>(N);
+        c_buf = heap_buf.get();
+    }
+
+    for (size_t m = 0; m < M; ++m) {
+        MLAS_FP16* c_row = C + m * ldc;
+        if (Beta != 0.0f) {
+            MlasConvertHalfToFloatBuffer(c_row, c_buf, N);
+        }
+        SVGemm_Avx2(1, N, K, A + m * lda, lda, B, QuantType, Scales, c_buf, N, Beta);
+        size_t n = 0;
+        for (; n + 8 <= N; n += 8) {
+            StoreFp16Outputx8(c_row + n, _mm256_loadu_ps(c_buf + n));
+        }
+        for (; n < N; ++n) {
+            c_row[n] = MLAS_FP16(c_buf[n]);
+        }
+    }
+}
+
 }  // namespace
 
 const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchAvx2 = []() {
     MLAS_KV_QUANT_GEMM_DISPATCH d;
     d.QKGemm = QKGemm_Avx2;
+    d.QKGemmFp16 = QKGemmFp16_Avx2;
     d.SVGemm = SVGemm_Avx2;
+    d.SVGemmFp16 = SVGemmFp16_Avx2;
     return d;
 }();
