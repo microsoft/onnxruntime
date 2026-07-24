@@ -32,6 +32,7 @@
 #include <fstream>
 #endif
 
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstdint>
@@ -44,6 +45,7 @@
 #include <utility>
 
 #include "core/common/common.h"
+#include "core/common/inlined_containers_fwd.h"
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "onnxruntime_config.h"
@@ -140,6 +142,18 @@ enum class EventPriority {
 // Helper class to build events with common properties
 class EventBuilder {
  private:
+  template <typename Map>
+  static InlinedVector<const typename Map::value_type*> SortedEntries(const Map& map) {
+    InlinedVector<const typename Map::value_type*> entries;
+    entries.reserve(map.size());
+    for (const auto& entry : map) {
+      entries.push_back(&entry);
+    }
+    std::sort(entries.begin(), entries.end(),
+              [](const auto* lhs, const auto* rhs) { return lhs->first < rhs->first; });
+    return entries;
+  }
+
   EventProperties props_;
 
  public:
@@ -208,7 +222,8 @@ class EventBuilder {
     if (!map.empty()) {
       std::string result;
       bool first = true;
-      for (const auto& [k, v] : map) {
+      for (const auto* entry : SortedEntries(map)) {
+        const auto& [k, v] = *entry;
         if (!first) result += ',';
         result += k + '=' + std::to_string(v);
         first = false;
@@ -223,7 +238,8 @@ class EventBuilder {
     if (!map.empty()) {
       std::string result;
       bool first = true;
-      for (const auto& [k, v] : map) {
+      for (const auto* entry : SortedEntries(map)) {
+        const auto& [k, v] = *entry;
         if (!first) result += ',';
         result += k + '=' + v;
         first = false;
@@ -236,7 +252,8 @@ class EventBuilder {
   // Helper for batch size duration map
   EventBuilder& AddBatchSizeDurations(const std::unordered_map<int64_t, long long>& durations) {
     std::string result;
-    for (const auto& [batch_size, duration] : durations) {
+    for (const auto* entry : SortedEntries(durations)) {
+      const auto& [batch_size, duration] = *entry;
       if (!result.empty()) {
         result += ", ";
       }
