@@ -40,15 +40,16 @@ Each variant's `ort_info.json` is ORT's slot (`executor_info["ort"]`). Path-valu
 
 ```json
 {
-  "model_file": "sha256:<data-hex>/prefill.onnx",
-  "session_options": {
-    "session.model_external_initializers_file_folder_path": "sha256:<data-hex>"
-  }
+  "model_file": "sha256:<data-hex>/prefill.onnx"
 }
 ```
 
-The base model's external initializers (`weights.data`) are read from the same shared
-asset directory as the `.onnx`.
+The base model's external initializers (`weights.data`) live in the **same** shared-asset
+directory as the `.onnx`. Because the model loads by file path, ORT resolves external
+initializers relative to the model file's own folder, so no
+`session.model_external_initializers_file_folder_path` override is needed. (That option is
+only required when the weights live in a *different* directory from the `.onnx`, as in the
+OpenVINO variant below.)
 
 **OpenVINO NPU variant** (`prefill/ov/ort_info.json`):
 

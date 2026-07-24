@@ -95,9 +95,11 @@ def build_portable():
     compat = read_compat(os.path.join(COMPILED, "prefill.ctx.onnx"))
     for c in COMPONENTS:
         cpu_dir = os.path.join(pkg, c, "cpu"); os.makedirs(cpu_dir, exist_ok=True)
+        # CPU variant: the .onnx and its weights.data are colocated in data_uri, so ORT
+        # resolves the external initializers relative to the model file's own folder. No
+        # session.model_external_initializers_file_folder_path override is needed.
         json.dump({
             "model_file": f"{data_uri}/{c}.onnx",
-            "session_options": {"session.model_external_initializers_file_folder_path": data_uri},
         }, open(os.path.join(cpu_dir, "ort_info.json"), "w"), indent=2)
 
         ov_dir = os.path.join(pkg, c, "ov"); os.makedirs(ov_dir, exist_ok=True)
@@ -145,9 +147,11 @@ def build_nonportable():
     # templated ort_info: absolute paths via __ASSETS_DIR__ token, filled by resolve.py
     for c in COMPONENTS:
         cpu_dir = os.path.join(pkg, c, "cpu"); os.makedirs(cpu_dir, exist_ok=True)
+        # CPU variant: the .onnx and its weights.data are colocated in base/, so ORT
+        # resolves the external initializers relative to the model file's own folder. No
+        # session.model_external_initializers_file_folder_path override is needed.
         json.dump({
             "model_file": f"{ASSETS_TOKEN}/base/{c}.onnx",
-            "session_options": {"session.model_external_initializers_file_folder_path": f"{ASSETS_TOKEN}/base"},
         }, open(os.path.join(cpu_dir, "ort_info.template.json"), "w"), indent=2)
 
         ov_dir = os.path.join(pkg, c, "ov"); os.makedirs(ov_dir, exist_ok=True)
