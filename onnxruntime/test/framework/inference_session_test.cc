@@ -1378,6 +1378,150 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
   }
 }
 
+// The following tests exercise InferenceSession::Run's feed/fetch validation
+// (ValidateInputs/ValidateOutputs and their CheckShapes/CheckTypes helpers).
+// mul_1.onnx has a single float input "X" with static shape {3, 2} and a single float output "Y".
+static void LoadAndInitializeMul1(InferenceSession& session) {
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+}
+
+TEST(InferenceSessionTests, RunWithMismatchedFeedNamesAndFeedsReturnsError) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.RunWithMismatchedFeedNamesAndFeedsReturnsError";
+  InferenceSession session_object{so, GetEnvironment()};
+  LoadAndInitializeMul1(session_object);
+
+  std::vector<int64_t> dims_x = {3, 2};
+  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &ml_value);
+
+  // Two feed names but only one feed value.
+  std::vector<std::string> feed_names = {"X", "X"};
+  std::vector<OrtValue> feeds = {ml_value};
+  std::vector<std::string> output_names = {"Y"};
+  std::vector<OrtValue> fetches;
+
+  RunOptions run_options;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session_object.Run(run_options, feed_names, feeds, output_names, &fetches),
+      "feed names has 2 elements, but feed has 1 elements");
+}
+
+TEST(InferenceSessionTests, RunWithUnexpectedInputTypeReturnsError) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.RunWithUnexpectedInputTypeReturnsError";
+  InferenceSession session_object{so, GetEnvironment()};
+  LoadAndInitializeMul1(session_object);
+
+  // "X" is declared as float in the model; feed int32 instead.
+  std::vector<int64_t> dims_x = {3, 2};
+  std::vector<int32_t> values_x = {1, 2, 3, 4, 5, 6};
+  OrtValue ml_value;
+  CreateMLValue<int32_t>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &ml_value);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value));
+  std::vector<std::string> output_names = {"Y"};
+  std::vector<OrtValue> fetches;
+
+  RunOptions run_options;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session_object.Run(run_options, feeds, output_names, &fetches),
+      "Unexpected input data type");
+}
+
+TEST(InferenceSessionTests, RunWithWrongInputRankReturnsError) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.RunWithWrongInputRankReturnsError";
+  InferenceSession session_object{so, GetEnvironment()};
+  LoadAndInitializeMul1(session_object);
+
+  // "X" expects rank 2 ({3, 2}); feed a rank-1 tensor.
+  std::vector<int64_t> dims_x = {6};
+  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &ml_value);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value));
+  std::vector<std::string> output_names = {"Y"};
+  std::vector<OrtValue> fetches;
+
+  RunOptions run_options;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session_object.Run(run_options, feeds, output_names, &fetches),
+      "Invalid rank for input: X");
+}
+
+TEST(InferenceSessionTests, RunWithWrongInputDimensionsReturnsError) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.RunWithWrongInputDimensionsReturnsError";
+  InferenceSession session_object{so, GetEnvironment()};
+  LoadAndInitializeMul1(session_object);
+
+  // "X" expects {3, 2}; feed {2, 3} (same rank, wrong dimensions).
+  std::vector<int64_t> dims_x = {2, 3};
+  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &ml_value);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value));
+  std::vector<std::string> output_names = {"Y"};
+  std::vector<OrtValue> fetches;
+
+  RunOptions run_options;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session_object.Run(run_options, feeds, output_names, &fetches),
+      "Got invalid dimensions for input: X");
+}
+
+TEST(InferenceSessionTests, RunWithNoRequestedOutputsReturnsError) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.RunWithNoRequestedOutputsReturnsError";
+  InferenceSession session_object{so, GetEnvironment()};
+  LoadAndInitializeMul1(session_object);
+
+  std::vector<int64_t> dims_x = {3, 2};
+  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &ml_value);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value));
+  std::vector<std::string> output_names;  // intentionally empty
+  std::vector<OrtValue> fetches;
+
+  RunOptions run_options;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session_object.Run(run_options, feeds, output_names, &fetches),
+      "At least one output should be requested");
+}
+
+TEST(InferenceSessionTests, RunWithInvalidOutputNameReturnsError) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.RunWithInvalidOutputNameReturnsError";
+  InferenceSession session_object{so, GetEnvironment()};
+  LoadAndInitializeMul1(session_object);
+
+  std::vector<int64_t> dims_x = {3, 2};
+  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &ml_value);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value));
+  std::vector<std::string> output_names = {"invalid_output"};
+  std::vector<OrtValue> fetches;
+
+  RunOptions run_options;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session_object.Run(run_options, feeds, output_names, &fetches),
+      "Invalid output name");
+}
+
 static void CreateFuseOpModel(const PathString& model_file_name) {
   onnxruntime::Model model("graph_1", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
                            {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());

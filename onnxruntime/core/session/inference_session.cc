@@ -2904,8 +2904,8 @@ const ExternalDataLoaderManager& InferenceSession::GetExternalDataLoaderManager(
   return external_data_loader_mgr_;
 }
 
-common::Status InferenceSession::CheckShapes(const std::string& input_output_name, const TensorShape& input_output_shape,
-                                             const TensorShape& expected_shape, const char* input_output_moniker) const {
+static common::Status CheckShapes(const std::string& input_output_name, const TensorShape& input_output_shape,
+                                  const TensorShape& expected_shape, const char* input_output_moniker) {
   const auto shape_size = input_output_shape.NumDimensions();
   const auto expected_shape_size = expected_shape.NumDimensions();
   if (shape_size != expected_shape_size) {
@@ -2949,10 +2949,12 @@ static common::Status CheckTypes(MLDataType actual, MLDataType expected, const s
                          DataTypeImpl::ToString(expected), "))");
 }
 
-common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::string> names,
-                                                       gsl::span<const OrtValue> feeds_fetches,
-                                                       const InputOutputDefMetaMap& input_output_meta_map,
-                                                       ArgType arg_type) const {
+static common::Status ValidateInputsOutputs(gsl::span<const std::string> names,
+                                            gsl::span<const OrtValue> feeds_fetches,
+                                            const InputOutputDefMetaMap& input_output_meta_map,
+                                            ArgType arg_type,
+                                            [[maybe_unused]] const SessionState& session_state,
+                                            int session_id) {
   ORT_ENFORCE(arg_type == ArgType::kInput || arg_type == ArgType::kOutput, "Valid values kInput, kOutput");
 
   const bool is_inputs = arg_type == ArgType::kInput;
@@ -2961,10 +2963,10 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
   const char* const feed_fetches_moniker = is_inputs ? "feed" : "fetch";
 
 #if !defined(DISABLE_SPARSE_TENSORS)
-  auto is_sparse_initializer = [this](const std::string& name) -> bool {
+  auto is_sparse_initializer = [&session_state](const std::string& name) -> bool {
     int idx = -1;
-    if (session_state_->GetOrtValueNameIdxMap().GetIdx(name, idx).IsOK()) {
-      return session_state_->IsSparseInitializer(idx);
+    if (session_state.GetOrtValueNameIdxMap().GetIdx(name, idx).IsOK()) {
+      return session_state.IsSparseInitializer(idx);
     }
     return false;
   };
@@ -3014,14 +3016,16 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
 #endif
 
       const auto& input_output_tensor = input_output_ml_value.Get<Tensor>();
-      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_output_tensor.DataType(),
-                                                expected_element_type, "tensor", input_output_moniker));
+      ORT_RETURN_IF_ERROR_SESSIONID(CheckTypes(input_output_tensor.DataType(),
+                                               expected_element_type, "tensor", input_output_moniker),
+                                    session_id);
 
       // check for shape
       const auto& opt_shape = iter->second.tensor_shape;
       if (opt_shape.has_value() && !opt_shape->GetDims().empty()) {
-        ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(name, input_output_tensor.Shape(),
-                                                   *opt_shape, input_output_moniker));
+        ORT_RETURN_IF_ERROR_SESSIONID(CheckShapes(name, input_output_tensor.Shape(),
+                                                  *opt_shape, input_output_moniker),
+                                      session_id);
       }
     } else if (input_output_ml_value.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -3029,25 +3033,29 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
       const SparseTensor& sparse_tensor = input_output_ml_value.Get<SparseTensor>();
       if (expected_type->IsSparseTensorType()) {
         auto expected_element_type = expected_type->AsSparseTensorType()->GetElementType();
-        ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(sparse_tensor.DataType(), expected_element_type,
-                                                  "sparse_tensor", input_output_moniker));
+        ORT_RETURN_IF_ERROR_SESSIONID(CheckTypes(sparse_tensor.DataType(), expected_element_type,
+                                                 "sparse_tensor", input_output_moniker),
+                                      session_id);
         // Check shape
         const auto& opt_shape = iter->second.tensor_shape;
         if (opt_shape.has_value() && !opt_shape->GetDims().empty()) {
-          ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(name, sparse_tensor.DenseShape(),
-                                                     *opt_shape, input_output_moniker));
+          ORT_RETURN_IF_ERROR_SESSIONID(CheckShapes(name, sparse_tensor.DenseShape(),
+                                                    *opt_shape, input_output_moniker),
+                                        session_id);
         }
       } else if (is_sparse_initializer(name) &&
                  expected_type->IsTensorType()) {
         // If this metadata came from a sparse initializer converted to dense, then still validate it.
         auto expected_element_type = expected_type->AsTensorType()->GetElementType();
-        ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(sparse_tensor.DataType(), expected_element_type,
-                                                  "sparse_tensor", input_output_moniker));
+        ORT_RETURN_IF_ERROR_SESSIONID(CheckTypes(sparse_tensor.DataType(), expected_element_type,
+                                                 "sparse_tensor", input_output_moniker),
+                                      session_id);
         // Check shape
         const auto& opt_shape = iter->second.tensor_shape;
         if (opt_shape.has_value() && !opt_shape->GetDims().empty()) {
-          ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(name, sparse_tensor.DenseShape(),
-                                                     *opt_shape, input_output_moniker));
+          ORT_RETURN_IF_ERROR_SESSIONID(CheckShapes(name, sparse_tensor.DenseShape(),
+                                                    *opt_shape, input_output_moniker),
+                                        session_id);
         }
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, input_output_moniker, " with name: '", name,
@@ -3078,23 +3086,31 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
 #endif
 
       auto input_output_element_type = input_output_ml_value.Get<TensorSeq>().DataType();
-      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_output_element_type, expected_element_type, "seq", input_output_moniker));
+      ORT_RETURN_IF_ERROR_SESSIONID(CheckTypes(input_output_element_type, expected_element_type, "seq", input_output_moniker),
+                                    session_id);
     } else {
       auto input_output_type = input_output_ml_value.Type();
-      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_output_type, expected_type, "", input_output_moniker));
+      ORT_RETURN_IF_ERROR_SESSIONID(CheckTypes(input_output_type, expected_type, "", input_output_moniker),
+                                    session_id);
     }
   }
 
   return Status::OK();
 }
 
-common::Status InferenceSession::ValidateInputs(gsl::span<const std::string> feed_names,
-                                                gsl::span<const OrtValue> feeds) const {
-  return ValidateInputsOutputs(feed_names, feeds, input_def_map_, ArgType::kInput);
+static common::Status ValidateInputs(gsl::span<const std::string> feed_names,
+                                     gsl::span<const OrtValue> feeds,
+                                     const InputOutputDefMetaMap& input_def_map,
+                                     const SessionState& session_state,
+                                     int session_id) {
+  return ValidateInputsOutputs(feed_names, feeds, input_def_map, ArgType::kInput, session_state, session_id);
 }
 
-common::Status InferenceSession::ValidateOutputs(gsl::span<const std::string> output_names,
-                                                 const std::vector<OrtValue>* p_fetches) const {
+static common::Status ValidateOutputs(gsl::span<const std::string> output_names,
+                                      const std::vector<OrtValue>* p_fetches,
+                                      const InputOutputDefMetaMap& output_def_map,
+                                      const SessionState& session_state,
+                                      int session_id) {
   if (output_names.empty()) {
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "At least one output should be requested.");
   }
@@ -3103,14 +3119,14 @@ common::Status InferenceSession::ValidateOutputs(gsl::span<const std::string> ou
 
   if (fetches.empty()) {
     for (const auto& name : output_names) {
-      if (output_def_map_.count(name) == 0) {
+      if (output_def_map.count(name) == 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid output name:", name);
       }
     }
     return Status::OK();
   }
 
-  return ValidateInputsOutputs(output_names, fetches, output_def_map_, ArgType::kOutput);
+  return ValidateInputsOutputs(output_names, fetches, output_def_map, ArgType::kOutput, session_state, session_id);
 }
 
 #ifdef ENABLE_TRAINING
@@ -3322,8 +3338,8 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       // log evaluation start to trace logging provider
       env.GetTelemetryProvider().LogEvaluationStart(session_id_);
 
-      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
-      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
+      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds, input_def_map_, *session_state_, session_id_));
+      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches, output_def_map_, *session_state_, session_id_));
 
       // shrink certain default memory arenas if the user has requested for it
       const std::string& shrink_memory_arenas =
