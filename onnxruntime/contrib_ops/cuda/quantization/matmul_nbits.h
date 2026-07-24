@@ -264,7 +264,7 @@ class MatMulNBits final : public CudaKernel {
   // It is therefore only meaningful immediately after a call that took that branch; a subsequent
   // call that takes the GEMV (cuda-kernel) path or the non-fpA_intB path leaves it holding the old
   // value from the previous GEMM call. It is NOT reset between calls.
-  size_t LastComputeWorkspaceBytes() const { return last_compute_workspace_bytes_.load(); }
+  size_t LastComputeWorkspaceBytes() const { return last_compute_workspace_bytes_.load(std::memory_order_relaxed); }
 #endif
 
  private:

@@ -562,7 +562,7 @@ TEST(MatMulNBitsWorkspace, NonMatMulNBitsKernelDeclaresNoWorkspace) {
   const std::vector<TensorShape> input_shapes{TensorShape({kAddM, kAddN}), TensorShape({kAddM, kAddN})};
   InlinedVector<WorkspaceRequirement> requirements;
   // Pre-populate to prove the no-op default clears rather than appends.
-  requirements.push_back(WorkspaceRequirement{123, /*slot_id=*/7});
+  requirements.push_back(WorkspaceRequirement{123, /*slot_id=*/7, /*alignment=*/std::nullopt});
   ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(AsSpan(input_shapes), requirements));
   EXPECT_TRUE(requirements.empty())
       << "A kernel that does not override DeclareWorkspaceRequirements must report no workspace.";

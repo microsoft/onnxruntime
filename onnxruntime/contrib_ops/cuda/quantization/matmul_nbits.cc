@@ -4,6 +4,7 @@
 #include "contrib_ops/cuda/quantization/matmul_nbits.h"
 
 #include <cstdint>
+#include <optional>
 
 #include "core/common/status.h"
 #include "core/common/float16.h"
@@ -546,7 +547,7 @@ Status MatMulNBits<T>::DeclareWorkspaceRequirements(
   if (!ws.has_value()) {
     return Status::OK();
   }
-  requirements.push_back(WorkspaceRequirement{*ws, /*slot_id=*/0});
+  requirements.push_back(WorkspaceRequirement{*ws, /*slot_id=*/0, /*alignment=*/std::nullopt});
   return Status::OK();
 }
 #endif
@@ -695,7 +696,10 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(FpAIntBPackingSmForKernel(), params, stream);
       } else {
         const size_t workspace_size = weightOnlyGemmRunner_->getWorkspaceSize(m, n, k);
-        last_compute_workspace_bytes_.store(workspace_size);  // TEST verification hook only.
+        // TEST verification hook only. Relaxed ordering is sufficient: the pilot's single-threaded
+        // tests only read this after the compute call has returned, so no cross-thread happens-before
+        // relationship needs to be established here.
+        last_compute_workspace_bytes_.store(workspace_size, std::memory_order_relaxed);
         auto workspace_buffer = this->template GetScratchBuffer<void>(workspace_size, this->GetComputeStream(ctx));
 
         weightOnlyGemmRunner_->gemm(
