@@ -42,7 +42,8 @@ __device__ __forceinline__ float ToFloat<__nv_bfloat16>(__nv_bfloat16 v) {
 }
 
 // Dequantizes FP8 E4M3 weights with per-block FP32 scales into FP16/BF16.
-// b_fp8 is [N, K] row-major FP8 E4M3, weight_scale is [N, k_blocks] fp32.
+// b_fp8 is [N, K] row-major FP8 E4M3, weight_scale is [N, k_blocks] fp32. Scalar per-element
+// fallback used when K is not a multiple of 16 (the vectorized kernel below handles K % 16 == 0).
 template <typename T>
 __global__ void DequantizeBlockScaledFp8Kernel(T* __restrict__ out,
                                                const __nv_fp8_e4m3* __restrict__ b_fp8,
@@ -61,6 +62,52 @@ __global__ void DequantizeBlockScaledFp8Kernel(T* __restrict__ out,
   const int blk = col / block_size;
   const float scale = weight_scale[row * k_blocks + blk];
   out[idx] = FromFloat<T>(static_cast<float>(b_fp8[idx]) * scale);
+}
+
+// Vectorized dequantization for K % 16 == 0. Each thread converts one 16-element K chunk of a
+// single row: a coalesced 16-byte FP8 load and a coalesced 32-byte (2 x uint4) FP16/BF16 store.
+// The row index comes from a 2D grid (blockIdx.y), avoiding the expensive 64-bit idx / k division
+// of the scalar kernel. When block_size is a multiple of 16 the whole chunk shares one scale, so a
+// single scale value is loaded per chunk instead of per element.
+template <typename T>
+__global__ void DequantizeBlockScaledFp8Vec16Kernel(T* __restrict__ out,
+                                                    const __nv_fp8_e4m3* __restrict__ b_fp8,
+                                                    const float* __restrict__ weight_scale,
+                                                    int n,
+                                                    int k,
+                                                    int k_blocks,
+                                                    int block_size,
+                                                    int kv,
+                                                    bool block_aligned16) {
+  const int g = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x;  // 16-element chunk in a row
+  if (g >= kv) {
+    return;
+  }
+  const int col0 = g * 16;
+  for (int row = blockIdx.y; row < n; row += gridDim.y) {
+    const size_t base = static_cast<size_t>(row) * k + col0;
+    const uint4 raw = *reinterpret_cast<const uint4*>(b_fp8 + base);
+    const __nv_fp8_e4m3* bp = reinterpret_cast<const __nv_fp8_e4m3*>(&raw);
+    const float* srow = weight_scale + static_cast<size_t>(row) * k_blocks;
+
+    T outv[16];
+    if (block_aligned16) {
+      const float scale = srow[col0 / block_size];
+#pragma unroll
+      for (int i = 0; i < 16; ++i) {
+        outv[i] = FromFloat<T>(static_cast<float>(bp[i]) * scale);
+      }
+    } else {
+#pragma unroll
+      for (int i = 0; i < 16; ++i) {
+        outv[i] = FromFloat<T>(static_cast<float>(bp[i]) * srow[(col0 + i) / block_size]);
+      }
+    }
+
+    uint4* op = reinterpret_cast<uint4*>(out + base);
+    op[0] = *reinterpret_cast<const uint4*>(&outv[0]);
+    op[1] = *reinterpret_cast<const uint4*>(&outv[8]);
+  }
 }
 
 template <typename T>
@@ -233,9 +280,30 @@ Status LaunchDequantizeBlockScaledFp8(void* b_dequant,
     return Status::OK();
   }
   const int k_blocks = (k + block_size - 1) / block_size;
+  const auto* b = reinterpret_cast<const __nv_fp8_e4m3*>(b_fp8);
+
+  // Fast path: K is a multiple of 16, so each thread owns one aligned 16-element chunk and both the
+  // FP8 load and the FP16/BF16 store are fully coalesced. This is the common prefill layout.
+  if (k % 16 == 0) {
+    const int kv = k / 16;  // 16-element chunks per row
+    constexpr int kThreads = 256;
+    const unsigned int grid_x = static_cast<unsigned int>((kv + kThreads - 1) / kThreads);
+    const unsigned int grid_y = static_cast<unsigned int>(n < 65535 ? n : 65535);
+    const dim3 blocks{grid_x, grid_y};
+    const bool block_aligned16 = (block_size % 16 == 0);
+    if (is_bf16) {
+      DequantizeBlockScaledFp8Vec16Kernel<__nv_bfloat16><<<blocks, kThreads, 0, stream>>>(
+          reinterpret_cast<__nv_bfloat16*>(b_dequant), b, weight_scale, n, k, k_blocks, block_size, kv,
+          block_aligned16);
+    } else {
+      DequantizeBlockScaledFp8Vec16Kernel<half><<<blocks, kThreads, 0, stream>>>(
+          reinterpret_cast<half*>(b_dequant), b, weight_scale, n, k, k_blocks, block_size, kv, block_aligned16);
+    }
+    return CUDA_CALL(cudaGetLastError());
+  }
+
   constexpr int kThreads = 256;
   const int blocks = static_cast<int>((total + kThreads - 1) / kThreads);
-  const auto* b = reinterpret_cast<const __nv_fp8_e4m3*>(b_fp8);
   if (is_bf16) {
     DequantizeBlockScaledFp8Kernel<__nv_bfloat16><<<blocks, kThreads, 0, stream>>>(
         reinterpret_cast<__nv_bfloat16*>(b_dequant), b, weight_scale, n, k, k_blocks, block_size);
