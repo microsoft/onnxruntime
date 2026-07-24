@@ -178,6 +178,7 @@ class WebGpuContext final {
 #endif
 
   const wgpu::CommandEncoder& GetCommandEncoder() {
+    std::lock_guard<std::recursive_mutex> lock(context_mutex_);
     if (!current_command_encoder_) {
       current_command_encoder_ = device_.CreateCommandEncoder();
     }
@@ -185,6 +186,7 @@ class WebGpuContext final {
   }
 
   const wgpu::ComputePassEncoder& GetComputePassEncoder() {
+    std::lock_guard<std::recursive_mutex> lock(context_mutex_);
     if (!current_compute_pass_encoder_) {
       auto& command_encoder = GetCommandEncoder();
 
@@ -205,11 +207,23 @@ class WebGpuContext final {
   }
 
   void EndComputePass() {
+    std::lock_guard<std::recursive_mutex> lock(context_mutex_);
     if (current_compute_pass_encoder_) {
       current_compute_pass_encoder_.End();
       current_compute_pass_encoder_ = nullptr;
     }
   }
+
+  // Acquire the shared-context lock for the duration of a compound sequence that records into
+  // and/or submits the shared command encoder, or that allocates/frees GPU buffers from the
+  // context's shared BufferManager caches (e.g. BufferManager::Upload/MemCpy/Download/Create/
+  // Release and ComputeContext::FillZero). The caller holds the returned lock so that the
+  // individual GetCommandEncoder / EndComputePass / Flush / cache calls in that sequence execute
+  // atomically with respect to other InferenceSessions that share this context.
+  [[nodiscard]] std::unique_lock<std::recursive_mutex> AcquireContextLock() {
+    return std::unique_lock<std::recursive_mutex>(context_mutex_);
+  }
+
   void CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands, const webgpu::BufferManager& buffer_manager);
   void CaptureEnd();
   void Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands, const webgpu::BufferManager& buffer_manager);
@@ -348,6 +362,17 @@ class WebGpuContext final {
 
   wgpu::CommandEncoder current_command_encoder_;
   wgpu::ComputePassEncoder current_compute_pass_encoder_;
+
+  // Serializes all mutations of shared per-context state: the command encoder / compute pass /
+  // pending-dispatch counters AND the shared BufferManager cache maps (Create/Release/refresh).
+  // Multiple InferenceSessions can share a single context (e.g. the default context_id=0), and
+  // InferenceSession only serializes a single session's Run via its own session_mutex_. Without
+  // this lock, concurrent Run / allocation / initializer-upload from different sessions race on
+  // the single shared command encoder and buffer caches, producing Dawn "CommandEncoder is
+  // already finished" errors, corrupted buffer caches, and device-lost failures. Recursive
+  // because the guarded compound operations (Run, Flush, Replay, CaptureBegin, and the buffer
+  // Upload/MemCpy/Download/Create/Release / FillZero sequences) nest calls into each other.
+  std::recursive_mutex context_mutex_;
 
   std::unique_ptr<webgpu::BufferManager> buffer_mgr_;
   std::unique_ptr<webgpu::BufferManager> initializer_buffer_mgr_;
