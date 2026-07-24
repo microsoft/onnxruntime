@@ -15,7 +15,8 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   const auto& data_indices = shader.AddIndices("data_indices", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& output_indices = shader.AddIndices("output_indices", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
-  bool is_bool = Inputs()[0].var_type == ProgramVariableDataType::Boolx4;
+  bool pack_as_bytes = Inputs()[0].var_type == ProgramVariableDataType::Boolx4 ||
+                       Inputs()[0].var_type == ProgramVariableDataType::Uint8x4;
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.data_size")
                             << "  var idx : input_indices_value_t;\n"
                             << "  var output_indices : output_indices_indices_t;\n"
@@ -23,8 +24,8 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  var data_indices : data_indices_indices_t;\n"
                             << "  var value : output_value_t;\n"
                             << "  var data_offset : u32;\n";
-  for (int comp = 0; comp < (is_bool ? 4 : 1); comp++) {
-    shader.MainFunctionBody() << "  output_indices = " << output_indices.OffsetToIndices(is_bool ? (std::to_string(comp) + " + 4 * global_idx") : "global_idx") << ";\n";
+  for (int comp = 0; comp < (pack_as_bytes ? 4 : 1); comp++) {
+    shader.MainFunctionBody() << "  output_indices = " << output_indices.OffsetToIndices(pack_as_bytes ? (std::to_string(comp) + " + 4 * global_idx") : "global_idx") << ";\n";
 
     for (int i = 0; i < indices.Rank(); i++) {
       shader.MainFunctionBody() << "  " << indices.IndicesSet("indices_indices", i, output_indices.IndicesGet("output_indices", axis_ + i)) << ";\n";
@@ -46,7 +47,7 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
 
     shader.MainFunctionBody() << "  data_offset = " << data_indices.IndicesToOffset("data_indices") << ";\n";
-    if (is_bool) {
+    if (pack_as_bytes) {
       shader.MainFunctionBody() << "  value[" << comp << "] = " << data.GetByOffset("data_offset / 4") << "[data_offset % 4];\n";
     } else {
       shader.MainFunctionBody() << "  value = " << data.GetByOffset("data_offset") << ";\n";
@@ -66,18 +67,19 @@ Status Gather::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  bool is_bool = p.input_tensor->DataType() == DataTypeImpl::GetType<bool>();
-  if (is_bool) {
-    // Shader will pack four bools into one uint, so we consider the types of input and output as vec4<bool>.
+  bool pack_as_bytes = p.input_tensor->DataType() == DataTypeImpl::GetType<bool>() ||
+                       p.input_tensor->DataType() == DataTypeImpl::GetType<uint8_t>();
+  if (pack_as_bytes) {
+    // Shader will pack four bytes into one uint, so we consider the types of input and output as vec4.
     data_size = (data_size + 3) / 4;
   }
 
   uint32_t axis = static_cast<uint32_t>(p.axis);
   GatherProgram program{axis};
   program
-      .AddInputs({{p.input_tensor, ProgramTensorMetadataDependency::TypeAndRank, ProgramInput::Flatten, (is_bool ? 4 : 1)},
+      .AddInputs({{p.input_tensor, ProgramTensorMetadataDependency::TypeAndRank, ProgramInput::Flatten, (pack_as_bytes ? 4 : 1)},
                   {p.indices_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutput({p.output_tensor, ProgramTensorMetadataDependency::Rank, {data_size}, (is_bool ? 4 : 1)})
+      .AddOutput({p.output_tensor, ProgramTensorMetadataDependency::Rank, {data_size}, (pack_as_bytes ? 4 : 1)})
       .SetDispatchGroupSize((data_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .CacheHint(std::to_string(axis))
       .AddIndices(p.input_tensor->Shape())
@@ -98,9 +100,9 @@ Status Gather::ComputeInternal(ComputeContext& context) const {
       KernelDefBuilder().TypeConstraint("T", TYPE).TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>()), \
       KERNEL_CLASS);
 
-WEBGPU_GATHER_VERSIONED_KERNEL(Gather, 1, 10, Gather, WebGpuSupportedNumberAndBoolTypes())
-WEBGPU_GATHER_VERSIONED_KERNEL(Gather, 11, 12, Gather, WebGpuSupportedNumberAndBoolTypes())
-WEBGPU_GATHER_KERNEL(Gather, 13, Gather, WebGpuSupportedNumberAndBoolTypes())
+WEBGPU_GATHER_VERSIONED_KERNEL(Gather, 1, 10, Gather, WebGpuSupportedNumberBoolAndUint8Types())
+WEBGPU_GATHER_VERSIONED_KERNEL(Gather, 11, 12, Gather, WebGpuSupportedNumberBoolAndUint8Types())
+WEBGPU_GATHER_KERNEL(Gather, 13, Gather, WebGpuSupportedNumberBoolAndUint8Types())
 
 }  // namespace webgpu
 }  // namespace onnxruntime
