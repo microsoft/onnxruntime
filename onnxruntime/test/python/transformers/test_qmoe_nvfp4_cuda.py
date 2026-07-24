@@ -266,6 +266,22 @@ def _cuda_sm():
     return cc[0] * 10 + cc[1]
 
 
+def _routes_native_fp4_prefill(num_tokens):
+    """Predict whether a run routes to the native block-scaled FP4xFP4 CUTLASS prefill kernel.
+
+    Mirrors the CUDA-side routing in moe_quantization.cc: the native path requires SM120 or SM121,
+    the native GEMM to be enabled (ORT_ENABLE_NVFP4_CUTLASS_GEMM, default on), and the token
+    count to reach the prefill threshold (ORT_FP4_PREFILL_MIN_TOKENS, default 64). Below the
+    threshold the run uses the GEMV-decode / dequant-fallback path instead.
+    """
+    if _cuda_sm() not in (120, 121):
+        return False
+    if int(os.environ.get("ORT_ENABLE_NVFP4_CUTLASS_GEMM", "1")) != 1:
+        return False
+    prefill_min_tokens = int(os.environ.get("ORT_FP4_PREFILL_MIN_TOKENS", "64"))
+    return prefill_min_tokens <= 0 or num_tokens >= prefill_min_tokens
+
+
 @unittest.skipIf(not torch.cuda.is_available(), "CUDA not available")
 @unittest.skipIf(not has_onnx, "ONNX not available")
 @unittest.skipIf(not has_fp4_qmoe, "CUDA QMoE FP4 kernels not enabled in this build")
@@ -416,19 +432,34 @@ class TestQMoENVFP4(unittest.TestCase):
         )
 
         atol = 0.15 if torch_dtype == torch.bfloat16 else 0.12
+        # The native block-scaled FP4xFP4 CUTLASS prefill kernel (Blackwell / SM120+, taken
+        # only when the per-run token count reaches the prefill threshold) additionally
+        # quantizes the *activations* to 4-bit NVFP4 (block-16 with E4M3 block scales). The
+        # reference above uses full-precision activations, so that path carries an extra,
+        # deterministic quantization error that the dequant-fallback / GEMV-decode paths do
+        # not. Allow the corresponding headroom only for shapes that actually route native;
+        # every other shape keeps the strict bound. A genuinely broken kernel still produces
+        # error far above this (order 1.0+), so gross regressions are still caught.
+        if _routes_native_fp4_prefill(num_tokens):
+            atol = 0.25 if torch_dtype == torch.float16 else 0.28
         self.assertLess(
             max_diff,
             atol,
             f"NVFP4 MoE parity check failed: max_diff={max_diff:.6f} > atol={atol}",
         )
 
+        return ort_output
+
     def _assert_invalid_nvfp4_model(
-        self, block_size=NVFP4_BLOCK_SIZE, truncate_fc1_scales=False, truncate_fc1_global_scale=False
+        self,
+        block_size=NVFP4_BLOCK_SIZE,
+        truncate_fc1_scales=False,
+        truncate_fc1_global_scale=False,
+        hidden_size=64,
+        inter_size=64,
     ):
         self._skip_if_no_fp4()
         num_experts = 2
-        hidden_size = 64
-        inter_size = 64
         fc1_weights = torch.zeros(num_experts, hidden_size, inter_size // 2, dtype=torch.uint8)
         fc2_weights = torch.zeros(num_experts, inter_size, hidden_size // 2, dtype=torch.uint8)
         fc1_scales = torch.zeros(num_experts, inter_size, hidden_size // NVFP4_BLOCK_SIZE, dtype=torch.uint8)
@@ -452,7 +483,7 @@ class TestQMoENVFP4(unittest.TestCase):
         )
         opts = onnxruntime.SessionOptions()
         opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-        with self.assertRaisesRegex(Exception, "block_size|fc1_scales|fc1_global_scale"):
+        with self.assertRaisesRegex(Exception, "block_size|fc1_scales|fc1_global_scale|multiple of"):
             session = onnxruntime.InferenceSession(
                 model, opts, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")]
             )
@@ -472,6 +503,15 @@ class TestQMoENVFP4(unittest.TestCase):
 
     def test_nvfp4_rejects_malformed_prepacked_global_scale(self):
         self._assert_invalid_nvfp4_model(truncate_fc1_global_scale=True)
+
+    def test_nvfp4_rejects_non_16_multiple_hidden_size(self):
+        # hidden_size=72 is even (packs cleanly) but not a multiple of the NVFP4 block size (16),
+        # so the mode-specific block-16 layout invariant must be rejected at session init.
+        self._assert_invalid_nvfp4_model(hidden_size=72, inter_size=64)
+
+    def test_nvfp4_rejects_non_16_multiple_inter_size(self):
+        # inter_size=72 is even but not a multiple of 16 — the NVFP4 runtime guard must reject it.
+        self._assert_invalid_nvfp4_model(hidden_size=64, inter_size=72)
 
     @staticmethod
     def _compute_reference(input_tensor, router_logits, fc1_deq, fc2_deq, num_experts, top_k, use_swiglu, torch_dtype):
@@ -631,6 +671,32 @@ class TestQMoENVFP4(unittest.TestCase):
             onnx_dtype=TensorProto.FLOAT16,
             use_swiglu=True,
             gemv_mode="0",
+        )
+
+    def test_nvfp4_fp16_gemv_vs_fallback_parity(self):
+        # Dispatch-equivalence regression: run the identical decode-shaped NVFP4 case twice — once
+        # forcing the fused FP4 GEMV path (ORT_ENABLE_FP4_GEMV=1) and once forcing the dequant
+        # fallback (ORT_ENABLE_FP4_GEMV=0) — and compare the two ORT outputs directly. Both runs use
+        # the same fixed seed (42) inside _run_nvfp4_moe_test, so the weights and inputs are
+        # identical and any difference is purely the GEMV-vs-fallback dispatch. This distinguishes
+        # "both paths drifted from the reference" from "the GEMV path diverged from the fallback".
+        shape = dict(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=4,
+            top_k=2,
+            num_tokens=2,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+        )
+        gemv_out = self._run_nvfp4_moe_test(**shape, gemv_mode="1")
+        fallback_out = self._run_nvfp4_moe_test(**shape, gemv_mode="0")
+        max_diff = (gemv_out.float() - fallback_out.float()).abs().max().item()
+        print(f"NVFP4 GEMV-vs-fallback parity: FP16 SwiGLU max_diff={max_diff:.6f}")
+        self.assertLess(
+            max_diff,
+            0.12,
+            f"NVFP4 fused GEMV diverged from dequant fallback: max_diff={max_diff:.6f}",
         )
 
 

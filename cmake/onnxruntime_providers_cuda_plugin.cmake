@@ -261,7 +261,7 @@ if(ORT_HAS_SM90_OR_LATER)
     target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
   endif()
 endif()
-if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG AND NOT MSVC)
+if(("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG OR "121" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG) AND NOT MSVC)
   target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS)
 endif()
 
@@ -331,11 +331,14 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   endif()
 
   # LLM OBJECT library: SM75+ (backward compatible with fpA_intB_gemv/gemm which support SM75).
-  # Excludes SM120+ real (native SASS) architectures — SM120-specific kernels are compiled in
-  # the separate SM120 TMA OBJECT library, and the general LLM code triggers CCCL tcgen05 PTX
-  # headers that fail on Windows/MSVC when compiled for sm_120a. Virtual arch (PTX) is kept.
+  # FP4 QMoE requires native SM120-family SASS for activation quantization. Other MSVC builds
+  # exclude SM120+ real architectures because CCCL tcgen05 PTX headers fail with that host compiler.
   if(_cuda_plugin_llm_srcs)
-    onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75 EXCLUDE_SM120_REAL)
+    if(MSVC AND NOT onnxruntime_USE_FP4_QMOE)
+      onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75 EXCLUDE_SM120_REAL)
+    else()
+      onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75)
+    endif()
     if(_plugin_llm_cuda_architectures)
       onnxruntime_add_cuda_plugin_object_library(
         NAME onnxruntime_providers_cuda_plugin_llm
