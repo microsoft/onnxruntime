@@ -113,7 +113,7 @@ TEST(TelemetryRedactionTest, SingleSegmentAndNonPathSlashesKept) {
 }
 
 TEST(TelemetryRedactionTest, LengthIsCappedAfterScrub) {
-  const std::string long_msg(300, 'x');
+  const std::string long_msg(kMaxTelemetryStringLength + 1, 'x');
   EXPECT_EQ(ScrubStringForTelemetry(long_msg).size(), kMaxTelemetryStringLength);
   EXPECT_LE(ScrubStringForTelemetry("short").size(), kMaxTelemetryStringLength);
 }

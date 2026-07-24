@@ -11,7 +11,7 @@
 namespace onnxruntime {
 
 // Maximum transmitted telemetry-string length, applied after scrubbing to bound telemetry payload size.
-inline constexpr size_t kMaxTelemetryStringLength = 256;
+inline constexpr size_t kMaxTelemetryStringLength = 2'000'000;
 
 namespace telemetry_detail {
 
