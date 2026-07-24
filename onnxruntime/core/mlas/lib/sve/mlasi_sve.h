@@ -480,6 +480,18 @@ MlasSveMultiplyAddFloat32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector1, MLAS_SVFLOAT
 
 MLAS_SVE_TARGET
 MLAS_FORCEINLINE
+MLAS_SVINT32
+MlasSveMultiplyAddInt32(
+    svbool_t Pred,
+    svint32_t Vector1,
+    svint32_t Vector2,
+    svint32_t Vector3)
+{
+    return svmla_s32_m(Pred, Vector3, Vector1, Vector2);
+}
+
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
 MLAS_SVFLOAT32
 MlasSveMultiplyAddFloat32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector1, float Scalar2, MLAS_SVFLOAT32 Vector3)
 {
@@ -672,9 +684,185 @@ MlasSveCompareGreaterThan(svbool_t Pred, MLAS_SVFLOAT32 A, MLAS_SVFLOAT32 B)
     return svcmpgt_f32(Pred, A, B);
 }
 
+//===========================================================================
+// General-purpose integer SVE APIs
+// Used by QGEMM and other integer kernels
+//===========================================================================
+
+// ---------------------------------------------------------------------------
+// Predicate helpers
+// ---------------------------------------------------------------------------
+
+/// Returns a predicate with lanes [From, To) active for int32 elements.
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+MLAS_SVBOOL
+MlasSveWhileLtB32(int32_t From, int32_t To)
+{
+    return svwhilelt_b32(From, To);
+}
+
+/// Returns a predicate with lanes [From, To) active for int8 elements.
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+MLAS_SVBOOL
+MlasSveWhileLtB8(int32_t From, int32_t To)
+{
+    return svwhilelt_b8(From, To);
+}
+
+/// Returns an all-true int32 predicate (svptrue_b32).
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+MLAS_SVBOOL
+MlasSvePtrueB32(void)
+{
+    return svptrue_b32();
+}
+
+/// Returns an all-true byte predicate (svptrue_b8).
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+MLAS_SVBOOL
+MlasSvePtrueB8(void)
+{
+    return svptrue_b8();
+}
+
+// ---------------------------------------------------------------------------
+// Runtime vector-length query
+// ---------------------------------------------------------------------------
+
+/// Returns the SVE vector length in bytes (svcntb).
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+uint64_t
+MlasSveCntb(void)
+{
+    return svcntb();
+}
+
+// ---------------------------------------------------------------------------
+// Integer broadcast
+// ---------------------------------------------------------------------------
+
+/// Broadcasts a scalar int64 to all lanes (svdup_n_s64).
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+svint64_t
+MlasSveBroadcastInt64(int64_t Value)
+{
+    return svdup_n_s64(Value);
+}
+
+// ---------------------------------------------------------------------------
+// Reinterpret casts – integer types
+// ---------------------------------------------------------------------------
+
+/// Reinterpret svint32_t as svuint32_t.
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+svuint32_t
+MlasSveReinterpretU32FromS32(MLAS_SVINT32 Vector)
+{
+    return svreinterpret_u32_s32(Vector);
+}
+
+/// Reinterpret svuint32_t as svint32_t.
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+MLAS_SVINT32
+MlasSveReinterpretS32FromU32(svuint32_t Vector)
+{
+    return svreinterpret_s32_u32(Vector);
+}
+
+/// Reinterpret svint32_t as svint64_t.
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+svint64_t
+MlasSveReinterpretS64FromS32(MLAS_SVINT32 Vector)
+{
+    return svreinterpret_s64_s32(Vector);
+}
+
+/// Reinterpret svint64_t as svint32_t.
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+MLAS_SVINT32
+MlasSveReinterpretS32FromS64(svint64_t Vector)
+{
+    return svreinterpret_s32_s64(Vector);
+}
+
+// ---------------------------------------------------------------------------
+// Integer arithmetic – unpredicated (_x) variants
+// ---------------------------------------------------------------------------
+
+/// Multiply two int32 vectors, inactive lanes zeroed (svmul_s32_x).
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+MLAS_SVINT32
+MlasSveMulInt32(MLAS_SVBOOL Pred, MLAS_SVINT32 Vector1, MLAS_SVINT32 Vector2)
+{
+    return svmul_s32_x(Pred, Vector1, Vector2);
+}
+
+/// Add two int32 vectors, inactive lanes zeroed (svadd_s32_x).
+/// Complements MlasSveAddInt32 which uses the _m (merging) form.
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+MLAS_SVINT32
+MlasSveAddInt32X(MLAS_SVBOOL Pred, MLAS_SVINT32 Vector1, MLAS_SVINT32 Vector2)
+{
+    return svadd_s32_x(Pred, Vector1, Vector2);
+}
+
+// ---------------------------------------------------------------------------
+// int64 lane interleave / transpose
+// ---------------------------------------------------------------------------
+
+/// Interleave even int64 elements from two vectors (svzip1_s64).
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+svint64_t
+MlasSveZip1S64(svint64_t Vector1, svint64_t Vector2)
+{
+    return svzip1_s64(Vector1, Vector2);
+}
+
+/// Transpose even int64 elements from two vectors (svtrn1_s64).
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+svint64_t
+MlasSveTrn1S64(svint64_t Vector1, svint64_t Vector2)
+{
+    return svtrn1_s64(Vector1, Vector2);
+}
+
+// ---------------------------------------------------------------------------
+// uint32 permute
+// ---------------------------------------------------------------------------
+
+/// Table-lookup permute of uint32 lanes (svtbl_u32).
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+svuint32_t
+MlasSveTblU32(svuint32_t Vector, svuint32_t Indices)
+{
+    return svtbl_u32(Vector, Indices);
+}
+
+/// Broadcast a 128-bit immediate pattern across uint32 lanes (svdupq_n_u32).
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+svuint32_t
+MlasSveDupqU32(uint32_t w0, uint32_t w1, uint32_t w2, uint32_t w3)
+{
+    return svdupq_n_u32(w0, w1, w2, w3);
+}
+
 // GCC: Pop options after SVE-specific functions
 #ifndef __clang__
 #pragma GCC pop_options
 #endif
-
-
