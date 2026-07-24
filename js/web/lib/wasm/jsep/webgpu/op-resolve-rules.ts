@@ -111,6 +111,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['GridSample', [gridSample, parseGridSampleAttributes]],
   ['GroupQueryAttention', [groupQueryAttention]],
   ['HardSigmoid', [unaryOps.hardSigmoid, unaryOps.parseHardSigmoidAttributes]],
+  ['HardSwish', [unaryOps.hardSwish]],
   ['InstanceNormalization', [instanceNorm]],
   ['LayerNormalization', [layerNorm]],
   ['LeakyRelu', [unaryOps.leakyRelu, unaryOps.parseAlphaAttributes]],

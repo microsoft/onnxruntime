@@ -8,6 +8,8 @@
 
 #include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp_qsi4c32p_interface.h"
 
+#include "kai/ukernels/matmul/matmul_clamp_f32_qsi8d32p_qai4c32p/kai_matmul_clamp_f32_qsi8d32p_qai4c32p_interface.h"
+
 #include "kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p_f32p_interface.h"
 
 #include "kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p_interface.h"
@@ -30,6 +32,19 @@ struct KaiMatmulKernel {
     UkernelFn ukernel;
 };
 
+enum class KaiQ4RhsPackLayout {
+    SymmetricNxK,
+    AsymmetricNxK,
+    AsymmetricNxKInterleavedNrx4,
+};
+
+template <typename UkernelFn>
+struct KaiQ4MatmulKernel {
+    const char* name;
+    UkernelFn ukernel;
+    KaiQ4RhsPackLayout rhs_layout;
+};
+
 // Wrapper for FP32 GEMM kernels where both LHS and RHS are pre-packed (common SGEMM path).
 using KaiF32SgemmKernel = KaiMatmulKernel<kai_matmul_clamp_f32_f32p_f32p_ukernel>;
 
@@ -37,7 +52,10 @@ using KaiF32SgemmKernel = KaiMatmulKernel<kai_matmul_clamp_f32_f32p_f32p_ukernel
 using KaiF32SgemvKernel = KaiMatmulKernel<kai_matmul_clamp_f32_f32_f32p_ukernel>;
 
 // Wrapper for Qnbit GEMM kernels producing FP32 output.
-using KaiQnbitGemmKernel = KaiMatmulKernel<kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel>;
+using KaiQnbitGemmKernel = KaiQ4MatmulKernel<kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel>;
+
+// Wrapper for Qnbit Asymmetric-quantized GEMM kernels producing FP32 output.
+using KaiQnbitAsymGemmKernel = KaiQ4MatmulKernel<kai_matmul_clamp_f32_qsi8d32p_qai4c32p_ukernel>;
 
 // Wrapper for dynamic-quantized GEMM kernels producing FP32 output.
 using KaiDynamicQGemmKernel = KaiMatmulKernel<kai_matmul_clamp_f32_qai8dxp_qsi8cxp_ukernel>;
@@ -58,6 +76,12 @@ const KaiQnbitGemmKernel& GetKleidiAIGemmUKernel();
 
 // Returns the selected Qnbit kernel used for GEMV-style workloads based on runtime CPU capabilities.
 const KaiQnbitGemmKernel& GetKleidiAIGemvUKernel();
+
+// Returns the selected Qnbit Asymmetric-quantized GEMM ukernel.
+const KaiQnbitAsymGemmKernel& GetKleidiAIQai4GemmUKernel();
+
+// Returns the selected Qnbit Asymmetric-quantized kernel used for GEMV-style workloads.
+const KaiQnbitAsymGemmKernel& GetKleidiAIQai4GemvUKernel();
 
 // Returns the selected dynamic-quantized GEMM ukernel based on runtime CPU capabilities and optional vendor selection.
 const KaiDynamicQGemmKernel& GetKleidiAIQGemmUKernel();

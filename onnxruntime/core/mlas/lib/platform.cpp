@@ -508,6 +508,7 @@ Return Value:
                 this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelAvx2;
                 this->RopeDispatch = &MlasRopeDispatchAvx2;
                 this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchAvx2;
+                this->KVQuantGemmFp16Supported_ = (Cpuid1[2] & (1u << 29)) != 0;  // F16C
 
                 // TODO(vraspar): check if this really goes here or if there are other platform reqs that we need to fulfill
                 this->LutGenKernel = &MlasLutGenKernelAvx2;
@@ -594,6 +595,7 @@ Return Value:
                             this->Q8Q4GemmDispatch = &MlasQ8Q4GemmDispatchAvx512vnni;
                             this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512vnni;
                             this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchAvx512Vnni;
+                            this->KVQuantGemmFp16Supported_ = (Cpuid1[2] & (1u << 29)) != 0;  // F16C
                         }
                     }
                 }
@@ -649,6 +651,7 @@ Return Value:
     this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchNeon;
     this->GemmU8S8Dispatch = &MlasGemmX8S8DispatchNeon;
     this->GemmS8S8Dispatch = &MlasGemmX8S8DispatchNeon;
+    this->GemmS8U8Dispatch = &MlasGemmQuantDispatchDefault;
     this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchNeon;
     this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchNeon;
     this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchNeon;
@@ -657,6 +660,7 @@ Return Value:
     this->SoftmaxDispatch = &MlasSoftmaxDispatchNeon;
     this->EltwiseDispatch = &MlasEltwiseDispatchNeon;
     this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchNeon;
+    this->KVQuantGemmFp16Supported_ = true;
 
 #if defined(MLAS_USE_ARM_NEON_NCHWC)
     // Use the AArch64 assembly implementation on non-Windows platforms.
@@ -700,6 +704,7 @@ Return Value:
     if (HasDotProductInstructions) {
         this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchUdot;
         this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUdot;
+        this->GemmS8U8Dispatch = &MlasGemmU8X8DispatchUdot;
         this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchSdot;
         this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchSdot;
         this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchDot;

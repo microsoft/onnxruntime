@@ -895,7 +895,9 @@ endif()
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
           ${MLAS_SRC_DIR}/qkv_quant_kernel_avx512vnni.cpp
         )
-        set_source_files_properties(${mlas_platform_srcs_avx512vnni} PROPERTIES COMPILE_FLAGS "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+        set_source_files_properties(
+          ${mlas_platform_srcs_avx512vnni} PROPERTIES
+          COMPILE_FLAGS "-mfma -mf16c -mavx512vnni -mavx512bw -mavx512dq -mavx512vl -mavx512f")
 
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/activate_fp16.cpp

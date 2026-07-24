@@ -15,7 +15,7 @@ jobs:
   build_x64_release_vitisai:
     runs-on: [
       "self-hosted",
-      "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
+      "1ES.Pool=onnxruntime-github-vs2022-latest",
       "JobId=build_x64_release_vitisai-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
       ]
     timeout-minutes: 300
@@ -34,6 +34,11 @@ jobs:
 
       - name: Locate vcvarsall and Setup Env
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Install Visual Studio Spectre-mitigated libs
+        uses: ./.github/actions/install-vs-spectre-libs
         with:
           architecture: x64
 

@@ -18,6 +18,7 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits_sm90_validation.h"
 #endif
 #include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
@@ -54,6 +55,38 @@ int MatMulNBits<T>::FpAIntBPackingSmForKernel() const {
 template <typename T>
 int64_t MatMulNBits<T>::RequiredWeightPrepackedFormat() const {
   return FpAIntBPackingSmForKernel() == 90 ? kMatMulNBitsWeightPrepackedSm90 : kMatMulNBitsWeightPrepackedSm80;
+}
+
+// See matmul_nbits_sm90_validation.h for why these two functions are declared there but defined
+// here (non-inline, single definition, inside the CUDA EP translation unit that observes
+// COMPILE_HOPPER_TMA_GEMMS).
+bool IsNativeSm90FpAIntBGemmCompiled() {
+#if defined(COMPILE_HOPPER_TMA_GEMMS)
+  return true;
+#else
+  return false;
+#endif
+}
+
+void ValidateSm90PrepackedWeightSupport(int sm, int64_t block_size) {
+  // The native SM90 (Hopper TMA/WGMMA) mixed-GEMM kernel requires a compute-capability 9.0
+  // device and a block_size that is a multiple of the Hopper K tile (128 / sizeof(half) = 64).
+  // block_size=32 is only supported by the SM80/Ampere-class kernel + GEMV path.
+  ORT_ENFORCE(sm == 90,
+              "weight_prepacked=2 (SM90 layout) requires a compute capability 9.0 (Hopper) device, but got sm ", sm);
+#if !defined(COMPILE_HOPPER_TMA_GEMMS)
+  // The native SM90 (Hopper) fpA_intB TMA/WGMMA kernel is not compiled in this build (for
+  // example Windows/MSVC, where CUDA 13 NVCC host stubs hit MSVC C2719 with over-aligned TMA
+  // parameters; see docs/contrib_ops/cuda/moe_qmoe.md section 14.1). The SM90 weight layout
+  // cannot be consumed by the SM80 kernel, so fail early here with a clear message instead of
+  // dispatching to the throwing launcher stub during tactic profiling.
+  ORT_THROW(
+      "weight_prepacked=2 (SM90 layout) is not supported by this ONNX Runtime build "
+      "(the native SM90 Hopper fpA_intB kernel is unavailable, e.g. on Windows/MSVC). "
+      "Re-export the model with weight_prepacked=0 or 1 to use the SM80-compatible fpA_intB layout.");
+#endif
+  ORT_ENFORCE(block_size == 64 || block_size == 128,
+              "weight_prepacked=2 (SM90 layout) supports block_size 64 or 128 only, but got ", block_size);
 }
 
 template <typename T>

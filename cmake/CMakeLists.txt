@@ -1507,6 +1507,12 @@ if (onnxruntime_USE_CUDA)
     add_definitions("-DENABLE_FP4")
     message(STATUS "CUDA Toolkit version is greater or equal than 12.8, enable -DENABLE_FP4 flag")
     if(onnxruntime_USE_FP4_QMOE)
+      if(MSVC AND ("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG OR
+                   "121" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG))
+        message(FATAL_ERROR
+          "onnxruntime_USE_FP4_QMOE with SM120/SM121 is not supported on MSVC: native sm_120a "
+          "compilation fails in CUDA/CCCL tcgen05 headers. Use a non-MSVC build for native FP4 QMoE.")
+      endif()
       add_definitions("-DUSE_FP4_QMOE")
       message(STATUS "CUDA FP4 QMoE kernels enabled")
     endif()

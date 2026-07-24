@@ -14,6 +14,7 @@
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits_sm90_validation.h"
 #include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
@@ -129,13 +130,9 @@ class MatMulNBits final : public CudaKernel {
                 "weight_prepacked must be 0 (not prepacked), 1 (SM80 layout), or 2 (SM90 layout), but got ",
                 weight_prepacked_);
     if (weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90) {
-      // The native SM90 (Hopper TMA/WGMMA) mixed-GEMM kernel requires a compute-capability 9.0
-      // device and a block_size that is a multiple of the Hopper K tile (128 / sizeof(half) = 64).
-      // block_size=32 is only supported by the SM80/Ampere-class kernel + GEMV path.
-      ORT_ENFORCE(sm_ == 90,
-                  "weight_prepacked=2 (SM90 layout) requires a compute capability 9.0 (Hopper) device, but got sm ", sm_);
-      ORT_ENFORCE(block_size_ == 64 || block_size_ == 128,
-                  "weight_prepacked=2 (SM90 layout) supports block_size 64 or 128 only, but got ", block_size_);
+      // See matmul_nbits_sm90_validation.h / matmul_nbits.cc for the validation logic (extracted
+      // into a pure function of (sm, block_size) so it can be unit-tested without a Hopper GPU).
+      ValidateSm90PrepackedWeightSupport(sm_, block_size_);
     }
 
     if constexpr (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value) {

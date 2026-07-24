@@ -2192,7 +2192,6 @@ MlasDequantizeBlockwiseFpZeroPoint(
     const ElementT* scales,
     const ZeroPointT* zero_points,
     int block_size,
-    bool columnwise,
     int rows,
     int columns,
     MLAS_THREADPOOL* thread_pool
@@ -2201,10 +2200,10 @@ MlasDequantizeBlockwiseFpZeroPoint(
     static_assert(qbits == 2, "only 2 bit is implemented");
     static_assert(std::is_same_v<ElementT, float>, "only float dequantized elements are implemented");
 
-    // Only the columnwise layout is implemented; the caller validates this.
-    // The MatMulNBits op constrains block_size to a power of two >= 16, so every block
-    // starts byte aligned in the packed stream.
-    MLAS_UNREFERENCED_PARAMETER(columnwise);
+    // The packed stream is columnwise: elements in a block come from the same column.
+    // This routine only needs block_size to be a multiple of 4 so each block starts byte
+    // aligned in the packed stream; the MatMulNBits op passes a power of two >= 16, which
+    // satisfies that.
 
     const int k_blocks = (rows + block_size - 1) / block_size;
     const size_t src_col_stride = static_cast<size_t>(k_blocks) * block_size / 4;
@@ -2248,7 +2247,6 @@ MlasDequantizeBlockwiseFpZeroPoint<float, float, 2>(
     const float* scales,
     const float* zero_points,
     int block_size,
-    bool columnwise,
     int rows,
     int columns,
     MLAS_THREADPOOL* thread_pool
@@ -2261,7 +2259,6 @@ MlasDequantizeBlockwiseFpZeroPoint<float, MLAS_FP16, 2>(
     const float* scales,
     const MLAS_FP16* zero_points,
     int block_size,
-    bool columnwise,
     int rows,
     int columns,
     MLAS_THREADPOOL* thread_pool

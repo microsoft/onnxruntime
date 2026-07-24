@@ -57,7 +57,7 @@ jobs:
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
         Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --secret id=PIP_INDEX_URL"
         Repository: onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging
 
   - ${{ if eq(parameters.OnnxruntimeArch, 'aarch64') }}:
@@ -65,7 +65,7 @@ jobs:
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/aarch64/default/cpu/Dockerfile
         Context: tools/ci_build/github/linux/docker/inference/aarch64/default/cpu
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --secret id=PIP_INDEX_URL"
         Repository: onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging
 
   - task: CmdLine@2
