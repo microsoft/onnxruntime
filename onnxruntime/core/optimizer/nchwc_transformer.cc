@@ -946,7 +946,7 @@ bool NchwcTransformerImpl::TryFuseNchwcHardSwish(Node& hardsigmoid,
 
   // Find the sibling Mul that consumes both the conv output and the HardSigmoid
   // output (the HardSwish elementwise multiply).
-  NodeArg* hardsigmoid_out = hardsigmoid.MutableOutputDefs()[0];
+  const NodeArg* hardsigmoid_out = hardsigmoid.OutputDefs()[0];
   Node* mul_node = nullptr;
   const auto consumers = graph_.GetConsumerNodes(conv_output_arg->Name());
   for (const Node* consumer : consumers) {
@@ -959,7 +959,7 @@ bool NchwcTransformerImpl::TryFuseNchwcHardSwish(Node& hardsigmoid,
       return false;
     }
     // The Mul must consume the conv output and the HardSigmoid output.
-    auto& mul_inputs = candidate->MutableInputDefs();
+    const auto& mul_inputs = candidate->InputDefs();
     const bool consumes_conv = (mul_inputs[0] == conv_output_arg) || (mul_inputs[1] == conv_output_arg);
     const bool consumes_hs = (mul_inputs[0] == hardsigmoid_out) || (mul_inputs[1] == hardsigmoid_out);
     if (!consumes_conv || !consumes_hs) {
