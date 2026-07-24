@@ -228,7 +228,7 @@ Status MatMulBlockQuantizedFp4Weight::ComputeImpl(OpKernelContext* context) cons
 
   // Dequantize the packed NVFP4 weight into a scratch [N, K] buffer of the activation type.
   IAllocatorUniquePtr<CudaT> b_dequant = GetScratchBuffer<CudaT>(SafeInt<size_t>(N_) * SafeInt<size_t>(K_),
-                                                                 context->GetComputeStream());
+                                                                 GetComputeStream(context));
   ORT_RETURN_IF_ERROR(LaunchDequantizeNvFp4(
       b_dequant.get(),
       b->DataRaw(),
