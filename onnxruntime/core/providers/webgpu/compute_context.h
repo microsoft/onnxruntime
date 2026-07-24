@@ -230,6 +230,7 @@ class ComputeContext final : public ComputeContextBase {
   // Fill a GPU tensor with zeros.
   //
   inline void FillZero(Tensor& dst) {
+    auto lock = webgpu_context_.AcquireContextLock();
     ORT_THROW_IF_ERROR(webgpu_context_.EncodeDeferredDispatches());
     webgpu_context_.EndComputePass();
     auto& command_encoder = webgpu_context_.GetCommandEncoder();

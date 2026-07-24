@@ -522,6 +522,7 @@ void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) const {
   // shader to write the non-aligned remainder.
   staging_buffer.Unmap();
 
+  auto lock = context_.AcquireContextLock();
   ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches());
   auto& command_encoder = context_.GetCommandEncoder();
   context_.EndComputePass();
@@ -541,6 +542,7 @@ void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const {
               "Source and destination buffers must have enough space for the copy operation. src_size=",
               src_size, ", dst_size=", dst_size, ", copy_size=", copy_size, ".");
 
+  auto lock = context_.AcquireContextLock();
   ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches());
   auto& command_encoder = context_.GetCommandEncoder();
   context_.EndComputePass();
@@ -548,6 +550,9 @@ void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const {
 }
 
 WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage) const {
+  // Serialize cache access: the context's BufferManagers are shared across all InferenceSessions
+  // that share this WebGpuContext, and the allocator calls Create/Release from any session thread.
+  auto lock = context_.AcquireContextLock();
   auto& cache = GetCacheManager(usage);
   auto buffer_size = cache.CalculateBufferSize(size);
 
@@ -581,6 +586,7 @@ bool BufferManager::SupportsUMA() const {
 }
 
 void BufferManager::Release(WGPUBuffer buffer) const {
+  auto lock = context_.AcquireContextLock();
   EnforceBufferUnmapped(context_, buffer);
   GetCacheManager(buffer).ReleaseBuffer(buffer);
 }
@@ -598,10 +604,13 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
   desc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapRead;
 
   auto staging_buffer = context_.Device().CreateBuffer(&desc);
-  auto& command_encoder = context_.GetCommandEncoder();
-  context_.EndComputePass();
-  command_encoder.CopyBufferToBuffer(src, 0, staging_buffer, 0, buffer_size);
-  ORT_THROW_IF_ERROR(context_.Flush(*this));
+  {
+    auto lock = context_.AcquireContextLock();
+    auto& command_encoder = context_.GetCommandEncoder();
+    context_.EndComputePass();
+    command_encoder.CopyBufferToBuffer(src, 0, staging_buffer, 0, buffer_size);
+    ORT_THROW_IF_ERROR(context_.Flush(*this));
+  }
 
   // TODO: revise wait in whole project
 
@@ -634,6 +643,7 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
 }
 
 void BufferManager::RefreshPendingBuffers(GraphCaptureState graph_capture_state) const {
+  auto lock = context_.AcquireContextLock();
   storage_cache_->OnRefresh(graph_capture_state);
   uniform_cache_->OnRefresh(graph_capture_state);
   query_resolve_cache_->OnRefresh(graph_capture_state);

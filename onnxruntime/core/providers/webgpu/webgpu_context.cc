@@ -351,6 +351,7 @@ Status WebGpuContext::EncodeDeferredDispatches() {
 }
 
 Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& program) {
+  std::lock_guard<std::recursive_mutex> lock(context_mutex_);
   const auto& inputs = program.Inputs();
   const auto& outputs = program.Outputs();
 
@@ -945,6 +946,7 @@ Status WebGpuContext::PopErrorScope() {
 }
 
 Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
+  std::lock_guard<std::recursive_mutex> lock(context_mutex_);
   Status status = EncodeDeferredDispatches();
   if (!current_command_encoder_) {
     return status;
@@ -1062,6 +1064,7 @@ void WebGpuContext::DispatchCommand(const webgpu::CapturedCommandInfo& command) 
 }
 
 void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands, const webgpu::BufferManager& buffer_manager) {
+  std::lock_guard<std::recursive_mutex> lock(context_mutex_);
   LOGS_DEFAULT(VERBOSE) << "CaptureBegin with external storage";
   // Flush any pending commands before we change the status
   ORT_THROW_IF_ERROR(Flush(buffer_manager));
@@ -1077,6 +1080,7 @@ void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captu
 }
 
 void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands, const webgpu::BufferManager& buffer_manager) {
+  std::lock_guard<std::recursive_mutex> lock(context_mutex_);
   LOGS_DEFAULT(VERBOSE) << "Replay with external storage";
   graph_capture_state_ = GraphCaptureState::Replaying;
   // Replay all captured commands from the provided vector
