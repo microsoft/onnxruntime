@@ -1663,6 +1663,7 @@ struct MLAS_PLATFORM {
     // TODO: move to cpuinfo
     bool Avx2Supported_ = false;
     bool Avx512Supported_ = false;
+    bool KVQuantGemmFp16Supported_ = false;
     bool ArmNeonIsQuantActivationsUnsigned = false;
 
     // MLAS SGemm overrides

@@ -18,6 +18,11 @@ failures should be re-run via §1. §4 (Azure Pipelines) applies only to the sin
 
 Before doing anything, inspect current state so you do not queue duplicate runs.
 
+**If you make any change, commit and push it, then stop.** A push updates the PR head SHA and
+automatically starts CI for the new commit. Do **not** manually re-run failures from the old SHA
+after pushing a fix; that only queues redundant runs against stale code. Manual re-runs are only
+for transient failures when the PR head has not changed.
+
 ### Classify a check's provider
 
 GitHub Actions checks have a non-empty `workflowName` and a `detailsUrl` on `github.com`; the
@@ -96,8 +101,9 @@ Rules of thumb:
   the same failing commit and fails identically.
 - Only re-run when the log shows a network/disk/agent problem and **no** compile or assertion error.
 - When unsure, download the log and read it; do not guess from the check name alone.
-- After a code fix, push a new commit — CI re-runs automatically on the new head SHA; you do not
-  need §1.
+- After any code, test, lint, or generated-file fix, commit and push it. CI starts automatically
+  for the new head SHA. Do **not** use §1 after pushing a change; the failed runs belong to the old
+  SHA and re-running them would test stale code.
 
 ## 1. Re-run Failed GitHub Actions (transient failures only)
 
@@ -105,7 +111,8 @@ The repo ships a helper that re-runs **only** the GitHub Actions workflows whose
 for the PR's current head commit failed/canceled — and skips any workflow that already has a
 newer run queued or in progress. Use it **only after triage** confirms the failures are
 transient (network/disk/agent) — see [Triage](#triage-diagnose-before-re-running). It is the
-safest way to retry those without piling on duplicates.
+safest way to retry those without piling on duplicates. **Do not use this helper if you changed
+anything and pushed a new commit; the push already starts CI for the new head SHA.**
 
 Script: [tools/scripts/rerun_failed_ci.sh](../../../tools/scripts/rerun_failed_ci.sh)
 
@@ -242,7 +249,9 @@ run_id=$(gh run list --repo microsoft/onnxruntime --commit "$HEAD_SHA" --limit 1
 # Confirm the artifact is present (expect: updated-docs)
 gh api repos/microsoft/onnxruntime/actions/runs/$run_id/artifacts --jq '.artifacts[].name'
 
-# Download the updated docs straight into docs/ (the artifact holds both .md files)
+# gh run download does not overwrite existing files. Remove both stale generated docs first,
+# then extract their replacements (the artifact always holds both files).
+rm docs/OperatorKernels.md docs/ContribOperators.md
 gh run download "$run_id" --repo microsoft/onnxruntime -n updated-docs --dir docs/
 ```
 
@@ -256,8 +265,9 @@ git commit -m "Update operator docs" && git push
 
 Notes:
 - The `updated-docs` artifact always contains **both** `OperatorKernels.md` and
-  `ContribOperators.md` at its top level; `--dir docs/` drops them into place. Only the file(s)
-  that actually changed will show up in `git diff` after extraction.
+  `ContribOperators.md` at its top level. Remove both committed files before downloading because
+  `gh run download` refuses to overwrite them; `--dir docs/` then recreates both. Only the file(s)
+  whose generated content changed will show up in `git diff` after extraction.
 - Equivalent local alternative: `python tools/ci_build/build.py --config Release --build_dir
   build/Linux --gen_doc` after a build, then commit the regenerated files. Downloading the
   artifact is faster since it avoids a full build.
