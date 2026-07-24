@@ -5,6 +5,7 @@
 #include "core/session/inference_session.h"
 
 #include <algorithm>
+#include <array>
 #include <cfloat>
 #include <filesystem>
 #include <functional>
@@ -2313,6 +2314,43 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
 }
 
 #endif
+
+TEST(InferenceSessionTests, ArenaShrinkageRunOptionRejectsInvalidDeviceSpec) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.ArenaShrinkageRunOptionRejectsInvalidDeviceSpec";
+  InferenceSession session_object{so, GetEnvironment()};
+
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  std::vector<int64_t> dims_mul_x = {3, 2};
+  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_mul_x, values_mul_x,
+                       &ml_value);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value));
+  std::vector<std::string> output_names{"Y"};
+  std::vector<OrtValue> fetches;
+
+  struct TestCase {
+    const char* shrink_spec;
+    const char* expected_error;
+  };
+
+  const std::array<TestCase, 2> test_cases{{
+      {"npu:0", "Unsupported device specified in the memory arena shrink list: npu"},
+      {"cpu:not_an_int", "Unsupported device id in the memory arena shrink list: not_an_int"},
+  }};
+
+  for (const auto& test_case : test_cases) {
+    RunOptions run_options;
+    ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigEnableMemoryArenaShrinkage,
+                                                               test_case.shrink_spec));
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session_object.Run(run_options, feeds, output_names, &fetches),
+                                        test_case.expected_error);
+  }
+}
 
 // The model being tested here triggers a case where the allocation planner (AP) tries to reuse a tensor of type
 // double for a string tensor. The reuse logic of AP works correctly on Windows and Ubuntu 16.x
