@@ -63,17 +63,17 @@ Status LaunchAddBiasNvFp4(void* y,
 // (may be null). Output y is [M, N] in the activation type. Requires block_size == 16 and
 // k % 32 == 0. Runs on any architecture with NVFP4 conversion intrinsics (CUDA >= 12.8).
 Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
-                                      const void* a,
-                                      const void* b_packed,
-                                      const void* weight_scale,
-                                      const float* weight_scale_2,
-                                      const void* bias,
-                                      int m,
-                                      int n,
-                                      int k,
-                                      int block_size,
-                                      bool is_bf16,
-                                      cudaStream_t stream);
+                                               const void* a,
+                                               const void* b_packed,
+                                               const void* weight_scale,
+                                               const float* weight_scale_2,
+                                               const void* bias,
+                                               int m,
+                                               int n,
+                                               int k,
+                                               int block_size,
+                                               bool is_bf16,
+                                               cudaStream_t stream);
 
 // Native Blackwell SM120 NVFP4 x NVFP4 GEMM path. The caller provides scratch buffers for
 // packed activation FP4, swizzled A/B scale tensors, alpha, and CUTLASS workspace. A is [M, K]
@@ -87,23 +87,23 @@ Status LaunchRepackWeightScaleNvFp4ForNativeSm120(void* b_scale,
                                                   cudaStream_t stream);
 
 Status LaunchMatMulBlockQuantizedFp4WeightNativeSm120(void* y,
-                                             const void* a,
-                                             const void* b_packed,
-                                             const void* weight_scale,
-                                             const float* weight_scale_2,
-                                             const float* input_scale,
-                                             void* a_packed,
-                                             void* a_scale,
-                                             const void* b_scale,
-                                             float* alpha,
-                                             int m,
-                                             int n,
-                                             int k,
-                                             int block_size,
-                                             bool is_bf16,
-                                             void* workspace,
-                                             size_t workspace_size,
-                                             cudaStream_t stream);
+                                                      const void* a,
+                                                      const void* b_packed,
+                                                      const void* weight_scale,
+                                                      const float* weight_scale_2,
+                                                      const float* input_scale,
+                                                      void* a_packed,
+                                                      void* a_scale,
+                                                      const void* b_scale,
+                                                      float* alpha,
+                                                      int m,
+                                                      int n,
+                                                      int k,
+                                                      int block_size,
+                                                      bool is_bf16,
+                                                      void* workspace,
+                                                      size_t workspace_size,
+                                                      cudaStream_t stream);
 size_t GetMatMulBlockQuantizedFp4WeightNativeSm120WorkspaceSize(int m, int n, int k, bool is_bf16);
 
 }  // namespace onnxruntime::contrib::cuda

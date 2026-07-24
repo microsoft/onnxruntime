@@ -53,7 +53,7 @@ MatMulBlockQuantizedFp4Weight::MatMulBlockQuantizedFp4Weight(const OpKernelInfo&
 }
 
 Status MatMulBlockQuantizedFp4Weight::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                                     bool& is_packed, PrePackedWeights* /*prepacked_weights*/) {
+                                              bool& is_packed, PrePackedWeights* /*prepacked_weights*/) {
   is_packed = false;
 
 #if defined(ORT_ENABLE_BLOCKQUANT_SM120)

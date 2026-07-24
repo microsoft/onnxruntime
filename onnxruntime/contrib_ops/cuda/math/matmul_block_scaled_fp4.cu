@@ -141,15 +141,15 @@ __device__ __forceinline__ void LoadFp4Gemv32A<nv_bfloat16>(const nv_bfloat16* p
 
 template <typename T>
 __global__ void MatMulBlockQuantizedFp4WeightGemvKernel(T* __restrict__ y,
-                                               const T* __restrict__ a,
-                                               const uint8_t* __restrict__ b_packed,
-                                               const uint8_t* __restrict__ weight_scale,
-                                               const float* __restrict__ weight_scale_2,
-                                               const T* __restrict__ bias,
-                                               int m,
-                                               int n,
-                                               int k,
-                                               int k_blocks) {
+                                                        const T* __restrict__ a,
+                                                        const uint8_t* __restrict__ b_packed,
+                                                        const uint8_t* __restrict__ weight_scale,
+                                                        const float* __restrict__ weight_scale_2,
+                                                        const T* __restrict__ bias,
+                                                        int m,
+                                                        int n,
+                                                        int k,
+                                                        int k_blocks) {
   const int lane = threadIdx.x;                           // 0..31
   const int col = blockIdx.x * blockDim.y + threadIdx.y;  // n
   const int row = blockIdx.y;                             // m
@@ -297,17 +297,17 @@ Status LaunchAddBiasNvFp4(void* y,
 }
 
 Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
-                                      const void* a,
-                                      const void* b_packed,
-                                      const void* weight_scale,
-                                      const float* weight_scale_2,
-                                      const void* bias,
-                                      int m,
-                                      int n,
-                                      int k,
-                                      int block_size,
-                                      bool is_bf16,
-                                      cudaStream_t stream) {
+                                               const void* a,
+                                               const void* b_packed,
+                                               const void* weight_scale,
+                                               const float* weight_scale_2,
+                                               const void* bias,
+                                               int m,
+                                               int n,
+                                               int k,
+                                               int block_size,
+                                               bool is_bf16,
+                                               cudaStream_t stream) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 12080
   if (m <= 0 || n <= 0 || k <= 0) {
     return Status::OK();
