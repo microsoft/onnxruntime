@@ -1773,14 +1773,12 @@ TEST(ComputeOptimizerTests, GatherRobertaE2E) {
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
 
-    // "expected 0.793675 (3f4b2e44), got 0.79232 (3f4ad584), diff: 0.00135422, tol=0.000179367 idx=4276.
-    // 1713 of 8192 differ"
-    // Loose the atol a bit because we see the MatMuls results differ once we move Gather before it.
-    constexpr double per_sample_tolerance = 2e-3;
-    constexpr double relative_per_sample_tolerance = 2e-3;
+    // CPU now executes these MatMuls in fp16, so allow for backend-specific
+    // fp16 rounding when Gather changes their input shapes.
+    const double tolerance = provider_type == onnxruntime::kCpuExecutionProvider ? 1e-2 : 2e-3;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
       auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
-                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+                                 tolerance, tolerance, false);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
     }
   }

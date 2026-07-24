@@ -7,6 +7,9 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
+#include <algorithm>
+#include <cstdint>
+#include <cstring>
 
 namespace onnxruntime {
 
@@ -24,6 +27,13 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
     MatMul<double>);
 
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    MatMul,
+    1, 8,
+    MLFloat16,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    MatMul<MLFloat16>);
+
 // opset 9 supports more types
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     MatMul,
@@ -40,6 +50,14 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     double,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
     MatMul<double>);
+
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    MatMul,
+    9,
+    12,
+    MLFloat16,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    MatMul<MLFloat16>);
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     MatMul,
@@ -72,6 +90,13 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     double,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
     MatMul<double>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    MatMul,
+    13,
+    MLFloat16,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    MatMul<MLFloat16>);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     MatMul,
@@ -107,9 +132,8 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   if (helper.K() == 0) {
     // When we have (M, 0, N) then the inputs are empty, but the output should
     // be filled out with zeros.
-    EigenMatrixMapRowMajor<T> dest(y->MutableData<T>(),
-                                   narrow<Eigen::Index>(helper.M()), narrow<Eigen::Index>(helper.N()));
-    dest.setZero();
+    auto output_span = gsl::make_span(y->MutableData<T>(), narrow<size_t>(y->Shape().Size()));
+    std::fill(output_span.begin(), output_span.end(), T{});
     return Status::OK();
   }
 
@@ -236,6 +260,45 @@ bool GemmPackBBfloat16(AllocatorPtr& alloc,
 }
 #endif
 
+bool GemmPackBHalfNative(AllocatorPtr& alloc,
+                         const Tensor& tensor_b,
+                         IAllocatorUniquePtr<void>& packed_b,
+                         size_t& packed_b_size,
+                         TensorShape& b_shape,
+                         const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  // Only handle the common case of a 2D weight matrix. Additional matrices
+  // could be handled by stacking the packed buffers.
+  if (tensor_b.Shape().NumDimensions() != 2) {
+    return false;
+  }
+
+  b_shape = tensor_b.Shape();
+
+  const size_t K = static_cast<size_t>(b_shape[0]);
+  const size_t N = static_cast<size_t>(b_shape[1]);
+
+  packed_b_size = MlasHalfGemmNativePackBSize(CblasNoTrans, CblasNoTrans, N, K,
+                                              mlas_backend_kernel_selector_config);
+  if (packed_b_size == 0) {
+    return false;
+  }
+
+  packed_b = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size, true);
+  auto* packed_b_data = packed_b.get();
+  memset(packed_b_data, 0, packed_b_size);
+
+  if (!MlasHalfGemmNativePackB(CblasNoTrans, CblasNoTrans, N, K,
+                               reinterpret_cast<const MLAS_FP16*>(tensor_b.Data<MLFloat16>()), N, packed_b_data,
+                               mlas_backend_kernel_selector_config)) {
+    packed_b.reset();
+    packed_b_size = 0;
+    b_shape = TensorShape();
+    return false;
+  }
+
+  return true;
+}
+
 Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                               /*out*/ bool& is_packed,
                               /*out*/ PrePackedWeights* prepacked_weights) {
@@ -275,6 +338,124 @@ Status MatMul<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& pr
     packed_b_ = std::move(prepacked_buffers[0]);
   }
 
+  return Status::OK();
+}
+
+Status MatMul<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+                                  /*out*/ bool& is_packed,
+                                  /*out*/ PrePackedWeights* prepacked_weights) {
+  is_packed = false;
+  if (input_idx == 1) {
+    size_t packed_b_size = 0;
+    is_packed = GemmPackBHalfNative(alloc, tensor, packed_b_, packed_b_size, b_shape_,
+                                    &mlas_backend_kernel_selector_config_);
+    // The native fp16 packed-B layout depends on the active MLAS backend selector.
+    // Keep it owned by this kernel until shared prepacked weights carry layout metadata.
+    if (is_packed && prepacked_weights != nullptr) {
+      prepacked_weights->has_kernel_owned_packed_weights_ = true;
+    }
+  }
+
+  return Status::OK();
+}
+
+Status MatMul<MLFloat16>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                    gsl::span<const size_t> prepacked_buffer_sizes,
+                                                    int input_idx,
+                                                    /*out*/ bool& used_shared_buffers) {
+  ORT_UNUSED_PARAMETER(prepacked_buffers);
+  ORT_UNUSED_PARAMETER(prepacked_buffer_sizes);
+  ORT_UNUSED_PARAMETER(input_idx);
+
+  // Native fp16 packed-B buffers are backend-layout-specific. Decline shared
+  // buffers until the shared prepack cache can validate that layout.
+  used_shared_buffers = false;
+  return Status::OK();
+}
+
+Status MatMul<MLFloat16>::Compute(OpKernelContext* ctx) const {
+  concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
+
+  const Tensor* a = ctx->Input<Tensor>(0);
+  const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(1);
+  const auto& b_shape = b ? b->Shape() : b_shape_;
+
+  MatMulComputeHelper helper;
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape));
+  Tensor* y = ctx->Output(0, helper.OutputShape());
+
+  if (y->Shape().Size() == 0) {
+    return Status::OK();
+  }
+
+  if (helper.K() == 0) {
+    auto output_span = gsl::make_span(y->MutableData<MLFloat16>(), narrow<size_t>(y->Shape().Size()));
+    std::fill(output_span.begin(), output_span.end(), MLFloat16{});
+    return Status::OK();
+  }
+
+  const auto* a_data = a->Data<MLFloat16>();
+  const auto* b_data = b ? b->Data<MLFloat16>() : nullptr;
+  auto* y_data = y->MutableData<MLFloat16>();
+
+  const size_t max_len = helper.OutputOffsets().size();
+  const size_t M = static_cast<size_t>(helper.M());
+  const size_t N = static_cast<size_t>(helper.N());
+  const size_t K = static_cast<size_t>(helper.K());
+  const size_t lda = helper.Lda(false);
+  const size_t ldb = helper.Ldb(false);
+
+  // Guard against using generic half GEMM when no accelerated implementation is
+  // available. Native packing support currently also signals an accelerated
+  // backend path.
+  const bool has_accelerated_half_gemm =
+      MlasFp16AccelerationSupported() ||
+      MlasHalfGemmNativePackBSize(CblasNoTrans, CblasNoTrans, N, K,
+                                  &mlas_backend_kernel_selector_config_) != 0;
+  if (!has_accelerated_half_gemm && packed_b_ == nullptr) {
+    for (size_t i = 0; i < max_len; ++i) {
+      math::MatMul<MLFloat16>(narrow<ptrdiff_t>(M), narrow<ptrdiff_t>(N), narrow<ptrdiff_t>(K),
+                              a_data + helper.LeftOffsets()[i],
+                              b_data + helper.RightOffsets()[i],
+                              y_data + helper.OutputOffsets()[i],
+                              thread_pool,
+                              &mlas_backend_kernel_selector_config_);
+    }
+    return Status::OK();
+  }
+
+  if (M <= 2 && packed_b_ == nullptr && MlasHGemmSupported(CblasNoTrans, CblasNoTrans)) {
+    const auto alpha = MLFloat16(1.0f);
+    const auto beta = MLFloat16(0.0f);
+    InlinedVector<MLAS_HGEMM_DATA_PARAMS> data(max_len);
+    for (size_t i = 0; i < max_len; i++) {
+      data[i].A = a_data + helper.LeftOffsets()[i];
+      data[i].lda = lda;
+      data[i].B = b_data + helper.RightOffsets()[i];
+      data[i].ldb = ldb;
+      data[i].C = y_data + helper.OutputOffsets()[i];
+      data[i].ldc = N;
+      data[i].alpha = alpha.val;
+      data[i].beta = beta.val;
+    }
+
+    MlasGemmBatch(CblasNoTrans, CblasNoTrans, M, N, K, data.data(), max_len, thread_pool);
+    return Status::OK();
+  }
+
+  InlinedVector<MLAS_HALF_GEMM_DATA_PARAMS> data(max_len);
+  for (size_t i = 0; i < max_len; i++) {
+    data[i].A = a_data + helper.LeftOffsets()[i];
+    data[i].lda = lda;
+    data[i].B = packed_b_ ? packed_b_.get() : static_cast<const void*>(b_data + helper.RightOffsets()[i]);
+    data[i].ldb = packed_b_ ? 0 : ldb;
+    data[i].C = y_data + helper.OutputOffsets()[i];
+    data[i].ldc = N;
+    data[i].BIsBackendNativePacked = static_cast<bool>(packed_b_);
+    data[i].BackendKernelSelectorConfig = &mlas_backend_kernel_selector_config_;
+  }
+
+  MlasHalfGemmBatch(M, N, K, max_len, data.data(), thread_pool);
   return Status::OK();
 }
 

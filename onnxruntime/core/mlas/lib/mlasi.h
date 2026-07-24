@@ -1055,8 +1055,7 @@ bool
     size_t K,
     size_t BatchN,
     const MLAS_HALF_GEMM_DATA_PARAMS* DataParams,
-    MLAS_THREADPOOL* ThreadPool,
-    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
+    MLAS_THREADPOOL* ThreadPool);
 
 typedef
 size_t
