@@ -1547,7 +1547,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Output(0,
                 "output",
-          "2D output tensor with shape (num_tokens, hidden_size)",
+                "2D output tensor with shape (num_tokens, hidden_size)",
                 "T")
         .Output(1,
                 "key_cache_out",
