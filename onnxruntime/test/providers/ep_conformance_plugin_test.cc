@@ -31,16 +31,14 @@
 
 #include "core/framework/execution_provider.h"
 
+#if defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+
 #include "test/unittest_util/test_dynamic_plugin_ep.h"
 #include "test/util/include/ep_conformance_invariants.h"
-
-#if defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 
 namespace onnxruntime {
 namespace test {
 namespace {
-
-namespace dynamic_plugin_ep_infra = onnxruntime::test::dynamic_plugin_ep_infra;
 
 // Fixture that constructs the dynamically-loaded plugin EP under test. A null return
 // means the dynamic plugin EP infrastructure was not initialized for this run, in
@@ -59,7 +57,7 @@ TEST_F(EpPluginConformanceTest, TypeIsNonEmptyAndStable) {
   if (!ep) GTEST_SKIP() << "dynamic plugin EP infrastructure is not initialized.";
 
   ep_conformance::CheckTypeIsNonEmptyAndStable(
-      *ep, [] { return EpPluginConformanceTest::MakeEp(); }, EpLabel());
+      *ep, [] { return MakeEp(); }, EpLabel());
 }
 
 TEST_F(EpPluginConformanceTest, PreferredLayoutIsValid) {
@@ -90,11 +88,11 @@ TEST_F(EpPluginConformanceTest, PreferredAllocatorsAllocateUsableMemory) {
   ep_conformance::CheckPreferredAllocatorsAllocateUsableMemory(*ep, EpLabel());
 }
 
-TEST_F(EpPluginConformanceTest, DataTransferCpuRoundTripPreservesData) {
+TEST_F(EpPluginConformanceTest, DataTransferCpuCopyPreservesData) {
   auto ep = MakeEp();
   if (!ep) GTEST_SKIP() << "dynamic plugin EP infrastructure is not initialized.";
 
-  ep_conformance::CheckDataTransferCpuRoundTripPreservesData(*ep, EpLabel());
+  ep_conformance::CheckDataTransferCpuCopyPreservesData(*ep, EpLabel());
 }
 
 TEST_F(EpPluginConformanceTest, MetadataQueriesAreCallable) {

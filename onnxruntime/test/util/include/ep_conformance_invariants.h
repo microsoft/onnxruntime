@@ -5,7 +5,7 @@
 
 // Shared Execution Provider conformance invariants.
 //
-// These free functions encode the backend-agnostic invariants that EVERY
+// These free functions encode the backend-agnostic invariants that every
 // execution provider is expected to satisfy. They are the single source of truth
 // shared by two suites so the internal-interface and plugin-interface checks
 // cannot drift apart:
@@ -78,7 +78,8 @@ inline void CheckCpuMemTypesMapToCpuAccessibleDevice(IExecutionProvider& ep, std
 
 // Invariant: CreatePreferredAllocators() never yields a null allocator and is
 // repeatable. The header documents it as a stateless factory, so a second call must
-// produce an equivalently-sized set.
+// produce the same set of allocators -- same count, and the same OrtMemoryInfo per
+// position -- not merely an equally-sized one.
 inline void CheckPreferredAllocatorsAreNonNullAndRepeatable(IExecutionProvider& ep, std::string_view label) {
   auto allocators = ep.CreatePreferredAllocators();
   for (const auto& alloc : allocators) {
@@ -86,8 +87,20 @@ inline void CheckPreferredAllocatorsAreNonNullAndRepeatable(IExecutionProvider& 
   }
 
   auto allocators2 = ep.CreatePreferredAllocators();
-  EXPECT_EQ(allocators.size(), allocators2.size())
+  for (const auto& alloc : allocators2) {
+    EXPECT_NE(alloc, nullptr)
+        << label << ": CreatePreferredAllocators() must not return null entries on a repeat call.";
+  }
+
+  ASSERT_EQ(allocators.size(), allocators2.size())
       << label << ": CreatePreferredAllocators() must be repeatable (documented as stateless).";
+
+  for (size_t i = 0; i < allocators.size(); ++i) {
+    if (!allocators[i] || !allocators2[i]) continue;
+    EXPECT_TRUE(allocators[i]->Info() == allocators2[i]->Info())
+        << label << ": CreatePreferredAllocators() must report stable OrtMemoryInfo across calls ("
+        << allocators[i]->Info().ToString() << " vs " << allocators2[i]->Info().ToString() << ").";
+  }
 }
 
 // Invariant: each CPU-accessible preferred allocator hands back usable memory: a
@@ -95,6 +108,8 @@ inline void CheckPreferredAllocatorsAreNonNullAndRepeatable(IExecutionProvider& 
 // be freed. Device allocators are intentionally excluded here -- their raw Alloc/Free
 // lifecycle is backend-specific -- and are covered by
 // CheckPreferredAllocatorsAreNonNullAndRepeatable instead.
+//
+// May GTEST_SKIP(): invoke as the LAST statement of the test body (see file header).
 inline void CheckPreferredAllocatorsAllocateUsableMemory(IExecutionProvider& ep, std::string_view label) {
   auto allocators = ep.CreatePreferredAllocators();
   if (allocators.empty()) {
@@ -135,9 +150,11 @@ inline void CheckPreferredAllocatorsAllocateUsableMemory(IExecutionProvider& ep,
 }
 
 // Invariant: GetDataTransfer() is optional (may be null). When provided, and it
-// advertises the ability to copy within a CPU-accessible device, a CopyTensor
-// round-trip must preserve the data exactly.
-inline void CheckDataTransferCpuRoundTripPreservesData(IExecutionProvider& ep, std::string_view label) {
+// advertises the ability to copy within a CPU-accessible device, a CPU-to-CPU
+// CopyTensor must preserve the data exactly.
+//
+// May GTEST_SKIP(): invoke as the LAST statement of the test body (see file header).
+inline void CheckDataTransferCpuCopyPreservesData(IExecutionProvider& ep, std::string_view label) {
   auto data_transfer = ep.GetDataTransfer();
   if (!data_transfer) {
     GTEST_SKIP() << label << " EP provides no IDataTransfer (allowed by the contract).";
@@ -152,7 +169,7 @@ inline void CheckDataTransferCpuRoundTripPreservesData(IExecutionProvider& ep, s
     }
   }
   if (!cpu_alloc) {
-    GTEST_SKIP() << label << " EP has no CPU-accessible allocator to drive the round-trip.";
+    GTEST_SKIP() << label << " EP has no CPU-accessible allocator to drive the copy.";
   }
 
   const OrtDevice& cpu_device = cpu_alloc->Info().device;
@@ -172,16 +189,18 @@ inline void CheckDataTransferCpuRoundTripPreservesData(IExecutionProvider& ep, s
 
   ASSERT_TRUE(data_transfer->CopyTensor(src, dst).IsOK()) << label << ": CopyTensor failed for a CPU<->CPU copy.";
   EXPECT_EQ(std::memcmp(src.DataRaw(), dst.DataRaw(), sizeof(values)), 0)
-      << label << ": a CPU round-trip CopyTensor must preserve data exactly.";
+      << label << ": a CPU-to-CPU CopyTensor must preserve data exactly.";
 }
 
-// Invariant: read-only metadata queries are callable and self-consistent on a
-// freshly constructed EP (no session or logger required), and the device-id accessor
-// agrees with GetDevice().
-inline void CheckMetadataQueriesAreCallable(IExecutionProvider& ep, std::string_view label) {
-  EXPECT_EQ(ep.GetDeviceId(), ep.GetDevice().Id()) << label << ": GetDeviceId() must agree with GetDevice().Id().";
-
+// Invariant: read-only metadata queries are callable on a freshly constructed EP (no
+// session or logger required). GetDeviceId() is a provider-defined identifier that is
+// deliberately NOT required to equal GetDevice().Id() -- e.g. WebGPU returns a
+// configurable context id while its OrtDevice id is fixed at 0 -- so it is only
+// smoke-called here, never asserted against GetDevice().
+inline void CheckMetadataQueriesAreCallable(IExecutionProvider& ep, [[maybe_unused]] std::string_view label) {
   // These must simply be callable without crashing on a bare EP instance.
+  (void)ep.GetDeviceId();
+  (void)ep.GetDevice();
   (void)ep.ConcurrentRunSupported();
   (void)ep.GetTuningContext();
   (void)ep.GetOrtDeviceByMemType(OrtMemTypeDefault);
@@ -223,15 +242,16 @@ inline void CheckEpContextNodesEmptyOnFreshEp(IExecutionProvider& ep, std::strin
       << label << ": a fresh EP (no compilation performed) must report no EPContext nodes.";
 }
 
-// Invariant: every preferred allocator reports self-consistent OrtMemoryInfo -- a
-// non-empty name and a valid allocator type. This metadata keys allocator lookup in
-// the framework, so it must be well-formed for every EP. Only the backend-agnostic
-// fields are checked; the raw memory is not touched here.
+// Invariant: every preferred allocator reports a valid allocator type in its
+// OrtMemoryInfo. This metadata keys allocator lookup in the framework, so it must be
+// well-formed for every EP. The allocator name is intentionally NOT asserted: an
+// empty OrtMemoryInfo.name is permitted by the contract, so requiring a non-empty one
+// would over-state it. Only the backend-agnostic fields are checked; the raw memory
+// is not touched here.
 inline void CheckPreferredAllocatorInfoIsConsistent(IExecutionProvider& ep, std::string_view label) {
   for (const auto& alloc : ep.CreatePreferredAllocators()) {
     ASSERT_NE(alloc, nullptr) << label << ": CreatePreferredAllocators() must not return null entries.";
     const OrtMemoryInfo& info = alloc->Info();
-    EXPECT_FALSE(info.name.empty()) << label << ": allocator OrtMemoryInfo.name must not be empty.";
     EXPECT_NE(info.alloc_type, OrtInvalidAllocator)
         << label << ": allocator must report a valid OrtAllocatorType (not OrtInvalidAllocator).";
   }

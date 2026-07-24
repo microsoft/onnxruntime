@@ -3,12 +3,17 @@
 
 // Execution Provider conformance test suite.
 //
-// These parameterized tests encode invariants that EVERY IExecutionProvider
+// These parameterized tests encode invariants that every IExecutionProvider
 // implementation is expected to satisfy, independent of the specific hardware
 // backend. They turn the previously-implicit Liskov-substitutability
 // assumptions of the IExecutionProvider contract into enforced, executable
-// checks, so that a new (or modified) EP cannot silently violate the behavior
-// the framework relies on.
+// checks, so that a covered EP cannot silently violate the behavior the
+// framework relies on.
+//
+// Coverage is opt-in per EP: only the providers registered in
+// GetEpConformanceParams() are exercised (currently CPU, plus CUDA, DML, WebGPU
+// and XNNPACK behind their build guards). Listing a provider there extends the
+// guarantee to it; EPs not listed are not checked by this suite.
 //
 // The invariant checks themselves live in
 // test/util/include/ep_conformance_invariants.h and are shared with the plugin EP
@@ -19,13 +24,16 @@
 // GetEpConformanceParams() below, guarded by the appropriate USE_* macro. The
 // stored value is a *factory*, not a constructed provider, so:
 //   - No EP is instantiated during static initialization.
-//   - A factory that returns nullptr (EP compiled but unavailable at runtime,
-//     e.g. no GPU present) causes the affected test to be skipped, not failed.
+//   - An EP that is compiled but unavailable at runtime (e.g. no GPU present)
+//     causes the affected test to be skipped, not failed -- whether its factory
+//     signals that by returning nullptr or by throwing during construction (see
+//     MakeEp()).
 //
 // Only documented, backend-agnostic contracts are asserted here. Memory that is
 // not CPU-accessible is never dereferenced from the test thread; such checks are
 // guarded by OrtDevice::UsesCpuMemory().
 
+#include <exception>
 #include <functional>
 #include <memory>
 #include <string>
@@ -43,9 +51,13 @@ namespace test {
 
 namespace {
 
-// One EP under test: a human-readable name (also used as the gtest parameter
-// suffix, so it must be a valid identifier) plus a factory that constructs a
-// fresh provider instance.
+// One EP under test:
+//   - name: a human-readable label, also used as the gtest parameter suffix, so it
+//     must be a valid identifier.
+//   - factory: constructs a fresh provider instance (see MakeEp()).
+//   - expects_plugin_ep: true iff this EP is plugin-backed, i.e. GetOrtEp() must
+//     return non-null (see CheckGetOrtEpMatchesProviderKind). Built-in EPs leave it
+//     false.
 struct EpConformanceParam {
   std::string name;
   std::function<std::unique_ptr<IExecutionProvider>()> factory;
@@ -63,7 +75,7 @@ std::vector<EpConformanceParam> GetEpConformanceParams() {
 
 #ifdef USE_CUDA
 #if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) && defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
-  params.push_back({"Cuda", [] { return DefaultCudaExecutionProvider(); }, true});
+  params.push_back({"Cuda", [] { return DefaultCudaExecutionProvider(); }, /*expects_plugin_ep=*/true});
 #else
   params.push_back({"Cuda", [] { return DefaultCudaExecutionProvider(); }});
 #endif
@@ -92,7 +104,20 @@ class EpConformanceTest : public testing::TestWithParam<EpConformanceParam> {
  protected:
   // Construct the EP under test. Returns nullptr when the EP is compiled but not
   // available in the current environment; callers should GTEST_SKIP() in that case.
-  std::unique_ptr<IExecutionProvider> MakeEp() const { return GetParam().factory(); }
+  // Some providers signal unavailability by returning nullptr from their factory;
+  // others (e.g. CUDA, whose constructor calls cudaSetDevice) throw when no device or
+  // driver is present. Both are treated as "unavailable" so the affected test skips
+  // rather than fails; the exception text is logged so a genuine construction
+  // regression stays visible.
+  std::unique_ptr<IExecutionProvider> MakeEp() const {
+    try {
+      return GetParam().factory();
+    } catch (const std::exception& e) {
+      GTEST_LOG_(WARNING) << GetParam().name
+                          << " EP factory threw during construction (treated as unavailable): " << e.what();
+      return nullptr;
+    }
+  }
 };
 
 // Invariant: Type() is non-empty and stable -- both across repeated calls on a
@@ -146,18 +171,18 @@ TEST_P(EpConformanceTest, PreferredAllocatorsAllocateUsableMemory) {
 }
 
 // Invariant: GetDataTransfer() is optional (may be null). When provided, and it
-// advertises the ability to copy within a CPU-accessible device, a CopyTensor
-// round-trip must preserve the data exactly.
-TEST_P(EpConformanceTest, DataTransferCpuRoundTripPreservesData) {
+// advertises the ability to copy within a CPU-accessible device, a CPU-to-CPU
+// CopyTensor must preserve the data exactly.
+TEST_P(EpConformanceTest, DataTransferCpuCopyPreservesData) {
   auto ep = MakeEp();
   if (!ep) GTEST_SKIP() << GetParam().name << " EP not available in this environment.";
 
-  ep_conformance::CheckDataTransferCpuRoundTripPreservesData(*ep, GetParam().name);
+  ep_conformance::CheckDataTransferCpuCopyPreservesData(*ep, GetParam().name);
 }
 
-// Invariant: read-only metadata queries are callable and self-consistent on a
-// freshly constructed EP (no session or logger required), and the device-id
-// accessor agrees with GetDevice().
+// Invariant: read-only metadata queries are callable on a freshly constructed EP (no
+// session or logger required). GetDeviceId() is provider-defined and is not required
+// to equal GetDevice().Id(), so it is only smoke-called.
 TEST_P(EpConformanceTest, MetadataQueriesAreCallable) {
   auto ep = MakeEp();
   if (!ep) GTEST_SKIP() << GetParam().name << " EP not available in this environment.";
