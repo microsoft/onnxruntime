@@ -2483,8 +2483,12 @@ TEST(MathOpTest, Min_12_Float_Nan_WebGpu) {
                          std::numeric_limits<float>::quiet_NaN(),
                          -1.0f, -1.0f, -2.0f,
                          0.5f, 0.0f, 1.0f});
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  execution_providers.push_back(std::move(webgpu_ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
@@ -2499,8 +2503,12 @@ TEST(MathOpTest, Max_12_Float_with_scalar_Nan_WebGpu) {
                          std::numeric_limits<float>::quiet_NaN(),
                          std::numeric_limits<float>::quiet_NaN(),
                          std::numeric_limits<float>::quiet_NaN()});
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  execution_providers.push_back(std::move(webgpu_ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
@@ -2513,8 +2521,12 @@ TEST(MathOpTest, Min_12_Float_Variadic_Nan_WebGpu) {
   test.AddInput<float>("data_2", {1, 3}, {-1.0f, -2.0f, 4.0f});
   test.AddOutput<float>("min", {1, 3},
                         {std::numeric_limits<float>::quiet_NaN(), -2.0f, 3.0f});
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  execution_providers.push_back(std::move(webgpu_ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
@@ -2530,8 +2542,12 @@ TEST(MathOpTest, Max_12_Float16_Nan_WebGpu) {
                             MakeMLFloat16({0.5f,
                                            std::numeric_limits<float>::quiet_NaN(),
                                            std::numeric_limits<float>::quiet_NaN()}));
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  execution_providers.push_back(std::move(webgpu_ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
