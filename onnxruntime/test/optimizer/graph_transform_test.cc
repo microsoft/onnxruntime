@@ -128,6 +128,25 @@ TEST_F(GraphTransformationTests, IdentityElimination) {
   ASSERT_TRUE(op_to_count["Identity"] == 0);
 }
 
+// Registering two transformers with the same Name() at the same level must fail (per-level
+// uniqueness); the same name at a different level is allowed.
+TEST_F(GraphTransformationTests, RegisterDuplicateTransformerNameFailsPerLevel) {
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1));
+
+  // Same name, same level -> rejected.
+  const auto duplicate_status = graph_transformation_mgr.Register(
+      std::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1);
+  ASSERT_FALSE(duplicate_status.IsOK());
+  ASSERT_THAT(duplicate_status.ErrorMessage(), ::testing::HasSubstr("already registered"));
+
+  // Same name, different level -> allowed.
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level2));
+}
+
 TEST_F(GraphTransformationTests, IdentityEliminationWithGraphOutput) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "abs-id.onnx";
   std::shared_ptr<Model> model;
