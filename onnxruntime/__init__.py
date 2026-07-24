@@ -199,10 +199,12 @@ def _get_cufft_version(cuda_major_version: str) -> str:
     return "12" if int(cuda_major_version) >= 13 else "11"
 
 
-def _get_nvidia_dll_paths(is_windows: bool, cuda: bool = True, cudnn: bool = True):
+def _get_nvidia_dll_paths(
+    is_windows: bool, cuda: bool = True, cudnn: bool = True, build_cuda_version: str | None = None
+):
     # Dynamically determine CUDA major version from build info.
     # build_cuda_version defaults to the version this package was built with; it is a parameter for testability.
-    cuda_major_version = _extract_cuda_major_version(cuda_version)
+    cuda_major_version = _extract_cuda_major_version(build_cuda_version or cuda_version)
     cufft_version = _get_cufft_version(cuda_major_version)
 
     # Starting with CUDA 13, NVIDIA consolidated the per-component CUDA Toolkit wheels
@@ -216,9 +218,9 @@ def _get_nvidia_dll_paths(is_windows: bool, cuda: bool = True, cudnn: bool = Tru
     if use_consolidated_layout:
         cuda_dir = f"cu{cuda_major_version}"
         if is_windows:
-            import platform  # noqa: PLC0415
+            import sysconfig  # noqa: PLC0415
 
-            arch = "arm64" if platform.machine().lower() in ("arm64", "aarch64") else "x86_64"
+            arch = "arm64" if sysconfig.get_platform().lower() == "win-arm64" else "x86_64"
             cuda_dll_paths = [
                 ("nvidia", cuda_dir, "bin", arch, f"cublasLt64_{cuda_major_version}.dll"),
                 ("nvidia", cuda_dir, "bin", arch, f"cublas64_{cuda_major_version}.dll"),

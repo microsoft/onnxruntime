@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 # pylint: disable=C0114,C0115,C0116,W0212
 import unittest
+from unittest import mock
 
 import onnxruntime
 
@@ -38,14 +39,16 @@ class TestGetNvidiaDllPaths(unittest.TestCase):
 
     # ---- CUDA 13 (consolidated "cu13" layout) ---------------------------------------
     def test_cuda13_windows_x86_64(self):
-        paths = self._paths(is_windows=True, build_cuda_version="13.2", cudnn=False, arch="x86_64")
+        with mock.patch("sysconfig.get_platform", return_value="win-amd64"):
+            paths = self._paths(is_windows=True, build_cuda_version="13.2", cudnn=False)
         self.assertIn(("nvidia", "cu13", "bin", "x86_64", "cublasLt64_13.dll"), paths)
         self.assertIn(("nvidia", "cu13", "bin", "x86_64", "cublas64_13.dll"), paths)
         self.assertIn(("nvidia", "cu13", "bin", "x86_64", "cufft64_12.dll"), paths)
         self.assertIn(("nvidia", "cu13", "bin", "x86_64", "cudart64_13.dll"), paths)
 
-    def test_cuda13_windows_arch_override(self):
-        paths = self._paths(is_windows=True, build_cuda_version="13.2", cudnn=False, arch="arm64")
+    def test_cuda13_windows_uses_process_architecture(self):
+        with mock.patch("sysconfig.get_platform", return_value="win-arm64"):
+            paths = self._paths(is_windows=True, build_cuda_version="13.2", cudnn=False)
         self.assertIn(("nvidia", "cu13", "bin", "arm64", "cudart64_13.dll"), paths)
 
     def test_cuda13_linux_is_flat(self):
