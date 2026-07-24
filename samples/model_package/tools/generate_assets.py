@@ -9,6 +9,7 @@ Architecture: Relu(MatMul(x, W_i) + b_i) x L  (all OV-native ops).
 
 Outputs into <out>/base and <out>/compiled.
 """
+
 import argparse
 import glob
 import os
@@ -17,8 +18,9 @@ import shutil
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-import onnxruntime as ort
 from windowsml import EpCatalog
+
+import onnxruntime as ort
 
 EP = "OpenVINOExecutionProvider"
 D = 64
@@ -33,11 +35,13 @@ def write_weights(data_path):
     scale = 1.0 / np.sqrt(D)
     with open(data_path, "wb") as f:
         for i in range(L):
-            W = (RNG.standard_normal((D, D)) * scale).astype(np.float32)
-            off = f.tell(); f.write(W.tobytes())
-            layout[f"W_{i}"] = (off, W.nbytes, [D, D])
+            w = (RNG.standard_normal((D, D)) * scale).astype(np.float32)
+            off = f.tell()
+            f.write(w.tobytes())
+            layout[f"W_{i}"] = (off, w.nbytes, [D, D])
             b = np.zeros((D,), np.float32)
-            off = f.tell(); f.write(b.tobytes())
+            off = f.tell()
+            f.write(b.tobytes())
             layout[f"b_{i}"] = (off, b.nbytes, [D])
     return layout
 
@@ -49,7 +53,8 @@ def ext_init(name, shape, offset, length):
     t.dims.extend(shape)
     t.data_location = TensorProto.EXTERNAL
     for k, v in (("location", DATA_NAME), ("offset", str(offset)), ("length", str(length))):
-        e = t.external_data.add(); e.key, e.value = k, v
+        e = t.external_data.add()
+        e.key, e.value = k, v
     return t
 
 
@@ -64,9 +69,11 @@ def build_model(seq, layout):
         inits += [ext_init(f"W_{i}", wshape, woff, wlen), ext_init(f"b_{i}", bshape, boff, blen)]
         mm, ad = f"mm_{i}", f"add_{i}"
         rl = "output" if i == L - 1 else f"relu_{i}"
-        nodes += [helper.make_node("MatMul", [cur, f"W_{i}"], [mm], name=f"MatMul_{i}"),
-                  helper.make_node("Add", [mm, f"b_{i}"], [ad], name=f"Add_{i}"),
-                  helper.make_node("Relu", [ad], [rl], name=f"Relu_{i}")]
+        nodes += [
+            helper.make_node("MatMul", [cur, f"W_{i}"], [mm], name=f"MatMul_{i}"),
+            helper.make_node("Add", [mm, f"b_{i}"], [ad], name=f"Add_{i}"),
+            helper.make_node("Relu", [ad], [rl], name=f"Relu_{i}"),
+        ]
         cur = rl
     g = helper.make_graph(nodes, "tiny_mlp", [inp], [out], initializer=inits)
     m = helper.make_model(g, opset_imports=[helper.make_opsetid("", 17)])
@@ -77,7 +84,8 @@ def build_model(seq, layout):
 def register_ep():
     with EpCatalog() as cat:
         ep = next(e for e in cat.find_all_providers() if "openvino" in e.name.lower())
-        ep.ensure_ready(); lib = ep.library_path
+        ep.ensure_ready()
+        lib = ep.library_path
     ort.register_execution_provider_library(EP, lib)
     return lib
 
@@ -85,7 +93,7 @@ def register_ep():
 def npu_device():
     devs = [d for d in ort.get_ep_devices() if d.ep_name == EP]
     by = {str(d.device.type).rsplit(".", 1)[-1]: d for d in reversed(devs)}
-    return by.get("NPU") or list(by.values())[0]
+    return by.get("NPU") or next(iter(by.values()))
 
 
 def main():
@@ -95,7 +103,8 @@ def main():
     base = os.path.join(args.out, "base")
     compiled = os.path.join(args.out, "compiled")
     for d in (base, compiled):
-        shutil.rmtree(d, ignore_errors=True); os.makedirs(d)
+        shutil.rmtree(d, ignore_errors=True)
+        os.makedirs(d)
 
     # 1) shared weights + base models
     layout = write_weights(os.path.join(base, DATA_NAME))
@@ -111,7 +120,8 @@ def main():
     names = list(SHAPES)
     live = []
     for i, name in enumerate(names):
-        so = ort.SessionOptions(); so.log_severity_level = 3
+        so = ort.SessionOptions()
+        so.log_severity_level = 3
         so.add_session_config_entry("ep.context_enable", "1")
         so.add_session_config_entry("ep.context_embed_mode", "0")
         so.add_session_config_entry("ep.context_file_path", os.path.join(compiled, f"{name}.ctx.onnx"))

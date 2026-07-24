@@ -8,6 +8,7 @@
 
 Run tools/generate_assets.py first to produce <sample>/_staging/{base,compiled}.
 """
+
 import hashlib
 import json
 import os
@@ -16,13 +17,13 @@ import shutil
 import onnx
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SAMPLE = os.path.dirname(HERE)                       # samples/model_package
+SAMPLE = os.path.dirname(HERE)  # samples/model_package
 STG = os.path.join(SAMPLE, "_staging")
 BASE = os.path.join(STG, "base")
 COMPILED = os.path.join(STG, "compiled")
 
 DATA = "weights.data"
-BIN = "prefill.ctx_OpenVINOExecutionProvider.bin"    # the single shared bin
+BIN = "prefill.ctx_OpenVINOExecutionProvider.bin"  # the single shared bin
 COMPONENTS = ["prefill", "iter"]
 COMPAT_KEY = "ep_compatibility_info.OpenVINOExecutionProvider"
 ASSETS_TOKEN = "__ASSETS_DIR__"
@@ -34,6 +35,12 @@ def sha256_hex(path):
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def write_json(path, obj):
+    with open(path, "w") as f:
+        json.dump(obj, f, indent=2)
+        f.write("\n")
 
 
 def asset_uri(files):
@@ -94,35 +101,43 @@ def build_portable():
 
     compat = read_compat(os.path.join(COMPILED, "prefill.ctx.onnx"))
     for c in COMPONENTS:
-        cpu_dir = os.path.join(pkg, c, "cpu"); os.makedirs(cpu_dir, exist_ok=True)
+        cpu_dir = os.path.join(pkg, c, "cpu")
+        os.makedirs(cpu_dir, exist_ok=True)
         # CPU variant: the .onnx and its weights.data are colocated in data_uri, so ORT
         # resolves the external initializers relative to the model file's own folder. No
         # session.model_external_initializers_file_folder_path override is needed.
-        json.dump({
-            "model_file": f"{data_uri}/{c}.onnx",
-        }, open(os.path.join(cpu_dir, "ort_info.json"), "w"), indent=2)
-
-        ov_dir = os.path.join(pkg, c, "ov"); os.makedirs(ov_dir, exist_ok=True)
-        json.dump({
-            "model_file": f"{bin_uri}/{c}.ctx.onnx",
-            "session_options": {
-                "ep.share_ep_contexts": "1",
-                "session.model_external_initializers_file_folder_path": data_uri,
-                "ep.context_file_path": f"{bin_uri}/{c}.ctx.onnx",
+        write_json(
+            os.path.join(cpu_dir, "ort_info.json"),
+            {
+                "model_file": f"{data_uri}/{c}.onnx",
             },
-        }, open(os.path.join(ov_dir, "ort_info.json"), "w"), indent=2)
+        )
+
+        ov_dir = os.path.join(pkg, c, "ov")
+        os.makedirs(ov_dir, exist_ok=True)
+        write_json(
+            os.path.join(ov_dir, "ort_info.json"),
+            {
+                "model_file": f"{bin_uri}/{c}.ctx.onnx",
+                "session_options": {
+                    "ep.share_ep_contexts": "1",
+                    "session.model_external_initializers_file_folder_path": data_uri,
+                    "ep.context_file_path": f"{bin_uri}/{c}.ctx.onnx",
+                },
+            },
+        )
 
     manifest = {
         "schema_version": "1.0",
         "package_name": "tiny-mlp-portable",
         "package_version": "1.0.0",
         "description": "Tiny MLP, two shape specializations (prefill/iter), each with cpu and "
-                       "ov-npu variants. Portable: base and compiled assets are content-addressed "
-                       "shared assets inside the package.",
+        "ov-npu variants. Portable: base and compiled assets are content-addressed "
+        "shared assets inside the package.",
         "layout": "portable",
         "components": {c: component(c, compat) for c in COMPONENTS},
     }
-    json.dump(manifest, open(os.path.join(pkg, "manifest.json"), "w"), indent=2)
+    write_json(os.path.join(pkg, "manifest.json"), manifest)
     print(f"portable: data asset sha256-{data_dig}, bin asset sha256-{bin_dig}")
 
 
@@ -146,23 +161,31 @@ def build_nonportable():
 
     # templated ort_info: absolute paths via __ASSETS_DIR__ token, filled by resolve.py
     for c in COMPONENTS:
-        cpu_dir = os.path.join(pkg, c, "cpu"); os.makedirs(cpu_dir, exist_ok=True)
+        cpu_dir = os.path.join(pkg, c, "cpu")
+        os.makedirs(cpu_dir, exist_ok=True)
         # CPU variant: the .onnx and its weights.data are colocated in base/, so ORT
         # resolves the external initializers relative to the model file's own folder. No
         # session.model_external_initializers_file_folder_path override is needed.
-        json.dump({
-            "model_file": f"{ASSETS_TOKEN}/base/{c}.onnx",
-        }, open(os.path.join(cpu_dir, "ort_info.template.json"), "w"), indent=2)
-
-        ov_dir = os.path.join(pkg, c, "ov"); os.makedirs(ov_dir, exist_ok=True)
-        json.dump({
-            "model_file": f"{ASSETS_TOKEN}/compiled/{c}.ctx.onnx",
-            "session_options": {
-                "ep.share_ep_contexts": "1",
-                "session.model_external_initializers_file_folder_path": f"{ASSETS_TOKEN}/base",
-                "ep.context_file_path": f"{ASSETS_TOKEN}/compiled/{c}.ctx.onnx",
+        write_json(
+            os.path.join(cpu_dir, "ort_info.template.json"),
+            {
+                "model_file": f"{ASSETS_TOKEN}/base/{c}.onnx",
             },
-        }, open(os.path.join(ov_dir, "ort_info.template.json"), "w"), indent=2)
+        )
+
+        ov_dir = os.path.join(pkg, c, "ov")
+        os.makedirs(ov_dir, exist_ok=True)
+        write_json(
+            os.path.join(ov_dir, "ort_info.template.json"),
+            {
+                "model_file": f"{ASSETS_TOKEN}/compiled/{c}.ctx.onnx",
+                "session_options": {
+                    "ep.share_ep_contexts": "1",
+                    "session.model_external_initializers_file_folder_path": f"{ASSETS_TOKEN}/base",
+                    "ep.context_file_path": f"{ASSETS_TOKEN}/compiled/{c}.ctx.onnx",
+                },
+            },
+        )
 
     compat = read_compat(os.path.join(COMPILED, "prefill.ctx.onnx"))
     manifest = {
@@ -170,12 +193,12 @@ def build_nonportable():
         "package_name": "tiny-mlp-nonportable",
         "package_version": "1.0.0",
         "description": "Tiny MLP, two shape specializations. Non-portable (installed) layout: model "
-                       "files live outside the package in ../external_assets and are referenced by "
-                       "absolute paths written by resolve.py.",
+        "files live outside the package in ../external_assets and are referenced by "
+        "absolute paths written by resolve.py.",
         "layout": "installed",
         "components": {c: component(c, compat) for c in COMPONENTS},
     }
-    json.dump(manifest, open(os.path.join(pkg, "manifest.json"), "w"), indent=2)
+    write_json(os.path.join(pkg, "manifest.json"), manifest)
     print(f"nonportable: external assets at {os.path.relpath(ext, SAMPLE)}")
 
 

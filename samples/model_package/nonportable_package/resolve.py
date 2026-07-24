@@ -15,6 +15,7 @@ token `__ASSETS_DIR__`. Run this script once after checkout to write the real
 After running, load the package normally (e.g. with the C++ sample). Re-run this
 script if you move the checkout to a new location.
 """
+
 import argparse
 import glob
 import os
@@ -25,8 +26,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--assets", default=os.path.join(HERE, os.pardir, "external_assets"),
-                    help="Path to the external_assets directory (default: ../external_assets).")
+    ap.add_argument(
+        "--assets",
+        default=os.path.join(HERE, os.pardir, "external_assets"),
+        help="Path to the external_assets directory (default: ../external_assets).",
+    )
     args = ap.parse_args()
 
     assets_dir = os.path.abspath(args.assets)
@@ -40,7 +44,8 @@ def main():
         raise SystemExit("no ort_info.template.json files found next to this script.")
 
     for tpl in templates:
-        text = open(tpl, "r", encoding="utf-8").read().replace(TOKEN, assets_posix)
+        with open(tpl, encoding="utf-8") as f:
+            text = f.read().replace(TOKEN, assets_posix)
         out = os.path.join(os.path.dirname(tpl), "ort_info.json")
         with open(out, "w", encoding="utf-8") as f:
             f.write(text)
