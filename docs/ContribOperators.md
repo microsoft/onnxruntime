@@ -52,6 +52,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
   * <a href="#com.microsoft.LinearAttention">com.microsoft.LinearAttention</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
+  * <a href="#com.microsoft.MatMulBlockQuantizedFp4Weight">com.microsoft.MatMulBlockQuantizedFp4Weight</a>
   * <a href="#com.microsoft.MatMulBnb4">com.microsoft.MatMulBnb4</a>
   * <a href="#com.microsoft.MatMulFpQ4">com.microsoft.MatMulFpQ4</a>
   * <a href="#com.microsoft.MatMulInteger16">com.microsoft.MatMulInteger16</a>
@@ -2906,6 +2907,70 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>G</tt> : tensor(int32)</dt>
 <dd>Constrain to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulBlockQuantizedFp4Weight"></a><a name="com.microsoft.matmulblockquantizedfp4weight">**com.microsoft.MatMulBlockQuantizedFp4Weight**</a>
+
+  Weight-only NVFP4 (E2M1) matrix multiplication.
+  
+  The weight tensor B is stored as packed NVFP4: two E2M1 values per byte (low nibble first).
+  The dequantized weight value is `e2m1(B) * weight_scale_2 * e4m3(weight_scale[n, k / block_size])`,
+  where `weight_scale` holds one E4M3 scale per `block_size` (default 16) consecutive K values and
+  `weight_scale_2` is a single global fp32 scale. The weight is dequantized to the activation type
+  (FP16/BF16) and multiplied with the FP16/BF16 activation. This path is architecture independent and
+  runs on Hopper (SM90) as well as Blackwell.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>K</tt> : int (required)</dt>
+<dd>Inner (contraction) dimension: the number of logical columns of the unpacked weight.</dd>
+<dt><tt>N</tt> : int (required)</dt>
+<dd>Number of output columns, i.e. the number of rows of the packed weight.</dd>
+<dt><tt>block_size</tt> : int</dt>
+<dd>Number of consecutive K values that share one E4M3 weight scale. Default 16.</dd>
+</dl>
+
+#### Inputs (4 - 6)
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>Row-major FP16/BF16 activation of shape [..., K].</dd>
+<dt><tt>B</tt> : T1</dt>
+<dd>Packed NVFP4 weight of shape [N, K/2] stored as uint8 (two E2M1 values per byte, low nibble first).</dd>
+<dt><tt>weight_scale</tt> : T2</dt>
+<dd>Per-block E4M3 weight scales of shape [N, ceil(K / block_size)] stored as raw uint8 bytes.</dd>
+<dt><tt>weight_scale_2</tt> : T3</dt>
+<dd>Global fp32 weight scale (scalar).</dd>
+<dt><tt>input_scale</tt> (optional) : T3</dt>
+<dd>Optional global fp32 activation scale (scalar). Accepted for parity with quantized checkpoints; it is a no-op on the weight-only FP16/BF16 path and is reserved for the native NVFP4 path on Blackwell.</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>Optional bias of shape [N].</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output of shape [..., N] in the activation type.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain activation, bias and output to FP16 or BF16.</dd>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Constrain packed NVFP4 weight to uint8.</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Constrain E4M3 weight scales to uint8.</dd>
+<dt><tt>T3</tt> : tensor(float)</dt>
+<dd>Constrain scalar scales to FP32.</dd>
 </dl>
 
 
