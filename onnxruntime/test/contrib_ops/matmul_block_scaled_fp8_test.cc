@@ -9,7 +9,7 @@
 
 namespace onnxruntime::test {
 
-#if defined(USE_CUDA)
+#if defined(USE_CUDA) && !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 
 // MatMulBlockQuantizedFp8Weight: weight-only block-scaled FP8 (E4M3) matmul.
 //   A       : [..., K] FP16/BF16 activation
@@ -189,6 +189,6 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvW8A8ActivationScaleBf16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-#endif  // USE_CUDA
+#endif  // USE_CUDA && !DISABLE_FLOAT8_TYPES && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 
 }  // namespace onnxruntime::test

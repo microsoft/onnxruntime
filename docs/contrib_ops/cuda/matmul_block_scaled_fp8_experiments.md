@@ -8,7 +8,6 @@ does not repeat work whose results are already known.
 Related documentation:
 
 - [matmul_block_scaled_fp8.md](matmul_block_scaled_fp8.md) - operator behavior and current dispatch chain.
-- [matmul_block_scaled_fp4_experiments.md](matmul_block_scaled_fp4_experiments.md) - related FP4 experiments.
 
 ---
 

@@ -5,13 +5,19 @@
 
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
-#include <cuda_fp8.h>
 
 #include "core/providers/cuda/cu_inc/common.cuh"
 
+// cuda_fp8.h only ships with CUDA 11.8+. Guard the include so older toolkits (or
+// DISABLE_FLOAT8_TYPES builds) still compile. CUDA_VERSION is provided by <cuda.h>,
+// which is pulled in by common.cuh above.
+#if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
+#include <cuda_fp8.h>
+#endif
+
 namespace onnxruntime::contrib::cuda {
 
-#if !defined(DISABLE_FLOAT8_TYPES) && CUDA_VERSION >= 11080
+#if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 
 namespace {
 
@@ -264,7 +270,7 @@ __global__ void MatMulBlockScaledFp8GemvKernel(AType* __restrict__ output,
 
 }  // namespace
 
-#endif  // !DISABLE_FLOAT8_TYPES && CUDA_VERSION >= 11080
+#endif  // !DISABLE_FLOAT8_TYPES && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 
 Status LaunchDequantizeBlockScaledFp8(void* b_dequant,
                                       const void* b_fp8,
@@ -274,7 +280,7 @@ Status LaunchDequantizeBlockScaledFp8(void* b_dequant,
                                       int block_size,
                                       bool is_bf16,
                                       cudaStream_t stream) {
-#if !defined(DISABLE_FLOAT8_TYPES) && CUDA_VERSION >= 11080
+#if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
   const long long total = static_cast<long long>(n) * k;
   if (total == 0) {
     return Status::OK();
@@ -331,7 +337,7 @@ Status LaunchAddBiasBlockScaledFp8(void* y,
                                    int n,
                                    bool is_bf16,
                                    cudaStream_t stream) {
-#if !defined(DISABLE_FLOAT8_TYPES) && CUDA_VERSION >= 11080
+#if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
   const long long total = static_cast<long long>(m) * n;
   if (total == 0) {
     return Status::OK();
@@ -363,7 +369,7 @@ Status LaunchQuantizeDequantizeActivationFp8(void* a_out,
                                              int k,
                                              bool is_bf16,
                                              cudaStream_t stream) {
-#if !defined(DISABLE_FLOAT8_TYPES) && CUDA_VERSION >= 11080
+#if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
   const long long total = static_cast<long long>(m) * k;
   if (total == 0) {
     return Status::OK();
@@ -400,7 +406,7 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
                                       int block_size,
                                       bool is_bf16,
                                       cudaStream_t stream) {
-#if !defined(DISABLE_FLOAT8_TYPES) && CUDA_VERSION >= 11080
+#if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
   if (m <= 0 || n <= 0 || k <= 0) {
     return Status::OK();
   }
