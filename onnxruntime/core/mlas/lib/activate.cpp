@@ -237,7 +237,11 @@ struct MLAS_ACTIVATION_FUNCTION<MlasHardSigmoidActivation>
 template<>
 struct MLAS_ACTIVATION_FUNCTION<MlasHardSwishActivation>
 {
-    MLAS_FLOAT32X4 AlphaBroadcast, BetaBroadcast, MinimumBroadcast, MaximumBroadcast;
+    MLAS_FLOAT32X4 AlphaBroadcast;
+    MLAS_FLOAT32X4 BetaBroadcast;
+    MLAS_FLOAT32X4 MinimumBroadcast;
+    MLAS_FLOAT32X4 MaximumBroadcast;
+
     MLAS_ACTIVATION_FUNCTION(const MLAS_ACTIVATION* Activation)
     {
         MLAS_UNREFERENCED_PARAMETER(Activation);
@@ -246,6 +250,7 @@ struct MLAS_ACTIVATION_FUNCTION<MlasHardSwishActivation>
         MinimumBroadcast = MlasZeroFloat32x4();
         MaximumBroadcast = MlasBroadcastFloat32x4(1.0f);
     }
+
     MLAS_FLOAT32X4 Activate(MLAS_FLOAT32X4 Value)
     {
         MLAS_FLOAT32X4 Gate = MlasMultiplyAddFloat32x4(Value, AlphaBroadcast, BetaBroadcast);
@@ -253,6 +258,7 @@ struct MLAS_ACTIVATION_FUNCTION<MlasHardSwishActivation>
         Gate = MlasMaximumFloat32x4(MinimumBroadcast, Gate);
         return MlasMultiplyFloat32x4(Value, Gate);
     }
+
     float Activate(float Value)
     {
 #if defined(MLAS_SSE2_INTRINSICS)
