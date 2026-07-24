@@ -324,6 +324,66 @@ TEST(ExpandOpTest, Expand_4x1_bool) {
   test.Run();
 }
 
+// uint8 is a 1-byte-per-element type packed 4-per-u32 in the WebGPU storage buffer, like bool.
+// These cases cover the three packed-byte shader paths: per-element assembly (neither last dim
+// divisible by 4), splat (output last dim divisible by 4, input last dim 1), and whole-word copy
+// (input last dim divisible by 4). Values vary within each 4-byte group to catch byte-position bugs.
+TEST(ExpandOpTest, Expand_3x3_uint8) {
+  OpTester test("Expand", 8);
+  test.AddInput<uint8_t>("data_0", {1}, {5});
+  test.AddInput<int64_t>("data_1", {2}, {3, 3});
+  test.AddOutput<uint8_t>("result", {3, 3},
+                          {5, 5, 5,
+                           5, 5, 5,
+                           5, 5, 5});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_3x1_uint8) {
+  OpTester test("Expand", 8);
+  test.AddInput<uint8_t>("data_0", {3}, {11, 22, 33});
+  test.AddInput<int64_t>("data_1", {2}, {3, 1});
+  test.AddOutput<uint8_t>("result", {3, 3},
+                          {11, 22, 33,
+                           11, 22, 33,
+                           11, 22, 33});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_1x3_uint8) {
+  OpTester test("Expand", 8);
+  test.AddInput<uint8_t>("data_0", {3, 1}, {11, 22, 33});
+  test.AddInput<int64_t>("data_1", {2}, {1, 3});
+  test.AddOutput<uint8_t>("result", {3, 3},
+                          {11, 11, 11,
+                           22, 22, 22,
+                           33, 33, 33});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_1x4_uint8) {
+  OpTester test("Expand", 8);
+  test.AddInput<uint8_t>("data_0", {3, 1}, {11, 22, 33});
+  test.AddInput<int64_t>("data_1", {2}, {1, 4});
+  test.AddOutput<uint8_t>("result", {3, 4},
+                          {11, 11, 11, 11,
+                           22, 22, 22, 22,
+                           33, 33, 33, 33});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_4x1_uint8) {
+  OpTester test("Expand", 8);
+  test.AddInput<uint8_t>("data_0", {1, 4}, {10, 20, 30, 40});
+  test.AddInput<int64_t>("data_1", {2}, {4, 1});
+  test.AddOutput<uint8_t>("result", {4, 4},
+                          {10, 20, 30, 40,
+                           10, 20, 30, 40,
+                           10, 20, 30, 40,
+                           10, 20, 30, 40});
+  test.Run();
+}
+
 #ifndef USE_TENSORRT
 TEST(ExpandOpTest, Expand_scalar_float) {
   OpTester test("Expand", 8);
