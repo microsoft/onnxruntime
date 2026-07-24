@@ -124,7 +124,7 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
 
   // Dequantize the FP8 weight into a scratch [N, K] buffer of the activation type, then GEMM.
   IAllocatorUniquePtr<CudaT> b_dequant = GetScratchBuffer<CudaT>(SafeInt<size_t>(n) * SafeInt<size_t>(k),
-                                                                 context->GetComputeStream());
+                                                                 GetComputeStream(context));
   ORT_RETURN_IF_ERROR(LaunchDequantizeBlockScaledFp8(
       b_dequant.get(),
       b->DataRaw(),
