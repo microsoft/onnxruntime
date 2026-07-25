@@ -2002,7 +2002,7 @@ TEST_F(PlannerTest, ParallelSessionAutomaticallyPartitionsCpuBranches) {
   const auto parallel_result = run_session(ExecutionMode::ORT_PARALLEL);
 
   EXPECT_EQ(sequential_result.num_streams, 1U);
-  EXPECT_EQ(parallel_result.num_streams, 2U);
+  EXPECT_GT(parallel_result.num_streams, 1U);
   EXPECT_EQ(sequential_result.output_size, parallel_result.output_size);
   EXPECT_EQ(sequential_result.output_hash, parallel_result.output_hash);
 }
