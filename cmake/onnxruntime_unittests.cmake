@@ -402,6 +402,7 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
     "${TEST_SRC_DIR}/framework/*.cc"
     "${TEST_SRC_DIR}/framework/*.h"
     "${TEST_SRC_DIR}/platform/*.cc"
+    "${TEST_SRC_DIR}/compile_api/*.cc"
     )
 
 else()  # minimal and/or reduced ops build

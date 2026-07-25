@@ -17,6 +17,7 @@ namespace Microsoft.ML.OnnxRuntime
         NONE = 0,
         ERROR_IF_NO_NODES_COMPILED = 1 << 0,
         ERROR_IF_OUTPUT_FILE_EXISTS = 1 << 1,
+        OPTIMIZED_ONNX_OUTPUT = 1 << 2,
     }
 
     /// <summary>

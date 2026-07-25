@@ -509,6 +509,140 @@ class TestCompileApi(AutoEpTestCase):
         sess = onnxrt.InferenceSession(compiled_model_path, sess_options=session_options)
         self.assertIsNotNone(sess)
 
+    def test_optimized_onnx_output_to_file(self):
+        """
+        Tests that OrtCompileApiFlags.OPTIMIZED_ONNX_OUTPUT saves a fully-optimized plain ONNX
+        model (no EPContext nodes) to a file, and the model can be re-loaded for inference.
+        """
+        input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
+        output_model_path = os.path.join(self._tmp_dir_path, "model.optimized_onnx_file.onnx")
+
+        session_options = onnxrt.SessionOptions()
+        model_compiler = onnxrt.ModelCompiler(
+            session_options,
+            input_model_path,
+            flags=onnxrt.OrtCompileApiFlags.OPTIMIZED_ONNX_OUTPUT,
+        )
+        model_compiler.compile_to_file(output_model_path)
+        self.assertTrue(os.path.exists(output_model_path))
+
+        # Output model should be a valid ONNX model with no EPContext nodes.
+        output_model = onnx.load(output_model_path)
+        self.assertFalse(
+            any(node.op_type == "EPContext" for node in output_model.graph.node),
+            "Output model should not contain EPContext nodes",
+        )
+
+        # Output model should be loadable for inference with optimizations disabled.
+        reload_opts = onnxrt.SessionOptions()
+        reload_opts.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_DISABLE_ALL
+        self.assertIsNotNone(onnxrt.InferenceSession(output_model_path, sess_options=reload_opts))
+
+    def test_optimized_onnx_output_to_bytes(self):
+        """
+        Tests that OrtCompileApiFlags.OPTIMIZED_ONNX_OUTPUT saves a fully-optimized plain ONNX
+        model to an in-memory buffer (no EPContext nodes), and the model can be re-loaded for
+        inference from bytes. This covers the sandboxed-compiler / GPU-process use case where
+        no filesystem access is available.
+        """
+        input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
+
+        session_options = onnxrt.SessionOptions()
+        model_compiler = onnxrt.ModelCompiler(
+            session_options,
+            input_model_path,
+            flags=onnxrt.OrtCompileApiFlags.OPTIMIZED_ONNX_OUTPUT,
+        )
+        output_model_bytes = model_compiler.compile_to_bytes()
+        self.assertIsInstance(output_model_bytes, bytes)
+        self.assertGreater(len(output_model_bytes), 0)
+
+        # Serialize bytes to a temp file to verify the bytes parse as valid ONNX.
+        temp_model_path = os.path.join(self._tmp_dir_path, "model.optimized_onnx_buffer.onnx")
+        with open(temp_model_path, "wb") as f:
+            f.write(output_model_bytes)
+        output_model = onnx.load(temp_model_path)
+        self.assertFalse(
+            any(node.op_type == "EPContext" for node in output_model.graph.node),
+            "Output model bytes should not contain EPContext nodes",
+        )
+
+        # Output model bytes should be loadable for inference with optimizations disabled.
+        reload_opts = onnxrt.SessionOptions()
+        reload_opts.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_DISABLE_ALL
+        self.assertIsNotNone(onnxrt.InferenceSession(output_model_bytes, sess_options=reload_opts))
+
+    def test_optimized_onnx_output_applies_max_level_optimizations(self):
+        """
+        Tests that OrtCompileApiFlags.OPTIMIZED_ONNX_OUTPUT defaults to MaxLevel (ORT_ENABLE_ALL)
+        graph optimizations, unlike the default Compile API path which uses ORT_DISABLE_ALL.
+
+        Uses conv_relu.onnx (Conv → Relu). ConvActivationFusion (Level 2, ORT_ENABLE_EXTENDED)
+        merges Conv+Relu into a single com.microsoft.FusedConv node under MaxLevel, but leaves
+        them as separate ONNX ops under ORT_DISABLE_ALL — providing a Level-2-specific signal.
+        """
+        input_model_path = get_name(os.path.join("transform", "fusion", "conv_relu.onnx"))
+        output_no_opt_path = os.path.join(self._tmp_dir_path, "conv_relu.compile_api_default.onnx")
+        output_opt_path = os.path.join(self._tmp_dir_path, "conv_relu.optimized_onnx_maxlevel.onnx")
+
+        # Default compile path uses ORT_DISABLE_ALL: Conv and Relu remain as separate nodes.
+        session_options = onnxrt.SessionOptions()
+        onnxrt.ModelCompiler(session_options, input_model_path).compile_to_file(output_no_opt_path)
+        model_no_opt = onnx.load(output_no_opt_path)
+        relu_count_no_opt = sum(1 for node in model_no_opt.graph.node if node.op_type == "Relu")
+        self.assertGreater(relu_count_no_opt, 0, "Default compile (ORT_DISABLE_ALL) should keep Relu")
+
+        # OPTIMIZED_ONNX_OUTPUT defaults to MaxLevel: ConvActivationFusion (Level 2) fires.
+        session_options = onnxrt.SessionOptions()
+        onnxrt.ModelCompiler(
+            session_options,
+            input_model_path,
+            flags=onnxrt.OrtCompileApiFlags.OPTIMIZED_ONNX_OUTPUT,
+        ).compile_to_file(output_opt_path)
+        model_opt = onnx.load(output_opt_path)
+        self.assertEqual(
+            sum(1 for node in model_opt.graph.node if node.op_type == "Relu"),
+            0,
+            "OPTIMIZED_ONNX_OUTPUT should eliminate Relu via ConvActivationFusion (Level 2)",
+        )
+        self.assertGreater(
+            sum(1 for node in model_opt.graph.node if node.op_type == "FusedConv"),
+            0,
+            "OPTIMIZED_ONNX_OUTPUT should produce FusedConv via Level 2 optimization",
+        )
+
+    def test_optimized_onnx_output_to_stream(self):
+        """
+        Tests that OrtCompileApiFlags.OPTIMIZED_ONNX_OUTPUT can write the optimized model to
+        a user-provided write stream, and the output is a valid ONNX model with no EPContext nodes.
+        """
+        input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
+        output_model_path = os.path.join(self._tmp_dir_path, "model.optimized_onnx_stream.onnx")
+
+        with open(output_model_path, "wb") as output_fd:
+            bytes_received = [0]
+
+            def my_write_func(buffer: bytes):
+                self.assertGreater(len(buffer), 0)
+                bytes_received[0] += len(buffer)
+                output_fd.write(buffer)
+
+            session_options = onnxrt.SessionOptions()
+            onnxrt.ModelCompiler(
+                session_options,
+                input_model_path,
+                flags=onnxrt.OrtCompileApiFlags.OPTIMIZED_ONNX_OUTPUT,
+            ).compile_to_stream(my_write_func)
+
+        self.assertGreater(bytes_received[0], 0)
+
+        # Output should be a valid ONNX model with no EPContext nodes.
+        output_model = onnx.load(output_model_path)
+        self.assertFalse(
+            any(node.op_type == "EPContext" for node in output_model.graph.node),
+            "Output model written to stream should not contain EPContext nodes",
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

@@ -3210,7 +3210,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
   py::enum_<OrtCompileApiFlags>(m, "OrtCompileApiFlags", py::arithmetic())
       .value("NONE", OrtCompileApiFlags_NONE)
       .value("ERROR_IF_NO_NODES_COMPILED", OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED)
-      .value("ERROR_IF_OUTPUT_FILE_EXISTS", OrtCompileApiFlags_ERROR_IF_OUTPUT_FILE_EXISTS);
+      .value("ERROR_IF_OUTPUT_FILE_EXISTS", OrtCompileApiFlags_ERROR_IF_OUTPUT_FILE_EXISTS)
+      .value("OPTIMIZED_ONNX_OUTPUT", OrtCompileApiFlags_OPTIMIZED_ONNX_OUTPUT);
 
   py::class_<PyModelCompiler>(m, "ModelCompiler",
                               R"pbdoc(This is the class used to compile an ONNX model.)pbdoc")

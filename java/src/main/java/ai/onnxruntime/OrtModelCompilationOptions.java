@@ -25,7 +25,15 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
      * output model exists. Otherwise, compilation will automatically overwrite the output file if
      * it exists.
      */
-    ERROR_IF_OUTPUT_FILE_EXISTS(1 << 1);
+    ERROR_IF_OUTPUT_FILE_EXISTS(1 << 1),
+
+    /**
+     * Save a fully-optimized plain ONNX model instead of an EPContext model. The graph
+     * optimization level defaults to ORT_ENABLE_ALL (MaxLevel) when this flag is set and no
+     * explicit level has been configured via {@link #setGraphOptimizationLevel}. The output
+     * contains no EPContext nodes and can be reloaded for inference with ORT_DISABLE_ALL.
+     */
+    OPTIMIZED_ONNX_OUTPUT(1 << 2);
 
     /** The native value of the enum. */
     public final int value;
