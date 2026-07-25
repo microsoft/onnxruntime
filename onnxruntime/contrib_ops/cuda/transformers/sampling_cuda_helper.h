@@ -31,8 +31,9 @@ Status Sample(AllocatorPtr& allocator,
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   // vocab_size is validated to be in [1, decoder-logits-width] before this point, but min_tokens_to_keep is
-  // copied verbatim from an untrusted graph attribute. Guard against it so it cannot underflow the loop bound
-  // in the filter logits kernel and read/write past the score buffers.
+  // copied verbatim from an untrusted graph attribute. The filter logits kernel gates its write with
+  // `idx + min_tokens_to_keep < vocab_size`; an out-of-range (huge or negative) value makes that signed
+  // comparison meaningless (and can overflow), so reject it here to keep behavior consistent with the CPU path.
   ORT_RETURN_IF_NOT(parameters->min_tokens_to_keep >= 0 && parameters->min_tokens_to_keep < parameters->vocab_size,
                     "Sampling: min_tokens_to_keep must be in [0, vocab_size), got ",
                     parameters->min_tokens_to_keep, " with vocab_size ", parameters->vocab_size);

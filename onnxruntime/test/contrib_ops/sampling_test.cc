@@ -159,12 +159,13 @@ TEST(SamplingTest, Gpt2Sampling_CPU) {
   ASSERT_TRUE(std::equal(expected_output.cbegin(), expected_output.cend(), result_span.begin(), result_span.end()));
 }
 
-// Regression test for the heap out-of-bounds caused by an out-of-range `min_tokens_to_keep` graph attribute.
+// Regression test for the out-of-bounds access caused by an out-of-range `min_tokens_to_keep` graph attribute.
 // The model is identical to tiny_gpt2_sampling.onnx except that min_tokens_to_keep is set to 1,000,000, which is
-// far larger than vocab_size. Without validation, the unsigned loop bound `vocab_size - min_tokens_to_keep` in
-// cumulate_and_filter() underflows to a huge value and walks off the cumulative_probs heap buffer. The fix rejects
-// the model at Run() time, so we expect a clean failure (exception) instead of memory corruption or a crash.
-TEST(SamplingTest, InvalidMinTokensToKeep_CPU) {
+// far larger than vocab_size. On the CPU path this makes the unsigned loop bound `vocab_size - min_tokens_to_keep`
+// in cumulate_and_filter() underflow and walk off the cumulative_probs heap buffer; the CUDA path uses the same
+// attribute in its filter logits kernel. The fix rejects the model at Run() time, so we expect a clean failure
+// (exception mentioning min_tokens_to_keep) instead of memory corruption or a crash.
+static void RunInvalidMinTokensToKeepModelExpectFailure(Ort::SessionOptions& session_options) {
   std::vector<int32_t> input_ids{
       0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620,
       41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572,
@@ -197,7 +198,6 @@ TEST(SamplingTest, InvalidMinTokensToKeep_CPU) {
   const char* input_names[] = {"input_ids", "max_length", "min_length", "repetition_penalty"};
   const char* const output_names[] = {"sequences"};
 
-  Ort::SessionOptions session_options;
   Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_sampling_invalid_min_tokens.onnx"),
                        session_options);
 
@@ -208,6 +208,27 @@ TEST(SamplingTest, InvalidMinTokensToKeep_CPU) {
     EXPECT_NE(std::string(ex.what()).find("min_tokens_to_keep"), std::string::npos) << ex.what();
   }
 }
+
+TEST(SamplingTest, InvalidMinTokensToKeep_CPU) {
+  Ort::SessionOptions session_options;
+  RunInvalidMinTokensToKeepModelExpectFailure(session_options);
+}
+
+#if defined(USE_CUDA)
+TEST(SamplingTest, InvalidMinTokensToKeep_GPU) {
+  constexpr int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support current architecture";
+    return;
+  }
+
+  Ort::SessionOptions session_options;
+  OrtCUDAProviderOptionsV2 cuda_options;
+  cuda_options.use_tf32 = false;
+  session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
+  RunInvalidMinTokensToKeepModelExpectFailure(session_options);
+}
+#endif
 #endif
 }  // namespace test
 }  // namespace onnxruntime
