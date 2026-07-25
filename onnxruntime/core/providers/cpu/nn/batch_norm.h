@@ -118,6 +118,12 @@ class BatchNorm : public OpKernel {
     ConstEigenVectorArrayMap<T> bias_arr(B->Data<T>(), is_spatial_ ? C : sample_size_incl_all_channels);
 
 #if defined(BATCHNORM_INCLUDE_TRAINING_SUPPORT)
+    // Written only after Y, since these outputs can share a buffer with scale/B.
+    Tensor* running_mean = nullptr;
+    Tensor* running_var = nullptr;
+    Eigen::Array<T, Eigen::Dynamic, 1> new_running_mean;
+    Eigen::Array<T, Eigen::Dynamic, 1> new_running_var;
+
     // Note that we only support spatial BN for training
     if (is_train_) {
       EigenVectorArrayMap<T> saved_mean_arr(saved_mean->MutableData<T>(), C);
@@ -138,23 +144,19 @@ class BatchNorm : public OpKernel {
 
       // The running mean corresponds to the mean from all the batches
       // During inference this running mean is used as the mean for BN
-      auto* running_mean = p_op_kernel_context->Output(1, mean->Shape());
-      auto* running_var = p_op_kernel_context->Output(2, var->Shape());
+      running_mean = p_op_kernel_context->Output(1, mean->Shape());
+      running_var = p_op_kernel_context->Output(2, var->Shape());
       const auto* input_running_mean = p_op_kernel_context->Input<Tensor>(3);
       const auto* input_running_var = p_op_kernel_context->Input<Tensor>(4);
 
       // Assume that running mean and variance are initialized properly in the model given to us
       // Because we alias it, we have the past history here
-      EigenVectorArrayMap<T> running_mean_arr(
-          running_mean->MutableData<T>(), C);
-      EigenVectorArrayMap<T> running_var_arr(
-          running_var->MutableData<T>(), C);
       ConstEigenVectorArrayMap<T> input_running_mean_arr(
           input_running_mean->Data<T>(), C);
       ConstEigenVectorArrayMap<T> input_running_var_arr(
           input_running_var->Data<T>(), C);
-      running_mean_arr = input_running_mean_arr * momentum_ + saved_mean_arr * (1. - momentum_);
-      running_var_arr = input_running_var_arr * momentum_ + saved_var_arr * (1. - momentum_);
+      new_running_mean = input_running_mean_arr * momentum_ + saved_mean_arr * (1. - momentum_);
+      new_running_var = input_running_var_arr * momentum_ + saved_var_arr * (1. - momentum_);
     }
 #endif
 
@@ -203,6 +205,15 @@ class BatchNorm : public OpKernel {
         Y_arr.col(n) = X_arr.col(n) * new_scale.col(0) + new_bias.col(0);
       }
     }
+
+#if defined(BATCHNORM_INCLUDE_TRAINING_SUPPORT)
+    // Safe to write now that Y no longer reads scale/B.
+    if (is_train_) {
+      EigenVectorArrayMap<T>(running_mean->MutableData<T>(), C) = new_running_mean;
+      EigenVectorArrayMap<T>(running_var->MutableData<T>(), C) = new_running_var;
+    }
+#endif
+
     return Status::OK();
   }
 
