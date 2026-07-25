@@ -96,7 +96,9 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cpu/Dockerfile
       Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cpu
-      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      # The secret is only forwarded when the agent defines PIP_INDEX_URL, so pools without an
+      # internal mirror keep working unchanged.
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) ${PIP_INDEX_URL:+--secret id=PIP_INDEX_URL}"
       Repository: onnxruntimecpubuildpython${{ parameters.arch }}
 
   - task: Bash@3
