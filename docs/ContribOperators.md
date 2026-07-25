@@ -52,6 +52,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
   * <a href="#com.microsoft.LinearAttention">com.microsoft.LinearAttention</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
+  * <a href="#com.microsoft.MatMulBlockQuantizedFp8Weight">com.microsoft.MatMulBlockQuantizedFp8Weight</a>
   * <a href="#com.microsoft.MatMulBnb4">com.microsoft.MatMulBnb4</a>
   * <a href="#com.microsoft.MatMulFpQ4">com.microsoft.MatMulFpQ4</a>
   * <a href="#com.microsoft.MatMulInteger16">com.microsoft.MatMulInteger16</a>
@@ -2906,6 +2907,66 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>G</tt> : tensor(int32)</dt>
 <dd>Constrain to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulBlockQuantizedFp8Weight"></a><a name="com.microsoft.matmulblockquantizedfp8weight">**com.microsoft.MatMulBlockQuantizedFp8Weight**</a>
+
+  Weight-only block-scaled FP8 (E4M3) matrix multiplication.
+  
+  The weight tensor B is FP8 E4M3 of shape [N, K] with one FP32 scale per `block_size` consecutive
+  K values (`b_scale` of shape [N, ceil(K / block_size)]). The dequantized weight value is
+  `fp8_e4m3(B[n, k]) * b_scale[n, k / block_size]`. The weight is dequantized to the activation
+  type (FP16/BF16) and multiplied with the FP16/BF16 activation A. This path is architecture
+  independent and runs on any CUDA architecture (SM80+).
+  
+  When the optional `a_scale` (a single fp32 scalar) is provided, the activation A is statically
+  quantized to FP8 E4M3 and dequantized back (`a_deq = fp8_e4m3(A / a_scale) * a_scale`) before the
+  matmul, realizing W8A8 activation numerics. When `a_scale` is omitted the activation is kept at
+  full FP16/BF16 precision (weight-only W8A16).
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>block_size</tt> : int</dt>
+<dd>Number of consecutive K values that share one weight scale. Default 128.</dd>
+</dl>
+
+#### Inputs (3 - 5)
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>Row-major FP16/BF16 activation of shape [..., K].</dd>
+<dt><tt>B</tt> : T1</dt>
+<dd>Row-major FP8 E4M3 weight of shape [N, K].</dd>
+<dt><tt>b_scale</tt> : T2</dt>
+<dd>Per-block FP32 weight scales of shape [N, ceil(K / block_size)].</dd>
+<dt><tt>a_scale</tt> (optional) : T2</dt>
+<dd>Optional global fp32 activation scale (scalar). When present, A is statically quantized to FP8 E4M3 with this scale and dequantized back before the matmul (W8A8 numerics); when absent, A stays in full FP16/BF16 precision.</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>Optional bias of shape [N].</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output of shape [..., N] in the activation type.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain activation, bias and output to FP16 or BF16.</dd>
+<dt><tt>T1</tt> : tensor(float8e4m3fn)</dt>
+<dd>Constrain weight to FP8 E4M3.</dd>
+<dt><tt>T2</tt> : tensor(float)</dt>
+<dd>Constrain scales to FP32.</dd>
 </dl>
 
 
