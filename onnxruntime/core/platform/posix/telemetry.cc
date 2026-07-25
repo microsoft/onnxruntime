@@ -407,8 +407,12 @@ void PosixTelemetry::LogEventAsync(Microsoft::Applications::Events::EventPropert
       !network_context_suppressed_.load(std::memory_order_acquire)) {
     std::lock_guard<std::mutex> context_lock(semantic_context_mutex_);
     if (!network_context_suppressed_.load(std::memory_order_relaxed)) {
-      telemetry_internal::SuppressNetworkContext(*logger->GetSemanticContext());
-      network_context_suppressed_.store(true, std::memory_order_release);
+      const bool suppressed = telemetry_internal::TryTelemetryOperationNoThrow([&]() {
+        telemetry_internal::SuppressNetworkContext(*logger->GetSemanticContext());
+      });
+      if (suppressed) {
+        network_context_suppressed_.store(true, std::memory_order_release);
+      }
     }
   }
   logger->LogEvent(std::move(props));
@@ -485,7 +489,9 @@ void PosixTelemetry::Initialize() {
     return;
   }
 
-  telemetry_internal::SuppressUnneededCommonContext(*logger->GetSemanticContext());
+  (void)telemetry_internal::TryTelemetryOperationNoThrow([&]() {
+    telemetry_internal::SuppressUnneededCommonContext(*logger->GetSemanticContext());
+  });
 
   // Use BEST_EFFORT transmit profile to minimize battery and network impact.
   // Events are batched and uploaded at a lower cadence.
