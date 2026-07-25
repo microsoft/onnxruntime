@@ -9,8 +9,9 @@
 namespace onnxruntime::telemetry_internal {
 
 // These PAL-populated fields are not needed by ORT. ext.os.locale is not populated by this SDK path.
-inline constexpr std::array<const char*, 4> kSuppressedCommonContextFields{
+inline constexpr std::array<const char*, 5> kSuppressedCommonContextFields{
     "AppInfo.Language",
+    "AppInfo.Name",
     "UserInfo.Language",
     "UserInfo.TimeZone",
     "M365aInfo.EnrolledTenantId",
