@@ -7,7 +7,7 @@
 // These exercise the capability-query mechanism with lightweight fake EPs and
 // run entirely on CPU -- they require no GPU/NPU backend.
 
-#include <memory>
+#include <type_traits>
 
 #include "gtest/gtest.h"
 
@@ -18,6 +18,67 @@ namespace onnxruntime {
 namespace test {
 
 namespace {
+
+// --- Compile-time signature-drift guard (Interface Segregation contract) ---
+//
+// Each capability mix-in method must keep the SAME signature as the legacy
+// IExecutionProvider virtual it mirrors. That identity is what lets a migrating
+// EP satisfy both the mix-in's pure virtual and the base's legacy virtual with a
+// single override. The drift danger is asymmetric: a mismatch on the *pure*
+// mix-in side is a hard compile error (safe), but a mismatch that leaves the
+// *non-pure* legacy virtual un-overridden compiles silently and splits the two
+// into separate vtable slots. These asserts turn that silent split into a build
+// failure. (Default arguments are not part of a function's type, so ReplayGraph's
+// `sync` default is guarded by a comment at its declaration instead.)
+template <typename M>
+struct MemberSignature;
+template <typename R, typename C, typename... Args>
+struct MemberSignature<R (C::*)(Args...)> {
+  using type = R(Args...);
+};
+template <typename R, typename C, typename... Args>
+struct MemberSignature<R (C::*)(Args...) const> {
+  using type = R(Args...) const;
+};
+template <typename MixinMethod, typename BaseMethod>
+inline constexpr bool kSameSignature =
+    std::is_same_v<typename MemberSignature<MixinMethod>::type, typename MemberSignature<BaseMethod>::type>;
+
+static_assert(kSameSignature<decltype(&IGraphCaptureCapability::IsGraphCaptureEnabled),
+                             decltype(&IExecutionProvider::IsGraphCaptureEnabled)>,
+              "IGraphCaptureCapability::IsGraphCaptureEnabled must mirror IExecutionProvider's.");
+static_assert(kSameSignature<decltype(&IGraphCaptureCapability::IsGraphCaptured),
+                             decltype(&IExecutionProvider::IsGraphCaptured)>,
+              "IGraphCaptureCapability::IsGraphCaptured must mirror IExecutionProvider's.");
+static_assert(kSameSignature<decltype(&IGraphCaptureCapability::ReplayGraph),
+                             decltype(&IExecutionProvider::ReplayGraph)>,
+              "IGraphCaptureCapability::ReplayGraph must mirror IExecutionProvider's.");
+static_assert(kSameSignature<decltype(&IGraphCaptureCapability::ReleaseCapturedGraph),
+                             decltype(&IExecutionProvider::ReleaseCapturedGraph)>,
+              "IGraphCaptureCapability::ReleaseCapturedGraph must mirror IExecutionProvider's.");
+static_assert(kSameSignature<decltype(&IGraphCaptureCapability::GetGraphCaptureNodeAssignmentPolicy),
+                             decltype(&IExecutionProvider::GetGraphCaptureNodeAssignmentPolicy)>,
+              "IGraphCaptureCapability::GetGraphCaptureNodeAssignmentPolicy must mirror IExecutionProvider's.");
+static_assert(kSameSignature<decltype(&ITuningCapability::GetTuningContext),
+                             decltype(&IExecutionProvider::GetTuningContext)>,
+              "ITuningCapability::GetTuningContext must mirror IExecutionProvider's.");
+static_assert(kSameSignature<decltype(&IDataLayoutCapability::GetPreferredLayout),
+                             decltype(&IExecutionProvider::GetPreferredLayout)>,
+              "IDataLayoutCapability::GetPreferredLayout must mirror IExecutionProvider's.");
+static_assert(kSameSignature<decltype(&IDataLayoutCapability::ShouldConvertDataLayoutForOp),
+                             decltype(&IExecutionProvider::ShouldConvertDataLayoutForOp)>,
+              "IDataLayoutCapability::ShouldConvertDataLayoutForOp must mirror IExecutionProvider's.");
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+static_assert(kSameSignature<decltype(&ICompileCapability::Compile),
+                             decltype(&IExecutionProvider::Compile)>,
+              "ICompileCapability::Compile must mirror IExecutionProvider's.");
+static_assert(kSameSignature<decltype(&ICompileCapability::GetCompiledModelCompatibilityInfo),
+                             decltype(&IExecutionProvider::GetCompiledModelCompatibilityInfo)>,
+              "ICompileCapability::GetCompiledModelCompatibilityInfo must mirror IExecutionProvider's.");
+static_assert(kSameSignature<decltype(&ICompileCapability::ValidateCompiledModelCompatibilityInfo),
+                             decltype(&IExecutionProvider::ValidateCompiledModelCompatibilityInfo)>,
+              "ICompileCapability::ValidateCompiledModelCompatibilityInfo must mirror IExecutionProvider's.");
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 constexpr const char* kFakeEpType = "FakeCapabilityEp";
 
@@ -60,9 +121,9 @@ class TuningEp : public IExecutionProvider, public ITuningCapability {
  public:
   TuningEp() : IExecutionProvider(kFakeEpType) {}
 
-  // Non-const hook (matches the base signature): returns the mix-in subobject
-  // directly, with no const_cast.
-  ITuningCapability* GetTuningCapability() noexcept override { return this; }
+  // Const hook returning a const pointer (matches the base signature): returns
+  // the mix-in subobject directly, with no const_cast.
+  const ITuningCapability* GetTuningCapability() const noexcept override { return this; }
 
   // ITuningCapability::GetTuningContext() is pure virtual, so a successful call
   // necessarily dispatches to this override -- that alone proves routing through
@@ -218,8 +279,12 @@ TEST(ExecutionProviderCapabilitiesTest, TuningCapabilityIsQueryableAndUsable) {
   TuningEp ep;
   IExecutionProvider& base = ep;
 
-  ITuningCapability* tc = base.GetTuningCapability();
+  const ITuningCapability* tc = base.GetTuningCapability();
   ASSERT_NE(tc, nullptr) << "EP advertising tuning must return a non-null capability.";
+
+  // The hook returns this EP's own ITuningCapability subobject (correct pointer
+  // adjustment under multiple inheritance), not some unrelated instance.
+  EXPECT_EQ(tc, static_cast<const ITuningCapability*>(&ep));
 
   // GetTuningContext() is pure virtual on the mix-in, so reaching this concrete
   // (null-context) result proves the call routed through the mix-in.

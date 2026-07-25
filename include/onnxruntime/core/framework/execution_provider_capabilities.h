@@ -22,9 +22,10 @@ class GraphViewer;
  * IExecutionProvider historically carries a large number of defaulted virtual
  * methods, many of which represent optional capabilities relevant to only a
  * subset of execution providers -- graph capture/replay (e.g. CUDA graphs),
- * ahead-of-time/just-in-time compilation of fused subgraphs, and TunableOp
- * tuning. Bundling them on the base couples every EP and every caller to the
- * union of all capabilities.
+ * data-layout preference for layout-sensitive EPs (e.g. NHWC), ahead-of-time/
+ * just-in-time compilation of fused subgraphs, and TunableOp tuning. Bundling
+ * them on the base couples every EP and every caller to the union of all
+ * capabilities.
  *
  * Each mix-in below groups one such cluster behind a narrow interface. An EP
  * that supports a capability implements the corresponding mix-in and returns it
@@ -57,10 +58,20 @@ class IGraphCaptureCapability {
   /**
    * Run the instantiated graph.
    * @param sync If true, synchronize the device/stream after replay before returning.
+   *             The default (true) must stay equal to IExecutionProvider::ReplayGraph's
+   *             default: a default argument binds by the static type of the call
+   *             expression, so the two declarations must agree to behave identically
+   *             regardless of which one a caller sees.
    */
   virtual common::Status ReplayGraph(int graph_annotation_id, bool sync = true) = 0;
 
-  /** Release a previously captured graph and its associated resources. */
+  /**
+   * Release a previously captured graph and its associated resources.
+   *
+   * Thread safety: for EPs where ConcurrentRunSupported() returns true, this may be
+   * called concurrently with Run(), and the EP is responsible for its own
+   * synchronization; for non-concurrent EPs the session serializes the calls.
+   */
   virtual common::Status ReleaseCapturedGraph(int graph_annotation_id) = 0;
 
   /** Get the node assignment validation policy to apply when graph capture is enabled. */
@@ -69,6 +80,12 @@ class IGraphCaptureCapability {
 
 /**
  * TunableOp tuning capability.
+ *
+ * Mirrors the legacy IExecutionProvider::GetTuningContext(), which is a const,
+ * read-only accessor: the capability hands out the tuning context but does not
+ * mutate the EP, so the matching GetTuningCapability() query hook is likewise a
+ * const query. Tuning state is recorded through the returned ITuningContext, not
+ * by mutating the EP.
  */
 class ITuningCapability {
  public:
@@ -118,6 +135,9 @@ class ICompileCapability {
   /**
    * Given a collection of fused Nodes and the respective GraphViewer instance for the nodes that were
    * fused, return create_state/compute/release_state func for each node.
+   *
+   * Do NOT cache the GraphViewer in FusedNodeAndGraph.filtered_graph in any of the NodeComputeInfo
+   * functions, as it is only valid for the duration of the call to Compile.
    */
   virtual common::Status Compile(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
                                  std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
