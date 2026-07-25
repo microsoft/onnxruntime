@@ -149,8 +149,8 @@ function that performs the callback-or-disk fallback internally.
 is 1× — only the final buffer exists.
 
 **B. Callback returns its own buffer and ORT copies into a `std::vector`.** Simpler ownership, but 2×
-peak for potentially multi-GB engine/context binaries. Retained only as the `std::vector` convenience
-overload for callers that want an owned vector and can afford one copy.
+peak for potentially multi-GB engine/context binaries. Rejected: `EpContextData` already provides
+convenient zero-copy access, so no separate copy-into-`std::vector` reader is kept.
 
 ### EPContext storage
 
@@ -319,9 +319,10 @@ should additionally apply their own sandboxing, size limits, and path policies.
 
 A move-only RAII owner for the bytes returned by a read. On the callback path it **adopts** the
 allocator-provided buffer directly (no copy) and frees it via the same allocator on destruction; on the
-file-fallback path it owns a `std::vector` read straight from disk. Either way the bytes are accessed
-through `data()` / `size()` without an extra copy. Ownership is transferred into the object **only on
-success**, so it stays empty on any error path.
+file-fallback path it reads straight from disk into a buffer allocated from the same (optionally
+caller-supplied) allocator. Either way the bytes are accessed through `data()` / `size()` without an
+extra copy, and the allocator (which is not owned) must outlive the object. Ownership is transferred
+into the object **only on success**, so it stays empty on any error path.
 
 ```cpp
 class EpContextData {
@@ -336,16 +337,13 @@ class EpContextData {
 ### Read with file fallback
 
 ```cpp
-// Zero-copy: if the config carries a read callback it is invoked with the ORT allocator and the
-// returned buffer is adopted by `out`; otherwise the file is read (resolved against the model dir).
+// Zero-copy: if the config carries a read callback it is invoked with the (optionally caller-supplied)
+// allocator and the returned buffer is adopted by `out`; otherwise the file is read into an allocator-
+// backed buffer (resolved against the model dir). `allocator` is optional (nullptr = ORT default) and is
+// not owned by `out`: it must outlive `out`.
 OrtStatus* ReadEpContextData(const OrtApi& api, const OrtEpContextConfig* config,
-                             const char* file_name, const OrtGraph* graph, EpContextData& out);
-
-// std::vector<char> convenience wrapper around the above (file path reads straight into `data`; the
-// callback path reads zero-copy and then copies once). `data` is cleared first; empty on failure.
-OrtStatus* ReadEpContextDataWithFileFallback(const OrtApi& api, const OrtEpContextConfig* config,
-                                             const char* file_name, const OrtGraph* graph,
-                                             std::vector<char>& data);
+                             const char* file_name, const OrtGraph* graph, EpContextData& out,
+                             OrtAllocator* allocator = nullptr);
 ```
 
 ### Write with file fallback
@@ -617,7 +615,7 @@ C++ wrapper and reference helper:
 | --- | --- | --- |
 | `Ort::Experimental::EpContextConfig` | `onnxruntime_experimental_cxx_api.h` | RAII wrapper over `OrtEpContextConfig`; `GetReadFunc` / `GetWriteFunc` |
 | `ep_context_data_utils::EpContextData` | `test/autoep/library/ep_context_data_utils.h` (sample) | Zero-copy owning buffer for a read result |
-| `ep_context_data_utils::ReadEpContextData` / `ReadEpContextDataWithFileFallback` | sample | Read via callback or file fallback |
+| `ep_context_data_utils::ReadEpContextData` | sample | Read via callback or file fallback into an owning `EpContextData` |
 | `ep_context_data_utils::WriteEpContextDataWithFileFallback` | sample | Write via callback or file fallback |
 
 Pre-existing APIs used (no changes needed):

@@ -134,11 +134,11 @@ TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathAndInvalidArguments) {
                                                                                  nullptr, 1),
                        ORT_INVALID_ARGUMENT, "EPContext data buffer must not be null for non-empty data");
 
-  std::vector<char> data;
-  data.assign({'s', 't', 'a', 'l', 'e'});
-  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataWithFileFallback(api, nullptr, "", nullptr, data),
-                       ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
-  EXPECT_TRUE(data.empty());  // cleared up front, even though file_name validation fails
+  ep_context_data_utils::EpContextData read_result;
+  ExpectOrtStatusError(
+      ep_context_data_utils::ReadEpContextData(api, /*ep_context_config=*/nullptr, "", nullptr, read_result),
+      ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
+  EXPECT_TRUE(read_result.empty());  // reset up front, even though file_name validation fails
   ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(api, nullptr, "", nullptr, nullptr, 0),
                        ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
   ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
@@ -260,10 +260,10 @@ TEST(OrtEpLibrary, EpContextDataUtils_FileFallbackReadsAndWrites) {
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataWithFileFallback(
       api, nullptr, wrapper_data_file_name.c_str(), nullptr, payload.data(), payload.size()));
 
-  data.clear();
-  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextDataWithFileFallback(
-      api, nullptr, wrapper_data_file_name.c_str(), nullptr, data));
-  EXPECT_EQ(std::string(data.begin(), data.end()), payload);
+  ep_context_data_utils::EpContextData wrapper_read_result;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextData(
+      api, /*ep_context_config=*/nullptr, wrapper_data_file_name.c_str(), nullptr, wrapper_read_result));
+  EXPECT_EQ(std::string(wrapper_read_result.data(), wrapper_read_result.data() + wrapper_read_result.size()), payload);
 
   const std::filesystem::path fallback_data_path = test_dir / "fallback_context_data.bin";
   std::string fallback_data_file_name;
@@ -292,10 +292,10 @@ TEST(OrtEpLibrary, EpContextDataUtils_FileFallbackReadsAndWrites) {
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataWithFileFallback(
       api, nullptr, empty_data_file_name.c_str(), nullptr, nullptr, 0));
 
-  data.assign({'s', 't', 'a', 'l', 'e'});
-  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextDataWithFileFallback(
-      api, nullptr, empty_data_file_name.c_str(), nullptr, data));
-  EXPECT_TRUE(data.empty());
+  ep_context_data_utils::EpContextData empty_read_result;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextData(
+      api, /*ep_context_config=*/nullptr, empty_data_file_name.c_str(), nullptr, empty_read_result));
+  EXPECT_TRUE(empty_read_result.empty());
 
   const std::filesystem::path missing_data_path = test_dir / "missing_context_data.bin";
   std::string missing_data_file_name;
@@ -312,20 +312,20 @@ TEST(OrtEpLibrary, EpContextDataUtils_CallbackFallbackUsesCallbacks) {
   read_callback_state.payload = {'c', 'a', 'l', 'l', 'b', 'a', 'c', 'k'};
   EpContextDataCallbackState write_callback_state;
 
-  std::vector<char> data;
-  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextDataWithFileFallback(
-      api, LoadEpContextDataCallback, &read_callback_state, "callback_context.bin", nullptr, data));
+  ep_context_data_utils::EpContextData read_result;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextData(
+      api, LoadEpContextDataCallback, &read_callback_state, "callback_context.bin", nullptr, read_result));
   ASSERT_TRUE(read_callback_state.read_called);
   EXPECT_EQ(read_callback_state.read_file_name, "callback_context.bin");
-  EXPECT_EQ(data, read_callback_state.payload);
+  EXPECT_EQ(std::vector<char>(read_result.data(), read_result.data() + read_result.size()),
+            read_callback_state.payload);
 
   read_callback_state = {};
-  data.assign({'s', 't', 'a', 'l', 'e'});
-  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextDataWithFileFallback(
-      api, LoadEpContextDataCallback, &read_callback_state, "empty_callback_context.bin", nullptr, data));
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextData(
+      api, LoadEpContextDataCallback, &read_callback_state, "empty_callback_context.bin", nullptr, read_result));
   ASSERT_TRUE(read_callback_state.read_called);
   EXPECT_EQ(read_callback_state.read_file_name, "empty_callback_context.bin");
-  EXPECT_TRUE(data.empty());
+  EXPECT_TRUE(read_result.empty());
 
   const std::string payload = "callback write payload";
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataWithFileFallback(
@@ -353,15 +353,14 @@ TEST(OrtEpLibrary, EpContextDataUtils_ReadCallbackRejectsNullBufferForNonEmptyPa
 
   EpContextDataCallbackState read_callback_state;
 
-  std::vector<char> data;
-  data.assign({'s', 't', 'a', 'l', 'e'});
-  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataWithFileFallback(
+  ep_context_data_utils::EpContextData read_result;
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextData(
                            api, LoadInvalidEpContextDataCallback, &read_callback_state,
-                           "invalid_callback_context.bin", nullptr, data),
+                           "invalid_callback_context.bin", nullptr, read_result),
                        ORT_FAIL, "OrtReadNamedBufferFunc returned a null buffer for non-empty EPContext data");
   ASSERT_TRUE(read_callback_state.read_called);
   EXPECT_EQ(read_callback_state.read_file_name, "invalid_callback_context.bin");
-  EXPECT_TRUE(data.empty());
+  EXPECT_TRUE(read_result.empty());
 }
 
 TEST(OrtEpLibrary, EpContextDataUtils_ReadEpContextDataAdoptsCallbackBufferZeroCopy) {
