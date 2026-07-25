@@ -35,7 +35,9 @@ parameters:
     Build the native libraries once and recompile only the Python extension module for every Python
     version, then publish a single wheel per platform instead of one wheel per Python version.
   type: boolean
-  default: false
+  # TODO: revert to false before merging. Automatically triggered runs ignore queue-time values, so
+  # this temporarily lets branch validation exercise the merged wheel path.
+  default: true
 
 # TODO: Now the Windows jobs use a different cmake build type. Consider to merge it.
 - name: cmake_build_type
