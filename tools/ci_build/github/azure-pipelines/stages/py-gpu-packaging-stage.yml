@@ -74,34 +74,51 @@ parameters:
 
 - name: build_multi_python_wheel
   displayName: >
-    Linux only. Build the native libraries once and recompile only the Python extension module for
-    every Python version, then publish a single py3-none-<platform> wheel instead of one wheel per
-    Python version. The CUDA and TensorRT libraries dominate these wheels and contain no CPython
-    symbols, so this both shortens the build and shrinks what users download.
+    Build the native libraries once and recompile only the Python extension module for every Python
+    version, then publish a single wheel per platform instead of one wheel per Python version. The
+    CUDA and TensorRT libraries dominate these wheels and contain no CPython symbols, so this both
+    shortens the build and shrinks what users download.
   type: boolean
   default: false
 
 stages:
-    # Use separated cudnn folder for CUDA 13.0 on Windows.
-    - ${{ if eq(parameters.cuda_version, '13.0') }}:
-      - ${{ each python_version in parameters.PythonVersions }}:
-        - template: py-win-gpu-stage.yml
-          parameters:
-            PYTHON_VERSION: ${{ python_version }}
-            EP_NAME: gpu
-            CudaVersion: ${{ parameters.cuda_version }}
+    # Windows: either a single stage that builds every Python version and publishes one merged wheel,
+    # or one parallel stage per Python version.
+    - ${{ if eq(parameters.build_multi_python_wheel, true) }}:
+      - template: py-win-gpu-stage.yml
+        parameters:
+          PYTHON_VERSION: 'multi'
+          PYTHON_VERSIONS: ${{ parameters.PythonVersions }}
+          multi_python_wheel: true
+          EP_NAME: gpu
+          CudaVersion: ${{ parameters.cuda_version }}
+          ${{ if eq(parameters.cuda_version, '13.0') }}:
             EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cudnn_home=$(Agent.TempDirectory)\${{ parameters.cudnn_folder }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_cuda_archs }}"
-            use_tensorrt: True
-
-    - ${{ if eq(parameters.cuda_version, '12.8') }}:
-      - ${{ each python_version in parameters.PythonVersions }}:
-        - template: py-win-gpu-stage.yml
-          parameters:
-            PYTHON_VERSION: ${{ python_version }}
-            EP_NAME: gpu
-            CudaVersion: ${{ parameters.cuda_version }}
+          ${{ else }}:
             EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_cuda_archs }}"
-            use_tensorrt: True
+          use_tensorrt: True
+
+    - ${{ else }}:
+      # Use separated cudnn folder for CUDA 13.0 on Windows.
+      - ${{ if eq(parameters.cuda_version, '13.0') }}:
+        - ${{ each python_version in parameters.PythonVersions }}:
+          - template: py-win-gpu-stage.yml
+            parameters:
+              PYTHON_VERSION: ${{ python_version }}
+              EP_NAME: gpu
+              CudaVersion: ${{ parameters.cuda_version }}
+              EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cudnn_home=$(Agent.TempDirectory)\${{ parameters.cudnn_folder }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_cuda_archs }}"
+              use_tensorrt: True
+
+      - ${{ if eq(parameters.cuda_version, '12.8') }}:
+        - ${{ each python_version in parameters.PythonVersions }}:
+          - template: py-win-gpu-stage.yml
+            parameters:
+              PYTHON_VERSION: ${{ python_version }}
+              EP_NAME: gpu
+              CudaVersion: ${{ parameters.cuda_version }}
+              EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_cuda_archs }}"
+              use_tensorrt: True
 
     # Linux: either a single stage that builds every Python version and publishes one merged wheel,
     # or one parallel stage per Python version.

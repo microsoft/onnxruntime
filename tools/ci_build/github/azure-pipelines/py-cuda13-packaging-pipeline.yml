@@ -24,9 +24,8 @@ parameters:
 
   - name: build_multi_python_wheel
     displayName: >
-      Linux only. Build the native libraries once and recompile only the Python extension module for
-      every Python version, then publish a single py3-none-<platform> wheel instead of one wheel per
-      Python version.
+      Build the native libraries once and recompile only the Python extension module for every Python
+      version, then publish a single wheel per platform instead of one wheel per Python version.
     type: boolean
     default: false
 

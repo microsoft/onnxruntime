@@ -37,8 +37,8 @@ parameters:
 
 - name: build_multi_python_wheel
   displayName: >
-    Linux only. Build the native libraries once and recompile only the Python extension module for
-    every Python version, then publish a single py3-none-<platform> wheel.
+    Build the native libraries once and recompile only the Python extension module for every Python
+    version, then publish a single wheel per platform that carries all of them.
   type: boolean
   default: false
 
@@ -52,44 +52,60 @@ stages:
         architecture: 'x64'
         build_py_parameters: ${{ parameters.build_py_parameters }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
+        multi_python_wheel: ${{ parameters.build_multi_python_wheel }}
 
     - template: ../templates/py-win-cpu.yml
       parameters:
         architecture: 'arm64'
         build_py_parameters: ${{ parameters.build_py_parameters }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
+        multi_python_wheel: ${{ parameters.build_multi_python_wheel }}
 
 - ${{ if eq(parameters.enable_mac_cpu, true) }}:
   - stage: Python_Packaging_MacOS
     dependsOn: []
     jobs:
-      - template: ../templates/py-macos.yml
-        parameters:
-          arch: 'arm64'
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
-          python_version: '3.11'
+      - ${{ if eq(parameters.build_multi_python_wheel, true) }}:
+        - template: ../templates/py-macos.yml
+          parameters:
+            arch: 'arm64'
+            extra_build_arg: ${{ parameters.build_py_parameters }}
+            cmake_build_type: ${{ parameters.cmake_build_type }}
+            multi_python_wheel: true
+            python_versions:
+            - '3.11'
+            - '3.12'
+            - '3.13'
+            - '3.14'
 
-      - template: ../templates/py-macos.yml
-        parameters:
-          arch: 'arm64'
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
-          python_version: '3.12'
+      - ${{ else }}:
+        - template: ../templates/py-macos.yml
+          parameters:
+            arch: 'arm64'
+            extra_build_arg: ${{ parameters.build_py_parameters }}
+            cmake_build_type: ${{ parameters.cmake_build_type }}
+            python_version: '3.11'
 
-      - template: ../templates/py-macos.yml
-        parameters:
-          arch: 'arm64'
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
-          python_version: '3.13'
+        - template: ../templates/py-macos.yml
+          parameters:
+            arch: 'arm64'
+            extra_build_arg: ${{ parameters.build_py_parameters }}
+            cmake_build_type: ${{ parameters.cmake_build_type }}
+            python_version: '3.12'
 
-      - template: ../templates/py-macos.yml
-        parameters:
-          arch: 'arm64'
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
-          python_version: '3.14'
+        - template: ../templates/py-macos.yml
+          parameters:
+            arch: 'arm64'
+            extra_build_arg: ${{ parameters.build_py_parameters }}
+            cmake_build_type: ${{ parameters.cmake_build_type }}
+            python_version: '3.13'
+
+        - template: ../templates/py-macos.yml
+          parameters:
+            arch: 'arm64'
+            extra_build_arg: ${{ parameters.build_py_parameters }}
+            cmake_build_type: ${{ parameters.cmake_build_type }}
+            python_version: '3.14'
 
 - ${{ if eq(parameters.enable_linux_arm, true) }}:
   - stage: Python_Packaging_Linux_ARM

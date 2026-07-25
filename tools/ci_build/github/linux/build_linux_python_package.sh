@@ -8,7 +8,7 @@ mkdir -p /build/dist
 EXTRA_ARG=""
 # When true, build the native libraries only once and recompile only the CPython extension module
 # (onnxruntime_pybind11_state) for the remaining Python versions, then merge all the wheels into a
-# single py3-none-<platform> wheel. The native libraries contain no CPython symbols, so one copy
+# single wheel that carries all of them. The native libraries contain no CPython symbols, so one copy
 # serves every interpreter.
 MULTI_PYTHON_WHEEL="false"
 # Put 3.12 at the last because Ubuntu 24.04 use python 3.12 and we will upload the intermediate build files of this

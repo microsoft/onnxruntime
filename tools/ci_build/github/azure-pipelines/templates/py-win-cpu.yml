@@ -21,6 +21,21 @@ parameters:
    - RelWithDebInfo
    - MinSizeRel
 
+- name: python_versions
+  type: object
+  default:
+  - '3.11'
+  - '3.12'
+  - '3.13'
+  - '3.14'
+
+- name: multi_python_wheel
+  displayName: >
+    Build the native libraries once, recompile only the CPython extension module for every version in
+    python_versions and merge the results into a single wheel that carries all of them.
+  type: boolean
+  default: false
+
 jobs:
 - job: Windows_py_Wheels_${{parameters.architecture}}
   ${{ if eq(parameters.architecture, 'arm64') }}:
@@ -46,30 +61,33 @@ jobs:
       binskim:
         enabled: true
         scanOutputDirectoryOnly: true
-    ${{ if eq(parameters.architecture, 'arm64') }}:
-      outputs:
-        - output: pipelineArtifact
-          targetPath: $(Build.ArtifactStagingDirectory)
-          artifactName: onnxruntime-win-$(PythonVersion)-arm64
-    ${{ else }}:
-      outputs:
-        - output: pipelineArtifact
-          targetPath: $(Build.ArtifactStagingDirectory)
-          artifactName: onnxruntime-win-$(PythonVersion)
-  strategy:
-    matrix:
-      Python311_${{parameters.architecture}}:
-        PythonVersion: '3.11'
-      Python312_${{parameters.architecture}}:
-        PythonVersion: '3.12'
-      Python313_${{parameters.architecture}}:
-        PythonVersion: '3.13'
-      Python314_${{parameters.architecture}}:
-        PythonVersion: '3.14'
+    outputs:
+    - output: pipelineArtifact
+      targetPath: $(Build.ArtifactStagingDirectory)
+      ${{ if eq(parameters.multi_python_wheel, true) }}:
+        artifactName: onnxruntime-win-${{ parameters.architecture }}
+      ${{ elseif eq(parameters.architecture, 'arm64') }}:
+        artifactName: onnxruntime-win-$(PythonVersion)-arm64
+      ${{ else }}:
+        artifactName: onnxruntime-win-$(PythonVersion)
+  ${{ if ne(parameters.multi_python_wheel, true) }}:
+    strategy:
+      matrix:
+        Python311_${{parameters.architecture}}:
+          PythonVersion: '3.11'
+        Python312_${{parameters.architecture}}:
+          PythonVersion: '3.12'
+        Python313_${{parameters.architecture}}:
+          PythonVersion: '3.13'
+        Python314_${{parameters.architecture}}:
+          PythonVersion: '3.14'
   variables:
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     ExtraParam: ${{ parameters.build_py_parameters }}
-  timeoutInMinutes: 180
+  ${{ if eq(parameters.multi_python_wheel, true) }}:
+    timeoutInMinutes: 360
+  ${{ else }}:
+    timeoutInMinutes: 180
   workspace:
     clean: all
 
@@ -78,69 +96,198 @@ jobs:
     clean: true
     submodules: recursive
 
-  - template: setup-build-tools.yml
-    parameters:
-      host_cpu_arch: ${{parameters.architecture}}
-      python_version: $(PythonVersion)
+  - ${{ if ne(parameters.multi_python_wheel, true) }}:
+    - template: setup-build-tools.yml
+      parameters:
+        host_cpu_arch: ${{parameters.architecture}}
+        python_version: $(PythonVersion)
+  - ${{ else }}:
+    - template: setup-build-tools.yml
+      parameters:
+        host_cpu_arch: ${{parameters.architecture}}
+        python_version: ${{ parameters.python_versions[0] }}
 
   - template: set-nightly-build-option-variable-step.yml
 
-  - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
-    env:
-      TMPDIR: "$(Agent.TempDirectory)"
+  - ${{ if ne(parameters.multi_python_wheel, true) }}:
+    - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
+      env:
+        TMPDIR: "$(Agent.TempDirectory)"
 
-  - task: PythonScript@0
-    displayName: 'Build'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: >
-        --config ${{ parameters.cmake_build_type }}
-        --enable_lto
-        --build_dir $(Build.SourcesDirectory)\build
-        --skip_submodule_sync
-        --cmake_generator "Visual Studio 17 2022"
-        --enable_pybind
-        --enable_onnx_tests --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build
-        ${{ parameters.build_py_parameters }}
-        --parallel --use_binskim_compliant_compile_flags --update
-        $(TelemetryOption)
+    - task: PythonScript@0
+      displayName: 'Build'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: >
+          --config ${{ parameters.cmake_build_type }}
+          --enable_lto
+          --build_dir $(Build.SourcesDirectory)\build
+          --skip_submodule_sync
+          --cmake_generator "Visual Studio 17 2022"
+          --enable_pybind
+          --enable_onnx_tests --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build
+          ${{ parameters.build_py_parameters }}
+          --parallel --use_binskim_compliant_compile_flags --update
+          $(TelemetryOption)
 
-  - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
-    - template: publish-symbolrequestprod-api.yml
+    - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
+      - template: publish-symbolrequestprod-api.yml
+        parameters:
+          ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
+            symbolExpiryTime: 60
+          includePublicSymbolServer: true
+          symbolsArtifactName: onnxruntime_cpu_win_${{ parameters.architecture }}_$(PythonVersion)
+          symbolsVersion: $(Build.BuildId)
+          symbolProject: 'ONNX Runtime'
+          subscription: 'OnnxrunTimeCodeSign_20240611'
+          searchPattern: |
+            $(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime.pdb
+            $(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_providers_shared.pdb
+            $(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_pybind11_state.pdb
+
+    # Esrp signing
+    - template: win-esrp-dll.yml
       parameters:
-        ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
-          symbolExpiryTime: 60
-        includePublicSymbolServer: true
-        symbolsArtifactName: onnxruntime_cpu_win_${{ parameters.architecture }}_$(PythonVersion)
-        symbolsVersion: $(Build.BuildId)
-        symbolProject: 'ONNX Runtime'
-        subscription: 'OnnxrunTimeCodeSign_20240611'
-        searchPattern: |
-          $(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime.pdb
-          $(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_providers_shared.pdb
-          $(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_pybind11_state.pdb
+        FolderPath: '$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi'
+        DisplayName: 'ESRP - Sign Native dlls'
+        DoEsrp: true
+        Pattern: '*.pyd,*.dll'
 
-  # Esrp signing
-  - template: win-esrp-dll.yml
-    parameters:
-      FolderPath: '$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi'
-      DisplayName: 'ESRP - Sign Native dlls'
-      DoEsrp: true
-      Pattern: '*.pyd,*.dll'
+    - task: PythonScript@0
+      displayName: 'Build wheel'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\setup.py'
+        arguments: 'bdist_wheel ${{ parameters.build_py_parameters }} $(NightlyBuildOption)'
+        workingDirectory: '$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
 
-  - task: PythonScript@0
-    displayName: 'Build wheel'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\setup.py'
-      arguments: 'bdist_wheel ${{ parameters.build_py_parameters }} $(NightlyBuildOption)'
-      workingDirectory: '$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
+    - task: CopyFiles@2
+      displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\dist'
+        Contents: '*.whl'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-  - task: CopyFiles@2
-    displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
-    inputs:
-      SourceFolder: '$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\dist'
-      Contents: '*.whl'
-      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+  - ${{ else }}:
+    - ${{ each version in parameters.python_versions }}:
+      - task: UsePythonVersion@0
+        displayName: 'Use Python ${{ version }}'
+        inputs:
+          versionSpec: ${{ version }}
+          ${{ if eq(parameters.architecture, 'arm64') }}:
+            architecture: 'arm64'
+          ${{ else }}:
+            architecture: 'x64'
+
+      - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
+        displayName: 'Install build requirements for Python ${{ version }}'
+        env:
+          TMPDIR: "$(Agent.TempDirectory)"
+
+      # The first interpreter builds everything. The remaining ones only recompile the CPython
+      # extension module, because the native libraries contain no CPython symbols and one copy serves
+      # every interpreter.
+      - ${{ if eq(version, parameters.python_versions[0]) }}:
+        - task: PythonScript@0
+          displayName: 'Build - Python ${{ version }}'
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+            arguments: >
+              --config ${{ parameters.cmake_build_type }}
+              --enable_lto
+              --build_dir $(Build.SourcesDirectory)\build
+              --skip_submodule_sync
+              --cmake_generator "Visual Studio 17 2022"
+              --enable_pybind
+              --enable_onnx_tests --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build
+              ${{ parameters.build_py_parameters }}
+              --parallel --use_binskim_compliant_compile_flags --update
+              $(TelemetryOption)
+      - ${{ else }}:
+        - task: PythonScript@0
+          displayName: 'Build extension module - Python ${{ version }}'
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+            arguments: >
+              --config ${{ parameters.cmake_build_type }}
+              --enable_lto
+              --build_dir $(Build.SourcesDirectory)\build
+              --skip_submodule_sync
+              --cmake_generator "Visual Studio 17 2022"
+              --enable_pybind
+              --enable_onnx_tests --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build
+              ${{ parameters.build_py_parameters }}
+              --parallel --use_binskim_compliant_compile_flags --update
+              --target onnxruntime_pybind11_state
+              $(TelemetryOption)
+
+        # Re-running CMake with a different interpreter can relink the native libraries, which would
+        # also drop the signature they already carry, so restore the saved copies before packaging.
+        - task: PowerShell@2
+          displayName: 'Restore the signed native dlls - Python ${{ version }}'
+          inputs:
+            targetType: inline
+            script: |
+              $capi = "$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi"
+              Copy-Item -Path "$(Build.SourcesDirectory)\build\native_lib_backup\*.dll" -Destination $capi -Force
+              Get-ChildItem $capi | Format-Table Name, Length
+
+      - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
+        - template: publish-symbolrequestprod-api.yml
+          parameters:
+            ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
+              symbolExpiryTime: 60
+            includePublicSymbolServer: true
+            symbolsArtifactName: onnxruntime_cpu_win_${{ parameters.architecture }}_${{ version }}
+            symbolsVersion: $(Build.BuildId)
+            symbolProject: 'ONNX Runtime'
+            subscription: 'OnnxrunTimeCodeSign_20240611'
+            searchPattern: |
+              $(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime.pdb
+              $(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_providers_shared.pdb
+              $(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_pybind11_state.pdb
+
+      # Esrp signing. The native dlls are signed once, together with the first extension module. The
+      # later interpreters only produce a new .pyd, so only that one has to be signed again.
+      - template: win-esrp-dll.yml
+        parameters:
+          FolderPath: '$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi'
+          DisplayName: 'ESRP - Sign Native dlls - Python ${{ version }}'
+          DoEsrp: true
+          ${{ if eq(version, parameters.python_versions[0]) }}:
+            Pattern: '*.pyd,*.dll'
+          ${{ else }}:
+            Pattern: '*.pyd'
+
+      - ${{ if eq(version, parameters.python_versions[0]) }}:
+        - task: PowerShell@2
+          displayName: 'Save the signed native dlls'
+          inputs:
+            targetType: inline
+            script: |
+              $backup = "$(Build.SourcesDirectory)\build\native_lib_backup"
+              Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $backup
+              New-Item -ItemType Directory -Force -Path $backup | Out-Null
+              $capi = "$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi"
+              Copy-Item -Path "$capi\*.dll" -Destination $backup -Force
+              Get-ChildItem $backup | Format-Table Name, Length
+
+      - task: PythonScript@0
+        displayName: 'Build wheel - Python ${{ version }}'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\setup.py'
+          arguments: 'bdist_wheel ${{ parameters.build_py_parameters }} $(NightlyBuildOption)'
+          workingDirectory: '$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
+
+    - task: PowerShell@2
+      displayName: 'Merge the wheels'
+      inputs:
+        targetType: inline
+        script: |
+          $dist = "$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\dist"
+          $wheels = @(Get-ChildItem -Path $dist -Filter *.whl | ForEach-Object { $_.FullName })
+          Write-Host "merging $($wheels.Count) wheels"
+          python $(Build.SourcesDirectory)\tools\ci_build\merge_python_wheels.py --out-dir "$(Build.ArtifactStagingDirectory)" @wheels
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   - script: |
       7z x *.whl

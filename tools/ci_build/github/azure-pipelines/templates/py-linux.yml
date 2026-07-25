@@ -37,7 +37,7 @@ parameters:
 - name: multi_python_wheel
   displayName: >
     Build the native libraries once, recompile only onnxruntime_pybind11_state for every Python
-    version and publish a single py3-none-<platform> wheel.
+    version and publish a single wheel that carries all of them.
   type: boolean
   default: false
 

@@ -141,26 +141,15 @@ class TestIsPybindModule(unittest.TestCase):
         self.assertFalse(merger.is_pybind_module("onnxruntime/onnxruntime_pybind11_state.so"))
 
 
-class TestMergedPythonTags(unittest.TestCase):
-    def test_collapses_the_free_threaded_abi(self):
-        self.assertEqual(merger.merged_python_tags(["cp313", "cp313t"]), ["cp313"])
+class TestCompressTagSet(unittest.TestCase):
+    def test_sorts_by_version_not_alphabetically(self):
+        self.assertEqual(merger.compress_tag_set(["cp310", "cp39", "cp313"]), "cp39.cp310.cp313")
 
-    def test_sorts_and_deduplicates(self):
-        tags = merger.merged_python_tags(["cp314", "cp312", "cp313", "cp313t", "cp314t"])
-        self.assertEqual(tags, ["cp312", "cp313", "cp314"])
+    def test_keeps_the_free_threaded_abi_separate(self):
+        self.assertEqual(merger.compress_tag_set(["cp313t", "cp313"]), "cp313.cp313t")
 
-    def test_older_versions_need_no_free_threaded_build(self):
-        self.assertEqual(merger.merged_python_tags(["cp310", "cp311", "cp312"]), ["cp310", "cp311", "cp312"])
-
-    def test_rejects_a_missing_free_threaded_build(self):
-        with self.assertRaises(SystemExit) as caught:
-            merger.merged_python_tags(["cp312", "cp313"])
-        self.assertIn("cp313 is given but cp313t is not", str(caught.exception))
-
-    def test_rejects_a_missing_default_build(self):
-        with self.assertRaises(SystemExit) as caught:
-            merger.merged_python_tags(["cp314t"])
-        self.assertIn("cp314t is given but cp314 is not", str(caught.exception))
+    def test_deduplicates(self):
+        self.assertEqual(merger.compress_tag_set(["cp312", "cp312", "cp313"]), "cp312.cp313")
 
 
 class TestMergeRejects(unittest.TestCase):
@@ -250,15 +239,6 @@ class TestMergeRejects(unittest.TestCase):
         self.assertIn("only the onnxruntime pybind11 extension module may differ", result.stderr)
         self.assertIn("onnxruntime/version.py", result.stderr)
 
-    def test_rejects_a_missing_free_threaded_wheel(self):
-        wheels = [
-            write_wheel(self.tmp.name, abi_tag="cp313"),
-            write_wheel(self.tmp.name, abi_tag="cp314"),
-        ]
-        result = run_merger(self.out, wheels)
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("cp313 is given but cp313t is not", result.stderr)
-
 
 class TestMergeSucceeds(unittest.TestCase):
     PLATFORM = "manylinux_2_28_x86_64"
@@ -278,7 +258,7 @@ class TestMergeSucceeds(unittest.TestCase):
     def test_file_name_lists_only_the_bundled_interpreters(self):
         self.assertEqual(
             os.path.basename(self.merged),
-            f"onnxruntime-1.28.0-cp312.cp313.cp314-none-{self.PLATFORM}.whl",
+            f"onnxruntime-1.28.0-cp312.cp313.cp314-cp312.cp313.cp313t.cp314.cp314t-{self.PLATFORM}.whl",
         )
 
     def test_wheel_metadata_carries_every_tag(self):
@@ -287,7 +267,13 @@ class TestMergeSucceeds(unittest.TestCase):
         tags = sorted(line for line in wheel_text.splitlines() if line.startswith("Tag:"))
         self.assertEqual(
             tags,
-            [f"Tag: cp{minor}-none-{self.PLATFORM}" for minor in ("312", "313", "314")],
+            [
+                f"Tag: cp312-cp312-{self.PLATFORM}",
+                f"Tag: cp313-cp313-{self.PLATFORM}",
+                f"Tag: cp313-cp313t-{self.PLATFORM}",
+                f"Tag: cp314-cp314-{self.PLATFORM}",
+                f"Tag: cp314-cp314t-{self.PLATFORM}",
+            ],
         )
         # The wheel must not claim interpreters it has no binding for.
         self.assertNotIn("py3-none", wheel_text)
@@ -343,11 +329,49 @@ class TestMergeSucceedsOnWindows(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
 
             merged = os.path.join(out, os.listdir(out)[0])
-            self.assertEqual(os.path.basename(merged), "onnxruntime-1.28.0-cp312.cp314-none-win_amd64.whl")
+            self.assertEqual(
+                os.path.basename(merged),
+                "onnxruntime-1.28.0-cp312.cp314-cp312.cp314.cp314t-win_amd64.whl",
+            )
             with zipfile.ZipFile(merged) as archive:
                 names = set(archive.namelist())
             for abi_tag in ("cp312", "cp314", "cp314t"):
                 self.assertIn(f"onnxruntime/capi/onnxruntime_pybind11_state.{abi_tag}-win_amd64.pyd", names)
+
+
+class TestMergeWithoutFreeThreadedBuilds(unittest.TestCase):
+    """macOS builds only the default interpreters, so the merged wheel must exclude cp3xxt."""
+
+    PLATFORM = "macosx_14_0_arm64"
+
+    def test_free_threaded_interpreters_are_not_claimed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "out")
+            wheels = [
+                write_wheel(tmp, abi_tag=abi_tag, platform_tag=self.PLATFORM)
+                for abi_tag in ("cp311", "cp312", "cp313", "cp314")
+            ]
+            result = run_merger(out, wheels)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+            merged = os.path.join(out, os.listdir(out)[0])
+            self.assertEqual(
+                os.path.basename(merged),
+                f"onnxruntime-1.28.0-cp311.cp312.cp313.cp314-cp311.cp312.cp313.cp314-{self.PLATFORM}.whl",
+            )
+            with zipfile.ZipFile(merged) as archive:
+                wheel_text = archive.read("onnxruntime-1.28.0.dist-info/WHEEL").decode()
+                names = set(archive.namelist())
+
+            # A free-threaded 3.13 interpreter only ever matches cp313-cp313t, which is absent, so
+            # pip will not install this wheel there instead of failing at import time.
+            self.assertNotIn("cp313t", wheel_text)
+            self.assertNotIn("cp314t", wheel_text)
+            self.assertNotIn("-none-", wheel_text)
+            for abi_tag in ("cp311", "cp312", "cp313", "cp314"):
+                self.assertIn(f"Tag: {abi_tag}-{abi_tag}-{self.PLATFORM}", wheel_text)
+                suffix = merger.extension_suffix(abi_tag, self.PLATFORM)
+                self.assertIn(f"onnxruntime/capi/onnxruntime_pybind11_state{suffix}", names)
 
 
 if __name__ == "__main__":

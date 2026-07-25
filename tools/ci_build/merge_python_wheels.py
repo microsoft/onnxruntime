@@ -6,12 +6,15 @@
         onnxruntime_gpu-1.28.0-cp312-cp312-manylinux_2_28_x86_64.whl \
         onnxruntime_gpu-1.28.0-cp313-cp313-manylinux_2_28_x86_64.whl
 
-produces ``onnxruntime_gpu-1.28.0-cp312.cp313-none-manylinux_2_28_x86_64.whl``.
+produces ``onnxruntime_gpu-1.28.0-cp312.cp313-cp312.cp313-manylinux_2_28_x86_64.whl``.
 
-The merged wheel is tagged with exactly the interpreters it carries a binding
-for, so pip refuses to install it on any other Python version. The wheels must
-all be built for the same platform: a x86_64 wheel and an aarch64 wheel share no
-native library and must stay separate packages.
+The merged wheel keeps the exact tag of every input wheel, so pip installs it on
+those interpreters and on no others. A compressed tag set expands to the cross
+product of its parts, which is why the free-threaded build stays distinguishable:
+``cp313-cp313`` matches the default 3.13 build while a free-threaded interpreter
+only ever matches ``cp313-cp313t``. The wheels must all be built for the same
+platform: a x86_64 wheel and an aarch64 wheel share no native library and must
+stay separate packages.
 
 Every file that is byte identical across the input wheels is stored once. That
 is where the native libraries live, and they contain no CPython symbols, so a
@@ -52,9 +55,6 @@ PYBIND_MODULE_DIRECTORY = "onnxruntime/capi"
 PYBIND_MODULE_STEM = "onnxruntime_pybind11_state"
 
 LINUX_ARCHITECTURES = ("x86_64", "aarch64", "armv7l", "i686", "ppc64le", "s390x", "riscv64")
-
-# The first CPython version that ships a free-threaded build alongside the default one.
-FIRST_FREE_THREADED_VERSION = (3, 13)
 
 CHUNK_SIZE = 1 << 20
 
@@ -103,34 +103,17 @@ def is_pybind_module(path: str) -> bool:
     )
 
 
-def merged_python_tags(abi_tags: list[str]) -> list[str]:
-    """Map the ABI tags of the input wheels to the Python tags of the merged wheel.
+def compress_tag_set(tags: list[str]) -> str:
+    """Join interpreter tags the way a wheel file name does, lowest version first.
 
-    A free-threaded interpreter reports ``cp313t`` as its ABI tag but still ``cp313`` as its Python
-    tag, so ``cp313`` and ``cp313t`` collapse into one ``cp313`` entry. That entry is matched by both
-    interpreters, which is why a binding for both of them has to be present.
+    ``["cp313t", "cp39", "cp310"]`` -> ``"cp39.cp310.cp313t"``
     """
-    variants: dict[tuple[int, int], set[bool]] = {}
-    for abi_tag in abi_tags:
-        # extension_suffix() has already rejected anything that is not a CPython ABI tag.
-        major, minor, freethreaded = re.fullmatch(r"cp(\d)(\d+)(t?)", abi_tag).groups()
-        variants.setdefault((int(major), int(minor)), set()).add(bool(freethreaded))
 
-    problems = []
-    for version, found in sorted(variants.items()):
-        if version < FIRST_FREE_THREADED_VERSION or len(found) == 2:
-            continue
-        tag = f"cp{version[0]}{version[1]}"
-        present, missing = (f"{tag}t", tag) if True in found else (tag, f"{tag}t")
-        problems.append(f"{present} is given but {missing} is not")
-    if problems:
-        sys.exit(
-            "a merged wheel cannot distinguish the free-threaded build from the default one: both "
-            "are installed from the same Python tag, so a binding for both has to be present.\n    "
-            + "\n    ".join(problems)
-        )
+    def sort_key(tag: str):
+        match = re.fullmatch(r"cp(\d)(\d+)(t?)", tag)
+        return (int(match.group(1)), int(match.group(2)), bool(match.group(3))) if match else (99, 99, False)
 
-    return [f"cp{major}{minor}" for major, minor in sorted(variants)]
+    return ".".join(sorted(set(tags), key=sort_key))
 
 
 def file_hashes(wheel: str) -> dict[str, str]:
@@ -180,7 +163,7 @@ def write_text_member(target: zipfile.ZipFile, name: str, text: str):
 
 
 def retag_wheel_metadata(text: str, tags: list[str]) -> str:
-    """Replace the single ``cp3xx-cp3xx-<plat>`` tag of a WHEEL file with the merged tag set."""
+    """Replace the single ``cp3xx-cp3xx-<plat>`` tag of a WHEEL file with one line per input wheel."""
     lines = []
     for line in text.splitlines():
         if line.startswith("Tag:"):
@@ -213,8 +196,11 @@ def main():
     if len(set(abi_tags)) != len(abi_tags):
         sys.exit(f"the same ABI tag appears twice: {abi_tags}")
     suffixes = [extension_suffix(abi_tag, platform_tag) for abi_tag in abi_tags]
-    python_tags = merged_python_tags(abi_tags)
-    tags = [f"{python_tag}-none-{platform_tag}" for python_tag in python_tags]
+
+    # Keep the exact tag of every input wheel. pip expands the compressed sets in the file name to
+    # their cross product, so each interpreter still matches only the entry it has a binding for.
+    python_tags = [python_tag for _n, _v, python_tag, _abi, _p in metadata]
+    tags = [f"{python_tag}-{abi_tag}-{platform_tag}" for python_tag, abi_tag in zip(python_tags, abi_tags, strict=True)]
 
     hashes = [file_hashes(wheel) for wheel in args.wheels]
     all_paths = sorted(set().union(*[set(h) for h in hashes]))
@@ -253,7 +239,8 @@ def main():
         print(f"    {path}")
 
     os.makedirs(args.out_dir, exist_ok=True)
-    out_wheel = os.path.join(args.out_dir, f"{name}-{version}-{'.'.join(python_tags)}-none-{platform_tag}.whl")
+    merged_tag = f"{compress_tag_set(python_tags)}-{compress_tag_set(abi_tags)}-{platform_tag}"
+    out_wheel = os.path.join(args.out_dir, f"{name}-{version}-{merged_tag}.whl")
     records = []
     with zipfile.ZipFile(out_wheel, "w", zipfile.ZIP_DEFLATED) as out_zip:
         # 1. Everything that is shared, taken from the first wheel.
