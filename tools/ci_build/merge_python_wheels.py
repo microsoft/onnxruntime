@@ -6,11 +6,16 @@
         onnxruntime_gpu-1.28.0-cp312-cp312-manylinux_2_28_x86_64.whl \
         onnxruntime_gpu-1.28.0-cp313-cp313-manylinux_2_28_x86_64.whl
 
-produces ``onnxruntime_gpu-1.28.0-py3-none-manylinux_2_28_x86_64.whl``.
+produces ``onnxruntime_gpu-1.28.0-cp312.cp313-none-manylinux_2_28_x86_64.whl``.
+
+The merged wheel is tagged with exactly the interpreters it carries a binding
+for, so pip refuses to install it on any other Python version. The wheels must
+all be built for the same platform: a x86_64 wheel and an aarch64 wheel share no
+native library and must stay separate packages.
 
 Every file that is byte identical across the input wheels is stored once. That
 is where the native libraries live, and they contain no CPython symbols, so a
-single copy serves every interpreter. The only file that differs is
+single copy serves every interpreter. The only file that may differ is
 ``onnxruntime_pybind11_state``; it stays in ``onnxruntime/capi/`` but is renamed
 to carry the interpreter specific extension suffix, for example
 ``onnxruntime_pybind11_state.cpython-312-x86_64-linux-gnu.so``.
@@ -40,10 +45,16 @@ import re
 import sys
 import zipfile
 
-# Files that are allowed to differ between the input wheels.
 EXTENSION_MODULE_SUFFIXES = (".so", ".pyd", ".dylib")
 
+# The only file that is allowed to differ between the input wheels.
+PYBIND_MODULE_DIRECTORY = "onnxruntime/capi"
+PYBIND_MODULE_STEM = "onnxruntime_pybind11_state"
+
 LINUX_ARCHITECTURES = ("x86_64", "aarch64", "armv7l", "i686", "ppc64le", "s390x", "riscv64")
+
+# The first CPython version that ships a free-threaded build alongside the default one.
+FIRST_FREE_THREADED_VERSION = (3, 13)
 
 CHUNK_SIZE = 1 << 20
 
@@ -80,6 +91,46 @@ def extension_suffix(abi_tag: str, platform_tag: str) -> str:
         if platform_tag.endswith("_" + architecture):
             return f".cpython-{major}{minor}{freethreaded}-{architecture}-linux-gnu.so"
     raise ValueError(f"cannot derive the extension suffix for platform tag {platform_tag!r}")
+
+
+def is_pybind_module(path: str) -> bool:
+    """Whether an archive member is the onnxruntime CPython extension module."""
+    directory, _, filename = path.rpartition("/")
+    return (
+        directory == PYBIND_MODULE_DIRECTORY
+        and filename.split(".", 1)[0] == PYBIND_MODULE_STEM
+        and filename.endswith(EXTENSION_MODULE_SUFFIXES)
+    )
+
+
+def merged_python_tags(abi_tags: list[str]) -> list[str]:
+    """Map the ABI tags of the input wheels to the Python tags of the merged wheel.
+
+    A free-threaded interpreter reports ``cp313t`` as its ABI tag but still ``cp313`` as its Python
+    tag, so ``cp313`` and ``cp313t`` collapse into one ``cp313`` entry. That entry is matched by both
+    interpreters, which is why a binding for both of them has to be present.
+    """
+    variants: dict[tuple[int, int], set[bool]] = {}
+    for abi_tag in abi_tags:
+        # extension_suffix() has already rejected anything that is not a CPython ABI tag.
+        major, minor, freethreaded = re.fullmatch(r"cp(\d)(\d+)(t?)", abi_tag).groups()
+        variants.setdefault((int(major), int(minor)), set()).add(bool(freethreaded))
+
+    problems = []
+    for version, found in sorted(variants.items()):
+        if version < FIRST_FREE_THREADED_VERSION or len(found) == 2:
+            continue
+        tag = f"cp{version[0]}{version[1]}"
+        present, missing = (f"{tag}t", tag) if True in found else (tag, f"{tag}t")
+        problems.append(f"{present} is given but {missing} is not")
+    if problems:
+        sys.exit(
+            "a merged wheel cannot distinguish the free-threaded build from the default one: both "
+            "are installed from the same Python tag, so a binding for both has to be present.\n    "
+            + "\n    ".join(problems)
+        )
+
+    return [f"cp{major}{minor}" for major, minor in sorted(variants)]
 
 
 def file_hashes(wheel: str) -> dict[str, str]:
@@ -128,8 +179,8 @@ def write_text_member(target: zipfile.ZipFile, name: str, text: str):
     return record_entry(name, hashlib.sha256(data), len(data))
 
 
-def retag_wheel_metadata(text: str, platform_tag: str) -> str:
-    """Turn a ``cp3xx-cp3xx-<plat>`` WHEEL file into a ``py3-none-<plat>`` one."""
+def retag_wheel_metadata(text: str, tags: list[str]) -> str:
+    """Replace the single ``cp3xx-cp3xx-<plat>`` tag of a WHEEL file with the merged tag set."""
     lines = []
     for line in text.splitlines():
         if line.startswith("Tag:"):
@@ -139,7 +190,7 @@ def retag_wheel_metadata(text: str, platform_tag: str) -> str:
             lines.append("Root-Is-Purelib: false")
             continue
         lines.append(line)
-    lines.append(f"Tag: py3-none-{platform_tag}")
+    lines.extend(f"Tag: {tag}" for tag in tags)
     return "\n".join(lines) + "\n"
 
 
@@ -162,6 +213,8 @@ def main():
     if len(set(abi_tags)) != len(abi_tags):
         sys.exit(f"the same ABI tag appears twice: {abi_tags}")
     suffixes = [extension_suffix(abi_tag, platform_tag) for abi_tag in abi_tags]
+    python_tags = merged_python_tags(abi_tags)
+    tags = [f"{python_tag}-none-{platform_tag}" for python_tag in python_tags]
 
     hashes = [file_hashes(wheel) for wheel in args.wheels]
     all_paths = sorted(set().union(*[set(h) for h in hashes]))
@@ -175,12 +228,24 @@ def main():
     dist_info = f"{name}-{version}.dist-info"
     # The dist-info files legitimately differ (WHEEL carries the tag); they are regenerated below.
     per_interpreter = [path for path in differing if not path.startswith(dist_info + "/")]
-    not_extensions = [path for path in per_interpreter if not path.endswith(EXTENSION_MODULE_SUFFIXES)]
-    if not_extensions:
+    unexpected = [path for path in per_interpreter if not is_pybind_module(path)]
+    if unexpected:
         sys.exit(
-            "these files differ between the wheels but are not extension modules, so they cannot be "
-            "shared by several interpreters:\n    " + "\n    ".join(not_extensions)
+            "only the onnxruntime pybind11 extension module may differ between the wheels, because "
+            "it is the only file that is renamed per interpreter. These files differ too:\n    "
+            + "\n    ".join(unexpected)
         )
+
+    # Each wheel has to contribute its own binding, otherwise the merged wheel would advertise an
+    # interpreter it cannot serve.
+    pybind_paths = []
+    for wheel, wheel_hashes in zip(args.wheels, hashes, strict=True):
+        matches = sorted(path for path in wheel_hashes if is_pybind_module(path))
+        if len(matches) != 1:
+            sys.exit(f"expected exactly one {PYBIND_MODULE_DIRECTORY}/{PYBIND_MODULE_STEM} in {wheel}, got {matches}")
+        if matches[0] not in per_interpreter:
+            sys.exit(f"{matches[0]} is byte identical across the wheels, so they are not for different interpreters")
+        pybind_paths.append(matches[0])
 
     print(f"identical files       : {len(identical)}")
     print(f"per-interpreter files : {len(per_interpreter)}")
@@ -188,7 +253,7 @@ def main():
         print(f"    {path}")
 
     os.makedirs(args.out_dir, exist_ok=True)
-    out_wheel = os.path.join(args.out_dir, f"{name}-{version}-py3-none-{platform_tag}.whl")
+    out_wheel = os.path.join(args.out_dir, f"{name}-{version}-{'.'.join(python_tags)}-none-{platform_tag}.whl")
     records = []
     with zipfile.ZipFile(out_wheel, "w", zipfile.ZIP_DEFLATED) as out_zip:
         # 1. Everything that is shared, taken from the first wheel.
@@ -206,21 +271,15 @@ def main():
                     sys.exit(f"{path} is missing from {args.wheels[0]}")
                 if path == f"{dist_info}/WHEEL":
                     text = base_zip.read(path).decode("utf-8")
-                    records.append(write_text_member(out_zip, path, retag_wheel_metadata(text, platform_tag)))
+                    records.append(write_text_member(out_zip, path, retag_wheel_metadata(text, tags)))
                 else:
                     records.append(copy_member(base_zip, base_zip.getinfo(path), out_zip, path))
 
         # 3. One copy of every per-interpreter extension, renamed with its ABI suffix.
-        for wheel, suffix in zip(args.wheels, suffixes, strict=True):
+        for wheel, suffix, pybind_path in zip(args.wheels, suffixes, pybind_paths, strict=True):
             with zipfile.ZipFile(wheel) as archive:
-                members = set(archive.namelist())
-                for path in per_interpreter:
-                    if path not in members:
-                        continue
-                    directory, _, filename = path.rpartition("/")
-                    stem = filename.split(".", 1)[0]
-                    target = f"{directory}/{stem}{suffix}" if directory else f"{stem}{suffix}"
-                    records.append(copy_member(archive, archive.getinfo(path), out_zip, target))
+                target = f"{PYBIND_MODULE_DIRECTORY}/{PYBIND_MODULE_STEM}{suffix}"
+                records.append(copy_member(archive, archive.getinfo(pybind_path), out_zip, target))
 
         # 4. RECORD must list every file in the wheel, itself included (without a hash).
         records.sort()

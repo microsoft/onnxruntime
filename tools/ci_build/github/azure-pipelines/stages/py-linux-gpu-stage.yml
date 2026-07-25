@@ -30,8 +30,10 @@ parameters:
 
 - name: python_version
   type: string
-  default: 'all'
-  displayName: 'Python version label (e.g. 3.12, 3.13t)'
+  default: ''
+  displayName: |
+    Python version label used in the step name, for example 3.12 or 3.13t.
+    Leave it empty when the job builds every Python version of the image.
 
 - name: docker_python_exe_path
   type: string
@@ -138,7 +140,10 @@ stages:
 
 
       - task: Bash@3
-        displayName: 'Build Python Wheel - ${{ parameters.python_version }}'
+        ${{ if ne(parameters.python_version, '') }}:
+          displayName: 'Build Python Wheel - Python ${{ parameters.python_version }}'
+        ${{ else }}:
+          displayName: 'Build Python Wheel - every Python version'
         inputs:
           targetType: filePath
           filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
