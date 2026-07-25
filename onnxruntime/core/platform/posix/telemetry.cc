@@ -3,6 +3,7 @@
 
 #include "core/platform/posix/telemetry.h"
 #include "core/platform/posix/device_id.h"
+#include "core/platform/posix/telemetry_context.h"
 #include "core/platform/posix/telemetry_no_throw.h"
 #include "core/platform/posix/telemetry_sampling.h"
 #include "core/platform/telemetry_environment.h"
@@ -83,6 +84,8 @@ std::atomic<::Microsoft::Applications::Events::ILogger*> PosixTelemetry::logger_
 std::unique_ptr<::Microsoft::Applications::Events::ILogConfiguration> PosixTelemetry::config_;
 std::atomic<bool> PosixTelemetry::enabled_{true};
 std::atomic<bool> PosixTelemetry::telemetry_disabled_{false};
+std::atomic<bool> PosixTelemetry::network_context_suppressed_{false};
+std::mutex PosixTelemetry::semantic_context_mutex_;
 std::atomic<uint32_t> PosixTelemetry::projection_{0};
 std::atomic<bool> PosixTelemetry::process_info_logged_{false};
 
@@ -399,6 +402,15 @@ void PosixTelemetry::LogEventAsync(Microsoft::Applications::Events::EventPropert
   if (logger == nullptr) {
     return;
   }
+  // Keep PAL network context on ProcessInfo only; clear it before serializing any later event.
+  if (props.GetName() != "ProcessInfo" &&
+      !network_context_suppressed_.load(std::memory_order_acquire)) {
+    std::lock_guard<std::mutex> context_lock(semantic_context_mutex_);
+    if (!network_context_suppressed_.load(std::memory_order_relaxed)) {
+      telemetry_internal::SuppressNetworkContext(*logger->GetSemanticContext());
+      network_context_suppressed_.store(true, std::memory_order_release);
+    }
+  }
   logger->LogEvent(std::move(props));
 }
 
@@ -473,6 +485,8 @@ void PosixTelemetry::Initialize() {
     return;
   }
 
+  telemetry_internal::SuppressUnneededCommonContext(*logger->GetSemanticContext());
+
   // Use BEST_EFFORT transmit profile to minimize battery and network impact.
   // Events are batched and uploaded at a lower cadence.
   pending_log_manager.Get()->SetTransmitProfile(TransmitProfile_BestEffort);
@@ -506,6 +520,7 @@ void PosixTelemetry::Initialize() {
   // Publish the fully-configured logger atomically; concurrent readers observe it only now.
   // enabled_ is left to its default / the runtime EnableTelemetryEvents()/DisableTelemetryEvents()
   // opt-in state rather than being force-set here.
+  network_context_suppressed_.store(false, std::memory_order_release);
   pending_log_manager.Commit(config_, log_manager_);
   logger_.store(logger, std::memory_order_release);
 }
@@ -1066,27 +1081,6 @@ void PosixTelemetry::LogAutoEpSelection(
                      .AddString("selectionPolicy", selection_policy)
                      .AddStringList("requestedExecutionProviderIds", requested_execution_provider_ids)
                      .AddStringList("availableExecutionProviderIds", available_execution_provider_ids)
-                     .Build();
-
-    LogEventAsync(std::move(event));
-  });
-}
-
-void PosixTelemetry::LogProviderOptions(
-    const std::string& provider_id,
-    const std::string& provider_options_string,
-    bool captureState) const {
-  RunTelemetryOperation("LogProviderOptions", [&]() {
-    if (!IsEnabled()) {
-      return;
-    }
-
-    std::string event_name = captureState ? "ProviderOptions_CaptureState" : "ProviderOptions";
-    const std::string scrubbed_provider_options = ScrubStringForTelemetry(provider_options_string);
-
-    auto event = EventBuilder(std::move(event_name), EventPriority::NORMAL)
-                     .AddString("providerId", provider_id)
-                     .AddString("providerOptions", scrubbed_provider_options)
                      .Build();
 
     LogEventAsync(std::move(event));
