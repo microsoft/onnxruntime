@@ -84,8 +84,6 @@ std::atomic<::Microsoft::Applications::Events::ILogger*> PosixTelemetry::logger_
 std::unique_ptr<::Microsoft::Applications::Events::ILogConfiguration> PosixTelemetry::config_;
 std::atomic<bool> PosixTelemetry::enabled_{true};
 std::atomic<bool> PosixTelemetry::telemetry_disabled_{false};
-std::atomic<bool> PosixTelemetry::network_context_suppressed_{false};
-std::mutex PosixTelemetry::semantic_context_mutex_;
 std::atomic<uint32_t> PosixTelemetry::projection_{0};
 std::atomic<bool> PosixTelemetry::process_info_logged_{false};
 
@@ -402,20 +400,14 @@ void PosixTelemetry::LogEventAsync(Microsoft::Applications::Events::EventPropert
   if (logger == nullptr) {
     return;
   }
-  // Keep PAL network context on ProcessInfo only; clear it before serializing any later event.
-  if (props.GetName() != "ProcessInfo" &&
-      !network_context_suppressed_.load(std::memory_order_acquire)) {
-    std::lock_guard<std::mutex> context_lock(semantic_context_mutex_);
-    if (!network_context_suppressed_.load(std::memory_order_relaxed)) {
-      const bool suppressed = telemetry_internal::TryTelemetryOperationNoThrow([&]() {
-        telemetry_internal::SuppressNetworkContext(*logger->GetSemanticContext());
-      });
-      if (suppressed) {
-        network_context_suppressed_.store(true, std::memory_order_release);
-      }
-    }
-  }
+  const bool is_process_info = props.GetName() == "ProcessInfo";
   logger->LogEvent(std::move(props));
+  if (is_process_info) {
+    // ProcessInfo captures PAL network context. Clearing it afterward is best effort.
+    (void)telemetry_internal::TryTelemetryOperationNoThrow([&]() {
+      telemetry_internal::SuppressNetworkContext(*logger->GetSemanticContext());
+    });
+  }
 }
 
 void PosixTelemetry::Initialize() {
@@ -492,6 +484,12 @@ void PosixTelemetry::Initialize() {
   (void)telemetry_internal::TryTelemetryOperationNoThrow([&]() {
     telemetry_internal::SuppressUnneededCommonContext(*logger->GetSemanticContext());
   });
+  if (process_info_logged_.load(std::memory_order_acquire)) {
+    // ProcessInfo is once per process; a reinitialized logger no longer needs network context.
+    (void)telemetry_internal::TryTelemetryOperationNoThrow([&]() {
+      telemetry_internal::SuppressNetworkContext(*logger->GetSemanticContext());
+    });
+  }
 
   // Use BEST_EFFORT transmit profile to minimize battery and network impact.
   // Events are batched and uploaded at a lower cadence.
@@ -524,7 +522,6 @@ void PosixTelemetry::Initialize() {
   // Publish the fully-configured logger atomically; concurrent readers observe it only now.
   // enabled_ is left to its default / the runtime EnableTelemetryEvents()/DisableTelemetryEvents()
   // opt-in state rather than being force-set here.
-  network_context_suppressed_.store(false, std::memory_order_release);
   pending_log_manager.Commit(config_, log_manager_);
   logger_.store(logger, std::memory_order_release);
 }
