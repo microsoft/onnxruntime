@@ -145,7 +145,6 @@ jobs:
           onnxruntimecpubuildcentos8x64_packaging \
             /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh $USE_QNN
       workingDirectory: $(Build.SourcesDirectory)
-
   - template: jar-maven-signing-linux.yml
     parameters:
       JarFileDirectory: $(Build.BinariesDirectory)/.artifacts

@@ -23,7 +23,9 @@ Status Cast::ComputeInternal(ComputeContext& context) const {
   bool is_from_int64 = input_tensor->DataType() == DataTypeImpl::GetType<int64_t>();
   bool is_from_float = input_tensor->DataType() == DataTypeImpl::GetType<float>() ||
                        input_tensor->DataType() == DataTypeImpl::GetType<MLFloat16>();
+  bool is_from_uint8 = input_tensor->DataType() == DataTypeImpl::GetType<uint8_t>();
   bool is_from_unsigned = input_tensor->DataType() == DataTypeImpl::GetType<uint32_t>() ||
+                          is_from_uint8 ||
                           input_tensor->DataType() == DataTypeImpl::GetType<bool>();
   const int in_components = is_from_int64 ? 1 : 4;
   const int out_components = to_ == ONNX_NAMESPACE::TensorProto_DataType_INT64 ? 1 : 4;
@@ -31,7 +33,7 @@ Status Cast::ComputeInternal(ComputeContext& context) const {
   uint32_t in_vec_size = onnxruntime::narrow<uint32_t>(in_components == 1 ? size : vec_size);
   uint32_t out_vec_size = onnxruntime::narrow<uint32_t>(out_components == 1 ? size : vec_size);
 
-  CastProgram program{to_, is_from_int64, is_from_float, is_from_unsigned};
+  CastProgram program{to_, is_from_int64, is_from_float, is_from_unsigned, is_from_uint8};
   program
       .AddInput({input_tensor, ProgramTensorMetadataDependency::Type, {in_vec_size}, in_components})
       .AddOutput({output_tensor, ProgramTensorMetadataDependency::None, {out_vec_size}, out_components})
@@ -59,6 +61,11 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
       expression = "vec4<i32>(a)";
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+      expression = "vec4<u32>(a)";
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+      // Output uint8 is stored packed (4 bytes per u32); the SetByOffset for Uint8x4 does the
+      // packing, so here we just widen to a vec4<u32> of per-lane values (e.g. bool 0/1 -> uint8).
       expression = "vec4<u32>(a)";
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
@@ -151,7 +158,11 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
     // cast to int64 (non-int64 inputs only)
     std::array<std::string, 4> values;
     constexpr std::array<char, 4> kLanes{'x', 'y', 'z', 'w'};
-    sh.MainFunctionBody() << "  let a = " << input.GetByOffset("global_idx") << ";\n"
+    // A uint8 input is stored packed (4 bytes per u32); GetByOffset returns the raw word, so
+    // unpack4xU8 recovers the 4 per-lane byte values. Other inputs are already vec4-shaped.
+    const std::string load_a = is_from_uint8_ ? "unpack4xU8(" + input.GetByOffset("global_idx") + ")"
+                                              : input.GetByOffset("global_idx");
+    sh.MainFunctionBody() << "  let a = " << load_a << ";\n"
                           << "  let base = global_idx * 4u;\n";
     for (size_t i = 0; i < 4; ++i) {
       if (is_from_float_) {
@@ -175,8 +186,13 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
                             << " }\n";
     }
   } else {
-    // generic cast (no int64 involved).
-    sh.MainFunctionBody() << "  let a = " << input.GetByOffset("global_idx") << ";\n";
+    // generic cast (no int64 involved). A uint8 input is stored packed (4 bytes per u32);
+    // GetByOffset returns the raw word, so unpack4xU8 recovers the 4 per-lane byte values.
+    if (is_from_uint8_) {
+      sh.MainFunctionBody() << "  let a = unpack4xU8(" << input.GetByOffset("global_idx") << ");\n";
+    } else {
+      sh.MainFunctionBody() << "  let a = " << input.GetByOffset("global_idx") << ";\n";
+    }
     sh.MainFunctionBody() << output.SetByOffset("global_idx", expression);
   }
 
@@ -186,8 +202,16 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
 template <int StartVersion, int EndVersion>
 KernelCreateInfo CreateCastKernelInfo(bool enable_int64) {
   // Casting to int64 is always supported. Casting *from* int64 (int64 in T1/input) stays guarded by enable_int64.
-  const auto& t1_constraints = GetOpTypeConstraints(/*enable_int64=*/enable_int64, /*enable_bool=*/true);
-  const auto& t2_constraints = GetOpTypeConstraints(/*enable_int64=*/true, /*enable_bool=*/true);
+  std::vector<MLDataType> t1_constraints = GetOpTypeConstraints(/*enable_int64=*/enable_int64, /*enable_bool=*/true);
+  // T1 (input): plus uint8, so casts *from* a uint8 tensor (to int32/float/bool/etc.) run on the
+  // WebGPU EP instead of falling back. Reading uint8 input unpacks the packed Uint8x4 storage via
+  // GetByOffset.
+  t1_constraints.push_back(DataTypeImpl::GetTensorType<uint8_t>());
+  // T2 (output): the int64+bool set, plus uint8 so the WebGPU EP can produce uint8 output directly
+  // (e.g. a terminal bool->uint8 cast at a graph output) instead of falling back. Casting *to* uint8
+  // packs via the Uint8x4 SetByOffset.
+  std::vector<MLDataType> t2_constraints = GetOpTypeConstraints(/*enable_int64=*/true, /*enable_bool=*/true);
+  t2_constraints.push_back(DataTypeImpl::GetTensorType<uint8_t>());
 
   KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<Cast>(info);

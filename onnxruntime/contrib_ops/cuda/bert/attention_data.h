@@ -157,6 +157,11 @@ struct GroupQueryAttentionData {
   const T* sin_cache = nullptr;
   const T* head_sink = nullptr;
 
+  // Optional additive attention bias, shape (batch_size or 1, num_heads or 1, sequence_length,
+  // total_sequence_length). Broadcast on dims 0/1 is carried by
+  // parameters.broadcast_attn_bias_dim_0/1. Only consumed by the unfused fallback path.
+  const T* attention_bias = nullptr;
+
   // Optional per-head Q/K RMSNorm (QK-Norm) weights, shape (head_size,), shared across heads.
   // Both are non-null together (validated in the op) and trigger the fused normalization before RoPE.
   const T* q_norm_weight = nullptr;

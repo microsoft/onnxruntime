@@ -28,7 +28,8 @@ void MoeGemmProfiler::initBackend(CutlassMoeFCRunnerInterface* runner, MoeGemmId
                 need_weights_, parallelism_config_);
 }
 
-std::optional<MoeGemmProfiler::Config> MoeGemmProfiler::runProfiling(int maxM, MoeGemmId const& gemmId) {
+std::optional<MoeGemmProfiler::Config> MoeGemmProfiler::runProfiling(int maxM, MoeGemmId const& gemmId,
+                                                                     cudaStream_t timing_stream) {
   ORT_LLM_LOG_ENTRY();
   ORT_LLM_LOG_DEBUG(onnxruntime::MakeString("MoeGemmProfiler::runProfiling for M=", maxM, " ", gemmId));
 
@@ -59,10 +60,22 @@ std::optional<MoeGemmProfiler::Config> MoeGemmProfiler::runProfiling(int maxM, M
       workspace, [a = allocator_](void* p) { if (p) a->Free(p); });
   auto* workspace_ptr = static_cast<char*>(workspace);
 
-  cudaStream_t stream = nullptr;
-  CUDA_CALL_THROW(cudaStreamCreate(&stream));
+  // Run profiling on the caller-supplied stream (the ORT compute stream) when one is provided,
+  // so every profiler kernel is strictly ordered with the surrounding compute-stream work and
+  // shares its stream context with the temp allocator. Profiling on a private side stream instead
+  // races with the compute stream: the temp arena is stream-aware and, because the side-stream
+  // usage is invisible to it, can hand the same scratch block to a later compute-stream allocation
+  // (e.g. the real MoE workspace) while the profiler's grouped-GEMM kernels are still in flight.
+  // The resulting overlapping access corrupts the profiler's routing/GEMM buffers and surfaces as a
+  // sticky CUDA 700 (illegal memory access) at a downstream MoE kernel launch. Only create and
+  // destroy a private stream when the caller does not supply one (e.g. standalone profiling).
+  cudaStream_t stream = timing_stream;
   std::unique_ptr<CUstream_st, void (*)(cudaStream_t)> stream_guard(
-      stream, [](cudaStream_t s) { if (s) cudaStreamDestroy(s); });
+      nullptr, [](cudaStream_t s) { if (s) cudaStreamDestroy(s); });
+  if (stream == nullptr) {
+    CUDA_CALL_THROW(cudaStreamCreate(&stream));
+    stream_guard.reset(stream);
+  }
 
   cudaEvent_t start = nullptr;
   cudaEvent_t stop = nullptr;
@@ -129,7 +142,8 @@ std::optional<MoeGemmProfiler::Config> MoeGemmProfiler::runProfiling(int maxM, M
 }
 
 void MoeGemmProfiler::profileTactics(CutlassMoeFCRunnerInterface* runner,
-                                     weight_only::GemmDims const& dims, MoeGemmId const& gemmId) {
+                                     weight_only::GemmDims const& dims, MoeGemmId const& gemmId,
+                                     cudaStream_t timing_stream) {
   ORT_LLM_LOG_ENTRY();
 
   // Profile per M bucket: decode (small M) and prefill (large M) prefer different tile shapes,
@@ -144,7 +158,7 @@ void MoeGemmProfiler::profileTactics(CutlassMoeFCRunnerInterface* runner,
   initBackend(runner, gemmId);
 
   // Run profiling at the bucket's representative M.
-  auto result = runProfiling(bucket, gemmId);
+  auto result = runProfiling(bucket, gemmId, timing_stream);
 
   // Cache result for this bucket
   bucket_map[bucket] = result;

@@ -353,6 +353,171 @@ TEST(InferenceSessionTests, RequestLoadCancellation) {
   }
 }
 
+// Error-path coverage for InferenceSession validation / early-return branches.
+// "Invalid input name" is already covered by TestOptionalInputs; the tests below cover the
+// remaining gaps in Run/Initialize/Load: Run-before-Initialize, Initialize-before-Load, an
+// invalid output name, input type/rank and output type mismatches, feed name/value count
+// mismatch, and load failures (malformed model bytes and a nonexistent model path).
+TEST(InferenceSessionTests, RunBeforeInitializeReturnsError) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.RunBeforeInitializeReturnsError";
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  // Intentionally do NOT call Initialize().
+
+  std::vector<int64_t> dims_x = {3, 2};
+  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &ml_value);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value));
+  std::vector<std::string> output_names{"Y"};
+  std::vector<OrtValue> fetches;
+
+  RunOptions run_options;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session_object.Run(run_options, feeds, output_names, &fetches),
+                                      "not initialized");
+}
+
+TEST(InferenceSessionTests, RunWithInvalidOutputNameReturnsError) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.RunWithInvalidOutputNameReturnsError";
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  std::vector<int64_t> dims_x = {3, 2};
+  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &ml_value);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value));
+  std::vector<std::string> output_names{"not_a_real_output"};
+  std::vector<OrtValue> fetches;
+
+  RunOptions run_options;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session_object.Run(run_options, feeds, output_names, &fetches),
+                                      "Invalid output name");
+}
+
+TEST(InferenceSessionTests, LoadMalformedModelFromArrayReturnsError) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.LoadMalformedModelFromArrayReturnsError";
+  InferenceSession session_object{so, GetEnvironment()};
+
+  // Bytes that are not a valid ModelProto: Load must fail gracefully (return an error, not crash).
+  const std::string garbage = "this is definitely not a valid onnx model proto";
+  ASSERT_FALSE(session_object.Load(garbage.data(), static_cast<int>(garbage.size())).IsOK());
+}
+
+TEST(InferenceSessionTests, RunWithWrongInputTypeReturnsError) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.RunWithWrongInputTypeReturnsError";
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // Model input "X" is float; feed int32 to trigger the element-type check (CheckTypes).
+  std::vector<int64_t> dims_x = {3, 2};
+  std::vector<int32_t> values_x = {1, 2, 3, 4, 5, 6};
+  OrtValue ml_value;
+  CreateMLValue<int32_t>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &ml_value);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value));
+  std::vector<std::string> output_names{"Y"};
+  std::vector<OrtValue> fetches;
+
+  RunOptions run_options;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session_object.Run(run_options, feeds, output_names, &fetches),
+                                      "Unexpected input data type");
+}
+
+TEST(InferenceSessionTests, RunWithWrongInputRankReturnsError) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.RunWithWrongInputRankReturnsError";
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // Model input "X" has rank 2; feed a rank-1 tensor to trigger the rank check (CheckShapes).
+  std::vector<int64_t> bad_dims = {6};
+  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], bad_dims, values_x, &ml_value);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value));
+  std::vector<std::string> output_names{"Y"};
+  std::vector<OrtValue> fetches;
+
+  RunOptions run_options;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session_object.Run(run_options, feeds, output_names, &fetches),
+                                      "Invalid rank for input");
+}
+
+TEST(InferenceSessionTests, RunWithMismatchedFeedCountReturnsError) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.RunWithMismatchedFeedCountReturnsError";
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  std::vector<int64_t> dims_x = {3, 2};
+  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &ml_value);
+
+  // Two feed names but only one feed value -> count-mismatch branch in ValidateInputsOutputs.
+  std::vector<std::string> feed_names{"X", "X"};
+  std::vector<OrtValue> feeds{ml_value};
+  std::vector<std::string> output_names{"Y"};
+  std::vector<OrtValue> fetches;
+
+  RunOptions run_options;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session_object.Run(run_options, feed_names, feeds, output_names, &fetches),
+                                      "feed names has");
+}
+
+TEST(InferenceSessionTests, InitializeBeforeLoadReturnsError) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.InitializeBeforeLoadReturnsError";
+  InferenceSession session_object{so, GetEnvironment()};
+  // Initialize() without a prior successful Load().
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session_object.Initialize(), "Model was not loaded");
+}
+
+TEST(InferenceSessionTests, LoadNonexistentModelReturnsError) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.LoadNonexistentModelReturnsError";
+  InferenceSession session_object{so, GetEnvironment()};
+  // Loading a path that does not exist must fail gracefully (return an error, not crash).
+  ASSERT_FALSE(session_object.Load(ORT_TSTR("testdata/this_model_does_not_exist.onnx")).IsOK());
+}
+
+TEST(InferenceSessionTests, RunWithWrongOutputTypeReturnsError) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.RunWithWrongOutputTypeReturnsError";
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  std::vector<int64_t> dims_x = {3, 2};
+  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue x_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &x_value);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", x_value));
+
+  // Pre-allocate the fetch for float output "Y" as int32 to trigger the output type check.
+  std::vector<std::string> output_names{"Y"};
+  std::vector<OrtValue> fetches;
+  fetches.resize(1);
+  AllocateMLValue<int32_t>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, &fetches[0]);
+
+  RunOptions run_options;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session_object.Run(run_options, feeds, output_names, &fetches),
+                                      "Unexpected output data type");
+}
+
 TEST(InferenceSessionTests, CheckRunLogger) {
   if constexpr (!SessionOptions::DEFAULT_USE_PER_SESSION_THREADS) {
     GTEST_SKIP() << "Skipping the test";

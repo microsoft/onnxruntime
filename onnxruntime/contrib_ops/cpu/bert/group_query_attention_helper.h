@@ -415,6 +415,12 @@ Status CheckCustomAttentionInputs(const T* position_ids,
 
   if (attention_bias != nullptr) {
     const auto& attn_bias_shape = attention_bias->Shape();
+    // TensorShape::operator[] is unchecked — validate the rank before indexing dims.
+    if (attn_bias_shape.NumDimensions() != 4) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "attention_bias must be a 4D tensor, got ", attn_bias_shape.NumDimensions(),
+                             " dimensions");
+    }
     if ((attn_bias_shape[0] != parameters.batch_size) && (attn_bias_shape[0] != 1)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "attention_bias dimension 0 must be equal to the batch size or 1, got ", attn_bias_shape[0]);

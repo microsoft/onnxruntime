@@ -4,7 +4,7 @@ parameters:
 
 - name: python_version
   type: string
-  
+
 - name: cmake_build_type
   type: string
   default: 'Release'
@@ -37,16 +37,13 @@ jobs:
   variables:
   - name: MACOSX_DEPLOYMENT_TARGET
     value: '14.0'
-        
+
   steps:
   - checkout: self
     clean: true
     submodules: none
 
   - template: use-xcode-version.yml
-    parameters:
-      xcodeVersion: '16.4'
-
 
   - template: setup-build-tools.yml
     parameters:
@@ -65,7 +62,7 @@ jobs:
         --build_wheel \
         --use_coreml ${{ parameters.extra_build_arg }} \
         --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=${{ parameters.arch }} \
-        --update --skip_submodule_sync --build --parallel
+        --update --skip_submodule_sync --build --parallel --use_telemetry
       python -m pip install --upgrade delocate
       cd '$(Build.SourcesDirectory)/build/Release/dist'
       ls

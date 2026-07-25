@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <memory>
+
 #include "core/providers/common.h"
 #include "core/providers/webgpu/math/binary_elementwise_ops.h"
 #include "core/providers/webgpu/math/binary_elementwise_broadcast_utils.h"
@@ -23,22 +25,50 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size");
 
+  if (is_int64_input_ || is_int64_output_) {
+    // INT64 input or output (component=1): declare shared base and element_count for use in the shader.
+    shader.MainFunctionBody()
+        << "let base = global_idx * 4u;\n"
+        << "let element_count = uniforms.element_count;\n";
+  }
+
   // check whether can use element-wise mode.
   // If either A or B is scalar, or A and B have the same shape, element-wise mode can be used.
   // In element-wise mode, no indices calculation is needed.
   if (is_lhs_scalar_ || is_rhs_scalar_ || !is_broadcast_) {
-    // get A data
-    if (is_lhs_scalar_) {
-      shader.MainFunctionBody() << "let a = input_a_value_t(" << a.GetByOffset("0") << ".x);\n";
+    if (is_int64_input_) {
+      // INT64 inputs have component=1; read 4 individual elements into vec4 for uniform processing.
+      // Guard lanes 1-3 against OOB reads when size is not divisible by 4.
+      const auto a_offset = [&](const std::string& idx) {
+        return is_lhs_scalar_ ? a.GetByOffset("0") : a.GetByOffset(idx);
+      };
+      const auto b_offset = [&](const std::string& idx) {
+        return is_rhs_scalar_ ? b.GetByOffset("0") : b.GetByOffset(idx);
+      };
+      shader.MainFunctionBody()
+          << "var a0 = " << a_offset("base") << ";\n"
+          << "var b0 = " << b_offset("base") << ";\n"
+          << "var a1 = input_a_value_t(0); var a2 = input_a_value_t(0); var a3 = input_a_value_t(0);\n"
+          << "var b1 = input_b_value_t(0); var b2 = input_b_value_t(0); var b3 = input_b_value_t(0);\n"
+          << "if (base + 1u < element_count) { a1 = " << a_offset("base + 1u") << "; b1 = " << b_offset("base + 1u") << "; }\n"
+          << "if (base + 2u < element_count) { a2 = " << a_offset("base + 2u") << "; b2 = " << b_offset("base + 2u") << "; }\n"
+          << "if (base + 3u < element_count) { a3 = " << a_offset("base + 3u") << "; b3 = " << b_offset("base + 3u") << "; }\n"
+          << "let a = vec4<input_a_value_t>(a0, a1, a2, a3);\n"
+          << "let b = vec4<input_b_value_t>(b0, b1, b2, b3);\n";
     } else {
-      shader.MainFunctionBody() << "let a = " << a.GetByOffset("global_idx") << ";\n";
-    }
+      // get A data
+      if (is_lhs_scalar_) {
+        shader.MainFunctionBody() << "let a = input_a_value_t(" << a.GetByOffset("0") << ".x);\n";
+      } else {
+        shader.MainFunctionBody() << "let a = " << a.GetByOffset("global_idx") << ";\n";
+      }
 
-    // get B data
-    if (is_rhs_scalar_) {
-      shader.MainFunctionBody() << "let b = input_b_value_t(" << b.GetByOffset("0") << ".x);\n";
-    } else {
-      shader.MainFunctionBody() << "let b = " << b.GetByOffset("global_idx") << ";\n";
+      // get B data
+      if (is_rhs_scalar_) {
+        shader.MainFunctionBody() << "let b = input_b_value_t(" << b.GetByOffset("0") << ".x);\n";
+      } else {
+        shader.MainFunctionBody() << "let b = " << b.GetByOffset("global_idx") << ";\n";
+      }
     }
   } else {
     const auto& c_indices = shader.AddIndices("bcast_indices");
@@ -117,7 +147,17 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
     }
   }
 
-  shader.MainFunctionBody() << c.SetByOffset("global_idx", expression_);
+  if (is_int64_output_) {
+    // INT64 output (component=1): write each component of the vec4 result individually.
+    shader.MainFunctionBody()
+        << "let result = " << expression_ << ";\n"
+        << c.SetByOffset("base", "result[0]") << "\n"
+        << "if (base + 1u < element_count) { " << c.SetByOffset("base + 1u", "result[1]") << " }\n"
+        << "if (base + 2u < element_count) { " << c.SetByOffset("base + 2u", "result[2]") << " }\n"
+        << "if (base + 3u < element_count) { " << c.SetByOffset("base + 3u", "result[3]") << " }\n";
+  } else {
+    shader.MainFunctionBody() << c.SetByOffset("global_idx", expression_);
+  }
   return Status::OK();
 }
 
@@ -145,12 +185,17 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
   bool is_lhs_bool = lhs_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
   bool is_rhs_bool = rhs_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
 
-  bool vectorize = is_lhs_scalar || is_rhs_scalar || !is_broadcast;
+  // INT64 has no vec4 representation in WebGPU (stored as vec2<u32>), so disable vectorization.
+  bool is_lhs_int64 = lhs_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+  bool is_rhs_int64 = rhs_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+  bool is_int64_input = is_lhs_int64 || is_rhs_int64;
+
+  bool vectorize = !is_int64_input && (is_lhs_scalar || is_rhs_scalar || !is_broadcast);
   bool a_last_dim_divisible_by_4 = false;
   bool b_last_dim_divisible_by_4 = false;
   bool shared_dimension_divisible_by_4 = false;
   size_t num_shared_dimension = 0;
-  if (!vectorize) {
+  if (!is_int64_input && !vectorize) {
     // check whether vectorize can be enabled
     a_last_dim_divisible_by_4 = lhs_shape.NumDimensions() > 0 && lhs_shape[lhs_shape.NumDimensions() - 1] % 4 == 0;
     b_last_dim_divisible_by_4 = rhs_shape.NumDimensions() > 0 && rhs_shape[rhs_shape.NumDimensions() - 1] % 4 == 0;
@@ -167,7 +212,10 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     }
   }
 
+  bool is_int64_output = output_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
   uint32_t vec_size = onnxruntime::narrow<uint32_t>((size + 3) / 4);
+  int output_component = is_int64_output ? 1 : 4;
+  uint32_t output_size = is_int64_output ? onnxruntime::narrow<uint32_t>(size) : vec_size;
 
   std::string additional_impl;
   if (get_additional_impl_) {
@@ -182,20 +230,23 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
                                    is_rhs_scalar,
                                    shared_dimension_divisible_by_4 || a_last_dim_divisible_by_4,
                                    shared_dimension_divisible_by_4 || b_last_dim_divisible_by_4,
-                                   vectorize};
+                                   vectorize,
+                                   is_int64_input,
+                                   is_int64_output};
   program
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
           {static_cast<uint32_t>(vec_size)},
+          {static_cast<uint32_t>(size)},
       })
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4});
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, {output_size}, output_component});
 
   if (is_lhs_scalar || is_rhs_scalar || !is_broadcast) {
     // Mode Element-wise
     // cache hint: "E{is_a_scalar}{is_b_scalar}"
     program
-        .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4},
-                    {rhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
+        .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, is_int64_input ? 1 : 4},
+                    {rhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, is_int64_input ? 1 : 4}})
         .CacheHint("E" + std::to_string(is_lhs_scalar) + std::to_string(is_rhs_scalar));
   } else if (vectorize) {
     // reshape the dims to merge the shared dimension if available
@@ -306,9 +357,47 @@ WEBGPU_BINARY_VERSIONED_KERNEL(Mul, 13, 13, Mul, WebGpuSupportedNumberTypes())
 WEBGPU_BINARY_KERNEL(Mul, 14, Mul, WebGpuSupportedNumberTypes())
 
 WEBGPU_BINARY_IMPL(Sub, "a - b")
-WEBGPU_BINARY_VERSIONED_KERNEL(Sub, 7, 12, Sub, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_VERSIONED_KERNEL(Sub, 13, 13, Sub, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_KERNEL(Sub, 14, Sub, WebGpuSupportedNumberTypes())
+
+// NOTE: int64 arithmetic in the WebGPU shader operates on the low 32 bits only (i32 element type).
+// Values outside the int32 range [-2^31, 2^31-1] will produce incorrect results.
+// This matches the same limitation documented in Range and is acceptable for token-position workloads.
+template <int StartVersion, int EndVersion>
+KernelCreateInfo CreateSubVersionedKernelInfo(bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Sub>(info);
+    return Status::OK();
+  };
+  return {KernelDefBuilder()
+              .SetName("Sub")
+              .SetDomain(kOnnxDomain)
+              .SinceVersion(StartVersion, EndVersion)
+              .Provider(kWebGpuExecutionProvider)
+              .TypeConstraint("T", type_constraints)
+              .Build(),
+          kernel_create_fn};
+}
+
+template <int SinceVersion>
+KernelCreateInfo CreateSubKernelInfo(bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Sub>(info);
+    return Status::OK();
+  };
+  return {KernelDefBuilder()
+              .SetName("Sub")
+              .SetDomain(kOnnxDomain)
+              .SinceVersion(SinceVersion)
+              .Provider(kWebGpuExecutionProvider)
+              .TypeConstraint("T", type_constraints)
+              .Build(),
+          kernel_create_fn};
+}
+
+template KernelCreateInfo CreateSubVersionedKernelInfo<7, 12>(bool);
+template KernelCreateInfo CreateSubVersionedKernelInfo<13, 13>(bool);
+template KernelCreateInfo CreateSubKernelInfo<14>(bool);
 
 std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
   SS(s, 1024);
@@ -350,10 +439,47 @@ WEBGPU_BINARY_VERSIONED_KERNEL_2(Pow, 13, 14, Pow, WebGpuSupportedNumberTypes(),
 WEBGPU_BINARY_KERNEL_2(Pow, 15, Pow, WebGpuSupportedNumberTypes(), WebGpuSupportedNumberTypes())
 
 WEBGPU_BINARY_IMPL(Equal, "vec4<u32>(vec4<input_a_element_t>(a) == vec4<input_b_element_t>(b))")
-WEBGPU_BINARY_VERSIONED_KERNEL(Equal, 7, 10, Equal, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_VERSIONED_KERNEL(Equal, 11, 12, Equal, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_VERSIONED_KERNEL(Equal, 13, 18, Equal, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_KERNEL(Equal, 19, Equal, WebGpuSupportedNumberTypes())
+
+// NOTE: int64 comparison in the WebGPU shader uses i32 element type (low 32 bits only).
+// Values outside the int32 range will produce incorrect results.
+template <int StartVersion, int EndVersion>
+KernelCreateInfo CreateEqualVersionedKernelInfo(bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Equal>(info);
+    return Status::OK();
+  };
+  return {KernelDefBuilder()
+              .SetName("Equal")
+              .SetDomain(kOnnxDomain)
+              .SinceVersion(StartVersion, EndVersion)
+              .Provider(kWebGpuExecutionProvider)
+              .TypeConstraint("T", type_constraints)
+              .Build(),
+          kernel_create_fn};
+}
+
+template <int SinceVersion>
+KernelCreateInfo CreateEqualKernelInfo(bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Equal>(info);
+    return Status::OK();
+  };
+  return {KernelDefBuilder()
+              .SetName("Equal")
+              .SetDomain(kOnnxDomain)
+              .SinceVersion(SinceVersion)
+              .Provider(kWebGpuExecutionProvider)
+              .TypeConstraint("T", type_constraints)
+              .Build(),
+          kernel_create_fn};
+}
+
+template KernelCreateInfo CreateEqualVersionedKernelInfo<7, 10>(bool);
+template KernelCreateInfo CreateEqualVersionedKernelInfo<11, 12>(bool);
+template KernelCreateInfo CreateEqualVersionedKernelInfo<13, 18>(bool);
+template KernelCreateInfo CreateEqualKernelInfo<19>(bool);
 
 WEBGPU_BINARY_IMPL(Greater, "vec4<u32>(vec4<input_a_element_t>(a) > vec4<input_b_element_t>(b))")
 WEBGPU_BINARY_VERSIONED_KERNEL(Greater, 7, 8, Greater, WebGpuSupportedNumberTypes())

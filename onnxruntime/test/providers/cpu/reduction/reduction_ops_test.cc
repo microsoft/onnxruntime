@@ -13,6 +13,10 @@
 #include "core/providers/cpu/reduction/reduction_ops.h"
 #include "test/util/include/default_providers.h"
 
+#ifdef USE_WEBGPU
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#endif
+
 namespace onnxruntime {
 namespace test {
 
@@ -2858,6 +2862,31 @@ TEST(ReductionOpTest, ReduceSum_int64) {
   test.AddOutput<int64_t>("reduced", {1, 2, 1}, {33, 45});
   test.Run();
 }
+
+#if defined(USE_CUDA)
+TEST(ReductionOpTest, ReduceSum_int64_omitted_optional_axes) {
+  OpTester test("ReduceSum", 13, onnxruntime::kOnnxDomain);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<int64_t>("data", {3}, {1, 2, 3});
+  test.AddOptionalInputEdge<int64_t>();
+  test.AddOutput<int64_t>("reduced", {}, {6});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ReductionOpTest, ReduceSum_int64_cancellation) {
+  OpTester test("ReduceSum", 13, onnxruntime::kOnnxDomain);
+  test.AddAttribute("keepdims", (int64_t)0);
+  const int64_t large = int64_t{1} << 53;
+  test.AddInput<int64_t>("data", {3}, {large, 1, -large});
+  test.AddInput<int64_t>("axes", {1}, {0});
+  test.AddOutput<int64_t>("reduced", {}, {1});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
 
 TEST(ReductionOpTest, ReduceSum_default_axes_keepdims) {
   OpTester test("ReduceSum");
@@ -6990,6 +7019,33 @@ TEST(ReductionOpTest, ReduceProd_EmptySet_DefaultAxes_KeepDims) {
             kMIGraphXExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider,
             kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
+
+#ifdef USE_WEBGPU
+TEST(ReductionOpTest, ReduceSum_WebGpu_EnableInt64) {
+  OpTester test("ReduceSum", 13);
+  test.AddInput<int64_t>("data", {3}, {10, 20, 30});
+  test.AddInput<int64_t>("axes", {1}, {0}, true);
+  test.AddOutput<int64_t>("reduced", {1}, {60});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Size divisible by 4: catches issues if the shader is ever accidentally vectorized for INT64.
+TEST(ReductionOpTest, ReduceSum_WebGpu_EnableInt64_SizeDiv4) {
+  OpTester test("ReduceSum", 13);
+  test.AddInput<int64_t>("data", {4}, {10, 20, 30, 40});
+  test.AddInput<int64_t>("axes", {1}, {0}, true);
+  test.AddOutput<int64_t>("reduced", {1}, {100});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -56,6 +56,19 @@ jobs:
     parameters:
       QnnSDKVersion: ${{ parameters.QnnSdk }}
 
+  # onnx (pinned to cmake/deps.txt) + numpy (pinned to requirements.txt, python-conditional) are
+  # required on the HOST at configure time by the onnxruntime_MATERIALIZE_ONNX_NODE_TESTS gate,
+  # which regenerates the onnx node-test corpus into the build tree
+  # (build_qnn/Release/onnx_node_tests/node) consumed below. The numpy markers self-select the
+  # same pin the CMake gate asserts.
+  # --user: this leg runs on a bare non-root Ubuntu agent (system python3, no venv); a plain
+  # install would write /usr/local/bin/f2py -> Permission denied. --user targets ~/.local for the
+  # same agent user, which the configure-time `import onnx` (same python3) resolves. (The two
+  # Windows QNN legs omit --user: their Python Scripts dir is writable.)
+  - script: |
+      python3 -m pip install --user onnx==1.22.0 "numpy==2.2.6; python_version<'3.11'" "numpy==2.4.2; python_version>='3.11'"
+    displayName: Install onnx for node-test materialization
+
   - script: |
       set -e -x
       python3 tools/ci_build/build.py \
@@ -71,12 +84,13 @@ jobs:
         --use_qnn static_lib \
         --qnn_home $(QnnSDKRootDir) \
         --cmake_generator=Ninja \
+        --cmake_extra_defines onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON \
         --skip_tests
     displayName: Build QNN EP
 
   - script: |
       mkdir -p build_qnn/Release/testdata/QNN/node_tests
-      cp -r cmake/external/onnx/onnx/backend/test/data/node/test_basic_conv_with_padding build_qnn/Release/testdata/QNN/node_tests
+      cp -r build_qnn/Release/onnx_node_tests/node/test_basic_conv_with_padding build_qnn/Release/testdata/QNN/node_tests
     displayName: Initialize test directories
 
   # This is commented out for now. The emulator runs correctly, onnx_test_runner is executable, and the test passes

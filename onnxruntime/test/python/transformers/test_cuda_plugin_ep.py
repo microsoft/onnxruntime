@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 import unittest
+from contextlib import contextmanager
 
 import numpy as np
 import torch
@@ -105,6 +106,42 @@ def is_cuda_mempool_unsupported_error(exc: Exception) -> bool:
     )
 
 
+# The fpA_intB MatMulNBits pre-pack path (which triggers the EP-provided allocator use this test
+# guards) requires a compute capability >= 7.5 (Turing) device; see MatMulNBits::MatMulNBits.
+FPA_INTB_MIN_COMPUTE_CAPABILITY = (7, 5)
+
+
+def get_cuda_compute_capability(device):
+    """Return the device (major, minor) CUDA compute capability from plugin EP metadata, or None."""
+    value = device.ep_metadata.get("cuda_compute_capability")
+    if not value:
+        return None
+    try:
+        major_str, _, minor_str = value.partition(".")
+        return (int(major_str), int(minor_str))
+    except (TypeError, ValueError):
+        return None
+
+
+def is_fpa_intb_unsupported_error(exc: Exception) -> bool:
+    """True if the error indicates the fpA_intB MatMulNBits path is unsupported for this device/config."""
+    message = str(exc)
+    return "fpA_intB" in message
+
+
+@contextmanager
+def scoped_env(name: str, value: str):
+    old_value = os.environ.get(name)
+    os.environ[name] = value
+    try:
+        yield
+    finally:
+        if old_value is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = old_value
+
+
 def _create_session_options(session_config=None):
     sess_options = onnxrt.SessionOptions()
     if session_config:
@@ -114,6 +151,24 @@ def _create_session_options(session_config=None):
     # Require graph-assignment data so the tests validate that nodes actually run on the plugin.
     sess_options.add_session_config_entry(EP_GRAPH_ASSIGNMENT_CONFIG_KEY, "1")
     return sess_options
+
+
+class _CudaOrtValueBinding:
+    def __init__(self, shape, dtype, device_id):
+        if dtype != np.float32:
+            raise TypeError(f"Unsupported CUDA graph binding dtype: {dtype}")
+
+        self._dtype = np.float32
+        # Allocate a GPU-backed OrtValue with a stable device address so CUDA graph
+        # capture/replay can reuse the same memory across runs.
+        self.ort_value = onnxrt.OrtValue.ortvalue_from_shape_and_type(list(shape), self._dtype, "cuda", device_id)
+
+    def update_inplace(self, data):
+        # Copy host data into the existing GPU buffer without changing its address.
+        self.ort_value.update_inplace(np.ascontiguousarray(data, dtype=self._dtype))
+
+    def numpy(self):
+        return self.ort_value.numpy()
 
 
 def _format_assigned_node(node):
@@ -199,6 +254,52 @@ def create_gemm_model(model_path, alpha=1.0, beta=1.0, transA=0, transB=0):
         [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [m, n])],
     )
     model_def = _make_released_opset_model(graph_def)
+    save(model_def, model_path)
+
+
+def create_matmul_nbits_model(model_path, k=64, n=64, bits=4, block_size=32):
+    # Create a MatMulNBits (com.microsoft) model with a runtime-prepacked (weight_prepacked=0)
+    # fp16 quantized weight. During session initialization the CUDA kernel pre-packs the constant
+    # weight via MatMulNBits::PrePack_B, which allocates scratch through the EP-provided allocator
+    # (IAllocator::MakeUniquePtr(alloc, ...)). This is a regression guard: the CUDA-EP-as-plugin
+    # adapter previously forwarded a null allocator into PrePack, so this model crashed at session
+    # creation with "IAllocator::ValidateAllocator ... allocator != nullptr was false".
+    k_blocks = (k + block_size - 1) // block_size
+    blob_size = block_size * bits // 8
+
+    # Deterministic quantized weight and positive scales. Exact numerics are not asserted here;
+    # the test only requires that pre-packing runs (and no longer crashes) end to end.
+    b = np.full((n, k_blocks, blob_size), 0x88, dtype=np.uint8)
+    scales = np.full((n, k_blocks), 0.02, dtype=np.float16)
+
+    node_def = helper.make_node(
+        "MatMulNBits",
+        ["A", "B", "scales"],
+        ["Y"],
+        domain="com.microsoft",
+        K=k,
+        N=n,
+        bits=bits,
+        block_size=block_size,
+        weight_prepacked=0,
+    )
+    graph_def = helper.make_graph(
+        [node_def],
+        "test-model-matmulnbits",
+        [helper.make_tensor_value_info("A", TensorProto.FLOAT16, [2, k])],
+        [helper.make_tensor_value_info("Y", TensorProto.FLOAT16, [2, n])],
+        initializer=[
+            helper.make_tensor("B", TensorProto.UINT8, b.shape, b.tobytes(), raw=True),
+            helper.make_tensor("scales", TensorProto.FLOAT16, scales.shape, scales.tobytes(), raw=True),
+        ],
+    )
+    opset_onnx = OperatorSetIdProto()
+    opset_onnx.version = 21
+    opset_ms = OperatorSetIdProto()
+    opset_ms.domain = "com.microsoft"
+    opset_ms.version = 1
+    model_def = helper.make_model(graph_def, producer_name="onnx-example", opset_imports=[opset_onnx, opset_ms])
+    model_def.ir_version = 10
     save(model_def, model_path)
 
 
@@ -392,8 +493,21 @@ def run_provider_options_test(provider_options, expect_plugin_provider=True):
         model_path = tmp.name
     try:
         create_add_model(model_path)
-        providers = [(CUDA_PLUGIN_EP_NAME, _plugin_provider_options(provider_options)), "CPUExecutionProvider"]
-        sess = onnxrt.InferenceSession(model_path, sess_options=_create_session_options(), providers=providers)
+        sess_options = _create_session_options()
+        if expect_plugin_provider:
+            target_device = get_cuda_plugin_device_by_id(int(provider_options.get("device_id", "0")))
+            sess_options.add_provider_for_devices([target_device], _plugin_provider_options(provider_options))
+            sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+        else:
+            try:
+                target_device = get_cuda_plugin_device_by_id(int(provider_options.get("device_id", "0")))
+            except unittest.SkipTest:
+                sess = onnxrt.InferenceSession(
+                    model_path, sess_options=sess_options, providers=["CPUExecutionProvider"]
+                )
+            else:
+                sess_options.add_provider_for_devices([target_device], _plugin_provider_options(provider_options))
+                sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
         active_providers = sess.get_providers()
         assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
 
@@ -422,6 +536,39 @@ def run_provider_options_test(provider_options, expect_plugin_provider=True):
 
         print(f"Expected failure for provider options {provider_options}: {e}")
         return True
+    finally:
+        if os.path.exists(model_path):
+            os.remove(model_path)
+
+
+def run_auto_registered_provider_options_test(provider_options):
+    require_cuda_plugin_ep()
+
+    with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+        model_path = tmp.name
+    try:
+        create_add_model(model_path)
+        sess_options = _create_session_options()
+        providers = [(CUDA_PLUGIN_EP_NAME, _plugin_provider_options(provider_options)), "CPUExecutionProvider"]
+        sess = onnxrt.InferenceSession(model_path, sess_options=sess_options, providers=providers)
+
+        active_providers = sess.get_providers()
+        assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+        if not assigned_nodes:
+            print(
+                f"FAILURE: {CUDA_PLUGIN_EP_NAME} was assigned no nodes. Providers: {active_providers}. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}"
+            )
+            return False
+
+        a = np.random.rand(3, 2).astype(np.float32)
+        b = np.random.rand(3, 2).astype(np.float32)
+        res = sess.run(None, {"A": a, "B": b})
+        np.testing.assert_allclose(res[0], a + b, rtol=1e-3, atol=1e-3)
+        return True
+    except Exception as e:
+        print(f"FAIL ({e})")
+        return False
     finally:
         if os.path.exists(model_path):
             os.remove(model_path)
@@ -655,11 +802,74 @@ class TestCudaPluginEP(unittest.TestCase):
         result = run_operator_test(target_device, create_conv_model, inputs, _expected_conv)
         self.assertTrue(result, "Conv plugin registration test failed")
 
+    def test_registration_matmul_nbits_prepack(self):
+        # Regression guard for the CUDA-EP-as-plugin pre-pack allocator bug: a fp16 MatMulNBits
+        # weight is pre-packed during session initialization, which allocates scratch through the
+        # EP-provided allocator. The plugin op-kernel adapter previously forwarded a null allocator
+        # into PrePack, crashing session creation with an IAllocator::ValidateAllocator failure.
+        target_device = get_cuda_plugin_device()
+
+        # The fpA_intB pre-pack path only runs on SM >= 7.5. Skip deterministically on older GPUs
+        # so the test does not silently pass without exercising the allocator-forwarding path.
+        compute_capability = get_cuda_compute_capability(target_device)
+        if compute_capability is None:
+            self.skipTest("CUDA plugin EP device metadata did not include cuda_compute_capability")
+        if compute_capability < FPA_INTB_MIN_COMPUTE_CAPABILITY:
+            self.skipTest(
+                "MatMulNBits fpA_intB pre-pack requires compute capability >= 7.5, but device reports "
+                f"{compute_capability[0]}.{compute_capability[1]}"
+            )
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            create_matmul_nbits_model(model_path)
+            sess_options = _create_session_options()
+            sess_options.add_provider_for_devices([target_device], _plugin_provider_options())
+
+            # Force the fpA_intB path so weight pre-packing (MatMulNBits::PrePack_B) runs during
+            # session creation, which is where the null-allocator crash used to happen. Given the
+            # deterministic capability check above, session creation is expected to succeed, so any
+            # exception here (including the "allocator != nullptr" assertion) is a genuine regression
+            # and is deliberately propagated instead of skipped.
+            with scoped_env("ORT_FPA_INTB_GEMM", "1"):
+                sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+
+                assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+                self.assertTrue(
+                    assigned_nodes,
+                    f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                    f"Assignments: {_format_assignment_summary(assignment_info)}",
+                )
+
+                a = np.random.rand(2, 64).astype(np.float16)
+                # Some devices/configs may still lack a valid fpA_intB tactic at runtime; skip only
+                # for that known-unsupported case and re-raise anything else so real regressions
+                # (e.g. incorrect kernels or the allocator assertion) are not hidden.
+                try:
+                    res = sess.run(None, {"A": a})
+                except Exception as exc:
+                    if is_fpa_intb_unsupported_error(exc):
+                        self.skipTest(f"fpA_intB MatMulNBits not supported on this device: {exc}")
+                    raise
+                self.assertEqual(res[0].shape, (2, 64))
+                self.assertTrue(np.isfinite(res[0].astype(np.float32)).all(), "MatMulNBits produced non-finite output")
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
+
     # ---- Provider options tests ----
 
     def test_provider_options_valid(self):
         result = run_provider_options_test({"device_id": "0", "use_tf32": "0"}, expect_plugin_provider=True)
         self.assertTrue(result, "Provider options with valid device_id/use_tf32 failed")
+
+    @requires_cudnn
+    def test_auto_registered_provider_options_valid(self):
+        result = run_auto_registered_provider_options_test(
+            {"device_id": "0", "ep.cuda.use_tf32": "0", "ep.cuda.prefer_nhwc_layout": "0"}
+        )
+        self.assertTrue(result, "Auto-registered provider options with prefixed CUDA options failed")
 
     def test_provider_options_invalid_device(self):
         result = run_provider_options_test({"device_id": "999"}, expect_plugin_provider=False)
@@ -676,8 +886,9 @@ class TestCudaPluginEP(unittest.TestCase):
             model_path = tmp.name
         try:
             create_add_model(model_path)
-            providers = [(CUDA_PLUGIN_EP_NAME, _plugin_provider_options({"device_id": "1"})), "CPUExecutionProvider"]
-            sess = onnxrt.InferenceSession(model_path, sess_options=_create_session_options(), providers=providers)
+            sess_options = _create_session_options()
+            sess_options.add_provider_for_devices([target_device], _plugin_provider_options({"device_id": "1"}))
+            sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
 
             active_providers = sess.get_providers()
             assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
@@ -1732,6 +1943,25 @@ class TestCudaPluginEP(unittest.TestCase):
         result = _run_model_test(target_device, "Softmax", model, feed, expected)
         self.assertEqual(result, TEST_PASS, "Softmax test failed")
 
+    def test_op_log_softmax(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "LogSoftmax",
+            [("X", TensorProto.FLOAT, [2, 5])],
+            [("Y", TensorProto.FLOAT, [2, 5])],
+            attrs={"axis": 1},
+            opset=13,
+        )
+        feed = {"X": np.random.rand(2, 5).astype(np.float32)}
+
+        def expected(f):
+            x = f["X"]
+            shifted = x - np.max(x, axis=1, keepdims=True)
+            return shifted - np.log(np.sum(np.exp(shifted), axis=1, keepdims=True))
+
+        result = _run_model_test(target_device, "LogSoftmax", model, feed, expected)
+        self.assertEqual(result, TEST_PASS, "LogSoftmax test failed")
+
     def test_op_relu(self):
         target_device = get_cuda_plugin_device()
         model = _make_simple_model(
@@ -1828,7 +2058,6 @@ class TestCudaPluginEP(unittest.TestCase):
         result = _run_model_test(target_device, "Flatten", model, feed, lambda f: f["X"].reshape(2, 12))
         self.assertEqual(result, TEST_PASS, "Flatten test failed")
 
-    @requires_cudnn
     def test_op_argmax(self):
         target_device = get_cuda_plugin_device()
         model = _make_simple_model(
@@ -1843,6 +2072,21 @@ class TestCudaPluginEP(unittest.TestCase):
             target_device, "ArgMax", model, feed, lambda f: np.argmax(f["X"], axis=1).reshape(3, 1)
         )
         self.assertEqual(result, TEST_PASS, "ArgMax test failed")
+
+    def test_op_argmin(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "ArgMin",
+            [("X", TensorProto.FLOAT, [3, 5])],
+            [("Y", TensorProto.INT64, [3, 1])],
+            attrs={"axis": 1, "keepdims": 1},
+            opset=13,
+        )
+        feed = {"X": np.random.rand(3, 5).astype(np.float32)}
+        result = _run_model_test(
+            target_device, "ArgMin", model, feed, lambda f: np.argmin(f["X"], axis=1).reshape(3, 1)
+        )
+        self.assertEqual(result, TEST_PASS, "ArgMin test failed")
 
     def test_op_topk(self):
         target_device = get_cuda_plugin_device()
@@ -1958,23 +2202,21 @@ class TestCudaPluginEP(unittest.TestCase):
         result = _run_model_test(target_device, "ConvTranspose", model, feed, expected)
         self.assertEqual(result, TEST_PASS, "ConvTranspose test failed")
 
-    @requires_cudnn
     def test_op_reduce_mean(self):
         target_device = get_cuda_plugin_device()
         model = _make_simple_model(
             "ReduceMean",
             [("X", TensorProto.FLOAT, [3, 4, 5])],
-            [("Y", TensorProto.FLOAT, [3, 1, 5])],
-            attrs={"axes": [1], "keepdims": 1},
+            [("Y", TensorProto.FLOAT, [3, 4, 1])],
+            attrs={"axes": [2], "keepdims": 1},
             opset=13,
         )
         feed = {"X": np.random.rand(3, 4, 5).astype(np.float32)}
         result = _run_model_test(
-            target_device, "ReduceMean", model, feed, lambda f: np.mean(f["X"], axis=1, keepdims=True)
+            target_device, "ReduceMean", model, feed, lambda f: np.mean(f["X"], axis=2, keepdims=True)
         )
         self.assertEqual(result, TEST_PASS, "ReduceMean test failed")
 
-    @requires_cudnn
     def test_op_reduce_sum(self):
         target_device = get_cuda_plugin_device()
         model = _make_simple_model(
@@ -1991,6 +2233,32 @@ class TestCudaPluginEP(unittest.TestCase):
             target_device, "ReduceSum", model, feed, lambda f: np.sum(f["X"], axis=1, keepdims=True)
         )
         self.assertEqual(result, TEST_PASS, "ReduceSum test failed")
+
+    def _run_reduce_sum_integer_last_axis(self, onnx_dtype, np_dtype):
+        # Mirrors the qwen attention_mask usage: a rank-2 integer ReduceSum over the last axis.
+        # Integer ReduceSum takes a specialized path that does not use the float matrix fast path,
+        # so without cuDNN it must fall back to the general native kernel. Covering it here keeps the
+        # no-cuDNN CI honest for the exact layout that broke real models.
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "ReduceSum",
+            [("X", onnx_dtype, [2, 8]), ("axes", TensorProto.INT64, [1])],
+            [("Y", onnx_dtype, [2, 1])],
+            attrs={"keepdims": 1},
+            opset=13,
+        )
+        axes_init = helper.make_tensor("axes", TensorProto.INT64, [1], [1])
+        model.graph.initializer.append(axes_init)
+        feed = {"X": np.arange(16, dtype=np_dtype).reshape(2, 8)}
+        return _run_model_test(target_device, "ReduceSum", model, feed, lambda f: np.sum(f["X"], axis=1, keepdims=True))
+
+    def test_op_reduce_sum_int64_last_axis(self):
+        result = self._run_reduce_sum_integer_last_axis(TensorProto.INT64, np.int64)
+        self.assertEqual(result, TEST_PASS, "ReduceSum int64 test failed")
+
+    def test_op_reduce_sum_int32_last_axis(self):
+        result = self._run_reduce_sum_integer_last_axis(TensorProto.INT32, np.int32)
+        self.assertEqual(result, TEST_PASS, "ReduceSum int32 test failed")
 
     def test_op_gather_nd(self):
         target_device = get_cuda_plugin_device()
@@ -2320,13 +2588,14 @@ class TestCudaPluginEP(unittest.TestCase):
     def _create_cuda_graph_session(self, model_path, extra_session_config=None, provider_options=None):
         """Create a session with CUDA graph capture enabled for the plugin EP."""
         sess_options = _create_session_options()
-        sess_options.add_session_config_entry("ep.cudapluginexecutionprovider.enable_cuda_graph", "1")
+        sess_options.add_session_config_entry("ep.cuda.enable_cuda_graph", "1")
         if extra_session_config:
             for key, value in extra_session_config.items():
                 sess_options.add_session_config_entry(key, value)
         provider_options = _plugin_provider_options({"enable_cuda_graph": "1", **(provider_options or {})})
-        providers = [(CUDA_PLUGIN_EP_NAME, provider_options), "CPUExecutionProvider"]
-        return onnxrt.InferenceSession(model_path, sess_options=sess_options, providers=providers)
+        target_device = get_cuda_plugin_device_by_id(int(provider_options.get("device_id", "0")))
+        sess_options.add_provider_for_devices([target_device], provider_options)
+        return onnxrt.InferenceSession(model_path, sess_options=sess_options)
 
     def _setup_cuda_graph_io(self, session, input_shapes, output_shapes, device_id=0):
         """Pre-allocate GPU OrtValues and set up IOBinding for graph capture."""
@@ -2336,15 +2605,15 @@ class TestCudaPluginEP(unittest.TestCase):
 
         for inp in session.get_inputs():
             shape = input_shapes[inp.name]
-            ort_value = onnxrt.OrtValue.ortvalue_from_shape_and_type(shape, np.float32, "cuda", device_id)
-            input_ort_values[inp.name] = ort_value
-            io_binding.bind_ortvalue_input(inp.name, ort_value)
+            binding = _CudaOrtValueBinding(shape, np.float32, device_id)
+            input_ort_values[inp.name] = binding
+            io_binding.bind_ortvalue_input(inp.name, binding.ort_value)
 
         for out in session.get_outputs():
             shape = output_shapes[out.name]
-            ort_value = onnxrt.OrtValue.ortvalue_from_shape_and_type(shape, np.float32, "cuda", device_id)
-            output_ort_values[out.name] = ort_value
-            io_binding.bind_ortvalue_output(out.name, ort_value)
+            binding = _CudaOrtValueBinding(shape, np.float32, device_id)
+            output_ort_values[out.name] = binding
+            io_binding.bind_ortvalue_output(out.name, binding.ort_value)
 
         return io_binding, input_ort_values, output_ort_values
 
@@ -2442,7 +2711,7 @@ class TestCudaPluginEP(unittest.TestCase):
             try:
                 session = self._create_cuda_graph_session(
                     model_path,
-                    extra_session_config={"ep.cudapluginexecutionprovider.arena.use_cuda_mempool": "1"},
+                    extra_session_config={"ep.cuda.arena.use_cuda_mempool": "1"},
                 )
             except Exception as exc:
                 if is_cuda_mempool_unsupported_error(exc):

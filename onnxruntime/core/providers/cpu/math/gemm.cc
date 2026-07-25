@@ -225,6 +225,7 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
     if (c_shape != nullptr) {
       data.Bias = c_data;
     }
+    data.BackendKernelSelectorConfig = mlas_backend_kernel_selector_config;
     MlasHalfGemmBatch(M, N, K, 1, &data, thread_pool);
     return;
   }

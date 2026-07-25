@@ -583,12 +583,10 @@ __device__ __forceinline__ void AccumulateRow(const DequantizedEight<nv_bfloat16
 // 2-wide accumulator type (half2 / bf162).
 template <class T>
 struct Acc2;
-#if (!defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530) && !defined(__HIPCC__)
 template <>
 struct Acc2<half> {
   using type = half2;
 };
-#endif
 template <>
 struct Acc2<nv_bfloat16> {
   using type = __nv_bfloat162;
@@ -603,16 +601,18 @@ struct WPack {
 
 // DequantizeEight emits [04,15,26,37] (the order of Convert8xInt4To8xHalfs); repack to natural order
 // once per column. Doing the prmt on the (CtaN) weights instead of the (CtaM) activations cuts the
-// permute count by CtaM/CtaN, which dominates at small M.
-#if (!defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530) && !defined(__HIPCC__)
+// permute count by CtaM/CtaN, which dominates at small M. The signatures are always defined so
+// MatMulFloat4BatchedKernel<half> still compiles for archs below sm_53 (e.g. sm_52); only the
+// half2-intrinsic bodies are gated, mirroring the nv_bfloat16 helpers below.
 __device__ __forceinline__ WPack<half> PackNatural(const DequantizedEight<half>& d) {
+  WPack<half> w;
+#if (!defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530) && !defined(__HIPCC__)
   uint32_t d0 = *reinterpret_cast<const uint32_t*>(&d.v[0]);
   uint32_t d1 = *reinterpret_cast<const uint32_t*>(&d.v[1]);
   uint32_t d2 = *reinterpret_cast<const uint32_t*>(&d.v[2]);
   uint32_t d3 = *reinterpret_cast<const uint32_t*>(&d.v[3]);
   constexpr uint32_t kLo = 0x5410;  // (x0,x1) of two half2 -> elements 0,1
   constexpr uint32_t kHi = 0x7632;  // (y0,y1) -> elements 4,5
-  WPack<half> w;
   uint32_t t;
   asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d0), "r"(d1), "r"(kLo));
   w.v[0] = *reinterpret_cast<half2*>(&t);
@@ -622,18 +622,24 @@ __device__ __forceinline__ WPack<half> PackNatural(const DequantizedEight<half>&
   w.v[2] = *reinterpret_cast<half2*>(&t);
   asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d2), "r"(d3), "r"(kHi));
   w.v[3] = *reinterpret_cast<half2*>(&t);
+#endif
   return w;
 }
 __device__ __forceinline__ void DotAccum(const WPack<half>& w, const half2* a4, half2& acc) {
+#if (!defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530) && !defined(__HIPCC__)
   acc = __hfma2(w.v[0], a4[0], acc);
   acc = __hfma2(w.v[1], a4[1], acc);
   acc = __hfma2(w.v[2], a4[2], acc);
   acc = __hfma2(w.v[3], a4[3], acc);
+#endif
 }
 __device__ __forceinline__ float HorizontalAdd(half2 acc) {
+#if (!defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530) && !defined(__HIPCC__)
   return static_cast<float>(acc.x) + static_cast<float>(acc.y);
-}
+#else
+  return 0.f;
 #endif
+}
 
 __device__ __forceinline__ WPack<nv_bfloat16> PackNatural(const DequantizedEight<nv_bfloat16>& d) {
   WPack<nv_bfloat16> w;

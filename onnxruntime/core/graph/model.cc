@@ -711,6 +711,19 @@ Status Model::Load(const PathString& file_path, std::shared_ptr<Model>& p_model,
   return LoadModel(file_path, p_model, local_registries, logger, options);
 }
 
+GSL_SUPPRESS(r .30)  // spurious warnings. p_model is potentially reset in the internal call to Load
+GSL_SUPPRESS(r .35)
+Status Model::Load(const PathString& file_path, const PathString& graph_model_path,
+                   std::shared_ptr<Model>& p_model,
+                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                   const logging::Logger& logger, const ModelOptions& options) {
+  const auto loader = [&graph_model_path, &p_model, local_registries, &logger, &options](int fd) {
+    return Model::Load(fd, graph_model_path, p_model, local_registries, logger, options);
+  };
+
+  return LoadModelHelper(file_path, loader);
+}
+
 Status Model::SaveWithExternalInitializers(Model& model, const std::filesystem::path& file_path,
                                            const std::filesystem::path& external_file_name,
                                            const ModelSavingOptions& save_options) {

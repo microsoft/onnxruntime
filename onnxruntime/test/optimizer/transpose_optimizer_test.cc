@@ -2334,6 +2334,172 @@ TEST(TransposeOptimizerTests, TestSliceDefaultAxesNonconstStartsUnknownLengthInt
                     /*opset_version*/ {15, 18, 23});
 }
 
+// Gather with a 0-D constant indices tensor: rank decreases by one along the gathered axis,
+// structurally identical to Squeeze. The handler should push the leading Transpose past Gather,
+// remap axis under perm, and emit a SqueezePerm on the output. The user's downstream Transpose
+// then composes with the rewrite-emitted one and both cancel.
+//
+//   input{2,4,6,5} -> Transpose(perm=[0,3,1,2]) -> {2,5,4,6}
+//                  -> Gather(axis=2, scalar idx) -> {2,5,6}
+//                  -> Transpose(perm=[0,2,1])   -> {2,6,5}    (graph output)
+//
+// After push:
+//   input -> Gather(axis=perm[2]=1, scalar) -> {2,6,5}
+//         -> Transpose(SqueezePerm({1},[0,3,1,2])=[0,2,1])    <- rewrite-emitted
+//         -> Transpose([0,2,1])                                <- user-supplied
+// The two trailing Transposes compose to identity and the optimizer eliminates them, so the
+// surviving graph has zero transposes.
+TEST(TransposeOptimizerTests, TestGatherScalarIndices) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({2, 4, 6, 5}, 0.0, 1.0);
+    auto* indices_const = builder.MakeScalarInitializer<int64_t>(2);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* gather_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    auto& gather_1 = builder.AddNode("Gather", {transpose_1_out_0, indices_const}, {gather_1_out_0});
+    gather_1.AddAttribute("axis", static_cast<int64_t>(2));
+    auto& transpose_2 = builder.AddNode("Transpose", {gather_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ {13, 18, 23});
+}
+
+// Negative axis: ONNX Gather permits axis in [-r, r-1]. The handler must normalize the axis
+// before remapping under perm. Here axis=-1 on a rank-4 input means axis 3, and perm[3]=2.
+// The rewrite cancels the user's downstream Transpose, so the final graph has zero transpose cost.
+TEST(TransposeOptimizerTests, TestGatherNegativeAxis) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({2, 4, 6, 5}, 0.0, 1.0);
+    auto* indices_const = builder.MakeScalarInitializer<int64_t>(0);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* gather_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    auto& gather_1 = builder.AddNode("Gather", {transpose_1_out_0, indices_const}, {gather_1_out_0});
+    gather_1.AddAttribute("axis", static_cast<int64_t>(-1));  // last axis = 3 in 4D, perm[3]=2
+    auto& transpose_2 = builder.AddNode("Transpose", {gather_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ {13, 18, 23});
+}
+
+// Rank-1 indices (even of length 1) preserve the gathered axis in the output, so the rewrite
+// is NOT a Squeeze-style rank reduction. The handler should refuse and leave the original
+// transposes in place.
+TEST(TransposeOptimizerTests, TestGatherRank1IndicesNoOpt) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({2, 4, 6, 5}, 0.0, 1.0);
+    auto* indices_const = builder.MakeInitializer<int64_t>({1}, {2});  // rank-1, NOT scalar
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* gather_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    auto& gather_1 = builder.AddNode("Gather", {transpose_1_out_0, indices_const}, {gather_1_out_0});
+    gather_1.AddAttribute("axis", static_cast<int64_t>(2));
+    auto& transpose_2 = builder.AddNode("Transpose", {gather_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count.at("Transpose"), 2);
+    EXPECT_EQ(op_to_count.at("Gather"), 1);
+
+    // Assert the Transpose perms are unchanged — guards against in-place attribute mutation
+    // or node-swap that would preserve op counts but alter the graph.
+    std::vector<std::vector<int64_t>> transpose_perms;
+    for (const auto& node : session.GetGraph().Nodes()) {
+      if (node.OpType() != "Transpose") continue;
+      const auto& attrs = node.GetAttributes();
+      auto it = attrs.find("perm");
+      ASSERT_TRUE(it != attrs.end());
+      ASSERT_EQ(it->second.type(), ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
+      transpose_perms.emplace_back(it->second.ints().begin(), it->second.ints().end());
+    }
+    std::sort(transpose_perms.begin(), transpose_perms.end());
+    std::vector<std::vector<int64_t>> expected{{0, 1, 3, 2}, {0, 3, 1, 2}};
+    EXPECT_EQ(transpose_perms, expected);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ {13, 18, 23});
+}
+
+// Dynamic (non-constant) indices: handler can't read the rank statically, so it bails.
+TEST(TransposeOptimizerTests, TestGatherNonconstIndicesNoOpt) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({2, 4, 6, 5}, 0.0, 1.0);
+    auto* indices_arg = MakeInput<int64_t>(builder, std::vector<int64_t>{}, {}, {2});  // graph input, not initializer
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* gather_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    auto& gather_1 = builder.AddNode("Gather", {transpose_1_out_0, indices_arg}, {gather_1_out_0});
+    gather_1.AddAttribute("axis", static_cast<int64_t>(2));
+    auto& transpose_2 = builder.AddNode("Transpose", {gather_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count.at("Transpose"), 2);
+    EXPECT_EQ(op_to_count.at("Gather"), 1);
+
+    // Assert the Transpose perms are unchanged — guards against in-place attribute mutation
+    // or node-swap that would preserve op counts but alter the graph.
+    std::vector<std::vector<int64_t>> transpose_perms;
+    for (const auto& node : session.GetGraph().Nodes()) {
+      if (node.OpType() != "Transpose") continue;
+      const auto& attrs = node.GetAttributes();
+      auto it = attrs.find("perm");
+      ASSERT_TRUE(it != attrs.end());
+      ASSERT_EQ(it->second.type(), ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
+      transpose_perms.emplace_back(it->second.ints().begin(), it->second.ints().end());
+    }
+    std::sort(transpose_perms.begin(), transpose_perms.end());
+    std::vector<std::vector<int64_t>> expected{{0, 2, 1}, {0, 3, 1, 2}};
+    EXPECT_EQ(transpose_perms, expected);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ {13, 18, 23});
+}
+
 TEST(TransposeOptimizerTests, TestTile) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<float>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0.0, 1.0);
@@ -4693,6 +4859,67 @@ TEST(TransposeOptimizerTests, LayoutTransformDoesNotRetargetNhwcFusedConv) {
   }
 
   EXPECT_EQ(nhwc_fused_conv_count, 1);
+}
+
+// Helper function to test layout transformation with unknown input rank but known weight rank.
+static void TestLayoutTransformWithUnknownInputRank(const std::string& op_type,
+                                                    const std::vector<int64_t>& weight_shape) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}};
+  Model model("LayoutTransform_" + op_type + "_RecoverRankFromWeight", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  // Create input with unknown shape (cleared).
+  auto* input_arg = builder.MakeInput<float>({1, 3, 7, 7}, -1.0f, 1.0f);
+  input_arg->ClearShape();
+
+  // Weight has known shape with rank 4.
+  auto* weight_arg = builder.MakeInitializer<float>(weight_shape, -1.0f, 1.0f);
+  auto* output_arg = builder.MakeOutput();
+
+  auto& node = builder.AddNode(op_type, {input_arg, weight_arg}, {output_arg});
+  node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  SessionOptions so;
+  using InternalTestingEP = internal_testing_ep::InternalTestingExecutionProvider;
+  const std::unordered_set<std::string> empty_set;
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NHWC);
+  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
+
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(internal_testing_ep)));
+  ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& optimized_graph = session.GetGraph();
+  const auto op_to_count = CountOpsInGraph(optimized_graph);
+  const auto get_op_count = [&op_to_count](std::string_view op_type) {
+    const auto it = op_to_count.find(std::string{op_type});
+    return it == op_to_count.end() ? 0 : it->second;
+  };
+
+  // Transpose nodes should be inserted, proving that layout transformation proceeded after recovering rank from weight.
+  EXPECT_GT(get_op_count("Transpose"), 0) << "Layout transformation should insert Transpose nodes for NCHW->NHWC conversion";
+}
+
+// Verifies that layout transformation recovers Conv rank from weight when input rank is unknown.
+TEST(TransposeOptimizerTests, LayoutTransformConvRecoverRankFromWeight) {
+  TestLayoutTransformWithUnknownInputRank("Conv", {8, 3, 3, 3});
+}
+
+// Verifies that layout transformation recovers ConvTranspose rank from weight when input rank is unknown.
+TEST(TransposeOptimizerTests, LayoutTransformConvTransposeRecoverRankFromWeight) {
+  TestLayoutTransformWithUnknownInputRank("ConvTranspose", {3, 8, 3, 3});
 }
 
 TEST(TransposeOptimizerTests, QnnTransposeReshapeQDQ) {

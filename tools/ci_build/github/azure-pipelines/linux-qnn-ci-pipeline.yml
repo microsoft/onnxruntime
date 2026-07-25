@@ -59,6 +59,19 @@ jobs:
         parameters:
           QnnSDKVersion: ${{ parameters.QnnSdk }}
 
+      # onnx (pinned to cmake/deps.txt) + numpy (pinned to requirements.txt, python-conditional)
+      # are required at configure time by the onnxruntime_MATERIALIZE_ONNX_NODE_TESTS gate, which
+      # regenerates the onnx node-test corpus into the build tree
+      # (build/Release/onnx_node_tests/node) for onnx_test_runner. The numpy markers self-select
+      # the same pin the CMake gate asserts (2.2.6 for py<3.11, 2.4.2 for py>=3.11).
+      # --user: this leg runs on a bare non-root Ubuntu agent (system python3, no venv); a plain
+      # install would write /usr/local/bin/f2py -> Permission denied. --user targets ~/.local for
+      # the same agent user, which the configure-time `import onnx` (same python3) resolves. (The
+      # two Windows QNN legs omit --user: their Python Scripts dir is writable.)
+      - script: |
+          python3 -m pip install --user onnx==1.22.0 "numpy==2.2.6; python_version<'3.11'" "numpy==2.4.2; python_version>='3.11'"
+        displayName: Install onnx for node-test materialization
+
       - script: |
           python3 tools/ci_build/build.py \
             --build_dir build \
@@ -69,6 +82,7 @@ jobs:
             --use_qnn $(QnnLibKind) \
             --qnn_home $(QnnSDKRootDir) \
             --cmake_generator=Ninja \
+            --cmake_extra_defines onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON \
             --update --build --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         displayName: Build QNN EP
 
@@ -89,9 +103,13 @@ jobs:
         displayName: Run ONNX tests
         inputs:
           script: |
-            ./build/Release/onnx_test_runner -e qnn \
+            # onnx#7959 collapse sentinel: -m 1 fails loud if 0 node tests are collected
+            # (e.g. a MATERIALIZE=OFF leg still running this dir). Low value (not the 1500
+            # build floor) because -e qnn legitimately reduces the set to ~1529; the strict
+            # count is enforced at build time via --min-cases.
+            ./build/Release/onnx_test_runner -e qnn -m 1 \
               -j 1 -i "backend_path|$(QnnSDKRootDir)/lib/x86_64-linux-clang/libQnnCpu.so" \
-              cmake/external/onnx/onnx/backend/test/data/node
+              build/Release/onnx_node_tests/node
 
       - task: CmdLine@2
         displayName: Run float32 model tests

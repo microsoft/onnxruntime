@@ -260,6 +260,12 @@ class CutlassMoeFCRunnerInterface {
                          std::optional<cutlass_extensions::CutlassGemmConfig> gemm2_config) = 0;
   virtual std::vector<cutlass_extensions::CutlassGemmConfig> getTactics() = 0;
 
+  // wfp4a16 only: route prefill through the SM80 fused-dequant grouped GEMM (vs the SM90 TMA WS
+  // path). The QMoE op decides this at construction time (reading the relevant env vars then) and
+  // pushes it in here, so inference-time config selection does not depend on the live environment.
+  // Default no-op for runners that do not implement the SM80 FP4 path.
+  virtual void setUseSm80Fp4(bool /*use_sm80_fp4*/) {}
+
   virtual void runMoe(void const* input_activations, void const* input_sf, int const* token_selected_experts,
                       float const* token_final_scales, void const* fc1_expert_weights, void const* fc1_expert_biases,
                       ActivationType fc1_activation_type, void const* fc2_expert_weights, void const* fc2_expert_biases,
@@ -397,6 +403,18 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
 
   std::vector<cutlass_extensions::CutlassGemmConfig> getTactics() override {
     return moe_gemm_runner_.getConfigs();
+  }
+
+  // Push the QMoE op's SM80-FP4 decision into the inner runner and re-pick a valid default tactic
+  // from the (now filtered) config list, so even if profiling later finds nothing, the preserved
+  // default matches the selected GEMM family (SM80 Ampere vs SM90 TMA WS).
+  void setUseSm80Fp4(bool use_sm80_fp4) override {
+    moe_gemm_runner_.setUseSm80Fp4(use_sm80_fp4);
+    auto tactics = moe_gemm_runner_.getConfigs();
+    if (!tactics.empty()) {
+      gemm1_config_ = tactics[0];
+      gemm2_config_ = tactics[0];
+    }
   }
 
   static std::vector<cutlass_extensions::CutlassGemmConfig> getTactics(int sm) {

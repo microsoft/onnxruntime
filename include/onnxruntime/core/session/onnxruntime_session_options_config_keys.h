@@ -355,9 +355,12 @@ static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersFil
 static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes =
     "session.optimized_model_external_initializers_min_size_in_bytes";
 
-// When loading model from memory buffer and the model has external initializers
-// Use this config to set the external data file folder path
-// All external data files should be in the same folder
+// Specifies the folder path used to resolve a model's external initializer data files.
+// When set, external initializers are loaded from this folder instead of the model's own
+// directory, overriding the model directory. This applies whether the model is loaded from a
+// file path or from a memory buffer/stream. All external data files must be in the same folder.
+// Typical uses include loading models with external data from memory, sharing a weights file
+// across models, and weightless/cache models whose weights live outside the model directory.
 static const char* const kOrtSessionOptionsModelExternalInitializersFileFolderPath =
     "session.model_external_initializers_file_folder_path";
 

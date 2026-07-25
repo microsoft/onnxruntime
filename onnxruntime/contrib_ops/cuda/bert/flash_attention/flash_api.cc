@@ -5,6 +5,7 @@
 #if USE_FLASH_ATTENTION
 
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
+#include <algorithm>
 #include <cutlass/numeric_types.h>
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash.h"
@@ -198,6 +199,7 @@ void run_mha_fwd(Flash_fwd_params& params, cudaStream_t stream, bool force_split
 size_t num_splits_heuristic(size_t batch_size, size_t seqlen_q, size_t seqlen_k, size_t num_heads,
                             size_t head_size, size_t num_SMs, size_t max_splits) {
   // This needs to match with run_mha_fwd_splitkv_dispatch
+  num_SMs = std::max<size_t>(num_SMs, 1);
   const size_t block_n = head_size <= 64 ? 256 : (head_size <= 128 ? 128 : 64);
   const size_t num_n_blocks = (seqlen_k + block_n - 1) / block_n;
   // Technically kBlockM = 64 only for the splitKV kernels, not the standard kernel.
@@ -209,6 +211,9 @@ size_t num_splits_heuristic(size_t batch_size, size_t seqlen_q, size_t seqlen_k,
     return 1;
   }
   max_splits = std::min({max_splits, num_SMs, num_n_blocks});
+  if (max_splits <= 1) {
+    return 1;
+  }
   float max_efficiency = 0.f;
   std::vector<float> efficiency;
   efficiency.reserve(max_splits);

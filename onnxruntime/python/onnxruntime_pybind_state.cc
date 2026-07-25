@@ -77,6 +77,7 @@ const OrtDevice::DeviceType OrtDevice::GPU;
 
 #include <iterator>
 #include <algorithm>
+#include <string_view>
 #include <utility>
 
 namespace onnxruntime {
@@ -85,6 +86,56 @@ namespace python {
 namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
+
+namespace {
+
+constexpr std::string_view kEpCudaProviderOptionPrefix{"ep.cuda."};
+
+struct AdaptedProviderOptions {
+  std::vector<std::string> keys;
+  std::vector<std::string> values;
+  std::vector<const char*> key_ptrs;
+  std::vector<const char*> value_ptrs;
+};
+
+AdaptedProviderOptions AdaptProviderOptionsForRegisteredPluginEp(const std::string& ep_name,
+                                                                 const ProviderOptions& provider_options) {
+  AdaptedProviderOptions adapted_options;
+  adapted_options.keys.reserve(provider_options.size());
+  adapted_options.values.reserve(provider_options.size());
+
+  for (const auto& [key, value] : provider_options) {
+    std::string_view adapted_key{key};
+
+    if (adapted_key.rfind(kEpCudaProviderOptionPrefix, 0) == 0) {
+      adapted_key.remove_prefix(kEpCudaProviderOptionPrefix.size());
+    }
+
+    if (ep_name == kCudaExecutionProvider) {
+      if (adapted_key == "device_id") {
+        continue;
+      }
+
+      if (adapted_key == "prefer_nhwc_layout") {
+        adapted_key = "prefer_nhwc";
+      }
+    }
+
+    adapted_options.keys.emplace_back(adapted_key);
+    adapted_options.values.push_back(value);
+  }
+
+  adapted_options.key_ptrs.reserve(adapted_options.keys.size());
+  adapted_options.value_ptrs.reserve(adapted_options.values.size());
+  for (size_t i = 0; i < adapted_options.keys.size(); ++i) {
+    adapted_options.key_ptrs.push_back(adapted_options.keys[i].c_str());
+    adapted_options.value_ptrs.push_back(adapted_options.values[i].c_str());
+  }
+
+  return adapted_options;
+}
+
+}  // namespace
 
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
@@ -684,6 +735,12 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
 
     return std::shared_ptr<IExecutionProviderFactory>(std::move(ep_factory));
   };
+
+  if (type == kCudaExecutionProvider) {
+    if (auto ep_factory = try_create_registered_plugin_factory(); ep_factory) {
+      return ep_factory;
+    }
+  }
 #endif
 
   if (type == kCpuExecutionProvider) {
@@ -1353,16 +1410,11 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(const Sessio
       InlinedVector<const OrtEpDevice*> selected_devices;
       selected_devices.push_back(selected_device);
 
-      std::vector<const char*> ep_option_keys;
-      std::vector<const char*> ep_option_vals;
-      ep_option_keys.reserve(provider_options->size());
-      ep_option_vals.reserve(provider_options->size());
-      for (const auto& [key, val] : *provider_options) {
-        ep_option_keys.push_back(key.c_str());
-        ep_option_vals.push_back(val.c_str());
-      }
-
-      return AddEpOptionsToSessionOptions(selected_devices, ep_option_keys, ep_option_vals, ort_session_options.value);
+      auto adapted_options = AdaptProviderOptionsForRegisteredPluginEp(type, *provider_options);
+      return AddEpOptionsToSessionOptions(selected_devices,
+                                          adapted_options.key_ptrs,
+                                          adapted_options.value_ptrs,
+                                          ort_session_options.value);
     };
 
     auto status = add_registered_plugin_ep_options_to_session();
@@ -1401,18 +1453,10 @@ static Status AddExplicitEpFactory(PySessionOptions& py_sess_options, const std:
       InlinedVector<const OrtEpDevice*> selected_devices;
       selected_devices.push_back(selected_device);
 
-      std::vector<const char*> ep_option_keys;
-      std::vector<const char*> ep_option_vals;
-      ep_option_keys.reserve(provider_options.size());
-      ep_option_vals.reserve(provider_options.size());
-      for (const auto& [key, val] : provider_options) {
-        ep_option_keys.push_back(key.c_str());
-        ep_option_vals.push_back(val.c_str());
-      }
-
+      auto adapted_options = AdaptProviderOptionsForRegisteredPluginEp(provider_type, provider_options);
       ORT_RETURN_IF_ERROR(AddEpOptionsToSessionOptions(selected_devices,
-                                                       ep_option_keys,
-                                                       ep_option_vals,
+                                                       adapted_options.key_ptrs,
+                                                       adapted_options.value_ptrs,
                                                        py_sess_options.value));
     }
   }
@@ -1477,16 +1521,8 @@ static Status AddEpFactoryFromEpDevices(PySessionOptions& py_sess_options,
                                         const std::vector<const OrtEpDevice*>& ep_devices,
                                         const ProviderOptions& provider_options) {
   onnxruntime::Environment& env = GetEnv();
-  const size_t num_ep_options = provider_options.size();
-  std::vector<const char*> ep_option_keys;
-  std::vector<const char*> ep_option_vals;
-
-  ep_option_keys.reserve(num_ep_options);
-  ep_option_vals.reserve(num_ep_options);
-  for (const auto& [key, val] : provider_options) {
-    ep_option_keys.push_back(key.c_str());
-    ep_option_vals.push_back(val.c_str());
-  }
+  const auto ep_name = ep_devices.empty() ? std::string{} : ep_devices[0]->ep_name;
+  auto adapted_options = AdaptProviderOptionsForRegisteredPluginEp(ep_name, provider_options);
 
   std::unique_ptr<IExecutionProviderFactory> provider_factory = nullptr;
   ORT_RETURN_IF_ERROR(CreateIExecutionProviderFactoryForEpDevices(env,
@@ -1494,8 +1530,8 @@ static Status AddEpFactoryFromEpDevices(PySessionOptions& py_sess_options,
                                                                   /*output*/ provider_factory));
 
   ORT_RETURN_IF_ERROR(AddEpOptionsToSessionOptions(ep_devices,
-                                                   ep_option_keys,
-                                                   ep_option_vals,
+                                                   adapted_options.key_ptrs,
+                                                   adapted_options.value_ptrs,
                                                    py_sess_options.value));
 
   ORT_RETURN_IF_ERROR(AddEpCustomDomainsToSessionOptions(ep_devices,

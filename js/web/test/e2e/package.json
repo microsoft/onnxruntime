@@ -20,7 +20,7 @@
     "rollup": "^4.13.2",
     "rollup-plugin-copy": "^3.5.0",
     "tree-kill": "^1.2.2",
-    "vite": "^7.1.12",
+    "vite": ">=7.1.12 <7.3.0",
     "webpack-cli": "^5.1.4"
   },
   "scripts": {

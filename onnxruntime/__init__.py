@@ -10,7 +10,7 @@ or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 
 import contextlib
 
-__version__ = "1.28.0"
+__version__ = "1.29.0"
 __author__ = "Microsoft"
 
 # we need to do device version validation (for example to check Cuda version for an onnxruntime-training package).
@@ -55,12 +55,12 @@ try:
         enable_telemetry_events,  # noqa: F401
         get_all_providers,  # noqa: F401
         get_available_providers,  # noqa: F401
-        get_build_info,  # noqa: F401
+        get_build_info,
         get_device,  # noqa: F401
         get_ep_devices,  # noqa: F401
         get_version_string,  # noqa: F401
         has_collective_ops,  # noqa: F401
-        register_execution_provider_library,  # noqa: F401
+        register_execution_provider_library,
         set_default_logger_severity,  # noqa: F401
         set_default_logger_verbosity,  # noqa: F401
         set_global_thread_pool_sizes,  # noqa: F401
@@ -102,6 +102,42 @@ if version:
     __version__ = version
 
 onnxruntime_validation.check_distro_info()
+
+
+def _get_cuda_plugin_ep_library_path() -> str | None:
+    import os  # noqa: PLC0415
+    import sys  # noqa: PLC0415
+
+    if ", cuda-plugin-ep=" not in get_build_info():
+        return None
+
+    if sys.platform == "win32":
+        library_name = "onnxruntime_providers_cuda.dll"
+    elif sys.platform == "darwin":
+        library_name = "libonnxruntime_providers_cuda.dylib"
+    else:
+        library_name = "libonnxruntime_providers_cuda.so"
+
+    library_path = os.path.join(os.path.dirname(__file__), "capi", library_name)
+    return library_path if os.path.isfile(library_path) else None
+
+
+def _register_bundled_cuda_plugin_ep(warn_on_failure: bool = False):
+    library_path = _get_cuda_plugin_ep_library_path()
+    if not library_path:
+        return
+
+    try:
+        register_execution_provider_library("CUDAExecutionProvider", library_path)
+    except Exception as e:
+        if "already registered" not in str(e).lower():
+            if warn_on_failure:
+                import warnings  # noqa: PLC0415
+
+                warnings.warn(f"Failed to register bundled CUDA plugin EP from {library_path}: {e}")
+
+
+_register_bundled_cuda_plugin_ep(warn_on_failure=True)
 
 
 def _get_package_version(package_name: str):
@@ -460,3 +496,5 @@ def preload_dlls(cuda: bool = True, cudnn: bool = True, msvc: bool = True, direc
 
     if has_failure:
         print("Please follow https://onnxruntime.ai/docs/install/#cuda-and-cudnn to install CUDA.")
+
+    _register_bundled_cuda_plugin_ep(warn_on_failure=True)

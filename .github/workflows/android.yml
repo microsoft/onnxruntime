@@ -29,6 +29,7 @@ jobs:
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
         "JobId=AndroidBinarySizeCheckJob_MinimalBaseline-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
+    timeout-minutes: 120
     env:
       CCACHE_DIR: ~/.cache/ccache # explicitly set to prevent any fallback to `~/.ccache`
     steps:
@@ -122,6 +123,7 @@ jobs:
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
         "JobId=android_nnapi_ep-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
+    timeout-minutes: 120
     env:
       CCACHE_DIR: ~/.cache/ccache # explicitly set to prevent any fallback to `~/.ccache`
     steps:
@@ -227,6 +229,7 @@ jobs:
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
         "JobId=android_cpu_ep-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
+    timeout-minutes: 120
     env:
       CCACHE_DIR: ~/.cache/ccache # explicitly set to prevent any fallback to `~/.ccache`
     steps:

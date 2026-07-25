@@ -34,9 +34,10 @@ from pathlib import Path
 
 # Platform name -> (RID, list of native binary filenames expected in the source dir).
 PLATFORMS: dict[str, tuple[str, tuple[str, ...]]] = {
-    "win_x64": ("win-x64", ("onnxruntime_providers_cuda_plugin.dll",)),
-    "linux_x64": ("linux-x64", ("libonnxruntime_providers_cuda_plugin.so",)),
-    "linux_aarch64": ("linux-arm64", ("libonnxruntime_providers_cuda_plugin.so",)),
+    "win_x64": ("win-x64", ("onnxruntime_providers_cuda.dll",)),
+    "win_arm64": ("win-arm64", ("onnxruntime_providers_cuda.dll",)),
+    "linux_x64": ("linux-x64", ("libonnxruntime_providers_cuda.so",)),
+    "linux_aarch64": ("linux-arm64", ("libonnxruntime_providers_cuda.so",)),
 }
 
 SCRIPT_DIR = Path(__file__).resolve().parent

@@ -448,7 +448,7 @@ TEST(BeamSearchTest, DummyT5WithSequenceInputIds) {
 
 TEST(BeamSearchTest, DummyWhisperWithSequenceInputIds) {
   // dummy_whisper_with_sequence_input_ids.onnx model generated using following command:
-  // python onnxruntime/test/testdata/dummy_whisper_model_generator.py \
+  // python onnxruntime/test/testdata/dummy_whisper_model_generator.py
   //     --output-path dummy_whisper_with_sequence_input_ids.onnx --sequence-as-input
   // The decoder subgraph leaves input_ids second dim symbolic, so the decoder feeds are built from the
   // running sequence (use_sequence_as_input_ids_ == true), exercising the multi-token initial feed path.

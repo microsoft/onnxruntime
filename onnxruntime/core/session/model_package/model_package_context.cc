@@ -16,6 +16,7 @@
 #include "core/session/model_package/model_package_context.h"
 #include "core/session/model_package/model_package_options.h"
 #include "core/session/model_package/model_package_variant_selector.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_env.h"
 #include "core/session/provider_policy_context.h"
 #include "core/session/utils.h"
@@ -27,6 +28,13 @@
 #include "model_package.h"
 
 namespace onnxruntime {
+
+bool IsModelPackagePathSessionOption(std::string_view key) {
+  // Session-option config keys whose values are path references (sha256:<hex>, relative, or
+  // absolute) that must be resolved against the model package. Add new path-valued keys here.
+  return key == kOrtSessionOptionsModelExternalInitializersFileFolderPath ||
+         key == kOrtSessionOptionEpContextFilePath;
+}
 
 namespace {
 // Deleter for the type-erased model_package handle held by ModelPackageContext.
@@ -350,21 +358,6 @@ Status ModelPackageComponentContext::GetSelectedVariantName(const std::string*& 
   return Status::OK();
 }
 
-Status ModelPackageComponentContext::GetSelectedVariantExternalDataFolder(
-    const std::string*& out_folder) const {
-  out_folder = nullptr;
-  const VariantInfo* selected_variant = nullptr;
-  ORT_RETURN_IF_ERROR(GetSelectedVariantInfo(selected_variant));
-  ORT_RETURN_IF(selected_variant == nullptr,
-                "Selected variant is null for component: ", component_model_name_);
-  if (selected_variant->file.has_value() &&
-      selected_variant->file->external_data_folder_path.has_value() &&
-      !selected_variant->file->external_data_folder_path->empty()) {
-    out_folder = &(*selected_variant->file->external_data_folder_path);
-  }
-  return Status::OK();
-}
-
 ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_root)
     : package_handle_(nullptr, &CloseModelPackageHandle), package_root_(package_root) {
   // Open the package via the model_package C API and keep the handle open for this context's
@@ -493,17 +486,18 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
         fill_string_map("session_options", ort_file.session_options);
         fill_string_map("provider_options", ort_file.provider_options);
 
-        if (auto it = ort_obj->find("external_data"); it != ort_obj->end()) {
-          if (!it->is_string()) {
-            ORT_THROW("ORT variant configuration: external_data must be a string for variant '",
-                      ort_variant.variant_name, "' in component '", component_name, "'");
+        // Resolve path-valued session options (e.g. the external initializers folder) against the
+        // package so variants can reference shared assets by sha256: URI or relative path.
+        if (ort_file.session_options.has_value()) {
+          for (auto& [key, value] : *ort_file.session_options) {
+            if (!value.empty() && IsModelPackagePathSessionOption(key)) {
+              value = resolve_string_ref(key.c_str(), value, /*must_exist=*/false);
+            }
           }
-          ort_file.external_data_folder_path = resolve_string_ref(
-              "external_data", it->get<std::string>(), /*must_exist=*/false);
         }
 
         if (!ort_file.identifier.empty() || ort_file.session_options.has_value() ||
-            ort_file.provider_options.has_value() || ort_file.external_data_folder_path.has_value()) {
+            ort_file.provider_options.has_value()) {
           ort_variant.file = std::move(ort_file);
         }
       }
