@@ -8077,6 +8077,14 @@ typedef enum OrtCompileApiFlags {
   // Force compilation to return an error (ORT_FAIL) if a file with the same filename as the output model exists.
   // Otherwise, compilation will automatically overwrite the output file if it exists.
   OrtCompileApiFlags_ERROR_IF_OUTPUT_FILE_EXISTS = 1 << 1,
+
+  // Save a fully-optimized ONNX model (Level 2+ optimizations applied) instead of an EPContext model.
+  // No EPContext nodes are generated; no warning is emitted about missing compiled nodes.
+  // The graph optimization level defaults to ORT_ENABLE_ALL; use
+  // ModelCompilationOptions_SetGraphOptimizationLevel to cap it.
+  // Requires that no registered execution provider needs to compile nodes.
+  // If a compiling EP is registered, CompileModel returns MODEL_REQUIRES_COMPILATION.
+  OrtCompileApiFlags_OPTIMIZED_ONNX_OUTPUT = 1 << 2,
 } OrtCompileApiFlags;
 
 /**
@@ -8366,6 +8374,7 @@ struct OrtCompileApi {
   ORT_API2_STATUS(ModelCompilationOptions_SetInputModel,
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ const OrtModel* model);
+  // End of Version 1.24. Do not add functions after this comment without updating the version.
 };
 
 /**

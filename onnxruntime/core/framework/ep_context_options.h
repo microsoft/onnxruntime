@@ -73,6 +73,12 @@ struct ModelGenOptions {
     kReturnError,
   };
 
+  // Type of output model to generate.
+  enum class OutputModelType {
+    kEpContext = 0,  // Default: generate EPContext nodes (existing behavior).
+    kOptimizedOnnx,  // Generate a fully-optimized ONNX model without EPContext nodes.
+  };
+
   ModelGenOptions();
 
   // Initializes from string key/value pairs in session config options.
@@ -83,6 +89,8 @@ struct ModelGenOptions {
   bool error_if_no_compiled_nodes = false;
   bool embed_ep_context_in_model = false;
   ActionIfNoCompiledNodes action_if_no_compiled_nodes = ActionIfNoCompiledNodes::kDontGenerateModel;
+
+  OutputModelType output_model_type = OutputModelType::kEpContext;
 
   std::variant<std::monostate,         // Initial state (no output model location)
                std::filesystem::path,  // output model path

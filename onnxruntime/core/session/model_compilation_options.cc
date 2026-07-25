@@ -185,6 +185,23 @@ Status ModelCompilationOptions::SetFlags(uint32_t flags) {
   options.action_if_no_compiled_nodes =
       (flags & OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED) ? epctx::ModelGenOptions::ActionIfNoCompiledNodes::kReturnError
                                                               : epctx::ModelGenOptions::ActionIfNoCompiledNodes::kGenerateModel;
+
+  if (flags & OrtCompileApiFlags_OPTIMIZED_ONNX_OUTPUT) {
+    options.output_model_type = epctx::ModelGenOptions::OutputModelType::kOptimizedOnnx;
+    if (!user_set_optimization_level_) {
+      session_options_.value.graph_optimization_level = TransformerLevel::MaxLevel;
+    }
+    ORT_RETURN_IF_ERROR(session_options_.value.config_options.AddConfigEntry(
+        kOrtSessionOptionsDisableModelCompile, "1"));
+  } else {
+    options.output_model_type = epctx::ModelGenOptions::OutputModelType::kEpContext;
+    if (!user_set_optimization_level_) {
+      session_options_.value.graph_optimization_level = TransformerLevel::Default;
+    }
+    ORT_RETURN_IF_ERROR(session_options_.value.config_options.AddConfigEntry(
+        kOrtSessionOptionsDisableModelCompile, "0"));
+  }
+
   return Status::OK();
 }
 
@@ -224,6 +241,8 @@ void ModelCompilationOptions::ResetInputModelSettings() {
 }
 
 Status ModelCompilationOptions::SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level) {
+  user_set_optimization_level_ = true;
+
   switch (graph_optimization_level) {
     case ORT_DISABLE_ALL:
       // TransformerLevel::Default means that we only run required transformers.
@@ -255,7 +274,16 @@ Status ModelCompilationOptions::Check() const {
   const ConfigOptions& config_options = session_options_.value.config_options;
 
   ORT_ENFORCE(session_options_.value.ep_context_gen_options.enable);
-  ORT_ENFORCE(config_options.GetConfigOrDefault(kOrtSessionOptionsDisableModelCompile, "0") == "0");
+
+  // For kEpContext mode, model compilation must be enabled (disable_model_compile=0).
+  // For kOptimizedOnnx mode, model compilation must be disabled (disable_model_compile=1) to
+  // prevent compiling EPs from producing unserializable compiled nodes.
+  const auto& ep_context_gen_options = session_options_.value.ep_context_gen_options;
+  if (ep_context_gen_options.output_model_type == epctx::ModelGenOptions::OutputModelType::kEpContext) {
+    ORT_ENFORCE(config_options.GetConfigOrDefault(kOrtSessionOptionsDisableModelCompile, "0") == "0");
+  } else {
+    ORT_ENFORCE(config_options.GetConfigOrDefault(kOrtSessionOptionsDisableModelCompile, "0") == "1");
+  }
 
   // Check input model settings.
   const bool input_from_file = !input_model_path_.empty();
@@ -310,7 +338,6 @@ Status ModelCompilationOptions::Check() const {
   }
 
   // Check output model settings.
-  const epctx::ModelGenOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
   bool has_no_output_model_location = std::holds_alternative<std::monostate>(
       ep_context_gen_options.output_model_location);
 
@@ -401,6 +428,9 @@ uint32_t ModelCompilationOptions::GetFlagsForTelemetry() const {
   }
   if (options.action_if_no_compiled_nodes == epctx::ModelGenOptions::ActionIfNoCompiledNodes::kReturnError) {
     flags |= OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED;
+  }
+  if (options.output_model_type == epctx::ModelGenOptions::OutputModelType::kOptimizedOnnx) {
+    flags |= OrtCompileApiFlags_OPTIMIZED_ONNX_OUTPUT;
   }
 
   return flags;

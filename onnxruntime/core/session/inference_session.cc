@@ -27,6 +27,7 @@
 #include "core/framework/execution_frame.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/graph_partitioner.h"
+#include "core/framework/compile_utils.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/kernel_type_str_resolver.h"
@@ -2499,7 +2500,17 @@ common::Status InferenceSession::Initialize() {
     ORT_RETURN_IF_ERROR_SESSIONID_(kernel_registry_manager_.RegisterKernels(execution_providers_));
 
     const bool loading_ort_format = !ort_format_model_bytes_.empty();
-    const bool saving_model = !session_options_.optimized_model_filepath.empty();
+
+    // Detect the non-compiling Compile API save mode (kOptimizedOnnx). In this mode we save a
+    // fully-optimized ONNX model using the Compile API's output targets (buffer/write-func/file)
+    // instead of session_options_.optimized_model_filepath.
+    const epctx::ModelGenOptions ep_ctx_gen_options = session_options_.GetEpContextGenerationOptions();
+    const bool saving_via_compile_api_non_compiling =
+        ep_ctx_gen_options.enable &&
+        ep_ctx_gen_options.output_model_type == epctx::ModelGenOptions::OutputModelType::kOptimizedOnnx;
+
+    const bool saving_model = !session_options_.optimized_model_filepath.empty() ||
+                              saving_via_compile_api_non_compiling;
     const bool saving_ort_format = [&]() {
       if (saving_model) {
         const std::string model_type = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSaveModelFormat, "");
@@ -2727,14 +2738,29 @@ common::Status InferenceSession::Initialize() {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
-    ORT_RETURN_IF_ERROR_SESSIONID_(
-        session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
-                                             // need to keep the initializers if saving the optimized model
-                                             !saving_model,
-                                             saving_ort_format));
+    const bool compile_only_session =
+        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionCompileOnly, "0") == "1";
+
+    if (!compile_only_session) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(
+          session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
+                                               // need to keep the initializers if saving the optimized model
+                                               !saving_model,
+                                               saving_ort_format));
+    }
 
 #if !defined(ORT_MINIMAL_BUILD)
     if (saving_model) {
+      // Mutual-exclusion: optimized_model_filepath and the non-compiling Compile API save are two distinct
+      // output mechanisms and cannot be active at the same time.
+      if (!session_options_.optimized_model_filepath.empty() && saving_via_compile_api_non_compiling) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(
+            ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                            "Cannot use both session_options.optimized_model_filepath and the Compile API "
+                            "non-compiling save (OrtCompileApiFlags_OPTIMIZED_ONNX_OUTPUT) simultaneously. "
+                            "Use exactly one output mechanism."));
+      }
+
       if (session_state_->GetFuncMgr().NumFuncs() > 0) {
         ORT_RETURN_IF_ERROR_SESSIONID_(
             ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -2751,7 +2777,9 @@ common::Status InferenceSession::Initialize() {
                "should only be used in the same environment the model was optimized in.";
       }
 
-      if (saving_ort_format) {
+      if (saving_via_compile_api_non_compiling) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(epctx::BuildAndSaveOptimizedModel(*model_, ep_ctx_gen_options, *session_logger_));
+      } else if (saving_ort_format) {
         ORT_RETURN_IF_ERROR_SESSIONID_(SaveToOrtFormat(session_options_.optimized_model_filepath));
       } else {
         const std::string optimized_model_external_initializers_file_name =
@@ -2771,6 +2799,11 @@ common::Status InferenceSession::Initialize() {
                                                                              model_saving_options));
         }
       }
+    }
+
+    if (compile_only_session) {
+      LOGS(*session_logger_, INFO) << "Early session return due to being in compile-only mode.";
+      return common::Status::OK();
     }
 
     std::vector<TuningResults> tuning_results;
