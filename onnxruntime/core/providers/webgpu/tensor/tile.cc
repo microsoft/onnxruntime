@@ -32,8 +32,10 @@ Status TileProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (is_int64_) {
     // For int64 (stored as vec2<u32>), copy the raw storage bits to preserve the full
     // 64-bit value without loss. Using GetByIndices would silently truncate to i32.
+    const auto input_value =
+        input.GetByOffset("input_raw_offset", /*use_storage_type=*/true);
     shader.MainFunctionBody() << "let input_raw_offset = " << input.IndicesToOffset("input_indices") << ";\n"
-                              << output.SetByOffset("global_idx", "input[input_raw_offset]", /*use_storage_type=*/true);
+                              << output.SetByOffset("global_idx", input_value, /*use_storage_type=*/true);
   } else {
     shader.MainFunctionBody() << output.SetByOffset("global_idx", input.GetByIndices("input_indices"));
   }

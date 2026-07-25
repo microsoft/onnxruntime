@@ -322,6 +322,20 @@ void ShaderVariableHelper::Impl(OStringStream& ss) const {
     SS_APPEND(ss, "  }\n");
     SS_APPEND(ss, "}\n");
   }
+  if (usage_ & ShaderUsage::UseGetByOffsetSegmentsStorage) {
+    SS_APPEND(ss, "fn get_", name_, "_by_offset_storage(global_offset: u32) -> ", StorageType(), " {\n");
+    SS_APPEND(ss, "  const CHUNK_SIZE_IN_ELEMENTS: u32 = ", max_storage_buffer_binding_size_, "u / ", BYTES[static_cast<int>(type_)], "u;\n");
+    SS_APPEND(ss, "  let buffer_index: u32 = global_offset / CHUNK_SIZE_IN_ELEMENTS;\n");
+    SS_APPEND(ss, "  let local_offset: u32 = global_offset % CHUNK_SIZE_IN_ELEMENTS;\n");
+    SS_APPEND(ss, "  switch(buffer_index) {\n");
+    SS_APPEND(ss, "    case 0u: { return ", name_, "[local_offset]; }\n");
+    for (uint32_t i = 1; i < segments_; ++i) {
+      SS_APPEND(ss, "    case ", i, "u: { return ", name_, i, "[local_offset]; }\n");
+    }
+    SS_APPEND(ss, "    default: { return ", name_, "[local_offset]; }\n");
+    SS_APPEND(ss, "  }\n");
+    SS_APPEND(ss, "}\n");
+  }
   // Implementation of "fn set_{name}_by_offset" for multi-buffer segmented variables
   if (usage_ & ShaderUsage::UseSetByOffsetSegments) {
     SS_APPEND(ss, "fn set_", name_, "_by_offset(global_offset: u32, value: ", ValueType(), ") {\n");
@@ -339,10 +353,15 @@ void ShaderVariableHelper::Impl(OStringStream& ss) const {
   }
 }
 
-std::string ShaderVariableHelper::GetByOffsetImpl(std::string_view offset) const {
+std::string ShaderVariableHelper::GetByOffsetImpl(std::string_view offset, bool use_storage_type) const {
   SS(ss, kStringInitialSizeGetByOffsetImpl);
 
   if (usage_ & ShaderUsage::UseGetByOffsetSegments) {
+    if (use_storage_type &&
+        (type_ == ProgramVariableDataType::Int64 || type_ == ProgramVariableDataType::Uint64)) {
+      usage_ |= ShaderUsage::UseGetByOffsetSegmentsStorage;
+      return MakeStringWithClassicLocale("get_", name_, "_by_offset_storage(", offset, ")");
+    }
     return MakeStringWithClassicLocale("get_", name_, "_by_offset(", offset, ")");
   }
   switch (type_) {
@@ -351,7 +370,11 @@ std::string ShaderVariableHelper::GetByOffsetImpl(std::string_view offset) const
       break;
     case onnxruntime::webgpu::ProgramVariableDataType::Int64:
     case onnxruntime::webgpu::ProgramVariableDataType::Uint64:
-      ss << ElementType() << "(" << name_ << "[" << offset << "].x)";
+      if (use_storage_type) {
+        ss << name_ << "[" << offset << "]";
+      } else {
+        ss << ElementType() << "(" << name_ << "[" << offset << "].x)";
+      }
       break;
     case onnxruntime::webgpu::ProgramVariableDataType::Boolx4:
       ss << "vec4<bool>(bool("
