@@ -139,7 +139,6 @@ class PosixTelemetry : public Telemetry {
 
   // Process/system info helpers for LogProcessInfo
   std::string GetOsDescription() const;
-  std::string GetProcessName() const;
   std::string GetCpuModel() const;
   std::string GetDeviceClass() const;
   static std::string GetArchitecture();

@@ -505,10 +505,8 @@ void PosixTelemetry::Initialize() {
   }
 #endif
 
-  // 1DS supplies host application, OS, and device context. Add only ORT library identity and
-  // process-wide correlation context.
+  // Add only ORT version and process-wide correlation context.
   logger->SetContext("AppSessionGuid", GetAppSessionGuid());
-  logger->SetContext("LibraryName", "ONNXRuntime");
   logger->SetContext("LibraryVersion", ORT_VERSION);
 
   // Caller-framework label from the build-time ORT_CALLER_FRAMEWORK option; only stamped when a
@@ -624,44 +622,6 @@ std::string PosixTelemetry::GetOsDescription() const {
 
 #else
   return "Unknown";
-#endif
-}
-
-// Get the name of the current process
-std::string PosixTelemetry::GetProcessName() const {
-#if defined(__APPLE__) || defined(__FreeBSD__)
-  const char* name = getprogname();
-  return name ? name : "";
-
-#elif defined(__linux__) || defined(__ANDROID__)
-  // /proc/self/cmdline holds the full null-separated argv; argv[0]'s basename is the executable
-  // name and is not truncated (unlike /proc/self/comm, which caps the name at 15 characters).
-  {
-    std::ifstream cmdline("/proc/self/cmdline", std::ios::binary);
-    if (cmdline.is_open()) {
-      std::string arg0;
-      std::getline(cmdline, arg0, '\0');
-      if (!arg0.empty()) {
-        const size_t slash = arg0.find_last_of('/');
-        return slash == std::string::npos ? arg0 : arg0.substr(slash + 1);
-      }
-    }
-  }
-  // Fallback to /proc/self/comm (process name, capped at 15 characters).
-  {
-    std::ifstream comm("/proc/self/comm");
-    if (comm.is_open()) {
-      std::string name;
-      std::getline(comm, name);
-      while (!name.empty() && (name.back() == '\n' || name.back() == '\r'))
-        name.pop_back();
-      return name;
-    }
-  }
-  return "";
-
-#else
-  return "";
 #endif
 }
 
@@ -813,7 +773,6 @@ void PosixTelemetry::LogProcessInfo() const {
                        .AddString("DeviceInfo.Status", DeviceId::Instance().GetStatusString())
 #endif
                        .AddString("osDescription", GetOsDescription())
-                       .AddString("processName", GetProcessName())
                        .AddString("architecture", GetArchitecture())
                        .AddString("cpuModel", GetCpuModel())
                        .AddString("deviceClass", GetDeviceClass())
