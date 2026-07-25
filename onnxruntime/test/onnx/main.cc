@@ -33,6 +33,7 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/framework/session_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "test/util/include/telemetry_test_environment.h"
 #include "nlohmann/json.hpp"
 
 #ifdef USE_CUDA
@@ -994,6 +995,7 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
+  onnxruntime::test::SuppressTelemetryForTests();
 #ifdef _WIN32
 #if defined(_DEBUG) && !defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
   int tmpFlag = _CrtSetDbgFlag(_CRTDBG_REPORT_FLAG);

@@ -208,15 +208,23 @@ class Clip final : public UnaryElementwise {
                       clip_max_tensor ? clip_max_tensor->Data<T>()[0]
                                       : std::numeric_limits<T>::max()};
     if constexpr (std::is_same_v<T, MLFloat16>) {
-      // F16: stores span<f16, 2> as a single float
+      // F16: pack the two f16 values into a single f32 uniform slot; the shader unpacks with
+      // bitcast<vec2<f16>>.
       float encoded_value;
       static_assert(sizeof(encoded_value) == 2 * sizeof(MLFloat16));
       std::memcpy(&encoded_value, attr, sizeof(encoded_value));
       program.AddUniformVariable({encoded_value});
-    } else {
-      static_assert(sizeof(T) == sizeof(float), "T must be f32, i32 or u32");
-      // stores span<f32, 2> as-is
+    } else if constexpr (std::is_same_v<T, float>) {
+      // f32: stored as-is.
       program.AddUniformVariable({gsl::make_span(attr, 2)});
+    } else {
+      // i32 / u32: the "attr" uniform is declared f32 and the WebGPU EP validates that the supplied
+      // uniform value's data type matches the declaration. Reinterpret the integer bits as f32 so the
+      // types match; the shader recovers the integer values with bitcast<x_element_t>(uniforms.attr[i]).
+      static_assert(sizeof(T) == sizeof(float), "integer Clip attr must be 4 bytes");
+      float encoded[2];
+      std::memcpy(encoded, attr, sizeof(encoded));
+      program.AddUniformVariable({gsl::make_span(encoded, 2)});
     }
     return Status::OK();
   }
@@ -323,6 +331,23 @@ class ClipInt64 final : public WebGpuKernel {
                                     .InputMemoryType(OrtMemTypeCPU, 2),                                 \
                                 Clip<TYPE>);
 
+// Same as WEBGPU_CLIP_KERNEL but without the 11-11 registration: integer types are only valid Clip
+// element types from opset 12 on (the opset-11 Clip schema constrains T to float types), so an
+// 11-11 integer registration would be dead -- no valid opset-11 model can have an integer Clip.
+#define WEBGPU_CLIP_KERNEL_FROM_12(TYPE)                                                                \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(Clip, kOnnxDomain, 12, 12, TYPE, kWebGpuExecutionProvider,    \
+                                          KernelDefBuilder()                                            \
+                                              .TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()) \
+                                              .InputMemoryType(OrtMemTypeCPU, 1)                        \
+                                              .InputMemoryType(OrtMemTypeCPU, 2),                       \
+                                          Clip<TYPE>)                                                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(Clip, kOnnxDomain, 13, TYPE, kWebGpuExecutionProvider,                  \
+                                KernelDefBuilder()                                                      \
+                                    .TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>())           \
+                                    .InputMemoryType(OrtMemTypeCPU, 1)                                  \
+                                    .InputMemoryType(OrtMemTypeCPU, 2),                                 \
+                                Clip<TYPE>);
+
 // int64 Clip uses the dedicated ClipInt64 kernel (defined above), not the 4-byte templated Clip.
 // int64 (like all integer types) is only a valid Clip element type from opset 12 on -- the opset-11
 // Clip schema constrains T to float types only -- so there is no 11-11 registration here.
@@ -342,6 +367,10 @@ class ClipInt64 final : public WebGpuKernel {
 
 WEBGPU_CLIP_KERNEL(float)
 WEBGPU_CLIP_KERNEL(MLFloat16)
+// Integer Clip is used by shape/index/mask subgraphs (e.g. an index/position path). The 4-byte
+// templated Clip covers int32/uint32. Registered from opset 12 only (see WEBGPU_CLIP_KERNEL_FROM_12).
+WEBGPU_CLIP_KERNEL_FROM_12(int32_t)
+WEBGPU_CLIP_KERNEL_FROM_12(uint32_t)
 // int64 Clip (e.g. an int64 Clip on an index/position path feeding ArgMax) is handled by the
 // dedicated ClipInt64 kernel above; the 4-byte templated Clip cannot cover int64.
 WEBGPU_CLIP_INT64_KERNEL()
