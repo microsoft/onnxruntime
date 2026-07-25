@@ -123,6 +123,172 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
 #endif
 }
 
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750)) || !defined(__CUDA_ARCH__)
+// Epilogue for the fused-finalize FC2 GEMV. Reduces one expert's column tile exactly like
+// `epilogue()` but, instead of storing it, scales it by that expert's routing weight and
+// accumulates it into `out_acc` (shared, CtaN * kInterleave floats) so the block can sum all
+// top_k experts of a token before a single store.
+template <typename Details, int CtaN, int Threads, bool EnableBias, typename AccT>
+__device__ __forceinline__ void fused_finalize_accumulate(float* out_acc, void* tile_acc, void* bias,
+                                                          float row_scale) {
+  using Type = typename MathWrapper<typename Details::TypeDetailsA>::Type;
+  static constexpr int Interleave = Details::kInterleave;
+  static constexpr int ThreadsPerInterleavedTile = Details::kThreadsPerInterleavedTile;
+  static constexpr int WarpSize = Details::kWarpSize;
+  static constexpr int WarpNum = Threads / WarpSize;
+  static_assert(Threads % WarpSize == 0);
+
+  __shared__ float shmem[CtaN * Interleave * WarpNum];
+  int const tid = threadIdx.x;
+  int const warp_id = tid / WarpSize, lane_id = tid % WarpSize;
+
+  // Ordering barrier: the previous expert's shmem reads (and the out_acc zero-init on the first
+  // call) must complete before this expert overwrites shmem. The enclosing loop is block-uniform,
+  // so every thread reaches this barrier the same number of times.
+  __syncthreads();
+#pragma unroll
+  for (int n = 0; n < CtaN; ++n) {
+    float v = static_cast<float>(reinterpret_cast<AccT*>(tile_acc)[n]);
+    v = warp_reduce_sum<Interleave, ThreadsPerInterleavedTile>(v);
+    if (lane_id < Interleave * ThreadsPerInterleavedTile && lane_id % ThreadsPerInterleavedTile == 0) {
+      shmem[warp_id * CtaN * Interleave + n * Interleave + lane_id / ThreadsPerInterleavedTile] = v;
+    }
+  }
+  __syncthreads();
+  for (int ii = tid; ii < CtaN * Interleave; ii += Threads) {
+    float val = 0.f, v_bias = 0.f;
+    if constexpr (EnableBias) {
+      v_bias = static_cast<float>(reinterpret_cast<Type*>(bias)[ii]);
+    }
+#pragma unroll
+    for (int jj = 0; jj < WarpNum; ++jj) {
+      val += shmem[jj * CtaN * Interleave + ii];
+    }
+    out_acc[ii] += row_scale * (val + v_bias);
+  }
+}
+#endif  // (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750)) || !defined(__CUDA_ARCH__)
+
+// FC2 GEMV with the MoE finalize (top_k weighted reduction) fused into the epilogue.
+//
+// The unfused sequence writes each of the top_k expanded rows to a scratch buffer and then runs
+// `finalizeMoeRouting` as a separate kernel. For batch-1 decode that reduction is launched with a
+// single block, so its launch and drain latency dominates the trivial amount of work it does.
+// Here one block owns all top_k partials of one token for one column tile: it loops over the
+// token's experts, accumulates `scale * (dot + bias)` in shared memory, and stores the reduced row
+// straight to the MoE output. That removes a kernel launch plus the scratch round trip to DRAM.
+//
+// grid = (num_rows, n / (CtaN * kInterleave)). Because the top_k loop moved inside the block, the
+// grid is top_k times narrower than the unfused GEMV at the same CtaN; callers compensate with a
+// smaller CtaN so the block count still covers the machine.
+//
+// Layout notes (matching finalizeMoeRoutingKernelLauncher):
+//   unpermuted_row_to_permuted_row is indexed [k_idx * num_rows + token]
+//   final_scales is indexed          [token * experts_per_token + k_idx]
+// Only valid for single-EP / single-TP (every selected expert is local and bias applies here).
+template <typename Details, int CtaN, int Threads, int GroupSize, bool EnableBias,
+          typename TypeA = typename Details::TypeDetailsA::Type, typename AccT = TypeA>
+__global__ void moe_gemv_fused_finalize_kernel(
+    TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
+    int const* unpermuted_row_to_permuted_row, int const* permuted_row_to_expert, float const* final_scales,
+    int num_experts, int64_t weight_expert_stride, int64_t scale_expert_stride, int n, int k,
+    int num_rows, int experts_per_token) {
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
+  using AccessTypeA = typename Details::AccessTypeA;
+  using AccessTypeW = typename Details::AccessTypeW;
+  using Type = typename MathWrapper<typename Details::TypeDetailsA>::Type;
+
+  static constexpr bool Mandatory = true;
+  static constexpr int CtaM = 1;
+  static constexpr int StepK = Details::kStepK;
+  static constexpr int CtaK = StepK * Threads;
+  static constexpr int Interleave = Details::kInterleave;
+  static_assert(CtaN % 2 == 0);
+  if constexpr (GroupSize != 0) {
+    static_assert((CtaK / Interleave) % GroupSize == 0);
+  }
+
+  int const token = blockIdx.x, tile_id_n = blockIdx.y, tid = threadIdx.x;
+  int const origin_k = k, interleaved_k = k * Interleave;
+  int const interleaved_offset_n = tile_id_n * CtaN;
+  int const real_offset_n =
+      interleaved_offset_n * Interleave + ((tid * StepK / Details::LayoutDetails::kTileSize) % Interleave);
+  int const real_offset_k =
+      (tid * StepK / (Interleave * Details::LayoutDetails::kTileSize)) * Details::LayoutDetails::kTileSize +
+      ((tid * StepK) % Details::LayoutDetails::kTileSize);
+
+  __shared__ float out_acc[CtaN * Interleave];
+  for (int ii = tid; ii < CtaN * Interleave; ii += Threads) {
+    out_acc[ii] = 0.f;
+  }
+
+  // Keep this a real loop: unrolling would replicate the whole K-loop body per expert.
+#pragma unroll 1
+  for (int k_idx = 0; k_idx < experts_per_token; ++k_idx) {
+    int const permuted_row = unpermuted_row_to_permuted_row[k_idx * num_rows + token];
+    int const expert = permuted_row >= 0 ? permuted_row_to_expert[permuted_row] : -1;
+    if (expert < 0 || expert >= num_experts) {
+      continue;
+    }
+
+    uint8_t* expert_weight = weight + expert * weight_expert_stride;
+    TypeA* expert_scales = scales + static_cast<int64_t>(expert) * scale_expert_stride;
+    TypeA* expert_bias = nullptr;
+    if constexpr (EnableBias) {
+      expert_bias = bias + static_cast<int64_t>(expert) * n + tile_id_n * CtaN * Interleave;
+    }
+
+    GMemIterator<Mandatory, AccessTypeA, CtaM, Details::kAccessNumA, TypeA> act_iterator(
+        act, permuted_row * origin_k + real_offset_k, CtaK / Interleave, origin_k);
+    GMemIterator<Mandatory, AccessTypeW, CtaN, Details::kAccessNumW, uint8_t> weight_iterator(
+        expert_weight, (interleaved_offset_n * interleaved_k + tid * StepK) / Details::kElemsPerByteW,
+        CtaK / Details::kElemsPerByteW, interleaved_k / Details::kElemsPerByteW);
+    GMemIterator<Mandatory, TypeA, CtaN, 1, TypeA> scales_iterator(
+        expert_scales, (GroupSize != 0 ? real_offset_k / GroupSize * n : 0) + real_offset_n,
+        (GroupSize != 0 ? CtaK / Interleave / GroupSize * n : 0), Interleave);
+
+    AccT tile_acc[CtaN];
+    fill<CtaN>(tile_acc, static_cast<AccT>(0.f));
+
+    TypeA vec_scale[CtaN];
+    if constexpr (GroupSize == 0) {
+#pragma unroll
+      for (int i = 0; i < CtaN; ++i) {
+        scales_iterator.load(vec_scale + i, 0, i);
+      }
+    }
+
+    for (int idx_k = tid * StepK, iter = 0; idx_k < interleaved_k; idx_k += CtaK, ++iter) {
+      TypeA tile_a[StepK], tile_w[StepK], tile_w_pack2[CtaN * StepK];
+      uint8_t tile_w_quantized[StepK / Details::kElemsPerByteW];
+      if constexpr (GroupSize != 0) {
+#pragma unroll
+        for (int i = 0; i < CtaN; ++i) {
+          scales_iterator.load(vec_scale + i, iter, i);
+        }
+      }
+#pragma unroll
+      for (int i = 0; i < CtaN; ++i) {
+        weight_iterator.load(tile_w_quantized, iter, i);
+        dequantize<Details, 1, StepK, false, false>(tile_w, tile_w_quantized, vec_scale + i, nullptr, 1.0f);
+        pack_to_vec2<Details, StepK>(tile_w_pack2, tile_w, i);
+      }
+      act_iterator.load(tile_a, iter, 0);
+      mma<Details, 1, CtaN, StepK, AccT>(tile_acc, tile_w_pack2, tile_a);
+    }
+
+    float const row_scale = final_scales != nullptr ? final_scales[token * experts_per_token + k_idx] : 1.0f;
+    fused_finalize_accumulate<Details, CtaN, Threads, EnableBias, AccT>(out_acc, tile_acc, expert_bias, row_scale);
+  }
+
+  __syncthreads();
+  Type* out_row = reinterpret_cast<Type*>(out) + static_cast<int64_t>(token) * n + tile_id_n * CtaN * Interleave;
+  for (int ii = tid; ii < CtaN * Interleave; ii += Threads) {
+    out_row[ii] = static_cast<Type>(out_acc[ii]);
+  }
+#endif
+}
+
 template <typename Details, int CtaM, int CtaN, int Threads, bool EnableBias,
           typename TypeA = typename Details::TypeDetailsA::Type, typename AccT = TypeA>
 __device__ __forceinline__ void swiglu_epilogue(void* out, void* tile_acc, void* bias,
@@ -645,6 +811,52 @@ static void dispatch_moe_gemv_interleaved_swiglu_group_size(
   }
 }
 
+template <typename Details, int CtaN, int Threads, int GroupSize, typename TypeA, typename AccT = TypeA>
+static void launch_moe_gemv_fused_finalize(
+    TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
+    int const* unpermuted_row_to_permuted_row, int const* permuted_row_to_expert, float const* final_scales,
+    int num_experts, int64_t num_rows, int64_t experts_per_token, int64_t n, int64_t k, cudaStream_t stream) {
+  int64_t const weight_expert_stride = n * k / Details::kElemsPerByteW;
+  int64_t const scale_expert_stride = GroupSize == 0 ? n : ((k + GroupSize - 1) / GroupSize) * n;
+  dim3 grid(static_cast<unsigned>(num_rows), static_cast<unsigned>(n / (CtaN * Details::kInterleave)));
+  dim3 block(Threads);
+  if (bias != nullptr) {
+    moe_gemv_fused_finalize_kernel<Details, CtaN, Threads, GroupSize, true, TypeA, AccT><<<grid, block, 0, stream>>>(
+        act, weight, scales, bias, out, unpermuted_row_to_permuted_row, permuted_row_to_expert, final_scales,
+        num_experts, weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k),
+        static_cast<int>(num_rows), static_cast<int>(experts_per_token));
+  } else {
+    moe_gemv_fused_finalize_kernel<Details, CtaN, Threads, GroupSize, false, TypeA, AccT><<<grid, block, 0, stream>>>(
+        act, weight, scales, bias, out, unpermuted_row_to_permuted_row, permuted_row_to_expert, final_scales,
+        num_experts, weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k),
+        static_cast<int>(num_rows), static_cast<int>(experts_per_token));
+  }
+}
+
+template <typename Details, int CtaN, int Threads, typename TypeA, typename AccT = TypeA>
+static void dispatch_moe_gemv_fused_finalize_group_size(
+    TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
+    int const* unpermuted_row_to_permuted_row, int const* permuted_row_to_expert, float const* final_scales,
+    int num_experts, int64_t num_rows, int64_t experts_per_token, int64_t n, int64_t k, int group_size,
+    cudaStream_t stream) {
+#define LAUNCH_MOE_GEMV_FUSED_FINALIZE(GROUP_SIZE)                                              \
+  launch_moe_gemv_fused_finalize<Details, CtaN, Threads, GROUP_SIZE, TypeA, AccT>(              \
+      act, weight, scales, bias, out, unpermuted_row_to_permuted_row, permuted_row_to_expert,   \
+      final_scales, num_experts, num_rows, experts_per_token, n, k, stream)
+  if (group_size <= 0) {
+    LAUNCH_MOE_GEMV_FUSED_FINALIZE(0);
+  } else if (group_size == 32) {
+    LAUNCH_MOE_GEMV_FUSED_FINALIZE(32);
+  } else if (group_size == 64) {
+    LAUNCH_MOE_GEMV_FUSED_FINALIZE(64);
+  } else if (group_size == 128) {
+    LAUNCH_MOE_GEMV_FUSED_FINALIZE(128);
+  } else {
+    ORT_THROW("unsupported MoE GEMV fused-finalize group_size: ", group_size);
+  }
+#undef LAUNCH_MOE_GEMV_FUSED_FINALIZE
+}
+
 }  // namespace fpA_intB_gemv
 
 namespace moe_gemv {
@@ -658,6 +870,11 @@ static constexpr int kThreads = 128;
 static constexpr int kTileSizeK = 64;
 static constexpr int kInt4Interleave = 128 * 8 / (kTileSizeK * 4);  // = 4
 static constexpr int kInt8Interleave = 128 * 8 / (kTileSizeK * 8);  // = 2
+
+// The fused-finalize FC2 GEMV moves the top_k loop inside the block, so at kCtaN it would launch
+// top_k times fewer blocks than the unfused kernel and lose memory-level parallelism. A narrower
+// column tile restores the block count; CtaN=2 also measured fastest for the FC2 shape on sm_120.
+static constexpr int kFusedFinalizeCtaN = 2;
 
 // Maps a runtime accumulator-precision choice to a compile-time type tag so the
 // host launcher can select the fp32- or 16-bit-accumulation kernel instantiation.
@@ -729,6 +946,27 @@ bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t
   return is_moe_gemv_supported(sm, expanded_num_rows, n, k, 4, 0);
 }
 
+bool is_moe_gemv_fused_finalize_supported(int sm, int64_t num_rows, int64_t experts_per_token,
+                                          int64_t expanded_num_rows, int64_t n, int64_t k,
+                                          int weight_bits, int group_size) {
+  if (!is_moe_gemv_supported(sm, expanded_num_rows, n, k, weight_bits, group_size)) {
+    return false;
+  }
+  if (num_rows <= 0 || experts_per_token <= 0) {
+    return false;
+  }
+  // The fused reduction assumes every token contributes exactly experts_per_token permuted rows,
+  // which is what expandInputRows produces when no tokens are dropped.
+  if (num_rows * experts_per_token != expanded_num_rows) {
+    return false;
+  }
+  int const interleave = weight_bits == 4 ? kInt4Interleave : kInt8Interleave;
+  if (n % (kFusedFinalizeCtaN * interleave) != 0) {
+    return false;
+  }
+  return true;
+}
+
 template <typename T, typename WeightType>
 struct DetailsForTAndWeight;
 
@@ -783,6 +1021,35 @@ void launch_moe_gemv_int_symmetric(T const* act, WeightType const* weight, T con
         const_cast<TypeA*>(reinterpret_cast<TypeA const*>(bias)),
         reinterpret_cast<TypeA*>(out),
         expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, n, k, group_size, stream);
+  };
+  if (use_fp32_accum) {
+    launch(TypeTag<float>{});
+  } else {
+    launch(TypeTag<TypeA>{});
+  }
+}
+
+template <typename T, typename WeightType>
+void launch_moe_gemv_int_symmetric_fused_finalize(
+    T const* act, WeightType const* weight, T const* scales, T const* bias, T* out,
+    int const* unpermuted_row_to_permuted_row, int const* permuted_row_to_expert, float const* final_scales,
+    int num_experts, int64_t num_rows, int64_t experts_per_token, int64_t n, int64_t k, int group_size, int sm,
+    cudaStream_t stream) {
+  ORT_UNUSED_PARAMETER(sm);
+  using Details = typename DetailsForTAndWeight<T, WeightType>::Details;
+  using TypeA = typename DetailsForTAndWeight<T, WeightType>::TypeA;
+  // Accumulation policy matches launch_moe_gemv_int_symmetric.
+  bool const use_fp32_accum = !std::is_same_v<T, half> || MoeGemvUseFp32Accum();
+  auto launch = [&](auto acc_tag) {
+    using AccT = typename decltype(acc_tag)::type;
+    fiv::dispatch_moe_gemv_fused_finalize_group_size<Details, kFusedFinalizeCtaN, kThreads, TypeA, AccT>(
+        const_cast<TypeA*>(reinterpret_cast<TypeA const*>(act)),
+        const_cast<uint8_t*>(reinterpret_cast<uint8_t const*>(weight)),
+        const_cast<TypeA*>(reinterpret_cast<TypeA const*>(scales)),
+        const_cast<TypeA*>(reinterpret_cast<TypeA const*>(bias)),
+        reinterpret_cast<TypeA*>(out),
+        unpermuted_row_to_permuted_row, permuted_row_to_expert, final_scales, num_experts, num_rows,
+        experts_per_token, n, k, group_size, stream);
   };
   if (use_fp32_accum) {
     launch(TypeTag<float>{});
@@ -865,6 +1132,12 @@ template void launch_moe_gemv_int_symmetric<half, cutlass::uint4b_t>(
 template void launch_moe_gemv_int_symmetric<half, uint8_t>(
     half const*, uint8_t const*, half const*, half const*, half*, int64_t const*, int const*, int,
     int64_t, int64_t, int64_t, int, int, cudaStream_t);
+template void launch_moe_gemv_int_symmetric_fused_finalize<half, cutlass::uint4b_t>(
+    half const*, cutlass::uint4b_t const*, half const*, half const*, half*, int const*, int const*, float const*,
+    int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
+template void launch_moe_gemv_int_symmetric_fused_finalize<half, uint8_t>(
+    half const*, uint8_t const*, half const*, half const*, half*, int const*, int const*, float const*,
+    int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
 template void launch_moe_gemv_int_symmetric_interleaved_swiglu<half, cutlass::uint4b_t>(
     half const*, cutlass::uint4b_t const*, half const*, half const*, half*, int64_t const*, int const*, int,
     int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, float*, cudaStream_t);
@@ -886,6 +1159,12 @@ template void launch_moe_gemv_int_symmetric<__nv_bfloat16, cutlass::uint4b_t>(
 template void launch_moe_gemv_int_symmetric<__nv_bfloat16, uint8_t>(
     __nv_bfloat16 const*, uint8_t const*, __nv_bfloat16 const*, __nv_bfloat16 const*, __nv_bfloat16*,
     int64_t const*, int const*, int, int64_t, int64_t, int64_t, int, int, cudaStream_t);
+template void launch_moe_gemv_int_symmetric_fused_finalize<__nv_bfloat16, cutlass::uint4b_t>(
+    __nv_bfloat16 const*, cutlass::uint4b_t const*, __nv_bfloat16 const*, __nv_bfloat16 const*, __nv_bfloat16*,
+    int const*, int const*, float const*, int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
+template void launch_moe_gemv_int_symmetric_fused_finalize<__nv_bfloat16, uint8_t>(
+    __nv_bfloat16 const*, uint8_t const*, __nv_bfloat16 const*, __nv_bfloat16 const*, __nv_bfloat16*,
+    int const*, int const*, float const*, int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
 template void launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint4b_t>(
     __nv_bfloat16 const*, cutlass::uint4b_t const*, __nv_bfloat16 const*, __nv_bfloat16 const*, __nv_bfloat16*,
     int64_t const*, int const*, int, int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams,

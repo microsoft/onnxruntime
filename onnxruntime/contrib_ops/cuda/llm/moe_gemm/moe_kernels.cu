@@ -90,6 +90,15 @@ inline bool MoeGemvSplitK2SwiGLUDisabledByEnv() {
   return disabled;
 }
 
+// Kill switch for folding finalizeMoeRouting into the FC2 GEMV epilogue. Enabled by default;
+// set ORT_DISABLE_MOE_GEMV_FUSED_FINALIZE=1 to run FC2 GEMV + a separate finalize kernel.
+inline bool MoeGemvFusedFinalizeDisabledByEnv() {
+  // Parsed once via ORT's environment helper (consistent parsing/thread-safety across platforms).
+  static bool const disabled =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_MOE_GEMV_FUSED_FINALIZE", 0) == 1;
+  return disabled;
+}
+
 template <typename T, typename WeightType, typename ScaleBiasType>
 constexpr bool MoeGemvSplitK2SwiGLUSupported() {
   return std::is_same_v<T, half> && std::is_same_v<WeightType, cutlass::uint4b_t> &&
@@ -149,6 +158,62 @@ bool tryLaunchMoeGemvIntSymmetric(T const* input, WeightType const* weights, Sca
     (void)expert_first_token_offset;
     (void)num_experts_per_node;
     (void)permuted_row_to_expert;
+    (void)expanded_num_rows;
+    (void)n;
+    (void)k;
+    (void)sm;
+    (void)group_size;
+    (void)disabled;
+    (void)stream;
+    return false;
+  }
+}
+
+// Attempts the FC2 symmetric INT MoE GEMV with finalizeMoeRouting fused into its epilogue.
+// Returns true if it ran, in which case `final_output` already holds the reduced MoE output and
+// the caller must skip finalizeMoeRoutingKernelLauncher. Returns false if the configuration is
+// unsupported, leaving the caller to run the unfused GEMV/GEMM plus a separate finalize.
+template <typename T, typename WeightType, typename ScaleBiasType, typename OutputType>
+bool tryLaunchMoeGemvIntSymmetricFusedFinalize(
+    T const* input, WeightType const* weights, ScaleBiasType const* scales, ScaleBiasType const* weight_zeros,
+    ScaleBiasType const* biases, OutputType* final_output, int const* unpermuted_row_to_permuted_row,
+    int const* permuted_row_to_expert, float const* unpermuted_final_scales, int num_experts_per_node,
+    int64_t num_rows, int64_t experts_per_token, int64_t expanded_num_rows, int64_t n, int64_t k, int sm,
+    int group_size, bool disabled, cudaStream_t stream) {
+  if constexpr ((std::is_same_v<WeightType, cutlass::uint4b_t> || std::is_same_v<WeightType, uint8_t>) &&
+                (std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16>) && std::is_same_v<ScaleBiasType, T> &&
+                std::is_same_v<OutputType, T>) {
+    bool const has_block_zeros = group_size > 0 && weight_zeros != nullptr;
+    constexpr int weight_bits = MoeGemvWeightBits<WeightType>();
+    if (disabled || MoeGemvDisabledByEnv() || MoeGemvFusedFinalizeDisabledByEnv() || has_block_zeros) {
+      return false;
+    }
+    // The fused epilogue resolves each partial's expert through permuted_row_to_expert; there is no
+    // expert_first_token_offset scan fallback in that kernel.
+    if (permuted_row_to_expert == nullptr) {
+      return false;
+    }
+    if (!onnxruntime::llm::kernels::moe_gemv::is_moe_gemv_fused_finalize_supported(
+            sm, num_rows, experts_per_token, expanded_num_rows, n, k, weight_bits, group_size)) {
+      return false;
+    }
+    onnxruntime::llm::kernels::moe_gemv::launch_moe_gemv_int_symmetric_fused_finalize<T, WeightType>(
+        input, weights, scales, biases, final_output, unpermuted_row_to_permuted_row, permuted_row_to_expert,
+        unpermuted_final_scales, num_experts_per_node, num_rows, experts_per_token, n, k, group_size, sm, stream);
+    return true;
+  } else {
+    (void)input;
+    (void)weights;
+    (void)scales;
+    (void)weight_zeros;
+    (void)biases;
+    (void)final_output;
+    (void)unpermuted_row_to_permuted_row;
+    (void)permuted_row_to_expert;
+    (void)unpermuted_final_scales;
+    (void)num_experts_per_node;
+    (void)num_rows;
+    (void)experts_per_token;
     (void)expanded_num_rows;
     (void)n;
     (void)k;
@@ -2311,20 +2376,35 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
                                            // (no bias here; fc2 bias applied in finalizeMoeRouting).
                                            // Keep the decode GEMV path single-EP until token-drop/all-to-all
                                            // cases are profiled and validated.
-  bool const fc2_did_gemv = tryLaunchMoeGemvIntSymmetric<T, WeightType, ScaleBiasType>(
-      input, fc2_expert_weights,
-      quant_params.groupwise.group_size > 0
-          ? static_cast<ScaleBiasType const*>(quant_params.groupwise.fc2.weight_scales)
-          : fc2_int_scales,
-      quant_params.groupwise.group_size > 0
-          ? static_cast<ScaleBiasType const*>(quant_params.groupwise.fc2.weight_zeros)
-          : nullptr,
-      /*biases*/ nullptr, static_cast<T*>(gemm_output), expert_first_token_offset, num_experts_per_node,
-      permuted_row_to_expert, expanded_num_rows, /*n=*/hidden_size, /*k=*/inter_size, onnxruntime::llm::common::getSMVersion(),
-      quant_params.groupwise.group_size,
-      /*disabled=*/parallelism_config.ep_size > 1 || using_tma_ws_gemm2 ||
-          MoeGemvRejectedByProfiledInterSize(expanded_num_rows, inter_size),
-      stream);
+  auto const fc2_gemv_scales = quant_params.groupwise.group_size > 0
+                                   ? static_cast<ScaleBiasType const*>(quant_params.groupwise.fc2.weight_scales)
+                                   : fc2_int_scales;
+  auto const fc2_gemv_zeros = quant_params.groupwise.group_size > 0
+                                  ? static_cast<ScaleBiasType const*>(quant_params.groupwise.fc2.weight_zeros)
+                                  : nullptr;
+  bool const fc2_gemv_disabled = parallelism_config.ep_size > 1 || using_tma_ws_gemm2 ||
+                                 MoeGemvRejectedByProfiledInterSize(expanded_num_rows, inter_size);
+
+  // Preferred fast path: the same GEMV, but with the top_k finalize reduction folded into its
+  // epilogue so `final_output` is written directly and no separate finalize kernel is launched.
+  // Restricted to single-TP as well as single-EP: the fused epilogue always adds the FC2 bias,
+  // whereas finalizeMoeRouting only adds it on tp_rank 0.
+  bool const fc2_did_fused_finalize =
+      tryLaunchMoeGemvIntSymmetricFusedFinalize<T, WeightType, ScaleBiasType, OutputType>(
+          input, fc2_expert_weights, fc2_gemv_scales, fc2_gemv_zeros, fc2_expert_biases, final_output,
+          unpermuted_row_to_permuted_row, permuted_row_to_expert, unpermuted_final_scales, num_experts_per_node,
+          num_rows, /*experts_per_token=*/k, expanded_num_rows, /*n=*/hidden_size, /*k=*/inter_size,
+          onnxruntime::llm::common::getSMVersion(), quant_params.groupwise.group_size,
+          /*disabled=*/fc2_gemv_disabled || parallelism_config.tp_size > 1, stream);
+
+  bool const fc2_did_gemv = fc2_did_fused_finalize ||
+                            tryLaunchMoeGemvIntSymmetric<T, WeightType, ScaleBiasType>(
+                                input, fc2_expert_weights, fc2_gemv_scales, fc2_gemv_zeros,
+                                /*biases*/ nullptr, static_cast<T*>(gemm_output), expert_first_token_offset,
+                                num_experts_per_node, permuted_row_to_expert, expanded_num_rows,
+                                /*n=*/hidden_size, /*k=*/inter_size, onnxruntime::llm::common::getSMVersion(),
+                                quant_params.groupwise.group_size,
+                                /*disabled=*/fc2_gemv_disabled, stream);
   if (!fc2_did_gemv) {
     auto universal_input = GroupedGemmInput<T, WeightType, OutputType, OutputType>{input, total_tokens_including_expert,
                                                                                    fc2_expert_weights,
@@ -2353,7 +2433,9 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
   bool using_hopper_fused_finalize = tma_ws_input.fusion == TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::FINALIZE;
   bool has_different_output_type_tma_ws = !using_hopper_fused_finalize && using_tma_ws_gemm2;
 
-  if (has_different_output_type_ampere || has_different_output_type_tma_ws) {
+  if (fc2_did_fused_finalize) {
+    // final_output was produced by the fused GEMV epilogue; nothing left to reduce.
+  } else if (has_different_output_type_ampere || has_different_output_type_tma_ws) {
     finalizeMoeRoutingKernelLauncher<OutputType, UnfusedGemmOutputType>(
         static_cast<UnfusedGemmOutputType const*>(gemm_output), final_output, fc2_expert_biases,
         unpermuted_final_scales, unpermuted_row_to_permuted_row, permuted_row_to_unpermuted_row,
