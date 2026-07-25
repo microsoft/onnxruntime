@@ -72,6 +72,15 @@ parameters:
   displayName: 'aarch64 Linux Python build configurations'
   default: []
 
+- name: build_multi_python_wheel
+  displayName: >
+    Linux only. Build the native libraries once and recompile only the Python extension module for
+    every Python version, then publish a single py3-none-<platform> wheel instead of one wheel per
+    Python version. The CUDA and TensorRT libraries dominate these wheels and contain no CPython
+    symbols, so this both shortens the build and shrinks what users download.
+  type: boolean
+  default: false
+
 stages:
     # Use separated cudnn folder for CUDA 13.0 on Windows.
     - ${{ if eq(parameters.cuda_version, '13.0') }}:
@@ -94,48 +103,82 @@ stages:
             EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_cuda_archs }}"
             use_tensorrt: True
 
-    # Linux: one parallel stage per Python version
-    - ${{ each config in parameters.LinuxPythonConfigurations }}:
+    # Linux: either a single stage that builds every Python version and publishes one merged wheel,
+    # or one parallel stage per Python version.
+    - ${{ if eq(parameters.build_multi_python_wheel, true) }}:
       - template: py-linux-gpu-stage.yml
         parameters:
-          stage_name: Linux_py_GPU_Wheels_x86_64_${{ replace(config.python_version, '.', '_') }}
+          stage_name: Linux_py_GPU_Wheels_x86_64
           arch: 'x86_64'
           machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           cuda_version: ${{ parameters.cuda_version }}
           docker_base_image: ${{ parameters.docker_base_image }}
-          python_version: ${{ config.python_version }}
-          docker_python_exe_path: ${{ config.docker_python_exe_path }}
-          wheel_artifact_name: onnxruntime_gpu_${{ replace(config.python_version, '.', '_') }}
-          # Only publish the large build intermediates artifact for Python 3.12. That's the only version we test now.
-          ${{ if eq(config.python_version, '3.12') }}:
-            build_intermediates_artifact_name: linux_gpu_wheel_x86_64
+          multi_python_wheel: true
+          wheel_artifact_name: onnxruntime_gpu_x86_64
+          build_intermediates_artifact_name: linux_gpu_wheel_x86_64
 
-    # Linux aarch64: one parallel stage per Python version
-    - ${{ each config in parameters.AArch64LinuxPythonConfigurations }}:
-      - template: py-linux-gpu-stage.yml
-        parameters:
-          stage_name: Linux_py_GPU_Wheels_aarch64_${{ replace(config.python_version, '.', '_') }}
-          arch: 'aarch64'
-          machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
-          cuda_version: ${{ parameters.cuda_version }}
-          docker_base_image: ${{ parameters.docker_base_image_aarch64 }}
-          python_version: ${{ config.python_version }}
-          docker_python_exe_path: ${{ config.docker_python_exe_path }}
-          wheel_artifact_name: onnxruntime_gpu_aarch64_${{ replace(config.python_version, '.', '_') }}
-          ${{ if eq(config.python_version, '3.12') }}:
-            build_intermediates_artifact_name: linux_gpu_wheel_aarch64
+      - ${{ if ne(parameters.docker_base_image_aarch64, '') }}:
+        - template: py-linux-gpu-stage.yml
+          parameters:
+            stage_name: Linux_py_GPU_Wheels_aarch64
+            arch: 'aarch64'
+            machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
+            extra_build_arg: ${{ parameters.build_py_parameters }}
+            cmake_build_type: ${{ parameters.cmake_build_type }}
+            cuda_version: ${{ parameters.cuda_version }}
+            docker_base_image: ${{ parameters.docker_base_image_aarch64 }}
+            multi_python_wheel: true
+            wheel_artifact_name: onnxruntime_gpu_aarch64
 
-    # Merge per-version Linux wheel artifacts into a single combined artifact for downstream consumers
+    - ${{ else }}:
+      - ${{ each config in parameters.LinuxPythonConfigurations }}:
+        - template: py-linux-gpu-stage.yml
+          parameters:
+            stage_name: Linux_py_GPU_Wheels_x86_64_${{ replace(config.python_version, '.', '_') }}
+            arch: 'x86_64'
+            machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
+            extra_build_arg: ${{ parameters.build_py_parameters }}
+            cmake_build_type: ${{ parameters.cmake_build_type }}
+            cuda_version: ${{ parameters.cuda_version }}
+            docker_base_image: ${{ parameters.docker_base_image }}
+            python_version: ${{ config.python_version }}
+            docker_python_exe_path: ${{ config.docker_python_exe_path }}
+            wheel_artifact_name: onnxruntime_gpu_${{ replace(config.python_version, '.', '_') }}
+            # Only publish the large build intermediates artifact for Python 3.12. That's the only version we test now.
+            ${{ if eq(config.python_version, '3.12') }}:
+              build_intermediates_artifact_name: linux_gpu_wheel_x86_64
+
+      # Linux aarch64: one parallel stage per Python version
+      - ${{ each config in parameters.AArch64LinuxPythonConfigurations }}:
+        - template: py-linux-gpu-stage.yml
+          parameters:
+            stage_name: Linux_py_GPU_Wheels_aarch64_${{ replace(config.python_version, '.', '_') }}
+            arch: 'aarch64'
+            machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
+            extra_build_arg: ${{ parameters.build_py_parameters }}
+            cmake_build_type: ${{ parameters.cmake_build_type }}
+            cuda_version: ${{ parameters.cuda_version }}
+            docker_base_image: ${{ parameters.docker_base_image_aarch64 }}
+            python_version: ${{ config.python_version }}
+            docker_python_exe_path: ${{ config.docker_python_exe_path }}
+            wheel_artifact_name: onnxruntime_gpu_aarch64_${{ replace(config.python_version, '.', '_') }}
+            ${{ if eq(config.python_version, '3.12') }}:
+              build_intermediates_artifact_name: linux_gpu_wheel_aarch64
+
+    # Merge the Linux wheel artifacts into a single combined artifact for downstream consumers
     - stage: Linux_py_GPU_Wheels_Merge_Artifacts
       dependsOn:
-      - ${{ each config in parameters.LinuxPythonConfigurations }}:
-        - Linux_py_GPU_Wheels_x86_64_${{ replace(config.python_version, '.', '_') }}
-      - ${{ each config in parameters.AArch64LinuxPythonConfigurations }}:
-        - Linux_py_GPU_Wheels_aarch64_${{ replace(config.python_version, '.', '_') }}
+      - ${{ if eq(parameters.build_multi_python_wheel, true) }}:
+        - Linux_py_GPU_Wheels_x86_64
+        - ${{ if ne(parameters.docker_base_image_aarch64, '') }}:
+          - Linux_py_GPU_Wheels_aarch64
+      - ${{ else }}:
+        - ${{ each config in parameters.LinuxPythonConfigurations }}:
+          - Linux_py_GPU_Wheels_x86_64_${{ replace(config.python_version, '.', '_') }}
+        - ${{ each config in parameters.AArch64LinuxPythonConfigurations }}:
+          - Linux_py_GPU_Wheels_aarch64_${{ replace(config.python_version, '.', '_') }}
       jobs:
       - job: Linux_py_GPU_Wheels_Merge_Artifacts
         workspace:
@@ -153,16 +196,31 @@ stages:
           clean: true
           submodules: none
 
-        - ${{ each config in parameters.LinuxPythonConfigurations }}:
+        - ${{ if eq(parameters.build_multi_python_wheel, true) }}:
           - task: DownloadPipelineArtifact@2
-            displayName: 'Download wheel - Python ${{ config.python_version }}'
+            displayName: 'Download wheel - x86_64'
             inputs:
-              artifact: onnxruntime_gpu_${{ replace(config.python_version, '.', '_') }}
+              artifact: onnxruntime_gpu_x86_64
               targetPath: $(Build.ArtifactStagingDirectory)/onnxruntime_gpu
 
-        - ${{ each config in parameters.AArch64LinuxPythonConfigurations }}:
-          - task: DownloadPipelineArtifact@2
-            displayName: 'Download wheel - aarch64 Python ${{ config.python_version }}'
-            inputs:
-              artifact: onnxruntime_gpu_aarch64_${{ replace(config.python_version, '.', '_') }}
-              targetPath: $(Build.ArtifactStagingDirectory)/onnxruntime_gpu
+          - ${{ if ne(parameters.docker_base_image_aarch64, '') }}:
+            - task: DownloadPipelineArtifact@2
+              displayName: 'Download wheel - aarch64'
+              inputs:
+                artifact: onnxruntime_gpu_aarch64
+                targetPath: $(Build.ArtifactStagingDirectory)/onnxruntime_gpu
+
+        - ${{ else }}:
+          - ${{ each config in parameters.LinuxPythonConfigurations }}:
+            - task: DownloadPipelineArtifact@2
+              displayName: 'Download wheel - Python ${{ config.python_version }}'
+              inputs:
+                artifact: onnxruntime_gpu_${{ replace(config.python_version, '.', '_') }}
+                targetPath: $(Build.ArtifactStagingDirectory)/onnxruntime_gpu
+
+          - ${{ each config in parameters.AArch64LinuxPythonConfigurations }}:
+            - task: DownloadPipelineArtifact@2
+              displayName: 'Download wheel - aarch64 Python ${{ config.python_version }}'
+              inputs:
+                artifact: onnxruntime_gpu_aarch64_${{ replace(config.python_version, '.', '_') }}
+                targetPath: $(Build.ArtifactStagingDirectory)/onnxruntime_gpu

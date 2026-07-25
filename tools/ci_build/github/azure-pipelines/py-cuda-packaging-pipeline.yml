@@ -22,6 +22,14 @@ parameters:
       - RelWithDebInfo
       - MinSizeRel
 
+  - name: build_multi_python_wheel
+    displayName: >
+      Linux only. Build the native libraries once and recompile only the Python extension module for
+      every Python version, then publish a single py3-none-<platform> wheel instead of one wheel per
+      Python version.
+    type: boolean
+    default: false
+
 variables:
   # Magic env-var used by CI build scripts & piped around several docker containers.
   # This should also be set to `1` for release candidates, despite the name. RCs do not yet have proper handling, so
@@ -62,6 +70,7 @@ extends:
       - template: stages/py-gpu-packaging-stage.yml
         parameters:
           cmake_build_type: ${{ parameters.cmake_build_type }}
+          build_multi_python_wheel: ${{ parameters.build_multi_python_wheel }}
           cuda_version: '12.8'
           cudnn_folder: ''
           cmake_cuda_archs: '61-real;75-real;86-real;89-real;120-real;120-virtual'

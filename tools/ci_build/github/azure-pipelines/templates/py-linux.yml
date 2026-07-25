@@ -34,6 +34,13 @@ parameters:
   type: string
   default: ''
 
+- name: multi_python_wheel
+  displayName: >
+    Build the native libraries once, recompile only onnxruntime_pybind11_state for every Python
+    version and publish a single py3-none-<platform> wheel.
+  type: boolean
+  default: false
+
 - name: is1ES
   displayName: 'Whether the pipeline is running in 1ES'
   type: boolean
@@ -69,6 +76,11 @@ jobs:
       value: '-p ${{ parameters.python_exe_path }}'
     ${{ if eq(parameters.python_exe_path, '') }}:
       value: ''
+  - name: multi_python_wheel_arg
+    ${{ if eq(parameters.multi_python_wheel, true) }}:
+      value: '-m'
+    ${{ else }}:
+      value: ''
 
   steps:
   - checkout: self
@@ -94,4 +106,4 @@ jobs:
     inputs:
       targetType: filePath
       filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-      arguments: -i onnxruntimecpubuildpython${{ parameters.arch }} -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} $(extra_build_args) $(python_exe_path)
+      arguments: -i onnxruntimecpubuildpython${{ parameters.arch }} -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} $(extra_build_args) $(python_exe_path) $(multi_python_wheel_arg)

@@ -1,8 +1,9 @@
 #!/bin/bash
 set -e -x
 BUILD_CONFIG="Release"
+MULTI_PYTHON_WHEEL="false"
 
-while getopts "i:d:x:c:p:" parameter_Option
+while getopts "i:d:x:c:p:m" parameter_Option
 do case "${parameter_Option}"
 in
 i) DOCKER_IMAGE=${OPTARG};;
@@ -10,7 +11,8 @@ d) DEVICE=${OPTARG};;
 x) BUILD_EXTR_PAR=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
 p) PYTHON_EXES=${OPTARG};;
-*) echo "Usage: $0 -i <docker_image> -d <GPU|CPU> [-x <extra_build_arg>] [-c <build_config>] [-p <python_exe_path>]"
+m) MULTI_PYTHON_WHEEL="true";;
+*) echo "Usage: $0 -i <docker_image> -d <GPU|CPU> [-x <extra_build_arg>] [-c <build_config>] [-p <python_exe_path>] [-m]"
    exit 1;;
 esac
 done
@@ -21,6 +23,11 @@ DOCKER_SCRIPT_OPTIONS=("-d" "${DEVICE}" "-c" "${BUILD_CONFIG}")
 
 if [ "${PYTHON_EXES}" != "" ] ; then
     DOCKER_SCRIPT_OPTIONS+=("-p" "${PYTHON_EXES}")
+fi
+
+if [ "${MULTI_PYTHON_WHEEL}" == "true" ] ; then
+    # Build the native libraries once and produce a single wheel that works with every Python version.
+    DOCKER_SCRIPT_OPTIONS+=("-m")
 fi
 
 if [ "${BUILD_EXTR_PAR}" != "" ] ; then

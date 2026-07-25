@@ -6,6 +6,11 @@ set -e -x
 mkdir -p /build/dist
 
 EXTRA_ARG=""
+# When true, build the native libraries only once and recompile only the CPython extension module
+# (onnxruntime_pybind11_state) for the remaining Python versions, then merge all the wheels into a
+# single py3-none-<platform> wheel. The native libraries contain no CPython symbols, so one copy
+# serves every interpreter.
+MULTI_PYTHON_WHEEL="false"
 # Put 3.12 at the last because Ubuntu 24.04 use python 3.12 and we will upload the intermediate build files of this
 # config to Azure DevOps Artifacts and download them to a Ubuntu 24.04 machine to run the tests.
 PYTHON_EXES=(
@@ -17,7 +22,7 @@ PYTHON_EXES=(
   "/opt/python/cp312-cp312/bin/python3.12"
   )
 
-while getopts "d:p:x:c:" parameter_Option
+while getopts "d:p:x:c:m" parameter_Option
 do case "${parameter_Option}"
 in
 #GPU|WEBGPU|CPU|NPU.
@@ -33,12 +38,13 @@ p)
   ;;
 x) EXTRA_ARG=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
-*) echo "Usage: $0 -d <GPU|WEBGPU|CPU|NPU> [-p <python_exe_path>] [-x <extra_build_arg>] [-c <build_config>]"
+m) MULTI_PYTHON_WHEEL="true";;
+*) echo "Usage: $0 -d <GPU|WEBGPU|CPU|NPU> [-p <python_exe_path>] [-x <extra_build_arg>] [-c <build_config>] [-m]"
    exit 1;;
 esac
 done
 
-BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--use_binskim_compliant_compile_flags" "--build_wheel" "--use_vcpkg" "--use_vcpkg_ms_internal_asset_cache")
+BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--skip_submodule_sync" "--parallel" "--use_binskim_compliant_compile_flags" "--use_vcpkg" "--use_vcpkg_ms_internal_asset_cache")
 
 if [ "$BUILD_CONFIG" != "Debug" ]; then
     BUILD_ARGS+=("--enable_lto")
@@ -108,6 +114,12 @@ fi
 export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
 
+# Where the CMake build copies the libraries that end up in the wheel.
+PACKAGE_CAPI_DIR=/build/$BUILD_CONFIG/onnxruntime/capi
+NATIVE_LIB_BACKUP=/build/native_lib_backup
+IS_FIRST_PYTHON="true"
+MERGE_PYTHON_EXE=""
+
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
   # Check if the Python executable or its directory exists
@@ -116,18 +128,48 @@ do
     continue
   fi
 
-  # Recompile the entire onnxruntime from scratch for every single Python version.
-  # TODO: It might be possible to reuse some intermediate files between different Python versions to speed up the build.
-  rm -rf /build/"$BUILD_CONFIG"
-
   # that's a workaround for the issue that there's no python3 in the docker image
   # like xnnpack's cmakefile, it uses pythone3 to run a external command
   python3_dir=$(dirname "$PYTHON_EXE")
   ls "$python3_dir"
   ${PYTHON_EXE} -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt
-  PATH=$python3_dir:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}"
+
+  if [ "$MULTI_PYTHON_WHEEL" = "false" ] || [ "$IS_FIRST_PYTHON" = "true" ]; then
+    # Recompile the entire onnxruntime from scratch. Without -m this happens for every single Python
+    # version, which is what makes the packaging pipelines slow.
+    rm -rf /build/"$BUILD_CONFIG"
+    PATH=$python3_dir:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}" --update --build --build_wheel
+
+    if [ "$MULTI_PYTHON_WHEEL" = "true" ]; then
+      # Keep the exact native libraries that were just built: they have to be byte identical in every
+      # wheel, otherwise they cannot be shared by the merged wheel.
+      rm -rf "$NATIVE_LIB_BACKUP"
+      mkdir -p "$NATIVE_LIB_BACKUP"
+      find "$PACKAGE_CAPI_DIR" -maxdepth 1 -name '*.so*' ! -name 'onnxruntime_pybind11_state*' \
+        -exec cp -a {} "$NATIVE_LIB_BACKUP"/ \;
+      ls -l "$NATIVE_LIB_BACKUP"
+    fi
+  else
+    # Reuse the native libraries and rebuild only the CPython extension module. Re-running CMake with a
+    # different interpreter can relink some of the native libraries, so restore the saved ones before
+    # the wheel is packaged.
+    PATH=$python3_dir:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}" --update --build --target onnxruntime_pybind11_state
+    cp -a "$NATIVE_LIB_BACKUP"/. "$PACKAGE_CAPI_DIR"/
+    PATH=$python3_dir:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}" --build --build_wheel --target onnxruntime_pybind11_state
+  fi
+
   cp /build/"$BUILD_CONFIG"/dist/*.whl /build/dist
+  IS_FIRST_PYTHON="false"
+  MERGE_PYTHON_EXE=$PYTHON_EXE
 done
+
+if [ "$MULTI_PYTHON_WHEEL" = "true" ] && [ "$(find /build/dist -maxdepth 1 -name '*.whl' | wc -l)" -gt 1 ]; then
+  # Store the native libraries once and let CPython pick the matching extension module at import time.
+  ${MERGE_PYTHON_EXE} /onnxruntime_src/tools/ci_build/merge_python_wheels.py --out-dir /build/dist_merged /build/dist/*.whl
+  rm -f /build/dist/*.whl
+  mv /build/dist_merged/*.whl /build/dist/
+  rmdir /build/dist_merged
+fi
 
 if command -v ccache &> /dev/null; then
   # FIXME: can't use `-vv` for extra details b/c we're shipping with a decrepit version of ccache (3.something) that doesn't support it.

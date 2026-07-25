@@ -30,11 +30,22 @@ parameters:
 
 - name: python_version
   type: string
+  default: 'all'
   displayName: 'Python version label (e.g. 3.12, 3.13t)'
 
 - name: docker_python_exe_path
   type: string
-  displayName: 'Full path to the Python executable inside the Docker image'
+  default: ''
+  displayName: |
+    Full path to the Python executable inside the Docker image.
+    If empty, every Python version available in the image is built.
+
+- name: multi_python_wheel
+  type: boolean
+  default: false
+  displayName: |
+    Build the native libraries once, recompile only onnxruntime_pybind11_state for every Python
+    version and publish a single py3-none-<platform> wheel.
 
 - name: stage_name
   type: string
@@ -57,7 +68,11 @@ stages:
   dependsOn: []
   jobs:
   - job: ${{ parameters.stage_name }}
-    timeoutInMinutes: 360
+    # One job builds every Python version when multi_python_wheel is set, so it needs more time.
+    ${{ if eq(parameters.multi_python_wheel, true) }}:
+      timeoutInMinutes: 600
+    ${{ else }}:
+      timeoutInMinutes: 360
     workspace:
       clean: all
     pool:
@@ -78,6 +93,16 @@ stages:
       - name: extra_build_args
         ${{ if ne(parameters.extra_build_arg, '') }}:
           value: '-x "${{ parameters.extra_build_arg }}"'
+        ${{ else }}:
+          value: ''
+      - name: python_exe_arg
+        ${{ if ne(parameters.docker_python_exe_path, '') }}:
+          value: '-p "${{ parameters.docker_python_exe_path }}"'
+        ${{ else }}:
+          value: ''
+      - name: multi_python_wheel_arg
+        ${{ if eq(parameters.multi_python_wheel, true) }}:
+          value: '-m'
         ${{ else }}:
           value: ''
       - template: ../templates/common-variables.yml
@@ -121,7 +146,8 @@ stages:
             -i onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
             -d "GPU"
             -c ${{ parameters.cmake_build_type }}
-            -p "${{ parameters.docker_python_exe_path }}"
+            $(python_exe_arg)
+            $(multi_python_wheel_arg)
             $(extra_build_args)
         env:
           CUDA_VERSION: ${{ parameters.cuda_version }}

@@ -35,6 +35,13 @@ parameters:
    - RelWithDebInfo
    - MinSizeRel
 
+- name: build_multi_python_wheel
+  displayName: >
+    Linux only. Build the native libraries once and recompile only the Python extension module for
+    every Python version, then publish a single py3-none-<platform> wheel.
+  type: boolean
+  default: false
+
 stages:
 - ${{ if eq(parameters.enable_windows_cpu, true) }}:
   - stage: Python_Packaging_Windows_CPU
@@ -94,6 +101,7 @@ stages:
           machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
+          multi_python_wheel: ${{ parameters.build_multi_python_wheel }}
           is1ES: true
 
 - ${{ if eq(parameters.enable_linux_cpu, true) }}:
@@ -106,4 +114,5 @@ stages:
         machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
         extra_build_arg: ${{ parameters.build_py_parameters }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
+        multi_python_wheel: ${{ parameters.build_multi_python_wheel }}
         is1ES: true
