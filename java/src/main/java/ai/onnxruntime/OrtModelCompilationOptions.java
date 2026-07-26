@@ -29,8 +29,7 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
 
     /**
      * Save a fully-optimized plain ONNX model instead of an EPContext model. The graph
-     * optimization level defaults to ORT_ENABLE_ALL (MaxLevel) when this flag is set and no
-     * explicit level has been configured via {@link #setGraphOptimizationLevel}. The output
+     * optimization level defaults to ORT_ENABLE_ALL (MaxLevel) when this flag is set. The output
      * contains no EPContext nodes and can be reloaded for inference with ORT_DISABLE_ALL.
      */
     OPTIMIZED_ONNX_OUTPUT(1 << 2);

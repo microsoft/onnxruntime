@@ -4,6 +4,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 #include "core/common/status.h"
 #include "core/session/model_compilation_options.h"
@@ -62,7 +63,7 @@ class PyModelCompiler {
                                     const std::string& external_initializers_file_path = {},
                                     size_t external_initializers_size_threshold = 1024,
                                     uint32_t flags = 0,
-                                    GraphOptimizationLevel graph_opt_level = GraphOptimizationLevel::ORT_DISABLE_ALL,
+                                    std::optional<GraphOptimizationLevel> graph_opt_level = std::nullopt,
                                     const PyGetInitializerLocationFunc& py_get_initializer_location_func = nullptr);
 
   // Note: Creation should be done via Create(). This constructor is public so that it can be called from

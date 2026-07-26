@@ -3222,7 +3222,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                        std::string external_initializers_file_path = {},
                        size_t external_initializers_size_threshold = 1024,
                        uint32_t flags = OrtCompileApiFlags_NONE,
-                       GraphOptimizationLevel graph_optimization_level = GraphOptimizationLevel::ORT_DISABLE_ALL,
+                       std::optional<GraphOptimizationLevel> graph_optimization_level = std::nullopt,
                        const PyGetInitializerLocationFunc& py_get_initializer_location_func = nullptr) {
 #if !defined(ORT_MINIMAL_BUILD)
         std::unique_ptr<PyModelCompiler> result;

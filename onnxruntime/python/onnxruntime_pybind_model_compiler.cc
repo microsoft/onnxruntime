@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cassert>
 #include <iterator>
+#include <optional>
 #include "core/common/common.h"
 #include "core/framework/error_code_helper.h"
 #include "core/graph/abi_graph_types.h"
@@ -67,7 +68,7 @@ onnxruntime::Status PyModelCompiler::Create(/*out*/ std::unique_ptr<PyModelCompi
                                             const std::string& external_initializers_file_path,
                                             size_t external_initializers_size_threshold,
                                             uint32_t flags,
-                                            GraphOptimizationLevel graph_optimization_level,
+                                            std::optional<GraphOptimizationLevel> graph_optimization_level,
                                             const PyGetInitializerLocationFunc& py_get_initializer_location_func) {
   auto model_compiler = std::make_unique<PyModelCompiler>(env, sess_options, py_get_initializer_location_func,
                                                           PrivateConstructorTag{});
@@ -92,7 +93,9 @@ onnxruntime::Status PyModelCompiler::Create(/*out*/ std::unique_ptr<PyModelCompi
     ORT_RETURN_IF_ERROR(compile_options.SetFlags(flags));
   }
 
-  ORT_RETURN_IF_ERROR(compile_options.SetGraphOptimizationLevel(graph_optimization_level));
+  if (graph_optimization_level.has_value()) {
+    ORT_RETURN_IF_ERROR(compile_options.SetGraphOptimizationLevel(*graph_optimization_level));
+  }
 
   if (model_compiler->py_get_initializer_location_func_) {
     compile_options.SetOutputModelGetInitializerLocationFunc(
