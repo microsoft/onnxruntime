@@ -917,8 +917,12 @@ inline bool MoeGemvUseFp32Accum() {
   return enabled;
 }
 
-bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k,
-                           int weight_bits, int group_size) {
+namespace {
+// Shared shape checks for every MoE GEMV variant. cta_n is the launching variant's CtaN, which sets
+// the n-tiling requirement: the plain GEMVs use kCtaN, the fused-finalize kernel uses the smaller
+// kFusedFinalizeCtaN and therefore accepts n values the plain kernels reject.
+bool is_moe_gemv_shape_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k,
+                                 int weight_bits, int group_size, int cta_n) {
   if (sm < 80) {
     return false;
   }
@@ -945,7 +949,7 @@ bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t
   }
   // n must tile evenly; k must tile evenly into StepK along interleaved-K.
   int const interleave = weight_bits == 4 ? kInt4Interleave : kInt8Interleave;
-  if (n % (kCtaN * interleave) != 0) {
+  if (n % (cta_n * interleave) != 0) {
     return false;
   }
   int64_t const interleaved_k = k * interleave;
@@ -965,6 +969,12 @@ bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t
 
   return true;
 }
+}  // namespace
+
+bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k,
+                           int weight_bits, int group_size) {
+  return is_moe_gemv_shape_supported(sm, expanded_num_rows, n, k, weight_bits, group_size, kCtaN);
+}
 
 bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k) {
   return is_moe_gemv_supported(sm, expanded_num_rows, n, k, 4, 0);
@@ -973,7 +983,10 @@ bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t
 bool is_moe_gemv_fused_finalize_supported(int sm, int64_t num_rows, int64_t experts_per_token,
                                           int64_t expanded_num_rows, int64_t n, int64_t k,
                                           int weight_bits, int group_size) {
-  if (!is_moe_gemv_supported(sm, expanded_num_rows, n, k, weight_bits, group_size)) {
+  // The fused-finalize kernel is launched with kFusedFinalizeCtaN, so it only needs n to tile by
+  // that (smaller) CtaN rather than the kCtaN the plain GEMVs require.
+  if (!is_moe_gemv_shape_supported(sm, expanded_num_rows, n, k, weight_bits, group_size,
+                                   kFusedFinalizeCtaN)) {
     return false;
   }
   if (num_rows <= 0 || experts_per_token <= 0) {
@@ -982,10 +995,6 @@ bool is_moe_gemv_fused_finalize_supported(int sm, int64_t num_rows, int64_t expe
   // The fused reduction assumes every token contributes exactly experts_per_token permuted rows,
   // which is what expandInputRows produces when no tokens are dropped.
   if (num_rows * experts_per_token != expanded_num_rows) {
-    return false;
-  }
-  int const interleave = weight_bits == 4 ? kInt4Interleave : kInt8Interleave;
-  if (n % (kFusedFinalizeCtaN * interleave) != 0) {
     return false;
   }
   return true;

@@ -1421,14 +1421,13 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
         return final_hidden_states
 
 
-# Define test cases for different MoE types
+# Define test cases for different MoE types.
+# NOTE: these all run with hidden_size=128 / intermediate_size=256, which is below the MoE GEMV's
+# profiled minimum, so they exercise the CUTLASS grouped GEMM path. See moe_gemv_test_cases below
+# for the shapes that select the GEMV.
 phi3_test_cases = [
-    (1, 1, 4),  # decode-sized INT4 per-channel path exercises the MoE GEMV fast path
-    # 2 tokens x top_k 2 = 4 expanded rows, still inside the GEMV's profiled range. Unlike the
-    # 1-token case this actually exercises the multi-token index math: the source-row lookup that
-    # lets FC1 skip expandInputRows (permuted_row_to_unpermuted_row % num_rows) and the per-token
-    # block indexing of the FC2 GEMV's fused finalize epilogue both degenerate when num_rows == 1.
-    (2, 1, 4),
+    (1, 1, 4),  # decode-sized INT4 per-channel
+    (2, 1, 4),  # 2 tokens x top_k 2 = 4 expanded rows
     (1, 32, 4),
     (1, 32, 8),
     (2, 16, 4),
@@ -1438,7 +1437,7 @@ phi3_test_cases = [
 # Define test cases for block-wise quantization
 phi3_blockwise_test_cases = [
     (1, 1, 4, 32),  # tiny debug case for asymmetric ZP compensation
-    (2, 1, 4, 32),  # multi-token GEMV: exercises the skip-expand and fused-finalize index math
+    (2, 1, 4, 32),  # multi-token decode shape
     (1, 32, 4, 32),  # batch_size, sequence_length, quant_bits, block_size
     (1, 32, 4, 64),
     (1, 32, 4, 128),
@@ -1470,6 +1469,28 @@ qmoe_cutlass_gemm_second_scale_row_test_cases = [
     (4, True),
     (8, False),
     (8, True),
+]
+
+# Cases that actually select the decode-time MoE GEMV. is_moe_gemv_supported() requires every GEMM
+# dimension to be >= 512 (kMinProfiledProblemDim): FC1 sees n = 2 * inter_size, k = hidden_size and
+# FC2 sees n = hidden_size, k = inter_size, so hidden_size and intermediate_size must both be >= 512
+# (and multiples of 64 for the K-tile). Every other config in this file uses 128/256 and therefore
+# never reaches the GEMV. Paired with num_experts_per_token=4, batch * seq of 1 and 2 gives 4 and 8
+# expanded rows, covering both sides of kMaxProfiledExpandedRowsForSmallProblemDim. The 2-token cases
+# are the ones that exercise the multi-token index math that degenerates at num_rows == 1: FC1's
+# skip-expand source lookup (permuted_row_to_unpermuted_row % num_rows) and the per-token block
+# indexing of the FC2 GEMV's fused finalize epilogue.
+# (batch_size, sequence_length, quant_bits, block_size); block_size 0 means per-channel.
+moe_gemv_test_cases = [
+    (1, 1, 4, 0),
+    (2, 1, 4, 0),
+    (1, 1, 8, 0),
+    (2, 1, 8, 0),
+    (2, 1, 4, 32),
+    (2, 1, 4, 64),
+    # INT8 block-wise does not currently select the GEMV (INT8 per-channel above does), so this case
+    # pins the grouped-GEMM fallback at a GEMV-eligible shape.
+    (2, 1, 8, 64),
 ]
 
 
@@ -2019,6 +2040,29 @@ class TestSwigluQMoE(unittest.TestCase):
             onnx_dtype=TensorProto.FLOAT16,
             block_size=block_size,
             use_asymmetric_quant=True,
+        )
+        swiglu_moe.parity_check()
+
+    @parameterized.expand(moe_gemv_test_cases)
+    def test_swiglu_qmoe_gemv_parity(self, batch_size, sequence_length, quant_bits, block_size):
+        # Decode-shaped cases large enough to select the MoE GEMV instead of the CUTLASS grouped GEMM.
+        # See the comment on moe_gemv_test_cases for why hidden_size/intermediate_size must be >= 512.
+        torch.manual_seed(45)
+        numpy.random.seed(45)
+
+        test_config = f"batch_size={batch_size}, sequence_length={sequence_length}, quant_bits={quant_bits}, block_size={block_size}"
+        print(f"Running SwiGLU QMoE GEMV test: {test_config}")
+
+        config = SwigluMoeConfig(hidden_size=512, intermediate_size=512, num_local_experts=8, num_experts_per_token=4)
+
+        swiglu_moe = SwigluMoEBlock(
+            config,
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            quant_bits=quant_bits,
+            onnx_dtype=TensorProto.FLOAT16,
+            block_size=block_size,
+            use_asymmetric_quant=False,
         )
         swiglu_moe.parity_check()
 
