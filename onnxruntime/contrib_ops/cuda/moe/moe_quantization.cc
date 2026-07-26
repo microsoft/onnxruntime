@@ -908,23 +908,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // Input router_probs is (num_rows, num_experts)
   bool is_fp16 = input->IsDataType<MLFloat16>();
   bool is_bf16 = input->IsDataType<BFloat16>();
-
-  // Optimization C: at decode the runner can fold softmax + top-k into the kernel that builds the
-  // expert permutation maps, saving a launch per MoE layer. Both are single-block kernels there, so
-  // the launch is most of the cost. The predicate below is the same one runMoe re-checks, so the two
-  // can never disagree about who computed the routing. Excluded for the FP4 family because its
-  // decode fast path below consumes expert_indices/expert_scales itself instead of calling runMoe.
-  onnxruntime::llm::kernels::cutlass_kernels::FusedRoutingParams fused_routing;
-  if (!is_fp4_family &&
-      onnxruntime::llm::kernels::cutlass_kernels::isFusedMoeRoutingSupported(
-          moe_params.num_rows, static_cast<int>(moe_params.num_experts),
-          static_cast<int>(moe_params.num_experts) / parallelism_config.ep_size, static_cast<int>(k_),
-          parallelism_config.ep_size)) {
-    fused_routing.router_logits = router_probs->DataRaw();
-    fused_routing.token_selected_experts = expert_indices;
-    fused_routing.token_final_scales = expert_scales;
-    fused_routing.normalize_routing_weights = normalize_routing_weights_;
-  } else if (is_fp16) {
+  if (is_fp16) {
     LaunchSoftmaxTopK(
         reinterpret_cast<const half*>(router_probs->DataRaw()),
         expert_scales,
@@ -1710,7 +1694,6 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           params.limit = swiglu_limit_;
           return params;
         }(),
-        fused_routing,
         stream);
   }
 

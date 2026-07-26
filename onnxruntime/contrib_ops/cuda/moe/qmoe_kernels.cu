@@ -20,15 +20,37 @@ int Compute1DGridSize(int num_elements, int block_size) {
   return (num_elements + block_size - 1) / block_size;
 }
 
-constexpr float kTopKNormalizeEpsilon = onnxruntime::cuda::topk::kTopKNormalizeEpsilon;
+constexpr float kTopKNormalizeEpsilon = 1e-6f;
 
-// Shared with the fused routing prologue in the LLM MoE runner (moe_kernels.cu); see
-// core/providers/cuda/cu_inc/topk_warp_sort.cuh for why these live in a header.
-using onnxruntime::cuda::topk::SafeInvSum;
-using onnxruntime::cuda::topk::SoftmaxScale;
-using onnxruntime::cuda::topk::TopKNormalizeDenom;
-using onnxruntime::cuda::topk::WarpReduceMax;
-using onnxruntime::cuda::topk::WarpReduceSum;
+__device__ __forceinline__ float SoftmaxScale(float logit, float max_val, float inv_sum) {
+  return (inv_sum > 0.0f) ? expf(logit - max_val) * inv_sum : 0.0f;
+}
+
+__device__ __forceinline__ float SafeInvSum(float sum) {
+  return (sum > 0.0f) ? (1.0f / sum) : 0.0f;
+}
+
+__device__ __forceinline__ float TopKNormalizeDenom(bool normalize_scales, float scale_sum) {
+  return (normalize_scales && scale_sum > kTopKNormalizeEpsilon) ? scale_sum : 1.0f;
+}
+
+__device__ __forceinline__ float WarpReduceMax(float value) {
+  constexpr int kWarpSize = onnxruntime::cuda::topk::kWarpSize;
+#pragma unroll
+  for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
+    value = fmaxf(value, __shfl_xor_sync(0xFFFFFFFF, value, offset));
+  }
+  return value;
+}
+
+__device__ __forceinline__ float WarpReduceSum(float value) {
+  constexpr int kWarpSize = onnxruntime::cuda::topk::kWarpSize;
+#pragma unroll
+  for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
+    value += __shfl_xor_sync(0xFFFFFFFF, value, offset);
+  }
+  return value;
+}
 
 template <typename BlockReduce>
 __device__ __forceinline__ float BlockReduceMax(float value, typename BlockReduce::TempStorage& temp_storage) {
