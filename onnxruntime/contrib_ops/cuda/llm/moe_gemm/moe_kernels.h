@@ -250,6 +250,30 @@ struct QuantParams {
   }
 };
 
+// Optional fused routing (optimization C). When router_logits is non-null, runMoe computes the
+// softmax + top-k itself, fused into the kernel that builds the expert permutation maps, instead of
+// the caller launching a separate softmax/top-k kernel first. At decode both are single-block
+// kernels dominated by launch latency, so merging them removes close to a full kernel's overhead
+// per layer.
+//
+// The caller must have checked isFusedMoeRoutingSupported() for the same shape parameters, and must
+// pass the same buffers it passes as runMoe's token_selected_experts / token_final_scales arguments
+// (runMoe fills them before reading them). router_logits is [num_rows, num_experts] and its element
+// type must match the runner's InputType.
+struct FusedRoutingParams {
+  void const* router_logits{nullptr};
+  int* token_selected_experts{nullptr};
+  float* token_final_scales{nullptr};
+  bool normalize_routing_weights{false};
+};
+
+// Host-side, deterministic predicate for the fused routing prologue. It must be the single source
+// of truth: the caller uses it to decide whether to skip its own softmax/top-k launch, and runMoe
+// re-checks it, so the two can never disagree about who computed the routing.
+bool isFusedMoeRoutingSupported(int64_t const num_tokens, int const num_experts,
+                                int const num_experts_per_node, int const experts_per_token,
+                                int const ep_size);
+
 class CutlassMoeFCRunnerInterface {
  public:
   virtual ~CutlassMoeFCRunnerInterface() = default;
@@ -272,7 +296,7 @@ class CutlassMoeFCRunnerInterface {
                       QuantParams quant_params, int64_t const num_rows, int64_t const hidden_size, int64_t const inter_size,
                       int const num_experts, int const experts_per_token, char* workspace_ptr, void* final_output,
                       int* unpermuted_row_to_permuted_row, MOEParallelismConfig parallelism_config,
-                      ActivationParameters activation_params,
+                      ActivationParameters activation_params, FusedRoutingParams fused_routing,
                       cudaStream_t stream) = 0;
 
   // Aliases for profiling the gemms
@@ -428,7 +452,7 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
               QuantParams quant_params, int64_t const num_rows, int64_t const hidden_size, int64_t const inter_size,
               int const num_experts, int const experts_per_token, char* workspace_ptr, void* final_output,
               int* unpermuted_row_to_permuted_row, MOEParallelismConfig parallelism_config,
-              ActivationParameters activation_params,
+              ActivationParameters activation_params, FusedRoutingParams fused_routing,
               cudaStream_t stream) override;
 
   // We make these GEMM1 & GEMM2 static because they need to be stateless for the profiler to work
