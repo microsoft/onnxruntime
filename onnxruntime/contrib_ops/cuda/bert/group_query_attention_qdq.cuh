@@ -376,16 +376,11 @@ Status LaunchDequantizeKV(cudaStream_t stream, T* dequantized_data,
             stream, dequantized_data, quantized_data, scale, valid_seq_lens,
             batch_size, num_heads, cache_sequence_length, head_size, quant_type, is_input_bsnh);
       }
-      if (head_size % 8 == 0) {
-        return LaunchDequantizeKVVectorized<T, T_QUANT, T_SCALE, 8>(
-            stream, dequantized_data, quantized_data, scale, valid_seq_lens,
-            batch_size, num_heads, cache_sequence_length, head_size, quant_type, is_input_bsnh);
-      }
-      if (head_size % 4 == 0) {
-        return LaunchDequantizeKVVectorized<T, T_QUANT, T_SCALE, 4>(
-            stream, dequantized_data, quantized_data, scale, valid_seq_lens,
-            batch_size, num_heads, cache_sequence_length, head_size, quant_type, is_input_bsnh);
-      }
+
+      assert(head_size % 8 == 0); // GQA has validated head_size that is a multiple of 8 in CheckInputs.
+      return LaunchDequantizeKVVectorized<T, T_QUANT, T_SCALE, 8>(
+          stream, dequantized_data, quantized_data, scale, valid_seq_lens,
+          batch_size, num_heads, cache_sequence_length, head_size, quant_type, is_input_bsnh);
     }
   }
 

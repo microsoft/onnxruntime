@@ -776,7 +776,8 @@ Status ExtremeDecoding(
       past_bsnh,
       data.past_seq_lens,
       data.xqa_head_sink,
-      data.k_scale,  // kv_cache_scale
+      data.k_scale,  // k_cache_scale
+      data.v_scale,  // v_cache_scale (may differ from k_scale)
       // Map cache type to XqaQuantType: NONE->kNone, Float8E4M3FN->kFp8, int8->kInt8
       (parameters.k_quant_type == KVQuantizationType::NONE) ? XqaQuantType::kNone : (is_fp8 ? XqaQuantType::kFp8 : XqaQuantType::kInt8),
       xqa_workspace,
