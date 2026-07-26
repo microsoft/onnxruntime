@@ -99,6 +99,15 @@ inline bool MoeGemvFusedFinalizeDisabledByEnv() {
   return disabled;
 }
 
+// Kill switch for skipping expandInputRows when the FC1 GEMV can read the unexpanded activations
+// through permuted_row_to_unpermuted_row. Enabled by default; set ORT_DISABLE_MOE_GEMV_SKIP_EXPAND=1
+// to always materialize the expanded activation buffer.
+inline bool MoeGemvSkipExpandDisabledByEnv() {
+  static bool const disabled =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_MOE_GEMV_SKIP_EXPAND", 0) == 1;
+  return disabled;
+}
+
 template <typename T, typename WeightType, typename ScaleBiasType>
 constexpr bool MoeGemvSplitK2SwiGLUSupported() {
   return std::is_same_v<T, half> && std::is_same_v<WeightType, cutlass::uint4b_t> &&
@@ -225,22 +234,22 @@ bool tryLaunchMoeGemvIntSymmetricFusedFinalize(
   }
 }
 
+// Single source of truth for "will the FC1 interleaved-SwiGLU MoE GEMV run?".
+//
+// tryLaunchMoeGemvIntSymmetricInterleavedSwiGLU uses it to decide whether to launch, and runMoe
+// uses it *before* gemm1 to decide whether expandInputRows can be skipped (the GEMV can read the
+// unexpanded activations through permuted_row_to_unpermuted_row, the grouped GEMM cannot). Keeping
+// one predicate makes it impossible for the two decisions to drift apart.
 template <typename T, typename WeightType, typename ScaleBiasType>
-bool tryLaunchMoeGemvIntSymmetricInterleavedSwiGLU(
-    T const* input, WeightType const* weights, ScaleBiasType const* scales, ScaleBiasType const* weight_zeros,
-    ScaleBiasType const* biases, T* output,
-    int64_t const* expert_first_token_offset, int num_experts_per_node, int const* permuted_row_to_expert,
-    int64_t expanded_num_rows, int64_t inter_size, int64_t k, int sm, int group_size,
-    bool disabled, cutlass_kernels::ActivationParams activation_params, float* splitk_partials, cudaStream_t stream) {
+bool moeGemvInterleavedSwiGLUWillRun(ScaleBiasType const* weight_zeros, int64_t expanded_num_rows,
+                                     int64_t inter_size, int64_t k, int sm, int group_size, bool disabled,
+                                     cutlass_kernels::ActivationParams activation_params) {
   if constexpr ((std::is_same_v<WeightType, cutlass::uint4b_t> || std::is_same_v<WeightType, uint8_t>) &&
                 (std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16>) && std::is_same_v<ScaleBiasType, T>) {
-    bool const env_disabled = MoeGemvDisabledByEnv();
     bool const has_block_zeros = group_size > 0 && weight_zeros != nullptr;
-    if (disabled || env_disabled || has_block_zeros) {
+    if (disabled || MoeGemvDisabledByEnv() || has_block_zeros) {
       return false;
     }
-    int64_t const n = inter_size * 2;
-    constexpr int weight_bits = MoeGemvWeightBits<WeightType>();
     if (activation_params.swiglu_fusion != 1) {
       return false;
     }
@@ -248,14 +257,40 @@ bool tryLaunchMoeGemvIntSymmetricInterleavedSwiGLU(
         activation_params.activation_type != ActivationType::SwigluBias) {
       return false;
     }
-    if (!onnxruntime::llm::kernels::moe_gemv::is_moe_gemv_supported(
-            sm, expanded_num_rows, n, k, weight_bits, group_size)) {
+    constexpr int weight_bits = MoeGemvWeightBits<WeightType>();
+    return onnxruntime::llm::kernels::moe_gemv::is_moe_gemv_supported(sm, expanded_num_rows, inter_size * 2, k,
+                                                                     weight_bits, group_size);
+  } else {
+    (void)weight_zeros;
+    (void)expanded_num_rows;
+    (void)inter_size;
+    (void)k;
+    (void)sm;
+    (void)group_size;
+    (void)disabled;
+    (void)activation_params;
+    return false;
+  }
+}
+
+template <typename T, typename WeightType, typename ScaleBiasType>
+bool tryLaunchMoeGemvIntSymmetricInterleavedSwiGLU(
+    T const* input, WeightType const* weights, ScaleBiasType const* scales, ScaleBiasType const* weight_zeros,
+    ScaleBiasType const* biases, T* output,
+    int64_t const* expert_first_token_offset, int num_experts_per_node, int const* permuted_row_to_expert,
+    int64_t expanded_num_rows, int64_t inter_size, int64_t k, int sm, int group_size,
+    bool disabled, cutlass_kernels::ActivationParams activation_params, int const* permuted_row_to_source_row,
+    int64_t num_rows, float* splitk_partials, cudaStream_t stream) {
+  if constexpr ((std::is_same_v<WeightType, cutlass::uint4b_t> || std::is_same_v<WeightType, uint8_t>) &&
+                (std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16>) && std::is_same_v<ScaleBiasType, T>) {
+    if (!moeGemvInterleavedSwiGLUWillRun<T, WeightType, ScaleBiasType>(
+            weight_zeros, expanded_num_rows, inter_size, k, sm, group_size, disabled, activation_params)) {
       return false;
     }
     onnxruntime::llm::kernels::moe_gemv::launch_moe_gemv_int_symmetric_interleaved_swiglu<T, WeightType>(
         input, weights, scales, biases, output, expert_first_token_offset, permuted_row_to_expert,
         num_experts_per_node, expanded_num_rows, inter_size, k, group_size, sm, activation_params,
-        splitk_partials, stream);
+        permuted_row_to_source_row, num_rows, splitk_partials, stream);
     return true;
   } else {
     (void)input;
@@ -274,6 +309,8 @@ bool tryLaunchMoeGemvIntSymmetricInterleavedSwiGLU(
     (void)group_size;
     (void)disabled;
     (void)activation_params;
+    (void)permuted_row_to_source_row;
+    (void)num_rows;
     (void)splitk_partials;
     (void)stream;
     return false;
@@ -2127,7 +2164,8 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
     TmaWarpSpecializedGroupedGemmInput::ElementSF* fc2_fp4_act_flat, QuantParams quant_params, int64_t const num_rows,
     int64_t const expanded_num_rows, int64_t const hidden_size, int64_t const inter_size,
     int const num_experts_per_node, ActivationType fc1_activation_type, float const** alpha_scale_ptr_array,
-    int const* permuted_row_to_expert, float* moe_gemv_splitk_partials, bool bias_is_broadcast,
+    int const* permuted_row_to_expert, float* moe_gemv_splitk_partials, int const* permuted_row_to_source_row,
+    bool bias_is_broadcast,
     cudaStream_t stream, MOEParallelismConfig parallelism_config,
     cutlass_extensions::CutlassGemmConfig config,
     ActivationParameters activation_params) {
@@ -2264,8 +2302,14 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
         /*disabled=*/parallelism_config.ep_size > 1 || use_ampere_activation_fusion || !bias_is_broadcast ||
             MoeGemvRejectedByProfiledInterSize(expanded_num_rows, inter_size),
         activation_params,
+        permuted_row_to_source_row, num_rows,
         use_splitk_swiglu_gemv ? moe_gemv_splitk_partials : nullptr,
         stream);
+    // When the caller skipped expandInputRows it handed us the unexpanded activations plus the
+    // permuted-row map. Only the GEMV understands that layout, so bail loudly rather than silently
+    // feeding a wrongly-shaped buffer to the grouped GEMM below.
+    ORT_ENFORCE(permuted_row_to_source_row == nullptr || fc1_did_fused_gemv,
+                "FC1 activations were not expanded but the MoE GEMV did not run");
 
     // Run the GEMM with activation function overridden with `Identity`, we do the activation separately.
     // Fast path: symmetric INT4/INT8 (per-column or block-wise) MoE GEMV for small expanded-row counts
@@ -2605,11 +2649,44 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
     // Only NVFP4xNVFP4 supports FC1 per-expert act scale
     bool use_per_expert_act_scale = use_fp4 ? quant_params.fp4.fc1.use_per_expert_act_scale : false;
     T* gemm1_input_expand = use_w4afp8 ? reinterpret_cast<T*>(smoothed_act_) : reinterpret_cast<T*>(permuted_data_);
-    expandInputRowsKernelLauncher(input_activations, gemm1_input_expand, token_topk_unpermuted_scales,
-                                  permuted_token_final_scales_, permuted_row_to_unpermuted_row_, num_rows, hidden_size, experts_per_token,
-                                  num_experts_per_node, quant_params, use_per_expert_act_scale, expert_first_token_offset_,
-                                  fc1_fp4_act_scale_, input_sf, use_w4afp8 ? quant_params.groupwise.fc1.act_scales : nullptr, stream);
-    auto const* gemm1_input = gemm1_input_expand;
+
+    // Optimization B: when FC1 is served by the interleaved-SwiGLU MoE GEMV, the GEMV can read the
+    // unexpanded activations directly through permuted_row_to_unpermuted_row_, so replicating every
+    // token experts_per_token times is pure overhead (an extra kernel plus a redundant write/read of
+    // expanded_num_rows * hidden_size elements). The GEMV path only runs for tiny expanded-row counts
+    // (decode), which is exactly where that fixed overhead dominates.
+    //
+    // expandInputRows also converts InputType -> T, applies smoothing/act-scale generation and fills
+    // permuted_token_final_scales_ for the Hopper fused finalize, so the skip is only legal when none
+    // of those side effects are needed.
+    bool const expand_is_pure_permutation =
+        std::is_same_v<InputType, T> && !use_w4afp8 && !use_fp4 && !use_fp8 && !use_wfp4a16 && !use_wfp4afp8 &&
+        !use_awq && permuted_token_final_scales_ == nullptr && input_sf == nullptr && !use_per_expert_act_scale;
+    bool const fc1_gemv_will_run =
+        !moe_gemm_runner_.isTmaWarpSpecialized(*gemm1_config_) && !use_fp8 && is_gated_activation &&
+        moeGemvInterleavedSwiGLUWillRun<T, WeightType, ScaleBiasType>(
+            quant_params.groupwise.group_size > 0
+                ? static_cast<ScaleBiasType const*>(quant_params.groupwise.fc1.weight_zeros)
+                : nullptr,
+            expanded_num_rows, inter_size, hidden_size, onnxruntime::llm::common::getSMVersion(),
+            quant_params.groupwise.group_size,
+            /*disabled=*/parallelism_config.ep_size > 1 || use_ampere_activation_fusion ||
+                MoeGemvRejectedByProfiledInterSize(expanded_num_rows, inter_size),
+            activation_params);
+    bool const skip_expand_input_rows =
+        !MoeGemvSkipExpandDisabledByEnv() && expand_is_pure_permutation && fc1_gemv_will_run;
+
+    int const* fc1_permuted_row_to_source_row = nullptr;
+    if (skip_expand_input_rows) {
+      fc1_permuted_row_to_source_row = permuted_row_to_unpermuted_row_;
+    } else {
+      expandInputRowsKernelLauncher(input_activations, gemm1_input_expand, token_topk_unpermuted_scales,
+                                    permuted_token_final_scales_, permuted_row_to_unpermuted_row_, num_rows, hidden_size, experts_per_token,
+                                    num_experts_per_node, quant_params, use_per_expert_act_scale, expert_first_token_offset_,
+                                    fc1_fp4_act_scale_, input_sf, use_w4afp8 ? quant_params.groupwise.fc1.act_scales : nullptr, stream);
+    }
+    auto const* gemm1_input = skip_expand_input_rows ? reinterpret_cast<T const*>(input_activations)
+                                                     : static_cast<T const*>(gemm1_input_expand);
 
     sync_check_cuda_error(stream);
 
@@ -2619,8 +2696,12 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
                                                                                   start_expert, parallelism_config, stream);
 
     if constexpr (!use_w4afp8) {
-      gemm1_input = applyPrequantScale(smoothed_act_, permuted_data_, quant_params.groupwise.fc1.act_scales,
-                                       num_valid_tokens_ptr, expanded_num_rows, hidden_size, use_awq, stream);
+      // With the expansion skipped there is nothing to smooth in place: the skip already requires
+      // use_awq == false, so applyPrequantScale would just echo its second argument back.
+      if (!skip_expand_input_rows) {
+        gemm1_input = applyPrequantScale(smoothed_act_, permuted_data_, quant_params.groupwise.fc1.act_scales,
+                                         num_valid_tokens_ptr, expanded_num_rows, hidden_size, use_awq, stream);
+      }
     }
     sync_check_cuda_error(stream);
     Self::gemm1(moe_gemm_runner_, gemm1_input, fc1_result_, glu_inter_result_,
@@ -2628,8 +2709,8 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
                 fc1_int_scales, fc1_fp8_dequant, use_wfp4afp8 ? fc2_wfp4afp8_quant_scale : fc2_fp8_quant,
                 fc1_fp4_act_scale_, fc2_fp4_act_scale_, quant_params, num_rows, expanded_num_rows, hidden_size, inter_size,
                 num_experts_per_node, fc1_activation_type, alpha_scale_ptr_array_fc1_, permuted_token_selected_experts_,
-                moe_gemv_splitk_partials_, /*bias_is_broadcast=*/true, stream, parallelism_config, *gemm1_config_,
-                activation_params);
+                moe_gemv_splitk_partials_, fc1_permuted_row_to_source_row, /*bias_is_broadcast=*/true, stream,
+                parallelism_config, *gemm1_config_, activation_params);
     sync_check_cuda_error(stream);
 
     auto gemm2_input = applyPrequantScale(smoothed_act_, fc1_result_, quant_params.groupwise.fc2.act_scales,

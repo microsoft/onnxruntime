@@ -72,11 +72,19 @@ void launch_moe_gemv_int_symmetric_fused_finalize(
 // weight/bias use raw FC1 output width n = 2 * inter_size. Scales are
 // [num_experts, n] for group_size <= 0 and [num_experts, k_blocks, n] for
 // block-wise group_size 32/64/128.
+//
+// `permuted_row_to_source_row` is optional. When it is nullptr, `act` is the already-expanded
+// activation buffer of shape [expanded_num_rows, k] produced by expandInputRows. When it is
+// non-null it must be `permuted_row_to_unpermuted_row` of shape [expanded_num_rows], and `act` is
+// the *unexpanded* activation buffer of shape [num_rows, k]; the kernel then reads row
+// `permuted_row_to_source_row[permuted_row] % num_rows`, which lets the caller skip the expansion
+// kernel entirely.
 template <typename T, typename WeightType>
 void launch_moe_gemv_int_symmetric_interleaved_swiglu(
     T const* act, WeightType const* weight, T const* scales, T const* bias, T* out,
     int64_t const* expert_first_token_offset, int const* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
     int64_t inter_size, int64_t k, int group_size, int sm, cutlass_kernels::ActivationParams activation_params,
+    int const* permuted_row_to_source_row, int64_t num_rows,
     float* splitk_partials,
     cudaStream_t stream);
 
