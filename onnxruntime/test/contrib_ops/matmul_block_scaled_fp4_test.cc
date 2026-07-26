@@ -1,6 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if defined(USE_CUDA)
+// Needed for the CUDA_VERSION check below. MatMulBlockQuantizedFp4Weight relies on the NVFP4
+// conversion intrinsics that are only available in CUDA 12.8 and newer.
+#include <cuda.h>
+#endif
+
 #include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -9,7 +15,7 @@
 
 namespace onnxruntime::test {
 
-#if defined(USE_CUDA)
+#if defined(USE_CUDA) && defined(CUDA_VERSION) && CUDA_VERSION >= 12080
 
 // NVFP4 (E2M1) 4-bit magnitude nibble encodings (sign bit is 0x8):
 //   +0.0 -> 0x0, +0.5 -> 0x1, +1.0 -> 0x2, +1.5 -> 0x3,
@@ -194,6 +200,6 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvDecodeScalesBiasBf16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-#endif  // USE_CUDA
+#endif  // USE_CUDA && defined(CUDA_VERSION) && CUDA_VERSION >= 12080
 
 }  // namespace onnxruntime::test

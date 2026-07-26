@@ -153,6 +153,22 @@ Status MatMulBlockQuantizedFp4Weight::ComputeImpl(OpKernelContext* context) cons
   const int n_i = SafeInt<int>(helper.N());
   const int k_i = SafeInt<int>(helper.K());
 
+  // Degenerate K == 0 reduces to an empty sum, so Y is zero plus the optional bias. Handle it
+  // here so that the specialized paths below can assume K > 0 (K % 32 == 0 is also true for 0).
+  if (k_i == 0) {
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(Y->MutableDataRaw(), 0, Y->SizeInBytes(), Stream(context)));
+    if (bias != nullptr) {
+      ORT_RETURN_IF_ERROR(LaunchAddBiasNvFp4(
+          Y->MutableDataRaw(),
+          bias->DataRaw(),
+          m_i,
+          n_i,
+          std::is_same<T, BFloat16>::value,
+          Stream(context)));
+    }
+    return Status::OK();
+  }
+
   // Decode fast path: for small M (autoregressive generation) this is a memory-bound GEMV.
   // A fused warp-per-column kernel reads the packed NVFP4 weight directly, avoiding both the
   // [N, K] dequant scratch buffer and the cuBLAS GEMM (which is underutilized at M == 1).
