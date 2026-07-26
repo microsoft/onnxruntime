@@ -27,8 +27,6 @@ class MatMulBlockQuantizedFp4Weight final : public onnxruntime::cuda::CudaKernel
   template <typename T>
   Status ComputeImpl(OpKernelContext* context) const;
 
-  int64_t K_;
-  int64_t N_;
   int64_t block_size_;
   int sm_{0};
   IAllocatorUniquePtr<uint8_t> b_scale_prepacked_;

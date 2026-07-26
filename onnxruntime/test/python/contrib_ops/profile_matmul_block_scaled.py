@@ -193,8 +193,6 @@ def _make_fp4_model(case: Case, b_packed: torch.Tensor, weight_scale: torch.Tens
         inputs,
         ["Y"],
         domain="com.microsoft",
-        K=case.k,
-        N=case.n,
         block_size=block_size,
     )
     graph_inputs = [helper.make_tensor_value_info("A", activation_onnx_type, [case.m, case.k])]

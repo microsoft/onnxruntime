@@ -39,9 +39,10 @@ Source files:
 
 | Attribute | Meaning |
 |-----------|---------|
-| `K` | Input feature dimension: columns of `A` and logical columns of `B`. |
-| `N` | Output feature dimension: rows of logical `B`. |
 | `block_size` | Quantization group size along `K`. Current CUDA paths are optimized for `16`; default is `16`. |
+
+`N` and `K` are not attributes. They are derived from the weight shape:
+`N = B.shape[0]` and `K = 2 * B.shape[1]`.
 
 | Input | Index | Type | Notes |
 |-------|-------|------|-------|
@@ -175,7 +176,10 @@ select this path.
 
 `PrePack` handles input index `2` (`weight_scale`) only for the eligible native
 SM120 path. It converts the original `[N, K / 16]` E4M3 scale tensor into the
-SM120 swizzled scale layout once and stores it in `b_scale_prepacked_`.
+SM120 swizzled scale layout once and stores it in `b_scale_prepacked_`. Because
+the weight tensor is not visible in `PrePack`, `N` and `K` are recovered from the
+scale shape itself (`N = scale.shape[0]`, `K = scale.shape[1] * block_size`),
+which is exact for the `K % block_size == 0` shapes this path requires.
 
 `is_packed` deliberately remains `false`: the original `weight_scale` input must
 stay available because the decode GEMV and default dequant+cuBLAS paths still

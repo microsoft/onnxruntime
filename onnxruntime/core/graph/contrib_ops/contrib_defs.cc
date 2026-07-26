@@ -3015,11 +3015,10 @@ The dequantized weight value is `e2m1(B) * weight_scale_2 * e4m3(weight_scale[n,
 where `weight_scale` holds one E4M3 scale per `block_size` (default 16) consecutive K values and
 `weight_scale_2` is a single global fp32 scale. The weight is dequantized to the activation type
 (FP16/BF16) and multiplied with the FP16/BF16 activation. This path is architecture independent and
-runs on Hopper (SM90) as well as Blackwell.)DOC")
-        .Attr("K", "Inner (contraction) dimension: the number of logical columns of the unpacked weight.",
-              AttributeProto::INT)
-        .Attr("N", "Number of output columns, i.e. the number of rows of the packed weight.",
-              AttributeProto::INT)
+runs on Hopper (SM90) as well as Blackwell.
+
+The output columns `N` and the contraction dimension `K` are derived from the weight shape:
+`N = B.shape[0]` and `K = 2 * B.shape[1]`. `K` must therefore be even.)DOC")
         .Attr("block_size", "Number of consecutive K values that share one E4M3 weight scale. Default 16.",
               AttributeProto::INT, static_cast<int64_t>(16))
         .Input(0, "A", "Row-major FP16/BF16 activation of shape [..., K].", "T")
@@ -3042,23 +3041,25 @@ runs on Hopper (SM90) as well as Blackwell.)DOC")
         .TypeConstraint("T3", {"tensor(float)"}, "Constrain scalar scales to FP32.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          if (!hasInputShape(ctx, 0)) {
+          if (!hasNInputShapes(ctx, 2)) {
             return;
           }
           const auto& a_shape = getInputShape(ctx, 0);
-          if (a_shape.dim_size() < 1) {
-            fail_shape_inference("A must have rank at least 1.");
+          const auto& b_shape = getInputShape(ctx, 1);
+          if (a_shape.dim_size() < 1 || b_shape.dim_size() != 2) {
+            fail_shape_inference("A must have rank at least 1 and B must have rank 2.");
+          }
+          // B is packed two E2M1 values per byte, so the logical K is twice B's last dimension.
+          const auto& a_k = a_shape.dim(a_shape.dim_size() - 1);
+          if (a_k.has_dim_value() && b_shape.dim(1).has_dim_value() &&
+              a_k.dim_value() != 2 * b_shape.dim(1).dim_value()) {
+            fail_shape_inference("A and B have incompatible K dimensions.");
           }
           ONNX_NAMESPACE::TensorShapeProto output_shape;
           for (int i = 0; i < a_shape.dim_size() - 1; ++i) {
             *output_shape.add_dim() = a_shape.dim(i);
           }
-          const auto* n_attr = ctx.getAttribute("N");
-          if (n_attr != nullptr && n_attr->has_i()) {
-            output_shape.add_dim()->set_dim_value(n_attr->i());
-          } else {
-            output_shape.add_dim();
-          }
+          *output_shape.add_dim() = b_shape.dim(0);
           updateOutputShape(ctx, 0, output_shape);
         }));
 

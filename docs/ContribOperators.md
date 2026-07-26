@@ -2921,6 +2921,9 @@ This version of the operator has been available since version 1 of the 'com.micr
   `weight_scale_2` is a single global fp32 scale. The weight is dequantized to the activation type
   (FP16/BF16) and multiplied with the FP16/BF16 activation. This path is architecture independent and
   runs on Hopper (SM90) as well as Blackwell.
+  
+  The output columns `N` and the contraction dimension `K` are derived from the weight shape:
+  `N = B.shape[0]` and `K = 2 * B.shape[1]`. `K` must therefore be even.
 
 #### Version
 
@@ -2929,10 +2932,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>K</tt> : int (required)</dt>
-<dd>Inner (contraction) dimension: the number of logical columns of the unpacked weight.</dd>
-<dt><tt>N</tt> : int (required)</dt>
-<dd>Number of output columns, i.e. the number of rows of the packed weight.</dd>
 <dt><tt>block_size</tt> : int</dt>
 <dd>Number of consecutive K values that share one E4M3 weight scale. Default 16.</dd>
 </dl>

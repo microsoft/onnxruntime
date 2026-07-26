@@ -50,8 +50,6 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, WeightOnlyBasicFp16) {
   std::vector<float> expected = {16.0f, 32.0f, 32.0f, 64.0f};
 
   OpTester test("MatMulBlockQuantizedFp4Weight", 1, onnxruntime::kMSDomain);
-  test.AddAttribute<int64_t>("K", k);
-  test.AddAttribute<int64_t>("N", n);
   test.AddAttribute<int64_t>("block_size", 16);
   test.AddInput<MLFloat16>("A", {m, k}, FloatsToMLFloat16s(a));
   test.AddInput<uint8_t>("B", {n, k / 2}, b);
@@ -92,8 +90,6 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, WeightOnlyScalesBiasBf16) {
   std::vector<float> expected = {97.0f, -46.0f};
 
   OpTester test("MatMulBlockQuantizedFp4Weight", 1, onnxruntime::kMSDomain);
-  test.AddAttribute<int64_t>("K", k);
-  test.AddAttribute<int64_t>("N", n);
   test.AddAttribute<int64_t>("block_size", 16);
   test.AddInput<BFloat16>("A", {m, k}, FloatsToBFloat16s(a));
   test.AddInput<uint8_t>("B", {n, k / 2}, b);
@@ -141,8 +137,6 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvDecodeMultiBlockFp16) {
   std::vector<float> expected = {64.0f, 128.0f, 128.0f, 256.0f};
 
   OpTester test("MatMulBlockQuantizedFp4Weight", 1, onnxruntime::kMSDomain);
-  test.AddAttribute<int64_t>("K", k);
-  test.AddAttribute<int64_t>("N", n);
   test.AddAttribute<int64_t>("block_size", 16);
   test.AddInput<MLFloat16>("A", {m, k}, FloatsToMLFloat16s(a));
   test.AddInput<uint8_t>("B", {n, k / 2}, b);
@@ -185,8 +179,6 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvDecodeScalesBiasBf16) {
   std::vector<float> expected = {193.0f, -94.0f};
 
   OpTester test("MatMulBlockQuantizedFp4Weight", 1, onnxruntime::kMSDomain);
-  test.AddAttribute<int64_t>("K", k);
-  test.AddAttribute<int64_t>("N", n);
   test.AddAttribute<int64_t>("block_size", 16);
   test.AddInput<BFloat16>("A", {m, k}, FloatsToBFloat16s(a));
   test.AddInput<uint8_t>("B", {n, k / 2}, b);

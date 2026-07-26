@@ -42,13 +42,8 @@ int64_t RoundUp(int64_t value, int64_t alignment) {
 }  // namespace
 
 MatMulBlockQuantizedFp4Weight::MatMulBlockQuantizedFp4Weight(const OpKernelInfo& info) : CudaKernel(info) {
-  ORT_ENFORCE(info.GetAttr<int64_t>("K", &K_).IsOK());
-  ORT_ENFORCE(info.GetAttr<int64_t>("N", &N_).IsOK());
   block_size_ = info.GetAttrOrDefault<int64_t>("block_size", static_cast<int64_t>(16));
-  ORT_ENFORCE(K_ > 0, "K must be positive, got ", K_);
-  ORT_ENFORCE(N_ > 0, "N must be positive, got ", N_);
   ORT_ENFORCE(block_size_ > 0, "block_size must be positive, got ", block_size_);
-  ORT_ENFORCE(K_ % 2 == 0, "K must be even for packed NVFP4 weights, got ", K_);
   sm_ = GetDeviceProp().major * 10 + GetDeviceProp().minor;
 }
 
@@ -58,18 +53,25 @@ Status MatMulBlockQuantizedFp4Weight::PrePack(const Tensor& tensor, int input_id
 
 #if defined(ORT_ENABLE_BLOCKQUANT_SM120)
   if (input_idx != kWeightScaleInputIndex || !IsNativeSm120Fp4Enabled() || sm_ < 120 || sm_ >= 130 ||
-      block_size_ != 16 || K_ % 32 != 0 || N_ % 32 != 0) {
+      block_size_ != 16) {
     return Status::OK();
   }
 
-  const int64_t k_blocks = K_ / 16;
+  // N and K are derived from the scale shape [N, K / block_size]. This is exact only when K is a
+  // multiple of block_size, which the native SM120 path requires anyway (K % 32 == 0).
   const auto& scale_shape = tensor.Shape();
-  ORT_RETURN_IF_NOT(scale_shape.NumDimensions() == 2 && scale_shape[0] == N_ && scale_shape[1] == k_blocks,
-                    "weight_scale must have shape [N, K/16] = [", N_, ", ", k_blocks, "], got ",
-                    scale_shape.ToString(), ".");
+  if (scale_shape.NumDimensions() != 2) {
+    return Status::OK();
+  }
+  const int64_t n = scale_shape[0];
+  const int64_t k_blocks = scale_shape[1];
+  const int64_t k = k_blocks * block_size_;
+  if (k % 32 != 0 || n % 32 != 0) {
+    return Status::OK();
+  }
 
   const int64_t rounded_k_blocks = RoundUp(k_blocks, 4);
-  const int64_t rounded_n = RoundUp(N_, 128);
+  const int64_t rounded_n = RoundUp(n, 128);
   b_scale_prepacked_ = IAllocator::MakeUniquePtr<uint8_t>(
       alloc, SafeInt<size_t>(rounded_n) * SafeInt<size_t>(rounded_k_blocks), true);
 
@@ -77,7 +79,7 @@ Status MatMulBlockQuantizedFp4Weight::PrePack(const Tensor& tensor, int input_id
   const void* weight_scale = tensor.DataRaw();
   IAllocatorUniquePtr<uint8_t> weight_scale_device;
   if (tensor.Location().device.Type() != OrtDevice::GPU) {
-    const size_t weight_scale_bytes = SafeInt<size_t>(N_) * SafeInt<size_t>(k_blocks);
+    const size_t weight_scale_bytes = SafeInt<size_t>(n) * SafeInt<size_t>(k_blocks);
     weight_scale_device = IAllocator::MakeUniquePtr<uint8_t>(alloc, weight_scale_bytes, true);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(weight_scale_device.get(), weight_scale, weight_scale_bytes,
                                          cudaMemcpyDefault, stream));
@@ -85,7 +87,7 @@ Status MatMulBlockQuantizedFp4Weight::PrePack(const Tensor& tensor, int input_id
   }
 
   ORT_RETURN_IF_ERROR(LaunchRepackWeightScaleNvFp4ForNativeSm120(
-      b_scale_prepacked_.get(), weight_scale, SafeInt<int>(N_), SafeInt<int>(K_), SafeInt<int>(block_size_), stream));
+      b_scale_prepacked_.get(), weight_scale, SafeInt<int>(n), SafeInt<int>(k), SafeInt<int>(block_size_), stream));
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
 #else
   ORT_UNUSED_PARAMETER(tensor);
@@ -109,18 +111,21 @@ Status MatMulBlockQuantizedFp4Weight::ComputeImpl(OpKernelContext* context) cons
 
   const auto& a_shape = a->Shape();
   ORT_ENFORCE(a_shape.NumDimensions() >= 1, "A must have rank at least 1.");
-  ORT_ENFORCE(a_shape[a_shape.NumDimensions() - 1] == K_,
-              "A's last dimension (", a_shape[a_shape.NumDimensions() - 1], ") must equal K (", K_, ").");
 
-  const int64_t k_packed = K_ / 2;
-  const int64_t k_blocks = (K_ + block_size_ - 1) / block_size_;
+  // N and K are derived from the packed weight shape [N, K/2] instead of from attributes.
   const auto& b_shape = b->Shape();
-  ORT_ENFORCE(b_shape.NumDimensions() == 2 && b_shape[0] == N_ && b_shape[1] == k_packed,
-              "B must have shape [N, K/2] = [", N_, ", ", k_packed, "], got ", b_shape.ToString(), ".");
+  ORT_ENFORCE(b_shape.NumDimensions() == 2, "B must have shape [N, K/2], got ", b_shape.ToString(), ".");
+  const int64_t n = b_shape[0];
+  const int64_t k = b_shape[1] * 2;
+  ORT_ENFORCE(a_shape[a_shape.NumDimensions() - 1] == k,
+              "A's last dimension (", a_shape[a_shape.NumDimensions() - 1],
+              ") must equal K (", k, ") derived from B's shape ", b_shape.ToString(), ".");
+
+  const int64_t k_blocks = (k + block_size_ - 1) / block_size_;
   const auto& weight_scale_shape = weight_scale->Shape();
-  ORT_ENFORCE(weight_scale_shape.NumDimensions() == 2 && weight_scale_shape[0] == N_ &&
+  ORT_ENFORCE(weight_scale_shape.NumDimensions() == 2 && weight_scale_shape[0] == n &&
                   weight_scale_shape[1] == k_blocks,
-              "weight_scale must have shape [N, ceil(K/block_size)] = [", N_, ", ", k_blocks, "], got ",
+              "weight_scale must have shape [N, ceil(K/block_size)] = [", n, ", ", k_blocks, "], got ",
               weight_scale_shape.ToString(), ".");
   ORT_ENFORCE(weight_scale_2->Shape().Size() == 1, "weight_scale_2 must be a scalar.");
   if (input_scale != nullptr) {
@@ -129,14 +134,14 @@ Status MatMulBlockQuantizedFp4Weight::ComputeImpl(OpKernelContext* context) cons
     // weight-only FP16/BF16 activation path keeps full-precision activations.
   }
   if (bias != nullptr) {
-    ORT_ENFORCE(bias->Shape().NumDimensions() == 1 && bias->Shape()[0] == N_,
-                "bias must have shape [N] = [", N_, "], got ", bias->Shape().ToString(), ".");
+    ORT_ENFORCE(bias->Shape().NumDimensions() == 1 && bias->Shape()[0] == n,
+                "bias must have shape [N] = [", n, "], got ", bias->Shape().ToString(), ".");
   }
 
   constexpr bool transa = false;
   constexpr bool transb = true;
   MatMulComputeHelper helper;
-  TensorShape b_logical_shape({N_, K_});
+  TensorShape b_logical_shape({n, k});
   ORT_RETURN_IF_ERROR(helper.Compute(a_shape, b_logical_shape, transa, transb));
 
   Tensor* Y = context->Output(0, helper.OutputShape());
@@ -227,15 +232,15 @@ Status MatMulBlockQuantizedFp4Weight::ComputeImpl(OpKernelContext* context) cons
 #endif
 
   // Dequantize the packed NVFP4 weight into a scratch [N, K] buffer of the activation type.
-  IAllocatorUniquePtr<CudaT> b_dequant = GetScratchBuffer<CudaT>(SafeInt<size_t>(N_) * SafeInt<size_t>(K_),
+  IAllocatorUniquePtr<CudaT> b_dequant = GetScratchBuffer<CudaT>(SafeInt<size_t>(n) * SafeInt<size_t>(k),
                                                                  GetComputeStream(context));
   ORT_RETURN_IF_ERROR(LaunchDequantizeNvFp4(
       b_dequant.get(),
       b->DataRaw(),
       weight_scale->DataRaw(),
       weight_scale_2->Data<float>(),
-      SafeInt<int>(N_),
-      SafeInt<int>(K_),
+      SafeInt<int>(n),
+      SafeInt<int>(k),
       SafeInt<int>(block_size_),
       std::is_same<T, BFloat16>::value,
       Stream(context)));
