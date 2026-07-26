@@ -3321,6 +3321,105 @@ class TestXQASeparateKVScaleParity(unittest.TestCase):
         self.assertEqual("XQA", get_sdpa_kernel_from_debug_info(run_parity_check))
 
 
+def gqa_xqa_per_channel_scale_test_cases():
+    # Quantized (INT8 / FP8) decode with PER_CHANNEL k/v scales on the XQA path.
+    #
+    # XQA only understands a scalar dequant scale, so per-channel scales are folded out of the
+    # kernel: k_scale into Q (the channel dim is contracted by Q*K.T) and v_scale into the
+    # attention output (the channel dim is free in P*V). Both foldings are exact because
+    # dequantization is linear, so these tests are ordinary parity tests -- but they also guard
+    # the dispatch decision, since per-channel used to fall back to
+    # "dequantize the whole cache, then run flash attention" on every decode step.
+    #
+    # Coverage: global attention, sliding window, the multi-block (Flash Decoding) reduction
+    # (past 512), attention sinks, and rotary on/off (rotary decides whether the folded Q lands in
+    # the RoPE scratch buffer or in a scratch buffer allocated only for the folding).
+    kv_cache_types = ["int8"]
+    if has_fp8_kv_cache:
+        kv_cache_types.append("fp8")
+    for kv_cache_type in kv_cache_types:
+        for torch_type, ort_type in [(torch.float16, TensorProto.FLOAT16), (torch.bfloat16, TensorProto.BFLOAT16)]:
+            for head_size in [64, 128]:
+                for group_size in [4, 8]:
+                    for past_kv_sequence_length, local_window_size in [(4, -1), (512, -1), (512, 128)]:
+                        for has_head_sink, rotary in [(False, True), (True, True), (True, False)]:
+                            kv_num_heads = 4
+                            num_heads = kv_num_heads * group_size
+                            config = GQAConfig(
+                                batch_size=2,
+                                q_sequence_length=1,
+                                kv_sequence_length=1,
+                                num_heads=num_heads,
+                                kv_num_heads=kv_num_heads,
+                                head_size=head_size,
+                                past_kv_sequence_length=past_kv_sequence_length,
+                                buffer_sequence_length=past_kv_sequence_length + 128,
+                                local_window_size=local_window_size,
+                                rotary=rotary,
+                                rotary_interleaved=False,
+                                packed=False,
+                                share_buffer=True,
+                                has_head_sink=has_head_sink,
+                                head_sink_as_initializer=True,
+                                k_quant_type="PER_CHANNEL",
+                                v_quant_type="PER_CHANNEL",
+                                kv_cache_type=kv_cache_type,
+                                share_kv_scale=False,
+                            )
+                            type_str = "bf16" if torch_type == torch.bfloat16 else "fp16"
+                            win_str = f"past{past_kv_sequence_length}_win{local_window_size}"
+                            sink_str = "sink" if has_head_sink else "nosink"
+                            rot_str = "rot" if rotary else "norot"
+                            name = (
+                                f"{kv_cache_type}_{type_str}_g{group_size}_h{head_size}_{win_str}_{sink_str}_{rot_str}"
+                            )
+                            yield name, config, torch_type, ort_type
+
+
+@unittest.skipIf(not has_xqa(), "XQA is not available, skipping tests.")
+@unittest.skipIf(not has_quantized_kv_cache(), "Quantized KV Cache is not available, skipping tests.")
+class TestXQAPerChannelScaleParity(unittest.TestCase):
+    """Verify XQA serves PER_CHANNEL quantized KV caches by folding the scales into Q / the output."""
+
+    def setUp(self):
+        # Force XQA on so the test is hermetic even if ORT_ENABLE_XQA=0 is set in the environment.
+        self._prev_enable_xqa = os.environ.get("ORT_ENABLE_XQA")
+        os.environ["ORT_ENABLE_XQA"] = "1"
+
+    def tearDown(self):
+        """Clear CUDA cache after each test to prevent memory corruption in batch runs."""
+        if self._prev_enable_xqa is None:
+            os.environ.pop("ORT_ENABLE_XQA", None)
+        else:
+            os.environ["ORT_ENABLE_XQA"] = self._prev_enable_xqa
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+        gc.collect()
+
+    @parameterized.expand(gqa_xqa_per_channel_scale_test_cases())
+    def test_xqa_per_channel_scale_parity(self, name, config, torch_type, ort_type):
+        """Test XQA quantized parity with per-channel k/v dequantization scales."""
+        type_str = "bf16" if torch_type == torch.bfloat16 else "fp16"
+        rtol_key = f"{config.kv_cache_type}_{type_str}"
+
+        def run_parity_check():
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch_type,
+                ort_type=ort_type,
+                causal=True,
+                rtol=rtol[rtol_key],
+                atol=atol[rtol_key],
+                std=0.1,
+            )
+
+        # Per-channel scales must reach XQA instead of the dequantize-the-whole-cache fallback.
+        self.assertEqual("XQA", get_sdpa_kernel_from_debug_info(run_parity_check))
+
+
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 @unittest.skipIf(not has_quantized_kv_cache(), "Quantized KV Cache is not available, skipping tests.")
 class TestGQARegressions(unittest.TestCase):

@@ -471,18 +471,24 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
     // Sliding window (local_window_size > 0) is wired through to the quantized XQA kernels as well,
     // so the INT8/FP8 variants no longer need to be restricted to global attention.
-    // K and V may use different per-tensor scales: the kernel folds k_scale into qkScale (applied to
-    // Q*K.T before softmax) and v_scale into voScale (applied to the P*V accumulator).
+    // K and V may use different scales: for PER_TENSOR the kernel folds k_scale into qkScale (applied
+    // to Q*K.T before softmax) and v_scale into voScale (applied to the P*V accumulator). PER_CHANNEL
+    // scales cannot be scalars inside the kernel, so ExtremeDecoding folds them into Q and into the
+    // attention output instead, which is exact and costs two O(num_heads * head_size) passes -- far
+    // cheaper than the alternative of dequantizing the whole cache on every decode step.
+    auto is_supported_quant_type = [](KVQuantizationType t) {
+      return t == KVQuantizationType::PER_TENSOR || t == KVQuantizationType::PER_CHANNEL;
+    };
     bool is_int8_quantized_supported = is_int8 &&
-                                       (k_quant_type_ == KVQuantizationType::PER_TENSOR &&
-                                        v_quant_type_ == KVQuantizationType::PER_TENSOR &&
+                                       (is_supported_quant_type(k_quant_type_) &&
+                                        is_supported_quant_type(v_quant_type_) &&
                                         (parameters.head_size == 256 || parameters.head_size == 128 || parameters.head_size == 64) &&
                                         (group_size == 4 || group_size == 8 || group_size == 16 || group_size == 32));
 
 #ifdef USE_FP8_KV_CACHE
     bool is_fp8_quantized_supported = is_fp8 &&
-                                      (k_quant_type_ == KVQuantizationType::PER_TENSOR &&
-                                       v_quant_type_ == KVQuantizationType::PER_TENSOR &&
+                                      (is_supported_quant_type(k_quant_type_) &&
+                                       is_supported_quant_type(v_quant_type_) &&
                                        (parameters.head_size == 256 || parameters.head_size == 128 || parameters.head_size == 64) &&
                                        (group_size == 4 || group_size == 8 || group_size == 16 || group_size == 32) &&
                                        (device_prop.major >= 9 || (device_prop.major == 8 && device_prop.minor == 9)));  // FP8 requires SM89+ (Ada Lovelace)

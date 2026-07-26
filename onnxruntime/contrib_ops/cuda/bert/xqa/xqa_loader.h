@@ -40,6 +40,8 @@ Status LaunchXQAKernel(
     const float* attention_sinks,  // Attention sink per query head, nullptr if not used
     const float* k_cache_scale,    // K cache dequant scale (nullptr for FP16/BF16, per-tensor float for INT8/FP8)
     const float* v_cache_scale,    // V cache dequant scale; may differ from k_cache_scale
+                                   // For a quantized cache, a null scale means "1": the caller has folded a
+                                   // per-channel scale into Q (for K) or rescales the output itself (for V).
     const XqaQuantType kv_quant_type,
     void* workspace = nullptr,  // Scratch memory
     size_t workspace_size = 0   // Size of scratch memory

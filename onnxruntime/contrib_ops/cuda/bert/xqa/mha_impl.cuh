@@ -1270,6 +1270,9 @@ CUBIN_EXPORT __global__
         // Device memory scalars, used only for int8/fp8 KV cache. K and V have independent scales:
         // kCacheScale is folded into qkScale (applied to Q*K.T before softmax) and vCacheScale into
         // voScale (applied to the P*V accumulator). Both are read once per CTA, outside the K/V loop.
+        // Either may be null, meaning "scale is 1": the caller has already folded a non-scalar
+        // (per-channel) scale into Q / into the output, which is exact because dequantization is
+        // linear and the channel dim is contracted for K and free for V.
         float const* __restrict__ kCacheScale,
         float const* __restrict__ vCacheScale,
         uint32_t* __restrict__ semaphores = nullptr, void* __restrict__ scratch = nullptr) {
@@ -1469,7 +1472,8 @@ CUBIN_EXPORT __global__
 #endif
   };
   if (warpIdx.z == 0) {
-    float const qkScale = qScale * (isKVCacheQuantized ? kCacheScale[0] : 1.f);  // qkScale is applied onto Q*K.T before softmax.
+    // qkScale is applied onto Q*K.T before softmax. A null kCacheScale means the scale is already in Q.
+    float const qkScale = qScale * ((isKVCacheQuantized && kCacheScale != nullptr) ? kCacheScale[0] : 1.f);
     CircIdx<nbKBuffers> idxCurrSMemKBuf{nbKBuffers - 1};
     auto const getSMemKTile = [&](uint32_t idx) -> SharedMem::KSmemBuffer& { return smem.k[warpIdx.x][idx]; };
 #if BEAM_WIDTH > 1
@@ -2150,7 +2154,8 @@ CUBIN_EXPORT __global__
       }
     }
 
-    float voScale = (isKVCacheQuantized ? vCacheScale[0] : 1.F);
+    // A null vCacheScale means the caller rescales the output itself (per-channel V scale).
+    float voScale = ((isKVCacheQuantized && vCacheScale != nullptr) ? vCacheScale[0] : 1.F);
     if (seqIterInit < nbSeqIters) {  // otherwise rcpRowSum will be NAN.
       // The attention sinks are moved to the multi-block reduction part if the multi-block is enabled.
       if (!isMultiBlock && attentionSinks != nullptr) {

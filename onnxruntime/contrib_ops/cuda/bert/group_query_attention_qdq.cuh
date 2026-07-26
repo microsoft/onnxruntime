@@ -377,7 +377,7 @@ Status LaunchDequantizeKV(cudaStream_t stream, T* dequantized_data,
             batch_size, num_heads, cache_sequence_length, head_size, quant_type, is_input_bsnh);
       }
 
-      assert(head_size % 8 == 0); // GQA has validated head_size that is a multiple of 8 in CheckInputs.
+      assert(head_size % 8 == 0);  // GQA has validated head_size that is a multiple of 8 in CheckInputs.
       return LaunchDequantizeKVVectorized<T, T_QUANT, T_SCALE, 8>(
           stream, dequantized_data, quantized_data, scale, valid_seq_lens,
           batch_size, num_heads, cache_sequence_length, head_size, quant_type, is_input_bsnh);
@@ -392,6 +392,60 @@ Status LaunchDequantizeKV(cudaStream_t stream, T* dequantized_data,
       batch_size, num_heads, cache_sequence_length,
       head_size, bit_width, quant_type, is_input_bsnh);
 
+  return CUDA_CALL(cudaGetLastError());
+}
+
+// ============================================================================
+// Folding per-channel KV dequantization scales into Q and into the attention output.
+//
+// The XQA decode kernel only understands a *scalar* dequantization scale: it folds k_scale into
+// qkScale (applied to the Q*K.T accumulator) and v_scale into voScale (applied to the P*V
+// accumulator). That is why per-channel quantized caches used to be disqualified from XQA and had
+// to fall back to "dequantize the whole cache, then run flash attention", which costs O(context)
+// memory traffic on every decode step.
+//
+// Per-channel scales can be moved out of the kernel exactly, because dequantization is linear and
+// the channel index is the *contraction* dim for K and the *free* dim for V:
+//
+//   scores_t = sum_d q_d * (k_td * sk_d)          = sum_d (q_d * sk_d) * k_td
+//   out_d    = sum_t p_t   * (v_td * sv_d)        = (sum_t p_t * v_td) * sv_d
+//
+// So pre-scaling Q by sk (per kv-head, per channel) and post-scaling the attention output by sv
+// produces exactly the same result as dequantizing the cache, with two elementwise passes over
+// tensors of shape [batch, seq, num_heads, head_size] -- i.e. O(1) in context length.
+//
+// p_t is unaffected because the softmax only sees the (already correct) scores, so attention sinks,
+// sliding window and the multi-block (Flash Decoding) reduction all stay valid: every step after
+// the P*V accumulation is linear in the accumulator.
+// ============================================================================
+template <typename T>
+__global__ void ScaleHeadsByChannelScaleKernel(T* __restrict__ dst,
+                                               const T* __restrict__ src,
+                                               const float* __restrict__ channel_scale,
+                                               int num_heads, int head_size, int group_size,
+                                               int64_t total_elements) {
+  const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (i >= total_elements) {
+    return;
+  }
+  const int h = static_cast<int>(i / head_size) % num_heads;  // q head, layout is [..., num_heads, head_size]
+  const int d = static_cast<int>(i % head_size);
+  const float scale = channel_scale[(h / group_size) * head_size + d];  // scale is [kv_num_heads, head_size]
+  dst[i] = static_cast<T>(static_cast<float>(src[i]) * scale);
+}
+
+// dst may alias src (the common case: scale the rotated Q in place, or the output in place).
+template <typename T>
+Status LaunchScaleHeadsByChannelScale(cudaStream_t stream, T* dst, const T* src,
+                                      const float* channel_scale, int batch_size, int sequence_length,
+                                      int num_heads, int kv_num_heads, int head_size) {
+  const int64_t total_elements = static_cast<int64_t>(batch_size) * sequence_length * num_heads * head_size;
+  if (total_elements == 0) {
+    return Status::OK();
+  }
+  const int blocks = static_cast<int>((total_elements + kThreadsPerBlock - 1) / kThreadsPerBlock);
+  ScaleHeadsByChannelScaleKernel<T><<<blocks, kThreadsPerBlock, 0, stream>>>(
+      dst, src, channel_scale, num_heads, head_size, num_heads / kv_num_heads, total_elements);
   return CUDA_CALL(cudaGetLastError());
 }
 
