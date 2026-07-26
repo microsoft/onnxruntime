@@ -3043,7 +3043,8 @@ def gqa_xqa_quantized_sliding_window_test_cases():
     # The XQA decode path now supports local_window_size > 0 on the quantized KV-cache paths as
     # well. Quantized XQA selection requires: decode (q_seq=1), a shared KV buffer, per-tensor
     # k/v scales that are the same tensor, head_size in {64, 128, 256} and group_size in
-    # {4, 8, 16, 32}. Attention sinks are not supported with quantized KV cache, so no head_sink.
+    # {4, 8, 16, 32}. Attention sinks are covered separately by
+    # gqa_xqa_quantized_head_sink_test_cases(), so no head_sink here.
     #
     # Two window/past relationships are covered:
     #   past > window  -> the sliding mask drops the oldest keys (the new code path).
@@ -3125,6 +3126,104 @@ class TestXQAQuantizedSlidingWindowParity(unittest.TestCase):
             )
 
         # XQA is enabled by default for fp16/bf16, so the quantized sliding-window path is selected.
+        self.assertEqual("XQA", get_sdpa_kernel_from_debug_info(run_parity_check))
+
+
+def gqa_xqa_quantized_head_sink_test_cases():
+    # Quantized (INT8 / FP8) decode with an attention sink (head_sink / smooth softmax) through
+    # the XQA kernel -- the GPT-OSS style configuration.
+    #
+    # The sink term is folded into the softmax row sum by the same kernel code used on the
+    # non-quantized path, and the KV dequant scale is applied to the QK scores before the row
+    # max/sum are computed, so the sink and the scores live in the same dequantized domain.
+    #
+    # Coverage:
+    #   local_window_size == -1 -> global attention with a sink.
+    #   local_window_size > 0 with past > window -> sliding window composed with a sink.
+    #   past_kv_sequence_length 512 also forces the multi-block (Flash Decoding) reduction, where
+    #   the sink is added to the merged row sum instead of the per-CTA row sum.
+    #   head_sink_as_initializer toggles the PrePack'd FP32 sink buffer vs. the per-launch
+    #   conversion scratch path.
+    kv_cache_types = ["int8"]
+    if has_fp8_kv_cache:
+        kv_cache_types.append("fp8")
+    for kv_cache_type in kv_cache_types:
+        for torch_type, ort_type in [(torch.float16, TensorProto.FLOAT16), (torch.bfloat16, TensorProto.BFLOAT16)]:
+            for head_size in [64, 128]:
+                for group_size in [4, 8]:
+                    for past_kv_sequence_length, local_window_size in [(4, -1), (512, -1), (512, 128)]:
+                        for head_sink_as_initializer in [False, True]:
+                            kv_num_heads = 4
+                            num_heads = kv_num_heads * group_size
+                            config = GQAConfig(
+                                batch_size=2,
+                                q_sequence_length=1,
+                                kv_sequence_length=1,
+                                num_heads=num_heads,
+                                kv_num_heads=kv_num_heads,
+                                head_size=head_size,
+                                past_kv_sequence_length=past_kv_sequence_length,
+                                buffer_sequence_length=past_kv_sequence_length + 128,
+                                local_window_size=local_window_size,
+                                rotary=True,
+                                rotary_interleaved=False,
+                                packed=False,
+                                share_buffer=True,
+                                has_head_sink=True,
+                                head_sink_as_initializer=head_sink_as_initializer,
+                                k_quant_type="PER_TENSOR",
+                                v_quant_type="PER_TENSOR",
+                                kv_cache_type=kv_cache_type,
+                                share_kv_scale=True,
+                            )
+                            type_str = "bf16" if torch_type == torch.bfloat16 else "fp16"
+                            win_str = f"past{past_kv_sequence_length}_win{local_window_size}"
+                            pack_str = "prepack" if head_sink_as_initializer else "runtime"
+                            name = f"{kv_cache_type}_{type_str}_g{group_size}_h{head_size}_{win_str}_{pack_str}"
+                            yield name, config, torch_type, ort_type
+
+
+@unittest.skipIf(not has_xqa(), "XQA is not available, skipping tests.")
+@unittest.skipIf(not has_quantized_kv_cache(), "Quantized KV Cache is not available, skipping tests.")
+class TestXQAQuantizedHeadSinkParity(unittest.TestCase):
+    """Verify the quantized (INT8/FP8) XQA attention-sink decode path matches the reference."""
+
+    def setUp(self):
+        # Force XQA on so the test is hermetic even if ORT_ENABLE_XQA=0 is set in the environment.
+        self._prev_enable_xqa = os.environ.get("ORT_ENABLE_XQA")
+        os.environ["ORT_ENABLE_XQA"] = "1"
+
+    def tearDown(self):
+        """Clear CUDA cache after each test to prevent memory corruption in batch runs."""
+        if self._prev_enable_xqa is None:
+            os.environ.pop("ORT_ENABLE_XQA", None)
+        else:
+            os.environ["ORT_ENABLE_XQA"] = self._prev_enable_xqa
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+        gc.collect()
+
+    @parameterized.expand(gqa_xqa_quantized_head_sink_test_cases())
+    def test_xqa_quantized_head_sink_parity(self, name, config, torch_type, ort_type):
+        """Test XQA quantized parity with an attention sink (head_sink) input."""
+        type_str = "bf16" if torch_type == torch.bfloat16 else "fp16"
+        rtol_key = f"{config.kv_cache_type}_{type_str}"
+
+        def run_parity_check():
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch_type,
+                ort_type=ort_type,
+                causal=True,
+                rtol=rtol[rtol_key],
+                atol=atol[rtol_key],
+                std=0.1,
+            )
+
+        # Guard against silently falling back: the quantized + sink combination must reach XQA.
         self.assertEqual("XQA", get_sdpa_kernel_from_debug_info(run_parity_check))
 
 

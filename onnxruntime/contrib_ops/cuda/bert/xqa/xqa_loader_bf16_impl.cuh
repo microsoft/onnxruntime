@@ -126,6 +126,7 @@ Status LaunchXQAInt8KernelBF16(
     const int local_window_size,
     const bool is_bsnh,
     const int* past_seq_lens,
+    const float* attention_sinks,
     const float* kv_cache_scale,
     void* workspace,
     size_t workspace_size);
@@ -148,6 +149,7 @@ Status LaunchXQAFp8KernelBF16(
     const int local_window_size,
     const bool is_bsnh,
     const int* past_seq_lens,
+    const float* attention_sinks,
     const float* kv_cache_scale,
     void* workspace,
     size_t workspace_size);
@@ -204,22 +206,23 @@ Status LaunchXQAKernelImpl<__nv_bfloat16>(
     size_t workspace_size) {
   // Head size check in global dispatcher
 
-  // Dispatch to INT8 path if requested
+  // Dispatch to INT8 path if requested. Attention sinks (smooth softmax) are supported here:
+  // the sink term is folded into the softmax row sum, and the KV dequant scale is already
+  // applied to the QK scores (qkScale) before the row max/sum are computed, so the sink and the
+  // score are in the same (dequantized) domain -- exactly as in the non-quantized kernel.
   if (kv_quant_type == XqaQuantType::kInt8) {
-    ORT_RETURN_IF(attention_sinks != nullptr, "XQA attention sinks are not supported with INT8 KV cache.");
     return LaunchXQAInt8KernelBF16(device_prop, stream, query, key_cache, value_cache, output,
                                    batch_size, num_heads, kv_num_heads, head_size, max_seq_len,
-                                   scale, local_window_size, is_bsnh, past_seq_lens, kv_cache_scale, workspace,
+                                   scale, local_window_size, is_bsnh, past_seq_lens, attention_sinks, kv_cache_scale, workspace,
                                    workspace_size);
   }
 
 #ifdef USE_FP8_KV_CACHE
   // Dispatch to FP8 path if requested
   if (kv_quant_type == XqaQuantType::kFp8) {
-    ORT_RETURN_IF(attention_sinks != nullptr, "XQA attention sinks are not supported with FP8 KV cache.");
     return LaunchXQAFp8KernelBF16(device_prop, stream, query, key_cache, value_cache, output,
                                   batch_size, num_heads, kv_num_heads, head_size, max_seq_len,
-                                  scale, local_window_size, is_bsnh, past_seq_lens, kv_cache_scale, workspace,
+                                  scale, local_window_size, is_bsnh, past_seq_lens, attention_sinks, kv_cache_scale, workspace,
                                   workspace_size);
   }
 #endif

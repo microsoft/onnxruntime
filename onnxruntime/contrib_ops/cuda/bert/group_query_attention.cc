@@ -448,7 +448,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // Q and the appended cache. Keep quantized QK-Norm off the XQA route until scale correctness is
   // validated for normalized K before quantized-cache append.
   const bool xqa_qk_norm_ok = !parameters.use_qk_norm || !is_inputs_quantized;
-  const bool use_xqa_attention_sinks = head_sink != nullptr && !is_inputs_quantized;
+  // Attention sinks (smooth softmax) work on the quantized INT8/FP8 XQA paths as well: the sink
+  // term is folded into the softmax row sum by the same kernel code, and the KV dequant scale is
+  // already applied to the QK scores (qkScale) before the row max/sum are computed, so sink and
+  // score live in the same dequantized domain. This holds for both the single-block and the
+  // multi-block (Flash Decoding) reductions, where the sink is added to the merged row sum.
+  const bool use_xqa_attention_sinks = head_sink != nullptr;
   const bool is_xqa_smooth_softmax_supported = !parameters.use_smooth_softmax || use_xqa_attention_sinks;
   // XQA is enabled when enable_xqa_=true; ineligible shapes/group sizes fall back via data.use_xqa below.
   // The XQA kernel has no attention_bias input.
