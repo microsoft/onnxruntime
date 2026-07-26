@@ -1424,6 +1424,11 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
 # Define test cases for different MoE types
 phi3_test_cases = [
     (1, 1, 4),  # decode-sized INT4 per-channel path exercises the MoE GEMV fast path
+    # 2 tokens x top_k 2 = 4 expanded rows, still inside the GEMV's profiled range. Unlike the
+    # 1-token case this actually exercises the multi-token index math: the source-row lookup that
+    # lets FC1 skip expandInputRows (permuted_row_to_unpermuted_row % num_rows) and the per-token
+    # block indexing of the FC2 GEMV's fused finalize epilogue both degenerate when num_rows == 1.
+    (2, 1, 4),
     (1, 32, 4),
     (1, 32, 8),
     (2, 16, 4),
@@ -1433,6 +1438,7 @@ phi3_test_cases = [
 # Define test cases for block-wise quantization
 phi3_blockwise_test_cases = [
     (1, 1, 4, 32),  # tiny debug case for asymmetric ZP compensation
+    (2, 1, 4, 32),  # multi-token GEMV: exercises the skip-expand and fused-finalize index math
     (1, 32, 4, 32),  # batch_size, sequence_length, quant_bits, block_size
     (1, 32, 4, 64),
     (1, 32, 4, 128),
