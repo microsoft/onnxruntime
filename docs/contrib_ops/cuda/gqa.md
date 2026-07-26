@@ -175,16 +175,28 @@ Supported storage types (`T_CACHE`) and their formula:
 
 - `k_scale` / `v_scale` (inputs 12, 13) are **always FP32**. For `PER_TENSOR` they are scalars; for
   `PER_CHANNEL` they have shape `(kv_num_heads, 1, head_size)`.
-- New keys/values are quantized as they are appended to the present cache; the attention kernel
-  dequantizes on the fly while computing scores.
+- New keys/values are quantized as they are appended to the present cache. For `PER_TENSOR`, XQA
+  applies the K and V dequantization scales inside the attention kernel. For `PER_CHANNEL`, the
+  decode path folds the K scale into Q before attention and applies the V scale to the output
+  afterward, avoiding full-cache dequantization.
 - Registered type combinations are `T ∈ {float16, bfloat16}` × `T_CACHE ∈ {same as T, int8, FP8E4M3, uint8 (int4)}`.
 
 ### How quantized decode is served
 
-The quantized KV-cache path is handled by the **XQA** decode kernel (see §7). XQA requires
-`PER_TENSOR` scaling with `k_scale` and `v_scale` pointing to the **same** FP32 tensor,
-`head_size ∈ {64, 128, 256}`, and a query/KV group size in `{4, 8, 16, 32}`. FP8 additionally
+The INT8 and FP8 quantized KV-cache paths are handled by the **XQA** decode kernel when its other
+decode constraints are met (see §7). K and V may independently use `PER_TENSOR` or `PER_CHANNEL`
+quantization, and `k_scale` and `v_scale` may be distinct tensors. Quantized XQA also requires
+`head_size ∈ {64, 128, 256}` and a query/KV group size in `{4, 8, 16, 32}`. FP8 additionally
 requires SM89+ (Ada) or SM90+.
+
+For per-tensor scaling, XQA applies `k_scale` to the QK scores before softmax and `v_scale` to the
+attention-value accumulator. For per-channel scaling, dequantization remains linear but cannot be
+represented by scalar kernel parameters: the decode path multiplies Q by the per-channel K scale
+and multiplies the attention output by the per-channel V scale. These two
+`O(num_heads * head_size)` passes avoid dequantizing the entire cache on every decode step.
+
+INT4 caches are not supported by XQA. Quantized configurations that are ineligible for XQA use the
+dequantize-then-Flash-Attention fallback when available.
 
 INT8 cache kernels are always built; FP8 (`onnxruntime_USE_FP8_KV_CACHE`, default ON) and INT4
 (`onnxruntime_USE_INT4_KV_CACHE`, default OFF) are gated by build options (see §11).
@@ -215,7 +227,7 @@ order and the first eligible backend wins:
 
 | Priority | Backend | Selected when (summary) |
 |----------|---------|-------------------------|
-| 1 | **XQA** | Single-token decode (`seq_len == 1`), shared KV buffer. Supports sliding-window attention on both the non-quantized and quantized (INT8/FP8) paths (attention sink remains non-quantized-only). Fastest decode path; the only backend that serves a quantized KV cache. |
+| 1 | **XQA** | Single-token decode (`seq_len == 1`), shared KV buffer. Supports sliding-window attention and attention sinks on both the non-quantized and quantized (INT8/FP8) paths. Fastest decode path; supports per-tensor and per-channel quantized caches. |
 | 2 | **cuDNN SDPA** | Non-quantized FP16/BF16 causal attention. Auto-preferred on SM≥90 (Hopper/Blackwell). |
 | 3 | **Flash Attention** | General FP16/BF16 prompt and decode, including local window, softcap, and packed QKV. |
 | 4 | **Memory Efficient Attention (MEA)** | Fallback for FP16/FP32 (and BF16 on SM80+). |
@@ -233,9 +245,10 @@ enabled (see §10).
 
 ### 6.1 XQA
 
-Checked first. Used only for single-token decode under the conditions detailed in §7 (global or
-sliding-window decode; sliding window is supported on both the non-quantized and quantized paths).
-When XQA is selected, no other backend is considered.
+Checked first. Used only for single-token decode under the conditions detailed in §7. Global and
+sliding-window decode, with or without an attention sink, are supported on both the non-quantized
+and quantized paths. When XQA is selected, no other backend is considered. An XQA-ineligible
+quantized cache uses the dequantize-then-Flash-Attention fallback when available.
 
 ### 6.2 cuDNN SDPA
 
@@ -294,14 +307,19 @@ XQA (a highly optimized cross/decode attention kernel) is used only when **all**
 3. `kv_sequence_length > 0` (there is a new K/V to append).
 4. Past and present KV cache share the same buffer.
 5. No softcap.
-6. Standard softmax, **or** smooth softmax expressed via a `head_sink` tensor (non-quantized KV cache).
+6. Standard softmax, **or** smooth softmax expressed via a `head_sink` tensor.
 7. Global attention, **or** local (sliding) window attention (`local_window_size > 0`), supported on
    both the non-quantized and quantized (INT8/FP8) paths.
-8. Supported `head_size` (64, 128, or 256) and group size.
+8. Supported `head_size` (64, 128, or 256) and query/KV group size:
+   - Non-quantized: `{1, 2, 4, 5, 8, 16, 32}`.
+   - INT8/FP8: `{4, 8, 16, 32}`, with both K and V using `PER_TENSOR` or `PER_CHANNEL`
+     quantization. K and V may use different modes and distinct scale tensors.
+9. For FP8, SM89+ (Ada) or SM90+ and an FP8-enabled build.
+10. The selected XQA kernel's dynamic shared-memory requirement fits the device limit.
 
-`head_sink` (attention sink) is supported on the non-quantized XQA path only. Quantized KV cache
-(int8 / fp8) paths explicitly reject a non-null attention sink, so a GQA node with both `head_sink`
-and a quantized cache falls back to Flash/Flash-Decoding.
+`head_sink` (attention sink) is supported on both the non-quantized and quantized INT8/FP8 XQA
+paths, including local-window and multi-block decode. INT4 caches and quantized-cache QK-Norm are
+not supported by XQA.
 
 XQA selection is on by default. Setting `ORT_ENABLE_XQA=0` disables XQA.
 
@@ -432,6 +450,12 @@ CUDA parity tests live in
 
 - `TestXQAQuantizedParity` — XQA per-tensor int8 quantized decode parity.
 - `TestXQAHeadSinkParity` — non-quantized XQA decode parity with a `head_sink` (attention sink) input.
+- `TestXQAQuantizedHeadSinkParity` — INT8/FP8 XQA decode with runtime or prepacked attention sinks,
+  including global, local-window, and multi-block decode.
+- `TestXQASeparateKVScaleParity` — INT8/FP8 XQA parity with independently calibrated per-tensor K
+  and V scales.
+- `TestXQAPerChannelScaleParity` — INT8/FP8 XQA parity with per-channel K/V scales folded into Q
+  and the output.
 - `TestGQAQKNorm` — fused per-head Q/K RMSNorm (QK-Norm) parity for prompt and decode (past), FP16 and
   BF16, across packed/unpacked Q/K/V and with/without RoPE.
 
@@ -452,11 +476,9 @@ popular LLMs. Listed roughly by impact.
    fused per-head RMSNorm to Q and K before RoPE when `q_norm_weight` / `k_norm_weight` are provided
     (see §3), matching **Qwen3, Gemma 2/3, OLMo2, SmolLM3**, etc. Remaining limitation: QK-Norm
     disables Flash-Decoding, and quantized-cache QK-Norm does not yet get the XQA fast path.
-2. **Sliding-window on the quantized fused decode path.** *Implemented.* The XQA decode path now
-   serves sliding-window attention (`local_window_size > 0`) on both the non-quantized and the
-   quantized (INT8/FP8) paths. Remaining limitation: the attention sink (`head_sink`) is still
-   non-quantized-only, so quantized **GPT-OSS / Mistral / Gemma 2** sliding-window layers that also
-   use an attention sink fall back to Flash / Flash-Decoding.
+2. **Sliding-window and attention sinks on the quantized fused decode path.** *Implemented.* The
+  XQA decode path serves sliding-window attention (`local_window_size > 0`) and `head_sink` on both
+  the non-quantized and quantized (INT8/FP8) paths, including when both features are enabled.
 3. **Softcap on the fastest kernels.** Logit soft-capping (**Gemma 2**) disables both XQA and cuDNN
    SDPA, forcing the Flash / MEA / unfused paths. Adding softcap support to XQA and cuDNN would
    recover decode throughput.
@@ -465,10 +487,10 @@ popular LLMs. Listed roughly by impact.
 
 ### Medium impact
 
-5. **Quantized KV cache coverage.** Quantized decode is XQA-only and narrow: `PER_TENSOR` with
-   `k_scale == v_scale`, `head_size ∈ {64, 128, 256}`, group size `{4, 8, 16, 32}`. Gaps worth
-   filling: `PER_CHANNEL` serving, prompt-phase quantized attention, INT4 enabled by default, and
-   `head_sink` combined with a quantized cache (currently rejected).
+5. **Quantized KV cache coverage.** INT8/FP8 XQA decode supports independent `PER_TENSOR` or
+  `PER_CHANNEL` K/V scales, `head_sink`, `head_size ∈ {64, 128, 256}`, and group size
+  `{4, 8, 16, 32}`. Remaining gaps include fused prompt-phase quantized attention, INT4 XQA,
+  INT4 enabled by default, and quantized-cache QK-Norm on XQA.
 6. **Paged KV cache / continuous batching.** GQA uses a contiguous shared buffer; there is a
    separate `PagedAttention` op, but GQA itself has no paged-cache path. Paged KV is what
    high-throughput serving (vLLM-style) needs.
