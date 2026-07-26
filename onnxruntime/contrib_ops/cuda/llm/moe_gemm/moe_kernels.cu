@@ -271,7 +271,7 @@ bool moeGemvInterleavedSwiGLUWillRun(ScaleBiasType const* weight_zeros, int64_t 
     }
     constexpr int weight_bits = MoeGemvWeightBits<WeightType>();
     return onnxruntime::llm::kernels::moe_gemv::is_moe_gemv_supported(sm, expanded_num_rows, inter_size * 2, k,
-                                                                     weight_bits, group_size);
+                                                                      weight_bits, group_size);
   } else {
     (void)weight_zeros;
     (void)expanded_num_rows;

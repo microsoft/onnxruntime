@@ -768,8 +768,8 @@ static void dispatch_moe_gemv_splitk_twopass_swiglu_group_size(
     int64_t expanded_num_rows, int64_t inter_size, int64_t k, int group_size,
     cutlass_kernels::ActivationParams activation_params, int const* permuted_row_to_source_row,
     int64_t num_rows, float* partials, cudaStream_t stream) {
-#define LAUNCH_MOE_GEMV_SPLITK_SWIGLU(GROUP_SIZE)                                                    \
-  launch_moe_gemv_splitk_twopass_swiglu<Details, CtaN, Threads, GROUP_SIZE, SplitK, TypeA>(          \
+#define LAUNCH_MOE_GEMV_SPLITK_SWIGLU(GROUP_SIZE)                                                     \
+  launch_moe_gemv_splitk_twopass_swiglu<Details, CtaN, Threads, GROUP_SIZE, SplitK, TypeA>(           \
       act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts, \
       expanded_num_rows, inter_size, k, activation_params, permuted_row_to_source_row, num_rows,      \
       partials, stream)
@@ -817,8 +817,8 @@ static void dispatch_moe_gemv_interleaved_swiglu_group_size(
     int64_t expanded_num_rows, int64_t inter_size, int64_t k, int group_size,
     cutlass_kernels::ActivationParams activation_params, int const* permuted_row_to_source_row,
     int64_t num_rows, cudaStream_t stream) {
-#define LAUNCH_MOE_GEMV_INTERLEAVED_SWIGLU(GROUP_SIZE)                                               \
-  launch_moe_gemv_interleaved_swiglu<Details, CtaN, Threads, GROUP_SIZE, TypeA, AccT>(               \
+#define LAUNCH_MOE_GEMV_INTERLEAVED_SWIGLU(GROUP_SIZE)                                                \
+  launch_moe_gemv_interleaved_swiglu<Details, CtaN, Threads, GROUP_SIZE, TypeA, AccT>(                \
       act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts, \
       expanded_num_rows, inter_size, k, activation_params, permuted_row_to_source_row, num_rows, stream)
   if (group_size <= 0) {
@@ -863,9 +863,9 @@ static void dispatch_moe_gemv_fused_finalize_group_size(
     int const* unpermuted_row_to_permuted_row, int const* permuted_row_to_expert, float const* final_scales,
     int num_experts, int64_t num_rows, int64_t experts_per_token, int64_t n, int64_t k, int group_size,
     cudaStream_t stream) {
-#define LAUNCH_MOE_GEMV_FUSED_FINALIZE(GROUP_SIZE)                                              \
-  launch_moe_gemv_fused_finalize<Details, CtaN, Threads, GROUP_SIZE, TypeA, AccT>(              \
-      act, weight, scales, bias, out, unpermuted_row_to_permuted_row, permuted_row_to_expert,   \
+#define LAUNCH_MOE_GEMV_FUSED_FINALIZE(GROUP_SIZE)                                            \
+  launch_moe_gemv_fused_finalize<Details, CtaN, Threads, GROUP_SIZE, TypeA, AccT>(            \
+      act, weight, scales, bias, out, unpermuted_row_to_permuted_row, permuted_row_to_expert, \
       final_scales, num_experts, num_rows, experts_per_token, n, k, stream)
   if (group_size <= 0) {
     LAUNCH_MOE_GEMV_FUSED_FINALIZE(0);
