@@ -212,12 +212,15 @@ def quant_dequant_blockwise(weights, block_size, is_4_bit_quantization: bool = T
     processed_q_weight_torch = processed_q_weight.to(weights.device).view(torch.uint8)
     result = dequantized.view(n, k)
 
-    if asymmetric:
-        zero_points_storage = zero_point.to(weights.device).to(torch.uint8)
-    elif not is_4_bit_quantization:
-        zero_points_storage = torch.full((n, block_per_k), 128, dtype=torch.uint8, device=weights.device)
-    else:
-        zero_points_storage = None
+    # Symmetric quantization carries no zero-points for either width. The uint8/uint4 storage is
+    # offset-binary (centred on 128 / 8), and that offset is baked into the weight converter --
+    # FastInterleavedAndBiasedNumericArrayConverter subtracts 1152 = 1024 + 128 in fp16 math for
+    # uint8, and 8 for uint4 -- so it is applied whether or not zero-points are supplied. This
+    # function used to emit an all-128 tensor for symmetric 8-bit on the theory that "Cutlass
+    # expects an explicit Zero Point = 128"; that produced bias = (128 - 128) * scale = 0, a no-op
+    # that silently kept every block-wise 8-bit config off the MoE GEMV, whose dispatch rejects any
+    # block-wise case with a non-null zeros pointer.
+    zero_points_storage = zero_point.to(weights.device).to(torch.uint8) if asymmetric else None
 
     return scale_torch_out, processed_q_weight_torch, result, zero_points_storage
 
@@ -1488,8 +1491,10 @@ moe_gemv_test_cases = [
     (2, 1, 8, 0),
     (2, 1, 4, 32),
     (2, 1, 4, 64),
-    # INT8 block-wise does not currently select the GEMV (INT8 per-channel above does), so this case
-    # pins the grouped-GEMM fallback at a GEMV-eligible shape.
+    # INT8 block-wise. This reached the GEMV only after quant_dequant_blockwise() stopped emitting a
+    # redundant all-128 zero-point tensor for symmetric 8-bit: it made weight_zeros non-null, and
+    # every MoE GEMV entry point rejects on `group_size > 0 && weight_zeros != nullptr`
+    # (has_block_zeros in moe_kernels.cu) before the shape check runs.
     (2, 1, 8, 64),
 ]
 
