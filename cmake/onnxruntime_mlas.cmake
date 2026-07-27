@@ -860,19 +860,29 @@ else()
         # instructions in the pure-AVX2 kernels.
         set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c")
 
+        # sqnbitgemm_kernel_avx2vnni.cpp is always compiled so that
+        # MlasSQNBitGemmDispatchAvx2vnni (referenced unconditionally in
+        # platform.cpp, mlasi.h, and tests) is always defined.  Only the
+        # -mavxvnni flag is conditional: without it __AVXVNNI__ is not defined
+        # and the VNNI intrinsic paths compile out via the #if guards, leaving
+        # only the AVX2 fallback kernels in the dispatch table.
+        set(mlas_platform_srcs_avx2vnni
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2vnni.cpp
+        )
         if(MLAS_COMPILER_SUPPORTS_AVXVNNI)
-          message(STATUS "AVX-VNNI supported: adding sqnbitgemm_kernel_avx2vnni.cpp with -mavx2 -mfma -mf16c -mavxvnni")
+          message(STATUS "AVX-VNNI supported: compiling sqnbitgemm_kernel_avx2vnni.cpp with -mavx2 -mfma -mf16c -mavxvnni")
           # AVX-VNNI kernels live in a dedicated TU compiled with -mavxvnni.
           # Keeping them separate prevents the auto-vectorizer from emitting
           # VNNI instructions in the pure-AVX2 kernels in sqnbitgemm_kernel_avx2.cpp.
           set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2vnni.cpp
             PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c -mavxvnni")
-          set(mlas_platform_srcs_avx2vnni
-            ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2vnni.cpp
-          )
         else()
-          message(STATUS "AVX-VNNI not supported by compiler/assembler: using -mavx2 -mfma -mf16c only")
-          set(mlas_platform_srcs_avx2vnni)
+          message(STATUS "AVX-VNNI not supported by compiler/assembler: compiling sqnbitgemm_kernel_avx2vnni.cpp with -mavx2 -mfma -mf16c only (VNNI paths compiled out)")
+          # Still compile the TU so MlasSQNBitGemmDispatchAvx2vnni is defined.
+          # __AVXVNNI__ is absent, so all VNNI intrinsic blocks are #if-excluded
+          # and the dispatch table falls back to pure-AVX2 kernels.
+          set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2vnni.cpp
+            PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c")
         endif()
 
         # The 2-bit fp-zero-point dequant kernel relies on separate multiply
