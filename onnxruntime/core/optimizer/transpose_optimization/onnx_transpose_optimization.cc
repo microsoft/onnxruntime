@@ -2637,12 +2637,16 @@ static bool HandleReshapeFlatten(HandlerArgs& args) {
   //   3) Remove the original Transpose if it has no other consumers.
 
   std::string_view transpose_input = args.transpose.Inputs()[0];
+  std::string_view old_shape_init = args.node.Inputs()[1];
   std::vector<int64_t> shape_initializer_shape{gsl::narrow_cast<int64_t>(sorted_reshape_shape.size())};
   std::string_view new_shape_init =
       AddInitializerInt64(args.ctx.graph, shape_initializer_shape, sorted_reshape_shape);
 
   args.node.SetInput(0, transpose_input);
   args.node.SetInput(1, new_shape_init);
+  if (!args.ctx.graph.HasValueConsumers(old_shape_init)) {
+    args.ctx.graph.RemoveInitializer(old_shape_init);
+  }
 
   // If new_perm is identity the new Reshape's output already matches the
   // original Reshape's output shape and no trailing Transpose is needed.
