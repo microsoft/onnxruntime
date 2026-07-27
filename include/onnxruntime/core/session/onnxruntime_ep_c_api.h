@@ -2084,6 +2084,10 @@ struct OrtEpApi {
    * The EP can use this during CreateEp or Compile to access the source model for weightless
    * EPContext model sessions.
    *
+   * \note If the source model is provided as a file path, the EP should read the
+   *       "ep.context_source_model_path" (kOrtSessionOptionEpContextSourceModelPath) session config entry
+   *       via GetSessionConfigEntry instead.
+   *
    * \param[in] session_options The OrtSessionOptions instance.
    * \param[out] source_model_data Output parameter set to the source model buffer, or NULL if not set.
    * \param[out] source_model_data_length Output parameter set to the buffer size, or 0 if not set.
