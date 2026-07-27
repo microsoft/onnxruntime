@@ -751,7 +751,7 @@ class ModelCompiler:
         external_initializers_file_path: str | os.PathLike | None = None,
         external_initializers_size_threshold: int = 1024,
         flags: int = C.OrtCompileApiFlags.NONE,
-        graph_optimization_level: C.GraphOptimizationLevel = C.GraphOptimizationLevel.ORT_DISABLE_ALL,
+        graph_optimization_level: C.GraphOptimizationLevel | None = None,
         get_initializer_location_func: GetInitializerLocationFunc | None = None,
     ):
         """
@@ -769,8 +769,10 @@ class ModelCompiler:
             is None or empty. Initializers larger than this threshold are stored in the external initializers file.
         :param flags: Additional boolean options to enable. Set this parameter to a bitwise OR of
             flags in onnxruntime.OrtCompileApiFlags.
-        :param graph_optimization_level: The graph optimization level.
-            Defaults to onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL.
+        :param graph_optimization_level: The graph optimization level. Defaults to None, which lets the
+            optimization level be determined by `flags`: OrtCompileApiFlags.OPTIMIZED_ONNX_OUTPUT defaults
+            to onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL, while the standard compile path defaults
+            to onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL. Set this explicitly to override the default.
         :param get_initializer_location_func: Optional function called for every initializer to allow user to specify
             whether an initializer should be stored within the model or externally. Example:
             ```
