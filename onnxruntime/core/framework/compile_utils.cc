@@ -179,48 +179,47 @@ Status SaveModelProtoToLocation(ONNX_NAMESPACE::ModelProto& model_proto,
 
     *output_buffer_holder->buffer_size_ptr = buffer_size;
     *output_buffer_holder->buffer_ptr = buffer.release();
-  }
-  // Write output model to user's output stream.
-  size_t buffer_size = model_proto.ByteSizeLong();
-  ORT_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<int>::max()),
-                "Cannot serialize ONNX ModelProto larger than 2GB");
+  } else if (output_write_func_holder != nullptr) {
+    // Write output model to user's output stream.
+    size_t buffer_size = model_proto.ByteSizeLong();
+    ORT_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<int>::max()),
+                  "Cannot serialize ONNX ModelProto larger than 2GB");
 
-  auto out_stream_buf = std::make_unique<epctx::OutStreamBuf>(*output_write_func_holder);
-  std::ostream out_stream(out_stream_buf.get());
+    auto out_stream_buf = std::make_unique<epctx::OutStreamBuf>(*output_write_func_holder);
+    std::ostream out_stream(out_stream_buf.get());
 
-  model_proto.SerializeToOstream(&out_stream);
-  out_stream.flush();
-  ORT_RETURN_IF_ERROR(out_stream_buf->GetStatus());
-}
-else {
-  // Write output model to a file.
-  int fd = 0;
-  Status status = Env::Default().FileOpenWr(valid_output_model_path, fd);
-  ORT_RETURN_IF_ERROR(status);
+    model_proto.SerializeToOstream(&out_stream);
+    out_stream.flush();
+    ORT_RETURN_IF_ERROR(out_stream_buf->GetStatus());
+  } else {
+    // Write output model to a file.
+    int fd = 0;
+    Status status = Env::Default().FileOpenWr(valid_output_model_path, fd);
+    ORT_RETURN_IF_ERROR(status);
 
-  ORT_TRY {
-    google::protobuf::io::FileOutputStream output(fd);
-    bool serialize_result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
-    if (!serialize_result) {
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_PROTOBUF,
-                               "Protobuf serialization failed when saving model to ",
-                               valid_output_model_path);
+    ORT_TRY {
+      google::protobuf::io::FileOutputStream output(fd);
+      bool serialize_result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
+      if (!serialize_result) {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_PROTOBUF,
+                                 "Protobuf serialization failed when saving model to ",
+                                 valid_output_model_path);
+      }
     }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+      });
+    }
+    if (!status.IsOK()) {
+      GSL_SUPPRESS(es .84)
+      ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+      return status;
+    }
+    ORT_RETURN_IF_ERROR(Env::Default().FileClose(fd));
   }
-  ORT_CATCH(const std::exception& ex) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
-    });
-  }
-  if (!status.IsOK()) {
-    GSL_SUPPRESS(es .84)
-    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
-    return status;
-  }
-  ORT_RETURN_IF_ERROR(Env::Default().FileClose(fd));
-}
 
-return Status::OK();
+  return Status::OK();
 }
 
 Status BuildAndSaveOptimizedModel(const onnxruntime::Model& model,
