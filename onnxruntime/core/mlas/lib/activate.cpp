@@ -261,6 +261,7 @@ struct MLAS_ACTIVATION_FUNCTION<MlasHardSwishActivation>
         MLAS_FLOAT32X4 Gate = MlasMultiplyAddFloat32x4(Value, AlphaBroadcast, BetaBroadcast);
         Gate = MlasMinimumFloat32x4(MaximumBroadcast, Gate);
         Gate = MlasMaximumFloat32x4(MinimumBroadcast, Gate);
+
         return MlasMultiplyFloat32x4(Value, Gate);
     }
 
@@ -272,6 +273,7 @@ struct MLAS_ACTIVATION_FUNCTION<MlasHardSwishActivation>
         float Gate = Alpha * Value + Beta;
         Gate = std::min(Gate, Maximum);
         Gate = std::max(Gate, Minimum);
+
         return Value * Gate;
 #endif
     }
