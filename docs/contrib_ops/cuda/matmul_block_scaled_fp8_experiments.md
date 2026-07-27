@@ -17,7 +17,7 @@ Related documentation:
 2. [Baseline Latency Profile](#2-baseline-latency-profile)
 3. [Prefill Bottleneck - Weight Dequantization](#3-prefill-bottleneck---weight-dequantization)
 4. [Optimization - Vectorized Dequantization Kernel](#4-optimization---vectorized-dequantization-kernel)
-5. [Decode GEMV - Kept As Is](#5-decode-gemv---kept-as-is)
+5. [Decode GEMV - Memory-Level Parallelism](#5-decode-gemv---memory-level-parallelism)
 6. [Benchmark Commands](#6-benchmark-commands)
 7. [Lessons](#7-lessons)
 
@@ -26,6 +26,7 @@ Related documentation:
 ## 1. Test Environment
 
 - GPU: NVIDIA GeForce RTX 5060 Ti, SM120 (Blackwell), 36 SMs, about 448 GB/s memory bandwidth.
+  Section 5 was measured separately on an NVIDIA H200, SM90 (Hopper), 132 SMs, about 4.8 TB/s.
 - CUDA toolkit: 13.0.
 - CUTLASS: 4.4.2.
 - Build directory: `build/cu130/Release`.
@@ -156,16 +157,99 @@ This optimization is kept.
 
 ---
 
-## 5. Decode GEMV - Kept As Is
+## 5. Decode GEMV - Memory-Level Parallelism
 
-The decode GEMV `MatMulBlockScaledFp8GemvKernel` is already well tuned and was
-not changed. It groups all rows of an `M <= 8` tile into one warp
-(`RowsPerWarp` = 1, 2, 4, or 8) so each weight row streams exactly once, uses
-`uint4` vectorized FP8 loads, folds one `b_scale` value per 16-element chunk
-(valid because `block_size % 16 == 0` on this path), and reduces with warp
-shuffles. Decode latency (0.076-0.145 ms for `M = 1..8`) is far below the
-prefill dequant floor, so it is not the optimization target. Its numbers are
-unchanged by the dequant kernel work, as expected.
+An earlier round of this document concluded the decode GEMV was "already well
+tuned and not the optimization target". That conclusion came from measurements
+taken through the ORT Python API without CUDA graphs, which on a fast GPU are
+dominated by per-node host overhead rather than by the kernel. Re-measuring on
+H200 (SM90) with the launches captured in a CUDA graph changed the picture.
+
+### 5.1 What the measurement was actually reporting
+
+At `N = 8192, K = 2048, M = 1` the op-level measurement reported 21.0 us while
+the kernel itself takes 7.2 us. The difference is ORT per-node host work; the
+host, not the GPU, was the limiter in that harness. Two rules follow:
+
+- Measure kernels standalone, or with the launches captured in a CUDA graph.
+- On H200 an empty kernel costs **1.79 us** as a stream launch and **0.68 us**
+  as a CUDA graph node. That 0.68 us is a floor no kernel optimization can go
+  below, and it dominates any op whose useful work is smaller.
+
+### 5.2 Nsight Compute diagnosis
+
+`ncu --section SpeedOfLight --section MemoryWorkloadAnalysis --section Occupancy
+--section WarpStateStats` on the original kernel at `N = 8192, K = 2048, M = 1`:
+
+| Metric | Value | Reading |
+|---|---|---|
+| DRAM throughput | 35.3% | not bandwidth bound |
+| Compute (SM) throughput | 52.3% | not compute bound either |
+| Waves | 1.0 | grid barely fills the GPU once |
+| L1/TEX hit rate | 79.6% | the `A` row is already resident in L1 |
+| L2 hit rate | 5.2% | `A` re-reads never reach L2 |
+| Block limit (registers) | 8 blocks/SM | occupancy already register capped |
+| Achieved occupancy | 71.0% | vs 100% theoretical |
+| Warp cycles / issued instr | 16.7, of which 5.5 on L1TEX | latency bound |
+
+The kernel is short of **outstanding loads**, not of bandwidth or instructions.
+Each thread moves only `K / 32 = 64` bytes of `B`, and because `k` is a runtime
+value the K loop does not unroll, so a thread has exactly one `B` load in flight
+and pays full L1 latency every iteration.
+
+Two hypotheses were tested and rejected:
+
+- *Reduce conversion instructions.* Replacing the 16 scalar `static_cast<float>`
+  FP8 converts with `__nv_cvt_fp8x2_to_halfraw2` (one `cvt.rn.f16x2.e4m3x2` per
+  pair) is bit-exact and worth only 0-15%. Instruction count was not the limit.
+- *Stage `A` in shared memory.* The concern was that all `N` warps re-read the
+  whole `A` row. The 79.6% L1 hit rate shows L1 already absorbs this; a shared
+  memory variant was neutral to slower except at very small `N`.
+
+### 5.3 Change
+
+`MatMulBlockScaledFp8GemvKernel` is now templated on
+`<RowsPerWarp, ColsPerWarp, Unroll, AType>`, where `<R, 1, 1, A>` reproduces the
+original geometry exactly:
+
+- `Unroll` pre-issues `Unroll` independent `B`/`A` loads before consuming any of
+  them, so several requests are in flight per thread.
+- `ColsPerWarp` gives one warp several output columns, so each `A` load feeds
+  several independent FMA chains.
+
+Both trade occupancy - already register capped, and irrelevant at one wave - for
+per-thread memory-level parallelism. The FP8 to FP16 conversion is also
+vectorized. FP32 accumulation is unchanged, so results are **bit-identical** to
+the previous kernel.
+
+Dispatch (only `M == 1`, the batch-1 decode case, uses wide tiles):
+
+| Condition | Config |
+|---|---|
+| `M == 1, N >= 8192` | `<1, 4, 2>` |
+| `M == 1, N >= 4096` | `<1, 2, 2>` |
+| otherwise | `<RowsPerWarp, 1, 1>` (unchanged) |
+
+Below `N = 4096` the wider tiles leave too few warps to fill the GPU, and for
+`M > 1` the extra live registers (accumulators plus pre-issued loads) cost more
+than the added parallelism returns. Both measured slower, hence the guards.
+
+### 5.4 Results (H200, `M = 1`, CUDA graph, us, includes 0.68 us node overhead)
+
+| Shape (N x K) | cuBLAS FP16 | GEMV before | GEMV after | vs before | vs cuBLAS |
+|---|---|---|---|---|---|
+| 8192 x 2048 | 10.2 | 7.2 | **5.4** | 1.33x | 1.89x |
+| 4096 x 2048 | 7.1 | 4.4 | **4.0** | 1.10x | 1.78x |
+| 4096 x 4096 | 9.2 | 7.1 | **6.0** | 1.18x | 1.53x |
+| 2048 x 4096 | 7.6 | 4.6 | 4.6 | 1.00x | 1.65x |
+| 512 x 2048 | 5.4 | 2.7 | 2.7 | 1.00x | 2.00x |
+
+At `8192 x 2048` this is 3.1 TB/s of the 4.8 TB/s HBM peak, up from 2.3 TB/s.
+
+Note the last column: the weight-only FP8 GEMV is **1.5-2.0x faster than cuBLAS
+FP16** at `M = 1`, so quantizing a projection to FP8 is a decode win on latency
+as well as on footprint. At `M >= 4` cuBLAS wins and the GEMV path should not be
+preferred on speed alone.
 
 ---
 
@@ -236,5 +320,22 @@ CUDA_VISIBLE_DEVICES=0 "$ORT_BUILD/onnxruntime_provider_test" \
 - Keep the scalar dequant kernel as a correctness fallback for `K % 16 != 0`; the
   vectorized kernel requires the 16-element alignment that `K % 16 == 0`
   guarantees.
-- The decode GEMV already streams weights once per tile and is well below the
-  prefill floor, so it was left unchanged.
+- Never benchmark a fast kernel through the ORT Python API without CUDA graphs.
+  At `8192 x 2048, M = 1` that harness reported 21.0 us for a 7.2 us kernel; the
+  measurement was host bound and led to the wrong conclusion that the decode
+  GEMV was fine and that FP8 was slower than FP16.
+- A decode GEMV runs one wave and is usually starved of *outstanding loads*, not
+  of bandwidth or instructions. When SOL shows both DRAM and SM well under 60%
+  with a large L1TEX stall share, add per-thread memory-level parallelism
+  (unroll to pre-issue loads, widen the tile) rather than cutting instructions
+  or adding shared memory staging. Trading register-capped occupancy for ILP is
+  the right move at one wave.
+- Do not pass an array by reference (`__half2 (&)[8]`) to a `__device__` helper.
+  It is placed in local memory; inlining the same code via a macro was about 2x
+  faster here and much more at `RowsPerWarp > 1`.
+- Know the launch floor before optimizing: on H200 an empty kernel costs 0.68 us
+  as a CUDA graph node. Ops cheaper than that are launch bound and should be
+  fused, not tuned.
+- The FP8 weight-only GEMV is 1.5-2.0x faster than cuBLAS FP16 at `M = 1`, so
+  quantizing a projection is a decode latency win, not just a footprint win. The
+  ordering reverses by `M = 4`.
