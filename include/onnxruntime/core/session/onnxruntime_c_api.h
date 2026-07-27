@@ -7526,6 +7526,9 @@ struct OrtApi {
    *
    * The caller retains ownership of the buffer and must ensure it remains valid for the lifetime of the session.
    *
+   * \note If the source model is available as a file on disk, use the session config entry
+   *       "ep.context_source_model_path" (kOrtSessionOptionEpContextSourceModelPath) instead.
+   *
    * \param[in] options The OrtSessionOptions instance.
    * \param[in] source_model_data Pointer to the source model byte buffer.
    * \param[in] source_model_data_length Size of the byte buffer in bytes.
