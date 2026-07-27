@@ -354,7 +354,11 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length < 1) {
     throw new Error('DFT requires at least 1 input.');
   }
-  const complex = inputs[0].dims[inputs[0].dims.length - 1];
+  const dims = inputs[0].dims;
+  if (dims.length < 2) {
+    throw new Error('DFT input must have at least 2 dimensions.');
+  }
+  const complex = dims[dims.length - 1];
   if (complex !== 1 && complex !== 2) {
     throw new Error("DFT input's innermost dimension must be 1 (real) or 2 (complex).");
   }
