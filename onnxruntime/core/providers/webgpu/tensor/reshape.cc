@@ -10,9 +10,10 @@ namespace webgpu {
 
 template <int StartVersion, int EndVersion>
 KernelCreateInfo CreateReshapeVersionedKernelInfo(bool enable_int64) {
-  // Reshape is a pure copy/view op. Enabling int64 is safe because element values are never
-  // interpreted or used in shader arithmetic.
-  const auto& type_constraints = GetOpTypeConstraints(enable_int64, true);
+  // Reshape is a pure copy/view op. Enabling int64 and uint8 are safe because element values
+  // are never interpreted or used in shader arithmetic.
+  std::vector<MLDataType> type_constraints = GetOpTypeConstraints(enable_int64, true);
+  type_constraints.push_back(DataTypeImpl::GetTensorType<uint8_t>());
 
   KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<Reshape>(info);
@@ -35,9 +36,10 @@ KernelCreateInfo CreateReshapeVersionedKernelInfo(bool enable_int64) {
 
 template <int SinceVersion>
 KernelCreateInfo CreateReshapeKernelInfo(bool enable_int64) {
-  // Reshape is a pure copy/view op. Enabling int64 is safe because element values are never
-  // interpreted or used in shader arithmetic.
-  const auto& type_constraints = GetOpTypeConstraints(enable_int64, true);
+  // Reshape is a pure copy/view op. Enabling int64 and uint8 are safe because element values
+  // are never interpreted or used in shader arithmetic.
+  std::vector<MLDataType> type_constraints = GetOpTypeConstraints(enable_int64, true);
+  type_constraints.push_back(DataTypeImpl::GetTensorType<uint8_t>());
 
   KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<Reshape>(info);
