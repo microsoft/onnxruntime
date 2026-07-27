@@ -2443,6 +2443,10 @@ TEST(MathOpTest, Min_13_Float16_with_scalar_Nan) {
 // not guarantee this). The broadcast case exercises the vec4 broadcast shader path; the scalar
 // case exercises the element-wise scalar-operand path.
 TEST(MathOpTest, Max_12_Float_Nan_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
   OpTester test("Max", 12);
   test.AddInput<float>("data_0", {3, 3},
                        {std::numeric_limits<float>::quiet_NaN(),
@@ -2458,16 +2462,16 @@ TEST(MathOpTest, Max_12_Float_Nan_WebGpu) {
                          std::numeric_limits<float>::quiet_NaN(),
                          -0.5f, 0.0f, -1.0f,
                          1.0f, 1.0f, 2.0f});
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (!webgpu_ep) {
-    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
-  }
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(webgpu_ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(MathOpTest, Min_12_Float_Nan_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
   OpTester test("Min", 12);
   test.AddInput<float>("data_0", {3, 3},
                        {std::numeric_limits<float>::quiet_NaN(),
@@ -2483,10 +2487,6 @@ TEST(MathOpTest, Min_12_Float_Nan_WebGpu) {
                          std::numeric_limits<float>::quiet_NaN(),
                          -1.0f, -1.0f, -2.0f,
                          0.5f, 0.0f, 1.0f});
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (!webgpu_ep) {
-    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
-  }
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(webgpu_ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
@@ -2494,6 +2494,10 @@ TEST(MathOpTest, Min_12_Float_Nan_WebGpu) {
 
 // A scalar NaN operand must turn every output element into NaN (element-wise scalar path).
 TEST(MathOpTest, Max_12_Float_with_scalar_Nan_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
   OpTester test("Max", 12);
   test.AddInput<float>("data_0", {2, 2},
                        {0.25f, -0.25f, -0.5f, 0.5f});
@@ -2503,10 +2507,6 @@ TEST(MathOpTest, Max_12_Float_with_scalar_Nan_WebGpu) {
                          std::numeric_limits<float>::quiet_NaN(),
                          std::numeric_limits<float>::quiet_NaN(),
                          std::numeric_limits<float>::quiet_NaN()});
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (!webgpu_ep) {
-    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
-  }
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(webgpu_ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
@@ -2514,6 +2514,10 @@ TEST(MathOpTest, Max_12_Float_with_scalar_Nan_WebGpu) {
 
 // Variadic (3-input) fold must also propagate a NaN that appears in a middle operand.
 TEST(MathOpTest, Min_12_Float_Variadic_Nan_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
   OpTester test("Min", 12);
   test.AddInput<float>("data_0", {1, 3}, {1.0f, 2.0f, 3.0f});
   test.AddInput<float>("data_1", {1, 3},
@@ -2521,10 +2525,6 @@ TEST(MathOpTest, Min_12_Float_Variadic_Nan_WebGpu) {
   test.AddInput<float>("data_2", {1, 3}, {-1.0f, -2.0f, 4.0f});
   test.AddOutput<float>("min", {1, 3},
                         {std::numeric_limits<float>::quiet_NaN(), -2.0f, 3.0f});
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (!webgpu_ep) {
-    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
-  }
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(webgpu_ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
@@ -2533,6 +2533,10 @@ TEST(MathOpTest, Min_12_Float_Variadic_Nan_WebGpu) {
 // Float16 exercises the distinct NaN-detection path in the shader: f16 is widened to f32 before the
 // integer bitcast, since a vec4<f16> is too narrow for the vec4<u32> bitcast the check relies on.
 TEST(MathOpTest, Max_12_Float16_Nan_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
   OpTester test("Max", 12);
   test.AddInput<MLFloat16>("data_0", {3, 1},
                            MakeMLFloat16({-1.0f, std::numeric_limits<float>::quiet_NaN(), 1.0f}));
@@ -2542,10 +2546,6 @@ TEST(MathOpTest, Max_12_Float16_Nan_WebGpu) {
                             MakeMLFloat16({0.5f,
                                            std::numeric_limits<float>::quiet_NaN(),
                                            std::numeric_limits<float>::quiet_NaN()}));
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (!webgpu_ep) {
-    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
-  }
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(webgpu_ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
