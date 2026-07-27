@@ -313,15 +313,27 @@ void ShaderVariableHelper::Impl(OStringStream& ss) const {
     SS_APPEND(ss, "  let buffer_index: u32 = global_offset / CHUNK_SIZE_IN_ELEMENTS;\n");
     SS_APPEND(ss, "  let local_offset: u32 = global_offset % CHUNK_SIZE_IN_ELEMENTS;\n");
     const bool is_64bit = type_ == ProgramVariableDataType::Int64 || type_ == ProgramVariableDataType::Uint64;
-    const std::string get_prefix = is_64bit ? MakeStringWithClassicLocale(std::string(ElementType()), "(") : "";
-    const std::string get_suffix = is_64bit ? "[local_offset].x)" : "[local_offset]";
+    const bool is_boolx4 = type_ == ProgramVariableDataType::Boolx4;
+    // Returns the WGSL return expression for a given buffer name, mirroring GetByOffsetImpl.
+    auto make_get_return_expr = [&](const std::string& buf) -> std::string {
+      if (is_64bit) {
+        return MakeStringWithClassicLocale(std::string(ElementType()), "(", buf, "[local_offset].x)");
+      }
+      if (is_boolx4) {
+        return MakeStringWithClassicLocale(
+            "vec4<bool>(bool(", buf, "[local_offset] & 0xFFu), bool(", buf,
+            "[local_offset] & 0xFF00u), bool(", buf,
+            "[local_offset] & 0xFF0000u), bool(", buf, "[local_offset] & 0xFF000000u))");
+      }
+      return MakeStringWithClassicLocale(buf, "[local_offset]");
+    };
     SS_APPEND(ss, "  switch(buffer_index) {\n");
     // case 0 (base buffer name_)
-    SS_APPEND(ss, "    case 0u: { return ", get_prefix, name_, get_suffix, "; }\n");
+    SS_APPEND(ss, "    case 0u: { return ", make_get_return_expr(name_), "; }\n");
     for (uint32_t i = 1; i < segments_; ++i) {
-      SS_APPEND(ss, "    case ", i, "u: { return ", get_prefix, name_, i, get_suffix, "; }\n");
+      SS_APPEND(ss, "    case ", i, "u: { return ", make_get_return_expr(MakeStringWithClassicLocale(name_, i)), "; }\n");
     }
-    SS_APPEND(ss, "    default: { return ", get_prefix, name_, get_suffix, "; }\n");
+    SS_APPEND(ss, "    default: { return ", make_get_return_expr(name_), "; }\n");
     SS_APPEND(ss, "  }\n");
     SS_APPEND(ss, "}\n");
   }
@@ -350,6 +362,8 @@ void ShaderVariableHelper::Impl(OStringStream& ss) const {
       stored_value = "vec2<u32>(u32(value), select(0u, 0xFFFFFFFFu, i32(value) < 0))";
     } else if (type_ == ProgramVariableDataType::Uint64) {
       stored_value = "vec2<u32>(u32(value), 0u)";
+    } else if (type_ == ProgramVariableDataType::Boolx4) {
+      stored_value = "dot(vec4<u32>(0x1, 0x100, 0x10000, 0x1000000), vec4<u32>(value))";
     }
     SS_APPEND(ss, "  switch(buffer_index) {\n");
     SS_APPEND(ss, "    case 0u: { ", name_, "[local_offset] = ", stored_value, "; return; }\n");
