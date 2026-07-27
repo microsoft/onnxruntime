@@ -43,7 +43,13 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
 GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
-    : OpKernel(info), GQAAttentionBase(info, true) {}
+    : OpKernel(info), GQAAttentionBase(info, true) {
+  // The windowed KV cache (cache-relative indexing + shift compaction) is implemented only by the
+  // CUDA kernel. Fail loudly here rather than silently treating the window-sized buffer as a
+  // full-length cache, which would produce wrong results.
+  ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("sliding_window_cache", 0) == 0,
+              "GroupQueryAttention (CPU): sliding_window_cache=1 is not implemented.");
+}
 
 template <typename T>
 Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {

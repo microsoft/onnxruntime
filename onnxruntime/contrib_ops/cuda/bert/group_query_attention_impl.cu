@@ -147,6 +147,15 @@ Status LaunchPerHeadRMSNorm(
 
 // Internal helper to get Q, K, V pointers, handling packed input
 //
+// Upper bound (exclusive) for absolute RoPE positions. The cos/sin caches are the real constraint;
+// fall back to the KV cache sequence dimension when rotary caches are absent so behaviour is
+// unchanged for models that do not use rotary embeddings. With a windowed KV cache these two differ
+// by construction: RoPE stays in absolute coordinates while the cache is capacity-relative.
+inline int RopeMaxPosition(const GroupQueryAttentionParameters& parameters) {
+  return parameters.rotary_max_position > 0 ? parameters.rotary_max_position
+                                            : parameters.seqlen_present_kv_cache;
+}
+
 // This function orchestrates the preparation of Q, K, and V tensors for attention kernels.
 // It performs:
 // 1. Handling packed vs. unpacked QKV inputs.
@@ -231,7 +240,7 @@ Status PrepareQKV(
             stream, reinterpret_cast<half*>(q_out), reinterpret_cast<const half*>(q_rope_input),
             data.position_ids, data.past_seq_lens,
             reinterpret_cast<const half*>(data.cos_cache), reinterpret_cast<const half*>(data.sin_cache),
-            batch_size, sequence_length, num_heads, head_size, parameters.rotary_dim, max_cache_length,
+            batch_size, sequence_length, num_heads, head_size, parameters.rotary_dim, RopeMaxPosition(parameters),
             pos_format, parameters.rotary_interleaved,
             max_threads_per_block, false /* is_input_bnsh_format: Q is BSNH */)));
       } else if constexpr (std::is_same<T, __nv_bfloat16>::value) {
@@ -239,7 +248,7 @@ Status PrepareQKV(
             stream, reinterpret_cast<onnxruntime::BFloat16*>(q_out), reinterpret_cast<const onnxruntime::BFloat16*>(q_rope_input),
             data.position_ids, data.past_seq_lens,
             reinterpret_cast<const onnxruntime::BFloat16*>(data.cos_cache), reinterpret_cast<const onnxruntime::BFloat16*>(data.sin_cache),
-            batch_size, sequence_length, num_heads, head_size, parameters.rotary_dim, max_cache_length,
+            batch_size, sequence_length, num_heads, head_size, parameters.rotary_dim, RopeMaxPosition(parameters),
             pos_format, parameters.rotary_interleaved,
             max_threads_per_block, false /* is_input_bnsh_format: Q is BSNH */)));
       }
@@ -254,7 +263,8 @@ Status PrepareQKV(
         parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.value),
         q_out, k, v, data.k_scale, data.v_scale,
         num_heads, kv_num_heads, head_size, sequence_length, batch_size,
-        max_cache_length, data.past_seq_lens,
+        RopeMaxPosition(parameters), max_cache_length,
+        data.past_seq_lens, data.cache_past_seq_lens,
         reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
         parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
         is_cache_bnsh, parameters.k_quant_type,
@@ -636,9 +646,14 @@ __global__ void GetSequenceLengths(const int* total_seq_lens_minus_one,
                                    int* past_seq_lens,
                                    int* total_seq_lens,
                                    int* padded_seq_lens,
+                                   int* cache_past_seq_lens,
+                                   int* cache_total_seq_lens,
+                                   int* evict_counts,
                                    const int batch_size,
                                    const int sequence_length,
-                                   const bool is_first_prompt) {
+                                   const bool is_first_prompt,
+                                   const int kv_cache_capacity,
+                                   const int kv_cache_real_capacity) {
   int i = threadIdx.x + blockIdx.x * blockDim.x;
   if (i < batch_size) {
     // total_seq_lens_minus_one is the seqlens_k input and is not range-checked on the device.
@@ -647,14 +662,48 @@ __global__ void GetSequenceLengths(const int* total_seq_lens_minus_one,
     const int seqlens_k = total_seq_lens_minus_one[i];
     const int total_len = (seqlens_k > 0 ? seqlens_k : 0) + 1;
     total_seq_lens[i] = total_len;
+    int past_len;
     if (is_first_prompt) {
+      past_len = 0;
       past_seq_lens[i] = 0;
       padded_seq_lens[i] = sequence_length;
     } else {
-      const int past_len = total_len - sequence_length;
-      past_seq_lens[i] = past_len > 0 ? past_len : 0;
+      past_len = total_len - sequence_length;
+      past_len = past_len > 0 ? past_len : 0;
+      past_seq_lens[i] = past_len;
       padded_seq_lens[i] = 0;
     }
+
+    if (cache_past_seq_lens == nullptr) {
+      return;
+    }
+
+    // Cache-relative coordinates for a windowed KV cache. The cache holds the L = min(T, C) most
+    // recent tokens contiguously at indices [0, L), where C is the real capacity.
+    //   Lp = min(P, C)                  tokens currently resident
+    //   E  = max(0, Lp + S - C)         tokens this append pushes out of the real cache
+    //   D  = max(0, Lp + S - C_used)    tokens that have to be shifted out of the buffer in use
+    // A multi-token step writes into a staging buffer long enough to hold Lp + S entries, so there
+    // D is 0 and E is only the offset of the window inside the staging buffer. For a single-token
+    // step the staging buffer is the cache itself (C_used == C) and D == E.
+    //
+    // L must stay a pure function of the absolute length T: the op is stateless across steps and
+    // only ever sees seqlens_k, so it cannot recover a resident count it chose on a previous step.
+    // That rules out evicting in larger amortized batches. Note that nothing here depends on
+    // is_first_prompt; P == 0 falls out of the same formulas, which matters because a caller may
+    // not be able to signal the first prompt (onnxruntime-genai always passes the buffer length as
+    // total_sequence_length).
+    const int C = kv_cache_real_capacity;
+    const int C_used = kv_cache_capacity;
+    const int Lp = past_len < C ? past_len : C;
+    const int evicted = Lp + sequence_length - C;
+    const int shifted = Lp + sequence_length - C_used;
+    const int E = evicted > 0 ? evicted : 0;
+    const int D = shifted > 0 ? shifted : 0;
+    const int resident = Lp + sequence_length;
+    cache_past_seq_lens[i] = Lp - D;
+    cache_total_seq_lens[i] = resident < C_used ? resident : C_used;
+    evict_counts[i] = E;
   }
 }
 
@@ -663,17 +712,209 @@ Status LaunchGetSequenceLengths(
     int* past_seq_lens,
     int* total_seq_lens,
     int* padded_seq_lens,
+    int* cache_past_seq_lens,
+    int* cache_total_seq_lens,
+    int* evict_counts,
     const int batch_size,
     const int sequence_length,
     const bool is_first_prompt,
+    const int kv_cache_capacity,
+    const int kv_cache_real_capacity,
     cudaStream_t stream,
     const int max_threads_per_block) {
   int blocks = (batch_size + max_threads_per_block - 1) / max_threads_per_block;
-  GetSequenceLengths<<<blocks, max_threads_per_block, 0, stream>>>(total_seq_lens_minus_one, past_seq_lens, total_seq_lens, padded_seq_lens, batch_size, sequence_length, is_first_prompt);
+  GetSequenceLengths<<<blocks, max_threads_per_block, 0, stream>>>(
+      total_seq_lens_minus_one, past_seq_lens, total_seq_lens, padded_seq_lens,
+      cache_past_seq_lens, cache_total_seq_lens, evict_counts,
+      batch_size, sequence_length, is_first_prompt, kv_cache_capacity, kv_cache_real_capacity);
   return CUDA_CALL(cudaGetLastError());
 }
 
-// Trace function for debugging
+// ============================================================================
+// Windowed KV cache compaction
+// ============================================================================
+// Left-shifts a BNSH KV cache by D = evict_counts[b] positions so that the retained tokens stay
+// contiguous at cache indices [0, Lp - D). D is read on the device (it changes every step once the
+// cache is full), while the launch geometry is sized for the worst case and threads whose source
+// row is out of range exit early. Keeping the grid shape independent of D is what allows the
+// enclosing graph to remain capturable.
+//
+// A direct in-place left shift races (source and destination rows overlap across blocks), so the
+// shift runs as copy-to-scratch followed by copy-back. Both kernels operate on whole rows of the
+// raw storage type, which makes them quantization agnostic (fp16/bf16/int8/fp8, and int4 as long
+// as the row size is expressed in packed bytes).
+//
+// row_bytes: number of bytes occupied by one (batch, head, position) entry.
+// capacity : allocated sequence dimension C of the cache.
+// ============================================================================
+__global__ void CompactKvCacheRows(uint8_t* __restrict__ dst,
+                                   const uint8_t* __restrict__ src,
+                                   const int* __restrict__ evict_counts,
+                                   const int* __restrict__ cache_past_seq_lens,
+                                   const int capacity,
+                                   const int row_bytes,
+                                   const bool src_is_shifted) {
+  // grid: (capacity, kv_num_heads, batch_size); block: threads over the row bytes (as uint4 where
+  // possible, otherwise bytes -- see the launcher, which guarantees row_bytes % 16 == 0).
+  const int s = blockIdx.x;
+  const int n = blockIdx.y;
+  const int b = blockIdx.z;
+
+  const int retained = cache_past_seq_lens[b];  // Lp - D
+  if (s >= retained) {
+    return;
+  }
+  const int d = evict_counts[b];
+  if (d <= 0) {
+    return;
+  }
+
+  const int64_t head_stride = static_cast<int64_t>(capacity) * row_bytes;
+  const int64_t batch_stride = static_cast<int64_t>(gridDim.y) * head_stride;
+  const int64_t base = static_cast<int64_t>(b) * batch_stride + static_cast<int64_t>(n) * head_stride;
+
+  // Pass 1 (src_is_shifted): scratch[s] <- cache[s + D].
+  // Pass 2:                  cache[s]   <- scratch[s].
+  const int64_t src_row = base + static_cast<int64_t>(src_is_shifted ? (s + d) : s) * row_bytes;
+  const int64_t dst_row = base + static_cast<int64_t>(s) * row_bytes;
+
+  const uint4* src_vec = reinterpret_cast<const uint4*>(src + src_row);
+  uint4* dst_vec = reinterpret_cast<uint4*>(dst + dst_row);
+  const int vec_count = row_bytes / static_cast<int>(sizeof(uint4));
+  for (int i = threadIdx.x; i < vec_count; i += blockDim.x) {
+    dst_vec[i] = src_vec[i];
+  }
+}
+
+// Evicts the oldest evict_counts[b] entries from a windowed KV cache by shifting the retained
+// entries to the front. Must run before the new tokens are appended.
+Status LaunchCompactKvCache(void* k_cache,
+                            void* v_cache,
+                            void* scratch,
+                            const int* evict_counts,
+                            const int* cache_past_seq_lens,
+                            const int batch_size,
+                            const int kv_num_heads,
+                            const int capacity,
+                            const int row_bytes,
+                            cudaStream_t stream) {
+  if (capacity <= 0 || row_bytes <= 0) {
+    return Status::OK();
+  }
+  if (row_bytes % static_cast<int>(sizeof(uint4)) != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "sliding_window_cache: KV cache row size (", row_bytes,
+                           " bytes) must be a multiple of 16 for the compaction shift.");
+  }
+
+  const int vec_count = row_bytes / static_cast<int>(sizeof(uint4));
+  const int threads = vec_count < 256 ? ((vec_count + 31) / 32) * 32 : 256;
+  const dim3 grid(capacity, kv_num_heads, batch_size);
+  const dim3 block(threads > 0 ? threads : 32);
+
+  const size_t cache_bytes = static_cast<size_t>(batch_size) * kv_num_heads * capacity * row_bytes;
+  ORT_RETURN_IF(scratch == nullptr && cache_bytes > 0,
+                "sliding_window_cache: compaction scratch buffer was not allocated.");
+  uint8_t* scratch_bytes = reinterpret_cast<uint8_t*>(scratch);
+
+  void* caches[2] = {k_cache, v_cache};
+  for (void* cache : caches) {
+    if (cache == nullptr) {
+      continue;
+    }
+    uint8_t* cache_bytes_ptr = reinterpret_cast<uint8_t*>(cache);
+    CompactKvCacheRows<<<grid, block, 0, stream>>>(scratch_bytes, cache_bytes_ptr, evict_counts,
+                                                   cache_past_seq_lens, capacity, row_bytes,
+                                                   /*src_is_shifted=*/true);
+    CompactKvCacheRows<<<grid, block, 0, stream>>>(cache_bytes_ptr, scratch_bytes, evict_counts,
+                                                   cache_past_seq_lens, capacity, row_bytes,
+                                                   /*src_is_shifted=*/false);
+  }
+  return CUDA_CALL(cudaGetLastError());
+}
+
+// ============================================================================
+// Windowed KV cache: copy a window of rows between two BNSH KV caches.
+//
+// A step with more than one new token runs against a staging cache long enough to hold the
+// resident history plus the new tokens, so that queries can still reach every key their window
+// covers. This kernel both seeds that staging cache from the real one and copies the surviving
+// tail back afterwards. src_offsets is a device vector (one entry per batch) because the offset of
+// the surviving tail depends on the past length, which is only known on the device; passing it
+// through memory keeps the launch geometry constant and therefore CUDA-graph capturable.
+// The copy works on raw rows, which keeps it independent of the cache element type and of whether
+// the cache is written in quantized form.
+// ============================================================================
+__global__ void CopyKvCacheRows(uint8_t* __restrict__ dst,
+                                const uint8_t* __restrict__ src,
+                                const int* __restrict__ src_offsets,
+                                const int src_capacity,
+                                const int dst_capacity,
+                                const int row_bytes) {
+  // grid: (rows, kv_num_heads, batch_size)
+  const int s = blockIdx.x;
+  const int n = blockIdx.y;
+  const int b = blockIdx.z;
+
+  const int src_index = s + (src_offsets == nullptr ? 0 : src_offsets[b]);
+  if (src_index < 0 || src_index >= src_capacity || s >= dst_capacity) {
+    return;
+  }
+
+  const int64_t src_head_stride = static_cast<int64_t>(src_capacity) * row_bytes;
+  const int64_t dst_head_stride = static_cast<int64_t>(dst_capacity) * row_bytes;
+  const int64_t src_row = (static_cast<int64_t>(b) * gridDim.y + n) * src_head_stride +
+                          static_cast<int64_t>(src_index) * row_bytes;
+  const int64_t dst_row = (static_cast<int64_t>(b) * gridDim.y + n) * dst_head_stride +
+                          static_cast<int64_t>(s) * row_bytes;
+
+  const uint4* src_vec = reinterpret_cast<const uint4*>(src + src_row);
+  uint4* dst_vec = reinterpret_cast<uint4*>(dst + dst_row);
+  const int vec_count = row_bytes / static_cast<int>(sizeof(uint4));
+  for (int i = threadIdx.x; i < vec_count; i += blockDim.x) {
+    dst_vec[i] = src_vec[i];
+  }
+}
+
+Status LaunchCopyKvCacheWindow(void* dst_k,
+                               void* dst_v,
+                               const void* src_k,
+                               const void* src_v,
+                               const int batch_size,
+                               const int kv_num_heads,
+                               const int src_capacity,
+                               const int dst_capacity,
+                               const int rows,
+                               const int* src_offsets,
+                               const int row_bytes,
+                               cudaStream_t stream) {
+  if (rows <= 0 || row_bytes <= 0) {
+    return Status::OK();
+  }
+  if (row_bytes % static_cast<int>(sizeof(uint4)) != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "sliding_window_cache: KV cache row size (", row_bytes,
+                           " bytes) must be a multiple of 16 to stage the KV cache.");
+  }
+
+  const int vec_count = row_bytes / static_cast<int>(sizeof(uint4));
+  const int threads = vec_count < 256 ? ((vec_count + 31) / 32) * 32 : 256;
+  const dim3 grid(rows, kv_num_heads, batch_size);
+  const dim3 block(threads > 0 ? threads : 32);
+
+  const void* srcs[2] = {src_k, src_v};
+  void* dsts[2] = {dst_k, dst_v};
+  for (int i = 0; i < 2; ++i) {
+    if (srcs[i] == nullptr || dsts[i] == nullptr) {
+      continue;
+    }
+    CopyKvCacheRows<<<grid, block, 0, stream>>>(reinterpret_cast<uint8_t*>(dsts[i]),
+                                                reinterpret_cast<const uint8_t*>(srcs[i]),
+                                                src_offsets, src_capacity, dst_capacity, row_bytes);
+  }
+  return CUDA_CALL(cudaGetLastError());
+}
+
 #define ORT_GQA_TRACE(func_name)                                                                                          \
   DUMP_PRINTF("[GQA %s] is_packed_qkv: %d, is_first_prompt: %d, is_subsequent_prompt: %d, past_present_share_buffer: %d", \
               func_name,                                                                                                  \
@@ -732,8 +973,10 @@ Status ExtremeDecoding(
       head_size,
       sequence_length,
       batch_size,
-      parameters.seqlen_present_kv_cache,  // max_seqlen (capacity)
+      RopeMaxPosition(parameters),
+      parameters.seqlen_present_kv_cache,  // cache capacity C
       data.past_seq_lens,
+      data.cache_past_seq_lens,
       reinterpret_cast<const T*>(data.cos_cache),
       reinterpret_cast<const T*>(data.sin_cache),
       parameters.do_rotary ? parameters.rotary_dim : 0,
@@ -774,7 +1017,8 @@ Status ExtremeDecoding(
       scale,
       parameters.local_window_size,  // -1 means global attention; >0 enables sliding window
       past_bsnh,
-      data.past_seq_lens,
+      // With a windowed cache the XQA kernel must index the cache in cache-relative coordinates.
+      parameters.is_windowed_kv_cache ? data.cache_past_seq_lens : data.past_seq_lens,
       data.xqa_head_sink,
       data.k_scale,  // kv_cache_scale
       // Map cache type to XqaQuantType: NONE->kNone, Float8E4M3FN->kFp8, int8->kInt8
@@ -902,7 +1146,11 @@ Status FlashAttention(
   void* kernel_new_v = nullptr;
 
   // Use padded seq lens for first prompt since mha_fwd_kvcache assumes uniform seqlen_q.
-  int* seq_lens = parameters.is_first_prompt ? data.padded_seq_lens : data.total_seq_lens;
+  // A windowed cache is indexed in cache-relative coordinates, so the attention length is the
+  // number of resident entries rather than the absolute total sequence length.
+  int* seq_lens = parameters.is_windowed_kv_cache
+                      ? data.cache_total_seq_lens
+                      : (parameters.is_first_prompt ? data.padded_seq_lens : data.total_seq_lens);
 
   // After PrepareQKV, the input for flash attention is no longer packed.
   constexpr bool is_packed_qkv_for_flash = false;
@@ -964,7 +1212,8 @@ Status DequantizeFlashAttentionFallback(
       q_rot, reinterpret_cast<U*>(data.present_key), reinterpret_cast<U*>(data.present_value),
       data.k_scale, data.v_scale,
       parameters.num_heads, parameters.kv_num_heads, parameters.head_size, parameters.sequence_length, parameters.batch_size,
-      parameters.seqlen_present_kv_cache, data.past_seq_lens,
+      RopeMaxPosition(parameters), parameters.seqlen_present_kv_cache,
+      data.past_seq_lens, data.cache_past_seq_lens,
       reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
       parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
       (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH),
@@ -991,7 +1240,10 @@ Status DequantizeFlashAttentionFallback(
   bool is_bf16 = std::is_same<T, __nv_bfloat16>::value;
 
   // Use the total_seq_lens here since k_dequant/v_dequant has both past and new tokens.
-  void* seqlens_k_ptr = const_cast<void*>(reinterpret_cast<const void*>(data.total_seq_lens));
+  // With a windowed cache the dequantized buffer is capacity-relative, so use the cache-relative
+  // lengths; the causal / local-window masks only depend on relative distances, so this is exact.
+  void* seqlens_k_ptr = const_cast<void*>(reinterpret_cast<const void*>(
+      parameters.is_windowed_kv_cache ? data.cache_total_seq_lens : data.total_seq_lens));
   int local_window_size = parameters.local_window_size > 0 ? parameters.local_window_size - 1 : -1;
 
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
@@ -1049,7 +1301,8 @@ Status FlashAttentionAndQuantizeKV(
       parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.value),
       q_final, k_final, v_final, nullptr, nullptr,
       num_heads, kv_num_heads, head_size, sequence_length, batch_size,
-      sequence_length, data.past_seq_lens,
+      RopeMaxPosition(parameters), sequence_length,
+      data.past_seq_lens, data.past_seq_lens,
       reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
       parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
       false,  // BSNH for scratch
@@ -1090,6 +1343,7 @@ Status FlashAttentionAndQuantizeKV(
 
   return Status::OK();
 }
+
 #endif
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
@@ -1152,7 +1406,9 @@ Status EfficientAttention(
   p.causal = true;
   p.scale = scale;
   p.softcap = parameters.softcap;
-  p.seqlen_k_ptr = parameters.is_first_prompt ? data.padded_seq_lens : data.total_seq_lens;
+  p.seqlen_k_ptr = parameters.is_windowed_kv_cache
+                       ? data.cache_total_seq_lens
+                       : (parameters.is_first_prompt ? data.padded_seq_lens : data.total_seq_lens);
   p.seqstart_q_ptr = nullptr;
   p.seqstart_k_ptr = nullptr;
   p.query = query;
@@ -1262,6 +1518,15 @@ Status UnfusedGqaAttention(
   p.scale = scale;
   p.softcap = parameters.softcap;
   p.seqlens_k = data.total_seq_lens;
+
+  if (parameters.is_windowed_kv_cache) {
+    // The cache holds only the most recent min(T, C) tokens, contiguously from index 0. Causal and
+    // local-window masks depend solely on query/key distance, so shifting to cache-relative
+    // coordinates leaves them unchanged.
+    p.total_kv_length = std::min(parameters.total_sequence_length, max_kv);
+    p.past_kv_length = p.total_kv_length - parameters.sequence_length;
+    p.seqlens_k = data.cache_total_seq_lens;
+  }
 
   ORT_RETURN_IF_ERROR((LaunchUnfusedAttention<T>(
       device_prop, cublas, stream, p,
@@ -1375,6 +1640,21 @@ Status QkvToContext(
     GroupQueryAttentionData<T, U>& data) {
   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size)) : parameters.scale;
+
+  if (parameters.is_windowed_kv_cache && parameters.kv_cache_capacity == parameters.kv_cache_real_capacity) {
+    // Evict the oldest rows first so the retained window is contiguous at [0, L) and the new
+    // tokens can simply be appended after it. Skipped when ComputeInternal has redirected this
+    // step through a staging cache: there the buffer is long enough that nothing is pushed out.
+    const int row_bytes = (parameters.kv_cache_bit_width == 0)
+                              ? static_cast<int>(parameters.head_size * sizeof(U))
+                              : parameters.head_size * parameters.kv_cache_bit_width / 8;
+    ORT_RETURN_IF_ERROR(LaunchCompactKvCache(
+        data.present_key, data.present_value, data.compaction_scratch,
+        data.evict_counts, data.cache_past_seq_lens,
+        parameters.batch_size, parameters.kv_num_heads, parameters.seqlen_present_kv_cache,
+        row_bytes, stream));
+  }
+
   if (data.use_xqa) {
     return ExtremeDecoding(device_prop, stream, parameters, data, scale);
   }
