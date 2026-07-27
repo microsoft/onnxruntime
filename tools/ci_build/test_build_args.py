@@ -17,10 +17,9 @@ sys.path.insert(0, str(TOOLS_DIR / "python"))
 sys.path.insert(0, str(SCRIPT_DIR))
 sys.path.insert(0, str(SCRIPT_DIR / "github" / "android"))
 
+import build  # noqa: E402
 import build_aar_package  # noqa: E402
 from build_args import parse_arguments, target_supports_telemetry  # noqa: E402
-
-import build  # noqa: E402
 
 
 class TelemetryBuildArgsTest(unittest.TestCase):
