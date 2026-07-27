@@ -13,12 +13,17 @@ from unittest import mock
 
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
 TOOLS_DIR = SCRIPT_DIR.parent
-sys.path.insert(0, str(TOOLS_DIR / "python"))
-sys.path.insert(0, str(SCRIPT_DIR))
-sys.path.insert(0, str(SCRIPT_DIR / "github" / "android"))
-
-import build_aar_package  # noqa: E402
-from build_args import parse_arguments, target_supports_telemetry  # noqa: E402
+original_sys_path = sys.path.copy()
+try:
+    sys.path[:0] = [
+        str(TOOLS_DIR / "python"),
+        str(SCRIPT_DIR),
+        str(SCRIPT_DIR / "github" / "android"),
+    ]
+    import build_aar_package
+    from build_args import parse_arguments, target_supports_telemetry
+finally:
+    sys.path[:] = original_sys_path
 
 
 class TelemetryBuildArgsTest(unittest.TestCase):
@@ -46,7 +51,8 @@ class TelemetryBuildArgsTest(unittest.TestCase):
             return parse_arguments()
 
     def test_telemetry_enabled_by_default(self):
-        self.assertTrue(self._parse().use_telemetry)
+        with mock.patch("build_args.target_supports_telemetry", return_value=True):
+            self.assertTrue(self._parse().use_telemetry)
 
     def test_no_telemetry_disables_telemetry(self):
         self.assertFalse(self._parse("--no_telemetry").use_telemetry)
