@@ -1010,8 +1010,9 @@ void NchwcTransformerImpl::TransformActivation(Node& node) {
     // used by exactly this HardSigmoid and one Mul, and (c) that Mul's other input
     // is the same conv output, then fuse the whole thing into the conv as a
     // HardSwish activation and drop both the HardSigmoid and the Mul.
-    // If the pattern does not match (returns false), fall through to the normal
-    // activation transform path below.
+    // On failure (pattern does not match, e.g. alpha/beta are not HardSwish values,
+    // or no sibling Mul exists), fall through to the standard activation-fusion
+    // path below, which handles HardSigmoid as a standalone activation.
     if (TryFuseNchwcHardSwish(node, orig_input_arg, *nchwc_input)) {
       return;
     }
