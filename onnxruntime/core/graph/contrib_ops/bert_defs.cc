@@ -1240,8 +1240,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Set to 1 when the past/present KV buffers are window-sized instead of holding the whole "
               "sequence. The op then keeps only the min(total_sequence_length, cache_capacity) most recent "
               "tokens, contiguously, using cache-relative indexing and evicting from the front as needed. "
-              "Requires local_window_size > 0 and a cache capacity of at least "
-              "local_window_size + sequence_length - 1. Default value is 0 (full-length cache).",
+              "Requires local_window_size > 0 and a cache capacity of at least local_window_size. "
+              "Multi-token steps may use a temporary staging buffer, so the capacity need not cover the "
+              "entire step. Default value is 0 (full-length cache).",
               AttributeProto::INT,
               static_cast<int64_t>(0))
         .Attr("do_rotary",
