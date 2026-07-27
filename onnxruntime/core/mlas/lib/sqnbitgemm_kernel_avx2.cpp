@@ -1441,7 +1441,7 @@ QuantizeARow_CompInt8_Fp16_avx2(
     }
 }
 
-static void
+void
 SQ4BitGemmPackQuantBDataAndBlkSum(
     size_t N,
     size_t K,
@@ -1469,7 +1469,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
         HasZeroPoint, QuantBZPBegin, PackedQuantB, ThreadPool);
 }
 
-static void
+void
 SQ8BitGemmPackQuantBDataAndBlkSum(
     size_t N,
     size_t K,

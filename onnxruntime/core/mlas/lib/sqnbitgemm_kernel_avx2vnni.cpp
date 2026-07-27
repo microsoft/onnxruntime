@@ -90,13 +90,8 @@ QuantizeARow_CompInt8_Fp16_avx2(
     float* AScaledBlkSum
 );
 
-//
-// Local packer functions (mirrors of the static functions in
-// sqnbitgemm_kernel_avx2.cpp; identical implementation, separate static copy).
-//
-
-static void
-SQ4BitGemmPackQuantBDataAndBlkSumVnni(
+void
+SQ4BitGemmPackQuantBDataAndBlkSum(
     size_t N,
     size_t K,
     size_t BlkLen,
@@ -107,23 +102,11 @@ SQ4BitGemmPackQuantBDataAndBlkSumVnni(
     const std::byte* QuantBZPBegin,
     PackedQuantBDataStruct<float, 4>& PackedQuantB,
     MLAS_THREADPOOL* ThreadPool,
-    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /*BackendKernelSelectorConfig*/
-)
-{
-    assert(BlkLen >= 16 && BlkLen % 16 == 0);
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
 
-    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-
-    size_t SubBlkLen = (BlkLen == 16) ? 16 : (BlkLen == 32 ? 32 : 64);
-    if (BlkLen == 32 && ComputeType == SQNBIT_CompInt8) {
-        SubBlkLen = 64;
-    }
-    PackQuantBDataAndBlkSum(N, BlockCountK, BlkLen, SubBlkLen, QuantBDataBegin, QuantBScaleBegin,
-        HasZeroPoint, QuantBZPBegin, PackedQuantB, ThreadPool);
-}
-
-static void
-SQ8BitGemmPackQuantBDataAndBlkSumVnni(
+void
+SQ8BitGemmPackQuantBDataAndBlkSum(
     size_t N,
     size_t K,
     size_t BlkLen,
@@ -134,20 +117,8 @@ SQ8BitGemmPackQuantBDataAndBlkSumVnni(
     const std::byte* QuantBZPBegin,
     PackedQuantBDataStruct<float, 8>& PackedQuantB,
     MLAS_THREADPOOL* ThreadPool,
-    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /*BackendKernelSelectorConfig*/
-)
-{
-    assert(BlkLen >= 16 && BlkLen % 16 == 0);
-
-    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-
-    size_t SubBlkLen = (BlkLen == 16) ? 16 : (BlkLen == 32 ? 32 : 64);
-    if (ComputeType == SQNBIT_CompInt8) {
-        SubBlkLen = 64;
-    }
-    Q8PackQuantBDataAndBlkSum(N, BlockCountK, BlkLen, SubBlkLen, QuantBDataBegin, QuantBScaleBegin,
-        HasZeroPoint, QuantBZPBegin, PackedQuantB, ThreadPool);
-}
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
 
 //
 // AVX2-VNNI kernel implementations.
@@ -330,8 +301,8 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2vnni = []() {
     d.Q4BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<4>;
     d.Q8BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<8>;
     d.SQ4BitGemmPackQuantBData = SQ4BitGemmPackQuantBData;
-    d.SQ4BitGemmPackQuantBDataAndBlkSum = SQ4BitGemmPackQuantBDataAndBlkSumVnni;
-    d.SQ8BitGemmPackQuantBDataAndBlkSum = SQ8BitGemmPackQuantBDataAndBlkSumVnni;
+    d.SQ4BitGemmPackQuantBDataAndBlkSum = SQ4BitGemmPackQuantBDataAndBlkSum;
+    d.SQ8BitGemmPackQuantBDataAndBlkSum = SQ8BitGemmPackQuantBDataAndBlkSum;
 
     d.QNBitGemmPerGemmWorkspaceSize = QNBitGemmPerGemmWorkspaceSize;
     d.QNBitGemmPerGemmWorkspaceAlignment = QNBitGemmPerGemmWorkspaceAlignment;
