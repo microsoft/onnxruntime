@@ -58,9 +58,9 @@ dot_accumulate_4blk_w2_blklen64(
 {
     const __m256i m03 = _mm256_set1_epi8(0x03);
     __m256i d0, d1, d2, d3;
-    // GCC 11+ is needed for _mm256_dpbusds_avx_epi32; older toolchains fall
-    // through to the vpmaddubsw+vpmaddwd path even on AVX-VNNI hardware.
-#if !defined(__GNUC__) || (__GNUC__ > 10)
+    // Requires -mavxvnni (__AVXVNNI__ defined); without it falls through to
+    // the vpmaddubsw+vpmaddwd path.
+#if defined(__AVXVNNI__) || (defined(_MSC_VER) && !defined(__clang__))
     if constexpr (kVnni) {
         d0 = _mm256_dpbusds_avx_epi32(_mm256_setzero_si256(), _mm256_and_si256(glo, m03), a0lo);
         d0 = _mm256_dpbusds_avx_epi32(d0, _mm256_and_si256(ghi, m03), a0hi);
@@ -140,7 +140,7 @@ dot_one_block_w2_blklen64_r2(
     const __m256i a1lo = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(a1_blk));
     const __m256i a1hi = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(a1_blk + 32));
     __m256i d0, d1;
-#if !defined(__GNUC__) || (__GNUC__ > 10)
+#if defined(__AVXVNNI__) || (defined(_MSC_VER) && !defined(__clang__))
     if constexpr (kVnni) {
         d0 = _mm256_dpbusds_avx_epi32(_mm256_dpbusds_avx_epi32(_mm256_setzero_si256(), bvlo, a0lo), bvhi, a0hi);
         d1 = _mm256_dpbusds_avx_epi32(_mm256_dpbusds_avx_epi32(_mm256_setzero_si256(), bvlo, a1lo), bvhi, a1hi);
