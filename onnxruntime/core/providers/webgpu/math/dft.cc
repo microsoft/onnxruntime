@@ -301,8 +301,9 @@ Status DFT::ComputeInternal(ComputeContext& context) const {
 
   const int64_t signal_length = input_shape[onnxruntime::narrow<size_t>(axis)];
   int64_t length = is_inverse_ && is_onesided_ ? (signal_length - 1) * 2 : signal_length;
-  if (context.InputCount() > 1) {
+  if (context.InputCount() > 1 && context.Input(1) != nullptr) {
     ORT_RETURN_IF_ERROR(ReadOptionalScalar(context.Input(1), "dft_length", length));
+    ORT_RETURN_IF(length <= 0, "dft_length must be greater than zero.");
   }
   ORT_RETURN_IF(length < 0 || length > std::numeric_limits<uint32_t>::max(), "Invalid DFT length: ", length);
 
