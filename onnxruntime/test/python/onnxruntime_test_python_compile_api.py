@@ -13,6 +13,7 @@ from autoep_helper import AutoEpTestCase
 from helper import get_name, get_shared_library_filename_for_platform
 
 import onnxruntime as onnxrt
+from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail, ModelRequiresCompilation
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
@@ -581,7 +582,6 @@ class TestCompileApi(AutoEpTestCase):
         merges Conv+Relu into a single com.microsoft.FusedConv node under MaxLevel, but leaves
         them as separate ONNX ops under ORT_DISABLE_ALL — providing a Level-2-specific signal.
         """
-        from onnxruntime.capi import _pybind_state as C
 
         if not any(s.name == "FusedConv" and s.domain == "com.microsoft" for s in C.get_all_operator_schema()):
             self.skipTest("Skipping test because it requires contrib ops (com.microsoft::FusedConv)")
