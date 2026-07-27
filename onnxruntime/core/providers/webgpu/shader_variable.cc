@@ -312,13 +312,16 @@ void ShaderVariableHelper::Impl(OStringStream& ss) const {
     SS_APPEND(ss, "  const CHUNK_SIZE_IN_ELEMENTS: u32 = ", max_storage_buffer_binding_size_, "u / ", BYTES[static_cast<int>(type_)], "u;\n");
     SS_APPEND(ss, "  let buffer_index: u32 = global_offset / CHUNK_SIZE_IN_ELEMENTS;\n");
     SS_APPEND(ss, "  let local_offset: u32 = global_offset % CHUNK_SIZE_IN_ELEMENTS;\n");
+    const bool is_64bit = type_ == ProgramVariableDataType::Int64 || type_ == ProgramVariableDataType::Uint64;
+    const std::string get_prefix = is_64bit ? MakeStringWithClassicLocale(std::string(ElementType()), "(") : "";
+    const std::string get_suffix = is_64bit ? "[local_offset].x)" : "[local_offset]";
     SS_APPEND(ss, "  switch(buffer_index) {\n");
     // case 0 (base buffer name_)
-    SS_APPEND(ss, "    case 0u: { return ", name_, "[local_offset]; }\n");
+    SS_APPEND(ss, "    case 0u: { return ", get_prefix, name_, get_suffix, "; }\n");
     for (uint32_t i = 1; i < segments_; ++i) {
-      SS_APPEND(ss, "    case ", i, "u: { return ", name_, i, "[local_offset]; }\n");
+      SS_APPEND(ss, "    case ", i, "u: { return ", get_prefix, name_, i, get_suffix, "; }\n");
     }
-    SS_APPEND(ss, "    default: { return ", name_, "[local_offset]; }\n");
+    SS_APPEND(ss, "    default: { return ", get_prefix, name_, get_suffix, "; }\n");
     SS_APPEND(ss, "  }\n");
     SS_APPEND(ss, "}\n");
   }
@@ -339,6 +342,26 @@ void ShaderVariableHelper::Impl(OStringStream& ss) const {
   // Implementation of "fn set_{name}_by_offset" for multi-buffer segmented variables
   if (usage_ & ShaderUsage::UseSetByOffsetSegments) {
     SS_APPEND(ss, "fn set_", name_, "_by_offset(global_offset: u32, value: ", ValueType(), ") {\n");
+    SS_APPEND(ss, "  const CHUNK_SIZE_IN_ELEMENTS: u32 = ", max_storage_buffer_binding_size_, "u / ", BYTES[static_cast<int>(type_)], "u;\n");
+    SS_APPEND(ss, "  let buffer_index: u32 = global_offset / CHUNK_SIZE_IN_ELEMENTS;\n");
+    SS_APPEND(ss, "  let local_offset: u32 = global_offset % CHUNK_SIZE_IN_ELEMENTS;\n");
+    std::string stored_value = "value";
+    if (type_ == ProgramVariableDataType::Int64) {
+      stored_value = "vec2<u32>(u32(value), select(0u, 0xFFFFFFFFu, i32(value) < 0))";
+    } else if (type_ == ProgramVariableDataType::Uint64) {
+      stored_value = "vec2<u32>(u32(value), 0u)";
+    }
+    SS_APPEND(ss, "  switch(buffer_index) {\n");
+    SS_APPEND(ss, "    case 0u: { ", name_, "[local_offset] = ", stored_value, "; return; }\n");
+    for (uint32_t i = 1; i < segments_; ++i) {
+      SS_APPEND(ss, "    case ", i, "u: { ", name_, i, "[local_offset] = ", stored_value, "; return; }\n");
+    }
+    SS_APPEND(ss, "    default: { ", name_, "[local_offset] = ", stored_value, "; return; }\n");
+    SS_APPEND(ss, "  }\n");
+    SS_APPEND(ss, "}\n");
+  }
+  if (usage_ & ShaderUsage::UseSetByOffsetSegmentsStorage) {
+    SS_APPEND(ss, "fn set_", name_, "_by_offset_storage(global_offset: u32, value: ", StorageType(), ") {\n");
     SS_APPEND(ss, "  const CHUNK_SIZE_IN_ELEMENTS: u32 = ", max_storage_buffer_binding_size_, "u / ", BYTES[static_cast<int>(type_)], "u;\n");
     SS_APPEND(ss, "  let buffer_index: u32 = global_offset / CHUNK_SIZE_IN_ELEMENTS;\n");
     SS_APPEND(ss, "  let local_offset: u32 = global_offset % CHUNK_SIZE_IN_ELEMENTS;\n");
@@ -398,6 +421,11 @@ std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::
   SS(ss, kStringInitialSizeSetByOffsetImpl);
 
   if (usage_ & ShaderUsage::UseSetByOffsetSegments) {
+    if (use_storage_type &&
+        (type_ == ProgramVariableDataType::Int64 || type_ == ProgramVariableDataType::Uint64)) {
+      usage_ |= ShaderUsage::UseSetByOffsetSegmentsStorage;
+      return MakeStringWithClassicLocale("set_", name_, "_by_offset_storage(", offset, ",", value, ");");
+    }
     return MakeStringWithClassicLocale("set_", name_, "_by_offset(", offset, ",", value, ");");
   }
 

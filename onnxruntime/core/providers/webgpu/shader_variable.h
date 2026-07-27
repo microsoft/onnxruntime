@@ -73,6 +73,7 @@ struct ShaderUsage {
     UseSetByOffsetSegments = 8192,        // use implementation of fn set_{name}_by_offset
     UseGetByOffsetSegmentsStorage = 16384,  // use implementation of fn get_{name}_by_offset_storage
     UseUniform = 32768,                   // use uniform for shape and stride
+    UseSetByOffsetSegmentsStorage = 65536,  // use implementation of fn set_{name}_by_offset_storage
   } usage;
 
   ShaderUsage(decltype(usage) usage) : usage{usage} {}
