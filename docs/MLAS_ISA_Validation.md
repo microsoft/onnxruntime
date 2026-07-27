@@ -12,7 +12,7 @@ kernels no CI machine currently reaches.
 ## Setup
 
 SDE is a free download from Intel (the Software Development Emulator kit). Unpack it anywhere;
-the binary is `sde64`. On Windows hosts where the Pin instrumentation SDE depends on is blocked
+the binary is `sde64` (`sde64.exe` in the native Windows kit). On Windows hosts where the Pin instrumentation SDE depends on is blocked
 by endpoint security software, running the Linux SDE inside WSL2 against a Linux build of
 `onnxruntime_mlas_test` works and is the setup the numbers below come from.
 
