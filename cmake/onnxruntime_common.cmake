@@ -164,7 +164,13 @@ endif()
 
 if (onnxruntime_USE_TELEMETRY)
   if(WIN32)
-    set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
+    set(ONNXRUNTIME_TELEMETRY_CONFIG_HEADER
+        "${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
+    if(EXISTS "${ONNXRUNTIME_TELEMETRY_CONFIG_HEADER}")
+      set_target_properties(
+        onnxruntime_common
+        PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_TELEMETRY_CONFIG_HEADER}")
+    endif()
   else()
     target_compile_definitions(onnxruntime_common PRIVATE USE_POSIX_TELEMETRY)
     # Optional tenant-token override written into a generated header in the build tree (kept off the
