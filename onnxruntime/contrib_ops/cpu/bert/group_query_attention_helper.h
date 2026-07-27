@@ -340,6 +340,24 @@ Status CheckInputs(const T* query,
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "sliding_window_cache=1 requires past_key and past_value to be present.");
     }
+    if (kv_sequence_length == 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "sliding_window_cache=1 is not supported when kv_sequence_length == 0 (shared KV).");
+    }
+
+    // The windowed-cache compaction/staging kernels copy raw KV rows using 16-byte vectors.
+    // Enforce an aligned row size so sliding_window_cache fails with a clear INVALID_ARGUMENT.
+    if (kv_cache_bit_width == 8 && (head_size % 16) != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "sliding_window_cache: head_size (", head_size,
+                             ") must be a multiple of 16 for an 8-bit KV cache.");
+    }
+    if (kv_cache_bit_width == 4 && (head_size % 32) != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "sliding_window_cache: head_size (", head_size,
+                             ") must be a multiple of 32 for a 4-bit KV cache.");
+    }
+
     kv_cache_capacity = past_sequence_length;
     present_sequence_length = past_sequence_length;
 
