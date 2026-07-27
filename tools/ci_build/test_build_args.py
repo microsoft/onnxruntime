@@ -8,6 +8,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
@@ -23,6 +24,20 @@ from build_args import parse_arguments, target_supports_telemetry  # noqa: E402
 
 
 class TelemetryBuildArgsTest(unittest.TestCase):
+    @staticmethod
+    def _target(**overrides):
+        values = {
+            "android": False,
+            "build_wasm": False,
+            "disable_exceptions": False,
+            "macos": None,
+            "rv64": False,
+            "tvos": False,
+            "visionos": False,
+        }
+        values.update(overrides)
+        return SimpleNamespace(**values)
+
     def _parse(self, *build_args):
         with (
             mock.patch.object(
@@ -84,17 +99,14 @@ class TelemetryBuildArgsTest(unittest.TestCase):
         self.assertEqual(self._generated_telemetry_value("--build_wasm"), "OFF")
 
     def test_unsupported_apple_targets_disable_telemetry(self):
-        for target in (
-            mock.Mock(build_wasm=False, disable_exceptions=False, visionos=False, tvos=False, macos=None),
-            mock.Mock(build_wasm=False, disable_exceptions=False, visionos=True, tvos=False, macos=None),
-            mock.Mock(build_wasm=False, disable_exceptions=False, visionos=False, tvos=True, macos=None),
-            mock.Mock(build_wasm=False, disable_exceptions=False, visionos=False, tvos=False, macos="Catalyst"),
+        for target, expected in (
+            (self._target(), True),
+            (self._target(visionos=True), False),
+            (self._target(tvos=True), False),
+            (self._target(macos="Catalyst"), False),
         ):
             with self.subTest(target=target):
-                self.assertEqual(
-                    target_supports_telemetry(target),
-                    not (target.visionos or target.tvos or target.macos == "Catalyst"),
-                )
+                self.assertEqual(target_supports_telemetry(target), expected)
 
     def test_exception_free_build_disables_telemetry(self):
         self.assertFalse(self._parse("--minimal_build", "--disable_exceptions").use_telemetry)
@@ -102,6 +114,26 @@ class TelemetryBuildArgsTest(unittest.TestCase):
             self._generated_telemetry_value("--minimal_build", "--disable_exceptions"),
             "OFF",
         )
+
+    def test_riscv_and_unsupported_hosts_disable_telemetry(self):
+        self.assertFalse(self._parse("--rv64").use_telemetry)
+        with (
+            mock.patch("build_args.is_windows", return_value=False),
+            mock.patch("build_args.is_macOS", return_value=False),
+            mock.patch("build_args.is_linux", return_value=False),
+        ):
+            self.assertFalse(target_supports_telemetry(self._target()))
+
+    def test_linux_telemetry_architecture_allowlist(self):
+        with (
+            mock.patch("build_args.is_windows", return_value=False),
+            mock.patch("build_args.is_macOS", return_value=False),
+            mock.patch("build_args.is_linux", return_value=True),
+        ):
+            with mock.patch("build_args.platform.machine", return_value="x86_64"):
+                self.assertTrue(target_supports_telemetry(self._target()))
+            with mock.patch("build_args.platform.machine", return_value="riscv64"):
+                self.assertFalse(target_supports_telemetry(self._target()))
 
     def test_build_wrappers_use_platform_defaults(self):
         self.assertIn("--no_telemetry", (REPO_DIR / "build.bat").read_text(encoding="utf-8"))

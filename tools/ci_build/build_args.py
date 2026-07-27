@@ -8,6 +8,7 @@ import sys
 import warnings
 
 from util import (
+    is_linux,
     is_macOS,
     is_windows,
 )
@@ -899,13 +900,35 @@ def is_cross_compiling(args: argparse.Namespace) -> bool:
 
 def target_supports_telemetry(args: argparse.Namespace) -> bool:
     """Returns whether the selected build target has a telemetry provider."""
-    return not (
+    if (
         args.build_wasm
         or getattr(args, "disable_exceptions", False)
+        or getattr(args, "rv64", False)
         or getattr(args, "visionos", False)
         or getattr(args, "tvos", False)
         or getattr(args, "macos", None) == "Catalyst"
-    )
+    ):
+        return False
+
+    if getattr(args, "android", False) or is_windows() or is_macOS():
+        return True
+
+    if not is_linux():
+        return False
+
+    return platform.machine().lower() in {
+        "aarch64",
+        "amd64",
+        "arm",
+        "arm64",
+        "armv6l",
+        "armv7l",
+        "armv8l",
+        "i386",
+        "i686",
+        "x86",
+        "x86_64",
+    }
 
 
 # --- Main Argument Parsing Function ---
