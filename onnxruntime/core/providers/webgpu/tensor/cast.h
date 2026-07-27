@@ -12,8 +12,13 @@ namespace webgpu {
 
 class CastProgram final : public Program<CastProgram> {
  public:
-  CastProgram(int32_t to, bool is_from_int64, bool is_from_float, bool is_from_unsigned)
-      : Program{"Cast"}, to_{to}, is_from_int64_{is_from_int64}, is_from_float_{is_from_float}, is_from_unsigned_{is_from_unsigned} {}
+  CastProgram(int32_t to, bool is_from_int64, bool is_from_float, bool is_from_unsigned, bool is_from_uint8)
+      : Program{"Cast"},
+        to_{to},
+        is_from_int64_{is_from_int64},
+        is_from_float_{is_from_float},
+        is_from_unsigned_{is_from_unsigned},
+        is_from_uint8_{is_from_uint8} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -25,6 +30,7 @@ class CastProgram final : public Program<CastProgram> {
   bool is_from_int64_;
   bool is_from_float_;
   bool is_from_unsigned_;
+  bool is_from_uint8_;
 };
 
 class Cast final : public WebGpuKernel {

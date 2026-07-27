@@ -102,6 +102,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '22.x'
+          registry-url: 'https://packagefeedproxy.microsoft.io/npm/'
 
       - name: Install ninja
         run: sudo apt-get update && sudo apt-get install -y ninja-build
@@ -241,6 +242,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '22.x'
+          registry-url: 'https://packagefeedproxy.microsoft.io/npm/'
 
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
         with:
@@ -275,14 +277,26 @@ jobs:
           ORT_C_LOCAL_POD_PATH=${{ runner.temp }}/ios_pod/onnxruntime-c pod install --verbose
         working-directory: ${{ github.workspace }}/js/react_native/e2e/ios
 
-      - name: Build and Run Detox iOS e2e Tests
+      - name: Build Detox iOS e2e Tests
+        run: detox build --configuration ios.sim.release
+        working-directory: ${{ github.workspace }}/js/react_native/e2e
+
+      - name: Reset iOS Simulators before Detox
         run: |
-          detox build --configuration ios.sim.release
+          set -e -x
+          xcrun simctl shutdown all || true
+          xcrun simctl erase all || true
+          killall Simulator || true
+          killall com.apple.CoreSimulator.CoreSimulatorService || true
+
+      - name: Run Detox iOS e2e Tests
+        run: |
           JEST_JUNIT_OUTPUT_FILE=${{ github.workspace }}/js/react_native/e2e/ios-test-results.xml \
             detox test --record-logs all \
                          --configuration ios.sim.release \
                          --loglevel verbose \
-                         --take-screenshots failing
+                         --take-screenshots failing \
+                         --cleanup
         working-directory: ${{ github.workspace }}/js/react_native/e2e
 
       - name: Upload iOS Test Results

@@ -21,9 +21,14 @@ steps:
       $requiredProperties = @(
         'cuda_version',
         'cuda_version_no_dot',
+        'cuda_version_win_x64',
+        'cuda_version_win_x64_no_dot',
+        'cuda_version_win_arm64',
+        'cuda_version_win_arm64_no_dot',
         'docker_base_image_linux_x64',
         'python_artifact_linux_x64',
         'python_artifact_win_x64',
+        'python_artifact_win_arm64',
         'nuget_artifact'
       )
 
@@ -35,11 +40,18 @@ steps:
 
       Write-Host "Detected CUDA version: $($metadata.cuda_version)"
       Write-Host "Linux Python artifact: $($metadata.python_artifact_linux_x64)"
-      Write-Host "Windows Python artifact: $($metadata.python_artifact_win_x64)"
+      Write-Host "Windows x64 Python artifact: $($metadata.python_artifact_win_x64)"
+      Write-Host "Windows ARM64 Python artifact: $($metadata.python_artifact_win_arm64)"
 
       Write-Host "##vso[task.setvariable variable=CudaVersion]$($metadata.cuda_version)"
       Write-Host "##vso[task.setvariable variable=CudaVersionNoDot]$($metadata.cuda_version_no_dot)"
+      Write-Host "##vso[task.setvariable variable=CudaVersionWinX64]$($metadata.cuda_version_win_x64)"
+      Write-Host "##vso[task.setvariable variable=CudaVersionWinX64NoDot]$($metadata.cuda_version_win_x64_no_dot)"
+      Write-Host "##vso[task.setvariable variable=CudaVersionWinArm64]$($metadata.cuda_version_win_arm64)"
+      Write-Host "##vso[task.setvariable variable=CudaVersionWinArm64NoDot]$($metadata.cuda_version_win_arm64_no_dot)"
       Write-Host "##vso[task.setvariable variable=CudaDockerBaseImage]$($metadata.docker_base_image_linux_x64)"
       Write-Host "##vso[task.setvariable variable=CudaPluginPythonLinuxArtifactName]$($metadata.python_artifact_linux_x64)"
       Write-Host "##vso[task.setvariable variable=CudaPluginPythonWinArtifactName]$($metadata.python_artifact_win_x64)"
+      Write-Host "##vso[task.setvariable variable=CudaPluginPythonWinX64ArtifactName]$($metadata.python_artifact_win_x64)"
+      Write-Host "##vso[task.setvariable variable=CudaPluginPythonWinArm64ArtifactName]$($metadata.python_artifact_win_arm64)"
       Write-Host "##vso[task.setvariable variable=CudaPluginNuGetArtifactName]$($metadata.nuget_artifact)"

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
@@ -52,6 +53,10 @@ class GroupQueryAttention final : public CudaKernel {
   // FP32 head_sink cached in PrePack for the XQA path (empty when head_sink is not a constant initializer).
   IAllocatorUniquePtr<float> xqa_head_sink_;
   int xqa_head_sink_count_ = 0;  // Number of elements in xqa_head_sink_ (0 when not prepacked).
+  // Cached result of the XQA shared-memory fit check for this node (-1 unknown, 0 does not fit,
+  // 1 fits). head_size and group size are constant for a given GQA node, so the (device-symbol)
+  // query is done once and reused to avoid a per-decode-step device->host copy.
+  mutable std::atomic<int> xqa_shared_memory_ok_{-1};
   const AttentionKernelOptions* kernel_options_;
 };
 

@@ -20,7 +20,8 @@
             "--use_coreml",
             "--use_xnnpack",
             "--skip_tests",
-            "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF"
+            "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF",
+            "--use_telemetry"
         ],
         "macosx": [
             "--macos=MacOSX",

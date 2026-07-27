@@ -4,6 +4,10 @@
 
 See the `/ort-build`, `/ort-test`, and `/ort-lint` skills (in `.agents/skills/`) for detailed instructions.
 
+## CI
+
+See the `/ort-ci` skill (in `.agents/skills/`) for triggering, re-running, and unblocking CI checks on a pull request (GitHub Actions, Azure Pipelines, `Python format`, and `license/cla`).
+
 ## Architecture Overview
 
 ONNX Runtime is a cross-platform inference and training engine for ONNX models. The core pipeline is: **Load model → Build graph → Optimize graph → Partition across Execution Providers → Execute**.

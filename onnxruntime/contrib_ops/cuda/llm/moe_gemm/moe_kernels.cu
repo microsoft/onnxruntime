@@ -850,12 +850,35 @@ __device__ void computeTmaWarpSpecializedInputPointers(TmaWarpSpecializedGrouped
     assert(groupwise_scale_group_size > 0);
     assert(mxfp4_weight_scale || w4a8_weight_scale);
     if (mxfp4_weight_scale) {
-      constexpr int scale_cols_alignment = 4;
-      auto const scale_rows = TmaWarpSpecializedGroupedGemmInput::alignToSfDim(
-          gemm_n, TmaWarpSpecializedGroupedGemmInput::MinNDimAlignmentMXFPX);
-      auto const scale_cols = TmaWarpSpecializedGroupedGemmInput::alignToSfDim(
-          gemm_k / groupwise_scale_group_size, scale_cols_alignment);
-      auto const scale_offset = expert * scale_rows * scale_cols;
+      constexpr bool use_wfp4a16_scale_layout =
+#if defined(ENABLE_FP4) && defined(ENABLE_BF16)
+          std::is_same_v<WeightType, __nv_fp4_e2m1> &&
+          (std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16>);
+#elif defined(ENABLE_FP4)
+          std::is_same_v<WeightType, __nv_fp4_e2m1> && std::is_same_v<T, half>;
+#else
+          false;
+#endif
+      int64_t scale_offset = 0;
+      if constexpr (use_wfp4a16_scale_layout) {
+        // The WFP4A16 scale buffer is packed in groups of 8 k-blocks (PackedScalesNum =
+        // CTA_K(256) / group_size(32)). PrePackFp4ScalesForTmaWs zero-pads each expert's
+        // k-block count up to a multiple of 8 so the GEMM's last partial CTA-K-tile can read
+        // a full packed group. Stride experts by the padded count to match the packed buffer.
+        // (For 8-aligned k-block counts this is a no-op, preserving existing 256-aligned shapes.)
+        constexpr int64_t kPackedScalesPerKTile = 8;
+        int64_t const k_blocks = gemm_k / groupwise_scale_group_size;
+        int64_t const k_blocks_padded =
+            ((k_blocks + kPackedScalesPerKTile - 1) / kPackedScalesPerKTile) * kPackedScalesPerKTile;
+        scale_offset = expert * (gemm_n * k_blocks_padded);
+      } else {
+        constexpr int scale_cols_alignment = 4;
+        auto const scale_rows = TmaWarpSpecializedGroupedGemmInput::alignToSfDim(
+            gemm_n, TmaWarpSpecializedGroupedGemmInput::MinNDimAlignmentMXFPX);
+        auto const scale_cols = TmaWarpSpecializedGroupedGemmInput::alignToSfDim(
+            gemm_k / groupwise_scale_group_size, scale_cols_alignment);
+        scale_offset = expert * scale_rows * scale_cols;
+      }
       layout_info.int4_groupwise_params.ptr_s_a[out_idx] =
           reinterpret_cast<TmaWarpSpecializedGroupedGemmInput::INT4GroupwiseParams::SFA const*>(
               safe_inc_ptr(mxfp4_weight_scale, scale_offset));
@@ -933,13 +956,10 @@ __global__ void computeStridesTmaWarpSpecializedKernel(int64_t const* expert_fir
     }
   };
 
-#if defined(ENABLE_FP4)
-  if constexpr (!std::is_same_v<WeightType, __nv_fp4_e2m1>) {
-    setupIfSelected(TmaWarpSpecializedGroupedGemmInput::NVFP4BlockScaledConfig{}, quant_params.fp4);
-  }
-#else
+  // NVFP4 native FP4xFP4 sets quant_params.fp4 (WeightType == __nv_fp4_e2m1); the WFP4AFP8 and
+  // MXFP4 fp4-weight paths leave it null and use mxfp8_mxfp4 instead, so this stays a runtime no-op
+  // for them. Run unconditionally (matching TRT-LLM) so the fp4-weight NVFP4 path is wired.
   setupIfSelected(TmaWarpSpecializedGroupedGemmInput::NVFP4BlockScaledConfig{}, quant_params.fp4);
-#endif
   setupIfSelected(TmaWarpSpecializedGroupedGemmInput::MXFPXBlockScaledConfig{}, quant_params.fp8_mxfp4);
   setupIfSelected(TmaWarpSpecializedGroupedGemmInput::MXFPXBlockScaledConfig{}, quant_params.mxfp8_mxfp4);
 
@@ -2392,12 +2412,19 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
   ORT_ENFORCE(full_num_experts % parallelism_config.cluster_size == 0);
 
   if (quant_params.mxfp8_mxfp4.fc1.weight_block_scale) {
-    ORT_ENFORCE(hidden_size % (64 * 8 / sizeof_bits<WeightType>::value) == 0,
+    // 64-element (32-byte) K alignment for the FP4 weight. The original guard required
+    // 128 elements (64 bytes), but the WFP4A16 SM90 grouped GEMM only needs the weight K to
+    // satisfy the FP4 block-scale vector (32) and TMA (16-byte) alignment; the offline scale
+    // prepack (PrePackFp4ScalesForTmaWs) zero-pads each expert's k-block count up to a multiple
+    // of the packed K-tile (8) so the last partial CTA-K-tile can read a full packed group.
+    // Relaxing 128->64 admits gpt-oss-20b (hidden=inter=2880, 64-aligned but not 128-aligned);
+    // validated correct (matches dequant fallback) and clean under compute-sanitizer memcheck.
+    ORT_ENFORCE(hidden_size % (32 * 8 / sizeof_bits<WeightType>::value) == 0,
                 "Hidden size %d does not meet minimum alignment requirements for MXFP8_MXFP4 MOE GEMM %d",
-                (int)hidden_size, (int)(64 * 8 / sizeof_bits<WeightType>::value));
-    ORT_ENFORCE(inter_size % (64 * 8 / sizeof_bits<WeightType>::value) == 0,
+                (int)hidden_size, (int)(32 * 8 / sizeof_bits<WeightType>::value));
+    ORT_ENFORCE(inter_size % (32 * 8 / sizeof_bits<WeightType>::value) == 0,
                 "Inter size %d does not meet minimum alignment requirements for MXFP8_MXFP4 MOE GEMM %d", (int)inter_size,
-                (int)(64 * 8 / sizeof_bits<WeightType>::value));
+                (int)(32 * 8 / sizeof_bits<WeightType>::value));
   } else {
     // Require at least 128 bits of alignment for MOE GEMM
     ORT_ENFORCE(hidden_size % (128 / sizeof_bits<WeightType>::value) == 0,
@@ -2555,12 +2582,18 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
   layout_info2.stride_c = nullptr;
 
   auto alpha_scale_flat1 = use_fp4        ? quant_params.fp4.fc1.global_scale
+                           : use_wfp4a16  ? (quant_params.mxfp8_mxfp4.fc1.global_scale
+                                                 ? quant_params.mxfp8_mxfp4.fc1.global_scale
+                                                 : quant_params.fp8_mxfp4.fc1.global_scale)
                            : use_wfp4afp8 ? (quant_params.fp8_mxfp4.fc1.global_scale
                                                  ? quant_params.fp8_mxfp4.fc1.global_scale
                                                  : quant_params.mxfp8_mxfp4.fc1.global_scale)
                            : use_fp8      ? fp8_dequant1
                                           : nullptr;
   auto alpha_scale_flat2 = use_fp4        ? quant_params.fp4.fc2.global_scale
+                           : use_wfp4a16  ? (quant_params.mxfp8_mxfp4.fc2.global_scale
+                                                 ? quant_params.mxfp8_mxfp4.fc2.global_scale
+                                                 : quant_params.fp8_mxfp4.fc2.global_scale)
                            : use_wfp4afp8 ? (quant_params.fp8_mxfp4.fc2.global_scale
                                                  ? quant_params.fp8_mxfp4.fc2.global_scale
                                                  : quant_params.mxfp8_mxfp4.fc2.global_scale)
@@ -2573,6 +2606,8 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
 
   layout_info1.int4_groupwise_params.enabled = use_w4afp8 || use_wfp4a16 || quant_params.groupwise.group_size > 0;
   layout_info2.int4_groupwise_params.enabled = use_w4afp8 || use_wfp4a16 || quant_params.groupwise.group_size > 0;
+  layout_info1.int4_groupwise_params.use_wfp4a16 = use_wfp4a16;
+  layout_info2.int4_groupwise_params.use_wfp4a16 = use_wfp4a16;
 
   layout_info1.fpX_block_scaling_type = getScalingType();
   layout_info2.fpX_block_scaling_type = getScalingType();
@@ -2637,7 +2672,8 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
     gemm2_tma_ws_input.fusion = TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::NONE;
 
     bool apply_bias = parallelism_config.tp_rank == 0;
-    bool using_hopper_fused_finalize = !use_deterministic_hopper_reduce_ && gemm2_config_->sm_version == 90 && !use_w4afp8;
+    bool using_hopper_fused_finalize = !use_deterministic_hopper_reduce_ && gemm2_config_->sm_version == 90 &&
+                                       !use_w4afp8 && !use_wfp4a16;
     if (using_hopper_fused_finalize) {
       gemm2_tma_ws_input.fusion = TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::FINALIZE;
       gemm2_tma_ws_input.setFinalizeFusionParams(final_output, permuted_token_final_scales_,
@@ -2804,6 +2840,8 @@ std::map<std::string, std::pair<size_t, size_t>> GemmProfilerBackend::getProfile
   // nvllm still uses int64 because torch doesn't have fp4 yet.
   // bool is_fp4_act_quant = mDType == nvinfer::DataType::kFP4 || mDType == nvinfer::DataType::kINT64;
   bool is_fp4_w_quant = mWType == nvinfer::DataType::kFP4 || mWType == nvinfer::DataType::kINT64;
+  bool is_wfp4a16_groupwise_quant = is_fp4_w_quant && !is_fp8_act_quant && mSM < 90;
+  int const effective_group_size = is_wfp4a16_groupwise_quant && mGroupSize <= 0 ? 32 : mGroupSize;
   bool is_w4afp8_quant = is_int_groupwise_w_quant && is_fp8_act_quant;
   // bool is_wfp4afp8_quant = is_fp4_w_quant && is_fp8_act_quant;
 
@@ -2828,16 +2866,23 @@ std::map<std::string, std::pair<size_t, size_t>> GemmProfilerBackend::getProfile
     quant_4_size = quant_2_size;
   }
 
+  if (is_wfp4a16_groupwise_quant) {
+    quant_1_size = fc1_out_size * num_experts_per_node * dtype_bytes * hidden_size / effective_group_size;
+    quant_2_size = hidden_size * num_experts_per_node * dtype_bytes * inter_size / effective_group_size;
+    quant_3_size = 0;
+    quant_4_size = 0;
+  }
+
   // FP4 sizes
-  quant_1_size = is_fp4_w_quant ? sizeof(float) : quant_1_size;
-  quant_2_size = is_fp4_w_quant ? getOffsetWeightSF(num_experts_per_node, inter_size, hidden_size, mScalingType) * sizeof(TmaWarpSpecializedGroupedGemmInput::ElementSF)
-                                : quant_2_size;
-  quant_3_size = is_fp4_w_quant ? num_experts_per_node * sizeof(float) : quant_3_size;
-  quant_4_size = is_fp4_w_quant ? sizeof(float) : quant_4_size;
-  size_t quant_5_size = is_fp4_w_quant
+  quant_1_size = is_fp4_w_quant && !is_wfp4a16_groupwise_quant ? sizeof(float) : quant_1_size;
+  quant_2_size = is_fp4_w_quant && !is_wfp4a16_groupwise_quant ? getOffsetWeightSF(num_experts_per_node, inter_size, hidden_size, mScalingType) * sizeof(TmaWarpSpecializedGroupedGemmInput::ElementSF)
+                                                               : quant_2_size;
+  quant_3_size = is_fp4_w_quant && !is_wfp4a16_groupwise_quant ? num_experts_per_node * sizeof(float) : quant_3_size;
+  quant_4_size = is_fp4_w_quant && !is_wfp4a16_groupwise_quant ? sizeof(float) : quant_4_size;
+  size_t quant_5_size = is_fp4_w_quant && !is_wfp4a16_groupwise_quant
                             ? getOffsetWeightSF(num_experts_per_node, hidden_size, inter_size, mScalingType) * sizeof(TmaWarpSpecializedGroupedGemmInput::ElementSF)
                             : 0;
-  size_t quant_6_size = is_fp4_w_quant ? num_experts_per_node * sizeof(float) : 0;
+  size_t quant_6_size = is_fp4_w_quant && !is_wfp4a16_groupwise_quant ? num_experts_per_node * sizeof(float) : 0;
 
   size_t tma_ws_input_workspace_size = 0;
   if (is_tma_ws_input) {
@@ -3006,6 +3051,9 @@ void GemmProfilerBackend::prepareQuantParams(int num_tokens, char* workspace_ptr
                                     static_cast<float const*>(quant_3), static_cast<float const*>(quant_4),
                                     static_cast<TmaWarpSpecializedGroupedGemmInput::NVFP4ElementSF const*>(quant_5),
                                     static_cast<float const*>(quant_6));
+  } else if ((mWType == nvinfer::DataType::kFP4 || mWType == nvinfer::DataType::kINT64) && mSM < 90) {
+    ORT_ENFORCE(quant_1 && quant_2);
+    mQuantParams = QuantParams::GroupWise(mGroupSize > 0 ? mGroupSize : 32, quant_1, quant_2);
   } else if (mWType == nvinfer::DataType::kFP4 || mWType == nvinfer::DataType::kINT64) {
     // W4A16: FP4 weights with FP16/BF16 activations (no activation quantization)
     ORT_ENFORCE(quant_2 && quant_3 && quant_5 && quant_6);
@@ -3251,6 +3299,13 @@ template class CutlassMoeFCRunner<half, cutlass::uint4b_t>;
 template class CutlassMoeFCRunner<half, __nv_fp4_e2m1>;
 #ifdef ENABLE_BF16
 template class CutlassMoeFCRunner<__nv_bfloat16, __nv_fp4_e2m1>;
+#endif
+// Native NVFP4 (W4A16-NVFP4) block-scaled prefill: FP4 e2m1 weights + FP4 e2m1 activations
+// (activations dynamically quantized to NVFP4 inside expandInputRowsKernel). InputType/OutputType
+// are the BF16/FP16 user tensor types. Native CUTLASS FP4xFP4 grouped GEMM requires SM120+.
+template class CutlassMoeFCRunner<__nv_fp4_e2m1, __nv_fp4_e2m1, half, half>;
+#ifdef ENABLE_BF16
+template class CutlassMoeFCRunner<__nv_fp4_e2m1, __nv_fp4_e2m1, __nv_bfloat16, __nv_bfloat16>;
 #endif
 #if defined(ENABLE_FP8) && defined(USE_FP8_QMOE)
 // W4A8 (WFP4AFP8): FP8 e4m3 activations + MXFP4 weights, BF16/FP16 input/output.
