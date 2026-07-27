@@ -2797,18 +2797,23 @@ static bool HandleReshapeFlatten(HandlerArgs& args) {
   // whose products match requested_shape in order. Each run collapses (merges) one or more
   // post-transpose axes into a single output dim; no run may split an axis. If the partition cannot
   // be formed, the Reshape is not a pure axis-merge and we bail out.
+  // Consume at least one post-transpose axis per requested dim so that a target of 1 grabs a
+  // size-1 axis rather than leaving a zero-length run (which would let the next run start at the
+  // same cursor and silently overlap — breaking the contiguity check for cases like
+  // {1, 80, 1600} paired with a leading size-1 axis).
   std::vector<std::pair<size_t, size_t>> runs;  // [start, end) in post-transpose axis space
   runs.reserve(requested_shape.size());
   size_t cursor = 0;
   for (int64_t target : requested_shape) {
-    if (cursor >= rank) {
-      return false;
-    }
     const size_t start = cursor;
     int64_t prod = 1;
-    while (cursor < rank && prod < target) {
-      prod *= transposed_shape[cursor++];
-    }
+    do {
+      if (cursor >= rank) {
+        return false;
+      }
+      prod *= transposed_shape[cursor];
+      ++cursor;
+    } while (prod < target);
     if (prod != target) {
       return false;
     }
