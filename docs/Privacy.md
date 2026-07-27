@@ -6,12 +6,12 @@ The software may collect information about you and your use of the software and 
 ***
 
 ### Official Builds
-ONNX Runtime collects trace events with the goal of improving product quality. On Windows, it uses the platform's built-in ETW telemetry system; on non-Windows platforms, it uses the cross-platform 1DS telemetry SDK that is built into ONNX Runtime. WebAssembly builds do not include telemetry. In all cases, collection is subject to user consent and handled following Microsoft's privacy practices.
+ONNX Runtime collects trace events with the goal of improving product quality. On Windows, it uses the platform's built-in ETW telemetry system; on Linux, macOS, Android, and iOS, it uses the cross-platform 1DS telemetry SDK that is built into ONNX Runtime. Targets without a supported telemetry provider, including WebAssembly, tvOS, visionOS, and Mac Catalyst, do not include telemetry. In all cases, collection is subject to user consent and handled following Microsoft's privacy practices.
 
 Telemetry is turned **ON** by default in the official builds ([see here](../README.md#binaries)). Both providers are accessed through ONNX Runtime's common telemetry interface (see [telemetry.h](../onnxruntime/core/platform/telemetry.h)).
 
 ### Private Builds
-On Windows, private builds compiled from source perform no data collection. On non-Windows platforms besides WebAssembly, the standard `build.sh` wrapper enables telemetry for native builds. For information on how to disable telemetry, see [Disabling Telemetry](#disabling-telemetry) below.
+The build driver enables telemetry by default for supported native platforms. The standard Windows `build.bat` wrapper explicitly passes `--no_telemetry`, so private builds made with that wrapper perform no data collection. Targets without a supported provider and builds that disable C++ exceptions automatically exclude telemetry. For information on how to disable telemetry in other builds, see [Disabling Telemetry](#disabling-telemetry) below.
 
 #### Technical Details
 
@@ -25,6 +25,6 @@ For ways to disable telemetry, see the [Disabling Telemetry](#disabling-telemetr
 
 Telemetry can be disabled in any of these ways:
 
-- **Don't build it in.** The telemetry provider is only compiled when configuring with `--use_telemetry`, so a build configured without it collects no data.
+- **Disable it at build time.** Pass `--no_telemetry` to `build.py` or `build.sh`. This omits the 1DS provider from non-Windows builds and disables the Microsoft telemetry configuration on Windows. The standard Windows `build.bat` wrapper does this automatically. Unsupported targets and exception-free builds never include telemetry.
 - **Disable all telemetry at runtime (non-Windows).** Set `ORT_DISABLE_TELEMETRY=1` before ONNX Runtime initializes. This prevents the uploader, events, and persistent device identifier from being created for the process lifetime.
 - **Disable non-essential events via the API.** The C API (and the C#, Python, and Java bindings) can suppress non-essential telemetry. ONNX Runtime may already have emitted a minimal initialization event before the API can be called. On **Windows**, ETW events are recorded only when an external trace session is collecting.
