@@ -581,10 +581,14 @@ class TestCompileApi(AutoEpTestCase):
         merges Conv+Relu into a single com.microsoft.FusedConv node under MaxLevel, but leaves
         them as separate ONNX ops under ORT_DISABLE_ALL — providing a Level-2-specific signal.
         """
+        from onnxruntime.capi import _pybind_state as C
+
+        if not any(s.name == "FusedConv" and s.domain == "com.microsoft" for s in C.get_all_operator_schema()):
+            self.skipTest("Skipping test because it requires contrib ops (com.microsoft::FusedConv)")
+
         input_model_path = get_name(os.path.join("transform", "fusion", "conv_relu.onnx"))
         output_no_opt_path = os.path.join(self._tmp_dir_path, "conv_relu.compile_api_default.onnx")
         output_opt_path = os.path.join(self._tmp_dir_path, "conv_relu.optimized_onnx_maxlevel.onnx")
-
         # Default compile path uses ORT_DISABLE_ALL: Conv and Relu remain as separate nodes.
         session_options = onnxrt.SessionOptions()
         onnxrt.ModelCompiler(session_options, input_model_path).compile_to_file(output_no_opt_path)

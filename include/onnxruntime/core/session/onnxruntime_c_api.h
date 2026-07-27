@@ -8374,7 +8374,7 @@ struct OrtCompileApi {
   ORT_API2_STATUS(ModelCompilationOptions_SetInputModel,
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ const OrtModel* model);
-  // End of Version 1.24. Do not add functions after this comment without updating the version.
+  // End of APIs added in Version 1.24.
 };
 
 /**

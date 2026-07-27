@@ -39,9 +39,9 @@ Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_path,
   }
 
   if (std::filesystem::exists(context_cache_path) && error_if_output_file_exists) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to generate EP context model since the file '",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to generate output model since the file '",
                            context_cache_path,
-                           "' exists already. Please remove the EP context model if you want to re-generate it.");
+                           "' exists already. Please remove the output model file if you want to re-generate it.");
   }
 
   return Status::OK();
@@ -174,11 +174,12 @@ Status SaveModelProtoToLocation(ONNX_NAMESPACE::ModelProto& model_proto,
 
     AllocatorPtr allocator = output_buffer_holder->buffer_allocator;
     IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(allocator, buffer_size);
-    model_proto.SerializeToArray(buffer.get(), static_cast<int>(buffer_size));
+    const bool ok = model_proto.SerializeToArray(buffer.get(), static_cast<int>(buffer_size));
+    ORT_RETURN_IF(!ok, "Protobuf serialization failed when saving model to output buffer");
 
     *output_buffer_holder->buffer_size_ptr = buffer_size;
     *output_buffer_holder->buffer_ptr = buffer.release();
-  } else if (output_write_func_holder != nullptr) {
+  }
     // Write output model to user's output stream.
     size_t buffer_size = model_proto.ByteSizeLong();
     ORT_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<int>::max()),
