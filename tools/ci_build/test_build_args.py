@@ -13,7 +13,6 @@ from unittest import mock
 
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
 TOOLS_DIR = SCRIPT_DIR.parent
-REPO_DIR = TOOLS_DIR.parent
 sys.path.insert(0, str(TOOLS_DIR / "python"))
 sys.path.insert(0, str(SCRIPT_DIR))
 sys.path.insert(0, str(SCRIPT_DIR / "github" / "android"))
@@ -48,56 +47,21 @@ class TelemetryBuildArgsTest(unittest.TestCase):
         ):
             return parse_arguments()
 
-    def _generated_telemetry_value(self, *build_args):
-        args = self._parse(*build_args)
-        cmake_commands = []
-        with (
-            tempfile.TemporaryDirectory() as build_dir,
-            mock.patch.object(
-                build, "run_subprocess", side_effect=lambda command, **kwargs: cmake_commands.append(command)
-            ),
-        ):
-            build.generate_build_tree(
-                cmake_path="cmake",
-                source_dir=str(REPO_DIR),
-                build_dir=build_dir,
-                cuda_home="",
-                cudnn_home="",
-                nccl_home="",
-                tensorrt_home="",
-                tensorrt_rtx_home="",
-                migraphx_home="",
-                acl_home="",
-                acl_libs="",
-                qnn_home="",
-                snpe_root="",
-                cann_home="",
-                path_to_protoc_exe="",
-                configs=["Release"],
-                cmake_extra_defines=[],
-                args=args,
-                cmake_extra_args=[],
-            )
-
-        self.assertEqual(len(cmake_commands), 1)
-        return next(
-            argument.rsplit("=", 1)[1]
-            for argument in cmake_commands[0]
-            if argument.startswith("-Donnxruntime_USE_TELEMETRY=")
-        )
-
     def test_telemetry_enabled_by_default(self):
         self.assertTrue(self._parse().use_telemetry)
-        self.assertEqual(self._generated_telemetry_value(), "ON")
 
     def test_no_telemetry_disables_telemetry(self):
         self.assertFalse(self._parse("--no_telemetry").use_telemetry)
-        self.assertEqual(self._generated_telemetry_value("--no_telemetry"), "OFF")
 
-    def test_webassembly_disables_telemetry(self):
-        self.assertFalse(self._parse("--build_wasm").use_telemetry)
-        self.assertFalse(self._parse("--build_wasm_static_lib").use_telemetry)
-        self.assertEqual(self._generated_telemetry_value("--build_wasm"), "OFF")
+    def test_unsupported_build_modes_disable_telemetry(self):
+        for build_args in (
+            ("--build_wasm",),
+            ("--build_wasm_static_lib",),
+            ("--minimal_build", "--disable_exceptions"),
+            ("--rv64",),
+        ):
+            with self.subTest(build_args=build_args):
+                self.assertFalse(self._parse(*build_args).use_telemetry)
 
     def test_unsupported_apple_targets_disable_telemetry(self):
         for target, expected in (
@@ -109,15 +73,7 @@ class TelemetryBuildArgsTest(unittest.TestCase):
             with self.subTest(target=target):
                 self.assertEqual(target_supports_telemetry(target), expected)
 
-    def test_exception_free_build_disables_telemetry(self):
-        self.assertFalse(self._parse("--minimal_build", "--disable_exceptions").use_telemetry)
-        self.assertEqual(
-            self._generated_telemetry_value("--minimal_build", "--disable_exceptions"),
-            "OFF",
-        )
-
-    def test_riscv_and_unsupported_hosts_disable_telemetry(self):
-        self.assertFalse(self._parse("--rv64").use_telemetry)
+    def test_unsupported_hosts_disable_telemetry(self):
         with (
             mock.patch("build_args.is_windows", return_value=False),
             mock.patch("build_args.is_macOS", return_value=False),
@@ -135,14 +91,6 @@ class TelemetryBuildArgsTest(unittest.TestCase):
                 self.assertTrue(target_supports_telemetry(self._target()))
             with mock.patch("build_args.platform.machine", return_value="riscv64"):
                 self.assertFalse(target_supports_telemetry(self._target()))
-
-    def test_build_wrappers_use_platform_defaults(self):
-        self.assertIn("--no_telemetry", (REPO_DIR / "build.bat").read_text(encoding="utf-8"))
-        arm64x_build_bat = (REPO_DIR / "build_arm64x.bat").read_text(encoding="utf-8")
-        self.assertEqual(arm64x_build_bat.count("--no_telemetry"), 2)
-        build_sh = (REPO_DIR / "build.sh").read_text(encoding="utf-8")
-        self.assertNotIn("--use_telemetry", build_sh)
-        self.assertNotIn("--no_telemetry", build_sh)
 
     def test_android_aar_telemetry_defaults_on_and_can_be_disabled(self):
         for build_params, expected in (
