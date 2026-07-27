@@ -266,16 +266,17 @@ Status DFTDirectProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-static bool TryReadScalar(const Tensor* tensor, int64_t& value) {
-  if (tensor == nullptr || tensor->Shape().Size() == 0) {
-    return false;
+static Status ReadOptionalScalar(const Tensor* tensor, const char* name, int64_t& value) {
+  if (tensor == nullptr) {
+    return Status::OK();
   }
+  ORT_RETURN_IF_NOT(tensor->Shape().IsScalar(), name, " must be a scalar value.");
   if (tensor->DataType() == DataTypeImpl::GetType<int64_t>()) {
     value = tensor->Data<int64_t>()[0];
   } else {
     value = static_cast<int64_t>(tensor->Data<int32_t>()[0]);
   }
-  return true;
+  return Status::OK();
 }
 
 Status DFT::ComputeInternal(ComputeContext& context) const {
@@ -290,7 +291,7 @@ Status DFT::ComputeInternal(ComputeContext& context) const {
 
   int64_t axis = axis_;
   if (opset_ >= 20 && context.InputCount() > 2) {
-    TryReadScalar(context.Input(2), axis);
+    ORT_RETURN_IF_ERROR(ReadOptionalScalar(context.Input(2), "axis", axis));
   }
   axis = HandleNegativeAxis(axis, rank);
   ORT_RETURN_IF(axis == rank - 1,
@@ -301,7 +302,7 @@ Status DFT::ComputeInternal(ComputeContext& context) const {
   const int64_t signal_length = input_shape[onnxruntime::narrow<size_t>(axis)];
   int64_t length = is_inverse_ && is_onesided_ ? (signal_length - 1) * 2 : signal_length;
   if (context.InputCount() > 1) {
-    TryReadScalar(context.Input(1), length);
+    ORT_RETURN_IF_ERROR(ReadOptionalScalar(context.Input(1), "dft_length", length));
   }
   ORT_RETURN_IF(length < 0 || length > std::numeric_limits<uint32_t>::max(), "Invalid DFT length: ", length);
 
