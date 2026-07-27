@@ -76,6 +76,10 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
   const int64_t num_tokens = input_shape.Size() / input_shape[input_shape.NumDimensions() - 1];
   const int64_t hidden_size = input_shape[input_shape.NumDimensions() - 1];
   const int64_t num_experts = router_shape[1];
+
+  ORT_RETURN_IF_NOT(k_ <= num_experts,
+                    "MoE attribute 'k' must be <= num_experts; got k=", k_,
+                    ", num_experts=", num_experts);
   const int64_t inter_size = (fc2_shape[1] * fc2_shape[2]) / hidden_size;
   const bool is_swiglu = activation_type_ == ActivationType::SwiGLU;
   const int64_t fc1_output_size = is_swiglu ? (inter_size * 2) : inter_size;
