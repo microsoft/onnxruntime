@@ -7518,26 +7518,6 @@ struct OrtApi {
   ORT_API2_STATUS(KernelContext_GetSyncStream, _In_ const OrtKernelContext* context,
                   _Outptr_result_maybenull_ OrtSyncStream** out);
 
-  /** \brief Set the file path of the original (source) ONNX model for weightless EPContext sessions.
-   *
-   * When creating a session from a weightless EPContext model, the EP may need access to the source model's
-   * initializer data. This function sets the file path to the source model, overriding the
-   * "onnx_model_filename" attribute in the EPContext node if one is present.
-   *
-   * This is useful when the source model is deployed to a different location than where it was at compile time.
-   *
-   * The file must remain accessible for the lifetime of the session.
-   *
-   * \param[in] options The OrtSessionOptions instance.
-   * \param[in] source_model_path Null terminated string of the file path (wchar on Windows, char otherwise).
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.29.
-   */
-  ORT_API2_STATUS(SessionOptionsSetWeightlessSourceModelPath, _Inout_ OrtSessionOptions* options,
-                  _In_ const ORTCHAR_T* source_model_path);
-
   /** \brief Set the source ONNX model as a byte buffer for weightless EPContext sessions.
    *
    * When creating a session from a weightless EPContext model, the EP may need access to the source model's

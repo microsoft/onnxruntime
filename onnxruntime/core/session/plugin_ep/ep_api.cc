@@ -1199,18 +1199,6 @@ ORT_API_STATUS_IMPL(ProfilingEventsContainer_AddEvents,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(SessionOptions_GetWeightlessSourceModelPath, _In_ const OrtSessionOptions* session_options,
-                    _Outptr_result_maybenull_ const ORTCHAR_T** source_model_path) {
-  API_IMPL_BEGIN
-  if (session_options->weightless_source_model_path.empty()) {
-    *source_model_path = nullptr;
-  } else {
-    *source_model_path = session_options->weightless_source_model_path.c_str();
-  }
-  return nullptr;
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(SessionOptions_GetWeightlessSourceModelBuffer, _In_ const OrtSessionOptions* session_options,
                     _Outptr_result_maybenull_ const void** source_model_data,
                     _Out_ size_t* source_model_data_length) {
@@ -1311,7 +1299,6 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ProfilingEventsContainer_AddEvents,
     // End of Version 25 - DO NOT MODIFY ABOVE
 
-    &OrtExecutionProviderApi::SessionOptions_GetWeightlessSourceModelPath,
     &OrtExecutionProviderApi::SessionOptions_GetWeightlessSourceModelBuffer,
 };
 

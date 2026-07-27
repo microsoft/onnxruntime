@@ -2078,23 +2078,6 @@ struct OrtEpApi {
                   _In_reads_(num_events) const OrtProfilingEvent* const* events,
                   _In_ size_t num_events);
 
-  /** \brief Get the weightless source model file path from session options.
-   *
-   * Returns the file path set by SessionOptionsSetWeightlessSourceModelPath, or NULL if not set.
-   * The EP can use this during CreateEp or Compile to locate the source model for weightless
-   * EPContext model sessions.
-   *
-   * \param[in] session_options The OrtSessionOptions instance.
-   * \param[out] source_model_path Output parameter set to the source model path, or NULL if not set.
-   *                               The returned pointer is valid for the lifetime of the session options.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.29.
-   */
-  ORT_API2_STATUS(SessionOptions_GetWeightlessSourceModelPath, _In_ const OrtSessionOptions* session_options,
-                  _Outptr_result_maybenull_ const ORTCHAR_T** source_model_path);
-
   /** \brief Get the weightless source model byte buffer from session options.
    *
    * Returns the buffer and size set by SessionOptionsSetWeightlessSourceModelFromBuffer, or NULL/0 if not set.

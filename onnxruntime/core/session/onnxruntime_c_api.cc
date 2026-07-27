@@ -2759,24 +2759,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetWeightlessSourceModelPath, _Inout_ OrtSessionOptions* options,
-                    _In_ const ORTCHAR_T* source_model_path) {
-  API_IMPL_BEGIN
-  if (source_model_path == nullptr || source_model_path[0] == '\0') {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid source model path: path is null or empty");
-  }
-
-  if (!std::filesystem::exists(source_model_path)) {
-    return OrtApis::CreateStatus(ORT_NO_SUCHFILE, "Weightless source model path does not exist");
-  }
-
-  options->weightless_source_model_path = source_model_path;
-  options->weightless_source_model_data = nullptr;
-  options->weightless_source_model_data_size = 0;
-  return nullptr;
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetWeightlessSourceModelFromBuffer, _Inout_ OrtSessionOptions* options,
                     _In_ const void* source_model_data, _In_ size_t source_model_data_length) {
   API_IMPL_BEGIN
@@ -2790,7 +2772,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetWeightlessSourceModelFromBuffer, _
 
   options->weightless_source_model_data = source_model_data;
   options->weightless_source_model_data_size = source_model_data_length;
-  options->weightless_source_model_path.clear();
   return nullptr;
   API_IMPL_END
 }
@@ -4956,7 +4937,6 @@ static constexpr OrtApi ort_api_1_to_29 = {
     &OrtApis::KernelContext_GetSyncStream,
     // End of Version 28 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    &OrtApis::SessionOptionsSetWeightlessSourceModelPath,
     &OrtApis::SessionOptionsSetWeightlessSourceModelFromBuffer,
 };
 
