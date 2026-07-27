@@ -48,8 +48,8 @@ bool is_moe_gemv_fused_finalize_supported(int sm, int64_t num_rows, int64_t expe
 // T is half or __nv_bfloat16. WeightType is cutlass::uint4b_t or uint8_t.
 template <typename T, typename WeightType>
 void launch_moe_gemv_int_symmetric(
-    T const* act, WeightType const* weight, T const* scales, T const* bias, T* out,
-    int64_t const* expert_first_token_offset, int const* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
+    const T* act, const WeightType* weight, const T* scales, const T* bias, T* out,
+    const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
     int64_t n, int64_t k, int group_size, int sm, cudaStream_t stream);
 
 // Launches the FC2 symmetric INT MoE GEMV with the MoE finalize reduction fused into the epilogue,
@@ -63,8 +63,8 @@ void launch_moe_gemv_int_symmetric(
 //   final_scales:                   [num_rows, experts_per_token] routing weights, or nullptr for 1.0
 template <typename T, typename WeightType>
 void launch_moe_gemv_int_symmetric_fused_finalize(
-    T const* act, WeightType const* weight, T const* scales, T const* bias, T* out,
-    int const* unpermuted_row_to_permuted_row, int const* permuted_row_to_expert, float const* final_scales,
+    const T* act, const WeightType* weight, const T* scales, const T* bias, T* out,
+    const int* unpermuted_row_to_permuted_row, const int* permuted_row_to_expert, const float* final_scales,
     int num_experts, int64_t num_rows, int64_t experts_per_token, int64_t n, int64_t k, int group_size, int sm,
     cudaStream_t stream);
 
@@ -81,10 +81,10 @@ void launch_moe_gemv_int_symmetric_fused_finalize(
 // kernel entirely.
 template <typename T, typename WeightType>
 void launch_moe_gemv_int_symmetric_interleaved_swiglu(
-    T const* act, WeightType const* weight, T const* scales, T const* bias, T* out,
-    int64_t const* expert_first_token_offset, int const* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
+    const T* act, const WeightType* weight, const T* scales, const T* bias, T* out,
+    const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
     int64_t inter_size, int64_t k, int group_size, int sm, cutlass_kernels::ActivationParams activation_params,
-    int const* permuted_row_to_source_row, int64_t num_rows,
+    const int* permuted_row_to_source_row, int64_t num_rows,
     float* splitk_partials,
     cudaStream_t stream);
 
@@ -99,8 +99,8 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
 // T is half or __nv_bfloat16.
 template <typename T>
 void launch_moe_gemv_int4_per_channel(
-    T const* act, uint8_t const* weight, T const* scales, T const* bias, T* out,
-    int64_t const* expert_first_token_offset, int const* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
+    const T* act, const uint8_t* weight, const T* scales, const T* bias, T* out,
+    const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
     int64_t n, int64_t k, int sm, cudaStream_t stream);
 
 // Launches the int4 per-channel MoE GEMV and fuses interleaved SwiGLU activation.
@@ -109,8 +109,8 @@ void launch_moe_gemv_int4_per_channel(
 // Only interleaved SwiGLU layout (`swiglu_fusion == 1`) is supported.
 template <typename T>
 void launch_moe_gemv_int4_per_channel_interleaved_swiglu(
-    T const* act, uint8_t const* weight, T const* scales, T const* bias, T* out,
-    int64_t const* expert_first_token_offset, int const* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
+    const T* act, const uint8_t* weight, const T* scales, const T* bias, T* out,
+    const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
     int64_t inter_size, int64_t k, int sm, cutlass_kernels::ActivationParams activation_params,
     cudaStream_t stream);
 

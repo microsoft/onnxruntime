@@ -2318,9 +2318,11 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
         permuted_row_to_source_row, num_rows,
         use_splitk_swiglu_gemv ? moe_gemv_splitk_partials : nullptr,
         stream);
-    // When the caller skipped expandInputRows it handed us the unexpanded activations plus the
-    // permuted-row map. Only the GEMV understands that layout, so bail loudly rather than silently
-    // feeding a wrongly-shaped buffer to the grouped GEMM below.
+    // One-sided guard for the skip-expand path only. On the normal path permuted_row_to_source_row
+    // is nullptr and this check is trivially satisfied. When it is non-null the caller skipped
+    // expandInputRows and handed us the unexpanded activations plus the permuted-row map; only the
+    // GEMV understands that layout, so bail loudly rather than silently feeding a wrongly-shaped
+    // buffer to the grouped GEMM below.
     ORT_ENFORCE(permuted_row_to_source_row == nullptr || fc1_did_fused_gemv,
                 "FC1 activations were not expanded but the MoE GEMV did not run");
 
@@ -2693,6 +2695,10 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
     bool const skip_expand_input_rows =
         !MoeGemvSkipExpandDisabledByEnv() && expand_is_pure_permutation && fc1_gemv_will_run;
 
+    // nullptr means "the activations have already been expanded by expandInputRows", which is the
+    // layout every FC1 consumer understands. It stays nullptr on the non-skip path; only when
+    // skip_expand_input_rows is true do we hand down the permutation map, and then the fused GEMV
+    // is the only kernel that can consume the unexpanded activations.
     int const* fc1_permuted_row_to_source_row = nullptr;
     if (skip_expand_input_rows) {
       fc1_permuted_row_to_source_row = permuted_row_to_unpermuted_row_;

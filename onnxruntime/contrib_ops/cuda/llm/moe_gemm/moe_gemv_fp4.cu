@@ -33,7 +33,7 @@ int CtaNForConfig(MoeGemvConfig config) {
 // Parsed once via ORT's environment helper for consistent parsing/thread-safety. Off by
 // default so the shipped single-pass ColumnMajor path stays byte-for-byte unchanged.
 bool Fp4MoeGemvUseInterleaved() {
-  static bool const enabled =
+  static const bool enabled =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_INTERLEAVED", 0) == 1;
   return enabled;
 }
@@ -43,7 +43,7 @@ bool Fp4MoeGemvUseInterleaved() {
 // default dtype-conditional Fp4GemvAccT policy (fp16->fp16 accum, bf16->fp32 accum). Forcing
 // 16-bit on bf16 regresses bf16 accuracy, so this override is off by default.
 bool Fp4MoeGemvInterleavedHalfAccum() {
-  static bool const enabled =
+  static const bool enabled =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_INTERLEAVED_HALFACC", 0) == 1;
   return enabled;
 }
@@ -159,8 +159,8 @@ bool is_moe_gemv_fp4_supported(int sm, int64_t expanded_num_rows, int64_t n, int
 }
 
 template <typename T>
-void launch_moe_gemv_fp4_symmetric(T const* act, uint8_t const* weight, T const* scales, T const* bias, T* out,
-                                   int64_t const* expert_first_token_offset, int const* permuted_row_to_expert,
+void launch_moe_gemv_fp4_symmetric(const T* act, const uint8_t* weight, const T* scales, const T* bias, T* out,
+                                   const int64_t* expert_first_token_offset, const int* permuted_row_to_expert,
                                    int num_experts, int64_t expanded_num_rows, int64_t n, int64_t k, int group_size,
                                    int sm, MoeGemvConfig config, cudaStream_t stream) {
   ORT_UNUSED_PARAMETER(sm);
@@ -202,8 +202,8 @@ void launch_moe_gemv_fp4_symmetric(T const* act, uint8_t const* weight, T const*
 
 template <typename T>
 void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
-    T const* act, uint8_t const* weight, T const* scales, T const* bias, T* out,
-    int64_t const* expert_first_token_offset, int const* permuted_row_to_expert, int num_experts,
+    const T* act, const uint8_t* weight, const T* scales, const T* bias, T* out,
+    const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
     int64_t expanded_num_rows, int64_t inter_size, int64_t k, int group_size, int sm,
     cutlass_kernels::ActivationParams activation_params, MoeGemvConfig config, cudaStream_t stream) {
   ORT_UNUSED_PARAMETER(sm);
@@ -247,18 +247,18 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
 }
 
 template void launch_moe_gemv_fp4_symmetric<half>(
-    half const*, uint8_t const*, half const*, half const*, half*, int64_t const*, int const*, int,
+    const half*, const uint8_t*, const half*, const half*, half*, const int64_t*, const int*, int,
     int64_t, int64_t, int64_t, int, int, MoeGemvConfig, cudaStream_t);
 template void launch_moe_gemv_fp4_symmetric_interleaved_swiglu<half>(
-    half const*, uint8_t const*, half const*, half const*, half*, int64_t const*, int const*, int,
+    const half*, const uint8_t*, const half*, const half*, half*, const int64_t*, const int*, int,
     int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, MoeGemvConfig, cudaStream_t);
 #ifdef ENABLE_BF16
 template void launch_moe_gemv_fp4_symmetric<__nv_bfloat16>(
-    __nv_bfloat16 const*, uint8_t const*, __nv_bfloat16 const*, __nv_bfloat16 const*, __nv_bfloat16*,
-    int64_t const*, int const*, int, int64_t, int64_t, int64_t, int, int, MoeGemvConfig, cudaStream_t);
+    const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
+    const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, MoeGemvConfig, cudaStream_t);
 template void launch_moe_gemv_fp4_symmetric_interleaved_swiglu<__nv_bfloat16>(
-    __nv_bfloat16 const*, uint8_t const*, __nv_bfloat16 const*, __nv_bfloat16 const*, __nv_bfloat16*,
-    int64_t const*, int const*, int, int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams,
+    const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
+    const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams,
     MoeGemvConfig, cudaStream_t);
 #endif
 

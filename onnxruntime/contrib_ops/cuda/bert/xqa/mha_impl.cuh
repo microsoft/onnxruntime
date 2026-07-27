@@ -1273,8 +1273,8 @@ CUBIN_EXPORT __global__
         // Either may be null, meaning "scale is 1": the caller has already folded a non-scalar
         // (per-channel) scale into Q / into the output, which is exact because dequantization is
         // linear and the channel dim is contracted for K and free for V.
-        float const* __restrict__ kCacheScale,
-        float const* __restrict__ vCacheScale,
+        const float* __restrict__ kCacheScale,
+        const float* __restrict__ vCacheScale,
         uint32_t* __restrict__ semaphores = nullptr, void* __restrict__ scratch = nullptr) {
   assert(allowMultiBlockMode || gridDim.x == 1);
   bool const isMultiBlock = allowMultiBlockMode && (gridDim.x != 1);
@@ -1473,7 +1473,7 @@ CUBIN_EXPORT __global__
   };
   if (warpIdx.z == 0) {
     // qkScale is applied onto Q*K.T before softmax. A null kCacheScale means the scale is already in Q.
-    float const qkScale = qScale * ((isKVCacheQuantized && kCacheScale != nullptr) ? kCacheScale[0] : 1.f);
+    const float qkScale = qScale * ((isKVCacheQuantized && kCacheScale != nullptr) ? kCacheScale[0] : 1.f);
     CircIdx<nbKBuffers> idxCurrSMemKBuf{nbKBuffers - 1};
     auto const getSMemKTile = [&](uint32_t idx) -> SharedMem::KSmemBuffer& { return smem.k[warpIdx.x][idx]; };
 #if BEAM_WIDTH > 1
@@ -2397,8 +2397,8 @@ CUBIN_EXPORT __global__ __launch_bounds__(256, nbCtaPerSM) void kernel_mha(
 #endif
     uint32_t const batchSize,
     // Device memory scalars, used only for int8/fp8 KV cache. See kernel_mha_impl.
-    float const* __restrict__ kCacheScale,
-    float const* __restrict__ vCacheScale,
+    const float* __restrict__ kCacheScale,
+    const float* __restrict__ vCacheScale,
     uint32_t* __restrict__ semaphores = nullptr, void* __restrict__ scratch = nullptr) {
 #if SPEC_DEC
   kernel_mha_impl(qSeqLen, nbKHeads, headGrpSize, qCuSeqLens,
@@ -2479,8 +2479,8 @@ void launchMHA(cudaDeviceProp const& prop, uint32_t nbKHeads,
                uint32_t batchSize,
                // Device memory scalars, used only for int8/fp8 KV cache. K and V may have different
                // scales; both are per-tensor (a single float each).
-               float const* __restrict__ kCacheScale,
-               float const* __restrict__ vCacheScale,
+               const float* __restrict__ kCacheScale,
+               const float* __restrict__ vCacheScale,
 #if SPEC_DEC
                SpecDecParams const& specDecParams,
 #endif
