@@ -331,11 +331,23 @@ const createDirectDftProgramInfo = (plan: DftPlan): ProgramInfo => {
   };
 };
 
-const readScalar = (tensor: TensorView | undefined): number | undefined => {
-  if (!tensor || ShapeUtil.size(tensor.dims) === 0) {
+const readOptionalScalar = (tensor: TensorView | undefined): number | undefined => {
+  // An omitted optional input crosses the JSEP bridge as a placeholder tensor with an undefined
+  // data type and rank 0, not as `undefined`.
+  if (!tensor || tensor.dataType === DataType.undefined) {
     return undefined;
   }
-  return tensor.dataType === DataType.int32 ? tensor.getInt32Array()[0] : Number(tensor.getBigInt64Array()[0]);
+  if (ShapeUtil.size(tensor.dims) !== 1) {
+    throw new Error('DFT optional scalar inputs must have exactly 1 element.');
+  }
+  if (tensor.dataType === DataType.int32) {
+    return tensor.getInt32Array()[0];
+  }
+  const value = Number(tensor.getBigInt64Array()[0]);
+  if (!Number.isSafeInteger(value)) {
+    throw new Error('DFT optional scalar inputs are out of JavaScript safe integer range.');
+  }
+  return value;
 };
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
@@ -357,8 +369,11 @@ export const dft = (context: ComputeContext, attributes: DftAttributes): void =>
 
   // opset 20 passes dft_length (input 1) and axis (input 2) as scalar tensors; opset 17-19 use the axis
   // attribute. Both are read on the CPU, so only the signal is uploaded to the GPU.
-  const dftLength = readScalar(context.inputs[1]);
-  const fftAxis = ShapeUtil.normalizeAxis(readScalar(context.inputs[2]) ?? attributes.axis, rank);
+  const dftLength = readOptionalScalar(context.inputs[1]);
+  if (dftLength !== undefined && dftLength <= 0) {
+    throw new Error('dft_length must be greater than zero.');
+  }
+  const fftAxis = ShapeUtil.normalizeAxis(readOptionalScalar(context.inputs[2]) ?? attributes.axis, rank);
   if (fftAxis === rank - 1) {
     throw new Error('DFT axis must refer to a signal dimension, not the innermost (real/imaginary) dimension.');
   }
@@ -367,6 +382,9 @@ export const dft = (context: ComputeContext, attributes: DftAttributes): void =>
   }
 
   const plan = computeDftPlan(input, fftAxis, inverse, onesided, dftLength);
+  if (plan.length <= 0) {
+    throw new Error(`Invalid DFT length: ${plan.length}`);
+  }
   const useSharedMemoryFft = plan.length <= MAX_SHARED_MEMORY_LENGTH && factorizeToRadices(plan.length) !== undefined;
   const programInfo = useSharedMemoryFft ? createFftProgramInfo(plan) : createDirectDftProgramInfo(plan);
   context.compute(programInfo, { inputs: [0] });
