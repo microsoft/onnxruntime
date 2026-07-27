@@ -110,7 +110,7 @@ Status SoftmaxCrossEntropyLoss<T, TLabel, TOut>::ComputeInternal(OpKernelContext
   }
 
   // Calculate logsoftmax
-  auto status = SoftMaxComputeHelper<T, TOut, true>(ctx->GetComputeStream(), logit_data, logit_reshape, log_prob_data, 1);
+  auto status = SoftMaxComputeHelper<T, TOut, true>(Stream(ctx), logit_data, logit_reshape, log_prob_data, 1);
   ORT_RETURN_IF_ERROR(status);
 
   const T* weight_data = nullptr;
