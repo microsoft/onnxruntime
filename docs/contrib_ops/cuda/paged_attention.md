@@ -50,7 +50,9 @@ would claim a paged node and fail at run time instead of at partition time.
 
 **This document specifies the feature work required to bring `PagedAttention` to parity with GQA
 for popular LLMs** (GPT-OSS, Qwen3, Gemma 2/3, DeepSeek, Llama, Mistral, Phi), plus the paging
-primitives (`slot_mapping`) that serving frameworks require.
+primitives (`slot_mapping`) that serving frameworks require, plus **Multi-head Latent Attention**
+(§12) — which is not a GQA feature at all, but is native to this operator because MLA's entire
+value proposition is a smaller paged KV cache.
 
 ## 2. Current State
 
@@ -76,7 +78,7 @@ Structural limits in the current implementation:
 
 - `batch_size <= 256` — `LaunchGetCumulativeSeqlensKV` uses a per-block `cub::BlockScan` with 256
   threads and independent blocks.
-- `block_size % 256 == 0` — see [§17](#17-known-defects-to-fix-first); this is almost certainly a bug.
+- `block_size % 256 == 0` — see [§18](#18-known-defects-to-fix-first); this is almost certainly a bug.
 - MEA fallback materializes a **tight gathered, GQA-expanded** KV buffer of
   `[total_kv_tokens, num_heads, head_size]`; memory scales with context × query heads.
 - A device→host sync per step to obtain `max_query_len` (and `total_kv_tokens` for MEA).
@@ -92,7 +94,7 @@ Structural limits in the current implementation:
    `total_sequence_length`, padded `position_ids`, `present_*`) are **never** mirrored.
 3. **Share the math, not the schema.** New features are implemented once in a shared kernel layer
    parameterized by a KV *accessor* (contiguous BNSH vs. block table), so GQA and PagedAttention
-   cannot drift. See [§13](#13-shared-code-with-groupqueryattention).
+   cannot drift. See [§14](#14-shared-code-with-groupqueryattention).
 4. **Fail at partition time, not run time.** No stub kernels that return `NOT_IMPLEMENTED`. An EP
    either registers `PagedAttention` or does not.
 5. **Prefer exact epilogues over new fused kernels** where an existing kernel already returns the
@@ -103,7 +105,7 @@ Structural limits in the current implementation:
 ### 4.1 Inputs
 
 Indices 0–9 are unchanged. Indices 10–16 are new and optional. The index order matches the
-landing order in [§18](#18-phasing), so the schema grows monotonically per phase.
+landing order in [§19](#19-phasing), so the schema grows monotonically per phase.
 
 | Idx | Name | Type | Shape | Status |
 |-----|------|------|-------|--------|
@@ -192,7 +194,7 @@ This hard-codes "append `n_b` contiguous tokens at the end of sequence `b`". It 
 - **Chunked prefill with out-of-order scheduling**, where the scheduler owns slot assignment.
 - **Cache-aware scheduling / block migration**, where the runtime, not the kernel, decides placement.
 
-It also concentrates a whole class of out-of-bounds bugs in the kernel (see [§17](#17-known-defects-to-fix-first)).
+It also concentrates a whole class of out-of-bounds bugs in the kernel (see [§18](#18-known-defects-to-fix-first)).
 
 ### 5.2 Design
 
@@ -363,7 +365,7 @@ if (needs_prologue) {
 Store the block cache in INT8 or FP8 E4M3 while `query` remains FP16/BF16, halving (or better) the
 dominant memory consumer in a serving deployment and proportionally reducing HBM traffic on the
 decode path. Scope for this phase: **`PER_TENSOR` and `PER_CHANNEL`**, `kv_cache_bit_width == 8`.
-INT4 is deferred ([§18](#18-phasing)).
+INT4 is deferred ([§19](#19-phasing)).
 
 ### 8.2 Schema
 
@@ -490,7 +492,7 @@ For the dominant real use case — **ALiBi** — a dense bias is wasteful. Flash
 `alibi_slopes` of shape `(num_heads,)` natively. Recommendation: land `alibi_slopes` first (cheap,
 fused, works on the fast path) and treat the general dense `attention_bias` as a correctness-only
 fallback for models that genuinely need arbitrary additive masks. Decision deferred to
-[§19](#19-open-questions).
+[§20](#20-open-questions).
 
 ## 11. Feature: `output_qk`
 
@@ -654,7 +656,7 @@ exactly as decode does. The operator itself does not distinguish the three cases
 | `slot_mapping` (§5) | **Supported** | Orthogonal — write path only, and the latent is written exactly like any K/V row. |
 | Quantized cache (§8) | **Supported** | An FP8 latent cache is standard in DeepSeek deployments. `PER_CHANNEL` scale shape becomes `(1, 1, head_size)` since `kv_num_heads == 1`. |
 | RoPE | **Supported** via `rotary_offset` (§12.5) | |
-| `softcap` (§9) | Allowed, unused by DeepSeek | |
+| `softcap` | Allowed, unused by DeepSeek | |
 | Sliding window (§9) | Allowed but untested | No MLA model uses it; semantics are well defined (window is over positions, not channels). |
 | `head_sink` (§6) | **Rejected** | No MLA model uses sinks. The LSE epilogue is valid math here, but shipping an untested combination invites silent errors. Revisit if a model needs it. |
 | QK-Norm (§7) | **Rejected** | DeepSeek's `q_a_layernorm` / `kv_a_layernorm` act on the *latent* projections in the graph, before absorption. A `head_size`-wide RMSNorm in absorbed space is a different operation; accepting it would let an exporter produce silently wrong math. |
@@ -717,7 +719,8 @@ mitigation is structural, not procedural.
    derive from `AttentionParameters` in `contrib_ops/cpu/bert/attention_parameters.h`. Move the
    fields that are genuinely shared — `local_window_size`, `softcap`, `use_smooth_softmax`,
    `qk_norm_epsilon`, `k_quant_type`, `v_quant_type`, `kv_cache_bit_width`, `rotary_interleaved` —
-   into the base so a feature has one definition.
+   into the base so a feature has one definition. `v_head_size` and `rotary_offset` (§12) start in
+   `PagedAttentionParameters`; promote them if and when a second op needs asymmetric head widths.
 
 2. **Shared validation helpers.** `paged_attention_helper.h` already calls
    `group_query_attention_helper::CheckRotaryCaches`. Extend the same pattern for
@@ -753,10 +756,10 @@ Consolidated, to be implemented in `paged_attention_helper::CheckInputs`. Every 
 - `block_table` rank 2 with `dim0 == batch_size`.
 - `cos_cache`/`sin_cache` both present or both absent; required when `do_rotary == 1`.
 - `key_cache_out` must alias `key_cache`; same for value.
-- `batch_size <= 256` (BlockScan limitation — to be lifted, see §17).
+- `batch_size <= 256` (BlockScan limitation — to be lifted, see §18).
 
 **Corrected:**
-- `block_size` must be a power of two in `{16, 32, 64, 128, 256}` (**replaces** `block_size % 256 == 0`; see §17).
+- `block_size` must be a power of two in `{16, 32, 64, 128, 256}` (**replaces** `block_size % 256 == 0`; see §18).
 
 **New:**
 - `slot_mapping`: rank 1, `dim0 == token_count`, `int32`.
@@ -768,16 +771,24 @@ Consolidated, to be implemented in `paged_attention_helper::CheckInputs`. Every 
 - `kv_cache_bit_width` consistent with `T_CACHE`; FP8 requires SM89+/SM90+.
 - `attention_bias`: rank 3, `dim0 ∈ {1, num_heads}`, `dim1 == token_count`; rejected on Flash.
 - `qk_output != 0` iff the node has 4 outputs; `output_qk` rejected on Flash.
+- MLA (§12.10): `v_head_size ∈ [1, head_size]`; `v_head_size != head_size` requires an explicit
+  `scale`, absent `value` / `value_cache` (or `value_cache` identical to `key_cache`), and no
+  `head_sink` or QK-Norm weights. `rotary_offset % 8 == 0` and
+  `rotary_offset + rotary_dim <= head_size`.
 - Backend-incompatible feature combinations must be reported at `Compute` entry with the reason,
   never silently ignored.
 
 ## 16. Shape Inference and Tooling
 
 - `PagedAttentionTypeAndShapeInference` in `onnxruntime/core/graph/contrib_ops/bert_defs.cc`:
-  - Output 0 shape logic is unchanged.
+  - Output 0 dim 1 becomes `num_heads * v_head_size`, where `v_head_size` defaults to the derived
+    `head_size` when the attribute is unset. Both the unpacked and packed-QKV branches must apply
+    this, otherwise every MLA graph gets a wrong — and silently propagated — output width.
   - Outputs 1/2 must propagate **type from inputs 3/4** (not from input 0) once `T_CACHE` can differ
     from `T`. The current code propagates elem type from input 0 to outputs 1/2 first and then from
     3/4 — the first propagation becomes wrong under quantization and must be removed.
+  - `value_cache` (input 4) is now optional: guard `getInputShape(ctx, 4)` and the output-2
+    propagation on `ctx.hasInput(4)` before any write.
   - Output 3 (`output_qk`) is written only when `ctx.getNumOutputs() > 3`, guarded before any write,
     consistent with the contrib-op shape-inference memory-safety rules.
 - `onnxruntime/python/tools/symbolic_shape_infer.py` — `_infer_PagedAttention` must handle the new
@@ -788,7 +799,7 @@ Consolidated, to be implemented in `paged_attention_helper::CheckInputs`. Every 
 
 ## 17. Testing Plan
 
-### 16.1 GQA ↔ PagedAttention cross-parity harness
+### 17.1 GQA ↔ PagedAttention cross-parity harness
 
 The highest-value test. For a given configuration, construct a block table that maps each sequence's
 blocks contiguously and in order, build the equivalent padded GQA inputs, and assert
@@ -800,7 +811,7 @@ reference oracle for every shared feature and catches drift automatically. Run i
 - packed QKV vs. unpacked
 - quantized cache: `NONE`/`PER_TENSOR`/`PER_CHANNEL` × INT8/FP8
 
-### 16.2 Paging-specific tests (no GQA equivalent)
+### 17.2 Paging-specific tests (no GQA equivalent)
 
 - `slot_mapping`: explicit mapping equals derived mapping when the mapping is the derived one.
 - `slot_mapping` with `-1` entries: skipped tokens leave the cache byte-identical, and attention
@@ -812,15 +823,36 @@ reference oracle for every shared feature and catches drift automatically. Run i
 - `batch_size` at and just above the BlockScan limit (must error, not corrupt).
 - Sliding-window block pruning: pruned run bit-matches the unpruned run.
 
-### 16.3 Reference implementations
+### 17.3 MLA tests
+
+GQA cannot be the oracle here — it has no MLA mode — so MLA needs its own reference chain:
+
+- **Absorbed ↔ non-absorbed equivalence.** For a random `W_UK` / `W_UV`, assert that absorbed-form
+  `PagedAttention` (576/512, `kv_num_heads=1`) matches a non-absorbed reference (192/128,
+  `kv_num_heads=num_heads`) built from the decompressed latent. This is the single test that proves
+  the whole design and must run before any fused MLA kernel is integrated.
+- **HuggingFace parity.** Compare one DeepSeek-V2-Lite decoder layer against the reference PyTorch
+  implementation, including `mscale`/YaRN scaling, over prefill and several decode steps.
+- **`rotary_offset`.** In-op offset RoPE (`do_rotary=1`, `rotary_offset=512`) must bit-match the
+  graph-applied spelling (`do_rotary=0`, RoPE fused into the producer).
+- **Scale guard.** Omitting `scale` while `v_head_size != head_size` must fail with a clear error —
+  a regression here produces plausible-looking but wrong logits (§12.6).
+- **V-aliases-K.** `value_cache` absent and `value_cache` passed as the same tensor as `key_cache`
+  must produce identical results; a distinct V cache must be rejected.
+- **MLA × paging.** Shuffled block tables, `slot_mapping` with `-1`, and an FP8 latent cache, each
+  combined with MLA.
+- **Rejected combinations.** MLA + `head_sink` and MLA + QK-Norm must fail with the documented
+  message, not silently compute something.
+
+### 17.4 Reference implementations
 
 Extend `onnxruntime/test/python/transformers/test_paged_attention_cuda.py` with a PyTorch reference
-covering sinks (`smooth_softmax_ref`), QK-Norm (RMSNorm-before-RoPE), per-channel dequantization, and
-windowing — reusing the GQA test helpers rather than duplicating them.
+covering sinks (`smooth_softmax_ref`), QK-Norm (RMSNorm-before-RoPE), per-channel dequantization,
+windowing, and MLA absorption — reusing the GQA test helpers rather than duplicating them.
 
-### 16.4 Negative tests
+### 17.5 Negative tests
 
-One test per validation rule in [§14](#14-validation-rules), asserting the error *message*, not just
+One test per validation rule in [§15](#15-validation-rules), asserting the error *message*, not just
 failure — so that backend-incompatible combinations cannot regress into silent wrong results.
 
 ## 18. Known Defects to Fix First
@@ -852,25 +884,33 @@ These block the feature work and should land ahead of it.
 
 | Phase | Contents | Schema delta |
 |---|---|---|
-| **P0 — Foundation** | §17 defect fixes; sliding-window semantic verification and GQA parity harness (§16.1) | none |
+| **P0 — Foundation** | §18 defect fixes; sliding-window semantic verification and GQA parity harness (§17.1) | none |
 | **P1 — Paging primitives** | `slot_mapping` (§5); sliding-window block pruning (§9.2) | input 10 |
 | **P2 — Model coverage** | `head_sink` + `smooth_softmax` via LSE epilogue (§6); fused QK-Norm (§7) | inputs 11–13, attrs `smooth_softmax`, `qk_norm_epsilon` |
 | **P3 — Memory** | Quantized cache INT8/FP8, `PER_TENSOR` + `PER_CHANNEL`, dequant-on-gather read path (§8) | `T_CACHE`, inputs 14–15, 3 attrs |
-| **P4 — Performance** | Paged decode kernel with in-kernel dequant; `softcap` on decode; lift D→H sync | none |
-| **P5 — Completeness** | `attention_bias` / `alibi_slopes` (§10); `output_qk` (§11) | input 16, output 3, attr `qk_output` |
-| **Later** | INT4 cache; MLA (`v_head_size != head_size`) as a distinct op; non-CUDA EPs | — |
+| **P4 — MLA (correctness)** | `v_head_size`, `rotary_offset`, V-aliases-K, optional `value_cache`, unfused MLA reference kernel, absorbed↔non-absorbed equivalence tests (§12) | attrs `v_head_size`, `rotary_offset`; input 4 optional |
+| **P5 — Performance** | Paged decode kernel with in-kernel dequant; fused MLA backend (FlashMLA / FlashInfer MLA, §12.7); `softcap` on decode; lift D→H sync | none |
+| **P6 — Completeness** | `attention_bias` / `alibi_slopes` (§10); `output_qk` (§11) | input 16, output 3, attr `qk_output` |
+| **Later** | INT4 cache; MLA quantized latent cache tuning; non-CUDA EPs | — |
 
-P0–P2 cover GPT-OSS, Qwen3, Gemma 2/3, Llama, Mistral and Phi. P3–P4 are what make the op
-competitive for throughput-oriented serving. P5 is completeness. DeepSeek MLA is explicitly **not**
-in scope for this operator: latent KV compression with `v_head_size != head_size` needs its own
-kernel and schema, and bolting it onto either GQA or PagedAttention would repeat the mistake this
-document argues against.
+P0–P2 cover GPT-OSS, Qwen3, Gemma 2/3, Llama, Mistral and Phi. P3 and P5 are what make the op
+competitive for throughput-oriented serving. P4–P5 add DeepSeek-V2/V3/R1.
+
+P4 is deliberately split from P5: the schema work and the unfused reference are small, low-risk, and
+unblock the test matrix, whereas integrating a fused MLA kernel is a large dependency decision
+(§12.7, §20). Shipping the reference first means the fused kernel arrives with an oracle already in
+place.
+
+Note that MLA is folded into `PagedAttention` rather than given its own operator precisely because
+the *only* differences are two attributes and a K/V aliasing rule (§12.2) — the layout, batching
+model, and cache management are identical. That is the opposite of the GQA-vs-PagedAttention case in
+§1, where the query rank and the cache contract genuinely differ.
 
 ## 20. Open Questions
 
-1. **`alibi_slopes` vs. dense `attention_bias` (§10).** Should P5 ship the narrow, fused
+1. **`alibi_slopes` vs. dense `attention_bias` (§10).** Should P6 ship the narrow, fused
    `alibi_slopes` input instead of, or in addition to, the general dense bias?
-2. **Host-scalar inputs for `max_query_len` / `total_kv_tokens` (§17.4).** Adding them as optional
+2. **Host-scalar inputs for `max_query_len` / `total_kv_tokens` (§18.4).** Adding them as optional
    inputs removes a per-step sync but leaks scheduler state into the graph. Is that acceptable?
 3. **`block_table == -1` semantics (§9.2).** Confirm "unmapped, masked out" rather than "invalid,
    error" — the former is required for sliding-window block eviction.
@@ -881,5 +921,15 @@ document argues against.
 5. **ORT-GenAI commitment.** Does the continuous-batching path in `onnxruntime-genai` commit to
    emitting `PagedAttention` (as opposed to a `block_table`-extended GQA)? This determines the
    priority of everything above.
-6. **Ownership of the parity matrix (§12).** Who keeps the feature × backend table current, and is
-   the KV-accessor refactor (§13.3) in scope for P2 or a follow-up?
+6. **Ownership of the parity matrix (§13).** Who keeps the feature × backend table current, and is
+   the KV-accessor refactor (§14.3) in scope for P2 or a follow-up?
+7. **Which fused MLA backend (§12.7)?** FlashMLA is the closest fit but is SM90-only and adds a
+   third-party dependency; FlashInfer MLA covers SM80+; TRT-LLM has its own. The choice determines
+   the hardware matrix ORT can serve DeepSeek on and should be made before P5 starts.
+8. **Does MLA need a non-absorbed *paged* path (§12.8)?** The proposal handles prefill-with-prefix by
+   absorbing. If a workload shows the absorbed prefill FLOP inflation to be material, an in-op
+   decompression path would require passing `W_UK` / `W_UV` into the operator — which this design
+   deliberately avoids. Needs a measurement before it is reconsidered.
+9. **MLA + quantized latent cache (§12.9).** FP8 on a 576-wide latent shared by 128 query heads has
+   a different error profile from FP8 on a per-head cache. Accuracy validation is required before
+   the combination is recommended, even though the schema supports it on day one.
