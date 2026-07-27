@@ -50,6 +50,7 @@ import re
 import sys
 import threading
 import unittest
+import warnings
 
 import numpy
 import torch
@@ -63,16 +64,23 @@ from onnxruntime import InferenceSession, OrtValue, SessionOptions, get_availabl
 # #################################################################################################
 
 
-class _CaptureStdout:
-    """Capture output written to OS file descriptor 1 (C++ stdout).
+_STDOUT_FD = 1
+_STDERR_FD = 2
 
-    The attention kernel debug info is emitted by the native ONNX Runtime library directly to
-    fd 1, which Python's contextlib.redirect_stdout (which only swaps sys.stdout) cannot
-    intercept, so fd-level dup2 redirection is used instead. Mirrors CaptureStdout in test_gqa.py.
+
+class _CaptureNativeFd:
+    """Capture output written by the native ONNX Runtime library to an OS file descriptor.
+
+    Native output cannot be intercepted by Python's contextlib.redirect_stdout/redirect_stderr
+    (which only swap sys.stdout/sys.stderr), so fd-level dup2 redirection is used instead.
+    Mirrors CaptureStdout in test_gqa.py, generalized over the descriptor:
+      * fd 1 (_STDOUT_FD): AttentionKernelDebugInfo::Print writes the SdpaKernel=... tier there.
+      * fd 2 (_STDERR_FD): the default logger sink (CLogSink → std::clog) writes ORT log lines
+        such as the CUDA EP's "Capturing the cuda graph for this model" there.
     """
 
-    def __init__(self):
-        self.fd = 1
+    def __init__(self, fd=_STDOUT_FD):
+        self.fd = fd
         self.chunk_size = 1024
         self.output = b""
 
@@ -83,7 +91,7 @@ class _CaptureStdout:
         self.output = b"".join(chunks)
 
     def __enter__(self):
-        sys.stdout.flush()
+        self._flush()
         self._duped_fd = os.dup(self.fd)
         self._pipe_reader, pipe_writer = os.pipe()
         os.dup2(pipe_writer, self.fd)
@@ -93,11 +101,19 @@ class _CaptureStdout:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        sys.stdout.flush()
+        self._flush()
         os.dup2(self._duped_fd, self.fd)
         self._capture_thread.join()
         os.close(self._pipe_reader)
         os.close(self._duped_fd)
+
+    def _flush(self):
+        sys.stdout.flush()
+        sys.stderr.flush()
+
+    @property
+    def text(self):
+        return self.output.decode(errors="replace")
 
 
 def _parse_sdpa_kernel(captured_text):
@@ -143,16 +159,21 @@ def _observe_cudnn_decode_dispatch(q_num_heads, kv_num_heads, head_size):
     provider_options = {"sdpa_kernel": str(_SDPA_KERNEL_CUDNN_WITH_MATH_FALLBACK)}
     previous = os.environ.get("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO")
     os.environ["ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO"] = "1"
+    session = None
     try:
         session = InferenceSession(model, SessionOptions(), providers=[("CUDAExecutionProvider", provider_options)])
-        with _CaptureStdout() as captured:
+        with _CaptureNativeFd(_STDOUT_FD) as captured:
             session.run(None, feeds)
     finally:
         if previous is None:
             os.environ.pop("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", None)
         else:
             os.environ["ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO"] = previous
-    return _parse_sdpa_kernel(captured.output.decode(errors="replace"))
+        # Release the probe session's device memory eagerly (the probe runs once per unique
+        # (q_num_heads, kv_num_heads, head_size)), mirroring run_tensorscatter_attention.
+        del session
+        gc.collect()
+    return _parse_sdpa_kernel(captured.text)
 
 
 def cudnn_decode_supported(q_num_heads, kv_num_heads, head_size):
@@ -167,7 +188,9 @@ def cudnn_decode_supported(q_num_heads, kv_num_heads, head_size):
     (q_num_heads, kv_num_heads, head_size) so the reported support can never drift from the actual
     case being asserted (e.g. a non-divisible head ratio or a different head_size that
     is_supported() would reject). Any failure (no CUDA provider, unsupported cuDNN, etc.) yields
-    False so dependent tests skip cleanly rather than false-failing.
+    False so dependent tests skip cleanly rather than false-failing; the exception is always
+    surfaced as a warning so a genuine harness/kernel bug shows up in the CI log instead of
+    silently masquerading as "cuDNN unavailable, skip cleanly".
     """
     cache_key = (q_num_heads, kv_num_heads, head_size)
     if cache_key in _CUDNN_DECODE_SUPPORTED_CACHE:
@@ -176,19 +199,34 @@ def cudnn_decode_supported(q_num_heads, kv_num_heads, head_size):
     if has_cuda_provider():
         try:
             supported = _observe_cudnn_decode_dispatch(q_num_heads, kv_num_heads, head_size) == "CUDNN_FLASH_ATTENTION"
-        except Exception:
+        except Exception as exc:
+            # Deliberately broad: the probe builds a graph, creates a session and runs it, so the
+            # failure modes span pybind Fail/InvalidArgument, OOM, ONNX build errors, etc. Rather
+            # than guess the exact set (and silently swallow the rest), report every failure.
+            warnings.warn(
+                f"cudnn_decode_supported probe failed for "
+                f"(q_num_heads={q_num_heads}, kv_num_heads={kv_num_heads}, head_size={head_size}): {exc!r}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
             supported = False
     _CUDNN_DECODE_SUPPORTED_CACHE[cache_key] = supported
     return supported
 
 
 def require_cudnn_sdpa():
-    """Return True when the environment demands the cuDNN SDPA decode tier be dispatched (CI gate).
+    """Return True when the environment demands the cuDNN SDPA decode tier be dispatched.
 
-    On a known-good GPU CI leg the operator sets ORT_TEST_REQUIRE_CUDNN_SDPA=1. When set, the decode
-    dispatch assertions become NON-skippable: a MATH fallback / non-dispatch fails loudly instead of
-    being hidden as an all-green skip by the observe-dispatch gating in cudnn_decode_supported().
-    When unset, tests fall back to the normal cudnn_decode_supported() skip guard.
+    ORT_TEST_REQUIRE_CUDNN_SDPA=1 is intended for an operator to set on a known-good GPU CI leg
+    once one exists. As of this PR no pipeline definition exports it, so it currently has no effect
+    in this project's CI and only matters for manual/local runs where a developer sets it
+    explicitly (the same limitation applies to the analogous GQA/MHA cuDNN paths, which likewise
+    have no Hopper+ CI leg enforcing them today).
+
+    When set, the decode dispatch assertions become NON-skippable: a MATH fallback / non-dispatch
+    fails loudly instead of being hidden as an all-green skip by the observe-dispatch gating in
+    cudnn_decode_supported(). When unset, tests fall back to the normal cudnn_decode_supported()
+    skip guard.
     """
     return os.environ.get("ORT_TEST_REQUIRE_CUDNN_SDPA") == "1"
 
@@ -203,7 +241,7 @@ def _run_capturing_sdpa_kernel(run_func):
     previous = os.environ.get("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO")
     os.environ["ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO"] = "1"
     try:
-        with _CaptureStdout() as captured:
+        with _CaptureNativeFd(_STDOUT_FD) as captured:
             result = run_func()
     finally:
         if previous is None:
@@ -227,6 +265,21 @@ def has_cuda_device(min_capability: int = 53):
 def has_flash_attention():
     """Return True if the CUDA device meets the SM80+ requirement for Flash Attention."""
     return has_cuda_device(80)
+
+
+def get_compute_capability():
+    """Return the CUDA compute capability as major*10+minor (0 when no CUDA device is usable).
+
+    Mirrors test_mha.py::get_compute_capability so gating reads the same way across the
+    transformers test suite.
+    """
+    if torch.cuda.is_available() and has_cuda_provider():
+        # Device 0 explicitly: this file's sessions/OrtValues all use device_id 0, while
+        # torch.cuda.get_device_capability() with no argument would read torch's *current*
+        # device, which can differ from the GPU the CUDA EP actually runs on.
+        major, minor = torch.cuda.get_device_capability(0)
+        return major * 10 + minor
+    return 0
 
 
 def numpy_attention_ref(q, k, v, nonpad_kv_seqlen, is_causal=False, attn_bias=None):
@@ -1096,7 +1149,7 @@ class TestTensorScatterAttentionCudnnSdpaDecode(unittest.TestCase):
 
         # On cuDNN-capable platforms the gated decode case MUST route to cuDNN (not silently fall
         # back to MATH), otherwise the cuDNN path and its fully-masked zero-fill guard go untested.
-        # Under ORT_TEST_REQUIRE_CUDNN_SDPA=1 (CI gate on a known-good GPU) the assertion is
+        # Under ORT_TEST_REQUIRE_CUDNN_SDPA=1 (opt-in, manual/local today — see require_cudnn_sdpa) the assertion is
         # non-skippable so a tier regression fails loudly instead of hiding as an all-green skip.
         if require_cudnn_sdpa() or cudnn_decode_supported(q_heads, kv_heads, _CUDNN_DECODE_HEAD_SIZE):
             self.assertEqual(
@@ -1150,7 +1203,7 @@ class TestTensorScatterAttentionCudnnSdpaDecode(unittest.TestCase):
 
         # On cuDNN-capable platforms the gated bf16 decode case MUST route to cuDNN (not silently
         # fall back to MATH), otherwise the cuDNN bf16 path and its fully-masked guard go untested.
-        # Under ORT_TEST_REQUIRE_CUDNN_SDPA=1 (CI gate on a known-good GPU) the assertion is
+        # Under ORT_TEST_REQUIRE_CUDNN_SDPA=1 (opt-in, manual/local today — see require_cudnn_sdpa) the assertion is
         # non-skippable so a tier regression fails loudly instead of hiding as an all-green skip.
         if require_cudnn_sdpa() or cudnn_decode_supported(q_heads, kv_heads, _CUDNN_DECODE_HEAD_SIZE):
             self.assertEqual(
@@ -1170,14 +1223,122 @@ class TestTensorScatterAttentionCudnnSdpaDecode(unittest.TestCase):
         numpy.testing.assert_array_equal(present_v, ref_present_v)
 
 
+# Auto-enable (default) dispatch cases: no explicit sdpa_kernel provider option, so
+# AttentionKernelOptions::has_explicit_kernel_selection_ stays false and
+# AllowCudnnFlashAttentionAuto() can take effect (the kernel auto-prefers cuDNN on SM>=90).
+# A representative fp16 subset of _CUDNN_DECODE_CASES is enough: this arm is about the *dispatch
+# path*, not re-covering the whole shape matrix (already covered by the forced-kernel arm above).
+_CUDNN_DECODE_AUTO_CASE_LABELS = ("mha_batch1", "gqa_fully_masked_b0")
+
+# Compute capability at/above which the kernel auto-prefers cuDNN
+# (attention.cc: auto_enable_cudnn_flash_attention_ && device_prop.major >= 9).
+_CUDNN_AUTO_ENABLE_MIN_COMPUTE_CAPABILITY = 90
+
+
+def cudnn_decode_auto_test_cases():
+    """Auto-dispatch decode cases (fp16, q_seq==1, external KV cache), for is_causal in {0, 1}."""
+    selected = [case for case in _CUDNN_DECODE_CASES if case[-1] in _CUDNN_DECODE_AUTO_CASE_LABELS]
+    assert len(selected) == len(_CUDNN_DECODE_AUTO_CASE_LABELS), "auto-dispatch case labels drifted from cases"
+    for is_causal in (0, 1):
+        causal_str = "causal" if is_causal else "noncausal"
+        for batch, q_seq, q_heads, kv_heads, scatter_pos, seqlens, label in selected:
+            name = f"b{batch}_qh{q_heads}_kvh{kv_heads}_h{_CUDNN_DECODE_HEAD_SIZE}_{causal_str}_{label}_auto"
+            yield (name, batch, q_seq, q_heads, kv_heads, scatter_pos, seqlens, is_causal)
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping tests.")
+class TestTensorScatterAttentionCudnnSdpaDecodeAuto(unittest.TestCase):
+    """Exercise the DEFAULT (auto-enable) dispatch path — no explicit sdpa_kernel selection.
+
+    Every other cuDNN decode test passes provider_options={"sdpa_kernel": ...}, which sets
+    AttentionKernelOptions::has_explicit_kernel_selection_ and therefore makes
+    AllowCudnnFlashAttentionAuto() return false. That leaves the auto-enable path — the one that
+    actually runs in production on Hopper+ when nothing is configured — untested. These tests omit
+    provider_options entirely so the real default cascade (cuDNN -> Flash -> MEA -> Unfused) decides.
+
+    Assertions:
+      * Always: numeric parity with the reference. Every tier is spec-equivalent, so this must hold
+        no matter which one the cascade picked (SM<90 runners fall through to Flash/MEA/Unfused).
+      * On SM>=90 (where auto-enable can fire) and when the build/machine really does dispatch the
+        tier: assert the selected tier is CUDNN_FLASH_ATTENTION, i.e. the auto path is wired up.
+
+    Note the strict assertion also requires SM>=90, not just ORT_TEST_REQUIRE_CUDNN_SDPA=1: that env
+    gate marks a GPU where the *forced* cuDNN path is known good (true from SM80), but auto-enable
+    is SM>=90 only, so enforcing it on an SM80 CI leg would false-fail.
+    """
+
+    @parameterized.expand(cudnn_decode_auto_test_cases())
+    def test_tensorscatter_attention_cudnn_decode_auto_fp16(
+        self,
+        name,
+        batch,
+        q_seq,
+        q_heads,
+        kv_heads,
+        scatter_pos,
+        seqlens,
+        is_causal,
+    ):
+        def run():
+            # No provider_options: leave kernel selection entirely to the default cascade.
+            return run_tensorscatter_attention(
+                batch_size=batch,
+                total_kv_seq_len=_CUDNN_DECODE_TOTAL_KV,
+                q_seq_len=q_seq,
+                q_num_heads=q_heads,
+                kv_num_heads=kv_heads,
+                head_size=_CUDNN_DECODE_HEAD_SIZE,
+                nonpad_seqlens=seqlens,
+                scatter_positions=scatter_pos,
+                ep="CUDAExecutionProvider",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                is_causal=is_causal,
+            )
+
+        # Clear any ambient ORT_ENABLE_CUDNN_FLASH_ATTENTION for the duration of the run. The
+        # strict-probe helpers below (require_cudnn_sdpa / cudnn_decode_supported) force cuDNN via
+        # an explicit sdpa_kernel provider option and therefore ignore this env var, but the run
+        # under test omits provider_options and DOES honor it (attention_kernel_options.cc: an
+        # explicit "0" disables the auto path even on SM90+). Without this scoping, a shell with
+        # ORT_ENABLE_CUDNN_FLASH_ATTENTION=0 would make the probe say "cuDNN available" while the
+        # legitimate auto-dispatch picks Flash, failing the assertion spuriously.
+        previous_cudnn_env = os.environ.get("ORT_ENABLE_CUDNN_FLASH_ATTENTION")
+        os.environ.pop("ORT_ENABLE_CUDNN_FLASH_ATTENTION", None)
+        try:
+            (output, ref_output, present_k, present_v, ref_present_k, ref_present_v), sdpa_kernel = (
+                _run_capturing_sdpa_kernel(run)
+            )
+        finally:
+            if previous_cudnn_env is not None:
+                os.environ["ORT_ENABLE_CUDNN_FLASH_ATTENTION"] = previous_cudnn_env
+
+        if get_compute_capability() >= _CUDNN_AUTO_ENABLE_MIN_COMPUTE_CAPABILITY and (
+            require_cudnn_sdpa() or cudnn_decode_supported(q_heads, kv_heads, _CUDNN_DECODE_HEAD_SIZE)
+        ):
+            self.assertEqual(
+                "CUDNN_FLASH_ATTENTION",
+                sdpa_kernel,
+                "Expected the auto-enable path to select the cuDNN SDPA decode tier on SM>=90 "
+                f"with no explicit sdpa_kernel, got {sdpa_kernel}",
+            )
+
+        # Spec-equivalence holds for every tier, so parity is asserted unconditionally.
+        self.assertFalse(numpy.isnan(output).any(), "Default-dispatch decode produced NaN output")
+        numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp16"], atol=atol["fp16"])
+        numpy.testing.assert_array_equal(present_k, ref_present_k)
+        numpy.testing.assert_array_equal(present_v, ref_present_v)
+
+
 class TestTensorScatterAttentionCudnnSdpaDecodeCanary(unittest.TestCase):
     """Canary that fails loudly if the cuDNN SDPA decode tier stops being dispatched.
 
     cudnn_decode_supported() gates every decode test by OBSERVING dispatch, which is precise but has
     a failure mode: if the tier silently regressed (stopped selecting cuDNN), the observation would
     return False and every decode test would skip green — hiding the regression as all-green skips.
-    This canary closes that hole. On the GPU CI leg the operator sets ORT_TEST_REQUIRE_CUDNN_SDPA=1
-    on a known-good GPU, and then a MATH fallback / non-dispatch on the minimal known-good config
+    This canary closes that hole. When ORT_TEST_REQUIRE_CUDNN_SDPA=1 is set (opt-in; intended for a
+    known-good GPU CI leg once one exists — no pipeline exports it today, so this is manual/local
+    only, see require_cudnn_sdpa), a MATH fallback / non-dispatch on the minimal known-good config
     FAILS loudly instead of skipping. On dev boxes or unsupported cuDNN (env unset) it falls back to
     the normal cudnn_decode_supported() skip guard so it never false-alarms.
     """
@@ -1225,10 +1386,26 @@ class TestTensorScatterAttentionCudnnSdpaDecodeCanary(unittest.TestCase):
 # tier, then mutating nonpad_kv_seqlen in place and replaying: the output must track the reference
 # recomputed for the mutated length.
 #
-# CUDA EP captures the graph on Run 3 (min_num_runs_before_cuda_graph_capture_ == 2), so at least
-# three Runs are driven before the mutate/replay phase.
+# CUDA EP allows capture once min_num_runs_before_cuda_graph_capture_ (== 2) regular Runs have
+# happened, so at least three Runs are driven before the mutate/replay phase. The Run index at
+# which capture actually engages is an implementation detail (this build was observed beginning
+# capture on the very first Run), so the capture-engagement assertion scans the ORT log of every
+# warmup Run instead of a single expected Run.
 _CUDNN_DECODE_CAPTURE_WARMUP_AND_CAPTURE_RUNS = 3
 _CUDNN_DECODE_CAPTURE_REPLAY_RUNS = 2
+
+# Log line emitted by CUDAExecutionProvider::OnRunStart (cuda_execution_provider.cc) when it begins
+# capturing. It is the only capture-engagement signal reachable from Python, and it needs INFO
+# severity (logging::Severity::kINFO == 1) plus fd-2 capture (the default CLogSink writes std::clog).
+_CUDA_GRAPH_CAPTURE_LOG = "Capturing the cuda graph for this model"
+_ORT_LOG_SEVERITY_INFO = 1
+
+# Every ORT log line includes its session's logid (ostream_sink.cc: "[severity:category:logger_id,
+# location] message"), so a unique logid lets the assertion below require BOTH the capture message
+# AND this test's own logid on the SAME line. fd 2 is process-global: without this, a concurrently
+# running session (e.g. a parallel test worker) logging the identical capture message during the
+# redirected window would satisfy a bare substring match for the wrong session.
+_CUDA_GRAPH_CAPTURE_TEST_LOGID = "test_cudnn_decode_cuda_graph_capture_replay"
 
 
 def _make_cudnn_decode_capture_data(batch, total_kv, q_heads, kv_heads, head_size, scatter_positions, seed=7):
@@ -1298,6 +1475,14 @@ class TestTensorScatterAttentionCudnnSdpaDecodeCudaGraph(unittest.TestCase):
     On cuDNN-capable platforms (cudnn_decode_supported) the test asserts routing landed on
     CUDNN_FLASH_ATTENTION so a MATH fallback cannot silently pass this acceptance bar. On other
     platforms the capturability + mutate/replay invariant is still validated on the fallback tier.
+
+    Capture engagement is VERIFIED, not assumed: the session runs at INFO severity and the test
+    asserts the CUDA EP's "Capturing the cuda graph for this model" log line (emitted from
+    CUDAExecutionProvider::OnRunStart) appears on the native stderr fd during the warmup/capture
+    Runs. Without that check, an ORT build that declined to capture would still pass every
+    assertion below (the mutate-and-replay check would degrade to "eager Runs read the current
+    device buffer", which is trivially true) — a false green on the exact regression that closed
+    issue #29689.
     """
 
     def test_cudnn_decode_cuda_graph_capture_replay(self):
@@ -1349,10 +1534,16 @@ class TestTensorScatterAttentionCudnnSdpaDecodeCudaGraph(unittest.TestCase):
         # the env var must be set BEFORE the session is built (mirrors _run_capturing_sdpa_kernel).
         previous = os.environ.get("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO")
         os.environ["ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO"] = "1"
+        # INFO severity is required to surface the CUDA EP's capture log line, which is the only
+        # signal exposed to Python that graph capture actually engaged.
+        session_options = SessionOptions()
+        session_options.log_severity_level = _ORT_LOG_SEVERITY_INFO
+        session_options.logid = _CUDA_GRAPH_CAPTURE_TEST_LOGID
+        capture_log_chunks = []
         try:
             session = InferenceSession(
                 model_bytes,
-                SessionOptions(),
+                session_options,
                 providers=[("CUDAExecutionProvider", provider_options)],
             )
 
@@ -1379,12 +1570,18 @@ class TestTensorScatterAttentionCudnnSdpaDecodeCudaGraph(unittest.TestCase):
             io_binding.bind_ortvalue_output("updated_key_cache", input_ortvalues["key_cache"])
             io_binding.bind_ortvalue_output("updated_value_cache", input_ortvalues["value_cache"])
 
-            # First Run: capture the dispatched tier from the native debug-info stdout.
-            with _CaptureStdout() as captured:
+            # First Run: capture the dispatched tier from the native debug-info stdout (fd 1) and,
+            # simultaneously, the ORT log stream on stderr (fd 2) where the CUDA EP announces graph
+            # capture. Both fds are redirected independently, so nesting is safe.
+            with (
+                _CaptureNativeFd(_STDERR_FD) as captured_log,
+                _CaptureNativeFd(_STDOUT_FD) as captured,
+            ):
                 io_binding.synchronize_inputs()
                 session.run_with_iobinding(io_binding)
                 io_binding.synchronize_outputs()
-            sdpa_kernel = _parse_sdpa_kernel(captured.output.decode(errors="replace"))
+            capture_log_chunks.append(captured_log.text)
+            sdpa_kernel = _parse_sdpa_kernel(captured.text)
         finally:
             if previous is None:
                 os.environ.pop("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", None)
@@ -1404,14 +1601,43 @@ class TestTensorScatterAttentionCudnnSdpaDecodeCudaGraph(unittest.TestCase):
             self.assertTrue(numpy.isfinite(actual).all(), f"{context}: produced non-finite output")
             numpy.testing.assert_allclose(actual, expected, rtol=rtol["fp16"], atol=atol["fp16"], err_msg=context)
 
-        # Validate the first (already-executed) Run, then drive the remaining Runs to force capture
-        # (capture begins on Run 3). All use the initial nonpad, so all must match reference_initial.
+        # Validate the first (already-executed) Run, then drive the remaining warmup Runs so capture
+        # is guaranteed to have engaged. All use the initial nonpad, so all must match
+        # reference_initial.
         assert_output(reference_initial, "CUDA-graph run 0 (pre-capture)")
         for run_index in range(1, _CUDNN_DECODE_CAPTURE_WARMUP_AND_CAPTURE_RUNS):
-            io_binding.synchronize_inputs()
-            session.run_with_iobinding(io_binding)
-            io_binding.synchronize_outputs()
+            with _CaptureNativeFd(_STDERR_FD) as captured_log:
+                io_binding.synchronize_inputs()
+                session.run_with_iobinding(io_binding)
+                io_binding.synchronize_outputs()
+            capture_log_chunks.append(captured_log.text)
             assert_output(reference_initial, f"CUDA-graph run {run_index}")
+
+        # Prove CUDA-graph capture actually engaged. Otherwise the mutate/replay check below would
+        # degrade to "eager Runs read the current device buffer" and pass green even if ORT declined
+        # to capture, leaving the #29689 regression unverified. The log line is emitted from
+        # CUDAExecutionProvider::OnRunStart at INFO severity; every Run up to and including the
+        # capture Run is scanned so the assertion does not depend on which Run index captures.
+        #
+        # Require the capture message and this test's own session logid on the SAME line (not just
+        # the message alone): fd 2 is a process-global descriptor, so a bare substring match could
+        # false-pass on a capture line logged by an unrelated concurrently-running session (e.g.
+        # under parallel test execution). The logid anchors the match to this test's own session
+        # (ostream_sink.cc formats each line as "[severity:category:logger_id, location] message").
+        combined_log = "".join(capture_log_chunks)
+        capture_line_pattern = re.compile(
+            rf"^.*{re.escape(_CUDA_GRAPH_CAPTURE_TEST_LOGID)}.*{re.escape(_CUDA_GRAPH_CAPTURE_LOG)}.*$",
+            re.MULTILINE,
+        )
+        self.assertRegex(
+            combined_log,
+            capture_line_pattern,
+            "CUDA-graph capture never engaged for this test's own session: no captured stderr line "
+            f"during the first {_CUDNN_DECODE_CAPTURE_WARMUP_AND_CAPTURE_RUNS} Runs contains both "
+            f"this session's logid ('{_CUDA_GRAPH_CAPTURE_TEST_LOGID}') and "
+            f"'{_CUDA_GRAPH_CAPTURE_LOG}', so the replay assertions below would not actually "
+            "exercise a captured graph.",
+        )
 
         # Mutate the device-resident valid length in place and replay. The captured graph must
         # re-read nonpad_kv_seqlen from the device buffer each replay, so the output must now track

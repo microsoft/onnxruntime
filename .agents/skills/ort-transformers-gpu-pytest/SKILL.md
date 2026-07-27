@@ -144,11 +144,16 @@ Gating decode tests by observed dispatch has a failure mode: if the tier silentl
 regresses (stops selecting cuDNN), the observation returns "not dispatched" and every
 decode test **skips green**, hiding the regression as all-green skips.
 
-Close the hole with an env-gated canary. On a known-good GPU CI leg the operator sets
-`ORT_TEST_REQUIRE_CUDNN_SDPA=1`; when set, the dispatch assertion becomes
-**non-skippable** — a `MATH` fallback / non-dispatch on the minimal known-good config
-**FAILS LOUD** instead of skipping. When unset (dev boxes, unsupported cuDNN) it falls
-back to the normal skip guard so it never false-alarms.
+Close the hole with an env-gated canary: `ORT_TEST_REQUIRE_CUDNN_SDPA=1`. When set, the
+dispatch assertion becomes **non-skippable** — a `MATH` fallback / non-dispatch on the
+minimal known-good config **FAILS LOUD** instead of skipping. When unset (dev boxes,
+unsupported cuDNN) it falls back to the normal skip guard so it never false-alarms.
+
+The variable is *intended* for an operator to export on a known-good GPU CI leg once one
+exists. Note that today no ONNX Runtime pipeline definition exports it (there is no
+Hopper+ GPU CI leg), so it has no effect in this project's CI and only matters for
+manual/local runs where a developer sets it explicitly — don't describe it in test
+docstrings as an enforcement that CI already applies.
 
 ```python
 def require_cudnn_sdpa():

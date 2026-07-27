@@ -573,6 +573,29 @@ Status Attention<T>::RunFlashAttention(
 // CUDA-graph safety: no host read of valid length; the converter is a device kernel and the
 // cuDNN plan cache is keyed on capacity (stable across decode steps). The plan must be built
 // (warmup) before cudaStreamBeginCapture — a hard invariant, matching the existing GQA flow.
+//
+// Why that invariant holds today (state it explicitly, because it is load-bearing and easy to
+// break accidentally): BOTH sides of it are per-thread.
+//   * The cuDNN execution-plan cache is thread_local
+//     (contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.cc: `thread_local ... mha_graph_cache`).
+//   * ORT's pre-capture run counter lives in CUDAExecutionProvider::PerThreadContext
+//     (`graph_id_to_run_count_` vs `min_num_runs_before_cuda_graph_capture_`), which is likewise
+//     thread-local state.
+// So a Run arriving on a fresh thread restarts ORT's warmup count AND repopulates the plan cache
+// on that same thread: the warmup Run(s) and the eventual capture Run always land on the same
+// thread, guaranteeing the plan is already built (heuristics/autotuning, which may synchronize)
+// by the time cudaStreamBeginCapture runs. A cold plan build can therefore never land inside an
+// active capture.
+//
+// This breaks SILENTLY if the two sides' storage scopes stop matching — specifically, if the
+// capture run counter is hoisted out of PerThreadContext (made global/shared) while the cuDNN plan
+// cache remains thread_local. Then a warmup on one thread could satisfy the (now-shared) counter
+// while the capture Run on another thread still has a cold, never-warmed thread_local plan cache,
+// hitting a cold plan build inside the capture and reintroducing the #29689 class of failure with
+// no test in this PR catching it. (Making the plan cache itself global/shared, by contrast, would
+// not break this invariant — it would make the warmed plan visible across threads too. The unsafe
+// direction is specifically the counter becoming shared/global while the plan cache stays
+// thread_local.) Re-validate this comment if you touch either side's storage scope.
 template <typename T>
 Status Attention<T>::RunCudnnSdpaAttention(
     OpKernelContext* context,
@@ -1474,7 +1497,7 @@ Status Attention<T>::RunUnfusedAttention(
 // ============================================================================
 // ComputeInternal: Dispatch to appropriate attention kernel
 // ============================================================================
-// Dispatch cascade: Flash → MEA (Memory Efficient) → Unified Unfused Attention.
+// Dispatch cascade: cuDNN SDPA → Flash → MEA (Memory Efficient) → Unified Unfused Attention.
 // The unified unfused kernel handles both MHA (num_heads == kv_num_heads) and
 // GQA (num_heads != kv_num_heads) via a reshape-Q trick (no K/V head replication).
 // MEA uses head expansion via LaunchUngroup (fp16/bf16 only) for GQA.
@@ -1520,15 +1543,19 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const bool is_gqa = parameters.kv_num_heads != parameters.q_num_heads;
 
   // === KERNEL SELECTION CASCADE ===
-  // Priority: flash attention > memory efficient attention > unfused attention
+  // Priority: cuDNN SDPA > flash attention > memory efficient attention > unfused attention
   //
   // 4D BNSH handling per kernel:
+  //   cuDNN: Q is transposed BNSH→BSNH and K/V are passed as BNSH (mixed
+  //          Q_K_V_BSNH_BNSH_BNSH layout); the output is transposed back BSNH→BNSH.
   //   Flash: strictly requires BSNH — Q is transposed BNSH→BSNH before calling mha_fwd*.
   //          K/V passed as BNSH to mha_fwd_kvcache (it handles both layouts).
   //   MEA:   accepts both BSNH and BNSH natively via is_kv_bsnh flag. Q transposed to BSNH.
   //   Unfused: accepts both BSNH and BNSH (transposes if needed).
   //
   // nonpad_kv_seqlen + attn_mask routing:
+  //   cuDNN: handles nonpad_kv_seqlen (per-batch valid KV length) but not attn_mask — the
+  //          Phase-1 gate below requires attn_mask == nullptr, so the combo never reaches it.
   //   Flash: cannot handle this combo (no bias param when seqlens_k is used) → excluded.
   //   MEA:   supports both (custom_right_padding for seqlens + additive attn_bias for mask).
   //   Unfused: nonpad → seqlens_k; mask → attention_bias; both handled independently in softmax kernel.
@@ -1554,7 +1581,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   };
 
-  // softmax_precision: All CUDA backends (Flash, MEA, Unfused) compute softmax in
+  // softmax_precision: All CUDA backends (cuDNN, Flash, MEA, Unfused) compute softmax in
   // FP32 internally (Flash/MEA via tile-based FP32 accumulators, Unfused via FP32
   // softmax kernel). softmax_precision=1 (FP32) is inherently satisfied;
   // softmax_precision=0 (default) is also fine since higher precision is always
