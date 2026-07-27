@@ -2208,6 +2208,11 @@ def has_xqa():
     return has_cuda_device(80)
 
 
+def has_fp8_xqa():
+    # FP8 XQA kernels require Hopper (SM 8.9) or newer.
+    return has_cuda_device(89)
+
+
 rtol = {
     "fp16": 5e-3,
     "bf16": 5e-2,
@@ -3059,7 +3064,7 @@ def gqa_xqa_quantized_sliding_window_test_cases():
     #   past <= window -> the window spans the whole cache (parity with global attention).
     #   past + 1 == window -> the exact guard boundary (cacheSeqLen == slidingWinSize).
     kv_cache_types = ["int8"]
-    if has_fp8_kv_cache:
+    if has_fp8_kv_cache and has_fp8_xqa():
         kv_cache_types.append("fp8")
     for kv_cache_type in kv_cache_types:
         for torch_type, ort_type in [(torch.float16, TensorProto.FLOAT16), (torch.bfloat16, TensorProto.BFLOAT16)]:
