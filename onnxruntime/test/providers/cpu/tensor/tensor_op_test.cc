@@ -5,6 +5,9 @@
 
 #include "gtest/gtest.h"
 #include "core/providers/cpu/tensor/reshape_helper.h"
+#ifdef USE_WEBGPU
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#endif
 #include "test/providers/provider_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -82,6 +85,22 @@ TEST(TensorOpTest, ReshapeWithInitializer) {
   test.AddOutput<float>("reshaped", {1, 3, 2}, std::vector<float>(6, 1.0f));
   test.Run();
 }
+
+#ifdef USE_WEBGPU
+TEST(TensorOpTest, Reshape_int64_webgpu) {
+  OpTester test("Reshape", 25);
+
+  test.AddInput<int64_t>("data", {2, 3}, {1, 2, 3, 4, 5, 6});
+  test.AddInput<int64_t>("shape", {3}, {3, 1, 2});
+  test.AddOutput<int64_t>("reshaped", {3, 1, 2}, {1, 2, 3, 4, 5, 6});
+
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+#endif
 
 TEST(TensorOpTest, Reshape_WithOutAllowZero) {
   OpTester test("Reshape", 14);

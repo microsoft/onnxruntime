@@ -141,6 +141,11 @@ class QMoE final : public CudaKernel, public MoEBase {
   // dequant path for unsupported shapes (prefill / large batch).
   bool enable_fp4_gemv_ = false;
   bool enable_fp4_cutlass_gemm_ = false;
+  // Native block-scaled CUTLASS FP4xFP4 grouped GEMM for NVFP4 (e2m1 weight + e2m1 activation,
+  // block size 16, E4M3 block scales). Blackwell SM120+. When enabled, prefill routes through the
+  // native FP4xFP4 runner (m_moe_runner) and decode/oversized shapes fall back to the fused GEMV
+  // and the dense A16 runner respectively, mirroring the MXFP4 (enable_fp4_cutlass_gemm_) split.
+  bool enable_nvfp4_cutlass_gemm_ = false;
   // Default-on (set ORT_FP4_SM80_GEMM=0 to disable) port of the INT4 SM80 fused-dequant grouped
   // GEMM to MXFP4 (wfp4a16: e2m1 weight + FP16/BF16 activation). On H200 the native SM90
   // TMA FP4 path is ~50x slower than vLLM at prefill; routing prefill through the Ampere/SM80
