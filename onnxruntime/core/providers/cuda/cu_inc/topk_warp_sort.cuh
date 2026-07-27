@@ -52,6 +52,40 @@ __device__ __forceinline__ int LinearThreadIdInBlock() {
   return threadIdx.x + blockDim.x * (threadIdx.y + blockDim.y * threadIdx.z);
 }
 
+// Softmax / top-k score helpers shared by the MoE routing kernels. They live here (rather than in
+// one of the MoE translation units) because two libraries need bit-identical results: the standalone
+// SoftmaxTopK kernels in contrib_ops/cuda/moe/qmoe_kernels.cu, and the fused routing prologue in
+// contrib_ops/cuda/llm/moe_gemm/moe_kernels.cu. Any divergence would silently change expert scales.
+constexpr float kTopKNormalizeEpsilon = 1e-6f;
+
+__device__ __forceinline__ float SoftmaxScale(float logit, float max_val, float inv_sum) {
+  return (inv_sum > 0.0f) ? expf(logit - max_val) * inv_sum : 0.0f;
+}
+
+__device__ __forceinline__ float SafeInvSum(float sum) {
+  return (sum > 0.0f) ? (1.0f / sum) : 0.0f;
+}
+
+__device__ __forceinline__ float TopKNormalizeDenom(bool normalize_scales, float scale_sum) {
+  return (normalize_scales && scale_sum > kTopKNormalizeEpsilon) ? scale_sum : 1.0f;
+}
+
+__device__ __forceinline__ float WarpReduceMax(float value) {
+#pragma unroll
+  for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
+    value = fmaxf(value, __shfl_xor_sync(0xFFFFFFFF, value, offset));
+  }
+  return value;
+}
+
+__device__ __forceinline__ float WarpReduceSum(float value) {
+#pragma unroll
+  for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
+    value += __shfl_xor_sync(0xFFFFFFFF, value, offset);
+  }
+  return value;
+}
+
 /**
  * @brief In-register, warp-wide bitonic sort of kWarpSize (32) (score, index)
  *        pairs, producing a descending order.
