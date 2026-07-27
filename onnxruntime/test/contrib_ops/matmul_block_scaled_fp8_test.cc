@@ -7,6 +7,12 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/unittest_util/conversion.h"
 
+#if defined(USE_CUDA)
+// CUDA_VERSION comes from cuda.h. Without this include the guard below silently
+// evaluates to false and every test in this file is compiled out.
+#include <cuda.h>
+#endif
+
 namespace onnxruntime::test {
 
 #if defined(USE_CUDA) && !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
@@ -187,6 +193,52 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvW8A8ActivationScaleBf16) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Covers the M == 1 wide-tile GEMV dispatch, where one warp computes several output columns
+// (ColsPerWarp 2 for N >= 4096 and 4 for N >= 8192) and pre-issues loads. N is deliberately not a
+// multiple of the block's column tile so the per-column bounds predication is exercised, and the
+// weights vary per row so a mis-mapped column cannot pass by accident.
+TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvDecodeWideTilesFp16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp8Weight.";
+  }
+
+  // n = 4098 selects ColsPerWarp 2, n = 8194 selects ColsPerWarp 4; both leave a ragged tail.
+  for (const int64_t n : {4098, 8194}) {
+    constexpr int64_t m = 1;
+    constexpr int64_t k = 64;  // K % 16 == 0 -> GEMV path; two 32-element K blocks
+    constexpr int64_t block_size = 32;
+    constexpr int64_t k_blocks = k / block_size;
+
+    // Row r weight value cycles through {1, 2, -1, -2} so each column has a distinct expectation.
+    static const float kRowValues[] = {1.0f, 2.0f, -1.0f, -2.0f};
+    std::vector<float> row_value(static_cast<size_t>(n));
+    for (int64_t r = 0; r < n; ++r) {
+      row_value[static_cast<size_t>(r)] = kRowValues[r % 4];
+    }
+    std::vector<Float8E4M3FN> b = MakeConstRowWeight(row_value, k);
+    std::vector<float> b_scale(static_cast<size_t>(n * k_blocks), 1.0f);
+
+    // A = 1.0 everywhere -> sum_k A = k, so Y[0, col] = row_value[col] * k.
+    std::vector<float> a(static_cast<size_t>(m * k), 1.0f);
+    std::vector<float> expected(static_cast<size_t>(n));
+    for (int64_t col = 0; col < n; ++col) {
+      expected[static_cast<size_t>(col)] = row_value[static_cast<size_t>(col)] * static_cast<float>(k);
+    }
+
+    OpTester test("MatMulBlockQuantizedFp8Weight", 1, onnxruntime::kMSDomain);
+    test.AddAttribute<int64_t>("block_size", block_size);
+    test.AddInput<MLFloat16>("A", {m, k}, FloatsToMLFloat16s(a));
+    test.AddInput<Float8E4M3FN>("B", {n, k}, b);
+    test.AddInput<float>("b_scale", {n, k_blocks}, b_scale);
+    test.AddOutput<MLFloat16>("Y", {m, n}, FloatsToMLFloat16s(expected));
+    test.SetOutputTolerance(0.5f);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
 }
 
 #endif  // USE_CUDA && !DISABLE_FLOAT8_TYPES && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
