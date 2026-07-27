@@ -185,20 +185,11 @@ endif()
 #1. if ONNX_CUSTOM_PROTOC_EXECUTABLE is set, build Protobuf from source, except protoc.exe. This mode is mainly
 #   for cross-compiling
 #2. if ONNX_CUSTOM_PROTOC_EXECUTABLE is not set, Compile everything(including protoc) from source code.
-if(Patch_FOUND)
-  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_cmake.patch &&
-                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_android_log.patch &&
-                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_s390x.patch)
-else()
- set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND "")
-endif()
-
 #Protobuf depends on absl and utf8_range
 onnxruntime_fetchcontent_declare(
   Protobuf
   URL ${DEP_URL_protobuf}
   URL_HASH SHA1=${DEP_SHA1_protobuf}
-  PATCH_COMMAND ${ONNXRUNTIME_PROTOBUF_PATCH_COMMAND}
   EXCLUDE_FROM_ALL
   FIND_PACKAGE_ARGS NAMES Protobuf protobuf
 )
