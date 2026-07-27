@@ -1227,7 +1227,7 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ErrorOutputModelExists_AutoGenOutp
       ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_FAIL);
       ASSERT_THAT(excpt.what(),
                   testing::HasSubstr("exists already. "
-                                     "Please remove the EP context model if you want to re-generate it."));
+                                     "Please remove the output model file if you want to re-generate it."));
 
       ASSERT_TRUE(std::filesystem::exists(expected_output_model_file));
       auto modify_time_2 = std::filesystem::last_write_time(expected_output_model_file);
