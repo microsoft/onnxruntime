@@ -192,7 +192,9 @@ class ShaderVariableHelper : public ShaderIndicesHelper {
   // \param indices_var: name of the indices variable ({varname}_indices_t).
   inline std::string GetByIndices(std::string_view indices_var) const;
 
-  // create a WGSL expression ({varname}_value_t) for getting data at the given offset.
+  // create a WGSL expression for getting data at the given offset.
+  // Normally returns a {varname}_value_t expression; for int64/uint64 with use_storage_type=true,
+  // returns the storage type (vec2<u32>) instead.
   // \param offset: a WGSL expression (u32) representing the offset.
   // \param use_storage_type: for int64/uint64, if true returns vec2<u32> (storage type).
   template <typename TOffset>
