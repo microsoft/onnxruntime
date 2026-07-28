@@ -156,11 +156,18 @@ Status DFTProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "let out_base = (outer * uniforms.output_length * uniforms.inner + within) * " << output_components_ << "u;\n";
 
   if (is_inverse_ && is_onesided_) {
-    // For IRFFT the spectrum is the Hermitian extension of the half-spectrum input.
-    const std::string conjugate_end = length_ % 2 == 0 ? "uniforms.signal_length - 1u" : "uniforms.signal_length";
+    // For IRFFT the spectrum is the Hermitian extension of the half-spectrum input, zero-padded or
+    // truncated when dft_length implies a different bin count than the input provides. The Nyquist
+    // bin is only exempt from mirroring when it is actually present.
+    const uint32_t half_spectrum = length_ / 2 + 1;
+    const std::string conjugate_end =
+        length_ % 2 == 0
+            ? "select(provided, provided - 1u, provided == " + std::to_string(half_spectrum) + "u)"
+            : "provided";
     shader.MainFunctionBody()
-        << "for (var i = local_idx; i < uniforms.signal_length; i += " << kDftWorkgroupSize << "u) {\n"
-        << "  smem[i] = " << read_sample("i") << ";\n"
+        << "let provided = min(uniforms.signal_length, " << half_spectrum << "u);\n"
+        << "for (var i = local_idx; i < " << length_ << "u; i += " << kDftWorkgroupSize << "u) {\n"
+        << "  if (i < provided) { smem[i] = " << read_sample("i") << "; } else { smem[i] = vec2<f32>(0.0); }\n"
         << "}\n"
         << "workgroupBarrier();\n"
         << "for (var k = local_idx + 1u; k < " << conjugate_end << "; k += " << kDftWorkgroupSize << "u) {\n"
@@ -221,12 +228,20 @@ Status DFTDirectProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "  return vec2<f32>(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);\n"
       << "}\n";
   if (is_inverse_ && is_onesided_) {
-    // For IRFFT the spectrum is the Hermitian extension of the half-spectrum input.
+    // For IRFFT the spectrum is the Hermitian extension of the half-spectrum input, zero-padded or
+    // truncated when dft_length implies a different bin count than the input provides. Reads must
+    // never pass `provided`, or they would land in the adjacent transform's data.
+    const uint32_t half_spectrum = length_ / 2 + 1;
     shader.AdditionalImplementation()
         << "fn spectrum(in_base: u32, k: u32) -> vec2<f32> {\n"
-        << "  if (k < uniforms.signal_length) { return " << read_sample("k") << "; }\n"
-        << "  let h = " << read_sample(std::to_string(length_) + "u - k") << ";\n"
-        << "  return vec2<f32>(h.x, -h.y);\n"
+        << "  let provided = min(uniforms.signal_length, " << half_spectrum << "u);\n"
+        << "  if (k < provided) { return " << read_sample("k") << "; }\n"
+        << "  let m = " << length_ << "u - k;\n"
+        << "  if (m < provided) {\n"
+        << "    let h = " << read_sample("m") << ";\n"
+        << "    return vec2<f32>(h.x, -h.y);\n"
+        << "  }\n"
+        << "  return vec2<f32>(0.0, 0.0);\n"
         << "}\n";
   } else {
     shader.AdditionalImplementation()

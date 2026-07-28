@@ -194,10 +194,15 @@ const createFftProgramInfo = (plan: DftPlan): ProgramInfo => {
 
     let load: string;
     if (inverse && onesided) {
-      const conjugateEnd = length % 2 === 0 ? 'uniforms.signalLength - 1u' : 'uniforms.signalLength';
+      // Zero-pad or truncate when dft_length implies a different bin count than the input provides;
+      // the Nyquist bin is only exempt from mirroring when it is actually present.
+      const halfSpectrum = Math.floor(length / 2) + 1;
+      const conjugateEnd =
+        length % 2 === 0 ? `select(provided, provided - 1u, provided == ${halfSpectrum}u)` : 'provided';
       load = `
-    for (var i = local_idx; i < uniforms.signalLength; i += ${WORKGROUP_SIZE}u) {
-      smem[i] = ${readSample('i')};
+    let provided = min(uniforms.signalLength, ${halfSpectrum}u);
+    for (var i = local_idx; i < ${length}u; i += ${WORKGROUP_SIZE}u) {
+      if (i < provided) { smem[i] = ${readSample('i')}; } else { smem[i] = vec2<f32>(0.0); }
     }
     workgroupBarrier();
     for (var k = local_idx + 1u; k < ${conjugateEnd}; k += ${WORKGROUP_SIZE}u) {
@@ -271,13 +276,20 @@ const createDirectDftProgramInfo = (plan: DftPlan): ProgramInfo => {
       return `vec2<f32>(${real}, ${imag})`;
     };
 
-    // For IRFFT the spectrum is the Hermitian extension of the half-spectrum input.
+    // For IRFFT the spectrum is the Hermitian extension of the half-spectrum input, zero-padded or
+    // truncated when dft_length implies a different bin count than the input provides. Reads must
+    // never pass `provided`, or they would land in the adjacent transform's data.
     const spectrum =
       inverse && onesided
         ? `fn spectrum(inBase: u32, k: u32) -> vec2<f32> {
-    if (k < uniforms.signalLength) { return ${readSample('k')}; }
-    let h = ${readSample(`${length}u - k`)};
-    return vec2<f32>(h.x, -h.y);
+    let provided = min(uniforms.signalLength, ${Math.floor(length / 2) + 1}u);
+    if (k < provided) { return ${readSample('k')}; }
+    let m = ${length}u - k;
+    if (m < provided) {
+      let h = ${readSample('m')};
+      return vec2<f32>(h.x, -h.y);
+    }
+    return vec2<f32>(0.0, 0.0);
   }`
         : `fn spectrum(inBase: u32, n: u32) -> vec2<f32> {
     if (n < uniforms.signalLength) { return ${readSample('n')}; }

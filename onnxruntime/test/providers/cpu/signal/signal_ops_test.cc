@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include <functional>
+#include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -632,6 +634,59 @@ TEST(SignalOpsTest, DFT17_Float16_radix2) { TestRadix2DFTFloat16(kMinOpsetVersio
 
 TEST(SignalOpsTest, DFT20_Float16_radix2) { TestRadix2DFTFloat16(kOpsetVersion20); }
 
+// dft_length can imply a different half-spectrum bin count (floor(dft_length/2) + 1) than the
+// IRFFT input provides; missing bins are treated as zero and extra bins are ignored. The CPU
+// kernel implements these semantics on its Bluestein path but not yet on its radix-2 path, so
+// radix-2 length cases exclude the CPU EP until that is fixed.
+static void TestIRFFTSpectrumLengthMismatchFloat(const vector<float>& input, int64_t input_bins,
+                                                 int64_t dft_length, const vector<float>& expected_output,
+                                                 int since_version, bool exclude_cpu) {
+  OpTester test("DFT", since_version);
+
+  test.AddInput<float>("input", {1, input_bins, 2}, input);
+  test.AddInput<int64_t>("dft_length", {}, {dft_length});
+  if (since_version == 20) {
+    test.AddInput<int64_t>("axis", {}, {1});
+  }
+  test.AddAttribute<int64_t>("onesided", static_cast<int64_t>(true));
+  test.AddAttribute<int64_t>("inverse", static_cast<int64_t>(true));
+  test.AddOutput<float>("output", {1, dft_length, 1}, expected_output);
+  test.SetOutputAbsErr("output", 0.001f);
+  std::unordered_set<std::string> excluded_providers{kDmlExecutionProvider};
+  if (exclude_cpu) {
+    excluded_providers.insert(kCpuExecutionProvider);
+  }
+  test.ConfigExcludeEps(excluded_providers);
+  test.RunWithConfig();
+}
+
+TEST(SignalOpsTest, DFT17_IRFFT_underprovided_spectrum_radix2) {
+  TestIRFFTSpectrumLengthMismatchFloat(
+      {1, 0, 2, 1, 3, -2}, 3, 8,
+      {1.375000f, 0.801777f, -0.875000f, -0.905330f, 0.375000f, 0.448223f, -0.375000f, 0.155330f},
+      kMinOpsetVersion, /*exclude_cpu=*/true);
+}
+
+TEST(SignalOpsTest, DFT20_IRFFT_underprovided_spectrum_radix2) {
+  TestIRFFTSpectrumLengthMismatchFloat(
+      {1, 0, 2, 1, 3, -2}, 3, 8,
+      {1.375000f, 0.801777f, -0.875000f, -0.905330f, 0.375000f, 0.448223f, -0.375000f, 0.155330f},
+      kOpsetVersion20, /*exclude_cpu=*/true);
+}
+
+TEST(SignalOpsTest, DFT20_IRFFT_underprovided_spectrum_prime) {
+  TestIRFFTSpectrumLengthMismatchFloat(
+      {1, 0, 2, 1, 3, -2}, 3, 7,
+      {1.571429f, 0.642126f, -1.283041f, -0.408290f, 0.733165f, -0.230072f, -0.025316f},
+      kOpsetVersion20, /*exclude_cpu=*/false);
+}
+
+TEST(SignalOpsTest, DFT20_IRFFT_overprovided_spectrum_radix2) {
+  TestIRFFTSpectrumLengthMismatchFloat(
+      {1, 0, 2, 1, 3, -2, 4, 0.5f, -1, 0, 5, 5, 6, -6}, 7, 8,
+      {2.250000f, 0.131282f, -0.875000f, -0.161612f, -0.750000f, 1.368718f, -0.625000f, -0.338388f},
+      kOpsetVersion20, /*exclude_cpu=*/true);
+}
 
 // Test 2D complex input (single 1D signal without batch dimension)
 static void TestDFT2DComplex(int since_version) {
