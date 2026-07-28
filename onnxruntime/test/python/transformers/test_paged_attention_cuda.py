@@ -56,7 +56,6 @@ class Config:
     # pre-existing parameterized test keeps its generated name and behavior.
     use_slot_mapping = False
     use_head_sink = False
-    smooth_softmax = False
     use_qk_norm = False
     qk_norm_epsilon = 1e-6
     # Quantized paged KV cache. "float16" keeps the cache unquantized; "int8" and "fp8" store the
@@ -64,7 +63,8 @@ class Config:
     kv_cache_type = "float16"
     k_quant_type = "NONE"
     v_quant_type = "NONE"
-    kv_cache_bit_width = 8
+    k_cache_bit_width = 8
+    v_cache_bit_width = 8
 
     def __init__(
         self,
@@ -181,7 +181,8 @@ def create_paged_attention_graph(
         {
             "k_quant_type": config.k_quant_type,
             "v_quant_type": config.v_quant_type,
-            "kv_cache_bit_width": config.kv_cache_bit_width,
+            "k_cache_bit_width": config.k_cache_bit_width,
+            "v_cache_bit_width": config.v_cache_bit_width,
         }
         if (has_k_scale or has_v_scale or config.kv_cache_type != "float16")
         else {}
@@ -214,7 +215,6 @@ def create_paged_attention_graph(
             local_window_size=local_window_size,
             do_rotary=config.rotary,
             rotary_interleaved=config.rotary_interleaved,
-            smooth_softmax=config.smooth_softmax,
             softcap=config.softcap,
             qk_norm_epsilon=config.qk_norm_epsilon,
             domain="com.microsoft",
@@ -524,7 +524,6 @@ def attention_ref(
     softcap=0.0,
     upcast=True,
     reorder_ops=False,
-    use_smooth_softmax=False,
     head_sink=None,
 ):
     """
@@ -577,14 +576,11 @@ def attention_ref(
         )
         scores.masked_fill_(local_mask, float("-inf"))
 
-    if use_smooth_softmax or head_sink is not None:
+    if head_sink is not None:
         # Append one extra logit per (batch, head, query) to the softmax denominator that
-        # contributes no value. head_sink is the learned logit; plain smooth_softmax uses 0.
+        # contributes no value. head_sink is the learned logit.
         b, n, s, _ = scores.shape
-        if head_sink is not None:
-            sink = head_sink.to(scores.dtype).reshape(1, n, 1, 1).expand(b, -1, s, -1)
-        else:
-            sink = torch.zeros(b, n, s, 1, dtype=scores.dtype, device=scores.device)
+        sink = head_sink.to(scores.dtype).reshape(1, n, 1, 1).expand(b, -1, s, -1)
         attention = torch.softmax(torch.cat([scores, sink], dim=-1), dim=-1)[..., :-1]
     else:
         attention = torch.softmax(scores, dim=-1)
@@ -875,7 +871,6 @@ def parity_check_paged_attention(
         causal=True,
         window_size=window_size,
         softcap=config.softcap,
-        use_smooth_softmax=config.smooth_softmax,
         head_sink=head_sink,
     )
     out_ref = out_ref.detach().cpu().numpy()
@@ -1076,7 +1071,7 @@ class TestPagedAttentionMEA(unittest.TestCase):
 
 class TestPagedAttentionFeatures(unittest.TestCase):
     """Coverage for the optional inputs and attributes added on top of the original schema:
-    slot_mapping, head_sink / smooth_softmax and QK-Norm, plus the block_size and batch_size
+    slot_mapping, head_sink and QK-Norm, plus the block_size and batch_size
     limits that were lifted at the same time."""
 
     def _config(self, **overrides):
@@ -1180,7 +1175,7 @@ class TestPagedAttentionFeatures(unittest.TestCase):
         numpy.testing.assert_array_equal(key_cache_out, key_cache_before)
         numpy.testing.assert_array_equal(value_cache_out, value_cache_before)
 
-    # ---- head_sink / smooth_softmax ----------------------------------------------------
+    # ---- head_sink ---------------------------------------------------------------------
 
     @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
     def test_head_sink(self):
@@ -1191,18 +1186,6 @@ class TestPagedAttentionFeatures(unittest.TestCase):
         # The LSE epilogue must compose with sliding window and softcap, both of which are already
         # baked into the log-sum-exp that FlashAttention returns.
         config = self._config(use_head_sink=True, local=True, softcap=50.0)
-        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
-
-    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
-    def test_smooth_softmax_without_head_sink(self):
-        parity_check_paged_attention(self._config(smooth_softmax=True), rtol=5e-3, atol=5e-3)
-
-    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
-    def test_smooth_softmax_short_sequences(self):
-        # With a sink logit of 0 the correction is 1 / (1 + exp(-lse)), which only moves the output
-        # appreciably when the softmax denominator is small. Short sequences (and the first rows of
-        # the causal mask) are where this feature actually bites.
-        config = self._config(sequence_length=4, total_sequence_length=16, smooth_softmax=True)
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
 
     @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
@@ -1561,14 +1544,14 @@ class TestPagedAttentionQuantizedCache(unittest.TestCase):
             self._run_minimal(config, k_scale=scale, v_scale=scale)
         self.assertIn("not quantized", str(ctx.exception))
 
-    def test_invalid_kv_cache_bit_width_is_rejected(self):
-        config = self._minimal_config(
-            kv_cache_type="int8", k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR", kv_cache_bit_width=4
-        )
+    @parameterized.expand([("key", "k_cache_bit_width"), ("value", "v_cache_bit_width")])
+    def test_invalid_cache_bit_width_is_rejected(self, _, attribute_name):
+        config = self._minimal_config(kv_cache_type="int8", k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR")
+        setattr(config, attribute_name, 4)
         scale = torch.ones(1, dtype=torch.float32, device="cuda")
         with self.assertRaises(Exception) as ctx:
             self._run_minimal(config, k_scale=scale, v_scale=scale)
-        self.assertIn("kv_cache_bit_width", str(ctx.exception))
+        self.assertIn(attribute_name, str(ctx.exception))
 
 
 @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available, skipping tests.")
@@ -1668,9 +1651,6 @@ class TestPagedAttentionPagedDecode(unittest.TestCase):
 
     def test_decode_head_sink_local_and_softcap(self):
         self._check_decode(self._config(use_head_sink=True, local=True, softcap=50.0))
-
-    def test_decode_smooth_softmax_without_head_sink(self):
-        self._check_decode(self._config(use_smooth_softmax=True))
 
     # ---- prologue interaction -----------------------------------------------------------
 

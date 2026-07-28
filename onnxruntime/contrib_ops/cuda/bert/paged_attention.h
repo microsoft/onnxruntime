@@ -28,13 +28,13 @@ class PagedAttention final : public CudaKernel {
   int local_window_size_;
   bool do_rotary_;
   bool rotary_interleaved_;
-  bool smooth_softmax_;
   float scale_;
   float softcap_;
   float qk_norm_epsilon_;
   KVQuantizationType k_quant_type_;
   KVQuantizationType v_quant_type_;
-  int kv_cache_bit_width_;
+  int k_cache_bit_width_;
+  int v_cache_bit_width_;
   bool disable_flash_attention_;
   bool disable_memory_efficient_attention_;
   bool disable_paged_decode_;

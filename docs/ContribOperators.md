@@ -2973,6 +2973,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain scalar scales to FP32.</dd>
 </dl>
 
+
 ### <a name="com.microsoft.MatMulBlockQuantizedFp8Weight"></a><a name="com.microsoft.matmulblockquantizedfp8weight">**com.microsoft.MatMulBlockQuantizedFp8Weight**</a>
 
   Weight-only block-scaled FP8 (E4M3) matrix multiplication.
@@ -4231,10 +4232,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>do_rotary</tt> : int</dt>
 <dd>Whether to use rotary position embedding. Default value is 0.</dd>
+<dt><tt>k_cache_bit_width</tt> : int</dt>
+<dd>Number of bits per stored key cache element. Must be 8 for an int8 or float8e4m3fn cache. Defaults to 8 for a quantized cache and 0 (unused) otherwise.</dd>
 <dt><tt>k_quant_type</tt> : string</dt>
 <dd>Quantization granularity of the key cache: 'NONE', 'PER_TENSOR' or 'PER_CHANNEL'. Must be non-'NONE' exactly when 'key_cache' has a quantized element type, and then 'k_scale' is required. Default value is 'NONE'.</dd>
-<dt><tt>kv_cache_bit_width</tt> : int</dt>
-<dd>Number of bits per stored KV cache element. Must be 8 for an int8 or float8e4m3fn cache. Defaults to 8 for a quantized cache and 0 (unused) otherwise.</dd>
 <dt><tt>kv_num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for k and v</dd>
 <dt><tt>local_window_size</tt> : int</dt>
@@ -4247,10 +4248,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
-<dt><tt>smooth_softmax</tt> : int</dt>
-<dd>Use a smooth factor in softmax, equivalent to an extra attention score of 0 that is not associated with any value. Default value is 0 (False). Implied when 'head_sink' is provided.</dd>
 <dt><tt>softcap</tt> : float</dt>
 <dd>Softcap value for attention weights. Default value is 0.</dd>
+<dt><tt>v_cache_bit_width</tt> : int</dt>
+<dd>Number of bits per stored value cache element. Must be 8 for an int8 or float8e4m3fn cache. Defaults to 8 for a quantized cache and 0 (unused) otherwise.</dd>
 <dt><tt>v_quant_type</tt> : string</dt>
 <dd>Quantization granularity of the value cache: 'NONE', 'PER_TENSOR' or 'PER_CHANNEL'. Must be non-'NONE' exactly when 'value_cache' has a quantized element type, and then 'v_scale' is required. Default value is 'NONE'.</dd>
 </dl>
@@ -4281,7 +4282,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>slot_mapping</tt> (optional) : S</dt>
 <dd>1D tensor with shape (num_tokens). For each query token, the flat slot index (block_id * block_size + offset_in_block) at which its key/value is written into the KV cache. A value of -1 skips the cache write for that token, which lets a scheduler suppress stores for prefix-cache hits or rejected speculative tokens. When absent, slots are derived from 'past_seqlens', 'cumulative_sequence_length' and 'block_table' as before. 'block_table' is still required, because it defines the read path.</dd>
 <dt><tt>head_sink</tt> (optional) : T</dt>
-<dd>1D tensor with shape (num_heads). Each head has a learnable sink logit that participates in the softmax denominator but contributes no value, so attention can 'do nothing'. Providing this input implies smooth_softmax.</dd>
+<dd>1D tensor with shape (num_heads). Each head has a learnable sink logit that participates in the softmax denominator but contributes no value, so attention can 'do nothing'.</dd>
 <dt><tt>q_norm_weight</tt> (optional) : T</dt>
 <dd>1D tensor with shape (head_size). RMSNorm gain applied to each query head before rotary embedding. Must be provided together with 'k_norm_weight'.</dd>
 <dt><tt>k_norm_weight</tt> (optional) : T</dt>

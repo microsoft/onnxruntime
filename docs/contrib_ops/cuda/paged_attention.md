@@ -17,7 +17,7 @@ Related: [gqa.md](gqa.md) (`com.microsoft::GroupQueryAttention`)
 - [3. Design Principles](#3-design-principles)
 - [4. Schema — The Compatible Contract](#4-schema--the-compatible-contract)
 - [5. Feature: `slot_mapping`](#5-feature-slot_mapping)
-- [6. Feature: Attention Sink (`head_sink`) and Smooth Softmax](#6-feature-attention-sink-head_sink-and-smooth-softmax)
+- [6. Feature: Attention Sink (`head_sink`)](#6-feature-attention-sink-head_sink)
 - [7. Feature: Fused QK-Norm](#7-feature-fused-qk-norm)
 - [8. Feature: Quantized Paged KV Cache](#8-feature-quantized-paged-kv-cache)
 - [9. Feature: Sliding Window Attention](#9-feature-sliding-window-attention)
@@ -111,7 +111,7 @@ Structural limits in the current implementation:
 4. **Fail at partition time, not run time.** No stub kernels that return `NOT_IMPLEMENTED`. An EP
    either registers `PagedAttention` or does not.
 5. **Prefer exact epilogues over new fused kernels** where an existing kernel already returns the
-   quantities needed (see the `head_sink` LSE rescale in [§6](#6-feature-attention-sink-head_sink-and-smooth-softmax)).
+  quantities needed (see the `head_sink` LSE rescale in [§6](#6-feature-attention-sink-head_sink)).
 
 ## 4. Schema — The Compatible Contract
 
@@ -138,7 +138,6 @@ new inputs and attributes are absent. For such a model:
 T_CACHE == T
 value_cache is present
 key and value are either both present or both absent
-qkv_format == "AUTO"
 kv_cache_layout == "SEPARATE"
 v_head_size == 0
 all quantization attributes select NONE
@@ -152,7 +151,7 @@ under a both-or-neither rule, and the seven attributes `num_heads`, `kv_num_head
 
 ### 4.3 Inputs
 
-Indices 0–9 are unchanged from the shipped schema. Indices 10–19 are new and optional. The order
+Indices 0–9 are unchanged from the shipped schema. Indices 10–18 are new and optional. The order
 matches the landing order in [§19](#19-phasing), so the schema grows monotonically per phase.
 
 | Idx | Name | Type | Shape | Status |
@@ -173,17 +172,16 @@ matches the landing order in [§19](#19-phasing), so the schema grows monotonica
 | 13 | `k_norm_weight` | `T` (opt) | `(head_size,)` | **new — §7** |
 | 14 | `k_scale` | `T_KV_SCALE` (opt) | `(1,)` or `(kv_num_heads, 1, head_size)` | **new — §8** |
 | 15 | `v_scale` | `T_KV_SCALE` (opt) | `(1,)` or `(kv_num_heads, 1, effective_v_head_size)` | **new — §8** |
-| 16 | `attention_metadata` | `S` (opt, **CPU**) | `(2,)` | **new — bounds hint only, §4.7** |
+| 16 | `attention_metadata` | `S` (opt, **CPU**) | `(2,)` | **new — trusted bounds only, §4.7** |
 | 17 | `query_positions` | `S` (opt) | `(token_count,)` | **new — §4.8** |
-| 18 | `alibi_slopes` | `T_KV_SCALE` (opt) | `(num_heads,)` | **new — §10.3** |
-| 19 | `attention_bias` | `T` (opt) | `(1 or num_heads, token_count, max_context_len)` | **new — §10** |
+| 18 | `attention_bias` | `T` (opt) | `(batch_size or 1, num_heads or 1, query_length_capacity, context_length_capacity)` | **new — §10** |
 
 `max_context_len` is the largest per-sequence total KV length in the batch, bounded above by
 `block_table.shape[1] * block_size`.
 
-`attention_bias` is deliberately last: it is a correctness fallback with `O(num_heads · token_count ·
-max_context_len)` memory that disqualifies every fused backend. `alibi_slopes` precedes it because it
-covers the common position-bias case and can stay on a fused backend (§10.3).
+`attention_bias` is deliberately last: it is a correctness fallback with potentially large memory
+cost that disqualifies every fused backend. The rank and broadcast dimensions match GQA; only the
+two sequence extents differ because PagedAttention is packed and ragged (§10).
 
 ### 4.4 Outputs
 
@@ -227,19 +225,23 @@ ops without translation.
 | `local_window_size` | INT | `-1` | existing — §9 |
 | `do_rotary` | INT | `0` | existing |
 | `rotary_interleaved` | INT | `0` | existing |
-| `smooth_softmax` | INT | `0` | **new — §6** |
 | `qk_norm_epsilon` | FLOAT | `1e-6` | **new — §7** |
 | `k_quant_type` | STRING | `"NONE"` | **new — §8**; `NONE` \| `PER_TENSOR` \| `PER_CHANNEL` |
 | `v_quant_type` | STRING | `"NONE"` | **new — §8**; same value set |
-| `kv_cache_bit_width` | INT | unset | **new — §8**; `8` for a quantized cache, unset otherwise |
+| `k_cache_bit_width` | INT | dtype-dependent | **new — §8**; `8` for a quantized K cache, `0` otherwise |
+| `v_cache_bit_width` | INT | dtype-dependent | **new — §8**; `8` for a quantized V cache, `0` otherwise |
 | `v_head_size` | INT | `0` | **new — §12**; `0` = `head_size`. Non-zero and `!= head_size` is legal **only** in `LATENT` |
 | `rotary_offset` | INT | `0` | **new — §12.5** |
 | `kv_cache_layout` | STRING | `"SEPARATE"` | **new — §12**; `SEPARATE` \| `LATENT` |
-| `qkv_format` | STRING | `"AUTO"` | **new — §4.6**; `AUTO` \| `Q_K_V` \| `QKV_PACKED` |
 | `qk_output` | INT | `0` | **new — §11**; `0` none, `1` pre-softmax, `2` post-softmax |
 
-`kv_cache_bit_width` carries only `8`; there is no `4` until a sub-byte cache exists (§21) and no
-`16`, because "unset" already means "not quantized".
+`k_cache_bit_width` and `v_cache_bit_width` are independent so future formats may use different
+precisions for K and V (for example, TurboQuant-style mixed-precision caches). Each uses `8` for
+quantized storage and accepts `0` or `16` as an unquantized spelling. There is no `4` until a
+sub-byte cache exists (§21). The current schema still binds both cache tensors to `T_CACHE`; a future
+format whose K and V tensors have different ONNX element types must additionally split that type
+constraint into `T_K_CACHE` and `T_V_CACHE`. Byte-backed sub-byte formats can differ in logical bit
+width while both tensors remain `uint8`.
 
 Do **not** add `window_size_left` / `window_size_right` to opset 1. `local_window_size = W` has the
 established meaning of admitting `W` positions *including* the current token; its Flash parameters
@@ -247,25 +249,24 @@ are `window_size_left = W - 1`, `window_size_right = 0`.
 
 ### 4.6 Input-Mode State Machine
 
-Input presence is interpreted jointly with `qkv_format` and `kv_cache_layout`. **No new mode is ever
-inferred from an old input combination.**
+Input mode is determined by `kv_cache_layout` and Q/K/V presence. No separate format attribute is
+needed.
 
-| `qkv_format` | `kv_cache_layout` | `query` | `key` | `value` | `value_cache` |
+| `kv_cache_layout` | `query` | `key` | `value` | `value_cache` | Mode |
 |---|---|---|---|---|---|
-| `AUTO` | `SEPARATE` | Q, or packed QKV when K/V absent | both present or both absent | same as `key` | required |
-| `Q_K_V` | `SEPARATE` | Q | required | required | required |
-| `QKV_PACKED` | `SEPARATE` | packed QKV | absent | absent | required |
-| `Q_K_V` | `LATENT` | absorbed Q | required (latent row) | absent | absent |
-| `AUTO` \| `QKV_PACKED` | `LATENT` | — | — | — | **rejected** |
+| `SEPARATE` | Q | present | present | required | separate Q/K/V |
+| `SEPARATE` | packed QKV | absent | absent | required | packed QKV |
+| `LATENT` | absorbed Q | present (latent row) | absent | absent | absorbed MLA |
 
-`AUTO` preserves the shipped inference rule exactly: K/V are packed inside `query` **iff** `key` and
-`value` are both absent.
+Every other presence pattern is `INVALID_ARGUMENT`. In particular, `SEPARATE` preserves the shipped
+rule exactly: K and V are packed inside `query` iff both `key` and `value` are absent. `LATENT` is
+explicitly selected by `kv_cache_layout`, so its key-present/value-absent pattern cannot be confused
+with packed QKV.
 
-`LATENT` requires `qkv_format="Q_K_V"` and cannot be combined with `AUTO`. In `LATENT` mode `key` is
-present and `value` is absent, which under the `AUTO` rule is indistinguishable from a malformed
-packed-QKV node — the shipped shape-inference function branches on `ctx.hasInput(2)` and would take
-the packed path, computing `head_size = hidden_size / (num_heads + 2*kv_num_heads)`. Requiring the
-explicit format removes the ambiguity instead of resolving it by attribute precedence.
+Shape inference and runtime validation must inspect `kv_cache_layout` **before** applying the shipped
+`value absent => packed QKV` branch. In `LATENT`, `query.shape[1] / num_heads` determines
+`head_size`; in packed `SEPARATE`, the existing
+`query.shape[1] / (num_heads + 2 * kv_num_heads)` formula remains unchanged.
 
 ### 4.7 CUDA Graph Contract and `attention_metadata`
 
@@ -309,22 +310,28 @@ than making the sync conditional on a host hint. Sizing by the capacity bound in
 length costs empty split blocks that exit after a single device read — far cheaper than a per-layer,
 per-step sync.
 
-`attention_metadata` is consequently demoted to an optional **tightening hint**:
+`attention_metadata` is consequently demoted to optional **replay-wide bounds**:
 
 ```text
 attention_metadata : (2,) int32, OrtMemTypeCPUInput
-    [0] max_query_len_bound   # 0 = unknown. Upper bound on tokens contributed by any one sequence.
-    [1] max_kv_len_bound      # 0 = unknown. Upper bound on total KV length of any one sequence.
+  [0] max_query_len_bound   # 0 = unknown. Replay-wide upper bound on tokens from any one sequence.
+  [1] max_kv_len_bound      # 0 = unknown. Replay-wide upper bound on total KV length of any sequence.
 ```
 
 - Both entries are **upper bounds, never exact values**, and must hold for *every* step the node —
   or the captured graph containing it — will serve.
-- `0` means "no hint"; the implementation falls back to the static capacity bound.
-- The implementation clamps every supplied bound to the static capacity, so an under-sized or
-  malicious hint can degrade performance or truncate a split grid but can never produce an
-  out-of-bounds access. All device reads remain bounded by `past_seqlens` and `block_table`.
-- The hint may only shrink launch dimensions and workspace sizes. It must not enter a mask
-  comparison or a device loop bound.
+- `0` means "no bound"; the implementation falls back to `token_count` for query length and to
+  `block_table.shape[1] * block_size` for KV length.
+- The implementation clamps an over-large bound to the corresponding static limit. A non-zero
+  bound smaller than an actual per-step value violates the input contract and may omit work and
+  produce an incorrect result. The kernel cannot detect that violation without reading the device
+  length tensors back to the host.
+- A valid bound may only shrink launch dimensions and workspace sizes. It must not enter a mask
+  comparison. Device loops use the current device lengths, additionally bounded by the trusted
+  launch/workspace extent.
+- Even for an invalid bound, every device read must remain memory-safe: device lengths and static
+  tensor capacities guard all accesses. This safety property does not imply a correct result when
+  the producer violates the upper-bound contract.
 - It must be a **graph input fed from the host**, never the output of an in-graph node. An in-graph
   producer would be placed on the CPU EP and trip the `AreAllNodesInMainGraphAssignedToOneEp` check
   that gates graph capture.
@@ -456,7 +463,7 @@ framework that matters (vLLM, TRT-LLM, SGLang) passes an explicit slot mapping p
 the scheduler — not the attention kernel — owns block allocation. Keeping the derived path as the
 default preserves the simple single-turn case; the explicit path unlocks serving.
 
-## 6. Feature: Attention Sink (`head_sink`) and Smooth Softmax
+## 6. Feature: Attention Sink (`head_sink`)
 
 ### 6.1 Math
 
@@ -467,8 +474,8 @@ $$
 $$
 
 Equivalent to appending one extra logit $s_h$ that contributes to the denominator only. Used by
-GPT-OSS. Providing `head_sink` implies smooth softmax:
-`parameters.use_smooth_softmax = smooth_softmax_attr || head_sink != nullptr`.
+GPT-OSS. The internal sink-enabled softmax path is selected whenever `head_sink` is present; there
+is no standalone attribute for an unlearned zero-valued sink.
 
 ### 6.2 Design: exact LSE epilogue (preferred)
 
@@ -510,8 +517,6 @@ Phase 1 ships option 2 with option 1 as follow-up.
 ### 6.4 Validation
 
 - Rank 1, `shape[0] == num_heads`, element type `T`.
-- `smooth_softmax == 1` without `head_sink` is legal (sink value 0, i.e. an extra logit of 1.0 in the
-  denominator), matching GQA.
 
 ## 7. Feature: Fused QK-Norm
 
@@ -568,7 +573,8 @@ if (needs_prologue) {
 
 Store the block cache in INT8 or FP8 E4M3 while `query` remains FP16/BF16, halving (or better) the
 dominant memory consumer in a serving deployment and proportionally reducing HBM traffic on the
-decode path. Scope for this phase: **`PER_TENSOR` and `PER_CHANNEL`**, `kv_cache_bit_width == 8`.
+decode path. Scope for this phase: **`PER_TENSOR` and `PER_CHANNEL`**,
+`k_cache_bit_width == v_cache_bit_width == 8`.
 INT4 is deferred ([§19](#19-phasing)).
 
 ### 8.2 Schema
@@ -576,8 +582,8 @@ INT4 is deferred ([§19](#19-phasing)).
 - `key_cache` / `value_cache` move from `T` to `T_CACHE ∈ {float16, bfloat16, int8, float8e4m3fn}`.
   `uint8` is intentionally excluded until a sub-byte format is specified (§4.9, §21).
 - `k_scale` / `v_scale` (inputs 14, 15), type `T_KV_SCALE` = **always FP32**, matching GQA.
-- Attributes `k_quant_type`, `v_quant_type` ∈ `{"NONE", "PER_TENSOR", "PER_CHANNEL"}`, and
-  `kv_cache_bit_width`.
+- Attributes `k_quant_type`, `v_quant_type` ∈ `{"NONE", "PER_TENSOR", "PER_CHANNEL"}`, plus
+  independent `k_cache_bit_width` and `v_cache_bit_width` attributes.
 - Kernel becomes `PagedAttention<T, T_CACHE>`, registered for the same combinations GQA uses:
   `{MLFloat16, BFloat16} × {same as T, int8_t, Float8E4M3FN}` (plus `uint8_t` if and when INT4 lands).
 
@@ -601,7 +607,7 @@ Symmetric quantization, same formulas as GQA:
 | Type | Range | Quantize |
 |---|---|---|
 | INT8 | `[-128, 127]` | `q = clamp(round(x / scale), -128, 127)` |
-| FP8 E4M3 | `[-448, 448]` | `q = clamp(x / scale, -448, 448)` — SM89+/SM90+ |
+| FP8 E4M3 | `[-448, 448]` | `q = clamp(x / scale, -448, 448)` |
 | INT4 (deferred) | `[-8, 7]`, 2/byte | last cache dim becomes `(head_size + 1) / 2` |
 
 ### 8.4 Write path
@@ -636,11 +642,14 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
   `k_quant_type == "NONE"` is `INVALID_ARGUMENT`.
 - `T_CACHE != T` requires a non-`NONE` quant type; `T_CACHE == T` requires both to be `NONE` and both
   scales to be absent.
-- `kv_cache_bit_width` is `8` for a quantized cache and unset otherwise; it must be consistent with
-  `T_CACHE`. There is no `16`, and no `4` until a sub-byte format exists.
+- `k_cache_bit_width` and `v_cache_bit_width` are each `8` for the corresponding quantized cache and
+  `0` or `16` otherwise; each must be consistent with `T_CACHE` and its corresponding quantization
+  attributes. There is no `4` until a sub-byte format exists.
 - In `"LATENT"` mode only K storage exists: `k_quant_type` and `k_scale` describe the latent row,
-  `v_quant_type` must equal `k_quant_type`, and `v_scale` must be absent because V is a view of K.
-- FP8 requires SM89+ (Ada) or SM90+; otherwise `INVALID_ARGUMENT` naming the required arch.
+  `v_quant_type` and `v_cache_bit_width` must equal their K counterparts, and `v_scale` must be
+  absent because V is a view of K.
+- FP8 is available when ORT is built with `onnxruntime_USE_FP8_KV_CACHE`; no additional runtime
+  architecture gate is required for the conversion path used by this operator.
 - `PER_CHANNEL` scale shape must be exactly `(kv_num_heads, 1, head_size)` for K and
   `(kv_num_heads, 1, effective_v_head_size)` for V.
 
@@ -657,7 +666,8 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 >   constraint of §18.1 does not apply to it; Flash eligibility skips that check when the cache is
 >   quantized. Any power-of-two `block_size >= 16` works with a quantized cache on either backend.
 > - **`uint8` / INT4 not added.** `T_CACHE` is `{float16, bfloat16, int8, float8e4m3fn}`;
->   `kv_cache_bit_width` must be `8` for a quantized cache and `0` or `16` otherwise.
+>   `k_cache_bit_width` and `v_cache_bit_width` must each be `8` for a quantized cache and `0` or
+>   `16` otherwise.
 > - **No SM89/SM90 gate for FP8.** `Float8E4M3FN`'s converting constructor uses
 >   `__nv_cvt_float_to_fp8`, which is available on every architecture ORT builds for from CUDA 11.8
 >   onward, so the arch check in §8.7 would reject working configurations. FP8 remains gated at
@@ -746,33 +756,56 @@ alternates full and sliding layers).
 
 ## 10. Feature: `attention_bias`
 
-### 10.1 Difficulty
+### 10.1 GQA-compatible shape
 
-In a padded batch, `attention_bias` is naturally `(batch, num_heads, q_len, kv_len)`. In a packed
-varlen batch with a paged cache there is no single `kv_len`, and a dense bias over the union of all
-contexts would be enormous. This feature is therefore the **lowest priority** and the most likely to
-be replaced by a narrower input.
+GQA defines `attention_bias` as
+`(batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)`. PagedAttention keeps
+the same rank, dimension roles, and independent batch/head broadcasting. Its packed ragged batch has
+no single query or context length, so the two sequence dimensions use batch maxima:
+
+```text
+attention_bias : (batch_size or 1, num_heads or 1, query_length_capacity, context_length_capacity)
+```
+
+The last two dimensions are replay-wide capacities satisfying
+`query_length_capacity >= max_b q_len_b` and
+`context_length_capacity >= max_b (past_seqlens[b] + q_len_b)` for every step the node or captured
+graph will serve. They may equal the exact maxima in an uncaptured run. The tensor may broadcast
+across all sequences, all heads, or both, exactly as GQA does.
 
 ### 10.2 Design
 
-Input 19, `attention_bias`, type `T`, shape `(1 or num_heads, token_count, max_context_len)` where
-`max_context_len = max_b (past_seqlens[b] + q_len_b)`. Row `t` is indexed by the **absolute KV
-position within token `t`'s own sequence**; entries beyond that sequence's context are ignored.
+Input 18, `attention_bias`, type `T`. For packed token `t` belonging to sequence `b`, let
+`j = t - cumulative_sequence_length[b]` be its sequence-local query offset. Query head `h` and
+logical KV position `k` use:
 
-- Rejected on the Flash varlen path (Flash has no additive-bias entry point in ORT's wrapper).
-  Supported on the MEA / unfused paths only.
+```text
+attention_bias[b_or_0, h_or_0, j, k]
+```
+
+The first two indices select `0` when that dimension broadcasts. Entries with `j >= q_len_b` or
+`k >= past_seqlens[b] + q_len_b` are padding and are ignored. This is the direct packed equivalent
+of GQA's indexing contract; flattening batch and query into `(num_heads, token_count, ...)` is
+rejected because it loses GQA's batch-broadcast dimension and prevents schema-level parity.
+
+The bias capacities are host-visible shapes and therefore frozen during CUDA graph replay. Device
+code must bounds-check `j` and `k` against them before reading the bias. An under-sized capacity is
+a producer contract violation that may omit attention work, but it must not cause an out-of-bounds
+read. This mirrors the trusted-bound rule for `attention_metadata` (§4.7).
+
+- Rejected on the Flash varlen, paged-decode, and current MEA paths. Initially supported only on the
+  unfused fallback, matching GQA. MEA may become eligible after its wrapper supports the rank-4
+  batch/head broadcasting and ragged sequence-local row strides.
 - Bias is applied after `scale` and before `softcap`, matching GQA.
 - Emit an explicit `INVALID_ARGUMENT` when `attention_bias` is combined with a backend that cannot
   serve it, naming the backend and the reason.
 
-### 10.3 Preferred alternative
+### 10.3 No dedicated ALiBi input
 
-For the dominant real use case — **ALiBi** — a dense bias is wasteful. FlashAttention supports
-`alibi_slopes` of shape `(num_heads,)` natively. Recommendation: land `alibi_slopes` (input 18)
-first — cheap, fused, works on the fast path — and treat the general dense `attention_bias`
-(input 19) as a correctness-only fallback for models that genuinely need arbitrary additive masks.
-That ordering is why the two occupy those indices in [§4.3](#43-inputs). Decision deferred to
-[§20](#20-open-questions).
+Do not add `alibi_slopes` in this schema revision. GQA has no corresponding input, and the general
+`attention_bias` contract already expresses ALiBi when an exporter is willing to materialize it.
+A dedicated fused representation remains an additive future extension if a concrete model or
+performance requirement justifies adding it to both attention operators.
 
 ## 11. Feature: `output_qk`
 
@@ -833,7 +866,7 @@ Absorbed MLA is **already** the operator `PagedAttention` is, except for three p
 
 Everything else — packed varlen Q, `block_table`, `slot_mapping`, in-place cache update, causal
 masking over ragged sequences, quantized cache — is unchanged. MLA is therefore added as a **mode of
-`PagedAttention`**, expressed entirely through two new attributes, and not as a new operator. This is
+`PagedAttention`**, expressed through three MLA-specific attributes, and not as a new operator. This is
 the same conclusion FlashMLA, vLLM's MLA backend, and SGLang reached: absorbed MLA decode is MQA with
 a wide head and a shared K/V buffer.
 
@@ -847,7 +880,7 @@ MLA is selected **explicitly** by `kv_cache_layout="LATENT"`, never inferred fro
 | Attribute `v_head_size` (INT, default `0`) | Head width of V and of each output head. `0` means "same as `head_size`". A value differing from `head_size` is legal **only** in `"LATENT"` mode. |
 | Attribute `rotary_offset` (INT, default `0`) | First channel within `head_size` covered by RoPE (§12.5). |
 | Input 4 `value_cache` becomes `Optional` | Absent in `"LATENT"`, where V is the leading `effective_v_head_size` channels of `key_cache`. Still required in `"SEPARATE"`. |
-| Input 2 `value` absent while `key` is present becomes legal | Only under `"LATENT"` + `qkv_format="Q_K_V"` (§4.6). Under `AUTO` the shipped rule stands: `key` **and** `value` absent means packed QKV. |
+| Input 2 `value` absent while `key` is present becomes legal | Only under `"LATENT"` (§4.6). In `SEPARATE`, the shipped rule stands: `key` **and** `value` absent means packed QKV. |
 | Output 0 shape generalized to `(token_count, num_heads * effective_v_head_size)` | Identical to today whenever `v_head_size == 0`. |
 
 All six are backward compatible: existing models set none of the attributes, supply `value_cache`,
@@ -881,7 +914,6 @@ and `v_head_size != 0 && v_head_size != head_size` in `SEPARATE` mode is `INVALI
 | `num_heads` / `kv_num_heads` | `128` / `1` |
 | `head_size` (derived) | `576` |
 | `kv_cache_layout` | `"LATENT"` |
-| `qkv_format` | `"Q_K_V"` (required — §4.6) |
 | `v_head_size` | `512` |
 | `rotary_offset` | `512` |
 | `scale` | **must be set explicitly** (§12.6) |
@@ -967,8 +999,7 @@ exactly as decode does. The operator itself does not distinguish the three cases
 
 - `v_head_size != 0 && v_head_size != head_size` requires `kv_cache_layout == "LATENT"`; otherwise
   `INVALID_ARGUMENT`. In `"SEPARATE"` mode `effective_v_head_size == head_size` always.
-- `kv_cache_layout == "LATENT"` requires `qkv_format == "Q_K_V"` (§4.6), `key` present, and `value`
-  and `value_cache` absent.
+- `kv_cache_layout == "LATENT"` requires `key` present and `value` and `value_cache` absent (§4.6).
 - `v_head_size ∈ [1, head_size]` when set; `0` means "equal to `head_size`".
 - `v_head_size != head_size` requires an explicit `scale` attribute (§12.6).
 - Initially require `kv_num_heads == 1`; widen only alongside a backend and tests for grouped latent
@@ -989,8 +1020,8 @@ Target dispatch order once all phases land, first eligible wins:
 | 0 | **MLA backend** (new, §12.7) | `kv_cache_layout == "LATENT"` — FlashMLA / FlashInfer MLA / TRT-LLM MLA where available, unfused MLA reference otherwise |
 | 1 | **Paged decode kernel** (new, Phase 4) | Decode-shaped batch per the static shape test in §4.7; non-quantized or `PER_TENSOR`/`PER_CHANNEL` INT8/FP8; sliding window and `head_sink` supported |
 | 2 | **FlashAttention varlen** | FP16/BF16, SM80+, non-quantized cache (or quantized via dequant-gather); supports sliding window, softcap, packed QKV, `head_sink` via LSE epilogue |
-| 3 | **Memory-Efficient Attention (CUTLASS fMHA)** | Fallback; needed for `attention_bias`, `output_qk`, and pre-SM80 |
-| 4 | **Unfused** | Last resort — arbitrary `head_size`, `output_qk` |
+| 3 | **Memory-Efficient Attention (CUTLASS fMHA)** | Fallback for supported combinations and pre-SM80 |
+| 4 | **Unfused** | Last resort — arbitrary `head_size`, `attention_bias`, `output_qk` |
 
 Backend selection must depend only on values that are constant for a captured CUDA graph (§4.7):
 shapes, attributes, and type constraints. It must never depend on a device-resident sequence length.
@@ -1005,8 +1036,7 @@ Feature × backend matrix (target state):
 | QK-Norm | Yes (prologue) | Yes (prologue) | Yes (prologue) | Yes |
 | Quantized cache | Yes (in-kernel) | Via dequant-gather | Via dequant-gather | Via dequant-gather |
 | `query_positions` (§4.8) | Backend work required | Fallback unless legacy-equivalent | Backend work required | Yes |
-| `alibi_slopes` (§10.3) | Planned | Yes (native wrapper support) | Planned | Yes |
-| `attention_bias` | No | No | Yes | Yes |
+| `attention_bias` | No | No | No initially | Yes |
 | `output_qk` | No | No | Yes | Yes |
 | `slot_mapping` | Yes (write path — backend independent) | Yes | Yes | Yes |
 | `LATENT` MLA | No | No | No | Yes — plus the dedicated MLA backend (§12.7) |
@@ -1044,8 +1074,9 @@ mitigation is structural, not procedural.
 
 1. **Common parameter base.** `PagedAttentionParameters` and `GroupQueryAttentionParameters` already
    derive from `AttentionParameters` in `contrib_ops/cpu/bert/attention_parameters.h`. Move the
-   fields that are genuinely shared — `local_window_size`, `softcap`, `use_smooth_softmax`,
-   `qk_norm_epsilon`, `k_quant_type`, `v_quant_type`, `kv_cache_bit_width`, `rotary_interleaved` —
+  fields that are genuinely shared — `local_window_size`, `softcap`,
+  `qk_norm_epsilon`, `k_quant_type`, `v_quant_type`, `k_cache_bit_width`, `v_cache_bit_width`,
+  `rotary_interleaved` —
    into the base so a feature has one definition. `v_head_size` and `rotary_offset` (§12) start in
    `PagedAttentionParameters`; promote them if and when a second op needs asymmetric head widths.
 
@@ -1098,18 +1129,24 @@ Consolidated, to be implemented in `paged_attention_helper::CheckInputs`. Every 
   `(kv_num_heads, 1, effective_v_head_size)` (V) for `PER_CHANNEL`; present iff the corresponding
   quant type is not `NONE`.
 - `T_CACHE != T` iff a quant type is not `NONE`.
-- `kv_cache_bit_width` consistent with `T_CACHE`; FP8 requires SM89+/SM90+.
+- `k_cache_bit_width` and `v_cache_bit_width` must each be consistent with the corresponding cache:
+  `8` for a quantized cache and `0` or `16` for an unquantized cache. FP8 availability is controlled
+  by `onnxruntime_USE_FP8_KV_CACHE`, without an additional runtime architecture gate.
 - `attention_metadata`: rank 1, `dim0 == 2`, `int32`, CPU-resident; entries `>= 0`; each non-zero
-  entry is clamped to the static capacity bound before use and may only shrink launch dimensions
-  (§4.7). It must never enter a mask comparison or a device loop bound.
+  entry is clamped to its static limit before use and may only size launch dimensions and workspace
+  (§4.7). It must never enter a mask comparison. Each value is a trusted upper bound for every step
+  served by the node or captured graph.
 - `query_positions`: rank 1, `dim0 == token_count`, `int32`, entries `>= 0`.
-- `alibi_slopes`: rank 1, `dim0 == num_heads`, FP32.
-- `attention_bias`: rank 3, `dim0 ∈ {1, num_heads}`, `dim1 == token_count`; rejected on Flash.
+- `attention_bias`: rank 4; `dim0 ∈ {1, batch_size}`, `dim1 ∈ {1, num_heads}`,
+  `dim2 == query_length_capacity`, and `dim3 == context_length_capacity`; both capacities must cover
+  every actual length served by the node or captured graph. Indexing uses the sequence-local query
+  offset and logical KV position, matching GQA (§10.2). Device code bounds-checks both indices;
+  fused backends reject the input and the initial implementation uses the unfused fallback.
 - `qk_output != 0` iff the node has 4 outputs; `output_qk` rejected on Flash.
-- `qkv_format` / `kv_cache_layout` must be one of their documented values, and the input presence
-  pattern must match the row selected in [§4.6](#46-input-mode-state-machine).
-- MLA (§12.10): `kv_cache_layout == "LATENT"` requires `qkv_format == "Q_K_V"`, `key` present,
-  `value` and `value_cache` absent, an explicit `scale`, and no `head_sink` or QK-Norm weights.
+- `kv_cache_layout` must be one of its documented values, and the input presence pattern must match
+  a row in [§4.6](#46-input-mode-state-machine).
+- MLA (§12.10): `kv_cache_layout == "LATENT"` requires `key` present, `value` and `value_cache`
+  absent, an explicit `scale`, and no `head_sink` or QK-Norm weights.
   `v_head_size ∈ [1, head_size]`; `v_head_size != head_size` outside `"LATENT"` is
   `INVALID_ARGUMENT`. `rotary_offset % 8 == 0` and `rotary_offset + rotary_dim <= head_size`.
 - Backend-incompatible feature combinations must be reported at `Compute` entry with the reason,
@@ -1117,10 +1154,9 @@ Consolidated, to be implemented in `paged_attention_helper::CheckInputs`. Every 
 
 **Trust boundary.** `attention_metadata` is host-supplied and cannot be checked against the device
 tensors without reintroducing the synchronization it exists to remove. It is therefore a *trusted
-hint* whose only guaranteed property is enforced by the kernel: every device read stays bounded by
-`past_seqlens`, `cumulative_sequence_length` and `block_table`, so an inconsistent hint can cost
-performance or truncate a split grid but can never cause an out-of-bounds access. No other
-host-supplied value is permitted to bound a device loop.
+bound*: an under-sized value violates the contract and may omit valid attention work. Independently,
+the kernel must keep every device read within the static tensor capacities even when the bound is
+invalid. No other host-supplied value is permitted to bound a launch or workspace extent.
 
 ## 16. Shape Inference and Tooling
 
@@ -1132,8 +1168,9 @@ host-supplied value is permitted to bound a device loop.
     symbolic hidden dimension — which infers fine today — start failing. Both the unpacked and
     packed-QKV branches must apply the generalization when it does apply, otherwise every MLA graph
     gets a wrong — and silently propagated — output width.
-  - Unknown symbolic dimensions must stay symbolic rather than causing inference to assume a mode
-    that contradicts the explicit `qkv_format` / `kv_cache_layout` attributes.
+  - Read `kv_cache_layout` before branching on Q/K/V presence. `LATENT` uses the unpacked-query
+    formula even though `value` is absent; only `SEPARATE` with both K and V absent uses the packed
+    formula. Unknown symbolic dimensions must stay symbolic.
   - Outputs 1/2 must propagate **type from inputs 3/4** (not from input 0) once `T_CACHE` can differ
     from `T`. The current code propagates elem type from input 0 to outputs 1/2 first and then from
     3/4 — the first propagation becomes wrong under quantization and must be removed. Element-type
@@ -1194,8 +1231,9 @@ GQA cannot be the oracle here — it has no MLA mode — so MLA needs its own re
   graph-applied spelling (`do_rotary=0`, RoPE fused into the producer).
 - **Scale guard.** Omitting `scale` while `v_head_size != head_size` must fail with a clear error —
   a regression here produces plausible-looking but wrong logits (§12.6).
-- **V-aliases-K.** `value_cache` absent and `value_cache` passed as the same tensor as `key_cache`
-  must produce identical results; a distinct V cache must be rejected.
+- **V-aliases-K.** With `value_cache` absent, verify that the leading `v_head_size` channels of
+  `key_cache` supply V. Any present `value_cache` — including the same tensor as `key_cache` — must
+  be rejected in `LATENT` mode.
 - **MLA × paging.** Shuffled block tables, `slot_mapping` with `-1`, and an FP8 latent cache, each
   combined with MLA.
 - **Rejected combinations.** MLA + `head_sink` and MLA + QK-Norm must fail with the documented
@@ -1204,7 +1242,7 @@ GQA cannot be the oracle here — it has no MLA mode — so MLA needs its own re
 ### 17.4 Reference implementations
 
 Extend `onnxruntime/test/python/transformers/test_paged_attention_cuda.py` with a PyTorch reference
-covering sinks (`smooth_softmax_ref`), QK-Norm (RMSNorm-before-RoPE), per-channel dequantization,
+covering attention sinks, QK-Norm (RMSNorm-before-RoPE), per-channel dequantization,
 windowing, and MLA absorption — reusing the GQA test helpers rather than duplicating them.
 
 ### 17.5 Negative tests
@@ -1224,11 +1262,14 @@ These two guard the contract itself rather than a feature.
   length grows, and assert the result matches an uncaptured run step for step. This is the test that
   would have caught the frozen-`max_kv_len` failure mode in §4.7: a naive implementation passes step
   1 and diverges from step 2 onward, so the test must check **every** step, not just the last.
-- **Metadata-hint invariance.** The same decode sequence must produce identical results with
-  `attention_metadata` absent, with an exact hint, and with a deliberately loose (over-large) hint.
-  Any difference means a host value reached a mask or a loop bound (§4.7).
-- **Under-sized hint safety.** A deliberately too-small `max_kv_len_bound` must not read out of
-  bounds; run it under `compute-sanitizer`.
+- **Metadata-bound invariance.** The same decode sequence must produce identical results with
+  `attention_metadata` absent, with the tightest replay-wide valid bounds, and with deliberately
+  loose (over-large) bounds.
+  Any difference means a host value affected device-side logical attention bounds rather than only
+  launch or workspace capacity (§4.7).
+- **Under-sized bound safety.** A deliberately too-small `max_kv_len_bound` violates the contract,
+  so its numerical result is unspecified, but it must not read out of bounds; run it under
+  `compute-sanitizer`.
 
 ## 18. Known Defects to Fix First
 
@@ -1281,11 +1322,11 @@ These block the feature work and should land ahead of it.
 |---|---|---|
 | **P0 — Foundation** | §18 defect fixes; `.Alias(3,1).Alias(4,2)` on the kernel def (§4.4); sliding-window semantic verification and GQA parity harness (§17.1) | none |
 | **P1 — Paging primitives** | `slot_mapping` (§5); sliding-window block pruning (§9.2) | input 10 |
-| **P2 — Model coverage** | `head_sink` + `smooth_softmax` via LSE epilogue (§6); fused QK-Norm (§7) | inputs 11–13, attrs `smooth_softmax`, `qk_norm_epsilon` |
-| **P3 — Memory** | Quantized cache INT8/FP8, `PER_TENSOR` + `PER_CHANNEL`, dequant-on-gather read path (§8) | `T_CACHE`, `T_KV_SCALE`, inputs 14–15, 3 attrs |
-| **P4 — MLA (correctness)** | `kv_cache_layout="LATENT"`, `qkv_format`, `v_head_size`, `rotary_offset`, V-aliases-K, optional `value_cache`, unfused MLA reference kernel, absorbed↔non-absorbed equivalence tests (§12) | attrs `kv_cache_layout`, `qkv_format`, `v_head_size`, `rotary_offset`; input 4 optional |
-| **P5 — Performance** | Paged decode kernel with in-kernel dequant; fused MLA backend (FlashMLA / FlashInfer MLA, §12.7); `softcap` on decode; **remove the D→H sync and make the op CUDA-graph-capturable (§4.7)**; optional `attention_metadata` bounds hint | input 16 |
-| **P6 — Completeness** | `query_positions` (§4.8); `alibi_slopes` and `attention_bias` (§10); `output_qk` (§11) | inputs 17–19, output 3, attr `qk_output` |
+| **P2 — Model coverage** | `head_sink` via LSE epilogue (§6); fused QK-Norm (§7) | inputs 11–13, attr `qk_norm_epsilon` |
+| **P3 — Memory** | Quantized cache INT8/FP8, `PER_TENSOR` + `PER_CHANNEL`, dequant-on-gather read path (§8) | `T_CACHE`, `T_KV_SCALE`, inputs 14–15, 4 attrs |
+| **P4 — MLA (correctness)** | `kv_cache_layout="LATENT"`, `v_head_size`, `rotary_offset`, V-aliases-K, optional `value_cache`, unfused MLA reference kernel, absorbed↔non-absorbed equivalence tests (§12) | attrs `kv_cache_layout`, `v_head_size`, `rotary_offset`; input 4 optional |
+| **P5 — Performance** | Paged decode kernel with in-kernel dequant; fused MLA backend (FlashMLA / FlashInfer MLA, §12.7); `softcap` on decode; **remove the D→H sync and make the op CUDA-graph-capturable (§4.7)**; optional `attention_metadata` replay-wide bounds | input 16 |
+| **P6 — Completeness** | `query_positions` (§4.8); `attention_bias` (§10); `output_qk` (§11) | inputs 17–18, output 3, attr `qk_output` |
 | **Later** | INT4 cache; MLA quantized latent cache tuning; non-CUDA EPs | — |
 
 Status: P0–P3 are implemented, except the `.Alias` registration. P4 is not started. P5 is partially
@@ -1312,35 +1353,33 @@ model, and cache management are identical. That is the opposite of the GQA-vs-Pa
 
 ## 20. Open Questions
 
-1. **`alibi_slopes` vs. dense `attention_bias` (§10).** Should P6 ship the narrow, fused
-   `alibi_slopes` input instead of, or in addition to, the general dense bias?
-2. ~~**Host-scalar inputs for `max_query_len` / `total_kv_tokens` (§18.4).** Adding them as optional
+1. ~~**Host-scalar inputs for `max_query_len` / `total_kv_tokens` (§18.4).** Adding them as optional
    inputs removes a per-step sync but leaks scheduler state into the graph. Is that acceptable?~~
    **Resolved in [§4.7](#47-cuda-graph-contract-and-attention_metadata):** no host input is needed to
    remove the sync, and an *exact* one would be actively unsafe — under CUDA graph replay no kernel
    `Compute` runs, so a host value is frozen at capture while `max_kv_len` grows every step. Dispatch
    comes from static shapes, extents from the static capacity bound, and every per-step quantity from
-   device memory. `attention_metadata` survives only as an optional bounds *hint* that cannot affect
-   correctness.
-3. **`block_table == -1` semantics (§9.2).** Confirm "unmapped, masked out" rather than "invalid,
+    device memory. `attention_metadata` survives only as optional replay-wide bounds: valid bounds
+    preserve correctness, while an under-sized bound is a producer contract violation.
+2. **`block_table == -1` semantics (§9.2).** Confirm "unmapped, masked out" rather than "invalid,
    error" — the former is required for sliding-window block eviction.
-4. **Non-CUDA EPs.** Is `PagedAttention` a server-GPU-only op (CUDA, ROCm, TensorRT), or is a CPU
+3. **Non-CUDA EPs.** Is `PagedAttention` a server-GPU-only op (CUDA, ROCm, TensorRT), or is a CPU
    reference implementation required? A CPU reference has real value as a test oracle even if it is
    never used in production. Stub kernels returning `NOT_IMPLEMENTED` are not an acceptable middle
    ground (§3.4).
-5. **ORT-GenAI commitment.** Does the continuous-batching path in `onnxruntime-genai` commit to
+4. **ORT-GenAI commitment.** Does the continuous-batching path in `onnxruntime-genai` commit to
    emitting `PagedAttention` (as opposed to a `block_table`-extended GQA)? This determines the
    priority of everything above.
-6. **Ownership of the parity matrix (§13).** Who keeps the feature × backend table current, and is
+5. **Ownership of the parity matrix (§13).** Who keeps the feature × backend table current, and is
    the KV-accessor refactor (§14.3) in scope for P2 or a follow-up?
-7. **Which fused MLA backend (§12.7)?** FlashMLA is the closest fit but is SM90-only and adds a
+6. **Which fused MLA backend (§12.7)?** FlashMLA is the closest fit but is SM90-only and adds a
    third-party dependency; FlashInfer MLA covers SM80+; TRT-LLM has its own. The choice determines
    the hardware matrix ORT can serve DeepSeek on and should be made before P5 starts.
-8. **Does MLA need a non-absorbed *paged* path (§12.8)?** The proposal handles prefill-with-prefix by
+7. **Does MLA need a non-absorbed *paged* path (§12.8)?** The proposal handles prefill-with-prefix by
    absorbing. If a workload shows the absorbed prefill FLOP inflation to be material, an in-op
    decompression path would require passing `W_UK` / `W_UV` into the operator — which this design
    deliberately avoids. Needs a measurement before it is reconsidered.
-9. **MLA + quantized latent cache (§12.9).** FP8 on a 576-wide latent shared by 128 query heads has
+8. **MLA + quantized latent cache (§12.9).** FP8 on a 576-wide latent shared by 128 query heads has
    a different error profile from FP8 on a per-head cache. Accuracy validation is required before
    the combination is recommended, even though the schema supports it on day one.
 
@@ -1383,14 +1422,14 @@ The complete deferred list:
 - one required functional `kv_cache_out` instead of two optional aliasing outputs;
 - removal of `kv_num_heads` in favor of `kv_cache.shape[2]`;
 - quantization granularity inferred from scale shape, and zero points (§21.3);
-- sub-byte logical types stored in a `uint8` tensor via `cache_dtype` (§21.4);
+- sub-byte logical types stored in `uint8` tensors via `k_cache_dtype` / `v_cache_dtype` (§21.4);
 - inline scales or zero points packed into cache rows (§21.3, note);
 - a physical `HND` cache layout (§21.6);
 - renaming `local_window_size` to `window_size_left` / `window_size_right`, and the
   lookahead window (`window_size_right > 0`) that tree speculative decoding needs;
 - a tree-attention ancestry mask, which `query_positions` deliberately does **not** provide (§4.8).
 
-Everything else that was in the v2 proposal — `attention_metadata`, `query_positions`, `qkv_format`,
+Everything else that was in the v2 proposal — `attention_metadata`, `query_positions`,
 `kv_cache_layout`, `v_head_size`, `rotary_offset`, explicit quantization attributes — is expressible
 additively and has been folded into §4.
 
@@ -1468,21 +1507,23 @@ asymmetric integer quantization. Absent ⇒ symmetric (the current behavior).
 > the separate-tensor case only. If an inline format is ever needed it should be added as a
 > `kv_cache_layout` member, not by overloading the scale inputs.
 
-### 21.4 `cache_dtype` for sub-byte caches
+### 21.4 `k_cache_dtype` / `v_cache_dtype` for sub-byte caches
 
-For `int8` and `float8e4m3fn` the cache tensor's own element type is the logical type and
-`cache_dtype` stays `""`. Sub-byte needs more:
+For `int8` and `float8e4m3fn` each cache tensor's own element type is the logical type and its
+corresponding cache-dtype attribute stays `""`. Sub-byte needs more:
 
 - ORT's CUDA EP has no usable 4-bit tensor element type, so storage must be `uint8`.
 - `kv_pack_dim` then counts **storage bytes**, and the logical head width is unrecoverable.
 - Bit width alone is insufficient: `int4` and `fp4e2m1` are both 4 bits with entirely different
-  decode math. This is why the v1 `kv_cache_bit_width` INT is superseded rather than kept.
+  decode math. This is why a versioned successor would supersede `k_cache_bit_width` and
+  `v_cache_bit_width` with independent dtype attributes. Keeping them independent supports formats
+  where K and V use different precisions.
 
-| `cache_dtype` | Storage elem type | `kv_pack_dim` |
+| `k_cache_dtype` / `v_cache_dtype` | Storage elem type | Packed logical width |
 |---|---|---|
-| `""` | `T_CACHE` as declared | `E` |
-| `"int4"`, `"uint4"`, `"fp4e2m1"` | `uint8` | `E / 2` |
-| `"int2"` | `uint8` | `E / 4` |
+| `""` | corresponding cache tensor type | unchanged |
+| `"int4"`, `"uint4"`, `"fp4e2m1"` | `uint8` | logical width / 2 |
+| `"int2"` | `uint8` | logical width / 4 |
 
 where `E = head_size + v_head_size` under `"KV_CONCAT"`, or `kv_pack_dim`'s logical width under
 `"LATENT"`. Packing order must be specified or implementations will diverge: **logical element `2i`
@@ -1500,13 +1541,8 @@ occupies the low-order bits of byte `i`**, element `2i+1` the high-order bits.
   bidirectional-lookahead window that speculative decoding needs. §4.5 keeps `local_window_size`
   with its established "W positions including the current token" semantic; the lookahead window is
   deferred with the rename.
-- **`smooth_softmax` is ignored when `head_sink` is present** — documented rather than left to the
-  reader (§6.1). *Adopted in §4.5, not breaking.*
 - **`block_table == -1`** means unmapped and fully masked, not an error (§9.2, §20.3).
   *Adopted in §4.3, not breaking.*
-
-`qkv_format` was also in this list; it is adopted additively in [§4.5](#45-attributes) with an
-`"AUTO"` default that reproduces the shipped inference rule, rather than defaulting to `"Q_K_V"`.
 
 ### 21.6 `kv_layout`
 
@@ -1536,7 +1572,7 @@ attribute exists at all. **For MLA the two are identical**, since `kv_num_heads 
 | `local_window_size = w` | `window_size_left = w`, `window_size_right = 0` |
 | `k_quant_type` / `v_quant_type` | drop — infer from `k_scale` / `v_scale` shape |
 | `k_scale` shape `(kv_num_heads, 1, head_size)` | `(kv_num_heads, head_size)` |
-| `kv_cache_bit_width` | `cache_dtype` |
+| `k_cache_bit_width`, `v_cache_bit_width` | `k_cache_dtype`, `v_cache_dtype` |
 
 Implementation impact is concentrated in `ReshapeAndCache` (one packed row per token instead of two
 scattered writes), the cache-read stride arithmetic in the P5 decode kernel (innermost stride becomes
@@ -1553,9 +1589,9 @@ migration tool over serialized graphs is cheap compared with breaking a shipped 
 | §21.2 merged `kv_cache` | **No** | Deferred to a versioned successor |
 | §21.5 required `kv_cache_out` | **No** | Deferred; §4.4 registers the alias instead |
 | §21.3 scale-shape granularity, zero points | Yes | Deferred — explicit attributes in §4.5 are preferred while only two granularities exist |
-| §21.4 `cache_dtype` | Yes | Deferred until a sub-byte cache exists |
+| §21.4 `k_cache_dtype` / `v_cache_dtype` | Yes | Deferred until a sub-byte cache exists |
 | §21.6 `kv_layout` | Yes | Deferred until a backend requires `HND` |
 | §21.5 `window_size_*` rename | Yes, with deprecated aliases | Deferred with the lookahead window |
 | `attention_metadata` | Yes | **Adopted, redesigned** — §4.7 |
 | `query_positions` | Yes | **Adopted** — §4.8 |
-| `qkv_format`, `kv_cache_layout`, `v_head_size`, `rotary_offset` | Yes | **Adopted** — §4.5, §12 |
+| `kv_cache_layout`, `v_head_size`, `rotary_offset` | Yes | **Adopted** — §4.5, §12 |

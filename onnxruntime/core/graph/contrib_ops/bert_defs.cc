@@ -1500,11 +1500,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Rotate using interleaved pattern. Default value is 0 (False).",
               AttributeProto::INT,
               OPTIONAL_VALUE)
-        .Attr("smooth_softmax",
-              "Use a smooth factor in softmax, equivalent to an extra attention score of 0 that is not "
-              "associated with any value. Default value is 0 (False). Implied when 'head_sink' is provided.",
-              AttributeProto::INT,
-              OPTIONAL_VALUE)
         .Attr("qk_norm_epsilon",
               "Epsilon used by the Q/K RMSNorm when 'q_norm_weight' and 'k_norm_weight' are provided. "
               "Default value is 1e-6.",
@@ -1522,8 +1517,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "'v_scale' is required. Default value is 'NONE'.",
               AttributeProto::STRING,
               std::string("NONE"))
-        .Attr("kv_cache_bit_width",
-              "Number of bits per stored KV cache element. Must be 8 for an int8 or float8e4m3fn cache. "
+        .Attr("k_cache_bit_width",
+              "Number of bits per stored key cache element. Must be 8 for an int8 or float8e4m3fn cache. "
+              "Defaults to 8 for a quantized cache and 0 (unused) otherwise.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("v_cache_bit_width",
+              "Number of bits per stored value cache element. Must be 8 for an int8 or float8e4m3fn cache. "
               "Defaults to 8 for a quantized cache and 0 (unused) otherwise.",
               AttributeProto::INT,
               OPTIONAL_VALUE)
@@ -1589,8 +1589,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(11,
                "head_sink",
                "1D tensor with shape (num_heads). Each head has a learnable sink logit that participates in the "
-               "softmax denominator but contributes no value, so attention can 'do nothing'. Providing this input "
-               "implies smooth_softmax.",
+           "softmax denominator but contributes no value, so attention can 'do nothing'.",
                "T",
                OpSchema::Optional)
         .Input(12,

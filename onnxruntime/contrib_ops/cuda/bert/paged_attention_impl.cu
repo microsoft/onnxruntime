@@ -476,7 +476,6 @@ Status LaunchReshapeAndCache(const T* key, const T* value, TCACHE* key_cache, TC
 // elementwise rescale  o *= exp(lse) / (exp(lse) + exp(s_h)) = 1 / (1 + exp(s_h - lse)).
 // This is numerically stable for both signs of (s_h - lse), needs no change to the Flash kernel,
 // and composes with sliding window, softcap and GQA grouping because lse already reflects the mask.
-// smooth_softmax without a head_sink input is the same formula with s_h = 0.
 template <typename T>
 __global__ void ApplyHeadSink(T* __restrict__ output, const float* __restrict__ softmax_lse,
                               const T* __restrict__ head_sink, const int token_count, const int num_heads,

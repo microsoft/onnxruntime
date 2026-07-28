@@ -324,11 +324,11 @@ Status CheckInputs(const T* query,
                    int kv_num_heads,
                    float scale,
                    float softcap,
-                   bool smooth_softmax,
                    float qk_norm_epsilon,
                    KVQuantizationType k_quant_type,
                    KVQuantizationType v_quant_type,
-                   int kv_cache_bit_width,
+                   int k_cache_bit_width,
+                   int v_cache_bit_width,
                    bool is_quantized_cache,
                    int max_threads_per_block) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
@@ -396,15 +396,25 @@ Status CheckInputs(const T* query,
                                                is_quantized_cache, kv_num_heads, head_size));
   ORT_RETURN_IF_ERROR(CheckKVCacheQuantization(v_scale, "v_scale", "v_quant_type", v_quant_type,
                                                is_quantized_cache, kv_num_heads, head_size));
-  if (is_quantized_cache && kv_cache_bit_width != 8) {
+  if (is_quantized_cache && k_cache_bit_width != 8) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "'kv_cache_bit_width' must be 8 for an int8 or float8e4m3fn KV cache, got ",
-                           kv_cache_bit_width);
+                           "'k_cache_bit_width' must be 8 for an int8 or float8e4m3fn key cache, got ",
+                           k_cache_bit_width);
   }
-  if (!is_quantized_cache && kv_cache_bit_width != 0 && kv_cache_bit_width != 16) {
+  if (!is_quantized_cache && k_cache_bit_width != 0 && k_cache_bit_width != 16) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "'kv_cache_bit_width' must be 0 or 16 for an unquantized KV cache, got ",
-                           kv_cache_bit_width);
+                           "'k_cache_bit_width' must be 0 or 16 for an unquantized key cache, got ",
+                           k_cache_bit_width);
+  }
+  if (is_quantized_cache && v_cache_bit_width != 8) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "'v_cache_bit_width' must be 8 for an int8 or float8e4m3fn value cache, got ",
+                           v_cache_bit_width);
+  }
+  if (!is_quantized_cache && v_cache_bit_width != 0 && v_cache_bit_width != 16) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "'v_cache_bit_width' must be 0 or 16 for an unquantized value cache, got ",
+                           v_cache_bit_width);
   }
 
   if (parameters != nullptr) {
@@ -423,13 +433,13 @@ Status CheckInputs(const T* query,
     output_parameters->is_packed_qkv = is_packed_qkv;
     output_parameters->scale = scale;
     output_parameters->softcap = softcap;
-    // Providing head_sink implies smooth softmax, matching GroupQueryAttention.
-    output_parameters->use_smooth_softmax = smooth_softmax || head_sink != nullptr;
+    output_parameters->use_smooth_softmax = head_sink != nullptr;
     output_parameters->use_qk_norm = q_norm_weight != nullptr;
     output_parameters->qk_norm_epsilon = qk_norm_epsilon;
     output_parameters->k_quant_type = k_quant_type;
     output_parameters->v_quant_type = v_quant_type;
-    output_parameters->kv_cache_bit_width = kv_cache_bit_width;
+    output_parameters->k_cache_bit_width = k_cache_bit_width;
+    output_parameters->v_cache_bit_width = v_cache_bit_width;
   }
 
   return Status::OK();

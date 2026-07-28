@@ -117,16 +117,17 @@ struct PagedAttentionParameters : AttentionParameters {
   int local_window_size;       // The window size includes new token. It only includes tokens on the left side.
   bool rotary_interleaved;
   float softcap;
-  // Attention sink / smooth softmax. Providing head_sink (input 11) implies use_smooth_softmax.
+  // Internal attention-sink path, enabled when head_sink (input 11) is provided.
   bool use_smooth_softmax = false;
   // Per-head Q/K RMSNorm (QK-Norm) prologue applied before RoPE (inputs 12/13).
   bool use_qk_norm = false;
   float qk_norm_epsilon = 1e-6f;
   // Quantized paged KV cache. Scales are inputs 14/15 and are always FP32, as in
-  // GroupQueryAttention. kv_cache_bit_width is 0 when the cache is not quantized.
+  // GroupQueryAttention. A cache bit width is 0 when that cache is not quantized.
   KVQuantizationType k_quant_type = KVQuantizationType::NONE;
   KVQuantizationType v_quant_type = KVQuantizationType::NONE;
-  int kv_cache_bit_width = 0;
+  int k_cache_bit_width = 0;
+  int v_cache_bit_width = 0;
 };
 
 // Parameters for sparse attention.

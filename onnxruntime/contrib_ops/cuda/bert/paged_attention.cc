@@ -70,7 +70,6 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
   local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
-  smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
   qk_norm_epsilon_ = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
@@ -78,10 +77,12 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
               "qk_norm_epsilon must be a positive finite number");
   k_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("k_quant_type", "NONE"));
   v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"));
-  // The default depends on the cache dtype so that a model that only swaps key_cache/value_cache to
-  // int8 and sets the quant types does not also have to spell out the bit width.
-  kv_cache_bit_width_ = static_cast<int>(
-      info.GetAttrOrDefault<int64_t>("kv_cache_bit_width", IsQuantizedCacheType<TCACHE>() ? 8 : 0));
+  // The defaults depend on the cache dtype so that a model that only swaps key_cache/value_cache to
+  // int8 and sets the quant types does not also have to spell out the bit widths.
+  k_cache_bit_width_ = static_cast<int>(
+      info.GetAttrOrDefault<int64_t>("k_cache_bit_width", IsQuantizedCacheType<TCACHE>() ? 8 : 0));
+  v_cache_bit_width_ = static_cast<int>(
+      info.GetAttrOrDefault<int64_t>("v_cache_bit_width", IsQuantizedCacheType<TCACHE>() ? 8 : 0));
 
   kernel_options_ = this->GetAttentionKernelOptions();
   disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
@@ -139,11 +140,11 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                                                           kv_num_heads_,
                                                           scale_,
                                                           softcap_,
-                                                          smooth_softmax_,
                                                           qk_norm_epsilon_,
                                                           k_quant_type_,
                                                           v_quant_type_,
-                                                          kv_cache_bit_width_,
+                                                          k_cache_bit_width_,
+                                                          v_cache_bit_width_,
                                                           kIsQuantizedCache,
                                                           device_prop.maxThreadsPerBlock));
   parameters.local_window_size = local_window_size_;
@@ -343,7 +344,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // its softmax denominator, so only the MEA path has to fail loudly here.
   if (parameters.use_smooth_softmax && use_memory_efficient_attention) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "PagedAttention: 'head_sink' / smooth_softmax is only supported by the FlashAttention "
+                           "PagedAttention: 'head_sink' is only supported by the FlashAttention "
                            "and paged decode backends, but the MemoryEfficientAttention backend was selected "
                            "(head_size=",
                            parameters.head_size, ", block_size=", parameters.block_size,
