@@ -181,6 +181,9 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO_VERSIONED(12, 12, Pow),
     KERNEL_CREATE_INFO_VERSIONED(13, 14, Pow),
     KERNEL_CREATE_INFO(15, Pow),
+    KERNEL_CREATE_INFO_VERSIONED(7, 8, PRelu),
+    KERNEL_CREATE_INFO_VERSIONED(9, 15, PRelu),
+    KERNEL_CREATE_INFO(16, PRelu),
     // Equal: registered via RegisterKernels with conditional int64 support
     KERNEL_CREATE_INFO_VERSIONED(7, 8, Greater),
     KERNEL_CREATE_INFO_VERSIONED(9, 12, Greater),
