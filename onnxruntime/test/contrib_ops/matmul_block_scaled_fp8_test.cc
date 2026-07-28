@@ -241,6 +241,62 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvDecodeWideTilesFp16) {
   }
 }
 
+// Covers the M > 1 (speculative decode / MTP verify) GEMV dispatch. There RowsPerWarp is 2 or 4
+// and ColsPerWarp is chosen from N (1 / 2 / 4), which selects the hoisted-widening code path in
+// the kernel. Every (RowsPerWarp, ColsPerWarp, Unroll) combination is exercised with a ragged N so
+// the per-column bounds predication is hit, and both the row and the column vary so a mis-mapped
+// row or column cannot pass by accident.
+TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvSpeculativeDecodeTilesFp16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp8Weight.";
+  }
+
+  // m = 2 -> RowsPerWarp 2, m = 3/4 -> RowsPerWarp 4 (m = 3 also leaves a ragged row tail).
+  // n picks ColsPerWarp 1 (n < 2048), 2 and 4; all leave a ragged column tail.
+  for (const int64_t m : {2, 3, 4}) {
+    for (const int64_t n : {1026, 2050, 4098, 8194}) {
+      constexpr int64_t k = 64;  // K % 16 == 0 -> GEMV path; two 32-element K blocks
+      constexpr int64_t block_size = 32;
+      constexpr int64_t k_blocks = k / block_size;
+
+      static const float kRowValues[] = {1.0f, 2.0f, -1.0f, -2.0f};
+      std::vector<float> row_value(static_cast<size_t>(n));
+      for (int64_t r = 0; r < n; ++r) {
+        row_value[static_cast<size_t>(r)] = kRowValues[r % 4];
+      }
+      std::vector<Float8E4M3FN> b = MakeConstRowWeight(row_value, k);
+      std::vector<float> b_scale(static_cast<size_t>(n * k_blocks), 1.0f);
+
+      // A[row, :] = row + 1 -> Y[row, col] = row_value[col] * k * (row + 1).
+      std::vector<float> a(static_cast<size_t>(m * k));
+      for (int64_t row = 0; row < m; ++row) {
+        for (int64_t i = 0; i < k; ++i) {
+          a[static_cast<size_t>(row * k + i)] = static_cast<float>(row + 1);
+        }
+      }
+      std::vector<float> expected(static_cast<size_t>(m * n));
+      for (int64_t row = 0; row < m; ++row) {
+        for (int64_t col = 0; col < n; ++col) {
+          expected[static_cast<size_t>(row * n + col)] =
+              row_value[static_cast<size_t>(col)] * static_cast<float>(k) * static_cast<float>(row + 1);
+        }
+      }
+
+      OpTester test("MatMulBlockQuantizedFp8Weight", 1, onnxruntime::kMSDomain);
+      test.AddAttribute<int64_t>("block_size", block_size);
+      test.AddInput<MLFloat16>("A", {m, k}, FloatsToMLFloat16s(a));
+      test.AddInput<Float8E4M3FN>("B", {n, k}, b);
+      test.AddInput<float>("b_scale", {n, k_blocks}, b_scale);
+      test.AddOutput<MLFloat16>("Y", {m, n}, FloatsToMLFloat16s(expected));
+      test.SetOutputTolerance(0.5f);
+
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
+  }
+}
+
 #endif  // USE_CUDA && !DISABLE_FLOAT8_TYPES && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 
 }  // namespace onnxruntime::test

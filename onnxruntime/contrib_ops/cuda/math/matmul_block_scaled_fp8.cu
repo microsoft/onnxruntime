@@ -260,23 +260,87 @@ __global__ void MatMulBlockScaledFp8GemvKernel(AType* __restrict__ output,
         continue;
       }
       const int kb = koff[u] / block_size;
+      if constexpr (RowsPerWarp == 1) {
+        // One row: nothing to amortize, and the extra live fp32 values of the hoisted
+        // form measurably cost occupancy at the wide M == 1 tiles (<1,4,2>).
 #pragma unroll
-      for (int c = 0; c < ColsPerWarp; ++c) {
-        const int col = col_base + c;
-        if (col >= n) {
-          continue;
+        for (int c = 0; c < ColsPerWarp; ++c) {
+          const int col = col_base + c;
+          if (col >= n) {
+            continue;
+          }
+          __half2 b_half[8];
+          ORT_FP8_GEMV_CVT16(b_raw[u][c], b_half);
+          const float b_scale = weight_scale[static_cast<size_t>(col) * k_blocks + kb];
+          float partial = 0.0f;
+          ORT_FP8_GEMV_DOT16(a_lo[u][0], a_hi[u][0], b_half, partial);
+          acc[0][c] += partial * b_scale;
         }
-        __half2 b_half[8];
-        ORT_FP8_GEMV_CVT16(b_raw[u][c], b_half);
-        const float b_scale = weight_scale[static_cast<size_t>(col) * k_blocks + kb];
+      } else {
+        // M > 1 (speculative decode / MTP verify): the naive form widens B to fp32 once
+        // per row and A once per column, so a lane spends 8 + 48 * RowsPerWarp
+        // instructions per 16 weight bytes and the kernel goes ALU-bound long before it
+        // saturates HBM (1.25 TB/s at M == 4 vs 2.35 TB/s at M == 1 on H200). Hoisting
+        // both widenings out of the inner loop drops that to
+        // 8 * C + 16 * R + 16 * C + 16 * R * C, i.e. 200 -> 120 per column at R=4, C=2.
+        // The fma order is unchanged, so the result is bit-identical to the scalar form.
+        // The 16-element chunk is consumed in two halves to keep only RowsPerWarp * 8
+        // widened A values live at a time.
+        __half2 b_half[ColsPerWarp][8];
+#pragma unroll
+        for (int c = 0; c < ColsPerWarp; ++c) {
+          ORT_FP8_GEMV_CVT16(b_raw[u][c], b_half[c]);
+        }
+        float b_scale[ColsPerWarp];
+#pragma unroll
+        for (int c = 0; c < ColsPerWarp; ++c) {
+          const int col = col_base + c;
+          b_scale[c] = (col < n) ? weight_scale[static_cast<size_t>(col) * k_blocks + kb] : 0.0f;
+        }
+        float partial[RowsPerWarp][ColsPerWarp] = {};
+#pragma unroll
+        for (int h = 0; h < 2; ++h) {
+          float a_f[RowsPerWarp][8];
+#pragma unroll
+          for (int r = 0; r < RowsPerWarp; ++r) {
+            const AVec2* av = reinterpret_cast<const AVec2*>(h == 0 ? &a_lo[u][r] : &a_hi[u][r]);
+#pragma unroll
+            for (int i = 0; i < 4; ++i) {
+              const float2 v = to_float2(av[i]);
+              a_f[r][2 * i] = v.x;
+              a_f[r][2 * i + 1] = v.y;
+            }
+          }
+#pragma unroll
+          for (int c = 0; c < ColsPerWarp; ++c) {
+            float b_f[8];
+#pragma unroll
+            for (int i = 0; i < 4; ++i) {
+              const float2 v = __half22float2(b_half[c][4 * h + i]);
+              b_f[2 * i] = v.x;
+              b_f[2 * i + 1] = v.y;
+            }
+#pragma unroll
+            for (int r = 0; r < RowsPerWarp; ++r) {
+#pragma unroll
+              for (int j = 0; j < 8; ++j) {
+                partial[r][c] = fmaf(a_f[r][j], b_f[j], partial[r][c]);
+              }
+            }
+          }
+        }
 #pragma unroll
         for (int r = 0; r < RowsPerWarp; ++r) {
           if (row_base + r >= m) {
             continue;
           }
-          float partial = 0.0f;
-          ORT_FP8_GEMV_DOT16(a_lo[u][r], a_hi[u][r], b_half, partial);
-          acc[r][c] += partial * b_scale;
+#pragma unroll
+          for (int c = 0; c < ColsPerWarp; ++c) {
+            if (col_base + c >= n) {
+              continue;
+            }
+            acc[r][c] += partial[r][c] * b_scale[c];
+          }
         }
       }
     }
@@ -486,9 +550,19 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
   // single wave, so widening each warp (ColsPerWarp) and pre-issuing loads (Unroll) buys
   // memory-level parallelism at no real occupancy cost. It only pays once N is large
   // enough that dividing the column count still leaves the GPU full -- below N == 4096
-  // the wider tiles measured slower than one column per warp on H200, and for M > 1 the
-  // extra live registers per warp (RowsPerWarp * ColsPerWarp accumulators plus the
-  // pre-issued loads) cost more than the extra parallelism is worth.
+  // the wider tiles measured slower than one column per warp on H200.
+  //
+  // M in [2, 4] is speculative decode (the MTP verify forward is N+1 tokens wide). There
+  // RowsPerWarp > 1 already reads the weight once for every row, so the kernel is ALU
+  // bound rather than bandwidth bound, and ColsPerWarp pays for a second reason: it
+  // amortizes the fp32 widening of A across columns (see the hoisted path in the kernel).
+  // ColsPerWarp is capped so that gridDim.x stays >= ~128 blocks (H200 has 132 SMs) --
+  // below that the lost column parallelism costs more than the saved instructions.
+  // Measured on H200 (us, M == 4, vs the previous <R,1,1> and vs cuBLAS fp16):
+  //   8192x2048  10.9 cublas | 13.7 <4,1,1> | 9.7 <4,4,1>
+  //   4096x2048   8.3 cublas |  8.1 <4,1,1> | 6.9 <4,4,1>
+  //   2048x4096   8.3 cublas |  9.0 <4,1,1> | 7.9 <4,2,2>
+  //    512x2048   7.3 cublas |  5.0 <4,1,1> | 4.6 <4,1,2>
   if (m == 1) {
     if (n >= 8192) {
       launch.template operator()<1, 4, 2>();
@@ -498,9 +572,21 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
       launch.template operator()<1, 1, 1>();
     }
   } else if (m <= 2) {
-    launch.template operator()<2, 1, 1>();
+    if (n >= 8192) {
+      launch.template operator()<2, 4, 1>();
+    } else if (n >= 2048) {
+      launch.template operator()<2, 2, 1>();
+    } else {
+      launch.template operator()<2, 1, 2>();
+    }
   } else if (m <= 4) {
-    launch.template operator()<4, 1, 1>();
+    if (n >= 4096) {
+      launch.template operator()<4, 4, 1>();
+    } else if (n >= 2048) {
+      launch.template operator()<4, 2, 2>();
+    } else {
+      launch.template operator()<4, 1, 2>();
+    }
   } else {
     launch.template operator()<8, 1, 1>();
   }
