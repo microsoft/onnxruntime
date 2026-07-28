@@ -120,7 +120,15 @@ endif()
 if (onnxruntime_REDUCED_OPS_BUILD)
   substitute_op_reduction_srcs(onnxruntime_providers_src)
 endif()
-onnxruntime_add_static_library(onnxruntime_providers ${onnxruntime_providers_src})
+if (onnxruntime_BUILD_SHARED_LIB)
+  # With onnxruntime_ENABLE_LTO the objects carry whole-program IR, which pushes this archive past
+  # the 4 GiB limit of the COFF archive format on Windows (LNK1248), and lib.exe has no option to
+  # raise it. Shared-library builds only need the objects for the final link, so skip the archive.
+  # Static builds keep it: install(TARGETS onnxruntime_providers EXPORT ...) below requires one.
+  onnxruntime_add_object_library(onnxruntime_providers ${onnxruntime_providers_src})
+else()
+  onnxruntime_add_static_library(onnxruntime_providers ${onnxruntime_providers_src})
+endif()
 if (onnxruntime_REDUCED_OPS_BUILD)
   add_op_reduction_include_dirs(onnxruntime_providers)
 endif()
