@@ -4,6 +4,11 @@ Status: **Draft / proposal**
 Scope: `com.microsoft::PagedAttention`, CUDA Execution Provider
 Related: [gqa.md](gqa.md) (`com.microsoft::GroupQueryAttention`)
 
+> **Compatibility decision:** [paged_attention_compatible.md](paged_attention_compatible.md) is the
+> proposed backward-compatible evolution from the schema shipped on the ONNX Runtime main branch.
+> Section 21 below is retained as an alternative breaking cache-layout design and must not replace
+> the shipped opset-1 contract in place.
+
 ## Table of Contents
 
 - [1. Purpose and Scope](#1-purpose-and-scope)
