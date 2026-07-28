@@ -465,8 +465,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
     const size_t staged_bytes = static_cast<size_t>(parameters.batch_size) * parameters.kv_num_heads *
                                 staged_cache_capacity * dense_head_size * sizeof(U);
-    staged_key_buffer = GetScratchBuffer<void>(staged_bytes, context->GetComputeStream());
-    staged_value_buffer = GetScratchBuffer<void>(staged_bytes, context->GetComputeStream());
+    staged_key_buffer = GetScratchBuffer<void>(staged_bytes, GetComputeStream(context));
+    staged_value_buffer = GetScratchBuffer<void>(staged_bytes, GetComputeStream(context));
 
     ORT_RETURN_IF_ERROR(LaunchCopyKvCacheWindow(
         staged_key_buffer.get(), staged_value_buffer.get(),
