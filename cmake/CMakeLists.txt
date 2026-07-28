@@ -1915,12 +1915,18 @@ else()
         ")
     endif()
     if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND NOT APPLE AND NOT onnxruntime_USE_VCPKG AND NOT onnxruntime_BUILD_SHARED_LIB)
-      # FetchContent static non-Apple telemetry ships mat plus bundled sqlite3/zlib archives in this
-      # package, but mat still links system libcurl and pthreads; the consumer must re-find them.
-      string(APPEND PROJECT_CONFIG_CONTENT
-        "find_dependency(CURL)\n\
-        find_dependency(Threads)\n\
-        ")
+      if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        # The embedded curl archive uses the platform Threads target for its resolver.
+        string(APPEND PROJECT_CONFIG_CONTENT
+          "find_dependency(Threads)\n\
+          ")
+      else()
+        # Preserve the legacy dependency graph for any explicitly enabled non-Linux Unix target.
+        string(APPEND PROJECT_CONFIG_CONTENT
+          "find_dependency(CURL)\n\
+          find_dependency(Threads)\n\
+          ")
+      endif()
     endif()
   endif()
 

@@ -272,6 +272,30 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     # libonnxruntime; in a static build mat -- and the bundled static archives it links -- are shipped
     # and exported below so a downstream find_package(onnxruntime) resolves them.
     target_link_libraries(onnxruntime_common PRIVATE mat)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET libcurl_static)
+      # Prevent shared-library consumers from re-exporting the embedded transport symbols. This does
+      # not namespace static symbols; static ORT consumers must not co-link another curl/mbedTLS copy.
+      string(CONCAT _onnxruntime_telemetry_build_exclude_libs
+        "LINKER:--exclude-libs="
+        "$<TARGET_FILE_NAME:libcurl_static>:"
+        "$<TARGET_FILE_NAME:mbedtls>:"
+        "$<TARGET_FILE_NAME:mbedx509>:"
+        "$<TARGET_FILE_NAME:mbedcrypto>:"
+        "$<TARGET_FILE_NAME:everest>:"
+        "$<TARGET_FILE_NAME:p256m>")
+      string(CONCAT _onnxruntime_telemetry_install_exclude_libs
+        "LINKER:--exclude-libs="
+        "$<TARGET_FILE_NAME:onnxruntime::libcurl_static>:"
+        "$<TARGET_FILE_NAME:onnxruntime::mbedtls>:"
+        "$<TARGET_FILE_NAME:onnxruntime::mbedx509>:"
+        "$<TARGET_FILE_NAME:onnxruntime::mbedcrypto>:"
+        "$<TARGET_FILE_NAME:onnxruntime::everest>:"
+        "$<TARGET_FILE_NAME:onnxruntime::p256m>")
+      target_link_options(onnxruntime_common INTERFACE
+        "$<BUILD_INTERFACE:${_onnxruntime_telemetry_build_exclude_libs}>"
+        "$<INSTALL_INTERFACE:${_onnxruntime_telemetry_install_exclude_libs}>")
+      target_compile_definitions(onnxruntime_common PRIVATE ORT_USE_EMBEDDED_TELEMETRY_CURL)
+    endif()
     # mat propagates its public include dir as a normal (non-SYSTEM) include, so onnxruntime_common's
     # -Wall -Wextra -Werror would apply to the SDK's headers (they trip -Werror=unused-parameter in
     # NullObjects.hpp / LogManagerProvider.hpp). Re-add the SDK include dirs as SYSTEM to exempt them.
@@ -302,16 +326,22 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     endif()
 
     if (NOT onnxruntime_BUILD_SHARED_LIB)
-      # Static package: ship mat and the bundled static archives it links so the exported package is
-      # self-contained. The bundled deps are optional -- which exist depends on platform (the vendored
-      # sqlite3/zlib built for Android, iOS, and non-Apple static via MATSDK_BUNDLE_VENDORED_DEPS) and
-      # may fold into libmat.a in a future SDK version -- so install each only if its target exists.
+      # Static package: ship mat and the static archives it links so the exported package is
+      # self-contained. These targets are optional because their availability depends on platform.
       install(TARGETS mat EXPORT ${PROJECT_NAME}Targets
               ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
               LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
               RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
               FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
-      foreach(_mat_bundled_dep sqlite3_bundled zlib_bundled)
+      foreach(_mat_bundled_dep
+          sqlite3_bundled
+          zlib_bundled
+          libcurl_static
+          mbedtls
+          mbedx509
+          mbedcrypto
+          everest
+          p256m)
         if(TARGET ${_mat_bundled_dep})
           install(TARGETS ${_mat_bundled_dep} EXPORT ${PROJECT_NAME}Targets
                   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
