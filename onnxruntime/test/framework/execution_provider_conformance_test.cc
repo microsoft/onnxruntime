@@ -221,9 +221,10 @@ TEST_P(EpConformanceTest, EpContextNodesEmptyOnFreshEp) {
   ep_conformance::CheckEpContextNodesEmptyOnFreshEp(*ep, GetParam().name);
 }
 
-// Invariant: every preferred allocator reports self-consistent OrtMemoryInfo --
-// a non-empty name and a valid allocator type. This metadata keys allocator
-// lookup in the framework, so it must be well-formed for every EP. Only the
+// Invariant: every preferred allocator reports a valid allocator type in its
+// OrtMemoryInfo. This metadata keys allocator lookup in the framework, so it must
+// be well-formed for every EP. The allocator name is intentionally not asserted --
+// an empty OrtMemoryInfo.name is permitted by the contract. Only the
 // backend-agnostic fields are checked; the raw memory is not touched here.
 TEST_P(EpConformanceTest, PreferredAllocatorInfoIsConsistent) {
   auto ep = MakeEp();
