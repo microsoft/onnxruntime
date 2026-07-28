@@ -23,7 +23,13 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  var output_indices : output_indices_indices_t;\n"
                             << "  var indices_indices : input_indices_indices_t;\n"
                             << "  var data_indices : data_indices_indices_t;\n"
-                            << "  var value : output_value_t;\n"
+                            // The uint8 path accumulates bytes into `value` via OR-shift, so it must
+                            // start at zero. Partial (last) threads only write a subset of the 4 byte
+                            // positions, and an uninitialized accumulator would leave the remaining
+                            // bytes undefined. The bool path assigns each component positionally and
+                            // does not require zero-initialization.
+                            << (is_uint8 ? "  var value : output_value_t = output_value_t(0);\n"
+                                         : "  var value : output_value_t;\n")
                             << "  var data_offset : u32;\n";
   for (int comp = 0; comp < (pack_as_bytes ? 4 : 1); comp++) {
     if (pack_as_bytes) {
