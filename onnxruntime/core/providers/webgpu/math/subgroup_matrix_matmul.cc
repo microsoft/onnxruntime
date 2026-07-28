@@ -18,6 +18,7 @@
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/vendor/intel/math/subgroup_matrix_tiling_selector.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 namespace onnxruntime {
 namespace webgpu {
 
@@ -213,12 +214,20 @@ class SubgroupMatrixMatMulImpl final : public MatMul::MatMulOptImpl {
 
     std::call_once(pad_once_, [&]() {
       auto padded = std::make_unique<Tensor>(context.CreateGPUTensor(b.DataType(), padded_shape));
-      SubgroupMatrixMatMulPadBProgram program;
-      program.SetDispatchGroupSize(output_size / 64 + static_cast<uint32_t>(output_size % 64 != 0))
-          .AddInput({&b, ProgramTensorMetadataDependency::TypeAndRank, 1})
-          .AddOutput({padded.get(), ProgramTensorMetadataDependency::TypeAndRank, padded->Shape(), 1})
-          .AddUniformVariables({{output_size}, {N}, {n_b}});
-      if (context.RunProgram(program).IsOK()) {
+      Status s = Status::OK();
+      // A zero-element padded tensor (e.g. a zero-batch or empty constant B) needs no
+      // pad pass - dispatching 0 workgroups is pointless and some drivers reject it.
+      // Just cache the empty tensor; the main kernel dispatches nothing for it.
+      if (output_size != 0) {
+        SubgroupMatrixMatMulPadBProgram program;
+        program.SetWorkgroupSize(WORKGROUP_SIZE)
+            .SetDispatchGroupSize(CeilDiv<uint32_t>(output_size, WORKGROUP_SIZE))
+            .AddInput({&b, ProgramTensorMetadataDependency::TypeAndRank, 1})
+            .AddOutput({padded.get(), ProgramTensorMetadataDependency::TypeAndRank, padded->Shape(), 1})
+            .AddUniformVariables({{output_size}, {N}, {n_b}});
+        s = context.RunProgram(program);
+      }
+      if (s.IsOK()) {
         padded_b_ = std::move(padded);
         padded_b_stride_ = n_b;
       }
