@@ -282,12 +282,68 @@ struct Fp4I2FConverter {
 #endif
   }
 
+#if defined(__CUDA_ARCH__)
+  // Decodes four consecutive E2M1 codes into two packed AType2 words.
+  //
+  // `mag_sel` holds the four 3-bit magnitudes as the four low nibbles (bit 3 cleared so prmt
+  // stays in byte-select mode rather than sign-replicate mode) and `sgn_sel` holds the four sign
+  // bits as 0/1 nibbles. One prmt then performs *four* magnitude table lookups at once, which is
+  // where this beats the per-element `decode()` above: prmt selects four bytes per instruction,
+  // so the whole 4-element lookup costs one instruction instead of four.
+  __device__ __forceinline__ static void decode_quad(uint32_t mag_sel, uint32_t sgn_sel,
+                                                     uint32_t& lo2, uint32_t& hi2) {
+    uint32_t sb;
+    // Sign bytes: nibble 0 -> 0x00, nibble 1 -> 0x80 (bit 7 of the AType high byte).
+    asm("prmt.b32 %0, %1, %2, %3;" : "=r"(sb) : "r"(0x00008000u), "r"(0u), "r"(sgn_sel));
+    if constexpr (std::is_same_v<AType, half>) {
+      uint32_t hb;
+      asm("prmt.b32 %0, %1, %2, %3;" : "=r"(hb) : "r"(0x3E3C3800u), "r"(0x46444240u), "r"(mag_sel));
+      hb |= sb;
+      // half low byte is always 0, so expand {b0,b1,b2,b3} to {0,b0,0,b1} and {0,b2,0,b3} by
+      // pulling the zero bytes from the second (all-zero) prmt operand.
+      asm("prmt.b32 %0, %1, %2, %3;" : "=r"(lo2) : "r"(hb), "r"(0u), "n"(0x1404));
+      asm("prmt.b32 %0, %1, %2, %3;" : "=r"(hi2) : "r"(hb), "r"(0u), "n"(0x3424));
+    } else {
+      uint32_t hb, lb;
+      asm("prmt.b32 %0, %1, %2, %3;" : "=r"(hb) : "r"(0x3F3F3F00u), "r"(0x40404040u), "r"(mag_sel));
+      asm("prmt.b32 %0, %1, %2, %3;" : "=r"(lb) : "r"(0xC0800000u), "r"(0xC0804000u), "r"(mag_sel));
+      hb |= sb;
+      // bf16 needs both bytes: interleave low/high bytes of elements 0,1 and 2,3.
+      asm("prmt.b32 %0, %1, %2, %3;" : "=r"(lo2) : "r"(lb), "r"(hb), "n"(0x5140));
+      asm("prmt.b32 %0, %1, %2, %3;" : "=r"(hi2) : "r"(lb), "r"(hb), "n"(0x7362));
+    }
+  }
+#endif
+
   template <int N>
   __device__ __forceinline__ static void convert(void* src, void* dst) {
     uint8_t const* s = reinterpret_cast<uint8_t const*>(src);
     AType* d = reinterpret_cast<AType*>(dst);
     if constexpr (!PairInterleaved) {
       static_assert(N % 2 == 0);
+#if defined(__CUDA_ARCH__)
+      if constexpr (N % 8 == 0) {
+        // Packed path: decode a whole 32-bit weight word (eight codes) at a time. Bit-identical
+        // to the scalar path below, but ~3x fewer instructions, which matters because the QMoE
+        // FP4 GEMV is instruction-issue bound (ncu on Qwen3.6-35B-A3B NVFP4 decode: ~74% SM
+        // throughput at ~12% DRAM throughput, with the dequantize sequence about half of all
+        // issued instructions). Measured on H200/sm_90: FP4 GEMV kernel SASS shrinks ~30% and
+        // the two QMoE GEMVs drop 33.2 -> 26.2 us (fc1 swiglu) and 30.2 -> 22.2 us (fc2).
+        // Only valid for the plain (non pair-interleaved) nibble order: nibble j of the word
+        // is logical element j, which is exactly what the prmt selectors below assume.
+        uint32_t const* sw = reinterpret_cast<uint32_t const*>(src);
+        uint32_t* dw = reinterpret_cast<uint32_t*>(dst);
+#pragma unroll
+        for (int i = 0; i < N / 8; ++i) {
+          uint32_t const w = sw[i];
+          uint32_t const mag = w & 0x77777777u;
+          uint32_t const sgn = (w >> 3) & 0x11111111u;
+          decode_quad(mag, sgn, dw[i * 4 + 0], dw[i * 4 + 1]);
+          decode_quad(mag >> 16, sgn >> 16, dw[i * 4 + 2], dw[i * 4 + 3]);
+        }
+        return;
+      }
+#endif
 #pragma unroll
       for (int i = 0; i < N; i += 2) {
         uint8_t byte = s[i >> 1];
