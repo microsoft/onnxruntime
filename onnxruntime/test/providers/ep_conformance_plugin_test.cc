@@ -118,6 +118,20 @@ TEST_F(EpPluginConformanceTest, GetOrtEpMatchesProviderKind) {
   ep_conformance::CheckGetOrtEpMatchesProviderKind(*ep, /*expects_plugin_ep*/ true, EpLabel());
 }
 
+TEST_F(EpPluginConformanceTest, OrtEpRequiredFunctionsArePresent) {
+  auto ep = MakeEp();
+  if (!ep) GTEST_SKIP() << "dynamic plugin EP infrastructure is not initialized.";
+
+  ep_conformance::CheckOrtEpRequiredFunctionsArePresent(*ep, EpLabel());
+}
+
+TEST_F(EpPluginConformanceTest, OrtEpDeclaresCompileOrKernelRegistry) {
+  auto ep = MakeEp();
+  if (!ep) GTEST_SKIP() << "dynamic plugin EP infrastructure is not initialized.";
+
+  ep_conformance::CheckOrtEpDeclaresCompileOrKernelRegistry(*ep, EpLabel());
+}
+
 TEST_F(EpPluginConformanceTest, EpContextNodesEmptyOnFreshEp) {
   auto ep = MakeEp();
   if (!ep) GTEST_SKIP() << "dynamic plugin EP infrastructure is not initialized.";

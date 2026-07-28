@@ -317,6 +317,25 @@ TEST_P(EpConformanceTest, GetOrtEpMatchesProviderKind) {
   ep_conformance::CheckGetOrtEpMatchesProviderKind(*ep, GetParam().expects_plugin_ep, GetParam().name);
 }
 
+// Invariant: an OrtEp implements the functions ORT dereferences without a null check.
+// Skips for a built-in EP, which has no backing OrtEp.
+TEST_P(EpConformanceTest, OrtEpRequiredFunctionsArePresent) {
+  auto ep = MakeEp();
+  if (!ep) GTEST_SKIP() << GetParam().name << " EP not available in this environment.";
+
+  ep_conformance::CheckOrtEpRequiredFunctionsArePresent(*ep, GetParam().name);
+}
+
+// Invariant: an OrtEp declares a coherent execution mode -- it exposes a kernel
+// registry, or it implements both Compile() and ReleaseNodeComputeInfos(). Skips for a
+// built-in EP, which has no backing OrtEp.
+TEST_P(EpConformanceTest, OrtEpDeclaresCompileOrKernelRegistry) {
+  auto ep = MakeEp();
+  if (!ep) GTEST_SKIP() << GetParam().name << " EP not available in this environment.";
+
+  ep_conformance::CheckOrtEpDeclaresCompileOrKernelRegistry(*ep, GetParam().name);
+}
+
 // Invariant: GetEpContextNodes() reports no nodes on a freshly constructed EP.
 // EPs populate this only when generating an EPContext cache model during
 // compilation; with no compilation performed, the documented default is empty.

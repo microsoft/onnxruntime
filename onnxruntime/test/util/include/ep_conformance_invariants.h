@@ -20,6 +20,11 @@
 // CPU-accessible is never dereferenced; such checks are guarded by
 // OrtDevice::UsesCpuMemory().
 //
+// Most invariants are expressed against IExecutionProvider, so they hold for built-in
+// and plugin EPs alike. A few instead inspect the OrtEp behind a plugin EP to assert
+// contracts that only exist at the plugin EP C API level; those skip when the EP under
+// test is a built-in one (IExecutionProvider::GetOrtEp() returns nullptr).
+//
 // Each function issues gtest expectations/assertions directly. Because some of them
 // call GTEST_SKIP() when a backend-agnostic precondition is not met (e.g. the EP
 // exposes no CPU-accessible allocator), a function must be invoked as the LAST
@@ -37,6 +42,10 @@
 #include "core/framework/data_types.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/tensor.h"
+// Brings in the plugin EP C API (onnxruntime_ep_c_api.h is included at the end of this
+// header and must not be included directly), which the OrtEp-level invariants need in
+// order to inspect OrtEp members rather than just compare pointers.
+#include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
 namespace test {
@@ -232,6 +241,83 @@ inline void CheckGetOrtEpMatchesProviderKind(IExecutionProvider& ep, bool expect
     EXPECT_EQ(ort_ep, nullptr)
         << label << ": a built-in EP must not report a backing OrtEp (that is reserved for plugin EPs).";
   }
+}
+
+// Invariant: an OrtEp implements every function ORT dereferences without a null check.
+// OrtEp::GetCapability is the only one: PluginExecutionProvider::GetCapability() calls
+// ort_ep_->GetCapability() unconditionally, so a null there faults during graph
+// partitioning instead of producing a diagnosable error. Every other OrtEp entry point
+// ORT invokes is either null-guarded or falls back to the OrtEpFactory implementation
+// (e.g. CreateAllocator, CreateSyncStreamForDevice), and so is genuinely optional.
+//
+// OrtEp::GetName is deliberately not asserted here. SanityCheckOrtEp() already rejects
+// both a null GetName and a null return before an OrtEp can reach an IExecutionProvider,
+// so repeating it could never fail. Its non-empty contract is covered by
+// CheckTypeIsNonEmptyAndStable instead, because a plugin EP's provider type *is* the
+// string returned by OrtEp::GetName().
+//
+// May GTEST_SKIP(): invoke as the LAST statement of the test body (see file header).
+inline void CheckOrtEpRequiredFunctionsArePresent(IExecutionProvider& ep, std::string_view label) {
+  const OrtEp* ort_ep = ep.GetOrtEp();
+  if (ort_ep == nullptr) {
+    GTEST_SKIP() << label << " is not backed by an OrtEp (built-in EP); nothing to check.";
+  }
+
+  // OrtEp::GetCapability is \since ORT 1.23. An OrtEp built against an older ORT
+  // allocated a shorter struct, so reading a newer field would read past it. Gate on
+  // the reported ABI version first, exactly as ORT does before touching versioned
+  // fields (see ep_kernel_registration.cc / ep_plugin_provider_interfaces.cc).
+  if (ort_ep->ort_version_supported < 23) {
+    GTEST_SKIP() << label << ": OrtEp reports ort_version_supported=" << ort_ep->ort_version_supported
+                 << "; GetCapability does not exist in that ABI.";
+  }
+
+  EXPECT_NE(ort_ep->GetCapability, nullptr)
+      << label << ": OrtEp::GetCapability must be implemented -- ORT calls it without a null check "
+      << "while partitioning the graph.";
+}
+
+// Invariant: an OrtEp declares a coherent execution mode. The public contract ties the
+// two modes together through GetKernelRegistry (onnxruntime_ep_c_api.h):
+//   - on GetKernelRegistry: "Implementation of this function is optional. If set to
+//     NULL, ORT assumes the EP compiles nodes."
+//   - on Compile and ReleaseNodeComputeInfos: "implementation of this function is
+//     optional if the EP does not compile nodes and uses a kernel registry instead."
+// So an EP that exposes no kernel registry is compile-based, and a compile-based EP
+// must supply both Compile and ReleaseNodeComputeInfos. ORT does require both, but only
+// on the first actual compilation (PluginExecutionProvider::Compile), which turns a
+// structural mistake into a late failure partway through session initialization.
+// Checking it up front makes it immediate and self-describing.
+//
+// Implementing *both* a kernel registry and Compile is legal and intentionally not
+// flagged: nothing in ORT forbids an EP from registering kernels and also compiling
+// fused nodes.
+//
+// May GTEST_SKIP(): invoke as the LAST statement of the test body (see file header).
+inline void CheckOrtEpDeclaresCompileOrKernelRegistry(IExecutionProvider& ep, std::string_view label) {
+  const OrtEp* ort_ep = ep.GetOrtEp();
+  if (ort_ep == nullptr) {
+    GTEST_SKIP() << label << " is not backed by an OrtEp (built-in EP); nothing to check.";
+  }
+
+  // Compile and ReleaseNodeComputeInfos are \since ORT 1.23; GetKernelRegistry is
+  // \since ORT 1.24. Only read a field once the reported ABI version guarantees the
+  // plugin actually allocated it.
+  if (ort_ep->ort_version_supported < 23) {
+    GTEST_SKIP() << label << ": OrtEp reports ort_version_supported=" << ort_ep->ort_version_supported
+                 << "; Compile does not exist in that ABI.";
+  }
+
+  if (ort_ep->ort_version_supported >= 24 && ort_ep->GetKernelRegistry != nullptr) {
+    return;  // Kernel-registry-based EP: Compile is optional for it.
+  }
+
+  EXPECT_NE(ort_ep->Compile, nullptr)
+      << label << ": OrtEp exposes no kernel registry, so ORT treats it as compile-based, "
+      << "but it does not implement Compile().";
+  EXPECT_NE(ort_ep->ReleaseNodeComputeInfos, nullptr)
+      << label << ": a compile-based OrtEp must implement ReleaseNodeComputeInfos() to free the "
+      << "OrtNodeComputeInfo instances its Compile() allocates.";
 }
 
 // Invariant: GetEpContextNodes() reports no nodes on a freshly constructed EP. EPs
