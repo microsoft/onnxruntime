@@ -84,6 +84,49 @@ endif()
 set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
 
 #TODO: set MASM flags properly
+function(setup_kleidiai)
+  target_sources(onnxruntime_mlas PRIVATE
+    ${MLAS_SRC_DIR}/kai_ukernel_interface.cpp
+    ${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp
+    ${MLAS_SRC_DIR}/kleidiai/sbgemm_kleidiai.cpp
+    ${MLAS_SRC_DIR}/kleidiai/convolve_kleidiai.cpp
+    ${MLAS_SRC_DIR}/kleidiai/qgemm_kleidiai.cpp
+  )
+  target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai)
+  if(onnxruntime_USE_QMX_KLEIDIAI_COEXIST)
+          target_link_libraries(onnxruntime_mlas PRIVATE  kleidiai-qmx)
+          target_compile_definitions(onnxruntime_mlas PRIVATE ENABLE_QMX_KERNELS=1)
+          list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai-qmx)
+  endif()
+  set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES} PARENT_SCOPE)
+
+  # If KLEIDIAI_DEBUG_LOGGING is enabled that implies both DEBUG and KERNEL messages.
+  if(onnxruntime_KLEIDIAI_DEBUG_LOGGING)
+    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_DEBUG_LOGGING=1)
+    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_KERNEL_LOGGING=1)
+  endif()
+  if(onnxruntime_KLEIDIAI_KERNEL_LOGGING)
+    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_KERNEL_LOGGING=1)
+  endif()
+
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS kleidiai EXPORT ${PROJECT_NAME}Targets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
+
+  if(onnxruntime_USE_QMX_KLEIDIAI_COEXIST)
+    install(TARGETS kleidiai-qmx EXPORT ${PROJECT_NAME}Targets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
+endfunction()
+
 function(setup_mlas_source_for_windows)
 
   #
@@ -95,13 +138,14 @@ function(setup_mlas_source_for_windows)
     ${MLAS_SRC_DIR}/pooling_fp16.cpp
   )
 
+
   #The onnxruntime_target_platform variable was added by Windows AI team in onnxruntime_common.cmake
   #Don't use it for other platforms.
-  if((onnxruntime_target_platform STREQUAL "ARM64") OR (onnxruntime_target_platform STREQUAL "ARM64EC"))
+  if((onnxruntime_target_platform STREQUAL "ARM64") OR (onnxruntime_target_platform STREQUAL "aarch64") OR (onnxruntime_target_platform STREQUAL "ARM64EC"))
     set(PREPROCESS_ARMASM_FLAGS "")
     set(ARMASM_FLAGS "")
 
-    if(onnxruntime_target_platform STREQUAL "ARM64")
+    if((onnxruntime_target_platform STREQUAL "ARM64") OR (onnxruntime_target_platform STREQUAL "aarch64"))
       target_sources(onnxruntime_mlas PRIVATE
         ${MLAS_SRC_DIR}/halfgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
@@ -307,49 +351,6 @@ function(setup_mlas_source_for_windows)
   endif()
 endfunction()
 
-function(setup_kleidiai)
-  target_sources(onnxruntime_mlas PRIVATE
-    ${MLAS_SRC_DIR}/kai_ukernel_interface.cpp
-    ${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp
-    ${MLAS_SRC_DIR}/kleidiai/sbgemm_kleidiai.cpp
-    ${MLAS_SRC_DIR}/kleidiai/convolve_kleidiai.cpp
-    ${MLAS_SRC_DIR}/kleidiai/qgemm_kleidiai.cpp
-  )
-  target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai)
-  if(onnxruntime_USE_QMX_KLEIDIAI_COEXIST)
-          target_link_libraries(onnxruntime_mlas PRIVATE  kleidiai-qmx)
-          target_compile_definitions(onnxruntime_mlas PRIVATE ENABLE_QMX_KERNELS=1)
-          list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai-qmx)
-  endif()
-  set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES} PARENT_SCOPE)
-
-  # If KLEIDIAI_DEBUG_LOGGING is enabled that implies both DEBUG and KERNEL messages.
-  if(onnxruntime_KLEIDIAI_DEBUG_LOGGING)
-    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_DEBUG_LOGGING=1)
-    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_KERNEL_LOGGING=1)
-  endif()
-  if(onnxruntime_KLEIDIAI_KERNEL_LOGGING)
-    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_KERNEL_LOGGING=1)
-  endif()
-
-  if (NOT onnxruntime_BUILD_SHARED_LIB)
-    install(TARGETS kleidiai EXPORT ${PROJECT_NAME}Targets
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
-  endif()
-
-  if(onnxruntime_USE_QMX_KLEIDIAI_COEXIST)
-    install(TARGETS kleidiai-qmx EXPORT ${PROJECT_NAME}Targets
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
-  endif()
-endfunction()
-
 function (setup_arm_neon_nchwc)
   target_sources(onnxruntime_mlas PRIVATE
    ${MLAS_SRC_DIR}/sconv_nchwc_kernel_neon.h
@@ -423,6 +424,26 @@ else()
           set(X86_64 TRUE)
         elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "x86")
           set(X86 TRUE)
+        else()
+          # Native build (e.g. Termux on-device): NDK ABI var is unset, so
+          # fall back to CMAKE_SYSTEM_PROCESSOR detection like the non-Android path.
+          if(CMAKE_SYSTEM_PROCESSOR MATCHES "^arm64.*")
+            set(ARM64 TRUE)
+          elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^aarch64.*")
+            set(ARM64 TRUE)
+          elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^arm.*")
+            set(ARM TRUE)
+          elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
+            set(X86_64 TRUE)
+          elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
+            set(X86 TRUE)
+          elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64.*")
+            set(RISCV64 TRUE)
+          elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^loongarch64.*")
+            set(LOONGARCH64 TRUE)
+          elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^s390x$")
+            set(S390X TRUE)
+          endif()
         endif()
     else()
         #Linux/FreeBSD/PowerPC/...
@@ -456,6 +477,9 @@ else()
         elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^s390x$")
           set(S390X TRUE)
         endif()
+    endif()
+    if(onnxruntime_USE_KLEIDIAI AND ARM64)
+      setup_kleidiai()
     endif()
 
     if(APPLE)
@@ -540,9 +564,6 @@ else()
 		  setup_arm_neon_nchwc()
 		endif()
 
-		if (onnxruntime_USE_KLEIDIAI)
-          setup_kleidiai()
-        endif()
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
                                     PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
@@ -1071,6 +1092,9 @@ if (NOT onnxruntime_ORT_MINIMAL_BUILD)
   set_target_properties(onnxruntime_mlas_q4dq PROPERTIES FOLDER "ONNXRuntimeTest")
 
   target_link_libraries(onnxruntime_mlas_q4dq PRIVATE ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common)
+  if(onnxruntime_USE_KLEIDIAI)
+    target_link_libraries(onnxruntime_mlas_q4dq PRIVATE kleidiai)
+  endif()
   if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     target_link_libraries(onnxruntime_mlas_q4dq PRIVATE cpuinfo)
   endif()
