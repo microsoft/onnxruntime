@@ -189,13 +189,6 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
   // Record if the app requested weightless mode. Validation is deferred to Compile().
   weightless_requested_ =
       session_options.value.config_options.GetConfigOrDefault(kOrtSessionOptionEpEnableWeightless, "0") != "0";
-  if (weightless_requested_) {
-    if (ort_ep_->ort_version_supported < 29 || ort_ep_->GetWeightlessSupport == nullptr) {
-      LOGS(logger, WARNING) << "Weightless mode requested (ep.enable_weightless=1) but EP '"
-                            << ort_ep_->GetName(ort_ep_.get())
-                            << "' does not implement GetWeightlessSupport.";
-    }
-  }
 
   // Extract EP-scoped session config entries.
   // Arena options go to session_arena_options_; the rest go to provider_options_.
@@ -596,22 +589,30 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
 
   // Validate EP weightless support if the app requested it.
   if (weightless_requested_) {
-    if (ort_ep_->ort_version_supported < 29 || ort_ep_->GetWeightlessSupport == nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "Weightless mode requested (ep.enable_weightless=1) but EP '", Type(),
-                             "' does not implement GetWeightlessSupport.");
-    }
+    if (ort_ep_->ort_version_supported >= 29) {
+      if (ort_ep_->GetWeightlessSupport == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                               "Weightless mode requested (ep.enable_weightless=1) but EP '", Type(),
+                               "' does not implement GetWeightlessSupport.");
+      } else {
+        OrtWeightlessSupport support = OrtWeightlessSupport_NONE;
+        auto* ort_status = ort_ep_->GetWeightlessSupport(ort_ep_.get(), &support);
+        if (ort_status != nullptr) {
+          return ToStatusAndRelease(ort_status);
+        }
 
-    OrtWeightlessSupport support = OrtWeightlessSupport_NONE;
-    auto* ort_status = ort_ep_->GetWeightlessSupport(ort_ep_.get(), &support);
-    if (ort_status != nullptr) {
-      return ToStatusAndRelease(ort_status);
-    }
-
-    if (support == OrtWeightlessSupport_NONE) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "Weightless mode requested (ep.enable_weightless=1) but EP '", Type(),
-                             "' does not support weightless mode on this device.");
+        if (support == OrtWeightlessSupport_NONE) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                 "Weightless mode requested (ep.enable_weightless=1) but EP '", Type(),
+                                 "' does not support weightless mode on this device.");
+        }
+      }
+    } else {
+      LOGS(GetEpLoggerOrDefault(), INFO) << "Weightless mode requested (ep.enable_weightless=1) but EP '"
+                                         << Type() << "' was compiled with API version "
+                                         << ort_ep_->ort_version_supported
+                                         << " which predates weightless support (version 29). "
+                                         << "Weightless request will be ignored.";
     }
   }
 
