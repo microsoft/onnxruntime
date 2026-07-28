@@ -407,6 +407,16 @@ QuantizeARow_CompInt8_avx512(
     float* AScaledBlkSum  // scale_k * Sum_blklen(a_i)
 );
 
+void MLASCALL
+QuantizeARow_CompInt8_Fp16_avx512(
+    size_t BlkLen,
+    const MLAS_FP16* A,
+    size_t CountK,
+    std::byte* QuantA,
+    float* QuantAScale,
+    float* AScaledBlkSum  // scale_k * Sum_blklen(a_i)
+);
+
 static void
 SQ4BitGemmPackQuantBDataAndBlkSum512vnni(
     size_t N,
@@ -523,6 +533,7 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni = []() {
     d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx512vnni;
     d.SQ8BitGemmKernel_BlkSum_CompInt8 = SQ8BitGemmKernel_BlkSum_CompInt8_avx512vnni;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx512;
+    d.QuantizeARowComputeBlkSum_CompInt8_Fp16 = QuantizeARow_CompInt8_Fp16_avx512;
 
     // 2-bit native CompInt8 path. Single dispatch entry (W2):
     // 64-byte ZMM load + four fixed shift/mask pairs to unpack 4 K-blocks at
@@ -534,9 +545,7 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni = []() {
     d.Q2BitGemmPackQuantBDataSize       = onnxruntime::mlas::sq2bit_avx512::Q2BitGemmPackQuantBDataSize_Avx512;
     d.SQ2BitGemmPackQuantBDataAndBlkSum = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmPackQuantBDataAndBlkSum_Scalar;
     d.SQ2BitGemmKernel_BlkSum_CompInt8  = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_Dispatch;
-    d.Q2BitGemmEffectiveBlockCountK     = [](size_t BlockCountK) {
-        return MlasDivRoundup(BlockCountK, kSq2BitAvx512WeightKBlockGroup) * kSq2BitAvx512WeightKBlockGroup;
-    };
+    d.Q2BitGemmEffectiveBlockCountK     = onnxruntime::mlas::sq2bit_avx512::Q2BitGemmEffectiveBlockCountK;
 
     return d;
 }();

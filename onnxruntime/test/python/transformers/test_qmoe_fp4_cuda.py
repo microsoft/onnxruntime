@@ -14,6 +14,7 @@
 # --------------------------------------------------------------------------
 
 import math
+import os
 import unittest
 
 import numpy
@@ -352,6 +353,7 @@ class TestQMoEFP4(unittest.TestCase):
         onnx_dtype,
         use_swiglu=False,
         block_size=32,
+        gemv_mode=None,
     ):
         self._skip_if_no_fp4()
 
@@ -414,6 +416,12 @@ class TestQMoEFP4(unittest.TestCase):
         # ── create ORT session ────────────────────────────────────
         opts = onnxruntime.SessionOptions()
         opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        # gemv_mode toggles the fused FP4 GEMV decode path (read once in the QMoE op ctor during
+        # session creation): "1" forces it on, "0" forces the dequant fallback, None leaves the
+        # default (on). Restore the previous value right after the session is built.
+        prev_gemv_env = os.environ.get("ORT_ENABLE_FP4_GEMV")
+        if gemv_mode is not None:
+            os.environ["ORT_ENABLE_FP4_GEMV"] = gemv_mode
         try:
             session = onnxruntime.InferenceSession(
                 onnx_model, opts, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")]
@@ -422,6 +430,12 @@ class TestQMoEFP4(unittest.TestCase):
             if "FP4" in str(e) or "ENABLE_FP4" in str(e) or "SM" in str(e):
                 self.skipTest(f"FP4 not supported in this build: {e}")
             raise
+        finally:
+            if gemv_mode is not None:
+                if prev_gemv_env is None:
+                    os.environ.pop("ORT_ENABLE_FP4_GEMV", None)
+                else:
+                    os.environ["ORT_ENABLE_FP4_GEMV"] = prev_gemv_env
 
         # ── run inference ──────────────────────────────────────────
         input_tensor = torch.randn(num_tokens, hidden_size, device=device, dtype=torch_dtype)
@@ -526,6 +540,57 @@ class TestQMoEFP4(unittest.TestCase):
     # Dimensions must be multiples of 128 for MXFP4 alignment
     # (MinKDimAlignmentMXFPX = 128, MinNDimAlignmentMXFPX = 128)
 
+    def test_fp4_rejects_non_32_multiple_hidden_size(self):
+        """Reject truncated MXFP4 block-scale shapes before launching kernels."""
+        self._skip_if_no_fp4()
+
+        hidden_size = 258
+        inter_size = 256
+        num_experts = 2
+        top_k = 1
+        num_tokens = 1
+        onnx_dtype = TensorProto.FLOAT16
+
+        fc1_weights = torch.zeros((num_experts, hidden_size, inter_size // 2), dtype=torch.uint8, device=device)
+        fc2_weights = torch.zeros((num_experts, inter_size, hidden_size // 2), dtype=torch.uint8, device=device)
+        fc1_block_scales = torch.ones((num_experts, inter_size, hidden_size // 32), dtype=torch.uint8, device=device)
+        fc2_block_scales = torch.ones((num_experts, hidden_size, inter_size // 32), dtype=torch.uint8, device=device)
+        global_scale = torch.ones(num_experts, dtype=torch.float32, device=device)
+
+        onnx_model = create_fp4_moe_onnx_graph(
+            num_tokens=num_tokens,
+            hidden_size=hidden_size,
+            inter_size=inter_size,
+            num_experts=num_experts,
+            top_k=top_k,
+            onnx_dtype=onnx_dtype,
+            fc1_weights=fc1_weights,
+            fc2_weights=fc2_weights,
+            fc1_block_scales=fc1_block_scales,
+            fc1_global_scale=global_scale,
+            fc2_block_scales=fc2_block_scales,
+            fc2_global_scale=global_scale,
+        )
+
+        opts = onnxruntime.SessionOptions()
+        opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        opts.add_session_config_entry("session.disable_prepacking", "1")
+        session = onnxruntime.InferenceSession(
+            onnx_model, opts, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")]
+        )
+
+        input_tensor = torch.zeros((num_tokens, hidden_size), device=device, dtype=torch.float16)
+        router_logits = torch.ones((num_tokens, num_experts), device=device, dtype=torch.float16)
+        output_tensor = torch.empty((num_tokens, hidden_size), device=device, dtype=torch.float16)
+
+        iobinding = session.io_binding()
+        iobinding.bind_input("input", "cuda", 0, onnx_dtype, input_tensor.shape, input_tensor.data_ptr())
+        iobinding.bind_input("router_probs", "cuda", 0, onnx_dtype, router_logits.shape, router_logits.data_ptr())
+        iobinding.bind_output("output", "cuda", 0, onnx_dtype, output_tensor.shape, output_tensor.data_ptr())
+
+        with self.assertRaisesRegex(Exception, "hidden_size to be a multiple of 32"):
+            session.run_with_iobinding(iobinding)
+
     def test_fp4_fp16_silu_basic(self):
         """Basic FP16 + SiLU activation."""
         self._run_fp4_moe_test(
@@ -622,6 +687,142 @@ class TestQMoEFP4(unittest.TestCase):
             num_tokens=16,
             onnx_dtype=TensorProto.FLOAT16,
         )
+
+    @parameterized.expand(
+        [
+            (TensorProto.FLOAT16, 1, 4),
+            (TensorProto.FLOAT16, 2, 4),
+            (TensorProto.BFLOAT16, 1, 4),
+            (TensorProto.BFLOAT16, 2, 4),
+        ]
+    )
+    def test_fp4_decode_swiglu_gemv(self, onnx_dtype, num_tokens, top_k):
+        """Decode-shaped SwiGLU (hidden=inter=512, expanded_rows = num_tokens*top_k <= 8).
+
+        This shape satisfies is_moe_gemv_fp4_supported (n,k >= 512, expanded_rows in (0, 8]),
+        so forcing ORT_ENABLE_FP4_GEMV=1 exercises the fused MXFP4 W4A16 GEMV decode path.
+        test_fp4_decode_swiglu_fallback runs the identical shape with the dequant fallback
+        (ORT_ENABLE_FP4_GEMV=0); together they give an on/off parity check for the fused GEMV.
+        """
+        self._run_fp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=8,
+            top_k=top_k,
+            num_tokens=num_tokens,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+            gemv_mode="1",
+        )
+
+    @parameterized.expand(
+        [
+            (TensorProto.FLOAT16, 1, 4),
+            (TensorProto.BFLOAT16, 1, 4),
+        ]
+    )
+    def test_fp4_decode_swiglu_fallback(self, onnx_dtype, num_tokens, top_k):
+        """Same decode-shaped SwiGLU as test_fp4_decode_swiglu_gemv but with the fused GEMV
+        disabled (ORT_ENABLE_FP4_GEMV=0), so it exercises the dequant fallback on a shape the
+        GEMV path also supports."""
+        self._run_fp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=8,
+            top_k=top_k,
+            num_tokens=num_tokens,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+            gemv_mode="0",
+        )
+
+    def test_fp4_native_cutlass_row_varying_scales(self):
+        """Native SM90 WFP4A16 scale prepack preserves per-output-row MXFP4 scales."""
+        self._skip_if_no_fp4()
+        if _cuda_sm() != 90:
+            self.skipTest(f"Native FP4 CUTLASS GEMM is currently enabled only on SM90, got SM{_cuda_sm()}")
+
+        hidden_size = 512
+        inter_size = 512
+        num_experts = 1
+        top_k = 1
+        num_tokens = 1
+        onnx_dtype = TensorProto.FLOAT16
+
+        fc1_weights = torch.full((num_experts, hidden_size, inter_size // 2), 0x22, dtype=torch.uint8, device=device)
+        fc2_codes = torch.zeros((hidden_size, inter_size), dtype=torch.uint8, device=device)
+        diagonal = torch.arange(hidden_size, device=device)
+        fc2_codes[diagonal, diagonal] = 2
+        fc2_codes_kn = fc2_codes.T.contiguous()
+        fc2_weights = ((fc2_codes_kn[:, 1::2] << 4) | fc2_codes_kn[:, 0::2])[None]
+
+        row_codes = torch.where(
+            (torch.arange(inter_size, device=device) % 2) == 0,
+            torch.tensor(126, dtype=torch.uint8, device=device),
+            torch.tensor(128, dtype=torch.uint8, device=device),
+        )
+        fc1_block_scales = row_codes[None, :, None].expand(num_experts, inter_size, hidden_size // 32).contiguous()
+        fc2_block_scales = torch.full(
+            (num_experts, hidden_size, inter_size // 32), 127, dtype=torch.uint8, device=device
+        )
+        global_scale = torch.ones(num_experts, dtype=torch.float32, device=device)
+
+        onnx_model = create_fp4_moe_onnx_graph(
+            num_tokens=num_tokens,
+            hidden_size=hidden_size,
+            inter_size=inter_size,
+            num_experts=num_experts,
+            top_k=top_k,
+            onnx_dtype=onnx_dtype,
+            fc1_weights=fc1_weights,
+            fc2_weights=fc2_weights,
+            fc1_block_scales=fc1_block_scales,
+            fc1_global_scale=global_scale,
+            fc2_block_scales=fc2_block_scales,
+            fc2_global_scale=global_scale,
+            use_swiglu=False,
+        )
+
+        input_tensor = torch.full((num_tokens, hidden_size), 1.0 / hidden_size, device=device, dtype=torch.float16)
+        router_logits = torch.ones((num_tokens, num_experts), device=device, dtype=torch.float16)
+
+        def run(enable_native):
+            old_cutlass = os.environ.get("ORT_ENABLE_FP4_CUTLASS_GEMM")
+            old_unsafe = os.environ.get("ORT_ENABLE_FP4_CUTLASS_UNSAFE")
+            os.environ["ORT_ENABLE_FP4_CUTLASS_GEMM"] = "1" if enable_native else "0"
+            if enable_native:
+                os.environ["ORT_ENABLE_FP4_CUTLASS_UNSAFE"] = "1"
+            else:
+                os.environ.pop("ORT_ENABLE_FP4_CUTLASS_UNSAFE", None)
+            try:
+                opts = onnxruntime.SessionOptions()
+                opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+                session = onnxruntime.InferenceSession(
+                    onnx_model, opts, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")]
+                )
+            finally:
+                if old_cutlass is None:
+                    os.environ.pop("ORT_ENABLE_FP4_CUTLASS_GEMM", None)
+                else:
+                    os.environ["ORT_ENABLE_FP4_CUTLASS_GEMM"] = old_cutlass
+                if old_unsafe is None:
+                    os.environ.pop("ORT_ENABLE_FP4_CUTLASS_UNSAFE", None)
+                else:
+                    os.environ["ORT_ENABLE_FP4_CUTLASS_UNSAFE"] = old_unsafe
+
+            output_tensor = torch.empty((num_tokens, hidden_size), device=device, dtype=torch.float16)
+            iobinding = session.io_binding()
+            iobinding.bind_input("input", "cuda", 0, onnx_dtype, input_tensor.shape, input_tensor.data_ptr())
+            iobinding.bind_input("router_probs", "cuda", 0, onnx_dtype, router_logits.shape, router_logits.data_ptr())
+            iobinding.bind_output("output", "cuda", 0, onnx_dtype, output_tensor.shape, output_tensor.data_ptr())
+            session.run_with_iobinding(iobinding)
+            iobinding.synchronize_outputs()
+            return output_tensor.float().cpu()
+
+        fallback_output = run(enable_native=False)
+        native_output = run(enable_native=True)
+        max_diff = (native_output - fallback_output).abs().max().item()
+        self.assertEqual(max_diff, 0.0)
 
 
 # ============================================================================

@@ -525,12 +525,15 @@ Status SessionState::PrepackConstantInitializedTensors(
                                                       &weights_to_be_filled_in));
 
                   if (is_packed) {
-                    // BUG CHECK: Ensure that the kernel has filled in the pre-packed weight
-                    // to be cached if the weight was pre-packed
-                    ORT_ENFORCE(weights_to_be_filled_in.buffers_.size() > 0,
-                                "The kernel corresponding to the node ", node.Name(),
-                                " doesn't have an implementation that can cache computed pre-packed weights");
+                    // BUG CHECK: Ensure that a kernel either filled in the pre-packed weights
+                    // to be cached, or explicitly marked the packed weights as kernel-owned.
+                    ORT_RETURN_IF_NOT(!weights_to_be_filled_in.buffers_.empty() ||
+                                          weights_to_be_filled_in.has_kernel_owned_packed_weights_,
+                                      "The kernel corresponding to the node ", node.Name(),
+                                      " doesn't have an implementation that can cache computed pre-packed weights");
+                  }
 
+                  if (is_packed && !weights_to_be_filled_in.has_kernel_owned_packed_weights_) {
                     const auto& op_type = node.OpType();
 
                     // Sanity check

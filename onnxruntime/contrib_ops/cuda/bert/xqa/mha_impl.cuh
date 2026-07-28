@@ -30,6 +30,7 @@
 #ifndef GENERATE_CUBIN
 #include "hostUtils.h"
 #include <cuda_runtime.h>
+#include <string>
 #ifndef NDEBUG
 #include <cstdio>
 #endif
@@ -1266,8 +1267,14 @@ CUBIN_EXPORT __global__
 #endif
 #endif
         uint32_t const batchSize,
-        float const* __restrict__ kvCacheScale,  // Device memory scalar. Same scale for K and V cache. Used only for
-                                                 // int8/fp8 KV cache.
+        // Device memory scalars, used only for int8/fp8 KV cache. K and V have independent scales:
+        // kCacheScale is folded into qkScale (applied to Q*K.T before softmax) and vCacheScale into
+        // voScale (applied to the P*V accumulator). Both are read once per CTA, outside the K/V loop.
+        // Either may be null, meaning "scale is 1": the caller has already folded a non-scalar
+        // (per-channel) scale into Q / into the output, which is exact because dequantization is
+        // linear and the channel dim is contracted for K and free for V.
+        float const* __restrict__ kCacheScale,
+        float const* __restrict__ vCacheScale,
         uint32_t* __restrict__ semaphores = nullptr, void* __restrict__ scratch = nullptr) {
   assert(allowMultiBlockMode || gridDim.x == 1);
   bool const isMultiBlock = allowMultiBlockMode && (gridDim.x != 1);
@@ -1465,7 +1472,8 @@ CUBIN_EXPORT __global__
 #endif
   };
   if (warpIdx.z == 0) {
-    float const qkScale = qScale * (isKVCacheQuantized ? kvCacheScale[0] : 1.f);  // qkScale is applied onto Q*K.T before softmax.
+    // qkScale is applied onto Q*K.T before softmax. A null kCacheScale means the scale is already in Q.
+    float const qkScale = qScale * ((isKVCacheQuantized && kCacheScale != nullptr) ? kCacheScale[0] : 1.f);
     CircIdx<nbKBuffers> idxCurrSMemKBuf{nbKBuffers - 1};
     auto const getSMemKTile = [&](uint32_t idx) -> SharedMem::KSmemBuffer& { return smem.k[warpIdx.x][idx]; };
 #if BEAM_WIDTH > 1
@@ -2146,7 +2154,8 @@ CUBIN_EXPORT __global__
       }
     }
 
-    float voScale = (isKVCacheQuantized ? kvCacheScale[0] : 1.F);
+    // A null vCacheScale means the caller rescales the output itself (per-channel V scale).
+    float voScale = ((isKVCacheQuantized && vCacheScale != nullptr) ? vCacheScale[0] : 1.F);
     if (seqIterInit < nbSeqIters) {  // otherwise rcpRowSum will be NAN.
       // The attention sinks are moved to the multi-block reduction part if the multi-block is enabled.
       if (!isMultiBlock && attentionSinks != nullptr) {
@@ -2387,8 +2396,9 @@ CUBIN_EXPORT __global__ __launch_bounds__(256, nbCtaPerSM) void kernel_mha(
     BeamSearchParams const beamSearchParams,
 #endif
     uint32_t const batchSize,
-    float const* __restrict__ kvCacheScale,  // Device memory scalar. Same scale for K and V cache. Used only for
-                                             // int8/fp8 KV cache.
+    // Device memory scalars, used only for int8/fp8 KV cache. See kernel_mha_impl.
+    float const* __restrict__ kCacheScale,
+    float const* __restrict__ vCacheScale,
     uint32_t* __restrict__ semaphores = nullptr, void* __restrict__ scratch = nullptr) {
 #if SPEC_DEC
   kernel_mha_impl(qSeqLen, nbKHeads, headGrpSize, qCuSeqLens,
@@ -2410,7 +2420,7 @@ CUBIN_EXPORT __global__ __launch_bounds__(256, nbCtaPerSM) void kernel_mha(
 #if BEAM_WIDTH > 1
                   beamSearchParams,
 #endif
-                  batchSize, kvCacheScale, semaphores, scratch);
+                  batchSize, kCacheScale, vCacheScale, semaphores, scratch);
 }
 #else
 static constexpr auto kernel_mha = kernel_mha_impl;
@@ -2467,8 +2477,10 @@ void launchMHA(cudaDeviceProp const& prop, uint32_t nbKHeads,
                BeamSearchParams const& beamSearchParams,
 #endif
                uint32_t batchSize,
-               float const* __restrict__ kvCacheScale,  // Device memory scalar. Same scale for K and V cache. Used only for
-                                                        // int8/fp8 KV cache.
+               // Device memory scalars, used only for int8/fp8 KV cache. K and V may have different
+               // scales; both are per-tensor (a single float each).
+               float const* __restrict__ kCacheScale,
+               float const* __restrict__ vCacheScale,
 #if SPEC_DEC
                SpecDecParams const& specDecParams,
 #endif
@@ -2491,6 +2503,20 @@ void launchMHA(cudaDeviceProp const& prop, uint32_t nbKHeads,
   static uint32_t const hostSmemSize = [&]() {
     uint32_t size;
     checkCuda(cudaMemcpyFromSymbol(&size, smemSize, sizeof(smemSize)));
+    // Defensive backstop: the kernel's shared-memory footprint is fixed at compile time for its
+    // target SM (sm_80/sm_90 use a larger K/V-tile layout than sm_86/sm_89/sm_120). When such a
+    // kernel is JIT-compiled from PTX onto a device with a smaller per-block opt-in limit (e.g.
+    // consumer Blackwell sm_120, ~99 KB), cudaFuncSetAttribute below returns cudaErrorInvalidValue.
+    // The GQA dispatcher already skips XQA in that case (see GetXQARequiredSharedMemoryBytes); this
+    // guard turns any remaining mismatch into an actionable message instead of an opaque CUDA error.
+    if (size > prop.sharedMemPerBlockOptin) {
+      throw std::runtime_error(
+          "XQA kernel requires " + std::to_string(size) +
+          " bytes of shared memory per block but this GPU allows only " +
+          std::to_string(prop.sharedMemPerBlockOptin) +
+          " bytes. Build ONNX Runtime with the device's native CUDA architecture (e.g. add 120 to "
+          "CMAKE_CUDA_ARCHITECTURES for sm_120 / RTX 50-series) or disable XQA (ORT_ENABLE_XQA=0).");
+    }
     checkCuda(cudaFuncSetAttribute(kernel_mha, cudaFuncAttributeMaxDynamicSharedMemorySize, size));
     return size;
   }();
@@ -2541,7 +2567,7 @@ void launchMHA(cudaDeviceProp const& prop, uint32_t nbKHeads,
 #if BEAM_WIDTH > 1
                      beamSearchParams,
 #endif
-                     batchSize, kvCacheScale, semaphores, scratch);
+                     batchSize, kCacheScale, vCacheScale, semaphores, scratch);
 #else
   KVCacheList<false> const cacheList{kCacheData, vCacheData, seqLen, maxSeqLen, isBSNH, 1};
 #ifndef NDEBUG
@@ -2569,7 +2595,7 @@ void launchMHA(cudaDeviceProp const& prop, uint32_t nbKHeads,
 #if BEAM_WIDTH > 1
       beamSearchParams,
 #endif
-      batchSize, kvCacheScale, semaphores, scratch);
+      batchSize, kCacheScale, vCacheScale, semaphores, scratch);
 #endif
   checkCuda(cudaPeekAtLastError());
 #endif  // USE_INPUT_KV

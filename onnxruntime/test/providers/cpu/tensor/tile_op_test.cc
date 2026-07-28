@@ -439,6 +439,81 @@ TEST(TensorOpTest, TileOutputSizeExceedsLimitString) {
 }
 
 #if defined(USE_WEBGPU)
+// Runs a Tile test that must be assigned to the WebGPU kernel. The CPU EP is
+// excluded so the test fails (rather than silently passing on a CPU fallback)
+// if the WebGPU Tile kernel does not support the given element type. This
+// exercises the WebGpuSupportedNumberTypes() constraint end-to-end for the
+// newly added int32/uint32 support.
+template <typename T>
+void RunWebGpuTileTypeTest(const std::vector<int64_t>& input_dims,
+                           const std::vector<int64_t>& repeats) {
+  if (DefaultWebGpuExecutionProvider().get() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  size_t input_size =
+      static_cast<size_t>(std::accumulate(input_dims.begin(), input_dims.end(), 1LL, std::multiplies<int64_t>()));
+  std::vector<T> input_data = InputData<T>(input_size);
+  size_t rank = input_dims.size();
+  std::vector<int64_t> repeats_dims(1, static_cast<int64_t>(rank));
+  std::vector<int64_t> output_dims(rank);
+  for (size_t i = 0; i < rank; ++i) {
+    output_dims[i] = input_dims[i] * repeats[i];
+  }
+  size_t output_size =
+      static_cast<size_t>(std::accumulate(output_dims.begin(), output_dims.end(), 1LL, std::multiplies<int64_t>()));
+  std::vector<T> output_data(output_size);
+  std::vector<int64_t> input_strides(rank);
+  std::vector<int64_t> output_strides(rank);
+  if (rank >= 1) {
+    input_strides[rank - 1] = output_strides[rank - 1] = 1;
+    if (rank > 1) {
+      for (size_t i = rank - 2;; --i) {
+        input_strides[i] = input_dims[i + 1] * input_strides[i + 1];
+        output_strides[i] = output_dims[i + 1] * output_strides[i + 1];
+        if (i == 0) break;
+      }
+    }
+  }
+  for (size_t i = 0; i < output_size; ++i) {
+    int64_t index = 0;
+    int64_t remain = static_cast<int64_t>(i);
+    for (size_t j = 0; j < rank; ++j) {
+      index += (((remain / output_strides[j]) % input_dims[j]) * input_strides[j]);
+      remain = remain % output_strides[j];
+    }
+    output_data[i] = input_data[static_cast<size_t>(index)];
+  }
+
+  OpTester test("Tile");
+  test.AddInput<T>("input", input_dims, input_data);
+  test.AddInput<int64_t>("repeats", repeats_dims, repeats);
+  test.AddOutput<T>("output", output_dims, output_data);
+  // Exclude the CPU EP so the node must run on the WebGPU Tile kernel.
+  test.ConfigExcludeEps({kCpuExecutionProvider});
+  test.RunWithConfig();
+}
+
+// int32 Tile must run on the WebGPU kernel (not fall back to CPU) and produce
+// correct results across a range of shapes.
+TEST(TensorOpTest, TileInt32TypeWebGpu) {
+  RunWebGpuTileTypeTest<int32_t>({3}, {3});
+  RunWebGpuTileTypeTest<int32_t>({2, 2}, {2, 1});
+  RunWebGpuTileTypeTest<int32_t>({2, 3}, {2, 2});
+  RunWebGpuTileTypeTest<int32_t>({2, 1, 3}, {1, 2, 1});
+  RunWebGpuTileTypeTest<int32_t>({1, 2, 3, 4}, {2, 1, 2, 1});
+}
+
+// uint32 Tile must run on the WebGPU kernel (not fall back to CPU) and produce
+// correct results across a range of shapes.
+TEST(TensorOpTest, TileUint32TypeWebGpu) {
+  RunWebGpuTileTypeTest<uint32_t>({3}, {3});
+  RunWebGpuTileTypeTest<uint32_t>({2, 2}, {2, 1});
+  RunWebGpuTileTypeTest<uint32_t>({2, 3}, {2, 2});
+  RunWebGpuTileTypeTest<uint32_t>({2, 1, 3}, {1, 2, 1});
+  RunWebGpuTileTypeTest<uint32_t>({1, 2, 3, 4}, {2, 1, 2, 1});
+}
+
 // The WebGPU Tile kernel stores per-axis repeat values in a uint32_t shader
 // uniform. Repeat values that would truncate when cast to uint32_t must be
 // rejected before reaching the shader. A zero-element input is used so that

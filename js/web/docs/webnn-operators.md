@@ -43,7 +43,7 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | Flatten | ai.onnx(7-8, 9-10, 11-12, 13-20, 21+) | reshape | |
 | Floor | ai.onnx(7-12, 13+) | floor | |
 | Gather | ai.onnx(7-10, 11-12, 13+) | gather | |
-| GatherBlockQuantized | com.microsoft(1+) | dequantizeLinear, gather | |
+| GatherBlockQuantized | com.microsoft(1+) | dequantizeLinear, gather | uint8-packed 4-bit data (bits=4) is reinterpreted as uint4, which requires 'quantize_axis' to be the last axis and 'data' (and 'zero_points', if present) to be constant initializers |
 | GatherElements | ai.onnx(11-12, 13+) | gatherElements | |
 | GatherND | ai.onnx(11, 12, 13+) | gatherND | Only supports 'batch_dims' == 0 |
 | Gelu | ai.onnx(20+) | gelu | |

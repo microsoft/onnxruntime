@@ -602,43 +602,6 @@ void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::str
   }
 }
 
-size_t GetElementSizeOfTensor(ONNX_NAMESPACE::TensorProto_DataType tensor_data_type) {
-  static const std::unordered_map<ONNX_NAMESPACE::TensorProto_DataType, size_t> tensorproto_data_size{
-      {TensorProto_DataType_FLOAT, sizeof(float)},
-      {TensorProto_DataType_UINT8, sizeof(uint8_t)},
-      {TensorProto_DataType_INT8, sizeof(int8_t)},
-      {TensorProto_DataType_UINT16, sizeof(uint16_t)},
-      {TensorProto_DataType_INT16, sizeof(int16_t)},
-      {TensorProto_DataType_FLOAT16, sizeof(uint16_t)},
-      {TensorProto_DataType_BFLOAT16, sizeof(uint16_t)},
-      {TensorProto_DataType_INT32, sizeof(int32_t)},
-      {TensorProto_DataType_UINT32, sizeof(uint32_t)},
-      {TensorProto_DataType_UINT64, sizeof(uint64_t)},
-      {TensorProto_DataType_INT64, sizeof(int64_t)},
-      {TensorProto_DataType_DOUBLE, sizeof(double)},
-      {TensorProto_DataType_COMPLEX64, sizeof(float)},   /* byteswap each element individually */
-      {TensorProto_DataType_COMPLEX128, sizeof(double)}, /* byteswap each element individually */
-      {TensorProto_DataType_BOOL, sizeof(uint8_t)},
-      {TensorProto_DataType_FLOAT8E4M3FN, sizeof(uint8_t)},
-      {TensorProto_DataType_FLOAT8E4M3FNUZ, sizeof(uint8_t)},
-      {TensorProto_DataType_FLOAT8E5M2, sizeof(uint8_t)},
-      {TensorProto_DataType_FLOAT8E5M2FNUZ, sizeof(uint8_t)},
-      {TensorProto_DataType_UINT4, sizeof(uint8_t)},
-      {TensorProto_DataType_INT4, sizeof(uint8_t)},
-      {TensorProto_DataType_UINT2, sizeof(uint8_t)},
-      {TensorProto_DataType_INT2, sizeof(uint8_t)},
-      {TensorProto_DataType_FLOAT4E2M1, sizeof(uint8_t)},
-      {TensorProto_DataType_FLOAT8E8M0, sizeof(uint8_t)},
-  };
-
-  auto pos = tensorproto_data_size.find(tensor_data_type);
-  if (pos == tensorproto_data_size.end()) {
-    return 0;
-  }
-
-  return pos->second;
-}
-
 void ConvertRawDataInTensorProto(TensorProto& tensor) {
   size_t element_size = 1;
   void* bytes = NULL;
