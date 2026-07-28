@@ -4,6 +4,7 @@
 #include <array>
 #include <filesystem>
 #include <fstream>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -72,8 +73,8 @@ void RunAndValidate(Ort::Session& session) {
 
 void AddFloat16Initializer(ONNX_NAMESPACE::GraphProto* graph,
                            const std::string& name,
-                           const std::vector<int64_t>& shape,
-                           const std::vector<float>& values) {
+                           std::span<const int64_t> shape,
+                           std::span<const float> values) {
   auto* init = graph->add_initializer();
   init->set_name(name);
   init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
@@ -91,7 +92,7 @@ void AddFloat16Initializer(ONNX_NAMESPACE::GraphProto* graph,
 void AddValueInfo(ONNX_NAMESPACE::ValueInfoProto* vi,
                   const std::string& name,
                   ONNX_NAMESPACE::TensorProto_DataType elem_type,
-                  const std::vector<int64_t>& shape) {
+                  std::span<const int64_t> shape) {
   vi->set_name(name);
   auto* type = vi->mutable_type()->mutable_tensor_type();
   type->set_elem_type(elem_type);
@@ -136,7 +137,7 @@ void AddUnsupportedSink(ONNX_NAMESPACE::GraphProto* graph, const std::string& in
 // as an all-zero tensor of the given shape. Asserts the output is f16.
 std::vector<float> RunConstantOutput(const std::string& model_data,
                                      const std::string& input_name,
-                                     const std::vector<int64_t>& input_shape,
+                                     std::span<const int64_t> input_shape,
                                      const char* output_name,
                                      size_t& out_element_count) {
   Ort::SessionOptions session_options;
