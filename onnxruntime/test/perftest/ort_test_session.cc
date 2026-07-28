@@ -5,6 +5,7 @@
 
 #include "ort_test_session.h"
 #include <algorithm>
+#include <cstring>
 #include <limits>
 #include <fstream>
 #include <set>
@@ -109,6 +110,17 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         perftest::utils::UsesNvidiaDevice(env, performance_test_config) &&
         device_memory_name_.empty()) {
       device_memory_name_ = CUDA;
+    }
+
+    if (device_memory_name_.empty()) {
+#ifdef _MSC_VER
+      const std::string qnn_opt_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+      const std::string qnn_opt_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+      if (qnn_opt_string.find("enable_htp_shared_memory_allocator|1") != std::string::npos) {
+        device_memory_name_ = "QnnHtpShared";
+      }
     }
   }
 
@@ -979,6 +991,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     Ort::MemoryInfo memory_info(nullptr);  // Default initialize, will be overwritten
     if (device_memory_name_ == CUDA) {
       memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeDefault);
+    } else if (device_memory_name_ == "QnnHtpShared") {
+      memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtDeviceAllocator, 0, OrtMemTypeCPUOutput);
     } else {
       memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
     }
@@ -1081,6 +1095,32 @@ static void InitializeTensorWithSeed(int32_t seed, Ort::Value& tensor) {
   }
 
 #undef CASE_FOR_TYPE
+}
+
+Ort::Value OnnxRuntimeTestSession::CopyToSharedAllocator(Ort::Value&& src) {
+  if (!src.IsTensor()) {
+    return std::move(src);
+  }
+
+  if (src.GetTensorMemoryInfo().GetDeviceMemoryType() == OrtDeviceMemoryType_HOST_ACCESSIBLE) {
+    return std::move(src);
+  }
+
+  const auto type_and_shape = src.GetTensorTypeAndShapeInfo();
+  const ONNXTensorElementDataType elem_type = type_and_shape.GetElementType();
+  if (elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
+    return std::move(src);
+  }
+
+  const std::vector<int64_t> shape = type_and_shape.GetShape();
+  const size_t num_bytes = src.GetTensorSizeInBytes();
+  const void* src_data = src.GetTensorRawData();
+
+  Ort::Value shared = Ort::Value::CreateTensor(allocator_, shape.data(), shape.size(), elem_type);
+  if (num_bytes > 0) {
+    memcpy(shared.GetTensorMutableRawData(), src_data, num_bytes);
+  }
+  return shared;
 }
 
 bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {

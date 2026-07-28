@@ -20,6 +20,9 @@ class OnnxRuntimeTestSession : public TestSession {
                          const TestModelInfo& m);
 
   void PreLoadTestData(size_t test_data_id, size_t input_id, Ort::Value&& value) override {
+    if (allocator_.GetInfo().GetDeviceMemoryType() == OrtDeviceMemoryType_HOST_ACCESSIBLE) {
+      value = CopyToSharedAllocator(std::move(value));
+    }
     if (test_inputs_.size() < test_data_id + 1) {
       test_inputs_.resize(test_data_id + 1);
     }
@@ -39,6 +42,8 @@ class OnnxRuntimeTestSession : public TestSession {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxRuntimeTestSession);
 
  private:
+  Ort::Value CopyToSharedAllocator(Ort::Value&& src);
+
   Ort::Session session_{nullptr};
   std::mt19937 rand_engine_;
   std::uniform_int_distribution<int> dist_;
