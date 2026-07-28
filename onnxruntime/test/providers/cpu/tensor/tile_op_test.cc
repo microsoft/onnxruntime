@@ -6,6 +6,7 @@
 #include "test/util/include/default_providers.h"
 
 #if defined(USE_WEBGPU)
+#include "core/framework/session_options.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #endif
 
