@@ -754,6 +754,113 @@ alternates full and sliding layers).
    because Flash's LSE already reflects the window mask.
 5. **Composition with `softcap`.** Both are already handled inside Flash varlen; add a combined test.
 
+### 9.3 Bounded-capacity (rolling) sliding-window cache
+
+§9.2 is about not *reading* out-of-window KV. This sub-section is about not *storing* it: when
+`local_window_size = W > 0`, a sequence of context length $L$ only ever needs $O(W)$ cached tokens,
+not $O(L)$. For a 128K context with a 4K window that is a ~32× reduction in KV memory, which is what
+decides how many sequences fit on the device.
+
+**Yes — it is expressed through `slot_mapping`, but not through `slot_mapping` alone.** The
+capability splits exactly along the write/read line of [§5](#5-feature-slot_mapping):
+
+| Concern | Mechanism | Owner |
+|---|---|---|
+| Reuse a physical block for a later token | `slot_mapping` (§5) — the *write* path | Runtime / scheduler |
+| Stop reading an evicted block | `block_table[b][i] = -1` — the *read* path | Runtime / scheduler |
+| Not attending out-of-window positions | `local_window_size` mask inside the backend | Kernel |
+| Not *fetching* out-of-window blocks | window-clamped block walk (§9.2 item 2) | Kernel |
+
+The derived slot resolver cannot do this: it computes
+`slot = block_table[b][position / block_size] * block_size + position % block_size`, so a block is
+implicitly owned by one absolute position range forever and the allocation grows with $L$. An
+explicit `slot_mapping` lets the same physical block be rewritten by a token $W$ positions later,
+which is the whole trick.
+
+#### 9.3.1 Invariant: the block table stays indexed by absolute position
+
+`block_table[b][i]` must keep meaning "the block holding positions
+`[i * block_size, (i+1) * block_size)` of sequence `b`". Do **not** compact or shift the row so that
+entry 0 becomes the window start. Every backend derives its mask from absolute positions —
+FlashAttention from `seqlen_k` (`n_block_min` is computed from `actual_seqlen_k`), the paged decode
+kernel from `kv_len - 1`, the latent kernel from `past_seqlens[b] + s` — and RoPE has already been
+applied at the absolute position when the row was written. Rotating the row would silently decouple
+position from mask and from RoPE phase.
+
+So an evicting runtime presents a **sparse row**: entries below the window are `-1`, entries inside
+it point into a small recycled pool. `-1` is defined as *"block not mapped — treat every position in
+it as masked out"*, consistent with `slot_mapping`'s `-1`, and is already honoured by the slot
+resolver, the gather kernel, the paged decode kernel and the latent kernel.
+
+#### 9.3.2 Allocation policies
+
+Let $N = \lceil W / \text{block\_size} \rceil + 1$. The `+1` absorbs the partially filled boundary
+block, so the oldest still-in-window position is never evicted early.
+
+1. **Ring buffer** (TRT-LLM's *cyclic* KV cache, vLLM's sliding-window allocator). The runtime holds
+   $N$ blocks `ring[0 .. N-1]` per sequence and fills, for absolute position $p$ with
+   $i = \lfloor p / \text{block\_size} \rfloor$:
+
+   ```
+   slot_mapping[t]    = ring[i % N] * block_size + (p % block_size)
+   block_table[b][i]  = ring[i % N]                       // i inside the live range
+   block_table[b][j]  = -1                                // j below the live range
+   ```
+
+   Steady-state KV memory per sequence is exactly `N * block_size` tokens, independent of $L$.
+2. **Free-list eviction.** After a step, return every block whose highest position falls below the
+   window start to the global allocator and write `-1` into its entry. Same asymptotic memory, more
+   allocator traffic, but it interleaves with prefix caching and with layers that are *not* sliding
+   (GPT-OSS alternates), which a per-sequence ring does not.
+
+**Eviction condition.** The earliest query position a sequence will use in the current step is
+$p_{\min} = \texttt{past\_seqlens}[b]$, and its window admits positions $\ge p_{\min} - W + 1$. So
+after the step, blocks with
+
+$$i < \left\lfloor \frac{\max(0,\ \texttt{past\_seqlens}[b] - W + 1)}{\text{block\_size}} \right\rfloor$$
+
+are unreachable forever (query positions only move forward), and may be recycled. Eviction is
+therefore a *post-step* runtime action; the kernel never frees anything.
+
+#### 9.3.3 Backend obligations
+
+| Backend | Behaviour on an out-of-window `-1` entry |
+|---|---|
+| Paged decode | `kv_begin = max(kv_begin, kv_len - W)` already skips the range; `block_id < 0` additionally forces `-FLT_MAX`. Safe. |
+| Latent / MLA | `kv_begin = max(0, kv_end - W)`. Safe. |
+| FlashAttention varlen (paged) | `n_block_min = max(0, (m_block * kBlockM + seqlen_k - seqlen_q - window_size_left) / kBlockN)` — out-of-window pages are never dereferenced. Requires `block_size % kBlockN == 0`, which is already a Flash *eligibility* condition (§13). Safe. |
+| Gather path (MEA, quantized cache) | The gather **zero-fills** unmapped rows. A zero key yields logit $0$, not $-\infty$, so correctness relies on MEA's own window mask covering exactly the same positions. It does, because both derive from the same $W$ — but this makes the invariant below load-bearing. |
+
+> **Invariant (load-bearing).** A `-1` entry must never overlap a position the mask admits. The
+> runtime may only unmap blocks strictly below the window start. Violating it is silently wrong on
+> the gather path (zeros contribute weight) rather than loudly wrong. Add a debug-build assertion in
+> the gather kernel: `block_id >= 0 || pos < kv_len - W`.
+
+#### 9.3.4 Follow-on kernel work this exposes
+
+1. **Window-clamped gather.** `GatherAndExpandPagedKVCache` still materializes $L$ tokens of
+   workspace even when only $W$ are readable. Starting the gather at
+   `first_block = max(0, (L_b - W) / block_size)` shrinks both the workspace and the gather traffic
+   to $O(W)$ — this is §9.2 item 2 applied to the gather path, and it is the difference between the
+   quantized/MEA backends being $O(L)$ and $O(W)$ per step.
+2. **Split-KV layout.** `ComputePagedDecodeSplits` lays splits out over the full `kv_len` and each
+   CTA then clamps to `kv_len - W`, so with $W \ll L$ most CTAs launch only to exit immediately. The
+   split range should be computed over the clamped interval `[max(0, kv_len - W), kv_len)`.
+3. **No schema change is required.** The block-table *row* stays $O(L / \text{block\_size})$, but at
+   4 bytes per `block_size` tokens versus `2 * kv_num_heads * head_size * sizeof(T)` bytes per token
+   of KV, the row is ~0.01% of what it indexes — not worth a breaking change. Shrinking the row too
+   would need a per-sequence window origin (a rotated block table plus a `kv_start_positions` input);
+   that is listed with the other deferred contract changes in [§21](#21-deferred-breaking-contract).
+
+#### 9.3.5 Validation
+
+- Ring-buffer run (only $N$ blocks allocated per sequence, `slot_mapping` recycling them, leading
+  `block_table` entries `-1`) must be **bit-identical** to a full-cache run with the same window, for
+  every decode step past $L > W$.
+- `W >= L` with recycling enabled must still equal full attention (nothing is ever evicted).
+- Mixed batch: some sequences past the window, some not, in the same step.
+- Composition: ring buffer × quantized cache (the gather path is the risky one) × `head_sink`.
+
 ## 10. Feature: `attention_bias`
 
 ### 10.1 GQA-compatible shape
@@ -1226,6 +1333,9 @@ reference oracle for every shared feature and catches drift automatically. Run i
 - `token_count == 0` early-out.
 - `batch_size` at and just above the BlockScan limit (must error, not corrupt).
 - Sliding-window block pruning: pruned run bit-matches the unpruned run.
+- Rolling sliding-window cache (§9.3): a run holding only `ceil(W / block_size) + 1` blocks per
+  sequence, recycled through `slot_mapping` with the evicted `block_table` entries set to `-1`,
+  bit-matches the full-cache run at every decode step.
 
 ### 17.3 MLA tests
 
@@ -1331,7 +1441,7 @@ These block the feature work and should land ahead of it.
 | Phase | Contents | Schema delta |
 |---|---|---|
 | **P0 — Foundation** | §18 defect fixes; `.Alias(3,1).Alias(4,2)` on the kernel def (§4.4); sliding-window semantic verification and GQA parity harness (§17.1) | none |
-| **P1 — Paging primitives** | `slot_mapping` (§5); sliding-window block pruning (§9.2) | input 10 |
+| **P1 — Paging primitives** | `slot_mapping` (§5); sliding-window block pruning (§9.2); rolling sliding-window cache (§9.3) | input 10 |
 | **P2 — Model coverage** | `head_sink` via LSE epilogue (§6); fused QK-Norm (§7) | inputs 11–13, attr `qk_norm_epsilon` |
 | **P3 — Memory** | Quantized cache INT8/FP8, `PER_TENSOR` + `PER_CHANNEL`, dequant-on-gather read path (§8) | `T_CACHE`, `T_KV_SCALE`, inputs 14–15, 4 attrs |
 | **P4 — MLA (correctness)** | `kv_cache_layout="LATENT"`, `v_head_size`, `rotary_offset`, V-aliases-K, optional `value_cache`, unfused MLA reference kernel, absorbed↔non-absorbed equivalence tests (§12) | attrs `kv_cache_layout`, `v_head_size`, `rotary_offset`; input 4 optional |
