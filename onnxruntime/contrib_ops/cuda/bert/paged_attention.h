@@ -14,7 +14,9 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-template <typename T>
+// T is the activation type (float16 / bfloat16). TCACHE is the paged KV cache element type:
+// the same as T for an unquantized cache, or int8_t / Float8E4M3FN for a quantized one.
+template <typename T, typename TCACHE>
 class PagedAttention final : public CudaKernel {
  public:
   PagedAttention(const OpKernelInfo& info);
@@ -30,6 +32,9 @@ class PagedAttention final : public CudaKernel {
   float scale_;
   float softcap_;
   float qk_norm_epsilon_;
+  KVQuantizationType k_quant_type_;
+  KVQuantizationType v_quant_type_;
+  int kv_cache_bit_width_;
   bool disable_flash_attention_;
   bool disable_memory_efficient_attention_;
   const AttentionKernelOptions* kernel_options_;

@@ -21,23 +21,45 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
-      PagedAttention,                                                   \
-      kMSDomain,                                                        \
-      1,                                                                \
-      T,                                                                \
-      kCudaExecutionProvider,                                           \
-      (*KernelDefBuilder::Create())                                     \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("S", DataTypeImpl::GetTensorType<int32_t>()), \
-      PagedAttention<T>);
+#define REGISTER_KERNEL_TYPED(T, TCACHE)                                      \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                              \
+      PagedAttention,                                                         \
+      kMSDomain,                                                              \
+      1,                                                                      \
+      T##_##TCACHE,                                                           \
+      kCudaExecutionProvider,                                                 \
+      (*KernelDefBuilder::Create())                                           \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())              \
+          .TypeConstraint("T_CACHE", DataTypeImpl::GetTensorType<TCACHE>())   \
+          .TypeConstraint("T_KV_SCALE", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("S", DataTypeImpl::GetTensorType<int32_t>()),       \
+      PagedAttention<T, TCACHE>);
 
-REGISTER_KERNEL_TYPED(MLFloat16)
-REGISTER_KERNEL_TYPED(BFloat16)
+REGISTER_KERNEL_TYPED(MLFloat16, MLFloat16)
+REGISTER_KERNEL_TYPED(BFloat16, BFloat16)
+REGISTER_KERNEL_TYPED(MLFloat16, int8_t)
+REGISTER_KERNEL_TYPED(BFloat16, int8_t)
+#if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
+REGISTER_KERNEL_TYPED(MLFloat16, Float8E4M3FN)
+REGISTER_KERNEL_TYPED(BFloat16, Float8E4M3FN)
+#endif
 
-template <typename T>
-PagedAttention<T>::PagedAttention(const OpKernelInfo& info)
+// True when TCACHE stores quantized values that need a scale on read/write.
+template <typename TCACHE>
+constexpr bool IsQuantizedCacheType() {
+  if constexpr (std::is_same<TCACHE, int8_t>::value) {
+    return true;
+#if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
+  } else if constexpr (std::is_same<TCACHE, Float8E4M3FN>::value) {
+    return true;
+#endif
+  } else {
+    return false;
+  }
+}
+
+template <typename T, typename TCACHE>
+PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
     : CudaKernel(info) {
   int64_t num_heads = 0;
   int64_t kv_num_heads = 0;
@@ -54,14 +76,20 @@ PagedAttention<T>::PagedAttention(const OpKernelInfo& info)
   qk_norm_epsilon_ = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
   ORT_ENFORCE(std::isfinite(qk_norm_epsilon_) && qk_norm_epsilon_ > 0.0f,
               "qk_norm_epsilon must be a positive finite number");
+  k_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("k_quant_type", "NONE"));
+  v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"));
+  // The default depends on the cache dtype so that a model that only swaps key_cache/value_cache to
+  // int8 and sets the quant types does not also have to spell out the bit width.
+  kv_cache_bit_width_ = static_cast<int>(
+      info.GetAttrOrDefault<int64_t>("kv_cache_bit_width", IsQuantizedCacheType<TCACHE>() ? 8 : 0));
 
   kernel_options_ = this->GetAttentionKernelOptions();
   disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
   disable_memory_efficient_attention_ = sizeof(T) != 2 || !kernel_options_->UseEfficientAttention();
 }
 
-template <typename T>
-Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
+template <typename T, typename TCACHE>
+Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) const {
   auto ort_stream = GetOrtStream(context);
 
   const Tensor* query = context->Input<Tensor>(0);
@@ -78,11 +106,15 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* head_sink = context->Input<Tensor>(11);
   const Tensor* q_norm_weight = context->Input<Tensor>(12);
   const Tensor* k_norm_weight = context->Input<Tensor>(13);
+  const Tensor* k_scale = context->Input<Tensor>(14);
+  const Tensor* v_scale = context->Input<Tensor>(15);
 
   auto& device_prop = GetDeviceProp();
   PagedAttentionParameters parameters;
   typedef typename ToCudaType<T>::MappedType CudaT;
-  PagedAttentionData<CudaT> data;
+  typedef typename ToCudaType<TCACHE>::MappedType CudaTCache;
+  constexpr bool kIsQuantizedCache = IsQuantizedCacheType<TCACHE>();
+  PagedAttentionData<CudaT, CudaTCache> data;
 
   // Check shapes of inputs to op and set parameters
   ORT_RETURN_IF_ERROR(paged_attention_helper::CheckInputs(query,
@@ -99,6 +131,8 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                           head_sink,
                                                           q_norm_weight,
                                                           k_norm_weight,
+                                                          k_scale,
+                                                          v_scale,
                                                           &parameters,
                                                           num_heads_,
                                                           kv_num_heads_,
@@ -106,6 +140,10 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                           softcap_,
                                                           smooth_softmax_,
                                                           qk_norm_epsilon_,
+                                                          k_quant_type_,
+                                                          v_quant_type_,
+                                                          kv_cache_bit_width_,
+                                                          kIsQuantizedCache,
                                                           device_prop.maxThreadsPerBlock));
   parameters.local_window_size = local_window_size_;
   parameters.do_rotary = do_rotary_;
@@ -151,10 +189,10 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   value_cache_out_shape[3] = static_cast<int64_t>(parameters.head_size);
   Tensor* value_cache_out = context->Output(2, value_cache_out_shape);
 
-  if (key_cache_out != nullptr && key_cache->Data<T>() != key_cache_out->MutableData<T>()) {
+  if (key_cache_out != nullptr && key_cache->Data<TCACHE>() != key_cache_out->MutableData<TCACHE>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "key_cache and key_cache_out must be the same buffer");
-  } else if (value_cache_out != nullptr && value_cache->Data<T>() != value_cache_out->MutableData<T>()) {
+  } else if (value_cache_out != nullptr && value_cache->Data<TCACHE>() != value_cache_out->MutableData<TCACHE>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "value_cache and value_cache_out must be the same buffer");
   }
@@ -173,12 +211,17 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // model uses a smaller page than that, we silently fall back to the memory-efficient path (which
   // gathers the pages into a dense buffer first and therefore accepts any block_size) rather than
   // rejecting the model.
+  //
+  // A quantized cache is exempt: FlashAttention cannot read a quantized page at all, so that path
+  // dequantizes the live context into a dense buffer and uses the non-paged varlen entry point,
+  // which has no page-alignment requirement.
   const int flash_min_block_size =
       parameters.head_size <= 64 ? 256 : (parameters.head_size <= 128 ? 128 : 64);
+  const bool flash_block_size_ok = kIsQuantizedCache || (parameters.block_size % flash_min_block_size) == 0;
 
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = !disable_flash_attention_ &&
-                             (parameters.block_size % flash_min_block_size) == 0 &&
+                             flash_block_size_ok &&
                              onnxruntime::flash::is_supported<T>(device_prop,
                                                                  parameters.head_size,
                                                                  parameters.num_heads,
@@ -258,14 +301,23 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   int total_kv_tokens = 0;
   int max_query_len = 0;
+  int max_kv_len = 0;
   IAllocatorUniquePtr<void> gathered_key_buffer;
   IAllocatorUniquePtr<void> gathered_value_buffer;
   IAllocatorUniquePtr<void> fmha_buffer;
 
+  // Both backends need a dense KV staging buffer when the cache is quantized (FlashAttention cannot
+  // read a quantized page, and the CUTLASS kernel is not paged at all), which requires the host to
+  // know total_kv_tokens and max_kv_len.
+  const bool needs_dense_kv = use_memory_efficient_attention || (use_flash_attention && kIsQuantizedCache);
+  // The dense buffer keeps the grouped layout for FlashAttention (it does GQA internally) and is
+  // GQA-expanded for the CUTLASS kernel.
+  const int gathered_num_heads = use_memory_efficient_attention ? parameters.num_heads : parameters.kv_num_heads;
+
   // Compute max_query_len on the host for both FA and MEA. The previous
   // `token_count - batch_size + 1` heuristic underestimates (or goes
-  // non-positive) when batches have zero new tokens. MEA additionally needs
-  // total_kv_tokens to size gather buffers.
+  // non-positive) when batches have zero new tokens. The dense-KV paths
+  // additionally need total_kv_tokens and max_kv_len.
   if (use_flash_attention || use_memory_efficient_attention) {
     const int kCumulativeCount = parameters.batch_size + 1;
     auto cum_q_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
@@ -273,7 +325,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cum_q_pinned.get(),
                                          reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>()),
                                          sizeof(int) * kCumulativeCount, cudaMemcpyDeviceToHost, cuda_stream));
-    if (use_memory_efficient_attention) {
+    if (needs_dense_kv) {
       cum_kv_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cum_kv_pinned.get(), cumulative_seqlens_kv_ptr,
                                            sizeof(int) * kCumulativeCount, cudaMemcpyDeviceToHost, cuda_stream));
@@ -284,27 +336,35 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
       if (q_len_i > max_query_len) {
         max_query_len = q_len_i;
       }
+      if (needs_dense_kv) {
+        const int kv_len_i = cum_kv_pinned.get()[i + 1] - cum_kv_pinned.get()[i];
+        if (kv_len_i > max_kv_len) {
+          max_kv_len = kv_len_i;
+        }
+      }
     }
-    if (use_memory_efficient_attention) {
+    if (needs_dense_kv) {
       total_kv_tokens = cum_kv_pinned.get()[parameters.batch_size];
       if (total_kv_tokens == 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "PagedAttention MEA fallback: total_kv_tokens is zero for non-empty input.");
+                               "PagedAttention: total_kv_tokens is zero for non-empty input.");
       }
       if (total_kv_tokens < 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "PagedAttention MEA fallback: total_kv_tokens is negative (", total_kv_tokens, ").");
+                               "PagedAttention: total_kv_tokens is negative (", total_kv_tokens, ").");
       }
     }
   }
 
-#if USE_MEMORY_EFFICIENT_ATTENTION
-  if (use_memory_efficient_attention) {
+  if (needs_dense_kv) {
     const size_t gather_elems = static_cast<size_t>(total_kv_tokens) *
-                                parameters.num_heads * parameters.head_size;
+                                gathered_num_heads * parameters.head_size;
     gathered_key_buffer = GetScratchBuffer<void>(sizeof(T) * gather_elems, GetComputeStream(context));
     gathered_value_buffer = GetScratchBuffer<void>(sizeof(T) * gather_elems, GetComputeStream(context));
+  }
 
+#if USE_MEMORY_EFFICIENT_ATTENTION
+  if (use_memory_efficient_attention) {
     if (MemoryEfficientAttentionParams::need_workspace(parameters.head_size, sizeof(T) == sizeof(float))) {
       // MEA output accumulator is float32 regardless of input dtype (see GQA pattern at
       // group_query_attention.cc:482); use sizeof(float), not sizeof(T).
@@ -331,8 +391,10 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
   data.key = key == nullptr ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
   data.value = value == nullptr ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
-  data.key_cache = reinterpret_cast<CudaT*>(const_cast<T*>(key_cache->Data<T>()));
-  data.value_cache = reinterpret_cast<CudaT*>(const_cast<T*>(value_cache->Data<T>()));
+  data.key_cache = reinterpret_cast<CudaTCache*>(const_cast<TCACHE*>(key_cache->Data<TCACHE>()));
+  data.value_cache = reinterpret_cast<CudaTCache*>(const_cast<TCACHE*>(value_cache->Data<TCACHE>()));
+  data.k_scale = k_scale == nullptr ? nullptr : k_scale->Data<float>();
+  data.v_scale = v_scale == nullptr ? nullptr : v_scale->Data<float>();
   data.cumulative_seqlens_q = reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>());
   data.past_seqlens = reinterpret_cast<const int*>(past_seqlens->Data<int>());
   data.cumulative_seqlens_kv = cumulative_seqlens_kv_ptr;
@@ -356,18 +418,19 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     data.sin_cache = reinterpret_cast<const CudaT*>(sin_cache->Data<T>());
   }
   data.max_query_len = max_query_len;  // consumed by both FA and MEA
-  if (use_memory_efficient_attention) {
+  if (needs_dense_kv) {
     data.gathered_key = reinterpret_cast<CudaT*>(gathered_key_buffer.get());
     data.gathered_value = reinterpret_cast<CudaT*>(gathered_value_buffer.get());
-    if (fmha_buffer != nullptr) {
-      data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());
-    }
     data.total_kv_tokens = total_kv_tokens;
+    data.max_kv_len = max_kv_len;
+  }
+  if (use_memory_efficient_attention && fmha_buffer != nullptr) {
+    data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());
   }
 
   cublasHandle_t cublas = GetCublasHandle(context);
 
-  return QkvToContext<CudaT>(
+  return QkvToContext<CudaT, CudaTCache>(
       device_prop, cublas, ort_stream.get(), parameters, data);
 }
 

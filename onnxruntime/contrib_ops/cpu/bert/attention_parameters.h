@@ -122,6 +122,11 @@ struct PagedAttentionParameters : AttentionParameters {
   // Per-head Q/K RMSNorm (QK-Norm) prologue applied before RoPE (inputs 12/13).
   bool use_qk_norm = false;
   float qk_norm_epsilon = 1e-6f;
+  // Quantized paged KV cache. Scales are inputs 14/15 and are always FP32, as in
+  // GroupQueryAttention. kv_cache_bit_width is 0 when the cache is not quantized.
+  KVQuantizationType k_quant_type = KVQuantizationType::NONE;
+  KVQuantizationType v_quant_type = KVQuantizationType::NONE;
+  int kv_cache_bit_width = 0;
 };
 
 // Parameters for sparse attention.

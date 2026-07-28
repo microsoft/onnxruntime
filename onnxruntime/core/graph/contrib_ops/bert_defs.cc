@@ -1413,6 +1413,8 @@ cumulative_sequence_length records cumulated length of each sequence length.
 // Input 'head_sink':                    (num_heads)
 // Input 'q_norm_weight':                (head_size)
 // Input 'k_norm_weight':                (head_size)
+// Input 'k_scale':                      (1) for PER_TENSOR, (kv_num_heads, 1, head_size) for PER_CHANNEL
+// Input 'v_scale':                      (1) for PER_TENSOR, (kv_num_heads, 1, head_size) for PER_CHANNEL
 // Output 'output':                      (token_count, hidden_size)
 // Output 'key_cache_out':               (num_blocks, block_size, kv_num_heads, head_size)
 // Output 'value_cache_out':             (num_blocks, block_size, kv_num_heads, head_size)
@@ -1454,9 +1456,12 @@ void PagedAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
     if (ctx.getNumOutputs() != 3) {
       fail_shape_inference("Key cache and value cache output tensors must be both present or both absent.");
     }
-    // types
-    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
-    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 2);
+    // Types: the cache outputs alias the cache inputs, so their element type comes from inputs 3/4
+    // (T_CACHE) rather than from the query (T) — the two differ for a quantized cache. This has to
+    // run before the shape propagation below, which requires the output TypeProto to already be a
+    // tensor type.
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 3, 1);
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 4, 2);
     // shapes
     auto& key_cache_shape = getInputShape(ctx, 3);
     auto& key_cache_dims = key_cache_shape.dim();
@@ -1466,8 +1471,6 @@ void PagedAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
     // KV cache in and out share the same buffer, thus they have the same shape
     ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 3, 1);
     ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 4, 2);
-    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 3, 1);
-    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 4, 2);
   }
 }
 
@@ -1507,6 +1510,23 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Default value is 1e-6.",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
+        .Attr("k_quant_type",
+              "Quantization granularity of the key cache: 'NONE', 'PER_TENSOR' or 'PER_CHANNEL'. "
+              "Must be non-'NONE' exactly when 'key_cache' has a quantized element type, and then "
+              "'k_scale' is required. Default value is 'NONE'.",
+              AttributeProto::STRING,
+              std::string("NONE"))
+        .Attr("v_quant_type",
+              "Quantization granularity of the value cache: 'NONE', 'PER_TENSOR' or 'PER_CHANNEL'. "
+              "Must be non-'NONE' exactly when 'value_cache' has a quantized element type, and then "
+              "'v_scale' is required. Default value is 'NONE'.",
+              AttributeProto::STRING,
+              std::string("NONE"))
+        .Attr("kv_cache_bit_width",
+              "Number of bits per stored KV cache element. Must be 8 for an int8 or float8e4m3fn cache. "
+              "Defaults to 8 for a quantized cache and 0 (unused) otherwise.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
         .Input(0,
                "query",
                "Query with shape (num_tokens, hidden_size), or packed QKV with shape (num_tokens, d) "
@@ -1526,12 +1546,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "key_cache",
                "Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in "
                "place within the op.",
-               "T")
+               "T_CACHE")
         .Input(4,
                "value_cache",
                "Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated "
                "in place within the op. This should be the same shape as key_cache.",
-               "T")
+               "T_CACHE")
         .Input(5,
                "cumulative_sequence_length",
                "A tensor with shape (batch_size + 1). It specifies the cumulative sequence lengths between the packed "
@@ -1585,6 +1605,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "and before the key is written to the KV cache. Must be provided together with 'q_norm_weight'.",
                "T",
                OpSchema::Optional)
+        .Input(14,
+               "k_scale",
+               "Dequantization scale of the key cache. Shape is (1) when 'k_quant_type' is 'PER_TENSOR' and "
+               "(kv_num_heads, 1, head_size) when it is 'PER_CHANNEL'. Quantization is symmetric (no zero point).",
+               "T_KV_SCALE",
+               OpSchema::Optional)
+        .Input(15,
+               "v_scale",
+               "Dequantization scale of the value cache. Shape is (1) when 'v_quant_type' is 'PER_TENSOR' and "
+               "(kv_num_heads, 1, head_size) when it is 'PER_CHANNEL'. Quantization is symmetric (no zero point).",
+               "T_KV_SCALE",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (num_tokens, hidden_size)",
@@ -1593,15 +1625,19 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "key_cache_out",
                 "Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always "
                 "the same tensor as key_cache.",
-                "T",
+                "T_CACHE",
                 OpSchema::Optional)
         .Output(2,
                 "value_cache_out",
                 "Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always "
                 "the same tensor as value_cache.",
-                "T",
+                "T_CACHE",
                 OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output to float tensors.")
+        .TypeConstraint("T_CACHE",
+                        {"tensor(float16)", "tensor(bfloat16)", "tensor(int8)", "tensor(float8e4m3fn)"},
+                        "Constrain the KV cache to float or quantized tensors.")
+        .TypeConstraint("T_KV_SCALE", {"tensor(float)"}, "Constrain KV cache scales to float tensors.")
         .TypeConstraint("S", {"tensor(int32)"}, "Constrain Positional inputs to int tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           PagedAttentionTypeAndShapeInference(ctx);

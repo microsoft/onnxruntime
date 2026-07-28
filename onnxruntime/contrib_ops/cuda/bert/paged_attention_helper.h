@@ -247,6 +247,61 @@ Status CheckQKNormWeights(const T* q_norm_weight, const T* k_norm_weight, const 
   return Status::OK();
 }
 
+// Validates one side (K or V) of the quantized paged KV cache contract. `is_quantized_cache`
+// reflects the element type the kernel was instantiated for, so a mismatch between the cache dtype
+// and the quant-type attribute is reported instead of silently producing garbage.
+template <typename T = Tensor>
+Status CheckKVCacheQuantization(const T* scale, const char* scale_name, const char* quant_type_name,
+                                const KVQuantizationType quant_type, const bool is_quantized_cache,
+                                const int kv_num_heads, const int head_size) {
+  if (quant_type == KVQuantizationType::NONE) {
+    if (scale != nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input '", scale_name, "' must not be provided when '", quant_type_name, "' is 'NONE'.");
+    }
+    if (is_quantized_cache) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "The KV cache has a quantized element type, so '", quant_type_name,
+                             "' must be 'PER_TENSOR' or 'PER_CHANNEL'.");
+    }
+    return Status::OK();
+  }
+
+  if (!is_quantized_cache) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "'", quant_type_name,
+                           "' is set, but the KV cache element type is not quantized. "
+                           "Use an int8 or float8e4m3fn cache, or set '",
+                           quant_type_name, "' to 'NONE'.");
+  }
+  if (scale == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input '", scale_name, "' is required when '", quant_type_name, "' is not 'NONE'.");
+  }
+
+  const auto& dims = scale->Shape().GetDims();
+  const int64_t count = scale->Shape().Size();
+  if (quant_type == KVQuantizationType::PER_TENSOR) {
+    if (count != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input '", scale_name, "' must have exactly 1 element for PER_TENSOR quantization, got ",
+                             count);
+    }
+    return Status::OK();
+  }
+
+  // PER_CHANNEL. The canonical shape is (kv_num_heads, 1, head_size), matching GroupQueryAttention;
+  // any shape with the same element count and a trailing head_size is accepted so that callers may
+  // pass (kv_num_heads, head_size) directly.
+  if (count != static_cast<int64_t>(kv_num_heads) * head_size || dims.empty() || dims.back() != head_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input '", scale_name, "' must have shape (kv_num_heads, 1, head_size) = (",
+                           kv_num_heads, ", 1, ", head_size, ") for PER_CHANNEL quantization, got ",
+                           scale->Shape().ToString());
+  }
+  return Status::OK();
+}
+
 template <typename T = Tensor>
 Status CheckInputs(const T* query,
                    const T* key,
@@ -262,6 +317,8 @@ Status CheckInputs(const T* query,
                    const T* head_sink,
                    const T* q_norm_weight,
                    const T* k_norm_weight,
+                   const T* k_scale,
+                   const T* v_scale,
                    void* parameters,
                    int num_heads,
                    int kv_num_heads,
@@ -269,6 +326,10 @@ Status CheckInputs(const T* query,
                    float softcap,
                    bool smooth_softmax,
                    float qk_norm_epsilon,
+                   KVQuantizationType k_quant_type,
+                   KVQuantizationType v_quant_type,
+                   int kv_cache_bit_width,
+                   bool is_quantized_cache,
                    int max_threads_per_block) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
@@ -330,6 +391,22 @@ Status CheckInputs(const T* query,
                            "Input 'cos_cache' and 'sin_cache' shall be both present or both absent.");
   }
 
+  // Check quantized KV cache
+  ORT_RETURN_IF_ERROR(CheckKVCacheQuantization(k_scale, "k_scale", "k_quant_type", k_quant_type,
+                                               is_quantized_cache, kv_num_heads, head_size));
+  ORT_RETURN_IF_ERROR(CheckKVCacheQuantization(v_scale, "v_scale", "v_quant_type", v_quant_type,
+                                               is_quantized_cache, kv_num_heads, head_size));
+  if (is_quantized_cache && kv_cache_bit_width != 8) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "'kv_cache_bit_width' must be 8 for an int8 or float8e4m3fn KV cache, got ",
+                           kv_cache_bit_width);
+  }
+  if (!is_quantized_cache && kv_cache_bit_width != 0 && kv_cache_bit_width != 16) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "'kv_cache_bit_width' must be 0 or 16 for an unquantized KV cache, got ",
+                           kv_cache_bit_width);
+  }
+
   if (parameters != nullptr) {
     PagedAttentionParameters* output_parameters = reinterpret_cast<PagedAttentionParameters*>(parameters);
     output_parameters->batch_size = batch_size;
@@ -350,6 +427,9 @@ Status CheckInputs(const T* query,
     output_parameters->use_smooth_softmax = smooth_softmax || head_sink != nullptr;
     output_parameters->use_qk_norm = q_norm_weight != nullptr;
     output_parameters->qk_norm_epsilon = qk_norm_epsilon;
+    output_parameters->k_quant_type = k_quant_type;
+    output_parameters->v_quant_type = v_quant_type;
+    output_parameters->kv_cache_bit_width = kv_cache_bit_width;
   }
 
   return Status::OK();

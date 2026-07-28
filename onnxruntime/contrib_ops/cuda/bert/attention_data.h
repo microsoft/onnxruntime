@@ -239,14 +239,20 @@ struct GroupQueryAttentionData {
   void* cudnn_handle = nullptr;
 };
 
-template <typename T>
+// TCACHE is the element type of the paged key/value cache. It equals T for an unquantized cache and
+// is int8_t / Float8E4M3FN when the cache is quantized (see PagedAttentionParameters::k_quant_type).
+template <typename T, typename TCACHE = T>
 struct PagedAttentionData {
   // Input Tensors
   const T* query = nullptr;
   const T* key = nullptr;
   const T* value = nullptr;
-  T* key_cache = nullptr;
-  T* value_cache = nullptr;
+  TCACHE* key_cache = nullptr;
+  TCACHE* value_cache = nullptr;
+  // FP32 quantization scales for the paged cache: (1,) for PER_TENSOR and
+  // (kv_num_heads, 1, head_size) for PER_CHANNEL. nullptr when the cache is not quantized.
+  const float* k_scale = nullptr;
+  const float* v_scale = nullptr;
   const int* cumulative_seqlens_q = nullptr;
   const int* past_seqlens = nullptr;
   const int* block_table = nullptr;
@@ -272,13 +278,19 @@ struct PagedAttentionData {
   // Fused op buffers
   T* workspace_buffer = nullptr;
 
-  // Memory-efficient attention (CUTLASS fMHA) buffers for the unfused fallback path
-  // taken when FlashAttention is unavailable (SM<80 or ORT_DISABLE_FLASH_ATTENTION).
-  T* gathered_key = nullptr;    // [total_kv_tokens, num_heads, head_size], packed varlen (GQA-expanded)
-  T* gathered_value = nullptr;  // [total_kv_tokens, num_heads, head_size], packed varlen (GQA-expanded)
-  T* fmha_buffer = nullptr;     // CUTLASS fMHA output-accumulator workspace
+  // Dense KV staging buffers. Always used by the memory-efficient (CUTLASS fMHA) fallback, which
+  // needs a packed-varlen [total_kv_tokens, num_heads, head_size] GQA-expanded view of the cache.
+  // The FlashAttention path also uses them when the cache is quantized: Flash cannot read a
+  // quantized page directly, so the cache is dequantized into [total_kv_tokens, kv_num_heads,
+  // head_size] (no GQA expansion) and fed to the non-paged varlen entry point.
+  T* gathered_key = nullptr;
+  T* gathered_value = nullptr;
+  T* fmha_buffer = nullptr;  // CUTLASS fMHA output-accumulator workspace
   // Populated by the caller after a D->H sync on cumulative_seqlens_kv[batch_size].
   int total_kv_tokens = 0;
+  // Max per-batch total KV length. Only needed when the gathered (non-paged) Flash path is used,
+  // where it becomes mha_varlen_fwd's max_seqlen_k.
+  int max_kv_len = 0;
 
   // Actual max of per-batch new-query lengths (cumulative_seqlens_q[i+1] - cumulative_seqlens_q[i]).
   // Populated by the caller via the same D->H sync so the MEA path's rotary grid and MEA's

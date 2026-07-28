@@ -435,6 +435,28 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 - FP8 requires SM89+ (Ada) or SM90+; otherwise `INVALID_ARGUMENT` naming the required arch.
 - `PER_CHANNEL` scale shape must be exactly `(kv_num_heads, 1, head_size)`.
 
+> **Implementation note (P3, implemented).** Delivered: `int8` and `float8e4m3fn` caches with
+> `PER_TENSOR` / `PER_CHANNEL` granularity, independently selectable for K and V, via
+> `PagedAttention<T, T_CACHE>` registered for `{MLFloat16, BFloat16} × {int8_t, Float8E4M3FN}` in
+> addition to the unquantized pairs. Deviations from the text above:
+>
+> - **Read path is §8.5 Phase 2 only.** `GatherAndExpandPagedKVCache` dequantizes while gathering,
+>   and the Flash varlen path is routed through the same gather when the cache is quantized (using
+>   `num_heads = kv_num_heads` so no GQA expansion happens, which keeps Flash's grouped layout). The
+>   §8.5 Phase 3 paged decode kernel with in-kernel dequantization is **not** implemented.
+> - Because a quantized cache never reaches Flash's *paged* kernel, the `block_size` tiling
+>   constraint of §18.1 does not apply to it; Flash eligibility skips that check when the cache is
+>   quantized. Any power-of-two `block_size >= 16` works with a quantized cache on either backend.
+> - **`uint8` / INT4 not added.** `T_CACHE` is `{float16, bfloat16, int8, float8e4m3fn}`;
+>   `kv_cache_bit_width` must be `8` for a quantized cache and `0` or `16` otherwise.
+> - **No SM89/SM90 gate for FP8.** `Float8E4M3FN`'s converting constructor uses
+>   `__nv_cvt_float_to_fp8`, which is available on every architecture ORT builds for from CUDA 11.8
+>   onward, so the arch check in §8.7 would reject working configurations. FP8 remains gated at
+>   *build* time by `onnxruntime_USE_FP8_KV_CACHE`.
+> - Parity tests compare the updated cache at one quantization step of slack. Rotary and RMSNorm are
+>   computed ~1 fp16 ULP differently on the host, which is enough to move a value across a rounding
+>   boundary and flip the stored code by one LSB.
+
 ## 9. Feature: Sliding Window Attention
 
 ### 9.1 State

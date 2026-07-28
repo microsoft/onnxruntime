@@ -27,6 +27,16 @@ torch.manual_seed(0)
 
 pipeline_mode = True  # Reduces number of tests so pipeline doesn't time out
 
+# Element type of the paged KV cache, keyed by Config.kv_cache_type.
+KV_CACHE_TENSOR_PROTO = {
+    "float16": TensorProto.FLOAT16,
+    "int8": TensorProto.INT8,
+    "fp8": TensorProto.FLOAT8E4M3FN,
+}
+
+# Largest magnitude representable by each quantized cache type.
+KV_CACHE_QMAX = {"int8": 127.0, "fp8": 448.0}
+
 
 class Config:
     batch_size = 0
@@ -49,6 +59,12 @@ class Config:
     smooth_softmax = False
     use_qk_norm = False
     qk_norm_epsilon = 1e-6
+    # Quantized paged KV cache. "float16" keeps the cache unquantized; "int8" and "fp8" store the
+    # cache in the corresponding narrow type and require a matching non-"NONE" quant type.
+    kv_cache_type = "float16"
+    k_quant_type = "NONE"
+    v_quant_type = "NONE"
+    kv_cache_bit_width = 8
 
     def __init__(
         self,
@@ -90,6 +106,64 @@ class Config:
         )
 
 
+def kv_scale_shape(config, quant_type):
+    """Shape of the k_scale / v_scale input for a given quantization granularity."""
+    if quant_type == "PER_TENSOR":
+        return [1]
+    if quant_type == "PER_CHANNEL":
+        return [config.kv_num_heads, 1, config.head_size]
+    raise ValueError(f"Unsupported quant_type: {quant_type}")
+
+
+def compute_kv_scale(tensors, quant_type, kv_cache_type, kv_num_heads, head_size):
+    """Symmetric (zero-point-free) scale for the paged KV cache.
+
+    'tensors' are every tensor that will end up in the cache -- the pre-existing pages *and* the new
+    tokens the kernel is about to write -- so that the chosen scale never clips and the reference can
+    reproduce the kernel bit-for-bit. Each tensor's two trailing dimensions are (kv_num_heads,
+    head_size), which is exactly the PER_CHANNEL scale layout.
+    """
+    qmax = KV_CACHE_QMAX[kv_cache_type]
+    if quant_type == "PER_TENSOR":
+        amax = max(float(t.abs().max().item()) for t in tensors)
+        return torch.tensor([max(amax, 1e-6) / qmax], dtype=torch.float32, device="cuda")
+    amax = None
+    for t in tensors:
+        per_channel = t.reshape(-1, kv_num_heads, head_size).abs().amax(dim=0)
+        amax = per_channel if amax is None else torch.maximum(amax, per_channel)
+    scale = torch.clamp(amax.to(torch.float32), min=1e-6) / qmax
+    return scale.reshape(kv_num_heads, 1, head_size)
+
+
+def broadcast_kv_scale(scale, quant_type, kv_num_heads, head_size):
+    """View the scale so that it broadcasts against any tensor shaped (..., kv_num_heads, head_size)."""
+    if quant_type == "PER_TENSOR":
+        return scale
+    return scale.reshape(1, 1, kv_num_heads, head_size)
+
+
+def quantize_kv(tensor_float, scale, kv_cache_type):
+    """Mirror of QuantizeToCache in paged_attention_impl.cu.
+
+    The kernel multiplies by the reciprocal of the scale rather than dividing, so the reference does
+    the same: with round-to-nearest-even the two differ by one LSB often enough to make an exact
+    comparison of the updated cache flaky otherwise.
+    """
+    scaled = tensor_float.to(torch.float32) * torch.reciprocal(scale)
+    if kv_cache_type == "fp8":
+        return torch.clamp(scaled, -KV_CACHE_QMAX["fp8"], KV_CACHE_QMAX["fp8"]).to(torch.float8_e4m3fn)
+    return torch.clamp(torch.round(scaled), -128.0, 127.0).to(torch.int8)
+
+
+def dequantize_kv(quantized, scale):
+    """Mirror of DequantizeFromCache in paged_attention_impl.cu."""
+    return (quantized.to(torch.float32) * scale).to(torch.float16)
+
+
+def quantize_dequantize_kv(tensor_float, scale, kv_cache_type):
+    return dequantize_kv(quantize_kv(tensor_float, scale, kv_cache_type), scale)
+
+
 def create_paged_attention_graph(
     config,
     num_tokens,
@@ -97,6 +171,21 @@ def create_paged_attention_graph(
     max_blocks_per_sequence,
     local_window_size=-1,
 ):
+    cache_proto_type = KV_CACHE_TENSOR_PROTO[config.kv_cache_type]
+    # The scale inputs and the quantization attributes are emitted independently of the cache dtype
+    # so that invalid combinations (quantized cache without a quant type, and vice versa) can be
+    # built and their rejection tested.
+    has_k_scale = config.k_quant_type != "NONE"
+    has_v_scale = config.v_quant_type != "NONE"
+    quant_attrs = (
+        {
+            "k_quant_type": config.k_quant_type,
+            "v_quant_type": config.v_quant_type,
+            "kv_cache_bit_width": config.kv_cache_bit_width,
+        }
+        if (has_k_scale or has_v_scale or config.kv_cache_type != "float16")
+        else {}
+    )
     nodes = [
         helper.make_node(
             "PagedAttention",
@@ -115,6 +204,8 @@ def create_paged_attention_graph(
                 "head_sink" if config.use_head_sink else "",
                 "q_norm_weight" if config.use_qk_norm else "",
                 "k_norm_weight" if config.use_qk_norm else "",
+                "k_scale" if has_k_scale else "",
+                "v_scale" if has_v_scale else "",
             ],
             ["output", "key_cache_out", "value_cache_out"],
             "PagedAttention_0",
@@ -127,6 +218,7 @@ def create_paged_attention_graph(
             softcap=config.softcap,
             qk_norm_epsilon=config.qk_norm_epsilon,
             domain="com.microsoft",
+            **quant_attrs,
         ),
     ]
 
@@ -143,7 +235,7 @@ def create_paged_attention_graph(
         ),
         helper.make_tensor_value_info(
             "key_cache",
-            TensorProto.FLOAT16,
+            cache_proto_type,
             [
                 num_blocks,
                 config.paged_kv_block_size,
@@ -153,7 +245,7 @@ def create_paged_attention_graph(
         ),
         helper.make_tensor_value_info(
             "value_cache",
-            TensorProto.FLOAT16,
+            cache_proto_type,
             [
                 num_blocks,
                 config.paged_kv_block_size,
@@ -228,6 +320,14 @@ def create_paged_attention_graph(
             helper.make_tensor_value_info("q_norm_weight", TensorProto.FLOAT16, [config.head_size]),
             helper.make_tensor_value_info("k_norm_weight", TensorProto.FLOAT16, [config.head_size]),
         ]
+    if has_k_scale:
+        graph_input += [
+            helper.make_tensor_value_info("k_scale", TensorProto.FLOAT, kv_scale_shape(config, config.k_quant_type)),
+        ]
+    if has_v_scale:
+        graph_input += [
+            helper.make_tensor_value_info("v_scale", TensorProto.FLOAT, kv_scale_shape(config, config.v_quant_type)),
+        ]
 
     graph_output = [
         helper.make_tensor_value_info(
@@ -237,7 +337,7 @@ def create_paged_attention_graph(
         ),
         helper.make_tensor_value_info(
             "key_cache_out",
-            TensorProto.FLOAT16,
+            cache_proto_type,
             [
                 num_blocks,
                 config.paged_kv_block_size,
@@ -247,7 +347,7 @@ def create_paged_attention_graph(
         ),
         helper.make_tensor_value_info(
             "value_cache_out",
-            TensorProto.FLOAT16,
+            cache_proto_type,
             [
                 num_blocks,
                 config.paged_kv_block_size,
@@ -292,10 +392,13 @@ def paged_attention_func(
     head_sink=None,
     q_norm_weight=None,
     k_norm_weight=None,
+    k_scale=None,
+    v_scale=None,
 ):
     num_tokens = cumulative_sequence_length[-1].item()
     num_blocks = key_cache.shape[0]
     max_blocks_per_sequence = block_table.shape[1]
+    quantized = config.kv_cache_type != "float16"
     onnx_model_str = create_paged_attention_graph(
         config,
         num_tokens,
@@ -305,12 +408,13 @@ def paged_attention_func(
     )
     ort_inputs = {
         "query": query.detach().cpu().numpy(),
-        "key_cache": OrtValue.ortvalue_from_numpy(key_cache.detach().cpu().numpy(), "cuda", 0),
-        "value_cache": OrtValue.ortvalue_from_numpy(value_cache.detach().cpu().numpy(), "cuda", 0),
         "cumulative_sequence_length": cumulative_sequence_length.detach().cpu().numpy(),
         "past_seqlens": past_seqlens.detach().cpu().numpy(),
         "block_table": block_table.detach().cpu().numpy(),
     }
+    if not quantized:
+        ort_inputs["key_cache"] = OrtValue.ortvalue_from_numpy(key_cache.detach().cpu().numpy(), "cuda", 0)
+        ort_inputs["value_cache"] = OrtValue.ortvalue_from_numpy(value_cache.detach().cpu().numpy(), "cuda", 0)
     sess_options = SessionOptions()
     if sdpa_kernel != 0 and config.ep == "CUDAExecutionProvider":
         providers = [(config.ep, {"sdpa_kernel": str(sdpa_kernel)})]
@@ -333,24 +437,53 @@ def paged_attention_func(
         ("head_sink", head_sink),
         ("q_norm_weight", q_norm_weight),
         ("k_norm_weight", k_norm_weight),
+        ("k_scale", k_scale),
+        ("v_scale", v_scale),
     ):
         if tensor is not None:
             ort_inputs[name] = tensor.detach().cpu().numpy()
             io_binding.bind_cpu_input(name, ort_inputs[name])
     io_binding.bind_cpu_input("query", ort_inputs["query"])
-    io_binding.bind_input(
-        "key_cache", "cuda", 0, numpy.float16, ort_inputs["key_cache"].shape(), ort_inputs["key_cache"].data_ptr()
-    )
-    io_binding.bind_input(
-        "value_cache", "cuda", 0, numpy.float16, ort_inputs["value_cache"].shape(), ort_inputs["value_cache"].data_ptr()
-    )
+    if quantized:
+        # A quantized cache has no numpy dtype, so bind the torch device buffers directly.
+        cache_proto_type = KV_CACHE_TENSOR_PROTO[config.kv_cache_type]
+        key_cache = key_cache.contiguous()
+        value_cache = value_cache.contiguous()
+        io_binding.bind_input("key_cache", "cuda", 0, cache_proto_type, tuple(key_cache.shape), key_cache.data_ptr())
+        io_binding.bind_input(
+            "value_cache", "cuda", 0, cache_proto_type, tuple(value_cache.shape), value_cache.data_ptr()
+        )
+    else:
+        io_binding.bind_input(
+            "key_cache", "cuda", 0, numpy.float16, ort_inputs["key_cache"].shape(), ort_inputs["key_cache"].data_ptr()
+        )
+        io_binding.bind_input(
+            "value_cache",
+            "cuda",
+            0,
+            numpy.float16,
+            ort_inputs["value_cache"].shape(),
+            ort_inputs["value_cache"].data_ptr(),
+        )
     io_binding.bind_cpu_input("cumulative_sequence_length", ort_inputs["cumulative_sequence_length"])
     io_binding.bind_cpu_input("past_seqlens", ort_inputs["past_seqlens"])
     io_binding.bind_cpu_input("block_table", ort_inputs["block_table"])
     io_binding.bind_output("output")
-    io_binding.bind_ortvalue_output("key_cache_out", ort_inputs["key_cache"])
-    io_binding.bind_ortvalue_output("value_cache_out", ort_inputs["value_cache"])
+    if quantized:
+        # Each cache output must alias its input, which is what the op requires anyway.
+        io_binding.bind_output(
+            "key_cache_out", "cuda", 0, cache_proto_type, tuple(key_cache.shape), key_cache.data_ptr()
+        )
+        io_binding.bind_output(
+            "value_cache_out", "cuda", 0, cache_proto_type, tuple(value_cache.shape), value_cache.data_ptr()
+        )
+    else:
+        io_binding.bind_ortvalue_output("key_cache_out", ort_inputs["key_cache"])
+        io_binding.bind_ortvalue_output("value_cache_out", ort_inputs["value_cache"])
     ort_session.run_with_iobinding(io_binding)
+    if quantized:
+        output = torch.tensor(numpy.array(io_binding.copy_outputs_to_cpu()[0]))
+        return output, key_cache, value_cache
     output, key_cache_out, value_cache_out = io_binding.copy_outputs_to_cpu()
     output = torch.tensor(numpy.array(output))
     return output, key_cache_out, value_cache_out
@@ -549,6 +682,16 @@ def generate_block_kvcache(config: Config, device, dtype):
     return k_cache, v_cache, block_table, k_cache_paged, v_cache_paged
 
 
+def gather_paged_to_batch(config: Config, paged, block_table):
+    """Gather a paged [num_blocks, block_size, kv_num_heads, head_size] cache into the dense
+    [batch_size, total_sequence_length, kv_num_heads, head_size] view the reference works with."""
+    return rearrange(
+        paged[block_table.to(dtype=torch.long).flatten()],
+        "(b nblocks) block_size ... -> b (nblocks block_size) ...",
+        b=config.batch_size,
+    )[:, : config.total_sequence_length]
+
+
 def derive_slot_mapping(config: Config, past_seqlens, new_seqlens, cum_seqlens, block_table):
     """Reproduce, on the host, the flat cache slot that the kernel derives for every query token
     when 'slot_mapping' is absent: block_table[b, pos // block_size] * block_size + pos % block_size
@@ -679,6 +822,27 @@ def parity_check_paged_attention(
         cos, sin = None, None
         q_ro, k_ro = q, k_new
 
+    # Quantized paged KV cache. The pages the kernel reads back are the dequantized values, and the
+    # new tokens it writes go through the same quantize step, so the reference models both. The scale
+    # covers the existing pages *and* the incoming tokens so that nothing clips.
+    k_scale = v_scale = None
+    k_scale_b = v_scale_b = None
+    if config.kv_cache_type != "float16":
+        k_scale = compute_kv_scale(
+            [k_cache_paged, k_ro], config.k_quant_type, config.kv_cache_type, config.kv_num_heads, config.head_size
+        )
+        v_scale = compute_kv_scale(
+            [v_cache_paged, v_new], config.v_quant_type, config.kv_cache_type, config.kv_num_heads, config.head_size
+        )
+        k_scale_b = broadcast_kv_scale(k_scale, config.k_quant_type, config.kv_num_heads, config.head_size)
+        v_scale_b = broadcast_kv_scale(v_scale, config.v_quant_type, config.kv_num_heads, config.head_size)
+        k_cache_paged = quantize_kv(k_cache_paged, k_scale_b, config.kv_cache_type)
+        v_cache_paged = quantize_kv(v_cache_paged, v_scale_b, config.kv_cache_type)
+        k_cache = gather_paged_to_batch(config, dequantize_kv(k_cache_paged, k_scale_b), block_table)
+        v_cache = gather_paged_to_batch(config, dequantize_kv(v_cache_paged, v_scale_b), block_table)
+        k_ro = quantize_dequantize_kv(k_ro, k_scale_b, config.kv_cache_type)
+        v_new = quantize_dequantize_kv(v_new, v_scale_b, config.kv_cache_type)
+
     # Update reference kv cache
     k_cache_ref = k_cache.clone()
     v_cache_ref = v_cache.clone()
@@ -738,12 +902,26 @@ def parity_check_paged_attention(
         head_sink=head_sink,
         q_norm_weight=q_norm_weight,
         k_norm_weight=k_norm_weight,
+        k_scale=k_scale,
+        v_scale=v_scale,
     )
+    if config.kv_cache_type != "float16":
+        updated_k_cache_paged = dequantize_kv(updated_k_cache_paged, k_scale_b).cpu().numpy()
+        updated_v_cache_paged = dequantize_kv(updated_v_cache_paged, v_scale_b).cpu().numpy()
     num_tokens = q_unpad.shape[0]
     out = torch.reshape(out, (num_tokens, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
     err_msg = f" with {config}"
+    # The updated cache is compared to the reference at one quantization step of slack: the host
+    # computes rotary / RMSNorm slightly differently from the kernel, and a 1-ULP fp16 difference in
+    # the pre-quantization value is enough to move the rounded result by a whole step.
+    cache_rtol, cache_atol = rtol, atol
+    if config.kv_cache_type == "int8":
+        cache_atol = atol + max(float(k_scale.max().item()), float(v_scale.max().item()))
+    elif config.kv_cache_type == "fp8":
+        cache_rtol = rtol + 2.0**-3  # float8e4m3fn has 3 mantissa bits
+
     # Make sure past-present buffer updating correctly
     present_k = rearrange(
         updated_k_cache_paged[block_table.to(dtype=torch.long).flatten().cpu()],
@@ -759,16 +937,16 @@ def parity_check_paged_attention(
         numpy.testing.assert_allclose(
             present_k[i, : total_seqlens[i]],
             k_cache_ref[i, : total_seqlens[i]].detach().cpu().numpy(),
-            rtol=rtol,
-            atol=atol,
+            rtol=cache_rtol,
+            atol=cache_atol,
             equal_nan=True,
             err_msg=err_msg,
         )
         numpy.testing.assert_allclose(
             present_v[i, : total_seqlens[i]],
             v_cache_ref[i, : total_seqlens[i]].detach().cpu().numpy(),
-            rtol=rtol,
-            atol=atol,
+            rtol=cache_rtol,
+            atol=cache_atol,
             equal_nan=True,
             err_msg=err_msg,
         )
@@ -1202,6 +1380,188 @@ class TestPagedAttentionRotaryZeroTokenRegression(unittest.TestCase):
         config = self._config(batch_size=2, sequence_length=65, total_sequence_length=128, rotary=False)
         new_seqlens = torch.tensor([65, 0], dtype=torch.int32, device="cuda")
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3, new_seqlens_override=new_seqlens)
+
+
+def has_fp8_kv_cache():
+    """The float8e4m3fn PagedAttention kernels are only built when onnxruntime_USE_FP8_KV_CACHE is on."""
+    if not hasattr(torch, "float8_e4m3fn") or not hasattr(TensorProto, "FLOAT8E4M3FN"):
+        return False
+    if not has_flash_attention():
+        return False
+    config = Config(1, 1, 16, 1, 1, 64, 16, False, False, False, False, 0.0)
+    config.kv_cache_type = "fp8"
+    config.k_quant_type = "PER_TENSOR"
+    config.v_quant_type = "PER_TENSOR"
+    try:
+        InferenceSession(
+            create_paged_attention_graph(config, 1, 1, 1),
+            SessionOptions(),
+            providers=[config.ep],
+        )
+    except Exception:
+        return False
+    return True
+
+
+@unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available, skipping tests.")
+class TestPagedAttentionQuantizedCache(unittest.TestCase):
+    """Coverage for the quantized paged KV cache (int8 / float8e4m3fn, PER_TENSOR / PER_CHANNEL).
+
+    Both backends read a quantized cache through the dequantize-on-gather path, so these tests also
+    cover FlashAttention's non-paged varlen entry point, which is only reachable this way."""
+
+    def setUp(self):
+        # Quantization amplifies host/device rounding differences, so the inputs are re-seeded here
+        # to keep these tests independent of the order the rest of the module ran in.
+        torch.manual_seed(0)
+
+    def _config(self, **overrides):
+        kwargs = {
+            "batch_size": 4,
+            "sequence_length": 33,
+            "total_sequence_length": 128,
+            "num_heads": 8,
+            "kv_num_heads": 2,
+            "head_size": 64,
+            "paged_kv_block_size": 256,
+            "local": False,
+            "rotary": False,
+            "rotary_interleaved": False,
+            "packed": False,
+            "softcap": 0.0,
+        }
+        feature_overrides = {k: overrides.pop(k) for k in list(overrides) if k not in kwargs}
+        kwargs.update(overrides)
+        config = Config(**kwargs)
+        for key, value in feature_overrides.items():
+            setattr(config, key, value)
+        return config
+
+    def _int8_config(self, quant_type="PER_TENSOR", **overrides):
+        return self._config(kv_cache_type="int8", k_quant_type=quant_type, v_quant_type=quant_type, **overrides)
+
+    # ---- int8 ---------------------------------------------------------------------------
+
+    @parameterized.expand([("per_tensor", "PER_TENSOR"), ("per_channel", "PER_CHANNEL")])
+    def test_int8_cache(self, _, quant_type):
+        parity_check_paged_attention(self._int8_config(quant_type), rtol=5e-3, atol=5e-3)
+
+    @parameterized.expand([("per_tensor", "PER_TENSOR"), ("per_channel", "PER_CHANNEL")])
+    def test_int8_cache_with_rotary_and_packed(self, _, quant_type):
+        config = self._int8_config(quant_type, rotary=True, packed=True)
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    def test_int8_cache_with_qk_norm_and_slot_mapping(self):
+        # QK-Norm rescales K before it is written, and slot_mapping changes where it is written;
+        # both happen upstream of the quantization step in ReshapeAndCache.
+        config = self._int8_config("PER_CHANNEL", use_qk_norm=True, use_slot_mapping=True, rotary=True)
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    def test_int8_cache_local_and_softcap(self):
+        config = self._int8_config("PER_TENSOR", local=True, softcap=50.0)
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    def test_int8_cache_mixed_granularity(self):
+        # k_quant_type and v_quant_type are independent attributes.
+        config = self._config(kv_cache_type="int8", k_quant_type="PER_CHANNEL", v_quant_type="PER_TENSOR")
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    @parameterized.expand([("16", 16), ("32", 32), ("64", 64)])
+    def test_int8_cache_small_block_size(self, _, block_size):
+        # A quantized cache never reaches FlashAttention's paged kernel, so the page-alignment
+        # constraint that forces small block sizes onto the MEA fallback does not apply here.
+        config = self._int8_config("PER_CHANNEL", paged_kv_block_size=block_size)
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    @unittest.skipIf(
+        not has_memory_efficient_attention(),
+        reason="MemoryEfficientAttention (fp16) requires sm>=53",
+    )
+    def test_int8_cache_mea(self):
+        parity_check_paged_attention(
+            self._int8_config("PER_CHANNEL"),
+            rtol=5e-3,
+            atol=5e-3,
+            sdpa_kernel=SDPA_KERNEL_EFFICIENT_ATTENTION,
+        )
+
+    # ---- float8e4m3fn -------------------------------------------------------------------
+
+    @parameterized.expand([("per_tensor", "PER_TENSOR"), ("per_channel", "PER_CHANNEL")])
+    @unittest.skipIf(not has_fp8_kv_cache(), reason="FP8 KV cache kernels are not built")
+    def test_fp8_cache(self, _, quant_type):
+        config = self._config(kv_cache_type="fp8", k_quant_type=quant_type, v_quant_type=quant_type)
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    @unittest.skipIf(not has_fp8_kv_cache(), reason="FP8 KV cache kernels are not built")
+    def test_fp8_cache_with_rotary_and_qk_norm(self):
+        config = self._config(
+            kv_cache_type="fp8",
+            k_quant_type="PER_CHANNEL",
+            v_quant_type="PER_CHANNEL",
+            rotary=True,
+            use_qk_norm=True,
+        )
+        # Rotary and QK-Norm both diverge from the kernel by ~1 fp16 ULP, which is enough to move a
+        # value across an e4m3 rounding boundary; one such step is a ~12% change in a K element.
+        parity_check_paged_attention(config, rtol=5e-3, atol=2e-2)
+
+    # ---- validation ---------------------------------------------------------------------
+
+    def _run_minimal(self, config, k_scale=None, v_scale=None):
+        """Run PagedAttention on a trivially small input, bypassing the parity reference. Used to
+        check that invalid quantization configurations are rejected."""
+        cache_torch_dtype = {
+            "float16": torch.float16,
+            "int8": torch.int8,
+            "fp8": getattr(torch, "float8_e4m3fn", None),
+        }[config.kv_cache_type]
+        cache_shape = (1, config.paged_kv_block_size, config.kv_num_heads, config.head_size)
+        key_cache = torch.zeros(cache_shape, dtype=torch.float16, device="cuda").to(cache_torch_dtype)
+        value_cache = torch.zeros(cache_shape, dtype=torch.float16, device="cuda").to(cache_torch_dtype)
+        num_tokens = config.sequence_length
+        query = torch.zeros((num_tokens, config.num_heads * config.head_size), dtype=torch.float16, device="cuda")
+        key = torch.zeros((num_tokens, config.kv_num_heads * config.head_size), dtype=torch.float16, device="cuda")
+        paged_attention_func(
+            config,
+            query,
+            key,
+            key.clone(),
+            key_cache,
+            value_cache,
+            torch.tensor([0, num_tokens], dtype=torch.int32, device="cuda"),
+            torch.zeros(config.batch_size, dtype=torch.int32, device="cuda"),
+            torch.zeros((config.batch_size, 1), dtype=torch.int32, device="cuda"),
+            k_scale=k_scale,
+            v_scale=v_scale,
+        )
+
+    def _minimal_config(self, **overrides):
+        return self._config(
+            batch_size=1, sequence_length=4, total_sequence_length=16, paged_kv_block_size=16, **overrides
+        )
+
+    def test_quantized_cache_without_quant_type_is_rejected(self):
+        config = self._minimal_config(kv_cache_type="int8")
+        with self.assertRaises(Exception) as ctx:
+            self._run_minimal(config)
+        self.assertIn("k_quant_type", str(ctx.exception))
+
+    def test_quant_type_without_quantized_cache_is_rejected(self):
+        config = self._minimal_config(k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR")
+        scale = torch.ones(1, dtype=torch.float32, device="cuda")
+        with self.assertRaises(Exception) as ctx:
+            self._run_minimal(config, k_scale=scale, v_scale=scale)
+        self.assertIn("not quantized", str(ctx.exception))
+
+    def test_invalid_kv_cache_bit_width_is_rejected(self):
+        config = self._minimal_config(
+            kv_cache_type="int8", k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR", kv_cache_bit_width=4
+        )
+        scale = torch.ones(1, dtype=torch.float32, device="cuda")
+        with self.assertRaises(Exception) as ctx:
+            self._run_minimal(config, k_scale=scale, v_scale=scale)
+        self.assertIn("kv_cache_bit_width", str(ctx.exception))
 
 
 if __name__ == "__main__":

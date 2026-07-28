@@ -4231,6 +4231,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>do_rotary</tt> : int</dt>
 <dd>Whether to use rotary position embedding. Default value is 0.</dd>
+<dt><tt>k_quant_type</tt> : string</dt>
+<dd>Quantization granularity of the key cache: 'NONE', 'PER_TENSOR' or 'PER_CHANNEL'. Must be non-'NONE' exactly when 'key_cache' has a quantized element type, and then 'k_scale' is required. Default value is 'NONE'.</dd>
+<dt><tt>kv_cache_bit_width</tt> : int</dt>
+<dd>Number of bits per stored KV cache element. Must be 8 for an int8 or float8e4m3fn cache. Defaults to 8 for a quantized cache and 0 (unused) otherwise.</dd>
 <dt><tt>kv_num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for k and v</dd>
 <dt><tt>local_window_size</tt> : int</dt>
@@ -4247,9 +4251,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Use a smooth factor in softmax, equivalent to an extra attention score of 0 that is not associated with any value. Default value is 0 (False). Implied when 'head_sink' is provided.</dd>
 <dt><tt>softcap</tt> : float</dt>
 <dd>Softcap value for attention weights. Default value is 0.</dd>
+<dt><tt>v_quant_type</tt> : string</dt>
+<dd>Quantization granularity of the value cache: 'NONE', 'PER_TENSOR' or 'PER_CHANNEL'. Must be non-'NONE' exactly when 'value_cache' has a quantized element type, and then 'v_scale' is required. Default value is 'NONE'.</dd>
 </dl>
 
-#### Inputs (8 - 14)
+#### Inputs (8 - 16)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -4258,9 +4264,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Key with shape (num_tokens, kv_hidden_size) </dd>
 <dt><tt>value</tt> (optional) : T</dt>
 <dd>Value with shape (num_tokens, kv_hidden_size)</dd>
-<dt><tt>key_cache</tt> : T</dt>
+<dt><tt>key_cache</tt> : T_CACHE</dt>
 <dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op.</dd>
-<dt><tt>value_cache</tt> : T</dt>
+<dt><tt>value_cache</tt> : T_CACHE</dt>
 <dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op. This should be the same shape as key_cache.</dd>
 <dt><tt>cumulative_sequence_length</tt> : S</dt>
 <dd>A tensor with shape (batch_size + 1). It specifies the cumulative sequence lengths between the packed entries in Q/K/V.</dd>
@@ -4280,6 +4286,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>1D tensor with shape (head_size). RMSNorm gain applied to each query head before rotary embedding. Must be provided together with 'k_norm_weight'.</dd>
 <dt><tt>k_norm_weight</tt> (optional) : T</dt>
 <dd>1D tensor with shape (head_size). RMSNorm gain applied to each key head before rotary embedding and before the key is written to the KV cache. Must be provided together with 'q_norm_weight'.</dd>
+<dt><tt>k_scale</tt> (optional) : T_KV_SCALE</dt>
+<dd>Dequantization scale of the key cache. Shape is (1) when 'k_quant_type' is 'PER_TENSOR' and (kv_num_heads, 1, head_size) when it is 'PER_CHANNEL'. Quantization is symmetric (no zero point).</dd>
+<dt><tt>v_scale</tt> (optional) : T_KV_SCALE</dt>
+<dd>Dequantization scale of the value cache. Shape is (1) when 'v_quant_type' is 'PER_TENSOR' and (kv_num_heads, 1, head_size) when it is 'PER_CHANNEL'. Quantization is symmetric (no zero point).</dd>
 </dl>
 
 #### Outputs (1 - 3)
@@ -4287,9 +4297,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>3D output tensor with shape (num_tokens, hidden_size)</dd>
-<dt><tt>key_cache_out</tt> (optional) : T</dt>
+<dt><tt>key_cache_out</tt> (optional) : T_CACHE</dt>
 <dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always the same tensor as key_cache.</dd>
-<dt><tt>value_cache_out</tt> (optional) : T</dt>
+<dt><tt>value_cache_out</tt> (optional) : T_CACHE</dt>
 <dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always the same tensor as value_cache.</dd>
 </dl>
 
@@ -4298,6 +4308,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output to float tensors.</dd>
+<dt><tt>T_CACHE</tt> : tensor(float16), tensor(bfloat16), tensor(int8), tensor(float8e4m3fn)</dt>
+<dd>Constrain the KV cache to float or quantized tensors.</dd>
+<dt><tt>T_KV_SCALE</tt> : tensor(float)</dt>
+<dd>Constrain KV cache scales to float tensors.</dd>
 <dt><tt>S</tt> : tensor(int32)</dt>
 <dd>Constrain Positional inputs to int tensor.</dd>
 </dl>

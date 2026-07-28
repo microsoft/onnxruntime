@@ -14,13 +14,13 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-template <typename T>
+template <typename T, typename TCACHE>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
     Stream* stream,
     contrib::PagedAttentionParameters& parameters,
-    PagedAttentionData<T>& data);
+    PagedAttentionData<T, TCACHE>& data);
 
 template <typename T>
 Status LaunchUnpackQKVCumulative(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unpacked_v, const int num_heads,
