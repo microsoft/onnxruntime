@@ -1694,9 +1694,6 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     }
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  // Capture the output-model generation options once so the same options are used whether the model is
-  // serialized at the partitioning boundary (EPContext model) or after the Level2+ optimizer loop below
-  // (plain optimized model).
   const epctx::ModelGenOptions ep_context_gen_options = session_options_.GetEpContextGenerationOptions();
 
   // Do partitioning based on execution providers' capabilities.
@@ -1713,6 +1710,35 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     layering_index_storage.reset();
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+  // Decide whether we need to emit the plain optimized (non-EPContext) output model for a compile-only
+  // session that compiled no nodes (the kGenerateModel case, e.g. a non-compiling EP such as WebGPU;
+  // Partition() serialized only the EPContext form). If so, honor action_if_no_compiled_nodes: the compile
+  // API uses kReturnError or kGenerateModel (kDontGenerateModel never reaches a compile-only session).
+  //
+  // The error is returned regardless of level. For kGenerateModel the serialization point is chosen by the
+  // requested optimization level so the output matches what a plain (non-compile) session would produce:
+  //   - level < Level2 (includes the Compile API's Default): serialize here, before the Level2+ loop and the
+  //     InsertCast/Memcpy transformers below - a BASIC snapshot identical to the graph at the partition
+  //     boundary (no Cast, no Memcpy nodes), unchanged from prior behavior.
+  //   - level >= Level2 (explicitly requested): serialize after the loop and Memcpy insertion below, so the
+  //     emitted model captures the Level2-Level4 fusions (and the device-placement copy nodes).
+  const bool emit_plain_optimized_model =
+      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionCompileOnly, "0") == "1" &&
+      ep_context_gen_options.enable && !partitioner.AnyEpContextNodesProduced();
+  if (emit_plain_optimized_model) {
+    using ActionIfNoCompiledNodes = epctx::ModelGenOptions::ActionIfNoCompiledNodes;
+    if (ep_context_gen_options.action_if_no_compiled_nodes == ActionIfNoCompiledNodes::kReturnError) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(
+          ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                          "Unable to compile any nodes. Check that the session EPs support compilation "
+                          "and can execute at least one subgraph in the model."));
+    }
+    if (session_options_.graph_optimization_level < TransformerLevel::Level2) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(
+          epctx::BuildAndSaveOptimizedModel(*model_, ep_context_gen_options, *session_logger_));
+    }
+  }
 
   // Get graph optimizations loop level from session config, if not present, set to default value of 1 as per
   // the definition of kOrtSessionOptionsGraphOptimizationsLoopLevel.
@@ -1780,31 +1806,6 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     }
   }
 
-#if !defined(ORT_MINIMAL_BUILD)
-  // Emit the plain optimized (non-EPContext) output model for a compile-only session that compiled no
-  // nodes (the kGenerateModel case, e.g. WebGPU). Partition() serialized only the EPContext form; this
-  // runs after the Level2+ loop so those optimizations are captured, and before the copy-node insertion
-  // so memcpy nodes aren't baked in. Initializers are still present (FinalizeSessionState runs later).
-  const bool is_compile_only =
-      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionCompileOnly, "0") == "1";
-  if (is_compile_only && ep_context_gen_options.enable && !partitioner.AnyEpContextNodesProduced()) {
-    // No nodes compiled: honor action_if_no_compiled_nodes (the compile API uses kReturnError or
-    // kGenerateModel; kDontGenerateModel never reaches a compile-only session).
-    using ActionIfNoCompiledNodes = epctx::ModelGenOptions::ActionIfNoCompiledNodes;
-    const auto action_if_no_compiled_nodes = ep_context_gen_options.action_if_no_compiled_nodes;
-    ORT_RETURN_IF_ERROR_SESSIONID_(
-        (action_if_no_compiled_nodes == ActionIfNoCompiledNodes::kReturnError
-             ? ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Unable to compile any nodes. Check that the session EPs support compilation "
-                               "and can execute at least one subgraph in the model.")
-             : Status::OK()));
-    if (action_if_no_compiled_nodes == ActionIfNoCompiledNodes::kGenerateModel) {
-      ORT_RETURN_IF_ERROR_SESSIONID_(
-          epctx::BuildAndSaveOptimizedModel(*model_, ep_context_gen_options, *session_logger_));
-    }
-  }
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
   // Insert copy node/s.
   {
     InlinedVector<gsl::not_null<const IExecutionProvider*>> providers;
@@ -1815,6 +1816,20 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     MemcpyTransformer copy_transformer{std::move(providers), kernel_registry_manager_};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(copy_transformer, *session_logger_, graph));
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Second serialization point for the plain optimized (non-EPContext) output model. Reached only for an
+  // explicitly requested level >= Level2 (level < Level2 was already serialized before the loop above). This
+  // runs after the Level2+ loop and the copy-node insertion, so the emitted model reflects the fully
+  // transformed graph the session runs - the Level2-Level4 fusions plus the device-placement Memcpy nodes.
+  // action_if_no_compiled_nodes was already handled before the loop (kReturnError returned there), so only
+  // kGenerateModel reaches here.
+  if (emit_plain_optimized_model &&
+      session_options_.graph_optimization_level >= TransformerLevel::Level2) {
+    ORT_RETURN_IF_ERROR_SESSIONID_(
+        epctx::BuildAndSaveOptimizedModel(*model_, ep_context_gen_options, *session_logger_));
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 #ifdef ENABLE_TRAINING
   // Enable memory optimizations.
