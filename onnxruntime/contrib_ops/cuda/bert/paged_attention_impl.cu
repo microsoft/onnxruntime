@@ -162,6 +162,11 @@ Status LaunchUnpackCumulative(const T* input, T* output, const int token_count, 
 // (the kernel then degenerates to an unpack/copy). At least one of the two must be enabled,
 // otherwise the caller should not launch this kernel at all.
 //
+// `rotary_offset` is the first channel of the head that RoPE covers: the rotated span is
+// [rotary_offset, rotary_offset + rotary_embedding_dim) and every channel outside it is copied
+// through. rotary_offset == 0 is the shipped prefix-RoPE behavior; absorbed MLA rotates only the
+// k_pe suffix and passes rotary_offset == kv_lora_rank.
+//
 // blockDim.x is the smallest power of two >= head_size so the reduction tree is exact; threads with
 // h >= head_size participate in the reduction (contributing 0) but perform no global access.
 template <typename T>
@@ -175,6 +180,7 @@ __global__ void QkNormRotaryTNH(T* output,                            // TxNxH
                                 const float epsilon,
                                 const int head_size,
                                 const int rotary_embedding_dim,
+                                const int rotary_offset,
                                 const bool interleaved,
                                 const int3 in_strides,     // TxNxH
                                 const int3 out_strides) {  // TxNxH
@@ -230,10 +236,12 @@ __global__ void QkNormRotaryTNH(T* output,                            // TxNxH
     return;
   }
 
+  // A channel outside [rotary_offset, rotary_offset + rotary_embedding_dim) is copied through.
   // rotary_embedding_dim == 0 makes every lane take this branch, which is the pure
   // normalize-and-copy (or plain unpack) path. past_seqlens / cos_cache / sin_cache are then
   // never dereferenced and may be null.
-  if (h >= rotary_embedding_dim) {
+  const int hr = h - rotary_offset;
+  if (hr < 0 || hr >= rotary_embedding_dim) {
     output_data[h] = head_values[h];
     return;
   }
@@ -249,15 +257,15 @@ __global__ void QkNormRotaryTNH(T* output,                            // TxNxH
   T sign = 0;
   int j = 0;
   if (interleaved) {
-    cache_idx = (h / 2) % half_rotary_embedding_dim;
-    sign = (h % 2 == 0) ? -1 : 1;
-    j = (h % 2 == 0) ? h + 1 : h - 1;  // i - sign
+    cache_idx = (hr / 2) % half_rotary_embedding_dim;
+    sign = (hr % 2 == 0) ? -1 : 1;
+    j = (hr % 2 == 0) ? hr + 1 : hr - 1;  // i - sign
   } else {
-    cache_idx = h % half_rotary_embedding_dim;
-    sign = (h < half_rotary_embedding_dim) ? -1 : 1;
-    j = (h + half_rotary_embedding_dim) % rotary_embedding_dim;
+    cache_idx = hr % half_rotary_embedding_dim;
+    sign = (hr < half_rotary_embedding_dim) ? -1 : 1;
+    j = (hr + half_rotary_embedding_dim) % rotary_embedding_dim;
   }
-  output_data[h] = head_values[h] * cos_data[cache_idx] + sign * head_values[j] * sin_data[cache_idx];
+  output_data[h] = head_values[h] * cos_data[cache_idx] + sign * head_values[rotary_offset + j] * sin_data[cache_idx];
 }
 
 // Launches the fused QK-Norm / rotary prologue. Pass norm_weight == nullptr to disable QK-Norm and
@@ -268,8 +276,8 @@ Status LaunchQkNormRotaryKernel(cudaStream_t stream, T* output, const T* input, 
                                 const int32_t* cumulative_seqlens_q, const T* cos_cache, const T* sin_cache,
                                 const T* norm_weight, const float epsilon, const int batch_size,
                                 const int max_seqlen_q, const int num_heads, const int head_size,
-                                const int rotary_embedding_dim, const bool interleaved, const int in_seq_stride,
-                                const int max_threads_per_block) {
+                                const int rotary_embedding_dim, const int rotary_offset, const bool interleaved,
+                                const int in_seq_stride, const int max_threads_per_block) {
   if (batch_size == 0 || max_seqlen_q == 0 || num_heads == 0) {
     return Status::OK();
   }
@@ -289,7 +297,7 @@ Status LaunchQkNormRotaryKernel(cudaStream_t stream, T* output, const T* input, 
   const dim3 block(tpb);
   QkNormRotaryTNH<<<grid, block, shared_bytes, stream>>>(
       output, input, cos_cache, sin_cache, past_seqlens, cumulative_seqlens_q, norm_weight, epsilon, head_size,
-      rotary_embedding_dim, interleaved, in_strides, out_strides);
+      rotary_embedding_dim, rotary_offset, interleaved, in_strides, out_strides);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -418,14 +426,18 @@ __global__ void ReshapeAndCache(const T* __restrict__ key, const T* __restrict__
     }
 
     const int64_t key_id = static_cast<int64_t>(token_id) * key_stride + hidden_offset;
-    const int64_t value_id = static_cast<int64_t>(token_id) * value_stride + hidden_offset;
     const int64_t dst_id = static_cast<int64_t>(slot) * kv_hidden_size + hidden_offset;
     // hidden_offset is (kv_head * head_size + channel), which is exactly the PER_CHANNEL scale
     // index. For an unquantized cache the scale pointers are null and this compiles to a copy.
     key_cache[dst_id] =
         QuantizeToCache<T, TCACHE>(key[key_id], GetCacheScale(k_scale, hidden_offset, k_per_channel));
-    value_cache[dst_id] =
-        QuantizeToCache<T, TCACHE>(value[value_id], GetCacheScale(v_scale, hidden_offset, v_per_channel));
+    // In LATENT (MLA) mode there is no separate value tensor or value cache: V is the leading
+    // v_head_size channels of the latent row that was just written above.
+    if (value_cache != nullptr) {
+      const int64_t value_id = static_cast<int64_t>(token_id) * value_stride + hidden_offset;
+      value_cache[dst_id] =
+          QuantizeToCache<T, TCACHE>(value[value_id], GetCacheScale(v_scale, hidden_offset, v_per_channel));
+    }
   }
 }
 
@@ -1015,6 +1027,241 @@ Status LaunchPagedDecodeAttention(const T* query, const TCACHE* key_cache, const
   return CUDA_CALL(cudaGetLastError());
 }
 
+////////// Unfused paged latent attention (absorbed MLA reference)
+//
+// Absorbed MLA is MQA with a wide key head and a narrower value head that *aliases* the leading
+// v_head_size channels of the same cached row (docs/contrib_ops/cuda/paged_attention.md §12.2):
+//
+//   key   = [compressed_kv (kv_lora_rank) ; k_pe (qk_rope_head_dim)]   -> head_size    (576 in V3)
+//   value = compressed_kv                                             -> v_head_size  (512 in V3)
+//
+// Neither FlashAttention nor the CUTLASS fMHA wrapper can express that: both cap head_size at 256
+// and require v_head_size == head_size. This kernel is the correctness oracle called for in §12.7,
+// and it is the only backend for LATENT until a fused MLA kernel lands. It handles arbitrary query
+// lengths (prefill, chunked prefill and decode all take the same path), so causality is resolved
+// per query token instead of assuming one new token per sequence.
+//
+// One CTA owns one (query token, query head) pair and streams the whole KV range in tiles, keeping
+// an online-softmax (m, l) state and a v_head_size-wide fp32 accumulator in shared memory. The
+// quantization scales are folded exactly as in the decode kernel: k_scale into Q at load time, and
+// v_scale into the epilogue, so neither ever enters the softmax denominator.
+
+constexpr int kLatentThreads = 256;
+constexpr int kLatentTile = 64;  // KV tokens scored per iteration
+
+// Shared memory: Q (head_size) + output accumulator (v_head_size) + tile logits + block reduction
+// scratchpad, all fp32, followed by the tile's resolved page ids.
+size_t GetPagedLatentSharedMemoryBytes(const int head_size, const int v_head_size) {
+  const size_t float_elems = static_cast<size_t>(head_size) + static_cast<size_t>(v_head_size) +
+                             kLatentTile + kLatentThreads;
+  return float_elems * sizeof(float) + static_cast<size_t>(kLatentTile) * sizeof(int);
+}
+
+template <typename T, typename TCACHE>
+__global__ void PagedLatentAttentionKernel(const T* __restrict__ query,             // [token, N, head_size]
+                                           const TCACHE* __restrict__ key_cache,    // paged, head_size wide
+                                           const TCACHE* __restrict__ value_cache,  // == key_cache in LATENT
+                                           const float* __restrict__ k_scale,
+                                           const float* __restrict__ v_scale,
+                                           const int* __restrict__ cumulative_seqlens_q,
+                                           const int* __restrict__ past_seqlens,
+                                           const int* __restrict__ block_table,
+                                           T* __restrict__ output,  // [token, N, v_head_size]
+                                           const int batch_size,
+                                           const int num_heads,
+                                           const int kv_num_heads,
+                                           const int head_size,
+                                           const int v_head_size,
+                                           const int block_size,
+                                           const int max_num_blocks_per_seq,
+                                           const float scale,
+                                           const float softcap,
+                                           const int local_window_size,
+                                           const bool k_per_channel,
+                                           const bool v_per_channel) {
+  extern __shared__ float paged_latent_smem[];
+  float* q_sh = paged_latent_smem;
+  float* acc_sh = q_sh + head_size;
+  float* logits_sh = acc_sh + v_head_size;
+  float* red_sh = logits_sh + kLatentTile;
+  int* block_id_sh = reinterpret_cast<int*>(red_sh + kLatentThreads);
+
+  const int token_id = blockIdx.x;
+  const int head_id = blockIdx.y;
+  const int tid = threadIdx.x;
+
+  // Locate the sequence this packed token belongs to and its position inside that sequence.
+  // cumulative_seqlens_q is a non-decreasing prefix sum, so a binary search is exact for ragged
+  // batches, including sequences that contribute zero new tokens.
+  int left = 0;
+  int right = batch_size - 1;
+  while (left < right) {
+    const int mid = left + (right - left) / 2;
+    if (token_id < cumulative_seqlens_q[mid + 1]) {
+      right = mid;
+    } else {
+      left = mid + 1;
+    }
+  }
+  const int batch_id = left;
+  const int s = token_id - cumulative_seqlens_q[batch_id];
+
+  // Causality: this token's logical position is past_seqlens[b] + s, and it attends every cached
+  // position up to and including its own. That is exactly FlashAttention's bottom-right-aligned
+  // causal convention for seqlen_k = past + seqlen_q.
+  const int kv_end = past_seqlens[batch_id] + s + 1;
+  int kv_begin = 0;
+  if (local_window_size > 0) {
+    // local_window_size counts the current token, matching mha_varlen_fwd's window_size_left = W-1.
+    kv_begin = max(0, kv_end - local_window_size);
+  }
+
+  const int kv_head_id = head_id / (num_heads / kv_num_heads);
+  const int64_t token_stride_in_page = static_cast<int64_t>(kv_num_heads) * head_size;
+  const int64_t head_offset_in_page = static_cast<int64_t>(kv_head_id) * head_size;
+
+  // Fold k_scale into Q: dot(q * k_scale, k_raw) == dot(q, dequant(k)), exactly.
+  const T* q_ptr = query + (static_cast<int64_t>(token_id) * num_heads + head_id) * head_size;
+  for (int c = tid; c < head_size; c += kLatentThreads) {
+    q_sh[c] = static_cast<float>(q_ptr[c]) * GetCacheScale(k_scale, kv_head_id * head_size + c, k_per_channel);
+  }
+  for (int c = tid; c < v_head_size; c += kLatentThreads) {
+    acc_sh[c] = 0.0f;
+  }
+  __syncthreads();
+
+  constexpr int kNumWarps = kLatentThreads / 32;
+  const int warp_id = tid / 32;
+  const int lane_id = tid % 32;
+  // Match FlashAttention's softcap spelling: softcap * tanh(qk * scale / softcap).
+  const float softcap_scale = softcap > 0.0f ? (scale / softcap) : 0.0f;
+
+  float m_state = -FLT_MAX;
+  float l_state = 0.0f;
+
+  for (int tile_begin = kv_begin; tile_begin < kv_end; tile_begin += kLatentTile) {
+    const int tile_len = min(kLatentTile, kv_end - tile_begin);
+
+    // ---- QK over the full head_size (compressed_kv and k_pe together) ----
+    for (int t = warp_id; t < tile_len; t += kNumWarps) {
+      const int pos = tile_begin + t;
+      const int block_index = pos / block_size;
+      const int block_id = block_index < max_num_blocks_per_seq
+                               ? block_table[batch_id * max_num_blocks_per_seq + block_index]
+                               : -1;
+      float dot = 0.0f;
+      if (block_id >= 0) {
+        const TCACHE* k_ptr = key_cache +
+                              (static_cast<int64_t>(block_id) * block_size + (pos % block_size)) * token_stride_in_page +
+                              head_offset_in_page;
+        for (int c = lane_id; c < head_size; c += 32) {
+          dot += q_sh[c] * CacheToFloat<TCACHE>(k_ptr[c]);
+        }
+      }
+#pragma unroll
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        dot += __shfl_xor_sync(0xFFFFFFFFU, dot, offset);
+      }
+      if (lane_id == 0) {
+        block_id_sh[t] = block_id;
+        logits_sh[t] = block_id < 0 ? -FLT_MAX
+                                    : (softcap > 0.0f ? softcap * tanhf(dot * softcap_scale) : dot * scale);
+      }
+    }
+    __syncthreads();
+
+    // ---- tile max ----
+    float local_max = -FLT_MAX;
+    for (int t = tid; t < tile_len; t += kLatentThreads) {
+      local_max = fmaxf(local_max, logits_sh[t]);
+    }
+    red_sh[tid] = local_max;
+    __syncthreads();
+    for (int stride = kLatentThreads / 2; stride > 0; stride >>= 1) {
+      if (tid < stride) {
+        red_sh[tid] = fmaxf(red_sh[tid], red_sh[tid + stride]);
+      }
+      __syncthreads();
+    }
+    const float m_tile = red_sh[0];
+    __syncthreads();
+
+    // A tile whose pages are all unmapped contributes nothing; skipping it also avoids the
+    // degenerate rescale exp(-FLT_MAX - -FLT_MAX) == 1.
+    if (m_tile == -FLT_MAX) {
+      continue;
+    }
+
+    const float m_new = fmaxf(m_state, m_tile);
+    const float alpha = __expf(m_state - m_new);  // 0 on the first contributing tile
+
+    float local_sum = 0.0f;
+    for (int t = tid; t < tile_len; t += kLatentThreads) {
+      const float p = __expf(logits_sh[t] - m_new);
+      logits_sh[t] = p;
+      local_sum += p;
+    }
+    red_sh[tid] = local_sum;
+    __syncthreads();
+    for (int stride = kLatentThreads / 2; stride > 0; stride >>= 1) {
+      if (tid < stride) {
+        red_sh[tid] += red_sh[tid + stride];
+      }
+      __syncthreads();
+    }
+    const float sum_tile = red_sh[0];
+    __syncthreads();
+
+    l_state = l_state * alpha + sum_tile;
+    m_state = m_new;
+
+    // ---- PV over the leading v_head_size channels of the same cached rows ----
+    for (int c = tid; c < v_head_size; c += kLatentThreads) {
+      float acc = acc_sh[c] * alpha;
+      for (int t = 0; t < tile_len; ++t) {
+        const int block_id = block_id_sh[t];
+        if (block_id < 0) {
+          continue;
+        }
+        const int pos = tile_begin + t;
+        const TCACHE* v_ptr = value_cache +
+                              (static_cast<int64_t>(block_id) * block_size + (pos % block_size)) * token_stride_in_page +
+                              head_offset_in_page;
+        acc += logits_sh[t] * CacheToFloat<TCACHE>(v_ptr[c]);
+      }
+      acc_sh[c] = acc;
+    }
+    __syncthreads();
+  }
+
+  const int64_t out_base = (static_cast<int64_t>(token_id) * num_heads + head_id) * v_head_size;
+  const float inv_l = (m_state == -FLT_MAX || l_state <= 0.0f) ? 0.0f : (1.0f / l_state);
+  for (int c = tid; c < v_head_size; c += kLatentThreads) {
+    // V channels are a prefix of the head_size-wide cached row, so a PER_CHANNEL scale is indexed
+    // with the head_size stride even though only v_head_size of those channels are read.
+    output[out_base + c] = static_cast<T>(acc_sh[c] * inv_l *
+                                          GetCacheScale(v_scale, kv_head_id * head_size + c, v_per_channel));
+  }
+}
+
+template <typename T, typename TCACHE>
+Status LaunchPagedLatentAttention(const T* query, const TCACHE* key_cache, const TCACHE* value_cache,
+                                  const float* k_scale, const float* v_scale, const bool k_per_channel,
+                                  const bool v_per_channel, const int* cumulative_seqlens_q,
+                                  const int* past_seqlens, const int* block_table, T* output,
+                                  const int batch_size, const int num_heads, const int kv_num_heads,
+                                  const int head_size, const int v_head_size, const int block_size,
+                                  const int max_num_blocks_per_seq, const int token_count, const float scale,
+                                  const float softcap, const int local_window_size, cudaStream_t stream) {
+  const size_t smem_bytes = GetPagedLatentSharedMemoryBytes(head_size, v_head_size);
+  const dim3 grid(token_count, num_heads);
+  PagedLatentAttentionKernel<T, TCACHE><<<grid, kLatentThreads, smem_bytes, stream>>>(
+      query, key_cache, value_cache, k_scale, v_scale, cumulative_seqlens_q, past_seqlens, block_table, output,
+      batch_size, num_heads, kv_num_heads, head_size, v_head_size, block_size, max_num_blocks_per_seq, scale,
+      softcap, local_window_size, k_per_channel, v_per_channel);
+  return CUDA_CALL(cudaGetLastError());
+}
+
 ////////// Launch Kernels
 
 // Prologue shared by every backend: unpack packed QKV, run the fused QK-Norm + rotary kernel when
@@ -1057,11 +1304,13 @@ Status PrepareQueryAndCache(cudaStream_t stream, contrib::PagedAttentionParamete
     ORT_RETURN_IF_ERROR(LaunchQkNormRotaryKernel<T>(
         stream, q_buffer, query, past_seqlens, cumulative_seqlens_q, data.cos_cache, data.sin_cache,
         data.q_norm_weight, parameters.qk_norm_epsilon, batch_size, max_query_len, num_heads, head_size,
-        rotary_dim, parameters.rotary_interleaved, packed_seq_stride, max_threads_per_block));
+        rotary_dim, parameters.rotary_offset, parameters.rotary_interleaved, packed_seq_stride,
+        max_threads_per_block));
     ORT_RETURN_IF_ERROR(LaunchQkNormRotaryKernel<T>(
         stream, k_buffer, key, past_seqlens, cumulative_seqlens_q, data.cos_cache, data.sin_cache,
         data.k_norm_weight, parameters.qk_norm_epsilon, batch_size, max_query_len, kv_num_heads, head_size,
-        rotary_dim, parameters.rotary_interleaved, packed_seq_stride, max_threads_per_block));
+        rotary_dim, parameters.rotary_offset, parameters.rotary_interleaved, packed_seq_stride,
+        max_threads_per_block));
     query = q_buffer;
     key = k_buffer;
   } else if (parameters.is_packed_qkv) {
@@ -1087,6 +1336,38 @@ Status PrepareQueryAndCache(cudaStream_t stream, contrib::PagedAttentionParamete
       parameters.num_blocks, key_stride, value_stride, stream, max_threads_per_block)));
 
   *query_out = query;
+  return Status::OK();
+}
+
+// LATENT (absorbed MLA) backend. The latent row is written to the single physical cache by the
+// shared prologue (which also applies offset RoPE to the k_pe suffix), then the unfused latent
+// kernel reads K and V out of that same cache.
+template <typename T, typename TCACHE>
+Status LatentAttention(
+    const cudaDeviceProp& device_prop,
+    cudaStream_t stream,
+    contrib::PagedAttentionParameters& parameters,
+    PagedAttentionData<T, TCACHE>& data,
+    float scale) {
+  T* query = nullptr;
+  ORT_RETURN_IF_ERROR((PrepareQueryAndCache<T, TCACHE>(stream, parameters, data,
+                                                       device_prop.maxThreadsPerBlock, &query)));
+
+  // V shares the physical elements of K, so it must be dequantized with the scale those elements
+  // were stored with: k_scale, not v_scale (which validation requires to be absent in LATENT).
+  ORT_RETURN_IF_ERROR((LaunchPagedLatentAttention<T, TCACHE>(
+      query, data.key_cache, /*value_cache*/ data.key_cache, data.k_scale, /*v_scale*/ data.k_scale,
+      parameters.k_quant_type == KVQuantizationType::PER_CHANNEL,
+      parameters.k_quant_type == KVQuantizationType::PER_CHANNEL,
+      data.cumulative_seqlens_q, data.past_seqlens, data.block_table, data.output,
+      parameters.batch_size, parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
+      parameters.v_head_size, parameters.block_size, parameters.max_num_blocks_per_seq,
+      parameters.token_count, scale, parameters.softcap, parameters.local_window_size, stream)));
+
+  DUMP_TENSOR_INIT();
+  DUMP_TENSOR("latent (MLA) paged attention output", data.output, parameters.token_count, parameters.num_heads,
+              parameters.v_head_size);
+
   return Status::OK();
 }
 
@@ -1298,6 +1579,13 @@ Status QkvToContext(
     PagedAttentionData<T, TCACHE>& data) {
   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size)) : parameters.scale;
+
+  // LATENT (MLA) has its own backend: no other kernel can serve v_head_size != head_size over a
+  // single aliased cache. Validation guarantees an explicit scale here, so the default above is
+  // never the one used.
+  if (parameters.is_latent_kv) {
+    return LatentAttention(device_prop, stream, parameters, data, scale);
+  }
 
   if (data.use_paged_decode) {
     return PagedDecodeAttention(device_prop, stream, parameters, data, scale);

@@ -4236,6 +4236,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of bits per stored key cache element. Must be 8 for an int8 or float8e4m3fn cache. Defaults to 8 for a quantized cache and 0 (unused) otherwise.</dd>
 <dt><tt>k_quant_type</tt> : string</dt>
 <dd>Quantization granularity of the key cache: 'NONE', 'PER_TENSOR' or 'PER_CHANNEL'. Must be non-'NONE' exactly when 'key_cache' has a quantized element type, and then 'k_scale' is required. Default value is 'NONE'.</dd>
+<dt><tt>kv_cache_layout</tt> : string</dt>
+<dd>Physical layout of the KV cache: 'SEPARATE' or 'LATENT'. 'SEPARATE' (the default) uses distinct 'key_cache' and 'value_cache' tensors. 'LATENT' selects absorbed Multi-head Latent Attention: there is a single cache, 'value' and 'value_cache' must be absent, 'kv_num_heads' must be 1, and V for every head is the leading 'v_head_size' channels of the same 'key_cache' row that supplies K. Default value is 'SEPARATE'.</dd>
 <dt><tt>kv_num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for k and v</dd>
 <dt><tt>local_window_size</tt> : int</dt>
@@ -4246,12 +4248,16 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Epsilon used by the Q/K RMSNorm when 'q_norm_weight' and 'k_norm_weight' are provided. Default value is 1e-6.</dd>
 <dt><tt>rotary_interleaved</tt> : int</dt>
 <dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
+<dt><tt>rotary_offset</tt> : int</dt>
+<dd>First channel within head_size covered by rotary embedding, so RoPE is applied to [rotary_offset, rotary_offset + rotary_dim) and channels outside that range are copied through. Must be a multiple of 8. MLA sets this to kv_lora_rank so that RoPE only touches the positional suffix of the latent row. Default value is 0.</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 <dt><tt>softcap</tt> : float</dt>
 <dd>Softcap value for attention weights. Default value is 0.</dd>
 <dt><tt>v_cache_bit_width</tt> : int</dt>
 <dd>Number of bits per stored value cache element. Must be 8 for an int8 or float8e4m3fn cache. Defaults to 8 for a quantized cache and 0 (unused) otherwise.</dd>
+<dt><tt>v_head_size</tt> : int</dt>
+<dd>Width of the value head, which may be narrower than head_size. Only valid when 'kv_cache_layout' is 'LATENT' (DeepSeek-V3 uses head_size=576 and v_head_size=512). When v_head_size differs from head_size the 'scale' attribute is required, because the 1/sqrt(head_size) default no longer matches the pre-absorption head width. Default value is 0, meaning the same as head_size.</dd>
 <dt><tt>v_quant_type</tt> : string</dt>
 <dd>Quantization granularity of the value cache: 'NONE', 'PER_TENSOR' or 'PER_CHANNEL'. Must be non-'NONE' exactly when 'value_cache' has a quantized element type, and then 'v_scale' is required. Default value is 'NONE'.</dd>
 </dl>
@@ -4264,11 +4270,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>key</tt> (optional) : T</dt>
 <dd>Key with shape (num_tokens, kv_hidden_size) </dd>
 <dt><tt>value</tt> (optional) : T</dt>
-<dd>Value with shape (num_tokens, kv_hidden_size)</dd>
+<dd>Value with shape (num_tokens, kv_hidden_size). Must be absent when 'kv_cache_layout' is 'LATENT'.</dd>
 <dt><tt>key_cache</tt> : T_CACHE</dt>
-<dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op.</dd>
-<dt><tt>value_cache</tt> : T_CACHE</dt>
-<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op. This should be the same shape as key_cache.</dd>
+<dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op. When 'kv_cache_layout' is 'LATENT' this is the only cache, and V is read from its leading v_head_size channels.</dd>
+<dt><tt>value_cache</tt> (optional) : T_CACHE</dt>
+<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op. This should be the same shape as key_cache. Must be absent when 'kv_cache_layout' is 'LATENT'.</dd>
 <dt><tt>cumulative_sequence_length</tt> : S</dt>
 <dd>A tensor with shape (batch_size + 1). It specifies the cumulative sequence lengths between the packed entries in Q/K/V.</dd>
 <dt><tt>past_seqlens</tt> : S</dt>
@@ -4297,11 +4303,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>3D output tensor with shape (num_tokens, hidden_size)</dd>
+<dd>2D output tensor with shape (num_tokens, num_heads * v_head_size), which is (num_tokens, hidden_size) unless 'kv_cache_layout' is 'LATENT' with a narrower v_head_size.</dd>
 <dt><tt>key_cache_out</tt> (optional) : T_CACHE</dt>
 <dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always the same tensor as key_cache.</dd>
 <dt><tt>value_cache_out</tt> (optional) : T_CACHE</dt>
-<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always the same tensor as value_cache.</dd>
+<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always the same tensor as value_cache. Must be absent when 'kv_cache_layout' is 'LATENT'.</dd>
 </dl>
 
 #### Type Constraints

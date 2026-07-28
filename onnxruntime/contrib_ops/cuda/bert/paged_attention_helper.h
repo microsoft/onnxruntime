@@ -64,6 +64,58 @@ Status Check_Q_K_V(const T* query, const T* key, const T* value, const int num_h
   return Status::OK();
 }
 
+// LATENT (absorbed MLA) mode: 'query' is the absorbed query, 'key' is the latent row
+// [compressed_kv; k_pe] shared by all heads, and 'value' is absent because V is the leading
+// v_head_size channels of the same latent row. See docs/contrib_ops/cuda/paged_attention.md §12.
+template <typename T = Tensor>
+Status Check_Q_K_Latent(const T* query, const T* key, const T* value, const int num_heads, const int kv_num_heads,
+                        int& token_count, int& q_hidden_size, int& kv_hidden_size, int& head_size) {
+  if (key == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'key' is required when 'kv_cache_layout' is 'LATENT'.");
+  }
+  if (value != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'value' must be absent when 'kv_cache_layout' is 'LATENT': the value of every "
+                           "head is the leading 'v_head_size' channels of the latent key.");
+  }
+
+  const auto& query_dims = query->Shape().GetDims();
+  if (query_dims.size() != 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 2 dimensions, got ",
+                           query_dims.size());
+  }
+  token_count = static_cast<int>(query_dims[0]);
+  q_hidden_size = static_cast<int>(query_dims[1]);
+  if (q_hidden_size % num_heads != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'query' hidden size must be a multiple of num_heads. Got ", q_hidden_size,
+                           " % ", num_heads, " == ", q_hidden_size % num_heads);
+  }
+  head_size = q_hidden_size / num_heads;
+  if (head_size % 8 != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "head_size must be a multiple of 8. Got head_size % 8 == ", head_size % 8);
+  }
+
+  const auto& key_dims = key->Shape().GetDims();
+  if (key_dims.size() != 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 2 dimensions, got ",
+                           key_dims.size());
+  }
+  if (token_count != key_dims[0]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'query' and 'key' shall have same dim 0 (token count)");
+  }
+  kv_hidden_size = static_cast<int>(key_dims[1]);
+  if (kv_hidden_size != kv_num_heads * head_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'key' is expected to have hidden size kv_num_heads * head_size = ",
+                           kv_num_heads * head_size, " in 'LATENT' mode, got ", kv_hidden_size);
+  }
+  return Status::OK();
+}
+
 template <typename T = Tensor>
 Status Check_QKV(const T* packed_qkv, const T* value, const int num_heads, const int kv_num_heads, int& token_count,
                  int& q_hidden_size, int& kv_hidden_size, int& head_size) {
@@ -88,20 +140,16 @@ Status Check_QKV(const T* packed_qkv, const T* value, const int num_heads, const
   return Status::OK();
 }
 
+// `value_cache` is null only in LATENT mode, where V aliases the leading channels of `key_cache`
+// and there is no second physical cache to validate.
 template <typename T = Tensor>
 Status CheckKVCache(const T* key_cache, const T* value_cache, const int kv_num_heads, const int head_size,
                     int& num_blocks, int& block_size) {
   const auto& key_cache_dims = key_cache->Shape().GetDims();
-  const auto& value_cache_dims = value_cache->Shape().GetDims();
   if (key_cache_dims.size() != 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'key_cache' is expected to have 4 dimensions, got ",
                            key_cache_dims.size());
-  }
-  if (value_cache_dims.size() != 4) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'value_cache' is expected to have 4 dimensions, got ",
-                           value_cache_dims.size());
   }
 
   num_blocks = static_cast<int>(key_cache_dims[0]);
@@ -115,6 +163,28 @@ Status CheckKVCache(const T* key_cache, const T* value_cache, const int kv_num_h
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "block_size must be a power of two and at least 16. Got block_size == ",
                            block_size);
+  }
+
+  if (key_cache_dims[2] != kv_num_heads) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'key_cache' shall have kv_num_heads, got ",
+                           key_cache_dims[2]);
+  }
+  if (key_cache_dims[3] != head_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'key_cache' dimension 3 should be same as head_size, got ",
+                           key_cache_dims[3]);
+  }
+
+  if (value_cache == nullptr) {
+    return Status::OK();
+  }
+
+  const auto& value_cache_dims = value_cache->Shape().GetDims();
+  if (value_cache_dims.size() != 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'value_cache' is expected to have 4 dimensions, got ",
+                           value_cache_dims.size());
   }
   if (value_cache_dims[0] != num_blocks) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -131,11 +201,6 @@ Status CheckKVCache(const T* key_cache, const T* value_cache, const int kv_num_h
                            "Input 'key_cache' and 'value_cache' dimension 2 (kv num heads) should be the same, got ",
                            key_cache_dims[2], " and ", value_cache_dims[2]);
   }
-  if (key_cache_dims[2] != kv_num_heads) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'key_cache' shall have kv_num_heads, got ",
-                           key_cache_dims[2]);
-  }
   if (value_cache_dims[2] != kv_num_heads) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'value_cache' shall have kv_num_heads, got ",
@@ -146,11 +211,6 @@ Status CheckKVCache(const T* key_cache, const T* value_cache, const int kv_num_h
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'key_cache' and 'value_cache' dimension 3 (head size) should be the same, got ",
                            key_cache_dims[3], " and ", value_cache_dims[3]);
-  }
-  if (key_cache_dims[3] != head_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'key_cache' dimension 3 should be same as head_size, got ",
-                           key_cache_dims[3]);
   }
   if (value_cache_dims[3] != head_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -330,6 +390,10 @@ Status CheckInputs(const T* query,
                    int k_cache_bit_width,
                    int v_cache_bit_width,
                    bool is_quantized_cache,
+                   bool is_latent_kv,
+                   int v_head_size_attr,
+                   int rotary_offset,
+                   bool has_explicit_scale,
                    int max_threads_per_block) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
@@ -340,18 +404,82 @@ Status CheckInputs(const T* query,
                            num_heads % kv_num_heads);
   }
 
-  // Check query, key, and value
+  // Check query, key, and value. `kv_cache_layout` is inspected before the presence pattern,
+  // because LATENT's "key present, value absent" pattern would otherwise be indistinguishable from
+  // an ill-formed SEPARATE node. See docs/contrib_ops/cuda/paged_attention.md §4.6.
   int token_count = 0;
   int q_hidden_size = 0;
   int kv_hidden_size = 0;
   int head_size = 0;
-  const bool is_packed_qkv = key == nullptr;
-  if (!is_packed_qkv) {
+  const bool is_packed_qkv = !is_latent_kv && key == nullptr;
+  if (is_latent_kv) {
+    ORT_RETURN_IF_ERROR(Check_Q_K_Latent(query, key, value, num_heads, kv_num_heads, token_count, q_hidden_size,
+                                         kv_hidden_size, head_size));
+  } else if (!is_packed_qkv) {
     ORT_RETURN_IF_ERROR(Check_Q_K_V(query, key, value, num_heads, kv_num_heads, token_count, q_hidden_size,
                                     kv_hidden_size, head_size));
   } else {
     ORT_RETURN_IF_ERROR(Check_QKV(query, value, num_heads, kv_num_heads, token_count, q_hidden_size, kv_hidden_size,
                                   head_size));
+  }
+
+  // Effective V head size (§12.2). A V width that differs from head_size is only meaningful when V
+  // is a slice of the latent key, so it is confined to LATENT mode: no SEPARATE-mode backend
+  // supports asymmetric K/V widths, and value_cache's last dimension is head_size by construction.
+  int v_head_size = head_size;
+  if (v_head_size_attr != 0) {
+    if (v_head_size_attr < 1 || v_head_size_attr > head_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "'v_head_size' must be 0 (meaning head_size) or in [1, head_size] = [1, ", head_size,
+                             "], got ", v_head_size_attr);
+    }
+    if (v_head_size_attr != head_size && !is_latent_kv) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "'v_head_size' (", v_head_size_attr, ") may only differ from head_size (", head_size,
+                             ") when 'kv_cache_layout' is 'LATENT'.");
+    }
+    v_head_size = v_head_size_attr;
+  }
+  // The softmax-scale trap (§12.6): DeepSeek derives its scale from the pre-absorption head width,
+  // so the 1/sqrt(head_size) default would silently produce plausible-but-wrong logits.
+  if (v_head_size != head_size && !has_explicit_scale) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "An explicit 'scale' attribute is required when 'v_head_size' (", v_head_size,
+                           ") differs from head_size (", head_size,
+                           "): the default 1/sqrt(head_size) is not the intended scale for absorbed MLA.");
+  }
+
+  if (is_latent_kv) {
+    if (value_cache != nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'value_cache' must be absent when 'kv_cache_layout' is 'LATENT': the value cache "
+                             "is the leading 'v_head_size' channels of 'key_cache'.");
+    }
+    if (kv_num_heads != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "'kv_num_heads' must be 1 when 'kv_cache_layout' is 'LATENT', got ", kv_num_heads);
+    }
+    // §12.9: both combinations are well defined mathematically but no MLA model uses them, and an
+    // untested silent result is worse than a rejection.
+    if (head_sink != nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'head_sink' is not supported when 'kv_cache_layout' is 'LATENT'.");
+    }
+    if (q_norm_weight != nullptr || k_norm_weight != nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Inputs 'q_norm_weight' / 'k_norm_weight' are not supported when 'kv_cache_layout' is "
+                             "'LATENT': DeepSeek normalizes the latent projections in the graph, before absorption.");
+    }
+    // There is one physical cache, written once with k_scale, so a second scale for the same bytes
+    // could only disagree with it. V is dequantized with k_scale.
+    if (v_scale != nullptr || v_quant_type != KVQuantizationType::NONE) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'v_scale' and attribute 'v_quant_type' must be unset when 'kv_cache_layout' is "
+                             "'LATENT': the value elements are the key elements, so 'k_scale' dequantizes both.");
+    }
+  } else if (value_cache == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'value_cache' is required unless 'kv_cache_layout' is 'LATENT'.");
   }
 
   // Check KV-Cache
@@ -391,11 +519,26 @@ Status CheckInputs(const T* query,
                            "Input 'cos_cache' and 'sin_cache' shall be both present or both absent.");
   }
 
-  // Check quantized KV cache
+  // Offset (partial) rotary (§12.5). RoPE covers [rotary_offset, rotary_offset + rotary_dim) of
+  // each head; MLA rotates only the k_pe suffix. Default 0 is the shipped prefix behavior.
+  if (rotary_offset < 0 || rotary_offset % 8 != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "'rotary_offset' must be non-negative and a multiple of 8, got ", rotary_offset);
+  }
+  if (rotary_offset + rotary_dim > head_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "'rotary_offset' + rotary_dim must not exceed head_size. Got ", rotary_offset, " + ",
+                           rotary_dim, " > ", head_size);
+  }
+
+  // Check quantized KV cache. LATENT has no value cache to describe, and the block above already
+  // required v_scale / v_quant_type to be unset there.
   ORT_RETURN_IF_ERROR(CheckKVCacheQuantization(k_scale, "k_scale", "k_quant_type", k_quant_type,
                                                is_quantized_cache, kv_num_heads, head_size));
-  ORT_RETURN_IF_ERROR(CheckKVCacheQuantization(v_scale, "v_scale", "v_quant_type", v_quant_type,
-                                               is_quantized_cache, kv_num_heads, head_size));
+  if (!is_latent_kv) {
+    ORT_RETURN_IF_ERROR(CheckKVCacheQuantization(v_scale, "v_scale", "v_quant_type", v_quant_type,
+                                                 is_quantized_cache, kv_num_heads, v_head_size));
+  }
   if (is_quantized_cache && k_cache_bit_width != 8) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "'k_cache_bit_width' must be 8 for an int8 or float8e4m3fn key cache, got ",
@@ -426,6 +569,10 @@ Status CheckInputs(const T* query,
     output_parameters->num_heads = num_heads;
     output_parameters->kv_num_heads = kv_num_heads;
     output_parameters->head_size = head_size;
+    output_parameters->v_head_size = v_head_size;
+    output_parameters->v_hidden_size = num_heads * v_head_size;
+    output_parameters->is_latent_kv = is_latent_kv;
+    output_parameters->rotary_offset = rotary_offset;
     output_parameters->block_size = block_size;
     output_parameters->max_num_blocks_per_seq = max_num_blocks_per_seq;
     output_parameters->num_blocks = num_blocks;

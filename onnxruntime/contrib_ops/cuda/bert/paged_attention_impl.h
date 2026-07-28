@@ -39,6 +39,10 @@ size_t GetPagedDecodeSharedMemoryBytes(const int head_size);
 int ComputePagedDecodeSplits(const int batch_size, const int num_heads, const int max_kv_len,
                              const int multi_processor_count);
 
+// Shared memory required by the unfused latent (absorbed MLA) kernel. Used by paged_attention.cc to
+// reject a latent configuration the device cannot hold instead of failing at launch time.
+size_t GetPagedLatentSharedMemoryBytes(const int head_size, const int v_head_size);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

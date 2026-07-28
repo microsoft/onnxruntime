@@ -1699,5 +1699,712 @@ class TestPagedAttentionPagedDecode(unittest.TestCase):
         parity_check_paged_attention(config, rtol=5e-3, atol=2e-2)
 
 
+####################################################################################################
+# Multi-head Latent Attention (kv_cache_layout="LATENT")
+#
+# See docs/contrib_ops/cuda/paged_attention.md §12. In the absorbed form there is a single physical
+# cache holding the latent row [compressed_kv | k_pe] of width head_size = kv_lora_rank +
+# qk_rope_head_dim. K is the whole row; V of every head is its leading v_head_size = kv_lora_rank
+# channels. 'value' and 'value_cache' are therefore absent and kv_num_heads is 1.
+####################################################################################################
+
+
+class MLAConfig:
+    """Shape bundle for a LATENT-layout PagedAttention node. Deliberately separate from Config,
+    whose fields (kv_num_heads, packed, ...) encode SEPARATE-mode assumptions."""
+
+    def __init__(
+        self,
+        batch_size,
+        num_heads,
+        kv_lora_rank,
+        qk_rope_head_dim,
+        block_size,
+        qk_nope_head_dim=None,
+        kv_cache_type="float16",
+        k_quant_type="NONE",
+    ):
+        self.batch_size = batch_size
+        self.num_heads = num_heads
+        self.kv_lora_rank = kv_lora_rank
+        self.qk_rope_head_dim = qk_rope_head_dim
+        # Absorbed geometry, i.e. what the op actually sees.
+        self.head_size = kv_lora_rank + qk_rope_head_dim
+        self.v_head_size = kv_lora_rank
+        self.rotary_offset = kv_lora_rank
+        self.kv_num_heads = 1
+        self.block_size = block_size
+        # Un-absorbed geometry, used only by the equivalence test.
+        self.qk_nope_head_dim = qk_nope_head_dim
+        self.kv_cache_type = kv_cache_type
+        self.k_quant_type = k_quant_type
+
+    @property
+    def softmax_scale(self):
+        # DeepSeek scales by the pre-absorption QK width, which is nope + rope, NOT the absorbed
+        # head_size. This is exactly why the op requires an explicit 'scale' for MLA.
+        width = (self.qk_nope_head_dim or self.kv_lora_rank) + self.qk_rope_head_dim
+        return width**-0.5
+
+
+def create_mla_graph(
+    mla_config,
+    num_tokens,
+    num_blocks,
+    max_blocks_per_sequence,
+    do_rotary=False,
+    rotary_interleaved=False,
+    rotary_offset=None,
+    scale=None,
+    local_window_size=-1,
+    softcap=0.0,
+    with_value=False,
+    with_value_cache=False,
+    with_value_cache_out=False,
+    with_head_sink=False,
+    with_qk_norm=False,
+    kv_cache_layout="LATENT",
+    v_head_size=None,
+):
+    """Build a single-node LATENT PagedAttention model. Every deviation from a valid MLA graph is a
+    keyword here so that the negative tests can construct rejected models."""
+    cache_proto_type = KV_CACHE_TENSOR_PROTO[mla_config.kv_cache_type]
+    head_size = mla_config.head_size
+    v_head_size = mla_config.v_head_size if v_head_size is None else v_head_size
+    rotary_offset = mla_config.rotary_offset if rotary_offset is None else rotary_offset
+    rotary_dim = mla_config.qk_rope_head_dim
+
+    attrs = {
+        "num_heads": mla_config.num_heads,
+        "kv_num_heads": mla_config.kv_num_heads,
+        "kv_cache_layout": kv_cache_layout,
+        "v_head_size": v_head_size,
+        "local_window_size": local_window_size,
+        "softcap": softcap,
+        "domain": "com.microsoft",
+    }
+    if scale is not None:
+        attrs["scale"] = scale
+    if do_rotary:
+        attrs["do_rotary"] = 1
+        attrs["rotary_interleaved"] = 1 if rotary_interleaved else 0
+        attrs["rotary_offset"] = rotary_offset
+    if mla_config.k_quant_type != "NONE":
+        attrs["k_quant_type"] = mla_config.k_quant_type
+        attrs["k_cache_bit_width"] = 8
+
+    node_outputs = ["output", "key_cache_out"]
+    if with_value_cache_out:
+        node_outputs.append("value_cache_out")
+
+    nodes = [
+        helper.make_node(
+            "PagedAttention",
+            [
+                "query",
+                "key",
+                "value" if with_value else "",
+                "key_cache",
+                "value_cache" if with_value_cache else "",
+                "cumulative_sequence_length",
+                "past_seqlens",
+                "block_table",
+                "cos_cache" if do_rotary else "",
+                "sin_cache" if do_rotary else "",
+                "",  # slot_mapping
+                "head_sink" if with_head_sink else "",
+                "q_norm_weight" if with_qk_norm else "",
+                "k_norm_weight" if with_qk_norm else "",
+                "k_scale" if mla_config.k_quant_type != "NONE" else "",
+            ],
+            node_outputs,
+            "PagedAttention_MLA",
+            **attrs,
+        ),
+    ]
+
+    cache_dims = [num_blocks, mla_config.block_size, mla_config.kv_num_heads, head_size]
+    graph_input = [
+        helper.make_tensor_value_info("query", TensorProto.FLOAT16, [num_tokens, mla_config.num_heads * head_size]),
+        helper.make_tensor_value_info("key", TensorProto.FLOAT16, [num_tokens, mla_config.kv_num_heads * head_size]),
+        helper.make_tensor_value_info("key_cache", cache_proto_type, cache_dims),
+        helper.make_tensor_value_info("cumulative_sequence_length", TensorProto.INT32, [mla_config.batch_size + 1]),
+        helper.make_tensor_value_info("past_seqlens", TensorProto.INT32, [mla_config.batch_size]),
+        helper.make_tensor_value_info(
+            "block_table", TensorProto.INT32, [mla_config.batch_size, max_blocks_per_sequence]
+        ),
+    ]
+    if with_value:
+        # SEPARATE mode requires value to match key's hidden size; in LATENT its mere presence is
+        # the violation under test.
+        graph_input.append(
+            helper.make_tensor_value_info(
+                "value", TensorProto.FLOAT16, [num_tokens, mla_config.kv_num_heads * head_size]
+            )
+        )
+    if with_value_cache:
+        graph_input.append(helper.make_tensor_value_info("value_cache", cache_proto_type, cache_dims))
+    if do_rotary:
+        # The rotary caches are indexed by rotary_dim // 2, and the op derives rotary_dim from their
+        # width. MLA rotates only the qk_rope_head_dim suffix, so these are much narrower than the
+        # head_size-derived caches a full-width RoPE would use.
+        cache_width = rotary_dim // 2
+        graph_input += [
+            helper.make_tensor_value_info("cos_cache", TensorProto.FLOAT16, [None, cache_width]),
+            helper.make_tensor_value_info("sin_cache", TensorProto.FLOAT16, [None, cache_width]),
+        ]
+    if with_head_sink:
+        graph_input.append(helper.make_tensor_value_info("head_sink", TensorProto.FLOAT16, [mla_config.num_heads]))
+    if with_qk_norm:
+        graph_input += [
+            helper.make_tensor_value_info("q_norm_weight", TensorProto.FLOAT16, [head_size]),
+            helper.make_tensor_value_info("k_norm_weight", TensorProto.FLOAT16, [head_size]),
+        ]
+    if mla_config.k_quant_type != "NONE":
+        scale_shape = [1] if mla_config.k_quant_type == "PER_TENSOR" else [mla_config.kv_num_heads, 1, head_size]
+        graph_input.append(helper.make_tensor_value_info("k_scale", TensorProto.FLOAT, scale_shape))
+
+    graph_output = [
+        helper.make_tensor_value_info("output", TensorProto.FLOAT16, [num_tokens, mla_config.num_heads * v_head_size]),
+        helper.make_tensor_value_info("key_cache_out", cache_proto_type, cache_dims),
+    ]
+    if with_value_cache_out:
+        graph_output.append(helper.make_tensor_value_info("value_cache_out", cache_proto_type, cache_dims))
+
+    graph = helper.make_graph(nodes, "PagedAttention_MLA_Graph", graph_input, graph_output)
+    return helper.make_model(graph).SerializeToString()
+
+
+def run_mla(
+    mla_config,
+    query,
+    key,
+    key_cache,
+    cumulative_sequence_length,
+    past_seqlens,
+    block_table,
+    cos=None,
+    sin=None,
+    k_scale=None,
+    **graph_kwargs,
+):
+    """Run a LATENT PagedAttention model and return (output, key_cache) with the cache updated in
+    place. key_cache is bound on device so the in-place scatter is observable."""
+    num_tokens = int(cumulative_sequence_length[-1].item())
+    onnx_model_str = create_mla_graph(
+        mla_config,
+        num_tokens,
+        key_cache.shape[0],
+        block_table.shape[1],
+        do_rotary=cos is not None,
+        **graph_kwargs,
+    )
+    ort_session = InferenceSession(onnx_model_str, SessionOptions(), providers=["CUDAExecutionProvider"])
+    io_binding = ort_session.io_binding()
+
+    io_binding.bind_cpu_input("query", query.detach().cpu().numpy())
+    io_binding.bind_cpu_input("key", key.detach().cpu().numpy())
+    io_binding.bind_cpu_input("cumulative_sequence_length", cumulative_sequence_length.detach().cpu().numpy())
+    io_binding.bind_cpu_input("past_seqlens", past_seqlens.detach().cpu().numpy())
+    io_binding.bind_cpu_input("block_table", block_table.detach().cpu().numpy())
+    if cos is not None:
+        io_binding.bind_cpu_input("cos_cache", cos.detach().cpu().numpy())
+        io_binding.bind_cpu_input("sin_cache", sin.detach().cpu().numpy())
+    if k_scale is not None:
+        io_binding.bind_cpu_input("k_scale", k_scale.detach().cpu().numpy())
+
+    cache_proto_type = KV_CACHE_TENSOR_PROTO[mla_config.kv_cache_type]
+    key_cache = key_cache.contiguous()
+    io_binding.bind_input("key_cache", "cuda", 0, cache_proto_type, tuple(key_cache.shape), key_cache.data_ptr())
+    io_binding.bind_output("output")
+    io_binding.bind_output("key_cache_out", "cuda", 0, cache_proto_type, tuple(key_cache.shape), key_cache.data_ptr())
+    ort_session.run_with_iobinding(io_binding)
+    output = torch.tensor(numpy.array(io_binding.copy_outputs_to_cpu()[0]))
+    return output, key_cache
+
+
+def mla_reference(
+    mla_config,
+    query,  # [token_count, num_heads, head_size]
+    latent_cache,  # [batch, total_seqlen, head_size] dense view of the paged cache
+    past_seqlens,
+    new_seqlens,
+    cum_seqlens,
+    scale,
+    local_window_size=-1,
+    softcap=0.0,
+):
+    """Straightforward fp32 MLA: K is the whole latent row, V its leading v_head_size channels."""
+    v_head_size = mla_config.v_head_size
+    token_count = int(cum_seqlens[-1].item())
+    out = torch.zeros(token_count, mla_config.num_heads, v_head_size, dtype=torch.float32, device="cuda")
+    q = query.to(torch.float32)
+    for b in range(mla_config.batch_size):
+        start = int(cum_seqlens[b].item())
+        for j in range(int(new_seqlens[b].item())):
+            kv_end = int(past_seqlens[b].item()) + j + 1
+            kv_begin = max(0, kv_end - local_window_size) if local_window_size > 0 else 0
+            k = latent_cache[b, kv_begin:kv_end].to(torch.float32)  # [L, head_size]
+            v = k[:, :v_head_size]
+            logits = torch.einsum("nh,lh->nl", q[start + j], k) * scale
+            if softcap > 0.0:
+                logits = softcap * torch.tanh(logits / softcap)
+            probs = torch.softmax(logits, dim=-1)
+            out[start + j] = torch.einsum("nl,lv->nv", probs, v)
+    return out
+
+
+def make_mla_batch(mla_config, past_seqlens, new_seqlens, device="cuda"):
+    """Allocate a shuffled paged latent cache pre-filled with the 'past' tokens, plus the block
+    table and cumulative sequence lengths. Returns everything both paged and densified."""
+    total_seqlens = past_seqlens + new_seqlens
+    max_total = int(total_seqlens.max().item())
+    blocks_per_seq = math.ceil(max_total / mla_config.block_size)
+    num_blocks = blocks_per_seq * mla_config.batch_size
+    # A shuffled permutation makes block-table indirection load-bearing: a kernel that ignored it
+    # and read blocks sequentially would fail.
+    block_table = torch.randperm(num_blocks, dtype=torch.int32, device=device).reshape(
+        mla_config.batch_size, blocks_per_seq
+    )
+    latent_paged = torch.randn(
+        num_blocks,
+        mla_config.block_size,
+        mla_config.kv_num_heads,
+        mla_config.head_size,
+        device=device,
+        dtype=torch.float16,
+    )
+    cum_seqlens = torch.zeros(mla_config.batch_size + 1, dtype=torch.int32, device=device)
+    cum_seqlens[1:] = torch.cumsum(new_seqlens, dim=0)
+    return latent_paged, block_table, cum_seqlens, blocks_per_seq * mla_config.block_size
+
+
+def densify_latent(mla_config, latent_paged, block_table, total_len):
+    return rearrange(
+        latent_paged[block_table.to(dtype=torch.long).flatten()],
+        "(b nblocks) block_size h d -> b (nblocks block_size) (h d)",
+        b=mla_config.batch_size,
+    )[:, :total_len]
+
+
+def apply_offset_rope(x, cos, sin, positions, rotary_offset, rotary_dim, interleaved):
+    """Reference for the 'rotary_offset' attribute: rotate x[..., offset:offset+rotary_dim] using
+    the same half-rotated / interleaved conventions as the op, copying everything else through."""
+    out = x.clone().to(torch.float32)
+    seg = out[..., rotary_offset : rotary_offset + rotary_dim]
+    c = cos[positions].to(torch.float32)  # [tokens, rotary_dim // 2]
+    s = sin[positions].to(torch.float32)
+    c = c[..., : rotary_dim // 2]
+    s = s[..., : rotary_dim // 2]
+    while c.dim() < seg.dim():
+        c = c.unsqueeze(-2)
+        s = s.unsqueeze(-2)
+    if interleaved:
+        even = seg[..., 0::2]
+        odd = seg[..., 1::2]
+        rotated = torch.stack([even * c - odd * s, even * s + odd * c], dim=-1).flatten(-2)
+    else:
+        half = rotary_dim // 2
+        x1 = seg[..., :half]
+        x2 = seg[..., half:]
+        rotated = torch.cat([x1 * c - x2 * s, x1 * s + x2 * c], dim=-1)
+    out[..., rotary_offset : rotary_offset + rotary_dim] = rotated
+    return out.to(x.dtype)
+
+
+class TestPagedAttentionMLA(unittest.TestCase):
+    """Correctness of kv_cache_layout='LATENT' (design doc §12, phase P4)."""
+
+    def setUp(self):
+        # These tests build random weights; a fixed seed keeps them order-independent.
+        torch.manual_seed(20240727)
+
+    def _config(self, **kwargs):
+        # Small but structurally faithful: kv_lora_rank and qk_rope_head_dim keep DeepSeek's ratio
+        # while staying cheap enough for a unit test.
+        defaults = dict(batch_size=2, num_heads=4, kv_lora_rank=64, qk_rope_head_dim=32, block_size=16)
+        defaults.update(kwargs)
+        return MLAConfig(**defaults)
+
+    def _run_case(self, mla_config, past_seqlens, new_seqlens, local_window_size=-1, softcap=0.0):
+        """Shared body: build a paged latent cache, run the op, compare against mla_reference."""
+        device = "cuda"
+        past_seqlens = torch.tensor(past_seqlens, dtype=torch.int32, device=device)
+        new_seqlens = torch.tensor(new_seqlens, dtype=torch.int32, device=device)
+        latent_paged, block_table, cum_seqlens, total_len = make_mla_batch(mla_config, past_seqlens, new_seqlens)
+        token_count = int(cum_seqlens[-1].item())
+
+        query = torch.randn(token_count, mla_config.num_heads, mla_config.head_size, device=device, dtype=torch.float16)
+        new_key = torch.randn(token_count, mla_config.head_size, device=device, dtype=torch.float16)
+
+        scale = mla_config.softmax_scale
+        out, latent_paged = run_mla(
+            mla_config,
+            query.reshape(token_count, -1),
+            new_key,
+            latent_paged,
+            cum_seqlens,
+            past_seqlens,
+            block_table,
+            scale=scale,
+            local_window_size=local_window_size,
+            softcap=softcap,
+        )
+
+        # The op scattered the new keys into the cache in place, so densifying afterwards gives the
+        # exact K/V the reference must see (including any quantization error).
+        dense = densify_latent(mla_config, latent_paged, block_table, total_len)
+        ref = mla_reference(
+            mla_config,
+            query,
+            dense,
+            past_seqlens,
+            new_seqlens,
+            cum_seqlens,
+            scale,
+            local_window_size=local_window_size,
+            softcap=softcap,
+        )
+        out = out.reshape(token_count, mla_config.num_heads, mla_config.v_head_size).to(device).to(torch.float32)
+        torch.testing.assert_close(out, ref, rtol=2e-3, atol=2e-3)
+        return out
+
+    def test_prefill(self):
+        config = self._config()
+        self._run_case(config, past_seqlens=[0, 0], new_seqlens=[13, 7])
+
+    def test_decode(self):
+        config = self._config()
+        self._run_case(config, past_seqlens=[31, 18], new_seqlens=[1, 1])
+
+    def test_chunked_prefill(self):
+        # Mixed batch: one sequence extends an existing cache, one is pure decode, one adds nothing.
+        config = self._config(batch_size=3)
+        self._run_case(config, past_seqlens=[20, 9, 5], new_seqlens=[6, 1, 0])
+
+    def test_local_window(self):
+        config = self._config()
+        self._run_case(config, past_seqlens=[24, 24], new_seqlens=[5, 5], local_window_size=8)
+
+    def test_softcap(self):
+        config = self._config()
+        self._run_case(config, past_seqlens=[12, 12], new_seqlens=[4, 4], softcap=30.0)
+
+    def test_deepseek_v3_geometry(self):
+        # The real absorbed shape: head_size 576, v_head_size 512, kv_num_heads 1.
+        config = self._config(num_heads=8, kv_lora_rank=512, qk_rope_head_dim=64, block_size=16)
+        self.assertEqual(config.head_size, 576)
+        self.assertEqual(config.v_head_size, 512)
+        self._run_case(config, past_seqlens=[17, 3], new_seqlens=[1, 4])
+
+    def test_absorbed_matches_non_absorbed(self):
+        """The point of MLA: attention over the latent row with absorbed projections equals
+        standard MHA over the up-projected K/V. Both sides run through PagedAttention, so this also
+        pins the LATENT path against the already-verified SEPARATE path."""
+        device = "cuda"
+        batch_size, num_heads = 2, 4
+        kv_lora_rank, qk_rope_head_dim = 64, 32
+        qk_nope_head_dim, v_head_dim = 32, 32
+        mla_config = MLAConfig(
+            batch_size,
+            num_heads,
+            kv_lora_rank,
+            qk_rope_head_dim,
+            block_size=16,
+            qk_nope_head_dim=qk_nope_head_dim,
+        )
+        past_seqlens = torch.tensor([9, 5], dtype=torch.int32, device=device)
+        new_seqlens = torch.tensor([4, 6], dtype=torch.int32, device=device)
+        latent_paged, block_table, cum_seqlens, total_len = make_mla_batch(mla_config, past_seqlens, new_seqlens)
+        token_count = int(cum_seqlens[-1].item())
+        scale = mla_config.softmax_scale
+
+        # Up-projection weights, shared by both spellings.
+        w_uk = torch.randn(kv_lora_rank, num_heads, qk_nope_head_dim, device=device, dtype=torch.float32) * 0.1
+        w_uv = torch.randn(kv_lora_rank, num_heads, v_head_dim, device=device, dtype=torch.float32) * 0.1
+
+        # Non-absorbed query: q_nope [N, qk_nope_head_dim] and q_pe [N, qk_rope_head_dim].
+        q_nope = torch.randn(token_count, num_heads, qk_nope_head_dim, device=device, dtype=torch.float32) * 0.5
+        q_pe = torch.randn(token_count, num_heads, qk_rope_head_dim, device=device, dtype=torch.float32) * 0.5
+        new_key = torch.randn(token_count, mla_config.head_size, device=device, dtype=torch.float16)
+
+        # --- absorbed: q_latent = [q_nope @ W_UK^T | q_pe], attention over the latent row ---
+        q_absorbed_nope = torch.einsum("tnp,cnp->tnc", q_nope, w_uk)  # [T, N, kv_lora_rank]
+        q_absorbed = torch.cat([q_absorbed_nope, q_pe], dim=-1).to(torch.float16)
+        out_absorbed, latent_paged = run_mla(
+            mla_config,
+            q_absorbed.reshape(token_count, -1),
+            new_key,
+            latent_paged,
+            cum_seqlens,
+            past_seqlens,
+            block_table,
+            scale=scale,
+        )
+        out_absorbed = out_absorbed.reshape(token_count, num_heads, kv_lora_rank).to(device).to(torch.float32)
+        # Absorbed output lives in latent space; project it out with W_UV to compare.
+        out_absorbed = torch.einsum("tnc,cnv->tnv", out_absorbed, w_uv)
+
+        # --- non-absorbed: up-project the cache into per-head K/V and run plain MHA ---
+        dense = densify_latent(mla_config, latent_paged, block_table, total_len).to(torch.float32)
+        compressed_kv = dense[..., :kv_lora_rank]  # [B, L, kv_lora_rank]
+        k_pe = dense[..., kv_lora_rank:]  # [B, L, qk_rope_head_dim]
+        k_nope = torch.einsum("blc,cnp->blnp", compressed_kv, w_uk)
+        k_full = torch.cat([k_nope, k_pe.unsqueeze(2).expand(-1, -1, num_heads, -1)], dim=-1)
+        v_full = torch.einsum("blc,cnv->blnv", compressed_kv, w_uv)
+        q_full = torch.cat([q_nope, q_pe], dim=-1)
+
+        out_ref = torch.zeros(token_count, num_heads, v_head_dim, dtype=torch.float32, device=device)
+        for b in range(batch_size):
+            start = int(cum_seqlens[b].item())
+            for j in range(int(new_seqlens[b].item())):
+                kv_end = int(past_seqlens[b].item()) + j + 1
+                logits = torch.einsum("nd,lnd->nl", q_full[start + j], k_full[b, :kv_end]) * scale
+                probs = torch.softmax(logits, dim=-1)
+                out_ref[start + j] = torch.einsum("nl,lnv->nv", probs, v_full[b, :kv_end])
+
+        torch.testing.assert_close(out_absorbed, out_ref, rtol=5e-3, atol=5e-3)
+
+    def test_rotary_offset_matches_graph_applied_rope(self):
+        """do_rotary=1 with rotary_offset=kv_lora_rank must equal applying the same RoPE to the
+        k_pe suffix outside the op and running with do_rotary=0."""
+        device = "cuda"
+        for interleaved in (False, True):
+            with self.subTest(interleaved=interleaved):
+                config = self._config()
+                past_seqlens = torch.tensor([6, 2], dtype=torch.int32, device=device)
+                new_seqlens = torch.tensor([3, 5], dtype=torch.int32, device=device)
+                latent_paged, block_table, cum_seqlens, total_len = make_mla_batch(config, past_seqlens, new_seqlens)
+                token_count = int(cum_seqlens[-1].item())
+                rotary_dim = config.qk_rope_head_dim
+                cache_width = rotary_dim // 2
+                max_pos = 128
+                angle = torch.rand(max_pos, cache_width, device=device) * 2 - 1
+                cos = torch.cos(angle).to(torch.float16)
+                sin = torch.sin(angle).to(torch.float16)
+
+                query = torch.randn(token_count, config.num_heads, config.head_size, device=device, dtype=torch.float16)
+                new_key = torch.randn(token_count, config.head_size, device=device, dtype=torch.float16)
+                scale = config.softmax_scale
+
+                # Positions the op uses: past_seqlens[b] + index within the sequence.
+                positions = torch.empty(token_count, dtype=torch.long, device=device)
+                for b in range(config.batch_size):
+                    start = int(cum_seqlens[b].item())
+                    n = int(new_seqlens[b].item())
+                    positions[start : start + n] = int(past_seqlens[b].item()) + torch.arange(n, device=device)
+
+                out_in_op, cache_in_op = run_mla(
+                    config,
+                    query.reshape(token_count, -1),
+                    new_key,
+                    latent_paged.clone(),
+                    cum_seqlens,
+                    past_seqlens,
+                    block_table,
+                    cos=cos,
+                    sin=sin,
+                    rotary_interleaved=interleaved,
+                    scale=scale,
+                )
+
+                q_roped = apply_offset_rope(query, cos, sin, positions, config.rotary_offset, rotary_dim, interleaved)
+                k_roped = apply_offset_rope(new_key, cos, sin, positions, config.rotary_offset, rotary_dim, interleaved)
+                out_pre, cache_pre = run_mla(
+                    config,
+                    q_roped.reshape(token_count, -1),
+                    k_roped,
+                    latent_paged.clone(),
+                    cum_seqlens,
+                    past_seqlens,
+                    block_table,
+                    scale=scale,
+                )
+
+                torch.testing.assert_close(out_in_op.to(torch.float32), out_pre.to(torch.float32), rtol=3e-3, atol=3e-3)
+                # The scattered latent rows must match too: RoPE touches only the k_pe suffix.
+                torch.testing.assert_close(
+                    cache_in_op.to(torch.float32), cache_pre.to(torch.float32), rtol=3e-3, atol=3e-3
+                )
+
+    def test_v_aliases_k(self):
+        """With value_cache absent, V must be the leading v_head_size channels of key_cache. Zero
+        the tail of every latent row and confirm the output is unchanged: the tail is K-only."""
+        device = "cuda"
+        config = self._config()
+        past_seqlens = torch.tensor([0, 0], dtype=torch.int32, device=device)
+        new_seqlens = torch.tensor([4, 4], dtype=torch.int32, device=device)
+        latent_paged, block_table, cum_seqlens, total_len = make_mla_batch(config, past_seqlens, new_seqlens)
+        token_count = int(cum_seqlens[-1].item())
+        query = torch.randn(token_count, config.num_heads, config.head_size, device=device, dtype=torch.float16)
+        # Zero the query's rope slice so the k_pe channels cannot influence the logits either.
+        query[..., config.v_head_size :] = 0
+        new_key = torch.randn(token_count, config.head_size, device=device, dtype=torch.float16)
+        scale = config.softmax_scale
+
+        out_a, cache_a = run_mla(
+            config,
+            query.reshape(token_count, -1),
+            new_key,
+            latent_paged.clone(),
+            cum_seqlens,
+            past_seqlens,
+            block_table,
+            scale=scale,
+        )
+        key_tail_zeroed = new_key.clone()
+        key_tail_zeroed[:, config.v_head_size :] = 0
+        paged_tail_zeroed = latent_paged.clone()
+        paged_tail_zeroed[..., config.v_head_size :] = 0
+        out_b, _ = run_mla(
+            config,
+            query.reshape(token_count, -1),
+            key_tail_zeroed,
+            paged_tail_zeroed,
+            cum_seqlens,
+            past_seqlens,
+            block_table,
+            scale=scale,
+        )
+        torch.testing.assert_close(out_a.to(torch.float32), out_b.to(torch.float32), rtol=2e-3, atol=2e-3)
+
+        # And the leading channels really are V: scaling them scales the output linearly.
+        self.assertGreater(out_a.abs().max().item(), 1e-3)
+
+    def test_fp8_latent_cache(self):
+        if not has_fp8_kv_cache():
+            self.skipTest("FP8 KV cache kernels are not built")
+        device = "cuda"
+        config = self._config(kv_cache_type="fp8", k_quant_type="PER_TENSOR")
+        past_seqlens = torch.tensor([8, 8], dtype=torch.int32, device=device)
+        new_seqlens = torch.tensor([2, 2], dtype=torch.int32, device=device)
+        total_seqlens = past_seqlens + new_seqlens
+        max_total = int(total_seqlens.max().item())
+        blocks_per_seq = math.ceil(max_total / config.block_size)
+        num_blocks = blocks_per_seq * config.batch_size
+        block_table = torch.randperm(num_blocks, dtype=torch.int32, device=device).reshape(
+            config.batch_size, blocks_per_seq
+        )
+        cum_seqlens = torch.zeros(config.batch_size + 1, dtype=torch.int32, device=device)
+        cum_seqlens[1:] = torch.cumsum(new_seqlens, dim=0)
+        token_count = int(cum_seqlens[-1].item())
+
+        k_scale = torch.tensor([0.01], dtype=torch.float32, device=device)
+        latent_float = torch.randn(
+            num_blocks, config.block_size, config.kv_num_heads, config.head_size, device=device, dtype=torch.float16
+        )
+        latent_paged = quantize_kv(latent_float, k_scale, "fp8")
+
+        query = torch.randn(token_count, config.num_heads, config.head_size, device=device, dtype=torch.float16)
+        new_key = torch.randn(token_count, config.head_size, device=device, dtype=torch.float16)
+        scale = config.softmax_scale
+        out, latent_paged = run_mla(
+            config,
+            query.reshape(token_count, -1),
+            new_key,
+            latent_paged,
+            cum_seqlens,
+            past_seqlens,
+            block_table,
+            k_scale=k_scale,
+            scale=scale,
+        )
+        # Dequantize the cache the op left behind and score against it, so only the attention math
+        # (not the quantization error) is under test.
+        dense_q = densify_latent(config, latent_paged, block_table, blocks_per_seq * config.block_size)
+        dense = dequantize_kv(dense_q, k_scale)
+        ref = mla_reference(config, query, dense, past_seqlens, new_seqlens, cum_seqlens, scale)
+        out = out.reshape(token_count, config.num_heads, config.v_head_size).to(device).to(torch.float32)
+        torch.testing.assert_close(out, ref, rtol=5e-3, atol=5e-3)
+
+    # ---- rejected configurations (design doc §12.9, §12.10) ----
+
+    def _expect_rejected(self, message_fragment, **graph_kwargs):
+        """Build a LATENT model with one deliberate violation and assert the op rejects it. Schema
+        violations surface at session creation, input violations in ComputeInternal, so both are
+        wrapped."""
+        config = graph_kwargs.pop("config", None) or self._config()
+        num_tokens, num_blocks, max_blocks = 4, 4, 2
+        head_size = config.head_size
+
+        def build_and_run():
+            model = create_mla_graph(config, num_tokens, num_blocks, max_blocks, **graph_kwargs)
+            session = InferenceSession(model, SessionOptions(), providers=["CUDAExecutionProvider"])
+            feeds = {
+                "query": torch.randn(num_tokens, config.num_heads * head_size).to(torch.float16).numpy(),
+                "key": torch.randn(num_tokens, config.kv_num_heads * head_size).to(torch.float16).numpy(),
+                "key_cache": torch.randn(num_blocks, config.block_size, config.kv_num_heads, head_size)
+                .to(torch.float16)
+                .numpy(),
+                "cumulative_sequence_length": numpy.array([0, 2, 4, 4, 4][: config.batch_size + 1], dtype=numpy.int32),
+                "past_seqlens": numpy.zeros(config.batch_size, dtype=numpy.int32),
+                "block_table": numpy.arange(config.batch_size * max_blocks, dtype=numpy.int32).reshape(
+                    config.batch_size, max_blocks
+                ),
+            }
+            if graph_kwargs.get("with_value"):
+                feeds["value"] = torch.randn(num_tokens, config.kv_num_heads * head_size).to(torch.float16).numpy()
+            if graph_kwargs.get("with_value_cache"):
+                feeds["value_cache"] = feeds["key_cache"].copy()
+            if graph_kwargs.get("do_rotary"):
+                cache_width = config.qk_rope_head_dim // 2
+                feeds["cos_cache"] = torch.ones(64, cache_width).to(torch.float16).numpy()
+                feeds["sin_cache"] = torch.zeros(64, cache_width).to(torch.float16).numpy()
+            if graph_kwargs.get("with_head_sink"):
+                feeds["head_sink"] = torch.zeros(config.num_heads).to(torch.float16).numpy()
+            if graph_kwargs.get("with_qk_norm"):
+                feeds["q_norm_weight"] = torch.ones(head_size).to(torch.float16).numpy()
+                feeds["k_norm_weight"] = torch.ones(head_size).to(torch.float16).numpy()
+            session.run(None, feeds)
+
+        with self.assertRaises(Exception) as ctx:
+            build_and_run()
+        self.assertIn(message_fragment, str(ctx.exception))
+
+    def test_reject_missing_scale(self):
+        # v_head_size != head_size with no explicit scale would silently use 1/sqrt(head_size).
+        self._expect_rejected("explicit 'scale'")
+
+    def test_reject_value_input(self):
+        self._expect_rejected("'value'", scale=0.1, with_value=True)
+
+    def test_reject_value_cache(self):
+        self._expect_rejected("'value_cache' must be absent", scale=0.1, with_value_cache=True)
+
+    def test_reject_value_cache_output(self):
+        self._expect_rejected("value_cache_out must be absent", scale=0.1, with_value_cache_out=True)
+
+    def test_reject_head_sink(self):
+        self._expect_rejected("'head_sink'", scale=0.1, with_head_sink=True)
+
+    def test_reject_qk_norm(self):
+        self._expect_rejected("q_norm_weight", scale=0.1, with_qk_norm=True)
+
+    def test_reject_multi_kv_head(self):
+        config = self._config()
+        config.kv_num_heads = 2
+        self._expect_rejected("'kv_num_heads' must be 1", config=config, scale=0.1)
+
+    def test_reject_v_head_size_in_separate_layout(self):
+        # v_head_size != head_size is only meaningful for LATENT.
+        self._expect_rejected(
+            "may only differ from head_size",
+            scale=0.1,
+            kv_cache_layout="SEPARATE",
+            with_value=True,
+            with_value_cache=True,
+            with_value_cache_out=True,
+        )
+
+    def test_reject_unaligned_rotary_offset(self):
+        self._expect_rejected("multiple of 8", scale=0.1, do_rotary=True, rotary_offset=60)
+
+    def test_reject_rotary_offset_overflow(self):
+        config = self._config()
+        self._expect_rejected(
+            "must not exceed head_size", config=config, scale=0.1, do_rotary=True, rotary_offset=config.head_size
+        )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

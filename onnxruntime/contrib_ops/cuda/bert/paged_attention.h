@@ -35,6 +35,12 @@ class PagedAttention final : public CudaKernel {
   KVQuantizationType v_quant_type_;
   int k_cache_bit_width_;
   int v_cache_bit_width_;
+  // Multi-head Latent Attention (docs/contrib_ops/cuda/paged_attention.md §12). is_latent_kv_ comes
+  // from kv_cache_layout == "LATENT"; v_head_size_ == 0 means "same as head_size".
+  bool is_latent_kv_;
+  int v_head_size_;
+  int rotary_offset_;
+  bool has_explicit_scale_;
   bool disable_flash_attention_;
   bool disable_memory_efficient_attention_;
   bool disable_paged_decode_;

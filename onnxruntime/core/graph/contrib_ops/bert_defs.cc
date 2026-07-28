@@ -1415,12 +1415,19 @@ cumulative_sequence_length records cumulated length of each sequence length.
 // Input 'k_norm_weight':                (head_size)
 // Input 'k_scale':                      (1) for PER_TENSOR, (kv_num_heads, 1, head_size) for PER_CHANNEL
 // Input 'v_scale':                      (1) for PER_TENSOR, (kv_num_heads, 1, head_size) for PER_CHANNEL
-// Output 'output':                      (token_count, hidden_size)
+// Output 'output':                      (token_count, num_heads * v_head_size)
 // Output 'key_cache_out':               (num_blocks, block_size, kv_num_heads, head_size)
-// Output 'value_cache_out':             (num_blocks, block_size, kv_num_heads, head_size)
+// Output 'value_cache_out':             (num_blocks, block_size, kv_num_heads, head_size), absent for LATENT
 void PagedAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+  const std::string kv_cache_layout = getAttribute(ctx, "kv_cache_layout", "SEPARATE");
+  if (kv_cache_layout != "SEPARATE" && kv_cache_layout != "LATENT") {
+    fail_shape_inference("kv_cache_layout must be 'SEPARATE' or 'LATENT'.");
+  }
+  const bool is_latent_kv = kv_cache_layout == "LATENT";
+  const int64_t v_head_size_attr = getAttribute(ctx, "v_head_size", 0);
 
   // Shape inference for output tensor
   if (hasInputShape(ctx, 0)) {
@@ -1431,7 +1438,37 @@ void PagedAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
       fail_shape_inference("Input 0 (query) shall be 2 dimensions");
     }
 
-    if (ctx.hasInput(2)) {
+    if (is_latent_kv) {
+      // Absorbed MLA: query is unpacked and (unlike SEPARATE mode) the output head width is
+      // v_head_size rather than head_size, so the output shape cannot simply be copied from query.
+      int64_t num_heads = getAttribute(ctx, "num_heads", 0);
+      int64_t q_hidden_size = query_dims[1].has_dim_value() ? query_dims[1].dim_value() : 0;
+      if (num_heads <= 0) {
+        fail_shape_inference("num_heads must be a positive integer.");
+      }
+      if (v_head_size_attr == 0) {
+        // V is as wide as the latent row, so the output width matches the query width.
+        propagateShapeFromInputToOutput(ctx, 0, 0);
+      } else if (q_hidden_size > 0) {
+        if (q_hidden_size % num_heads != 0) {
+          fail_shape_inference("Query hidden size must be divisible by num_heads.");
+        }
+        int64_t head_size = q_hidden_size / num_heads;
+        if (v_head_size_attr > head_size) {
+          fail_shape_inference("v_head_size must not exceed head_size.");
+        }
+        ONNX_NAMESPACE::TensorShapeProto output_shape;
+        *output_shape.add_dim() = query_dims[0];
+        output_shape.add_dim()->set_dim_value(num_heads * v_head_size_attr);
+        updateOutputShape(ctx, 0, output_shape);
+      } else {
+        // Symbolic query hidden size: only the token dimension is known.
+        ONNX_NAMESPACE::TensorShapeProto output_shape;
+        *output_shape.add_dim() = query_dims[0];
+        output_shape.add_dim();
+        updateOutputShape(ctx, 0, output_shape);
+      }
+    } else if (ctx.hasInput(2)) {
       ONNX_NAMESPACE::TensorShapeProto output_shape;
       propagateShapeFromInputToOutput(ctx, 0, 0);
     } else {  // packed QKV
@@ -1453,7 +1490,12 @@ void PagedAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
 
   // Shape inference for KV Cache output tensors
   if (ctx.getNumOutputs() > 1) {  // has kv cache output
-    if (ctx.getNumOutputs() != 3) {
+    if (is_latent_kv) {
+      // A single physical cache: there is no value cache to alias out.
+      if (ctx.getNumOutputs() > 2) {
+        fail_shape_inference("value_cache_out must be absent when kv_cache_layout is 'LATENT'.");
+      }
+    } else if (ctx.getNumOutputs() != 3) {
       fail_shape_inference("Key cache and value cache output tensors must be both present or both absent.");
     }
     // Types: the cache outputs alias the cache inputs, so their element type comes from inputs 3/4
@@ -1461,7 +1503,6 @@ void PagedAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
     // run before the shape propagation below, which requires the output TypeProto to already be a
     // tensor type.
     ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 3, 1);
-    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 4, 2);
     // shapes
     auto& key_cache_shape = getInputShape(ctx, 3);
     auto& key_cache_dims = key_cache_shape.dim();
@@ -1470,7 +1511,11 @@ void PagedAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
     }
     // KV cache in and out share the same buffer, thus they have the same shape
     ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 3, 1);
-    ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 4, 2);
+
+    if (ctx.getNumOutputs() > 2) {
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 4, 2);
+      ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 4, 2);
+    }
   }
 }
 
@@ -1527,6 +1572,29 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Defaults to 8 for a quantized cache and 0 (unused) otherwise.",
               AttributeProto::INT,
               OPTIONAL_VALUE)
+        .Attr("kv_cache_layout",
+              "Physical layout of the KV cache: 'SEPARATE' or 'LATENT'. 'SEPARATE' (the default) uses "
+              "distinct 'key_cache' and 'value_cache' tensors. 'LATENT' selects absorbed Multi-head Latent "
+              "Attention: there is a single cache, 'value' and 'value_cache' must be absent, 'kv_num_heads' "
+              "must be 1, and V for every head is the leading 'v_head_size' channels of the same 'key_cache' "
+              "row that supplies K. Default value is 'SEPARATE'.",
+              AttributeProto::STRING,
+              std::string("SEPARATE"))
+        .Attr("v_head_size",
+              "Width of the value head, which may be narrower than head_size. Only valid when "
+              "'kv_cache_layout' is 'LATENT' (DeepSeek-V3 uses head_size=576 and v_head_size=512). When "
+              "v_head_size differs from head_size the 'scale' attribute is required, because the "
+              "1/sqrt(head_size) default no longer matches the pre-absorption head width. Default value is 0, "
+              "meaning the same as head_size.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("rotary_offset",
+              "First channel within head_size covered by rotary embedding, so RoPE is applied to "
+              "[rotary_offset, rotary_offset + rotary_dim) and channels outside that range are copied "
+              "through. Must be a multiple of 8. MLA sets this to kv_lora_rank so that RoPE only touches the "
+              "positional suffix of the latent row. Default value is 0.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
         .Input(0,
                "query",
                "Query with shape (num_tokens, hidden_size), or packed QKV with shape (num_tokens, d) "
@@ -1539,19 +1607,22 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(2,
                "value",
-               "Value with shape (num_tokens, kv_hidden_size)",
+               "Value with shape (num_tokens, kv_hidden_size). Must be absent when 'kv_cache_layout' is 'LATENT'.",
                "T",
                OpSchema::Optional)
         .Input(3,
                "key_cache",
                "Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in "
-               "place within the op.",
+               "place within the op. When 'kv_cache_layout' is 'LATENT' this is the only cache, and V is read from its "
+               "leading v_head_size channels.",
                "T_CACHE")
         .Input(4,
                "value_cache",
                "Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated "
-               "in place within the op. This should be the same shape as key_cache.",
-               "T_CACHE")
+               "in place within the op. This should be the same shape as key_cache. Must be absent when "
+               "'kv_cache_layout' is 'LATENT'.",
+               "T_CACHE",
+               OpSchema::Optional)
         .Input(5,
                "cumulative_sequence_length",
                "A tensor with shape (batch_size + 1). It specifies the cumulative sequence lengths between the packed "
@@ -1589,7 +1660,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(11,
                "head_sink",
                "1D tensor with shape (num_heads). Each head has a learnable sink logit that participates in the "
-           "softmax denominator but contributes no value, so attention can 'do nothing'.",
+               "softmax denominator but contributes no value, so attention can 'do nothing'.",
                "T",
                OpSchema::Optional)
         .Input(12,
@@ -1618,7 +1689,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Output(0,
                 "output",
-                "3D output tensor with shape (num_tokens, hidden_size)",
+                "2D output tensor with shape (num_tokens, num_heads * v_head_size), which is "
+                "(num_tokens, hidden_size) unless 'kv_cache_layout' is 'LATENT' with a narrower v_head_size.",
                 "T")
         .Output(1,
                 "key_cache_out",
@@ -1629,7 +1701,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(2,
                 "value_cache_out",
                 "Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always "
-                "the same tensor as value_cache.",
+                "the same tensor as value_cache. Must be absent when 'kv_cache_layout' is 'LATENT'.",
                 "T_CACHE",
                 OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output to float tensors.")

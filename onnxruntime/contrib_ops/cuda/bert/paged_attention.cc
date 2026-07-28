@@ -71,6 +71,10 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+  // scale == 0 selects the 1/sqrt(head_size) default. MLA derives its softmax scale from the
+  // pre-absorption head width, so that default is silently wrong there and validation requires a
+  // real value (see docs/contrib_ops/cuda/paged_attention.md §12.6).
+  has_explicit_scale_ = scale_ != 0.0f;
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
   qk_norm_epsilon_ = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
   ORT_ENFORCE(std::isfinite(qk_norm_epsilon_) && qk_norm_epsilon_ > 0.0f,
@@ -83,6 +87,18 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
       info.GetAttrOrDefault<int64_t>("k_cache_bit_width", IsQuantizedCacheType<TCACHE>() ? 8 : 0));
   v_cache_bit_width_ = static_cast<int>(
       info.GetAttrOrDefault<int64_t>("v_cache_bit_width", IsQuantizedCacheType<TCACHE>() ? 8 : 0));
+
+  // Multi-head Latent Attention. "SEPARATE" (the default) is the shipped two-cache layout;
+  // "LATENT" makes value/value_cache absent and aliases V onto the leading v_head_size channels of
+  // key_cache. Anything else is rejected here rather than silently treated as SEPARATE.
+  const std::string kv_cache_layout = info.GetAttrOrDefault<std::string>("kv_cache_layout", "SEPARATE");
+  ORT_ENFORCE(kv_cache_layout == "SEPARATE" || kv_cache_layout == "LATENT",
+              "'kv_cache_layout' must be 'SEPARATE' or 'LATENT', got '", kv_cache_layout, "'");
+  is_latent_kv_ = kv_cache_layout == "LATENT";
+  v_head_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("v_head_size", 0));
+  ORT_ENFORCE(v_head_size_ >= 0, "'v_head_size' must be non-negative, got ", v_head_size_);
+  rotary_offset_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("rotary_offset", 0));
+  ORT_ENFORCE(rotary_offset_ >= 0, "'rotary_offset' must be non-negative, got ", rotary_offset_);
 
   kernel_options_ = this->GetAttentionKernelOptions();
   disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
@@ -146,6 +162,10 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                                                           k_cache_bit_width_,
                                                           v_cache_bit_width_,
                                                           kIsQuantizedCache,
+                                                          is_latent_kv_,
+                                                          v_head_size_,
+                                                          rotary_offset_,
+                                                          has_explicit_scale_,
                                                           device_prop.maxThreadsPerBlock));
   parameters.local_window_size = local_window_size_;
   parameters.do_rotary = do_rotary_;
@@ -159,6 +179,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   DUMP_STRING("Q num heads = ", parameters.num_heads);
   DUMP_STRING("KV num heads = ", parameters.kv_num_heads);
   DUMP_STRING("Head size = ", parameters.head_size);
+  DUMP_STRING("V head size = ", parameters.v_head_size);
+  DUMP_STRING("Latent (MLA) KV layout = ", parameters.is_latent_kv);
+  DUMP_STRING("Rotary offset = ", parameters.rotary_offset);
   DUMP_STRING("Num blocks = ", parameters.num_blocks);
   DUMP_STRING("Block size = ", parameters.block_size);
   DUMP_STRING("Max num blocks per sequence = ", parameters.max_num_blocks_per_seq);
@@ -171,10 +194,12 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                            "cos_cache and sin_cache must be passed to PagedAttention when do_rotary = 1");
   }
 
-  // Set output tensor shapes
+  // Set output tensor shapes. In LATENT mode the output head width is v_head_size, so it is
+  // narrower than the query head width (512 vs. 576 for DeepSeek-V3). v_hidden_size equals
+  // hidden_size in every SEPARATE-mode model.
   TensorShapeVector output_shape(2);
   output_shape[0] = static_cast<int64_t>(parameters.token_count);
-  output_shape[1] = static_cast<int64_t>(parameters.hidden_size);
+  output_shape[1] = static_cast<int64_t>(parameters.v_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
   TensorShapeVector key_cache_out_shape(4);
@@ -184,12 +209,16 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   key_cache_out_shape[3] = static_cast<int64_t>(parameters.head_size);
   Tensor* key_cache_out = context->Output(1, key_cache_out_shape);
 
-  TensorShapeVector value_cache_out_shape(4);
-  value_cache_out_shape[0] = static_cast<int64_t>(parameters.num_blocks);
-  value_cache_out_shape[1] = static_cast<int64_t>(parameters.block_size);
-  value_cache_out_shape[2] = static_cast<int64_t>(parameters.kv_num_heads);
-  value_cache_out_shape[3] = static_cast<int64_t>(parameters.head_size);
-  Tensor* value_cache_out = context->Output(2, value_cache_out_shape);
+  // LATENT has a single physical cache, so there is no value_cache_out to produce.
+  Tensor* value_cache_out = nullptr;
+  if (!parameters.is_latent_kv) {
+    TensorShapeVector value_cache_out_shape(4);
+    value_cache_out_shape[0] = static_cast<int64_t>(parameters.num_blocks);
+    value_cache_out_shape[1] = static_cast<int64_t>(parameters.block_size);
+    value_cache_out_shape[2] = static_cast<int64_t>(parameters.kv_num_heads);
+    value_cache_out_shape[3] = static_cast<int64_t>(parameters.head_size);
+    value_cache_out = context->Output(2, value_cache_out_shape);
+  }
 
   if (key_cache_out != nullptr && key_cache->Data<TCACHE>() != key_cache_out->MutableData<TCACHE>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -226,8 +255,24 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       parameters.head_size <= 64 ? 256 : (parameters.head_size <= 128 ? 128 : 64);
   const bool flash_block_size_ok = kIsQuantizedCache || (parameters.block_size % flash_min_block_size) == 0;
 
+  // LATENT (absorbed MLA) has exactly one eligible backend: neither FlashAttention nor the CUTLASS
+  // fMHA wrapper supports v_head_size != head_size or a head_size of 576, and the paged decode
+  // kernel assumes a separate value cache. See docs/contrib_ops/cuda/paged_attention.md §12.7.
+  const bool use_latent_attention = parameters.is_latent_kv;
+  if (use_latent_attention) {
+    const size_t latent_smem = GetPagedLatentSharedMemoryBytes(parameters.head_size, parameters.v_head_size);
+    if (latent_smem > static_cast<size_t>(device_prop.sharedMemPerBlock)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "PagedAttention: the unfused MLA backend needs ", latent_smem,
+                             " bytes of shared memory for head_size=", parameters.head_size,
+                             " and v_head_size=", parameters.v_head_size, ", but the device provides ",
+                             device_prop.sharedMemPerBlock, " bytes per block.");
+    }
+  }
+
 #if USE_FLASH_ATTENTION
-  const bool flash_eligible = !disable_flash_attention_ &&
+  const bool flash_eligible = !use_latent_attention &&
+                              !disable_flash_attention_ &&
                               flash_block_size_ok &&
                               onnxruntime::flash::is_supported<T>(device_prop,
                                                                   parameters.head_size,
@@ -242,6 +287,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const bool is_half = std::is_same<T, MLFloat16>::value;
   const bool is_bf16 = std::is_same<T, BFloat16>::value;
   const bool mea_eligible =
+      !use_latent_attention &&
       !flash_eligible &&
       !disable_memory_efficient_attention_ &&
       has_memory_efficient_attention(sm, is_half, is_bf16,
@@ -253,6 +299,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // The decode kernel keeps Q, the running accumulator and one KV tile in shared memory, which
   // bounds the head size it can serve.
   const bool decode_eligible =
+      !use_latent_attention &&
       !disable_paged_decode_ &&
       GetPagedDecodeSharedMemoryBytes(parameters.head_size) <= static_cast<size_t>(device_prop.sharedMemPerBlock);
 
@@ -326,7 +373,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const bool use_flash_attention = flash_eligible && !use_paged_decode;
   const bool use_memory_efficient_attention = mea_eligible && !use_paged_decode;
 
-  if (!use_paged_decode && !use_flash_attention && !use_memory_efficient_attention) {
+  if (!use_latent_attention && !use_paged_decode && !use_flash_attention && !use_memory_efficient_attention) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "PagedAttention requires FlashAttention (sm>=80, fp16/bf16, block_size a multiple of ",
                            flash_min_block_size, " for head_size ", parameters.head_size,
@@ -421,7 +468,10 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   data.key = key == nullptr ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
   data.value = value == nullptr ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
   data.key_cache = reinterpret_cast<CudaTCache*>(const_cast<TCACHE*>(key_cache->Data<TCACHE>()));
-  data.value_cache = reinterpret_cast<CudaTCache*>(const_cast<TCACHE*>(value_cache->Data<TCACHE>()));
+  // Absent in LATENT mode, where V is a slice of key_cache and ReshapeAndCache skips the V store.
+  data.value_cache = value_cache == nullptr
+                         ? nullptr
+                         : reinterpret_cast<CudaTCache*>(const_cast<TCACHE*>(value_cache->Data<TCACHE>()));
   data.k_scale = k_scale == nullptr ? nullptr : k_scale->Data<float>();
   data.v_scale = v_scale == nullptr ? nullptr : v_scale->Data<float>();
   data.cumulative_seqlens_q = reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>());

@@ -987,7 +987,7 @@ exactly as decode does. The operator itself does not distinguish the three cases
 | Feature | With MLA | Rationale |
 |---|---|---|
 | `slot_mapping` (§5) | **Supported** | Orthogonal — write path only, and the latent is written exactly like any K/V row. |
-| Quantized cache (§8) | **Supported** | An FP8 latent cache is standard in DeepSeek deployments. `PER_CHANNEL` scale shape becomes `(1, 1, head_size)` since `kv_num_heads == 1`. |
+| Quantized cache (§8) | **Supported** | An FP8 latent cache is standard in DeepSeek deployments. `PER_CHANNEL` scale shape becomes `(1, 1, head_size)` since `kv_num_heads == 1`. Because V *is* K, the same bytes are written once with `k_scale` and read back as both, so `k_scale` alone describes the cache and `v_scale` / `v_quant_type` must be unset — a second scale for the same bytes could only disagree. A `PER_CHANNEL` V dequant therefore indexes the scale with the `head_size` stride, reading only its leading `v_head_size` entries. |
 | RoPE | **Supported** via `rotary_offset` (§12.5) | |
 | `softcap` | Allowed, unused by DeepSeek | |
 | Sliding window (§9) | Allowed but untested | No MLA model uses it; semantics are well defined (window is over positions, not channels). |
@@ -1009,6 +1009,8 @@ exactly as decode does. The operator itself does not distinguish the three cases
 - In `"LATENT"` mode `head_size` may exceed 256, but the selected backend must accept it; otherwise
   return `INVALID_ARGUMENT` naming the backend and the supported head widths.
 - `head_sink` or QK-Norm weights combined with `"LATENT"` ⇒ `INVALID_ARGUMENT` (§12.9).
+- `v_scale` and a non-`"NONE"` `v_quant_type` combined with `"LATENT"` ⇒ `INVALID_ARGUMENT`: there is
+  one physical cache and `k_scale` already describes it (§12.9).
 - Dispatch only to an MLA-capable backend or the unfused reference; never silently ignore an input.
 
 ## 13. Kernel Dispatch and Backend Plan
@@ -1022,6 +1024,14 @@ Target dispatch order once all phases land, first eligible wins:
 | 2 | **FlashAttention varlen** | FP16/BF16, SM80+, non-quantized cache (or quantized via dequant-gather); supports sliding window, softcap, packed QKV, `head_sink` via LSE epilogue |
 | 3 | **Memory-Efficient Attention (CUTLASS fMHA)** | Fallback for supported combinations and pre-SM80 |
 | 4 | **Unfused** | Last resort — arbitrary `head_size`, `attention_bias`, `output_qk` |
+
+Implementation status: priority 0 is currently served by `PagedLatentAttentionKernel`, the unfused
+MLA reference in `paged_attention_impl.cu`. It is selected unconditionally when
+`kv_cache_layout == "LATENT"` — the other three backends cannot express `v_head_size != head_size`
+over a single aliased cache, so there is no eligibility test to run. One CTA owns one
+(query token, query head) pair and streams the KV range in tiles with an online-softmax state,
+which makes prefill, chunked prefill and decode take the same path. A fused MLA backend (P5) will
+slot in ahead of it under the same priority.
 
 Backend selection must depend only on values that are constant for a captured CUDA graph (§4.7):
 shapes, attributes, and type constraints. It must never depend on a device-resident sequence length.
@@ -1329,7 +1339,7 @@ These block the feature work and should land ahead of it.
 | **P6 — Completeness** | `query_positions` (§4.8); `attention_bias` (§10); `output_qk` (§11) | inputs 17–18, output 3, attr `qk_output` |
 | **Later** | INT4 cache; MLA quantized latent cache tuning; non-CUDA EPs | — |
 
-Status: P0–P3 are implemented, except the `.Alias` registration. P4 is not started. P5 is partially
+Status: P0–P4 are implemented, except the `.Alias` registration. P5 is partially
 implemented — the paged decode kernel with in-kernel dequantization (including `softcap`, sliding
 window and `head_sink`) has landed (§8.5, §13); the fused MLA backend and the sync removal have not.
 
