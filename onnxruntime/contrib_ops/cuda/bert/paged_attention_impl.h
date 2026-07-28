@@ -32,6 +32,13 @@ Status LaunchUnpackQKVCumulative(const T* packed_qkv, T* unpacked_q, T* unpacked
 Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_t* cumulative_seqlens_q,
                                     const int32_t* past_seqlens, const int batch_size, cudaStream_t stream);
 
+// Paged decode backend sizing helpers, used by paged_attention.cc to test eligibility (the kernel
+// needs more dynamic shared memory than the device provides for very wide heads) and to size the
+// split-KV workspaces.
+size_t GetPagedDecodeSharedMemoryBytes(const int head_size);
+int ComputePagedDecodeSplits(const int batch_size, const int num_heads, const int max_kv_len,
+                             const int multi_processor_count);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

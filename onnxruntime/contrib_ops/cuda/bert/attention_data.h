@@ -299,12 +299,23 @@ struct PagedAttentionData {
   // producing silent per-token dropout in MEA and rotary.
   int max_query_len = 0;
 
+  // Paged decode (flash-decoding style) split-KV workspaces. Only allocated when the paged decode
+  // backend is selected. Layouts are [num_splits, token_count, num_heads, head_size] for the
+  // accumulator and [num_splits, token_count, num_heads] for the running max / denominator.
+  float* decode_partial_out = nullptr;
+  float* decode_partial_max = nullptr;
+  float* decode_partial_sum = nullptr;
+  int num_splits = 1;
+
   // Output Tensors
   T* output = nullptr;
 
   // Kernel Flags
   bool use_flash_attention = false;
   bool use_memory_efficient_attention = false;
+  // Paged decode kernel: reads the paged cache in place and dequantizes inside the kernel, so it
+  // needs neither the dense staging buffers nor FlashAttention's page-alignment constraint.
+  bool use_paged_decode = false;
 };
 
 }  // namespace cuda

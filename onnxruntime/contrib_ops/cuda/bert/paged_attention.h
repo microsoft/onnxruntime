@@ -37,6 +37,7 @@ class PagedAttention final : public CudaKernel {
   int kv_cache_bit_width_;
   bool disable_flash_attention_;
   bool disable_memory_efficient_attention_;
+  bool disable_paged_decode_;
   const AttentionKernelOptions* kernel_options_;
 };
 

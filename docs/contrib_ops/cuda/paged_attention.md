@@ -457,6 +457,47 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 >   computed ~1 fp16 ULP differently on the host, which is enough to move a value across a rounding
 >   boundary and flip the stored code by one LSB.
 
+> **Implementation note (P5, implemented).** §8.5 Phase 3 is now in place as a purpose-built
+> flash-decoding kernel (`PagedDecodeSplitKV` + `PagedDecodeReduce` in `paged_attention_impl.cu`),
+> not by reusing the vendored XQA kernel. XQA does have paged-KV support, but its page list is
+> `[batch][beam][2][max_pages]` over a *single* K/V pool whereas PagedAttention has two pools and one
+> shared `block_table`, and it restricts `head_size ∈ {64, 128, 256}` and `group_size ∈ {4, 8, 16,
+> 32}` while multiplying instantiations across page size × group size × head size × dtype × quant
+> type. A ~250-line kernel covers the whole schema instead.
+>
+> - **Both scale foldings are exact and granularity-agnostic.** K folds into Q at load time
+>   (`q_sh[c] = float(q[c]) * GetCacheScale(k_scale, kv_head * head_size + c, k_per_channel)`), so
+>   `PER_TENSOR` is just the `per_channel == false` branch of the same expression rather than a
+>   separate "fold into the softmax scale" path. V folds into the epilogue: `v_scale_c` does not
+>   depend on the KV position, so it factors out of the accumulation entirely and never enters the
+>   softmax denominator.
+> - The kernel reads pages in place at their stored width, so a decode step touches the KV cache once
+>   at `int8`/`fp8` bandwidth instead of gathering and dequantizing the whole live context.
+> - `softcap` matches FlashAttention bit-for-bit: `softcap * tanh(qk_raw * scale / softcap)`, which is
+>   what `flash_api.cc` produces from `params.softcap = softmax_scale / softcap` and
+>   `params.scale_softmax = softcap`.
+> - The attention sink enters as one extra `exp(sink - m_final)` term in the final denominator, which
+>   is algebraically identical to §6.2's `factor = 1 / (1 + exp(sink - lse))` epilogue but does not
+>   need FlashAttention's log-sum-exp output. §6.3's MEA restriction therefore applies only to MEA.
+> - Sliding window uses `q_pos = kv_len - 1`, admitting `t ∈ [kv_len - local_window_size, kv_len)`,
+>   matching Flash's `window_size_left = local_window_size - 1`.
+> - **Backend gating.** The kernel only handles `max_query_len == 1`, which is known only after the
+>   D→H sync of the cumulative sequence lengths (that sync is now unconditional). It is selected when
+>   the cache is quantized *or* FlashAttention is unavailable; unquantized FlashAttention-eligible
+>   shapes keep using FlashAttention. `sdpa_kernel = 512` (`AttentionBackend::DECODER_ATTENTION`)
+>   forces it, which is how the unquantized path is tested.
+> - Split-KV: `ComputePagedDecodeSplits` splits the KV range across up to 32 CTAs only when
+>   `batch_size * num_heads` would leave the device under-occupied. Empty splits publish
+>   `(max = -FLT_MAX, denom = 0)` and the reduce kernel skips them, so their accumulator slice is
+>   never read.
+> - The `FlashAttention` / `EfficientAttention` prologue (packed-QKV unpack, fused QK-Norm + rotary,
+>   `ReshapeAndCache`) was factored into a shared `PrepareQueryAndCache`, which the decode backend
+>   reuses. It lives outside the `USE_FLASH_ATTENTION` / `USE_MEMORY_EFFICIENT_ATTENTION` guards
+>   because the decode backend needs neither.
+> - **Still deferred from P5:** the fused MLA decode backend (§12.7) and lifting the D→H sync out of
+>   `ComputeInternal`. The sync is in fact now *required* by the backend decision, so removing it
+>   means moving the `max_query_len == 1` test onto the device.
+
 ## 9. Feature: Sliding Window Attention
 
 ### 9.1 State
@@ -736,6 +777,15 @@ backend.
 The selected backend must be reported through `AttentionKernelDebugInfo` (`SdpaKernel=...`) exactly
 as GQA does, so that `ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO=1` works uniformly across both ops.
 
+> **Implementation note (P5, implemented).** Priority 1 is in place and reports
+> `SdpaKernel=DECODER_ATTENTION`. Actual eligibility is broader than the table: any `head_size` whose
+> working set fits `sharedMemPerBlock` (roughly `2 * head_size + 256` floats plus 512 B, so every
+> head size the op supports on current hardware), any `block_size`, any GQA ratio, and `softcap` is
+> supported rather than planned. It is narrower in one respect: sequences may contribute *at most*
+> one new token, but the kernel is only *preferred* over FlashAttention when the cache is quantized
+> or FlashAttention is ineligible, since Flash's tensor-core decode path is faster on an unquantized
+> cache. Priority 0 (MLA) is still unimplemented.
+
 ## 14. Shared Code with GroupQueryAttention
 
 Feature drift between the two ops is the principal long-term risk of keeping them separate. The
@@ -936,6 +986,10 @@ These block the feature work and should land ahead of it.
 | **P5 — Performance** | Paged decode kernel with in-kernel dequant; fused MLA backend (FlashMLA / FlashInfer MLA, §12.7); `softcap` on decode; lift D→H sync | none |
 | **P6 — Completeness** | `attention_bias` / `alibi_slopes` (§10); `output_qk` (§11) | input 16, output 3, attr `qk_output` |
 | **Later** | INT4 cache; MLA quantized latent cache tuning; non-CUDA EPs | — |
+
+Status: P0–P3 are implemented. P4 is not started. P5 is partially implemented — the paged decode
+kernel with in-kernel dequantization (including `softcap`, sliding window and `head_sink`) has
+landed (§8.5, §13); the fused MLA backend and lifting the D→H sync have not.
 
 P0–P2 cover GPT-OSS, Qwen3, Gemma 2/3, Llama, Mistral and Phi. P3 and P5 are what make the op
 competitive for throughput-oriented serving. P4–P5 add DeepSeek-V2/V3/R1.

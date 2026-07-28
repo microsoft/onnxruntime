@@ -86,6 +86,7 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
   kernel_options_ = this->GetAttentionKernelOptions();
   disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
   disable_memory_efficient_attention_ = sizeof(T) != 2 || !kernel_options_->UseEfficientAttention();
+  disable_paged_decode_ = sizeof(T) != 2 || !kernel_options_->UseDecoderAttention();
 }
 
 template <typename T, typename TCACHE>
@@ -203,14 +204,19 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     return Status::OK();
   }
 
-  // Kernel backend selection — FlashAttention preferred, fall back to MemoryEfficientAttention.
+  // Kernel backend selection — three backends, decided partly after a D->H sync because the choice
+  // depends on the actual max new-query length.
+  //
+  //   * FlashAttention (preferred for prefill / mixed batches).
+  //   * PagedDecode: a flash-decoding style kernel that reads the paged cache in place and
+  //     dequantizes in registers. Only handles one new token per sequence.
+  //   * MemoryEfficientAttention: the general fallback; gathers pages into a dense buffer.
   //
   // The vendored FlashAttention paged kernel loads a whole kBlockN x head_size K/V tile using a
   // single (page, offset) pair, so a tile must never straddle a page boundary: block_size has to be
   // a multiple of kBlockN. kBlockN is fixed by head_size in run_mha_fwd_splitkv_dispatch. When the
-  // model uses a smaller page than that, we silently fall back to the memory-efficient path (which
-  // gathers the pages into a dense buffer first and therefore accepts any block_size) rather than
-  // rejecting the model.
+  // model uses a smaller page than that, we fall back to another backend (both of which accept any
+  // block_size) rather than rejecting the model.
   //
   // A quantized cache is exempt: FlashAttention cannot read a quantized page at all, so that path
   // dequantizes the live context into a dense buffer and uses the non-paged varlen entry point,
@@ -220,60 +226,34 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const bool flash_block_size_ok = kIsQuantizedCache || (parameters.block_size % flash_min_block_size) == 0;
 
 #if USE_FLASH_ATTENTION
-  bool use_flash_attention = !disable_flash_attention_ &&
-                             flash_block_size_ok &&
-                             onnxruntime::flash::is_supported<T>(device_prop,
-                                                                 parameters.head_size,
-                                                                 parameters.num_heads,
-                                                                 parameters.kv_num_heads);
+  const bool flash_eligible = !disable_flash_attention_ &&
+                              flash_block_size_ok &&
+                              onnxruntime::flash::is_supported<T>(device_prop,
+                                                                  parameters.head_size,
+                                                                  parameters.num_heads,
+                                                                  parameters.kv_num_heads);
 #else
-  constexpr bool use_flash_attention = false;
+  const bool flash_eligible = false;
 #endif
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
   const int sm = device_prop.major * 10 + device_prop.minor;
   const bool is_half = std::is_same<T, MLFloat16>::value;
   const bool is_bf16 = std::is_same<T, BFloat16>::value;
-  bool use_memory_efficient_attention =
-      !use_flash_attention &&
+  const bool mea_eligible =
+      !flash_eligible &&
       !disable_memory_efficient_attention_ &&
       has_memory_efficient_attention(sm, is_half, is_bf16,
                                      parameters.head_size, parameters.head_size);
 #else
-  constexpr bool use_memory_efficient_attention = false;
+  const bool mea_eligible = false;
 #endif
 
-  if (!use_flash_attention && !use_memory_efficient_attention) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "PagedAttention requires FlashAttention (sm>=80, fp16/bf16, block_size a multiple of ",
-                           flash_min_block_size, " for head_size ", parameters.head_size,
-                           ") or "
-                           "MemoryEfficientAttention (fp16 sm>=53, bf16 sm>=80, head_size<=1024 and %8==0) "
-                           "to be available. Check ORT_DISABLE_FLASH_ATTENTION / "
-                           "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION env vars and dtype/head_size/block_size.");
-  }
-
-  // The attention-sink epilogue rescales the output using FlashAttention's log-sum-exp, which the
-  // CUTLASS memory-efficient kernel does not expose. Fail loudly instead of silently ignoring the
-  // sink, and name the backend so the mitigation is obvious.
-  if (parameters.use_smooth_softmax && !use_flash_attention) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "PagedAttention: 'head_sink' / smooth_softmax is only supported by the FlashAttention "
-                           "backend, but the MemoryEfficientAttention backend was selected (head_size=",
-                           parameters.head_size, ", block_size=", parameters.block_size,
-                           "). FlashAttention requires sm>=80, fp16/bf16 and block_size a multiple of ",
-                           flash_min_block_size, ".");
-  }
-
-  // Scratch buffers common to both backends.
-  size_t softmax_lse_bytes = 0;
-#if USE_FLASH_ATTENTION
-  if (use_flash_attention) {
-    softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(parameters.token_count,
-                                                                 parameters.num_heads);
-  }
-#endif
-  auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, GetComputeStream(context));
+  // The decode kernel keeps Q, the running accumulator and one KV tile in shared memory, which
+  // bounds the head size it can serve.
+  const bool decode_eligible =
+      !disable_paged_decode_ &&
+      GetPagedDecodeSharedMemoryBytes(parameters.head_size) <= static_cast<size_t>(device_prop.sharedMemPerBlock);
 
   size_t cumulative_seqlens_kv_bytes = sizeof(int) * (parameters.batch_size + 1);
   auto cumulative_seqlens_kv_buffer = GetScratchBuffer<void>(cumulative_seqlens_kv_bytes, GetComputeStream(context));
@@ -290,8 +270,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   }
   auto workspace_buffer = GetScratchBuffer<void>(workspace_buffer_bytes, GetComputeStream(context));
 
-  // Populate cumulative_seqlens_kv for both backends. The MEA path additionally needs
-  // the last element on the host to size the tight gather buffers, so we D->H sync below.
+  // Populate cumulative_seqlens_kv for all backends. The host then reads both cumulative arrays
+  // back to size the gather buffers and to learn whether this is a pure decode step.
   cudaStream_t cuda_stream = static_cast<cudaStream_t>(ort_stream.get()->GetHandle());
   ORT_RETURN_IF_ERROR(LaunchGetCumulativeSeqlensKV(
       cumulative_seqlens_kv_ptr,
@@ -306,61 +286,108 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   IAllocatorUniquePtr<void> gathered_value_buffer;
   IAllocatorUniquePtr<void> fmha_buffer;
 
-  // Both backends need a dense KV staging buffer when the cache is quantized (FlashAttention cannot
-  // read a quantized page, and the CUTLASS kernel is not paged at all), which requires the host to
-  // know total_kv_tokens and max_kv_len.
-  const bool needs_dense_kv = use_memory_efficient_attention || (use_flash_attention && kIsQuantizedCache);
-  // The dense buffer keeps the grouped layout for FlashAttention (it does GQA internally) and is
-  // GQA-expanded for the CUTLASS kernel.
-  const int gathered_num_heads = use_memory_efficient_attention ? parameters.num_heads : parameters.kv_num_heads;
-
-  // Compute max_query_len on the host for both FA and MEA. The previous
-  // `token_count - batch_size + 1` heuristic underestimates (or goes
-  // non-positive) when batches have zero new tokens. The dense-KV paths
-  // additionally need total_kv_tokens and max_kv_len.
-  if (use_flash_attention || use_memory_efficient_attention) {
+  // Compute max_query_len on the host. The previous `token_count - batch_size + 1` heuristic
+  // underestimates (or goes non-positive) when batches have zero new tokens. max_kv_len and
+  // total_kv_tokens size the dense staging buffers and the decode split count.
+  {
     const int kCumulativeCount = parameters.batch_size + 1;
     auto cum_q_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
-    IAllocatorUniquePtr<int> cum_kv_pinned;
+    auto cum_kv_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cum_q_pinned.get(),
                                          reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>()),
                                          sizeof(int) * kCumulativeCount, cudaMemcpyDeviceToHost, cuda_stream));
-    if (needs_dense_kv) {
-      cum_kv_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cum_kv_pinned.get(), cumulative_seqlens_kv_ptr,
-                                           sizeof(int) * kCumulativeCount, cudaMemcpyDeviceToHost, cuda_stream));
-    }
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cum_kv_pinned.get(), cumulative_seqlens_kv_ptr,
+                                         sizeof(int) * kCumulativeCount, cudaMemcpyDeviceToHost, cuda_stream));
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
     for (int i = 0; i < parameters.batch_size; ++i) {
       const int q_len_i = cum_q_pinned.get()[i + 1] - cum_q_pinned.get()[i];
       if (q_len_i > max_query_len) {
         max_query_len = q_len_i;
       }
-      if (needs_dense_kv) {
-        const int kv_len_i = cum_kv_pinned.get()[i + 1] - cum_kv_pinned.get()[i];
-        if (kv_len_i > max_kv_len) {
-          max_kv_len = kv_len_i;
-        }
+      const int kv_len_i = cum_kv_pinned.get()[i + 1] - cum_kv_pinned.get()[i];
+      if (kv_len_i > max_kv_len) {
+        max_kv_len = kv_len_i;
       }
     }
-    if (needs_dense_kv) {
-      total_kv_tokens = cum_kv_pinned.get()[parameters.batch_size];
-      if (total_kv_tokens == 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "PagedAttention: total_kv_tokens is zero for non-empty input.");
-      }
-      if (total_kv_tokens < 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "PagedAttention: total_kv_tokens is negative (", total_kv_tokens, ").");
-      }
+    total_kv_tokens = cum_kv_pinned.get()[parameters.batch_size];
+    if (total_kv_tokens <= 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "PagedAttention: total_kv_tokens is not positive (", total_kv_tokens,
+                             ") for non-empty input.");
     }
   }
+
+  // Prefer the decode kernel only where it is a clear win: a quantized cache (it avoids
+  // materializing and dequantizing the whole live context) or when FlashAttention is unavailable
+  // (it beats the dense-gather MemoryEfficientAttention fallback). Unquantized FlashAttention-
+  // eligible shapes keep using FlashAttention.
+  const bool use_paged_decode = decode_eligible && max_query_len == 1 && (kIsQuantizedCache || !flash_eligible);
+  const bool use_flash_attention = flash_eligible && !use_paged_decode;
+  const bool use_memory_efficient_attention = mea_eligible && !use_paged_decode;
+
+  if (!use_paged_decode && !use_flash_attention && !use_memory_efficient_attention) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "PagedAttention requires FlashAttention (sm>=80, fp16/bf16, block_size a multiple of ",
+                           flash_min_block_size, " for head_size ", parameters.head_size,
+                           "), MemoryEfficientAttention (fp16 sm>=53, bf16 sm>=80, head_size<=1024 and %8==0), "
+                           "or the paged decode kernel (fp16/bf16, one new token per sequence; this step has "
+                           "max_query_len=",
+                           max_query_len,
+                           ") to be available. Check ORT_DISABLE_FLASH_ATTENTION / "
+                           "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION / ORT_DISABLE_DECODER_ATTENTION env vars and "
+                           "dtype/head_size/block_size.");
+  }
+
+  // The attention-sink epilogue rescales the output using FlashAttention's log-sum-exp, which the
+  // CUTLASS memory-efficient kernel does not expose. The decode kernel folds the sink straight into
+  // its softmax denominator, so only the MEA path has to fail loudly here.
+  if (parameters.use_smooth_softmax && use_memory_efficient_attention) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "PagedAttention: 'head_sink' / smooth_softmax is only supported by the FlashAttention "
+                           "and paged decode backends, but the MemoryEfficientAttention backend was selected "
+                           "(head_size=",
+                           parameters.head_size, ", block_size=", parameters.block_size,
+                           "). FlashAttention requires sm>=80, fp16/bf16 and block_size a multiple of ",
+                           flash_min_block_size, ".");
+  }
+
+  size_t softmax_lse_bytes = 0;
+#if USE_FLASH_ATTENTION
+  if (use_flash_attention) {
+    softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(parameters.token_count,
+                                                                 parameters.num_heads);
+  }
+#endif
+  auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, GetComputeStream(context));
+
+  // Both gather-based backends need a dense KV staging buffer when the cache is quantized
+  // (FlashAttention cannot read a quantized page, and the CUTLASS kernel is not paged at all).
+  const bool needs_dense_kv = use_memory_efficient_attention || (use_flash_attention && kIsQuantizedCache);
+  // The dense buffer keeps the grouped layout for FlashAttention (it does GQA internally) and is
+  // GQA-expanded for the CUTLASS kernel.
+  const int gathered_num_heads = use_memory_efficient_attention ? parameters.num_heads : parameters.kv_num_heads;
 
   if (needs_dense_kv) {
     const size_t gather_elems = static_cast<size_t>(total_kv_tokens) *
                                 gathered_num_heads * parameters.head_size;
     gathered_key_buffer = GetScratchBuffer<void>(sizeof(T) * gather_elems, GetComputeStream(context));
     gathered_value_buffer = GetScratchBuffer<void>(sizeof(T) * gather_elems, GetComputeStream(context));
+  }
+
+  // Split-KV workspaces for the decode kernel: one partial (accumulator, max, denominator) per
+  // split. Splitting only pays off when there are too few (sequence, head) pairs to fill the GPU.
+  int num_splits = 1;
+  IAllocatorUniquePtr<void> decode_partial_out_buffer;
+  IAllocatorUniquePtr<void> decode_partial_max_buffer;
+  IAllocatorUniquePtr<void> decode_partial_sum_buffer;
+  if (use_paged_decode) {
+    num_splits = ComputePagedDecodeSplits(parameters.batch_size, parameters.num_heads, max_kv_len,
+                                          device_prop.multiProcessorCount);
+    const size_t rows = static_cast<size_t>(num_splits) * parameters.token_count * parameters.num_heads;
+    decode_partial_out_buffer =
+        GetScratchBuffer<void>(sizeof(float) * rows * parameters.head_size, GetComputeStream(context));
+    decode_partial_max_buffer = GetScratchBuffer<void>(sizeof(float) * rows, GetComputeStream(context));
+    decode_partial_sum_buffer = GetScratchBuffer<void>(sizeof(float) * rows, GetComputeStream(context));
   }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
@@ -380,6 +407,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     AttentionKernelDebugInfo debug_info;
     debug_info.use_flash_attention = use_flash_attention;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
+    debug_info.use_decoder_attention = use_paged_decode;
 
     debug_info.Print("PagedAttention",
                      this->Node().Name(),
@@ -406,6 +434,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
+  data.use_paged_decode = use_paged_decode;
   if (softmax_lse_buffer != nullptr) {
     // FlashAttention always writes fp32 log-sum-exp, independent of T.
     data.softmax_lse = reinterpret_cast<float*>(softmax_lse_buffer.get());
@@ -417,12 +446,18 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     data.cos_cache = reinterpret_cast<const CudaT*>(cos_cache->Data<T>());
     data.sin_cache = reinterpret_cast<const CudaT*>(sin_cache->Data<T>());
   }
-  data.max_query_len = max_query_len;  // consumed by both FA and MEA
+  data.max_query_len = max_query_len;  // consumed by all backends
   if (needs_dense_kv) {
     data.gathered_key = reinterpret_cast<CudaT*>(gathered_key_buffer.get());
     data.gathered_value = reinterpret_cast<CudaT*>(gathered_value_buffer.get());
     data.total_kv_tokens = total_kv_tokens;
     data.max_kv_len = max_kv_len;
+  }
+  if (use_paged_decode) {
+    data.decode_partial_out = reinterpret_cast<float*>(decode_partial_out_buffer.get());
+    data.decode_partial_max = reinterpret_cast<float*>(decode_partial_max_buffer.get());
+    data.decode_partial_sum = reinterpret_cast<float*>(decode_partial_sum_buffer.get());
+    data.num_splits = num_splits;
   }
   if (use_memory_efficient_attention && fmha_buffer != nullptr) {
     data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());

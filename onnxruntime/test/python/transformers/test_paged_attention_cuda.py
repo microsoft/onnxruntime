@@ -986,6 +986,13 @@ def has_memory_efficient_attention():
 # where FlashAttention would otherwise be preferred.
 SDPA_KERNEL_EFFICIENT_ATTENTION = 2
 
+# Bit value matching AttentionBackend::DECODER_ATTENTION in
+# onnxruntime/contrib_ops/cpu/bert/attention_common.h. Passing this as the CUDA provider option
+# `sdpa_kernel` leaves the paged decode kernel as the only enabled backend, which is how the
+# unquantized decode path is reached (it is otherwise only auto-selected for a quantized cache or
+# when FlashAttention is unavailable).
+SDPA_KERNEL_DECODER_ATTENTION = 512
+
 
 def paged_attention_test_cases():
     batches = [4] if pipeline_mode else [1, 3, 5]
@@ -1562,6 +1569,154 @@ class TestPagedAttentionQuantizedCache(unittest.TestCase):
         with self.assertRaises(Exception) as ctx:
             self._run_minimal(config, k_scale=scale, v_scale=scale)
         self.assertIn("kv_cache_bit_width", str(ctx.exception))
+
+
+@unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available, skipping tests.")
+class TestPagedAttentionPagedDecode(unittest.TestCase):
+    """Coverage for the paged decode backend: a flash-decoding style kernel that scores the paged
+    KV cache in place (dequantizing in registers) instead of gathering it into a dense buffer.
+
+    It only handles steps where every sequence contributes at most one new token, so every config
+    here uses sequence_length=1. The unquantized cases pin the backend with `sdpa_kernel`; the
+    quantized cases reach it through the normal auto-selection."""
+
+    def setUp(self):
+        torch.manual_seed(0)
+
+    def _config(self, **overrides):
+        kwargs = {
+            "batch_size": 4,
+            "sequence_length": 1,
+            "total_sequence_length": 128,
+            "num_heads": 8,
+            "kv_num_heads": 2,
+            "head_size": 64,
+            "paged_kv_block_size": 256,
+            "local": False,
+            "rotary": False,
+            "rotary_interleaved": False,
+            "packed": False,
+            "softcap": 0.0,
+        }
+        feature_overrides = {k: overrides.pop(k) for k in list(overrides) if k not in kwargs}
+        kwargs.update(overrides)
+        config = Config(**kwargs)
+        for key, value in feature_overrides.items():
+            setattr(config, key, value)
+        return config
+
+    def _check_decode(self, config, rtol=5e-3, atol=5e-3, new_seqlens_override=None):
+        parity_check_paged_attention(
+            config,
+            rtol=rtol,
+            atol=atol,
+            sdpa_kernel=SDPA_KERNEL_DECODER_ATTENTION,
+            new_seqlens_override=new_seqlens_override,
+        )
+
+    # ---- shapes -------------------------------------------------------------------------
+
+    @parameterized.expand([("32", 32), ("64", 64), ("80", 80), ("96", 96), ("128", 128), ("256", 256)])
+    def test_decode_head_size(self, _, head_size):
+        # head_size straddles the two PV thread mappings: one channel group when head_size >= 128
+        # (the CTA width), several groups of head_size threads below it.
+        self._check_decode(self._config(head_size=head_size))
+
+    @parameterized.expand([("mha", 8, 8), ("gqa_4x", 8, 2), ("gqa_2x", 6, 3), ("mqa", 9, 1)])
+    def test_decode_head_grouping(self, _, num_heads, kv_num_heads):
+        self._check_decode(self._config(num_heads=num_heads, kv_num_heads=kv_num_heads))
+
+    @parameterized.expand([("16", 16), ("32", 32), ("64", 64), ("256", 256), ("512", 512)])
+    def test_decode_block_size(self, _, block_size):
+        # The decode kernel resolves a page per KV token, so unlike FlashAttention's paged kernel it
+        # has no page-alignment constraint and a KV tile may straddle any number of pages.
+        self._check_decode(self._config(paged_kv_block_size=block_size))
+
+    def test_decode_long_context_multi_tile(self):
+        # Far more than one 128-token tile per split, so the online-softmax rescaling across tiles
+        # is exercised rather than a single-shot tile.
+        self._check_decode(self._config(total_sequence_length=4000, paged_kv_block_size=256))
+
+    def test_decode_multi_split(self):
+        # One sequence and few heads leaves the GPU mostly idle, so the host picks num_splits > 1
+        # and the cross-split reduction (rather than a single partial) produces the output.
+        self._check_decode(self._config(batch_size=1, num_heads=2, kv_num_heads=1, total_sequence_length=4000))
+
+    def test_decode_short_context(self):
+        # Fewer KV tokens than a tile, and short enough that some splits are empty.
+        self._check_decode(self._config(batch_size=1, num_heads=2, kv_num_heads=1, total_sequence_length=8))
+
+    def test_decode_zero_new_tokens(self):
+        # Sequences with no new token contribute no output row; the kernel must skip them without
+        # disturbing the rows of the sequences that do have one.
+        new_seqlens = torch.tensor([0, 1, 0, 1], dtype=torch.int32)
+        self._check_decode(self._config(), new_seqlens_override=new_seqlens)
+
+    # ---- masking and score transforms ---------------------------------------------------
+
+    def test_decode_local_window(self):
+        self._check_decode(self._config(local=True))
+
+    def test_decode_softcap(self):
+        self._check_decode(self._config(softcap=50.0))
+
+    def test_decode_local_and_softcap(self):
+        self._check_decode(self._config(local=True, softcap=50.0))
+
+    def test_decode_head_sink(self):
+        self._check_decode(self._config(use_head_sink=True))
+
+    def test_decode_head_sink_local_and_softcap(self):
+        self._check_decode(self._config(use_head_sink=True, local=True, softcap=50.0))
+
+    def test_decode_smooth_softmax_without_head_sink(self):
+        self._check_decode(self._config(use_smooth_softmax=True))
+
+    # ---- prologue interaction -----------------------------------------------------------
+
+    def test_decode_rotary(self):
+        self._check_decode(self._config(rotary=True))
+
+    def test_decode_rotary_interleaved_and_packed(self):
+        self._check_decode(self._config(rotary=True, rotary_interleaved=True, packed=True))
+
+    def test_decode_qk_norm_and_slot_mapping(self):
+        self._check_decode(self._config(use_qk_norm=True, use_slot_mapping=True, rotary=True))
+
+    # ---- quantized cache (auto-selected, no sdpa_kernel override) ------------------------
+
+    @parameterized.expand([("per_tensor", "PER_TENSOR"), ("per_channel", "PER_CHANNEL")])
+    def test_decode_int8_cache(self, _, quant_type):
+        # A quantized cache auto-selects the decode backend at sequence_length 1: the scales fold
+        # into Q and into the output, so the pages are read once at int8 width.
+        config = self._config(kv_cache_type="int8", k_quant_type=quant_type, v_quant_type=quant_type)
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    def test_decode_int8_cache_mixed_granularity(self):
+        config = self._config(kv_cache_type="int8", k_quant_type="PER_CHANNEL", v_quant_type="PER_TENSOR")
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    def test_decode_int8_cache_local_softcap_and_sink(self):
+        config = self._config(
+            kv_cache_type="int8",
+            k_quant_type="PER_CHANNEL",
+            v_quant_type="PER_CHANNEL",
+            local=True,
+            softcap=50.0,
+            use_head_sink=True,
+        )
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    @parameterized.expand([("per_tensor", "PER_TENSOR"), ("per_channel", "PER_CHANNEL")])
+    @unittest.skipIf(not has_fp8_kv_cache(), reason="FP8 KV cache kernels are not built")
+    def test_decode_fp8_cache(self, _, quant_type):
+        config = self._config(kv_cache_type="fp8", k_quant_type=quant_type, v_quant_type=quant_type)
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    @unittest.skipIf(not has_fp8_kv_cache(), reason="FP8 KV cache kernels are not built")
+    def test_decode_fp8_cache_with_rotary(self):
+        config = self._config(kv_cache_type="fp8", k_quant_type="PER_CHANNEL", v_quant_type="PER_CHANNEL", rotary=True)
+        parity_check_paged_attention(config, rtol=5e-3, atol=2e-2)
 
 
 if __name__ == "__main__":
