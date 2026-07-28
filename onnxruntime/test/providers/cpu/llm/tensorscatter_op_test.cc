@@ -375,7 +375,7 @@ TEST(TensorScatterTest, StringType_NotSupported) {
   // The graph resolver rejects the node when no kernel matches the string
   // element type. The exact message is provider-dependent, so match on the
   // common substring surfaced by the kernel lookup.
-  test.Run(OpTester::ExpectResult::kExpectFailure, "",
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Failed to find kernel for",
            {}, nullptr, &execution_providers);
 }
 
