@@ -67,5 +67,5 @@ extends:
     - template: templates/stages/mac-ios-packaging-build-stage.yml
       parameters:
         buildType: ${{ parameters.buildType }}
-        xcodeVersion: "16.4"
-        iosSimulatorRuntimeVersion: "18.5"
+        xcodeVersion: "26.3"
+        iosSimulatorRuntimeVersion: "26.2"

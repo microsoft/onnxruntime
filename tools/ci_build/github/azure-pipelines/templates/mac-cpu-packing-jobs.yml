@@ -32,8 +32,6 @@ jobs:
     submodules: none
 
   - template: use-xcode-version.yml
-    parameters:
-      xcodeVersion: 16.4
 
   - template: setup-build-tools.yml
     parameters:
