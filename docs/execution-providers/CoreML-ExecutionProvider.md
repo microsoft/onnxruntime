@@ -33,10 +33,7 @@ See [here](../install/index.md#install-on-ios) for installation instructions.
 
 ### macOS packages
 
-Official macOS release packages include the CoreML EP. The macOS packaging pipelines build with `--use_coreml` for:
-
-* Python wheels (`pip install onnxruntime` on macOS)
-* macOS C/C++ shared libraries and related Java / Node.js packages from the macOS CPU packaging jobs
+Official macOS Python wheels include the CoreML EP (`pip install onnxruntime` on macOS builds with `--use_coreml`). The official macOS **arm64** C/C++ / Java / Node.js CPU packaging jobs also pass `--use_coreml`.
 
 See the [install page](../install/index.md) for package options.
 
@@ -61,6 +58,8 @@ Add `--use_coreml` to the iOS build command to include the CoreML EP.
 ### Build for macOS
 
 Build ONNX Runtime on a Mac and pass `--use_coreml` to enable the CoreML EP. For general macOS build setup, see [Build ONNX Runtime for inferencing (macOS)](../build/inferencing.md#macos).
+
+The examples below are for local builds after submodules are initialized (`git submodule update --init --recursive`, or pass `--update` on a fresh clone instead of `--skip_submodule_sync`).
 
 Example shared library build:
 

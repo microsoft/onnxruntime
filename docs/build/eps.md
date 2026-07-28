@@ -715,7 +715,7 @@ See the [CoreML Execution Provider](../execution-providers/CoreML-ExecutionProvi
 
 The pre-built ONNX Runtime Mobile package for iOS includes the CoreML EP.
 
-Official macOS release packages (Python wheels and the macOS C API / Java / Node.js packaging pipelines) are also built with `--use_coreml`, so they include the CoreML EP. Custom builds must pass `--use_coreml` to include it.
+For macOS, official Python wheels and the arm64 macOS CPU packaging jobs are also built with `--use_coreml`, so they include the CoreML EP. Custom builds must pass `--use_coreml` to include it.
 
 ### Create a minimal build with CoreML EP support
 
