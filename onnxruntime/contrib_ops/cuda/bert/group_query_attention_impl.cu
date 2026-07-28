@@ -261,7 +261,7 @@ Status PrepareQKV(
         parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.query),
         parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.key),
         parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.value),
-        q_out, k, v, data.k_scale, data.v_scale,
+        q_out, k, v, data.k_scale, data.v_scale, nullptr /* q_fold_scale */,
         num_heads, kv_num_heads, head_size, sequence_length, batch_size,
         RopeMaxPosition(parameters), max_cache_length,
         data.past_seq_lens, data.cache_past_seq_lens,
@@ -950,6 +950,15 @@ Status ExtremeDecoding(
 
   bool past_bsnh = (past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
 
+  // XQA only understands a scalar dequantization scale. Per-channel scales are folded out of the
+  // kernel instead: sk into Q (the channel dim is contracted by Q*K.T) and sv into the attention
+  // output (the channel dim is free in P*V). Both are exact -- see the derivation next to
+  // LaunchScaleHeadsByChannelScale in group_query_attention_qdq.cuh.
+  // The Q side is folded into the preprocess kernel below, which already loads and stores Q, so it
+  // costs no extra pass; the V side needs one elementwise pass over the output after XQA returns.
+  const bool fold_k_scale_into_q = parameters.k_quant_type == KVQuantizationType::PER_CHANNEL;
+  const bool fold_v_scale_into_output = parameters.v_quant_type == KVQuantizationType::PER_CHANNEL;
+
   // Ultimate Fused Preprocessing: Unpack, RoPE Q, RoPE K, Quantize K/V, Append K/V
   // This replaces all manual steps (Rotate Q, Rotate K, Quantize, StridedCopy)
   T* q_rot_ptr = reinterpret_cast<T*>(data.qkv_buffer);
@@ -957,6 +966,10 @@ Status ExtremeDecoding(
   if (q_rot_ptr == nullptr) {
     q_input_for_xqa = reinterpret_cast<const T*>(data.query);
   }
+  // GQABufferRequirements reserves qkv_buffer whenever the K scale has to be folded into Q, so the
+  // preprocess kernel always has somewhere to write the scaled Q (rotated or not).
+  ORT_ENFORCE(!fold_k_scale_into_q || q_rot_ptr != nullptr,
+              "Per-channel XQA requires a scratch buffer for the scaled Q.");
 
   ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, U>(
       parameters.is_packed_qkv ? reinterpret_cast<const T*>(data.query) : nullptr,
@@ -968,6 +981,7 @@ Status ExtremeDecoding(
       reinterpret_cast<U*>(data.present_value),
       data.k_scale,
       data.v_scale,
+      fold_k_scale_into_q ? data.k_scale : nullptr,  // q_fold_scale
       num_heads,
       kv_num_heads,
       head_size,
@@ -1020,7 +1034,8 @@ Status ExtremeDecoding(
       // With a windowed cache the XQA kernel must index the cache in cache-relative coordinates.
       parameters.is_windowed_kv_cache ? data.cache_past_seq_lens : data.past_seq_lens,
       data.xqa_head_sink,
-      data.k_scale,  // kv_cache_scale
+      fold_k_scale_into_q ? nullptr : data.k_scale,       // k_cache_scale (null: already folded into Q)
+      fold_v_scale_into_output ? nullptr : data.v_scale,  // v_cache_scale (null: applied to the output below)
       // Map cache type to XqaQuantType: NONE->kNone, Float8E4M3FN->kFp8, int8->kInt8
       (parameters.k_quant_type == KVQuantizationType::NONE) ? XqaQuantType::kNone : (is_fp8 ? XqaQuantType::kFp8 : XqaQuantType::kInt8),
       xqa_workspace,
@@ -1028,7 +1043,15 @@ Status ExtremeDecoding(
 
   // If XQA launch fails, debugging info
 
-  return status;
+  ORT_RETURN_IF_ERROR(status);
+
+  if (fold_v_scale_into_output) {
+    ORT_RETURN_IF_ERROR((LaunchScaleHeadsByChannelScale<T>(
+        stream, data.output, data.output, data.v_scale,
+        batch_size, sequence_length, num_heads, kv_num_heads, head_size)));
+  }
+
+  return Status::OK();
 }
 
 ////////// Kernels (supports right padding but not left padding)
@@ -1210,7 +1233,7 @@ Status DequantizeFlashAttentionFallback(
       parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.key),
       parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.value),
       q_rot, reinterpret_cast<U*>(data.present_key), reinterpret_cast<U*>(data.present_value),
-      data.k_scale, data.v_scale,
+      data.k_scale, data.v_scale, nullptr /* q_fold_scale: this path dequantizes the cache itself */,
       parameters.num_heads, parameters.kv_num_heads, parameters.head_size, parameters.sequence_length, parameters.batch_size,
       RopeMaxPosition(parameters), parameters.seqlen_present_kv_cache,
       data.past_seq_lens, data.cache_past_seq_lens,
@@ -1223,17 +1246,22 @@ Status DequantizeFlashAttentionFallback(
 
   // Step 2: Dequantize Entire Cache
   // We now have the updated quantized cache in data.present_key/value. We need to dequantize it to k_dequant/v_dequant.
+  // Only the rows that belong to the sequence are dequantized: flash attention below is given the
+  // same total_seq_lens and never reads the padding tail of the cache, so dequantizing the full
+  // (max_length sized) capacity on every decode step is pure memory traffic.
   bool is_bsnh = (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
 
   ORT_RETURN_IF_ERROR((LaunchDequantizeKV<T, U, float>(
       stream, k_dequant, reinterpret_cast<const U*>(data.present_key), data.k_scale,
       nullptr, parameters.batch_size, parameters.kv_num_heads, parameters.seqlen_present_kv_cache,
-      parameters.head_size, parameters.kv_cache_bit_width, parameters.k_quant_type, is_bsnh)));
+      parameters.head_size, parameters.kv_cache_bit_width, parameters.k_quant_type, is_bsnh,
+      data.total_seq_lens)));
 
   ORT_RETURN_IF_ERROR((LaunchDequantizeKV<T, U, float>(
       stream, v_dequant, reinterpret_cast<const U*>(data.present_value), data.v_scale,
       nullptr, parameters.batch_size, parameters.kv_num_heads, parameters.seqlen_present_kv_cache,
-      parameters.head_size, parameters.kv_cache_bit_width, parameters.v_quant_type, is_bsnh)));
+      parameters.head_size, parameters.kv_cache_bit_width, parameters.v_quant_type, is_bsnh,
+      data.total_seq_lens)));
 
   // Step 3: Run Flash Attention on dequantized k/v
   bool is_causal = parameters.is_unidirectional;
@@ -1299,7 +1327,7 @@ Status FlashAttentionAndQuantizeKV(
       parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.query),
       parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.key),
       parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.value),
-      q_final, k_final, v_final, nullptr, nullptr,
+      q_final, k_final, v_final, nullptr, nullptr, nullptr /* q_fold_scale */,
       num_heads, kv_num_heads, head_size, sequence_length, batch_size,
       RopeMaxPosition(parameters), sequence_length,
       data.past_seq_lens, data.past_seq_lens,

@@ -152,50 +152,79 @@ __global__ void QuantizeDequantizeActivationFp8Kernel(T* __restrict__ out,
 // -----------------------------------------------------------------------------
 // Fused FP8 weight-only GEMV fast path for the decode phase (small M).
 //
-// Each warp computes RowsPerWarp output elements Y[row, col]. The 32 lanes of the
-// warp cooperatively reduce over K using 16-wide vectorized loads, so the FP8
-// weight B is streamed exactly once with fully coalesced warp transactions. Block
-// scales are applied once per K-block (not per element): a lane's 16-element chunk
-// is guaranteed to lie inside a single K-block whenever block_size is a multiple of
-// 16, so weight_scale is folded in per chunk. Runs on any architecture (SM80+).
-template <typename AType>
-__device__ __forceinline__ void LoadFp8Gemv16A(const AType* ptr, float (&out)[16]);
+// Each warp computes RowsPerWarp x ColsPerWarp output elements Y[row, col]. The 32
+// lanes of the warp cooperatively reduce over K using 16-wide vectorized loads, so
+// the FP8 weight B is streamed exactly once with fully coalesced warp transactions.
+// Block scales are applied once per K-block (not per element): a lane's 16-element
+// chunk is guaranteed to lie inside a single K-block whenever block_size is a
+// multiple of 16, so weight_scale is folded in per chunk. Runs on SM80+.
+//
+// ColsPerWarp / Unroll exist because the decode GEMV is bound by the number of
+// *outstanding* loads, not by bandwidth or by instruction count. Nsight Compute on
+// an 8192x2048 decode GEMV (H200) reports only 1.0 full waves, L1 hit rate 79.6%
+// (the A row is already resident, so staging it in shared memory buys nothing), and
+// a third of the warp stall cycles waiting on L1TEX. With one 16-element B chunk in
+// flight per thread, each thread only moves K/32 bytes of B and eats the full L1
+// latency every iteration.
+//
+//   * Unroll      issues `Unroll` independent B/A loads before consuming any of them.
+//   * ColsPerWarp lets one A load feed `ColsPerWarp` independent FMA chains, which
+//                 both raises arithmetic intensity and adds independent B streams.
+//
+// Both trade occupancy (already register-capped at 8 blocks/SM) for per-thread
+// memory-level parallelism, which is the right trade when there is only one wave.
+// <RowsPerWarp, 1, 1> reproduces the original one-column-per-warp geometry.
 
+// Vector-2 companion type and float2 widening for the accumulate type.
+template <typename T>
+struct Fp8GemvVec2;
 template <>
-__device__ __forceinline__ void LoadFp8Gemv16A<half>(const half* ptr, float (&out)[16]) {
-  const uint4* p = reinterpret_cast<const uint4*>(ptr);
-  const uint4 lo = p[0];
-  const uint4 hi = p[1];
-  const half* vlo = reinterpret_cast<const half*>(&lo);
-  const half* vhi = reinterpret_cast<const half*>(&hi);
-#pragma unroll
-  for (int i = 0; i < 8; ++i) {
-    out[i] = __half2float(vlo[i]);
-  }
-#pragma unroll
-  for (int i = 0; i < 8; ++i) {
-    out[8 + i] = __half2float(vhi[i]);
-  }
-}
-
+struct Fp8GemvVec2<half> {
+  using type = __half2;
+};
 template <>
-__device__ __forceinline__ void LoadFp8Gemv16A<__nv_bfloat16>(const __nv_bfloat16* ptr, float (&out)[16]) {
-  const uint4* p = reinterpret_cast<const uint4*>(ptr);
-  const uint4 lo = p[0];
-  const uint4 hi = p[1];
-  const __nv_bfloat16* vlo = reinterpret_cast<const __nv_bfloat16*>(&lo);
-  const __nv_bfloat16* vhi = reinterpret_cast<const __nv_bfloat16*>(&hi);
-#pragma unroll
-  for (int i = 0; i < 8; ++i) {
-    out[i] = __bfloat162float(vlo[i]);
-  }
-#pragma unroll
-  for (int i = 0; i < 8; ++i) {
-    out[8 + i] = __bfloat162float(vhi[i]);
-  }
-}
+struct Fp8GemvVec2<__nv_bfloat16> {
+  using type = __nv_bfloat162;
+};
 
-template <int RowsPerWarp, typename AType>
+__device__ __forceinline__ float2 Fp8GemvToFloat2(const __half2& v) { return __half22float2(v); }
+__device__ __forceinline__ float2 Fp8GemvToFloat2(const __nv_bfloat162& v) { return __bfloat1622float2(v); }
+
+// Convert 16 packed FP8 bytes into 8 half2 (one `cvt.rn.f16x2.e4m3x2` per pair
+// instead of 16 scalar converts). FP8 E4M3 is exactly representable in FP16, so
+// this is lossless for both the half and the bfloat16 instantiation.
+//
+// Written as a macro rather than a helper taking `__half2 (&)[8]`: an array passed
+// by reference is placed in local memory, which costs ~2x here and much more at
+// RowsPerWarp > 1 where the spill lands in the inner loop.
+#define ORT_FP8_GEMV_CVT16(raw, bh)                                                         \
+  do {                                                                                      \
+    const __nv_fp8x2_storage_t* _p = reinterpret_cast<const __nv_fp8x2_storage_t*>(&(raw)); \
+    _Pragma("unroll") for (int _i = 0; _i < 8; ++_i) {                                      \
+      (bh)[_i] = __half2(__nv_cvt_fp8x2_to_halfraw2(_p[_i], __NV_E4M3));                    \
+    }                                                                                       \
+  } while (0)
+
+// acc += dot(A[0:16], B[0:16]) with FP32 accumulation, matching the scalar version bit for bit.
+#define ORT_FP8_GEMV_DOT16(a0, a1, bh, acc)                   \
+  do {                                                        \
+    const AVec2* _a0 = reinterpret_cast<const AVec2*>(&(a0)); \
+    const AVec2* _a1 = reinterpret_cast<const AVec2*>(&(a1)); \
+    _Pragma("unroll") for (int _i = 0; _i < 4; ++_i) {        \
+      const float2 _av = Fp8GemvToFloat2(_a0[_i]);            \
+      const float2 _bv = __half22float2((bh)[_i]);            \
+      (acc) = fmaf(_av.x, _bv.x, (acc));                      \
+      (acc) = fmaf(_av.y, _bv.y, (acc));                      \
+    }                                                         \
+    _Pragma("unroll") for (int _i = 0; _i < 4; ++_i) {        \
+      const float2 _av = Fp8GemvToFloat2(_a1[_i]);            \
+      const float2 _bv = __half22float2((bh)[4 + _i]);        \
+      (acc) = fmaf(_av.x, _bv.x, (acc));                      \
+      (acc) = fmaf(_av.y, _bv.y, (acc));                      \
+    }                                                         \
+  } while (0)
+
+template <int RowsPerWarp, int ColsPerWarp, int Unroll, typename AType>
 __global__ void MatMulBlockScaledFp8GemvKernel(AType* __restrict__ output,
                                                const AType* __restrict__ input_a,
                                                const __nv_fp8_e4m3* __restrict__ input_b,
@@ -206,59 +235,106 @@ __global__ void MatMulBlockScaledFp8GemvKernel(AType* __restrict__ output,
                                                int k,
                                                int block_size,
                                                int k_blocks) {
-  const int lane = threadIdx.x;                           // 0..31
-  const int col = blockIdx.x * blockDim.y + threadIdx.y;  // n
-  const int row_base = blockIdx.y * RowsPerWarp;          // m
-  if (row_base >= m || col >= n) {
+  using AVec2 = typename Fp8GemvVec2<AType>::type;
+
+  constexpr int kElemsPerLane = 16;
+  constexpr int kStride = 32 * kElemsPerLane;  // 512 elements per warp sub-chunk
+
+  const int lane = threadIdx.x;  // 0..31
+  const int col_base = (blockIdx.x * blockDim.y + threadIdx.y) * ColsPerWarp;
+  const int row_base = blockIdx.y * RowsPerWarp;
+  if (row_base >= m || col_base >= n) {
     return;
   }
 
-  const __nv_fp8_e4m3* b_row = input_b + static_cast<size_t>(col) * k;
-  const float* sb_row = weight_scale + static_cast<size_t>(col) * k_blocks;
+  float acc[RowsPerWarp][ColsPerWarp] = {};
 
-  constexpr int kElemsPerLane = 16;
-  const int stride = 32 * kElemsPerLane;  // 512 elements per warp iteration
-
-  float acc[RowsPerWarp] = {};
-  for (int base = 0; base < k; base += stride) {
-    const int koff = base + lane * kElemsPerLane;
-    if (koff < k) {
-      const uint4 b_raw = *reinterpret_cast<const uint4*>(b_row + koff);
-      const __nv_fp8_e4m3* bp = reinterpret_cast<const __nv_fp8_e4m3*>(&b_raw);
-      const int kb = koff / block_size;
-      const float b_scale = sb_row[kb];
+  for (int base = 0; base < k; base += kStride * Unroll) {
+    // Phase 1: issue every load for this iteration back to back. Nothing here consumes a
+    // loaded value, so all Unroll * (ColsPerWarp + 2 * RowsPerWarp) requests are in flight
+    // at once instead of one at a time.
+    uint4 b_raw[Unroll][ColsPerWarp];
+    uint4 a_lo[Unroll][RowsPerWarp];
+    uint4 a_hi[Unroll][RowsPerWarp];
+    int koff[Unroll];
 #pragma unroll
-      for (int row_offset = 0; row_offset < RowsPerWarp; ++row_offset) {
-        const int row = row_base + row_offset;
-        if (row < m) {
-          const AType* a_row = input_a + static_cast<size_t>(row) * k;
-          float a_vals[16];
-          LoadFp8Gemv16A<AType>(a_row + koff, a_vals);
-
-          float partial = 0.0f;
+    for (int u = 0; u < Unroll; ++u) {
+      koff[u] = base + u * kStride + lane * kElemsPerLane;
+      const bool k_ok = koff[u] < k;
 #pragma unroll
-          for (int i = 0; i < kElemsPerLane; ++i) {
-            partial += a_vals[i] * static_cast<float>(bp[i]);
+      for (int c = 0; c < ColsPerWarp; ++c) {
+        const int col = col_base + c;
+        b_raw[u][c] = (k_ok && col < n)
+                          ? *reinterpret_cast<const uint4*>(input_b + static_cast<size_t>(col) * k + koff[u])
+                          : make_uint4(0, 0, 0, 0);
+      }
+#pragma unroll
+      for (int r = 0; r < RowsPerWarp; ++r) {
+        const int row = row_base + r;
+        if (k_ok && row < m) {
+          const uint4* ap = reinterpret_cast<const uint4*>(input_a + static_cast<size_t>(row) * k + koff[u]);
+          a_lo[u][r] = ap[0];
+          a_hi[u][r] = ap[1];
+        } else {
+          a_lo[u][r] = make_uint4(0, 0, 0, 0);
+          a_hi[u][r] = make_uint4(0, 0, 0, 0);
+        }
+      }
+    }
+
+    // Phase 2: consume.
+#pragma unroll
+    for (int u = 0; u < Unroll; ++u) {
+      if (koff[u] >= k) {
+        continue;
+      }
+      const int kb = koff[u] / block_size;
+#pragma unroll
+      for (int c = 0; c < ColsPerWarp; ++c) {
+        const int col = col_base + c;
+        if (col >= n) {
+          continue;
+        }
+        __half2 b_half[8];
+        ORT_FP8_GEMV_CVT16(b_raw[u][c], b_half);
+        const float b_scale = weight_scale[static_cast<size_t>(col) * k_blocks + kb];
+#pragma unroll
+        for (int r = 0; r < RowsPerWarp; ++r) {
+          if (row_base + r >= m) {
+            continue;
           }
-          acc[row_offset] += partial * b_scale;
+          float partial = 0.0f;
+          ORT_FP8_GEMV_DOT16(a_lo[u][r], a_hi[u][r], b_half, partial);
+          acc[r][c] += partial * b_scale;
         }
       }
     }
   }
 
 #pragma unroll
-  for (int row_offset = 0; row_offset < RowsPerWarp; ++row_offset) {
+  for (int r = 0; r < RowsPerWarp; ++r) {
 #pragma unroll
-    for (int offset = 16; offset > 0; offset >>= 1) {
-      acc[row_offset] += __shfl_down_sync(0xffffffffu, acc[row_offset], offset);
+    for (int c = 0; c < ColsPerWarp; ++c) {
+#pragma unroll
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        acc[r][c] += __shfl_down_sync(0xffffffffu, acc[r][c], offset);
+      }
     }
   }
   if (lane == 0) {
 #pragma unroll
-    for (int row_offset = 0; row_offset < RowsPerWarp; ++row_offset) {
-      const int row = row_base + row_offset;
-      if (row < m) {
-        float result = acc[row_offset];
+    for (int r = 0; r < RowsPerWarp; ++r) {
+      const int row = row_base + r;
+      if (row >= m) {
+        continue;
+      }
+#pragma unroll
+      for (int c = 0; c < ColsPerWarp; ++c) {
+        const int col = col_base + c;
+        if (col >= n) {
+          continue;
+        }
+        float result = acc[r][c];
         if (bias != nullptr) {
           result += ToFloat<AType>(bias[col]);
         }
@@ -420,28 +496,42 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
   constexpr int kWarpsPerBlock = 8;
   const dim3 threads{32, kWarpsPerBlock};
   const auto* b = reinterpret_cast<const __nv_fp8_e4m3*>(b_fp8);
-  const auto launch = [&]<int RowsPerWarp>() {
-    const dim3 blocks{static_cast<unsigned int>((n + kWarpsPerBlock - 1) / kWarpsPerBlock),
+  const auto launch = [&]<int RowsPerWarp, int ColsPerWarp, int Unroll>() {
+    const int cols_per_block = kWarpsPerBlock * ColsPerWarp;
+    const dim3 blocks{static_cast<unsigned int>((n + cols_per_block - 1) / cols_per_block),
                       static_cast<unsigned int>((m + RowsPerWarp - 1) / RowsPerWarp)};
     if (is_bf16) {
-      MatMulBlockScaledFp8GemvKernel<RowsPerWarp><<<blocks, threads, 0, stream>>>(
+      MatMulBlockScaledFp8GemvKernel<RowsPerWarp, ColsPerWarp, Unroll><<<blocks, threads, 0, stream>>>(
           reinterpret_cast<__nv_bfloat16*>(y), reinterpret_cast<const __nv_bfloat16*>(a), b,
           weight_scale, reinterpret_cast<const __nv_bfloat16*>(bias), m, n, k, block_size, k_blocks);
     } else {
-      MatMulBlockScaledFp8GemvKernel<RowsPerWarp><<<blocks, threads, 0, stream>>>(
+      MatMulBlockScaledFp8GemvKernel<RowsPerWarp, ColsPerWarp, Unroll><<<blocks, threads, 0, stream>>>(
           reinterpret_cast<half*>(y), reinterpret_cast<const half*>(a), b,
           weight_scale, reinterpret_cast<const half*>(bias), m, n, k, block_size, k_blocks);
     }
   };
 
+  // M == 1 is the decode-with-batch-1 case and by far the hottest. There the grid is a
+  // single wave, so widening each warp (ColsPerWarp) and pre-issuing loads (Unroll) buys
+  // memory-level parallelism at no real occupancy cost. It only pays once N is large
+  // enough that dividing the column count still leaves the GPU full -- below N == 4096
+  // the wider tiles measured slower than one column per warp on H200, and for M > 1 the
+  // extra live registers per warp (RowsPerWarp * ColsPerWarp accumulators plus the
+  // pre-issued loads) cost more than the extra parallelism is worth.
   if (m == 1) {
-    launch.template operator()<1>();
+    if (n >= 8192) {
+      launch.template operator()<1, 4, 2>();
+    } else if (n >= 4096) {
+      launch.template operator()<1, 2, 2>();
+    } else {
+      launch.template operator()<1, 1, 1>();
+    }
   } else if (m <= 2) {
-    launch.template operator()<2>();
+    launch.template operator()<2, 1, 1>();
   } else if (m <= 4) {
-    launch.template operator()<4>();
+    launch.template operator()<4, 1, 1>();
   } else {
-    launch.template operator()<8>();
+    launch.template operator()<8, 1, 1>();
   }
   return CUDA_CALL(cudaGetLastError());
 #else

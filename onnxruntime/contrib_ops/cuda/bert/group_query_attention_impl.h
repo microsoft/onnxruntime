@@ -76,9 +76,11 @@ struct GQABufferRequirements {
     const size_t v_elements = k_elements;
 
     if (use_xqa) {
-      if (params.do_rotary || params.is_packed_qkv || params.use_qk_norm) {
-        // XQA needs scratch for rotated/unpacked/normalized Q.
-        // RoPE/QK-Norm K is written directly to cache by the fused preprocess kernel.
+      // XQA needs scratch for rotated/unpacked/normalized Q.
+      // RoPE/QK-Norm K is written directly to cache by the fused preprocess kernel.
+      // A per-channel K scale also needs it: the scale is folded into Q before the kernel runs.
+      if (params.do_rotary || params.is_packed_qkv || params.use_qk_norm ||
+          params.k_quant_type == KVQuantizationType::PER_CHANNEL) {
         req.qkv_buffer_bytes = elem_size * q_elements;
       }
       return req;
