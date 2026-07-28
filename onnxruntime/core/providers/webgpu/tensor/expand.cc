@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <string>
+
 #include "core/providers/common.h"
 
 #include "core/providers/webgpu/tensor/expand.h"
@@ -23,7 +25,12 @@ Status ExpandProgram::GenerateShaderCode(ShaderHelper& shader) const {
     const auto& input_indices = shader.AddIndices("input_indices");
     const auto& output_indices = shader.AddIndices("output_indices");
 
-    // Extract the single element located at element offset "off".
+    // SetByOffset for both Boolx4 and Uint8x4 expects the value as a 4-lane vector (one element per
+    // lane) and packs it into the storage word itself, so every branch below builds such a vector:
+    // vec4<bool> for bool, vec4<u32> for uint8. Never hand SetByOffset a pre-packed word.
+    const std::string vec4_type = is_bool ? "vec4<bool>" : "vec4<u32>";
+
+    // Extract the single element located at element offset "off" as a scalar lane value.
     auto get_element = [&](const std::string& off) -> std::string {
       if (is_bool) {
         return input.GetByOffset(off + " / 4") + "[" + off + " % 4]";
@@ -31,16 +38,18 @@ Status ExpandProgram::GenerateShaderCode(ShaderHelper& shader) const {
       // Shift the byte at "off % 4" down to the low 8 bits of the packed u32.
       return "((" + input.GetByOffset(off + " / 4") + " >> ((" + off + " % 4) * 8u)) & 0xFFu)";
     };
-    // Broadcast a single element into all 4 lanes of a packed word.
+    // Broadcast a single element into all 4 lanes.
     auto splat_element = [&](const std::string& e) -> std::string {
-      return is_bool ? ("vec4<bool>(" + e + ")") : ("(" + e + " * 0x01010101u)");
+      return vec4_type + "(" + e + ")";
     };
-    // Assemble a packed word from 4 elements.
+    // Assemble a 4-lane vector from 4 elements.
     auto pack_elements = [&](const std::string& e0, const std::string& e1, const std::string& e2, const std::string& e3) -> std::string {
-      if (is_bool) {
-        return "vec4<bool>(" + e0 + ", " + e1 + ", " + e2 + ", " + e3 + ")";
-      }
-      return "(" + e0 + " | (" + e1 + " << 8u) | (" + e2 + " << 16u) | (" + e3 + " << 24u))";
+      return vec4_type + "(" + e0 + ", " + e1 + ", " + e2 + ", " + e3 + ")";
+    };
+    // Expand a whole storage word into its 4 lanes. GetByOffset already returns vec4<bool> for bool,
+    // but the raw packed u32 for uint8, which must be unpacked with unpack4xU8.
+    auto unpack_word = [&](const std::string& word_offset) -> std::string {
+      return is_bool ? input.GetByOffset(word_offset) : ("unpack4xU8(" + input.GetByOffset(word_offset) + ")");
     };
 
     if (input_last_dim_divisible_by_4_) {
@@ -48,7 +57,7 @@ Status ExpandProgram::GenerateShaderCode(ShaderHelper& shader) const {
       // maps directly to a whole packed word.
       shader.MainFunctionBody() << "  let output_indices = " << output_indices.OffsetToIndices("global_idx * 4") << ";\n"
                                 << "  let input_offset = " << input_indices.BroadcastedIndicesToOffset("output_indices", output_indices) << ";\n"
-                                << output.SetByOffset("global_idx", input.GetByOffset("input_offset / 4"));
+                                << output.SetByOffset("global_idx", unpack_word("input_offset / 4"));
     } else if (output_last_dim_divisible_by_4_) {
       // The last dim of output shape is divisible by 4, and the last dim of input shape is 1.
       shader.MainFunctionBody() << "  let output_indices = " << output_indices.OffsetToIndices("global_idx * 4") << ";\n"
