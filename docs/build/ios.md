@@ -67,7 +67,8 @@ If you want to use CoreML Execution Provider on iOS or macOS, see [CoreML Execut
 
 #### Build Instructions
 
-CoreML Execution Provider can be built using building commands in [iOS Build instructions](#build-instructions-1) with `--use_coreml`
+* **iOS**: Add `--use_coreml` to the [iOS build commands](#build-instructions-1).
+* **macOS**: See [Build for macOS](../execution-providers/CoreML-ExecutionProvider.md#build-for-macos) for `--use_coreml` examples and notes on official macOS packages.
 
 ## Building a Custom iOS Package
 
