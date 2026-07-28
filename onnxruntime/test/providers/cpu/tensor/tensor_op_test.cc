@@ -116,6 +116,9 @@ TEST(TensorOpTest, Reshape_uint8_webgpu) {
   SessionOptions options;
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
   auto provider = WebGpuExecutionProviderWithOptions(ConfigOptions{});
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
   test.Config(options)
       .ConfigEp(std::move(provider))
       .RunWithConfig();
