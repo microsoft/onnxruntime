@@ -10,10 +10,11 @@
 // checks, so that a covered EP cannot silently violate the behavior the
 // framework relies on.
 //
-// Coverage is opt-in per EP: only the providers registered in
-// GetEpConformanceParams() are exercised (currently CPU, plus CUDA, DML, WebGPU
-// and XNNPACK behind their build guards). Listing a provider there extends the
-// guarantee to it; EPs not listed are not checked by this suite.
+// Coverage is enforced, not opt-in: EpConformanceCoverage.EveryAvailableEpIsRegistered
+// cross-checks the registered list below against GetAvailableExecutionProviderNames(),
+// the registry of EPs compiled into this build. An EP that is compiled but neither
+// registered nor explicitly exempted fails that test, so coverage cannot silently
+// regress as EPs are added.
 //
 // The invariant checks themselves live in
 // test/util/include/ep_conformance_invariants.h and are shared with the plugin EP
@@ -21,8 +22,10 @@
 // invariants against a dynamically-loaded plugin EP.
 //
 // Adding an EP to the coverage is a single line: append an entry to
-// GetEpConformanceParams() below, guarded by the appropriate USE_* macro. The
-// stored value is a *factory*, not a constructed provider, so:
+// GetEpConformanceParams() below. No USE_* guard is required -- every
+// Default*ExecutionProvider() is declared unconditionally and returns nullptr when
+// its EP is not compiled in. The stored value is a *factory*, not a constructed
+// provider, so:
 //   - No EP is instantiated during static initialization.
 //   - An EP that is compiled but unavailable at runtime (e.g. no GPU present)
 //     causes the affected test to be skipped, not failed -- whether its factory
@@ -33,15 +36,19 @@
 // not CPU-accessible is never dereferenced from the test thread; such checks are
 // guarded by OrtDevice::UsesCpuMemory().
 
+#include <algorithm>
 #include <exception>
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "gtest/gtest.h"
 
 #include "core/framework/execution_provider.h"
+#include "core/graph/constants.h"
+#include "core/providers/get_execution_providers.h"
 
 #include "test/util/include/default_providers.h"
 #include "test/util/include/ep_conformance_invariants.h"
@@ -53,13 +60,17 @@ namespace {
 
 // One EP under test:
 //   - name: a human-readable label, also used as the gtest parameter suffix, so it
-//     must be a valid identifier.
+//     must be a valid identifier. Several entries may share an ep_name when one EP is
+//     covered in more than one configuration (e.g. CPU with and without the arena).
+//   - ep_name: the canonical provider name (kXxxExecutionProvider), used to
+//     cross-check this list against the EPs compiled into the build.
 //   - factory: constructs a fresh provider instance (see MakeEp()).
 //   - expects_plugin_ep: true iff this EP is plugin-backed, i.e. GetOrtEp() must
 //     return non-null (see CheckGetOrtEpMatchesProviderKind). Built-in EPs leave it
 //     false.
 struct EpConformanceParam {
   std::string name;
+  std::string_view ep_name;
   std::function<std::unique_ptr<IExecutionProvider>()> factory;
   bool expects_plugin_ep = false;
 };
@@ -70,35 +81,130 @@ std::vector<EpConformanceParam> GetEpConformanceParams() {
   // CPU is always available. Cover both the arena and non-arena allocator paths
   // since they are distinct IAllocator implementations with different Alloc/Free
   // behavior.
-  params.push_back({"Cpu_Arena", [] { return DefaultCpuExecutionProvider(/*enable_arena*/ true); }});
-  params.push_back({"Cpu_NoArena", [] { return DefaultCpuExecutionProvider(/*enable_arena*/ false); }});
+  params.push_back({"Cpu_Arena", kCpuExecutionProvider,
+                    [] { return DefaultCpuExecutionProvider(/*enable_arena*/ true); }});
+  params.push_back({"Cpu_NoArena", kCpuExecutionProvider,
+                    [] { return DefaultCpuExecutionProvider(/*enable_arena*/ false); }});
 
-#ifdef USE_CUDA
 #if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) && defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
-  params.push_back({"Cuda", [] { return DefaultCudaExecutionProvider(); }, /*expects_plugin_ep=*/true});
+  params.push_back({"Cuda", kCudaExecutionProvider, [] { return DefaultCudaExecutionProvider(); },
+                    /*expects_plugin_ep=*/true});
 #else
-  params.push_back({"Cuda", [] { return DefaultCudaExecutionProvider(); }});
+  params.push_back({"Cuda", kCudaExecutionProvider, [] { return DefaultCudaExecutionProvider(); }});
 #endif
-#endif
-#ifdef USE_DML
-  params.push_back({"Dml", [] { return DefaultDmlExecutionProvider(); }});
-#endif
+
+  params.push_back({"Dml", kDmlExecutionProvider, [] { return DefaultDmlExecutionProvider(); }});
+
   // Mirror the guard used by base_tester.cc / default_providers.cc: in
   // ORT_USE_EP_API_ADAPTERS builds DefaultWebGpuExecutionProvider() ORT_ENFORCEs
   // (aborting the whole test run) when the dynamic plugin EP is initialized to a
   // different EP, rather than cleanly returning nullptr. Only list the built-in
-  // WebGPU EP when it is not routed through the EP API adapters.
+  // WebGPU EP when it is not routed through the EP API adapters. This matches the
+  // guard on kWebGpuExecutionProvider in get_execution_providers.cc, so the coverage
+  // cross-check below stays consistent in both configurations.
 #if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
-  params.push_back({"WebGpu", [] { return DefaultWebGpuExecutionProvider(); }});
+  params.push_back({"WebGpu", kWebGpuExecutionProvider, [] { return DefaultWebGpuExecutionProvider(); }});
 #endif
-#ifdef USE_XNNPACK
-  params.push_back({"Xnnpack", [] { return DefaultXnnpackExecutionProvider(); }});
-#endif
+
+  params.push_back({"Xnnpack", kXnnpackExecutionProvider, [] { return DefaultXnnpackExecutionProvider(); }});
 
   return params;
 }
 
+// EPs that are compiled into some builds but deliberately not covered above. The two
+// reasons are kept in separate lists so the difference stays visible to reviewers.
+
+// (1) Not conformance-testable from a native gtest binary. These have no
+//     Default*ExecutionProvider() helper and are not expected to grow one.
+constexpr std::string_view kStructurallyExemptEps[] = {
+    kJsExecutionProvider,       // web/emscripten builds only
+    kWebNNExecutionProvider,    // web/emscripten builds only
+    kAzureExecutionProvider,    // remote inference endpoint, not a local compute EP
+    kVitisAIExecutionProvider,  // requires external configuration/runtime to construct
+};
+
+// (2) Not yet vetted. Each of these does have a Default*ExecutionProvider() and is
+//     expected to graduate into GetEpConformanceParams() above. They are parked here
+//     rather than registered so that introducing this cross-check does not start
+//     running eleven never-before-exercised invariants across many CI legs at once.
+//     An EP should be moved out of this list in the same change that validates it and
+//     fixes whatever the invariants surface for it.
+constexpr std::string_view kNotYetVettedEps[] = {
+    kAclExecutionProvider,
+    kCannExecutionProvider,
+    kCoreMLExecutionProvider,
+    kDnnlExecutionProvider,
+    kMIGraphXExecutionProvider,
+    kNnapiExecutionProvider,
+    kNvTensorRTRTXExecutionProvider,
+    kOpenVINOExecutionProvider,
+    kQnnExecutionProvider,
+    kRknpuExecutionProvider,
+    kTensorrtExecutionProvider,
+    kVSINPUExecutionProvider,
+};
+
+bool IsExemptFromConformanceCoverage(std::string_view ep_name) {
+  for (std::string_view exempt : kStructurallyExemptEps) {
+    if (exempt == ep_name) return true;
+  }
+  for (std::string_view exempt : kNotYetVettedEps) {
+    if (exempt == ep_name) return true;
+  }
+  return false;
+}
+
+bool IsRegisteredForConformance(const std::vector<EpConformanceParam>& params, std::string_view ep_name) {
+  return std::any_of(params.begin(), params.end(),
+                     [ep_name](const EpConformanceParam& param) { return param.ep_name == ep_name; });
+}
+
 }  // namespace
+
+// Meta-test: every EP compiled into this build is either exercised by the suite below
+// or explicitly exempted. This is what keeps the conformance guarantee from quietly
+// decaying -- adding a new EP to the build fails here until someone either registers
+// it in GetEpConformanceParams() or records why it cannot be covered.
+//
+// The check is deliberately one-directional: it does not assert the converse (that
+// every registered EP is "available"), because the two lists legitimately differ that
+// way. DefaultSnpeExecutionProvider() exists, for instance, while SNPE has no entry in
+// the availability registry at all.
+TEST(EpConformanceCoverage, EveryAvailableEpIsRegistered) {
+  const auto params = GetEpConformanceParams();
+
+  for (const std::string& available : GetAvailableExecutionProviderNames()) {
+    const std::string_view ep_name{available};
+    if (IsExemptFromConformanceCoverage(ep_name)) continue;
+
+    EXPECT_TRUE(IsRegisteredForConformance(params, ep_name))
+        << available << " is compiled into this build but has no EP conformance coverage. "
+        << "Register it in GetEpConformanceParams(), or add it to kStructurallyExemptEps "
+        << "or kNotYetVettedEps (in this file) with the reason.";
+  }
+}
+
+// Guards the exemption lists themselves. Without this, a typo or a stale entry left
+// behind after an EP is renamed or removed would silently widen the exemption and hide
+// a real coverage gap -- the exact failure mode the check above exists to prevent.
+TEST(EpConformanceCoverage, ExemptionsAreWellFormed) {
+  const auto& all_ep_names = GetAllExecutionProviderNames();
+  const auto params = GetEpConformanceParams();
+
+  const auto check = [&](std::string_view exempt) {
+    EXPECT_TRUE(std::any_of(all_ep_names.begin(), all_ep_names.end(),
+                            [exempt](const std::string& name) { return std::string_view{name} == exempt; }))
+        << exempt << " is listed as exempt from EP conformance coverage but is not a known "
+        << "execution provider name. Fix the typo or drop the stale entry.";
+
+    EXPECT_FALSE(IsRegisteredForConformance(params, exempt))
+        << exempt << " is both registered in GetEpConformanceParams() and listed as exempt. "
+        << "Remove it from the exemption list.";
+  };
+
+  for (std::string_view ep_name : kStructurallyExemptEps) check(ep_name);
+  for (std::string_view ep_name : kNotYetVettedEps) check(ep_name);
+}
 
 class EpConformanceTest : public testing::TestWithParam<EpConformanceParam> {
  protected:
