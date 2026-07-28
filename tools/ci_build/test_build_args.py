@@ -7,9 +7,8 @@ import json
 import pathlib
 import sys
 import tempfile
-import unittest
 from types import SimpleNamespace
-from unittest import mock
+from unittest import TestCase, main, mock
 
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
 TOOLS_DIR = SCRIPT_DIR.parent
@@ -26,7 +25,7 @@ finally:
     sys.path[:] = original_sys_path
 
 
-class TelemetryBuildArgsTest(unittest.TestCase):
+class TelemetryBuildArgsTest(TestCase):
     @staticmethod
     def _target(**overrides):
         values = {
@@ -113,4 +112,4 @@ class TelemetryBuildArgsTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    main()
