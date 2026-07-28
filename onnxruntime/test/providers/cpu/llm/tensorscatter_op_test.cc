@@ -354,5 +354,30 @@ TEST(TensorScatterTest, Circular_NegativeWriteIndex) {
            {}, nullptr, &execution_providers);
 }
 
+// The CPU kernel only supports fixed-size element types (matching the CUDA
+// kernel's type constraint). Non-fixed-size element types such as string are
+// intentionally excluded because the kernel operates on raw memory buffers.
+// Loading a graph that binds a string tensor to TensorScatter must fail at
+// kernel resolution rather than at Compute time.
+TEST(TensorScatterTest, StringType_NotSupported) {
+  OpTester test("TensorScatter", 24);
+  test.AddAttribute<std::string>("mode", "linear");
+
+  test.AddInput<std::string>("past_cache", {1, 4, 1},
+                             {"alpha", "beta", "gamma", "delta"});
+  test.AddInput<std::string>("update", {1, 1, 1}, {"omega"});
+  test.AddInput<int64_t>("write_indices", {1}, {2});
+  test.AddOutput<std::string>("present_cache", {1, 4, 1},
+                              {"alpha", "beta", "omega", "delta"});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  // The graph resolver rejects the node when no kernel matches the string
+  // element type. The exact message is provider-dependent, so match on the
+  // common substring surfaced by the kernel lookup.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "",
+           {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
