@@ -107,7 +107,7 @@ quantization, CUTLASS setup, and underutilized tensor-core GEMM work.
 - `block_size == 16`,
 - `K % 32 == 0`.
 
-Each warp computes one output element `Y[row, col]`. A lane consumes 32 K
+Each warp computes one output column `col`. A lane consumes 32 K
 elements per iteration, which is exactly two 16-element scale blocks. The kernel
 loads:
 
@@ -117,6 +117,25 @@ loads:
 
 The per-block scales are folded into the partial sums and `weight_scale_2` is
 applied once after the warp reduction. Optional bias is fused in lane 0.
+
+### Row tiling
+
+A warp produces `RowsPerBlock` rows of `Y` at once (1, 2 or 4). The packed weight
+load and the E2M1 decode are shared by all rows in the tile, which matters for
+speculative decoding / MTP verify where `M = N_spec + 1 > 1`. This trades grid
+parallelism for reuse, because `M` no longer contributes to `gridDim.y`, so it is
+only enabled when the column grid `ceil(N / 8)` covers at least one full wave of
+SMs on its own. Measured on H200 (132 SMs, `M = 4`, FP16):
+
+| Shape | N | column blocks | `RowsPerBlock = 4` vs `1` |
+| --- | --- | --- | --- |
+| `lm_head` | 248320 | 31040 | 615.8 -> 537.7 us (1.15x) |
+| shared `down_proj` | 2048 | 256 | 4.30 -> 3.33 us (1.29x) |
+| shared `gate_up_proj` | 512 | 64 | 3.47 -> 4.27 us (0.81x) - gated off |
+
+Per-row fp32 accumulation order does not depend on `RowsPerBlock`, so results are
+bit-identical across tilings. Set `ORT_FP4_GEMV_ROW_TILING=0` to force
+`RowsPerBlock == 1`.
 
 This kernel reads the original unswizzled `[N, K / 16]` scale layout. Experiments
 with the native SM120 swizzled scale layout for GEMV were slower; see

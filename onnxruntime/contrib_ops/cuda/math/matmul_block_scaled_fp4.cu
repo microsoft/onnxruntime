@@ -12,6 +12,8 @@
 #include <cuda_fp8.h>
 #endif
 
+#include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 
@@ -70,17 +72,42 @@ __global__ void AddBiasKernel(T* __restrict__ y, const T* __restrict__ bias, int
   y[idx] = from_float<T>(to_float<T>(y[idx]) + to_float<T>(bias[col]));
 }
 
+// Number of warps (= output columns) per thread block in the GEMV.
+constexpr int kGemvWarpsPerBlock = 8;
+
+// Largest M tile the GEMV will fold into a single block. M is at most kGemvMaxM (8) at the
+// call site; beyond 4 rows the register pressure from the per-row accumulators and the A
+// fragments starts to cost more occupancy than the extra weight reuse buys.
+constexpr int kGemvMaxRowsPerBlock = 4;
+
+// Occupancy target for the GEMV. Holding RowsPerBlock accumulators costs registers, and left
+// unconstrained nvcc trades occupancy for scheduling freedom: the 4-row tile lands on 66
+// registers, which drops the block from 4 to 3 per SM and costs ~7% on the large shapes. Pin a
+// register budget per tile instead; all three instantiations compile spill-free at these targets.
+template <int RowsPerBlock>
+struct GemvMinBlocksPerSm {
+  static constexpr int value = (RowsPerBlock == 1) ? 6 : ((RowsPerBlock == 2) ? 5 : 4);
+};
+
 // -----------------------------------------------------------------------------
 // Fused NVFP4 weight-only GEMV fast path for the decode phase (small M).
 //
-// Each warp computes one output element Y[row, col]. The 32 lanes cooperatively
-// reduce over K reading the packed NVFP4 weight directly (two E2M1 values per
-// byte) with 16-byte coalesced loads, so the weight is streamed exactly once and
-// no [N, K] dequantized buffer is materialized. Each lane consumes 32 contiguous
-// K elements = 16 packed bytes, which span exactly two 16-element blocks; the two
-// per-block E4M3 scales are folded in per half. The global fp32 scale is applied
-// once after the warp reduction. Runs on any architecture with NVFP4 conversion
-// intrinsics (CUDA >= 12.8), including SM90 and SM120.
+// Each warp computes RowsPerBlock output elements Y[row0 .. row0 + RowsPerBlock, col].
+// The 32 lanes cooperatively reduce over K reading the packed NVFP4 weight directly
+// (two E2M1 values per byte) with 16-byte coalesced loads, so the weight is streamed
+// exactly once per block and no [N, K] dequantized buffer is materialized. Each lane
+// consumes 32 contiguous K elements = 16 packed bytes, which span exactly two
+// 16-element blocks; the two per-block E4M3 scales are folded in per half. The global
+// fp32 scale is applied once after the warp reduction. Runs on any architecture with
+// NVFP4 conversion intrinsics (CUDA >= 12.8), including SM90 and SM120.
+//
+// RowsPerBlock > 1 amortizes the weight load and the E2M1 decode across several rows
+// of A, which matters for speculative decoding / MTP verify where M = N_spec + 1 > 1.
+// It trades grid parallelism for that reuse (M no longer contributes to gridDim.y), so
+// the launcher only enables it when gridDim.x alone already fills the device; see
+// Fp4GemvRowsPerBlock() below. The per-row fp32 accumulation order is independent of
+// RowsPerBlock, so results are bit-identical across tilings.
+// -----------------------------------------------------------------------------
 // -----------------------------------------------------------------------------
 // Fast NVFP4 (E2M1) -> half / bfloat16 conversion.
 //
@@ -199,28 +226,37 @@ struct Fp4Cvt<nv_bfloat16> {
   static __device__ __forceinline__ float2 ToFloat2(T2 v) { return Traits::to_float2(v); }
 };
 
-template <typename T>
-__global__ void MatMulBlockQuantizedFp4WeightGemvKernel(T* __restrict__ y,
-                                                        const T* __restrict__ a,
-                                                        const uint8_t* __restrict__ b_packed,
-                                                        const uint8_t* __restrict__ weight_scale,
-                                                        const float* __restrict__ weight_scale_2,
-                                                        const T* __restrict__ bias,
-                                                        int m,
-                                                        int n,
-                                                        int k,
-                                                        int k_blocks) {
+template <typename T, int RowsPerBlock>
+__global__ __launch_bounds__(32 * kGemvWarpsPerBlock, GemvMinBlocksPerSm<RowsPerBlock>::value)
+    void MatMulBlockQuantizedFp4WeightGemvKernel(T* __restrict__ y,
+                                                 const T* __restrict__ a,
+                                                 const uint8_t* __restrict__ b_packed,
+                                                 const uint8_t* __restrict__ weight_scale,
+                                                 const float* __restrict__ weight_scale_2,
+                                                 const T* __restrict__ bias,
+                                                 int m,
+                                                 int n,
+                                                 int k,
+                                                 int k_blocks) {
   using Cvt = Fp4Cvt<T>;
   using T2 = typename Cvt::T2;
 
   const int lane = threadIdx.x;                           // 0..31
   const int col = blockIdx.x * blockDim.y + threadIdx.y;  // n
-  const int row = blockIdx.y;                             // m
-  if (row >= m || col >= n) {
+  const int row0 = blockIdx.y * RowsPerBlock;             // m
+  if (row0 >= m || col >= n) {
     return;
   }
 
-  const T* a_row = a + static_cast<size_t>(row) * k;
+  // Clamp the row base pointers instead of masking inside the K loop: a ragged tail tile
+  // recomputes the last row and discards it at the store, which keeps the inner loop
+  // branch-free. Only the last block of gridDim.y can be ragged, and only when
+  // RowsPerBlock does not divide M.
+  const T* a_rows[RowsPerBlock];
+#pragma unroll
+  for (int r = 0; r < RowsPerBlock; ++r) {
+    a_rows[r] = a + static_cast<size_t>(row0 + r < m ? row0 + r : m - 1) * k;
+  }
   const uint8_t* b_row = b_packed + static_cast<size_t>(col) * (k >> 1);
   const uint8_t* ws_row = weight_scale + static_cast<size_t>(col) * k_blocks;
 
@@ -228,7 +264,12 @@ __global__ void MatMulBlockQuantizedFp4WeightGemvKernel(T* __restrict__ y,
   constexpr int kElemsPerLane = 32;       // two 16-element blocks
   const int stride = 32 * kElemsPerLane;  // 1024 elements per warp iteration
 
-  float acc = 0.0f;
+  float acc[RowsPerBlock];
+#pragma unroll
+  for (int r = 0; r < RowsPerBlock; ++r) {
+    acc[r] = 0.0f;
+  }
+
   for (int base = 0; base < k; base += stride) {
     const int koff = base + lane * kElemsPerLane;
     if (koff < k) {
@@ -244,48 +285,93 @@ __global__ void MatMulBlockQuantizedFp4WeightGemvKernel(T* __restrict__ y,
       const uint4 packed = *reinterpret_cast<const uint4*>(b_row + (koff >> 1));
       const uint32_t words[4] = {packed.x, packed.y, packed.z, packed.w};
 
-      const uint4* ap = reinterpret_cast<const uint4*>(a_row + koff);
-      uint4 a0 = ap[0], a1 = ap[1], a2 = ap[2], a3 = ap[3];
-      const T2* av[4] = {reinterpret_cast<const T2*>(&a0), reinterpret_cast<const T2*>(&a1),
-                         reinterpret_cast<const T2*>(&a2), reinterpret_cast<const T2*>(&a3)};
-
-      // fp32 accumulation per 16-element scale block, matching the reference path.
+      // Decode the 32 weights owned by this lane once; every row of A reuses them.
       // Each 32-bit weight word holds 8 codes = 4 T2 pairs; words 0/1 cover the first
       // 16-element scale block and words 2/3 the second.
-      float p[2] = {0.0f, 0.0f};
+      T2 b2[4][4];
 #pragma unroll
       for (int w = 0; w < 4; ++w) {
         const uint32_t mag = words[w] & 0x77777777u;
         const uint32_t sgn = (words[w] >> 3) & 0x11111111u;
-        T2 b2[4];
-        Cvt::DecodeQuad(mag, sgn, b2[0], b2[1]);
-        Cvt::DecodeQuad(mag >> 16, sgn >> 16, b2[2], b2[3]);
-#pragma unroll
-        for (int j = 0; j < 4; ++j) {
-          const float2 pv = Cvt::ToFloat2(Cvt::Mul(av[w][j], b2[j]));
-          p[w >> 1] += pv.x + pv.y;
-        }
+        Cvt::DecodeQuad(mag, sgn, b2[w][0], b2[w][1]);
+        Cvt::DecodeQuad(mag >> 16, sgn >> 16, b2[w][2], b2[w][3]);
       }
 
       const int kb0 = koff / kBlockSize;
       const int kb1 = kb0 + 1;
       const float s0 = e4m3_to_float(ws_row[kb0]);
       const float s1 = e4m3_to_float(ws_row[kb1]);
-      acc += p[0] * s0 + p[1] * s1;
+
+#pragma unroll
+      for (int r = 0; r < RowsPerBlock; ++r) {
+        const uint4* ap = reinterpret_cast<const uint4*>(a_rows[r] + koff);
+
+        // fp32 accumulation per 16-element scale block, matching the reference path.
+        // One uint4 of A is live at a time so the 4-row tile stays inside its register budget.
+        float p[2] = {0.0f, 0.0f};
+#pragma unroll
+        for (int w = 0; w < 4; ++w) {
+          uint4 av4 = ap[w];
+          const T2* av = reinterpret_cast<const T2*>(&av4);
+#pragma unroll
+          for (int j = 0; j < 4; ++j) {
+            const float2 pv = Cvt::ToFloat2(Cvt::Mul(av[j], b2[w][j]));
+            p[w >> 1] += pv.x + pv.y;
+          }
+        }
+        acc[r] += p[0] * s0 + p[1] * s1;
+      }
     }
   }
 
 #pragma unroll
-  for (int offset = 16; offset > 0; offset >>= 1) {
-    acc += __shfl_down_sync(0xffffffffu, acc, offset);
-  }
-  if (lane == 0) {
-    float result = acc * (*weight_scale_2);
-    if (bias != nullptr) {
-      result += to_float<T>(bias[col]);
+  for (int r = 0; r < RowsPerBlock; ++r) {
+    float v = acc[r];
+#pragma unroll
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      v += __shfl_down_sync(0xffffffffu, v, offset);
     }
-    y[static_cast<size_t>(row) * n + col] = from_float<T>(result);
+    if (lane == 0 && row0 + r < m) {
+      float result = v * (*weight_scale_2);
+      if (bias != nullptr) {
+        result += to_float<T>(bias[col]);
+      }
+      y[static_cast<size_t>(row0 + r) * n + col] = from_float<T>(result);
+    }
   }
+}
+
+bool Fp4GemvRowTilingEnabled() {
+  static bool const enabled =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_ROW_TILING", 1) == 1;
+  return enabled;
+}
+
+// Picks the M tile for the GEMV.
+//
+// Folding M into the block removes gridDim.y parallelism: the grid shrinks from
+// ceil(N / warps) * M blocks to ceil(N / warps) * ceil(M / RowsPerBlock). That is a win when
+// the kernel is weight-bound and the device is already saturated by the N dimension alone
+// (the packed weight and its E2M1 decode are amortized over RowsPerBlock rows), and a loss
+// when it leaves SMs idle. Measured on H200 (132 SMs, M = 4, half):
+//
+//   N = 248320 (lm_head)      31040 col blocks   615.8 -> 537.7 us  (1.15x)
+//   N =   2048 (shared down)    256 col blocks     4.30 ->  3.33 us  (1.29x)
+//   N =    512 (shared gate)     64 col blocks     3.47 ->  4.27 us  (0.81x, fewer blocks than SMs)
+//
+// So gate on the column grid covering at least one full wave of SMs on its own.
+int Fp4GemvRowsPerBlock(int m, int n) {
+  if (m <= 1 || !Fp4GemvRowTilingEnabled()) {
+    return 1;
+  }
+  static int const sm_count = onnxruntime::llm::common::getMultiProcessorCount();
+  const int col_blocks = (n + kGemvWarpsPerBlock - 1) / kGemvWarpsPerBlock;
+  if (col_blocks < sm_count) {
+    return 1;
+  }
+  // Only 1, 2 and 4 are instantiated: a 3-row tile spills and is no better than two 2-row
+  // blocks, and M > 4 splits across gridDim.y (M is at most 8 here).
+  return (m >= kGemvMaxRowsPerBlock) ? kGemvMaxRowsPerBlock : 2;
 }
 
 }  // namespace
@@ -389,21 +475,40 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
   ORT_RETURN_IF_NOT(block_size == 16, "MatMulBlockQuantizedFp4Weight GEMV requires block_size == 16, got ", block_size, ".");
   ORT_RETURN_IF_NOT(k % 32 == 0, "MatMulBlockQuantizedFp4Weight GEMV requires K divisible by 32, got ", k, ".");
   const int k_blocks = (k + block_size - 1) / block_size;
-  constexpr int kWarpsPerBlock = 8;
-  const dim3 threads{32, kWarpsPerBlock};
-  const dim3 blocks{static_cast<unsigned int>((n + kWarpsPerBlock - 1) / kWarpsPerBlock),
-                    static_cast<unsigned int>(m)};
+  const int rows_per_block = Fp4GemvRowsPerBlock(m, n);
+  const dim3 threads{32, kGemvWarpsPerBlock};
+  const dim3 blocks{static_cast<unsigned int>((n + kGemvWarpsPerBlock - 1) / kGemvWarpsPerBlock),
+                    static_cast<unsigned int>((m + rows_per_block - 1) / rows_per_block)};
   const uint8_t* bp = reinterpret_cast<const uint8_t*>(b_packed);
   const uint8_t* ws = reinterpret_cast<const uint8_t*>(weight_scale);
+
+#define ORT_DISPATCH_FP4_GEMV(T)                                                                \
+  do {                                                                                          \
+    switch (rows_per_block) {                                                                   \
+      case 4:                                                                                   \
+        MatMulBlockQuantizedFp4WeightGemvKernel<T, 4><<<blocks, threads, 0, stream>>>(           \
+            reinterpret_cast<T*>(y), reinterpret_cast<const T*>(a), bp, ws, weight_scale_2,      \
+            reinterpret_cast<const T*>(bias), m, n, k, k_blocks);                                \
+        break;                                                                                  \
+      case 2:                                                                                   \
+        MatMulBlockQuantizedFp4WeightGemvKernel<T, 2><<<blocks, threads, 0, stream>>>(           \
+            reinterpret_cast<T*>(y), reinterpret_cast<const T*>(a), bp, ws, weight_scale_2,      \
+            reinterpret_cast<const T*>(bias), m, n, k, k_blocks);                                \
+        break;                                                                                  \
+      default:                                                                                  \
+        MatMulBlockQuantizedFp4WeightGemvKernel<T, 1><<<blocks, threads, 0, stream>>>(           \
+            reinterpret_cast<T*>(y), reinterpret_cast<const T*>(a), bp, ws, weight_scale_2,      \
+            reinterpret_cast<const T*>(bias), m, n, k, k_blocks);                                \
+        break;                                                                                  \
+    }                                                                                           \
+  } while (0)
+
   if (is_bf16) {
-    MatMulBlockQuantizedFp4WeightGemvKernel<nv_bfloat16><<<blocks, threads, 0, stream>>>(
-        reinterpret_cast<nv_bfloat16*>(y), reinterpret_cast<const nv_bfloat16*>(a), bp, ws, weight_scale_2,
-        reinterpret_cast<const nv_bfloat16*>(bias), m, n, k, k_blocks);
+    ORT_DISPATCH_FP4_GEMV(nv_bfloat16);
   } else {
-    MatMulBlockQuantizedFp4WeightGemvKernel<half><<<blocks, threads, 0, stream>>>(
-        reinterpret_cast<half*>(y), reinterpret_cast<const half*>(a), bp, ws, weight_scale_2,
-        reinterpret_cast<const half*>(bias), m, n, k, k_blocks);
+    ORT_DISPATCH_FP4_GEMV(half);
   }
+#undef ORT_DISPATCH_FP4_GEMV
   return CUDA_CALL(cudaGetLastError());
 #else
   ORT_UNUSED_PARAMETER(y);
