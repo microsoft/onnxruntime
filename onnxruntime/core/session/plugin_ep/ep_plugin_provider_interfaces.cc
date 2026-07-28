@@ -594,25 +594,26 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                "Weightless mode requested (ep.enable_weightless=1) but EP '", Type(),
                                "' does not implement GetWeightlessSupport.");
-      } else {
-        OrtWeightlessSupport support = OrtWeightlessSupport_NONE;
-        auto* ort_status = ort_ep_->GetWeightlessSupport(ort_ep_.get(), &support);
-        if (ort_status != nullptr) {
-          return ToStatusAndRelease(ort_status);
-        }
+      }
 
-        if (support == OrtWeightlessSupport_NONE) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                 "Weightless mode requested (ep.enable_weightless=1) but EP '", Type(),
-                                 "' does not support weightless mode on this device.");
-        }
+      OrtWeightlessSupport support = OrtWeightlessSupport_NONE;
+      auto* ort_status = ort_ep_->GetWeightlessSupport(ort_ep_.get(), &support);
+      if (ort_status != nullptr) {
+        return ToStatusAndRelease(ort_status);
+      }
+
+      if (support == OrtWeightlessSupport_NONE) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                               "Weightless mode requested (ep.enable_weightless=1) but EP '", Type(),
+                               "' does not support weightless mode on this device.");
       }
     } else {
       LOGS(GetEpLoggerOrDefault(), INFO) << "Weightless mode requested (ep.enable_weightless=1) but EP '"
                                          << Type() << "' was compiled with API version "
                                          << ort_ep_->ort_version_supported
-                                         << " which predates weightless support (version 29). "
-                                         << "Weightless request will be ignored.";
+                                         << " which predates GetWeightlessSupport (version 29). "
+                                         << "ORT cannot verify EP weightless support. "
+                                         << "The EP may still handle weightless via its own provider options.";
     }
   }
 
