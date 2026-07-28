@@ -190,6 +190,7 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
   GetCompiledModelCompatibilityInfo = GetCompiledModelCompatibilityInfoImpl;  // compatibility info for compiled models
   Sync = SyncImpl;                                                            // optional. can be nullptr
   GetDefaultMemoryDevice = GetDefaultMemoryDeviceImpl;                        // optional. can be nullptr
+  GetWeightlessSupport = GetWeightlessSupportImpl;                            // weightless support
 
   IGNORE_ORTSTATUS(ort_api.Logger_LogMessage(&logger_,
                                              OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -201,6 +202,13 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
 const char* ORT_API_CALL ExampleEp ::GetNameImpl(const OrtEp* this_ptr) noexcept {
   const auto* ep = static_cast<const ExampleEp*>(this_ptr);
   return ep->name_.c_str();
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEp::GetWeightlessSupportImpl(const OrtEp* /*this_ptr*/,
+                                                             OrtWeightlessSupport* support) noexcept {
+  *support = OrtWeightlessSupport_ALL;
+  return nullptr;
 }
 
 bool ExampleEp::CopiesConstantInitializers() const {
