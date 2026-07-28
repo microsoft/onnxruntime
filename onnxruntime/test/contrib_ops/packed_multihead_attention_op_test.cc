@@ -524,5 +524,53 @@ TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding_NoBias_BroadcastAttnBias_un
       data.broadcast_attention_bias);
 }
 
+// CUDA only for BFloat16 type. Runs through the unfused (cuBLAS GEMM + softmax) path only,
+// since the TRT fused runner is fp16-hardware-specific and never selected for bf16 inputs.
+#if defined(USE_CUDA)
+TEST(PackedMultiHeadAttentionTest, PackedQKV_NoPadding_NoBias_BFloat16_unfused) {
+  int min_cuda_architecture = 800;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BF16";
+    return;
+  }
+
+  AttentionTestData data;
+  GetSelfAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedQKV(data);
+  std::vector<int32_t> token_offset{0, 1, 2, 3};
+  std::vector<int32_t> cum_seq_len{0, 2, 4};
+  int token_count = data.batch_size * data.sequence_length;
+  int64_t head_size = static_cast<int64_t>(data.hidden_size / data.num_heads);
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
+
+  OpTester tester("PackedMultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(data.num_heads));
+
+  std::vector<int64_t> packed_qkv_dims = {token_count, data.num_heads, 3, head_size};
+  std::vector<int64_t> token_offset_dims = {data.batch_size, data.sequence_length};
+  std::vector<int64_t> cum_seq_len_dims = {data.batch_size + 1};
+  std::vector<int64_t> output_dims = {token_count, data.v_hidden_size};
+
+  tester.AddInput<BFloat16>("query", packed_qkv_dims, FloatsToBFloat16s(data.qkv_data));
+  tester.AddOptionalInputEdge<BFloat16>();
+  tester.AddOptionalInputEdge<BFloat16>();
+  tester.AddOptionalInputEdge<BFloat16>();  // bias
+  tester.AddInput<int32_t>("token_offset", token_offset_dims, token_offset);
+  tester.AddInput<int32_t>("cumulative_sequence_length", cum_seq_len_dims, cum_seq_len);
+  tester.AddOutput<BFloat16>("output", output_dims, FloatsToBFloat16s(data.fp16_output_data));
+  tester.SetOutputTolerance(0.02f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime

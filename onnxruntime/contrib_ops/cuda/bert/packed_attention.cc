@@ -32,13 +32,15 @@ namespace cuda {
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
 TrtFusedAttention<T>::TrtFusedAttention(const OpKernelInfo& info)
     : CudaKernel(info) {
   kernel_options_ = this->GetAttentionKernelOptions();
-  disable_fused_runner_ = sizeof(T) != 2 || !kernel_options_->UseTrtFusedAttention();
-  enable_trt_flash_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtFlashAttention();
+  // TRT fused runner (FusedMHARunnerFP16v2) only supports fp16; bf16 must fall back to flash/cutlass/unfused.
+  disable_fused_runner_ = !std::is_same<T, MLFloat16>::value || !kernel_options_->UseTrtFusedAttention();
+  enable_trt_flash_attention_ = std::is_same<T, MLFloat16>::value && kernel_options_->UseTrtFlashAttention();
 }
 
 template <typename T>
@@ -84,6 +86,7 @@ MHARunner* TrtFusedAttention<T>::GetFusedRunner(const cudaDeviceProp& device_pro
 // template class instantiation
 template class TrtFusedAttention<float>;
 template class TrtFusedAttention<MLFloat16>;
+template class TrtFusedAttention<BFloat16>;
 
 template <typename T>
 PackedAttention<T>::PackedAttention(const OpKernelInfo& info)
@@ -259,7 +262,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     int sm = device_prop.major * 10 + device_prop.minor;
     use_memory_efficient_attention =
         (attention_bias == nullptr || parameters.sequence_length % (4 * sizeof(T)) == 0) &&
-        sizeof(T) == 2 &&  // only enable for fp16
+        sizeof(T) == 2 &&  // enable for fp16 and bf16
         has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value, parameters.head_size, parameters.v_head_size);
   }
 #endif

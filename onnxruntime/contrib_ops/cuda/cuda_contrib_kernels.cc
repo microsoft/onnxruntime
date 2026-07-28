@@ -87,8 +87,10 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, Attention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, Attention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, PackedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PackedAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, PackedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, PackedMultiHeadAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PackedMultiHeadAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, PackedMultiHeadAttention);
 #if !defined(DISABLE_GENERATION_OPS)
 class CUDA_MS_OP_CLASS_NAME(1, BeamSearch);
 class CUDA_MS_OP_CLASS_NAME(1, WhisperBeamSearch);
@@ -252,6 +254,7 @@ class CUDA_MS_OP_CLASS_NAME(1, AllToAll);
 
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, ShardedMoE);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, ShardedMoE);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, ShardedMoE);
 
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DistributedMatMul);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DistributedMatMul);
@@ -348,8 +351,10 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, Attention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, PackedAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PackedAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, PackedAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, PackedMultiHeadAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PackedMultiHeadAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, PackedMultiHeadAttention)>,
 #if !defined(DISABLE_GENERATION_OPS)
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, BeamSearch)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, WhisperBeamSearch)>,
@@ -518,6 +523,7 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
 
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, ShardedMoE)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, ShardedMoE)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, ShardedMoE)>,
 
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DistributedMatMul)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DistributedMatMul)>,

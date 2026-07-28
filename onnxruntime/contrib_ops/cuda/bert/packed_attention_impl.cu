@@ -711,6 +711,13 @@ template Status QkvToContext<half>(
     PackedAttentionParameters& parameters,
     PackedAttentionData<half>& data);
 
+template Status QkvToContext<BFloat16>(
+    const cudaDeviceProp& device_prop,
+    cublasHandle_t& cublas,
+    cudaStream_t stream,
+    PackedAttentionParameters& parameters,
+    PackedAttentionData<BFloat16>& data);
+
 template Status LaunchTransposeRemovePadding<float>(
     float* output, const float* input,
     const int* token_offset, const int token_count,

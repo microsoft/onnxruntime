@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <thread>
-#include <utility>
-
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
-#include "contrib_ops/cuda/bert/transformer_cuda_common.h"
+#include "core/providers/cuda/cuda_type_conversion.h"
+#include "contrib_ops/cuda/moe/qmoe_kernels.h"
+#include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
 #include "sharded_moe.h"
 
 using namespace onnxruntime::cuda;
@@ -19,18 +18,6 @@ namespace cuda {
 
 #if defined(ORT_USE_NCCL)
 
-#define CHECK_CUDA(res)     \
-  if (res != cudaSuccess) { \
-    cuda_result = res;      \
-    return;                 \
-  }
-
-#define CHECK_NCCL(res)     \
-  if (res != ncclSuccess) { \
-    nccl_result = res;      \
-    return;                 \
-  }
-
 #define REGISTER_KERNEL_TYPED(T)                                                                            \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                            \
       ShardedMoE, kMSDomain, 1, T, kCudaExecutionProvider,                                                  \
@@ -39,27 +26,23 @@ namespace cuda {
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
-ShardedMoE<T>::ShardedMoE(const OpKernelInfo& op_kernel_info) : NcclKernel(op_kernel_info), MoEBase(op_kernel_info) {
+ShardedMoE<T>::ShardedMoE(const OpKernelInfo& op_kernel_info)
+    : NcclKernel(op_kernel_info), MoEBase(op_kernel_info, GetDeviceProp()) {
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("tensor_shards", &tensor_shards_).IsOK());
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("local_experts_start_index", &local_experts_start_index_).IsOK());
-  rank_to_experts_start_index_.resize(nccl_->Size());
-
-  auto allocator = op_kernel_info.GetAllocator(OrtMemTypeDefault);
-  ORT_ENFORCE(SynchronizeExpertsStartIndex(allocator) == Status::OK());
 }
 
 template <typename T>
 Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
-  typedef typename ToCudaType<T>::MappedType CudaT;
-  auto stream = context->GetComputeStream();
+  using CudaT = typename OrtToCudaType<T>::type;
+  using onnxruntime::llm::kernels::cutlass_kernels::ActivationType;
+  using onnxruntime::llm::kernels::cutlass_kernels::MOEParallelismConfig;
 
-  auto& device_prop = GetDeviceProp();
-  const int sm = device_prop.major * 10 + device_prop.minor;
-
-  AllocatorPtr allocator;
-  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+  cudaStream_t stream = Stream(context);
+  void* stream_obj = GetComputeStream(context);
 
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
@@ -70,6 +53,18 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc3_experts_weights_optional = context->Input<Tensor>(6);
   const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(7);
 
+  // Backward compatibility: see MoE::ComputeInternal (moe.cc) for the full rationale. Legacy
+  // exports leave swiglu_fusion at its default of 0 with FC1/FC3 pre-fused (interleaved).
+  int swiglu_fusion = swiglu_fusion_;
+  if (activation_type_ == ActivationType::Swiglu && swiglu_fusion == 0 &&
+      fc3_experts_weights_optional == nullptr) {
+    swiglu_fusion = 1;
+  }
+
+  bool is_fused_swiglu = (activation_type_ == ActivationType::Swiglu) &&
+                         (swiglu_fusion != 0) &&
+                         (fc3_experts_weights_optional == nullptr);
+
   MoEParameters moe_params(tensor_shards_);
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::moe_helper::CheckInputs<Tensor>(
       moe_params, input, router_probs,
@@ -77,140 +72,202 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
       fc2_experts_weights, fc2_experts_bias_optional, nullptr, nullptr,
       fc3_experts_weights_optional, fc3_experts_bias_optional, nullptr, nullptr,
       1,  // no quantization so pack size is 1
-      activation_type_ == ort_fastertransformer::ActivationType::SwiGLU,
+      is_fused_swiglu,
       0));  // no block-wise quantization for sharded MoE
 
-  ORT_RETURN_IF_NOT(moe_params.num_experts % nccl_->Size() == 0, "num_experts should be divisible by world_size");
-
-  ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(sm,
-                                                                     activation_type_,
-                                                                     fc3_experts_weights_optional != nullptr,
-                                                                     normalize_routing_weights_,
-                                                                     use_sparse_mixer_);
-
-  size_t ws_size = moe_runner.getWorkspaceSize(
-      static_cast<size_t>(moe_params.num_rows), static_cast<size_t>(moe_params.hidden_size),
-      static_cast<size_t>(moe_params.inter_size), static_cast<size_t>(moe_params.num_experts), static_cast<size_t>(k_));
-
-  size_t fc2_output_size = k_ * moe_params.num_rows * moe_params.hidden_size * sizeof(CudaT);
-  size_t expert_scales_size = k_ * moe_params.num_rows * sizeof(CudaT);
-  size_t expanded_source_row_to_expanded_dest_row_size = k_ * moe_params.num_rows * sizeof(int);
-  size_t expert_for_source_row_size = k_ * moe_params.num_rows * sizeof(int);
-
-  // TODO: allocate one buffer and reuse it.
-  IAllocatorUniquePtr<void> work_space = IAllocator::MakeUniquePtr<void>(allocator, ws_size, false, stream);
-  IAllocatorUniquePtr<void> fc2_output = IAllocator::MakeUniquePtr<void>(allocator, fc2_output_size, false, stream);
-  IAllocatorUniquePtr<void> fc2_output_bc = IAllocator::MakeUniquePtr<void>(allocator, fc2_output_size, false, stream);
-  IAllocatorUniquePtr<void> expert_scales =
-      IAllocator::MakeUniquePtr<void>(allocator, expert_scales_size, false, stream);
-  IAllocatorUniquePtr<void> expanded_source_row_to_expanded_dest_row =
-      IAllocator::MakeUniquePtr<void>(allocator, expanded_source_row_to_expanded_dest_row_size, false, stream);
-  IAllocatorUniquePtr<void> expert_for_source_row =
-      IAllocator::MakeUniquePtr<void>(allocator, expert_for_source_row_size, false, stream);
-
-  const CudaT* fc_scales_ptr = nullptr;
-
-  moe_runner.run_moe_fc(
-      reinterpret_cast<const CudaT*>(input->template Data<T>()),
-      reinterpret_cast<const CudaT*>(router_probs->template Data<T>()),
-      reinterpret_cast<const CudaT*>(fc1_experts_weights->template Data<T>()), std::move(fc_scales_ptr),
-      fc1_experts_bias_optional == nullptr
-          ? nullptr
-          : reinterpret_cast<const CudaT*>(fc1_experts_bias_optional->template Data<T>()),
-      activation_type_,
-      fc3_experts_weights_optional == nullptr
-          ? nullptr
-          : reinterpret_cast<const CudaT*>(fc3_experts_weights_optional->template Data<T>()),
-      std::move(fc_scales_ptr),
-      fc3_experts_bias_optional == nullptr
-          ? nullptr
-          : reinterpret_cast<const CudaT*>(fc3_experts_bias_optional->template Data<T>()),
-      reinterpret_cast<const CudaT*>(fc2_experts_weights->template Data<T>()), std::move(fc_scales_ptr),
-      static_cast<int>(moe_params.num_rows), static_cast<int>(moe_params.hidden_size),
-      static_cast<int>(moe_params.inter_size), static_cast<int>(moe_params.num_experts),
-      static_cast<int>(moe_params.local_num_experts), static_cast<int>(local_experts_start_index_),
-      static_cast<int>(k_), reinterpret_cast<char*>(work_space.get()), reinterpret_cast<CudaT*>(fc2_output.get()),
-      reinterpret_cast<CudaT*>(expert_scales.get()),
-      reinterpret_cast<int*>(expanded_source_row_to_expanded_dest_row.get()),
-      reinterpret_cast<int*>(expert_for_source_row.get()), Stream(context));
-
-  Tensor* output = context->Output(0, input->Shape());
-
-  if (moe_params.parallel_type == MoEParallelType::None) {
-    fc2_output_bc = std::move(fc2_output);
-  }
-
-  if (moe_params.parallel_type == MoEParallelType::EPAndTP) {
+  MOEParallelismConfig parallelism_config;
+  if (moe_params.parallel_type == MoEParallelType::TP) {
+    ORT_ENFORCE(moe_params.tensor_shards == nccl_->Size());
+    parallelism_config = MOEParallelismConfig(nccl_->Size(), nccl_->Rank(), /*ep_size*/ 1, /*ep_rank*/ 0);
+  } else if (moe_params.parallel_type == MoEParallelType::EP) {
+    ORT_RETURN_IF_NOT(moe_params.num_experts % nccl_->Size() == 0, "num_experts should be divisible by world_size");
+    int64_t const ep_rank = local_experts_start_index_ / moe_params.local_num_experts;
+    ORT_ENFORCE(ep_rank * moe_params.local_num_experts == local_experts_start_index_,
+                "ShardedMoE requires experts to be split contiguously and evenly across ranks");
+    parallelism_config = MOEParallelismConfig(/*tp_size*/ 1, /*tp_rank*/ 0,
+                                              static_cast<int>(nccl_->Size()), static_cast<int>(ep_rank));
+  } else if (moe_params.parallel_type == MoEParallelType::EPAndTP) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Expert and Tensor Parallelism is not supported yet");
   }
 
-  if (moe_params.parallel_type == MoEParallelType::TP) {
-    ORT_ENFORCE(moe_params.tensor_shards == nccl_->Size());
-
-    ORT_RETURN_IF_ERROR(FuncCustomAllReduce(nccl_,
-                                            Stream(context),
-                                            fc2_output.get(),
-                                            fc2_output_bc.get(),
-                                            static_cast<int64_t>(fc2_output_size / sizeof(CudaT)),
-                                            input->DataType(),
-                                            collective::IPCMemoryResourcePack::GetGlobalInstance()));
-  }
-
-  if (moe_params.parallel_type == MoEParallelType::EP) {
-    size_t stride_count = moe_params.hidden_size;
-    size_t stride_bytes = stride_count * sizeof(CudaT);
-    int64_t total_past_rows = 0;
-    int64_t total_covered_rows = 0;
-
-    NCCL_RETURN_IF_ERROR(ncclGroupStart());
-    for (int rank = 0; rank < nccl_->Size(); ++rank) {
-      int64_t experts_start_index = rank_to_experts_start_index_[rank];
-      moe_runner.get_total_rows_info(experts_start_index, moe_params.local_num_experts, total_past_rows,
-                                     total_covered_rows);
-      const char* src = reinterpret_cast<const char*>(fc2_output.get()) + total_past_rows * stride_bytes;
-      char* dst = reinterpret_cast<char*>(fc2_output_bc.get()) + total_past_rows * stride_bytes;
-      NCCL_RETURN_IF_ERROR(ncclBroadcast(src, dst, total_covered_rows * stride_count,
-                                         GetNcclDataType(input->DataType()), rank, nccl_->Comm(), Stream(context)));
+  auto& device_prop = GetDeviceProp();
+  int sm = device_prop.major * 10 + device_prop.minor;
+  // SM90 TMA WS kernels only support f16/bf16, not float32. Force SM80 path for float32.
+  if constexpr (std::is_same_v<T, float>) {
+    if (sm >= 90) {
+      sm = 80;
     }
-    NCCL_RETURN_IF_ERROR(ncclGroupEnd());
   }
 
-  ort_fastertransformer::finalize_moe_routing_kernelLauncher(
-      reinterpret_cast<CudaT*>(fc2_output_bc.get()), reinterpret_cast<CudaT*>(output->template MutableData<T>()),
+  {
+    constexpr int min_dim = 16;
+    ORT_RETURN_IF(moe_params.hidden_size < min_dim,
+                  "MoE CUDA kernel requires hidden_size >= ", min_dim, " for SM", sm,
+                  ", got ", moe_params.hidden_size);
+    ORT_RETURN_IF(moe_params.inter_size < min_dim,
+                  "MoE CUDA kernel requires inter_size >= ", min_dim, " for SM", sm,
+                  ", got ", moe_params.inter_size);
+  }
+
+  onnxruntime::llm::kernels::cutlass_kernels::ActivationType kernel_activation_type = activation_type_;
+  if (activation_type_ == ActivationType::Silu && fc3_experts_weights_optional != nullptr) {
+    // Mixtral case: SiLU activation with separate FC3 mapped onto SwiGLU (Linear * SiLU(Gate)).
+    kernel_activation_type = ActivationType::Swiglu;
+  }
+
+  onnxruntime::llm::kernels::cutlass_kernels::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(
+      sm, kernel_activation_type, normalize_routing_weights_, use_sparse_mixer_);
+
+  size_t ws_size = moe_runner.getWorkspaceSize(
+      static_cast<size_t>(moe_params.num_rows), static_cast<size_t>(moe_params.hidden_size),
+      static_cast<size_t>(moe_params.inter_size), static_cast<size_t>(moe_params.num_experts),
+      static_cast<size_t>(k_), kernel_activation_type, parallelism_config, /*use_awq*/ false);
+
+  size_t expanded_rows = SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_);
+  size_t scales_bytes = expanded_rows * sizeof(float);
+  size_t indices_bytes = expanded_rows * sizeof(int);
+  size_t permutation_bytes = expanded_rows * sizeof(int);
+  size_t total_scratch_bytes = SafeInt<size_t>(ws_size) + scales_bytes + indices_bytes + permutation_bytes;
+
+  auto work_space = GetScratchBuffer<void>(total_scratch_bytes, stream_obj);
+  char* workspace_ptr = reinterpret_cast<char*>(work_space.get());
+  float* expert_scales = reinterpret_cast<float*>(workspace_ptr + ws_size);
+  int* expert_indices = reinterpret_cast<int*>(workspace_ptr + ws_size + scales_bytes);
+  int* unpermuted_row_to_permuted_row = reinterpret_cast<int*>(workspace_ptr + ws_size + scales_bytes + indices_bytes);
+
+  // Perform Softmax + TopK. router_probs shares type T with input, so BFloat16 needs its own
+  // branch: reinterpreting it as float32 (as a naive is_fp16-only check would) reads garbage.
+  bool is_fp16 = input->IsDataType<MLFloat16>();
+  bool is_bf16 = input->IsDataType<BFloat16>();
+
+  if (use_sparse_mixer_) {
+    ORT_ENFORCE(k_ == 2, "Sparse mixer only supports k=2");
+    ORT_ENFORCE(moe_params.num_experts == 8 || moe_params.num_experts == 16,
+                "Sparse mixer only supports 8 or 16 experts, got ", moe_params.num_experts);
+
+    if (is_fp16) {
+      LaunchSparseMixerTop2(
+          reinterpret_cast<const half*>(router_probs->DataRaw()), expert_scales, expert_indices,
+          unpermuted_row_to_permuted_row, static_cast<int>(moe_params.num_rows),
+          static_cast<int>(moe_params.num_experts), stream);
+    } else if (is_bf16) {
+      LaunchSparseMixerTop2(
+          reinterpret_cast<const __nv_bfloat16*>(router_probs->DataRaw()), expert_scales, expert_indices,
+          unpermuted_row_to_permuted_row, static_cast<int>(moe_params.num_rows),
+          static_cast<int>(moe_params.num_experts), stream);
+    } else {
+      LaunchSparseMixerTop2(
+          reinterpret_cast<const float*>(router_probs->DataRaw()), expert_scales, expert_indices,
+          unpermuted_row_to_permuted_row, static_cast<int>(moe_params.num_rows),
+          static_cast<int>(moe_params.num_experts), stream);
+    }
+  } else {
+    if (is_fp16) {
+      LaunchSoftmaxTopK(
+          reinterpret_cast<const half*>(router_probs->DataRaw()), expert_scales, expert_indices,
+          static_cast<int>(moe_params.num_rows), static_cast<int>(moe_params.num_experts),
+          static_cast<int>(k_), normalize_routing_weights_, stream);
+    } else if (is_bf16) {
+      LaunchSoftmaxTopK(
+          reinterpret_cast<const __nv_bfloat16*>(router_probs->DataRaw()), expert_scales, expert_indices,
+          static_cast<int>(moe_params.num_rows), static_cast<int>(moe_params.num_experts),
+          static_cast<int>(k_), normalize_routing_weights_, stream);
+    } else {
+      LaunchSoftmaxTopK(
+          reinterpret_cast<const float*>(router_probs->DataRaw()), expert_scales, expert_indices,
+          static_cast<int>(moe_params.num_rows), static_cast<int>(moe_params.num_experts),
+          static_cast<int>(k_), normalize_routing_weights_, stream);
+    }
+  }
+
+  Tensor* output = context->Output(0, input->Shape());
+
+  // FC1/FC2 weight packing: identical to MoE::ComputeInternal (moe.cc) — the runner expects FC1
+  // fused as [E, 2*I, H] when a gated activation ships gate/value as separate FC1/FC3 weights.
+  size_t fc1_block_size = static_cast<size_t>(moe_params.inter_size) * static_cast<size_t>(moe_params.hidden_size);
+  int E = static_cast<int>(moe_params.num_experts);
+
+  const CudaT* fc1_input_ptr = reinterpret_cast<const CudaT*>(fc1_experts_weights->DataRaw());
+  const CudaT* fc1_processed_ptr = fc1_input_ptr;
+  IAllocatorUniquePtr<void> fc1_processed_buffer;
+
+  if (fc3_experts_weights_optional != nullptr) {
+    const CudaT* fc3_input_ptr = reinterpret_cast<const CudaT*>(fc3_experts_weights_optional->DataRaw());
+    size_t fc1_total_size = E * 2 * fc1_block_size * sizeof(CudaT);
+    fc1_processed_buffer = GetScratchBuffer<void>(fc1_total_size, stream_obj);
+    CudaT* fc1_fc3_processed_ptr = reinterpret_cast<CudaT*>(fc1_processed_buffer.get());
+    fc1_processed_ptr = fc1_fc3_processed_ptr;
+
+    for (int e = 0; e < E; ++e) {
+      CudaT* dest_fc1 = fc1_fc3_processed_ptr + e * 2 * fc1_block_size;
+      CudaT* dest_fc3 = fc1_fc3_processed_ptr + e * 2 * fc1_block_size + fc1_block_size;
+
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dest_fc1, fc1_input_ptr + e * fc1_block_size,
+                                           fc1_block_size * sizeof(CudaT), cudaMemcpyDeviceToDevice, stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dest_fc3, fc3_input_ptr + e * fc1_block_size,
+                                           fc1_block_size * sizeof(CudaT), cudaMemcpyDeviceToDevice, stream));
+    }
+  }
+
+  const CudaT* fc2_processed_ptr = reinterpret_cast<const CudaT*>(fc2_experts_weights->DataRaw());
+
+  // finalizeMoeRoutingKernelLauncher (invoked inside runMoe) already zero-fills tokens that don't
+  // route to a rank-local expert (EP) and only applies fc2 bias on tp_rank == 0 (TP), so summing
+  // the per-rank finalized output across ranks is equivalent to the pre-finalize reduce+finalize
+  // ordering the old ft_moe runner used, without needing a separate collective buffer per rank.
+  bool needs_all_reduce = moe_params.parallel_type == MoEParallelType::TP ||
+                          moe_params.parallel_type == MoEParallelType::EP;
+
+  IAllocatorUniquePtr<void> local_output_buffer;
+  void* final_output_ptr;
+  if (needs_all_reduce) {
+    size_t output_bytes = static_cast<size_t>(moe_params.num_rows) * static_cast<size_t>(moe_params.hidden_size) * sizeof(CudaT);
+    local_output_buffer = GetScratchBuffer<void>(output_bytes, stream_obj);
+    final_output_ptr = local_output_buffer.get();
+  } else {
+    final_output_ptr = output->MutableDataRaw();
+  }
+
+  moe_runner.runMoe(
+      reinterpret_cast<const CudaT*>(input->template Data<T>()),
+      nullptr,  // input_sf
+      expert_indices,
+      expert_scales,
+      fc1_processed_ptr,
+      fc1_experts_bias_optional == nullptr
+          ? nullptr
+          : reinterpret_cast<const CudaT*>(fc1_experts_bias_optional->template Data<T>()),
+      kernel_activation_type,
+      fc2_processed_ptr,
       fc2_experts_bias_optional == nullptr
           ? nullptr
           : reinterpret_cast<const CudaT*>(fc2_experts_bias_optional->template Data<T>()),
-      reinterpret_cast<CudaT*>(expert_scales.get()),
-      reinterpret_cast<int*>(expanded_source_row_to_expanded_dest_row.get()),
-      reinterpret_cast<int*>(expert_for_source_row.get()), static_cast<int>(moe_params.num_rows),
-      static_cast<int>(moe_params.hidden_size), static_cast<int>(k_), Stream(context));
+      onnxruntime::llm::kernels::cutlass_kernels::QuantParams{},
+      static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.hidden_size),
+      static_cast<int64_t>(moe_params.inter_size), static_cast<int>(moe_params.num_experts),
+      static_cast<int>(k_), workspace_ptr, final_output_ptr,
+      unpermuted_row_to_permuted_row, parallelism_config,
+      [&]() {
+        onnxruntime::llm::kernels::cutlass_kernels::ActivationParams params(kernel_activation_type);
+        params.alpha = activation_alpha_;
+        params.beta = activation_beta_;
+        params.swiglu_fusion = swiglu_fusion;
+        params.limit = swiglu_limit_;
+        return params;
+      }(),
+      stream);
+
+  if (needs_all_reduce) {
+    ORT_RETURN_IF_ERROR(FuncCustomAllReduce(
+        nccl_, stream, final_output_ptr, output->MutableDataRaw(),
+        static_cast<int64_t>(moe_params.num_rows) * static_cast<int64_t>(moe_params.hidden_size),
+        input->DataType(),
+        collective::IPCMemoryResourcePack::GetGlobalInstance()));
+  }
 
   return Status::OK();
 }
 
-template <typename T>
-Status ShardedMoE<T>::SynchronizeExpertsStartIndex(AllocatorPtr& allocator) const {
-  using IndexType = int64_t;
-  size_t IndexTypeSize = sizeof(IndexType);
-
-  IAllocatorUniquePtr<IndexType> experts_start_index_d =
-      IAllocator::MakeUniquePtr<IndexType>(allocator, 1, false);
-  IAllocatorUniquePtr<IndexType> rank_to_experts_start_index_d =
-      IAllocator::MakeUniquePtr<IndexType>(allocator, nccl_->Size(), false);
-
-  CUDA_RETURN_IF_ERROR(cudaMemcpy(experts_start_index_d.get(), &local_experts_start_index_, IndexTypeSize,
-                                  cudaMemcpyHostToDevice));
-  NCCL_RETURN_IF_ERROR(ncclAllGather(reinterpret_cast<const char*>(experts_start_index_d.get()),
-                                     reinterpret_cast<char*>(rank_to_experts_start_index_d.get()), 1,
-                                     GetNcclDataType(DataTypeImpl::GetType<IndexType>()), nccl_->Comm(),
-                                     nullptr));
-
-  CUDA_RETURN_IF_ERROR(cudaMemcpy(const_cast<int64_t*>(rank_to_experts_start_index_.data()),
-                                  rank_to_experts_start_index_d.get(), nccl_->Size() * IndexTypeSize,
-                                  cudaMemcpyDeviceToHost));
-
-  return Status::OK();
-}
 #endif
 
 }  // namespace cuda

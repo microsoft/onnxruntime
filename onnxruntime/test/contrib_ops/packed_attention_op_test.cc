@@ -501,6 +501,66 @@ TEST(PackedAttentionTest, TestWithRandomDataWithRBP) {
   }
 }
 
+// CUDA only for BFloat16 type.
+#if defined(USE_CUDA)
+TEST(PackedAttentionTest, NoPack_BFloat16) {
+  int min_cuda_architecture = 800;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BF16";
+    return;
+  }
+
+  int batch_size = 1;
+  int sequence_length = 2;
+  int hidden_size = 4;
+  int number_of_heads = 2;
+
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<float> weight_data = {
+      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
+      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
+      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
+      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
+
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
+
+  std::vector<int32_t> token_offset{0, 1};
+  std::vector<int32_t> cum_seq_len{0, 2};
+
+  std::vector<float> output_data = {
+      3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
+      3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f};
+
+  int token_count = batch_size * sequence_length;
+
+  OpTester tester("PackedAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
+
+  std::vector<int64_t> input_dims = {token_count, hidden_size};
+  std::vector<int64_t> weights_dims = {hidden_size, 3 * hidden_size};
+  std::vector<int64_t> bias_dims = {3 * hidden_size};
+  std::vector<int64_t> token_offset_dims = {batch_size, sequence_length};
+  std::vector<int64_t> cum_seq_len_dims = {batch_size + 1};
+  std::vector<int64_t> output_dims = {token_count, hidden_size};
+
+  tester.AddInput<BFloat16>("input", input_dims, FloatsToBFloat16s(input_data));
+  tester.AddInput<BFloat16>("weight", weights_dims, FloatsToBFloat16s(weight_data));
+  tester.AddInput<BFloat16>("bias", bias_dims, FloatsToBFloat16s(bias_data));
+  tester.AddInput<int32_t>("token_offset", token_offset_dims, token_offset);
+  tester.AddInput<int32_t>("cumulative_sequence_length", cum_seq_len_dims, cum_seq_len);
+  tester.AddOutput<BFloat16>("output", output_dims, FloatsToBFloat16s(output_data));
+  tester.SetOutputTolerance(0.02f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
+
 TEST(PackedAttentionTest, TestWithRandomDataLargeSeq) {
   int batch_size = 2;
   int sequence_length = 1152;  // > 1024

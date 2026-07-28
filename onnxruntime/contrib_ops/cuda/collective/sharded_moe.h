@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "contrib_ops/cuda/moe/ft_moe/moe_kernel.h"
 #include "contrib_ops/cuda/moe/moe_base.h"
 #include "core/common/common.h"
 #include "nccl_kernels.h"
@@ -23,11 +22,8 @@ class ShardedMoE final : public NcclKernel, public MoEBase {
   Status ComputeInternal(OpKernelContext* ctx) const override;
 
  private:
-  Status SynchronizeExpertsStartIndex(AllocatorPtr& alloc) const;
-
   int64_t local_experts_start_index_;
   int64_t tensor_shards_;
-  InlinedVector<int64_t> rank_to_experts_start_index_;
 };
 
 #endif

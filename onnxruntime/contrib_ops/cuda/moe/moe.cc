@@ -223,6 +223,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
   // Perform Softmax + TopK
   bool is_fp16 = input->IsDataType<MLFloat16>();
+  bool is_bf16 = input->IsDataType<BFloat16>();
 
   if (use_sparse_mixer_) {
     ORT_ENFORCE(k_ == 2, "Sparse mixer only supports k=2");
@@ -235,6 +236,15 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
           expert_scales,
           expert_indices,
           unpermuted_row_to_permuted_row,  // source_rows
+          static_cast<int>(moe_params.num_rows),
+          static_cast<int>(moe_params.num_experts),
+          stream);
+    } else if (is_bf16) {
+      LaunchSparseMixerTop2(
+          reinterpret_cast<const __nv_bfloat16*>(router_probs->DataRaw()),
+          expert_scales,
+          expert_indices,
+          unpermuted_row_to_permuted_row,
           static_cast<int>(moe_params.num_rows),
           static_cast<int>(moe_params.num_experts),
           stream);
@@ -253,6 +263,16 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     if (is_fp16) {
       LaunchSoftmaxTopK(
           reinterpret_cast<const half*>(router_probs->DataRaw()),
+          expert_scales,
+          expert_indices,
+          static_cast<int>(moe_params.num_rows),
+          static_cast<int>(moe_params.num_experts),
+          static_cast<int>(k_),
+          normalize_routing_weights_,
+          stream);
+    } else if (is_bf16) {
+      LaunchSoftmaxTopK(
+          reinterpret_cast<const __nv_bfloat16*>(router_probs->DataRaw()),
           expert_scales,
           expert_indices,
           static_cast<int>(moe_params.num_rows),
