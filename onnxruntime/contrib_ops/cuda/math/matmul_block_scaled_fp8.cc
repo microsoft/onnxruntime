@@ -119,6 +119,7 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
         k_i,
         SafeInt<int>(block_size_),
         std::is_same<T, BFloat16>::value,
+        GetDeviceProp().major,
         Stream(context));
   }
 

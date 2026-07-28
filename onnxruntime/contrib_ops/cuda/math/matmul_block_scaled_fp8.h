@@ -67,6 +67,7 @@ Status LaunchQuantizeDequantizeActivationFp8(void* a_out,
 // directly (no [N, K] dequant buffer). a is [M, K] activation (FP16/BF16), b_fp8 is [N, K]
 // FP8 E4M3, weight_scale is [N, ceil(K/block_size)] fp32, bias is an optional [N] vector (may be
 // null). Output y is [M, N] in the activation type. Requires k % 16 == 0 and block_size % 16 == 0.
+// sm_major selects the tensor-core (mma.m16n8k16) variant, which needs SM80+.
 // Runs on any architecture with FP8 conversion intrinsics (CUDA >= 11.8).
 Status LaunchMatMulBlockScaledFp8Gemv(void* y,
                                       const void* a,
@@ -78,6 +79,7 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
                                       int k,
                                       int block_size,
                                       bool is_bf16,
+                                      int sm_major,
                                       cudaStream_t stream);
 
 }  // namespace onnxruntime::contrib::cuda

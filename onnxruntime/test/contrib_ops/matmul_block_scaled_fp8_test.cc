@@ -297,6 +297,146 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvSpeculativeDecodeTilesFp16) {
   }
 }
 
+// Covers the SM80+ tensor-core (mma.m16n8k16) GEMV dispatch, taken when K is a multiple of 64
+// with at least 4 K windows and block_size is a multiple of 64. It shares no code with the FMA
+// kernel: the K axis is permuted, one warp owns a 16-column tile (each lane holding two columns
+// eight apart and two rows), and the K split is reduced across warps through shared memory. So
+// it needs its own coverage - ragged N and M, several K blocks with per-block scales that vary by
+// column, and inputs that vary along every one of M, N and K so a mis-mapped index cannot pass.
+TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreTilesFp16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp8Weight.";
+  }
+
+  struct Case {
+    int64_t n, k, block_size;
+  };
+  // k = 256/320 give 4/5 K windows, which selects the small-KSplit fallback; k = 1024 gives the
+  // full KSplit (16 below N = 8192, 8 at or above it). Every N is ragged modulo the 16-column tile.
+  const Case cases[] = {{18, 256, 64}, {1026, 320, 64}, {4098, 1024, 256}, {8194, 1024, 512}};
+  static const float kWeightValues[] = {1.0f, 2.0f, -1.0f};      // exact in E4M3
+  static const float kActValues[] = {1.0f, -1.0f, 0.5f, -0.5f};  // exact in FP16
+  for (const Case& c : cases) {
+    const int64_t k_blocks = c.k / c.block_size;
+    for (const int64_t m : {1, 3, 4, 8}) {
+      // Periods 3 (weight) and 4 (activation) are coprime, so no (row, col) pair sums to zero by
+      // symmetry. Scales are 1/256-based so the reference stays small enough to be exact in FP16.
+      std::vector<Float8E4M3FN> b(static_cast<size_t>(c.n * c.k));
+      std::vector<float> b_ref(static_cast<size_t>(c.n * c.k));
+      for (int64_t col = 0; col < c.n; ++col) {
+        for (int64_t i = 0; i < c.k; ++i) {
+          const float v = kWeightValues[(col + i) % 3];
+          b[static_cast<size_t>(col * c.k + i)] = Float8E4M3FN(v);
+          b_ref[static_cast<size_t>(col * c.k + i)] = v;
+        }
+      }
+      std::vector<float> b_scale(static_cast<size_t>(c.n * k_blocks));
+      for (int64_t col = 0; col < c.n; ++col) {
+        for (int64_t kb = 0; kb < k_blocks; ++kb) {
+          b_scale[static_cast<size_t>(col * k_blocks + kb)] = static_cast<float>(1 + (col + kb) % 3) / 256.0f;
+        }
+      }
+      std::vector<float> a(static_cast<size_t>(m * c.k));
+      for (int64_t row = 0; row < m; ++row) {
+        for (int64_t i = 0; i < c.k; ++i) {
+          a[static_cast<size_t>(row * c.k + i)] = kActValues[(row + i) % 4];
+        }
+      }
+      std::vector<float> expected(static_cast<size_t>(m * c.n));
+      for (int64_t row = 0; row < m; ++row) {
+        for (int64_t col = 0; col < c.n; ++col) {
+          float acc = 0.0f;
+          for (int64_t i = 0; i < c.k; ++i) {
+            acc += a[static_cast<size_t>(row * c.k + i)] * b_ref[static_cast<size_t>(col * c.k + i)] *
+                   b_scale[static_cast<size_t>(col * k_blocks + i / c.block_size)];
+          }
+          expected[static_cast<size_t>(row * c.n + col)] = acc;
+        }
+      }
+
+      OpTester test("MatMulBlockQuantizedFp8Weight", 1, onnxruntime::kMSDomain);
+      test.AddAttribute<int64_t>("block_size", c.block_size);
+      test.AddInput<MLFloat16>("A", {m, c.k}, FloatsToMLFloat16s(a));
+      test.AddInput<Float8E4M3FN>("B", {c.n, c.k}, b);
+      test.AddInput<float>("b_scale", {c.n, k_blocks}, b_scale);
+      test.AddOutput<MLFloat16>("Y", {m, c.n}, FloatsToMLFloat16s(expected));
+      test.SetOutputTolerance(0.05f);
+
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
+  }
+}
+
+// BF16 companion to GemvTensorCoreTilesFp16. BF16 has its own mma instruction and its own FP8
+// converter (E4M3 -> FP16 -> FP32 -> BF16), neither shared with the FP16 instantiation. Also
+// covers the bias input on the tensor-core path.
+TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreTilesBf16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp8Weight.";
+  }
+
+  constexpr int64_t n = 1026;  // ragged modulo the 16-column tile
+  constexpr int64_t k = 256;
+  constexpr int64_t block_size = 64;
+  constexpr int64_t k_blocks = k / block_size;
+  constexpr int64_t m = 4;
+  static const float kWeightValues[] = {1.0f, 2.0f, -1.0f};
+  static const float kActValues[] = {1.0f, -1.0f, 0.5f, -0.5f};
+
+  std::vector<Float8E4M3FN> b(static_cast<size_t>(n * k));
+  std::vector<float> b_ref(static_cast<size_t>(n * k));
+  for (int64_t col = 0; col < n; ++col) {
+    for (int64_t i = 0; i < k; ++i) {
+      const float v = kWeightValues[(col + i) % 3];
+      b[static_cast<size_t>(col * k + i)] = Float8E4M3FN(v);
+      b_ref[static_cast<size_t>(col * k + i)] = v;
+    }
+  }
+  std::vector<float> b_scale(static_cast<size_t>(n * k_blocks));
+  for (int64_t col = 0; col < n; ++col) {
+    for (int64_t kb = 0; kb < k_blocks; ++kb) {
+      b_scale[static_cast<size_t>(col * k_blocks + kb)] = static_cast<float>(1 + (col + kb) % 3) / 256.0f;
+    }
+  }
+  std::vector<float> a(static_cast<size_t>(m * k));
+  for (int64_t row = 0; row < m; ++row) {
+    for (int64_t i = 0; i < k; ++i) {
+      a[static_cast<size_t>(row * k + i)] = kActValues[(row + i) % 4];
+    }
+  }
+  std::vector<float> bias(static_cast<size_t>(n));
+  for (int64_t col = 0; col < n; ++col) {
+    bias[static_cast<size_t>(col)] = static_cast<float>(col % 5) - 2.0f;
+  }
+  std::vector<float> expected(static_cast<size_t>(m * n));
+  for (int64_t row = 0; row < m; ++row) {
+    for (int64_t col = 0; col < n; ++col) {
+      float acc = 0.0f;
+      for (int64_t i = 0; i < k; ++i) {
+        acc += a[static_cast<size_t>(row * k + i)] * b_ref[static_cast<size_t>(col * k + i)] *
+               b_scale[static_cast<size_t>(col * k_blocks + i / block_size)];
+      }
+      expected[static_cast<size_t>(row * n + col)] = acc + bias[static_cast<size_t>(col)];
+    }
+  }
+
+  OpTester test("MatMulBlockQuantizedFp8Weight", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddInput<BFloat16>("A", {m, k}, FloatsToBFloat16s(a));
+  test.AddInput<Float8E4M3FN>("B", {n, k}, b);
+  test.AddInput<float>("b_scale", {n, k_blocks}, b_scale);
+  test.AddOptionalInputEdge<float>();  // a_scale (skipped)
+  test.AddInput<BFloat16>("bias", {n}, FloatsToBFloat16s(bias));
+  test.AddOutput<BFloat16>("Y", {m, n}, FloatsToBFloat16s(expected));
+  test.SetOutputTolerance(0.1f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 #endif  // USE_CUDA && !DISABLE_FLOAT8_TYPES && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 
 }  // namespace onnxruntime::test
