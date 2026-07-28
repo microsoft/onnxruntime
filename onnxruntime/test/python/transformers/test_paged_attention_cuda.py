@@ -20,7 +20,6 @@ from einops import rearrange, repeat
 from onnx import TensorProto, helper
 from packaging import version
 from parameterized import parameterized
-from test_gqa_cpu import smooth_softmax_ref
 
 from onnxruntime import InferenceSession, OrtValue, SessionOptions, get_available_providers
 
@@ -43,6 +42,13 @@ class Config:
     packed = False
     softcap = 0.0
     ep = "CUDAExecutionProvider"
+    # Optional features layered on top of the original schema. They default to off so that every
+    # pre-existing parameterized test keeps its generated name and behavior.
+    use_slot_mapping = False
+    use_head_sink = False
+    smooth_softmax = False
+    use_qk_norm = False
+    qk_norm_epsilon = 1e-6
 
     def __init__(
         self,
@@ -105,6 +111,10 @@ def create_paged_attention_graph(
                 "block_table",
                 "cos_cache" if config.rotary else "",
                 "sin_cache" if config.rotary else "",
+                "slot_mapping" if config.use_slot_mapping else "",
+                "head_sink" if config.use_head_sink else "",
+                "q_norm_weight" if config.use_qk_norm else "",
+                "k_norm_weight" if config.use_qk_norm else "",
             ],
             ["output", "key_cache_out", "value_cache_out"],
             "PagedAttention_0",
@@ -113,7 +123,9 @@ def create_paged_attention_graph(
             local_window_size=local_window_size,
             do_rotary=config.rotary,
             rotary_interleaved=config.rotary_interleaved,
+            smooth_softmax=config.smooth_softmax,
             softcap=config.softcap,
+            qk_norm_epsilon=config.qk_norm_epsilon,
             domain="com.microsoft",
         ),
     ]
@@ -203,6 +215,19 @@ def create_paged_attention_graph(
                 ],
             ),
         ]
+    if config.use_slot_mapping:
+        graph_input += [
+            helper.make_tensor_value_info("slot_mapping", TensorProto.INT32, [num_tokens]),
+        ]
+    if config.use_head_sink:
+        graph_input += [
+            helper.make_tensor_value_info("head_sink", TensorProto.FLOAT16, [config.num_heads]),
+        ]
+    if config.use_qk_norm:
+        graph_input += [
+            helper.make_tensor_value_info("q_norm_weight", TensorProto.FLOAT16, [config.head_size]),
+            helper.make_tensor_value_info("k_norm_weight", TensorProto.FLOAT16, [config.head_size]),
+        ]
 
     graph_output = [
         helper.make_tensor_value_info(
@@ -263,6 +288,10 @@ def paged_attention_func(
     sin=None,
     window_size=-1,
     sdpa_kernel=0,
+    slot_mapping=None,
+    head_sink=None,
+    q_norm_weight=None,
+    k_norm_weight=None,
 ):
     num_tokens = cumulative_sequence_length[-1].item()
     num_blocks = key_cache.shape[0]
@@ -299,6 +328,15 @@ def paged_attention_func(
         ort_inputs["sin_cache"] = sin.detach().cpu().numpy()
         io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
         io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
+    for name, tensor in (
+        ("slot_mapping", slot_mapping),
+        ("head_sink", head_sink),
+        ("q_norm_weight", q_norm_weight),
+        ("k_norm_weight", k_norm_weight),
+    ):
+        if tensor is not None:
+            ort_inputs[name] = tensor.detach().cpu().numpy()
+            io_binding.bind_cpu_input(name, ort_inputs[name])
     io_binding.bind_cpu_input("query", ort_inputs["query"])
     io_binding.bind_input(
         "key_cache", "cuda", 0, numpy.float16, ort_inputs["key_cache"].shape(), ort_inputs["key_cache"].data_ptr()
@@ -354,6 +392,7 @@ def attention_ref(
     upcast=True,
     reorder_ops=False,
     use_smooth_softmax=False,
+    head_sink=None,
 ):
     """
     Arguments:
@@ -405,9 +444,15 @@ def attention_ref(
         )
         scores.masked_fill_(local_mask, float("-inf"))
 
-    if use_smooth_softmax:
-        head_sink = None
-        attention = smooth_softmax_ref(scores, head_sink)
+    if use_smooth_softmax or head_sink is not None:
+        # Append one extra logit per (batch, head, query) to the softmax denominator that
+        # contributes no value. head_sink is the learned logit; plain smooth_softmax uses 0.
+        b, n, s, _ = scores.shape
+        if head_sink is not None:
+            sink = head_sink.to(scores.dtype).reshape(1, n, 1, 1).expand(b, -1, s, -1)
+        else:
+            sink = torch.zeros(b, n, s, 1, dtype=scores.dtype, device=scores.device)
+        attention = torch.softmax(torch.cat([scores, sink], dim=-1), dim=-1)[..., :-1]
     else:
         attention = torch.softmax(scores, dim=-1)
 
@@ -427,6 +472,19 @@ def attention_ref(
     if query_padding_mask is not None:
         output.masked_fill_(rearrange(~query_padding_mask, "b s -> b s 1 1"), 0.0)
     return output.to(dtype=dtype_og), attention.to(dtype=dtype_og)
+
+
+def rms_norm_ref(x, weight, epsilon):
+    """Per-head RMSNorm reference matching the fused CUDA prologue: reduce in fp32 over the last
+    dimension (head_size), scale, then cast back to the input dtype.
+
+    Arguments:
+        x: (..., head_size)
+        weight: (head_size)
+    """
+    x_f32 = x.float()
+    inv_rms = torch.rsqrt(x_f32.pow(2).mean(dim=-1, keepdim=True) + epsilon)
+    return (x_f32 * inv_rms * weight.float()).to(dtype=x.dtype)
 
 
 def rotary_embedding(*args, **kwargs):
@@ -489,6 +547,22 @@ def generate_block_kvcache(config: Config, device, dtype):
         b=config.batch_size,
     )[:, : config.total_sequence_length]
     return k_cache, v_cache, block_table, k_cache_paged, v_cache_paged
+
+
+def derive_slot_mapping(config: Config, past_seqlens, new_seqlens, cum_seqlens, block_table):
+    """Reproduce, on the host, the flat cache slot that the kernel derives for every query token
+    when 'slot_mapping' is absent: block_table[b, pos // block_size] * block_size + pos % block_size
+    where pos = past_seqlens[b] + index_of_token_within_its_sequence."""
+    token_count = int(cum_seqlens[-1].item())
+    slot_mapping = torch.empty(token_count, dtype=torch.int32, device="cuda")
+    block_table_cpu = block_table.cpu()
+    for b in range(config.batch_size):
+        start = int(cum_seqlens[b].item())
+        for j in range(int(new_seqlens[b].item())):
+            pos = int(past_seqlens[b].item()) + j
+            block_id = int(block_table_cpu[b, pos // config.paged_kv_block_size].item())
+            slot_mapping[start + j] = block_id * config.paged_kv_block_size + pos % config.paged_kv_block_size
+    return slot_mapping
 
 
 def parity_check_paged_attention(
@@ -558,6 +632,30 @@ def parity_check_paged_attention(
     # Generate kv cache and associated block-based data structures
     k_cache, v_cache, block_table, k_cache_paged, v_cache_paged = generate_block_kvcache(config, "cuda", torch.float16)
 
+    # Optional per-head attention sink.
+    head_sink = None
+    if config.use_head_sink:
+        # Spread over [-2, 6]: exp(sink) then ranges from negligible to far larger than a typical
+        # softmax denominator, so a kernel that ignored the sink could not pass within tolerance.
+        head_sink = (torch.rand(config.num_heads, device="cuda") * 8.0 - 2.0).to(dtype=torch.float16)
+
+    # Optional QK-Norm. The kernel applies RMSNorm to every Q and K head before rotary embedding,
+    # so the reference has to normalize before computing q_ro / k_ro below, and the normalized +
+    # rotated K is what must land in the KV cache.
+    q_norm_weight = None
+    k_norm_weight = None
+    if config.use_qk_norm:
+        q_norm_weight = torch.randn(config.head_size, device="cuda", dtype=torch.float16)
+        k_norm_weight = torch.randn(config.head_size, device="cuda", dtype=torch.float16)
+        q = rms_norm_ref(q, q_norm_weight, config.qk_norm_epsilon)
+        k_new = rms_norm_ref(k_new, k_norm_weight, config.qk_norm_epsilon)
+
+    # Optional explicit slot mapping. Reproducing exactly what the kernel derives from
+    # past_seqlens / cumulative_sequence_length / block_table must give identical results.
+    slot_mapping = None
+    if config.use_slot_mapping:
+        slot_mapping = derive_slot_mapping(config, past_seqlens, new_seqlens, cum_seqlens, block_table)
+
     # Set window size for local / causal
     window_size = (-1, -1)
     left_window_size = -1
@@ -613,6 +711,8 @@ def parity_check_paged_attention(
         causal=True,
         window_size=window_size,
         softcap=config.softcap,
+        use_smooth_softmax=config.smooth_softmax,
+        head_sink=head_sink,
     )
     out_ref = out_ref.detach().cpu().numpy()
 
@@ -634,6 +734,10 @@ def parity_check_paged_attention(
         sin,
         left_window_size,
         sdpa_kernel=sdpa_kernel,
+        slot_mapping=slot_mapping,
+        head_sink=head_sink,
+        q_norm_weight=q_norm_weight,
+        k_norm_weight=k_norm_weight,
     )
     num_tokens = q_unpad.shape[0]
     out = torch.reshape(out, (num_tokens, config.num_heads, config.head_size))
@@ -783,6 +887,222 @@ class TestPagedAttentionMEA(unittest.TestCase):
             atol=5e-3,
             sdpa_kernel=SDPA_KERNEL_EFFICIENT_ATTENTION,
         )
+
+
+class TestPagedAttentionFeatures(unittest.TestCase):
+    """Coverage for the optional inputs and attributes added on top of the original schema:
+    slot_mapping, head_sink / smooth_softmax and QK-Norm, plus the block_size and batch_size
+    limits that were lifted at the same time."""
+
+    def _config(self, **overrides):
+        kwargs = {
+            "batch_size": 4,
+            "sequence_length": 33,
+            "total_sequence_length": 128,
+            "num_heads": 8,
+            "kv_num_heads": 2,
+            "head_size": 64,
+            "paged_kv_block_size": 256,
+            "local": False,
+            "rotary": False,
+            "rotary_interleaved": False,
+            "packed": False,
+            "softcap": 0.0,
+        }
+        feature_overrides = {k: overrides.pop(k) for k in list(overrides) if k not in kwargs}
+        kwargs.update(overrides)
+        config = Config(**kwargs)
+        for key, value in feature_overrides.items():
+            setattr(config, key, value)
+        return config
+
+    # ---- slot_mapping -------------------------------------------------------------------
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_slot_mapping_matches_derived_mapping(self):
+        # An explicit slot_mapping that reproduces the derived mapping must be a no-op.
+        parity_check_paged_attention(self._config(use_slot_mapping=True), rtol=5e-3, atol=5e-3)
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_slot_mapping_with_rotary_and_packed(self):
+        config = self._config(use_slot_mapping=True, rotary=True, packed=True)
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    @unittest.skipIf(
+        not has_memory_efficient_attention(),
+        reason="MemoryEfficientAttention (fp16) requires sm>=53",
+    )
+    def test_slot_mapping_mea(self):
+        parity_check_paged_attention(
+            self._config(use_slot_mapping=True),
+            rtol=5e-3,
+            atol=5e-3,
+            sdpa_kernel=SDPA_KERNEL_EFFICIENT_ATTENTION,
+        )
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_slot_mapping_negative_one_skips_cache_write(self):
+        # -1 tells the kernel not to store this token's K/V, which is how a scheduler suppresses
+        # writes for prefix-cache hits or rejected speculative tokens. The cache must be
+        # bit-identical to its pre-run contents at those slots.
+        config = self._config(use_slot_mapping=True)
+        token_count = 2
+        num_blocks = 4
+        block_size = config.paged_kv_block_size
+        query = torch.randn(token_count, config.num_heads * config.head_size, device="cuda", dtype=torch.float16)
+        key = torch.randn(token_count, config.kv_num_heads * config.head_size, device="cuda", dtype=torch.float16)
+        value = torch.randn(token_count, config.kv_num_heads * config.head_size, device="cuda", dtype=torch.float16)
+        key_cache = torch.randn(
+            num_blocks, block_size, config.kv_num_heads, config.head_size, device="cuda", dtype=torch.float16
+        )
+        value_cache = torch.randn_like(key_cache)
+        key_cache_before = key_cache.clone().cpu().numpy()
+        value_cache_before = value_cache.clone().cpu().numpy()
+
+        # One sequence of 2 new tokens on top of 1 cached token.
+        config.batch_size = 1
+        cum_seqlens = torch.tensor([0, token_count], dtype=torch.int32, device="cuda")
+        past_seqlens = torch.tensor([1], dtype=torch.int32, device="cuda")
+        block_table = torch.tensor([[0, 1]], dtype=torch.int32, device="cuda")
+        # Store the first token at slot 1 of block 0; skip the second one entirely.
+        slot_mapping = torch.tensor([1, -1], dtype=torch.int32, device="cuda")
+
+        _, key_cache_out, value_cache_out = paged_attention_func(
+            config,
+            query,
+            key,
+            value,
+            key_cache,
+            value_cache,
+            cum_seqlens,
+            past_seqlens,
+            block_table,
+            slot_mapping=slot_mapping,
+        )
+        key_cache_out = numpy.array(key_cache_out)
+        value_cache_out = numpy.array(value_cache_out)
+
+        # Slot 1 of block 0 holds the first token's K/V.
+        numpy.testing.assert_allclose(
+            key_cache_out[0, 1], key[0].reshape(config.kv_num_heads, config.head_size).cpu().numpy()
+        )
+        numpy.testing.assert_allclose(
+            value_cache_out[0, 1], value[0].reshape(config.kv_num_heads, config.head_size).cpu().numpy()
+        )
+        # Everything else, including the slot the second token would have used, is untouched.
+        key_cache_before[0, 1] = key_cache_out[0, 1]
+        value_cache_before[0, 1] = value_cache_out[0, 1]
+        numpy.testing.assert_array_equal(key_cache_out, key_cache_before)
+        numpy.testing.assert_array_equal(value_cache_out, value_cache_before)
+
+    # ---- head_sink / smooth_softmax ----------------------------------------------------
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_head_sink(self):
+        parity_check_paged_attention(self._config(use_head_sink=True), rtol=5e-3, atol=5e-3)
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_head_sink_local_and_softcap(self):
+        # The LSE epilogue must compose with sliding window and softcap, both of which are already
+        # baked into the log-sum-exp that FlashAttention returns.
+        config = self._config(use_head_sink=True, local=True, softcap=50.0)
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_smooth_softmax_without_head_sink(self):
+        parity_check_paged_attention(self._config(smooth_softmax=True), rtol=5e-3, atol=5e-3)
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_smooth_softmax_short_sequences(self):
+        # With a sink logit of 0 the correction is 1 / (1 + exp(-lse)), which only moves the output
+        # appreciably when the softmax denominator is small. Short sequences (and the first rows of
+        # the causal mask) are where this feature actually bites.
+        config = self._config(sequence_length=4, total_sequence_length=16, smooth_softmax=True)
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_head_sink_with_rotary(self):
+        parity_check_paged_attention(self._config(use_head_sink=True, rotary=True), rtol=5e-3, atol=5e-3)
+
+    @unittest.skipIf(
+        not has_memory_efficient_attention(),
+        reason="MemoryEfficientAttention (fp16) requires sm>=53",
+    )
+    def test_head_sink_rejected_on_memory_efficient_path(self):
+        # The CUTLASS kernel does not expose a log-sum-exp, so the sink cannot be applied. The op
+        # must fail loudly rather than silently ignore the input.
+        with self.assertRaises(Exception) as ctx:
+            parity_check_paged_attention(
+                self._config(use_head_sink=True),
+                rtol=5e-3,
+                atol=5e-3,
+                sdpa_kernel=SDPA_KERNEL_EFFICIENT_ATTENTION,
+            )
+        self.assertIn("head_sink", str(ctx.exception))
+
+    # ---- QK-Norm -----------------------------------------------------------------------
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_qk_norm(self):
+        parity_check_paged_attention(self._config(use_qk_norm=True), rtol=5e-3, atol=5e-3)
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_qk_norm_with_rotary(self):
+        # QK-Norm is applied before rotary, and the normalized+rotated K is what lands in the cache.
+        # The cache parity assertions in parity_check_paged_attention cover that ordering.
+        parity_check_paged_attention(self._config(use_qk_norm=True, rotary=True), rtol=5e-3, atol=5e-3)
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_qk_norm_with_rotary_interleaved_and_packed(self):
+        config = self._config(use_qk_norm=True, rotary=True, rotary_interleaved=True, packed=True)
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_qk_norm_non_power_of_two_head_size(self):
+        # head_size=80 rounds up to a 128-thread block in the fused prologue, so the lanes past
+        # head_size must contribute zero to the RMS reduction and skip all global accesses.
+        parity_check_paged_attention(self._config(use_qk_norm=True, head_size=80), rtol=5e-3, atol=5e-3)
+
+    @unittest.skipIf(
+        not has_memory_efficient_attention(),
+        reason="MemoryEfficientAttention (fp16) requires sm>=53",
+    )
+    def test_qk_norm_mea(self):
+        parity_check_paged_attention(
+            self._config(use_qk_norm=True),
+            rtol=5e-3,
+            atol=5e-3,
+            sdpa_kernel=SDPA_KERNEL_EFFICIENT_ATTENTION,
+        )
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_qk_norm_and_head_sink_together(self):
+        parity_check_paged_attention(
+            self._config(use_qk_norm=True, use_head_sink=True, rotary=True, use_slot_mapping=True),
+            rtol=5e-3,
+            atol=5e-3,
+        )
+
+    # ---- lifted limits -----------------------------------------------------------------
+
+    @parameterized.expand([(16,), (32,), (64,), (128,)])
+    @unittest.skipIf(
+        not has_memory_efficient_attention(),
+        reason="MemoryEfficientAttention (fp16) requires sm>=53",
+    )
+    def test_small_block_size(self, block_size):
+        # block_size used to be required to be a multiple of 256. Smaller pages are now accepted;
+        # FlashAttention cannot address them (a kBlockN tile would straddle a page), so the kernel
+        # transparently falls back to the gather-based memory-efficient backend.
+        config = self._config(paged_kv_block_size=block_size, total_sequence_length=128)
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_large_batch_size(self):
+        # cumulative_seqlens_kv used to be produced by independent 256-thread cub::BlockScan blocks,
+        # so any batch beyond 256 sequences got silently wrong KV offsets.
+        config = self._config(batch_size=300, sequence_length=4, total_sequence_length=64)
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
 
 
 class TestPagedAttentionRotaryZeroTokenRegression(unittest.TestCase):

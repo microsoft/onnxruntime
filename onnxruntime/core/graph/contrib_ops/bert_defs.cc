@@ -1409,6 +1409,10 @@ cumulative_sequence_length records cumulated length of each sequence length.
 // Input 'block_table':                  (batch_size, max_blocks_per_sequence)
 // Input 'cos_cache':                    (max_seq_len, head_size / 2)
 // Input 'sin_cache':                    (max_seq_len, head_size / 2)
+// Input 'slot_mapping':                 (token_count)
+// Input 'head_sink':                    (num_heads)
+// Input 'q_norm_weight':                (head_size)
+// Input 'k_norm_weight':                (head_size)
 // Output 'output':                      (token_count, hidden_size)
 // Output 'key_cache_out':               (num_blocks, block_size, kv_num_heads, head_size)
 // Output 'value_cache_out':             (num_blocks, block_size, kv_num_heads, head_size)
@@ -1493,6 +1497,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Rotate using interleaved pattern. Default value is 0 (False).",
               AttributeProto::INT,
               OPTIONAL_VALUE)
+        .Attr("smooth_softmax",
+              "Use a smooth factor in softmax, equivalent to an extra attention score of 0 that is not "
+              "associated with any value. Default value is 0 (False). Implied when 'head_sink' is provided.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("qk_norm_epsilon",
+              "Epsilon used by the Q/K RMSNorm when 'q_norm_weight' and 'k_norm_weight' are provided. "
+              "Default value is 1e-6.",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
         .Input(0,
                "query",
                "Query with shape (num_tokens, hidden_size), or packed QKV with shape (num_tokens, d) "
@@ -1540,6 +1554,35 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(9,
                "sin_cache",
                "2D tensor with shape (max total seqlen, head_size / 2).",
+               "T",
+               OpSchema::Optional)
+        .Input(10,
+               "slot_mapping",
+               "1D tensor with shape (num_tokens). For each query token, the flat slot index "
+               "(block_id * block_size + offset_in_block) at which its key/value is written into the KV cache. "
+               "A value of -1 skips the cache write for that token, which lets a scheduler suppress stores for "
+               "prefix-cache hits or rejected speculative tokens. When absent, slots are derived from "
+               "'past_seqlens', 'cumulative_sequence_length' and 'block_table' as before. 'block_table' is still "
+               "required, because it defines the read path.",
+               "S",
+               OpSchema::Optional)
+        .Input(11,
+               "head_sink",
+               "1D tensor with shape (num_heads). Each head has a learnable sink logit that participates in the "
+               "softmax denominator but contributes no value, so attention can 'do nothing'. Providing this input "
+               "implies smooth_softmax.",
+               "T",
+               OpSchema::Optional)
+        .Input(12,
+               "q_norm_weight",
+               "1D tensor with shape (head_size). RMSNorm gain applied to each query head before rotary "
+               "embedding. Must be provided together with 'k_norm_weight'.",
+               "T",
+               OpSchema::Optional)
+        .Input(13,
+               "k_norm_weight",
+               "1D tensor with shape (head_size). RMSNorm gain applied to each key head before rotary embedding "
+               "and before the key is written to the KV cache. Must be provided together with 'q_norm_weight'.",
                "T",
                OpSchema::Optional)
         .Output(0,

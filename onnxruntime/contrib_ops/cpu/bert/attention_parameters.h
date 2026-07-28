@@ -117,6 +117,11 @@ struct PagedAttentionParameters : AttentionParameters {
   int local_window_size;       // The window size includes new token. It only includes tokens on the left side.
   bool rotary_interleaved;
   float softcap;
+  // Attention sink / smooth softmax. Providing head_sink (input 11) implies use_smooth_softmax.
+  bool use_smooth_softmax = false;
+  // Per-head Q/K RMSNorm (QK-Norm) prologue applied before RoPE (inputs 12/13).
+  bool use_qk_norm = false;
+  float qk_norm_epsilon = 1e-6f;
 };
 
 // Parameters for sparse attention.

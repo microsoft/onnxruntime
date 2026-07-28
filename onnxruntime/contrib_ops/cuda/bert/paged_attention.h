@@ -26,8 +26,10 @@ class PagedAttention final : public CudaKernel {
   int local_window_size_;
   bool do_rotary_;
   bool rotary_interleaved_;
+  bool smooth_softmax_;
   float scale_;
   float softcap_;
+  float qk_norm_epsilon_;
   bool disable_flash_attention_;
   bool disable_memory_efficient_attention_;
   const AttentionKernelOptions* kernel_options_;

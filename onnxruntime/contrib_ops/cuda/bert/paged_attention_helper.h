@@ -106,11 +106,15 @@ Status CheckKVCache(const T* key_cache, const T* value_cache, const int kv_num_h
 
   num_blocks = static_cast<int>(key_cache_dims[0]);
   block_size = static_cast<int>(key_cache_dims[1]);
-  // TODO(aciddelgado): block size multiple of 8
-  if (block_size % 256 != 0) {
+  // The op itself only needs the block size to be a power of two >= 16 (the granularity every
+  // serving framework uses). The vendored FlashAttention paged kernel has a stricter,
+  // head-size-dependent requirement (a kBlockN tile must not straddle a page); that is enforced at
+  // backend-selection time in paged_attention.cc, which falls back to the gather-based
+  // memory-efficient path instead of rejecting the model. See docs/contrib_ops/cuda/paged_attention.md §18.
+  if (block_size < 16 || (block_size & (block_size - 1)) != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "block_size must be a multiple of 256. Got block_size % 256 == ",
-                           block_size % 256);
+                           "block_size must be a power of two and at least 16. Got block_size == ",
+                           block_size);
   }
   if (value_cache_dims[0] != num_blocks) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -188,6 +192,61 @@ Status CheckBlockTable(const T* block_table, const int batch_size, int& max_num_
   return Status::OK();
 }
 
+// slot_mapping (input 10) is the scheduler-owned write map: one flat slot index per query token
+// into the cache viewed as [num_blocks * block_size, kv_num_heads, head_size], or -1 to skip the
+// K/V store for that token. Element range is not validated on the host: that would require a
+// device-to-host copy every step. Out-of-range values are undefined behavior, exactly as for
+// block_table today.
+template <typename T = Tensor>
+Status CheckSlotMapping(const T* slot_mapping, const int token_count) {
+  const auto& dims = slot_mapping->Shape().GetDims();
+  if (dims.size() != 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'slot_mapping' is expected to have 1 dimension, got ", dims.size());
+  }
+  if (dims[0] != token_count) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'slot_mapping' dimension 0 should be token_count (", token_count,
+                           "), got ", dims[0]);
+  }
+  return Status::OK();
+}
+
+template <typename T = Tensor>
+Status CheckHeadSink(const T* head_sink, const int num_heads) {
+  const auto& dims = head_sink->Shape().GetDims();
+  if (dims.size() != 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "head_sink must be a 1D tensor");
+  }
+  if (dims[0] != num_heads) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "head_sink dimension 0 must be equal to the num heads, got ", dims[0]);
+  }
+  return Status::OK();
+}
+
+template <typename T = Tensor>
+Status CheckQKNormWeights(const T* q_norm_weight, const T* k_norm_weight, const int head_size) {
+  if ((q_norm_weight != nullptr) != (k_norm_weight != nullptr)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'q_norm_weight' and 'k_norm_weight' must be provided together.");
+  }
+  if (q_norm_weight == nullptr) {
+    return Status::OK();
+  }
+  const auto& q_dims = q_norm_weight->Shape().GetDims();
+  const auto& k_dims = k_norm_weight->Shape().GetDims();
+  if (q_dims.size() != 1 || q_dims[0] != head_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'q_norm_weight' must be a 1D tensor of shape (head_size) = (", head_size, ").");
+  }
+  if (k_dims.size() != 1 || k_dims[0] != head_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'k_norm_weight' must be a 1D tensor of shape (head_size) = (", head_size, ").");
+  }
+  return Status::OK();
+}
+
 template <typename T = Tensor>
 Status CheckInputs(const T* query,
                    const T* key,
@@ -199,11 +258,17 @@ Status CheckInputs(const T* query,
                    const T* block_table,
                    const T* cos_cache,
                    const T* sin_cache,
+                   const T* slot_mapping,
+                   const T* head_sink,
+                   const T* q_norm_weight,
+                   const T* k_norm_weight,
                    void* parameters,
                    int num_heads,
                    int kv_num_heads,
                    float scale,
                    float softcap,
+                   bool smooth_softmax,
+                   float qk_norm_epsilon,
                    int max_threads_per_block) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
@@ -240,6 +305,19 @@ Status CheckInputs(const T* query,
   // Check block table and slot mappings
   int max_num_blocks_per_seq = 0;
   ORT_RETURN_IF_ERROR(CheckBlockTable(block_table, batch_size, max_num_blocks_per_seq));
+  if (slot_mapping != nullptr) {
+    ORT_RETURN_IF_ERROR(CheckSlotMapping(slot_mapping, token_count));
+  }
+
+  // Check attention sink and QK-Norm weights
+  if (head_sink != nullptr) {
+    ORT_RETURN_IF_ERROR(CheckHeadSink(head_sink, num_heads));
+  }
+  ORT_RETURN_IF_ERROR(CheckQKNormWeights(q_norm_weight, k_norm_weight, head_size));
+  if (q_norm_weight != nullptr && !(qk_norm_epsilon > 0.0f)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "qk_norm_epsilon must be positive, got ", qk_norm_epsilon);
+  }
 
   // Check rotary cache
   int rotary_dim = 0;
@@ -268,6 +346,10 @@ Status CheckInputs(const T* query,
     output_parameters->is_packed_qkv = is_packed_qkv;
     output_parameters->scale = scale;
     output_parameters->softcap = softcap;
+    // Providing head_sink implies smooth softmax, matching GroupQueryAttention.
+    output_parameters->use_smooth_softmax = smooth_softmax || head_sink != nullptr;
+    output_parameters->use_qk_norm = q_norm_weight != nullptr;
+    output_parameters->qk_norm_epsilon = qk_norm_epsilon;
   }
 
   return Status::OK();

@@ -86,18 +86,34 @@ Status LaunchUnpackCumulative(const T* input, T* output, const int token_count, 
   return CUDA_CALL(cudaGetLastError());
 }
 
+// Fused per-head RMSNorm (QK-Norm) + rotary embedding over the unpadded TxNxH layout.
+//
+// Both transformations are pure prologue work on Q and K, so fusing them keeps a single read of the
+// (possibly packed) input and a single write of the workspace, and it keeps the whole prologue
+// independent of which attention backend runs afterwards. Order matters: QK-Norm is applied to the
+// raw projection *before* RoPE, matching the reference implementations (and GroupQueryAttention's
+// UnpackRoPEAppend), so the value that lands in the paged KV cache is normalized-then-rotated K.
+//
+// Set norm_weight == nullptr to skip normalization, and rotary_embedding_dim == 0 to skip rotary
+// (the kernel then degenerates to an unpack/copy). At least one of the two must be enabled,
+// otherwise the caller should not launch this kernel at all.
+//
+// blockDim.x is the smallest power of two >= head_size so the reduction tree is exact; threads with
+// h >= head_size participate in the reduction (contributing 0) but perform no global access.
 template <typename T>
-__global__ void RotaryEmbeddingTNH(T* output,                            // TxNxH
-                                   const T* input,                       // TxNxH
-                                   const T* cos_cache,                   // Mx(H/2)
-                                   const T* sin_cache,                   // Mx(H/2)
-                                   const int32_t* past_seqlens,          // B
-                                   const int32_t* cumulative_seqlens_q,  // B+1
-                                   const int head_size,
-                                   const int rotary_embedding_dim,
-                                   const bool interleaved,
-                                   const int3 in_strides,     // TxNxH
-                                   const int3 out_strides) {  // TxNxH
+__global__ void QkNormRotaryTNH(T* output,                            // TxNxH
+                                const T* input,                       // TxNxH
+                                const T* cos_cache,                   // Mx(H/2)
+                                const T* sin_cache,                   // Mx(H/2)
+                                const int32_t* past_seqlens,          // B
+                                const int32_t* cumulative_seqlens_q,  // B+1
+                                const T* norm_weight,                 // H, or nullptr
+                                const float epsilon,
+                                const int head_size,
+                                const int rotary_embedding_dim,
+                                const bool interleaved,
+                                const int3 in_strides,     // TxNxH
+                                const int3 out_strides) {  // TxNxH
   // Use .x in innermost loop to access global memory efficiently
 
   const int b = blockIdx.y;
@@ -106,16 +122,55 @@ __global__ void RotaryEmbeddingTNH(T* output,                            // TxNx
   const int h = threadIdx.x;
 
   const int sequence_length = cumulative_seqlens_q[b + 1] - cumulative_seqlens_q[b];
-  if (h >= head_size || s >= sequence_length) {
+  // Uniform across the block, so returning here cannot desynchronize the barriers below.
+  if (s >= sequence_length) {
     return;
   }
+
+  // Layout: blockDim.x floats for the reduction tree, then head_size elements of T holding the
+  // (optionally normalized) head so the rotary step can read its partner lane without a second
+  // global load. The float array comes first to keep both regions naturally aligned.
+  extern __shared__ char smem[];
+  float* reduce_buffer = reinterpret_cast<float*>(smem);
+  T* head_values = reinterpret_cast<T*>(reduce_buffer + blockDim.x);
 
   const int t = cumulative_seqlens_q[b] + s;  // t is the index of the token in the unpadded input/output
   const T* input_data = input + t * in_strides.x + n * in_strides.y;
   T* output_data = output + t * out_strides.x + n * out_strides.y;
 
+  const bool valid = h < head_size;
+  float value = valid ? static_cast<float>(input_data[h]) : 0.0f;
+
+  if (norm_weight != nullptr) {
+    // RMSNorm across head_size, accumulated in fp32 regardless of T.
+    reduce_buffer[h] = value * value;
+    __syncthreads();
+    for (unsigned int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+      if (h < static_cast<int>(stride)) {
+        reduce_buffer[h] += reduce_buffer[h + stride];
+      }
+      __syncthreads();
+    }
+    const float inv_rms = rsqrtf(reduce_buffer[0] / static_cast<float>(head_size) + epsilon);
+    if (valid) {
+      value = value * inv_rms * static_cast<float>(norm_weight[h]);
+    }
+  }
+
+  if (valid) {
+    head_values[h] = static_cast<T>(value);
+  }
+  __syncthreads();
+
+  if (!valid) {
+    return;
+  }
+
+  // rotary_embedding_dim == 0 makes every lane take this branch, which is the pure
+  // normalize-and-copy (or plain unpack) path. past_seqlens / cos_cache / sin_cache are then
+  // never dereferenced and may be null.
   if (h >= rotary_embedding_dim) {
-    output_data[h] = input_data[h];
+    output_data[h] = head_values[h];
     return;
   }
 
@@ -138,103 +193,248 @@ __global__ void RotaryEmbeddingTNH(T* output,                            // TxNx
     sign = (h < half_rotary_embedding_dim) ? -1 : 1;
     j = (h + half_rotary_embedding_dim) % rotary_embedding_dim;
   }
-  output_data[h] = input_data[h] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
+  output_data[h] = head_values[h] * cos_data[cache_idx] + sign * head_values[j] * sin_data[cache_idx];
 }
 
+// Launches the fused QK-Norm / rotary prologue. Pass norm_weight == nullptr to disable QK-Norm and
+// rotary_embedding_dim == 0 to disable rotary; the caller is responsible for not invoking this when
+// both are disabled and the input is not packed.
 template <typename T>
-Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* input, const int32_t* past_seqlens,
-                                   const int32_t* cumulative_seqlens_q, const T* cos_cache, const T* sin_cache,
-                                   const int batch_size, const int max_seqlen_q, const int num_heads,
-                                   const int head_size, const int rotary_embedding_dim, const bool interleaved,
-                                   const int in_seq_stride, const int max_threads_per_block) {
-  ORT_ENFORCE(head_size <= max_threads_per_block, "Rotary embedding dim must be <= max_threads_per_block");
+Status LaunchQkNormRotaryKernel(cudaStream_t stream, T* output, const T* input, const int32_t* past_seqlens,
+                                const int32_t* cumulative_seqlens_q, const T* cos_cache, const T* sin_cache,
+                                const T* norm_weight, const float epsilon, const int batch_size,
+                                const int max_seqlen_q, const int num_heads, const int head_size,
+                                const int rotary_embedding_dim, const bool interleaved, const int in_seq_stride,
+                                const int max_threads_per_block) {
+  if (batch_size == 0 || max_seqlen_q == 0 || num_heads == 0) {
+    return Status::OK();
+  }
   int3 in_strides = {in_seq_stride <= 0 ? num_heads * head_size : in_seq_stride, head_size, 1};
   int3 out_strides = {num_heads * head_size, head_size, 1};
-  int tpb = (head_size + 31) / 32 * 32;
+  // Round up to a power of two so the reduction tree halves exactly.
+  int tpb = 32;
+  while (tpb < head_size) {
+    tpb <<= 1;
+  }
+  ORT_ENFORCE(tpb <= max_threads_per_block,
+              "PagedAttention prologue requires head_size rounded up to a power of two (", tpb,
+              ") to be <= max_threads_per_block (", max_threads_per_block, ")");
 
+  const size_t shared_bytes = static_cast<size_t>(tpb) * sizeof(float) + static_cast<size_t>(head_size) * sizeof(T);
   const dim3 grid(max_seqlen_q, batch_size, num_heads);
   const dim3 block(tpb);
-  RotaryEmbeddingTNH<<<grid, block, 0, stream>>>(
-      output, input, cos_cache, sin_cache, past_seqlens, cumulative_seqlens_q, head_size, rotary_embedding_dim,
-      interleaved, in_strides, out_strides);
+  QkNormRotaryTNH<<<grid, block, shared_bytes, stream>>>(
+      output, input, cos_cache, sin_cache, past_seqlens, cumulative_seqlens_q, norm_weight, epsilon, head_size,
+      rotary_embedding_dim, interleaved, in_strides, out_strides);
   return CUDA_CALL(cudaGetLastError());
 }
 
+// Single-block inclusive scan over the per-sequence KV lengths. One block loops over the batch in
+// kBlockSize-sized tiles carrying a running total, so there is no cap on batch_size (the previous
+// implementation launched independent blocks whose cub::BlockScan did not compose, which silently
+// produced wrong offsets past 256 concurrent sequences).
 template <int kBlockSize>
 __global__ void GetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_t* cumulative_seqlens_q,
                                        const int32_t* past_seqlens, const int batch_size) {
-  int id = blockDim.x * blockIdx.x + threadIdx.x;
-
-  if (id == 0) {
-    cumulative_seqlens_kv[0] = 0;
-  }
-
   typedef cub::BlockScan<int, kBlockSize> BlockScan;
   __shared__ typename BlockScan::TempStorage temp_storage;
+  __shared__ int running_total;
 
-  // Sum past_seqlens to new sequence length (which we get by subtracting cumulative_seqlens_q).
-  // Then do an inclusive sum across present sequence lengths to get the cumulative sequence length
-  if (id < batch_size) {
-    cumulative_seqlens_kv[id + 1] = past_seqlens[id] + cumulative_seqlens_q[id + 1] - cumulative_seqlens_q[id];
-    int length = cumulative_seqlens_kv[id + 1];
-    BlockScan(temp_storage).InclusiveSum(length, length);
-    cumulative_seqlens_kv[id + 1] = length;
+  if (threadIdx.x == 0) {
+    cumulative_seqlens_kv[0] = 0;
+    running_total = 0;
+  }
+  __syncthreads();
+
+  for (int base = 0; base < batch_size; base += kBlockSize) {
+    const int id = base + static_cast<int>(threadIdx.x);
+    // Sum past_seqlens to the new sequence length (which we get by subtracting cumulative_seqlens_q),
+    // then inclusive-scan across present sequence lengths.
+    const int length = (id < batch_size)
+                           ? past_seqlens[id] + cumulative_seqlens_q[id + 1] - cumulative_seqlens_q[id]
+                           : 0;
+    int prefix = 0;
+    int aggregate = 0;
+    BlockScan(temp_storage).InclusiveSum(length, prefix, aggregate);
+    if (id < batch_size) {
+      cumulative_seqlens_kv[id + 1] = running_total + prefix;
+    }
+    __syncthreads();  // all reads of running_total and of temp_storage are done
+    if (threadIdx.x == 0) {
+      running_total += aggregate;
+    }
+    __syncthreads();  // running_total visible, temp_storage safe to reuse
   }
 }
 
 Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_t* cumulative_seqlens_q,
                                     const int32_t* past_seqlens, const int batch_size, cudaStream_t stream) {
-  const int threads = 256;
-  const int blocks = (batch_size + threads - 1) / threads;
-  GetCumulativeSeqlensKV<256><<<blocks, threads, 0, stream>>>(cumulative_seqlens_kv, cumulative_seqlens_q, past_seqlens,
-                                                              batch_size);
+  constexpr int kThreads = 256;
+  GetCumulativeSeqlensKV<kThreads><<<1, kThreads, 0, stream>>>(cumulative_seqlens_kv, cumulative_seqlens_q,
+                                                               past_seqlens, batch_size);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+// Resolves the flat cache slot that a query token's K/V is written to, in the cache viewed as
+// [num_blocks * block_size, kv_num_heads, head_size]. A negative result suppresses the store.
+//
+// DerivedSlotResolver reproduces the legacy behavior: append the token at
+// past_seqlens[b] + (token_id - cumulative_seqlens_q[b]) of its own sequence. The binary search is
+// guarded against token_id >= cumulative_seqlens_q[batch_size], which previously walked off the end
+// of past_seqlens / block_table.
+struct DerivedSlotResolver {
+  const int* __restrict__ block_table;
+  const int* __restrict__ past_seqlens;
+  const int* __restrict__ cumulative_seqlens_q;
+  int batch_size;
+  int max_num_blocks_per_seq;
+  int block_size;
+
+  __device__ __forceinline__ int operator()(int token_id) const {
+    if (token_id < 0 || token_id >= cumulative_seqlens_q[batch_size]) {
+      return -1;
+    }
+    // cumulative_seqlens_q is a non-decreasing prefix sum, so binary search finds the owning
+    // sequence in log2(batch_size) steps instead of the previous O(batch_size) scan.
+    int left = 0;
+    int right = batch_size - 1;
+    while (left < right) {
+      const int mid = left + (right - left) / 2;
+      if (token_id < cumulative_seqlens_q[mid + 1]) {
+        right = mid;
+      } else {
+        left = mid + 1;
+      }
+    }
+    const int batch_id = left;
+    const int position = past_seqlens[batch_id] + (token_id - cumulative_seqlens_q[batch_id]);
+    const int block_idx_in_seq = position / block_size;
+    if (block_idx_in_seq >= max_num_blocks_per_seq) {
+      return -1;
+    }
+    const int block_id = block_table[batch_id * max_num_blocks_per_seq + block_idx_in_seq];
+    if (block_id < 0) {  // unmapped block
+      return -1;
+    }
+    return block_id * block_size + position % block_size;
+  }
+};
+
+// ExplicitSlotResolver consumes the scheduler-provided slot_mapping (input 10) directly. This is
+// what prefix caching, chunked prefill and speculative decoding need: the scheduler, not the
+// kernel, owns block placement. It also removes the per-thread binary search entirely.
+struct ExplicitSlotResolver {
+  const int* __restrict__ slot_mapping;
+
+  __device__ __forceinline__ int operator()(int token_id) const {
+    return slot_mapping[token_id];
+  }
+};
+
+template <typename T, typename SlotResolver>
+__global__ void ReshapeAndCache(const T* __restrict__ key, const T* __restrict__ value, T* __restrict__ key_cache,
+                                T* __restrict__ value_cache, const SlotResolver resolver, const int64_t total_elems,
+                                const int kv_hidden_size, const int key_stride, const int value_stride,
+                                const int64_t num_slots) {
+  const int64_t stride = static_cast<int64_t>(gridDim.x) * blockDim.x;
+  for (int64_t tid = threadIdx.x + static_cast<int64_t>(blockIdx.x) * blockDim.x;
+       tid < total_elems;
+       tid += stride) {
+    const int token_id = static_cast<int>(tid / kv_hidden_size);
+    const int hidden_offset = static_cast<int>(tid % kv_hidden_size);
+
+    const int slot = resolver(token_id);
+    // slot < 0 means "do not write this token" (unmapped block, or an explicit -1 in slot_mapping
+    // for a prefix-cache hit / rejected speculative token). The Q of such a token still attends.
+    if (slot < 0 || slot >= num_slots) {
+      continue;
+    }
+
+    const int64_t key_id = static_cast<int64_t>(token_id) * key_stride + hidden_offset;
+    const int64_t value_id = static_cast<int64_t>(token_id) * value_stride + hidden_offset;
+    const int64_t dst_id = static_cast<int64_t>(slot) * kv_hidden_size + hidden_offset;
+    key_cache[dst_id] = key[key_id];
+    value_cache[dst_id] = value[value_id];
+  }
+}
+
+template <typename T, typename SlotResolver>
+Status LaunchReshapeAndCacheImpl(const T* key, const T* value, T* key_cache, T* value_cache,
+                                 const SlotResolver& resolver, const int token_count, const int kv_hidden_size,
+                                 const int key_stride, const int value_stride, const int64_t num_slots,
+                                 cudaStream_t stream, const int max_threads_per_block) {
+  const int64_t total_elems = static_cast<int64_t>(token_count) * kv_hidden_size;
+  if (total_elems == 0) {
+    return Status::OK();
+  }
+  const int threads = static_cast<int>(std::min<int64_t>(max_threads_per_block, total_elems));
+  const int blocks = static_cast<int>(std::min<int64_t>((total_elems + threads - 1) / threads, 65535));
+  ReshapeAndCache<T, SlotResolver><<<blocks, threads, 0, stream>>>(
+      key, value, key_cache, value_cache, resolver, total_elems, kv_hidden_size, key_stride, value_stride, num_slots);
   return CUDA_CALL(cudaGetLastError());
 }
 
 template <typename T>
-__global__ void ReshapeAndCache(const T* __restrict__ key, const T* __restrict__ value, T* __restrict__ key_cache,
-                                T* __restrict__ value_cache, const int* __restrict__ block_table,
-                                const int* __restrict__ past_seqlens, const int* __restrict__ cumulative_seqlens_q,
-                                const int batch_size, const int max_num_blocks_per_seq, const int token_count,
-                                const int kv_hidden_size, const int block_size, const int key_stride,
-                                const int value_stride) {
-  const int tid = threadIdx.x + blockIdx.x * blockDim.x;
-  if (tid >= token_count * kv_hidden_size) {
-    return;
+Status LaunchReshapeAndCache(const T* key, const T* value, T* key_cache, T* value_cache, const int* block_table,
+                             const int* past_seqlens, const int* cumulative_seqlens_q, const int* slot_mapping,
+                             const int batch_size, const int max_num_blocks_per_seq, const int token_count,
+                             const int kv_hidden_size, const int block_size, const int num_blocks,
+                             const int key_stride, const int value_stride, cudaStream_t stream,
+                             const int max_threads_per_block) {
+  const int64_t num_slots = static_cast<int64_t>(num_blocks) * block_size;
+  if (slot_mapping != nullptr) {
+    ExplicitSlotResolver resolver{slot_mapping};
+    return LaunchReshapeAndCacheImpl<T, ExplicitSlotResolver>(key, value, key_cache, value_cache, resolver,
+                                                              token_count, kv_hidden_size, key_stride, value_stride,
+                                                              num_slots, stream, max_threads_per_block);
   }
-  const int token_id = tid / kv_hidden_size;
-  const int hidden_offset = tid % kv_hidden_size;
-  int batch_id = 0;
-  for (int i = 0; i < batch_size; ++i) {
-    if (token_id < cumulative_seqlens_q[i + 1]) {
-      batch_id = i;
-      break;
-    }
-  }
-  const int token_offset = token_id - cumulative_seqlens_q[batch_id];
-  const int past_length = past_seqlens[batch_id];
-  const int block_id = block_table[batch_id * max_num_blocks_per_seq + (past_length + token_offset) / block_size];
-  const int block_offset = (past_length + token_offset) % block_size;
+  DerivedSlotResolver resolver{block_table, past_seqlens, cumulative_seqlens_q, batch_size,
+                               max_num_blocks_per_seq, block_size};
+  return LaunchReshapeAndCacheImpl<T, DerivedSlotResolver>(key, value, key_cache, value_cache, resolver,
+                                                           token_count, kv_hidden_size, key_stride, value_stride,
+                                                           num_slots, stream, max_threads_per_block);
+}
 
-  const int key_id = token_id * key_stride + hidden_offset;
-  const int value_id = token_id * value_stride + hidden_offset;
-  const int dst_id = block_id * block_size * kv_hidden_size + block_offset * kv_hidden_size + hidden_offset;
-  key_cache[dst_id] = key[key_id];
-  value_cache[dst_id] = value[value_id];
+// Exact attention-sink epilogue. FlashAttention returns
+//   lse[t,h] = log(sum_j exp(x_j))  and  o[t,h] = (sum_j exp(x_j) v_j) / sum_j exp(x_j),
+// and a sink only adds the extra logit s_h to the denominator, so the corrected output is the
+// elementwise rescale  o *= exp(lse) / (exp(lse) + exp(s_h)) = 1 / (1 + exp(s_h - lse)).
+// This is numerically stable for both signs of (s_h - lse), needs no change to the Flash kernel,
+// and composes with sliding window, softcap and GQA grouping because lse already reflects the mask.
+// smooth_softmax without a head_sink input is the same formula with s_h = 0.
+template <typename T>
+__global__ void ApplyHeadSink(T* __restrict__ output, const float* __restrict__ softmax_lse,
+                              const T* __restrict__ head_sink, const int token_count, const int num_heads,
+                              const int head_size, const int64_t total_elems) {
+  const int64_t stride = static_cast<int64_t>(gridDim.x) * blockDim.x;
+  const int64_t num_heads_times_head = static_cast<int64_t>(num_heads) * head_size;
+  for (int64_t tid = threadIdx.x + static_cast<int64_t>(blockIdx.x) * blockDim.x;
+       tid < total_elems;
+       tid += stride) {
+    const int head_id = static_cast<int>((tid / head_size) % num_heads);
+    const int token_id = static_cast<int>(tid / num_heads_times_head);
+    // Varlen LSE layout is [num_heads, token_count] (Flash's unpadded_lse with num_splits <= 1).
+    const float lse = softmax_lse[static_cast<int64_t>(head_id) * token_count + token_id];
+    const float sink = (head_sink == nullptr) ? 0.0f : static_cast<float>(head_sink[head_id]);
+    // lse == +inf marks a fully masked row (output already zero) -> factor 1; lse == -inf gives
+    // factor 0. expf saturates correctly in both cases, so no special casing is needed.
+    const float factor = 1.0f / (1.0f + expf(sink - lse));
+    output[tid] = static_cast<T>(static_cast<float>(output[tid]) * factor);
+  }
 }
 
 template <typename T>
-Status LaunchReshapeAndCache(const T* key, const T* value, T* key_cache, T* value_cache, const int* block_table,
-                             const int* past_seqlens, const int* cumulative_seqlens_q, const int batch_size,
-                             const int max_num_blocks_per_seq, const int token_count, const int kv_hidden_size,
-                             const int block_size, const int key_stride, const int value_stride, cudaStream_t stream,
-                             const int max_threads_per_block) {
-  const int total_size = token_count * kv_hidden_size;
-  const int threads(std::min(total_size, max_threads_per_block));
-  const int blocks((total_size + threads - 1) / threads);
-  ReshapeAndCache<T><<<blocks, threads, 0, stream>>>(key, value, key_cache, value_cache, block_table, past_seqlens,
-                                                     cumulative_seqlens_q, batch_size, max_num_blocks_per_seq,
-                                                     token_count, kv_hidden_size, block_size, key_stride, value_stride);
+Status LaunchApplyHeadSink(T* output, const float* softmax_lse, const T* head_sink, const int token_count,
+                           const int num_heads, const int head_size, cudaStream_t stream,
+                           const int max_threads_per_block) {
+  const int64_t total_elems = static_cast<int64_t>(token_count) * num_heads * head_size;
+  if (total_elems == 0) {
+    return Status::OK();
+  }
+  const int threads = static_cast<int>(std::min<int64_t>(max_threads_per_block, total_elems));
+  const int blocks = static_cast<int>(std::min<int64_t>((total_elems + threads - 1) / threads, 65535));
+  ApplyHeadSink<T><<<blocks, threads, 0, stream>>>(output, softmax_lse, head_sink, token_count, num_heads,
+                                                   head_size, total_elems);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -286,10 +486,24 @@ __global__ void GatherAndExpandPagedKVCache(const T* __restrict__ key_cache,
     }
     const int batch_id = left;
 
+    // Defensive: a malformed cumulative_seqlens_kv (or a total_kv_tokens that disagrees with it)
+    // would leave batch_id == batch_size and walk off the end of block_table.
+    if (batch_id >= batch_size) {
+      continue;
+    }
+
     const int pos = token_id - cumulative_seqlens_kv[batch_id];
     const int block_idx_in_seq = pos / block_size;
     const int block_offset = pos % block_size;
+    if (block_idx_in_seq >= max_num_blocks_per_seq) {
+      continue;
+    }
     const int block_id = block_table[batch_id * max_num_blocks_per_seq + block_idx_in_seq];
+    if (block_id < 0) {
+      gathered_key[tid] = static_cast<T>(0.f);
+      gathered_value[tid] = static_cast<T>(0.f);
+      continue;
+    }
 
     // GQA expansion: each output head maps to kv_head_id = head_id / (num_heads / kv_num_heads).
     // For MHA (num_heads == kv_num_heads) this is the identity.
@@ -379,19 +593,20 @@ Status FlashAttention(
   int* past_seqlens = const_cast<int*>(data.past_seqlens);
   int* cumulative_seqlens_kv = data.cumulative_seqlens_kv;
 
-  if (parameters.do_rotary) {
-    // Will unpack Q and K in case of packed_qkv
+  if (parameters.do_rotary || parameters.use_qk_norm) {
+    // Fused QK-Norm + rotary prologue. Also unpacks Q and K in case of packed_qkv.
     auto q_buffer = data.workspace_buffer;
     auto k_buffer = data.workspace_buffer + token_count * num_heads * head_size;
     const int packed_seq_stride = parameters.is_packed_qkv ? (num_heads + 2 * kv_num_heads) * head_size : -1;
-    ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<T>(
-        stream, q_buffer, query, past_seqlens, cumulative_seqlens_q, data.cos_cache, data.sin_cache, batch_size,
-        max_query_len, num_heads, head_size, parameters.rotary_dim, parameters.rotary_interleaved, packed_seq_stride,
-        max_threads_per_block));
-    ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<T>(
-        stream, k_buffer, key, past_seqlens, cumulative_seqlens_q, data.cos_cache, data.sin_cache, batch_size,
-        max_query_len, kv_num_heads, head_size, parameters.rotary_dim, parameters.rotary_interleaved, packed_seq_stride,
-        max_threads_per_block));
+    const int rotary_dim = parameters.do_rotary ? parameters.rotary_dim : 0;
+    ORT_RETURN_IF_ERROR(LaunchQkNormRotaryKernel<T>(
+        stream, q_buffer, query, past_seqlens, cumulative_seqlens_q, data.cos_cache, data.sin_cache,
+        data.q_norm_weight, parameters.qk_norm_epsilon, batch_size, max_query_len, num_heads, head_size,
+        rotary_dim, parameters.rotary_interleaved, packed_seq_stride, max_threads_per_block));
+    ORT_RETURN_IF_ERROR(LaunchQkNormRotaryKernel<T>(
+        stream, k_buffer, key, past_seqlens, cumulative_seqlens_q, data.cos_cache, data.sin_cache,
+        data.k_norm_weight, parameters.qk_norm_epsilon, batch_size, max_query_len, kv_num_heads, head_size,
+        rotary_dim, parameters.rotary_interleaved, packed_seq_stride, max_threads_per_block));
     query = q_buffer;
     key = k_buffer;
   } else if (parameters.is_packed_qkv) {
@@ -403,13 +618,16 @@ Status FlashAttention(
     query = q_buffer;
   }
 
-  // Insert key and value into block-based KV cache
+  // Insert key and value into block-based KV cache. The prologue (if it ran) already densified K
+  // into the workspace, so only the "no prologue" packed-QKV case still needs the packed stride.
+  const bool k_is_packed = parameters.is_packed_qkv && !(parameters.do_rotary || parameters.use_qk_norm);
   int* block_table = const_cast<int*>(data.block_table);
-  const int key_stride = parameters.is_packed_qkv && !parameters.do_rotary ? q_hidden_size + 2 * kv_hidden_size : kv_hidden_size;
+  const int key_stride = k_is_packed ? q_hidden_size + 2 * kv_hidden_size : kv_hidden_size;
   const int value_stride = parameters.is_packed_qkv ? q_hidden_size + 2 * kv_hidden_size : kv_hidden_size;
   ORT_RETURN_IF_ERROR(LaunchReshapeAndCache<T>(key, value, data.key_cache, data.value_cache, block_table, past_seqlens,
-                                               cumulative_seqlens_q, batch_size, max_num_blocks_per_seq, token_count,
-                                               kv_hidden_size, block_size, key_stride, value_stride, stream,
+                                               cumulative_seqlens_q, data.slot_mapping, batch_size,
+                                               max_num_blocks_per_seq, token_count, kv_hidden_size, block_size,
+                                               parameters.num_blocks, key_stride, value_stride, stream,
                                                max_threads_per_block));
 
   // Launch kernel
@@ -423,6 +641,15 @@ Status FlashAttention(
       /*seqused_k*/ nullptr, block_table, softmax_lse, batch_size, num_heads, kv_num_heads, head_size,
       max_query_len, max_seq_len, token_count, scale, softcap, /*is_causal*/ true, is_bf16, local_window_size - 1,
       max_num_blocks_per_seq, block_size));
+
+  if (parameters.use_smooth_softmax) {
+    // Rescale by the softmax denominator that the sink logit adds. mha_varlen_fwd leaves
+    // params.num_splits at 0, so the split-combine kernel never runs and softmax_lse carries the
+    // unpadded [num_heads, token_count] fp32 layout this epilogue expects. If varlen ever enables
+    // num_splits > 1, both the layout and this epilogue must be revisited.
+    ORT_RETURN_IF_ERROR(LaunchApplyHeadSink<T>(data.output, data.softmax_lse, data.head_sink, token_count,
+                                               num_heads, head_size, stream, max_threads_per_block));
+  }
 
   DUMP_TENSOR_INIT();
   DUMP_TENSOR("flash attention output", data.output, token_count, num_heads, head_size);
@@ -479,18 +706,19 @@ Status EfficientAttention(
   int* past_seqlens = const_cast<int*>(data.past_seqlens);
   int* cumulative_seqlens_kv = data.cumulative_seqlens_kv;
 
-  if (parameters.do_rotary) {
+  if (parameters.do_rotary || parameters.use_qk_norm) {
     auto q_buffer = data.workspace_buffer;
     auto k_buffer = data.workspace_buffer + token_count * num_heads * head_size;
     const int packed_seq_stride = parameters.is_packed_qkv ? (num_heads + 2 * kv_num_heads) * head_size : -1;
-    ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<T>(
-        stream, q_buffer, query, past_seqlens, cumulative_seqlens_q, data.cos_cache, data.sin_cache, batch_size,
-        max_query_len, num_heads, head_size, parameters.rotary_dim, parameters.rotary_interleaved, packed_seq_stride,
-        max_threads_per_block));
-    ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<T>(
-        stream, k_buffer, key, past_seqlens, cumulative_seqlens_q, data.cos_cache, data.sin_cache, batch_size,
-        max_query_len, kv_num_heads, head_size, parameters.rotary_dim, parameters.rotary_interleaved, packed_seq_stride,
-        max_threads_per_block));
+    const int rotary_dim = parameters.do_rotary ? parameters.rotary_dim : 0;
+    ORT_RETURN_IF_ERROR(LaunchQkNormRotaryKernel<T>(
+        stream, q_buffer, query, past_seqlens, cumulative_seqlens_q, data.cos_cache, data.sin_cache,
+        data.q_norm_weight, parameters.qk_norm_epsilon, batch_size, max_query_len, num_heads, head_size,
+        rotary_dim, parameters.rotary_interleaved, packed_seq_stride, max_threads_per_block));
+    ORT_RETURN_IF_ERROR(LaunchQkNormRotaryKernel<T>(
+        stream, k_buffer, key, past_seqlens, cumulative_seqlens_q, data.cos_cache, data.sin_cache,
+        data.k_norm_weight, parameters.qk_norm_epsilon, batch_size, max_query_len, kv_num_heads, head_size,
+        rotary_dim, parameters.rotary_interleaved, packed_seq_stride, max_threads_per_block));
     query = q_buffer;
     key = k_buffer;
   } else if (parameters.is_packed_qkv) {
@@ -501,12 +729,14 @@ Status EfficientAttention(
     query = q_buffer;
   }
 
+  const bool k_is_packed = parameters.is_packed_qkv && !(parameters.do_rotary || parameters.use_qk_norm);
   int* block_table = const_cast<int*>(data.block_table);
-  const int key_stride = parameters.is_packed_qkv && !parameters.do_rotary ? q_hidden_size + 2 * kv_hidden_size : kv_hidden_size;
+  const int key_stride = k_is_packed ? q_hidden_size + 2 * kv_hidden_size : kv_hidden_size;
   const int value_stride = parameters.is_packed_qkv ? q_hidden_size + 2 * kv_hidden_size : kv_hidden_size;
   ORT_RETURN_IF_ERROR(LaunchReshapeAndCache<T>(key, value, data.key_cache, data.value_cache, block_table, past_seqlens,
-                                               cumulative_seqlens_q, batch_size, max_num_blocks_per_seq, token_count,
-                                               kv_hidden_size, block_size, key_stride, value_stride, stream,
+                                               cumulative_seqlens_q, data.slot_mapping, batch_size,
+                                               max_num_blocks_per_seq, token_count, kv_hidden_size, block_size,
+                                               parameters.num_blocks, key_stride, value_stride, stream,
                                                max_threads_per_block));
 
   ORT_RETURN_IF_ERROR(LaunchGatherAndExpandPagedKVCache<T>(

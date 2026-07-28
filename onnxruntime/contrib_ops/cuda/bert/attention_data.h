@@ -250,12 +250,23 @@ struct PagedAttentionData {
   const int* cumulative_seqlens_q = nullptr;
   const int* past_seqlens = nullptr;
   const int* block_table = nullptr;
-  const int* slot_mappings = nullptr;
+  // Optional explicit write slots, one per query token, into the cache viewed as
+  // [num_blocks * block_size, kv_num_heads, head_size]. A value of -1 suppresses the K/V store
+  // for that token (prefix cache hit / rejected speculative token). nullptr keeps the legacy
+  // derived mapping (past_seqlens + position within the sequence).
+  const int* slot_mapping = nullptr;
   const T* cos_cache = nullptr;
   const T* sin_cache = nullptr;
+  // Per-head attention sink (num_heads,). nullptr with use_smooth_softmax means a sink value of 0.
+  const T* head_sink = nullptr;
+  // QK-Norm weights (head_size,), shared across heads. Both are set or neither is.
+  const T* q_norm_weight = nullptr;
+  const T* k_norm_weight = nullptr;
 
-  // Flash buffers
-  T* softmax_lse = nullptr;
+  // Flash buffers. FlashAttention always emits FP32 log-sum-exp regardless of T; with
+  // params.num_splits <= 1 (which mha_varlen_fwd never overrides) the varlen layout is
+  // [num_heads, token_count].
+  float* softmax_lse = nullptr;
   int* cumulative_seqlens_kv = nullptr;  // Flash api takes cumulative sequence length for kv-cache
 
   // Fused op buffers

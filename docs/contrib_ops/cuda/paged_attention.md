@@ -79,6 +79,10 @@ Structural limits in the current implementation:
 - `batch_size <= 256` — `LaunchGetCumulativeSeqlensKV` uses a per-block `cub::BlockScan` with 256
   threads and independent blocks.
 - `block_size % 256 == 0` — see [§18](#18-known-defects-to-fix-first); this is almost certainly a bug.
+  *(Partly true. It is a genuine FlashAttention tiling constraint, but a head-size-dependent one. See
+  the implementation note in §18.1: validation now accepts any power-of-two `block_size >= 16` and
+  the constraint has been moved into Flash backend eligibility, with fallback to the
+  memory-efficient backend.)*
 - MEA fallback materializes a **tight gathered, GQA-expanded** KV buffer of
   `[total_kv_tokens, num_heads, head_size]`; memory scales with context × query heads.
 - A device→host sync per step to obtain `max_query_len` (and `total_kv_tokens` for MEA).
@@ -760,6 +764,8 @@ Consolidated, to be implemented in `paged_attention_helper::CheckInputs`. Every 
 
 **Corrected:**
 - `block_size` must be a power of two in `{16, 32, 64, 128, 256}` (**replaces** `block_size % 256 == 0`; see §18).
+  *Implemented as: any power of two `>= 16`. Values that FlashAttention cannot address for the given
+  `head_size` select the memory-efficient backend rather than failing — see the note in §18.1.*
 
 **New:**
 - `slot_mapping`: rank 1, `dim0 == token_count`, `int32`.
@@ -866,6 +872,22 @@ These block the feature work and should land ahead of it.
    multiple of 8` suggests the intent was an alignment constraint on the *innermost* dimension.
    Replace with `block_size ∈ {16, 32, 64, 128, 256}` and, if a byte-alignment constraint is truly
    needed, express it on `block_size * head_size * sizeof(T_CACHE)`.
+
+   > **Implementation note (correction).** The constraint is *not* purely a validation bug. The
+   > vendored FlashAttention split-KV kernel builds each `gK`/`gV` tile as a single contiguous
+   > `kBlockN × head_size` region addressed by one `(block_table_idx, block_table_offset)` pair, so a
+   > tile must never straddle a page. That requires `block_size % kBlockN == 0`, where
+   > `kBlockN = head_size <= 64 ? 256 : (head_size <= 128 ? 128 : 64)`
+   > (`flash_fwd_launch_template.h::run_mha_fwd_splitkv_dispatch`). Relaxing the *validation* alone
+   > would produce silent garbage on the Flash path.
+   >
+   > What was implemented instead: `CheckKVCache` accepts any power-of-two `block_size >= 16` (a
+   > superset of `{16, 32, 64, 128, 256}` that also keeps the existing `block_size = 512` test case
+   > valid), and `paged_attention.cc` treats `block_size % kBlockN == 0` as part of Flash backend
+   > *eligibility*. When a model uses a smaller page than Flash can address, the op transparently
+   > falls back to the memory-efficient backend, which gathers pages into a dense buffer first and
+   > therefore accepts any block size. The op only errors when neither backend is eligible.
+   > Lifting this properly requires teaching the Flash paged loader to split a tile across pages.
 2. **Out-of-bounds binary search.** The binary search over `cumulative_seqlens_q` in
    `ReshapeAndCache` and `GatherAndExpandPagedKVCache` can yield `batch_id == batch_size` when
    `token_id >= cumulative_seqlens_q[batch_size]`, producing OOB reads of `past_seqlens` and

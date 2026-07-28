@@ -4237,15 +4237,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>left_window_size for local attention (like Mistral). Default value is -1 meaning unused.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for q</dd>
+<dt><tt>qk_norm_epsilon</tt> : float</dt>
+<dd>Epsilon used by the Q/K RMSNorm when 'q_norm_weight' and 'k_norm_weight' are provided. Default value is 1e-6.</dd>
 <dt><tt>rotary_interleaved</tt> : int</dt>
 <dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
+<dt><tt>smooth_softmax</tt> : int</dt>
+<dd>Use a smooth factor in softmax, equivalent to an extra attention score of 0 that is not associated with any value. Default value is 0 (False). Implied when 'head_sink' is provided.</dd>
 <dt><tt>softcap</tt> : float</dt>
 <dd>Softcap value for attention weights. Default value is 0.</dd>
 </dl>
 
-#### Inputs (8 - 10)
+#### Inputs (8 - 14)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -4268,6 +4272,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>2D tensor with shape (max total seqlen, head_size / 2).</dd>
 <dt><tt>sin_cache</tt> (optional) : T</dt>
 <dd>2D tensor with shape (max total seqlen, head_size / 2).</dd>
+<dt><tt>slot_mapping</tt> (optional) : S</dt>
+<dd>1D tensor with shape (num_tokens). For each query token, the flat slot index (block_id * block_size + offset_in_block) at which its key/value is written into the KV cache. A value of -1 skips the cache write for that token, which lets a scheduler suppress stores for prefix-cache hits or rejected speculative tokens. When absent, slots are derived from 'past_seqlens', 'cumulative_sequence_length' and 'block_table' as before. 'block_table' is still required, because it defines the read path.</dd>
+<dt><tt>head_sink</tt> (optional) : T</dt>
+<dd>1D tensor with shape (num_heads). Each head has a learnable sink logit that participates in the softmax denominator but contributes no value, so attention can 'do nothing'. Providing this input implies smooth_softmax.</dd>
+<dt><tt>q_norm_weight</tt> (optional) : T</dt>
+<dd>1D tensor with shape (head_size). RMSNorm gain applied to each query head before rotary embedding. Must be provided together with 'k_norm_weight'.</dd>
+<dt><tt>k_norm_weight</tt> (optional) : T</dt>
+<dd>1D tensor with shape (head_size). RMSNorm gain applied to each key head before rotary embedding and before the key is written to the KV cache. Must be provided together with 'q_norm_weight'.</dd>
 </dl>
 
 #### Outputs (1 - 3)

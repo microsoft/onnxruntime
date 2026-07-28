@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
+
 #include "core/providers/cuda/cuda_common.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cpu/utils/dump_tensor.h"
@@ -46,8 +48,12 @@ PagedAttention<T>::PagedAttention(const OpKernelInfo& info)
   local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
+  smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
+  qk_norm_epsilon_ = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
+  ORT_ENFORCE(std::isfinite(qk_norm_epsilon_) && qk_norm_epsilon_ > 0.0f,
+              "qk_norm_epsilon must be a positive finite number");
 
   kernel_options_ = this->GetAttentionKernelOptions();
   disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
@@ -68,6 +74,10 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* block_table = context->Input<Tensor>(7);
   const Tensor* cos_cache = context->Input<Tensor>(8);
   const Tensor* sin_cache = context->Input<Tensor>(9);
+  const Tensor* slot_mapping = context->Input<Tensor>(10);
+  const Tensor* head_sink = context->Input<Tensor>(11);
+  const Tensor* q_norm_weight = context->Input<Tensor>(12);
+  const Tensor* k_norm_weight = context->Input<Tensor>(13);
 
   auto& device_prop = GetDeviceProp();
   PagedAttentionParameters parameters;
@@ -85,11 +95,17 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                           block_table,
                                                           cos_cache,
                                                           sin_cache,
+                                                          slot_mapping,
+                                                          head_sink,
+                                                          q_norm_weight,
+                                                          k_norm_weight,
                                                           &parameters,
                                                           num_heads_,
                                                           kv_num_heads_,
                                                           scale_,
                                                           softcap_,
+                                                          smooth_softmax_,
+                                                          qk_norm_epsilon_,
                                                           device_prop.maxThreadsPerBlock));
   parameters.local_window_size = local_window_size_;
   parameters.do_rotary = do_rotary_;
@@ -150,8 +166,19 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   // Kernel backend selection — FlashAttention preferred, fall back to MemoryEfficientAttention.
+  //
+  // The vendored FlashAttention paged kernel loads a whole kBlockN x head_size K/V tile using a
+  // single (page, offset) pair, so a tile must never straddle a page boundary: block_size has to be
+  // a multiple of kBlockN. kBlockN is fixed by head_size in run_mha_fwd_splitkv_dispatch. When the
+  // model uses a smaller page than that, we silently fall back to the memory-efficient path (which
+  // gathers the pages into a dense buffer first and therefore accepts any block_size) rather than
+  // rejecting the model.
+  const int flash_min_block_size =
+      parameters.head_size <= 64 ? 256 : (parameters.head_size <= 128 ? 128 : 64);
+
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = !disable_flash_attention_ &&
+                             (parameters.block_size % flash_min_block_size) == 0 &&
                              onnxruntime::flash::is_supported<T>(device_prop,
                                                                  parameters.head_size,
                                                                  parameters.num_heads,
@@ -175,10 +202,24 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   if (!use_flash_attention && !use_memory_efficient_attention) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "PagedAttention requires FlashAttention (sm>=80, fp16/bf16) or "
+                           "PagedAttention requires FlashAttention (sm>=80, fp16/bf16, block_size a multiple of ",
+                           flash_min_block_size, " for head_size ", parameters.head_size,
+                           ") or "
                            "MemoryEfficientAttention (fp16 sm>=53, bf16 sm>=80, head_size<=1024 and %8==0) "
                            "to be available. Check ORT_DISABLE_FLASH_ATTENTION / "
-                           "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION env vars and dtype/head_size.");
+                           "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION env vars and dtype/head_size/block_size.");
+  }
+
+  // The attention-sink epilogue rescales the output using FlashAttention's log-sum-exp, which the
+  // CUTLASS memory-efficient kernel does not expose. Fail loudly instead of silently ignoring the
+  // sink, and name the backend so the mitigation is obvious.
+  if (parameters.use_smooth_softmax && !use_flash_attention) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "PagedAttention: 'head_sink' / smooth_softmax is only supported by the FlashAttention "
+                           "backend, but the MemoryEfficientAttention backend was selected (head_size=",
+                           parameters.head_size, ", block_size=", parameters.block_size,
+                           "). FlashAttention requires sm>=80, fp16/bf16 and block_size a multiple of ",
+                           flash_min_block_size, ".");
   }
 
   // Scratch buffers common to both backends.
@@ -195,8 +236,11 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto cumulative_seqlens_kv_buffer = GetScratchBuffer<void>(cumulative_seqlens_kv_bytes, GetComputeStream(context));
   int* cumulative_seqlens_kv_ptr = reinterpret_cast<int*>(cumulative_seqlens_kv_buffer.get());
 
+  // The fused prologue (QK-Norm and/or rotary) writes densified Q and K into the workspace, so it
+  // needs room for both. Plain packed-QKV only needs to densify Q.
+  const bool needs_qk_prologue = do_rotary_ || parameters.use_qk_norm;
   size_t workspace_buffer_bytes = 0;
-  if (do_rotary_) {
+  if (needs_qk_prologue) {
     workspace_buffer_bytes = sizeof(T) * parameters.token_count * (parameters.hidden_size + parameters.kv_hidden_size);
   } else if (parameters.is_packed_qkv) {
     workspace_buffer_bytes = sizeof(T) * parameters.token_count * parameters.hidden_size;
@@ -205,20 +249,6 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // Populate cumulative_seqlens_kv for both backends. The MEA path additionally needs
   // the last element on the host to size the tight gather buffers, so we D->H sync below.
-  //
-  // LaunchGetCumulativeSeqlensKV uses a per-block cub::BlockScan with a block size of 256
-  // and launches (batch_size + 255) / 256 blocks, so blocks scan independently. Enforce
-  // batch_size <= 256 so the cumulative sum is correct; a larger batch would silently
-  // produce wrong KV offsets. (A future grid-wide scan could lift this limit.)
-  constexpr int kMaxBatchSizeForCumulativeSeqlensKV = 256;
-  if (parameters.batch_size > kMaxBatchSizeForCumulativeSeqlensKV) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "PagedAttention currently supports batch_size <= ",
-                           kMaxBatchSizeForCumulativeSeqlensKV,
-                           " (LaunchGetCumulativeSeqlensKV limitation); got batch_size=",
-                           parameters.batch_size, ".");
-  }
-
   cudaStream_t cuda_stream = static_cast<cudaStream_t>(ort_stream.get()->GetHandle());
   ORT_RETURN_IF_ERROR(LaunchGetCumulativeSeqlensKV(
       cumulative_seqlens_kv_ptr,
@@ -307,11 +337,16 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.past_seqlens = reinterpret_cast<const int*>(past_seqlens->Data<int>());
   data.cumulative_seqlens_kv = cumulative_seqlens_kv_ptr;
   data.block_table = reinterpret_cast<const int*>(block_table->Data<int>());
+  data.slot_mapping = slot_mapping == nullptr ? nullptr : reinterpret_cast<const int*>(slot_mapping->Data<int>());
+  data.head_sink = head_sink == nullptr ? nullptr : reinterpret_cast<const CudaT*>(head_sink->Data<T>());
+  data.q_norm_weight = q_norm_weight == nullptr ? nullptr : reinterpret_cast<const CudaT*>(q_norm_weight->Data<T>());
+  data.k_norm_weight = k_norm_weight == nullptr ? nullptr : reinterpret_cast<const CudaT*>(k_norm_weight->Data<T>());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   if (softmax_lse_buffer != nullptr) {
-    data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse_buffer.get());
+    // FlashAttention always writes fp32 log-sum-exp, independent of T.
+    data.softmax_lse = reinterpret_cast<float*>(softmax_lse_buffer.get());
   }
   if (workspace_buffer != nullptr) {
     data.workspace_buffer = reinterpret_cast<CudaT*>(workspace_buffer.get());
