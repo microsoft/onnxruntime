@@ -23,6 +23,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/threading.cpp
   ${MLAS_SRC_DIR}/sgemm.cpp
   ${MLAS_SRC_DIR}/halfgemm.cpp
+  ${MLAS_SRC_DIR}/halfconv.cpp
   ${MLAS_SRC_DIR}/qgemm.cpp
   ${MLAS_SRC_DIR}/qdwconv.cpp
   ${MLAS_SRC_DIR}/convolve.cpp
@@ -56,6 +57,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/sqnbitgemm_q8_block.h
   ${MLAS_SRC_DIR}/flashattn.cpp
   ${MLAS_SRC_DIR}/flashattn_qkv.cpp
+  ${MLAS_SRC_DIR}/flashattn_gqa.cpp
   ${MLAS_SRC_DIR}/qkv_quant.cpp
   ${MLAS_SRC_DIR}/cast.cpp
   ${MLAS_SRC_DIR}/layernorm.cpp
@@ -84,49 +86,6 @@ endif()
 set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
 
 #TODO: set MASM flags properly
-function(setup_kleidiai)
-  target_sources(onnxruntime_mlas PRIVATE
-    ${MLAS_SRC_DIR}/kai_ukernel_interface.cpp
-    ${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp
-    ${MLAS_SRC_DIR}/kleidiai/sbgemm_kleidiai.cpp
-    ${MLAS_SRC_DIR}/kleidiai/convolve_kleidiai.cpp
-    ${MLAS_SRC_DIR}/kleidiai/qgemm_kleidiai.cpp
-  )
-  target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai)
-  if(onnxruntime_USE_QMX_KLEIDIAI_COEXIST)
-          target_link_libraries(onnxruntime_mlas PRIVATE  kleidiai-qmx)
-          target_compile_definitions(onnxruntime_mlas PRIVATE ENABLE_QMX_KERNELS=1)
-          list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai-qmx)
-  endif()
-  set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES} PARENT_SCOPE)
-
-  # If KLEIDIAI_DEBUG_LOGGING is enabled that implies both DEBUG and KERNEL messages.
-  if(onnxruntime_KLEIDIAI_DEBUG_LOGGING)
-    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_DEBUG_LOGGING=1)
-    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_KERNEL_LOGGING=1)
-  endif()
-  if(onnxruntime_KLEIDIAI_KERNEL_LOGGING)
-    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_KERNEL_LOGGING=1)
-  endif()
-
-  if (NOT onnxruntime_BUILD_SHARED_LIB)
-    install(TARGETS kleidiai EXPORT ${PROJECT_NAME}Targets
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
-  endif()
-
-  if(onnxruntime_USE_QMX_KLEIDIAI_COEXIST)
-    install(TARGETS kleidiai-qmx EXPORT ${PROJECT_NAME}Targets
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
-  endif()
-endfunction()
-
 function(setup_mlas_source_for_windows)
 
   #
@@ -138,14 +97,13 @@ function(setup_mlas_source_for_windows)
     ${MLAS_SRC_DIR}/pooling_fp16.cpp
   )
 
-
   #The onnxruntime_target_platform variable was added by Windows AI team in onnxruntime_common.cmake
   #Don't use it for other platforms.
-  if((onnxruntime_target_platform STREQUAL "ARM64") OR (onnxruntime_target_platform STREQUAL "aarch64") OR (onnxruntime_target_platform STREQUAL "ARM64EC"))
+  if((onnxruntime_target_platform STREQUAL "ARM64") OR (onnxruntime_target_platform STREQUAL "ARM64EC"))
     set(PREPROCESS_ARMASM_FLAGS "")
     set(ARMASM_FLAGS "")
 
-    if((onnxruntime_target_platform STREQUAL "ARM64") OR (onnxruntime_target_platform STREQUAL "aarch64"))
+    if(onnxruntime_target_platform STREQUAL "ARM64")
       target_sources(onnxruntime_mlas PRIVATE
         ${MLAS_SRC_DIR}/halfgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
@@ -155,6 +113,15 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/qnbitgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_fp32.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
+        # Portable W2 pack helpers + scalar reference kernel. Misleadingly
+        # Avx512-named because the AVX-512 W2 path was the first consumer, but
+        # the TU contains no x86 intrinsics (see sqnbitgemm_kernel_avx512_2bit.cpp).
+        # ARM64 W2 dispatch reuses these for pack-size / pack / layout; the
+        # native compute kernel is the NEON DotProd TU listed just below.
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
+        # W2 CompInt8 DotProd kernel (NEON FEAT_DotProd backend).
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_2bit.cpp
         ${MLAS_SRC_DIR}/cast_kernel_neon.cpp
         ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp
         ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16_8bit.cpp
@@ -285,6 +252,12 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.h
       ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
+      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2vnni.cpp
+      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
+      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
+      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen64.h
+      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen128.h
+      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen32.h
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
       ${MLAS_SRC_DIR}/qkv_quant_kernel_avx512vnni.cpp
@@ -348,6 +321,51 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/i386/SgemmKernelSse2.asm
       ${MLAS_SRC_DIR}/i386/SgemmKernelAvx.asm
     )
+  endif()
+endfunction()
+
+function(setup_kleidiai)
+  target_sources(onnxruntime_mlas PRIVATE
+    ${MLAS_SRC_DIR}/kai_ukernel_interface.cpp
+    ${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp
+    ${MLAS_SRC_DIR}/kleidiai/halfgemm_kleidiai.cpp
+    ${MLAS_SRC_DIR}/kleidiai/halfconv_kleidiai.cpp
+    ${MLAS_SRC_DIR}/kleidiai/sbgemm_kleidiai.cpp
+    ${MLAS_SRC_DIR}/kleidiai/convolve_kleidiai.cpp
+    ${MLAS_SRC_DIR}/kleidiai/qgemm_kleidiai.cpp
+  )
+  target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai)
+  if(onnxruntime_USE_QMX_KLEIDIAI_COEXIST)
+          target_link_libraries(onnxruntime_mlas PRIVATE  kleidiai-qmx)
+          target_compile_definitions(onnxruntime_mlas PRIVATE ENABLE_QMX_KERNELS=1)
+          list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai-qmx)
+  endif()
+  set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES} PARENT_SCOPE)
+
+  # If KLEIDIAI_DEBUG_LOGGING is enabled that implies both DEBUG and KERNEL messages.
+  if(onnxruntime_KLEIDIAI_DEBUG_LOGGING)
+    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_DEBUG_LOGGING=1)
+    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_KERNEL_LOGGING=1)
+  endif()
+  if(onnxruntime_KLEIDIAI_KERNEL_LOGGING)
+    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_KERNEL_LOGGING=1)
+  endif()
+
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS kleidiai EXPORT ${PROJECT_NAME}Targets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
+
+  if(onnxruntime_USE_QMX_KLEIDIAI_COEXIST)
+    install(TARGETS kleidiai-qmx EXPORT ${PROJECT_NAME}Targets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
   endif()
 endfunction()
 
@@ -425,8 +443,9 @@ else()
         elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "x86")
           set(X86 TRUE)
         else()
-          # Native build (e.g. Termux on-device): NDK ABI var is unset, so
-          # fall back to CMAKE_SYSTEM_PROCESSOR detection like the non-Android path.
+          # Native build (e.g. Termux on-device): the NDK sets CMAKE_ANDROID_ARCH_ABI,
+          # but a native on-device build does not, leaving it empty. Fall back to
+          # CMAKE_SYSTEM_PROCESSOR detection like the non-Android path below.
           if(CMAKE_SYSTEM_PROCESSOR MATCHES "^arm64.*")
             set(ARM64 TRUE)
           elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^aarch64.*")
@@ -477,9 +496,6 @@ else()
         elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^s390x$")
           set(S390X TRUE)
         endif()
-    endif()
-    if(onnxruntime_USE_KLEIDIAI AND ARM64)
-      setup_kleidiai()
     endif()
 
     if(APPLE)
@@ -535,6 +551,15 @@ else()
           ${MLAS_SRC_DIR}/qnbitgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_fp32.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
+          # Portable W2 scalar pack / reference kernel. See ARM64 (Windows) branch
+          # above for the rationale; this is the matching entry for non-Windows
+          # ARM64 builds (Linux, macOS).
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
+          # W2 CompInt8 DotProd kernel (NEON FEAT_DotProd backend). Compiled
+          # with -march=armv8.2-a+dotprod on this branch -- see flag override
+          # further below alongside the W4/W8 dotprod TU.
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_2bit.cpp
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.h
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qkv_quant_kernel.h
@@ -564,7 +589,12 @@ else()
 		  setup_arm_neon_nchwc()
 		endif()
 
+		if (onnxruntime_USE_KLEIDIAI)
+          setup_kleidiai()
+        endif()
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
+                                    PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
+        set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_2bit.cpp
                                     PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
 				    PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
@@ -811,6 +841,7 @@ else()
           ${MLAS_SRC_DIR}/intrinsics/avx2/qladd_avx2.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx2/qdwconv_avx2.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx2/saturation_check_avx2.cpp
+          ${MLAS_SRC_DIR}/intrinsics/avx2/q2_dq_avx2.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.h
           ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.cpp
@@ -828,16 +859,58 @@ else()
           )
         endif()
 
-message(STATUS "CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
-message(STATUS "CMAKE_CXX_COMPILER_VERSION: ${CMAKE_CXX_COMPILER_VERSION}")
+        include(CheckCXXSourceCompiles)
+        set(OLD_CMAKE_REQUIRED_FLAGS_AVXVNNI "${CMAKE_REQUIRED_FLAGS}")
+        set(CMAKE_REQUIRED_FLAGS "${OLD_CMAKE_REQUIRED_FLAGS_AVXVNNI} -mavx2 -mfma -mf16c -mavxvnni")
+        check_cxx_source_compiles("
+          #include <immintrin.h>
+          int main() {
+            __m256i a = _mm256_setzero_si256();
+            __m256i b = _mm256_setzero_si256();
+            (void)_mm256_dpbusds_avx_epi32(a, b, b);
+            return 0;
+          }"
+          MLAS_COMPILER_SUPPORTS_AVXVNNI
+        )
+        set(CMAKE_REQUIRED_FLAGS "${OLD_CMAKE_REQUIRED_FLAGS_AVXVNNI}")
+        unset(OLD_CMAKE_REQUIRED_FLAGS_AVXVNNI)
 
-if(NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" OR CMAKE_CXX_COMPILER_VERSION VERSION_GREATER "11")
-          message(STATUS "Using -mavx2 -mfma -mavxvnni flags")
-          set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c -mavxvnni")
-else()
-          message(STATUS "Using -mavx2 -mfma flags")
-          set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c")
-endif()
+        # Apply the base AVX2 flags to all AVX2 sources.
+        # sqnbitgemm_kernel_avx2.cpp is now in this set and compiled without
+        # -mavxvnni, preventing the auto-vectorizer from emitting AVX-VNNI
+        # instructions in the pure-AVX2 kernels.
+        set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c")
+
+        # sqnbitgemm_kernel_avx2vnni.cpp is always compiled so that
+        # MlasSQNBitGemmDispatchAvx2vnni (referenced unconditionally in
+        # platform.cpp, mlasi.h, and tests) is always defined.  Only the
+        # -mavxvnni flag is conditional: without it __AVXVNNI__ is not defined
+        # and the VNNI intrinsic paths compile out via the #if guards, leaving
+        # only the AVX2 fallback kernels in the dispatch table.
+        set(mlas_platform_srcs_avx2vnni
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2vnni.cpp
+        )
+        if(MLAS_COMPILER_SUPPORTS_AVXVNNI)
+          message(STATUS "AVX-VNNI supported: compiling sqnbitgemm_kernel_avx2vnni.cpp with -mavx2 -mfma -mf16c -mavxvnni")
+          # AVX-VNNI kernels live in a dedicated TU compiled with -mavxvnni.
+          # Keeping them separate prevents the auto-vectorizer from emitting
+          # VNNI instructions in the pure-AVX2 kernels in sqnbitgemm_kernel_avx2.cpp.
+          set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2vnni.cpp
+            PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c -mavxvnni")
+        else()
+          message(STATUS "AVX-VNNI not supported by compiler/assembler: compiling sqnbitgemm_kernel_avx2vnni.cpp with -mavx2 -mfma -mf16c only (VNNI paths compiled out)")
+          # Still compile the TU so MlasSQNBitGemmDispatchAvx2vnni is defined.
+          # __AVXVNNI__ is absent, so all VNNI intrinsic blocks are #if-excluded
+          # and the dispatch table falls back to pure-AVX2 kernels.
+          set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2vnni.cpp
+            PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c")
+        endif()
+
+        # The 2-bit fp-zero-point dequant kernel relies on separate multiply
+        # and add rounding to stay bit-identical to the scalar kernel, so keep
+        # the compiler from contracting them into an FMA.
+        set_property(SOURCE ${MLAS_SRC_DIR}/intrinsics/avx2/q2_dq_avx2.cpp
+          APPEND PROPERTY COMPILE_OPTIONS "-ffp-contract=off")
         set(mlas_platform_srcs_avx512f
           ${MLAS_SRC_DIR}/x86_64/DgemmKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/SgemmKernelAvx512F.S
@@ -858,14 +931,31 @@ endif()
           ${MLAS_SRC_DIR}/x86_64/QgemmU8X8KernelAvx512Core.S
           ${MLAS_SRC_DIR}/x86_64/ConvSymKernelAvx512Core.S
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen64.h
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen128.h
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen32.h
         )
         set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl")
+
+        # NOTE: this TU is intrinsic-free scalar helpers reached from both the
+        # AVX2 and AVX-512 W2 dispatch tables at model load. Flags must not
+        # enable any ISA the AVX2-only host lacks, or the compiler may
+        # autovectorize the scalar loops into EVEX instructions and SIGILL.
+        # If the AVX-512 W2 pack ever becomes a perf hot spot, split this
+        # file: keep the scalar pack in a flag-less TU and put an optimized
+        # variant in a separate one only used by the AVX-512 tables.
+        set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp PROPERTIES
+          COMPILE_FLAGS "")
 
         set(mlas_platform_srcs_avx512vnni
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
           ${MLAS_SRC_DIR}/qkv_quant_kernel_avx512vnni.cpp
         )
-        set_source_files_properties(${mlas_platform_srcs_avx512vnni} PROPERTIES COMPILE_FLAGS "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+        set_source_files_properties(
+          ${mlas_platform_srcs_avx512vnni} PROPERTIES
+          COMPILE_FLAGS "-mfma -mf16c -mavx512vnni -mavx512bw -mavx512dq -mavx512vl -mavx512f")
 
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/activate_fp16.cpp
@@ -876,6 +966,7 @@ endif()
           ${mlas_platform_srcs_sse2}
           ${mlas_platform_srcs_avx}
           ${mlas_platform_srcs_avx2}
+          ${mlas_platform_srcs_avx2vnni}
           ${mlas_platform_srcs_avx512f}
           ${mlas_platform_srcs_avx512core}
           ${mlas_platform_srcs_avx512vnni}
@@ -986,6 +1077,7 @@ endif()
               ${MLAS_SRC_DIR}/riscv64/layernorm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/qgemm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/activation_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/qnbitgemm_kernel_rvv.cpp
             )
             list(REMOVE_ITEM mlas_platform_srcs
               "${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp")
@@ -999,6 +1091,7 @@ endif()
               ${MLAS_SRC_DIR}/riscv64/layernorm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/qgemm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/activation_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/qnbitgemm_kernel_rvv.cpp
               PROPERTIES COMPILE_FLAGS "-march=rv64gcv -mabi=lp64d")
             list(APPEND mlas_private_compile_definitions MLAS_USE_RVV=1)
 
@@ -1006,10 +1099,12 @@ endif()
               list(APPEND mlas_platform_srcs
                 ${MLAS_SRC_DIR}/riscv64/halfgemm_kernel_rvv.cpp
                 ${MLAS_SRC_DIR}/riscv64/cast_kernel_rvv.cpp
+                ${MLAS_SRC_DIR}/riscv64/hqnbitgemm_kernel_rvv.cpp
               )
               set_source_files_properties(
                 ${MLAS_SRC_DIR}/riscv64/halfgemm_kernel_rvv.cpp
                 ${MLAS_SRC_DIR}/riscv64/cast_kernel_rvv.cpp
+                ${MLAS_SRC_DIR}/riscv64/hqnbitgemm_kernel_rvv.cpp
                 PROPERTIES COMPILE_FLAGS "-march=rv64gcv_zvfh -mabi=lp64d")
               list(APPEND mlas_private_compile_definitions MLAS_USE_RVV_ZVFH=1)
             endif()
