@@ -37,6 +37,7 @@
 #include "core/providers/webgpu/tensor/trilu.h"
 #include "core/providers/webgpu/tensor/unsqueeze.h"
 #include "core/providers/webgpu/math/binary_elementwise_ops.h"
+#include "core/providers/webgpu/math/unary_elementwise_ops.h"
 #include "core/providers/webgpu/tensor/where.h"
 #include "core/providers/webgpu/reduction/reduction_ops.h"
 
@@ -153,8 +154,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, int32_t, Clip)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, 12, uint32_t, Clip)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, uint32_t, Clip)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, 12, int64_t, Clip)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, int64_t, Clip)>,
+    // int64 Clip is registered conditionally in RegisterKernels (gated on enable_int64).
     KERNEL_CREATE_INFO(6, Elu),
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Relu),
     KERNEL_CREATE_INFO_VERSIONED(13, 13, Relu),
@@ -476,6 +476,9 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<21, 22>(enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<23, 23>(enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<24>(enable_int64)));
+
+  // Register int64 Clip kernels with conditional int64 support
+  RegisterClipInt64Kernels(*kernel_registry, enable_int64);
 
   // Register Range kernels with conditional int64 support
   RegisterRangeKernels(*kernel_registry, enable_int64);
