@@ -457,7 +457,13 @@ std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::
       }
       break;
     case onnxruntime::webgpu::ProgramVariableDataType::Uint64:
-      ss << name_ << "[" << offset << "]=vec2<u32>(u32(" << value << "), 0u);";
+      if (use_storage_type) {
+        // Value is already storage type (vec2<u32>), use directly
+        ss << name_ << "[" << offset << "]=" << value << ";";
+      } else {
+        // Value is u32, zero-extend to uint64 (vec2<u32>)
+        ss << name_ << "[" << offset << "]=vec2<u32>(u32(" << value << "), 0u);";
+      }
       break;
     case onnxruntime::webgpu::ProgramVariableDataType::Boolx4:
       ss << name_ << "[" << offset << "]=dot(vec4<u32>(0x1, 0x100, 0x10000, 0x1000000), vec4<u32>(" << value << "));";
