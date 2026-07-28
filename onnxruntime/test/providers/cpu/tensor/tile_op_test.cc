@@ -595,7 +595,9 @@ TEST(TensorOpTest, TileInt64TypeWebGpu) {
     ConfigOptions config_options{};
     ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
     auto provider = WebGpuExecutionProviderWithOptions(config_options);
-    test.ConfigEp(std::move(provider)).RunWithConfig();
+    test.ConfigEp(std::move(provider))
+        .ConfigExcludeEps({kCpuExecutionProvider})
+        .RunWithConfig();
   }
 
   // 2-D: input [[v0, v1], [v2, v0]], repeat [2, 1]
@@ -607,7 +609,9 @@ TEST(TensorOpTest, TileInt64TypeWebGpu) {
     ConfigOptions config_options{};
     ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
     auto provider = WebGpuExecutionProviderWithOptions(config_options);
-    test.ConfigEp(std::move(provider)).RunWithConfig();
+    test.ConfigEp(std::move(provider))
+        .ConfigExcludeEps({kCpuExecutionProvider})
+        .RunWithConfig();
   }
 
   // 3-D: input [[[v0, v1, v2]]], repeat [1, 2, 1]
@@ -619,7 +623,9 @@ TEST(TensorOpTest, TileInt64TypeWebGpu) {
     ConfigOptions config_options{};
     ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
     auto provider = WebGpuExecutionProviderWithOptions(config_options);
-    test.ConfigEp(std::move(provider)).RunWithConfig();
+    test.ConfigEp(std::move(provider))
+        .ConfigExcludeEps({kCpuExecutionProvider})
+        .RunWithConfig();
   }
 }
 
