@@ -230,6 +230,9 @@ func (t *Tensor) SequenceLen() (int, error) {
 	if err := checkStatus(C.ort_GetValueCount(t.value, &count)); err != nil {
 		return 0, wrapErr("get value count", err)
 	}
+	if uint64(count) > uint64(math.MaxInt) {
+		return 0, fmt.Errorf("ort: sequence len: count %d exceeds addressable range", uint64(count))
+	}
 	return int(count), nil
 }
 
@@ -239,6 +242,9 @@ func (t *Tensor) SequenceAt(index int) (*Tensor, error) {
 	if err := t.checkUsable("sequence at"); err != nil {
 		return nil, err
 	}
+	if index < 0 || index > math.MaxInt32 {
+		return nil, fmt.Errorf("ort: sequence at: index %d is outside the C int range", index)
+	}
 	var allocator *C.OrtAllocator
 	if err := checkStatus(C.ort_GetAllocatorWithDefaultOptions(&allocator)); err != nil {
 		return nil, wrapErr("get allocator", err)
@@ -247,7 +253,12 @@ func (t *Tensor) SequenceAt(index int) (*Tensor, error) {
 	if err := checkStatus(C.ort_GetValue(t.value, C.int(index), allocator, &value)); err != nil {
 		return nil, wrapErr("get value", err)
 	}
-	return wrapOutputTensor(value)
+	out, err := wrapOutputTensor(value)
+	if err != nil {
+		C.ort_ReleaseValue(value)
+		return nil, err
+	}
+	return out, nil
 }
 
 // NewSequence creates a sequence value from the given tensors.
@@ -341,6 +352,9 @@ func (t *Tensor) checkUsable(op string) error {
 
 // Close releases the tensor's resources. It is idempotent.
 func (t *Tensor) Close() error {
+	if t == nil {
+		return nil
+	}
 	if t.closed {
 		return nil
 	}
@@ -383,6 +397,22 @@ func createEmptyTensor(dtype TensorElementDataType, shape []int64) (*Tensor, err
 }
 
 func wrapOutputTensor(value *C.OrtValue) (*Tensor, error) {
+	if value == nil {
+		return nil, fmt.Errorf("ort: wrap output: ORT returned a nil value")
+	}
+
+	var onnxType C.enum_ONNXType
+	if err := checkStatus(C.ort_GetValueType(value, &onnxType)); err != nil {
+		return nil, wrapErr("get output value type", err)
+	}
+	if onnxType != C.ONNX_TYPE_TENSOR {
+		return &Tensor{
+			value: value,
+			dtype: TensorElementDataTypeUndefined,
+			owned: true,
+		}, nil
+	}
+
 	var info *C.OrtTensorTypeAndShapeInfo
 	if err := checkStatus(C.ort_GetTensorTypeAndShape(value, &info)); err != nil {
 		return nil, wrapErr("get output tensor type", err)
@@ -397,6 +427,9 @@ func wrapOutputTensor(value *C.OrtValue) (*Tensor, error) {
 	var ndims C.size_t
 	if err := checkStatus(C.ort_GetDimensionsCount(info, &ndims)); err != nil {
 		return nil, wrapErr("get output dims count", err)
+	}
+	if uint64(ndims) > uint64(math.MaxInt/int(unsafe.Sizeof(int64(0)))) {
+		return nil, fmt.Errorf("ort: get output dims: dimension count %d exceeds addressable range", uint64(ndims))
 	}
 
 	shape := make([]int64, int(ndims))

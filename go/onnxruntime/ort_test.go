@@ -220,3 +220,16 @@ func TestOrtErrorAs(t *testing.T) {
 		t.Errorf("expected NoSuchFile, got %s", ortErr.Code)
 	}
 }
+
+func TestLoadLibraryRejectsNULPath(t *testing.T) {
+	fn, handle, err := loadLibrary("library\x00ignored")
+	if handle != nil {
+		closeLibrary(handle)
+	}
+	if fn != nil {
+		t.Fatal("expected nil symbol for rejected path")
+	}
+	if err == nil {
+		t.Fatal("expected error for NUL in shared library path")
+	}
+}

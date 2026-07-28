@@ -21,6 +21,9 @@ import (
 // path during the call rather than retaining it, so passing Go memory to C is
 // permitted here and no copy into C memory is needed.
 func ortPath(path string) (*C.ORTCHAR_T, func(), error) {
+	if err := rejectNUL(path, "path"); err != nil {
+		return nil, func() {}, err
+	}
 	p, err := syscall.UTF16PtrFromString(path)
 	if err != nil {
 		return nil, func() {}, fmt.Errorf("ort: invalid path %q: %w", path, err)

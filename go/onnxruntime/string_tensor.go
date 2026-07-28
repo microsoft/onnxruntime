@@ -7,6 +7,7 @@ package onnxruntime
 import "C"
 import (
 	"fmt"
+	"math"
 	"unsafe"
 )
 
@@ -18,10 +19,15 @@ func CreateStringTensor(shape []int64, data []string) (*Tensor, error) {
 
 	count := shapeElementCount(shape)
 	if count < 0 {
-		return nil, fmt.Errorf("ort: create string tensor: shape contains negative dimension")
+		return nil, fmt.Errorf("ort: create string tensor: invalid shape (negative or overflowing element count)")
 	}
 	if int64(len(data)) != count {
 		return nil, fmt.Errorf("ort: create string tensor: data length %d does not match shape element count %d", len(data), count)
+	}
+	for i, s := range data {
+		if err := rejectNUL(s, fmt.Sprintf("create string tensor: element %d", i)); err != nil {
+			return nil, err
+		}
 	}
 
 	var allocator *C.OrtAllocator
@@ -67,14 +73,17 @@ func CreateStringTensor(shape []int64, data []string) (*Tensor, error) {
 // StringData reads string data from a tensor. Returns an error if the tensor
 // is not a string tensor.
 func (t *Tensor) StringData() ([]string, error) {
-	if t.closed {
-		return nil, fmt.Errorf("ort: string data: tensor is closed")
+	if err := t.checkUsable("string data"); err != nil {
+		return nil, err
 	}
 	if t.dtype != TensorElementDataTypeString {
 		return nil, fmt.Errorf("ort: string data: tensor is %s, not String", t.dtype)
 	}
 
 	count := shapeElementCount(t.shape)
+	if count < 0 || uint64(count) > uint64(math.MaxInt)/uint64(unsafe.Sizeof("")) {
+		return nil, fmt.Errorf("ort: string data: element count %d exceeds addressable range", count)
+	}
 	if count == 0 {
 		return nil, nil
 	}
@@ -88,6 +97,9 @@ func (t *Tensor) StringData() ([]string, error) {
 
 	if totalLen == 0 {
 		return make([]string, n), nil
+	}
+	if uint64(totalLen) > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("ort: string data: byte size %d exceeds addressable range", uint64(totalLen))
 	}
 
 	buf := make([]byte, int(totalLen))

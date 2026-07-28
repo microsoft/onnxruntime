@@ -7,6 +7,7 @@ package onnxruntime
 import "C"
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -183,7 +184,13 @@ func AvailableProviders() ([]string, error) {
 	}
 	defer C.ort_ReleaseAvailableProviders(cProviders, count)
 
+	if count < 0 || uint64(count) > uint64(math.MaxInt)/uint64(unsafe.Sizeof("")) {
+		return nil, fmt.Errorf("ort: get available providers: count %d exceeds addressable range", int(count))
+	}
 	n := int(count)
+	if n > 0 && cProviders == nil {
+		return nil, fmt.Errorf("ort: get available providers: ORT returned nil providers for count %d", n)
+	}
 	providers := make([]string, n)
 	ptrs := unsafe.Slice((**C.char)(unsafe.Pointer(cProviders)), n)
 	for i := 0; i < n; i++ {

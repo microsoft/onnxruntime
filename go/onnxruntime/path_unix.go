@@ -8,8 +8,6 @@ package onnxruntime
 */
 import "C"
 import (
-	"fmt"
-	"strings"
 	"unsafe"
 )
 
@@ -18,8 +16,8 @@ import (
 //
 // On POSIX ORTCHAR_T is char, so the path is passed through as UTF-8.
 func ortPath(path string) (*C.ORTCHAR_T, func(), error) {
-	if strings.IndexByte(path, 0) != -1 {
-		return nil, func() {}, fmt.Errorf("ort: path contains NUL byte: %q", path)
+	if err := rejectNUL(path, "path"); err != nil {
+		return nil, func() {}, err
 	}
 	// C.ORTCHAR_T is an alias for C.char here, so C.CString needs no conversion.
 	p := C.CString(path)

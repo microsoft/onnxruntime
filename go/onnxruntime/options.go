@@ -7,13 +7,16 @@ package onnxruntime
 import "C"
 import (
 	"fmt"
+	"math"
 	"sort"
+	"sync"
 	"unsafe"
 )
 
 // SessionOptions configures how a Session is created.
 type SessionOptions struct {
 	handle *C.OrtSessionOptions
+	mu     sync.Mutex
 }
 
 // NewSessionOptions creates a new SessionOptions with default values.
@@ -31,23 +34,54 @@ func NewSessionOptions() (*SessionOptions, error) {
 // SetIntraOpNumThreads sets the number of threads used within individual ops.
 // 0 means use the default.
 func (o *SessionOptions) SetIntraOpNumThreads(n int) error {
+	if n < math.MinInt32 || n > math.MaxInt32 {
+		return fmt.Errorf("ort: set intra op threads: %d does not fit in C int", n)
+	}
+	if err := o.lockUsable("set intra op threads"); err != nil {
+		return err
+	}
+	defer o.unlock()
 	return wrapErr("set intra op threads", checkStatus(C.ort_SetIntraOpNumThreads(o.handle, C.int(n))))
 }
 
 // SetInterOpNumThreads sets the number of threads used to run independent ops in parallel.
 // 0 means use the default.
 func (o *SessionOptions) SetInterOpNumThreads(n int) error {
+	if n < math.MinInt32 || n > math.MaxInt32 {
+		return fmt.Errorf("ort: set inter op threads: %d does not fit in C int", n)
+	}
+	if err := o.lockUsable("set inter op threads"); err != nil {
+		return err
+	}
+	defer o.unlock()
 	return wrapErr("set inter op threads", checkStatus(C.ort_SetInterOpNumThreads(o.handle, C.int(n))))
 }
 
 // SetGraphOptimizationLevel sets the level of graph optimizations applied.
 func (o *SessionOptions) SetGraphOptimizationLevel(level GraphOptimizationLevel) error {
+	if level < GraphOptimizationLevel(math.MinInt32) || level > GraphOptimizationLevel(math.MaxInt32) {
+		return fmt.Errorf("ort: set graph optimization level: %d does not fit in C enum", level)
+	}
+	if err := o.lockUsable("set graph optimization level"); err != nil {
+		return err
+	}
+	defer o.unlock()
 	return wrapErr("set graph optimization level",
 		checkStatus(C.ort_SetSessionGraphOptimizationLevel(o.handle, C.GraphOptimizationLevel(level))))
 }
 
 // AddConfigEntry sets an arbitrary session configuration key-value pair.
 func (o *SessionOptions) AddConfigEntry(key, value string) error {
+	if err := rejectNUL(key, "session config key"); err != nil {
+		return err
+	}
+	if err := rejectNUL(value, "session config value"); err != nil {
+		return err
+	}
+	if err := o.lockUsable("add config entry"); err != nil {
+		return err
+	}
+	defer o.unlock()
 	cKey := C.CString(key)
 	defer C.free(unsafe.Pointer(cKey))
 	cVal := C.CString(value)
@@ -59,6 +93,16 @@ func (o *SessionOptions) AddConfigEntry(key, value string) error {
 // routed through their dedicated V2 APIs; all others use the generic string
 // key-value API.
 func (o *SessionOptions) AppendExecutionProvider(name string, options map[string]string) error {
+	if err := rejectNUL(name, "execution provider name"); err != nil {
+		return err
+	}
+	if err := validateStringMap(options, "execution provider option"); err != nil {
+		return err
+	}
+	if err := o.lockUsable("append execution provider"); err != nil {
+		return err
+	}
+	defer o.unlock()
 	switch name {
 	case "CUDA", "CUDAExecutionProvider":
 		return o.appendCUDA(options)
@@ -71,6 +115,10 @@ func (o *SessionOptions) AppendExecutionProvider(name string, options map[string
 
 // Clone creates a copy of the session options.
 func (o *SessionOptions) Clone() (*SessionOptions, error) {
+	if err := o.lockUsable("clone session options"); err != nil {
+		return nil, err
+	}
+	defer o.unlock()
 	var out *C.OrtSessionOptions
 	if err := checkStatus(C.ort_CloneSessionOptions(o.handle, &out)); err != nil {
 		return nil, wrapErr("clone session options", err)
@@ -80,26 +128,46 @@ func (o *SessionOptions) Clone() (*SessionOptions, error) {
 
 // DisableMemPattern disables memory pattern optimization.
 func (o *SessionOptions) DisableMemPattern() error {
+	if err := o.lockUsable("disable mem pattern"); err != nil {
+		return err
+	}
+	defer o.unlock()
 	return wrapErr("disable mem pattern", checkStatus(C.ort_DisableMemPattern(o.handle)))
 }
 
 // EnableMemPattern enables memory pattern optimization (default).
 func (o *SessionOptions) EnableMemPattern() error {
+	if err := o.lockUsable("enable mem pattern"); err != nil {
+		return err
+	}
+	defer o.unlock()
 	return wrapErr("enable mem pattern", checkStatus(C.ort_EnableMemPattern(o.handle)))
 }
 
 // EnableCpuMemArena enables the CPU memory arena.
 func (o *SessionOptions) EnableCpuMemArena() error {
+	if err := o.lockUsable("enable cpu mem arena"); err != nil {
+		return err
+	}
+	defer o.unlock()
 	return wrapErr("enable cpu mem arena", checkStatus(C.ort_EnableCpuMemArena(o.handle)))
 }
 
 // DisableCpuMemArena disables the CPU memory arena.
 func (o *SessionOptions) DisableCpuMemArena() error {
+	if err := o.lockUsable("disable cpu mem arena"); err != nil {
+		return err
+	}
+	defer o.unlock()
 	return wrapErr("disable cpu mem arena", checkStatus(C.ort_DisableCpuMemArena(o.handle)))
 }
 
 // EnableProfiling enables profiling with the given file prefix.
 func (o *SessionOptions) EnableProfiling(profileFilePrefix string) error {
+	if err := o.lockUsable("enable profiling"); err != nil {
+		return err
+	}
+	defer o.unlock()
 	cPrefix, freePrefix, err := ortPath(profileFilePrefix)
 	if err != nil {
 		return err
@@ -110,11 +178,22 @@ func (o *SessionOptions) EnableProfiling(profileFilePrefix string) error {
 
 // DisableProfiling disables profiling.
 func (o *SessionOptions) DisableProfiling() error {
+	if err := o.lockUsable("disable profiling"); err != nil {
+		return err
+	}
+	defer o.unlock()
 	return wrapErr("disable profiling", checkStatus(C.ort_DisableProfiling(o.handle)))
 }
 
 // AddFreeDimensionOverride fixes a dynamic dimension by its denotation string.
 func (o *SessionOptions) AddFreeDimensionOverride(dimDenotation string, dimValue int64) error {
+	if err := rejectNUL(dimDenotation, "dimension denotation"); err != nil {
+		return err
+	}
+	if err := o.lockUsable("add free dimension override"); err != nil {
+		return err
+	}
+	defer o.unlock()
 	cDim := C.CString(dimDenotation)
 	defer C.free(unsafe.Pointer(cDim))
 	return wrapErr("add free dimension override",
@@ -123,6 +202,13 @@ func (o *SessionOptions) AddFreeDimensionOverride(dimDenotation string, dimValue
 
 // AddFreeDimensionOverrideByName fixes a dynamic dimension by its name.
 func (o *SessionOptions) AddFreeDimensionOverrideByName(dimName string, dimValue int64) error {
+	if err := rejectNUL(dimName, "dimension name"); err != nil {
+		return err
+	}
+	if err := o.lockUsable("add free dimension override by name"); err != nil {
+		return err
+	}
+	defer o.unlock()
 	cDim := C.CString(dimName)
 	defer C.free(unsafe.Pointer(cDim))
 	return wrapErr("add free dimension override by name",
@@ -131,6 +217,13 @@ func (o *SessionOptions) AddFreeDimensionOverrideByName(dimName string, dimValue
 
 // SetExecutionMode sets sequential or parallel execution mode.
 func (o *SessionOptions) SetExecutionMode(mode ExecutionMode) error {
+	if mode < ExecutionMode(math.MinInt32) || mode > ExecutionMode(math.MaxInt32) {
+		return fmt.Errorf("ort: set execution mode: %d does not fit in C enum", mode)
+	}
+	if err := o.lockUsable("set execution mode"); err != nil {
+		return err
+	}
+	defer o.unlock()
 	return wrapErr("set execution mode",
 		checkStatus(C.ort_SetSessionExecutionMode(o.handle, C.ExecutionMode(mode))))
 }
@@ -140,6 +233,10 @@ func (o *SessionOptions) GetExecutionMode() (ExecutionMode, error) {
 	if apiVersion < 27 {
 		return 0, fmt.Errorf("ort: GetExecutionMode requires ORT >= 1.27 (have API version %d)", apiVersion)
 	}
+	if err := o.lockUsable("get execution mode"); err != nil {
+		return 0, err
+	}
+	defer o.unlock()
 	var mode C.ExecutionMode
 	if err := checkStatus(C.ort_GetSessionExecutionMode(o.handle, &mode)); err != nil {
 		return 0, wrapErr("get execution mode", err)
@@ -152,6 +249,10 @@ func (o *SessionOptions) IsMemPatternEnabled() (bool, error) {
 	if apiVersion < 27 {
 		return false, fmt.Errorf("ort: IsMemPatternEnabled requires ORT >= 1.27 (have API version %d)", apiVersion)
 	}
+	if err := o.lockUsable("get mem pattern enabled"); err != nil {
+		return false, err
+	}
+	defer o.unlock()
 	var out C.int
 	if err := checkStatus(C.ort_GetMemPatternEnabled(o.handle, &out)); err != nil {
 		return false, wrapErr("get mem pattern enabled", err)
@@ -162,9 +263,13 @@ func (o *SessionOptions) IsMemPatternEnabled() (bool, error) {
 // AddInitializer overrides a model initializer with the given tensor value.
 // The tensor must outlive every session created from these options.
 func (o *SessionOptions) AddInitializer(name string, value *Tensor) error {
-	if o.handle == nil {
-		return fmt.Errorf("ort: add initializer: session options are closed")
+	if err := rejectNUL(name, "initializer name"); err != nil {
+		return err
 	}
+	if err := o.lockUsable("add initializer"); err != nil {
+		return err
+	}
+	defer o.unlock()
 	if err := value.checkUsable("add initializer"); err != nil {
 		return err
 	}
@@ -175,6 +280,10 @@ func (o *SessionOptions) AddInitializer(name string, value *Tensor) error {
 
 // SetOptimizedModelFilePath sets a path to save the optimized model to.
 func (o *SessionOptions) SetOptimizedModelFilePath(path string) error {
+	if err := o.lockUsable("set optimized model path"); err != nil {
+		return err
+	}
+	defer o.unlock()
 	cPath, freePath, err := ortPath(path)
 	if err != nil {
 		return err
@@ -186,6 +295,10 @@ func (o *SessionOptions) SetOptimizedModelFilePath(path string) error {
 
 // RegisterCustomOpsLibrary loads a shared library containing custom ops.
 func (o *SessionOptions) RegisterCustomOpsLibrary(libraryPath string) error {
+	if err := o.lockUsable("register custom ops library"); err != nil {
+		return err
+	}
+	defer o.unlock()
 	cPath, freePath, err := ortPath(libraryPath)
 	if err != nil {
 		return err
@@ -197,6 +310,13 @@ func (o *SessionOptions) RegisterCustomOpsLibrary(libraryPath string) error {
 
 // HasSessionConfigEntry reports whether the config key exists.
 func (o *SessionOptions) HasSessionConfigEntry(key string) (bool, error) {
+	if err := rejectNUL(key, "session config key"); err != nil {
+		return false, err
+	}
+	if err := o.lockUsable("has session config entry"); err != nil {
+		return false, err
+	}
+	defer o.unlock()
 	cKey := C.CString(key)
 	defer C.free(unsafe.Pointer(cKey))
 	var out C.int
@@ -208,6 +328,13 @@ func (o *SessionOptions) HasSessionConfigEntry(key string) (bool, error) {
 
 // GetSessionConfigEntry returns the value for the given config key.
 func (o *SessionOptions) GetSessionConfigEntry(key string) (string, error) {
+	if err := rejectNUL(key, "session config key"); err != nil {
+		return "", err
+	}
+	if err := o.lockUsable("get session config entry"); err != nil {
+		return "", err
+	}
+	defer o.unlock()
 	cKey := C.CString(key)
 	defer C.free(unsafe.Pointer(cKey))
 	var size C.size_t
@@ -216,6 +343,9 @@ func (o *SessionOptions) GetSessionConfigEntry(key string) (string, error) {
 	}
 	if size == 0 {
 		return "", nil
+	}
+	if uint64(size) > uint64(math.MaxInt) {
+		return "", fmt.Errorf("ort: get session config entry: value size %d exceeds addressable range", uint64(size))
 	}
 	buf := make([]C.char, size)
 	if err := checkStatus(C.ort_GetSessionConfigEntry(o.handle, cKey, &buf[0], &size)); err != nil {
@@ -226,11 +356,32 @@ func (o *SessionOptions) GetSessionConfigEntry(key string) (string, error) {
 
 // Close releases the session options. It is idempotent.
 func (o *SessionOptions) Close() error {
+	if o == nil {
+		return nil
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
 	if o.handle != nil {
 		C.ort_ReleaseSessionOptions(o.handle)
 		o.handle = nil
 	}
 	return nil
+}
+
+func (o *SessionOptions) lockUsable(op string) error {
+	if o == nil {
+		return fmt.Errorf("ort: %s: session options are nil or closed", op)
+	}
+	o.mu.Lock()
+	if o.handle == nil {
+		o.mu.Unlock()
+		return fmt.Errorf("ort: %s: session options are nil or closed", op)
+	}
+	return nil
+}
+
+func (o *SessionOptions) unlock() {
+	o.mu.Unlock()
 }
 
 func (o *SessionOptions) appendCUDA(opts map[string]string) error {
@@ -310,4 +461,16 @@ func freeStringArrays(keys, values []*C.char) {
 		C.free(unsafe.Pointer(keys[i]))
 		C.free(unsafe.Pointer(values[i]))
 	}
+}
+
+func validateStringMap(values map[string]string, context string) error {
+	for key, value := range values {
+		if err := rejectNUL(key, context+" key"); err != nil {
+			return err
+		}
+		if err := rejectNUL(value, context+" value"); err != nil {
+			return err
+		}
+	}
+	return nil
 }

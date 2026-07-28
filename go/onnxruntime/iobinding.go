@@ -7,6 +7,8 @@ package onnxruntime
 import "C"
 import (
 	"fmt"
+	"math"
+	"sync"
 	"unsafe"
 )
 
@@ -28,6 +30,7 @@ const (
 
 type MemoryInfo struct {
 	handle *C.OrtMemoryInfo
+	mu     sync.RWMutex
 }
 
 func NewCPUMemoryInfo() (*MemoryInfo, error) {
@@ -43,6 +46,18 @@ func NewCPUMemoryInfo() (*MemoryInfo, error) {
 
 func NewMemoryInfo(name string, allocatorType AllocatorType, id int, memType MemType) (*MemoryInfo, error) {
 	if err := checkInit(); err != nil {
+		return nil, err
+	}
+	if allocatorType < AllocatorType(math.MinInt32) || allocatorType > AllocatorType(math.MaxInt32) {
+		return nil, fmt.Errorf("ort: create memory info: allocator type %d does not fit in C enum", allocatorType)
+	}
+	if id < math.MinInt32 || id > math.MaxInt32 {
+		return nil, fmt.Errorf("ort: create memory info: device id %d does not fit in C int", id)
+	}
+	if memType < MemType(math.MinInt32) || memType > MemType(math.MaxInt32) {
+		return nil, fmt.Errorf("ort: create memory info: memory type %d does not fit in C enum", memType)
+	}
+	if err := rejectNUL(name, "memory info name"); err != nil {
 		return nil, err
 	}
 	cName := C.CString(name)
@@ -61,6 +76,11 @@ func NewMemoryInfo(name string, allocatorType AllocatorType, id int, memType Mem
 }
 
 func (m *MemoryInfo) Close() error {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.handle != nil {
 		C.ort_ReleaseMemoryInfo(m.handle)
 		m.handle = nil
@@ -68,7 +88,20 @@ func (m *MemoryInfo) Close() error {
 	return nil
 }
 
+func (m *MemoryInfo) lockUsable() error {
+	if m == nil {
+		return fmt.Errorf("ort: memory info is nil or closed")
+	}
+	m.mu.RLock()
+	if m.handle == nil {
+		m.mu.RUnlock()
+		return fmt.Errorf("ort: memory info is nil or closed")
+	}
+	return nil
+}
+
 type IOBinding struct {
+	mu      sync.Mutex
 	handle  *C.OrtIoBinding
 	session *Session
 }
@@ -98,27 +131,40 @@ func NewIOBinding(session *Session) (*IOBinding, error) {
 // call made through the binding: a concurrent Session.Close would otherwise
 // leave that reference dangling.
 //
-// On success the caller must release the returned session's read lock. On
-// error no lock is held.
+// On success the caller must call unlockSession. On error no lock is held.
 func (b *IOBinding) lockSession(op string) (*Session, error) {
-	if b == nil || b.handle == nil || b.session == nil {
+	if b == nil {
+		return nil, fmt.Errorf("ort: %s: io binding is closed", op)
+	}
+	b.mu.Lock()
+	if b.handle == nil || b.session == nil {
+		b.mu.Unlock()
 		return nil, fmt.Errorf("ort: %s: io binding is closed", op)
 	}
 	s := b.session
 	s.mu.RLock()
 	if s.closed || s.handle == nil {
 		s.mu.RUnlock()
+		b.mu.Unlock()
 		return nil, fmt.Errorf("ort: %s: session is closed", op)
 	}
 	return s, nil
 }
 
+func (b *IOBinding) unlockSession(s *Session) {
+	s.mu.RUnlock()
+	b.mu.Unlock()
+}
+
 func (b *IOBinding) BindInput(name string, value *Tensor) error {
+	if err := rejectNUL(name, "binding input name"); err != nil {
+		return err
+	}
 	s, err := b.lockSession("bind input")
 	if err != nil {
 		return err
 	}
-	defer s.mu.RUnlock()
+	defer b.unlockSession(s)
 
 	if err := value.checkUsable("bind input"); err != nil {
 		return err
@@ -129,11 +175,14 @@ func (b *IOBinding) BindInput(name string, value *Tensor) error {
 }
 
 func (b *IOBinding) BindOutput(name string, value *Tensor) error {
+	if err := rejectNUL(name, "binding output name"); err != nil {
+		return err
+	}
 	s, err := b.lockSession("bind output")
 	if err != nil {
 		return err
 	}
-	defer s.mu.RUnlock()
+	defer b.unlockSession(s)
 
 	if err := value.checkUsable("bind output"); err != nil {
 		return err
@@ -144,15 +193,19 @@ func (b *IOBinding) BindOutput(name string, value *Tensor) error {
 }
 
 func (b *IOBinding) BindOutputToDevice(name string, memInfo *MemoryInfo) error {
+	if err := rejectNUL(name, "binding output name"); err != nil {
+		return err
+	}
 	s, err := b.lockSession("bind output to device")
 	if err != nil {
 		return err
 	}
-	defer s.mu.RUnlock()
+	defer b.unlockSession(s)
 
-	if memInfo == nil || memInfo.handle == nil {
-		return fmt.Errorf("ort: bind output to device: memory info is nil or closed")
+	if err := memInfo.lockUsable(); err != nil {
+		return fmt.Errorf("ort: bind output to device: %w", err)
 	}
+	defer memInfo.mu.RUnlock()
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
 	return wrapErr("bind output to device", checkStatus(C.ort_BindOutputToDevice(b.handle, cName, memInfo.handle)))
@@ -163,10 +216,14 @@ func (b *IOBinding) Run(opts *RunOptions) error {
 	if err != nil {
 		return err
 	}
-	defer s.mu.RUnlock()
+	defer b.unlockSession(s)
 
 	var runOpts *C.OrtRunOptions
 	if opts != nil {
+		if err := opts.lockUsable("run with binding"); err != nil {
+			return err
+		}
+		defer opts.unlock()
 		runOpts = opts.handle
 	}
 	return wrapErr("run with binding", checkStatus(C.ort_RunWithBinding(s.handle, runOpts, b.handle)))
@@ -177,7 +234,7 @@ func (b *IOBinding) OutputNames() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer s.mu.RUnlock()
+	defer b.unlockSession(s)
 
 	var allocator *C.OrtAllocator
 	if err := checkStatus(C.ort_GetAllocatorWithDefaultOptions(&allocator)); err != nil {
@@ -201,18 +258,39 @@ func (b *IOBinding) OutputNames() ([]string, error) {
 		}
 	}()
 
+	if uint64(count) > uint64(math.MaxInt)/uint64(unsafe.Sizeof("")) {
+		return nil, fmt.Errorf("ort: get bound output names: count %d exceeds addressable range", uint64(count))
+	}
 	n := int(count)
 	if n == 0 {
 		return nil, nil
 	}
+	if lengths == nil {
+		return nil, fmt.Errorf("ort: get bound output names: ORT returned nil lengths for %d names", n)
+	}
 
 	lens := unsafe.Slice((*C.size_t)(unsafe.Pointer(lengths)), n)
+	totalLen := 0
+	for _, cLen := range lens {
+		if uint64(cLen) > uint64(math.MaxInt-totalLen) {
+			return nil, fmt.Errorf("ort: get bound output names: combined name length exceeds addressable range")
+		}
+		totalLen += int(cLen)
+	}
+	if totalLen > 0 && buffer == nil {
+		return nil, fmt.Errorf("ort: get bound output names: ORT returned a nil buffer for %d bytes", totalLen)
+	}
+
+	var nameBytes []byte
+	if totalLen > 0 {
+		nameBytes = unsafe.Slice((*byte)(unsafe.Pointer(buffer)), totalLen)
+	}
 	names := make([]string, n)
-	ptr := (*C.char)(unsafe.Pointer(buffer))
+	offset := 0
 	for i := 0; i < n; i++ {
 		l := int(lens[i])
-		names[i] = C.GoStringN(ptr, C.int(l))
-		ptr = (*C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(ptr)) + uintptr(l)))
+		names[i] = string(nameBytes[offset : offset+l])
+		offset += l
 	}
 	return names, nil
 }
@@ -222,7 +300,7 @@ func (b *IOBinding) OutputValues() ([]*Tensor, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer s.mu.RUnlock()
+	defer b.unlockSession(s)
 
 	var allocator *C.OrtAllocator
 	if err := checkStatus(C.ort_GetAllocatorWithDefaultOptions(&allocator)); err != nil {
@@ -240,9 +318,15 @@ func (b *IOBinding) OutputValues() ([]*Tensor, error) {
 		}
 	}()
 
+	if uint64(count) > uint64(math.MaxInt)/uint64(unsafe.Sizeof((*Tensor)(nil))) {
+		return nil, fmt.Errorf("ort: get bound output values: count %d exceeds addressable range", uint64(count))
+	}
 	n := int(count)
 	if n == 0 {
 		return nil, nil
+	}
+	if values == nil {
+		return nil, fmt.Errorf("ort: get bound output values: ORT returned nil values for count %d", n)
 	}
 
 	ptrs := unsafe.Slice((**C.OrtValue)(unsafe.Pointer(values)), n)
@@ -270,7 +354,7 @@ func (b *IOBinding) ClearInputs() {
 	if err != nil {
 		return
 	}
-	defer s.mu.RUnlock()
+	defer b.unlockSession(s)
 
 	C.ort_ClearBoundInputs(b.handle)
 }
@@ -282,7 +366,7 @@ func (b *IOBinding) ClearOutputs() {
 	if err != nil {
 		return
 	}
-	defer s.mu.RUnlock()
+	defer b.unlockSession(s)
 
 	C.ort_ClearBoundOutputs(b.handle)
 }
@@ -290,7 +374,12 @@ func (b *IOBinding) ClearOutputs() {
 // Close releases the binding. It is idempotent. The bound values it owns are
 // independent of the session, so Close is safe after the session is closed.
 func (b *IOBinding) Close() error {
-	if b == nil || b.handle == nil {
+	if b == nil {
+		return nil
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.handle == nil {
 		return nil
 	}
 	C.ort_ReleaseIoBinding(b.handle)

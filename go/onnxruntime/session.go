@@ -8,6 +8,7 @@ import "C"
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -52,9 +53,14 @@ func NewSession(modelPath string, opts *SessionOptions) (*Session, error) {
 	}
 	defer freePath()
 
+	if err := opts.lockUsable("create session"); err != nil {
+		return nil, err
+	}
 	var handle *C.OrtSession
-	if err := checkStatus(C.ort_CreateSession(env, cPath, opts.handle, &handle)); err != nil {
-		return nil, wrapErr("create session", err)
+	createErr := checkStatus(C.ort_CreateSession(env, cPath, opts.handle, &handle))
+	opts.unlock()
+	if createErr != nil {
+		return nil, wrapErr("create session", createErr)
 	}
 
 	return finalizeSession(handle)
@@ -78,10 +84,15 @@ func NewSessionFromBytes(model []byte, opts *SessionOptions) (*Session, error) {
 		defer func() { _ = opts.Close() }()
 	}
 
+	if err := opts.lockUsable("create session from bytes"); err != nil {
+		return nil, err
+	}
 	var handle *C.OrtSession
-	if err := checkStatus(C.ort_CreateSessionFromArray(
-		env, unsafe.Pointer(&model[0]), C.size_t(len(model)), opts.handle, &handle)); err != nil {
-		return nil, wrapErr("create session from bytes", err)
+	createErr := checkStatus(C.ort_CreateSessionFromArray(
+		env, unsafe.Pointer(&model[0]), C.size_t(len(model)), opts.handle, &handle))
+	opts.unlock()
+	if createErr != nil {
+		return nil, wrapErr("create session from bytes", createErr)
 	}
 
 	return finalizeSession(handle)
@@ -152,15 +163,10 @@ func (s *Session) RunWithOptions(ctx context.Context, opts *RunOptions, inputs m
 		return nil, fmt.Errorf("ort: run: no output names specified")
 	}
 
-	var runOpts *C.OrtRunOptions
-	if opts != nil {
-		runOpts = opts.handle
-	}
-
-	return s.runInner(ctx, inputs, outputNames, runOpts)
+	return s.runInner(ctx, inputs, outputNames, opts)
 }
 
-func (s *Session) runInner(ctx context.Context, inputs map[string]*Tensor, outputNames []string, runOpts *C.OrtRunOptions) (map[string]*Tensor, error) {
+func (s *Session) runInner(ctx context.Context, inputs map[string]*Tensor, outputNames []string, opts *RunOptions) (map[string]*Tensor, error) {
 	nInputs := len(inputs)
 	nOutputs := len(outputNames)
 	cInputNames := make([]*C.char, nInputs)
@@ -173,6 +179,9 @@ func (s *Session) runInner(ctx context.Context, inputs map[string]*Tensor, outpu
 	}()
 	i := 0
 	for name, tensor := range inputs {
+		if err := rejectNUL(name, "run input name"); err != nil {
+			return nil, err
+		}
 		if err := tensor.checkUsable(fmt.Sprintf("run: input %q", name)); err != nil {
 			return nil, err
 		}
@@ -188,7 +197,15 @@ func (s *Session) runInner(ctx context.Context, inputs map[string]*Tensor, outpu
 	}
 
 	cOutputNames := make([]*C.char, nOutputs)
+	seenOutputNames := make(map[string]struct{}, nOutputs)
 	for i, name := range outputNames {
+		if err := rejectNUL(name, "run output name"); err != nil {
+			return nil, err
+		}
+		if _, exists := seenOutputNames[name]; exists {
+			return nil, fmt.Errorf("ort: run: duplicate output name %q", name)
+		}
+		seenOutputNames[name] = struct{}{}
 		if cached, ok := s.nameCache[name]; ok {
 			cOutputNames[i] = cached
 		} else {
@@ -200,11 +217,20 @@ func (s *Session) runInner(ctx context.Context, inputs map[string]*Tensor, outpu
 
 	cOutputValues := make([]*C.OrtValue, nOutputs)
 
+	var runOpts *C.OrtRunOptions
+	if opts != nil {
+		if err := opts.lockUsable("run"); err != nil {
+			return nil, err
+		}
+		defer opts.unlock()
+		runOpts = opts.handle
+	}
+
 	// Cancellation is delivered to ORT by setting the terminate flag on the run
 	// options, so a cancellable context needs run options even when the caller
 	// supplied none.
 	if ctx.Done() != nil {
-		callerOpts := runOpts != nil
+		callerOpts := opts != nil
 		if !callerOpts {
 			if err := checkStatus(C.ort_CreateRunOptions(&runOpts)); err != nil {
 				return nil, wrapErr("create run options", err)
@@ -236,7 +262,7 @@ func (s *Session) runInner(ctx context.Context, inputs map[string]*Tensor, outpu
 			// The terminate flag is sticky: left set, it would abort the caller's
 			// next run with these options.
 			if callerOpts && terminated.Load() {
-				_ = checkStatus(C.ort_RunOptionsUnsetTerminate(runOpts))
+				opts.restoreTerminate(runOpts)
 			}
 		}()
 	}
@@ -272,7 +298,7 @@ func (s *Session) runInner(ctx context.Context, inputs map[string]*Tensor, outpu
 	for i, name := range outputNames {
 		t, err := wrapOutputTensor(cOutputValues[i])
 		if err != nil {
-			for _, v := range cOutputValues[i+1:] {
+			for _, v := range cOutputValues[i:] {
 				if v != nil {
 					C.ort_ReleaseValue(v)
 				}
@@ -314,6 +340,9 @@ func (s *Session) EndProfiling() (string, error) {
 // Close releases the session. It is idempotent. Close waits for any
 // in-flight Run calls to complete.
 func (s *Session) Close() error {
+	if s == nil {
+		return nil
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -385,6 +414,9 @@ func introspectIO(session *C.OrtSession, isInput bool) ([]IOInfo, error) {
 	if err != nil {
 		return nil, wrapErr("get io count", err)
 	}
+	if uint64(count) > uint64(math.MaxInt)/uint64(unsafe.Sizeof(IOInfo{})) {
+		return nil, fmt.Errorf("ort: get io count: count %d exceeds addressable range", uint64(count))
+	}
 
 	var allocator *C.OrtAllocator
 	if err := checkStatus(C.ort_GetAllocatorWithDefaultOptions(&allocator)); err != nil {
@@ -439,6 +471,10 @@ func introspectIO(session *C.OrtSession, isInput bool) ([]IOInfo, error) {
 			if err := checkStatus(C.ort_GetDimensionsCount(tensorInfo, &ndims)); err != nil {
 				C.ort_ReleaseTypeInfo(typeInfo)
 				return nil, wrapErr("get dims count", err)
+			}
+			if uint64(ndims) > uint64(math.MaxInt/int(unsafe.Sizeof(int64(0)))) {
+				C.ort_ReleaseTypeInfo(typeInfo)
+				return nil, fmt.Errorf("ort: get dims: dimension count %d exceeds addressable range", uint64(ndims))
 			}
 
 			shape := make([]int64, int(ndims))

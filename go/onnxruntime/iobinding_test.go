@@ -2,6 +2,8 @@ package onnxruntime
 
 import (
 	"math"
+	"strconv"
+	"sync"
 	"testing"
 )
 
@@ -417,5 +419,167 @@ func TestIOBindingRunAfterSessionClosed(t *testing.T) {
 	}
 	if _, err := binding.OutputValues(); err == nil {
 		t.Error("expected error getting output values on closed session")
+	}
+}
+
+func TestIOBindingConcurrentClose(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	binding, err := NewIOBinding(sess)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		for range 100 {
+			_, _ = binding.OutputNames()
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		_ = binding.Close()
+	}()
+	close(start)
+	wg.Wait()
+
+	if _, err := binding.OutputNames(); err == nil {
+		t.Fatal("expected error after concurrent close")
+	}
+}
+
+func TestIOBindingRunWithClosedOptions(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	binding, err := NewIOBinding(sess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer binding.Close()
+
+	opts, err := NewRunOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := opts.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := binding.Run(opts); err == nil {
+		t.Fatal("expected error for closed run options")
+	}
+}
+
+func TestMemoryInfoConcurrentClose(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	binding, err := NewIOBinding(sess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer binding.Close()
+
+	memInfo, err := NewCPUMemoryInfo()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		for range 100 {
+			_ = binding.BindOutputToDevice("C", memInfo)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		_ = memInfo.Close()
+	}()
+	close(start)
+	wg.Wait()
+
+	if err := binding.BindOutputToDevice("C", memInfo); err == nil {
+		t.Fatal("expected error after concurrent Close")
+	}
+}
+
+func TestNewMemoryInfoRejectsNUL(t *testing.T) {
+	info, err := NewMemoryInfo("Cpu\x00ignored", AllocatorTypeDevice, 0, MemTypeDefault)
+	if info != nil {
+		_ = info.Close()
+	}
+	if err == nil {
+		t.Fatal("expected error for embedded NUL")
+	}
+}
+
+func TestNewMemoryInfoRejectsDeviceIDOutsideCInt(t *testing.T) {
+	if strconv.IntSize == 32 {
+		t.Skip("Go int has the same width as C int")
+	}
+	info, err := NewMemoryInfo(
+		"Cpu", AllocatorTypeDevice, int(int64(math.MaxInt32)+1), MemTypeDefault)
+	if info != nil {
+		_ = info.Close()
+	}
+	if err == nil {
+		t.Fatal("expected error for overflowing device id")
+	}
+}
+
+func TestNilMemoryInfoClose(t *testing.T) {
+	var info *MemoryInfo
+	if err := info.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestIOBindingRejectsNULInNames(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+	binding, err := NewIOBinding(sess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer binding.Close()
+	tensor := newFloatTensor(t)
+	memInfo, err := NewCPUMemoryInfo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memInfo.Close()
+
+	if err := binding.BindInput("A\x00ignored", tensor); err == nil {
+		t.Fatal("expected error for NUL in input name")
+	}
+	if err := binding.BindOutput("C\x00ignored", tensor); err == nil {
+		t.Fatal("expected error for NUL in output name")
+	}
+	if err := binding.BindOutputToDevice("C\x00ignored", memInfo); err == nil {
+		t.Fatal("expected error for NUL in device-bound output name")
 	}
 }

@@ -1,6 +1,9 @@
 package onnxruntime
 
 import (
+	"math"
+	"strconv"
+	"sync"
 	"testing"
 )
 
@@ -348,5 +351,175 @@ func TestAddInitializerLiveTensor(t *testing.T) {
 
 	if err := opts.AddInitializer("w", newFloatTensor(t)); err != nil {
 		t.Fatalf("expected live tensor to be accepted: %v", err)
+	}
+}
+
+func TestSessionOptionsMethodsAfterClose(t *testing.T) {
+	opts, err := NewSessionOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := opts.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	type testCase struct {
+		name string
+		call func() error
+	}
+	tests := []testCase{
+		{"SetIntraOpNumThreads", func() error { return opts.SetIntraOpNumThreads(1) }},
+		{"SetInterOpNumThreads", func() error { return opts.SetInterOpNumThreads(1) }},
+		{"SetGraphOptimizationLevel", func() error {
+			return opts.SetGraphOptimizationLevel(GraphOptimizationLevelBasic)
+		}},
+		{"AddConfigEntry", func() error { return opts.AddConfigEntry("key", "value") }},
+		{"AppendExecutionProvider", func() error { return opts.AppendExecutionProvider("CPUExecutionProvider", nil) }},
+		{"Clone", func() error {
+			clone, err := opts.Clone()
+			if clone != nil {
+				_ = clone.Close()
+			}
+			return err
+		}},
+		{"DisableMemPattern", opts.DisableMemPattern},
+		{"EnableMemPattern", opts.EnableMemPattern},
+		{"EnableCpuMemArena", opts.EnableCpuMemArena},
+		{"DisableCpuMemArena", opts.DisableCpuMemArena},
+		{"EnableProfiling", func() error { return opts.EnableProfiling("profile") }},
+		{"DisableProfiling", opts.DisableProfiling},
+		{"AddFreeDimensionOverride", func() error { return opts.AddFreeDimensionOverride("batch", 1) }},
+		{"AddFreeDimensionOverrideByName", func() error { return opts.AddFreeDimensionOverrideByName("batch", 1) }},
+		{"SetExecutionMode", func() error { return opts.SetExecutionMode(ExecutionModeSequential) }},
+		{"SetOptimizedModelFilePath", func() error { return opts.SetOptimizedModelFilePath("model.onnx") }},
+		{"RegisterCustomOpsLibrary", func() error { return opts.RegisterCustomOpsLibrary("custom-ops.so") }},
+		{"HasSessionConfigEntry", func() error {
+			_, err := opts.HasSessionConfigEntry("key")
+			return err
+		}},
+		{"GetSessionConfigEntry", func() error {
+			_, err := opts.GetSessionConfigEntry("key")
+			return err
+		}},
+	}
+	if APIVersion() >= 27 {
+		tests = append(tests,
+			testCase{"GetExecutionMode", func() error {
+				_, err := opts.GetExecutionMode()
+				return err
+			}},
+			testCase{"IsMemPatternEnabled", func() error {
+				_, err := opts.IsMemPatternEnabled()
+				return err
+			}},
+		)
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.call(); err == nil {
+				t.Fatal("expected error after Close")
+			}
+		})
+	}
+}
+
+func TestNilSessionOptions(t *testing.T) {
+	var opts *SessionOptions
+	if err := opts.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := opts.EnableMemPattern(); err == nil {
+		t.Fatal("expected error using nil session options")
+	}
+}
+
+func TestSessionOptionsConcurrentClose(t *testing.T) {
+	opts, err := NewSessionOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		for range 100 {
+			_, _ = opts.HasSessionConfigEntry("key")
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		_ = opts.Close()
+	}()
+	close(start)
+	wg.Wait()
+
+	if err := opts.EnableMemPattern(); err == nil {
+		t.Fatal("expected error after concurrent Close")
+	}
+}
+
+func TestSessionOptionsRejectThreadCountOutsideCInt(t *testing.T) {
+	if strconv.IntSize == 32 {
+		t.Skip("Go int has the same width as C int")
+	}
+
+	opts, err := NewSessionOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opts.Close()
+
+	if err := opts.SetIntraOpNumThreads(int(int64(math.MaxInt32) + 1)); err == nil {
+		t.Fatal("expected error for overflowing intra-op thread count")
+	}
+	if err := opts.SetInterOpNumThreads(int(int64(math.MinInt32) - 1)); err == nil {
+		t.Fatal("expected error for overflowing inter-op thread count")
+	}
+}
+
+func TestSessionOptionsRejectNULStrings(t *testing.T) {
+	opts, err := NewSessionOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opts.Close()
+	tensor := newFloatTensor(t)
+
+	tests := []struct {
+		name string
+		call func() error
+	}{
+		{"config key", func() error { return opts.AddConfigEntry("key\x00ignored", "value") }},
+		{"config value", func() error { return opts.AddConfigEntry("key", "value\x00ignored") }},
+		{"provider name", func() error { return opts.AppendExecutionProvider("CPU\x00ignored", nil) }},
+		{"provider option key", func() error {
+			return opts.AppendExecutionProvider("CPUExecutionProvider", map[string]string{"key\x00ignored": "value"})
+		}},
+		{"provider option value", func() error {
+			return opts.AppendExecutionProvider("CPUExecutionProvider", map[string]string{"key": "value\x00ignored"})
+		}},
+		{"dimension denotation", func() error { return opts.AddFreeDimensionOverride("batch\x00ignored", 1) }},
+		{"dimension name", func() error { return opts.AddFreeDimensionOverrideByName("batch\x00ignored", 1) }},
+		{"initializer name", func() error { return opts.AddInitializer("weight\x00ignored", tensor) }},
+		{"config lookup", func() error {
+			_, err := opts.HasSessionConfigEntry("key\x00ignored")
+			return err
+		}},
+		{"config get", func() error {
+			_, err := opts.GetSessionConfigEntry("key\x00ignored")
+			return err
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.call(); err == nil {
+				t.Fatal("expected NUL error")
+			}
+		})
 	}
 }

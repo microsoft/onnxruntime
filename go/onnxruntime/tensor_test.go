@@ -2,6 +2,7 @@ package onnxruntime
 
 import (
 	"math"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -432,6 +433,65 @@ func TestNewSequence(t *testing.T) {
 	}
 }
 
+func TestSequenceAtMapElement(t *testing.T) {
+	keys1, _ := CreateTensor[int64]([]int64{1}, []int64{1})
+	values1, _ := CreateTensor[float32]([]int64{1}, []float32{10})
+	keys2, _ := CreateTensor[int64]([]int64{1}, []int64{2})
+	values2, _ := CreateTensor[float32]([]int64{1}, []float32{20})
+	defer keys1.Close()
+	defer values1.Close()
+	defer keys2.Close()
+	defer values2.Close()
+
+	map1, err := NewMap(keys1, values1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer map1.Close()
+	map2, err := NewMap(keys2, values2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer map2.Close()
+
+	sequence, err := NewSequence([]*Tensor{map1, map2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sequence.Close()
+
+	element, err := sequence.SequenceAt(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer element.Close()
+	if !element.IsMap() {
+		t.Fatal("expected sequence element to remain a map value")
+	}
+}
+
+func TestSequenceAtRejectsIndexOutsideCInt(t *testing.T) {
+	tensor, err := CreateTensor[float32]([]int64{1}, []float32{1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tensor.Close()
+	sequence, err := NewSequence([]*Tensor{tensor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sequence.Close()
+
+	if _, err := sequence.SequenceAt(-1); err == nil {
+		t.Fatal("expected error for negative index")
+	}
+	if strconv.IntSize > 32 {
+		if _, err := sequence.SequenceAt(int(int64(math.MaxInt32) + 1)); err == nil {
+			t.Fatal("expected error for index outside C int range")
+		}
+	}
+}
+
 func TestNewMap(t *testing.T) {
 	keys, _ := CreateTensor[int64]([]int64{2}, []int64{10, 20})
 	vals, _ := CreateTensor[float32]([]int64{2}, []float32{1.5, 2.5})
@@ -532,5 +592,12 @@ func TestNewTensorFromBytesByteSizeOverflow(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "overflows byte size") {
 		t.Fatalf("expected byte-size overflow error, got: %v", err)
+	}
+}
+
+func TestNilTensorClose(t *testing.T) {
+	var tensor *Tensor
+	if err := tensor.Close(); err != nil {
+		t.Fatal(err)
 	}
 }

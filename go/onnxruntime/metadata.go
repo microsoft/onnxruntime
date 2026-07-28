@@ -7,12 +7,14 @@ package onnxruntime
 import "C"
 import (
 	"fmt"
+	"math"
+	"sync"
 	"unsafe"
 )
 
 type ModelMetadata struct {
 	handle *C.OrtModelMetadata
-	closed bool
+	mu     sync.RWMutex
 }
 
 func (s *Session) ModelMetadata() (*ModelMetadata, error) {
@@ -61,9 +63,10 @@ func (m *ModelMetadata) GraphDescription() (string, error) {
 }
 
 func (m *ModelMetadata) Version() (int64, error) {
-	if err := m.checkClosed(); err != nil {
+	if err := m.lockUsable(); err != nil {
 		return 0, err
 	}
+	defer m.mu.RUnlock()
 	var version C.int64_t
 	if err := checkStatus(C.ort_ModelMetadataGetVersion(m.handle, &version)); err != nil {
 		return 0, wrapErr("metadata version", err)
@@ -72,9 +75,10 @@ func (m *ModelMetadata) Version() (int64, error) {
 }
 
 func (m *ModelMetadata) CustomMetadataKeys() ([]string, error) {
-	if err := m.checkClosed(); err != nil {
+	if err := m.lockUsable(); err != nil {
 		return nil, err
 	}
+	defer m.mu.RUnlock()
 	alloc, err := defaultAllocator()
 	if err != nil {
 		return nil, wrapErr("metadata custom keys", err)
@@ -85,10 +89,19 @@ func (m *ModelMetadata) CustomMetadataKeys() ([]string, error) {
 	if err := checkStatus(C.ort_ModelMetadataGetCustomMetadataMapKeys(m.handle, alloc, &cKeys, &count)); err != nil {
 		return nil, wrapErr("metadata custom keys", err)
 	}
+	if cKeys != nil {
+		defer C.ort_AllocatorFree(alloc, unsafe.Pointer(cKeys))
+	}
 
+	if count < 0 || uint64(count) > uint64(math.MaxInt)/uint64(unsafe.Sizeof("")) {
+		return nil, fmt.Errorf("ort: metadata custom keys: count %d exceeds addressable range", int64(count))
+	}
 	n := int(count)
 	if n == 0 {
 		return nil, nil
+	}
+	if cKeys == nil {
+		return nil, fmt.Errorf("ort: metadata custom keys: ORT returned a nil key array for %d keys", n)
 	}
 
 	ptrs := unsafe.Slice((**C.char)(unsafe.Pointer(cKeys)), n)
@@ -97,15 +110,18 @@ func (m *ModelMetadata) CustomMetadataKeys() ([]string, error) {
 		keys[i] = C.GoString(ptrs[i])
 		C.ort_AllocatorFree(alloc, unsafe.Pointer(ptrs[i]))
 	}
-	C.ort_AllocatorFree(alloc, unsafe.Pointer(cKeys))
 
 	return keys, nil
 }
 
 func (m *ModelMetadata) LookupCustomMetadata(key string) (string, error) {
-	if err := m.checkClosed(); err != nil {
+	if err := rejectNUL(key, "metadata key"); err != nil {
 		return "", err
 	}
+	if err := m.lockUsable(); err != nil {
+		return "", err
+	}
+	defer m.mu.RUnlock()
 	alloc, err := defaultAllocator()
 	if err != nil {
 		return "", wrapErr("metadata lookup", err)
@@ -129,26 +145,36 @@ func (m *ModelMetadata) LookupCustomMetadata(key string) (string, error) {
 }
 
 func (m *ModelMetadata) Close() error {
-	if m.closed {
+	if m == nil {
 		return nil
 	}
-	m.closed = true
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.handle == nil {
+		return nil
+	}
 	C.ort_ReleaseModelMetadata(m.handle)
 	m.handle = nil
 	return nil
 }
 
-func (m *ModelMetadata) checkClosed() error {
-	if m.closed {
+func (m *ModelMetadata) lockUsable() error {
+	if m == nil {
+		return fmt.Errorf("ort: metadata: nil or closed")
+	}
+	m.mu.RLock()
+	if m.handle == nil {
+		m.mu.RUnlock()
 		return fmt.Errorf("ort: metadata: already closed")
 	}
 	return nil
 }
 
 func (m *ModelMetadata) getString(fn func(*C.OrtAllocator, **C.char) error, context string) (string, error) {
-	if err := m.checkClosed(); err != nil {
+	if err := m.lockUsable(); err != nil {
 		return "", err
 	}
+	defer m.mu.RUnlock()
 	alloc, err := defaultAllocator()
 	if err != nil {
 		return "", wrapErr("metadata "+context, err)
@@ -157,6 +183,9 @@ func (m *ModelMetadata) getString(fn func(*C.OrtAllocator, **C.char) error, cont
 	var cStr *C.char
 	if err := fn(alloc, &cStr); err != nil {
 		return "", wrapErr("metadata "+context, err)
+	}
+	if cStr == nil {
+		return "", nil
 	}
 
 	str := C.GoString(cStr)

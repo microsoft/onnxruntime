@@ -1,6 +1,7 @@
 package onnxruntime
 
 import (
+	"sync"
 	"testing"
 )
 
@@ -104,5 +105,67 @@ func TestModelMetadataGraphDescription(t *testing.T) {
 	_, err = meta.GraphDescription()
 	if err != nil {
 		t.Errorf("GraphDescription: %v", err)
+	}
+}
+
+func TestModelMetadataConcurrentClose(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	meta, err := sess.ModelMetadata()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		for range 100 {
+			_, _ = meta.ProducerName()
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		_ = meta.Close()
+	}()
+	close(start)
+	wg.Wait()
+
+	if _, err := meta.Version(); err == nil {
+		t.Fatal("expected error after concurrent Close")
+	}
+}
+
+func TestNilModelMetadata(t *testing.T) {
+	var meta *ModelMetadata
+	if err := meta.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := meta.ProducerName(); err == nil {
+		t.Fatal("expected error using nil metadata")
+	}
+}
+
+func TestModelMetadataRejectsNULKey(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+	meta, err := sess.ModelMetadata()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer meta.Close()
+
+	if _, err := meta.LookupCustomMetadata("key\x00ignored"); err == nil {
+		t.Fatal("expected error for NUL in metadata key")
 	}
 }

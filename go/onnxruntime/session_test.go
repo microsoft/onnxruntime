@@ -599,7 +599,7 @@ func TestRunWithOptionsCancelledDuringRunKeepsOptionsUsable(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		results, err := sess.runInner(ctx, inputs, []string{"C"}, opts.handle)
+		results, err := sess.runInner(ctx, inputs, []string{"C"}, opts)
 		switch {
 		case err == nil:
 			// The run reached ORT's terminate check before the watcher fired; these
@@ -623,8 +623,8 @@ func TestRunWithOptionsCancelledDuringRunKeepsOptionsUsable(t *testing.T) {
 	t.Logf("%d/%d cancellations reached ORT before the run finished", terminated, iterations)
 }
 
-// TestRunWithOptionsPreservesCallerTerminate pins that only a terminate flag the
-// watcher set is cleared: one the caller set is theirs to keep.
+// TestRunWithOptionsPreservesCallerTerminate pins that context cancellation
+// restores a terminate flag which the caller had already set.
 func TestRunWithOptionsPreservesCallerTerminate(t *testing.T) {
 	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
 	if err != nil {
@@ -646,13 +646,50 @@ func TestRunWithOptionsPreservesCallerTerminate(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	cancel()
 
-	if _, err := sess.RunWithOptions(ctx, opts, inputs, []string{"C"}); err == nil {
-		t.Fatal("expected error from terminated run options")
+	if _, err := sess.runInner(ctx, inputs, []string{"C"}, opts); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
 	}
 	if _, err := sess.RunWithOptions(context.Background(), opts, inputs, []string{"C"}); err == nil {
-		t.Fatal("terminate flag set by the caller was cleared by the run")
+		t.Fatal("context cancellation cleared the caller's pre-existing terminate flag")
+	}
+}
+
+func TestRunWithClosedOptions(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	opts, err := NewRunOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := opts.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	inputs, cleanup := addModelInputs(t)
+	defer cleanup()
+
+	if _, err := sess.RunWithOptions(context.Background(), opts, inputs, []string{"C"}); err == nil {
+		t.Fatal("expected error for closed run options")
+	}
+}
+
+func TestNewSessionWithClosedOptions(t *testing.T) {
+	opts, err := NewSessionOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := opts.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := NewSession(testdataPath("add_f32.onnx"), opts); err == nil {
+		t.Fatal("expected error for closed session options")
 	}
 }
 
@@ -769,5 +806,48 @@ func TestNewSessionRejectsNULInPath(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "NUL") {
 		t.Errorf("expected a NUL-byte error, got: %v", err)
+	}
+}
+
+func TestRunRejectsNULInNames(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	inputs, cleanup := addModelInputs(t)
+	defer cleanup()
+
+	badInputs := map[string]*Tensor{
+		"A\x00ignored": inputs["A"],
+		"B":            inputs["B"],
+	}
+	if _, err := sess.Run(context.Background(), badInputs, []string{"C"}); err == nil {
+		t.Fatal("expected error for NUL in input name")
+	}
+	if _, err := sess.Run(context.Background(), inputs, []string{"C\x00ignored"}); err == nil {
+		t.Fatal("expected error for NUL in output name")
+	}
+}
+
+func TestRunRejectsDuplicateOutputNames(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+	inputs, cleanup := addModelInputs(t)
+	defer cleanup()
+
+	if _, err := sess.Run(context.Background(), inputs, []string{"C", "C"}); err == nil {
+		t.Fatal("expected error for duplicate output names")
+	}
+}
+
+func TestNilSessionClose(t *testing.T) {
+	var session *Session
+	if err := session.Close(); err != nil {
+		t.Fatal(err)
 	}
 }

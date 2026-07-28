@@ -4,7 +4,10 @@ package onnxruntime
 #include "cshim.h"
 */
 import "C"
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // ErrorCode mirrors OrtErrorCode from the C API.
 type ErrorCode int
@@ -80,6 +83,13 @@ func wrapErr(context string, err error) error {
 		return nil
 	}
 	return fmt.Errorf("ort: %s: %w", context, err)
+}
+
+func rejectNUL(value, context string) error {
+	if strings.IndexByte(value, 0) != -1 {
+		return fmt.Errorf("ort: %s contains NUL byte", context)
+	}
+	return nil
 }
 
 var errNotInitialized = fmt.Errorf("ort: not initialized; call Init() first")

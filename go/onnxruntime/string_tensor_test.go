@@ -1,6 +1,7 @@
 package onnxruntime
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -65,6 +66,19 @@ func TestCreateStringTensorAllEmpty(t *testing.T) {
 		if v != "" {
 			t.Errorf("[%d]: expected empty string, got %q", i, v)
 		}
+	}
+}
+
+func TestCreateStringTensorRejectsNUL(t *testing.T) {
+	tensor, err := CreateStringTensor([]int64{1}, []string{"before\x00after"})
+	if tensor != nil {
+		_ = tensor.Close()
+	}
+	if err == nil {
+		t.Fatal("expected error for embedded NUL")
+	}
+	if !strings.Contains(err.Error(), "NUL") {
+		t.Fatalf("expected NUL error, got %v", err)
 	}
 }
 

@@ -45,6 +45,9 @@ type libHandle unsafe.Pointer
 // On success the caller owns the returned handle and must pass it to
 // closeLibrary to unload the library.
 func loadLibrary(path string) (unsafe.Pointer, libHandle, error) {
+	if err := rejectNUL(path, "shared library path"); err != nil {
+		return nil, nil, err
+	}
 	cpath := C.CString(path)
 	defer C.free(unsafe.Pointer(cpath))
 
