@@ -695,7 +695,8 @@ void launchFusedRoutingBuildExpertMaps(T const* router_logits, int* token_select
   }
 }
 
-int64_t computeNumTokensPerBlock(int64_t const num_tokens, int64_t const num_experts_per_node) {  for (int64_t num_tokens_per_block = 32; num_tokens_per_block <= 1024; num_tokens_per_block *= 2) {
+int64_t computeNumTokensPerBlock(int64_t const num_tokens, int64_t const num_experts_per_node) {
+  for (int64_t num_tokens_per_block = 32; num_tokens_per_block <= 1024; num_tokens_per_block *= 2) {
     int64_t const num_blocks_per_seq = onnxruntime::llm::common::ceilDiv(num_tokens, num_tokens_per_block);
     if (num_blocks_per_seq * num_experts_per_node <= num_tokens_per_block) {
       return num_tokens_per_block;
