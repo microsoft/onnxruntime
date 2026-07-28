@@ -188,7 +188,7 @@ class ModelCompilationOptions {
   /// </summary>
   /// <param name="use_weightless">True to enable weightless mode</param>
   /// <returns>Status indicating potential error</returns>
-  Status SetWeightlessCache(bool use_weightless);
+  Status SetWeightlessMode(bool use_weightless);
 
   /// <summary>
   /// Checks if the compilation options described by this object are valid.
@@ -243,7 +243,7 @@ class ModelCompilationOptions {
   const void* input_model_data_ = nullptr;
   size_t input_model_data_size_ = 0;
   const OrtModel* input_model_ = nullptr;  // Borrowed pointer
-  bool use_weightless_cache_ = false;
+  bool use_weightless_mode_ = false;
 };
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD)

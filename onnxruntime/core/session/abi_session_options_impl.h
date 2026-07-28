@@ -41,7 +41,7 @@ struct OrtSessionOptions {
   static std::string GetProviderOptionPrefix(const char* provider_name);
 
   // Weightless source model buffer for EPContext sessions.
-  // Set via SessionOptionsSetWeightlessSourceModelFromBuffer.
+  // Set via SessionOptionsSetWeightlessSourceModelBuffer.
   const void* weightless_source_model_data = nullptr;
   size_t weightless_source_model_data_size = 0;
 };

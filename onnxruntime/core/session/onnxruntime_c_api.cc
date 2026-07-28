@@ -2758,7 +2758,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetWeightlessSourceModelFromBuffer, _Inout_ OrtSessionOptions* options,
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetWeightlessSourceModelBuffer, _Inout_ OrtSessionOptions* options,
                     _In_ const void* source_model_data, _In_ size_t source_model_data_length) {
   API_IMPL_BEGIN
   if (source_model_data == nullptr) {
@@ -4936,7 +4936,7 @@ static constexpr OrtApi ort_api_1_to_29 = {
     &OrtApis::KernelContext_GetSyncStream,
     // End of Version 28 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    &OrtApis::SessionOptionsSetWeightlessSourceModelFromBuffer,
+    &OrtApis::SessionOptionsSetWeightlessSourceModelBuffer,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

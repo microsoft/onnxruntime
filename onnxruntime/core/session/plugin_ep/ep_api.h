@@ -180,7 +180,7 @@ ORT_API_STATUS_IMPL(ProfilingEvent_GetArgValue, _In_ const OrtProfilingEvent* ev
                     _Outptr_result_maybenull_ const char** out);
 
 // Weightless source model getter
-ORT_API_STATUS_IMPL(SessionOptions_GetWeightlessSourceModelBuffer, _In_ const OrtSessionOptions* session_options,
+ORT_API_STATUS_IMPL(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const OrtSessionOptions* session_options,
                     _Outptr_result_maybenull_ const void** source_model_data,
                     _Out_ size_t* source_model_data_length);
 

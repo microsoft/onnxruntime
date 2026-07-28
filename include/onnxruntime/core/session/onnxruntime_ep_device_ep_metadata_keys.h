@@ -34,7 +34,7 @@ static const char* const kOrtHardwareDevice_MetadataKey_IsVirtual = "is_virtual"
 // Key for the execution provider's weightless mode support on a specific device.
 // Set by the EP during GetSupportedDevices() via CreateEpDevice() metadata.
 // The app can read it via EpDevice_EpMetadata() to check device-specific weightless capability
-// before calling ModelCompilationOptions_SetWeightlessCache().
+// before calling ModelCompilationOptions_SetWeightlessMode().
 //
 // Possible values:
 //  - "none": EP does not support weightless mode on this device. This is the assumed default value

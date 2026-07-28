@@ -1199,7 +1199,7 @@ ORT_API_STATUS_IMPL(ProfilingEventsContainer_AddEvents,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(SessionOptions_GetWeightlessSourceModelBuffer, _In_ const OrtSessionOptions* session_options,
+ORT_API_STATUS_IMPL(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const OrtSessionOptions* session_options,
                     _Outptr_result_maybenull_ const void** source_model_data,
                     _Out_ size_t* source_model_data_length) {
   API_IMPL_BEGIN
@@ -1299,7 +1299,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ProfilingEventsContainer_AddEvents,
     // End of Version 25 - DO NOT MODIFY ABOVE
 
-    &OrtExecutionProviderApi::SessionOptions_GetWeightlessSourceModelBuffer,
+    &OrtExecutionProviderApi::SessionOptionsGetWeightlessSourceModelBuffer,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

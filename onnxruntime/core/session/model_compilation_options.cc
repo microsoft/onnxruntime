@@ -251,8 +251,8 @@ Status ModelCompilationOptions::SetGraphOptimizationLevel(GraphOptimizationLevel
   return Status::OK();
 }
 
-Status ModelCompilationOptions::SetWeightlessCache(bool use_weightless) {
-  use_weightless_cache_ = use_weightless;
+Status ModelCompilationOptions::SetWeightlessMode(bool use_weightless) {
+  use_weightless_mode_ = use_weightless;
   ORT_RETURN_IF_ERROR(
       session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless,
                                                            use_weightless ? "1" : "0"));

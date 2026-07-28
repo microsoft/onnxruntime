@@ -7529,6 +7529,10 @@ struct OrtApi {
    * \note If the source model is available as a file on disk, use the session config entry
    *       "ep.context_source_model_path" (kOrtSessionOptionEpContextSourceModelPath) instead.
    *
+   * \note If both a buffer (via this function) and a file path (via "ep.context_source_model_path") are
+   *       provided, the EP should prefer the buffer. The recommended EP precedence is:
+   *       buffer > file path > "onnx_model_filename" EPContext node attribute.
+   *
    * \param[in] options The OrtSessionOptions instance.
    * \param[in] source_model_data Pointer to the source model byte buffer.
    * \param[in] source_model_data_length Size of the byte buffer in bytes.
@@ -7537,7 +7541,7 @@ struct OrtApi {
    *
    * \since Version 1.29.
    */
-  ORT_API2_STATUS(SessionOptionsSetWeightlessSourceModelFromBuffer, _Inout_ OrtSessionOptions* options,
+  ORT_API2_STATUS(SessionOptionsSetWeightlessSourceModelBuffer, _Inout_ OrtSessionOptions* options,
                   _In_ const void* source_model_data, _In_ size_t source_model_data_length);
 };
 
@@ -8406,7 +8410,7 @@ struct OrtCompileApi {
    *
    * \since Version 1.29.
    */
-  ORT_API2_STATUS(ModelCompilationOptions_SetWeightlessCache,
+  ORT_API2_STATUS(ModelCompilationOptions_SetWeightlessMode,
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ bool use_weightless);
 };

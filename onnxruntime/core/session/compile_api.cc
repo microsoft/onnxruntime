@@ -327,13 +327,13 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetInputModel,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetWeightlessCache,
+ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetWeightlessMode,
                     _In_ OrtModelCompilationOptions* ort_model_compile_options,
                     _In_ bool use_weightless) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
   auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(model_compile_options->SetWeightlessCache(use_weightless));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(model_compile_options->SetWeightlessMode(use_weightless));
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ort_model_compile_options);
@@ -384,7 +384,7 @@ static constexpr OrtCompileApi ort_compile_api = {
     &OrtCompileAPI::ModelCompilationOptions_SetInputModel,
     // End of Version 24 - DO NOT MODIFY ABOVE
 
-    &OrtCompileAPI::ModelCompilationOptions_SetWeightlessCache,
+    &OrtCompileAPI::ModelCompilationOptions_SetWeightlessMode,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

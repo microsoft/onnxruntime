@@ -2080,13 +2080,17 @@ struct OrtEpApi {
 
   /** \brief Get the weightless source model byte buffer from session options.
    *
-   * Returns the buffer and size set by SessionOptionsSetWeightlessSourceModelFromBuffer, or NULL/0 if not set.
+   * Returns the buffer and size set by SessionOptionsSetWeightlessSourceModelBuffer, or NULL/0 if not set.
    * The EP can use this during CreateEp or Compile to access the source model for weightless
    * EPContext model sessions.
    *
    * \note If the source model is provided as a file path, the EP should read the
    *       "ep.context_source_model_path" (kOrtSessionOptionEpContextSourceModelPath) session config entry
    *       via GetSessionConfigEntry instead.
+   *
+   * \note Recommended EP precedence for locating the source model:
+   *       buffer (this API) > file path ("ep.context_source_model_path") > "onnx_model_filename" EPContext
+   *       node attribute.
    *
    * \param[in] session_options The OrtSessionOptions instance.
    * \param[out] source_model_data Output parameter set to the source model buffer, or NULL if not set.
@@ -2096,7 +2100,7 @@ struct OrtEpApi {
    *
    * \since Version 1.29.
    */
-  ORT_API2_STATUS(SessionOptions_GetWeightlessSourceModelBuffer, _In_ const OrtSessionOptions* session_options,
+  ORT_API2_STATUS(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const OrtSessionOptions* session_options,
                   _Outptr_result_maybenull_ const void** source_model_data,
                   _Out_ size_t* source_model_data_length);
 };

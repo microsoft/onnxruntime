@@ -625,7 +625,7 @@ static const char* const kOrtSessionOptionEpEnableWeightless = "ep.enable_weight
 // If not set, the EP falls back to the "onnx_model_filename" attribute in the EPContext node.
 //
 // If the source model is available as a byte buffer rather than a file path, use
-// OrtApi::SessionOptionsSetWeightlessSourceModelFromBuffer() instead.
+// OrtApi::SessionOptionsSetWeightlessSourceModelBuffer() instead.
 //
 // \since Version 1.29.
 static const char* const kOrtSessionOptionEpContextSourceModelPath = "ep.context_source_model_path";
