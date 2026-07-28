@@ -25,13 +25,58 @@ It is recommended to use Apple devices equipped with Apple Neural Engine to achi
 
 ## Install
 
+### iOS
+
 Pre-built binaries of ONNX Runtime with CoreML EP for iOS are published to CocoaPods.
 
 See [here](../install/index.md#install-on-ios) for installation instructions.
 
+### macOS packages
+
+Official macOS release packages include the CoreML EP. The macOS packaging pipelines build with `--use_coreml` for:
+
+* Python wheels (`pip install onnxruntime` on macOS)
+* macOS C/C++ shared libraries and related Java / Node.js packages from the macOS CPU packaging jobs
+
+See the [install page](../install/index.md) for package options.
+
+You can confirm that CoreML is available at runtime:
+
+```python
+import onnxruntime as ort
+print(ort.get_available_providers())
+# 'CoreMLExecutionProvider' is listed when the package was built with CoreML support
+```
+
+Custom or local builds do **not** include the CoreML EP unless you pass `--use_coreml` (see [Build](#build) below).
+
 ## Build
 
+### Build for iOS
+
 For build instructions for iOS devices, please see [Build for iOS](../build/ios.md#coreml-execution-provider).
+
+Add `--use_coreml` to the iOS build command to include the CoreML EP.
+
+### Build for macOS
+
+Build ONNX Runtime on a Mac and pass `--use_coreml` to enable the CoreML EP. For general macOS build setup, see [Build ONNX Runtime for inferencing (macOS)](../build/inferencing.md#macos).
+
+Example shared library build:
+
+```bash
+./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_coreml \
+           --compile_no_warning_as_error --skip_submodule_sync
+```
+
+Example Python wheel build:
+
+```bash
+./build.sh --config Release --build_wheel --parallel --use_coreml \
+           --compile_no_warning_as_error --skip_submodule_sync
+```
+
+For minimal or custom builds that include CoreML, see [Build Execution Providers - CoreML](../build/eps.md#coreml).
 
 ## Usage
 
