@@ -33,6 +33,14 @@ enum class MoeGemvConfig {
 // compute dispatch query this so the prepacked weights and the kernel always agree.
 bool Fp4MoeGemvUseInterleaved();
 
+// Shape-derived default tiling for the non-interleaved ColumnMajor FP4 GEMV. Used whenever the
+// runtime does not have a profiled result for the shape, which is the shipping default because
+// ORT_FP4_GEMV_AUTOTUNE is off (it synchronizes the inference stream) and is skipped entirely
+// during CUDA-graph capture. Only Threads is derived; CtaN stays at the default, so the result
+// never changes which shapes is_moe_gemv_fp4_supported accepts. Set ORT_FP4_GEMV_DEFAULT_TILING=0
+// to fall back to the fixed default tiling.
+MoeGemvConfig Fp4MoeGemvDefaultConfig(int64_t expanded_num_rows, int64_t n, int64_t k);
+
 // FP4 GEMV shape support for the non-interleaved ColumnMajor layout (kInterleave = 1). Shared by
 // both MXFP4 (group_size == 32) and NVFP4 (group_size == 16). Requires sm >= 80, n divisible by
 // the kernel tile width (kCtaN) selected by `config`, and the profiled small-decode row/dim

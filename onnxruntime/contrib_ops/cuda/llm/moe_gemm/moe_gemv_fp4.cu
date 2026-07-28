@@ -10,6 +10,7 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv.h"
 // Shared device-side kernels + launch/dispatch helpers (fpA_intB_gemv namespace).
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_device.cuh"
+#include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "core/platform/env_var_utils.h"
 
 namespace onnxruntime::llm {
@@ -53,6 +54,50 @@ bool Fp4MoeGemvInterleavedHalfAccum() {
 // divisor that keeps n % (CtaN*kInterleave) == 0 for the target shapes. kInterleave = 4 here.
 static constexpr int kInterleavedCtaN = 4;
 static constexpr int kInterleavedThreads = 128;
+
+// Opt-out for the shape-derived default tiling (env ORT_FP4_GEMV_DEFAULT_TILING=0), which
+// restores the fixed kDefaultCtaN/kDefaultThreads tiling for every shape.
+static bool Fp4MoeGemvUseDefaultTilingHeuristic() {
+  static bool const enabled =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_DEFAULT_TILING", 1) == 1;
+  return enabled;
+}
+
+// Blocks per SM required before a 64-thread block is worth it. The grid is fixed by
+// (expanded_num_rows, n / CtaN) and does not depend on Threads, so halving the block size halves
+// the threads each block contributes to residency. These kernels are register-limited (about 72
+// registers/thread on sm_90, so roughly 900 resident threads/SM), which a 128-thread block reaches
+// with ~7 resident blocks and a 64-thread block only with ~14. Requiring 16 blocks/SM therefore
+// keeps the SM just as full while halving the epilogue's reduction width.
+static constexpr int64_t kMinBlocksPerSmForThreads64 = 16;
+
+MoeGemvConfig Fp4MoeGemvDefaultConfig(int64_t expanded_num_rows, int64_t n, int64_t k) {
+  // The interleaved path pins its own CtaN/Threads and ignores `config`.
+  if (Fp4MoeGemvUseInterleaved() || !Fp4MoeGemvUseDefaultTilingHeuristic()) {
+    return MoeGemvConfig::kDefault;
+  }
+  // Each block walks K in strides of CtaK = StepK * Threads, with StepK = 128 / activation_bits.
+  constexpr int64_t kStepK = 128 / 16;
+  constexpr int64_t kDefaultCtaK = kStepK * kDefaultThreads;
+
+  // (a) Idle threads. When CtaK > k the tail of every block never enters the K loop at all, so a
+  //     128-thread block leaves half its threads doing nothing (NVFP4 fc2 has k = inter_size,
+  //     e.g. 512 against CtaK = 1024). Narrowing the block is a pure win here.
+  if (kDefaultCtaK > k) {
+    return MoeGemvConfig::kThreads64;
+  }
+
+  // (b) Epilogue cost. The MAC work per block is fixed by (CtaN, k) regardless of Threads, but the
+  //     epilogue reduces partial sums across Threads/32 warps through shared memory. A narrower
+  //     block does the same math with half the barriers and a shallower reduction tree, so prefer
+  //     it whenever the grid is large enough that the SM still fills up (see the constant above).
+  static int const sm_count = common::getMultiProcessorCount();
+  const int64_t blocks = expanded_num_rows * (n / kDefaultCtaN);
+  if (blocks >= kMinBlocksPerSmForThreads64 * sm_count) {
+    return MoeGemvConfig::kThreads64;
+  }
+  return MoeGemvConfig::kDefault;
+}
 
 // --- MXFP4 (e2m1) GEMV: non-interleaved ColumnMajor layout (kInterleave = 1) ---
 // Weights are the QMoERepackFP4ColToRow output ([experts, n, k/2] row-major, two e2m1
