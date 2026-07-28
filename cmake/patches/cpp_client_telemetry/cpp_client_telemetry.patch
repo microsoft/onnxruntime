@@ -1,5 +1,16 @@
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
+@@ -363,7 +363,9 @@
+    AND NOT BUILD_APPLE_HTTP)
+   set(MATSDK_NEEDS_CURL ON)
+   add_definitions(-DHAVE_MAT_CURL_HTTP_CLIENT)
+-  find_package(CURL REQUIRED)
++  if(NOT TARGET CURL::libcurl)
++    find_package(CURL REQUIRED)
++  endif()
+   if(MATSDK_USE_VCPKG_DEPS)
+     list(APPEND LIBS CURL::libcurl)
+   else()
 @@ -389,7 +389,7 @@
    message(STATUS "Using vcpkg-provided sqlite3, zlib, nlohmann-json")
  else()

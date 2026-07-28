@@ -328,6 +328,32 @@ const std::string& GetAppSessionGuid() {
   return guid;
 }
 
+#if defined(ORT_USE_EMBEDDED_TELEMETRY_CURL)
+std::string GetCertificateAuthorityBundlePath() {
+  if (const char* ssl_cert_file = std::getenv("SSL_CERT_FILE");
+      ssl_cert_file != nullptr && access(ssl_cert_file, R_OK) == 0) {
+    return ssl_cert_file;
+  }
+
+  constexpr const char* kCertificateAuthorityBundlePaths[] = {
+      "/etc/ssl/certs/ca-certificates.crt",
+      "/etc/pki/tls/certs/ca-bundle.crt",
+      "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",
+      "/etc/ssl/ca-bundle.pem",
+      "/etc/pki/tls/cacert.pem",
+      "/etc/ssl/cert.pem",
+      "/var/lib/ca-certificates/ca-bundle.pem",
+  };
+  for (const char* path : kCertificateAuthorityBundlePaths) {
+    if (access(path, R_OK) == 0) {
+      return path;
+    }
+  }
+
+  return {};
+}
+#endif
+
 template <typename Operation>
 void RunTelemetryOperation(const char* operation_name, Operation&& operation) noexcept {
   auto warning = [operation_name](const char* message) {
@@ -452,6 +478,13 @@ void PosixTelemetry::Initialize() {
   config[CFG_STR_COLLECTOR_URL] = "https://mobile.events.data.microsoft.com/OneCollector/1.0";
   config[CFG_INT_TRACE_LEVEL_MASK] = 0;                      // Disable SDK internal logging
   config[CFG_INT_SDK_MODE] = SdkModeTypes::SdkModeTypes_CS;  // Common Schema 4.0 mode
+#if defined(ORT_USE_EMBEDDED_TELEMETRY_CURL)
+  if (std::string ca_bundle = GetCertificateAuthorityBundlePath(); !ca_bundle.empty()) {
+    config[CFG_MAP_HTTP][CFG_STR_HTTP_SSL_CAINFO] = ca_bundle;
+  } else {
+    ORT_TELEMETRY_WARN("No readable CA bundle was found; telemetry HTTPS uploads will be unavailable");
+  }
+#endif
   // Do not block process teardown to upload; persisted events are sent on the next run. 0 keeps
   // Shutdown non-blocking and avoids adding exit latency to host apps.
   config[CFG_INT_MAX_TEARDOWN_TIME] = 0;

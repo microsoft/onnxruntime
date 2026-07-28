@@ -936,6 +936,12 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     # workarounds below are needed on this path.
     find_package(MSTelemetry CONFIG REQUIRED)
   else()
+    # Linux packages must not depend on a host libcurl. Build an internal HTTP(S)-only static curl
+    # before configuring 1DS so its CURL::libcurl reference resolves to the pinned target.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      include(external/telemetry_linux_http.cmake)
+    endif()
+
     # Android always uses this path, including vcpkg-based AAR builds. The vcpkg port selects
     # HttpClient_Curl on Android, while the platform identity and transport used by the AAR require
     # HttpClient_Android and its Java bridge.
