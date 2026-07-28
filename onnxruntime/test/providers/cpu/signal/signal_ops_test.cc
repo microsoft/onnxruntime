@@ -605,6 +605,34 @@ TEST(SignalOpsTest, DFT17_Float_zero_padded_prime) { TestZeroPaddedDFTFloat(7, k
 
 TEST(SignalOpsTest, DFT20_Float_zero_padded_prime) { TestZeroPaddedDFTFloat(7, kOpsetVersion20); }
 
+// Runs only against EPs that register DFT for float16 (the CPU kernel is float/double only).
+// Kernels accumulate in float32 internally, so the tolerance covers float16 output quantization.
+static void TestRadix2DFTFloat16(int since_version) {
+  OpTester test("DFT", since_version);
+
+  vector<int64_t> shape = {1, 8, 1};
+  vector<int64_t> output_shape = {1, 8, 2};
+
+  vector<float> input = {1, 2, 3, 4, 5, 6, 7, 8};
+  vector<float> expected_output = {36.000f, 0.000f, -4.000f, 9.65685f, -4.000f, 4.000f, -4.000f, 1.65685f,
+                                   -4.000f, 0.000f, -4.000f, -1.65685f, -4.000f, -4.000f, -4.000f, -9.65685f};
+
+  test.AddInput<MLFloat16>("input", shape, ToFloat16(input));
+  if (since_version == 20) {
+    test.AddInput<int64_t>("dft_length", {}, {8});
+    test.AddInput<int64_t>("axis", {}, {1});
+  }
+  test.AddOutput<MLFloat16>("output", output_shape, ToFloat16(expected_output));
+  test.SetOutputAbsErr("output", 0.05f);
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
+}
+
+TEST(SignalOpsTest, DFT17_Float16_radix2) { TestRadix2DFTFloat16(kMinOpsetVersion); }
+
+TEST(SignalOpsTest, DFT20_Float16_radix2) { TestRadix2DFTFloat16(kOpsetVersion20); }
+
+
 // Test 2D complex input (single 1D signal without batch dimension)
 static void TestDFT2DComplex(int since_version) {
   OpTester test("DFT", since_version);
