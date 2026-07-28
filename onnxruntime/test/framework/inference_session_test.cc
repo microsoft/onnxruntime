@@ -3687,11 +3687,14 @@ TEST(InferenceSessionTests, SessionLoggerOutlivesEPsWithUserLoggingFunction) {
 
 #if !defined(ORT_MINIMAL_BUILD)
 // A compile-only session (Compile API path, marked by kOrtSessionOptionCompileOnly) whose EPs compile no
-// nodes emits a plain optimized output model *after* the Level2+ optimizer loop, so the serialized graph
-// reflects those fusions. This is EP-agnostic: the CPU EP compiles nothing, so the kGenerateModel path
-// serializes the optimized graph. bias_gelu_fusion.onnx fuses to com.microsoft.BiasGelu only at Level2
-// (BiasGeluFusion is Level2-only), so its presence in the emitted model proves the Level2 fusion reached
-// the output; at ORT_ENABLE_BASIC (Level1) it is absent because that fusion never runs.
+// nodes emits a plain optimized output model. The serialization point is chosen by the requested level:
+// for level >= Level2 it is emitted *after* the Level2+ optimizer loop so the serialized graph reflects
+// those fusions; for level < Level2 it is emitted before the loop (a BASIC snapshot). This is EP-agnostic:
+// the CPU EP compiles nothing, so the kGenerateModel path serializes the optimized graph.
+// bias_gelu_fusion.onnx fuses to com.microsoft.BiasGelu only at Level2 (BiasGeluFusion is Level2-only), so
+// its presence in the emitted model proves the Level2 fusion reached the output; at ORT_ENABLE_BASIC
+// (Level1) it is absent because that fusion never runs. The two cases below therefore exercise both
+// serialization points (after-loop for ENABLE_ALL, before-loop for BASIC).
 TEST(InferenceSessionTests, CompileOnlyToFileSerializesFullyOptimizedGraph) {
   const std::string input_model = "testdata/transform/fusion/bias_gelu_fusion.onnx";
 

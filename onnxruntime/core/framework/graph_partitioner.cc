@@ -1496,11 +1496,9 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                                                  ep_acc_map, *graph_optimizer_registry_, logger,
                                                  disable_model_compile));  // Pass param
 
-    // Serialize here only when the output is EPContext-based (some EP produced EPContext nodes). The
-    // compiling EPs' core optimization lives inside the EPContext blobs, which are opaque to the Level2+
-    // passes, so there is nothing to gain by deferring this to after the optimizer loop. The plain form
-    // (no nodes compiled) is instead emitted by InferenceSession after that loop
-    // (epctx::BuildAndSaveOptimizedModel), so it captures the Level2+ passes.
+    // Serialize here only when the output is EPContext-based (some EP produced EPContext nodes). The plain
+    // form (no nodes compiled) is instead emitted by InferenceSession (epctx::BuildAndSaveOptimizedModel);
+    // see there for how its serialization point is chosen.
     if (ep_context_gen_options.enable && AnyEpContextNodesProduced()) {
       ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_gen_options, logger));
     }
