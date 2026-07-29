@@ -95,6 +95,35 @@
     "webgpu-ep": {
       "description": "Build with WebGPU EP",
       "dependencies": []
+    },
+    "telemetry": {
+      "description": "Build with static 1DS telemetry support on non-Windows platforms",
+      "dependencies": [
+        {
+          "name": "cpp-client-telemetry",
+          "platform": "!windows & !android & !emscripten & !uwp"
+        },
+        {
+          "name": "curl",
+          "default-features": false,
+          "features": [
+            "mbedtls"
+          ],
+          "platform": "linux"
+        },
+        {
+          "name": "mbedtls",
+          "features": [
+            "pthreads"
+          ],
+          "platform": "linux"
+        },
+        {
+          "name": "sqlite3",
+          "default-features": false,
+          "platform": "!windows & !android & !emscripten & !uwp"
+        }
+      ]
     }
   },
   "overrides": [
