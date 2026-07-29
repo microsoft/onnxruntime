@@ -18,19 +18,59 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
   bool is_bool = Inputs()[0].var_type == ProgramVariableDataType::Boolx4;
   bool is_uint8 = Inputs()[0].var_type == ProgramVariableDataType::Uint8x4;
   bool pack_as_bytes = is_bool || is_uint8;
-  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.data_size")
-                            << "  var idx : input_indices_value_t;\n"
-                            << "  var output_indices : output_indices_indices_t;\n"
-                            << "  var indices_indices : input_indices_indices_t;\n"
-                            << "  var data_indices : data_indices_indices_t;\n"
-                            << (is_uint8 ? "  var value : vec4<u32> = vec4<u32>(0u);\n"
-                                         : "  var value : output_value_t;\n")
-                            << "  var data_offset : u32;\n";
-  for (int comp = 0; comp < (pack_as_bytes ? 4 : 1); comp++) {
-    if (pack_as_bytes) {
-      shader.MainFunctionBody() << "  if (" << comp << "u + 4u * global_idx < uniforms.output_size) {\n";
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.data_size");
+  if (pack_as_bytes) {
+    // For bool/uint8 packed paths, declare the output accumulator outside the per-comp blocks,
+    // but declare ALL intermediate computation variables INSIDE each comp's if-block scope.
+    // This avoids a cross-backend codegen bug (reproduces on both Metal/D3D12) where sequential
+    // if-blocks sharing the same mutable var names (output_indices, idx, etc.) cause comp=1..3
+    // to reuse comp=0's stale variable state, producing wrong results.
+    shader.MainFunctionBody() << (is_uint8 ? "  var value : vec4<u32> = vec4<u32>(0u);\n"
+                                           : "  var value : output_value_t;\n");
+    for (int comp = 0; comp < 4; comp++) {
+      shader.MainFunctionBody() << "  if (" << comp << "u + 4u * global_idx < uniforms.output_size) {\n"
+                                << "    var output_indices : output_indices_indices_t;\n"
+                                << "    var indices_indices : input_indices_indices_t;\n"
+                                << "    var data_indices : data_indices_indices_t;\n"
+                                << "    var idx : input_indices_value_t;\n";
+      shader.MainFunctionBody() << "    output_indices = " << output_indices.OffsetToIndices(std::to_string(comp) + " + 4 * global_idx") << ";\n";
+
+      for (int i = 0; i < indices.Rank(); i++) {
+        shader.MainFunctionBody() << "    " << indices.IndicesSet("indices_indices", i, output_indices.IndicesGet("output_indices", axis_ + i)) << ";\n";
+      }
+
+      shader.MainFunctionBody() << "    idx = " << indices.GetByIndices("indices_indices") << ";\n"
+                                << "    if (idx < 0) {\n"
+                                << "      idx = idx + input_indices_value_t(" << data_indices.IndicesGet("uniforms.data_indices_shape", axis_) << ");\n"
+                                << "    }\n";
+
+      for (int i = 0, j = 0; i < data_indices.Rank(); i++) {
+        if (static_cast<uint32_t>(i) == axis_) {
+          shader.MainFunctionBody() << "    " << data_indices.IndicesSet("data_indices", i, "u32(idx)") << ";\n";
+          j += indices.Rank();
+        } else {
+          shader.MainFunctionBody() << "    " << data_indices.IndicesSet("data_indices", i, output_indices.IndicesGet("output_indices", j)) << ";\n";
+          j++;
+        }
+      }
+
+      shader.MainFunctionBody() << "    let data_offset = " << data_indices.IndicesToOffset("data_indices") << ";\n";
+      if (is_bool) {
+        shader.MainFunctionBody() << "    value[" << comp << "] = " << data.GetByOffset("data_offset / 4") << "[data_offset % 4];\n";
+      } else {
+        shader.MainFunctionBody() << "    value[" << comp << "] = unpack4xU8(" << data.GetByOffset("data_offset / 4u")
+                                  << ")[data_offset % 4u];\n";
+      }
+      shader.MainFunctionBody() << "  }\n";
     }
-    shader.MainFunctionBody() << "  output_indices = " << output_indices.OffsetToIndices(pack_as_bytes ? (std::to_string(comp) + " + 4 * global_idx") : "global_idx") << ";\n";
+  } else {
+    shader.MainFunctionBody() << "  var idx : input_indices_value_t;\n"
+                              << "  var output_indices : output_indices_indices_t;\n"
+                              << "  var indices_indices : input_indices_indices_t;\n"
+                              << "  var data_indices : data_indices_indices_t;\n"
+                              << "  var value : output_value_t;\n"
+                              << "  var data_offset : u32;\n";
+    shader.MainFunctionBody() << "  output_indices = " << output_indices.OffsetToIndices("global_idx") << ";\n";
 
     for (int i = 0; i < indices.Rank(); i++) {
       shader.MainFunctionBody() << "  " << indices.IndicesSet("indices_indices", i, output_indices.IndicesGet("output_indices", axis_ + i)) << ";\n";
@@ -51,18 +91,8 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
       }
     }
 
-    shader.MainFunctionBody() << "  data_offset = " << data_indices.IndicesToOffset("data_indices") << ";\n";
-    if (is_bool) {
-      shader.MainFunctionBody() << "  value[" << comp << "] = " << data.GetByOffset("data_offset / 4") << "[data_offset % 4];\n";
-    } else if (is_uint8) {
-      shader.MainFunctionBody() << "  value[" << comp << "] = unpack4xU8(" << data.GetByOffset("data_offset / 4u")
-                                << ")[data_offset % 4u];\n";
-    } else {
-      shader.MainFunctionBody() << "  value = " << data.GetByOffset("data_offset") << ";\n";
-    }
-    if (pack_as_bytes) {
-      shader.MainFunctionBody() << "  }\n";
-    }
+    shader.MainFunctionBody() << "  data_offset = " << data_indices.IndicesToOffset("data_indices") << ";\n"
+                              << "  value = " << data.GetByOffset("data_offset") << ";\n";
   }
 
   if (is_uint8) {
