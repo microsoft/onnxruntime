@@ -1123,6 +1123,14 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
             target_compile_options(${_ort_mat_tgt} PRIVATE -Wno-shorten-64-to-32)
           endif()
         endforeach()
+        if(TARGET sqlite3_bundled)
+          target_compile_options(sqlite3_bundled PRIVATE -Wno-ambiguous-macro)
+        endif()
+      endif()
+      if(TARGET sqlite3_bundled
+         AND CMAKE_C_COMPILER_ID STREQUAL "GNU"
+         AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
+        target_compile_options(sqlite3_bundled PRIVATE -Wno-error=stringop-overread)
       endif()
     endif()
 
