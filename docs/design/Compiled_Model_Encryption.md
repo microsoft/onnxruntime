@@ -377,6 +377,12 @@ The helper distinguishes trust based on the `OrtGraph*`:
   special files — notably a FIFO left inside the model directory, which passes containment and would
   block an `ifstream` open (a cheap DoS). The check is advisory, not a security boundary: the path can
   change between the check and the open (TOCTOU); a race-free variant would inspect the opened handle.
+- **A symlink write target is rejected outright** (`symlink_status`, which inspects the link itself
+  rather than following it). Containment alone does not cover this case: a *dangling* symlink has no
+  target for `weakly_canonical` to resolve, so it stays lexically inside the model directory and passes
+  the containment check, yet an `ofstream` would follow it and create the file wherever it points. A
+  `status`-based test cannot catch it either, because the missing target reports as `not_found` — the
+  same result as the ordinary "new file" case that writes must allow.
 
 ## Application Flows
 
@@ -582,7 +588,7 @@ RETURN_IF_ERROR(ep_context_data_utils::ReadEpContextData(
     ort_api, ep_context_config_.get(), ep_cache_context_name, graph, ctx));
 
 engine = runtime->deserializeCudaEngine(ctx.data(), ctx.size());
-// `ctx` frees the adopted allocator buffer (or its owned vector) on destruction — no manual free.
+// `ctx` frees the adopted allocator buffer on destruction — no manual free.
 ```
 
 Both examples replace the EP's existing `std::ofstream` / `std::ifstream` code with a single helper

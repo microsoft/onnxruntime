@@ -9,6 +9,11 @@
 #include <string_view>
 #include <vector>
 
+#if !defined(_WIN32)
+#include <sys/stat.h>
+#include <sys/types.h>
+#endif
+
 #include <gsl/gsl>
 #include <gtest/gtest.h>
 
@@ -232,6 +237,61 @@ TEST(OrtEpLibrary, EpContextDataUtils_RejectsNonRegularFileTargets) {
                                                                       payload.data(), payload.size()));
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextDataFromFile(api, new_file_name.c_str(), nullptr, data));
   EXPECT_EQ(std::string(data.begin(), data.end()), payload);
+
+#if !defined(_WIN32)
+  // The FIFO case is what motivated the file-type gate: it passes containment and an ifstream open on it blocks
+  // indefinitely, so without the gate this read would hang instead of failing.
+  const std::filesystem::path fifo_path = model_dir / "fifo_context.bin";
+  if (mkfifo(fifo_path.c_str(), 0600) == 0) {
+    ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataFromFile(api, "fifo_context.bin",
+                                                                          graph.ToExternal(), data),
+                         ORT_INVALID_ARGUMENT, "must be a regular file");
+  }
+#endif
+}
+
+TEST(OrtEpLibrary, EpContextDataUtils_RejectsSymlinkWriteTargets) {
+  const auto& api = Ort::GetApi();
+  const std::filesystem::path test_dir = PrepareTempTestDir("ort_ep_context_data_utils_symlink_write_test");
+  auto cleanup = gsl::finally([&]() { std::filesystem::remove_all(test_dir); });
+
+  const std::filesystem::path model_dir = test_dir / "model_dir";
+  const std::filesystem::path outside_dir = test_dir / "outside_dir";
+  ASSERT_TRUE(std::filesystem::create_directories(model_dir));
+  ASSERT_TRUE(std::filesystem::create_directories(outside_dir));
+
+  ModelEditorGraph graph;
+  graph.model_path = model_dir / "model.onnx";
+
+  // A *dangling* symlink is the dangerous case. weakly_canonical() cannot resolve a target that does not exist yet,
+  // so the link stays lexically inside the model directory and passes containment - but an ofstream would follow it
+  // and create the payload outside. Only a check on the link itself (symlink_status) rejects this.
+  const std::filesystem::path dangling_link = model_dir / "dangling.ctx";
+  const std::filesystem::path escape_target = std::filesystem::path{".."} / outside_dir.filename() / "escaped.ctx";
+  std::error_code symlink_error;
+  std::filesystem::create_symlink(escape_target, dangling_link, symlink_error);
+  if (symlink_error) {
+    GTEST_SKIP() << "Unable to create symlink for write-target test: " << symlink_error.message();
+  }
+
+  const std::string payload = "symlink payload";
+  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataToFile(api, "dangling.ctx", graph.ToExternal(),
+                                                                       payload.data(), payload.size()),
+                       ORT_INVALID_ARGUMENT, "must not be a symlink");
+  // The escape is what actually matters: nothing may have been created outside the model directory.
+  EXPECT_FALSE(std::filesystem::exists(outside_dir / "escaped.ctx"));
+
+  // A symlink pointing at an existing regular file inside the model directory is rejected by the same gate, so a
+  // write can never land somewhere other than the path the caller named.
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataToFile(api, "real.ctx", graph.ToExternal(),
+                                                                      payload.data(), payload.size()));
+  const std::filesystem::path inside_link = model_dir / "inside.ctx";
+  std::filesystem::create_symlink(std::filesystem::path{"real.ctx"}, inside_link, symlink_error);
+  if (!symlink_error) {
+    ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataToFile(api, "inside.ctx", graph.ToExternal(),
+                                                                         payload.data(), payload.size()),
+                         ORT_INVALID_ARGUMENT, "must not be a symlink");
+  }
 }
 
 TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathRejectsSymlinkEscape) {
@@ -408,6 +468,10 @@ TEST(OrtEpLibrary, EpContextDataUtils_ReadEpContextDataAdoptsCallbackBufferZeroC
   EXPECT_EQ(read_callback_state.read_file_name, "zero_copy_context.bin");
   ASSERT_EQ(owned.size(), read_callback_state.payload.size());
   EXPECT_EQ(std::vector<char>(owned.data(), owned.data() + owned.size()), read_callback_state.payload);
+  // The point of this entry point is adoption, not equality: assert the exact buffer the callback allocated is the
+  // one being handed back. Comparing contents alone would still pass if the reader silently copied.
+  ASSERT_NE(read_callback_state.last_read_buffer, nullptr);
+  EXPECT_EQ(static_cast<const void*>(owned.data()), read_callback_state.last_read_buffer);
 
   // File-fallback path: with no callback configured, ReadEpContextData reads the file into the owned buffer.
   const std::filesystem::path test_dir = PrepareTempTestDir("ort_ep_context_data_utils_zero_copy_test");

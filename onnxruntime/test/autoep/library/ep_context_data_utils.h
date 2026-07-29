@@ -180,7 +180,21 @@ inline OrtStatus* EnsureRegularFileForRead(const OrtApi& api, const std::filesys
 
 // Write counterpart: a not-yet-existing target is the normal case and is allowed, but an existing target must be a
 // regular file. Same advisory (TOCTOU) caveat as EnsureRegularFileForRead().
+//
+// A symlink leaf is rejected outright, which closes a gap the containment check alone cannot: a *dangling* symlink
+// (one whose target does not exist yet) is not traversed by weakly_canonical(), so it passes containment while
+// pointing outside the model directory, and an ofstream would then follow it and create the target there. Testing
+// the link itself requires symlink_status(), which does not follow links - status() would report the (missing)
+// target as not_found and wave the write through.
 inline OrtStatus* EnsureRegularFileForWrite(const OrtApi& api, const std::filesystem::path& data_path) {
+  std::error_code symlink_ec;
+  const std::filesystem::file_status link_status = std::filesystem::symlink_status(data_path, symlink_ec);
+  if (!symlink_ec && std::filesystem::is_symlink(link_status)) {
+    const std::string message = "EPContext data file must not be a symlink: " +
+                                PathToUtf8StringForMessage(data_path);
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, message.c_str());
+  }
+
   std::error_code ec;
   const std::filesystem::file_status file_status = std::filesystem::status(data_path, ec);
   if (ec || !std::filesystem::exists(file_status)) {
@@ -453,6 +467,10 @@ class EpContextData {
   size_t size() const noexcept { return buffer_size_; }
   bool empty() const noexcept { return buffer_size_ == 0; }
 
+  // Frees any owned bytes and returns to the empty state. The read entry points call this before doing any work, so
+  // an EpContextData is safe to reuse across reads; callers may also use it to release a large buffer early.
+  void Reset() noexcept { FreeAllocatorBuffer(); }
+
  private:
   friend OrtStatus* ReadEpContextData(const OrtApi& api, OrtReadNamedBufferFunc read_func, void* read_state,
                                       const char* file_name, const OrtGraph* graph, EpContextData& out,
@@ -471,7 +489,15 @@ class EpContextData {
     buffer_size_ = 0;
   }
 
-  void Reset() noexcept { FreeAllocatorBuffer(); }
+  // Takes ownership of `buffer` (allocated from `allocator`, freed via `api`), replacing anything already held.
+  // Used by the read entry point to adopt the callback buffer and the file-fallback buffer through one path.
+  void Adopt(const OrtApi& api, OrtAllocator* allocator, void* buffer, size_t buffer_size) noexcept {
+    FreeAllocatorBuffer();
+    api_ = &api;
+    allocator_ = allocator;
+    buffer_ = buffer;
+    buffer_size_ = buffer_size;
+  }
 
   void MoveFrom(EpContextData& other) noexcept {
     api_ = other.api_;
@@ -531,10 +557,7 @@ inline OrtStatus* ReadEpContextData(const OrtApi& api, OrtReadNamedBufferFunc re
     size_t file_buffer_size = 0;
     RETURN_IF_ERROR(ReadEpContextDataFromFileWithAllocator(api, file_name, graph, effective_allocator, &file_buffer,
                                                            &file_buffer_size));
-    out.api_ = &api;
-    out.allocator_ = effective_allocator;
-    out.buffer_ = file_buffer;
-    out.buffer_size_ = file_buffer_size;
+    out.Adopt(api, effective_allocator, file_buffer, file_buffer_size);
     return nullptr;
   }
 
@@ -563,10 +586,7 @@ inline OrtStatus* ReadEpContextData(const OrtApi& api, OrtReadNamedBufferFunc re
   }
 
   // Success: transfer ownership of the callback buffer to `out` (no copy); `out` frees it via the same allocator.
-  out.api_ = &api;
-  out.allocator_ = effective_allocator;
-  out.buffer_ = buffer_guard.release();
-  out.buffer_size_ = ep_context_data_size;
+  out.Adopt(api, effective_allocator, buffer_guard.release(), ep_context_data_size);
 
   return nullptr;
 }
@@ -581,9 +601,12 @@ inline OrtStatus* ReadEpContextData(const OrtApi& api, OrtReadNamedBufferFunc re
  * \param api The OrtApi.
  * \param ep_context_config EPContext config carrying the optional read callback; may be null (uses the file fallback).
  * \param file_name Logical name of the EPContext data: a callback-namespace key, or a file name for the fallback.
- * \param graph When non-null, the untrusted EPContext model graph. `file_name` must be relative and is resolved
- *              against the model directory and rejected if it escapes it. Pass null only for trusted callers that
- *              supply a physical path.
+ * \param graph Governs name resolution on the FILE-FALLBACK path only. When non-null it is the untrusted EPContext
+ *              model graph, and `file_name` must be relative and must resolve inside the model directory; null
+ *              denotes a trusted caller supplying a physical path. When a read callback is configured, `graph` is
+ *              not consulted at all: `file_name` is forwarded to the callback verbatim as an opaque namespace key,
+ *              so the callback must treat it as untrusted input and must not use it as a filesystem path without
+ *              applying its own validation.
  * \param out Reset first; receives the bytes on success and is left empty on failure. Access via out.data()/out.size().
  * \param allocator Optional allocator used for the output buffer on both the callback and file paths; null uses ORT's
  *                  default allocator. Not owned: it must outlive `out` (see the low-level overload for details).
@@ -592,6 +615,10 @@ inline OrtStatus* ReadEpContextData(const OrtApi& api, OrtReadNamedBufferFunc re
 inline OrtStatus* ReadEpContextData(const OrtApi& api, const OrtEpContextConfig* ep_context_config,
                                     const char* file_name, const OrtGraph* graph, EpContextData& out,
                                     OrtAllocator* allocator = nullptr) {
+  // Reset up front so the documented "empty on failure" contract also holds for the early returns below, which are
+  // reached before the low-level overload (which does its own reset) is ever called.
+  out.Reset();
+
   OrtReadNamedBufferFunc read_func = nullptr;
   void* read_state = nullptr;
   if (ep_context_config != nullptr) {
