@@ -27,7 +27,8 @@ def get_platform_frameworks(framework_info, platforms):
             continue
         platform_frameworks = framework_info[platform].get("SYSTEM_FRAMEWORKS", "")
         if frameworks:
-            assert platform_frameworks == frameworks
+            if platform_frameworks != frameworks:
+                raise ValueError(f"Inconsistent SYSTEM_FRAMEWORKS for {platform}: {platform_frameworks!r}")
         else:
             frameworks = platform_frameworks
     return frameworks
