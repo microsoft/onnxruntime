@@ -342,16 +342,12 @@ TEST(InferenceSessionTests, TestModelSerialization) {
 }
 
 #if defined(USE_WEBGPU)
-// A compile-only session (as marked by the Compile API via kOrtSessionOptionCompileOnly) that uses the
-// WebGPU EP stops session initialization right after graph transformation/partitioning, before
-// session-state finalization (kernel creation, PrePack, memory planning). This validates the new
-// control flow: (1) Initialize() succeeds, (2) optimized_model_filepath is still serialized and the
-// produced model is valid ONNX (loadable and runnable), and (3) Run() fails because the session was
-// never finalized. The WebGPU EP is created device-free (compile-only), so this does not require a GPU.
+// A compile-only session (kOrtSessionOptionCompileOnly) using the WebGPU EP stops before session-state
+// finalization. Validates: (1) Initialize() succeeds, and (2) Run() fails because the session was never
+// finalized.
 TEST(InferenceSessionTests, WebGpuCompileOnlySkipsFinalization) {
-  // Create a device-free WebGPU EP: with kOrtSessionOptionCompileOnly set, the WebGPU context skips
-  // Dawn adapter/device creation, so this runs on machines without a GPU. Skip if WebGPU is not built
-  // or otherwise unavailable in this configuration.
+  // Device-free WebGPU EP: kOrtSessionOptionCompileOnly makes the WebGPU context skip Dawn device
+  // creation. Skip the test if WebGPU is not built/available.
   ConfigOptions ep_config_options;
   ASSERT_STATUS_OK(ep_config_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
   auto webgpu_ep = WebGpuExecutionProviderWithOptions(ep_config_options);
@@ -359,58 +355,31 @@ TEST(InferenceSessionTests, WebGpuCompileOnlySkipsFinalization) {
     GTEST_SKIP() << "WebGPU execution provider is not available.";
   }
 
-  const std::basic_string<ORTCHAR_T> optimized_model_path = ORT_TSTR("webgpu_compile_only_optimized.onnx");
-  // Remove any stale file up front, and guarantee cleanup on every exit path (including a failed
-  // ASSERT_*, which returns from the test) so we never leave the serialized model behind.
-  std::filesystem::remove(optimized_model_path);
-  struct RemoveOnExit {
-    std::basic_string<ORTCHAR_T> path;
-    ~RemoveOnExit() { std::filesystem::remove(path); }
-  } remove_on_exit{optimized_model_path};
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.WebGpuCompileOnlySkipsFinalization";
+  // The Compile API sets this internally to mark a compile-only session; set it directly here.
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
 
-  {
-    SessionOptions so;
-    so.session_logid = "InferenceSessionTests.WebGpuCompileOnlySkipsFinalization";
-    // The Compile API sets this internally to mark a compile-only session; set it directly here.
-    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
-    so.optimized_model_filepath = optimized_model_path;
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(webgpu_ep)));
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
 
-    InferenceSession session_object{so, GetEnvironment()};
-    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(webgpu_ep)));
-    ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  // Initialize succeeds, but skips session-state finalization.
+  ASSERT_STATUS_OK(session_object.Initialize());
 
-    // Initialize succeeds, but skips session-state finalization.
-    ASSERT_STATUS_OK(session_object.Initialize());
-
-    // optimized_model_filepath must still be honored on the stop-before-finalize path.
-    ASSERT_TRUE(std::filesystem::exists(optimized_model_path));
-
-    // The session is not runnable: finalization was skipped, so Run() must fail (and not crash).
-    std::vector<int64_t> dims_x = {3, 2};
-    std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-    OrtValue ml_value;
-    CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &ml_value);
-    NameMLValMap feeds;
-    feeds.insert(std::make_pair("X", ml_value));
-    std::vector<std::string> output_names{"Y"};
-    std::vector<OrtValue> fetches;
-    RunOptions run_options;
-    // Run() must fail on a compile-only session that skipped session-state finalization.
-    const auto run_status = session_object.Run(run_options, feeds, output_names, &fetches);
-    ASSERT_STATUS_NOT_OK(run_status);
-  }
-
-  // The serialized optimized model must be valid ONNX: load and run it in a normal CPU session and
-  // verify it produces the expected output.
-  {
-    SessionOptions so;
-    so.session_logid = "InferenceSessionTests.WebGpuCompileOnlySkipsFinalization.Verify";
-    InferenceSession verify_session{so, GetEnvironment()};
-    ASSERT_STATUS_OK(verify_session.Load(optimized_model_path));
-    ASSERT_STATUS_OK(verify_session.Initialize());
-    RunOptions run_options;
-    RunModel(verify_session, run_options);
-  }
+  // The session is not runnable: finalization was skipped, so Run() must fail (and not crash).
+  std::vector<int64_t> dims_x = {3, 2};
+  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &ml_value);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value));
+  std::vector<std::string> output_names{"Y"};
+  std::vector<OrtValue> fetches;
+  RunOptions run_options;
+  // Run() must fail on a compile-only session that skipped session-state finalization.
+  const auto run_status = session_object.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_STATUS_NOT_OK(run_status);
 }
 #endif  // defined(USE_WEBGPU)
 
@@ -525,11 +494,10 @@ TEST(InferenceSessionTests, WebGpuEpFactoryRejectsVirtualDeviceWithoutCompileOnl
   EXPECT_EQ(ep, nullptr);
 }
 
-// Directly validates that a device-free (compile-only) WebGPU EP hands out the no-op "dummy" allocator
-// instead of a real GpuBufferAllocator -- the allocator that a device-free session relies on (a real one
-// can't even be constructed without a Dawn device). The other WebGPU tests assert behavior (Initialize
-// succeeds, model serialized); this one asserts the allocator *type*, which is what device-free-ness comes
-// down to. Independent of whether the host has a GPU, since device-free is driven by compile_only.
+// A device-free (compile-only) WebGPU EP must hand out the no-op "dummy" allocator instead of a real
+// GpuBufferAllocator, which can't be constructed without a Dawn device. Asserts the allocator *type*, which
+// is what device-free-ness comes down to. Independent of the host GPU, since device-free is driven by
+// compile_only.
 TEST(InferenceSessionTests, WebGpuCompileOnlyUsesNoOpAllocator) {
   ConfigOptions ep_config_options;
   ASSERT_STATUS_OK(ep_config_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
@@ -554,16 +522,11 @@ TEST(InferenceSessionTests, WebGpuCompileOnlyUsesNoOpAllocator) {
 // End-to-end via the public V2 API in the *plugin* WebGPU build: select the virtual WebGPU OrtEpDevice and run a
 // compile-only session.
 //
-// Key requirement / setup: this test relies on test_main.cc registering the WebGPU plugin EP under a ".virtual"
-// registration name (see the ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP block there). ORT treats the ".virtual" suffix as a
-// request to auto-enable the env config "allow_virtual_devices" on the global ort_env, which is what makes the WebGPU
-// factory surface a virtual GPU OrtEpDevice. Because that registration is guaranteed in this build, the test fails
-// (rather than skips) if no virtual device is surfaced -- see the ASSERT_FALSE below. This is also why the test can
-// use the shared ort_env directly instead of recreating an OrtEnv.
+// Relies on test_main.cc registering the WebGPU plugin EP under a ".virtual" name, whose suffix auto-enables the env
+// config "allow_virtual_devices" so the factory surfaces a virtual GPU OrtEpDevice.
 //
 // It exercises the accepted (device-free) path even on a host that has a real GPU: device-free is driven by
-// session.compile_only, not by which device is selected, so no Dawn device is created. (Built-in-EP coverage of the
-// same path: WebGpuCompileOnlySkipsFinalization, WebGpuEpFactoryVirtualDevice, WebGpuCompileOnlyUsesNoOpAllocator.)
+// session.compile_only, not by which device is selected, so no Dawn device is created.
 TEST(InferenceSessionTests, WebGpuVirtualDeviceCompileOnlyEndToEnd) {
   // Pick the virtual WebGPU device (is_virtual=1). On a host with a real GPU the factory surfaces both a real and a
   // virtual device; we deliberately select the virtual one.
@@ -579,30 +542,19 @@ TEST(InferenceSessionTests, WebGpuVirtualDeviceCompileOnlyEndToEnd) {
       break;
     }
   }
-  // test_main.cc registers the WebGPU plugin EP with a ".virtual" name, which enables allow_virtual_devices, so a
-  // virtual device must be present in this build. Fail (not skip) if it isn't -- that's a regression in the
-  // virtual-device path, not an environment we should quietly tolerate.
+  // A virtual device must be present in this build (test_main.cc's ".virtual" registration enables it).
   ASSERT_FALSE(selected.empty())
       << "Expected a virtual WebGPU EP device from test_main.cc's .virtual registration, but none was surfaced.";
-
-  const std::basic_string<ORTCHAR_T> optimized_model_path = ORT_TSTR("webgpu_virtual_compile_only_optimized.onnx");
-  std::filesystem::remove(optimized_model_path);
-  struct RemoveOnExit {
-    std::basic_string<ORTCHAR_T> path;
-    ~RemoveOnExit() { std::filesystem::remove(path); }
-  } remove_on_exit{optimized_model_path};
 
   Ort::SessionOptions session_options;
   // session-level compile_only (NOT an EP option) -> drives the device-free context and stop-before-finalize.
   session_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1");
-  session_options.SetOptimizedModelFilePath(optimized_model_path.c_str());
   Ort::KeyValuePairs ep_options;
   session_options.AppendExecutionProvider_V2(*ort_env, selected, ep_options);
 
   // Constructing the session runs Initialize(): compile_only -> device-free WebGPU context (no Dawn device even if
-  // the host has a GPU) -> finalization skipped. Must succeed and still serialize the optimized model.
+  // the host has a GPU) -> finalization skipped. Must succeed on a host with no real GPU behind the virtual device.
   Ort::Session session(*ort_env, MODEL_URI, session_options);
-  ASSERT_TRUE(std::filesystem::exists(optimized_model_path));
 }
 
 // Plugin-build counterpart of WebGpuEpFactoryRejectsVirtualDeviceWithoutCompileOnly (which drives the built-in

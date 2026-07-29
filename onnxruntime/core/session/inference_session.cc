@@ -2728,26 +2728,22 @@ common::Status InferenceSession::Initialize() {
     }
 
     // Compile-only: a compile-only session never runs inference, so skip session-state finalization (kernel creation,
-    // PrePack, initializer upload, memory planning) and return right after the model-save block below.
+    // PrePack, initializer upload, memory planning) and early return here.
     //
-    // NOTE: the model-save block is required for non-CompileAPI usage where optimized_model_filepath and a
-    // virtual device is used. e.g. WebGPU.
-    // CompileAPI based usage saves the EPContext based model during partitioning (CreateEpContextModel) so never enters
-    // this block.
-    const bool skip_session_state_finalization =
-        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionCompileOnly, "0") == "1";
-
-    if (!skip_session_state_finalization) {
-      ORT_RETURN_IF_ERROR_SESSIONID_(
-          session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
-                                               // need to keep the initializers if saving the optimized model
-                                               !saving_model,
-                                               saving_ort_format));
-    } else {
+    // Returning here also bypasses the model-save block below, because a compile-only session does not produce its
+    // output via optimized_model_filepath.
+    if (session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionCompileOnly, "0") == "1") {
       LOGS(*session_logger_, INFO)
           << "Compile-only session: skipping session-state finalization. The session is not runnable; only the "
              "output model is produced.";
+      return common::Status::OK();
     }
+
+    ORT_RETURN_IF_ERROR_SESSIONID_(
+        session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
+                                             // need to keep the initializers if saving the optimized model
+                                             !saving_model,
+                                             saving_ort_format));
 
 #if !defined(ORT_MINIMAL_BUILD)
     if (saving_model) {
@@ -2787,12 +2783,6 @@ common::Status InferenceSession::Initialize() {
                                                                              model_saving_options));
         }
       }
-    }
-
-    // Compile-only: exit here as the model is saved and everything past here is to setup a runnable session
-    // that would never be used.
-    if (skip_session_state_finalization) {
-      return common::Status::OK();
     }
 
     std::vector<TuningResults> tuning_results;
