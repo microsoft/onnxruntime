@@ -23,12 +23,7 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  var output_indices : output_indices_indices_t;\n"
                             << "  var indices_indices : input_indices_indices_t;\n"
                             << "  var data_indices : data_indices_indices_t;\n"
-                            // The uint8 path accumulates bytes into `value` via OR-shift, so it must
-                            // start at zero. Partial (last) threads only write a subset of the 4 byte
-                            // positions, and an uninitialized accumulator would leave the remaining
-                            // bytes undefined. The bool path assigns each component positionally and
-                            // does not require zero-initialization.
-                            << (is_uint8 ? "  var value : output_value_t = output_value_t(0);\n"
+                            << (is_uint8 ? "  var value : vec4<u32> = vec4<u32>(0u);\n"
                                          : "  var value : output_value_t;\n")
                             << "  var data_offset : u32;\n";
   for (int comp = 0; comp < (pack_as_bytes ? 4 : 1); comp++) {
@@ -60,10 +55,8 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
     if (is_bool) {
       shader.MainFunctionBody() << "  value[" << comp << "] = " << data.GetByOffset("data_offset / 4") << "[data_offset % 4];\n";
     } else if (is_uint8) {
-      // Extract one byte from the packed u32: shift right by (data_offset % 4) * 8 bits, then mask.
-      // Accumulate into output packed u32 by shifting into the correct byte position.
-      shader.MainFunctionBody() << "  value = value | (((" << data.GetByOffset("data_offset / 4u")
-                                << " >> ((data_offset % 4u) * 8u)) & 0xFFu) << (" << comp << "u * 8u));\n";
+      shader.MainFunctionBody() << "  value[" << comp << "] = unpack4xU8(" << data.GetByOffset("data_offset / 4u")
+                                << ")[data_offset % 4u];\n";
     } else {
       shader.MainFunctionBody() << "  value = " << data.GetByOffset("data_offset") << ";\n";
     }
@@ -72,7 +65,12 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
   }
 
-  shader.MainFunctionBody() << "  " << output.SetByOffset("global_idx", "value");
+  if (is_uint8) {
+    shader.MainFunctionBody() << "  let packed_value : output_value_t = value[0] | (value[1] << 8u) | (value[2] << 16u) | (value[3] << 24u);\n"
+                              << "  " << output.SetByOffset("global_idx", "packed_value");
+  } else {
+    shader.MainFunctionBody() << "  " << output.SetByOffset("global_idx", "value");
+  }
 
   return Status::OK();
 }
