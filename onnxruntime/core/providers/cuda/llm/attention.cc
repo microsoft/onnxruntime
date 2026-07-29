@@ -1626,7 +1626,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // external-KV-cache single-token decode path — its actual value proposition — so it cannot steal
   // traffic from currently-correct paths:
   //   * nonpad_kv_seqlen != nullptr  (opset-24 external cache)
-  //   * past_key == nullptr          (external cache, not internal past/present — Path 2 is Phase 2)
+  //   * past_key == nullptr          (external cache only; internal past_key/present_key decode is
+  //                                    intentionally NOT dispatched to cuDNN — investigated and
+  //                                    abandoned, see NOTE below and issue #29714.)
   //   * q_sequence_length == 1       (decode: the only unconditionally-safe case for this tier.
   //                                    For s_q==1 cuDNN drops causal masking entirely
   //                                    (cudnn_flash_attention.cc:430), so is_causal=0 and
@@ -1674,6 +1676,27 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                    Y, present_key, present_value, parameters);
     }
   }
+
+  // NOTE (Phase 2 — internal past_key/present_key decode cache — investigated and abandoned):
+  // A cuDNN SDPA dispatch for the internal-cache contract (past_key/past_value in, present_key/
+  // present_value out, no nonpad_kv_seqlen) was prototyped on branch copilot/cudnn-sdpa-decode-phase2
+  // and reviewed, but deliberately NOT merged. Root cause: unlike Path 1's nonpad_kv_seqlen (an
+  // opset-24 EXTERNAL cache with a caller-owned, fixed-capacity buffer) or the contrib
+  // GroupQueryAttention op (whose present_key/value ARE the same fixed-capacity buffer as past_key/
+  // value, reused in place across decode steps, with the valid length passed separately via a
+  // seqlens tensor), the standard ONNX Attention op's INTERNAL cache has no capacity concept: the
+  // spec defines present_key/present_value shape as exactly past_sequence_length + kv_sequence_length,
+  // growing by exactly one token every decode step. cuDNN's frontend graph API is a "build once, run
+  // many times" model — cudnn_flash_attention.cc's mha_graph_cache is keyed (among other fields) on
+  // sequence_length_kv, so a per-step-growing shape produces a cache miss on every single call,
+  // forcing a full graph rebuild (heuristic search + plan build) every decode step instead of reusing
+  // a cached plan. Measured on A100/cuDNN 9.8: ~260-330ms per decode step for this cuDNN path vs.
+  // ~165-175us/step for Flash/MEA in the same realistic, single-session, growing-past_key loop — a
+  // ~1600x regression, and this tier is dispatched ABOVE Flash/MEA in the cascade. Making this path
+  // viable would require reproducing the GQA pattern here too (over-allocate present_key/value to a
+  // fixed capacity bucket, pass a per-batch valid-length mask to cuDNN, then copy the exact
+  // spec-sized region back out) — a nontrivial redesign, not attempted. See issue #29714 for the
+  // full writeup and benchmark data before reviving this path.
 
 #if USE_FLASH_ATTENTION
   {
