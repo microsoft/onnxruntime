@@ -22,9 +22,9 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (pack_as_bytes) {
     // For bool/uint8 packed paths, declare the output accumulator outside the per-comp blocks,
     // but declare ALL intermediate computation variables INSIDE each comp's if-block scope.
-    // This avoids a Metal shader compiler bug where sequential if-blocks sharing the same
-    // mutable var names (output_indices, idx, etc.) cause comp=1..3 to reuse comp=0's stale
-    // variable state, producing wrong results.
+    // This avoids a cross-backend codegen bug (reproduces on both Metal/D3D12) where sequential
+    // if-blocks sharing the same mutable var names (output_indices, idx, etc.) cause comp=1..3
+    // to reuse comp=0's stale variable state, producing wrong results.
     shader.MainFunctionBody() << (is_uint8 ? "  var value : vec4<u32> = vec4<u32>(0u);\n"
                                            : "  var value : output_value_t;\n");
     for (int comp = 0; comp < 4; comp++) {
