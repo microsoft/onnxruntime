@@ -267,9 +267,6 @@ def generate_vcpkg_install_options(build_dir, args):
         vcpkg_install_options.append("--x-feature=webnn-ep")
     if args.use_xnnpack:
         vcpkg_install_options.append("--x-feature=xnnpack-ep")
-    if args.use_telemetry and not is_windows() and not args.android and not args.build_wasm:
-        vcpkg_install_options.append("--x-feature=telemetry")
-
     overlay_triplets_dir = None
 
     folder_name_parts = []
@@ -653,7 +650,6 @@ def generate_build_tree(
                 args.android_cpp_shared,
                 args.android_api,
                 args.use_full_protobuf,
-                args.use_telemetry,
             )
         elif is_windows():
             generate_windows_triplets(build_dir, configs, args.msvc_toolset, args.use_full_protobuf)
@@ -663,10 +659,10 @@ def generate_build_tree(
                 osx_target = os.environ.get("MACOSX_DEPLOYMENT_TARGET")
             if osx_target is not None:
                 log.info(f"Setting VCPKG_OSX_DEPLOYMENT_TARGET to {osx_target}")
-            generate_macos_triplets(build_dir, configs, osx_target, args.use_full_protobuf, args.use_telemetry)
+            generate_macos_triplets(build_dir, configs, osx_target, args.use_full_protobuf)
         else:
             # Linux, *BSD, AIX or other platforms
-            generate_linux_triplets(build_dir, configs, args.use_full_protobuf, args.use_telemetry)
+            generate_linux_triplets(build_dir, configs, args.use_full_protobuf)
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", str(vcpkg_toolchain_path))
 
         # Choose the cmake triplet
