@@ -179,6 +179,10 @@ employ local attention (e.g., GPT-OSS with layer-wise sliding windows).
 - **Constraints:** `sliding_window_cache=1` requires `local_window_size > 0`. Windowed caches are
   incompatible with the Flash-Attention fast-decode path and instead use the XQA or standard
   attention backends.
+- **CPU support:** The CPU kernel implements the same contract. It compacts the cache in place for
+  single-token steps and stages multi-token steps that would evict, so results match a full-length
+  cache exactly. On CPU the `attention_bias` input, the `qk_output` attribute and a shared KV layout
+  (`key`/`value` folded into `query`) are not supported together with `sliding_window_cache=1`.
 
 ### Quantized KV cache
 

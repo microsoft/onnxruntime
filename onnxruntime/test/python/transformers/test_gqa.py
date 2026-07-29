@@ -17,6 +17,7 @@ import random
 import re
 import sys
 import threading
+import typing
 import unittest
 from copy import deepcopy
 from dataclasses import dataclass
@@ -3871,11 +3872,11 @@ class TestGQARegressions(unittest.TestCase):
 # #################################################################################################
 
 
-def _windowed_make_session(config: GQAConfig, ort_type):
+def _windowed_make_session(config: GQAConfig, ort_type, providers=None):
     onnx_model_str = create_group_query_attention_graph_past(config, ort_type=ort_type, share_buffer=True)
-    return InferenceSession(
-        onnx_model_str, SessionOptions(), providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")]
-    )
+    if providers is None:
+        providers = [resolve_cuda_plugin_ep("CUDAExecutionProvider")]
+    return InferenceSession(onnx_model_str, SessionOptions(), providers=providers)
 
 
 def _windowed_run_steps(
@@ -3894,6 +3895,7 @@ def _windowed_run_steps(
     head_sink=None,
     k_scale=None,
     v_scale=None,
+    providers=None,
 ):
     """Drives a GroupQueryAttention node token-chunk by token-chunk over a shared past/present buffer.
 
@@ -3924,7 +3926,7 @@ def _windowed_run_steps(
         config.sliding_window_cache = sliding_window_cache
 
         if step_length not in sessions:
-            sessions[step_length] = _windowed_make_session(config, ort_type)
+            sessions[step_length] = _windowed_make_session(config, ort_type, providers=providers)
         session = sessions[step_length]
 
         io_binding = session.io_binding()
@@ -3980,7 +3982,6 @@ def _windowed_run_steps(
     return outputs
 
 
-@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 class TestGQAWindowedKvCache(unittest.TestCase):
     """`sliding_window_cache=1` stores only the most recent `capacity` positions of a sliding-window
     layer, in cache-relative coordinates. Because RoPE stays absolute and the retained positions are
@@ -3989,6 +3990,15 @@ class TestGQAWindowedKvCache(unittest.TestCase):
     max_length = 1024
     window_size = 128
     slack = 256
+
+    device = "cuda"
+    torch_type = torch.float16
+    ort_type = TensorProto.FLOAT16
+    providers = None  # None -> resolve the CUDA (plugin) EP.
+
+    def _require_ep(self):
+        if not has_flash_attention():
+            self.skipTest("Flash Attention is not available, skipping test.")
 
     def _base_config(self, **overrides):
         config = GQAConfig(
@@ -4007,12 +4017,11 @@ class TestGQAWindowedKvCache(unittest.TestCase):
         return config
 
     def _check_parity(self, base_config, step_lengths, rtol=1e-3, atol=1e-3, buffer_sequence_length=None):
-        if not has_cuda_provider():
-            self.skipTest("CUDA required")
+        self._require_ep()
 
-        device = "cuda"
-        torch_type = torch.float16
-        ort_type = TensorProto.FLOAT16
+        device = self.device
+        torch_type = self.torch_type
+        ort_type = self.ort_type
         capacity = buffer_sequence_length or min(self.max_length, self.window_size + self.slack)
         total_length = sum(step_lengths)
         self.assertLessEqual(total_length, self.max_length)
@@ -4054,6 +4063,7 @@ class TestGQAWindowedKvCache(unittest.TestCase):
             "head_sink": head_sink,
             "k_scale": k_scale,
             "v_scale": v_scale,
+            "providers": self.providers,
         }
         reference = _windowed_run_steps(base_config, self.max_length, 0, **common)
         if base_config.k_quant_type != "NONE" and any(torch.isnan(step).any() for step in reference):
@@ -4143,12 +4153,11 @@ class TestGQAWindowedKvCache(unittest.TestCase):
         )
 
     def test_capacity_too_small_is_rejected(self):
-        if not has_cuda_provider():
-            self.skipTest("CUDA required")
+        self._require_ep()
 
-        device = "cuda"
-        torch_type = torch.float16
-        ort_type = TensorProto.FLOAT16
+        device = self.device
+        torch_type = self.torch_type
+        ort_type = self.ort_type
         # A cache shorter than the attention window can never hold everything the window covers.
         capacity = self.window_size - 1
         config = self._base_config(rope_cache_length=capacity)
@@ -4172,11 +4181,11 @@ class TestGQAWindowedKvCache(unittest.TestCase):
                 device=device,
                 ort_type=ort_type,
                 torch_type=torch_type,
+                providers=self.providers,
             )
 
     def test_requires_local_window_size(self):
-        if not has_cuda_provider():
-            self.skipTest("CUDA required")
+        self._require_ep()
 
         config = self._base_config(
             local_window_size=-1,
@@ -4185,7 +4194,24 @@ class TestGQAWindowedKvCache(unittest.TestCase):
             rope_cache_length=self.window_size + self.slack,
         )
         with self.assertRaisesRegex(Exception, "sliding_window_cache"):
-            _windowed_make_session(config, TensorProto.FLOAT16)
+            _windowed_make_session(config, self.ort_type, providers=self.providers)
+
+
+class TestGQAWindowedKvCacheCpu(TestGQAWindowedKvCache):
+    """Same parity contract as the CUDA suite, run against the CPU GroupQueryAttention kernel."""
+
+    device = "cpu"
+    torch_type = torch.float32
+    ort_type = TensorProto.FLOAT
+    providers: typing.ClassVar[list[str]] = ["CPUExecutionProvider"]
+
+    def _require_ep(self):
+        pass
+
+    def _base_config(self, **overrides):
+        # The float32 CPU kernel keeps an unquantized float32 cache by default.
+        overrides.setdefault("kv_cache_type", "float32")
+        return super()._base_config(**overrides)
 
 
 if __name__ == "__main__":

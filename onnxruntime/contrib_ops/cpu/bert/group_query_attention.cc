@@ -14,12 +14,130 @@
 #include "core/platform/threadpool.h"
 
 #include <unsupported/Eigen/SpecialFunctions>
+#include <algorithm>
+#include <cstring>
+#include <optional>
 #include <vector>
 
 using onnxruntime::concurrency::ThreadPool;
 
 namespace onnxruntime {
 namespace contrib {
+namespace {
+
+// ---------------------------------------------------------------------------------------------
+// Windowed ("sliding window") KV cache.
+//
+// The cache holds only the L = min(T, C) most recent positions of the sequence, at cache indices
+// [0, L), where T is the absolute total length and C the buffer capacity. Both the causal mask and
+// the local-window mask depend only on the distance between a query and a key, so translating the
+// cache coordinate system leaves them unchanged: running the existing attention paths against
+// cache-relative sequence lengths is exact. RoPE is the only position-absolute quantity, and it is
+// applied to Q/K from the absolute positions before any of this happens.
+//
+// Appending S new tokens onto absolute past length P:
+//   Lp = min(P, C)             entries currently resident in the cache
+//   E  = max(0, Lp + S - C)    entries this step pushes out of the cache
+//
+// A step with S == 1 evicts at most one entry, and the oldest surviving entry is still old enough
+// to cover the window (C >= W), so it is compacted in place. A step with S > 1 that would evict
+// drops entries the earliest queries of the same step still need, so it runs against a staging
+// cache of Lp + S entries and only the surviving tail is written back afterwards.
+// ---------------------------------------------------------------------------------------------
+
+// Per-batch row geometry of one windowed step.
+struct WindowedStep {
+  int seed_offset = 0;   // first resident row read out of the real cache (in-place shift distance)
+  int seed_rows = 0;     // resident rows carried into the buffer that attention runs against
+  int write_offset = 0;  // first row of the staging buffer written back into the real cache
+  int write_rows = 0;    // rows written back (0 when the step ran in place)
+};
+
+// Fills `steps` and the cache-relative seqlens_k, and decides whether the step needs a staging
+// cache. `seqlens_k[b]` is the absolute total length minus one, i.e. T - 1 = P + S - 1.
+void PlanWindowedKvCache(const int32_t* seqlens_k,
+                         int batch_size,
+                         int sequence_length,
+                         int capacity,
+                         std::vector<WindowedStep>& steps,
+                         std::vector<int32_t>& cache_seqlens_k,
+                         bool& use_staging,
+                         int& staged_capacity) {
+  steps.assign(batch_size, WindowedStep{});
+  cache_seqlens_k.resize(batch_size);
+
+  int max_resident = 0;
+  for (int b = 0; b < batch_size; ++b) {
+    const int past_sequence_length = seqlens_k[b] + 1 - sequence_length;  // P
+    steps[b].seed_rows = std::min(past_sequence_length, capacity);        // Lp
+    max_resident = std::max(max_resident, steps[b].seed_rows);
+  }
+
+  use_staging = sequence_length > 1 && max_resident + sequence_length > capacity;
+  staged_capacity = use_staging ? max_resident + sequence_length : capacity;
+
+  for (int b = 0; b < batch_size; ++b) {
+    WindowedStep& step = steps[b];
+    const int resident = step.seed_rows;
+    const int evicted = std::max(0, resident + sequence_length - capacity);  // E
+    if (use_staging) {
+      step.write_offset = evicted;
+      step.write_rows = resident + sequence_length - evicted;
+    } else {
+      // Compact in place: drop the evicted rows while seeding, so the append offset moves down.
+      step.seed_offset = evicted;
+      step.seed_rows = resident - evicted;
+    }
+    cache_seqlens_k[b] = static_cast<int32_t>(step.seed_rows + sequence_length - 1);
+  }
+}
+
+// Moves whole KV rows per (batch, kv_head) between two BNSH caches whose sequence capacities may
+// differ. Rows are copied verbatim, so this is independent of the cache element type and of any
+// quantization packing. Each (batch, kv_head) slice is disjoint, so the moves are parallelized;
+// once the cache is full this runs on every decode step and is pure memory traffic.
+void MoveKvCacheRows(const uint8_t* src,
+                     uint8_t* dst,
+                     int batch_size,
+                     int kv_num_heads,
+                     int src_capacity,
+                     int dst_capacity,
+                     size_t row_bytes,
+                     const std::vector<WindowedStep>& steps,
+                     bool write_back,
+                     ThreadPool* thread_pool) {
+  int max_rows = 0;
+  for (int b = 0; b < batch_size; ++b) {
+    max_rows = std::max(max_rows, write_back ? steps[b].write_rows : steps[b].seed_rows);
+  }
+  if (max_rows <= 0) {
+    return;
+  }
+
+  const double moved_bytes = static_cast<double>(max_rows) * static_cast<double>(row_bytes);
+  const TensorOpCost cost{moved_bytes, moved_bytes, moved_bytes};
+  ThreadPool::TryParallelFor(
+      thread_pool, static_cast<std::ptrdiff_t>(batch_size) * kv_num_heads, cost,
+      [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+        for (std::ptrdiff_t unit = begin; unit < end; ++unit) {
+          const int b = static_cast<int>(unit / kv_num_heads);
+          const int rows = write_back ? steps[b].write_rows : steps[b].seed_rows;
+          if (rows <= 0) {
+            continue;
+          }
+          const int src_offset = write_back ? steps[b].write_offset : steps[b].seed_offset;
+          const SafeInt<size_t> head = SafeInt<size_t>(unit);
+          const uint8_t* src_rows = src + static_cast<size_t>((head * src_capacity + src_offset) * row_bytes);
+          uint8_t* dst_rows = dst + static_cast<size_t>(head * dst_capacity * row_bytes);
+          if (src_rows != dst_rows) {
+            // memmove, not memcpy: the in-place left shift of the real cache overlaps.
+            std::memmove(dst_rows, src_rows, static_cast<size_t>(SafeInt<size_t>(rows) * row_bytes));
+          }
+        }
+      });
+}
+
+}  // namespace
 
 // These ops are internal-only, so register outside of onnx
 #define REGISTER_KERNEL_TYPED(T)                                              \
@@ -44,11 +162,9 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 template <typename T>
 GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
     : OpKernel(info), GQAAttentionBase(info, true) {
-  // The windowed KV cache (cache-relative indexing + shift compaction) is implemented only by the
-  // CUDA kernel. Fail loudly here rather than silently treating the window-sized buffer as a
-  // full-length cache, which would produce wrong results.
-  ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("sliding_window_cache", 0) == 0,
-              "GroupQueryAttention (CPU): sliding_window_cache=1 is not implemented.");
+  sliding_window_cache_ = info.GetAttrOrDefault<int64_t>("sliding_window_cache", 0) == 1;
+  ORT_ENFORCE(!sliding_window_cache_ || local_window_size_ > 0,
+              "GroupQueryAttention (CPU): sliding_window_cache=1 requires local_window_size > 0.");
 }
 
 template <typename T>
@@ -114,7 +230,11 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                                                 total_seqlen_tensor,
                                                                 scale_,
                                                                 softcap_,
-                                                                kv_cache_bit_width_));
+                                                                kv_cache_bit_width_,
+                                                                /*max_threads_per_block=*/0,
+                                                                /*kv_cache_extra_bits=*/0,
+                                                                sliding_window_cache_,
+                                                                local_window_size_));
 
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckCustomAttentionInputs(position_ids,
                                                                                attention_bias,
@@ -149,13 +269,18 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   {
     const int32_t* seqlens_k_data = seqlens_k->Data<int32_t>();
     const int past_kv_seqlen = parameters.seqlen_past_kv_cache;
+    const bool windowed = parameters.is_windowed_kv_cache;
     for (int b = 0; b < batch_size; b++) {
-      if (seqlens_k_data[b] < 0 || seqlens_k_data[b] >= present_kv_seqlen) {
+      // A windowed cache is deliberately shorter than the sequence it serves, so seqlens_k (which
+      // stays absolute) is not bounded by the buffer. The resident row count is clamped to the
+      // capacity instead, when the step is planned.
+      if (seqlens_k_data[b] < 0 || (!windowed && seqlens_k_data[b] >= present_kv_seqlen)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "seqlens_k[", b, "] = ", seqlens_k_data[b],
                                " is out of range [0, ", present_kv_seqlen, ")");
       }
-      if (!parameters.is_first_prompt && static_cast<int64_t>(seqlens_k_data[b]) + 1 < sequence_length) {
+      if ((windowed || !parameters.is_first_prompt) &&
+          static_cast<int64_t>(seqlens_k_data[b]) + 1 < sequence_length) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "seqlens_k[", b, "] = ", seqlens_k_data[b],
                                " is too small for sequence_length ", sequence_length);
@@ -169,7 +294,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       // Shared KV (kv_sequence_length == 0) appends no new KV and its past read is already
       // bounded by the present-buffer check together with the total_sequence_length <=
       // seqlen_past_kv_cache enforcement in the apply-attention paths, so it needs no check here.
-      if (past_key != nullptr && past_value != nullptr && parameters.kv_sequence_length != 0 &&
+      if (!windowed && past_key != nullptr && past_value != nullptr && parameters.kv_sequence_length != 0 &&
           !parameters.is_first_prompt) {
         const int64_t past_rows = static_cast<int64_t>(seqlens_k_data[b]) + 1 - sequence_length;
         if (past_rows > past_kv_seqlen) {
@@ -200,6 +325,14 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   Tensor* output_qk = context->Output(3, output_qk_shape);
 
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckOutputs(output_qk, qk_output_));
+
+  // The QK output is laid out over the absolute total_sequence_length, while a windowed cache
+  // computes scores over cache-relative positions only. Reject the combination rather than
+  // emitting a buffer whose columns do not mean what the shape says.
+  if (parameters.is_windowed_kv_cache && output_qk != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "GroupQueryAttention (CPU): qk_output is not implemented with sliding_window_cache=1.");
+  }
 
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
@@ -324,71 +457,186 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
 
   const T* head_sink_data = (head_sink != nullptr) ? head_sink->Data<T>() : nullptr;
 
-  // Quantized KV cache path: quantize-on-write + direct MLAS QK/SV.
-  if (kv_quant_enabled_) {
-    const T* k_data_q = packed_qkv ? nullptr : k_rotary;
-    const T* v_data_q = packed_qkv ? nullptr : V.Get<Tensor>().Data<T>();
-    auto mlas_quant_type = ToMlasKVQuantType(k_quant_type_, kv_cache_bit_width_);
+  // ---- Windowed KV cache: switch to cache-relative coordinates ----
+  // RoPE above is the last consumer of absolute positions, so everything from here on can run
+  // against a cache that holds only the most recent min(T, C) entries. The attention paths derive
+  // the causal offset and the mask from seqlens_k alone, so redirecting them at a cache-relative
+  // seqlens_k (and, when the step would evict entries it still needs, at a staging cache) reuses
+  // them unchanged.
+  const Tensor* attention_past_key = past_key;
+  const Tensor* attention_past_value = past_value;
+  Tensor* attention_present_key = present_k;
+  Tensor* attention_present_value = present_v;
+  const Tensor* attention_seqlens_k = seqlens_k;
 
-    // Use flash attention path when:
-    // 1. Total sequence length is long enough to benefit from tiling
-    // 2. No features that flash path doesn't support (softcap, smooth softmax, output_qk)
-    const bool use_flash = !disable_gqa_flash_ &&
-                           parameters.total_sequence_length > 1 &&
-                           softcap_ == 0.0f &&
-                           !use_smooth_softmax_ &&
-                           head_sink_data == nullptr &&
-                           output_qk == nullptr;
+  std::vector<WindowedStep> windowed_steps;
+  std::vector<int32_t> windowed_cache_seqlens;
+  std::optional<Tensor> windowed_seqlens_tensor;
+  std::optional<Tensor> staged_key_tensor;
+  std::optional<Tensor> staged_value_tensor;
+  BufferUniquePtr staged_key_buffer;
+  BufferUniquePtr staged_value_buffer;
+  bool windowed_use_staging = false;
+  int windowed_capacity = 0;
+  int windowed_staged_capacity = 0;
+  size_t windowed_row_bytes = 0;
 
-    if (use_flash) {
-      return ApplyAttentionQuantizedFlash(
-          q_rotary, k_data_q, v_data_q,
-          attention_bias,
-          past_key, past_value,
-          output, present_k, present_v, seqlens_k,
+  ThreadPool* windowed_thread_pool = context->GetOperatorThreadPool();
+
+  if (parameters.is_windowed_kv_cache) {
+    ORT_RETURN_IF(present_k == nullptr || present_v == nullptr,
+                  "sliding_window_cache=1 requires the present_key and present_value outputs.");
+    windowed_capacity = parameters.kv_cache_capacity;
+    PlanWindowedKvCache(seqlens_k->Data<int32_t>(), batch_size, sequence_length, windowed_capacity,
+                        windowed_steps, windowed_cache_seqlens, windowed_use_staging, windowed_staged_capacity);
+
+    // Rows are moved verbatim, so the row size is taken from the cache tensor itself and covers
+    // fp32/fp16 as well as the int8 and (nibble-packed) int4 quantized layouts.
+    windowed_row_bytes = SafeInt<size_t>(past_key->Shape().GetDims()[3]) * past_key->DataType()->Size();
+    const uint8_t* past_key_bytes = static_cast<const uint8_t*>(past_key->DataRaw());
+    const uint8_t* past_value_bytes = static_cast<const uint8_t*>(past_value->DataRaw());
+
+    if (windowed_use_staging) {
+      const size_t staged_bytes = SafeInt<size_t>(batch_size) * kv_num_heads_ *
+                                  windowed_staged_capacity * windowed_row_bytes;
+      staged_key_buffer = BufferUniquePtr(allocator->Alloc(staged_bytes), BufferDeleter(allocator));
+      staged_value_buffer = BufferUniquePtr(allocator->Alloc(staged_bytes), BufferDeleter(allocator));
+      ORT_RETURN_IF(staged_key_buffer.get() == nullptr || staged_value_buffer.get() == nullptr,
+                    "Failed to allocate the sliding_window_cache staging buffers.");
+
+      const TensorShape staged_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(kv_num_heads_),
+                                      static_cast<int64_t>(windowed_staged_capacity),
+                                      past_key->Shape().GetDims()[3]});
+      staged_key_tensor.emplace(past_key->DataType(), staged_shape, staged_key_buffer.get(), allocator->Info());
+      staged_value_tensor.emplace(past_value->DataType(), staged_shape, staged_value_buffer.get(), allocator->Info());
+
+      MoveKvCacheRows(past_key_bytes, static_cast<uint8_t*>(staged_key_buffer.get()), batch_size, kv_num_heads_,
+                      windowed_capacity, windowed_staged_capacity, windowed_row_bytes, windowed_steps,
+                      /*write_back=*/false, windowed_thread_pool);
+      MoveKvCacheRows(past_value_bytes, static_cast<uint8_t*>(staged_value_buffer.get()), batch_size, kv_num_heads_,
+                      windowed_capacity, windowed_staged_capacity, windowed_row_bytes, windowed_steps,
+                      /*write_back=*/false, windowed_thread_pool);
+
+      attention_past_key = &staged_key_tensor.value();
+      attention_past_value = &staged_value_tensor.value();
+      attention_present_key = &staged_key_tensor.value();
+      attention_present_value = &staged_value_tensor.value();
+    } else {
+      // Compact in place: the surviving window moves to the front of the real cache, which then
+      // doubles as the past buffer so the append below does not copy it a second time.
+      MoveKvCacheRows(past_key_bytes, static_cast<uint8_t*>(present_k->MutableDataRaw()), batch_size, kv_num_heads_,
+                      windowed_capacity, windowed_capacity, windowed_row_bytes, windowed_steps,
+                      /*write_back=*/false, windowed_thread_pool);
+      MoveKvCacheRows(past_value_bytes, static_cast<uint8_t*>(present_v->MutableDataRaw()), batch_size, kv_num_heads_,
+                      windowed_capacity, windowed_capacity, windowed_row_bytes, windowed_steps,
+                      /*write_back=*/false, windowed_thread_pool);
+
+      attention_past_key = present_k;
+      attention_past_value = present_v;
+    }
+
+    windowed_seqlens_tensor.emplace(DataTypeImpl::GetType<int32_t>(),
+                                    TensorShape({static_cast<int64_t>(batch_size)}),
+                                    windowed_cache_seqlens.data(), allocator->Info());
+    attention_seqlens_k = &windowed_seqlens_tensor.value();
+
+    // Cache-relative lengths always have a non-empty past (possibly of length zero), so the
+    // first-prompt shortcut must be off: past_seqlen = total_seqlen - sequence_length already
+    // yields 0 when nothing is resident.
+    parameters.is_first_prompt = false;
+    parameters.is_subsequent_prompt = false;
+    parameters.seqlen_past_kv_cache = windowed_staged_capacity;
+    parameters.seqlen_present_kv_cache = windowed_staged_capacity;
+    parameters.kv_cache_capacity = windowed_staged_capacity;
+    parameters.total_sequence_length =
+        *std::max_element(windowed_cache_seqlens.begin(), windowed_cache_seqlens.end()) + 1;
+  }
+
+  auto run_attention = [&]() -> Status {
+    // Quantized KV cache path: quantize-on-write + direct MLAS QK/SV.
+    if (kv_quant_enabled_) {
+      const T* k_data_q = packed_qkv ? nullptr : k_rotary;
+      const T* v_data_q = packed_qkv ? nullptr : V.Get<Tensor>().Data<T>();
+      auto mlas_quant_type = ToMlasKVQuantType(k_quant_type_, kv_cache_bit_width_);
+
+      // Use flash attention path when:
+      // 1. Total sequence length is long enough to benefit from tiling
+      // 2. No features that flash path doesn't support (softcap, smooth softmax, output_qk)
+      const bool use_flash = !disable_gqa_flash_ &&
+                             parameters.total_sequence_length > 1 &&
+                             softcap_ == 0.0f &&
+                             !use_smooth_softmax_ &&
+                             head_sink_data == nullptr &&
+                             output_qk == nullptr;
+
+      if (use_flash) {
+        return ApplyAttentionQuantizedFlash(
+            q_rotary, k_data_q, v_data_q,
+            attention_bias,
+            attention_past_key, attention_past_value,
+            output, attention_present_key, attention_present_value, attention_seqlens_k,
+            k_scale->Data<float>(), v_scale->Data<float>(),
+            mlas_quant_type, parameters, allocator, context);
+      }
+
+      return ApplyAttentionQuantized(
+          q_rotary, k_data_q, v_data_q, head_sink_data,
+          attention_bias, attention_past_key, attention_past_value,
+          output, attention_present_key, attention_present_value, output_qk, attention_seqlens_k,
           k_scale->Data<float>(), v_scale->Data<float>(),
           mlas_quant_type, parameters, allocator, context);
     }
 
-    return ApplyAttentionQuantized(
-        q_rotary, k_data_q, v_data_q, head_sink_data,
-        attention_bias, past_key, past_value,
-        output, present_k, present_v, output_qk, seqlens_k,
-        k_scale->Data<float>(), v_scale->Data<float>(),
-        mlas_quant_type, parameters, allocator, context);
-  }
+    // Compute the attention score and apply the score to V
+    const T* k_data = packed_qkv ? nullptr : k_rotary;
+    const T* v_data = packed_qkv ? nullptr : V.Get<Tensor>().Data<T>();
 
-  // Compute the attention score and apply the score to V
-  const T* k_data = packed_qkv ? nullptr : k_rotary;
-  const T* v_data = packed_qkv ? nullptr : V.Get<Tensor>().Data<T>();
-
-  // Non-quantized flash attention path (float only). Uses the tiled online-softmax
-  // kernel to avoid materializing the full attention score matrix. Falls back to the
-  // naive path when an unsupported feature is requested (softcap, smooth softmax,
-  // head sink, or QK output).
-  //
-  // Prefill (sequence_length > 1) uses the tiled kernel; single-token decode
-  // (sequence_length == 1 with total_sequence_length > 1) uses the dedicated GEMV
-  // decode kernel. Both are reached when total_sequence_length > 1.
-  if constexpr (std::is_same_v<T, float>) {
-    const bool use_flash = !disable_gqa_flash_ &&
-                           parameters.total_sequence_length > 1 &&
-                           softcap_ == 0.0f &&
-                           !use_smooth_softmax_ &&
-                           head_sink_data == nullptr &&
-                           output_qk == nullptr &&
-                           present_k != nullptr && present_v != nullptr;
-    if (use_flash) {
-      return ApplyAttentionFlash(q_rotary, k_data, v_data,
-                                 attention_bias, past_key, past_value,
-                                 output, present_k, present_v, seqlens_k,
-                                 parameters, allocator, context);
+    // Non-quantized flash attention path (float only). Uses the tiled online-softmax
+    // kernel to avoid materializing the full attention score matrix. Falls back to the
+    // naive path when an unsupported feature is requested (softcap, smooth softmax,
+    // head sink, or QK output).
+    //
+    // Prefill (sequence_length > 1) uses the tiled kernel; single-token decode
+    // (sequence_length == 1 with total_sequence_length > 1) uses the dedicated GEMV
+    // decode kernel. Both are reached when total_sequence_length > 1.
+    if constexpr (std::is_same_v<T, float>) {
+      const bool use_flash = !disable_gqa_flash_ &&
+                             parameters.total_sequence_length > 1 &&
+                             softcap_ == 0.0f &&
+                             !use_smooth_softmax_ &&
+                             head_sink_data == nullptr &&
+                             output_qk == nullptr &&
+                             attention_present_key != nullptr && attention_present_value != nullptr;
+      if (use_flash) {
+        return ApplyAttentionFlash(q_rotary, k_data, v_data,
+                                   attention_bias, attention_past_key, attention_past_value,
+                                   output, attention_present_key, attention_present_value, attention_seqlens_k,
+                                   parameters, allocator, context);
+      }
     }
+
+    return ApplyAttention(q_rotary, k_data, v_data,
+                          head_sink_data, attention_bias, attention_past_key, attention_past_value, output,
+                          attention_present_key, attention_present_value,
+                          output_qk, attention_seqlens_k, parameters, allocator, context);
+  };
+
+  ORT_RETURN_IF_ERROR(run_attention());
+
+  if (windowed_use_staging) {
+    // Attention ran against the staging cache; keep only the entries the sliding window can still
+    // reach. Everything before write_offset is older than the oldest key any future query can see.
+    MoveKvCacheRows(static_cast<const uint8_t*>(staged_key_buffer.get()),
+                    static_cast<uint8_t*>(present_k->MutableDataRaw()), batch_size, kv_num_heads_,
+                    windowed_staged_capacity, windowed_capacity, windowed_row_bytes, windowed_steps,
+                    /*write_back=*/true, windowed_thread_pool);
+    MoveKvCacheRows(static_cast<const uint8_t*>(staged_value_buffer.get()),
+                    static_cast<uint8_t*>(present_v->MutableDataRaw()), batch_size, kv_num_heads_,
+                    windowed_staged_capacity, windowed_capacity, windowed_row_bytes, windowed_steps,
+                    /*write_back=*/true, windowed_thread_pool);
   }
 
-  return ApplyAttention(q_rotary, k_data, v_data,
-                        head_sink_data, attention_bias, past_key, past_value, output, present_k, present_v,
-                        output_qk, seqlens_k, parameters, allocator, context);
+  return Status::OK();
 }
 }  // namespace contrib
 }  // namespace onnxruntime
