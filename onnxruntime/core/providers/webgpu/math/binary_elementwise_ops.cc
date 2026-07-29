@@ -440,8 +440,8 @@ WEBGPU_BINARY_KERNEL_2(Pow, 15, Pow, WebGpuSupportedNumberTypes(), WebGpuSupport
 
 WEBGPU_BINARY_IMPL(PRelu, "select(b * a, a, a >= vec4<input_a_element_t>(0))")
 WEBGPU_BINARY_VERSIONED_KERNEL(PRelu, 7, 8, PRelu, WebGpuSupportedFloatTypes())
-WEBGPU_BINARY_VERSIONED_KERNEL(PRelu, 9, 15, PRelu, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_KERNEL(PRelu, 16, PRelu, WebGpuSupportedNumberTypes())
+WEBGPU_BINARY_VERSIONED_KERNEL(PRelu, 9, 15, PRelu, WebGpuSupportedFloatTypes())
+WEBGPU_BINARY_KERNEL(PRelu, 16, PRelu, WebGpuSupportedFloatTypes())
 
 WEBGPU_BINARY_IMPL(Equal, "vec4<u32>(vec4<input_a_element_t>(a) == vec4<input_b_element_t>(b))")
 
