@@ -152,23 +152,6 @@ inline std::string PathToUtf8StringForMessage(const std::filesystem::path& path)
   return status.IsOK() ? utf8_path : std::string{"<path conversion failed>"};
 }
 
-// Lexical check for a ".." component. Used only by ValidateEpContextDataName() to reject ".." in the logical
-// callback-namespace name that is written into the EPContext model's ep_cache_context attribute. That logical name is
-// never resolved against a filesystem base, so the model-directory containment check (IsResolvedPathWithinBase()
-// below) cannot apply to it; rejecting ".." up front keeps a generated model from embedding an unsafe relative
-// reference. It is NOT a containment mechanism: it does not resolve symlinks and it rejects benign cases such as
-// "a/b/c/../file.txt". Filesystem containment against a model directory is done by IsResolvedPathWithinBase(), which
-// the untrusted (model-relative) resolution path uses.
-inline bool ContainsPathTraversal(const std::filesystem::path& path) {
-  const std::filesystem::path parent_dir{".."};
-  for (const auto& component : path) {
-    if (component == parent_dir) {
-      return true;
-    }
-  }
-  return false;
-}
-
 inline bool HasAbsoluteOrRootedPath(const std::filesystem::path& path) {
   return path.is_absolute() || path.has_root_name() || path.has_root_directory();
 }
@@ -178,8 +161,8 @@ inline bool HasAbsoluteOrRootedPath(const std::filesystem::path& path) {
 // NOT stat the filesystem, so a real, existing directory with an ordinary leaf name (e.g. an existing "subdir") is not
 // detected here: it passes this check and is only rejected later when the file fails to open. The purpose is early,
 // clear error messaging for names that can never designate a file; the actual containment guarantee comes from the
-// read-side resolver (IsResolvedPathWithinBase()) plus the eventual file open(). A non-leaf ".." in a logical
-// callback-namespace name is rejected separately by ContainsPathTraversal().
+// read-side resolver (IsResolvedPathWithinBase()) plus the eventual file open(), which also handle non-leaf ".."
+// components via canonicalization rather than a lexical check.
 inline bool HasDirectoryLikeLeaf(const std::filesystem::path& path) {
   const std::filesystem::path leaf = path.filename();
   return leaf.empty() || leaf == std::filesystem::path{"."} || leaf == std::filesystem::path{".."};
@@ -208,36 +191,6 @@ inline bool IsResolvedPathWithinBase(const std::filesystem::path& base, const st
 
   resolved = std::move(candidate_resolved);
   return true;
-}
-
-inline OrtStatus* ValidateEpContextDataName(const OrtApi& api, const char* file_name,
-                                            std::filesystem::path& data_name) {
-  data_name.clear();
-
-  if (file_name == nullptr || file_name[0] == '\0') {
-    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
-  }
-
-  std::filesystem::path candidate_path;
-  RETURN_IF_ERROR(Utf8Path(api, file_name, candidate_path));
-  if (candidate_path.empty()) {
-    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name is not a valid path");
-  }
-
-  if (HasAbsoluteOrRootedPath(candidate_path)) {
-    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
-  }
-
-  if (ContainsPathTraversal(candidate_path)) {
-    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not contain path traversal");
-  }
-
-  if (HasDirectoryLikeLeaf(candidate_path)) {
-    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must refer to a file, not a directory");
-  }
-
-  data_name = candidate_path;
-  return nullptr;
 }
 
 // Resolves `file_name` to a filesystem path for reading or writing EPContext data (used by both the read path and
@@ -641,17 +594,11 @@ inline OrtStatus* WriteEpContextDataWithFileFallback(
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data buffer must not be null for non-empty data");
   }
 
-  // The app-supplied write callback owns its own logical namespace, so file_name is passed through unmodified.
-  // Only the file-fallback path below maps a name onto the filesystem, so it validates the logical name there.
+  // `file_name` is a logical name in the write callback's own namespace, so it is passed through unmodified and is
+  // never validated as a filesystem path. Only `fallback_file_name` below is mapped onto the filesystem.
   if (write_func != nullptr) {
     return write_func(write_state, file_name, buffer, buffer_size);
   }
-
-  // Even when the physical fallback path is supplied separately, `file_name` is the logical name written into the
-  // EPContext model's ep_cache_context attribute. Validate it as a safe relative name so a generated model cannot
-  // contain an unsafe logical reference that later reaches the read-side resolver.
-  std::filesystem::path logical_path;
-  RETURN_IF_ERROR(ValidateEpContextDataName(api, file_name, logical_path));
 
   if (fallback_file_name == nullptr || fallback_file_name[0] == '\0') {
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data fallback file name must not be empty");
@@ -703,14 +650,14 @@ inline OrtStatus* WriteEpContextDataWithFileFallback(
 /**
  * \brief Convenience write overload that uses `file_name` as both the logical callback name and the file-fallback path.
  *
- * Because `file_name` doubles as the fallback path, when no callback is configured it must be a safe relative name:
- * this overload validates it and rejects absolute/rooted paths and `..` traversal. To write the file fallback to an
- * absolute physical path (a trusted caller with `graph == nullptr`), use the overload above that takes a separate
- * `fallback_file_name`.
+ * Because `file_name` doubles as the fallback path, when no callback is configured it is resolved by
+ * ResolveEpContextDataPath(): with `graph` non-null it must be relative and must stay within the model directory;
+ * with `graph == nullptr` a trusted caller may supply an absolute physical path. To use a different physical target
+ * than the logical name, use the overload above that takes a separate `fallback_file_name`.
  *
  * \param api The OrtApi.
  * \param ep_context_config EPContext config carrying the optional write callback; may be null (uses the file fallback).
- * \param file_name Logical name and, on the file-fallback path, the (relative) file name to write.
+ * \param file_name Logical name and, on the file-fallback path, the file name to write.
  * \param graph When non-null, resolves `file_name` against the model directory; null denotes a trusted caller.
  * \param buffer The bytes to write; may be null only when `buffer_size` is 0.
  * \param buffer_size Number of bytes to write.

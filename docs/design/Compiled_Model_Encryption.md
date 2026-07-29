@@ -360,9 +360,9 @@ OrtStatus* WriteEpContextDataWithFileFallback(const OrtApi& api, const OrtEpCont
 
 The helper distinguishes trust based on the `OrtGraph*`:
 
-- **Logical (callback-namespace) names** written into the model are validated with
-  `ValidateEpContextDataName`: reject absolute/rooted paths, reject `..` traversal
-  (`ContainsPathTraversal`), and reject directory-like names (empty leaf, `.`, or a `..` leaf).
+- **Logical (callback-namespace) names** are opaque keys owned by the application's I/O callbacks: they
+  are passed through unmodified and are **not** validated as filesystem paths. Path rules are enforced
+  only where a name is actually used as a path (below), not at authoring time.
 - **Model-derived file names** (`graph != nullptr`, i.e. read from an EPContext node's
   `ep_cache_context` attribute) are joined with the model directory, canonicalized with
   `std::filesystem::weakly_canonical` (resolving `.` / `..` and symlinks), and accepted **only if the

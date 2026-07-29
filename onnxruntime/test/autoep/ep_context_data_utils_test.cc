@@ -165,25 +165,26 @@ TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathRejectsUnsafeNames) {
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::ResolveEpContextDataPath(api, absolute_file_name, nullptr, data_path));
   EXPECT_TRUE(data_path.is_absolute());
 
-#ifdef _WIN32
-  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
-                           api, nullptr, drive_relative_file_name, "unused.ctx", nullptr, nullptr, 0),
-                       ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
-  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
-                           api, nullptr, root_relative_file_name, "unused.ctx", nullptr, nullptr, 0),
-                       ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
-#endif
-
   std::vector<char> data;
   // Trusted (graph == nullptr) reads also allow ".."; the resolver no longer rejects it, so a non-existent target now
   // surfaces as a normal file-open failure rather than a traversal rejection.
   ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataFromFile(api, "../escape.ctx", nullptr, data),
                        ORT_FAIL, "Failed to open EPContext data file for read");
-  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
-                           api, nullptr, absolute_file_name, "unused.ctx", nullptr, nullptr, 0),
-                       ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
 
   ModelEditorGraph empty_model_path_graph;
+  // Untrusted (model-derived) names must be relative. The resolver is the only place absolute/rooted names are
+  // rejected; the logical write-side name is an opaque callback key and is no longer validated as a path.
+  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, absolute_file_name,
+                                                                       empty_model_path_graph.ToExternal(), data_path),
+                       ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
+#ifdef _WIN32
+  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, drive_relative_file_name,
+                                                                       empty_model_path_graph.ToExternal(), data_path),
+                       ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
+  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, root_relative_file_name,
+                                                                       empty_model_path_graph.ToExternal(), data_path),
+                       ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
+#endif
   ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, "../escape.ctx",
                                                                        empty_model_path_graph.ToExternal(), data_path),
                        ORT_INVALID_ARGUMENT, "requires a model path");
@@ -198,11 +199,9 @@ TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathRejectsUnsafeNames) {
   ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, "sub/..",
                                                                        empty_model_path_graph.ToExternal(), data_path),
                        ORT_INVALID_ARGUMENT, "must refer to a file");
-  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
-                           api, nullptr, ".", "unused.ctx", nullptr, nullptr, 0),
-                       ORT_INVALID_ARGUMENT, "must refer to a file");
-  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
-                           api, nullptr, "sub/", "unused.ctx", nullptr, nullptr, 0),
+  // A trailing separator leaves an empty leaf ("sub/"), which likewise cannot designate a file.
+  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, "sub/",
+                                                                       empty_model_path_graph.ToExternal(), data_path),
                        ORT_INVALID_ARGUMENT, "must refer to a file");
 }
 
@@ -272,14 +271,17 @@ TEST(OrtEpLibrary, EpContextDataUtils_FileFallbackReadsAndWrites) {
       api, nullptr, "logical_context_data.bin", fallback_data_file_name.c_str(), nullptr, payload.data(),
       payload.size()));
 
-  const std::filesystem::path unsafe_logical_fallback_path = test_dir / "unsafe_logical_context_data.bin";
-  std::string unsafe_logical_fallback_file_name;
-  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, unsafe_logical_fallback_path,
-                                                              unsafe_logical_fallback_file_name));
-  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
-                           api, nullptr, "../logical_context_data.bin",
-                           unsafe_logical_fallback_file_name.c_str(), nullptr, payload.data(), payload.size()),
-                       ORT_INVALID_ARGUMENT, "EPContext data file name must not contain path traversal");
+  // The logical name is an opaque callback-namespace key, so it is not validated as a filesystem path: even a ".."
+  // name writes normally to the separately resolved fallback target, and never to the traversal location.
+  const std::filesystem::path logical_passthrough_path = test_dir / "logical_passthrough_context_data.bin";
+  std::string logical_passthrough_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, logical_passthrough_path,
+                                                              logical_passthrough_file_name));
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataWithFileFallback(
+      api, nullptr, "../logical_context_data.bin", logical_passthrough_file_name.c_str(), nullptr, payload.data(),
+      payload.size()));
+  EXPECT_TRUE(std::filesystem::exists(logical_passthrough_path));
+  EXPECT_FALSE(std::filesystem::exists(test_dir / ".." / "logical_context_data.bin"));
 
   data.clear();
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextDataFromFile(api, fallback_data_file_name.c_str(), nullptr,
