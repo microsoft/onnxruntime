@@ -29,6 +29,6 @@ Telemetry can be disabled in any of these ways:
 - **Disable all telemetry at runtime (non-Windows).** Set `ORT_DISABLE_TELEMETRY=1` before ONNX Runtime initializes. This prevents the uploader, events, and persistent device identifier from being created for the process lifetime.
 - **Disable non-essential events via the API.** The C API (and the C#, Python, and Java bindings) can suppress non-essential telemetry. ONNX Runtime may already have emitted a minimal initialization event before the API can be called. On **Windows**, ETW events are recorded only when an external trace session is collecting.
 
-A telemetry-enabled static Linux package includes pinned curl and mbedTLS archives. A static consumer that
-links another curl or mbedTLS copy into the same final binary must build ORT with `--no_telemetry` to avoid
-ordinary static-symbol collisions.
+Telemetry-enabled static Linux builds use static curl and mbedTLS. FetchContent packages include those archives;
+vcpkg builds resolve them from the same vcpkg installation. A static consumer that links another curl or mbedTLS
+copy into the same final binary must build ORT with `--no_telemetry` to avoid ordinary static-symbol collisions.

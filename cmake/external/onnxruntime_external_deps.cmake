@@ -917,9 +917,9 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
   endif()
   set(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE OFF)
   if(onnxruntime_USE_VCPKG AND NOT ANDROID AND NOT TARGET MSTelemetry::mat)
-    # Reuse a caller-preinstalled vcpkg package when available. Do not declare it in ORT's manifest:
-    # internal CI blocks uncached port downloads, and the current port hardcodes curl/OpenSSL.
-    find_package(MSTelemetry CONFIG QUIET)
+    # The telemetry manifest feature installs this package. Keep it required so a broken vcpkg
+    # integration cannot silently switch dependency models within a vcpkg build.
+    find_package(MSTelemetry CONFIG REQUIRED)
   endif()
   if(TARGET MSTelemetry::mat AND NOT ANDROID)
     message(STATUS "Telemetry: using the caller-supplied MSTelemetry::mat package")
@@ -1004,13 +1004,13 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     endif()
     set(ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND
       ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/cpp_client_telemetry/cpp_client_telemetry.patch)
-    # Keep telemetry self-contained regardless of whether the outer ORT build uses vcpkg. The SDK's
-    # vendored sqlite3/zlib targets avoid host packages and are exportable with static ORT packages.
+    # Keep the FetchContent fallback self-contained. The SDK's vendored sqlite3/zlib targets avoid
+    # host packages and are exportable with static ORT packages.
     set(MATSDK_BUNDLE_VENDORED_DEPS ON)
 
-    # The outer vcpkg toolchain would otherwise make 1DS consume its vcpkg dependency mode, which
-    # reintroduces the uncached cpp-client-telemetry/curl/OpenSSL graph and breaks Android's Java
-    # transport. Save the caller's cache entry, force the self-contained mode, and restore it below.
+    # Android vcpkg builds intentionally use this fallback because the vcpkg port selects the curl
+    # transport instead of the Java bridge. Force the SDK's self-contained mode and restore the
+    # caller's cache entry after configuration.
     get_property(_ort_matsdk_vcpkg_was_set CACHE MATSDK_USE_VCPKG_DEPS PROPERTY TYPE SET)
     if(_ort_matsdk_vcpkg_was_set)
       get_property(_ort_matsdk_vcpkg_type CACHE MATSDK_USE_VCPKG_DEPS PROPERTY TYPE)

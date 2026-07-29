@@ -268,6 +268,11 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     # manual include paths or system libraries are required here.
     target_link_libraries(onnxruntime_common PRIVATE MSTelemetry::mat)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES MSTelemetry::mat)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND onnxruntime_USE_VCPKG)
+      # The ORT vcpkg overlay provides static curl/mbedTLS, so select a readable CA bundle at runtime
+      # instead of relying on the build machine's curl default.
+      target_compile_definitions(onnxruntime_common PRIVATE ORT_USE_EMBEDDED_TELEMETRY_CURL)
+    endif()
   elseif(TARGET mat)
     # Link mat directly. In a shared build its resolved dependency set is absorbed into
     # libonnxruntime; in a static build mat -- and the bundled static archives it links -- are shipped
