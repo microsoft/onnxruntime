@@ -58,12 +58,12 @@ class GraphPartitioner {
 
   // Run partitioning.
   //
-  // If the output is EPContext-based (a compiling EP produced EPContext nodes) it is serialized here at
-  // the partition boundary. If no nodes were compiled it is a plain optimized copy of the graph, NOT
-  // serialized here - InferenceSession emits it (epctx::BuildAndSaveOptimizedModel) at a point chosen by the
-  // requested optimization level: before the Level2+ loop for level < Level2 (a BASIC snapshot matching the
-  // partition boundary), or after all graph transforms for level >= Level2 (capturing the L2-L4 passes). Callers
-  // distinguish the two output forms via AnyEpContextNodesProduced().
+  // Output-model serialization (only when ep_context_gen_options is enabled, e.g. via the Compile API): if
+  // a compiling EP produced EPContext nodes, that model is serialized here at the end of partition.
+  // Otherwise, for a compile-only session (the Compile API with no compiled nodes), the plain optimized
+  // graph is emitted by InferenceSession (not here) at a point chosen by the optimization level - before
+  // the Level2+ loop for < Level2, or after all transforms for >= Level2 (to capture the L2-L4 fusions).
+  // Callers distinguish via AnyEpContextNodesProduced().
   Status Partition(Graph& graph, FuncManager& func_mgr,
                    const layout_transformation::TransformLayoutFunction& transform_layout_function,
                    const ConfigOptions& config_options,

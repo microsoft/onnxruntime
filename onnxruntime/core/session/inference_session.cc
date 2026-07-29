@@ -1694,7 +1694,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     }
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  const epctx::ModelGenOptions ep_context_gen_options = session_options_.GetEpContextGenerationOptions();
+  const epctx::ModelGenOptions& ep_context_gen_options = session_options_.GetEpContextGenerationOptions();
 
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
