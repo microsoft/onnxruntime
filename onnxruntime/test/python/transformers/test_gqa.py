@@ -2702,6 +2702,35 @@ class TestGQAAttentionBias(unittest.TestCase):
             atol=atol["fp16"],
         )
 
+    def test_windowed_cache_attention_bias_is_rejected(self):
+        config = GQAConfig(
+            batch_size=1,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=128,
+            buffer_sequence_length=129,
+            num_heads=8,
+            kv_num_heads=2,
+            head_size=64,
+            local_window_size=128,
+            share_buffer=True,
+            sliding_window_cache=1,
+            has_attention_bias=True,
+            attention_bias_per_head=True,
+        )
+
+        with self.assertRaisesRegex(Exception, "attention_bias with sliding_window_cache"):
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=True,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
+
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 class TestFlashGQAPaddingPrompt(unittest.TestCase):

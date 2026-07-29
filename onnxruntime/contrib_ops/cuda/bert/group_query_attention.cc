@@ -461,9 +461,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     windowed_present_key = data.present_key;
     windowed_present_value = data.present_value;
     windowed_cache_capacity = parameters.seqlen_present_kv_cache;
-    staged_cache_capacity = windowed_cache_capacity + parameters.sequence_length;
+    staged_cache_capacity = SafeInt<int>(windowed_cache_capacity) + parameters.sequence_length;
 
-    const size_t staged_bytes = static_cast<size_t>(parameters.batch_size) * parameters.kv_num_heads *
+    const size_t staged_bytes = SafeInt<size_t>(parameters.batch_size) * parameters.kv_num_heads *
                                 staged_cache_capacity * dense_head_size * sizeof(U);
     staged_key_buffer = GetScratchBuffer<void>(staged_bytes, GetComputeStream(context));
     staged_value_buffer = GetScratchBuffer<void>(staged_bytes, GetComputeStream(context));

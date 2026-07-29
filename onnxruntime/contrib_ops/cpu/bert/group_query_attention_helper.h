@@ -467,6 +467,11 @@ Status CheckCustomAttentionInputs(const T* position_ids,
   }
 
   if (attention_bias != nullptr) {
+    if (parameters.is_windowed_kv_cache) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "attention_bias with sliding_window_cache is not implemented in GroupQueryAttention.");
+    }
+
     const auto& attn_bias_shape = attention_bias->Shape();
     // TensorShape::operator[] is unchecked — validate the rank before indexing dims.
     if (attn_bias_shape.NumDimensions() != 4) {
