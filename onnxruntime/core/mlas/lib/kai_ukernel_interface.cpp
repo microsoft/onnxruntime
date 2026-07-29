@@ -380,6 +380,8 @@ const KaiQnbitGemmKernel& GetKleidiAIGemmUKernel() {
 }
 
 const KaiQnbitGemmKernel& GetKleidiAIGemvUKernel() {
+    // The `sme2_dot` kernel uses SME2 SDOT instructions; `dot` here does not refer to
+    // the separate FEAT_DotProd feature.
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
         return kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4vlx4_1x4vl_sme2_dot;
     } else if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {

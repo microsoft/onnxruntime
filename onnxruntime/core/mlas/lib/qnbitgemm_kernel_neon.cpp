@@ -99,8 +99,8 @@ QNBitGemmPackQuantBDataSize(
                                     N, K, nr, kr, sr, BlkLen, kai_dt_bf16);
                             break;
                         default:
-                            assert(false);
-                            return 0;
+                            MLAS_THROW_EX(std::runtime_error,
+                                          "Unexpected RHS layout for symmetric Q4 backend.");
                     }
                     if (HasZeroPoint) {
                         // Align so that BZpCorrection starts at a float-aligned offset
@@ -125,9 +125,8 @@ QNBitGemmPackQuantBDataSize(
                         case KaiQ4RhsPackLayout::AsymmetricNxKInterleavedNrx4:
                             return kai_get_rhs_packed_size_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s0s1_f32_f32_f32_neon(N, K, nr, kr, BlkLen);
                         default:
-                            // Invalid layout for the asymmetric Q4 backend.
-                            assert(false);
-                            return 0;
+                            MLAS_THROW_EX(std::runtime_error,
+                                          "Unexpected RHS layout for asymmetric Q4 backend.");
                     }
                 }
                 case KleidiAIQ4Backend::None:
@@ -306,7 +305,8 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
                                 PackedQuantBDataBegin, 0, &params);
                             break;
                         default:
-                            assert(false);
+                            MLAS_THROW_EX(std::runtime_error,
+                                          "Unexpected RHS layout for symmetric Q4 backend.");
                     }
 
                     break;
@@ -397,7 +397,8 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
                                 break;
                             }
                             default:
-                                assert(false);
+                                MLAS_THROW_EX(std::runtime_error,
+                                              "Unexpected RHS layout for asymmetric Q4 backend.");
                         }
                     }
                     break;
