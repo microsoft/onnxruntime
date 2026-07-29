@@ -136,59 +136,6 @@ extends:
         exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'
 
     stages:
-    - stage: SeedVcpkgTelemetryAssets
-      displayName: Seed vcpkg telemetry source assets
-      jobs:
-      - job: SeedVcpkgTelemetryAssets
-        pool:
-          name: onnxruntime-Win-CPU-VS2022-Latest
-          os: windows
-        templateContext:
-          sdl:
-            tsa:
-              enabled: false
-        steps:
-        - checkout: none
-        - pwsh: |
-            $terrapin = 'C:\local\Terrapin\TerrapinRetrievalTool.exe'
-            if (-not (Test-Path -LiteralPath $terrapin)) {
-              throw "TerrapinRetrievalTool.exe was not found at $terrapin"
-            }
-
-            $assets = @(
-              @{
-                Url = 'https://github.com/microsoft/cpp_client_telemetry/archive/v3.10.173.1.tar.gz'
-                Sha512 = 'e55bc35274236f57757660073c4dccccab3462342c8566212f1df4bf8824295a2bb3d3d79a11f3950e7c9252641827e9dd3d7c28c421dea3bdaee277e4f2ce32'
-                FileName = 'microsoft-cpp_client_telemetry-v3.10.173.1.tar.gz'
-              },
-              @{
-                Url = 'https://github.com/Mbed-TLS/mbedtls/archive/v3.6.5.tar.gz'
-                Sha512 = 'd7a1e0098fed7b000ac2e4de31d43f427e8a046aeace91719f58222e1289470e15af5ed2a5390cf3693cf93a1efd79f34de9a6a960dc63cc0fd135072809e6e4'
-                FileName = 'Mbed-TLS-mbedtls-v3.6.5.tar.gz'
-              }
-            )
-
-            foreach ($asset in $assets) {
-              $destination = Join-Path $env:AGENT_TEMPDIRECTORY $asset.FileName
-              & $terrapin `
-                -b 'https://vcpkg.storage.devpackages.microsoft.io/artifacts/' `
-                -a true `
-                -u Environment `
-                -p $asset.Url `
-                -s $asset.Sha512 `
-                -d $destination
-              Remove-Item -LiteralPath $destination -Force -ErrorAction SilentlyContinue
-
-              $cacheUrl = "https://vcpkg.storage.devpackages.microsoft.io/artifacts/$($asset.Sha512)"
-              $response = Invoke-WebRequest -Method Head -Uri $cacheUrl -UseBasicParsing
-              if ($response.StatusCode -ne 200) {
-                throw "Terrapin cache did not retain $($asset.Url)"
-              }
-            }
-          displayName: Seed and verify telemetry assets
-          env:
-            SYSTEM_ACCESSTOKEN: $(System.AccessToken)
-
     - template: stages/set_packaging_variables_stage.yml
       parameters:
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
