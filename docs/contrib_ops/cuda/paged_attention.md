@@ -162,7 +162,7 @@ matches the landing order in [§19](#19-phasing), so the schema grows monotonica
 | 1 | `key` | `T` (opt) | `(token_count, kv_num_heads * head_size)` | existing — required in `LATENT` (§12) |
 | 2 | `value` | `T` (opt) | `(token_count, kv_num_heads * head_size)` | existing — absent in `LATENT` (§12) |
 | 3 | `key_cache` | **`T_CACHE`** | `(num_blocks, block_size, kv_num_heads, head_size)` | **type widened — §8** |
-| 4 | `value_cache` | **`T_CACHE`** (opt) | `(num_blocks, block_size, kv_num_heads, effective_v_head_size)` | **type widened; optional in `LATENT` — §12** |
+| 4 | `value_cache` | **`T_CACHE`** (opt) | `(num_blocks, block_size, kv_num_heads, head_size)` | **type widened; absent in `LATENT` — §12** |
 | 5 | `cumulative_sequence_length` | `S` | `(batch_size + 1,)` | existing |
 | 6 | `past_seqlens` | `S` | `(batch_size,)` | existing |
 | 7 | `block_table` | `S` | `(batch_size, max_num_blocks_per_seq)` | existing — `-1` = unmapped (§9.2) |
@@ -173,7 +173,7 @@ matches the landing order in [§19](#19-phasing), so the schema grows monotonica
 | 12 | `q_norm_weight` | `T` (opt) | `(head_size,)` | **new — §7** |
 | 13 | `k_norm_weight` | `T` (opt) | `(head_size,)` | **new — §7** |
 | 14 | `k_scale` | `T_KV_SCALE` (opt) | `(1,)` or `(kv_num_heads, 1, head_size)` | **new — §8** |
-| 15 | `v_scale` | `T_KV_SCALE` (opt) | `(1,)` or `(kv_num_heads, 1, effective_v_head_size)` | **new — §8** |
+| 15 | `v_scale` | `T_KV_SCALE` (opt) | `(1,)` or `(kv_num_heads, 1, head_size)` | **new — §8**; absent in `LATENT` |
 | 16 | `attention_metadata` | `S` (opt, **CPU**) | `(2,)` | **new — trusted bounds only, §4.7** |
 | 17 | `query_positions` | `S` (opt) | `(token_count,)` | **new — §4.8** |
 | 18 | `attention_bias` | `T` (opt) | `(batch_size or 1, num_heads or 1, query_length_capacity, context_length_capacity)` | **new — §10** |
@@ -184,6 +184,14 @@ matches the landing order in [§19](#19-phasing), so the schema grows monotonica
 `attention_bias` is deliberately last: it is a correctness fallback with potentially large memory
 cost that disqualifies every fused backend. The rank and broadcast dimensions match GQA; only the
 two sequence extents differ because PagedAttention is packed and ragged (§10).
+
+**Why this table says `head_size` and not `v_head_size`.** `v_head_size` may differ from `head_size`
+**only** in `"LATENT"` mode (§12.3), and a `"LATENT"` node has no `value`, no `value_cache`, and no
+`v_scale` — V is a *view* of the leading `v_head_size` channels of `key_cache`, so there is nothing
+left to give a separate width to. Every V-carrying tensor above therefore exists only in
+`"SEPARATE"` mode, where `effective_v_head_size == head_size` by definition. The document spells
+`effective_v_head_size` only in the two places where the width genuinely varies: output 0 (§4.4) and
+the V view of `key_cache` (§12.3).
 
 ### 4.4 Outputs
 
@@ -645,8 +653,11 @@ quantize/dequantize helpers index only on `(kv_head, channel)` and are layout-ag
 | `PER_TENSOR` | `(1,)` | scalar |
 | `PER_CHANNEL` | `(kv_num_heads, 1, head_size)` | `scale[h * head_size + c]` |
 
-For `v_scale` the last dimension is `effective_v_head_size` (§12.3), which equals `head_size` in every
-`SEPARATE`-mode model and differs only under `"LATENT"`.
+`v_scale` uses the same last dimension, `head_size`: it exists only where a `value_cache` exists,
+which is `"SEPARATE"` mode, and `effective_v_head_size == head_size` there (§12.3). Under
+`"LATENT"` there is one physical cache and `k_scale` alone describes it, so `v_scale` is rejected
+(§8.7, §12.9); the V dequant of that cache indexes `k_scale` with the `head_size` stride and reads
+only its leading `v_head_size` entries.
 
 Symmetric quantization, same formulas as GQA:
 
@@ -728,8 +739,9 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
   absent because V is a view of K.
 - FP8 is available when ORT is built with `onnxruntime_USE_FP8_KV_CACHE`; no additional runtime
   architecture gate is required for the conversion path used by this operator.
-- `PER_CHANNEL` scale shape must be exactly `(kv_num_heads, 1, head_size)` for K and
-  `(kv_num_heads, 1, effective_v_head_size)` for V.
+- `PER_CHANNEL` scale shape must be exactly `(kv_num_heads, 1, head_size)` for both K and V. There
+  is no `v_head_size`-shaped scale: `v_scale` only exists alongside a `value_cache`, i.e. in
+  `"SEPARATE"` mode, where `effective_v_head_size == head_size`.
 
 > **Implementation note (P3, implemented).** Delivered: `int8` and `float8e4m3fn` caches with
 > `PER_TENSOR` / `PER_CHANNEL` granularity, independently selectable for K and V, via
@@ -1061,7 +1073,7 @@ MLA is selected **explicitly** by `kv_cache_layout="LATENT"`, never inferred fro
 | Attribute `kv_cache_layout` (STRING, default `"SEPARATE"`) | `"LATENT"` selects absorbed MLA: one physical cache, V aliasing K. |
 | Attribute `v_head_size` (INT, default `0`) | Head width of V and of each output head. `0` means "same as `head_size`". A value differing from `head_size` is legal **only** in `"LATENT"` mode. |
 | Attribute `rotary_offset` (INT, default `0`) | First channel within `head_size` covered by RoPE (§12.5). |
-| Input 4 `value_cache` becomes `Optional` | Absent in `"LATENT"`, where V is the leading `effective_v_head_size` channels of `key_cache`. Still required in `"SEPARATE"`. |
+| Input 4 `value_cache` becomes `Optional` | Absent in `"LATENT"`, where V is the leading `v_head_size` channels of `key_cache`. Still required in `"SEPARATE"`. |
 | Input 2 `value` absent while `key` is present becomes legal | Only under `"LATENT"` (§4.6). In `SEPARATE`, the shipped rule stands: `key` **and** `value` absent means packed QKV. |
 | Output 0 shape generalized to `(token_count, num_heads * effective_v_head_size)` | Identical to today whenever `v_head_size == 0`. |
 
@@ -1081,6 +1093,13 @@ effective_v_head_size = (kv_cache_layout == "LATENT" && v_head_size != 0) ? v_he
 ```
 
 and `v_head_size != 0 && v_head_size != head_size` in `SEPARATE` mode is `INVALID_ARGUMENT`.
+
+A consequence worth stating explicitly, because it is why the rest of this document writes
+`head_size` rather than `v_head_size` almost everywhere: the only tensors whose last dimension can
+ever be `effective_v_head_size` are **output 0** and the **V view of `key_cache`**. `value`,
+`value_cache`, and `v_scale` are all absent in `"LATENT"` (§4.6, §12.9), and in `"SEPARATE"` their
+width is `head_size` by the rule above. Asymmetric K/V widths for a real `value_cache` arrive only
+with the `"KV_CONCAT"` layout deferred in §21.
 
 ### 12.4 Concrete node contract (DeepSeek-V3, absorbed)
 
@@ -1317,9 +1336,9 @@ Consolidated, to be implemented in `paged_attention_helper::CheckInputs`. Every 
 - `slot_mapping`: rank 1, `dim0 == token_count`, `int32`.
 - `head_sink`: rank 1, `dim0 == num_heads`, type `T`.
 - `q_norm_weight` / `k_norm_weight`: both-or-neither; rank 1, `dim0 == head_size`, type `T`.
-- `k_scale` / `v_scale`: FP32; `(1,)` for `PER_TENSOR`, `(kv_num_heads, 1, head_size)` (K) or
-  `(kv_num_heads, 1, effective_v_head_size)` (V) for `PER_CHANNEL`; present iff the corresponding
-  quant type is not `NONE`.
+- `k_scale` / `v_scale`: FP32; `(1,)` for `PER_TENSOR`, `(kv_num_heads, 1, head_size)` for
+  `PER_CHANNEL` (both K and V — `v_scale` only exists alongside a `value_cache`, so its last
+  dimension is always `head_size`); present iff the corresponding quant type is not `NONE`.
 - `T_CACHE != T` iff a quant type is not `NONE`.
 - `k_cache_dtype` and `v_cache_dtype` must be `""` or name the cache tensor's own element type:
   every logical element type this operator stores is expressible as an ONNX element type. The
