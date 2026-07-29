@@ -1698,6 +1698,42 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // spec-sized region back out) — a nontrivial redesign, not attempted. See issue #29714 for the
   // full writeup and benchmark data before reviving this path.
 
+  // NOTE (Phase 3 — cuDNN SDPA prefill via fixed-size query-row chunking — investigated and
+  // abandoned): A cuDNN SDPA dispatch for prefill (q_sequence_length > 1) was prototyped on branch
+  // copilot/cudnn-sdpa-decode-phase3, splitting the query rows into fixed-size, left-padded chunks
+  // (a configurable, session-lifetime-constant size) so every chunk presents cuDNN's frontend with a
+  // stable sequence_length_q, preserving the graph-plan-cache-key stability Path 1's decode dispatch
+  // and Phase 2's investigation both depend on. Passing the real, varying prompt length directly
+  // (mirroring the contrib GroupQueryAttention op's un-chunked cuDNN prefill path) was measured to
+  // cost ~575-590us EVERY call with a distinct shape on A100/cuDNN 9.8 (no amortization — a
+  // one-time-per-request cost paid directly against time-to-first-token), a ~300-500x regression
+  // versus the chunked design's ~1.2-2ms warm cost, confirming chunking is necessary, not
+  // over-engineering, for any cuDNN-prefill design on this hardware/cuDNN version.
+  //
+  // The chunked design itself passed two full independent review rounds (readability, code, critical,
+  // deep spec-adherence incl. a 2246-configuration sweep of the causal-frontier algebra, cross-module
+  // integration, and QA/compute-sanitizer) with zero correctness defects found across both rounds.
+  // It was deliberately NOT merged for a value-proposition reason, not a correctness reason:
+  //   * Measured speedup over the existing MATH fallback (the path this shape class already uses
+  //     without this tier) was only ~0.94x-1.15x on A100 — within noise for short prompts (<=256
+  //     query rows, actually slightly SLOWER than MATH there) and a modest ~10-15% win only for long
+  //     prompts (>=512-1000 rows). Against Flash Attention on symmetric head_size shapes, cuDNN
+  //     prefill was roughly at parity, not a win.
+  //   * GroupQueryAttention's own cuDNN prefill path — and this prototype, which mirrored GQA's
+  //     dispatch gate for consistency — is only auto-enabled on SM>=90 (Hopper/Blackwell); it is
+  //     inert by default on SM80 (A100), the only hardware this investigation had available. The
+  //     benefit case for the hardware where this tier would actually activate by default was never
+  //     validated.
+  //   * The chunking algorithm's cache-key-stability invariants (fixed chunk size as a proxy for a
+  //     real, per-call-varying prompt length; the s_q>=chunk/2 floor bounding wasted compute/memory
+  //     to <=2x; the first_chunk skip bound) are subtle, proven correct by exhaustive sweep, but
+  //     nontrivial for future maintainers to preserve without re-deriving the same algebra.
+  // Net: a correctness-safe but performance-marginal feature, gated behind hardware this
+  // investigation could not confirm the benefit on. Revive only alongside H200/Hopper+ validation of
+  // the auto-enable default path, and re-evaluate the value proposition against then-current
+  // MATH/Flash/MEA baselines. See issue #29714 for the full writeup, chunk-size sweep, and benchmark
+  // data before reviving this path.
+
 #if USE_FLASH_ATTENTION
   {
     auto& device_prop = GetDeviceProp();
