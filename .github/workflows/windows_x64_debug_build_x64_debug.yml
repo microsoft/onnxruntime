@@ -6,66 +6,13 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      seed_vcpkg_telemetry_assets:
-        description: Seed the pinned telemetry source archives into Terrapin
-        required: false
-        type: boolean
-        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 jobs:
-  seed_vcpkg_telemetry_assets:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.seed_vcpkg_telemetry_assets }}
-    runs-on: [
-      "self-hosted",
-      "1ES.Pool=onnxruntime-github-vs2022-latest",
-      "JobId=seed-vcpkg-telemetry-assets-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
-      ]
-    timeout-minutes: 15
-
-    steps:
-      - name: Seed telemetry vcpkg source assets
-        shell: pwsh
-        run: |
-          $terrapin = 'C:\local\Terrapin\TerrapinRetrievalTool.exe'
-          if (-not (Test-Path -LiteralPath $terrapin)) {
-            throw "TerrapinRetrievalTool.exe was not found at $terrapin"
-          }
-
-          $assets = @(
-            @{
-              Url = 'https://github.com/microsoft/cpp_client_telemetry/archive/v3.10.173.1.tar.gz'
-              Sha512 = 'e55bc35274236f57757660073c4dccccab3462342c8566212f1df4bf8824295a2bb3d3d79a11f3950e7c9252641827e9dd3d7c28c421dea3bdaee277e4f2ce32'
-              FileName = 'microsoft-cpp_client_telemetry-v3.10.173.1.tar.gz'
-            },
-            @{
-              Url = 'https://github.com/Mbed-TLS/mbedtls/archive/v3.6.5.tar.gz'
-              Sha512 = 'd7a1e0098fed7b000ac2e4de31d43f427e8a046aeace91719f58222e1289470e15af5ed2a5390cf3693cf93a1efd79f34de9a6a960dc63cc0fd135072809e6e4'
-              FileName = 'Mbed-TLS-mbedtls-v3.6.5.tar.gz'
-            }
-          )
-
-          foreach ($asset in $assets) {
-            $destination = Join-Path $env:RUNNER_TEMP $asset.FileName
-            & $terrapin `
-              -b 'https://vcpkg.storage.devpackages.microsoft.io/artifacts/' `
-              -a true `
-              -u Environment `
-              -p $asset.Url `
-              -s $asset.Sha512 `
-              -d $destination
-            if ($LASTEXITCODE -ne 0) {
-              exit $LASTEXITCODE
-            }
-            Remove-Item -LiteralPath $destination -Force -ErrorAction SilentlyContinue
-          }
-
   build_x64_debug:
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.seed_vcpkg_telemetry_assets }}
     runs-on: [
       "self-hosted",
       "1ES.Pool=onnxruntime-github-vs2022-latest",
