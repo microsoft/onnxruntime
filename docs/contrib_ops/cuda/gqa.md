@@ -166,7 +166,11 @@ employ local attention (e.g., GPT-OSS with layer-wise sliding windows).
 **Key behaviors:**
 
 - **Cache capacity:** The cache buffer size is fixed to `kv_cache_capacity` (the initial allocation
-  size), which should be at least `local_window_size`.
+  size), which must be at least `local_window_size`. Allocating a little more than the window is
+  worthwhile on CPU: the surplus is what lets the append point drift, so the cache is compacted once
+  every `kv_cache_capacity - local_window_size + 1` steps instead of on every step. A modest surplus
+  (order tens of entries) is the sweet spot; a much larger buffer starts costing more in attention
+  over out-of-window entries than it saves in compaction.
 - **Cache-relative indexing:** New keys/values are appended at cache-relative positions, not global
   positions. Once the window is full, old tokens are evicted from the front.
 - **RoPE position bounds:** The `rotary_max_position` parameter controls the upper bound (exclusive)
@@ -179,6 +183,12 @@ employ local attention (e.g., GPT-OSS with layer-wise sliding windows).
 - **Constraints:** `sliding_window_cache=1` requires `local_window_size > 0`. Windowed caches are
   incompatible with the Flash-Attention fast-decode path and instead use the XQA or standard
   attention backends.
+- **CPU support:** The CPU kernel implements the same contract. Entries live at `[0, end)` and are
+  appended at `end`, so a step only moves memory when the append would run past the capacity; at
+  that point the surviving entries are compacted to the front in one go. Multi-token steps that
+  would drop entries the step itself still reads are staged instead, so results match a full-length
+  cache exactly. On CPU the `attention_bias` input, the `qk_output` attribute and a shared KV layout
+  (`key`/`value` folded into `query`) are not supported together with `sliding_window_cache=1`.
 
 ### Quantized KV cache
 
