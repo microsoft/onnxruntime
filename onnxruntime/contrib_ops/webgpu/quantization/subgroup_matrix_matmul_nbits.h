@@ -59,6 +59,43 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       const uint32_t weight_index,
                                       const Tensor* weight_index_indirect = nullptr);
 
+// Returns true if the given subgroup-matrix config requires prepacking the M x K input matrix
+// A into the block-of-blocks layout consumed by SubgroupMatrixLoad. When this returns false,
+// the raw row-major A can be passed directly to ApplyPrepackedSubgroupMatrixMatMulNBits.
+bool NeedsPrepackAForSubgroupMatrixMatMulNBits(int32_t config_index);
+
+// Prepack the M x K input matrix A into the block-of-blocks layout consumed by
+// SubgroupMatrixLoad. Populates *a_prepack (default-constructed by the caller) with a newly
+// allocated GPU tensor of shape [padded_M, K] holding the rearranged data. Caller must keep
+// *a_prepack alive until every dependent ApplyPrepackedSubgroupMatrixMatMulNBits call has
+// been enqueued (matches the temporary-tensor lifetime pattern used elsewhere in the EP).
+//
+// Only call this when NeedsPrepackAForSubgroupMatrixMatMulNBits(config_index) returns true.
+Status PrepackAForSubgroupMatrixMatMulNBits(const Tensor* a,
+                                            uint32_t M,
+                                            uint32_t K,
+                                            int32_t config_index,
+                                            onnxruntime::webgpu::ComputeContext& context,
+                                            Tensor* a_prepack);
+
+// Run the subgroup-matrix MatMulNBits kernel using an A tensor that is either already in the
+// prepacked layout (populated by PrepackAForSubgroupMatrixMatMulNBits when the config requires
+// it) or the raw row-major A (when the config does not require prepack). All matmul dispatch
+// behavior matches ApplySubgroupMatrixMatMulNBits; only the prepack step is skipped.
+Status ApplyPrepackedSubgroupMatrixMatMulNBits(const Tensor* a_or_prepacked,
+                                               const Tensor* b, const Tensor* scales,
+                                               const Tensor* zero_points, const Tensor* bias,
+                                               uint32_t M,
+                                               uint32_t N,
+                                               uint32_t K,
+                                               uint32_t nbits,
+                                               uint32_t zero_blocks_per_col,
+                                               int32_t config_index,
+                                               onnxruntime::webgpu::ComputeContext& context,
+                                               Tensor* y,
+                                               const uint32_t weight_index,
+                                               const Tensor* weight_index_indirect = nullptr);
+
 bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
                                        uint64_t accuracy_level,
                                        uint32_t block_size,

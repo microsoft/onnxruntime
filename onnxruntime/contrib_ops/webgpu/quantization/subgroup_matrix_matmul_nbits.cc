@@ -161,7 +161,90 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       Tensor* y,
                                       const uint32_t weight_index,
                                       const Tensor* weight_index_indirect) {
-  // Determine tile sizes first (needed for prepack padding).
+  // Composite entry point: prepack A (if the config requires it) then run the matmul kernel.
+  // The prepacked-only entry point (ApplyPrepackedSubgroupMatrixMatMulNBits) is exposed
+  // separately so callers that dispatch multiple matmuls against the same A (e.g. the fused
+  // MLP path in matmul_nbits_mlp.cc) can share a single prepack across them.
+  Tensor a_prepack;
+  const Tensor* a_for_matmul = a;
+  if (NeedsPrepackAForSubgroupMatrixMatMulNBits(config_index)) {
+    ORT_RETURN_IF_ERROR(PrepackAForSubgroupMatrixMatMulNBits(a, M, K, config_index, context, &a_prepack));
+    a_for_matmul = &a_prepack;
+  }
+  return ApplyPrepackedSubgroupMatrixMatMulNBits(a_for_matmul, b, scales, zero_points, bias,
+                                                 M, N, K, nbits, zero_blocks_per_col, config_index,
+                                                 context, y, weight_index, weight_index_indirect);
+}
+
+bool NeedsPrepackAForSubgroupMatrixMatMulNBits(int32_t config_index) {
+  return supported_subgroup_matrix_configs[config_index].needsPrepack;
+}
+
+namespace {
+
+// Return the workgroup A-tile size (in rows) for a given subgroup-matrix config. Must match
+// the tile_size_a computed inside ApplyPrepackedSubgroupMatrixMatMulNBits so the prepack
+// padding aligns with the matmul kernel's dispatch geometry.
+uint32_t GetTileSizeAForConfig(const onnxruntime::webgpu::SupportedSubgroupMatrixConfig& config) {
+  if (config.Is(8, 16, 16)) {
+    return 64;  // 8 subgroups x 256 threads, 64x64 tiles
+  }
+  if (config.Is(16, 16, 16)) {
+    return 128;  // 4 subgroups x 128 threads, 128x128 tiles
+  }
+  return 32;  // 8x8x8 (Apple Metal) default
+}
+
+}  // namespace
+
+Status PrepackAForSubgroupMatrixMatMulNBits(const Tensor* a,
+                                            uint32_t M,
+                                            uint32_t K,
+                                            int32_t config_index,
+                                            onnxruntime::webgpu::ComputeContext& context,
+                                            Tensor* a_prepack) {
+  const auto& config = supported_subgroup_matrix_configs[config_index];
+  ORT_ENFORCE(config.needsPrepack,
+              "PrepackAForSubgroupMatrixMatMulNBits called with a config that does not require prepack.");
+
+  const uint32_t tile_size_a = GetTileSizeAForConfig(config);
+  const auto m = config.M;
+  const auto k = config.K;
+
+  PrepackProgram prepack_program{m, k};
+  constexpr uint32_t kSubgroupSize = 32;
+  prepack_program.SetWorkgroupSize(kSubgroupSize);
+
+  // Pad M to workgroup tile size so all subgroups read valid prepacked data.
+  const uint32_t padded_M = ((M + tile_size_a - 1) / tile_size_a) * tile_size_a;
+  const auto dispatch_group_size_x = padded_M / m;
+  ORT_ENFORCE(K % k == 0, "K must be a multiple of ", k);
+  const auto dispatch_group_size_y = K / k;
+  // Each workgroup will process one subgroup matrix of size m x k.
+  prepack_program.SetDispatchGroupSize(dispatch_group_size_x, dispatch_group_size_y, 1);
+
+  TensorShape a_prepack_shape{padded_M, K};
+  *a_prepack = context.CreateGPUTensor(a->DataType(), a_prepack_shape);
+  prepack_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+      .AddOutputs({{a_prepack, ProgramTensorMetadataDependency::Rank, a_prepack->Shape(), 1}})
+      .AddUniformVariables({{M}, {K}})
+      .CacheHint(m, k);
+  return context.RunProgram(prepack_program);
+}
+
+Status ApplyPrepackedSubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
+                                               const Tensor* zero_points, const Tensor* bias,
+                                               uint32_t M,
+                                               uint32_t N,
+                                               uint32_t K,
+                                               uint32_t nbits,
+                                               uint32_t zero_blocks_per_col,
+                                               int32_t config_index,
+                                               onnxruntime::webgpu::ComputeContext& context,
+                                               Tensor* y,
+                                               const uint32_t weight_index,
+                                               const Tensor* weight_index_indirect) {
+  // Determine tile sizes (must match GetTileSizeAForConfig used during prepack).
   const auto& config = supported_subgroup_matrix_configs[config_index];
   uint32_t tile_size_a = 32;
   uint32_t tile_size_b = 64;
@@ -175,35 +258,6 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
     tile_size_a = 128;
     tile_size_b = 128;
     work_group_size = 128;
-  }
-
-  // If applicable, layout optimization of input matrix A(MxK) can be used for SubgroupMatrixLoad.
-  Tensor a_prepack;
-  if (config.needsPrepack) {
-    const auto m = config.M;
-    const auto k = config.K;
-
-    // Optimize the layout of input matrix A(MxK) for SubgroupMatrixLoad.
-    PrepackProgram prepack_program{m, k};
-    constexpr uint32_t kSubgroupSize = 32;
-    prepack_program.SetWorkgroupSize(kSubgroupSize);
-
-    // Pad M to workgroup tile size so all subgroups read valid prepacked data.
-    const uint32_t padded_M = ((M + tile_size_a - 1) / tile_size_a) * tile_size_a;
-    const auto dispatch_group_size_x = padded_M / m;
-    ORT_ENFORCE(K % k == 0, "K must be a multiple of ", k);
-    const auto dispatch_group_size_y = K / k;
-    // Each workgroup will process one subgroup matrix of size m x k.
-    prepack_program.SetDispatchGroupSize(dispatch_group_size_x, dispatch_group_size_y, 1);
-
-    TensorShape a_prepack_shape{padded_M, K};
-    a_prepack = context.CreateGPUTensor(a->DataType(), a_prepack_shape);
-    prepack_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1}})
-        .AddOutputs({{&a_prepack, ProgramTensorMetadataDependency::Rank, a_prepack.Shape(), 1}})
-        .AddUniformVariables({{M}, {K}})
-        .CacheHint(m, k);
-    ORT_RETURN_IF_ERROR(context.RunProgram(prepack_program));
-    a = &a_prepack;
   }
 
   constexpr uint32_t kU32Components = 4;
@@ -289,7 +343,13 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
          block_size == 32 &&
          batch_count == 1 &&
          K % 32 == 0 &&
-         N % 64 == 0;
+         N % 64 == 0 &&
+         // The 16x16x16 config (NVIDIA/AMD Vulkan path) uses the 128x128-tile shader with
+         // BK=64 and double-buffered SMEM, which requires K to be a multiple of 64. Other
+         // configs (Intel 8x16x16 / Apple 8x8x8) still allow K%32==0.
+         (config_index < 0 ||
+          !supported_subgroup_matrix_configs[config_index].Is(16, 16, 16) ||
+          K % 64 == 0);
 }
 }  // namespace webgpu
 }  // namespace contrib

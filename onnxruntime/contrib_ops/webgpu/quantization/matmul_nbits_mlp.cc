@@ -3,7 +3,11 @@
 
 #include "contrib_ops/webgpu/quantization/matmul_nbits_mlp.h"
 
+#include <cstdio>
+#include <mutex>
 #include <optional>
+#include <set>
+#include <tuple>
 
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
@@ -228,6 +232,90 @@ Status ApplyUnfusedMlp(const Tensor* a,
 
   return context.RunProgram(program);
 }
+
+#if !defined(__wasm__)
+// Shape A (design: docs/design/webgpu_fused_mlp_subgroup_matrix.md §11.2):
+// Prepack A once and share the prepacked tensor across the gate and up matmul dispatches,
+// then run the standard silu*mul elementwise epilogue.
+//
+// Reduces the current unfused-plus-fused-node dispatch pattern from
+//   [prepack_A_gate + gate_matmul + prepack_A_up + up_matmul + silu*mul]   (5 dispatches)
+// to
+//   [prepack_A + gate_matmul + up_matmul + silu*mul]                        (4 dispatches)
+// eliminating one full M*K prepack write+read pass (~16 MB per MLP at Qwen3-1.7B M=2048).
+//
+// The matmul kernel body is unchanged: correctness risk is minimal, and the two matmul
+// dispatches see byte-identical A input as the two ApplyMatMulNBits calls in
+// ApplyUnfusedMlp would produce. Only call this when the subgroup-matrix path applies
+// (CanApplySubgroupMatrixMatMulNBits returned true, populating config_index).
+Status ApplyFusedPrefillMlp(const Tensor* a,
+                            const Tensor* gate_b,
+                            const Tensor* gate_scales,
+                            const Tensor* gate_bias,
+                            const Tensor* up_b,
+                            const Tensor* up_scales,
+                            const Tensor* up_bias,
+                            int64_t K,
+                            int64_t N,
+                            int64_t block_size,
+                            int64_t bits,
+                            int32_t config_index,
+                            MlpActivationKind activation_kind,
+                            onnxruntime::webgpu::ComputeContext& context,
+                            Tensor* y) {
+  MatMulComputeHelper helper;
+  TensorShape b_shape({N, K});
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
+  const auto output_shape = helper.OutputShape();
+  const uint32_t M = onnxruntime::narrow<uint32_t>(helper.M());
+  const uint32_t N_u = onnxruntime::narrow<uint32_t>(N);
+  const uint32_t K_u = onnxruntime::narrow<uint32_t>(K);
+  const uint32_t block_size_u = onnxruntime::narrow<uint32_t>(block_size);
+  const uint32_t nbits_u = onnxruntime::narrow<uint32_t>(bits);
+
+  // Mirror zero_blocks_per_col computation from MatMulNBits::ComputeInternal so the shader's
+  // uniform matches even though MLP has no zero_points input.
+  const bool single_scale_weights = (block_size_u == K_u * N_u);
+  const uint32_t block_size_per_col = single_scale_weights ? K_u : block_size_u;
+  const uint32_t n_blocks_per_col = (K_u + block_size_per_col - 1) / block_size_per_col;
+  const uint32_t zp_elements_per_byte = 8u / nbits_u;
+  const uint32_t zero_blocks_per_col =
+      (n_blocks_per_col + zp_elements_per_byte - 1) / zp_elements_per_byte * zp_elements_per_byte;
+
+  Tensor gate_output = context.CreateGPUTensor(a->DataType(), output_shape);
+  Tensor up_output = context.CreateGPUTensor(a->DataType(), output_shape);
+
+  // Prepack A once (if the config requires it) and reuse across both matmul dispatches.
+  Tensor a_prepack;
+  const Tensor* a_for_matmul = a;
+  if (NeedsPrepackAForSubgroupMatrixMatMulNBits(config_index)) {
+    ORT_RETURN_IF_ERROR(PrepackAForSubgroupMatrixMatMulNBits(
+        a, M, K_u, config_index, context, &a_prepack));
+    a_for_matmul = &a_prepack;
+  }
+
+  ORT_RETURN_IF_ERROR(ApplyPrepackedSubgroupMatrixMatMulNBits(
+      a_for_matmul, gate_b, gate_scales, /*zero_points=*/nullptr, gate_bias,
+      M, N_u, K_u, nbits_u, zero_blocks_per_col, config_index,
+      context, &gate_output, /*weight_index=*/0));
+  ORT_RETURN_IF_ERROR(ApplyPrepackedSubgroupMatrixMatMulNBits(
+      a_for_matmul, up_b, up_scales, /*zero_points=*/nullptr, up_bias,
+      M, N_u, K_u, nbits_u, zero_blocks_per_col, config_index,
+      context, &up_output, /*weight_index=*/0));
+
+  // silu*mul epilogue (identical to ApplyUnfusedMlp).
+  const uint32_t data_size = onnxruntime::narrow<uint32_t>(y->Shape().Size());
+  const uint32_t vec_size = (data_size + 3u) / 4u;
+  MatMulNBitsMlpProgram program{activation_kind};
+  program
+      .AddInputs({{&gate_output, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4},
+                  {&up_output, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
+      .AddOutput({y, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
+      .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+      .AddUniformVariables({vec_size});
+  return context.RunProgram(program);
+}
+#endif  // !defined(__wasm__)
 
 }  // namespace
 
@@ -473,13 +561,65 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
     return context.RunProgram(program);
   }
 
-  if (skip != nullptr) {
-    Tensor normalized_a = context.CreateGPUTensor(a->DataType(), a->Shape());
-    ORT_RETURN_IF_ERROR(RunSkipLayerNormProgram(context, a, skip, norm_scale,
-                                                /*beta=*/nullptr, /*bias=*/nullptr,
-                                                epsilon_, /*simplified=*/true,
-                                                &normalized_a, input_skip_bias_sum));
-    return ApplyUnfusedMlp(&normalized_a,
+  // Dispatch helper: picks the shared-prepack subgroup-matrix path (Shape A) when the
+  // subgroup-matrix kernel would apply for the individual matmuls, otherwise the standard
+  // unfused path. Keeps the SkipLayerNorm / LayerNorm plumbing above unchanged.
+  auto dispatch_mlp = [&](const Tensor* a_input) -> Status {
+#if !defined(__wasm__)
+    if (would_use_subgroup_unfused) {
+      // TODO(shape-a-instrumentation): remove after Shape A benchmark verification.
+      // One-shot stderr log per (M,N,K) tuple so we can confirm the fused-prefill path
+      // is actually executed at each benchmarked M. Cost is bounded to <=5 lines.
+      {
+        static std::mutex log_mtx;
+        static std::set<std::tuple<uint32_t, uint32_t, uint32_t>> logged;
+        const uint32_t m_dim = onnxruntime::narrow<uint32_t>(
+            a_input->Shape().SizeToDimension(a_input->Shape().NumDimensions() - 1));
+        const auto key = std::make_tuple(m_dim,
+                                         onnxruntime::narrow<uint32_t>(N_),
+                                         onnxruntime::narrow<uint32_t>(K_));
+        std::lock_guard<std::mutex> guard(log_mtx);
+        if (logged.insert(key).second) {
+          fprintf(stderr, "[ShapeA] ApplyFusedPrefillMlp fired M=%u N=%u K=%u cfg=%d\n",
+                  m_dim, onnxruntime::narrow<uint32_t>(N_), onnxruntime::narrow<uint32_t>(K_),
+                  subgroup_matrix_config_index);
+          fflush(stderr);
+        }
+      }
+      return ApplyFusedPrefillMlp(a_input,
+                                  gate_b,
+                                  gate_scales,
+                                  gate_bias,
+                                  up_b,
+                                  up_scales,
+                                  up_bias,
+                                  K_,
+                                  N_,
+                                  block_size_,
+                                  bits_,
+                                  subgroup_matrix_config_index,
+                                  activation_kind_,
+                                  context,
+                                  y);
+    }
+#endif
+    // TODO(shape-a-instrumentation): remove after Shape A benchmark verification.
+    {
+      static std::mutex log_mtx;
+      static std::set<std::tuple<uint32_t, uint32_t, uint32_t>> logged;
+      const uint32_t m_dim = onnxruntime::narrow<uint32_t>(
+          a_input->Shape().SizeToDimension(a_input->Shape().NumDimensions() - 1));
+      const auto key = std::make_tuple(m_dim,
+                                       onnxruntime::narrow<uint32_t>(N_),
+                                       onnxruntime::narrow<uint32_t>(K_));
+      std::lock_guard<std::mutex> guard(log_mtx);
+      if (logged.insert(key).second) {
+        fprintf(stderr, "[ShapeA] ApplyUnfusedMlp fallback M=%u N=%u K=%u\n",
+                m_dim, onnxruntime::narrow<uint32_t>(N_), onnxruntime::narrow<uint32_t>(K_));
+        fflush(stderr);
+      }
+    }
+    return ApplyUnfusedMlp(a_input,
                            gate_b,
                            gate_scales,
                            gate_bias,
@@ -494,6 +634,15 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                            activation_kind_,
                            context,
                            y);
+  };
+
+  if (skip != nullptr) {
+    Tensor normalized_a = context.CreateGPUTensor(a->DataType(), a->Shape());
+    ORT_RETURN_IF_ERROR(RunSkipLayerNormProgram(context, a, skip, norm_scale,
+                                                /*beta=*/nullptr, /*bias=*/nullptr,
+                                                epsilon_, /*simplified=*/true,
+                                                &normalized_a, input_skip_bias_sum));
+    return dispatch_mlp(&normalized_a);
   }
 
   if (norm_scale != nullptr) {
@@ -504,38 +653,10 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
     ORT_RETURN_IF_ERROR(onnxruntime::webgpu::RunLayerNormProgram(
         context, a, norm_scale, /*bias=*/nullptr, epsilon_, norm_count, norm_size,
         /*simplified=*/true, &normalized_a, /*mean=*/nullptr, /*inv_std_dev=*/nullptr));
-    return ApplyUnfusedMlp(&normalized_a,
-                           gate_b,
-                           gate_scales,
-                           gate_bias,
-                           up_b,
-                           up_scales,
-                           up_bias,
-                           K_,
-                           N_,
-                           block_size_,
-                           accuracy_level_,
-                           bits_,
-                           activation_kind_,
-                           context,
-                           y);
+    return dispatch_mlp(&normalized_a);
   }
 
-  return ApplyUnfusedMlp(a,
-                         gate_b,
-                         gate_scales,
-                         gate_bias,
-                         up_b,
-                         up_scales,
-                         up_bias,
-                         K_,
-                         N_,
-                         block_size_,
-                         accuracy_level_,
-                         bits_,
-                         activation_kind_,
-                         context,
-                         y);
+  return dispatch_mlp(a);
 }
 
 }  // namespace webgpu

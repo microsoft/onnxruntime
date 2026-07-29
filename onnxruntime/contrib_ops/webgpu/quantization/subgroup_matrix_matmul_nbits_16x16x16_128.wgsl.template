@@ -10,13 +10,15 @@
 // Workgroup: 128 threads = 4 subgroups x 32 lanes, arranged 2x2
 // Tile: BM(128) x BN(128)
 // Each subgroup handles WM(64) x WN(64) = 4x4 = 16 coopmat tiles of 16x16
-// K dimension iterated in BK(32) blocks
+// K dimension iterated in BK(64) blocks with software-pipelined double-buffered B loads.
 //
 // Key optimizations vs 64x64 shader:
 // - 4x larger tile (128x128 vs 64x64) reduces global memory traffic
 // - A loaded directly from global memory (prepacked), 4 rows per subgroup per k-step
-// - B dequantized to shared memory with padded stride (SHMEM_STRIDE=40) for bank conflict avoidance
+// - B dequantized to shared memory with padded stride (SHMEM_STRIDE=72) for bank conflict avoidance
 // - B tiles loaded once per k-step, reused across 4 A rows
+// - BK=64 (2x wider than the 64x64 shader) halves the outer-iteration + barrier count
+// - Ping-pong buf_b lets the dequant of iter N+1 overlap the compute of iter N (SW pipelining)
 
 #param n_bits
 #param has_zero_points
@@ -36,7 +38,7 @@ const kQuantizationBlockSize: u32 = 32;
 // Tile parameters matching CM1 (cooperative matrix) layout
 const BM: u32 = 128;                            // Tile size along M
 const BN: u32 = 128;                            // Tile size along N
-const BK: u32 = 32;                             // Tile size along K
+const BK: u32 = 64;                             // Tile size along K (2 quant blocks)
 const kSgMatM: u32 = u32(sg_mat_m);             // 16
 const kSgMatN: u32 = u32(sg_mat_n);             // 16
 const kSgMatK: u32 = u32(sg_mat_k);             // 16
@@ -46,20 +48,26 @@ const kSgMatSizeLeft: u32 = kSgMatM * kSgMatK;  // Elements per left (A) subgrou
 const kSgMatCountM: u32 = BM / kSgMatM;         // 8 subgroup matrices per tile along M
 
 // Padded shared memory stride to avoid bank conflicts during cooperative matrix loads
-const SHMEM_STRIDE: u32 = 40;  // BK + 8 padding (matches Vulkan CM1's BK/2+4 in vec2 units)
+const SHMEM_STRIDE: u32 = 72;  // BK(64) + 8 padding
 
-// Shared memory for dequantized B weights [BN, BK] with padding
-var<workgroup> buf_b: array<f16, BN * SHMEM_STRIDE>;  // 128 * 40 = 5120 elements = 10240 bytes
+// Size of one half of the ping-pong B buffer, in f16 elements.
+const BUF_HALF: u32 = BN * SHMEM_STRIDE;  // 128 * 72 = 9216
+
+// Shared memory for dequantized B weights [BN, BK] with padding.
+// Double-buffered (ping-pong): buf_b[0..BUF_HALF] and buf_b[BUF_HALF..2*BUF_HALF].
+var<workgroup> buf_b: array<f16, 2u * BUF_HALF>;  // 18432 f16 = 36864 bytes
 
 // Small staging buffer for edge-tile output (one 16x16 tile per subgroup)
 var<workgroup> coopmat_stage: array<f16, kSgMatM * kSgMatN * 4>;  // 16*16*4 = 1024 elements = 2048 bytes
-// Total shared memory: 10240 + 2048 = 12288 bytes
+// Total shared memory: 36864 + 2048 = 38912 bytes (~38 KB, well within
+// Blackwell's ~228 KB/SM budget; keeps register-pressure as the occupancy limiter).
 
 #if n_bits == 4
 // Dequantize 4-bit quantized B weights into buf_b with padded stride.
 // First half: rows 0..63, Second half: rows 64..127
-// 128 threads, 2 threads per N row, each handles 16 K elements.
-fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32) {
+// 128 threads, 2 threads per N row, each handles 32 K elements (BK/2 = 4 packed_weights).
+// `buf_offset` selects the ping-pong half: 0 or BUF_HALF.
+fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32, buf_offset: u32) {
 #if has_weight_idx
 #if has_weight_idx_indirect
     let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
@@ -72,19 +80,22 @@ fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32) {
     const weight_offset : u32 = 0;
     const scale_offset : u32 = 0;
 #endif
-    let k_offset = k_chunk * 16u;
+    // BK=64 = 2 * kQuantizationBlockSize(32). k_chunk in {0,1} picks the low or high 32-K
+    // half within the outer BK slab. Each half aligns with one quant block, so exactly one
+    // scale/zero is loaded per (row, chunk) pair.
+    let k_offset = k_chunk * 32u;
 
     // First half: rows 0..63
     {
         let global_n = n_base + n_idx_0;
-        let buf_base = n_idx_0 * SHMEM_STRIDE + k_offset;
+        let buf_base = buf_offset + n_idx_0 * SHMEM_STRIDE + k_offset;
         if (global_n < uniforms.N) {
             let packed_idx = u32((global_n * uniforms.K + k_idx + k_offset) / 8) + weight_offset / 8;
             let scale_idx = (global_n * uniforms.K + k_idx + k_offset) / kQuantizationBlockSize + scale_offset;
             let scale = f16(scales_b.getByOffset(scale_idx));
             let zero = mm_read_zero(
                 global_n, (k_idx + k_offset) / kQuantizationBlockSize, uniforms.N, uniforms.zero_blocks_per_col);
-            for (var step: u32 = 0; step < 2u; step++) {
+            for (var step: u32 = 0; step < 4u; step++) {
                 let packed_weights = input_b.getByOffset(packed_idx + step);
                 let w_lo = (vec4<f16>(unpack4xU8(packed_weights & 0x0F0F0F0Fu)) - vec4<f16>(zero)) * scale;
                 let w_hi = (vec4<f16>(unpack4xU8((packed_weights >> 4u) & 0x0F0F0F0Fu)) - vec4<f16>(zero)) * scale;
@@ -95,7 +106,7 @@ fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32) {
                 buf_b[b + 6] = w_lo[3]; buf_b[b + 7] = w_hi[3];
             }
         } else {
-            for (var i: u32 = 0; i < 16u; i++) {
+            for (var i: u32 = 0; i < 32u; i++) {
                 buf_b[buf_base + i] = f16(0.0);
             }
         }
@@ -104,14 +115,14 @@ fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32) {
     {
         let n_idx_1 = n_idx_0 + 64u;
         let global_n = n_base + n_idx_1;
-        let buf_base = n_idx_1 * SHMEM_STRIDE + k_offset;
+        let buf_base = buf_offset + n_idx_1 * SHMEM_STRIDE + k_offset;
         if (global_n < uniforms.N) {
             let packed_idx = u32((global_n * uniforms.K + k_idx + k_offset) / 8) + weight_offset / 8;
             let scale_idx = (global_n * uniforms.K + k_idx + k_offset) / kQuantizationBlockSize + scale_offset;
             let scale = f16(scales_b.getByOffset(scale_idx));
             let zero = mm_read_zero(
                 global_n, (k_idx + k_offset) / kQuantizationBlockSize, uniforms.N, uniforms.zero_blocks_per_col);
-            for (var step: u32 = 0; step < 2u; step++) {
+            for (var step: u32 = 0; step < 4u; step++) {
                 let packed_weights = input_b.getByOffset(packed_idx + step);
                 let w_lo = (vec4<f16>(unpack4xU8(packed_weights & 0x0F0F0F0Fu)) - vec4<f16>(zero)) * scale;
                 let w_hi = (vec4<f16>(unpack4xU8((packed_weights >> 4u) & 0x0F0F0F0Fu)) - vec4<f16>(zero)) * scale;
@@ -122,7 +133,7 @@ fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32) {
                 buf_b[b + 6] = w_lo[3]; buf_b[b + 7] = w_hi[3];
             }
         } else {
-            for (var i: u32 = 0; i < 16u; i++) {
+            for (var i: u32 = 0; i < 32u; i++) {
                 buf_b[buf_base + i] = f16(0.0);
             }
         }
@@ -132,7 +143,8 @@ fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32) {
 
 #if n_bits == 8
 // Dequantize 8-bit quantized B weights into buf_b with padded stride.
-fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32) {
+// Each thread handles 32 K elements (BK/2). buf_offset selects the ping-pong half.
+fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32, buf_offset: u32) {
 #if has_weight_idx
 #if has_weight_idx_indirect
     let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
@@ -145,19 +157,19 @@ fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32) {
     const weight_offset : u32 = 0;
     const scale_offset : u32 = 0;
 #endif
-    let k_offset = k_chunk * 16u;
+    let k_offset = k_chunk * 32u;
 
     // First half: rows 0..63
     {
         let global_n = n_base + n_idx_0;
-        let buf_base = n_idx_0 * SHMEM_STRIDE + k_offset;
+        let buf_base = buf_offset + n_idx_0 * SHMEM_STRIDE + k_offset;
         if (global_n < uniforms.N) {
             let packed_idx = u32((global_n * uniforms.K + k_idx + k_offset) / 8) + weight_offset / 8;
             let scale_idx = (global_n * uniforms.K + k_idx + k_offset) / kQuantizationBlockSize + scale_offset;
             let scale = f16(scales_b.getByOffset(scale_idx));
             let zero = mm_read_zero(
                 global_n, (k_idx + k_offset) / kQuantizationBlockSize, uniforms.N, uniforms.zero_blocks_per_col);
-            for (var step: u32 = 0; step < 2u; step++) {
+            for (var step: u32 = 0; step < 4u; step++) {
                 let packed_weights = input_b.getByOffset(packed_idx + step);
                 let w_lo = (vec4<f16>(unpack4xU8(packed_weights[0])) - vec4<f16>(zero)) * scale;
                 let w_hi = (vec4<f16>(unpack4xU8(packed_weights[1])) - vec4<f16>(zero)) * scale;
@@ -168,7 +180,7 @@ fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32) {
                 buf_b[b + 6] = w_hi[2]; buf_b[b + 7] = w_hi[3];
             }
         } else {
-            for (var i: u32 = 0; i < 16u; i++) {
+            for (var i: u32 = 0; i < 32u; i++) {
                 buf_b[buf_base + i] = f16(0.0);
             }
         }
@@ -177,14 +189,14 @@ fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32) {
     {
         let n_idx_1 = n_idx_0 + 64u;
         let global_n = n_base + n_idx_1;
-        let buf_base = n_idx_1 * SHMEM_STRIDE + k_offset;
+        let buf_base = buf_offset + n_idx_1 * SHMEM_STRIDE + k_offset;
         if (global_n < uniforms.N) {
             let packed_idx = u32((global_n * uniforms.K + k_idx + k_offset) / 8) + weight_offset / 8;
             let scale_idx = (global_n * uniforms.K + k_idx + k_offset) / kQuantizationBlockSize + scale_offset;
             let scale = f16(scales_b.getByOffset(scale_idx));
             let zero = mm_read_zero(
                 global_n, (k_idx + k_offset) / kQuantizationBlockSize, uniforms.N, uniforms.zero_blocks_per_col);
-            for (var step: u32 = 0; step < 2u; step++) {
+            for (var step: u32 = 0; step < 4u; step++) {
                 let packed_weights = input_b.getByOffset(packed_idx + step);
                 let w_lo = (vec4<f16>(unpack4xU8(packed_weights[0])) - vec4<f16>(zero)) * scale;
                 let w_hi = (vec4<f16>(unpack4xU8(packed_weights[1])) - vec4<f16>(zero)) * scale;
@@ -195,7 +207,7 @@ fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32) {
                 buf_b[b + 6] = w_hi[2]; buf_b[b + 7] = w_hi[3];
             }
         } else {
-            for (var i: u32 = 0; i < 16u; i++) {
+            for (var i: u32 = 0; i < 32u; i++) {
                 buf_b[buf_base + i] = f16(0.0);
             }
         }
@@ -247,15 +259,31 @@ $MAIN {
     var sg_mat_offset_a2 = (workgroup_id.y * kSgMatCountM + warp_r * 4u + 2u) * sg_mat_count_k * kSgMatSizeLeft;
     var sg_mat_offset_a3 = (workgroup_id.y * kSgMatCountM + warp_r * 4u + 3u) * sg_mat_count_k * kSgMatSizeLeft;
 
-    // Main K-loop
-    for (var k_block: u32 = 0; k_block < uniforms.K; k_block += BK) {
-        // Load B (Q4_K/Q8 weights) to buf_b with padded stride
-        dequant_b_to_buf(global_base_n, k_block, local_idx / 2u, local_idx % 2u);
-        workgroupBarrier();
+    // Software-pipelined K-loop with double-buffered B in SMEM:
+    //   Prologue:   dequant iter 0 -> buf[0].
+    //   Body iter n: (concurrent) dequant iter n+1 -> buf[(n+1)&1]; compute iter n on buf[n&1].
+    //   Epilogue is folded into the last iteration by guarding the "dequant next" step
+    //   (its writes to the other half of buf_b are not read by anyone downstream).
+    let num_iters = uniforms.K / BK;
 
-        // Compute: load B once per k-step, iterate 4 A rows
+    // Prologue
+    dequant_b_to_buf(global_base_n, 0u, local_idx / 2u, local_idx % 2u, 0u);
+    workgroupBarrier();
+
+    for (var iter: u32 = 0u; iter < num_iters; iter++) {
+        // Kick off the dequant of the *next* K-slab into the opposite ping-pong half.
+        // Skipped on the last iteration; the guard is workgroup-uniform so the barrier
+        // below remains legal.
+        if (iter + 1u < num_iters) {
+            let next_k = (iter + 1u) * BK;
+            let next_buf = ((iter + 1u) & 1u) * BUF_HALF;
+            dequant_b_to_buf(global_base_n, next_k, local_idx / 2u, local_idx % 2u, next_buf);
+        }
+
+        // Compute on the current (already-dequanted) buf half.
+        let cur_buf = (iter & 1u) * BUF_HALF;
         for (var k: u32 = 0; k < BK; k += kSgMatK) {
-            let b_base = (warp_c * WN) * SHMEM_STRIDE + k;
+            let b_base = cur_buf + (warp_c * WN) * SHMEM_STRIDE + k;
 
             // Load 4 B tiles from shared memory (column-major, padded stride)
             var b0: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
