@@ -929,12 +929,10 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     message(FATAL_ERROR "onnxruntime_USE_TELEMETRY is not supported for WebAssembly/Emscripten builds: "
                         "the 1DS telemetry SDK is excluded on Emscripten. Disable telemetry for WASM builds.")
   endif()
-  if(onnxruntime_USE_VCPKG AND NOT ANDROID)
-    # Consume the 1DS SDK from the vcpkg port "cpp-client-telemetry", which exposes the
-    # MSTelemetry::mat target with its include directories and transitive dependencies
-    # (curl/nlohmann-json/sqlite3/zlib) already wired up via vcpkg. None of the FetchContent
-    # workarounds below are needed on this path.
-    find_package(MSTelemetry CONFIG REQUIRED)
+  set(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE OFF)
+  if(TARGET MSTelemetry::mat AND NOT ANDROID)
+    message(STATUS "Telemetry: using the caller-supplied MSTelemetry::mat package")
+    set(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE ON)
   else()
     # Linux packages must not depend on a host libcurl. Build an internal HTTP(S)-only static curl
     # before configuring 1DS so its CURL::libcurl reference resolves to the pinned target.
@@ -966,6 +964,7 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     # deployment target or adding empty -miphoneos-version-min flags.
     # The SDK's internal xcodebuild call may fail (license issues), but cmake's
     # toolchain already provides the correct sysroot via CMAKE_OSX_SYSROOT.
+    set(_ort_mac_arch_inferred OFF)
     if(APPLE)
       if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
         set(BUILD_IOS YES CACHE BOOL "Tell 1DS SDK this is an iOS build" FORCE)
@@ -988,10 +987,17 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
           endif()
         endif()
       else()
-        if(NOT DEFINED MAC_ARCH)
-          set(MAC_ARCH "${CMAKE_OSX_ARCHITECTURES}" CACHE STRING "Architecture for 1DS SDK on macOS" FORCE)
-          if(NOT MAC_ARCH)
-            set(MAC_ARCH "${CMAKE_SYSTEM_PROCESSOR}" CACHE STRING "Architecture for 1DS SDK on macOS" FORCE)
+        if(NOT MAC_ARCH)
+          if(CMAKE_OSX_ARCHITECTURES)
+            list(LENGTH CMAKE_OSX_ARCHITECTURES _ort_macos_arch_count)
+            if(_ort_macos_arch_count EQUAL 1)
+              set(MAC_ARCH "${CMAKE_OSX_ARCHITECTURES}")
+              set(_ort_mac_arch_inferred ON)
+            endif()
+            unset(_ort_macos_arch_count)
+          elseif(CMAKE_SYSTEM_PROCESSOR)
+            set(MAC_ARCH "${CMAKE_SYSTEM_PROCESSOR}")
+            set(_ort_mac_arch_inferred ON)
           endif()
         endif()
       endif()
@@ -1003,25 +1009,25 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     # broken or non-relocatable package when it is unavailable.
     if(NOT Patch_FOUND)
       message(FATAL_ERROR
-        "onnxruntime_USE_TELEMETRY with the FetchContent cpp_client_telemetry fallback requires the patch tool. "
-        "Install 'patch' or, for non-Android builds, use --use_vcpkg so MSTelemetry::mat is provided by the "
-        "vcpkg port.")
+        "onnxruntime_USE_TELEMETRY requires the patch tool to build cpp_client_telemetry. Install 'patch'.")
     endif()
     set(ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND
       ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/cpp_client_telemetry/cpp_client_telemetry.patch)
-    # Tell the SDK (via its patched lib/CMakeLists.txt) to build sqlite3 and zlib from its vendored
-    # sources instead of linking imported/system libs. Needed on iOS (the vendored zlib headers rename
-    # symbols to act_z_*, so system zlib cannot satisfy them) and for static non-Apple packages
-    # (imported targets like SQLite::SQLite3 / ZLIB::ZLIB cannot be installed into ORT's export set, so
-    # find_package(onnxruntime) against a static install would otherwise fail on a missing dependency).
-    if(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR (NOT APPLE AND NOT onnxruntime_BUILD_SHARED_LIB))
-      set(MATSDK_BUNDLE_VENDORED_DEPS ON)
+    # Keep telemetry self-contained regardless of whether the outer ORT build uses vcpkg. The SDK's
+    # vendored sqlite3/zlib targets avoid host packages and are exportable with static ORT packages.
+    set(MATSDK_BUNDLE_VENDORED_DEPS ON)
+
+    # The outer vcpkg toolchain would otherwise make 1DS consume its vcpkg dependency mode, which
+    # reintroduces the uncached cpp-client-telemetry/curl/OpenSSL graph and breaks Android's Java
+    # transport. Save the caller's cache entry, force the self-contained mode, and restore it below.
+    get_property(_ort_matsdk_vcpkg_was_set CACHE MATSDK_USE_VCPKG_DEPS PROPERTY TYPE SET)
+    if(_ort_matsdk_vcpkg_was_set)
+      get_property(_ort_matsdk_vcpkg_type CACHE MATSDK_USE_VCPKG_DEPS PROPERTY TYPE)
+      get_property(_ort_matsdk_vcpkg_help CACHE MATSDK_USE_VCPKG_DEPS PROPERTY HELPSTRING)
+      get_property(_ort_matsdk_vcpkg_value CACHE MATSDK_USE_VCPKG_DEPS PROPERTY VALUE)
     endif()
-    if(ANDROID)
-      # The outer vcpkg toolchain would otherwise make the SDK auto-enable its vcpkg mode, which
-      # selects HttpClient_Curl instead of the Java-backed Android transport.
-      set(MATSDK_USE_VCPKG_DEPS OFF CACHE BOOL "Use the 1DS Android Java transport" FORCE)
-    endif()
+    set(MATSDK_USE_VCPKG_DEPS OFF)
+    set(MATSDK_USE_VCPKG_DEPS OFF CACHE BOOL "Use self-contained 1DS dependencies" FORCE)
     onnxruntime_fetchcontent_declare(
       cpp_client_telemetry
       URL ${DEP_URL_cpp_client_telemetry}
@@ -1030,9 +1036,27 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
       EXCLUDE_FROM_ALL
     )
     onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
-    if(ANDROID)
+    if(_ort_mac_arch_inferred)
+      unset(MAC_ARCH)
+    endif()
+    unset(_ort_mac_arch_inferred)
+    unset(MATSDK_USE_VCPKG_DEPS)
+    if(_ort_matsdk_vcpkg_was_set)
+      if(_ort_matsdk_vcpkg_type STREQUAL "UNINITIALIZED")
+        set(_ort_matsdk_vcpkg_type BOOL)
+      endif()
+      set(MATSDK_USE_VCPKG_DEPS
+          "${_ort_matsdk_vcpkg_value}"
+          CACHE "${_ort_matsdk_vcpkg_type}"
+          "${_ort_matsdk_vcpkg_help}"
+          FORCE)
+    else()
       unset(MATSDK_USE_VCPKG_DEPS CACHE)
     endif()
+    unset(_ort_matsdk_vcpkg_was_set)
+    unset(_ort_matsdk_vcpkg_type)
+    unset(_ort_matsdk_vcpkg_help)
+    unset(_ort_matsdk_vcpkg_value)
 
     if(ANDROID)
       string(CONCAT _ort_android_telemetry_java_source_dir
@@ -1091,13 +1115,12 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
         $<$<CXX_COMPILER_ID:GNU>:-Wno-reorder>
         $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-reorder-ctor>
       )
-      # The 1DS SDK's iOS path calls xcodebuild to find the sysroot, which can fail (license not
-      # accepted, missing tools) and leave CMAKE_OSX_SYSROOT empty in its scope. Force the correct
-      # sysroot on mat and the bundled C archives it links via compile options.
-      if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND CMAKE_OSX_SYSROOT)
+      # Vendored 1DS dependencies emit unavoidable narrowing warnings under Apple's warning policy.
+      # Keep the warning enabled for ORT sources while suppressing it only for third-party targets.
+      if(APPLE)
         foreach(_ort_mat_tgt mat sqlite3_bundled zlib_bundled)
           if(TARGET ${_ort_mat_tgt})
-            target_compile_options(${_ort_mat_tgt} PRIVATE "-isysroot" "${CMAKE_OSX_SYSROOT}")
+            target_compile_options(${_ort_mat_tgt} PRIVATE -Wno-shorten-64-to-32)
           endif()
         endforeach()
       endif()
