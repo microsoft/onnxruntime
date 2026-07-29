@@ -37,6 +37,7 @@ Abstract:
 #ifdef USE_KLEIDIAI
 #include "kai/kai_common.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0.h"
+#include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32ps1s0nrx4_qsu4c32s1s0_neon.h"
 #include "kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qai4c32p_qau4c32s0s1_f32_f32_f32_neon.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s0s1_f32_f32_f32_neon.h"
@@ -86,7 +87,21 @@ QNBitGemmPackQuantBDataSize(
                     const size_t nr = ukernel.get_nr();
                     const size_t kr = ukernel.get_kr();
                     const size_t sr = ukernel.get_sr();
-                    size_t packed_size = kai_get_rhs_packed_size_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(N, K, nr, kr, sr, BlkLen, kai_dt_bf16);
+                    size_t packed_size;
+                    switch (k.rhs_layout) {
+                        case KaiQ4RhsPackLayout::SymmetricNxK:
+                            packed_size = kai_get_rhs_packed_size_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(
+                                N, K, nr, kr, sr, BlkLen, kai_dt_bf16);
+                            break;
+                        case KaiQ4RhsPackLayout::SymmetricNxKInterleavedNrx4:
+                            packed_size =
+                                kai_get_rhs_packed_size_rhs_pack_nxk_qsi4c32ps1s0nrx4_qsu4c32s1s0_neon(
+                                    N, K, nr, kr, sr, BlkLen, kai_dt_bf16);
+                            break;
+                        default:
+                            MLAS_THROW_EX(std::runtime_error,
+                                          "Unexpected RHS layout for symmetric Q4 backend.");
+                    }
                     if (HasZeroPoint) {
                         // Align so that BZpCorrection starts at a float-aligned offset
                         constexpr size_t FloatAlignment = alignof(float);
@@ -110,9 +125,8 @@ QNBitGemmPackQuantBDataSize(
                         case KaiQ4RhsPackLayout::AsymmetricNxKInterleavedNrx4:
                             return kai_get_rhs_packed_size_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s0s1_f32_f32_f32_neon(N, K, nr, kr, BlkLen);
                         default:
-                            // Invalid layout for the asymmetric Q4 backend.
-                            assert(false);
-                            return 0;
+                            MLAS_THROW_EX(std::runtime_error,
+                                          "Unexpected RHS layout for asymmetric Q4 backend.");
                     }
                 }
                 case KleidiAIQ4Backend::None:
@@ -276,10 +290,24 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
                         scales[i] = static_cast<uint16_t>(bits >> 16);
                     }
 
-                    kai_run_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(1, N, K, nr, kr, sr, BlkLen,
-                            reinterpret_cast<const uint8_t*>(QuantBDataBegin), BlockCountK * BlkLen / 2,
-                            nullptr, scales.data(), BlockCountK * sizeof(uint16_t),
-                            PackedQuantBDataBegin, 0, &params);
+                    const auto* rhs = reinterpret_cast<const uint8_t*>(QuantBDataBegin);
+                    const size_t rhs_stride = BlockCountK * BlkLen / 2;
+                    const size_t scale_stride = BlockCountK * sizeof(uint16_t);
+                    switch (k.rhs_layout) {
+                        case KaiQ4RhsPackLayout::SymmetricNxK:
+                            kai_run_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(
+                                1, N, K, nr, kr, sr, BlkLen, rhs, rhs_stride, nullptr, scales.data(), scale_stride,
+                                PackedQuantBDataBegin, 0, &params);
+                            break;
+                        case KaiQ4RhsPackLayout::SymmetricNxKInterleavedNrx4:
+                            kai_run_rhs_pack_nxk_qsi4c32ps1s0nrx4_qsu4c32s1s0_neon(
+                                1, N, K, nr, kr, sr, BlkLen, rhs, rhs_stride, nullptr, scales.data(), scale_stride,
+                                PackedQuantBDataBegin, 0, &params);
+                            break;
+                        default:
+                            MLAS_THROW_EX(std::runtime_error,
+                                          "Unexpected RHS layout for symmetric Q4 backend.");
+                    }
 
                     break;
                 }
@@ -369,7 +397,8 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
                                 break;
                             }
                             default:
-                                assert(false);
+                                MLAS_THROW_EX(std::runtime_error,
+                                              "Unexpected RHS layout for asymmetric Q4 backend.");
                         }
                     }
                     break;
@@ -678,12 +707,24 @@ SelectKleidiAIQ4Backend(size_t K, size_t BlkLen, bool HasZp, const MLAS_BACKEND_
         return KleidiAIQ4Backend::Qsi8d32pQai4c32p;
     }
 
-    if (!HasZp && has_neon_q4) {
+    if (!HasZp && (cpuid.HasArm_SME2() || has_neon_q4)) {
         return KleidiAIQ4Backend::Qai8dxpQsi4c32p;
     }
 
     return KleidiAIQ4Backend::None;
 }
+
+#if defined(MLAS_ENABLE_TEST_HOOKS) && defined(USE_KLEIDIAI)
+const char* GetKleidiAIQ4GemmKernelNameForTesting()
+{
+    return GetKleidiAIGemmUKernel().name;
+}
+
+const char* GetKleidiAIQ4GemvKernelNameForTesting()
+{
+    return GetKleidiAIGemvUKernel().name;
+}
+#endif
 
 template<bool QuantAUnsigned>
 size_t
