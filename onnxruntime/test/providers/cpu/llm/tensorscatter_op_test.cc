@@ -373,9 +373,11 @@ TEST(TensorScatterTest, StringType_NotSupported) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
   // The graph resolver rejects the node when no kernel matches the string
-  // element type. The exact message is provider-dependent, so match on the
-  // common substring surfaced by the kernel lookup.
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Failed to find kernel for",
+  // element type. The exact wording differs between the graph-partitioner
+  // path ("Could not find an implementation for ...") and the later kernel
+  // lookup path ("Failed to find kernel for ..."), so match on the op name
+  // which is present in both.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "TensorScatter",
            {}, nullptr, &execution_providers);
 }
 
