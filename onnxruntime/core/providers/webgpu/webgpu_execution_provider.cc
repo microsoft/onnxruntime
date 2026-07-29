@@ -30,6 +30,7 @@
 #include "core/providers/webgpu/external_data_loader.h"
 #include "core/providers/webgpu/webgpu_profiler.h"
 #include "core/providers/webgpu/tensor/cast.h"
+#include "core/providers/webgpu/tensor/concat.h"
 #include "core/providers/webgpu/tensor/expand.h"
 #include "core/providers/webgpu/tensor/grid_sample.h"
 #include "core/providers/webgpu/tensor/reshape.h"
@@ -345,11 +346,6 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, Softmax)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, Softmax)>,
 
-    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 3, Concat)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 4, 10, Concat)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, Concat)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, Concat)>,
-
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 1, Split)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 2, 10, Split)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, Split)>,
@@ -513,6 +509,12 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo<21, 22>(enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo<23, 24>(enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeKernelInfo<25>(enable_int64)));
+
+  // Register Concat kernels with conditional int64 support
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateConcatVersionedKernelInfo<1, 3>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateConcatVersionedKernelInfo<4, 10>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateConcatVersionedKernelInfo<11, 12>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateConcatKernelInfo<13>(enable_int64)));
 
   // Register Equal kernels with conditional int64 support
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateEqualVersionedKernelInfo<7, 10>(enable_int64)));

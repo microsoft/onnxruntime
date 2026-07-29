@@ -6,37 +6,62 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/shader_variable.h"
+#include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-#define WEBGPU_CONCAT_VERSIONED_KERNEL(start, end)            \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                          \
-      Concat,                                                 \
-      kOnnxDomain,                                            \
-      start,                                                  \
-      end,                                                    \
-      kWebGpuExecutionProvider,                               \
-      (*KernelDefBuilder::Create())                           \
-          .TypeConstraint("T", WebGpuSupportedNumberTypes()), \
-      Concat);
+// Concat is a pure data-movement op: elements are copied, never interpreted in shader arithmetic,
+// so enabling int64 is safe and needs no shader changes. Note the WebGPU EP represents int64 with a
+// 32-bit value type, so element values are effectively limited to the int32 range (same behavior as
+// other int64-capable kernels such as Expand).
+template <int StartVersion, int EndVersion>
+KernelCreateInfo CreateConcatVersionedKernelInfo(bool enable_int64) {
+  std::vector<MLDataType> type_constraints = GetOpTypeConstraints(enable_int64, /*enable_bool=*/false);
 
-#define WEBGPU_CONCAT_KERNEL(version)                         \
-  ONNX_OPERATOR_KERNEL_EX(                                    \
-      Concat,                                                 \
-      kOnnxDomain,                                            \
-      version,                                                \
-      kWebGpuExecutionProvider,                               \
-      (*KernelDefBuilder::Create())                           \
-          .TypeConstraint("T", WebGpuSupportedNumberTypes()), \
-      Concat);
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Concat>(info);
+    return Status::OK();
+  };
 
-WEBGPU_CONCAT_VERSIONED_KERNEL(1, 3)
-WEBGPU_CONCAT_VERSIONED_KERNEL(4, 10)
-WEBGPU_CONCAT_VERSIONED_KERNEL(11, 12)
-WEBGPU_CONCAT_KERNEL(13)
+  return {
+      KernelDefBuilder()
+          .SetName("Concat")
+          .SetDomain(kOnnxDomain)
+          .SinceVersion(StartVersion, EndVersion)
+          .Provider(kWebGpuExecutionProvider)
+          .TypeConstraint("T", std::move(type_constraints))
+          .Build(),
+      kernel_create_fn};
+}
+
+template <int SinceVersion>
+KernelCreateInfo CreateConcatKernelInfo(bool enable_int64) {
+  std::vector<MLDataType> type_constraints = GetOpTypeConstraints(enable_int64, /*enable_bool=*/false);
+
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Concat>(info);
+    return Status::OK();
+  };
+
+  return {
+      KernelDefBuilder()
+          .SetName("Concat")
+          .SetDomain(kOnnxDomain)
+          .SinceVersion(SinceVersion)
+          .Provider(kWebGpuExecutionProvider)
+          .TypeConstraint("T", std::move(type_constraints))
+          .Build(),
+      kernel_create_fn};
+}
+
+// Explicit template instantiations
+template KernelCreateInfo CreateConcatVersionedKernelInfo<1, 3>(bool);
+template KernelCreateInfo CreateConcatVersionedKernelInfo<4, 10>(bool);
+template KernelCreateInfo CreateConcatVersionedKernelInfo<11, 12>(bool);
+template KernelCreateInfo CreateConcatKernelInfo<13>(bool);
 
 void AppendCalculateInputIndexFunction(OStringStream& os, size_t input_count) {
   os << "fn calculate_input_index(global_idx: u32) -> u32 {\n"
