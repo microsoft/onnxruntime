@@ -641,6 +641,10 @@ TEST(SignalOpsTest, DFT20_Float16_radix2) { TestRadix2DFTFloat16(kOpsetVersion20
 static void TestIRFFTSpectrumLengthMismatchFloat(const vector<float>& input, int64_t input_bins,
                                                  int64_t dft_length, const vector<float>& expected_output,
                                                  int since_version, bool exclude_cpu) {
+  if (exclude_cpu && nullptr == DefaultWebGpuExecutionProvider().get()) {
+    GTEST_SKIP() << "Test requires the WebGPU execution provider when the CPU radix-2 path is excluded.";
+  }
+
   OpTester test("DFT", since_version);
 
   test.AddInput<float>("input", {1, input_bins, 2}, input);
