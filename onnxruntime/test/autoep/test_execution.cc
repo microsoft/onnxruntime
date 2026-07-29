@@ -894,7 +894,7 @@ TEST(OrtEpLibrary, PluginEp_WeightlessMode_ErrorWhenEpDoesNotSupport) {
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_virt_gpu_info, example_ep));
   Ort::ConstEpDevice plugin_ep_device(example_ep.get());
 
-  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/add_mul_add.onnx");
   const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_weightless_error_test.onnx");
   std::filesystem::remove(output_model_file);
 
