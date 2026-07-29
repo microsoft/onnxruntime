@@ -377,12 +377,15 @@ The helper distinguishes trust based on the `OrtGraph*`:
   special files — notably a FIFO left inside the model directory, which passes containment and would
   block an `ifstream` open (a cheap DoS). The check is advisory, not a security boundary: the path can
   change between the check and the open (TOCTOU); a race-free variant would inspect the opened handle.
-- **A symlink write target is rejected outright** (`symlink_status`, which inspects the link itself
-  rather than following it). Containment alone does not cover this case: a *dangling* symlink has no
-  target for `weakly_canonical` to resolve, so it stays lexically inside the model directory and passes
-  the containment check, yet an `ofstream` would follow it and create the file wherever it points. A
-  `status`-based test cannot catch it either, because the missing target reports as `not_found` — the
-  same result as the ordinary "new file" case that writes must allow.
+- **A symlink write target is rejected** (`symlink_status`, which inspects the link itself rather than
+  following it). This covers what containment cannot: a *dangling* symlink has no target for
+  `weakly_canonical` to resolve, so the link path survives resolution, stays lexically inside the model
+  directory and passes the containment check — yet an `ofstream` would follow it and create the file
+  wherever it points. A `status`-based test cannot catch it either, because the missing target reports
+  as `not_found`, the same result as the ordinary "new file" case that writes must allow. Note the
+  division of labor: a model-relative symlink that *does* resolve is replaced by its target during
+  resolution, so containment is what constrains those writes; this check covers the dangling case and
+  trusted (`graph == nullptr`) paths, which skip resolution altogether.
 
 ## Application Flows
 

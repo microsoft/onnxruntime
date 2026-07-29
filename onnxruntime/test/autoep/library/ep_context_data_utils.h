@@ -181,11 +181,15 @@ inline OrtStatus* EnsureRegularFileForRead(const OrtApi& api, const std::filesys
 // Write counterpart: a not-yet-existing target is the normal case and is allowed, but an existing target must be a
 // regular file. Same advisory (TOCTOU) caveat as EnsureRegularFileForRead().
 //
-// A symlink leaf is rejected outright, which closes a gap the containment check alone cannot: a *dangling* symlink
-// (one whose target does not exist yet) is not traversed by weakly_canonical(), so it passes containment while
-// pointing outside the model directory, and an ofstream would then follow it and create the target there. Testing
-// the link itself requires symlink_status(), which does not follow links - status() would report the (missing)
-// target as not_found and wave the write through.
+// A symlink leaf is rejected. This closes a gap containment alone cannot: a *dangling* symlink (one whose target
+// does not exist yet) reports as not_found, so weakly_canonical() leaves the link path untouched and it passes
+// containment while pointing outside the model directory - an ofstream would then follow it and create the target
+// there. Detecting that requires symlink_status(), which inspects the link instead of following it; status() would
+// report the missing target as not_found and wave the write through.
+//
+// Note the division of labor: for a model-relative name that resolves, weakly_canonical() has already replaced the
+// link with its target before this runs, so containment is what constrains those writes. This check is what covers
+// the dangling case, and trusted (graph == nullptr) paths, which skip resolution altogether.
 inline OrtStatus* EnsureRegularFileForWrite(const OrtApi& api, const std::filesystem::path& data_path) {
   std::error_code symlink_ec;
   const std::filesystem::file_status link_status = std::filesystem::symlink_status(data_path, symlink_ec);

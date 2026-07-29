@@ -288,9 +288,10 @@ TEST(OrtEpLibrary, EpContextDataUtils_RejectsSymlinkWriteTargets) {
   ModelEditorGraph graph;
   graph.model_path = model_dir / "model.onnx";
 
-  // A *dangling* symlink is the dangerous case. weakly_canonical() cannot resolve a target that does not exist yet,
-  // so the link stays lexically inside the model directory and passes containment - but an ofstream would follow it
-  // and create the payload outside. Only a check on the link itself (symlink_status) rejects this.
+  // A *dangling* symlink is the dangerous case. weakly_canonical() only canonicalizes the longest existing prefix,
+  // and a dangling link reports as not_found, so the link path itself survives resolution: it stays lexically inside
+  // the model directory and passes containment, yet an ofstream would follow it and create the payload outside.
+  // symlink_status() inspects the link rather than following it, which is what rejects this.
   const std::filesystem::path dangling_link = model_dir / "dangling.ctx";
   const std::filesystem::path escape_target = std::filesystem::path{".."} / outside_dir.filename() / "escaped.ctx";
   std::error_code symlink_error;
@@ -306,14 +307,32 @@ TEST(OrtEpLibrary, EpContextDataUtils_RejectsSymlinkWriteTargets) {
   // The escape is what actually matters: nothing may have been created outside the model directory.
   EXPECT_FALSE(std::filesystem::exists(outside_dir / "escaped.ctx"));
 
-  // A symlink pointing at an existing regular file inside the model directory is rejected by the same gate, so a
-  // write can never land somewhere other than the path the caller named.
+  // A symlink that *does* resolve is handled by containment instead, because weakly_canonical() resolves it before
+  // the write gate sees the path. Pointing outside the model directory is therefore rejected as a containment
+  // failure, not as a symlink - the resolved target is what gets checked.
+  std::string outside_target_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, outside_dir / "target.ctx", outside_target_name));
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataToFile(api, outside_target_name.c_str(), nullptr,
+                                                                      payload.data(), payload.size()));
+  const std::filesystem::path escaping_link = model_dir / "escaping.ctx";
+  std::filesystem::create_symlink(std::filesystem::path{".."} / outside_dir.filename() / "target.ctx", escaping_link,
+                                  symlink_error);
+  if (!symlink_error) {
+    ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataToFile(api, "escaping.ctx", graph.ToExternal(),
+                                                                         payload.data(), payload.size()),
+                         ORT_INVALID_ARGUMENT, "within the model directory");
+  }
+
+  // A trusted caller (graph == nullptr) skips resolution entirely, so the write gate is the only thing standing
+  // between the caller and the link - and here it does reject an ordinary, resolvable symlink.
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataToFile(api, "real.ctx", graph.ToExternal(),
                                                                       payload.data(), payload.size()));
   const std::filesystem::path inside_link = model_dir / "inside.ctx";
   std::filesystem::create_symlink(std::filesystem::path{"real.ctx"}, inside_link, symlink_error);
   if (!symlink_error) {
-    ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataToFile(api, "inside.ctx", graph.ToExternal(),
+    std::string inside_link_name;
+    ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, inside_link, inside_link_name));
+    ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataToFile(api, inside_link_name.c_str(), nullptr,
                                                                          payload.data(), payload.size()),
                          ORT_INVALID_ARGUMENT, "must not be a symlink");
   }
