@@ -349,6 +349,26 @@ attention_metadata : (2,) int32, OrtMemTypeCPUInput
 `total_kv_tokens` is **not** part of the input. It was only ever used to size the MEA gather buffer,
 which must now be sized by `batch_size * max_kv_len_bound` so that the allocation is replay-invariant.
 
+> **Implementation note (partially implemented).** `attention_metadata` exists as input 16 with the
+> semantics above, and the readback is skipped whenever the bounds *prove* the paged decode backend
+> will be selected: `max_query_len_bound == 1` together with `token_count == batch_size` shows every
+> sequence contributes exactly one new token, and the decode backend needs nothing else from the
+> host (`max_kv_len_bound`, clamped to `block_table.shape[1] * block_size`, sizes the split count;
+> XQA does not even need that). Measured with nsys on a single-node decode graph, this removes one
+> `cudaStreamSynchronize` and two D→H `cudaMemcpyAsync` per node per `Run`, leaving zero of either.
+>
+> The sync is therefore gone for the case CUDA Graphs care about, but not yet *unconditional*. Two
+> pieces remain:
+>
+> 1. The gather backends (MemoryEfficientAttention, and FlashAttention on a quantized cache) stage
+>    the live context into a buffer indexed by the **exact** `total_kv_tokens`. Sizing it by
+>    `batch_size * max_kv_len_bound` as prescribed above is what lets them drop the readback too.
+> 2. Selecting the decode backend from the shape test alone requires the decode kernel to stay
+>    correct when a sequence contributes more than one token (§13). Until then the proof has to come
+>    from `max_query_len_bound`, so a producer that supplies no metadata still pays for the readback.
+>
+> Both only affect prefill and chunked-prefill steps, which are not captured into a graph.
+
 Producers additionally owe the usual CUDA-graph obligations, which are outside this operator's
 contract: fixed device addresses for `key_cache`, `value_cache`, `block_table`, `past_seqlens` and
 `cumulative_sequence_length` across replays, and separate captures for prefill and decode.
@@ -1221,10 +1241,11 @@ as GQA does, so that `ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO=1` works uniformly 
 > or FlashAttention is ineligible, since Flash's tensor-core decode path is faster on an unquantized
 > cache. Priority 0 (MLA) is still unimplemented.
 >
-> The gate currently reads `max_query_len == 1`, obtained from the unconditional D→H sync, which is
-> what makes the op uncapturable (§18.4). Moving to the shape test of §4.7 additionally requires the
-> kernel to stay correct when a sequence contributes more than one token — today that case is
-> excluded by the gate rather than handled.
+> The gate reads `max_query_len == 1`. That value now comes from `attention_metadata` when the
+> caller supplies a bound of 1, and only otherwise from the D→H sync (§4.7). Moving to the shape
+> test of §4.7 -- and so dropping the sync even without metadata -- additionally requires the kernel
+> to stay correct when a sequence contributes more than one token; today that case is excluded by
+> the gate rather than handled.
 
 ## 14. Shared Code with GroupQueryAttention
 
