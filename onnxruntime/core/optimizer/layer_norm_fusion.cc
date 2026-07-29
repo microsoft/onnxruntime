@@ -464,9 +464,13 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // can be removed. This is one possible place a Cast Op can exist, that is between Div and Mul nodes.
     // div --> mul or div --> cast --> mul
     Node* next_node = graph.GetNode(div_node.OutputNodesBegin()->Index());
+    // The Mul input fed by the matched subgraph (Div output, or Cast output if a Cast follows Div).
+    // Its producer is removed by the fusion, so it is not a valid scale candidate.
+    const NodeArg* p_div_output = div_node.MutableOutputDefs()[0];
     if (graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Cast", {9, 13, 19, 21, 23, 24, 25}) &&
         optimizer_utils::CheckOutputEdges(graph, *next_node, 1)) {
       nodes_to_remove.push_back(*next_node);
+      p_div_output = next_node->MutableOutputDefs()[0];
       next_node = graph.GetNode(next_node->OutputNodesBegin()->Index());
     }
     // Apex O2 pattern specific match ends...
@@ -522,7 +526,8 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     NodeArg* scale = nullptr;
     NodeArg* bias = nullptr;
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
-      if (mul_node.MutableInputDefs()[i]->Shape() == nullptr) {
+      if (mul_node.MutableInputDefs()[i]->Shape() == nullptr ||
+          mul_node.MutableInputDefs()[i] == p_div_output) {
         continue;
       }
       if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
@@ -531,7 +536,9 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
 
     for (size_t i = 0; i < last_add_node.MutableInputDefs().size(); i++) {
-      if (last_add_node.MutableInputDefs()[i]->Shape() == nullptr) {
+      // The Mul output is removed by the fusion, so it is not a valid bias candidate.
+      if (last_add_node.MutableInputDefs()[i]->Shape() == nullptr ||
+          last_add_node.MutableInputDefs()[i] == mul_node.MutableOutputDefs()[0]) {
         continue;
       }
       if (last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
@@ -752,10 +759,14 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
 
     // div --> mul or div --> cast --> mul
     Node* next_node = graph.GetNode(div_node.OutputNodesBegin()->Index());
+    // The Mul input fed by the matched subgraph (Div output, or Cast output if a Cast follows Div).
+    // Its producer is removed by the fusion, so it is not a valid scale candidate.
+    const NodeArg* p_div_output = div_node.MutableOutputDefs()[0];
     if (graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Cast", {9, 13, 19, 21, 23, 24, 25}) &&
         optimizer_utils::CheckOutputEdges(graph, *next_node, 1)) {
       if (!is_gpu_ep) continue;
       nodes_to_remove.push_back(*next_node);
+      p_div_output = next_node->MutableOutputDefs()[0];
       next_node = graph.GetNode(next_node->OutputNodesBegin()->Index());
     }
 
@@ -792,7 +803,8 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // because SkipLayerNorm kernel, for example, has dependency on single dim size
     NodeArg* scale = nullptr;
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
-      if (mul_node.MutableInputDefs()[i]->Shape() == nullptr) {
+      if (mul_node.MutableInputDefs()[i]->Shape() == nullptr ||
+          mul_node.MutableInputDefs()[i] == p_div_output) {
         continue;
       }
 #ifdef ENABLE_TRAINING_CORE
