@@ -679,6 +679,298 @@ fp32 accumulator with fp16 A/B). Register cost: ~2× the accumulator footprint
 
 ---
 
+## 11. Addendum (2026-07-22): Fusion-shape taxonomy, prepack semantics, and NVIDIA-Vulkan ShaderF16 toggle
+
+This addendum captures design discussion that occurred after the original doc
+was written. Nothing above is invalidated; this refines and extends §§ 3–5.
+
+### 11.1 What the `PrepackProgram` actually does — and its scope
+
+The prepack kernel
+([subgroup_matrix_matmul_nbits_prepack.wgsl.template](../../onnxruntime/contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits_prepack.wgsl.template))
+is **not** a general matmul optimization. It exists exclusively because the
+WGSL `subgroupMatrixLoad` intrinsic (which lowers to `VK_KHR_cooperative_matrix`
+`OpCooperativeMatrixLoad`) expects the matrix fragment source memory to be laid
+out in a specific tiled order — each `(sg_mat_m × sg_mat_k)` fragment sitting
+contiguously — so all subgroup lanes can coalesce their fragment loads.
+
+Row-major A does not satisfy this layout. The prepack rearranges A from
+row-major `[M, K]` into a "blocks-of-blocks" layout where fragment tiles are
+contiguous. For the NVIDIA 16×16×16 config that means every 16×16 sub-tile
+becomes 256 consecutive fp16 elements. Padding: the prepack output is padded
+to `padded_M = ceil(M / tile_size_a) * tile_size_a` so all subgroups read
+valid data at tile boundaries.
+
+**Applicability**: 100% specific to the subgroup-matrix matmul path. The
+`config.needsPrepack` flag is checked at
+[subgroup_matrix_matmul_nbits.cc:181](../../onnxruntime/contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.cc#L181)
+and may be `false` on some configs (e.g., certain Apple Metal configs where
+the tile-shape matches Metal's native SIMD-group layout without reshaping).
+Other MatMulNBits kernels — DP4A int8, wide-tile fp16, the small-M kernel —
+use conventional vec4/scalar A-loads and never need this prepack. Therefore
+**the "share the prepack" optimization discussed below only benefits the
+subgroup-matrix path**; it is invisible to DP4A/wide-tile/decode paths.
+
+### 11.2 Fusion-shape taxonomy for the prefill MLP
+
+The original doc (§§ 3–5) describes a single fused-kernel target. In
+implementation we identified **four viable shapes**, with different risk /
+reward profiles. Ordered from safest-first:
+
+#### Shape A — Share prepack; keep gate/up matmuls separate; keep silu*mul as its own kernel
+
+```
+prepack(normalized_a)                       → prepacked_a   (dispatch 1)
+matmul(prepacked_a, gate_b, gate_scales)    → gate_out      (dispatch 2)
+matmul(prepacked_a, up_b,   up_scales)      → up_out        (dispatch 3)
+silu*mul(gate_out, up_out)                  → y             (dispatch 4)
+```
+
+- Total dispatches: **4** (down from 6 in current unfused prefill: 1 SLN + 2 prepack + 2 matmul + 1 epilogue).
+- Refactor: split `ApplySubgroupMatrixMatMulNBits` (subgroup_matrix_matmul_nbits.cc:152) into two functions:
+  - `PrepackAForSubgroupMatrixMatMulNBits(a, ...) → prepacked_a`
+  - `ApplyPrepackedSubgroupMatrixMatMulNBits(prepacked_a, b, scales, ...)`
+  Existing call sites in `matmul_nbits.cc` become `PrepackA(...) → ApplyPrepacked(...)`
+  (semantics-preserving); the new MLP path prepacks once and calls ApplyPrepacked twice.
+- Kernel body of the actual matmul: **unchanged**. Correctness risk: ~zero.
+- Expected uplift on prefill throughput: **5–10%**, from eliminating one redundant M·K prepack write+read pass. At M=2048, K=2048 that's ~16 MB of VRAM traffic per MLP layer.
+
+#### Shape B — Shape A + fuse silu into gate matmul, fuse mul into up matmul
+
+```
+prepack(normalized_a)                                    → prepacked_a   (dispatch 1)
+matmul(prepacked_a, gate_b) + silu epilogue              → silu_gate_out (dispatch 2)
+matmul(prepacked_a, up_b)   + "load silu_gate * mul" ep. → y             (dispatch 3)
+```
+
+- Total dispatches: **3**.
+- Eliminates the standalone silu*mul kernel and its 3-buffer `M·N` traffic pattern (read gate_out + read up_out + write y ≈ 3·M·N·2 bytes = ~72 MB at M=2048, N=6144).
+- Kernel modification is confined to the epilogue emitter of the existing subgroup matmul kernel. Two epilogue variants become template parameters (or use two shader variants). Accumulate loop is untouched, so tuning is preserved.
+- Register pressure: unchanged per kernel — silu is scalar-in-place; the up kernel's extra fp16 load hits the same tile coordinates it's writing to (cache-friendly).
+- Additional uplift over Shape A: **10–15%** at mid-M (M∈[128, 1024]), tapering above M≈1500 where matmul compute dominates the epilogue traffic.
+
+#### Shape C-dualB — Single fused matmul; two B bindings; two accumulators; silu*mul at output write
+
+```
+prepack(normalized_a)                                                       → prepacked_a   (dispatch 1)
+one kernel:
+  for k_tile in K:
+    A_tile = load prepacked_a[m_tile, k_tile]
+    subgroupMatMulAccumulate(gate_acc, A_tile, gate_b[k_tile, n_tile])
+    subgroupMatMulAccumulate(up_acc,   A_tile, up_b  [k_tile, n_tile])
+  y[m_tile, n_tile] = silu(gate_acc) * up_acc                               → y             (dispatch 2)
+```
+
+- Total dispatches: **2**.
+- **No offline concat required.** This is structurally the same idea as the existing decode fused kernel (`MatMulNBitsMlpDecodeProgram`), which already takes gate_b, gate_scales, up_b, up_scales as four separate bindings and fuses without any weight preprocessing. Scaled to prefill's tile geometry.
+- A-load amortization: `A_tile` is loaded once per K-iteration and consumed by both matmul-accumulate calls. Cuts A-side subgroup-matrix load traffic in half compared to Shape B.
+- **Main risk: 2× accumulator fragment storage per workgroup.** On the 16×16×16 config with 128×128 output tiles, each workgroup holds two `128×128` fp32 accumulator tiles (distributed across subgroup lanes, but the aggregate register/shared-mem footprint doubles). This may reduce occupancy on drivers where the single-matmul kernel is already register-pressure-limited. Whether that costs perf is workload- and driver-dependent — measure before assuming.
+- Additional uplift over Shape B (if occupancy holds): **5–10%**, primarily from halving A-load traffic and eliminating one dispatch's launch overhead. If occupancy drops one workgroup/SM, this shape can lose to Shape B.
+
+#### Shape C-fatN — Single fused matmul over concatenated B = (gate_b ‖ up_b)
+
+Same runtime shape as C-dualB, but B is a single tensor of shape `[2N, K]` and
+the kernel treats `n_tile < N_gate` as gate rows and `n_tile ≥ N_gate` as up
+rows, then merges the two halves in a second-pass epilogue over each output
+row.
+
+- **Requires an offline graph rewrite** to build `B_concat`, `scales_concat`,
+  and (if present) `zero_points_concat` — otherwise a runtime concat cost
+  negates the fusion gain. This mirrors the QKV-concat pattern already used in
+  the WebGPU EP's attention fusion.
+- Provides no correctness/perf advantage over C-dualB except cleaner uniform
+  packing (single N-dimension). C-dualB is strictly preferred unless the graph
+  rewrite already exists for other reasons.
+
+### 11.3 Recommended sequencing
+
+1. **Shape A first** — safest, ~guaranteed measurable win, prerequisite refactor for everything downstream.
+2. **Shape B second** — highest ROI extension, no kernel-body changes, no dependencies.
+3. **Shape C-dualB third**, conditional on profiling data. If Nsight shows A-load traffic dominating after Shape B, pursue it. If B-weight loads and cooperative-matrix throughput dominate, stop — Shape B is enough.
+4. **Shape C-fatN**: only if offline weight concat is being introduced anyway for other reasons (e.g., a broader "merge sibling matmul weights" graph pass). Not a first-class target.
+
+### 11.4 SkipLayerNorm: keep separate for prefill, keep fused for decode
+
+The decode fused kernel (`MatMulNBitsMlpDecodeProgram`) fuses SkipSLN into the
+matmul via the `has_skip_input` / `has_norm_input` / `has_skip_output` shader
+flags. **This is right for decode, wrong for prefill.** Reasoning:
+
+1. **Cost proportion.** At prefill M=2048 K=2048, SkipSLN costs ~24 MB of memory traffic and ~4·M·K flops. The two matmuls together are ~2·M·N·K·(bit-adjusted) flops — orders of magnitude more work. SLN is a small percentage of total MLP wall time. For decode M=1, matmul flops collapse to ~2·N·K, matmul is memory-bound on weights, and SLN's per-dispatch overhead is a real fraction of MLP wall time.
+2. **Fusion architecturally awkward at prefill scale.** SkipSLN needs the full K-row to compute per-row mean/std before any matmul K-tile can consume normalized values. Options:
+   - Two-pass A-load per matmul workgroup (reduce first, then matmul) — doubles A-side traffic, kills the fusion gain.
+   - K-wide shared-memory reduction inside the matmul kernel — blows up shared-memory pressure and hurts occupancy on the exact 16×16×16 128×128 tile config that gives peak.
+   Neither is a good trade for prefill.
+3. **Decode's fusion pays because it doesn't have this problem.** With M=1, each workgroup owns one full row of A. Norm stats reduce trivially over the workgroup's own K-tile scan. There's no cross-workgroup dependency to work around.
+
+**Practical outcome for the fused prefill MLP kernel**:
+`MatMulNBitsMlp::ComputeInternal` already has the right dispatch cascade shape.
+Under the `skip != nullptr` and `norm_scale != nullptr` branches, the existing
+code runs `RunSkipLayerNormProgram` / `RunLayerNormProgram` first, then calls
+`ApplyUnfusedMlp(normalized_a, ...)`. Adding the fused prefill kernel is one
+new function `ApplyFusedPrefillMlp(normalized_a, ...)` and one new dispatch
+condition (route to it when the matmul would use the subgroup-matrix path).
+**No changes to the SkipLayerNorm plumbing are required or desirable.**
+
+### 11.5 Where the silu*mul epilogue lives (Shape B split)
+
+For Shape B, the epilogue is split across the two matmul dispatches:
+
+- **Gate matmul's epilogue applies `silu(x) = x / (1 + exp(-x))`** to its accumulator before store. Cost: ~4 flops per output element, executed in-register on values already loaded for the store. Effectively free.
+- **Up matmul's epilogue reads `silu_gate_out[m, n]` from VRAM and multiplies** it into the up accumulator before the final store. Cost: one fp16 load per output element at the same coordinates the up kernel is about to write to — read-modify-write within L2 residency, cache-friendly.
+
+Rationale for this split (vs. putting both silu and mul in the up kernel):
+
+- Keeps each kernel's epilogue minimal and independently testable — you can
+  validate `silu(gate_matmul_out)` against a reference by multiplying by 1.
+- Symmetric split of the intermediate materialization — one full-shape write
+  (silu_gate_out) instead of two (gate_out and up_out) as in the current
+  unfused epilogue.
+- Register footprint per kernel unchanged.
+
+### 11.6 Benchmark-harness Dawn toggle drift (fixed 2026-07-22)
+
+**Symptom**: All prefill and decode benchmarks failed on the WGPU10 (Vulkan-
+only) build with `Program SkipLayerNorm requires f16 but the device does not
+support it`, despite the same source tree previously producing valid Vulkan
+fp16 numbers on an older NVIDIA driver.
+
+**Root cause**: Dawn's `PhysicalDeviceVk::ValidateFeatureSupportedWithTogglesImpl`
+[unconditionally strips `Feature::ShaderF16` on NVIDIA vendors](../../WGPU10/Release/_deps/dawn-src/src/dawn/native/vulkan/PhysicalDeviceVk.cpp)
+unless the `Toggle::VulkanEnableF16OnNvidia` (`"vulkan_enable_f16_on_nvidia"`)
+is enabled at adapter/device creation. Cite: crbug.com/42251215
+(CTS test failures). All four underlying VK physical-device bits
+(`VK_KHR_shader_float16_int8`, `shaderFloat16`, `shaderInt16`,
+`storageBuffer16BitAccess`) were `true` on the NVIDIA driver — the strip
+happens purely inside Dawn's feature validator.
+
+**Why prior runs worked**: the production `WebGpuContext::Initialize`
+(`webgpu_context.cc`) has always included `"vulkan_enable_f16_on_nvidia"` in
+`GetEnabledAdapterToggles()`. The microbenchmark harness in
+`test/onnx/microbenchmark/webgpu_matmul_nbits_decode.cc` created its own Dawn
+context without any toggles — so it was silently accumulating drift from the
+EP's toggle list. This surfaced now, not earlier, because the harness's
+Vulkan+NVIDIA+fp16 path only became a routine benchmark target recently.
+
+**Fix**: chained a `wgpu::DawnTogglesDescriptor` to both `RequestAdapterOptions.nextInChain`
+and `DeviceDescriptor.nextInChain` in `CreateSelectedWebGpuContext()`, mirroring
+the full toggle set from `WebGpuContext::GetEnabledAdapterToggles()` and
+`GetEnabledDeviceToggles()`. Enabled adapter toggles: `use_dxc`,
+`allow_unsafe_apis`, `decompose_uniform_buffers`, and (under `DAWN_ENABLE_VULKAN`)
+`use_vulkan_memory_model` + `vulkan_enable_f16_on_nvidia`. Enabled device
+toggles: `skip_validation`, `disable_robustness`, `d3d_disable_ieee_strictness`.
+
+**Non-obvious C API detail**: on the current Dawn header revision,
+`WGPURequestAdapterOptions.nextInChain` is `WGPUChainedStruct*` (non-const), so
+the cast from `wgpu::DawnTogglesDescriptor*` must be `reinterpret_cast<WGPUChainedStruct*>`,
+not `reinterpret_cast<const WGPUChainedStruct*>`.
+
+**Long-term maintenance note**: the harness toggle arrays are a copy-paste of
+`WebGpuContext`'s toggle strings. Future toggle changes in the EP will not
+automatically propagate to the benchmark. Two remediations, in order of preference:
+1. Expose `WebGpuContext::GetEnabledAdapterToggles()` and `GetEnabledDeviceToggles()`
+   as public static utility functions, then have the harness call them directly.
+2. Move the toggle string arrays into a shared header
+   (`onnxruntime/core/providers/webgpu/webgpu_dawn_toggles.h`) that both
+   `webgpu_context.cc` and the benchmark harness include.
+
+### 11.7 What changed from the "requires offline concat" claim
+
+An earlier iteration of this design (and the pre-implementation gut-check
+discussion) asserted that any "single fused matmul dispatch" version of the
+kernel would require offline concatenation of gate_b and up_b. **That was
+overstated.** Shape C-dualB (§ 11.2) is a legitimate single-dispatch fusion
+that takes gate_b, gate_scales, up_b, up_scales as four separate bindings —
+directly mirroring what `MatMulNBitsMlpDecodeProgram` already does for
+decode. The only Shape C variant that actually needs offline concat is the
+fat-N variant (C-fatN), which is strictly inferior to C-dualB.
+
+The correct constraint statement: *Shape C-dualB doubles per-workgroup
+accumulator fragment storage and therefore risks reducing occupancy on the
+16×16×16 128×128 config.* That's an occupancy question, not a graph-rewrite
+question.
+
+### 11.8 Shape D — SLN fused into the matmul K-loop (considered and rejected for prefill)
+
+For completeness, we considered a fifth fusion shape that pushes SkipLayerNorm
+into the K-loop of the fused matmul kernel itself — i.e., no separate
+SkipLayerNorm dispatch at all, even for prefill. **We are explicitly not
+pursuing this for the v1 prefill MLP fusion.** Documenting it here so future
+readers do not re-derive it and assume it's a good idea.
+
+**What Shape D would look like**:
+
+```
+one kernel:
+  // Pass 1 over K (per output row): reduce for norm stats
+  for k_tile in K:
+    A_row_tile = load a[m_tile, k_tile] + skip[m_tile, k_tile]
+    accumulate sum, sum_sq for norm
+  mean, rstd = finalize(sum, sum_sq)
+
+  // Pass 2 over K (per output tile): matmul-accumulate with on-the-fly norm
+  for k_tile in K:
+    A_row_tile   = load a[m_tile, k_tile] + skip[m_tile, k_tile]
+    A_norm_tile  = (A_row_tile - mean) * rstd * norm_scale[k_tile]
+    subgroupMatMulAccumulate(gate_acc, A_norm_tile, gate_b[k_tile, n_tile])
+    subgroupMatMulAccumulate(up_acc,   A_norm_tile, up_b  [k_tile, n_tile])
+  y[m_tile, n_tile] = silu(gate_acc) * up_acc
+```
+
+- Total dispatches: **1** (down from 2 in Shape C-dualB).
+- Removes the intermediate `normalized_a` and its `M·K·2` bytes of VRAM write+read (~16 MB per MLP layer at Qwen3-1.7B prefill M=2048).
+
+**Why we are rejecting it for prefill v1**:
+
+1. **Double A-load traffic** (fundamental, not tunable). Norm requires a
+   full K-row reduction *before* the matmul K-loop can consume normalized
+   values. That means every workgroup reads A twice — once for stats, once
+   for matmul — doubling A-side prepack loads from `M_tile·K·2` bytes to
+   `2·M_tile·K·2` bytes. The saved intermediate write is `M_tile·K·2`. **Net
+   traffic is worse, not better.**
+2. **Shared-memory pressure on the peak-throughput tile config.** Storing
+   mean+rstd per row of the M_tile requires `2·M_tile` fp32 values in
+   shared memory or across subgroup registers. Manageable at M_tile=128
+   (~1 KB), but combined with the 2× accumulator fragment storage from
+   Shape C-dualB (see §11.2), the workgroup's aggregate register + shared
+   footprint grows enough to drop one workgroup per SM at occupancy on
+   the 16×16×16 128×128 config. That single-workgroup occupancy loss
+   typically costs 8–15% throughput on RTX 40/50 series — more than the
+   ~5% traffic win it's trying to buy.
+3. **Kernel complexity explodes.** The pass-1/pass-2 structure requires a
+   full workgroup barrier between reduction finalization and the matmul
+   K-loop. It also means the kernel's WGSL source doubles in size, with
+   two separate K-loop bodies that must stay in sync as tuning parameters
+   change. Testing surface roughly triples (norm-only mode, matmul-only
+   mode, fused mode).
+4. **Debugging pathology.** When numerics go wrong, you cannot bisect —
+   there's no intermediate tensor to `printf`-inspect between the norm
+   step and the matmul step. Every other shape in §11.2 leaves at least
+   one materialized intermediate.
+5. **The problem it solves is already small at prefill.** SkipLayerNorm at
+   prefill scale is ~1–2% of MLP wall time (see §11.4). Even a *perfect*
+   fusion of SLN into the matmul, ignoring the traffic and occupancy
+   issues above, has a hard ceiling in the low single digits.
+
+**Conclusion**: Shape D is not a preferred v1 target. It **may** become
+interesting in the future *if* one of the following changes:
+
+- The subgroup-matrix path adopts a tile geometry that leaves substantial
+  spare register/shared-memory budget on NVIDIA (unlikely — the current
+  budget is already tight).
+- A future WGSL / cooperative-matrix extension exposes a "streaming A-tile
+  transform" hook that would let the norm apply lazily on-the-fly without
+  a separate pass-1 (would eliminate the double-A-load penalty).
+- Prefill workload distributions shift toward much smaller M where norm's
+  wall-time share rises. Even then, the decode fused kernel is the more
+  natural place to solve it — see §11.4.
+
+Cross-reference: this section supersedes any earlier suggestion (implicit or
+explicit) that the fused prefill kernel might absorb SkipLayerNorm.
+Non-goal §11-below already listed "SkipLayerNorm + skip input fusion" as a
+v2 candidate; Shape D is the concrete architecture that was evaluated and
+declined for v1.
+
+
 ## 11. Non-goals for v1 (explicit)
 
 The following are deferred, in decreasing priority:
