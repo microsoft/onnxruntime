@@ -273,6 +273,7 @@ TEST(MathOpTest, Clip_uint32_WebGpu) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+#ifdef USE_WEBGPU
 // int64 Clip, run explicitly on the WebGPU EP. WebGPU has no native 64-bit integer type; the EP
 // stores int64 as vec2<u32> and the dedicated ClipInt64 kernel clamps on the truncated low 32 bits
 // (interpreted as i32), then sign-extends on write. Values are kept within the int32 range -- the
@@ -403,6 +404,7 @@ TEST(MathOpTest, Clip_int64_max_only_opset12_WebGpu) {
   execution_providers.push_back(std::move(webgpu_ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+#endif  // USE_WEBGPU
 
 TEST(MathOpTest, Clip) {
   // To test NNAPI EP, we need the min/max to be in initializers
