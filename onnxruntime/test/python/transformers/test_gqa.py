@@ -141,7 +141,11 @@ class GQAConfig:
     # Test-specific parameters
     local_window_size: int = -1
     # Opt into the cache-relative (windowed) KV cache. Requires local_window_size > 0 and a
-    # past/present shared buffer whose capacity is at least local_window_size + q_sequence_length - 1.
+    # past/present shared buffer whose capacity C is at least local_window_size. There is no
+    # requirement involving q_sequence_length: a multi-token step that would need more than C
+    # entries runs against a longer staging buffer, so prefill of any length works at C == W.
+    # Slack above local_window_size is worth allocating anyway: it lets the append point drift, so
+    # the CPU kernel compacts once every C - W + 1 steps instead of on every step.
     sliding_window_cache: int = 0
     # Length of the cos/sin caches. 0 means "same as buffer_sequence_length". A windowed KV cache is
     # shorter than the sequence, so RoPE positions must be driven by a separately sized rotary cache.
@@ -4095,7 +4099,7 @@ class TestGQAWindowedKvCache(unittest.TestCase):
         self._check_parity(self._base_config(), steps)
 
     def test_chunked_prefill(self):
-        # Chunk size 128 requires capacity >= window_size + 128 - 1.
+        # Chunks of 128 fit in the capacity (128 + 256) without staging.
         # GroupQueryAttention only allows a subsequent prompt (1 < S < T) at batch_size 1.
         steps = [128] * 6 + [1] * 32
         self._check_parity(self._base_config(batch_size=1), steps)
@@ -4150,6 +4154,23 @@ class TestGQAWindowedKvCache(unittest.TestCase):
         capacity = self.window_size
         self._check_parity(
             self._base_config(batch_size=1), step_lengths=[32, 16, 1, 1], buffer_sequence_length=capacity
+        )
+
+    def test_small_slack_many_compactions(self):
+        # C == W + 8 reclaims only 9 rows per compaction, so a long decode run crosses the
+        # compaction boundary dozens of times instead of once or twice.
+        self._check_parity(
+            self._base_config(), step_lengths=[64, *([1] * 400)], buffer_sequence_length=self.window_size + 8
+        )
+
+    def test_chunked_prefill_small_slack(self):
+        # 32-token chunks onto a cache with 9 free rows: once the cache has filled, every chunk
+        # drops rows its own first query still reads, so it must stage from a drifted append point.
+        # GroupQueryAttention only allows a subsequent prompt (1 < S < T) at batch_size 1.
+        self._check_parity(
+            self._base_config(batch_size=1),
+            step_lengths=[32] * 10 + [1] * 20,
+            buffer_sequence_length=self.window_size + 8,
         )
 
     def test_capacity_too_small_is_rejected(self):

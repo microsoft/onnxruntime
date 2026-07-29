@@ -28,21 +28,25 @@ namespace {
 // ---------------------------------------------------------------------------------------------
 // Windowed ("sliding window") KV cache.
 //
-// The cache holds only the L = min(T, C) most recent positions of the sequence, at cache indices
-// [0, L), where T is the absolute total length and C the buffer capacity. Both the causal mask and
+// The cache holds only the most recent positions of the sequence, at cache indices [0, L) with
+// W <= L <= C, where W is the attention window and C the buffer capacity. Both the causal mask and
 // the local-window mask depend only on the distance between a query and a key, so translating the
 // cache coordinate system leaves them unchanged: running the existing attention paths against
 // cache-relative sequence lengths is exact. RoPE is the only position-absolute quantity, and it is
 // applied to Q/K from the absolute positions before any of this happens.
 //
-// Appending S new tokens onto absolute past length P:
-//   Lp = min(P, C)             entries currently resident in the cache
-//   E  = max(0, Lp + S - C)    entries this step pushes out of the cache
+// Resident entries live at [0, end) and new entries are appended at `end`, so a step only has to
+// move memory when the append would run past C. The oldest resident entries are usually already
+// older than the window, but the local-window mask hides them, so they can be left alone instead
+// of being shifted out one row at a time: compacting reclaims `gap = C - W + 1` rows at once and
+// therefore runs once every `gap` decode steps instead of on every step. Slack above the window is
+// what buys those free steps; at C == W, gap == 1 and every step compacts.
 //
-// A step with S == 1 evicts at most one entry, and the oldest surviving entry is still old enough
-// to cover the window (C >= W), so it is compacted in place. A step with S > 1 that would evict
-// drops entries the earliest queries of the same step still need, so it runs against a staging
-// cache of Lp + S entries and only the surviving tail is written back afterwards.
+// `end` is a pure function of the absolute past length P, so the op stays stateless across Run()
+// calls -- the cache buffer remains the only state carried between steps.
+//
+// A step whose compaction would drop rows its own earliest query still reads runs against a
+// staging cache of `end + S` entries instead, and only the surviving tail is written back.
 // ---------------------------------------------------------------------------------------------
 
 // Per-batch row geometry of one windowed step.
@@ -53,12 +57,24 @@ struct WindowedStep {
   int write_rows = 0;    // rows written back (0 when the step ran in place)
 };
 
+// Offset one past the last resident row, i.e. where the next entry is appended. Whole `gap`-sized
+// blocks are reclaimed at once, which keeps `end` in [C - gap + 1, C] once the cache has filled.
+int WindowedCacheEnd(int past_sequence_length, int capacity, int gap) {
+  if (past_sequence_length <= capacity) {
+    return past_sequence_length;  // still filling: nothing has been reclaimed yet
+  }
+  const int overflow = past_sequence_length - capacity;
+  const int reclaimed = gap * ((overflow + gap - 1) / gap);
+  return past_sequence_length - reclaimed;
+}
+
 // Fills `steps` and the cache-relative seqlens_k, and decides whether the step needs a staging
 // cache. `seqlens_k[b]` is the absolute total length minus one, i.e. T - 1 = P + S - 1.
 void PlanWindowedKvCache(const int32_t* seqlens_k,
                          int batch_size,
                          int sequence_length,
                          int capacity,
+                         int local_window_size,
                          std::vector<WindowedStep>& steps,
                          std::vector<int32_t>& cache_seqlens_k,
                          bool& use_staging,
@@ -66,27 +82,40 @@ void PlanWindowedKvCache(const int32_t* seqlens_k,
   steps.assign(batch_size, WindowedStep{});
   cache_seqlens_k.resize(batch_size);
 
+  // CheckInputs validates capacity >= local_window_size, so this is at least 1.
+  const int gap = capacity - local_window_size + 1;
+
   int max_resident = 0;
+  use_staging = false;
   for (int b = 0; b < batch_size; ++b) {
     const int past_sequence_length = seqlens_k[b] + 1 - sequence_length;  // P
-    steps[b].seed_rows = std::min(past_sequence_length, capacity);        // Lp
-    max_resident = std::max(max_resident, steps[b].seed_rows);
+    const int end_before = WindowedCacheEnd(past_sequence_length, capacity, gap);
+    const int end_after = WindowedCacheEnd(past_sequence_length + sequence_length, capacity, gap);
+    const int kept = end_after - sequence_length;  // resident rows that survive this step
+
+    // The first new row of the step is read by a query that also reaches local_window_size - 1
+    // rows further back, so compacting down to `kept` rows in place is only valid while that much
+    // history survives (all of it while the sequence is still shorter than the window).
+    const int required = std::min(past_sequence_length, local_window_size - 1);
+    use_staging = use_staging || kept < required;
+
+    steps[b].seed_rows = end_before;
+    steps[b].seed_offset = end_before - kept;  // rows dropped off the front, 0 on a drifting step
+    max_resident = std::max(max_resident, end_before);
   }
 
-  use_staging = sequence_length > 1 && max_resident + sequence_length > capacity;
   staged_capacity = use_staging ? max_resident + sequence_length : capacity;
 
   for (int b = 0; b < batch_size; ++b) {
     WindowedStep& step = steps[b];
-    const int resident = step.seed_rows;
-    const int evicted = std::max(0, resident + sequence_length - capacity);  // E
     if (use_staging) {
-      step.write_offset = evicted;
-      step.write_rows = resident + sequence_length - evicted;
+      // Seed the staging cache with everything resident, then write back only the tail that the
+      // post-step layout keeps.
+      step.write_offset = step.seed_offset;
+      step.write_rows = step.seed_rows + sequence_length - step.seed_offset;
+      step.seed_offset = 0;
     } else {
-      // Compact in place: drop the evicted rows while seeding, so the append offset moves down.
-      step.seed_offset = evicted;
-      step.seed_rows = resident - evicted;
+      step.seed_rows -= step.seed_offset;  // becomes `kept`; 0 shift on a drifting step
     }
     cache_seqlens_k[b] = static_cast<int32_t>(step.seed_rows + sequence_length - 1);
   }
@@ -95,7 +124,7 @@ void PlanWindowedKvCache(const int32_t* seqlens_k,
 // Moves whole KV rows per (batch, kv_head) between two BNSH caches whose sequence capacities may
 // differ. Rows are copied verbatim, so this is independent of the cache element type and of any
 // quantization packing. Each (batch, kv_head) slice is disjoint, so the moves are parallelized;
-// once the cache is full this runs on every decode step and is pure memory traffic.
+// this is pure memory traffic, which is why the caller skips it on a drifting step.
 void MoveKvCacheRows(const uint8_t* src,
                      uint8_t* dst,
                      int batch_size,
@@ -488,7 +517,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                   "sliding_window_cache=1 requires the present_key and present_value outputs.");
     windowed_capacity = parameters.kv_cache_capacity;
     PlanWindowedKvCache(seqlens_k->Data<int32_t>(), batch_size, sequence_length, windowed_capacity,
-                        windowed_steps, windowed_cache_seqlens, windowed_use_staging, windowed_staged_capacity);
+                        local_window_size_, windowed_steps, windowed_cache_seqlens, windowed_use_staging,
+                        windowed_staged_capacity);
 
     // Rows are moved verbatim, so the row size is taken from the cache tensor itself and covers
     // fp32/fp16 as well as the int8 and (nibble-packed) int4 quantized layouts.
@@ -524,12 +554,22 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     } else {
       // Compact in place: the surviving window moves to the front of the real cache, which then
       // doubles as the past buffer so the append below does not copy it a second time.
-      MoveKvCacheRows(past_key_bytes, static_cast<uint8_t*>(present_k->MutableDataRaw()), batch_size, kv_num_heads_,
-                      windowed_capacity, windowed_capacity, windowed_row_bytes, windowed_steps,
-                      /*write_back=*/false, windowed_thread_pool);
-      MoveKvCacheRows(past_value_bytes, static_cast<uint8_t*>(present_v->MutableDataRaw()), batch_size, kv_num_heads_,
-                      windowed_capacity, windowed_capacity, windowed_row_bytes, windowed_steps,
-                      /*write_back=*/false, windowed_thread_pool);
+      uint8_t* present_key_bytes = static_cast<uint8_t*>(present_k->MutableDataRaw());
+      uint8_t* present_value_bytes = static_cast<uint8_t*>(present_v->MutableDataRaw());
+
+      // A drifting step appends inside the buffer and reclaims nothing, so it moves no memory at
+      // all -- this is the common decode step. The copy is still needed when past and present are
+      // separate buffers, since the append below only writes the new rows.
+      const bool compacts = std::any_of(windowed_steps.begin(), windowed_steps.end(),
+                                        [](const WindowedStep& step) { return step.seed_offset > 0; });
+      if (compacts || past_key_bytes != present_key_bytes || past_value_bytes != present_value_bytes) {
+        MoveKvCacheRows(past_key_bytes, present_key_bytes, batch_size, kv_num_heads_,
+                        windowed_capacity, windowed_capacity, windowed_row_bytes, windowed_steps,
+                        /*write_back=*/false, windowed_thread_pool);
+        MoveKvCacheRows(past_value_bytes, present_value_bytes, batch_size, kv_num_heads_,
+                        windowed_capacity, windowed_capacity, windowed_row_bytes, windowed_steps,
+                        /*write_back=*/false, windowed_thread_pool);
+      }
 
       attention_past_key = present_k;
       attention_past_value = present_v;
