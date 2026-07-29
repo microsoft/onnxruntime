@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
@@ -47,6 +48,12 @@ class PagedAttention final : public CudaKernel {
   bool disable_flash_attention_;
   bool disable_memory_efficient_attention_;
   bool disable_paged_decode_;
+  // Tensor-core XQA decode kernel for a quantized paged cache. Defaults on; ORT_ENABLE_XQA=0
+  // disables it and falls back to the portable PagedDecodeSplitKV kernel.
+  bool enable_xqa_;
+  // -1 = not yet resolved, 0 = the kernel needs more shared memory than this device allows,
+  // 1 = it fits. Resolved once per node because it only depends on head_size / group size.
+  mutable std::atomic<int> xqa_shared_memory_ok_{-1};
   const AttentionKernelOptions* kernel_options_;
 };
 

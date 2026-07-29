@@ -307,6 +307,19 @@ struct PagedAttentionData {
   float* decode_partial_sum = nullptr;
   int num_splits = 1;
 
+  // Paged XQA decode workspaces. Only allocated when the XQA decode backend is selected
+  // (quantized cache, one new token per sequence -- see use_xqa_decode).
+  //   xqa_workspace   : XQA semaphores + multi-block scratch (GetXQAScratchSize bytes).
+  //   xqa_page_table  : block_table expanded from PagedAttention blocks to XQA's fixed 128-token
+  //                     pages, shape [batch_size, max_num_blocks_per_seq * pages_per_block].
+  //   xqa_query       : scratch for Q pre-scaled by a PER_CHANNEL k_scale; unused otherwise.
+  //   xqa_head_sink   : head_sink converted to fp32, which is what XQA consumes.
+  void* xqa_workspace = nullptr;
+  size_t xqa_workspace_size = 0;
+  int* xqa_page_table = nullptr;
+  T* xqa_query = nullptr;
+  float* xqa_head_sink = nullptr;
+
   // Output Tensors
   T* output = nullptr;
 
@@ -316,6 +329,10 @@ struct PagedAttentionData {
   // Paged decode kernel: reads the paged cache in place and dequantizes inside the kernel, so it
   // needs neither the dense staging buffers nor FlashAttention's page-alignment constraint.
   bool use_paged_decode = false;
+  // XQA paged decode kernel: same in-place paged read, but tensor-core based and an order of
+  // magnitude faster than the generic decode kernel on a quantized cache. Takes precedence over
+  // use_paged_decode when set.
+  bool use_xqa_decode = false;
 };
 
 }  // namespace cuda

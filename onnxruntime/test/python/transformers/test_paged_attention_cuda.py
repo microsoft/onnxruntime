@@ -1734,6 +1734,146 @@ class TestPagedAttentionPagedDecode(unittest.TestCase):
         parity_check_paged_attention(config, rtol=5e-3, atol=2e-2)
 
 
+class TestPagedAttentionXqaDecode(unittest.TestCase):
+    """Coverage for the XQA decode backend.
+
+    XQA is the tensor-core decode kernel (shared with GroupQueryAttention) reading the paged cache
+    in place. It is auto-selected ahead of the portable decode kernel when the cache is quantized
+    and the step fits its constraints: exactly one new token per sequence, head_size in {64, 128},
+    a query/KV group size in {4, 8, 16, 32}, no softcap, and block_size a multiple of 128 (a block
+    is presented to the kernel as several 128-token pages). Anything outside that falls back, which
+    is what the ORT_ENABLE_XQA=0 comparison below pins down.
+
+    Every case here is also run through the fallback so a bug in XQA shows up as a parity failure
+    rather than being masked by both paths sharing the reference."""
+
+    def setUp(self):
+        torch.manual_seed(0)
+        if not has_fp8_kv_cache():
+            self.skipTest("quantized KV cache kernels are not built")
+
+    def _config(self, **overrides):
+        kwargs = {
+            "batch_size": 4,
+            "sequence_length": 1,
+            "total_sequence_length": 1024,
+            "num_heads": 8,
+            "kv_num_heads": 2,
+            "head_size": 64,
+            "paged_kv_block_size": 256,
+            "local": False,
+            "rotary": False,
+            "rotary_interleaved": False,
+            "packed": False,
+            "softcap": 0.0,
+        }
+        feature_overrides = {k: overrides.pop(k) for k in list(overrides) if k not in kwargs}
+        kwargs.update(overrides)
+        config = Config(**kwargs)
+        for key, value in feature_overrides.items():
+            setattr(config, key, value)
+        return config
+
+    def _check_xqa(self, quant_type="PER_TENSOR", kv_cache_type="int8", rtol=5e-3, atol=5e-3, **overrides):
+        config = self._config(
+            kv_cache_type=kv_cache_type,
+            k_quant_type=quant_type,
+            v_quant_type=quant_type,
+            **overrides,
+        )
+        parity_check_paged_attention(config, rtol=rtol, atol=atol)
+
+    # ---- shapes -------------------------------------------------------------------------
+
+    @parameterized.expand([("64", 64), ("128", 128)])
+    def test_xqa_head_size(self, _, head_size):
+        self._check_xqa(head_size=head_size)
+
+    @parameterized.expand([("grp4", 8, 2), ("grp8", 8, 1), ("grp16", 16, 1), ("grp32", 32, 1)])
+    def test_xqa_head_grouping(self, _, num_heads, kv_num_heads):
+        self._check_xqa(num_heads=num_heads, kv_num_heads=kv_num_heads)
+
+    @parameterized.expand([("128", 128), ("256", 256), ("512", 512)])
+    def test_xqa_block_size(self, _, block_size):
+        # Each block is remapped to block_size / 128 consecutive XQA pages.
+        self._check_xqa(paged_kv_block_size=block_size)
+
+    def test_xqa_batch_one(self):
+        self._check_xqa(batch_size=1)
+
+    def test_xqa_long_context_multi_block(self):
+        # Long enough that XQA splits the sequence and reduces across CTAs through its scratch.
+        self._check_xqa(total_sequence_length=8192, batch_size=2)
+
+    def test_xqa_short_context(self):
+        self._check_xqa(total_sequence_length=8, batch_size=1)
+
+    def test_xqa_context_not_page_aligned(self):
+        # The live length is not a multiple of 128, so the last page is partially valid.
+        self._check_xqa(total_sequence_length=1000)
+
+    # ---- quantization granularity -------------------------------------------------------
+
+    @parameterized.expand(
+        [
+            ("int8_per_tensor", "int8", "PER_TENSOR"),
+            ("int8_per_channel", "int8", "PER_CHANNEL"),
+            ("fp8_per_tensor", "fp8", "PER_TENSOR"),
+            ("fp8_per_channel", "fp8", "PER_CHANNEL"),
+        ]
+    )
+    def test_xqa_quant_type(self, _, kv_cache_type, quant_type):
+        self._check_xqa(kv_cache_type=kv_cache_type, quant_type=quant_type)
+
+    def test_xqa_mixed_granularity(self):
+        # k PER_CHANNEL folds into Q, v PER_TENSOR stays a kernel argument: the two scales take
+        # different routes, so an asymmetric config catches a mix-up between them.
+        config = self._config(kv_cache_type="int8", k_quant_type="PER_CHANNEL", v_quant_type="PER_TENSOR")
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    # ---- masking and score transforms ---------------------------------------------------
+
+    def test_xqa_local_window(self):
+        self._check_xqa(local=True)
+
+    def test_xqa_head_sink(self):
+        self._check_xqa(use_head_sink=True)
+
+    def test_xqa_head_sink_and_local(self):
+        self._check_xqa(use_head_sink=True, local=True)
+
+    # ---- prologue interaction -----------------------------------------------------------
+
+    def test_xqa_rotary(self):
+        self._check_xqa(rotary=True, atol=2e-2)
+
+    def test_xqa_rotary_interleaved_and_packed(self):
+        self._check_xqa(rotary=True, rotary_interleaved=True, packed=True, atol=2e-2)
+
+    def test_xqa_qk_norm_and_slot_mapping(self):
+        self._check_xqa(use_qk_norm=True, use_slot_mapping=True, rotary=True, atol=2e-2)
+
+    # ---- fallback -----------------------------------------------------------------------
+
+    def test_softcap_falls_back(self):
+        # XQA has no softcap, so this must land on the portable decode kernel and still be correct.
+        self._check_xqa(softcap=50.0)
+
+    def test_unsupported_head_size_falls_back(self):
+        self._check_xqa(head_size=96)
+
+    def test_unsupported_block_size_falls_back(self):
+        self._check_xqa(paged_kv_block_size=64)
+
+    def test_multi_token_step_falls_back(self):
+        # More than one new token in a sequence: XQA emits one row per sequence, so this has to use
+        # a backend that handles a ragged step.
+        config = self._config(
+            sequence_length=2, kv_cache_type="int8", k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR"
+        )
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+
 ####################################################################################################
 # Multi-head Latent Attention (kv_cache_layout="LATENT")
 #

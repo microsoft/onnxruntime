@@ -12,6 +12,8 @@
 #include "contrib_ops/cuda/bert/paged_attention_helper.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
+#include "contrib_ops/cuda/bert/xqa/xqa_paged_loader.h"
+#include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -56,6 +58,18 @@ constexpr bool IsQuantizedCacheType() {
   } else {
     return false;
   }
+}
+
+// True when TCACHE is the FP8 cache element type. Split out from IsQuantizedCacheType because the
+// XQA backend needs to tell the two quantized formats apart, and Float8E4M3FN is not necessarily a
+// usable type in every build.
+template <typename TCACHE>
+constexpr bool IsFp8CacheType() {
+#if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
+  return std::is_same<TCACHE, Float8E4M3FN>::value;
+#else
+  return false;
+#endif
 }
 
 // The element type TCACHE stores, named as a KVCacheDataType so that an explicit k_cache_dtype /
@@ -121,6 +135,9 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
   disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
   disable_memory_efficient_attention_ = sizeof(T) != 2 || !kernel_options_->UseEfficientAttention();
   disable_paged_decode_ = sizeof(T) != 2 || !kernel_options_->UseDecoderAttention();
+  // XQA defaults on for fp16/bf16 activations, matching GroupQueryAttention; ORT_ENABLE_XQA=0
+  // disables it explicitly.
+  enable_xqa_ = sizeof(T) == 2 && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", 1) != 0);
 }
 
 template <typename T, typename TCACHE>
@@ -390,6 +407,58 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const bool use_flash_attention = flash_eligible && !use_paged_decode;
   const bool use_memory_efficient_attention = mea_eligible && !use_paged_decode;
 
+  // Within the decode-on-a-quantized-cache case, prefer XQA: it is the same tensor-core kernel
+  // GroupQueryAttention uses, reading the paged cache in place, and is roughly an order of
+  // magnitude faster than the portable PagedDecodeSplitKV kernel. Constraints come from the
+  // compiled instantiations (head_size, query/KV group size), from XQA itself (no softcap; one new
+  // token per sequence -- and exactly one, so the output row index equals the batch index) and
+  // from the page remap (a PagedAttention block must split into whole 128-token XQA pages).
+  bool use_xqa_decode = false;
+  if (use_paged_decode && enable_xqa_ && kIsQuantizedCache) {
+    const int group_size = parameters.num_heads / parameters.kv_num_heads;
+    const bool is_fp8_cache = IsFp8CacheType<TCACHE>();
+    const auto is_supported_quant_type = [](KVQuantizationType t) {
+      return t == KVQuantizationType::PER_TENSOR || t == KVQuantizationType::PER_CHANNEL;
+    };
+    use_xqa_decode =
+        device_prop.major >= 8 &&
+        parameters.token_count == parameters.batch_size &&
+        parameters.softcap == 0.0f &&
+        (parameters.head_size == 64 || parameters.head_size == 128) &&
+        (group_size == 4 || group_size == 8 || group_size == 16 || group_size == 32) &&
+        (parameters.block_size % kXqaTokensPerPage) == 0 &&
+        is_supported_quant_type(k_quant_type_) && is_supported_quant_type(v_quant_type_) &&
+        // FP8 arithmetic in the XQA kernel needs Ada (sm_89) or Hopper+.
+        (!is_fp8_cache || device_prop.major >= 9 || (device_prop.major == 8 && device_prop.minor == 9));
+
+    if (use_xqa_decode) {
+      // The kernel's dynamic shared-memory request is fixed at compile time for its target SM and
+      // can exceed the opt-in limit of the device actually running it (e.g. a kernel JIT-compiled
+      // from sm_90 PTX onto consumer Blackwell). Query it once per node -- it depends only on
+      // head_size and the group size -- and fall back when it does not fit. The query is a
+      // cudaMemcpyFromSymbol, which synchronizes and is therefore illegal during graph capture, so
+      // skip XQA for that run and leave the result unresolved for a later non-capturing run.
+      int xqa_smem_ok = xqa_shared_memory_ok_.load(std::memory_order_relaxed);
+      if (xqa_smem_ok < 0) {
+        if (!onnxruntime::llm::common::isCapturing(cuda_stream)) {
+          const size_t required_smem = GetXQAPagedRequiredSharedMemoryBytes(
+              device_prop, parameters.head_size, parameters.num_heads, parameters.kv_num_heads,
+              is_fp8_cache ? XqaQuantType::kFp8 : XqaQuantType::kInt8, std::is_same<T, BFloat16>::value);
+          xqa_smem_ok = (required_smem == 0 || required_smem <= device_prop.sharedMemPerBlockOptin) ? 1 : 0;
+          xqa_shared_memory_ok_.store(xqa_smem_ok, std::memory_order_relaxed);
+        } else {
+          xqa_smem_ok = 0;
+        }
+      }
+      use_xqa_decode = (xqa_smem_ok != 0);
+    }
+  }
+  DUMP_STRING("Backend = ", use_latent_attention  ? "latent"
+                            : use_xqa_decode      ? "paged decode (XQA)"
+                            : use_paged_decode    ? "paged decode"
+                            : use_flash_attention ? "flash attention"
+                                                  : "memory efficient attention");
+
   if (!use_latent_attention && !use_paged_decode && !use_flash_attention && !use_memory_efficient_attention) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "PagedAttention requires FlashAttention (sm>=80, fp16/bf16, block_size a multiple of ",
@@ -445,7 +514,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   IAllocatorUniquePtr<void> decode_partial_out_buffer;
   IAllocatorUniquePtr<void> decode_partial_max_buffer;
   IAllocatorUniquePtr<void> decode_partial_sum_buffer;
-  if (use_paged_decode) {
+  if (use_paged_decode && !use_xqa_decode) {
     num_splits = ComputePagedDecodeSplits(parameters.batch_size, parameters.num_heads, max_kv_len,
                                           device_prop.multiProcessorCount);
     const size_t rows = static_cast<size_t>(num_splits) * parameters.token_count * parameters.num_heads;
@@ -453,6 +522,37 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
         GetScratchBuffer<void>(sizeof(float) * rows * parameters.head_size, GetComputeStream(context));
     decode_partial_max_buffer = GetScratchBuffer<void>(sizeof(float) * rows, GetComputeStream(context));
     decode_partial_sum_buffer = GetScratchBuffer<void>(sizeof(float) * rows, GetComputeStream(context));
+  }
+
+  // XQA scratch: semaphores + the multi-block (Flash Decoding) partials, plus the expanded page
+  // table, the optional pre-scaled Q copy and the fp32 attention sinks.
+  IAllocatorUniquePtr<void> xqa_workspace_buffer;
+  IAllocatorUniquePtr<void> xqa_page_table_buffer;
+  IAllocatorUniquePtr<void> xqa_query_buffer;
+  IAllocatorUniquePtr<void> xqa_head_sink_buffer;
+  size_t xqa_workspace_bytes = 0;
+  int xqa_max_pages_per_seq = 0;
+  if (use_xqa_decode) {
+    const int pages_per_block = parameters.block_size / kXqaTokensPerPage;
+    xqa_max_pages_per_seq = parameters.max_num_blocks_per_seq * pages_per_block;
+    xqa_workspace_bytes = GetXQAScratchSize(
+        device_prop, parameters.batch_size, parameters.num_heads, parameters.kv_num_heads,
+        parameters.head_size, xqa_max_pages_per_seq * kXqaTokensPerPage,
+        IsFp8CacheType<TCACHE>() ? XqaQuantType::kFp8 : XqaQuantType::kInt8,
+        std::is_same<T, BFloat16>::value);
+    xqa_workspace_buffer = GetScratchBuffer<void>(xqa_workspace_bytes, GetComputeStream(context));
+    xqa_page_table_buffer = GetScratchBuffer<void>(
+        sizeof(int) * static_cast<size_t>(parameters.batch_size) * xqa_max_pages_per_seq,
+        GetComputeStream(context));
+    if (k_quant_type_ == KVQuantizationType::PER_CHANNEL) {
+      xqa_query_buffer = GetScratchBuffer<void>(
+          sizeof(T) * static_cast<size_t>(parameters.batch_size) * parameters.num_heads * parameters.head_size,
+          GetComputeStream(context));
+    }
+    if (parameters.use_smooth_softmax && head_sink != nullptr) {
+      xqa_head_sink_buffer = GetScratchBuffer<void>(sizeof(float) * parameters.num_heads,
+                                                    GetComputeStream(context));
+    }
   }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
@@ -503,6 +603,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   data.use_paged_decode = use_paged_decode;
+  data.use_xqa_decode = use_xqa_decode;
   if (softmax_lse_buffer != nullptr) {
     // FlashAttention always writes fp32 log-sum-exp, independent of T.
     data.softmax_lse = reinterpret_cast<float*>(softmax_lse_buffer.get());
@@ -521,11 +622,18 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     data.total_kv_tokens = total_kv_tokens;
     data.max_kv_len = max_kv_len;
   }
-  if (use_paged_decode) {
+  if (use_paged_decode && !use_xqa_decode) {
     data.decode_partial_out = reinterpret_cast<float*>(decode_partial_out_buffer.get());
     data.decode_partial_max = reinterpret_cast<float*>(decode_partial_max_buffer.get());
     data.decode_partial_sum = reinterpret_cast<float*>(decode_partial_sum_buffer.get());
     data.num_splits = num_splits;
+  }
+  if (use_xqa_decode) {
+    data.xqa_workspace = xqa_workspace_buffer.get();
+    data.xqa_workspace_size = xqa_workspace_bytes;
+    data.xqa_page_table = reinterpret_cast<int*>(xqa_page_table_buffer.get());
+    data.xqa_query = reinterpret_cast<CudaT*>(xqa_query_buffer.get());
+    data.xqa_head_sink = reinterpret_cast<float*>(xqa_head_sink_buffer.get());
   }
   if (use_memory_efficient_attention && fmha_buffer != nullptr) {
     data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());

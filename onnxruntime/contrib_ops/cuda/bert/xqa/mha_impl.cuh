@@ -1906,9 +1906,16 @@ CUBIN_EXPORT __global__
 #endif
 #if USE_PAGED_KV_CACHE
       constexpr uint32_t xIterSeqStride = cacheVTileSeqStride * nbVItersPerXIter;
+      // `if constexpr` inside a non-template function still type-checks the discarded branch, so
+      // both divisors below must stay non-zero for every instantiation even though only one branch
+      // is ever live (ORT builds XQA with -Werror all-warnings, which turns a constant-folded
+      // "right operand of % is zero" in the dead branch into a build failure).
+      constexpr uint32_t nbXItersPerPage =
+          (xIterSeqStride <= tokensPerPage ? exactDiv(tokensPerPage, xIterSeqStride) : 1U);
+      constexpr uint32_t nbPagesPerXIter =
+          (xIterSeqStride <= tokensPerPage ? 1U : exactDiv(xIterSeqStride, tokensPerPage));
       if constexpr (xIterSeqStride <= tokensPerPage) {
-        uint32_t const nbXItersPerPage = exactDiv(tokensPerPage, xIterSeqStride);
-        assert(nbXItersPerPage <= nbXItersPerCtaTile);
+        static_assert(nbXItersPerPage <= nbXItersPerCtaTile);
         if (xIter % nbXItersPerPage == nbXItersPerPage - 1 && vIter == nbVItersPerXIter - 1 && (idxBeam == beamWidth - 1 || isConvergedTile(seqIter))) {
           auto const step = 1;  // cacheVTileSeqLen * gemm1NbWarpGrps / tokensPerPage;
           idxPageBeg += (idxPageBeg % nbPagesPerCtaTile == nbPagesPerCtaTile - 1
@@ -1920,7 +1927,7 @@ CUBIN_EXPORT __global__
       } else {
         assert(nbVItersPerXIter == 1);
         if ((idxBeam == beamWidth - 1 || isConvergedTile(seqIter)) && vIter == nbVItersPerXIter - 1) {
-          auto const step = exactDiv(xIterSeqStride, tokensPerPage);
+          auto const step = nbPagesPerXIter;
           idxPageBeg += (idxPageBeg % nbPagesPerCtaTile + step >= nbPagesPerCtaTile
                              ? nbPagesPerCtaTile * (nbSubSeqPerSeq - 1) + step
                              : step);
@@ -2542,9 +2549,9 @@ void launchMHA(cudaDeviceProp const& prop, uint32_t nbKHeads,
 #if USE_PAGED_KV_CACHE
   uint32_t const maxNbPagesPerSeq = exactDiv(maxSeqLen, tokensPerPage);
 #if PAGED_KV_CACHE_LAYOUT == 1
-  KVCacheList<true> const cacheList{kCacheVLLM, vCacheVLLM, kvCachePageList, seqLen, maxNbPagesPerSeq};
+  KVCacheList<true> const cacheList{kCacheVLLM, vCacheVLLM, kvCachePageList, seqLen, maxNbPagesPerSeq, 1};
 #else
-  KVCacheList<true> const cacheList{pool, kvCachePageList, seqLen, maxNbPagesPerSeq};
+  KVCacheList<true> const cacheList{pool, kvCachePageList, seqLen, maxNbPagesPerSeq, 1};
 #endif
   cudaLaunchKernelEx(&launchCfg, kernel_mha,
 #if SPEC_DEC

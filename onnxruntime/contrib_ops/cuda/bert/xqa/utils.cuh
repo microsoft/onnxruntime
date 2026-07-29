@@ -47,7 +47,9 @@ inline constexpr float log2e = 1.4426950408889634f;  // std::log2(M_E)
 */
 // this reason, don't set safeInitRowMax with a huge absolute value.
 // #define SAFE_INIT_ROW_MAX (-1e+5F)  // moved to defines.h
-inline constexpr int32_t kBAD_PAGE_INDEX = -1;
+// Marked __constant__ (like kE4M3_MAX below) because the paged-KV kernels odr-use it from device
+// code (Vec::filled takes a const reference), which a plain host constexpr variable cannot satisfy.
+__constant__ constexpr int32_t kBAD_PAGE_INDEX = -1;
 __constant__ constexpr float kE4M3_MAX = 448.F;
 
 #ifdef __CUDA_ARCH__

@@ -12,6 +12,7 @@
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
+#include "contrib_ops/cuda/bert/xqa/xqa_paged_loader.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "contrib_ops/cuda/bert/rotary_embedding_impl.h"
 #include <cublas_v2.h>
@@ -1399,6 +1400,160 @@ Status PagedDecodeAttention(
   return Status::OK();
 }
 
+////////// Paged XQA decode backend
+//
+// PagedDecodeSplitKV above is a portable scalar kernel: it dequantizes one cache element per
+// thread into fp32 and reduces through shared memory, which sustains only a small fraction of
+// HBM bandwidth. XQA is the tensor-core decode kernel already used by GroupQueryAttention, and
+// TensorRT-LLM's copy of it (contrib_ops/cuda/bert/xqa) supports a paged cache directly. Three
+// things have to be reconciled to use it here:
+//
+//  1. Page size. XQA requires tokensPerPage to divide its CTA tile in the sequence dimension, so
+//     the kernels are compiled for kXqaTokensPerPage (128) tokens. PagedAttention's block_size is
+//     a graph attribute (256 by default). Because the KV pool is contiguous --
+//     [num_blocks, block_size, kv_num_heads, head_size] -- and XQA's PAGED_KV_CACHE_LAYOUT == 1
+//     page is exactly [tokens_per_page, kv_num_heads, head_size], block b is bit-for-bit the
+//     concatenation of pages [b * pages_per_block, (b + 1) * pages_per_block). ExpandBlockTable-
+//     ToPages rewrites the block table accordingly; it costs O(batch * max_num_blocks_per_seq).
+//  2. Per-channel scales. XQA only accepts a scalar dequantization scale per cache. A PER_CHANNEL
+//     scale is folded out exactly the same way GroupQueryAttention does it (see the derivation
+//     next to LaunchScaleHeadsByChannelScale in group_query_attention_qdq.cuh): k_scale into Q
+//     (it multiplies the QK contraction dim) and v_scale into the attention output (it is a free
+//     dim of the PV accumulation, so it never touches the softmax denominator).
+//  3. Attention sinks. XQA consumes them as fp32, laid out [kv_head][group] -- which is ORT's
+//     [num_heads] order -- so only a dtype conversion is needed.
+
+// block_table [batch, max_num_blocks_per_seq] -> page_table [batch, max_num_blocks_per_seq *
+// pages_per_block]. An unmapped block (-1) expands to unmapped pages.
+__global__ void ExpandBlockTableToPages(const int* __restrict__ block_table,
+                                        int* __restrict__ page_table,
+                                        const int max_num_blocks_per_seq,
+                                        const int pages_per_block,
+                                        const int total_pages) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= total_pages) {
+    return;
+  }
+  const int pages_per_seq = max_num_blocks_per_seq * pages_per_block;
+  const int seq = i / pages_per_seq;
+  const int page_in_seq = i - seq * pages_per_seq;
+  const int block_id = block_table[seq * max_num_blocks_per_seq + page_in_seq / pages_per_block];
+  page_table[i] = block_id < 0 ? -1 : block_id * pages_per_block + (page_in_seq % pages_per_block);
+}
+
+// Multiply every head vector by a PER_CHANNEL scale indexed [kv_head, channel]. Used to fold
+// k_scale into Q before XQA and v_scale into XQA's output afterwards. dst may alias src (the
+// output scaling is done in place), so neither pointer is marked __restrict__.
+template <typename T>
+__global__ void PagedFoldChannelScaleKernel(T* dst,
+                                            const T* src,
+                                            const float* __restrict__ channel_scale,
+                                            const int num_heads, const int head_size,
+                                            const int group_size, const int64_t total_elements) {
+  const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (i >= total_elements) {
+    return;
+  }
+  const int h = static_cast<int>(i / head_size) % num_heads;
+  const int c = static_cast<int>(i % head_size);
+  dst[i] = static_cast<T>(static_cast<float>(src[i]) * channel_scale[(h / group_size) * head_size + c]);
+}
+
+template <typename T>
+__global__ void PagedConvertHeadSinkToFloatKernel(float* __restrict__ dst, const T* __restrict__ src,
+                                                  const int count) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < count) {
+    dst[i] = static_cast<float>(src[i]);
+  }
+}
+
+template <typename T, typename TCACHE>
+Status PagedXqaDecodeAttention(
+    const cudaDeviceProp& device_prop,
+    cudaStream_t stream,
+    contrib::PagedAttentionParameters& parameters,
+    PagedAttentionData<T, TCACHE>& data,
+    float scale) {
+  const int max_threads_per_block = device_prop.maxThreadsPerBlock;
+  const int batch_size = parameters.batch_size;
+  const int num_heads = parameters.num_heads;
+  const int kv_num_heads = parameters.kv_num_heads;
+  const int head_size = parameters.head_size;
+
+  T* query = nullptr;
+  ORT_RETURN_IF_ERROR((PrepareQueryAndCache<T, TCACHE>(stream, parameters, data, max_threads_per_block, &query)));
+
+  const int pages_per_block = parameters.block_size / onnxruntime::contrib::cuda::kXqaTokensPerPage;
+  const int max_pages_per_seq = parameters.max_num_blocks_per_seq * pages_per_block;
+  {
+    const int total_pages = batch_size * max_pages_per_seq;
+    const int blocks = (total_pages + max_threads_per_block - 1) / max_threads_per_block;
+    ExpandBlockTableToPages<<<blocks, max_threads_per_block, 0, stream>>>(
+        data.block_table, data.xqa_page_table, parameters.max_num_blocks_per_seq, pages_per_block, total_pages);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  }
+
+  const bool k_per_channel = parameters.k_quant_type == KVQuantizationType::PER_CHANNEL;
+  const bool v_per_channel = parameters.v_quant_type == KVQuantizationType::PER_CHANNEL;
+  const int64_t q_elements = static_cast<int64_t>(batch_size) * num_heads * head_size;
+
+  if (k_per_channel) {
+    // Q may point straight at the (const) graph input when there is no packed-QKV / rotary
+    // prologue, so the scaled copy always goes to a dedicated scratch buffer.
+    const int blocks = static_cast<int>((q_elements + max_threads_per_block - 1) / max_threads_per_block);
+    PagedFoldChannelScaleKernel<T><<<blocks, max_threads_per_block, 0, stream>>>(
+        data.xqa_query, query, data.k_scale, num_heads, head_size, num_heads / kv_num_heads, q_elements);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+    query = data.xqa_query;
+  }
+
+  const float* attention_sinks = nullptr;
+  if (parameters.use_smooth_softmax && data.head_sink != nullptr) {
+    const int blocks = (num_heads + max_threads_per_block - 1) / max_threads_per_block;
+    PagedConvertHeadSinkToFloatKernel<T><<<blocks, max_threads_per_block, 0, stream>>>(
+        data.xqa_head_sink, data.head_sink, num_heads);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+    attention_sinks = data.xqa_head_sink;
+  }
+
+  constexpr bool kIsFp8Cache =
+#if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
+      std::is_same<TCACHE, Float8E4M3FN>::value;
+#else
+      false;
+#endif
+  const XqaQuantType kv_quant_type = kIsFp8Cache ? XqaQuantType::kFp8 : XqaQuantType::kInt8;
+  ORT_RETURN_IF_ERROR(LaunchXQAPagedKernel(
+      device_prop, stream,
+      reinterpret_cast<const void*>(query),
+      reinterpret_cast<const void*>(data.key_cache),
+      reinterpret_cast<const void*>(data.value_cache),
+      reinterpret_cast<void*>(data.output),
+      data.xqa_page_table,
+      batch_size, num_heads, kv_num_heads, head_size, max_pages_per_seq,
+      scale, parameters.local_window_size, data.past_seqlens, attention_sinks,
+      // A PER_CHANNEL scale has already been folded into Q / will be applied to the output, so the
+      // kernel must use a scale of 1 (which it does when the pointer is null).
+      k_per_channel ? nullptr : data.k_scale,
+      v_per_channel ? nullptr : data.v_scale,
+      kv_quant_type, std::is_same<T, BFloat16>::value,
+      data.xqa_workspace, data.xqa_workspace_size));
+
+  if (v_per_channel) {
+    const int blocks = static_cast<int>((q_elements + max_threads_per_block - 1) / max_threads_per_block);
+    PagedFoldChannelScaleKernel<T><<<blocks, max_threads_per_block, 0, stream>>>(
+        data.output, data.output, data.v_scale, num_heads, head_size, num_heads / kv_num_heads, q_elements);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  }
+
+  DUMP_TENSOR_INIT();
+  DUMP_TENSOR("paged xqa decode attention output", data.output, parameters.token_count, parameters.num_heads,
+              parameters.head_size);
+
+  return Status::OK();
+}
+
 #if USE_FLASH_ATTENTION
 template <typename T, typename TCACHE>
 Status FlashAttention(
@@ -1585,6 +1740,10 @@ Status QkvToContext(
   // never the one used.
   if (parameters.is_latent_kv) {
     return LatentAttention(device_prop, stream, parameters, data, scale);
+  }
+
+  if (data.use_xqa_decode) {
+    return PagedXqaDecodeAttention(device_prop, stream, parameters, data, scale);
   }
 
   if (data.use_paged_decode) {
