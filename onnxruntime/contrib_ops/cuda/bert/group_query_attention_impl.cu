@@ -747,42 +747,62 @@ Status LaunchGetSequenceLengths(
 // row_bytes: number of bytes occupied by one (batch, head, position) entry.
 // capacity : allocated sequence dimension C of the cache.
 // ============================================================================
-__global__ void CompactKvCacheRows(uint8_t* __restrict__ dst,
-                                   const uint8_t* __restrict__ src,
+
+// Shared launch geometry for the two row-copy kernels below. threadIdx.x walks the uint4 chunks of
+// a row and threadIdx.y walks rows, so a warp covers several adjacent rows in full and the accesses
+// stay coalesced. Handing a block many rows keeps the grid to a few dozen blocks, which matters
+// because these copies are launch bound rather than bandwidth bound: during decoding the cache is
+// over its budget on only one step in every cache_slack steps, so nearly every launch does no work
+// at all and its cost is dominated by scheduling the grid.
+static void KvRowCopyLaunchConfig(const int vec_count,
+                                  const int rows,
+                                  const int kv_num_heads,
+                                  const int batch_size,
+                                  dim3& grid,
+                                  dim3& block) {
+  constexpr int kThreadsPerBlock = 256;
+  const int threads_x = vec_count < 32 ? vec_count : 32;
+  const int threads_y = kThreadsPerBlock / threads_x > 0 ? kThreadsPerBlock / threads_x : 1;
+  block = dim3(threads_x, threads_y);
+  grid = dim3((rows + threads_y - 1) / threads_y, kv_num_heads, batch_size);
+}
+
+// K and V shift in the same launch: they share every index this kernel computes, so fusing them
+// halves the number of launches per layer without adding a single block.
+__global__ void CompactKvCacheRows(uint4* __restrict__ dst_k,
+                                   const uint4* __restrict__ src_k,
+                                   uint4* __restrict__ dst_v,
+                                   const uint4* __restrict__ src_v,
                                    const int* __restrict__ evict_counts,
                                    const int* __restrict__ cache_past_seq_lens,
                                    const int capacity,
-                                   const int row_bytes,
+                                   const int vec_count,
+                                   const bool copy_v,
                                    const bool src_is_shifted) {
-  // grid: (capacity, kv_num_heads, batch_size); block: threads over the row bytes (as uint4 where
-  // possible, otherwise bytes -- see the launcher, which guarantees row_bytes % 16 == 0).
-  const int s = blockIdx.x;
-  const int n = blockIdx.y;
+  // grid: (ceil(capacity / blockDim.y), kv_num_heads, batch_size); block: (row chunks, rows).
   const int b = blockIdx.z;
-
-  const int retained = cache_past_seq_lens[b];  // Lp - D
-  if (s >= retained) {
-    return;
-  }
   const int d = evict_counts[b];
   if (d <= 0) {
     return;
   }
+  const int s = blockIdx.x * blockDim.y + threadIdx.y;
+  if (s >= cache_past_seq_lens[b]) {  // cache_past_seq_lens[b] is the retained length Lp - D
+    return;
+  }
 
-  const int64_t head_stride = static_cast<int64_t>(capacity) * row_bytes;
-  const int64_t batch_stride = static_cast<int64_t>(gridDim.y) * head_stride;
-  const int64_t base = static_cast<int64_t>(b) * batch_stride + static_cast<int64_t>(n) * head_stride;
+  const int64_t head_stride = static_cast<int64_t>(capacity) * vec_count;
+  const int64_t base = (static_cast<int64_t>(b) * gridDim.y + blockIdx.y) * head_stride;
 
   // Pass 1 (src_is_shifted): scratch[s] <- cache[s + D].
   // Pass 2:                  cache[s]   <- scratch[s].
-  const int64_t src_row = base + static_cast<int64_t>(src_is_shifted ? (s + d) : s) * row_bytes;
-  const int64_t dst_row = base + static_cast<int64_t>(s) * row_bytes;
+  const int64_t dst_row = base + static_cast<int64_t>(s) * vec_count;
+  const int64_t src_row = base + static_cast<int64_t>(src_is_shifted ? (s + d) : s) * vec_count;
 
-  const uint4* src_vec = reinterpret_cast<const uint4*>(src + src_row);
-  uint4* dst_vec = reinterpret_cast<uint4*>(dst + dst_row);
-  const int vec_count = row_bytes / static_cast<int>(sizeof(uint4));
-  for (int i = threadIdx.x; i < vec_count; i += blockDim.x) {
-    dst_vec[i] = src_vec[i];
+  for (int c = threadIdx.x; c < vec_count; c += blockDim.x) {
+    dst_k[dst_row + c] = src_k[src_row + c];
+    if (copy_v) {
+      dst_v[dst_row + c] = src_v[src_row + c];
+    }
   }
 }
 
@@ -807,29 +827,36 @@ Status LaunchCompactKvCache(void* k_cache,
                            " bytes) must be a multiple of 16 for the compaction shift.");
   }
 
-  const int vec_count = row_bytes / static_cast<int>(sizeof(uint4));
-  const int threads = vec_count < 256 ? ((vec_count + 31) / 32) * 32 : 256;
-  const dim3 grid(capacity, kv_num_heads, batch_size);
-  const dim3 block(threads > 0 ? threads : 32);
+  // Order the two caches so the fused kernel always has a valid first operand; the second one is
+  // optional, so a cache pair with only one side present still works.
+  uint8_t* cache_a = reinterpret_cast<uint8_t*>(k_cache != nullptr ? k_cache : v_cache);
+  if (cache_a == nullptr) {
+    return Status::OK();
+  }
+  uint8_t* cache_b = reinterpret_cast<uint8_t*>((k_cache != nullptr && v_cache != nullptr) ? v_cache : nullptr);
 
   const size_t cache_bytes = static_cast<size_t>(batch_size) * kv_num_heads * capacity * row_bytes;
   ORT_RETURN_IF(scratch == nullptr && cache_bytes > 0,
                 "sliding_window_cache: compaction scratch buffer was not allocated.");
-  uint8_t* scratch_bytes = reinterpret_cast<uint8_t*>(scratch);
+  // The two caches cannot share one scratch region: their passes now run concurrently. The buffer
+  // is allocated with room for both.
+  uint8_t* scratch_a = reinterpret_cast<uint8_t*>(scratch);
+  uint8_t* scratch_b = scratch_a + cache_bytes;
 
-  void* caches[2] = {k_cache, v_cache};
-  for (void* cache : caches) {
-    if (cache == nullptr) {
-      continue;
-    }
-    uint8_t* cache_bytes_ptr = reinterpret_cast<uint8_t*>(cache);
-    CompactKvCacheRows<<<grid, block, 0, stream>>>(scratch_bytes, cache_bytes_ptr, evict_counts,
-                                                   cache_past_seq_lens, capacity, row_bytes,
-                                                   /*src_is_shifted=*/true);
-    CompactKvCacheRows<<<grid, block, 0, stream>>>(cache_bytes_ptr, scratch_bytes, evict_counts,
-                                                   cache_past_seq_lens, capacity, row_bytes,
-                                                   /*src_is_shifted=*/false);
-  }
+  const int vec_count = row_bytes / static_cast<int>(sizeof(uint4));
+  dim3 grid, block;
+  KvRowCopyLaunchConfig(vec_count, capacity, kv_num_heads, batch_size, grid, block);
+
+  CompactKvCacheRows<<<grid, block, 0, stream>>>(
+      reinterpret_cast<uint4*>(scratch_a), reinterpret_cast<const uint4*>(cache_a),
+      reinterpret_cast<uint4*>(scratch_b), reinterpret_cast<const uint4*>(cache_b),
+      evict_counts, cache_past_seq_lens, capacity, vec_count,
+      /*copy_v=*/cache_b != nullptr, /*src_is_shifted=*/true);
+  CompactKvCacheRows<<<grid, block, 0, stream>>>(
+      reinterpret_cast<uint4*>(cache_a), reinterpret_cast<const uint4*>(scratch_a),
+      reinterpret_cast<uint4*>(cache_b), reinterpret_cast<const uint4*>(scratch_b),
+      evict_counts, cache_past_seq_lens, capacity, vec_count,
+      /*copy_v=*/cache_b != nullptr, /*src_is_shifted=*/false);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -843,36 +870,38 @@ Status LaunchCompactKvCache(void* k_cache,
 // the surviving tail depends on the past length, which is only known on the device; passing it
 // through memory keeps the launch geometry constant and therefore CUDA-graph capturable.
 // The copy works on raw rows, which keeps it independent of the cache element type and of whether
-// the cache is written in quantized form.
+// the cache is written in quantized form. K and V share every index, so they move together.
 // ============================================================================
-__global__ void CopyKvCacheRows(uint8_t* __restrict__ dst,
-                                const uint8_t* __restrict__ src,
+__global__ void CopyKvCacheRows(uint4* __restrict__ dst_k,
+                                const uint4* __restrict__ src_k,
+                                uint4* __restrict__ dst_v,
+                                const uint4* __restrict__ src_v,
                                 const int* __restrict__ src_offsets,
                                 const int src_capacity,
                                 const int dst_capacity,
-                                const int row_bytes) {
-  // grid: (rows, kv_num_heads, batch_size)
-  const int s = blockIdx.x;
-  const int n = blockIdx.y;
+                                const int rows,
+                                const int vec_count,
+                                const bool copy_v) {
+  // grid: (ceil(rows / blockDim.y), kv_num_heads, batch_size); block: (row chunks, rows).
   const int b = blockIdx.z;
-
+  const int s = blockIdx.x * blockDim.y + threadIdx.y;
+  if (s >= rows || s >= dst_capacity) {
+    return;
+  }
   const int src_index = s + (src_offsets == nullptr ? 0 : src_offsets[b]);
-  if (src_index < 0 || src_index >= src_capacity || s >= dst_capacity) {
+  if (src_index < 0 || src_index >= src_capacity) {
     return;
   }
 
-  const int64_t src_head_stride = static_cast<int64_t>(src_capacity) * row_bytes;
-  const int64_t dst_head_stride = static_cast<int64_t>(dst_capacity) * row_bytes;
-  const int64_t src_row = (static_cast<int64_t>(b) * gridDim.y + n) * src_head_stride +
-                          static_cast<int64_t>(src_index) * row_bytes;
-  const int64_t dst_row = (static_cast<int64_t>(b) * gridDim.y + n) * dst_head_stride +
-                          static_cast<int64_t>(s) * row_bytes;
+  const int64_t head = static_cast<int64_t>(b) * gridDim.y + blockIdx.y;
+  const int64_t src_row = (head * src_capacity + src_index) * vec_count;
+  const int64_t dst_row = (head * dst_capacity + s) * vec_count;
 
-  const uint4* src_vec = reinterpret_cast<const uint4*>(src + src_row);
-  uint4* dst_vec = reinterpret_cast<uint4*>(dst + dst_row);
-  const int vec_count = row_bytes / static_cast<int>(sizeof(uint4));
-  for (int i = threadIdx.x; i < vec_count; i += blockDim.x) {
-    dst_vec[i] = src_vec[i];
+  for (int c = threadIdx.x; c < vec_count; c += blockDim.x) {
+    dst_k[dst_row + c] = src_k[src_row + c];
+    if (copy_v) {
+      dst_v[dst_row + c] = src_v[src_row + c];
+    }
   }
 }
 
@@ -897,21 +926,25 @@ Status LaunchCopyKvCacheWindow(void* dst_k,
                            " bytes) must be a multiple of 16 to stage the KV cache.");
   }
 
-  const int vec_count = row_bytes / static_cast<int>(sizeof(uint4));
-  const int threads = vec_count < 256 ? ((vec_count + 31) / 32) * 32 : 256;
-  const dim3 grid(rows, kv_num_heads, batch_size);
-  const dim3 block(threads > 0 ? threads : 32);
-
-  const void* srcs[2] = {src_k, src_v};
-  void* dsts[2] = {dst_k, dst_v};
-  for (int i = 0; i < 2; ++i) {
-    if (srcs[i] == nullptr || dsts[i] == nullptr) {
-      continue;
-    }
-    CopyKvCacheRows<<<grid, block, 0, stream>>>(reinterpret_cast<uint8_t*>(dsts[i]),
-                                                reinterpret_cast<const uint8_t*>(srcs[i]),
-                                                src_offsets, src_capacity, dst_capacity, row_bytes);
+  // Order the pairs so the first operand is always valid; the second one is optional.
+  const bool has_k = src_k != nullptr && dst_k != nullptr;
+  const bool has_v = src_v != nullptr && dst_v != nullptr;
+  if (!has_k && !has_v) {
+    return Status::OK();
   }
+  const void* src_a = has_k ? src_k : src_v;
+  void* dst_a = has_k ? dst_k : dst_v;
+  const void* src_b = (has_k && has_v) ? src_v : nullptr;
+  void* dst_b = (has_k && has_v) ? dst_v : nullptr;
+
+  const int vec_count = row_bytes / static_cast<int>(sizeof(uint4));
+  dim3 grid, block;
+  KvRowCopyLaunchConfig(vec_count, rows, kv_num_heads, batch_size, grid, block);
+
+  CopyKvCacheRows<<<grid, block, 0, stream>>>(
+      reinterpret_cast<uint4*>(dst_a), reinterpret_cast<const uint4*>(src_a),
+      reinterpret_cast<uint4*>(dst_b), reinterpret_cast<const uint4*>(src_b),
+      src_offsets, src_capacity, dst_capacity, rows, vec_count, /*copy_v=*/src_b != nullptr);
   return CUDA_CALL(cudaGetLastError());
 }
 

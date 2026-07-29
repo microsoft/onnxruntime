@@ -779,13 +779,13 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
   // Scratch used to left-shift the KV cache when the sliding window advances. Sized for the whole
   // cache because the number of evicted rows is only known on device (and must stay constant across
-  // CUDA graph replays).
+  // CUDA graph replays). K and V shift in the same kernel, so each needs its own half.
   IAllocatorUniquePtr<void> compaction_buffer;
   if (parameters.is_windowed_kv_cache && staged_cache_capacity == 0) {
     const size_t row_bytes = (parameters.kv_cache_bit_width == 0)
                                  ? static_cast<size_t>(parameters.head_size) * sizeof(U)
                                  : static_cast<size_t>(parameters.head_size) * parameters.kv_cache_bit_width / 8;
-    const size_t compaction_bytes = static_cast<size_t>(parameters.batch_size) * parameters.kv_num_heads *
+    const size_t compaction_bytes = 2 * static_cast<size_t>(parameters.batch_size) * parameters.kv_num_heads *
                                     parameters.kv_cache_real_capacity * row_bytes;
     compaction_buffer = GetScratchBuffer<void>(compaction_bytes, GetComputeStream(context));
     data.compaction_scratch = compaction_buffer.get();
