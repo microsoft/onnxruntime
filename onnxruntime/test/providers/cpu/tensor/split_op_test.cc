@@ -910,5 +910,59 @@ TEST(SplitOperatorTest, Split3Inner) {
   do_test(splits);
 }
 
+
+TEST(SplitOperatorTest, InvalidValueInSplitInput_NegativeEntry_Axis0) {
+  constexpr int64_t axis = 0;
+  ShapeAndFloatData input = {{6, 2},
+                             {1.f, 2.f,
+                              3.f, 4.f,
+                              5.f, 6.f,
+                              7.f, 8.f,
+                              9.f, 10.f,
+                              11.f, 12.f}};
+
+  // Sum equals the axis dim (8 + -2 == 6) and the count equals the number of outputs, so the existing
+  // count/sum guards do not trigger; only the per-value check can catch this case.
+  std::vector<int64_t> splits{8, -2};
+
+  std::vector<ShapeAndFloatData> outputs;
+  outputs.push_back({{1, 2}, {0.f, 0.f}});
+  outputs.push_back({{1, 2}, {0.f, 0.f}});
+
+  const std::unordered_set<std::string> excluded_providers{
+      kTensorrtExecutionProvider,
+      kQnnExecutionProvider,
+      kCoreMLExecutionProvider,
+      kDmlExecutionProvider,
+  };
+  RunTest<float>(axis, splits, input, outputs, excluded_providers,
+                 true /*expect_failure*/, true /*split_as_input*/, -1 /*num_outputs*/, false /*is_initializer*/,
+                 "Invalid value in 'split' input. All values must be >= 0.");
+}
+
+TEST(SplitOperatorTest, InvalidValueInSplitInput_NegativeEntry_NegativeAxis) {
+  constexpr int64_t axis = -1;
+  ShapeAndFloatData input = {{2, 4},
+                             {1.f, 2.f, 3.f, 4.f,
+                              5.f, 6.f, 7.f, 8.f}};
+
+  // Negative entry in the leading position; sum still matches the split-axis dim (-1 + 5 == 4).
+  std::vector<int64_t> splits{-1, 5};
+
+  std::vector<ShapeAndFloatData> outputs;
+  outputs.push_back({{2, 1}, {0.f, 0.f}});
+  outputs.push_back({{2, 1}, {0.f, 0.f}});
+
+  const std::unordered_set<std::string> excluded_providers{
+      kTensorrtExecutionProvider,
+      kQnnExecutionProvider,
+      kCoreMLExecutionProvider,
+      kDmlExecutionProvider,
+  };
+  RunTest<float>(axis, splits, input, outputs, excluded_providers,
+                 true /*expect_failure*/, true /*split_as_input*/, -1 /*num_outputs*/, false /*is_initializer*/,
+                 "Invalid value in 'split' input. All values must be >= 0.");
+}
+
 }  // namespace test
 }  // namespace onnxruntime
