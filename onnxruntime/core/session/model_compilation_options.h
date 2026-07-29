@@ -243,7 +243,6 @@ class ModelCompilationOptions {
   const void* input_model_data_ = nullptr;
   size_t input_model_data_size_ = 0;
   const OrtModel* input_model_ = nullptr;  // Borrowed pointer
-  bool use_weightless_mode_ = false;
 };
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD)

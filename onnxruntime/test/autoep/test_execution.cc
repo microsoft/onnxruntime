@@ -819,7 +819,7 @@ TEST(OrtEpLibrary, PluginEp_GenWeightlessEpContextModel) {
 }
 
 // Test weightless EP context model generation using the new ep.enable_weightless session option
-// and ModelCompilationOptions_SetWeightlessCache API.
+// and ModelCompilationOptions_SetWeightlessMode API.
 TEST(OrtEpLibrary, PluginEp_WeightlessAllInitializers_CompileApi) {
   RegisteredEpDeviceUniquePtr example_ep;
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
@@ -842,11 +842,7 @@ TEST(OrtEpLibrary, PluginEp_WeightlessAllInitializers_CompileApi) {
     compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
     compile_options.SetInputModelPath(input_model_file);
     compile_options.SetOutputModelPath(output_model_file);
-
-    // Call SetWeightlessCache via C API (no C++ wrapper yet).
-    const auto& compile_api = Ort::GetCompileApi();
-    OrtStatus* wl_status = compile_api.ModelCompilationOptions_SetWeightlessCache(compile_options, true);
-    ASSERT_EQ(wl_status, nullptr);
+    compile_options.SetWeightlessMode(true);
 
     // Compile the model.
     ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
