@@ -917,7 +917,7 @@ struct TypeTag {
 // accumulation is too lossy.
 inline bool MoeGemvUseFp32Accum() {
   // Parsed once via ORT's environment helper (consistent parsing/thread-safety across platforms).
-  static const bool enabled =
+  const static bool enabled =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_MOE_GEMV_FP32_ACCUM", 0) == 1;
   return enabled;
 }

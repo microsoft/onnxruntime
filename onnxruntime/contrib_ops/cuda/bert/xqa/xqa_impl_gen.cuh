@@ -105,7 +105,7 @@ inline Status Launch(
   // same "last N tokens incl. current" definition, so pass it through directly. For global
   // attention, use max_seq_len so the kernel's runtime guard (cacheSeqLen > slidingWinSize) is
   // never taken and no masking work is performed (numerically identical to the global kernel).
-  uint32_t const sliding_win_size = (local_window_size > 0)
+  const uint32_t sliding_win_size = (local_window_size > 0)
                                         ? static_cast<uint32_t>(local_window_size)
                                         : static_cast<uint32_t>(max_seq_len);
 #endif

@@ -33,7 +33,7 @@ int CtaNForConfig(MoeGemvConfig config) {
 // Parsed once via ORT's environment helper for consistent parsing/thread-safety. Off by
 // default so the shipped single-pass ColumnMajor path stays byte-for-byte unchanged.
 bool Fp4MoeGemvUseInterleaved() {
-  static const bool enabled =
+  const static bool enabled =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_INTERLEAVED", 0) == 1;
   return enabled;
 }
@@ -43,7 +43,7 @@ bool Fp4MoeGemvUseInterleaved() {
 // default dtype-conditional Fp4GemvAccT policy (fp16->fp16 accum, bf16->fp32 accum). Forcing
 // 16-bit on bf16 regresses bf16 accuracy, so this override is off by default.
 bool Fp4MoeGemvInterleavedHalfAccum() {
-  static const bool enabled =
+  const static bool enabled =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_INTERLEAVED_HALFACC", 0) == 1;
   return enabled;
 }
