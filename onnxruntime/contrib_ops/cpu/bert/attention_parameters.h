@@ -123,11 +123,11 @@ struct PagedAttentionParameters : AttentionParameters {
   bool use_qk_norm = false;
   float qk_norm_epsilon = 1e-6f;
   // Quantized paged KV cache. Scales are inputs 14/15 and are always FP32, as in
-  // GroupQueryAttention. A cache bit width is 0 when that cache is not quantized.
+  // GroupQueryAttention. The storage element type is carried by the kernel's TCACHE specialization;
+  // the k_cache_dtype / v_cache_dtype attributes only override it for sub-byte formats packed into
+  // uint8, which no backend supports yet.
   KVQuantizationType k_quant_type = KVQuantizationType::NONE;
   KVQuantizationType v_quant_type = KVQuantizationType::NONE;
-  int k_cache_bit_width = 0;
-  int v_cache_bit_width = 0;
   // Multi-head Latent Attention (kv_cache_layout == "LATENT"). There is a single physical cache:
   // V of every head is the leading v_head_size channels of the same key_cache row, so 'value' and
   // 'value_cache' are absent. The inherited v_head_size / v_hidden_size hold the effective V width

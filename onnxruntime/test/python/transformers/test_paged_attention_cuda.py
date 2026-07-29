@@ -63,8 +63,11 @@ class Config:
     kv_cache_type = "float16"
     k_quant_type = "NONE"
     v_quant_type = "NONE"
-    k_cache_bit_width = 8
-    v_cache_bit_width = 8
+    # "" means the cache tensor's own element type is the logical element type. Sub-byte names
+    # ("int4", "float4e2m1") describe a uint8 packed cache and are not supported yet. Every legal
+    # value is signed: quantization is symmetric with no zero point, so "uint4"/"uint8" are invalid.
+    k_cache_dtype = ""
+    v_cache_dtype = ""
 
     def __init__(
         self,
@@ -181,8 +184,8 @@ def create_paged_attention_graph(
         {
             "k_quant_type": config.k_quant_type,
             "v_quant_type": config.v_quant_type,
-            "k_cache_bit_width": config.k_cache_bit_width,
-            "v_cache_bit_width": config.v_cache_bit_width,
+            "k_cache_dtype": config.k_cache_dtype,
+            "v_cache_dtype": config.v_cache_dtype,
         }
         if (has_k_scale or has_v_scale or config.kv_cache_type != "float16")
         else {}
@@ -1544,14 +1547,46 @@ class TestPagedAttentionQuantizedCache(unittest.TestCase):
             self._run_minimal(config, k_scale=scale, v_scale=scale)
         self.assertIn("not quantized", str(ctx.exception))
 
-    @parameterized.expand([("key", "k_cache_bit_width"), ("value", "v_cache_bit_width")])
-    def test_invalid_cache_bit_width_is_rejected(self, _, attribute_name):
+    @parameterized.expand([("key", "k_cache_dtype"), ("value", "v_cache_dtype")])
+    def test_unsupported_cache_dtype_is_rejected(self, _, attribute_name):
         config = self._minimal_config(kv_cache_type="int8", k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR")
-        setattr(config, attribute_name, 4)
+        setattr(config, attribute_name, "int4")
         scale = torch.ones(1, dtype=torch.float32, device="cuda")
         with self.assertRaises(Exception) as ctx:
             self._run_minimal(config, k_scale=scale, v_scale=scale)
         self.assertIn(attribute_name, str(ctx.exception))
+
+    @parameterized.expand([("key", "k_cache_dtype"), ("value", "v_cache_dtype")])
+    def test_cache_dtype_disagreeing_with_cache_tensor_is_rejected(self, _, attribute_name):
+        config = self._minimal_config(kv_cache_type="int8", k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR")
+        setattr(config, attribute_name, "float16")
+        scale = torch.ones(1, dtype=torch.float32, device="cuda")
+        with self.assertRaises(Exception) as ctx:
+            self._run_minimal(config, k_scale=scale, v_scale=scale)
+        self.assertIn(attribute_name, str(ctx.exception))
+
+    def test_cache_dtype_naming_the_cache_tensor_type_is_accepted(self):
+        # '' and an explicit spelling of the tensor's own element type mean the same thing.
+        config = self._minimal_config(
+            kv_cache_type="int8",
+            k_quant_type="PER_TENSOR",
+            v_quant_type="PER_TENSOR",
+            k_cache_dtype="int8",
+            v_cache_dtype="int8",
+        )
+        scale = torch.ones(1, dtype=torch.float32, device="cuda")
+        self._run_minimal(config, k_scale=scale, v_scale=scale)
+
+    @parameterized.expand([("key", "k_cache_dtype"), ("value", "v_cache_dtype")])
+    def test_unknown_cache_dtype_is_rejected(self, _, attribute_name):
+        # "uint4" is deliberately not in the vocabulary: an unsigned logical type implies a zero
+        # point of 8, and this operator quantizes symmetrically with a scale only.
+        config = self._minimal_config(kv_cache_type="int8", k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR")
+        setattr(config, attribute_name, "uint4")
+        scale = torch.ones(1, dtype=torch.float32, device="cuda")
+        with self.assertRaises(Exception) as ctx:
+            self._run_minimal(config, k_scale=scale, v_scale=scale)
+        self.assertIn("Invalid KV cache data type", str(ctx.exception))
 
 
 @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available, skipping tests.")
@@ -1791,7 +1826,6 @@ def create_mla_graph(
         attrs["rotary_offset"] = rotary_offset
     if mla_config.k_quant_type != "NONE":
         attrs["k_quant_type"] = mla_config.k_quant_type
-        attrs["k_cache_bit_width"] = 8
 
     node_outputs = ["output", "key_cache_out"]
     if with_value_cache_out:

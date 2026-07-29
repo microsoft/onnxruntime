@@ -1562,16 +1562,21 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "'v_scale' is required. Default value is 'NONE'.",
               AttributeProto::STRING,
               std::string("NONE"))
-        .Attr("k_cache_bit_width",
-              "Number of bits per stored key cache element. Must be 8 for an int8 or float8e4m3fn cache. "
-              "Defaults to 8 for a quantized cache and 0 (unused) otherwise.",
-              AttributeProto::INT,
-              OPTIONAL_VALUE)
-        .Attr("v_cache_bit_width",
-              "Number of bits per stored value cache element. Must be 8 for an int8 or float8e4m3fn cache. "
-              "Defaults to 8 for a quantized cache and 0 (unused) otherwise.",
-              AttributeProto::INT,
-              OPTIONAL_VALUE)
+        .Attr("k_cache_dtype",
+              "Logical element type stored in 'key_cache', named after the ONNX element type it denotes: '' "
+              "(the default) means the cache tensor's own element type is also the logical type. 'float16', "
+              "'bfloat16', 'int8' and 'float8e4m3fn' name that same type explicitly and must agree with the "
+              "tensor. 'int4' and 'float4e2m1' name sub-byte types packed two per byte into a uint8 cache, "
+              "where the last cache dimension holds (head_size + 1) / 2 bytes and logical element 2*i "
+              "occupies the low-order bits of byte i. Every value is a signed, zero-symmetric type: "
+              "quantization uses a scale with no zero point, so unsigned logical types are not expressible.",
+              AttributeProto::STRING,
+              std::string(""))
+        .Attr("v_cache_dtype",
+              "Logical element type stored in 'value_cache', with the same values and packing rule as "
+              "'k_cache_dtype'. Default value is '' (use the cache tensor's element type).",
+              AttributeProto::STRING,
+              std::string(""))
         .Attr("kv_cache_layout",
               "Physical layout of the KV cache: 'SEPARATE' or 'LATENT'. 'SEPARATE' (the default) uses "
               "distinct 'key_cache' and 'value_cache' tensors. 'LATENT' selects absorbed Multi-head Latent "

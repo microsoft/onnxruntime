@@ -33,8 +33,11 @@ class PagedAttention final : public CudaKernel {
   float qk_norm_epsilon_;
   KVQuantizationType k_quant_type_;
   KVQuantizationType v_quant_type_;
-  int k_cache_bit_width_;
-  int v_cache_bit_width_;
+  // Logical element type stored in the cache when it cannot be expressed by the cache tensor's own
+  // element type (sub-byte formats packed into uint8). DEFAULT uses the tensor's element type. The
+  // attribute string is parsed once here so the hot path only compares enums.
+  KVCacheDataType k_cache_dtype_;
+  KVCacheDataType v_cache_dtype_;
   // Multi-head Latent Attention (docs/contrib_ops/cuda/paged_attention.md §12). is_latent_kv_ comes
   // from kv_cache_layout == "LATENT"; v_head_size_ == 0 means "same as head_size".
   bool is_latent_kv_;

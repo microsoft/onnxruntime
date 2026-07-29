@@ -4232,8 +4232,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>do_rotary</tt> : int</dt>
 <dd>Whether to use rotary position embedding. Default value is 0.</dd>
-<dt><tt>k_cache_bit_width</tt> : int</dt>
-<dd>Number of bits per stored key cache element. Must be 8 for an int8 or float8e4m3fn cache. Defaults to 8 for a quantized cache and 0 (unused) otherwise.</dd>
+<dt><tt>k_cache_dtype</tt> : string</dt>
+<dd>Logical element type stored in 'key_cache', named after the ONNX element type it denotes: '' (the default) means the cache tensor's own element type is also the logical type. 'float16', 'bfloat16', 'int8' and 'float8e4m3fn' name that same type explicitly and must agree with the tensor. 'int4' and 'float4e2m1' name sub-byte types packed two per byte into a uint8 cache, where the last cache dimension holds (head_size + 1) / 2 bytes and logical element 2*i occupies the low-order bits of byte i. Every value is a signed, zero-symmetric type: quantization uses a scale with no zero point, so unsigned logical types are not expressible.</dd>
 <dt><tt>k_quant_type</tt> : string</dt>
 <dd>Quantization granularity of the key cache: 'NONE', 'PER_TENSOR' or 'PER_CHANNEL'. Must be non-'NONE' exactly when 'key_cache' has a quantized element type, and then 'k_scale' is required. Default value is 'NONE'.</dd>
 <dt><tt>kv_cache_layout</tt> : string</dt>
@@ -4254,8 +4254,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 <dt><tt>softcap</tt> : float</dt>
 <dd>Softcap value for attention weights. Default value is 0.</dd>
-<dt><tt>v_cache_bit_width</tt> : int</dt>
-<dd>Number of bits per stored value cache element. Must be 8 for an int8 or float8e4m3fn cache. Defaults to 8 for a quantized cache and 0 (unused) otherwise.</dd>
+<dt><tt>v_cache_dtype</tt> : string</dt>
+<dd>Logical element type stored in 'value_cache', with the same values and packing rule as 'k_cache_dtype'. Default value is '' (use the cache tensor's element type).</dd>
 <dt><tt>v_head_size</tt> : int</dt>
 <dd>Width of the value head, which may be narrower than head_size. Only valid when 'kv_cache_layout' is 'LATENT' (DeepSeek-V3 uses head_size=576 and v_head_size=512). When v_head_size differs from head_size the 'scale' attribute is required, because the 1/sqrt(head_size) default no longer matches the pre-absorption head width. Default value is 0, meaning the same as head_size.</dd>
 <dt><tt>v_quant_type</tt> : string</dt>

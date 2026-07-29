@@ -58,6 +58,23 @@ constexpr bool IsQuantizedCacheType() {
   }
 }
 
+// The element type TCACHE stores, named as a KVCacheDataType so that an explicit k_cache_dtype /
+// v_cache_dtype attribute can be checked against it.
+template <typename TCACHE>
+constexpr KVCacheDataType CacheStorageDataType() {
+  if constexpr (std::is_same<TCACHE, int8_t>::value) {
+    return KVCacheDataType::INT8;
+#if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
+  } else if constexpr (std::is_same<TCACHE, Float8E4M3FN>::value) {
+    return KVCacheDataType::FLOAT8E4M3FN;
+#endif
+  } else if constexpr (std::is_same<TCACHE, BFloat16>::value) {
+    return KVCacheDataType::BFLOAT16;
+  } else {
+    return KVCacheDataType::FLOAT16;
+  }
+}
+
 template <typename T, typename TCACHE>
 PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
     : CudaKernel(info) {
@@ -81,12 +98,12 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
               "qk_norm_epsilon must be a positive finite number");
   k_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("k_quant_type", "NONE"));
   v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"));
-  // The defaults depend on the cache dtype so that a model that only swaps key_cache/value_cache to
-  // int8 and sets the quant types does not also have to spell out the bit widths.
-  k_cache_bit_width_ = static_cast<int>(
-      info.GetAttrOrDefault<int64_t>("k_cache_bit_width", IsQuantizedCacheType<TCACHE>() ? 8 : 0));
-  v_cache_bit_width_ = static_cast<int>(
-      info.GetAttrOrDefault<int64_t>("v_cache_bit_width", IsQuantizedCacheType<TCACHE>() ? 8 : 0));
+  // Empty (the default) means the cache tensor's own element type is the logical type, which covers
+  // every format this operator stores today. A non-empty value names a sub-byte logical type packed
+  // into a uint8 cache, which no build supports yet and is rejected during validation. The string is
+  // parsed once here; everything downstream compares the enum.
+  k_cache_dtype_ = StringToKVCacheDataType(info.GetAttrOrDefault<std::string>("k_cache_dtype", ""));
+  v_cache_dtype_ = StringToKVCacheDataType(info.GetAttrOrDefault<std::string>("v_cache_dtype", ""));
 
   // Multi-head Latent Attention. "SEPARATE" (the default) is the shipped two-cache layout;
   // "LATENT" makes value/value_cache absent and aliases V onto the leading v_head_size channels of
@@ -159,9 +176,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                                                           qk_norm_epsilon_,
                                                           k_quant_type_,
                                                           v_quant_type_,
-                                                          k_cache_bit_width_,
-                                                          v_cache_bit_width_,
-                                                          kIsQuantizedCache,
+                                                          k_cache_dtype_,
+                                                          v_cache_dtype_,
+                                                          CacheStorageDataType<TCACHE>(),
                                                           is_latent_kv_,
                                                           v_head_size_,
                                                           rotary_offset_,

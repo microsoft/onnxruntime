@@ -228,20 +228,30 @@ ops without translation.
 | `qk_norm_epsilon` | FLOAT | `1e-6` | **new — §7** |
 | `k_quant_type` | STRING | `"NONE"` | **new — §8**; `NONE` \| `PER_TENSOR` \| `PER_CHANNEL` |
 | `v_quant_type` | STRING | `"NONE"` | **new — §8**; same value set |
-| `k_cache_bit_width` | INT | dtype-dependent | **new — §8**; `8` for a quantized K cache, `0` otherwise |
-| `v_cache_bit_width` | INT | dtype-dependent | **new — §8**; `8` for a quantized V cache, `0` otherwise |
+| `k_cache_dtype` | STRING | `""` | **new — §8**; `""` = the K cache tensor's own element type |
+| `v_cache_dtype` | STRING | `""` | **new — §8**; `""` = the V cache tensor's own element type |
 | `v_head_size` | INT | `0` | **new — §12**; `0` = `head_size`. Non-zero and `!= head_size` is legal **only** in `LATENT` |
 | `rotary_offset` | INT | `0` | **new — §12.5** |
 | `kv_cache_layout` | STRING | `"SEPARATE"` | **new — §12**; `SEPARATE` \| `LATENT` |
 | `qk_output` | INT | `0` | **new — §11**; `0` none, `1` pre-softmax, `2` post-softmax |
 
-`k_cache_bit_width` and `v_cache_bit_width` are independent so future formats may use different
-precisions for K and V (for example, TurboQuant-style mixed-precision caches). Each uses `8` for
-quantized storage and accepts `0` or `16` as an unquantized spelling. There is no `4` until a
-sub-byte cache exists (§21). The current schema still binds both cache tensors to `T_CACHE`; a future
-format whose K and V tensors have different ONNX element types must additionally split that type
-constraint into `T_K_CACHE` and `T_V_CACHE`. Byte-backed sub-byte formats can differ in logical bit
-width while both tensors remain `uint8`.
+`k_cache_dtype` and `v_cache_dtype` name the *logical* element type of each cache. Every value is
+spelled as the ONNX element type it denotes. `""` — the default — means the cache tensor's own
+element type is also the logical type; `"float16"`, `"bfloat16"`, `"int8"` and `"float8e4m3fn"` name
+that same type explicitly and must agree with the tensor. The reserved values `"int4"` and
+`"float4e2m1"` describe sub-byte types packed two per byte into a `uint8` cache (§21.4), which
+no ONNX tensor type can express here; they are rejected until a sub-byte backend exists. Every
+value is a signed, zero-symmetric type — there is no zero-point input, so `uint4` / `uint8` are
+deliberately not in the vocabulary (§8.3.1).
+
+A *dtype*, not a bit width, is the right unit here. Bit width alone cannot distinguish `int4` from
+`float4e2m1` — same width, unrelated decode math — and for every non-packed format it is pure
+redundancy against the cache tensor's element type, i.e. a second source of truth that can only ever
+agree or disagree. K and V stay independent so future formats may use different precisions for each
+(for example, TurboQuant-style mixed-precision caches). The current schema still binds both cache
+tensors to `T_CACHE`; a future format whose K and V tensors have different ONNX element types must
+additionally split that type constraint into `T_K_CACHE` and `T_V_CACHE`. Byte-backed sub-byte
+formats can differ in logical width while both tensors remain `uint8`.
 
 Do **not** add `window_size_left` / `window_size_right` to opset 1. `local_window_size = W` has the
 established meaning of admitting `W` positions *including* the current token; its Flash parameters
@@ -573,8 +583,8 @@ if (needs_prologue) {
 
 Store the block cache in INT8 or FP8 E4M3 while `query` remains FP16/BF16, halving (or better) the
 dominant memory consumer in a serving deployment and proportionally reducing HBM traffic on the
-decode path. Scope for this phase: **`PER_TENSOR` and `PER_CHANNEL`**,
-`k_cache_bit_width == v_cache_bit_width == 8`.
+decode path. Scope for this phase: **`PER_TENSOR` and `PER_CHANNEL`**, with `k_cache_dtype` and
+`v_cache_dtype` left at `""` (or naming the cache tensor's own element type).
 INT4 is deferred ([§19](#19-phasing)).
 
 ### 8.2 Schema
@@ -583,7 +593,8 @@ INT4 is deferred ([§19](#19-phasing)).
   `uint8` is intentionally excluded until a sub-byte format is specified (§4.9, §21).
 - `k_scale` / `v_scale` (inputs 14, 15), type `T_KV_SCALE` = **always FP32**, matching GQA.
 - Attributes `k_quant_type`, `v_quant_type` ∈ `{"NONE", "PER_TENSOR", "PER_CHANNEL"}`, plus
-  independent `k_cache_bit_width` and `v_cache_bit_width` attributes.
+  independent `k_cache_dtype` and `v_cache_dtype` attributes, which stay `""` while every logical
+  type is expressible as an ONNX element type.
 - Kernel becomes `PagedAttention<T, T_CACHE>`, registered for the same combinations GQA uses:
   `{MLFloat16, BFloat16} × {same as T, int8_t, Float8E4M3FN}` (plus `uint8_t` if and when INT4 lands).
 
@@ -609,6 +620,35 @@ Symmetric quantization, same formulas as GQA:
 | INT8 | `[-128, 127]` | `q = clamp(round(x / scale), -128, 127)` |
 | FP8 E4M3 | `[-448, 448]` | `q = clamp(x / scale, -448, 448)` |
 | INT4 (deferred) | `[-8, 7]`, 2/byte | last cache dim becomes `(head_size + 1) / 2` |
+
+#### 8.3.1 Zero point: always 0, and why the vocabulary is signed-only
+
+There is **no zero-point input and no zero-point attribute**. Dequantization is exactly
+`x = q * scale`, with an implied zero point of `0`. Consequently every value `k_cache_dtype` /
+`v_cache_dtype` may name is a *signed, zero-symmetric* type: `int8`, `float8e4m3fn`, `int4`,
+`float4e2m1`, plus the unquantized floats. `uint4` and `uint8` are deliberately **absent**: an
+unsigned logical type under symmetric quantization implies an offset of `2^(bits-1)` (128 for uint8,
+8 for uint4) that nothing in the contract carries, so admitting the name would let two
+implementations disagree about whether the stored code is biased. Unsigned logical types must arrive
+together with the optional zero-point inputs sketched in §21.3, not before.
+
+> **Storage bias is not a zero point.** INT4 is *stored* in an unsigned nibble biased by `+8`
+> (`store = q + 8`, `load = nibble - 8`), which is how ORT's MLAS KV path already packs its `S4`
+> modes (`kInt4Bias` in `mlas/lib/qkv_quant_common.h`). That bias is a storage encoding removed
+> before the value is used; the *logical* value stays signed in `[-8, 7]` and the dequantization is
+> still `q_signed * scale`. Naming that format `uint4` would be wrong.
+
+**The kernels depend on this, not merely comply with it.** The §8.5 Phase 3 decode kernel folds
+`k_scale` into Q at load time and `v_scale` into the reduce epilogue. Those foldings are exact only
+because the zero point is 0:
+
+$$\sum_c q_c \cdot (k_c \cdot s_k) = \sum_c (q_c \cdot s_k) \cdot k_c$$
+
+With a non-zero zero point $z$ the score becomes
+$\sum_c q_c (k_c - z) s_k = s_k \sum_c q_c k_c - z\,s_k \sum_c q_c$, so a per-(token, head)
+correction term appears in the QK product and a second one in the PV product. That is a structural
+change to the kernel, not an extra subtraction — which is the concrete reason zero points are a
+versioned-successor topic rather than a late addition.
 
 ### 8.4 Write path
 
@@ -642,11 +682,14 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
   `k_quant_type == "NONE"` is `INVALID_ARGUMENT`.
 - `T_CACHE != T` requires a non-`NONE` quant type; `T_CACHE == T` requires both to be `NONE` and both
   scales to be absent.
-- `k_cache_bit_width` and `v_cache_bit_width` are each `8` for the corresponding quantized cache and
-  `0` or `16` otherwise; each must be consistent with `T_CACHE` and its corresponding quantization
-  attributes. There is no `4` until a sub-byte format exists.
+- `k_cache_dtype` and `v_cache_dtype` are `""` for every cache this operator stores, quantized or
+  not: the cache tensor's element type is the logical element type. Naming that type explicitly
+  (`"float16"`, `"bfloat16"`, `"int8"`, `"float8e4m3fn"`) is accepted but must agree with the tensor.
+  `"int4"` and `"float4e2m1"` are reserved for a `uint8` packed cache and are rejected
+  until one exists. Unsigned logical types (`uint4`, `uint8`) are rejected outright: quantization
+  here has no zero point (§8.3.1).
 - In `"LATENT"` mode only K storage exists: `k_quant_type` and `k_scale` describe the latent row,
-  `v_quant_type` and `v_cache_bit_width` must equal their K counterparts, and `v_scale` must be
+  `v_quant_type` and `v_cache_dtype` must be unset, and `v_scale` must be
   absent because V is a view of K.
 - FP8 is available when ORT is built with `onnxruntime_USE_FP8_KV_CACHE`; no additional runtime
   architecture gate is required for the conversion path used by this operator.
@@ -665,9 +708,8 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 > - Because a quantized cache never reaches Flash's *paged* kernel, the `block_size` tiling
 >   constraint of §18.1 does not apply to it; Flash eligibility skips that check when the cache is
 >   quantized. Any power-of-two `block_size >= 16` works with a quantized cache on either backend.
-> - **`uint8` / INT4 not added.** `T_CACHE` is `{float16, bfloat16, int8, float8e4m3fn}`;
->   `k_cache_bit_width` and `v_cache_bit_width` must each be `8` for a quantized cache and `0` or
->   `16` otherwise.
+> - **`uint8` / INT4 not added.** `T_CACHE` is `{float16, bfloat16, int8, float8e4m3fn}`, so
+>   `k_cache_dtype` and `v_cache_dtype` must be `""` or name the cache tensor's own element type.
 > - **No SM89/SM90 gate for FP8.** `Float8E4M3FN`'s converting constructor uses
 >   `__nv_cvt_float_to_fp8`, which is available on every architecture ORT builds for from CUDA 11.8
 >   onward, so the arch check in §8.7 would reject working configurations. FP8 remains gated at
@@ -1192,7 +1234,7 @@ mitigation is structural, not procedural.
 1. **Common parameter base.** `PagedAttentionParameters` and `GroupQueryAttentionParameters` already
    derive from `AttentionParameters` in `contrib_ops/cpu/bert/attention_parameters.h`. Move the
   fields that are genuinely shared — `local_window_size`, `softcap`,
-  `qk_norm_epsilon`, `k_quant_type`, `v_quant_type`, `k_cache_bit_width`, `v_cache_bit_width`,
+  `qk_norm_epsilon`, `k_quant_type`, `v_quant_type`,
   `rotary_interleaved` —
    into the base so a feature has one definition. `v_head_size` and `rotary_offset` (§12) start in
    `PagedAttentionParameters`; promote them if and when a second op needs asymmetric head widths.
@@ -1246,9 +1288,10 @@ Consolidated, to be implemented in `paged_attention_helper::CheckInputs`. Every 
   `(kv_num_heads, 1, effective_v_head_size)` (V) for `PER_CHANNEL`; present iff the corresponding
   quant type is not `NONE`.
 - `T_CACHE != T` iff a quant type is not `NONE`.
-- `k_cache_bit_width` and `v_cache_bit_width` must each be consistent with the corresponding cache:
-  `8` for a quantized cache and `0` or `16` for an unquantized cache. FP8 availability is controlled
-  by `onnxruntime_USE_FP8_KV_CACHE`, without an additional runtime architecture gate.
+- `k_cache_dtype` and `v_cache_dtype` must be `""` or name the cache tensor's own element type:
+  every logical element type this operator stores is expressible as an ONNX element type. The
+  reserved sub-byte values are rejected until a `uint8` packed cache exists. FP8 availability is
+  controlled by `onnxruntime_USE_FP8_KV_CACHE`, without an additional runtime architecture gate.
 - `attention_metadata`: rank 1, `dim0 == 2`, `int32`, CPU-resident; entries `>= 0`; each non-zero
   entry is clamped to its static limit before use and may only size launch dimensions and workspace
   (§4.7). It must never enter a mask comparison. Each value is a trusted upper bound for every step
@@ -1542,7 +1585,8 @@ The complete deferred list:
 - one required functional `kv_cache_out` instead of two optional aliasing outputs;
 - removal of `kv_num_heads` in favor of `kv_cache.shape[2]`;
 - quantization granularity inferred from scale shape, and zero points (§21.3);
-- sub-byte logical types stored in `uint8` tensors via `k_cache_dtype` / `v_cache_dtype` (§21.4);
+- sub-byte logical types stored in `uint8` tensors — the `k_cache_dtype` / `v_cache_dtype` attributes
+  that name them are adopted in §4.5, but no backend decodes a packed cache yet (§21.4);
 - inline scales or zero points packed into cache rows (§21.3, note);
 - a physical `HND` cache layout (§21.6);
 - renaming `local_window_size` to `window_size_left` / `window_size_right`, and the
@@ -1619,7 +1663,11 @@ new enum values. This also drops the vestigial middle `1` in v1's `(kv_num_heads
 K and V may use different granularities independently.
 
 `k_zero_point` / `v_zero_point` are new and optional, same shape as the corresponding scale, for
-asymmetric integer quantization. Absent ⇒ symmetric (the current behavior).
+asymmetric integer quantization. Absent ⇒ symmetric (the current behavior). These are the inputs an
+**unsigned** logical cache type would need: §8.3.1 keeps `k_cache_dtype` / `v_cache_dtype` restricted
+to signed, zero-symmetric types precisely because they do not exist yet, and §8.3.1 also shows that
+adding them is not free — a non-zero zero point breaks the decode kernel's scale folding and
+introduces correction terms in both the QK and PV products.
 
 > Note: vLLM's DeepSeek V3.2/V4 formats store scales **inline in the cache row** rather than in a
 > separate tensor (`fp8_ds_mla` = 512 NoPE + 16 scale + 128 RoPE = 656 B; DeepSeek-V4 = 448 + 128 +
@@ -1629,25 +1677,34 @@ asymmetric integer quantization. Absent ⇒ symmetric (the current behavior).
 
 ### 21.4 `k_cache_dtype` / `v_cache_dtype` for sub-byte caches
 
+**The attributes themselves are adopted in §4.5**; only their sub-byte *values* are deferred, because
+no backend decodes a packed cache yet. They were adopted rather than deferred because the obvious
+alternative — a `k_cache_bit_width` / `v_cache_bit_width` pair — is redundant against the cache
+tensor's element type for every format that exists today and still insufficient for the format it
+was meant to describe.
+
 For `int8` and `float8e4m3fn` each cache tensor's own element type is the logical type and its
 corresponding cache-dtype attribute stays `""`. Sub-byte needs more:
 
 - ORT's CUDA EP has no usable 4-bit tensor element type, so storage must be `uint8`.
 - `kv_pack_dim` then counts **storage bytes**, and the logical head width is unrecoverable.
-- Bit width alone is insufficient: `int4` and `fp4e2m1` are both 4 bits with entirely different
-  decode math. This is why a versioned successor would supersede `k_cache_bit_width` and
-  `v_cache_bit_width` with independent dtype attributes. Keeping them independent supports formats
-  where K and V use different precisions.
+- Bit width alone is insufficient: `int4` and `float4e2m1` are both 4 bits with entirely different
+  decode math. Keeping K and V independent supports formats where they use different precisions.
 
 | `k_cache_dtype` / `v_cache_dtype` | Storage elem type | Packed logical width |
 |---|---|---|
 | `""` | corresponding cache tensor type | unchanged |
-| `"int4"`, `"uint4"`, `"fp4e2m1"` | `uint8` | logical width / 2 |
+| `"float16"`, `"bfloat16"`, `"int8"`, `"float8e4m3fn"` | the same type, named explicitly | unchanged |
+| `"int4"`, `"float4e2m1"` | `uint8` | logical width / 2 |
 | `"int2"` | `uint8` | logical width / 4 |
 
 where `E = head_size + v_head_size` under `"KV_CONCAT"`, or `kv_pack_dim`'s logical width under
 `"LATENT"`. Packing order must be specified or implementations will diverge: **logical element `2i`
-occupies the low-order bits of byte `i`**, element `2i+1` the high-order bits.
+occupies the low-order bits of byte `i`**, element `2i+1` the high-order bits. The storage type is
+`uint8` for all of these, but the *logical* values stay signed: a 4-bit code is written as `q + 8`
+and read back as `nibble - 8`, matching MLAS's `S4` packing, so the dequantization remains
+`q_signed * scale` with no zero point (§8.3.1). `"uint4"` / `"uint2"` are not members and cannot be
+until `k_zero_point` / `v_zero_point` (§21.3) exist.
 
 ### 21.5 Tightened / clarified
 
@@ -1692,7 +1749,6 @@ attribute exists at all. **For MLA the two are identical**, since `kv_num_heads 
 | `local_window_size = w` | `window_size_left = w`, `window_size_right = 0` |
 | `k_quant_type` / `v_quant_type` | drop — infer from `k_scale` / `v_scale` shape |
 | `k_scale` shape `(kv_num_heads, 1, head_size)` | `(kv_num_heads, head_size)` |
-| `k_cache_bit_width`, `v_cache_bit_width` | `k_cache_dtype`, `v_cache_dtype` |
 
 Implementation impact is concentrated in `ReshapeAndCache` (one packed row per token instead of two
 scattered writes), the cache-read stride arithmetic in the P5 decode kernel (innermost stride becomes
@@ -1709,7 +1765,7 @@ migration tool over serialized graphs is cheap compared with breaking a shipped 
 | §21.2 merged `kv_cache` | **No** | Deferred to a versioned successor |
 | §21.5 required `kv_cache_out` | **No** | Deferred; §4.4 registers the alias instead |
 | §21.3 scale-shape granularity, zero points | Yes | Deferred — explicit attributes in §4.5 are preferred while only two granularities exist |
-| §21.4 `k_cache_dtype` / `v_cache_dtype` | Yes | Deferred until a sub-byte cache exists |
+| §21.4 `k_cache_dtype` / `v_cache_dtype` | Yes | **Adopted** — §4.5; only the sub-byte *values* wait for a packed-cache backend |
 | §21.6 `kv_layout` | Yes | Deferred until a backend requires `HND` |
 | §21.5 `window_size_*` rename | Yes, with deprecated aliases | Deferred with the lookahead window |
 | `attention_metadata` | Yes | **Adopted, redesigned** — §4.7 |

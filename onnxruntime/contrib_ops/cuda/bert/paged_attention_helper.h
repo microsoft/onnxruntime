@@ -362,6 +362,28 @@ Status CheckKVCacheQuantization(const T* scale, const char* scale_name, const ch
   return Status::OK();
 }
 
+// Validates one side (K or V) of the `k_cache_dtype` / `v_cache_dtype` contract against
+// `storage_dtype`, the element type the kernel was instantiated for. DEFAULT means "the cache
+// tensor's element type is also the logical type" and always passes; naming that same type
+// explicitly is allowed but must agree. The sub-byte members describe a logical type packed two per
+// byte into a uint8 cache; the schema reserves them, but no backend decodes them yet, so they are
+// rejected here instead of being silently mis-read. See docs/contrib_ops/cuda/paged_attention.md §8.
+inline Status CheckKVCacheDataType(const KVCacheDataType cache_dtype, const KVCacheDataType storage_dtype,
+                                   const char* attr_name) {
+  if (cache_dtype == KVCacheDataType::DEFAULT || cache_dtype == storage_dtype) {
+    return Status::OK();
+  }
+  if (IsSubByteKVCacheDataType(cache_dtype)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "'", attr_name, "' == '", KVCacheDataTypeToString(cache_dtype),
+                           "' requires a uint8 packed cache, which is not enabled in this build.");
+  }
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                         "'", attr_name, "' is '", KVCacheDataTypeToString(cache_dtype),
+                         "', but the cache tensor's element type is '", KVCacheDataTypeToString(storage_dtype),
+                         "'. Leave the attribute at '' to use the tensor's element type.");
+}
+
 template <typename T = Tensor>
 Status CheckInputs(const T* query,
                    const T* key,
@@ -387,14 +409,15 @@ Status CheckInputs(const T* query,
                    float qk_norm_epsilon,
                    KVQuantizationType k_quant_type,
                    KVQuantizationType v_quant_type,
-                   int k_cache_bit_width,
-                   int v_cache_bit_width,
-                   bool is_quantized_cache,
+                   KVCacheDataType k_cache_dtype,
+                   KVCacheDataType v_cache_dtype,
+                   KVCacheDataType cache_storage_dtype,
                    bool is_latent_kv,
                    int v_head_size_attr,
                    int rotary_offset,
                    bool has_explicit_scale,
                    int max_threads_per_block) {
+  const bool is_quantized_cache = IsQuantizedKVCacheDataType(cache_storage_dtype);
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
@@ -472,10 +495,12 @@ Status CheckInputs(const T* query,
     }
     // There is one physical cache, written once with k_scale, so a second scale for the same bytes
     // could only disagree with it. V is dequantized with k_scale.
-    if (v_scale != nullptr || v_quant_type != KVQuantizationType::NONE) {
+    if (v_scale != nullptr || v_quant_type != KVQuantizationType::NONE ||
+        v_cache_dtype != KVCacheDataType::DEFAULT) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'v_scale' and attribute 'v_quant_type' must be unset when 'kv_cache_layout' is "
-                             "'LATENT': the value elements are the key elements, so 'k_scale' dequantizes both.");
+                             "Input 'v_scale' and attributes 'v_quant_type' / 'v_cache_dtype' must be unset when "
+                             "'kv_cache_layout' is 'LATENT': the value elements are the key elements, so 'k_scale' "
+                             "and 'k_cache_dtype' describe both.");
     }
   } else if (value_cache == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -539,26 +564,8 @@ Status CheckInputs(const T* query,
     ORT_RETURN_IF_ERROR(CheckKVCacheQuantization(v_scale, "v_scale", "v_quant_type", v_quant_type,
                                                  is_quantized_cache, kv_num_heads, v_head_size));
   }
-  if (is_quantized_cache && k_cache_bit_width != 8) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "'k_cache_bit_width' must be 8 for an int8 or float8e4m3fn key cache, got ",
-                           k_cache_bit_width);
-  }
-  if (!is_quantized_cache && k_cache_bit_width != 0 && k_cache_bit_width != 16) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "'k_cache_bit_width' must be 0 or 16 for an unquantized key cache, got ",
-                           k_cache_bit_width);
-  }
-  if (is_quantized_cache && v_cache_bit_width != 8) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "'v_cache_bit_width' must be 8 for an int8 or float8e4m3fn value cache, got ",
-                           v_cache_bit_width);
-  }
-  if (!is_quantized_cache && v_cache_bit_width != 0 && v_cache_bit_width != 16) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "'v_cache_bit_width' must be 0 or 16 for an unquantized value cache, got ",
-                           v_cache_bit_width);
-  }
+  ORT_RETURN_IF_ERROR(CheckKVCacheDataType(k_cache_dtype, cache_storage_dtype, "k_cache_dtype"));
+  ORT_RETURN_IF_ERROR(CheckKVCacheDataType(v_cache_dtype, cache_storage_dtype, "v_cache_dtype"));
 
   if (parameters != nullptr) {
     PagedAttentionParameters* output_parameters = reinterpret_cast<PagedAttentionParameters*>(parameters);
@@ -585,8 +592,6 @@ Status CheckInputs(const T* query,
     output_parameters->qk_norm_epsilon = qk_norm_epsilon;
     output_parameters->k_quant_type = k_quant_type;
     output_parameters->v_quant_type = v_quant_type;
-    output_parameters->k_cache_bit_width = k_cache_bit_width;
-    output_parameters->v_cache_bit_width = v_cache_bit_width;
   }
 
   return Status::OK();
