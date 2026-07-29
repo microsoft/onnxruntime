@@ -52,7 +52,7 @@ Status WebGpuKernel::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr /
   if (is_packed) {
     // Flush pending commands to ensure GPU buffer creations are completed.
     // This allows the initializer buffer manager to release temporary buffers and reduce memory usage.
-    webgpu_context_.Flush(webgpu_context_.InitializerBufferManager());
+    webgpu_context_.Flush(ep_.InitializerBufferManager());
   }
 
   if (webgpu_context_.ValidationMode() >= ValidationMode::Full) {

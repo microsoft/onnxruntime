@@ -134,16 +134,18 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   auto webgpu_ep = webgpu_ep_factory->CreateProvider(*session_options, *logger);
   static_cast<WebGpuExecutionProvider*>(webgpu_ep.get())->SetEpLogger(logger);
   auto factory = static_cast<Factory*>(this_ptr);
-  const int context_id = webgpu_ep->GetDeviceId();
   auto* webgpu_ep_ptr = static_cast<WebGpuExecutionProvider*>(webgpu_ep.get());
+  // Both allocators go through this EP's own buffer managers. Command recording state is owned
+  // per session, so routing them to the shared context here would let this session's uploads
+  // race with another session's inference.
   auto device_alloc = std::make_shared<webgpu::GpuBufferAllocator>(
       [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); }, false);
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),  // CPU allocator
       device_alloc,                     // default device allocator
       std::make_shared<webgpu::GpuBufferAllocator>(
-          [context_id]() -> const webgpu::BufferManager& {
-            return WebGpuContextFactory::GetContext(context_id).InitializerBufferManager();
+          [webgpu_ep_ptr]() -> const webgpu::BufferManager& {
+            return webgpu_ep_ptr->InitializerBufferManager();
           },
           true),  // initializer device allocator
   };

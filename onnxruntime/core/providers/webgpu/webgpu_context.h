@@ -177,18 +177,17 @@ class WebGpuContext final {
   const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const { return subgroup_matrix_configs_; }
 #endif
 
-  const wgpu::CommandEncoder& GetCommandEncoder() {
-    std::lock_guard<std::recursive_mutex> lock(context_mutex_);
-    if (!current_command_encoder_) {
-      current_command_encoder_ = device_.CreateCommandEncoder();
+  const wgpu::CommandEncoder& GetCommandEncoder(CommandRecordingState& recording) {
+    if (!recording.command_encoder) {
+      recording.command_encoder = device_.CreateCommandEncoder();
+      recording.has_unsubmitted_work.store(true, std::memory_order_release);
     }
-    return current_command_encoder_;
+    return recording.command_encoder;
   }
 
-  const wgpu::ComputePassEncoder& GetComputePassEncoder() {
-    std::lock_guard<std::recursive_mutex> lock(context_mutex_);
-    if (!current_compute_pass_encoder_) {
-      auto& command_encoder = GetCommandEncoder();
+  const wgpu::ComputePassEncoder& GetComputePassEncoder(CommandRecordingState& recording) {
+    if (!recording.compute_pass_encoder) {
+      auto& command_encoder = GetCommandEncoder(recording);
 
       wgpu::ComputePassDescriptor compute_pass_desc{};
 
@@ -196,34 +195,22 @@ class WebGpuContext final {
         wgpu::PassTimestampWrites timestampWrites = {
             nullptr,
             query_set_,
-            num_pending_dispatches_ * 2,
-            num_pending_dispatches_ * 2 + 1};
+            recording.num_pending_dispatches * 2,
+            recording.num_pending_dispatches * 2 + 1};
         compute_pass_desc.timestampWrites = &timestampWrites;
       }
 
-      current_compute_pass_encoder_ = command_encoder.BeginComputePass(&compute_pass_desc);
+      recording.compute_pass_encoder = command_encoder.BeginComputePass(&compute_pass_desc);
     }
-    return current_compute_pass_encoder_;
+    return recording.compute_pass_encoder;
   }
 
-  void EndComputePass() {
-    std::lock_guard<std::recursive_mutex> lock(context_mutex_);
-    if (current_compute_pass_encoder_) {
-      current_compute_pass_encoder_.End();
-      current_compute_pass_encoder_ = nullptr;
+  void EndComputePass(CommandRecordingState& recording) {
+    if (recording.compute_pass_encoder) {
+      recording.compute_pass_encoder.End();
+      recording.compute_pass_encoder = nullptr;
     }
   }
-
-  // Acquire the shared-context lock for the duration of a compound sequence that records into
-  // and/or submits the shared command encoder, or that allocates/frees GPU buffers from the
-  // context's shared BufferManager caches (e.g. BufferManager::Upload/MemCpy/Download/Create/
-  // Release and ComputeContext::FillZero). The caller holds the returned lock so that the
-  // individual GetCommandEncoder / EndComputePass / Flush / cache calls in that sequence execute
-  // atomically with respect to other InferenceSessions that share this context.
-  [[nodiscard]] std::unique_lock<std::recursive_mutex> AcquireContextLock() {
-    return std::unique_lock<std::recursive_mutex>(context_mutex_);
-  }
-
   void CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands, const webgpu::BufferManager& buffer_manager);
   void CaptureEnd();
   void Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands, const webgpu::BufferManager& buffer_manager);
@@ -232,16 +219,29 @@ class WebGpuContext final {
   void Flush(const webgpu::BufferManager& buffer_mgr);
 
   /**
-   * Get the buffer manager.
+   * Get the context-level buffer manager.
+   *
+   * This is NOT the manager sessions use - each WebGpuExecutionProvider owns its own (see
+   * WebGpuExecutionProvider::BufferManager). It exists solely for the session-less shared
+   * data transfer created by OrtWebGpuCreateDataTransfer, which has no EP to borrow one from.
    */
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
 
   /**
-   * Get the initializer buffer manager.
-   *
-   * This buffer manager is used for read-only buffers (e.g. initializers).
+   * The buffer cache configuration this context was initialized with. Exposed so that each
+   * session can create its own BufferManager with the same policy instead of sharing the
+   * context's caches across threads.
    */
-  webgpu::BufferManager& InitializerBufferManager() const { return *initializer_buffer_mgr_; }
+  const WebGpuBufferCacheConfig& BufferCacheConfig() const { return buffer_cache_config_; }
+
+  /**
+   * Free-buffer pools shared by all sessions on this context. Sessions keep their own
+   * BufferManager (and their own "released but not yet submitted" lists), but hand freed buffers
+   * back here so that steady-state GPU memory stays at one session's high-water mark instead of
+   * scaling with the number of live sessions.
+   */
+  webgpu::SharedBufferPool& SharedStorageBufferPool() const { return *shared_storage_pool_; }
+  webgpu::SharedBufferPool& SharedUniformBufferPool() const { return *shared_uniform_pool_; }
 
   inline webgpu::ValidationMode ValidationMode() const {
     return validation_mode_;
@@ -328,7 +328,7 @@ class WebGpuContext final {
   std::vector<const char*> GetDisabledDeviceToggles() const;
   std::vector<wgpu::FeatureName> GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) const;
   wgpu::Limits GetRequiredLimits(const wgpu::Adapter& adapter) const;
-  void WriteTimestamp(uint32_t query_index);
+  void WriteTimestamp(CommandRecordingState& recording, uint32_t query_index);
 
   struct PendingQueryInfo {
     PendingQueryInfo(std::vector<PendingKernelInfo>&& kernels, wgpu::Buffer query_buffer)
@@ -360,25 +360,21 @@ class WebGpuContext final {
   wgpu::AdapterPropertiesSubgroupMatrixConfigs subgroup_matrix_configs_;
 #endif
 
-  wgpu::CommandEncoder current_command_encoder_;
-  wgpu::ComputePassEncoder current_compute_pass_encoder_;
+  // Declared before every BufferManager so that the pools outlive the cache managers holding
+  // references to them (members are destroyed in reverse declaration order).
+  std::unique_ptr<webgpu::SharedBufferPool> shared_storage_pool_;
+  std::unique_ptr<webgpu::SharedBufferPool> shared_uniform_pool_;
 
-  // Serializes all mutations of shared per-context state: the command encoder / compute pass /
-  // pending-dispatch counters AND the shared BufferManager cache maps (Create/Release/refresh).
-  // Multiple InferenceSessions can share a single context (e.g. the default context_id=0), and
-  // InferenceSession only serializes a single session's Run via its own session_mutex_. Without
-  // this lock, concurrent Run / allocation / initializer-upload from different sessions race on
-  // the single shared command encoder and buffer caches, producing Dawn "CommandEncoder is
-  // already finished" errors, corrupted buffer caches, and device-lost failures. Recursive
-  // because the guarded compound operations (Run, Flush, Replay, CaptureBegin, and the buffer
-  // Upload/MemCpy/Download/Create/Release / FillZero sequences) nest calls into each other.
-  std::recursive_mutex context_mutex_;
+  // Recording state for buffer_mgr_ below. Sessions never touch it: each
+  // WebGpuExecutionProvider owns its own CommandRecordingState. This one exists only for the
+  // session-less shared data transfer, whose copies are not covered by any session_mutex_.
+  CommandRecordingState default_recording_;
 
   std::unique_ptr<webgpu::BufferManager> buffer_mgr_;
-  std::unique_ptr<webgpu::BufferManager> initializer_buffer_mgr_;
   std::unique_ptr<ProgramManager> program_mgr_;
 
-  uint32_t num_pending_dispatches_ = 0;
+  WebGpuBufferCacheConfig buffer_cache_config_{};
+
   uint32_t max_num_pending_dispatches_ = 16;
 
   std::unique_ptr<SplitKConfig> split_k_config_;
