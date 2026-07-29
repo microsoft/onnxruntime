@@ -269,7 +269,7 @@ endif()
 # Link telemetry library (1DS SDK) for non-Windows platforms
 if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
   if(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE AND TARGET MSTelemetry::mat)
-    # vcpkg port (cpp-client-telemetry): the imported target propagates its include
+    # A caller-supplied package target propagates its include
     # directories and transitive dependencies (curl/sqlite3/zlib/nlohmann-json), so no
     # manual include paths or system libraries are required here.
     target_link_libraries(onnxruntime_common PRIVATE MSTelemetry::mat)

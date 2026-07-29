@@ -930,6 +930,11 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
                         "the 1DS telemetry SDK is excluded on Emscripten. Disable telemetry for WASM builds.")
   endif()
   set(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE OFF)
+  if(onnxruntime_USE_VCPKG AND NOT ANDROID AND NOT TARGET MSTelemetry::mat)
+    # Reuse a caller-preinstalled vcpkg package when available. Do not declare it in ORT's manifest:
+    # internal CI blocks uncached port downloads, and the current port hardcodes curl/OpenSSL.
+    find_package(MSTelemetry CONFIG QUIET)
+  endif()
   if(TARGET MSTelemetry::mat AND NOT ANDROID)
     message(STATUS "Telemetry: using the caller-supplied MSTelemetry::mat package")
     set(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE ON)
