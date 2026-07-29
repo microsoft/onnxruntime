@@ -242,6 +242,43 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     );
 
+// SVE (non-SME) fp32 SGEMM variants. Route SGEMM to the KleidiAI SVE microkernel
+// (unpacked LHS + packed RHS). Eligible only for TransA=NoTrans, TransB=NoTrans;
+// otherwise return 0/false so the caller falls back to the default MLAS kernel.
+size_t
+MLASCALL
+MlasGemmPackBSizeSve(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K
+    );
+
+bool
+MLASCALL
+MlasGemmPackBSve(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB
+    );
+
+bool
+MLASCALL
+MlasGemmBatchSve(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
 #if defined(__aarch64__) && defined(__linux__)
 size_t
 MLASCALL

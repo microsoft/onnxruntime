@@ -20,6 +20,10 @@
 //   GEMV
 #include "kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p8x1biasf32_6x8x4_neon_mla.h"
 
+// SVE kernels
+//   GEMM (unpacked LHS, packed RHS) — runs on plain SVE (no SME required)
+#include "kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p4vlx1b_6x4vl_sve_mla.h"
+
 // SME kernels
 //   GEMM/QGEMM
 #include "kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa.h"
@@ -288,6 +292,12 @@ const KaiF32SgemvKernel sgemm_gemv_sme2 =
         kai_run_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla}
     };
 
+// SVE fp32 GEMM ukernel (unpacked LHS + packed RHS). Same interface shape as the
+// GEMV kernels above (KaiF32SgemvKernel / kai_matmul_clamp_f32_f32_f32p_ukernel),
+// but a full 6x4vl matmul tile. Requires only SVE, not SME.
+const KaiF32SgemvKernel sgemm_gemm_sve =
+    KAI_WRAP_UKERNEL_RUN_MATMUL_10_LHS_OFFSET(matmul_clamp_f32_f32_f32p4vlx1b_6x4vl_sve_mla);
+
 
 
 const KaiQnbitGemmKernel& GetKleidiAIGemmUKernel() {
@@ -330,6 +340,10 @@ const KaiF32SgemvKernel& GetKleidiAISGemvUKernel() {
     } else {
         return sgemm_gemv_sme;
     }
+}
+
+const KaiF32SgemvKernel& GetKleidiAISGemmSveUKernel() {
+    return sgemm_gemm_sve;
 }
 
 const KaiF32IMatmulKernel& GetKleidiAIF32IMatmulUKernel() {
