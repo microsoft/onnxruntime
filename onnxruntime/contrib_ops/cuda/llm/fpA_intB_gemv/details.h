@@ -74,6 +74,47 @@ class GMemIterator {
   int stride_;
 };
 
+// Access shape for the CtaN per-column scales a GEMV block loads for one K tile.
+//
+// The scales of the CtaN columns owned by a block sit `Interleave` elements apart, so for the
+// non-interleaved ColumnMajor layout (Interleave == 1) the whole CtaN-wide scale vector is
+// contiguous and can be fetched with one wide access instead of CtaN scalar ones.
+//
+// This matters far more than the byte count suggests. With a groupwise scale (e.g. NVFP4's
+// GroupSize = 16) and StepK = 8, a warp's 32 lanes cover 16 distinct scale rows that are `n`
+// elements apart, so *every* scale load touches 16 different sectors. Issuing CtaN of them costs
+// CtaN * 16 sectors while using only 2 bytes out of each 32-byte sector; a single vector load
+// costs 16 sectors and uses CtaN * 2 bytes of each. On the Qwen3.6 NVFP4 MoE decode shape
+// (CtaN = 8) that is 128 of the 176 L1 sectors a warp requests per K iteration.
+//
+// The vector form needs the scale row base to be 16-byte aligned. Callers guarantee
+// n % CtaN == 0, and kVectorized implies CtaN * sizeof(TypeA) % 16 == 0, so both the row stride
+// (a multiple of n) and the column offset (a multiple of CtaN) are 16-byte aligned.
+template <typename T, int CtaN, int Interleave>
+struct ScalesAccess {
+  static constexpr int kBytes = CtaN * static_cast<int>(sizeof(T));
+  static constexpr bool kVectorized = (Interleave == 1) && (kBytes % 16 == 0);
+  // GMemIterator<..., TVec, Strided, Continuous, T>: the vector form loads all CtaN scales in
+  // `Continuous` 16-byte chunks at ii = 0, the scalar form keeps one element per `ii`.
+  using TVec = std::conditional_t<kVectorized, float4, T>;
+  static constexpr int kStrided = kVectorized ? 1 : CtaN;
+  static constexpr int kContinuous = kVectorized ? kBytes / 16 : 1;
+};
+
+// Loads the CtaN scales for K tile `iter` into `vec_scale`, using the access shape `Access`
+// describes. `scales_iterator` must have been declared with that same shape.
+template <typename Access, int CtaN, typename Iterator, typename T>
+__device__ __forceinline__ void load_scales(Iterator& scales_iterator, T* vec_scale, int iter) {
+  if constexpr (Access::kVectorized) {
+    scales_iterator.load(vec_scale, iter);
+  } else {
+#pragma unroll
+    for (int i = 0; i < CtaN; ++i) {
+      scales_iterator.load(vec_scale + i, iter, i);
+    }
+  }
+}
+
 struct FP16DetailsA {
   using Type = half;
   using Type2 = half2;

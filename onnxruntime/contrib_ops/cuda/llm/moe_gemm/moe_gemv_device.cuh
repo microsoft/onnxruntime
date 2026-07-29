@@ -18,6 +18,66 @@ namespace onnxruntime::llm {
 namespace kernels {
 namespace fpA_intB_gemv {
 
+// Accumulator element of the K-paired inner loop, see accumulate_column_tile below. 16-bit
+// accumulation keeps the two k lanes of the vec2 apart until the epilogue so that folding in the
+// group scale costs a single fma2; fp32 accumulation reduces each tile to one float right away.
+template <typename Details, typename AccT>
+using TileAccType =
+    std::conditional_t<std::is_same_v<AccT, float>, float,
+                       typename MathWrapper<typename Details::TypeDetailsA>::Type2>;
+
+// Accumulates the K tile of one output column into `acc`.
+//
+// This replaces the dequantize/pack_to_vec2/mma sequence of the dense fpA_intB GEMV, which pairs
+// the products across two *columns* so that one hfma2 serves both. That pairing needs the decoded
+// weights shuffled into column-major register pairs, costing one prmt per weight pair -- about a
+// ninth of the QMoE decode GEMV's issued instructions. Pairing along K instead needs no shuffle at
+// all: the activation tile is already in k order and the converters emit k pairs contiguously
+// (Mapper sends a logical pair to a physical pair, and to an even physical index, so the vec2 load
+// stays aligned).
+//
+// The group scale is applied once to the tile sum instead of to every decoded weight, turning four
+// fma2 per column and K tile into one. This is the same product either way: the caller loads a
+// single scale per column and K tile, so it already required the tile to sit inside one scale
+// group (StepK <= GroupSize), which every launched configuration satisfies.
+template <typename Details, int K, typename TileAccT, typename TypeA>
+__device__ __forceinline__ void accumulate_column_tile(TileAccT& acc, void const* w, void const* act, TypeA scale) {
+  using Math = MathWrapper<typename Details::TypeDetailsA>;
+  using Type = typename Math::Type;
+  using Type2 = typename Math::Type2;
+  static_assert(K % 2 == 0);
+  typename Details::LayoutDetails::Mapper mapper;
+
+  Type2 partial = Math::to_vec2(static_cast<Type>(0.f));
+#pragma unroll
+  for (int j = 0; j < K / 2; ++j) {
+    Type2 const w2 = *reinterpret_cast<Type2 const*>(reinterpret_cast<Type const*>(w) + mapper(2 * j));
+    partial = Math::fma2(w2, reinterpret_cast<Type2 const*>(act)[j], partial);
+  }
+
+  if constexpr (std::is_same_v<TileAccT, float>) {
+    float2 const p = Math::to_float2(partial);
+    acc += static_cast<float>(scale) * (p.x + p.y);
+  } else {
+    acc = Math::fma2(partial, Math::to_vec2(scale), acc);
+  }
+}
+
+// Collapses the K-paired accumulators into the one-value-per-column form the epilogues expect.
+template <typename Details, int CtaN, typename AccT, typename TileAccT>
+__device__ __forceinline__ void collapse_tile_acc(AccT* tile_acc, TileAccT const* tile_k_acc) {
+  using Math = MathWrapper<typename Details::TypeDetailsA>;
+#pragma unroll
+  for (int i = 0; i < CtaN; ++i) {
+    if constexpr (std::is_same_v<TileAccT, float>) {
+      tile_acc[i] = tile_k_acc[i];
+    } else {
+      float2 const p = Math::to_float2(tile_k_acc[i]);
+      tile_acc[i] = static_cast<AccT>(p.x + p.y);
+    }
+  }
+}
+
 template <typename Details, int CtaN, int Threads, int GroupSize, bool EnableBias,
           typename TypeA = typename Details::TypeDetailsA::Type, typename AccT = TypeA>
 __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
@@ -73,48 +133,57 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
   GMemIterator<Mandatory, AccessTypeW, CtaN, Details::kAccessNumW, uint8_t> weight_iterator(
       weight, (interleaved_offset_n * interleaved_k + tid * StepK) / Details::kElemsPerByteW,
       CtaK / Details::kElemsPerByteW, interleaved_k / Details::kElemsPerByteW);
-  GMemIterator<Mandatory, TypeA, CtaN, 1, TypeA> scales_iterator(
-      scales,
-      (GroupSize != 0 ? real_offset_k / GroupSize * n : 0) + real_offset_n,
-      (GroupSize != 0 ? CtaK / Details::kInterleave / GroupSize * n : 0), Details::kInterleave);
+  using ScalesAccessT = ScalesAccess<TypeA, CtaN, Details::kInterleave>;
+  GMemIterator<Mandatory, typename ScalesAccessT::TVec, ScalesAccessT::kStrided, ScalesAccessT::kContinuous, TypeA>
+      scales_iterator(
+          scales,
+          (GroupSize != 0 ? real_offset_k / GroupSize * n : 0) + real_offset_n,
+          (GroupSize != 0 ? CtaK / Details::kInterleave / GroupSize * n : 0), Details::kInterleave);
 
   out += offset_m * n + tile_id_n * CtaN * Details::kInterleave;
   if constexpr (EnableBias) {
     bias += tile_id_n * CtaN * Details::kInterleave;
   }
 
-  AccT tile_acc[CtaM * CtaN];
-  fill<CtaM * CtaN>(tile_acc, static_cast<AccT>(0.f));
+  using Converter = typename ConverterWrapper<Details>::Converter;
+  using TileAccT = TileAccType<Details, AccT>;
+  using Math = MathWrapper<typename Details::TypeDetailsA>;
+
+  TileAccT tile_k_acc[CtaN];
+  if constexpr (std::is_same_v<TileAccT, float>) {
+    fill<CtaN>(tile_k_acc, 0.f);
+  } else {
+    fill<CtaN>(tile_k_acc, Math::to_vec2(static_cast<typename Math::Type>(0.f)));
+  }
 
   TypeA vec_scale[CtaN];
   if constexpr (GroupSize == 0) {
-#pragma unroll
-    for (int i = 0; i < CtaN; ++i) {
-      scales_iterator.load(vec_scale + i, 0, i);
-    }
+    load_scales<ScalesAccessT, CtaN>(scales_iterator, vec_scale, 0);
   }
 
   for (int idx_k = tid * StepK, iter = 0; idx_k < interleaved_k; idx_k += CtaK, ++iter) {
-    TypeA tile_a[StepK], tile_w[StepK], tile_w_pack2[CtaN * StepK];
-    uint8_t tile_w_quantized[StepK / Details::kElemsPerByteW];
+    TypeA tile_a[StepK];
+    // Issue all CtaN weight loads before consuming any of them: interleaving a load with its own
+    // decode leaves a single load in flight and makes the kernel long-scoreboard bound.
+    AccessTypeW tile_w_quantized[CtaN * Details::kAccessNumW];
     if constexpr (GroupSize != 0) {
+      load_scales<ScalesAccessT, CtaN>(scales_iterator, vec_scale, iter);
+    }
+    act_iterator.load(tile_a, iter, 0);
 #pragma unroll
-      for (int i = 0; i < CtaN; ++i) {
-        scales_iterator.load(vec_scale + i, iter, i);
-      }
+    for (int i = 0; i < CtaN; ++i) {
+      weight_iterator.load(tile_w_quantized + i * Details::kAccessNumW, iter, i);
     }
 #pragma unroll
     for (int i = 0; i < CtaN; ++i) {
-      weight_iterator.load(tile_w_quantized, iter, i);
-      dequantize<Details, 1, StepK, false, false>(tile_w, tile_w_quantized, vec_scale + i, nullptr, 1.0f);
-      pack_to_vec2<Details, StepK>(tile_w_pack2, tile_w, i);
-    }
-#pragma unroll
-    for (int i = 0; i < CtaM; ++i) {
-      act_iterator.load(tile_a, iter, i);
-      mma<Details, 1, CtaN, StepK, AccT>(tile_acc + i * CtaN, tile_w_pack2, tile_a);
+      TypeA tile_w[StepK];
+      Converter::template convert<StepK>(tile_w_quantized + i * Details::kAccessNumW, tile_w);
+      accumulate_column_tile<Details, StepK>(tile_k_acc[i], tile_w, tile_a, vec_scale[i]);
     }
   }
+
+  AccT tile_acc[CtaM * CtaN];
+  collapse_tile_acc<Details, CtaN>(tile_acc, tile_k_acc);
   epilogue<Details, CtaM, CtaN, Threads, EnableBias, false, AccT>(out, n, tile_acc, bias, 1.0f);
 #endif
 }
@@ -234,48 +303,56 @@ __global__ void moe_gemv_interleaved_swiglu_kernel(
   GMemIterator<Mandatory, AccessTypeW, CtaN, Details::kAccessNumW, uint8_t> weight_iterator(
       weight, (interleaved_offset_n * interleaved_k + tid * StepK) / Details::kElemsPerByteW,
       CtaK / Details::kElemsPerByteW, interleaved_k / Details::kElemsPerByteW);
-  GMemIterator<Mandatory, TypeA, CtaN, 1, TypeA> scales_iterator(
-      scales,
-      (GroupSize != 0 ? real_offset_k / GroupSize * n : 0) + real_offset_n,
-      (GroupSize != 0 ? CtaK / Details::kInterleave / GroupSize * n : 0), Details::kInterleave);
+  using ScalesAccessT = ScalesAccess<TypeA, CtaN, Details::kInterleave>;
+  GMemIterator<Mandatory, typename ScalesAccessT::TVec, ScalesAccessT::kStrided, ScalesAccessT::kContinuous, TypeA>
+      scales_iterator(
+          scales,
+          (GroupSize != 0 ? real_offset_k / GroupSize * n : 0) + real_offset_n,
+          (GroupSize != 0 ? CtaK / Details::kInterleave / GroupSize * n : 0), Details::kInterleave);
 
   out += offset_m * inter_size + tile_id_n * CtaN * Details::kInterleave / 2;
   if constexpr (EnableBias) {
     bias += tile_id_n * CtaN * Details::kInterleave;
   }
 
-  AccT tile_acc[CtaM * CtaN];
-  fill<CtaM * CtaN>(tile_acc, static_cast<AccT>(0.f));
+  using Converter = typename ConverterWrapper<Details>::Converter;
+  using TileAccT = TileAccType<Details, AccT>;
+  using Math = MathWrapper<typename Details::TypeDetailsA>;
+
+  TileAccT tile_k_acc[CtaN];
+  if constexpr (std::is_same_v<TileAccT, float>) {
+    fill<CtaN>(tile_k_acc, 0.f);
+  } else {
+    fill<CtaN>(tile_k_acc, Math::to_vec2(static_cast<typename Math::Type>(0.f)));
+  }
 
   TypeA vec_scale[CtaN];
   if constexpr (GroupSize == 0) {
-#pragma unroll
-    for (int i = 0; i < CtaN; ++i) {
-      scales_iterator.load(vec_scale + i, 0, i);
-    }
+    load_scales<ScalesAccessT, CtaN>(scales_iterator, vec_scale, 0);
   }
 
   for (int idx_k = tid * StepK, iter = 0; idx_k < interleaved_k; idx_k += CtaK, ++iter) {
-    TypeA tile_a[StepK], tile_w[StepK], tile_w_pack2[CtaN * StepK];
-    uint8_t tile_w_quantized[StepK / Details::kElemsPerByteW];
+    TypeA tile_a[StepK];
+    // See moe_gemv_kernel: keep all CtaN weight loads in flight at once.
+    AccessTypeW tile_w_quantized[CtaN * Details::kAccessNumW];
     if constexpr (GroupSize != 0) {
+      load_scales<ScalesAccessT, CtaN>(scales_iterator, vec_scale, iter);
+    }
+    act_iterator.load(tile_a, iter, 0);
 #pragma unroll
-      for (int i = 0; i < CtaN; ++i) {
-        scales_iterator.load(vec_scale + i, iter, i);
-      }
+    for (int i = 0; i < CtaN; ++i) {
+      weight_iterator.load(tile_w_quantized + i * Details::kAccessNumW, iter, i);
     }
 #pragma unroll
     for (int i = 0; i < CtaN; ++i) {
-      weight_iterator.load(tile_w_quantized, iter, i);
-      dequantize<Details, 1, StepK, false, false>(tile_w, tile_w_quantized, vec_scale + i, nullptr, 1.0f);
-      pack_to_vec2<Details, StepK>(tile_w_pack2, tile_w, i);
-    }
-#pragma unroll
-    for (int i = 0; i < CtaM; ++i) {
-      act_iterator.load(tile_a, iter, i);
-      mma<Details, 1, CtaN, StepK, AccT>(tile_acc + i * CtaN, tile_w_pack2, tile_a);
+      TypeA tile_w[StepK];
+      Converter::template convert<StepK>(tile_w_quantized + i * Details::kAccessNumW, tile_w);
+      accumulate_column_tile<Details, StepK>(tile_k_acc[i], tile_w, tile_a, vec_scale[i]);
     }
   }
+
+  AccT tile_acc[CtaM * CtaN];
+  collapse_tile_acc<Details, CtaN>(tile_acc, tile_k_acc);
   swiglu_epilogue<Details, CtaM, CtaN, Threads, EnableBias, TypeA, AccT>(out, tile_acc, bias, activation_params);
 #endif
 }
