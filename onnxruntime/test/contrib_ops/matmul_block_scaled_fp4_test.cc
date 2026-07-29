@@ -448,6 +448,160 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvDecodeRowTiledBf16) {
   }
 }
 
+// Exercises the tensor-core GEMV sub-path (mma.m16n8k16), which the launcher selects on SM80+
+// when K is a multiple of 128 and M <= 8. None of the tests above reach it (they use K = 32/64).
+//
+// That path permutes the K axis so every lane's loads are contiguous, and folds the per-block
+// E4M3 scale into the decoded weight instead of flushing the accumulator per block. A K
+// permutation applied consistently to both operands is a no-op, so to catch an *inconsistent*
+// one the weight, the block scales and the activation must all vary along K -- a uniform
+// weight (as in the row-tiled tests above) would pass even with a broken k mapping.
+//
+// The shapes cover: a ragged N that is not a multiple of the 16-column warp tile, single and
+// multi window K (128 -> 1 window, 256 -> 2, 512 -> 4), and an N large enough that the launcher
+// picks the wide ColTiles = 4 / KSplit = 2 shape rather than the column-starved KSplit ladder.
+namespace {
+
+// FP4 codes cycling along K: +1.0, -2.0, +0.5, +1.5 (E2M1 codes 0x2, 0xC, 0x1, 0x3). Negative
+// values exercise the sign path of the prmt-based decode.
+constexpr uint8_t kMmaCodes[4] = {0x2, 0xC, 0x1, 0x3};
+constexpr float kMmaValues[4] = {1.0f, -2.0f, 0.5f, 1.5f};
+
+// The column rotates the cycle so neighbouring output columns are not interchangeable.
+int MmaCodeIndex(int64_t col, int64_t kk) { return static_cast<int>((kk + col) & 3); }
+
+// Block scale alternates 1.0 (E4M3 0x38) and 2.0 (0x40) along both K and N.
+float MmaScaleValue(int64_t col, int64_t blk) { return ((col + blk) % 2 == 0) ? 1.0f : 2.0f; }
+uint8_t MmaScaleByte(int64_t col, int64_t blk) { return ((col + blk) % 2 == 0) ? 0x38u : 0x40u; }
+
+float MmaActValue(int64_t row, int64_t kk) { return static_cast<float>((kk % 4) + 1 + row); }
+
+// Every product is a multiple of 0.5 and every partial sum stays far below 2^23, so the fp32
+// reference below is exact and independent of summation order -- the kernel's permuted, split-K
+// accumulation must match it bit for bit before the final cast to the output type.
+void MakeMmaCase(int64_t m, int64_t n, int64_t k,
+                 std::vector<uint8_t>& b, std::vector<uint8_t>& weight_scale,
+                 std::vector<float>& a, std::vector<float>& expected) {
+  const int64_t k_blocks = k / 16;
+  b.assign(n * (k / 2), 0);
+  weight_scale.assign(n * k_blocks, 0);
+  for (int64_t col = 0; col < n; ++col) {
+    for (int64_t kk = 0; kk < k; kk += 2) {
+      const uint8_t lo = kMmaCodes[MmaCodeIndex(col, kk)];
+      const uint8_t hi = kMmaCodes[MmaCodeIndex(col, kk + 1)];
+      b[col * (k / 2) + kk / 2] = static_cast<uint8_t>(lo | (hi << 4));
+    }
+    for (int64_t blk = 0; blk < k_blocks; ++blk) {
+      weight_scale[col * k_blocks + blk] = MmaScaleByte(col, blk);
+    }
+  }
+
+  a.assign(m * k, 0.0f);
+  for (int64_t row = 0; row < m; ++row) {
+    for (int64_t kk = 0; kk < k; ++kk) {
+      a[row * k + kk] = MmaActValue(row, kk);
+    }
+  }
+
+  expected.assign(m * n, 0.0f);
+  for (int64_t row = 0; row < m; ++row) {
+    for (int64_t col = 0; col < n; ++col) {
+      float sum = 0.0f;
+      for (int64_t kk = 0; kk < k; ++kk) {
+        sum += kMmaValues[MmaCodeIndex(col, kk)] * MmaScaleValue(col, kk / 16) *
+               MmaActValue(row, kk);
+      }
+      expected[row * n + col] = sum;
+    }
+  }
+}
+
+struct MmaShape {
+  int64_t n;
+  int64_t k;
+};
+
+// N = 8704 gives 544 column tiles, i.e. 136 blocks at ColTiles = 4, which is above the SM count
+// of every current device and so selects the wide shape.
+constexpr MmaShape kMmaShapes[] = {{40, 128}, {512, 256}, {2048, 512}, {8704, 256}};
+
+}  // namespace
+
+TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreTilesFp16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp4Weight.";
+  }
+
+  for (const auto& shape : kMmaShapes) {
+    for (int m_val : {1, 3, 4, 8}) {
+      const int64_t m = m_val;
+      const int64_t n = shape.n;
+      const int64_t k = shape.k;
+      SCOPED_TRACE("N = " + std::to_string(n) + ", K = " + std::to_string(k) +
+                   ", M = " + std::to_string(m));
+
+      std::vector<uint8_t> b, weight_scale;
+      std::vector<float> a, expected;
+      MakeMmaCase(m, n, k, b, weight_scale, a, expected);
+
+      OpTester test("MatMulBlockQuantizedFp4Weight", 1, onnxruntime::kMSDomain);
+      test.AddAttribute<int64_t>("block_size", 16);
+      test.AddInput<MLFloat16>("A", {m, k}, FloatsToMLFloat16s(a));
+      test.AddInput<uint8_t>("B", {n, k / 2}, b);
+      test.AddInput<uint8_t>("weight_scale", {n, k / 16}, weight_scale);
+      test.AddInput<float>("weight_scale_2", {1}, {1.0f});
+      test.AddOutput<MLFloat16>("Y", {m, n}, FloatsToMLFloat16s(expected));
+      test.SetOutputTolerance(0.5f);
+
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
+  }
+}
+
+TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreTilesBf16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp4Weight.";
+  }
+
+  constexpr int64_t n = 512;
+  constexpr int64_t k = 256;
+
+  for (int m_val : {1, 4, 8}) {
+    const int64_t m = m_val;
+    SCOPED_TRACE("M = " + std::to_string(m));
+
+    std::vector<uint8_t> b, weight_scale;
+    std::vector<float> a, expected;
+    MakeMmaCase(m, n, k, b, weight_scale, a, expected);
+
+    // Per-column bias, folded in by the kernel's store.
+    std::vector<float> bias(n);
+    for (int64_t col = 0; col < n; ++col) {
+      bias[col] = static_cast<float>((col % 5) - 2);
+      for (int64_t row = 0; row < m; ++row) {
+        expected[row * n + col] += bias[col];
+      }
+    }
+
+    OpTester test("MatMulBlockQuantizedFp4Weight", 1, onnxruntime::kMSDomain);
+    test.AddAttribute<int64_t>("block_size", 16);
+    test.AddInput<BFloat16>("A", {m, k}, FloatsToBFloat16s(a));
+    test.AddInput<uint8_t>("B", {n, k / 2}, b);
+    test.AddInput<uint8_t>("weight_scale", {n, k / 16}, weight_scale);
+    test.AddInput<float>("weight_scale_2", {1}, {1.0f});
+    test.AddOptionalInputEdge<float>();  // input_scale (skipped)
+    test.AddInput<BFloat16>("bias", {n}, FloatsToBFloat16s(bias));
+    test.AddOutput<BFloat16>("Y", {m, n}, FloatsToBFloat16s(expected));
+    test.SetOutputTolerance(0.5f);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
 #endif  // USE_CUDA && defined(CUDA_VERSION) && CUDA_VERSION >= 12080
 
 }  // namespace onnxruntime::test

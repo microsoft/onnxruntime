@@ -60,6 +60,8 @@ Status LaunchAddBiasNvFp4(void* y,
 // uint8 (raw E4M3 bytes), weight_scale_2 is a device fp32 scalar, bias is an optional [N] vector
 // (may be null). Output y is [M, N] in the activation type. Requires block_size == 16 and
 // k % 32 == 0. Runs on any architecture with NVFP4 conversion intrinsics (CUDA >= 12.8).
+// sm_major selects the tensor-core sub-path (mma.m16n8k16, SM80+); see the kernel comment in
+// matmul_block_scaled_fp4.cu. Lower architectures use the scalar warp-reduction path.
 Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
                                                const void* a,
                                                const void* b_packed,
@@ -71,6 +73,7 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
                                                int k,
                                                int block_size,
                                                bool is_bf16,
+                                               int sm_major,
                                                cudaStream_t stream);
 
 // Repacks the [N, ceil(K/block_size)] row-major E4M3 weight-scale tensor into the swizzled layout
