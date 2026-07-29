@@ -823,7 +823,7 @@ def parity_check_paged_attention(
     window_size = (-1, -1)
     left_window_size = -1
     if config.local:
-        left_window_size = random.randint(0, config.total_sequence_length - 1)  # random.randint is inclusive
+        left_window_size = random.randint(1, config.total_sequence_length - 1)  # random.randint is inclusive
         window_size = (left_window_size, 0)
     else:
         left_window_size = -1
@@ -1615,9 +1615,10 @@ class TestPagedAttentionPagedDecode(unittest.TestCase):
     """Coverage for the paged decode backend: a flash-decoding style kernel that scores the paged
     KV cache in place (dequantizing in registers) instead of gathering it into a dense buffer.
 
-    It only handles steps where every sequence contributes at most one new token, so every config
-    here uses sequence_length=1. The unquantized cases pin the backend with `sdpa_kernel`; the
-    quantized cases reach it through the normal auto-selection."""
+    It is selected by the static shape test `token_count == batch_size`, which is a heuristic for
+    "one new token per sequence" rather than a proof, so the kernel has to stay correct for ragged
+    steps too (see the ragged cases below). The unquantized cases pin the backend with
+    `sdpa_kernel`; the quantized cases reach it through the normal auto-selection."""
 
     def setUp(self):
         torch.manual_seed(0)
@@ -1690,6 +1691,46 @@ class TestPagedAttentionPagedDecode(unittest.TestCase):
         # disturbing the rows of the sequences that do have one.
         new_seqlens = torch.tensor([0, 1, 0, 1], dtype=torch.int32)
         self._check_decode(self._config(), new_seqlens_override=new_seqlens)
+
+    # ---- ragged steps -------------------------------------------------------------------
+    #
+    # The host selects this backend from `token_count <= batch_size` alone, which does not prove one
+    # token per sequence. Every CTA therefore resolves its own sequence and in-sequence position
+    # from cumulative_sequence_length on device and masks against that token's own causal length.
+    # These cases are the ones a wrong implementation passes only by accident.
+
+    def test_decode_ragged_shape_test_holds(self):
+        # token_count == batch_size == 4, but the tokens are distributed 3 / 0 / 0 / 1.
+        new_seqlens = torch.tensor([3, 0, 0, 1], dtype=torch.int32)
+        self._check_decode(self._config(sequence_length=3), new_seqlens_override=new_seqlens)
+
+    def test_decode_ragged_all_tokens_in_one_sequence(self):
+        # The extreme case: one sequence owns the whole step, so per-token causal masking is the
+        # only thing that can produce the right answer.
+        new_seqlens = torch.tensor([4, 0, 0, 0], dtype=torch.int32)
+        self._check_decode(self._config(sequence_length=4), new_seqlens_override=new_seqlens)
+
+    def test_decode_ragged_local_window(self):
+        new_seqlens = torch.tensor([3, 0, 0, 1], dtype=torch.int32)
+        self._check_decode(self._config(sequence_length=3, local=True), new_seqlens_override=new_seqlens)
+
+    def test_decode_ragged_multi_split(self):
+        # Few (token, head) pairs and a long context force num_splits > 1, so the per-token split
+        # boundaries and the cross-split reduction are exercised on a ragged step.
+        new_seqlens = torch.tensor([2, 0], dtype=torch.int32)
+        self._check_decode(
+            self._config(batch_size=2, sequence_length=2, num_heads=2, kv_num_heads=1, total_sequence_length=4000),
+            new_seqlens_override=new_seqlens,
+        )
+
+    def test_decode_ragged_int8_cache(self):
+        # Auto-selected: a quantized decode-shaped step. XQA cannot serve it (its output layout is
+        # one row per batch index), so it must fall through to this kernel and still be correct.
+        new_seqlens = torch.tensor([3, 0, 0, 1], dtype=torch.int32)
+        config = self._config(
+            sequence_length=3, kv_cache_type="int8", k_quant_type="PER_CHANNEL", v_quant_type="PER_CHANNEL"
+        )
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3, new_seqlens_override=new_seqlens)
 
     # ---- masking and score transforms ---------------------------------------------------
 
@@ -1898,17 +1939,16 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
 class TestPagedAttentionAttentionMetadata(unittest.TestCase):
     """Coverage for the optional 'attention_metadata' input.
 
-    'cumulative_sequence_length' and 'past_seqlens' are device tensors, but the op needs the maximum
-    query length (to choose a backend) and the maximum KV length (to size its workspaces) on the
-    host. Without this input it copies them back and blocks the stream, once per node per step,
-    which also makes the node impossible to capture into a CUDA Graph. 'attention_metadata' supplies
-    upper bounds for both in CPU memory instead.
+    'cumulative_sequence_length' and 'past_seqlens' are device tensors, but the op needs an upper
+    bound on the query length (to size grids) and on the KV length (to size workspaces) on the host.
+    Without this input it falls back to the static capacities, and in two narrow prefill-side cases
+    -- a dense gather, or XQA, which needs proof of exactly one token per sequence -- it copies the
+    cumulative arrays back and blocks the stream instead. 'attention_metadata' supplies both bounds
+    in CPU memory so neither ever happens.
 
     It is purely an optimization, so the contract under test is that it changes nothing: every case
     here mirrors a config that is also covered without the input and must produce the same results.
-    The cases span the backends because they consume the bounds differently, and both the
-    readback-free path (a bound of 1 proves a pure decode step) and the fallback path (any looser
-    bound still needs the readback) are represented."""
+    The cases span the backends because they consume the bounds differently."""
 
     def setUp(self):
         torch.manual_seed(0)
@@ -1937,8 +1977,8 @@ class TestPagedAttentionAttentionMetadata(unittest.TestCase):
         return config
 
     def test_prefill_flash_attention(self):
-        # A prefill bound is > 1, so this still takes the readback path; the input must not perturb
-        # anything there either.
+        # A prefill bound is > 1, so it only sizes the FlashAttention grid; the input must not
+        # perturb anything there either.
         parity_check_paged_attention(self._config(sequence_length=256, total_sequence_length=256))
 
     def test_decode_unquantized(self):
@@ -1964,8 +2004,10 @@ class TestPagedAttentionAttentionMetadata(unittest.TestCase):
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
 
     def test_chunked_prefill_dense_gather(self):
-        # A quantized cache on a multi-token step gathers the live context into a dense buffer sized
-        # by the exact total_kv_tokens, which no bound can supply, so the readback must still happen.
+        # A quantized cache on a multi-token step gathers the live context into a dense buffer. With
+        # a bound available that buffer is sized by batch_size * max_kv_len_bound instead of the
+        # exact total_kv_tokens, so the gather kernel has to tolerate indices past the real end of
+        # the packed layout.
         config = self._config(
             sequence_length=8,
             kv_cache_type="int8",
@@ -1975,14 +2017,27 @@ class TestPagedAttentionAttentionMetadata(unittest.TestCase):
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
 
     def test_ragged_new_token_counts(self):
-        # The bound is 2 even though the batch averages one new token each, so the decode shortcut
-        # must not fire: one sequence really does contribute two tokens.
+        # token_count == batch_size even though one sequence contributes two tokens and another
+        # none. The shape test alone selects a decode-shaped backend, so every backend it can reach
+        # must handle the raggedness.
         new_seqlens = torch.tensor([2, 0, 1, 1], dtype=torch.int32)
         parity_check_paged_attention(self._config(sequence_length=2), new_seqlens_override=new_seqlens)
 
+    def test_ragged_new_token_counts_decode_kernel(self):
+        # Same step, pinned to the paged decode kernel: with a bound of 2 there is no readback, so
+        # the kernel is the only thing that knows the tokens are unevenly distributed.
+        new_seqlens = torch.tensor([2, 0, 1, 1], dtype=torch.int32)
+        parity_check_paged_attention(
+            self._config(sequence_length=2),
+            new_seqlens_override=new_seqlens,
+            sdpa_kernel=SDPA_KERNEL_DECODER_ATTENTION,
+            rtol=5e-3,
+            atol=5e-3,
+        )
+
     def test_zero_new_tokens_in_batch(self):
-        # token_count != batch_size, so the bound of 1 alone does not prove one token per sequence
-        # and the readback path is taken.
+        # token_count < batch_size: still decode-shaped, but XQA is excluded because it would emit a
+        # row for the sequence that contributed nothing.
         new_seqlens = torch.tensor([1, 0, 1, 1], dtype=torch.int32)
         parity_check_paged_attention(self._config(), new_seqlens_override=new_seqlens)
 
@@ -1997,7 +2052,7 @@ class TestPagedAttentionAttentionMetadata(unittest.TestCase):
         self.assertIn("must be non-negative", str(ctx.exception))
 
     def test_unknown_bounds_fall_back_to_readback(self):
-        # All-zero means "no bound", which must behave exactly like omitting the input.
+        # All-zero means "no bound", which must behave exactly like supplying the static capacities.
         config = self._config(kv_cache_type="int8", k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR")
         config.attention_metadata_override = numpy.array([0, 0], dtype=numpy.int32)
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)

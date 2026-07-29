@@ -93,6 +93,8 @@ Structural limits in the current implementation:
 - MEA fallback materializes a **tight gathered, GQA-expanded** KV buffer of
   `[total_kv_tokens, num_heads, head_size]`; memory scales with context × query heads.
 - A device→host sync per step to obtain `max_query_len` (and `total_kv_tokens` for MEA).
+  *(Fixed. Dispatch and workspace sizing now use static shapes and upper bounds; see §4.7. The sync
+  remains only as a prefill-side fallback that no capturable step reaches.)*
 
 ## 3. Design Principles
 
@@ -309,7 +311,7 @@ Three derivations satisfy the rule, none of which needs a synchronization:
 | grid size, split count, gather/workspace extents | static capacity bound `max_kv_len_bound = block_table.shape[1] * block_size` | independent of step |
 | per-sequence KV length, causal and window masking, gather trip counts | device `past_seqlens` / `cumulative_sequence_length` | re-read from device memory on every replay |
 
-The shape test is a **performance heuristic only**. `token_count == batch_size` does not prove that
+The shape test is a **performance heuristic only**. `token_count <= batch_size` does not prove that
 every sequence contributes exactly one query token — one sequence may contribute two while another
 contributes none. The paged decode kernel must therefore derive each token's sequence and position
 from `cumulative_sequence_length` on device and stay correct for ragged input. Correctness never
@@ -349,25 +351,38 @@ attention_metadata : (2,) int32, OrtMemTypeCPUInput
 `total_kv_tokens` is **not** part of the input. It was only ever used to size the MEA gather buffer,
 which must now be sized by `batch_size * max_kv_len_bound` so that the allocation is replay-invariant.
 
-> **Implementation note (partially implemented).** `attention_metadata` exists as input 16 with the
-> semantics above, and the readback is skipped whenever the bounds *prove* the paged decode backend
-> will be selected: `max_query_len_bound == 1` together with `token_count == batch_size` shows every
-> sequence contributes exactly one new token, and the decode backend needs nothing else from the
-> host (`max_kv_len_bound`, clamped to `block_table.shape[1] * block_size`, sizes the split count;
-> XQA does not even need that). Measured with nsys on a single-node decode graph, this removes one
-> `cudaStreamSynchronize` and two D→H `cudaMemcpyAsync` per node per `Run`, leaving zero of either.
+> **Implementation note (implemented).** `attention_metadata` exists as input 16 with the semantics
+> above, and the D→H readback is gone from every configuration a CUDA graph can reach.
 >
-> The sync is therefore gone for the case CUDA Graphs care about, but not yet *unconditional*. Two
-> pieces remain:
+> Backend selection is now the static shape test of the table above: `token_count <= batch_size`
+> selects the paged decode backend (when the cache is quantized or FlashAttention is ineligible),
+> with no host knowledge of the actual per-sequence query lengths. That is safe because
+> `PagedDecodeSplitKV` is indexed by **global query token** — it resolves each token's sequence and
+> position from `cumulative_seqlens_q` on device and applies per-token causal and window masks — so
+> a wrong heuristic costs speed, never correctness. The fused QK-Norm / rotary prologue was made
+> token-indexed for the same reason, which removed its dependence on `max_query_len` entirely.
 >
-> 1. The gather backends (MemoryEfficientAttention, and FlashAttention on a quantized cache) stage
->    the live context into a buffer indexed by the **exact** `total_kv_tokens`. Sizing it by
->    `batch_size * max_kv_len_bound` as prescribed above is what lets them drop the readback too.
-> 2. Selecting the decode backend from the shape test alone requires the decode kernel to stay
->    correct when a sequence contributes more than one token (§13). Until then the proof has to come
->    from `max_query_len_bound`, so a producer that supplies no metadata still pays for the readback.
+> Everything the host still needs is an upper bound, and each bound has a static fallback used when
+> no metadata is supplied:
 >
-> Both only affect prefill and chunked-prefill steps, which are not captured into a graph.
+> | Host quantity | Consumer | Bound used |
+> |---|---|---|
+> | `max_query_len` | `params.seqlen_q` (Flash), `p.sequence_length` (MEA) — grid extent only | `max_query_len_bound`, else `token_count` |
+> | `max_kv_len` | quantized-Flash `max_seqlen_k`, decode split count | `max_kv_len_bound`, else `block_table.shape[1] * block_size` |
+> | `total_kv_tokens` | gather staging buffer extent | `batch_size * max_kv_len_bound` |
+>
+> Two narrow cases still take the readback, and only when the caller supplied **no** metadata at all:
+> a gather backend (MEA, or FlashAttention on a quantized cache), because with no bound the
+> capacity-based staging allocation would be a large over-allocation for a short prefill; and XQA,
+> whose one-output-row-per-batch-index layout needs *proof* of exactly one token per sequence rather
+> than the shape heuristic. Neither case can occur on a capturable step — a captured step is
+> decode-shaped over a paged cache, so no gather runs, and a producer that captures must supply
+> `attention_metadata` anyway, since replay-wide bounds are the only replay-safe host input. Both
+> cases are prefill-side, and prefill is never captured.
+>
+> Measured with nsys on a single-node decode graph, this removes one `cudaStreamSynchronize` and two
+> D→H `cudaMemcpyAsync` per node per `Run`, leaving zero of either — for the **unquantized** cache as
+> well as the quantized ones, which is what makes `enable_cuda_graph=true` work for every KV type.
 
 Producers additionally owe the usual CUDA-graph obligations, which are outside this operator's
 contract: fixed device addresses for `key_cache`, `value_cache`, `block_table`, `past_seqlens` and
@@ -760,27 +775,25 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 > - The attention sink enters as one extra `exp(sink - m_final)` term in the final denominator, which
 >   is algebraically identical to §6.2's `factor = 1 / (1 + exp(sink - lse))` epilogue but does not
 >   need FlashAttention's log-sum-exp output. §6.3's MEA restriction therefore applies only to MEA.
-> - Sliding window uses `q_pos = kv_len - 1`, admitting `t ∈ [kv_len - local_window_size, kv_len)`,
->   matching Flash's `window_size_left = local_window_size - 1`.
-> - **Backend gating.** The kernel only handles `max_query_len == 1`, which is known only after the
->   D→H sync of the cumulative sequence lengths (that sync is now unconditional, and is what makes
->   the op uncapturable — §4.7). It is selected when
->   the cache is quantized *or* FlashAttention is unavailable; unquantized FlashAttention-eligible
->   shapes keep using FlashAttention. `sdpa_kernel = 512` (`AttentionBackend::DECODER_ATTENTION`)
->   forces it, which is how the unquantized path is tested.
+> - Sliding window uses the token's own causal position `q_pos = kv_len - 1`, admitting
+>   `t ∈ [kv_len - local_window_size, kv_len)`, matching Flash's `window_size_left = local_window_size - 1`.
+> - **Backend gating.** The kernel is selected by the static shape test of §4.7
+>   (`token_count <= batch_size`) when the cache is quantized *or* FlashAttention is unavailable;
+>   unquantized FlashAttention-eligible shapes keep using FlashAttention. `sdpa_kernel = 512`
+>   (`AttentionBackend::DECODER_ATTENTION`) forces it, which is how the unquantized path is tested.
+>   The shape test is a heuristic: one CTA owns one **global query token**, resolves its sequence and
+>   in-sequence position from `cumulative_seqlens_q` on device, and masks against
+>   `past_seqlens[b] + q_index + 1`, so the kernel is correct for arbitrary ragged input (including
+>   full prefill) and a wrong heuristic only costs speed. That is what removes the D→H sync.
 > - Split-KV: `ComputePagedDecodeSplits` splits the KV range across up to 32 CTAs only when
->   `batch_size * num_heads` would leave the device under-occupied. Empty splits publish
->   `(max = -FLT_MAX, denom = 0)` and the reduce kernel skips them, so their accumulator slice is
->   never read.
+>   `token_count * num_heads` would leave the device under-occupied. `max_kv_len` may be an upper
+>   bound. Empty splits publish `(max = -FLT_MAX, denom = 0)` and the reduce kernel skips them, so
+>   their accumulator slice is never read.
 > - The `FlashAttention` / `EfficientAttention` prologue (packed-QKV unpack, fused QK-Norm + rotary,
 >   `ReshapeAndCache`) was factored into a shared `PrepareQueryAndCache`, which the decode backend
 >   reuses. It lives outside the `USE_FLASH_ATTENTION` / `USE_MEMORY_EFFICIENT_ATTENTION` guards
 >   because the decode backend needs neither.
-> - **Still deferred from P5:** the fused MLA decode backend (§12.7) and lifting the D→H sync out of
->   `ComputeInternal`. The sync is currently *required* by the backend decision; [§4.7](#47-cuda-graph-contract-and-attention_metadata)
->   replaces the exact `max_query_len` test with a static shape test, at the cost of requiring the
->   decode kernel to remain correct — not merely fast — when a sequence contributes more than one
->   token.
+> - **Still deferred from P5:** the fused MLA decode backend (§12.7).
 
 ## 9. Feature: Sliding Window Attention
 
@@ -1189,7 +1202,7 @@ Target dispatch order once all phases land, first eligible wins:
 | Priority | Backend | Eligible when |
 |---|---|---|
 | 0 | **MLA backend** (new, §12.7) | `kv_cache_layout == "LATENT"` — FlashMLA / FlashInfer MLA / TRT-LLM MLA where available, unfused MLA reference otherwise |
-| 1 | **Paged decode kernel** (new, Phase 4) | Decode-shaped batch per the static shape test in §4.7; non-quantized or `PER_TENSOR`/`PER_CHANNEL` INT8/FP8; sliding window and `head_sink` supported |
+| 1 | **Paged decode kernel** (new, Phase 4) | Decode-shaped batch per the static shape test in §4.7 (`token_count <= batch_size`); non-quantized or `PER_TENSOR`/`PER_CHANNEL` INT8/FP8; sliding window and `head_sink` supported |
 | 2 | **FlashAttention varlen** | FP16/BF16, SM80+, non-quantized cache (or quantized via dequant-gather); supports sliding window, softcap, packed QKV, `head_sink` via LSE epilogue |
 | 3 | **Memory-Efficient Attention (CUTLASS fMHA)** | Fallback for supported combinations and pre-SM80 |
 | 4 | **Unfused** | Last resort — arbitrary `head_size`, `attention_bias`, `output_qk` |
@@ -1235,17 +1248,16 @@ as GQA does, so that `ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO=1` works uniformly 
 > **Implementation note (P5, implemented).** Priority 1 is in place and reports
 > `SdpaKernel=DECODER_ATTENTION`. Actual eligibility is broader than the table: any `head_size` whose
 > working set fits `sharedMemPerBlock` (roughly `2 * head_size + 256` floats plus 512 B, so every
-> head size the op supports on current hardware), any `block_size`, any GQA ratio, and `softcap` is
-> supported rather than planned. It is narrower in one respect: sequences may contribute *at most*
-> one new token, but the kernel is only *preferred* over FlashAttention when the cache is quantized
-> or FlashAttention is ineligible, since Flash's tensor-core decode path is faster on an unquantized
-> cache. Priority 0 (MLA) is still unimplemented.
+> head size the op supports on current hardware), any `block_size`, any GQA ratio, `softcap`, and
+> arbitrary ragged query lengths are all supported. It is only *preferred* over FlashAttention when
+> the cache is quantized or FlashAttention is ineligible, since Flash's tensor-core decode path is
+> faster on an unquantized cache. Priority 0 (MLA) is still unimplemented.
 >
-> The gate reads `max_query_len == 1`. That value now comes from `attention_metadata` when the
-> caller supplies a bound of 1, and only otherwise from the D→H sync (§4.7). Moving to the shape
-> test of §4.7 -- and so dropping the sync even without metadata -- additionally requires the kernel
-> to stay correct when a sequence contributes more than one token; today that case is excluded by
-> the gate rather than handled.
+> The gate is the static shape test of §4.7 (`token_count <= batch_size`), so no device-resident
+> length reaches the host and the D→H sync is gone. The XQA fast path inside this backend keeps a
+> stricter gate — it needs `token_count == batch_size` *and* `max_query_len == 1`, the latter from
+> `attention_metadata` or, failing that, from the readback — because its output layout is one row
+> per batch index rather than per query token.
 
 ## 14. Shared Code with GroupQueryAttention
 
@@ -1491,14 +1503,16 @@ These block the feature work and should land ahead of it.
 3. **`batch_size <= 256`.** Replace the per-block `cub::BlockScan` with a grid-wide scan (or a single
    256-thread block doing a strided serial scan) so continuous batching is not capped at 256
    concurrent sequences — a real limit for a serving op.
-4. **Per-step D→H synchronization — and it blocks CUDA graph capture.** `max_query_len` (and
+4. **Per-step D→H synchronization — and it blocks CUDA graph capture.** ~~`max_query_len` (and
    `total_kv_tokens` for MEA) are obtained via `cudaStreamSynchronize` every step, once per layer.
    This is not only a throughput bug for the op's primary use case: `cudaStreamSynchronize` on a
    capturing stream is **illegal**, so the operator cannot be captured into a CUDA graph at all —
-   precisely the optimization decode needs most. The fix is not an optional host input; it is to
-   derive dispatch from static shapes, extents from the static capacity bound
-   `block_table.shape[1] * block_size`, and every per-step quantity from device memory, as specified
-   in [§4.7](#47-cuda-graph-contract-and-attention_metadata). That removes the sync unconditionally.
+   precisely the optimization decode needs most.~~ **Fixed.** Dispatch now derives from static
+   shapes, extents from the static capacity bound `block_table.shape[1] * block_size` or the
+   optional `attention_metadata` bounds, and every per-step quantity from device memory, as
+   specified in [§4.7](#47-cuda-graph-contract-and-attention_metadata). The sync survives only as a
+   prefill-side fallback for a dense gather or for XQA when no metadata is supplied, neither of
+   which a capturable step can reach.
 
 ## 19. Phasing
 
@@ -1515,7 +1529,8 @@ These block the feature work and should land ahead of it.
 
 Status: P0–P4 are implemented, except the `.Alias` registration. P5 is partially
 implemented — the paged decode kernel with in-kernel dequantization (including `softcap`, sliding
-window and `head_sink`) has landed (§8.5, §13); the fused MLA backend and the sync removal have not.
+window and `head_sink`) has landed (§8.5, §13), as has the sync removal and CUDA graph capture
+(§4.7); the fused MLA backend has not.
 
 Every phase must re-run the old-model tests with all new inputs absent, in addition to the
 feature-specific tests. The compatibility regression test should serialize a model using only the

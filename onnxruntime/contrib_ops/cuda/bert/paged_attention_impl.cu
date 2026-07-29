@@ -170,6 +170,13 @@ Status LaunchUnpackCumulative(const T* input, T* output, const int token_count, 
 //
 // blockDim.x is the smallest power of two >= head_size so the reduction tree is exact; threads with
 // h >= head_size participate in the reduction (contributing 0) but perform no global access.
+//
+// The grid is indexed by *global token*, not by (sequence position, sequence): the owning sequence
+// is recovered from cumulative_seqlens_q with a binary search. That keeps the launch exactly
+// token_count * num_heads blocks for any raggedness -- there is no per-sequence padding to skip --
+// and, more importantly, it removes the last dependence of the prologue on a host-computed
+// max_query_len, which could only be obtained with a device-to-host synchronization
+// (docs/contrib_ops/cuda/paged_attention.md section 4.7).
 template <typename T>
 __global__ void QkNormRotaryTNH(T* output,                            // TxNxH
                                 const T* input,                       // TxNxH
@@ -179,6 +186,7 @@ __global__ void QkNormRotaryTNH(T* output,                            // TxNxH
                                 const int32_t* cumulative_seqlens_q,  // B+1
                                 const T* norm_weight,                 // H, or nullptr
                                 const float epsilon,
+                                const int batch_size,
                                 const int head_size,
                                 const int rotary_embedding_dim,
                                 const int rotary_offset,
@@ -187,16 +195,29 @@ __global__ void QkNormRotaryTNH(T* output,                            // TxNxH
                                 const int3 out_strides) {  // TxNxH
   // Use .x in innermost loop to access global memory efficiently
 
-  const int b = blockIdx.y;
-  const int s = blockIdx.x;
-  const int n = blockIdx.z;
+  const int t = blockIdx.x;  // index of the token in the unpadded input/output
+  const int n = blockIdx.y;
   const int h = threadIdx.x;
 
-  const int sequence_length = cumulative_seqlens_q[b + 1] - cumulative_seqlens_q[b];
-  // Uniform across the block, so returning here cannot desynchronize the barriers below.
-  if (s >= sequence_length) {
+  // cumulative_seqlens_q is non-decreasing, so this finds the first sequence whose exclusive end
+  // exceeds t -- which is the owning sequence, and correctly skips sequences with no new token.
+  int left = 0;
+  int right = batch_size;
+  while (left < right) {
+    const int mid = left + (right - left) / 2;
+    if (t < cumulative_seqlens_q[mid + 1]) {
+      right = mid;
+    } else {
+      left = mid + 1;
+    }
+  }
+  const int b = left;
+  // Defensive: a malformed cumulative_seqlens_q whose total disagrees with token_count would
+  // otherwise read past the end of past_seqlens. Uniform across the block.
+  if (b >= batch_size) {
     return;
   }
+  const int s = t - cumulative_seqlens_q[b];  // position of the token within its own sequence
 
   // Layout: blockDim.x floats for the reduction tree, then head_size elements of T holding the
   // (optionally normalized) head so the rotary step can read its partner lane without a second
@@ -205,7 +226,6 @@ __global__ void QkNormRotaryTNH(T* output,                            // TxNxH
   float* reduce_buffer = reinterpret_cast<float*>(smem);
   T* head_values = reinterpret_cast<T*>(reduce_buffer + blockDim.x);
 
-  const int t = cumulative_seqlens_q[b] + s;  // t is the index of the token in the unpadded input/output
   const T* input_data = input + t * in_strides.x + n * in_strides.y;
   T* output_data = output + t * out_strides.x + n * out_strides.y;
 
@@ -276,10 +296,10 @@ template <typename T>
 Status LaunchQkNormRotaryKernel(cudaStream_t stream, T* output, const T* input, const int32_t* past_seqlens,
                                 const int32_t* cumulative_seqlens_q, const T* cos_cache, const T* sin_cache,
                                 const T* norm_weight, const float epsilon, const int batch_size,
-                                const int max_seqlen_q, const int num_heads, const int head_size,
+                                const int token_count, const int num_heads, const int head_size,
                                 const int rotary_embedding_dim, const int rotary_offset, const bool interleaved,
                                 const int in_seq_stride, const int max_threads_per_block) {
-  if (batch_size == 0 || max_seqlen_q == 0 || num_heads == 0) {
+  if (batch_size == 0 || token_count == 0 || num_heads == 0) {
     return Status::OK();
   }
   int3 in_strides = {in_seq_stride <= 0 ? num_heads * head_size : in_seq_stride, head_size, 1};
@@ -294,11 +314,11 @@ Status LaunchQkNormRotaryKernel(cudaStream_t stream, T* output, const T* input, 
               ") to be <= max_threads_per_block (", max_threads_per_block, ")");
 
   const size_t shared_bytes = static_cast<size_t>(tpb) * sizeof(float) + static_cast<size_t>(head_size) * sizeof(T);
-  const dim3 grid(max_seqlen_q, batch_size, num_heads);
+  const dim3 grid(token_count, num_heads);
   const dim3 block(tpb);
   QkNormRotaryTNH<<<grid, block, shared_bytes, stream>>>(
-      output, input, cos_cache, sin_cache, past_seqlens, cumulative_seqlens_q, norm_weight, epsilon, head_size,
-      rotary_embedding_dim, rotary_offset, interleaved, in_strides, out_strides);
+      output, input, cos_cache, sin_cache, past_seqlens, cumulative_seqlens_q, norm_weight, epsilon, batch_size,
+      head_size, rotary_embedding_dim, rotary_offset, interleaved, in_strides, out_strides);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -645,10 +665,18 @@ Status LaunchGatherAndExpandPagedKVCache(const TCACHE* key_cache, const TCACHE* 
 
 ////////// Paged decode attention (flash-decoding style, reads the paged cache in place)
 //
-// Selected when every sequence contributes at most one new query token. Unlike the gather-based
-// path it never materializes a dense FP16 copy of the live context: K and V are read straight out
-// of their pages and dequantized in registers, so a decode step touches the KV cache exactly once
-// at its stored precision.
+// Selected when the static shapes say the step is decode-shaped (token_count == batch_size). Unlike
+// the gather-based path it never materializes a dense FP16 copy of the live context: K and V are
+// read straight out of their pages and dequantized in registers, so a decode step touches the KV
+// cache exactly once at its stored precision.
+//
+// The shape test is a heuristic, not a proof: token_count == batch_size does not guarantee that
+// every sequence contributes exactly one query token (one may contribute two while another
+// contributes none). The kernel is therefore indexed by *global query token* and derives both the
+// owning sequence and the token's position inside it from cumulative_seqlens_q on device, so it
+// stays correct for arbitrary ragged input -- including full prefill. Correctness never depends on
+// the host heuristic being right, only speed. See
+// docs/contrib_ops/cuda/paged_attention.md section 4.7.
 //
 // Both scales are folded instead of applied per element, which is exact and free:
 //   * K: q'_c = q_c * k_scale_c, so dot(q', k_raw) == dot(q, dequant(k)). PER_TENSOR degenerates to
@@ -697,6 +725,7 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
                                    float* __restrict__ partial_out,
                                    float* __restrict__ partial_max,
                                    float* __restrict__ partial_sum,
+                                   const int batch_size,
                                    const int num_heads,
                                    const int kv_num_heads,
                                    const int head_size,
@@ -721,22 +750,42 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
   int* block_id_sh = reinterpret_cast<int*>(red_sh + kPagedDecodeThreads);
 
   const int head_id = blockIdx.x;
-  const int batch_id = blockIdx.y;
+  const int token_id = blockIdx.y;
   const int split_id = blockIdx.z;
   const int tid = threadIdx.x;
 
-  // Sequences with no new token produce no output row, so nothing (including the reduce kernel)
-  // reads this CTA's partials.
-  const int token_id = cumulative_seqlens_q[batch_id];
-  if (cumulative_seqlens_q[batch_id + 1] <= token_id) {
+  // One CTA owns one (query token, query head) pair. cumulative_seqlens_q is non-decreasing, so
+  // this binary search returns the first sequence whose exclusive end exceeds token_id -- the
+  // owning sequence -- and skips sequences that contribute no token at all.
+  int left = 0;
+  int right = batch_size;
+  while (left < right) {
+    const int mid = left + (right - left) / 2;
+    if (token_id < cumulative_seqlens_q[mid + 1]) {
+      right = mid;
+    } else {
+      left = mid + 1;
+    }
+  }
+  const int batch_id = left;
+  // Defensive: a cumulative_seqlens_q whose total disagrees with token_count would otherwise walk
+  // off the end of cumulative_seqlens_kv and block_table. Uniform across the block.
+  if (batch_id >= batch_size) {
     return;
   }
 
   const int64_t partial_head_index =
       (static_cast<int64_t>(split_id) * token_count + token_id) * num_heads + head_id;
-  const int kv_len = cumulative_seqlens_kv[batch_id + 1] - cumulative_seqlens_kv[batch_id];
 
-  // The single new token sits at the end of the cache, so causality admits every cached position.
+  // Causality is resolved per query token instead of assuming one new token per sequence:
+  // kv_len - q_len is past_seqlens[batch_id], so the token at offset q_index inside its sequence
+  // attends to cached positions [0, past + q_index]. For the decode case (q_len == 1) this reduces
+  // to the whole live context, as before.
+  const int q_index = token_id - cumulative_seqlens_q[batch_id];
+  const int q_len = cumulative_seqlens_q[batch_id + 1] - cumulative_seqlens_q[batch_id];
+  const int seq_kv_len = cumulative_seqlens_kv[batch_id + 1] - cumulative_seqlens_kv[batch_id];
+  const int kv_len = seq_kv_len - q_len + q_index + 1;
+
   // Sliding window matches FlashAttention's window_size_left = local_window_size - 1 convention at
   // query position kv_len - 1, i.e. positions in [kv_len - local_window_size, kv_len).
   const int tokens_per_split = (kv_len + num_splits - 1) / num_splits;
@@ -982,10 +1031,12 @@ __global__ void PagedDecodeReduce(T* __restrict__ output,
   }
 }
 
-// Splits are only worth it when there are not enough (sequence, head) pairs to fill the device.
-int ComputePagedDecodeSplits(const int batch_size, const int num_heads, const int max_kv_len,
+// Splits are only worth it when there are not enough (query token, head) pairs to fill the device.
+// max_kv_len only sizes the launch, so a replay-invariant upper bound is a valid argument: an
+// over-estimate costs empty splits that exit after a single device read.
+int ComputePagedDecodeSplits(const int token_count, const int num_heads, const int max_kv_len,
                              const int multi_processor_count) {
-  const int base_ctas = batch_size * num_heads;
+  const int base_ctas = token_count * num_heads;
   if (base_ctas <= 0 || base_ctas >= 2 * multi_processor_count) {
     return 1;
   }
@@ -1014,10 +1065,10 @@ Status LaunchPagedDecodeAttention(const T* query, const TCACHE* key_cache, const
                                   const float softcap, const int local_window_size,
                                   const bool use_smooth_softmax, cudaStream_t stream) {
   const size_t smem_bytes = GetPagedDecodeSharedMemoryBytes(head_size);
-  const dim3 grid(num_heads, batch_size, num_splits);
+  const dim3 grid(num_heads, token_count, num_splits);
   PagedDecodeSplitKV<T, TCACHE><<<grid, kPagedDecodeThreads, smem_bytes, stream>>>(
       query, key_cache, value_cache, k_scale, cumulative_seqlens_q, cumulative_seqlens_kv, block_table,
-      partial_out, partial_max, partial_sum, num_heads, kv_num_heads, head_size, block_size,
+      partial_out, partial_max, partial_sum, batch_size, num_heads, kv_num_heads, head_size, block_size,
       max_num_blocks_per_seq, token_count, num_splits, scale, softcap, local_window_size, k_per_channel);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
@@ -1280,7 +1331,6 @@ Status PrepareQueryAndCache(cudaStream_t stream, contrib::PagedAttentionParamete
   const int num_heads = parameters.num_heads;
   const int kv_num_heads = parameters.kv_num_heads;
   const int head_size = parameters.head_size;
-  const int max_query_len = data.max_query_len;
 
   T* query = const_cast<T*>(data.query);
   T* key;
@@ -1304,12 +1354,12 @@ Status PrepareQueryAndCache(cudaStream_t stream, contrib::PagedAttentionParamete
     const int rotary_dim = parameters.do_rotary ? parameters.rotary_dim : 0;
     ORT_RETURN_IF_ERROR(LaunchQkNormRotaryKernel<T>(
         stream, q_buffer, query, past_seqlens, cumulative_seqlens_q, data.cos_cache, data.sin_cache,
-        data.q_norm_weight, parameters.qk_norm_epsilon, batch_size, max_query_len, num_heads, head_size,
+        data.q_norm_weight, parameters.qk_norm_epsilon, batch_size, token_count, num_heads, head_size,
         rotary_dim, parameters.rotary_offset, parameters.rotary_interleaved, packed_seq_stride,
         max_threads_per_block));
     ORT_RETURN_IF_ERROR(LaunchQkNormRotaryKernel<T>(
         stream, k_buffer, key, past_seqlens, cumulative_seqlens_q, data.cos_cache, data.sin_cache,
-        data.k_norm_weight, parameters.qk_norm_epsilon, batch_size, max_query_len, kv_num_heads, head_size,
+        data.k_norm_weight, parameters.qk_norm_epsilon, batch_size, token_count, kv_num_heads, head_size,
         rotary_dim, parameters.rotary_offset, parameters.rotary_interleaved, packed_seq_stride,
         max_threads_per_block));
     query = q_buffer;
@@ -1574,12 +1624,15 @@ Status FlashAttention(
   const int local_window_size = parameters.local_window_size;
   const int max_num_blocks_per_seq = parameters.max_num_blocks_per_seq;
   const int block_size = parameters.block_size;
-  // Host-computed actual max from paged_attention.cc. Used as both
-  // `params.seqlen_q` for mha_varlen_fwd and grid.x for the rotary kernel.
+  // Upper bound on the number of query tokens any one sequence contributes, from paged_attention.cc.
+  // mha_varlen_fwd only uses it as `params.seqlen_q` to size the grid in the query dimension; every
+  // actual per-sequence length is re-read from cu_seqlens inside the kernel, and an m-block past a
+  // sequence's real length exits immediately. An over-estimate therefore costs empty blocks, not
+  // correctness (docs/contrib_ops/cuda/paged_attention.md section 4.7).
   const int max_query_len = data.max_query_len;
 
   // cumulative_seqlens_kv is populated by the caller (paged_attention.cc) before QkvToContext;
-  // shared across FA and MEA dispatch paths so the host can also read total_kv_tokens.
+  // shared across the FA and MEA dispatch paths.
   int* cumulative_seqlens_q = const_cast<int*>(data.cumulative_seqlens_q);
   int* cumulative_seqlens_kv = data.cumulative_seqlens_kv;
   int* block_table = const_cast<int*>(data.block_table);
@@ -1661,11 +1714,12 @@ Status EfficientAttention(
   const int block_size = parameters.block_size;
   const int max_num_blocks_per_seq = parameters.max_num_blocks_per_seq;
   const int local_window_size = parameters.local_window_size;
+  // Upper bounds from paged_attention.cc, not exact values. total_kv_tokens only sizes the gather
+  // (the gather kernel skips indices past the real end of the packed layout) and max_query_len only
+  // sizes MEA's `grid_x = ceil_div(sequence_length, kQueriesPerBlock)`; in varlen mode the CUTLASS
+  // kernel re-reads num_queries / num_keys from seqstart_q / seqstart_k on device, so a block past
+  // a sequence's real length returns without doing any work.
   const int total_kv_tokens = data.total_kv_tokens;
-  // Use the caller-computed actual max of per-batch new-query lengths, not the
-  // `token_count - batch_size + 1` heuristic: the heuristic assumes >=1 new token per batch
-  // and underestimates otherwise, which would silently drop query tokens from the
-  // rotary grid and from MEA's `grid_x = ceil_div(sequence_length, kQueriesPerBlock)`.
   const int max_query_len = data.max_query_len;
 
   // cumulative_seqlens_kv is populated by the caller (paged_attention.cc) before QkvToContext;

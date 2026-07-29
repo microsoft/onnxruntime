@@ -36,7 +36,7 @@ Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_
 // needs more dynamic shared memory than the device provides for very wide heads) and to size the
 // split-KV workspaces.
 size_t GetPagedDecodeSharedMemoryBytes(const int head_size);
-int ComputePagedDecodeSplits(const int batch_size, const int num_heads, const int max_kv_len,
+int ComputePagedDecodeSplits(const int token_count, const int num_heads, const int max_kv_len,
                              const int multi_processor_count);
 
 // Shared memory required by the unfused latent (absorbed MLA) kernel. Used by paged_attention.cc to
