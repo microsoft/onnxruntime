@@ -351,9 +351,22 @@ inline OrtStatus* ReadEpContextDataFromFile(const OrtApi& api, const char* file_
 // honored on the file-fallback path just as it is on the callback path. On success `*out_buffer` owns `*out_size`
 // bytes and must be freed by the caller via the same `allocator`; on failure (and for an empty file) `*out_buffer` is
 // null and `*out_size` is 0. `graph` governs name resolution exactly as in ReadEpContextDataFromFile().
+//
+// `allocator`, `out_buffer` and `out_size` must all be non-null. Unlike the other helpers here, which take C++
+// references for their outputs, this one takes raw out-pointers, so it validates them and reports a bad argument as
+// an OrtStatus* rather than dereferencing null.
 inline OrtStatus* ReadEpContextDataFromFileWithAllocator(const OrtApi& api, const char* file_name,
                                                          const OrtGraph* graph, OrtAllocator* allocator,
                                                          void** out_buffer, size_t* out_size) {
+  if (out_buffer == nullptr || out_size == nullptr) {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT,
+                            "EPContext data file read requires non-null out_buffer and out_size pointers");
+  }
+
+  if (allocator == nullptr) {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file read requires a non-null allocator");
+  }
+
   *out_buffer = nullptr;
   *out_size = 0;
 

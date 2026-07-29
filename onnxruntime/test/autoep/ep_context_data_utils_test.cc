@@ -250,6 +250,31 @@ TEST(OrtEpLibrary, EpContextDataUtils_RejectsNonRegularFileTargets) {
 #endif
 }
 
+TEST(OrtEpLibrary, EpContextDataUtils_ReadWithAllocatorRejectsNullArguments) {
+  const auto& api = Ort::GetApi();
+
+  // This helper takes raw out-pointers rather than references, so a null argument must come back as an OrtStatus*
+  // like every other bad-argument case in the header, not as a crash.
+  void* buffer = nullptr;
+  size_t buffer_size = 0;
+  OrtAllocator* default_allocator = nullptr;
+  ASSERT_ORTSTATUS_OK(api.GetAllocatorWithDefaultOptions(&default_allocator));
+
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataFromFileWithAllocator(
+                           api, "some_context.bin", nullptr, default_allocator, nullptr, &buffer_size),
+                       ORT_INVALID_ARGUMENT, "non-null out_buffer and out_size");
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataFromFileWithAllocator(
+                           api, "some_context.bin", nullptr, default_allocator, &buffer, nullptr),
+                       ORT_INVALID_ARGUMENT, "non-null out_buffer and out_size");
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataFromFileWithAllocator(
+                           api, "some_context.bin", nullptr, nullptr, &buffer, &buffer_size),
+                       ORT_INVALID_ARGUMENT, "non-null allocator");
+
+  // The rejected calls must not have written through the output pointers.
+  EXPECT_EQ(buffer, nullptr);
+  EXPECT_EQ(buffer_size, 0u);
+}
+
 TEST(OrtEpLibrary, EpContextDataUtils_RejectsSymlinkWriteTargets) {
   const auto& api = Ort::GetApi();
   const std::filesystem::path test_dir = PrepareTempTestDir("ort_ep_context_data_utils_symlink_write_test");
