@@ -267,11 +267,13 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     # directories and transitive dependencies (curl/sqlite3/zlib/nlohmann-json), so no
     # manual include paths or system libraries are required here.
     target_link_libraries(onnxruntime_common PRIVATE MSTelemetry::mat)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES MSTelemetry::mat)
   elseif(TARGET mat)
     # Link mat directly. In a shared build its resolved dependency set is absorbed into
     # libonnxruntime; in a static build mat -- and the bundled static archives it links -- are shipped
     # and exported below so a downstream find_package(onnxruntime) resolves them.
     target_link_libraries(onnxruntime_common PRIVATE mat)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mat)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET libcurl_static)
       # Prevent shared-library consumers from re-exporting the embedded transport symbols. This does
       # not namespace static symbols; static ORT consumers must not co-link another curl/mbedTLS copy.
