@@ -697,26 +697,34 @@ Status Attention<T>::RunCudnnSdpaAttention(
   // (likely NaN). Zero those rows on the BSNH output before transposing to BNSH. This is a
   // spec-equivalence requirement, not defense-in-depth. Cannot be done as a host-side eligibility
   // gate because nonpad_kv_seqlen is a device buffer (a D2H copy would break CUDA-graph capture). ---
+  //
+  // 4D (BNSH) output additionally needs a BSNH → BNSH transpose, which touches the same elements,
+  // so the two steps are fused into one kernel launch there (decode-path launch overhead). The 3D
+  // path has no transpose and keeps the standalone zero-fill (also used by the MEA path).
   {
     using CudaT = typename OrtToCudaType<T>::type;
-    int64_t elements_per_batch = static_cast<int64_t>(parameters.q_sequence_length) *
-                                 parameters.q_num_heads * parameters.v_head_size;
-    ORT_RETURN_IF_ERROR(LaunchZeroOutputForFullyMaskedBatches<CudaT>(
-        reinterpret_cast<CudaT*>(out_data),
-        seqlens_k_buffer.get(),
-        parameters.batch_size,
-        elements_per_batch,
-        cuda_stream,
-        device_prop.maxThreadsPerBlock));
-  }
-
-  // --- Transpose output BSNH → BNSH if input was 4D (BNSH) ---
-  if (!is_bsnh && out_bsnh_buffer != nullptr) {
-    ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(
-        parameters.batch_size, parameters.q_sequence_length,
-        parameters.q_num_heads, parameters.v_head_size,
-        out_bsnh_buffer.get(), Y->MutableData<T>(),
-        cuda_stream, device_prop.maxThreadsPerBlock));
+    if (!is_bsnh && out_bsnh_buffer != nullptr) {
+      ORT_RETURN_IF_ERROR(LaunchTransposeBSNHtoBNSHWithZeroMask<CudaT>(
+          reinterpret_cast<const CudaT*>(out_bsnh_buffer.get()),
+          reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+          seqlens_k_buffer.get(),
+          parameters.batch_size,
+          parameters.q_sequence_length,
+          parameters.q_num_heads,
+          parameters.v_head_size,
+          cuda_stream,
+          device_prop.maxThreadsPerBlock));
+    } else {
+      int64_t elements_per_batch = static_cast<int64_t>(parameters.q_sequence_length) *
+                                   parameters.q_num_heads * parameters.v_head_size;
+      ORT_RETURN_IF_ERROR(LaunchZeroOutputForFullyMaskedBatches<CudaT>(
+          reinterpret_cast<CudaT*>(out_data),
+          seqlens_k_buffer.get(),
+          parameters.batch_size,
+          elements_per_batch,
+          cuda_stream,
+          device_prop.maxThreadsPerBlock));
+    }
   }
 
   // --- Populate present_key/value (BNSH) from the input K/V cache (separate outputs, not aliases).

@@ -1223,6 +1223,126 @@ class TestTensorScatterAttentionCudnnSdpaDecode(unittest.TestCase):
         numpy.testing.assert_array_equal(present_v, ref_present_v)
 
 
+# Fused zero-fill + BSNH->BNSH transpose (cuDNN decode tier, 4-D output path). On the 4-D path the
+# fully-masked-batch zero-fill and the output transpose are performed by ONE kernel
+# (LaunchTransposeBSNHtoBNSHWithZeroMask) instead of two back-to-back launches. That kernel
+# recomputes the batch index from the flat BNSH output index, so a batch-index off-by-one or a
+# transposed-address mistake would either zero the wrong batch or scramble heads/head_size within a
+# batch. These cases place the fully-masked batch (nonpad==0) at the first, middle, and last batch
+# position, across several batch sizes and head counts, and assert per batch that masked batches are
+# EXACTLY zero while unmasked batches are both correct and NOT accidentally zeroed.
+# Tuple: (batch, q_seq, q_heads, kv_heads, scatter_positions, nonpad_seqlens, label).
+_CUDNN_DECODE_FUSED_4D_CASES = [
+    # Masked batch first / last / middle — catches an off-by-one in the recomputed batch index.
+    (2, 1, 8, 2, [0, 4], [0, 5], "masked_first"),
+    (2, 1, 8, 2, [2, 0], [3, 0], "masked_last"),
+    (3, 1, 8, 2, [2, 0, 5], [3, 0, 6], "masked_middle"),
+    # More than one masked batch, non-adjacent, batch > 2.
+    (4, 1, 8, 8, [0, 1, 0, 5], [0, 2, 0, 6], "masked_b0_b2_mha"),
+    # Different head counts / GQA ratios: the fused kernel's index math divides by
+    # num_heads * head_size, so a wrong head count shows up as cross-batch corruption.
+    (3, 1, 16, 4, [0, 3, 7], [0, 4, 8], "masked_first_16h_4kvh"),
+    (2, 1, 8, 1, [4, 0], [5, 0], "masked_last_mqa"),
+    # No masked batch at all: the fused kernel must behave as a pure transpose here.
+    (3, 1, 8, 2, [1, 3, 7], [2, 4, 8], "no_masked_batch"),
+    # Every batch masked: whole output must be zero.
+    (2, 1, 8, 2, [0, 0], [0, 0], "all_masked"),
+]
+
+
+def cudnn_decode_fused_4d_test_cases():
+    """4-D BNSH decode cases for the fused zero-fill + transpose kernel, for is_causal in {0, 1}."""
+    for is_causal in (0, 1):
+        causal_str = "causal" if is_causal else "noncausal"
+        for batch, q_seq, q_heads, kv_heads, scatter_pos, seqlens, label in _CUDNN_DECODE_FUSED_4D_CASES:
+            name = f"b{batch}_qh{q_heads}_kvh{kv_heads}_h{_CUDNN_DECODE_HEAD_SIZE}_{causal_str}_{label}_4d"
+            yield (name, batch, q_seq, q_heads, kv_heads, scatter_pos, seqlens, is_causal)
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping tests.")
+class TestTensorScatterAttentionCudnnSdpaDecodeFused4D(unittest.TestCase):
+    """Per-batch assertions for the fused zero-fill + BSNH->BNSH transpose on the 4-D decode path.
+
+    The generic decode tests already compare the whole output against the reference; these add the
+    per-batch discrimination that a fused kernel needs: masked batches exactly zero, unmasked
+    batches non-zero AND matching the reference elementwise. A transpose-indexing bug that swaps
+    heads with sequence/head_size, or a batch-index bug that zeroes a neighbouring batch, fails here
+    with a precise message instead of a bulk allclose diff.
+    """
+
+    @parameterized.expand(cudnn_decode_fused_4d_test_cases())
+    def test_cudnn_decode_fused_zero_and_transpose_4d(
+        self,
+        name,
+        batch,
+        q_seq,
+        q_heads,
+        kv_heads,
+        scatter_pos,
+        seqlens,
+        is_causal,
+    ):
+        def run():
+            return run_tensorscatter_attention(
+                batch_size=batch,
+                total_kv_seq_len=_CUDNN_DECODE_TOTAL_KV,
+                q_seq_len=q_seq,
+                q_num_heads=q_heads,
+                kv_num_heads=kv_heads,
+                head_size=_CUDNN_DECODE_HEAD_SIZE,
+                nonpad_seqlens=seqlens,
+                scatter_positions=scatter_pos,
+                ep="CUDAExecutionProvider",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                is_causal=is_causal,
+                provider_options={"sdpa_kernel": str(_SDPA_KERNEL_CUDNN_WITH_MATH_FALLBACK)},
+                use_4d=True,
+            )
+
+        (output, ref_output, present_k, present_v, ref_present_k, ref_present_v), sdpa_kernel = (
+            _run_capturing_sdpa_kernel(run)
+        )
+
+        if require_cudnn_sdpa() or cudnn_decode_supported(q_heads, kv_heads, _CUDNN_DECODE_HEAD_SIZE):
+            self.assertEqual(
+                "CUDNN_FLASH_ATTENTION",
+                sdpa_kernel,
+                f"Expected cuDNN SDPA decode tier on a cuDNN-capable platform, got {sdpa_kernel}",
+            )
+
+        # Output is 4-D BNSH: [batch, q_heads, q_seq, head_size].
+        self.assertEqual((batch, q_heads, q_seq, _CUDNN_DECODE_HEAD_SIZE), output.shape)
+        self.assertFalse(numpy.isnan(output).any(), "cuDNN SDPA decode produced NaN output")
+
+        for b in range(batch):
+            if seqlens[b] == 0:
+                # Fully-masked batch: the fused kernel must write exact zeros for this batch only.
+                numpy.testing.assert_array_equal(
+                    output[b],
+                    numpy.zeros_like(output[b]),
+                    err_msg=f"batch {b} is fully masked (nonpad==0) but output is not exactly zero",
+                )
+            else:
+                # Not masked: must not be zeroed by a batch-index bug, and must match the reference
+                # elementwise (a wrong transpose stride would still be non-zero but misplaced).
+                self.assertTrue(
+                    numpy.any(output[b] != 0),
+                    f"batch {b} has nonpad={seqlens[b]} but output was zeroed",
+                )
+                numpy.testing.assert_allclose(
+                    output[b],
+                    ref_output[b],
+                    rtol=rtol["fp16"],
+                    atol=atol["fp16"],
+                    err_msg=f"batch {b} output mismatch (fused transpose indexing?)",
+                )
+
+        numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp16"], atol=atol["fp16"])
+        numpy.testing.assert_array_equal(present_k, ref_present_k)
+        numpy.testing.assert_array_equal(present_v, ref_present_v)
+
+
 # Auto-enable (default) dispatch cases: no explicit sdpa_kernel provider option, so
 # AttentionKernelOptions::has_explicit_kernel_selection_ stays false and
 # AllowCudnnFlashAttentionAuto() can take effect (the kernel auto-prefers cuDNN on SM>=90).
