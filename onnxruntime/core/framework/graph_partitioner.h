@@ -62,7 +62,7 @@ class GraphPartitioner {
   // the partition boundary. If no nodes were compiled it is a plain optimized copy of the graph, NOT
   // serialized here - InferenceSession emits it (epctx::BuildAndSaveOptimizedModel) at a point chosen by the
   // requested optimization level: before the Level2+ loop for level < Level2 (a BASIC snapshot matching the
-  // partition boundary), or after the loop for level >= Level2 (capturing the L2-L4 passes). Callers
+  // partition boundary), or after all graph transforms for level >= Level2 (capturing the L2-L4 passes). Callers
   // distinguish the two output forms via AnyEpContextNodesProduced().
   Status Partition(Graph& graph, FuncManager& func_mgr,
                    const layout_transformation::TransformLayoutFunction& transform_layout_function,

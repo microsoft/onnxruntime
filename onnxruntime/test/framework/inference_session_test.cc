@@ -3686,6 +3686,15 @@ TEST(InferenceSessionTests, SessionLoggerOutlivesEPsWithUserLoggingFunction) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
+// OrtWriteBufferFunc that appends the written bytes to a std::string held in stream_state.
+static OrtStatus* ORT_API_CALL AppendToStringWriteFunc(void* stream_state, const void* buffer,
+                                                       size_t buffer_num_bytes) {
+  auto* sink = reinterpret_cast<std::string*>(stream_state);
+  sink->append(reinterpret_cast<const char*>(buffer), buffer_num_bytes);
+  return nullptr;  // No error
+}
+
+#if !defined(DISABLE_CONTRIB_OPS)
 // A compile-only session (Compile API path, marked by kOrtSessionOptionCompileOnly) whose EPs compile no
 // nodes emits a plain optimized output model. The serialization point is chosen by the requested level:
 // for level >= Level2 it is emitted *after* the Level2+ optimizer loop so the serialized graph reflects
@@ -3799,14 +3808,6 @@ TEST(InferenceSessionTests, CompileOnlyToBufferSerializesFullyOptimizedGraph) {
   cpu_allocator->Free(output_buffer);
 }
 
-// OrtWriteBufferFunc that appends the written bytes to a std::string held in stream_state.
-static OrtStatus* ORT_API_CALL AppendToStringWriteFunc(void* stream_state, const void* buffer,
-                                                       size_t buffer_num_bytes) {
-  auto* sink = reinterpret_cast<std::string*>(stream_state);
-  sink->append(reinterpret_cast<const char*>(buffer), buffer_num_bytes);
-  return nullptr;  // No error
-}
-
 // Same as above, but emits the plain optimized model through a user write function (BufferWriteFuncHolder)
 // instead of a file, exercising the write-func branch of SaveModelProtoToLocation. The Level2 BiasGelu
 // fusion must still be present in the written bytes.
@@ -3847,6 +3848,136 @@ TEST(InferenceSessionTests, CompileOnlyToWriteFuncSerializesFullyOptimizedGraph)
   const std::map<std::string, int> counts = CountOpsInGraph(verify.GetGraph());
   EXPECT_EQ(counts.count("com.microsoft.BiasGelu") ? counts.at("com.microsoft.BiasGelu") : 0, 1);
 }
+#endif  // !defined(DISABLE_CONTRIB_OPS)
+
+// Unlike the tests above (which set the compile-only config directly on an InferenceSession), the tests below
+// exercise the public Compile API (Ort::ModelCompilationOptions + Ort::CompileModel) end-to-end and verify the
+// emitted output is a plain optimized ONNX model (no EPContext nodes). A CPU-only (non-compiling) EP is enough.
+
+// Loads a serialized model into a non-optimizing session and returns its node op-type counts, so a test can
+// inspect the emitted graph without re-optimizing it. Keys are domain-qualified (e.g. "com.microsoft.BiasGelu").
+static std::map<std::string, int> CountOpsInEmittedModel(const std::basic_string<ORTCHAR_T>& model_path) {
+  SessionOptions verify_so;
+  verify_so.graph_optimization_level = TransformerLevel::Default;  // do not re-optimize the emitted model
+  InferenceSessionWrapper verify{verify_so, GetEnvironment()};
+  EXPECT_STATUS_OK(verify.Load(model_path));
+  EXPECT_STATUS_OK(verify.Initialize());
+  return CountOpsInGraph(verify.GetGraph());
+}
+
+static std::map<std::string, int> CountOpsInEmittedModel(const void* model_data, size_t model_data_len) {
+  SessionOptions verify_so;
+  verify_so.graph_optimization_level = TransformerLevel::Default;  // do not re-optimize the emitted model
+  InferenceSessionWrapper verify{verify_so, GetEnvironment()};
+  EXPECT_STATUS_OK(verify.Load(model_data, static_cast<int>(model_data_len)));
+  EXPECT_STATUS_OK(verify.Initialize());
+  return CountOpsInGraph(verify.GetGraph());
+}
+
+// Public Compile API -> plain optimized ONNX written to a file: no EPContext nodes, and reloadable.
+TEST(InferenceSessionTests, CompileApiOutputsPlainOnnxToFile) {
+  const std::basic_string<ORTCHAR_T> output_path = ORT_TSTR("compile_api_plain_output.onnx");
+  std::filesystem::remove(output_path);
+  struct RemoveOnExit {
+    std::basic_string<ORTCHAR_T> path;
+    ~RemoveOnExit() { std::filesystem::remove(path); }
+  } remove_on_exit{output_path};
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetInputModelPath(MODEL_URI);
+  compile_options.SetOutputModelPath(output_path.c_str());
+
+  const Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  ASSERT_TRUE(std::filesystem::exists(output_path));
+
+  const std::map<std::string, int> counts = CountOpsInEmittedModel(output_path);
+  EXPECT_EQ(counts.count("com.microsoft.EPContext") ? counts.at("com.microsoft.EPContext") : 0, 0)
+      << "Compile API plain output must not contain EPContext nodes.";
+  EXPECT_GT(counts.count("Mul") ? counts.at("Mul") : 0, 0);
+}
+
+// Public Compile API -> plain optimized ONNX in an in-memory buffer (the offline/sandboxed-process path with
+// no filesystem): no EPContext nodes.
+TEST(InferenceSessionTests, CompileApiOutputsPlainOnnxToBuffer) {
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetInputModelPath(MODEL_URI);
+
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* output_buffer = nullptr;
+  size_t output_size = 0;
+  compile_options.SetOutputModelBuffer(allocator, &output_buffer, &output_size);
+
+  const Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  ASSERT_NE(output_buffer, nullptr);
+  ASSERT_GT(output_size, 0u);
+
+  const std::map<std::string, int> counts = CountOpsInEmittedModel(output_buffer, output_size);
+  EXPECT_EQ(counts.count("com.microsoft.EPContext") ? counts.at("com.microsoft.EPContext") : 0, 0)
+      << "Compile API plain output must not contain EPContext nodes.";
+  EXPECT_GT(counts.count("Mul") ? counts.at("Mul") : 0, 0);
+
+  allocator.Free(output_buffer);
+}
+
+// Public Compile API -> plain optimized ONNX through a user write function: no EPContext nodes.
+TEST(InferenceSessionTests, CompileApiOutputsPlainOnnxToWriteFunc) {
+  std::string sink;
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetInputModelPath(MODEL_URI);
+  compile_options.SetOutputModelWriteFunc(AppendToStringWriteFunc, &sink);
+
+  const Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  ASSERT_FALSE(sink.empty());
+
+  const std::map<std::string, int> counts = CountOpsInEmittedModel(sink.data(), sink.size());
+  EXPECT_EQ(counts.count("com.microsoft.EPContext") ? counts.at("com.microsoft.EPContext") : 0, 0)
+      << "Compile API plain output must not contain EPContext nodes.";
+  EXPECT_GT(counts.count("Mul") ? counts.at("Mul") : 0, 0);
+}
+
+#if !defined(DISABLE_CONTRIB_OPS)
+// The public Compile API honors SetGraphOptimizationLevel for the plain output model. bias_gelu_fusion.onnx
+// fuses to com.microsoft.BiasGelu only at Level2+, so it is present when ORT_ENABLE_ALL is requested and
+// absent at the default level (the Compile API defaults to no graph optimizations).
+TEST(InferenceSessionTests, CompileApiOutputHonorsOptimizationLevel) {
+  const ORTCHAR_T* input_model_path = ORT_TSTR("testdata/transform/fusion/bias_gelu_fusion.onnx");
+
+  auto compile_to_buffer_counts = [&](bool enable_all) -> std::map<std::string, int> {
+    Ort::SessionOptions session_options;
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetInputModelPath(input_model_path);
+    if (enable_all) {
+      compile_options.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
+    }
+    Ort::AllocatorWithDefaultOptions allocator;
+    void* output_buffer = nullptr;
+    size_t output_size = 0;
+    compile_options.SetOutputModelBuffer(allocator, &output_buffer, &output_size);
+
+    EXPECT_TRUE(Ort::CompileModel(*ort_env, compile_options).IsOK());
+    std::map<std::string, int> counts;
+    if (output_buffer != nullptr && output_size > 0) {
+      counts = CountOpsInEmittedModel(output_buffer, output_size);
+      allocator.Free(output_buffer);
+    }
+    return counts;
+  };
+
+  // ORT_ENABLE_ALL: the Level2 BiasGelu fusion runs and must be captured in the emitted model.
+  const std::map<std::string, int> all_counts = compile_to_buffer_counts(/*enable_all=*/true);
+  EXPECT_EQ(all_counts.count("com.microsoft.BiasGelu") ? all_counts.at("com.microsoft.BiasGelu") : 0, 1);
+
+  // Default level (no optimizations): the Level2-only fusion must be absent.
+  const std::map<std::string, int> default_counts = compile_to_buffer_counts(/*enable_all=*/false);
+  EXPECT_EQ(default_counts.count("com.microsoft.BiasGelu") ? default_counts.at("com.microsoft.BiasGelu") : 0, 0);
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace test

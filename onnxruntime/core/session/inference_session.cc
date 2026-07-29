@@ -1723,10 +1723,19 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   //     boundary (no Cast, no Memcpy nodes), unchanged from prior behavior.
   //   - level >= Level2 (explicitly requested): serialize after the loop and Memcpy insertion below, so the
   //     emitted model captures the Level2-Level4 fusions (and the device-placement copy nodes).
-  const bool emit_plain_optimized_model =
+  //
+  // In either case we intentionally do not return early for a compile-only session, so that the disable_cpu_ep_fallback
+  // behavior is unchanged. There are two such non-early-return points:
+  //   - Here in TransformGraph (the level < Level2 case, where the output model is already serialized): the
+  //     InsertCast/Memcpy transformers below are inserted unconditionally, independent of the optimization level, so we
+  //     must let them run to keep the transformed graph identical to prior behavior.
+  //   - In Initialize() overall: the disable_cpu_ep_fallback check there runs on that fully transformed graph
+  //     (including the Cast/Memcpy nodes). Returning early would change what that check sees and could let a
+  //     compile-only session with CPU-assigned nodes slip through, which we intentionally want to fail.
+  const bool emit_plain_compile_only_model =
       session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionCompileOnly, "0") == "1" &&
       ep_context_gen_options.enable && !partitioner.AnyEpContextNodesProduced();
-  if (emit_plain_optimized_model) {
+  if (emit_plain_compile_only_model) {
     using ActionIfNoCompiledNodes = epctx::ModelGenOptions::ActionIfNoCompiledNodes;
     if (ep_context_gen_options.action_if_no_compiled_nodes == ActionIfNoCompiledNodes::kReturnError) {
       ORT_RETURN_IF_ERROR_SESSIONID_(
@@ -1817,20 +1826,6 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(copy_transformer, *session_logger_, graph));
   }
 
-#if !defined(ORT_MINIMAL_BUILD)
-  // Second serialization point for the plain optimized (non-EPContext) output model. Reached only for an
-  // explicitly requested level >= Level2 (level < Level2 was already serialized before the loop above). This
-  // runs after the Level2+ loop and the copy-node insertion, so the emitted model reflects the fully
-  // transformed graph the session runs - the Level2-Level4 fusions plus the device-placement Memcpy nodes.
-  // action_if_no_compiled_nodes was already handled before the loop (kReturnError returned there), so only
-  // kGenerateModel reaches here.
-  if (emit_plain_optimized_model &&
-      session_options_.graph_optimization_level >= TransformerLevel::Level2) {
-    ORT_RETURN_IF_ERROR_SESSIONID_(
-        epctx::BuildAndSaveOptimizedModel(*model_, ep_context_gen_options, *session_logger_));
-  }
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
 #ifdef ENABLE_TRAINING
   // Enable memory optimizations.
   // Only applicable for training scenarios.
@@ -1844,6 +1839,17 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(mem_transformer, *session_logger_, graph));
   }
 #endif
+
+  // Second serialization point for the plain optimized (non-EPContext) output model. Reached only for an
+  // explicitly requested level >= Level2 (level < Level2 was already serialized before the loop above). This runs
+  // after all graph transforms.
+  // action_if_no_compiled_nodes was already handled before the loop (kReturnError returned there), so only
+  // kGenerateModel reaches here.
+  if (emit_plain_compile_only_model &&
+      session_options_.graph_optimization_level >= TransformerLevel::Level2) {
+    ORT_RETURN_IF_ERROR_SESSIONID_(
+        epctx::BuildAndSaveOptimizedModel(*model_, ep_context_gen_options, *session_logger_));
+  }
 
   return Status::OK();
 }
@@ -2780,8 +2786,7 @@ common::Status InferenceSession::Initialize() {
     // output via optimized_model_filepath.
     if (session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionCompileOnly, "0") == "1") {
       LOGS(*session_logger_, INFO)
-          << "Compile-only session: skipping session-state finalization. The session is not runnable; only the "
-             "output model is produced.";
+          << "Compile-only session: skipping session-state finalization. The session is not runnable.";
       return common::Status::OK();
     }
 
