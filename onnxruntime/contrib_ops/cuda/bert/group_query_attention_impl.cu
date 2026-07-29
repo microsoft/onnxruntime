@@ -687,22 +687,47 @@ __global__ void GetSequenceLengths(const int* total_seq_lens_minus_one,
     // D is 0 and E is only the offset of the window inside the staging buffer. For a single-token
     // step the staging buffer is the cache itself (C_used == C) and D == E.
     //
-    // L must stay a pure function of the absolute length T: the op is stateless across steps and
-    // only ever sees seqlens_k, so it cannot recover a resident count it chose on a previous step.
-    // That rules out evicting in larger amortized batches. Note that nothing here depends on
-    // is_first_prompt; P == 0 falls out of the same formulas, which matters because a caller may
-    // not be able to signal the first prompt (onnxruntime-genai always passes the buffer length as
-    // total_sequence_length).
+    // For single-token decode steps the drifting-layout optimisation applies: entries live at
+    // [0, end) and are appended at `end`; compaction reclaims a whole block of `gap = C - W + 1`
+    // rows at once, so the kernel is load-bearing on only one step in `gap` and on the remaining
+    // steps the d <= 0 early-exit fires. Note that `end` is still a pure function of the absolute
+    // past length P, so the op stays stateless across Run() calls.
+    // For multi-token steps the staging buffer size must be predictable from Lp = min(P, C), and
+    // the write-back offset is the number of evicted rows under the old formula, so we keep the
+    // original Lp-based computation for that case.
     const int C = kv_cache_real_capacity;
     const int C_used = kv_cache_capacity;
-    const int Lp = past_len < C ? past_len : C;
-    const int evicted = Lp + sequence_length - C;
-    const int shifted = Lp + sequence_length - C_used;
-    const int E = evicted > 0 ? evicted : 0;
-    const int D = shifted > 0 ? shifted : 0;
-    const int resident = Lp + sequence_length;
+    const int W = C < C_used ? C : C_used;  // == local_window_size when C == C_used
+    const int gap = C - W + 1;  // >= 1; at C == W (no slack) this is 1 and every step compacts
+
+    int E, D;
+    int Lp;
+    if (sequence_length == 1) {
+      // Drifting-layout end pointer for single-token steps.
+      // end(P) = P while P <= C, else P - gap * ceil((P - C) / gap).
+      // This keeps W <= end <= C once the cache has filled.
+      auto windowed_end = [&](int P) -> int {
+        if (P <= C) return P;
+        const int overflow = P - C;
+        const int reclaimed = gap * ((overflow + gap - 1) / gap);
+        return P - reclaimed;
+      };
+      const int end_before = windowed_end(past_len);
+      const int end_after = windowed_end(past_len + 1);
+      const int kept = end_after - 1;
+      E = end_before - kept > 0 ? end_before - kept : 0;
+      D = (C_used < C) ? 0 : E;
+      Lp = end_before;
+    } else {
+      // Original formula for multi-token (staging) steps: Lp = min(P, C), E = evicted rows.
+      Lp = past_len < C ? past_len : C;
+      const int evicted = Lp + sequence_length - C;
+      const int shifted = Lp + sequence_length - C_used;
+      E = evicted > 0 ? evicted : 0;
+      D = shifted > 0 ? shifted : 0;
+    }
     cache_past_seq_lens[i] = Lp - D;
-    cache_total_seq_lens[i] = resident < C_used ? resident : C_used;
+    cache_total_seq_lens[i] = (Lp + sequence_length) < C_used ? (Lp + sequence_length) : C_used;
     evict_counts[i] = E;
   }
 }
@@ -751,9 +776,9 @@ Status LaunchGetSequenceLengths(
 // Shared launch geometry for the two row-copy kernels below. threadIdx.x walks the uint4 chunks of
 // a row and threadIdx.y walks rows, so a warp covers several adjacent rows in full and the accesses
 // stay coalesced. Handing a block many rows keeps the grid to a few dozen blocks, which matters
-// because these copies are launch bound rather than bandwidth bound: during decoding the cache is
-// over its budget on only one step in every cache_slack steps, so nearly every launch does no work
-// at all and its cost is dominated by scheduling the grid.
+// because these copies are launch bound rather than bandwidth bound: with gap = C - W + 1,
+// evict_counts[b] is non-zero on only one step in `gap`, so nearly every launch hits the d <= 0
+// early-exit and its cost is dominated by grid scheduling rather than memory traffic.
 static void KvRowCopyLaunchConfig(const int vec_count,
                                   const int rows,
                                   const int kv_num_heads,
