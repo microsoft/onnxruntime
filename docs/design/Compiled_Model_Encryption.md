@@ -370,6 +370,13 @@ The helper distinguishes trust based on the `OrtGraph*`:
   is accepted; anything escaping the model directory — including via a symlink — is rejected.
 - **Trusted callers** (`graph == nullptr`) own the path and may pass an absolute path or one containing
   `..`; there is no model directory to contain against, so no traversal check is applied there.
+- **File type** is checked where the path is actually used, not during resolution: a read target must
+  exist and be a regular file (`EnsureRegularFileForRead`), and a write target must be a regular file
+  *if* it already exists (`EnsureRegularFileForWrite`). Both use `std::filesystem::status`, which
+  follows symlinks and so is consistent with the canonicalization above. This rejects directories and
+  special files — notably a FIFO left inside the model directory, which passes containment and would
+  block an `ifstream` open (a cheap DoS). The check is advisory, not a security boundary: the path can
+  change between the check and the open (TOCTOU); a race-free variant would inspect the opened handle.
 
 ## Application Flows
 

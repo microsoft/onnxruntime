@@ -188,21 +188,50 @@ TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathRejectsUnsafeNames) {
   ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, "../escape.ctx",
                                                                        empty_model_path_graph.ToExternal(), data_path),
                        ORT_INVALID_ARGUMENT, "requires a model path");
+}
 
-  // A model-derived name that designates a directory (".", "..", or a trailing separator with an empty filename) is
-  // rejected up front, rather than resolving to a directory and failing later with a confusing I/O error.
-  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, ".", empty_model_path_graph.ToExternal(),
-                                                                       data_path),
-                       ORT_INVALID_ARGUMENT, "must refer to a file");
-  // A leaf ".." (e.g. "sub/..") resolves to the parent/model directory; it is rejected here rather than passing the
-  // model-directory containment check and surfacing later as a directory I/O failure.
-  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, "sub/..",
-                                                                       empty_model_path_graph.ToExternal(), data_path),
-                       ORT_INVALID_ARGUMENT, "must refer to a file");
-  // A trailing separator leaves an empty leaf ("sub/"), which likewise cannot designate a file.
-  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, "sub/",
-                                                                       empty_model_path_graph.ToExternal(), data_path),
-                       ORT_INVALID_ARGUMENT, "must refer to a file");
+TEST(OrtEpLibrary, EpContextDataUtils_RejectsNonRegularFileTargets) {
+  const auto& api = Ort::GetApi();
+  const std::filesystem::path test_dir = PrepareTempTestDir("ort_ep_context_data_utils_regular_file_test");
+  auto cleanup = gsl::finally([&]() { std::filesystem::remove_all(test_dir); });
+
+  const std::filesystem::path model_dir = test_dir / "model_dir";
+  ASSERT_TRUE(std::filesystem::create_directories(model_dir / "subdir"));
+
+  ModelEditorGraph graph;
+  graph.model_path = model_dir / "model.onnx";
+
+  // A model-derived name may resolve to a directory and still pass containment ("subdir/.." resolves to the model
+  // directory itself), so the file-type check - not the resolver - is what rejects it.
+  std::vector<char> data;
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataFromFile(api, "subdir", graph.ToExternal(), data),
+                       ORT_INVALID_ARGUMENT, "must be a regular file");
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataFromFile(api, "subdir/..", graph.ToExternal(), data),
+                       ORT_INVALID_ARGUMENT, "must be a regular file");
+
+  // The zero-copy entry point applies the same gate on its file-fallback path.
+  std::string directory_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, model_dir / "subdir", directory_name));
+  ep_context_data_utils::EpContextData directory_read_result;
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextData(api, /*ep_context_config=*/nullptr,
+                                                                directory_name.c_str(), nullptr,
+                                                                directory_read_result),
+                       ORT_INVALID_ARGUMENT, "must be a regular file");
+  EXPECT_TRUE(directory_read_result.empty());
+
+  // Writing over an existing directory is rejected up front instead of surfacing as a confusing stream failure.
+  const std::string payload = "regular file payload";
+  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataToFile(api, directory_name.c_str(), nullptr,
+                                                                       payload.data(), payload.size()),
+                       ORT_INVALID_ARGUMENT, "must be a regular file");
+
+  // A not-yet-existing target is the normal write case and is still allowed.
+  std::string new_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, model_dir / "new_context_data.bin", new_file_name));
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataToFile(api, new_file_name.c_str(), nullptr,
+                                                                      payload.data(), payload.size()));
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextDataFromFile(api, new_file_name.c_str(), nullptr, data));
+  EXPECT_EQ(std::string(data.begin(), data.end()), payload);
 }
 
 TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathRejectsSymlinkEscape) {

@@ -156,16 +156,44 @@ inline bool HasAbsoluteOrRootedPath(const std::filesystem::path& path) {
   return path.is_absolute() || path.has_root_name() || path.has_root_directory();
 }
 
-// Lexical (fail-fast) check on the final path component: returns true if the leaf is empty (a trailing separator such
-// as "sub/") or is "." or "..". These leaves lexically denote a directory rather than a concrete file name. This does
-// NOT stat the filesystem, so a real, existing directory with an ordinary leaf name (e.g. an existing "subdir") is not
-// detected here: it passes this check and is only rejected later when the file fails to open. The purpose is early,
-// clear error messaging for names that can never designate a file; the actual containment guarantee comes from the
-// read-side resolver (IsResolvedPathWithinBase()) plus the eventual file open(), which also handle non-leaf ".."
-// components via canonicalization rather than a lexical check.
-inline bool HasDirectoryLikeLeaf(const std::filesystem::path& path) {
-  const std::filesystem::path leaf = path.filename();
-  return leaf.empty() || leaf == std::filesystem::path{"."} || leaf == std::filesystem::path{".."};
+// Read gate: the resolved path must exist and be a regular file. status() follows symlinks, matching the
+// canonicalization used for containment. This rejects directories and special files - notably a FIFO, which
+// containment does not catch and which blocks an ifstream open, making it a cheap denial of service. Advisory, not a
+// security boundary: the path can change between this check and the open (TOCTOU).
+inline OrtStatus* EnsureRegularFileForRead(const OrtApi& api, const std::filesystem::path& data_path) {
+  std::error_code ec;
+  const std::filesystem::file_status file_status = std::filesystem::status(data_path, ec);
+  if (ec || !std::filesystem::exists(file_status)) {
+    const std::string message = "Failed to open EPContext data file for read: " +
+                                PathToUtf8StringForMessage(data_path);
+    return api.CreateStatus(ORT_FAIL, message.c_str());
+  }
+
+  if (!std::filesystem::is_regular_file(file_status)) {
+    const std::string message = "EPContext data file must be a regular file: " +
+                                PathToUtf8StringForMessage(data_path);
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, message.c_str());
+  }
+
+  return nullptr;
+}
+
+// Write counterpart: a not-yet-existing target is the normal case and is allowed, but an existing target must be a
+// regular file. Same advisory (TOCTOU) caveat as EnsureRegularFileForRead().
+inline OrtStatus* EnsureRegularFileForWrite(const OrtApi& api, const std::filesystem::path& data_path) {
+  std::error_code ec;
+  const std::filesystem::file_status file_status = std::filesystem::status(data_path, ec);
+  if (ec || !std::filesystem::exists(file_status)) {
+    return nullptr;
+  }
+
+  if (!std::filesystem::is_regular_file(file_status)) {
+    const std::string message = "EPContext data file must be a regular file: " +
+                                PathToUtf8StringForMessage(data_path);
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, message.c_str());
+  }
+
+  return nullptr;
 }
 
 // Returns true if `candidate_full` (a base-relative name already combined with `base`) resolves to a location inside
@@ -203,9 +231,10 @@ inline bool IsResolvedPathWithinBase(const std::filesystem::path& base, const st
 // relative, and after combining it with the model's directory the result must stay within that directory. Symlinks and
 // ".." are resolved (via weakly_canonical), so a name that escapes the model directory - including through a symlink -
 // is rejected.
-// This helper only decides whether a model-derived file name resolves inside the model directory. Production EPs
-// should still choose an application-approved storage root (sandbox), reject special files/locations as appropriate,
-// and cap the number of bytes they will read or write for a single EPContext payload.
+// This helper only decides whether a model-derived file name resolves inside the model directory; the file type is
+// checked by EnsureRegularFileForRead() / EnsureRegularFileForWrite() at the point of use. Production EPs should
+// still choose an application-approved storage root (sandbox) and cap the number of bytes they will read or write for
+// a single EPContext payload.
 inline OrtStatus* ResolveEpContextDataPath(const OrtApi& api, const char* file_name, const OrtGraph* graph,
                                            std::filesystem::path& data_path) {
   data_path.clear();
@@ -234,10 +263,6 @@ inline OrtStatus* ResolveEpContextDataPath(const OrtApi& api, const char* file_n
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
   }
 
-  if (HasDirectoryLikeLeaf(candidate_path)) {
-    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must refer to a file, not a directory");
-  }
-
   const ORTCHAR_T* model_path = nullptr;
   RETURN_IF_ERROR(api.Graph_GetModelPath(graph, &model_path));
   if (model_path == nullptr || model_path[0] == 0) {
@@ -258,6 +283,8 @@ inline OrtStatus* ResolveEpContextDataPath(const OrtApi& api, const char* file_n
 
 inline OrtStatus* WriteEpContextDataToResolvedFile(const OrtApi& api, const std::filesystem::path& data_path,
                                                    const void* buffer, size_t buffer_size) {
+  RETURN_IF_ERROR(EnsureRegularFileForWrite(api, data_path));
+
   std::ofstream output_stream(data_path, std::ios::binary);
   if (!output_stream) {
     const std::string message = "Failed to open EPContext data file for write: " +
@@ -287,6 +314,7 @@ inline OrtStatus* ReadEpContextDataFromFile(const OrtApi& api, const char* file_
 
   std::filesystem::path data_path;
   RETURN_IF_ERROR(ResolveEpContextDataPath(api, file_name, graph, data_path));
+  RETURN_IF_ERROR(EnsureRegularFileForRead(api, data_path));
 
   std::ifstream input_stream(data_path, std::ios::binary);
   if (!input_stream) {
@@ -317,6 +345,7 @@ inline OrtStatus* ReadEpContextDataFromFileWithAllocator(const OrtApi& api, cons
 
   std::filesystem::path data_path;
   RETURN_IF_ERROR(ResolveEpContextDataPath(api, file_name, graph, data_path));
+  RETURN_IF_ERROR(EnsureRegularFileForRead(api, data_path));
 
   // Open at the end (std::ios::ate) so tellg() reports the byte count; binary mode keeps that count exact.
   std::ifstream input_stream(data_path, std::ios::binary | std::ios::ate);
