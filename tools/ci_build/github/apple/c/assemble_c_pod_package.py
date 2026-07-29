@@ -20,6 +20,19 @@ from package_assembly_utils import (  # noqa: E402
 )
 
 
+def get_platform_frameworks(framework_info, platforms):
+    frameworks = ""
+    for platform in platforms:
+        if platform not in framework_info:
+            continue
+        platform_frameworks = framework_info[platform].get("SYSTEM_FRAMEWORKS", "")
+        if frameworks:
+            assert platform_frameworks == frameworks
+        else:
+            frameworks = platform_frameworks
+    return frameworks
+
+
 def get_pod_config_file():
     """
     Gets the pod configuration file path.
@@ -64,13 +77,17 @@ def assemble_c_pod_package(
     copy_repo_relative_to_dir(["LICENSE"], staging_dir)
 
     (ios_deployment_target, macos_deployment_target, weak_framework) = get_podspec_values(framework_info)
+    ios_frameworks = get_platform_frameworks(framework_info, ("iphonesimulator", "iphoneos"))
+    macos_frameworks = get_platform_frameworks(framework_info, ("macosx",))
 
     # generate the podspec file from the template
     variable_substitutions = {
         "DESCRIPTION": pod_config["description"],
         # By default, we build both "iphoneos" and "iphonesimulator" architectures, and the deployment target should be the same between these two.
         "IOS_DEPLOYMENT_TARGET": ios_deployment_target,
+        "IOS_SYSTEM_FRAMEWORKS": ios_frameworks,
         "MACOSX_DEPLOYMENT_TARGET": macos_deployment_target,
+        "MACOS_SYSTEM_FRAMEWORKS": macos_frameworks,
         "LICENSE_FILE": "LICENSE",
         "NAME": pod_name,
         "ORT_C_FRAMEWORK": framework_dir.name,
