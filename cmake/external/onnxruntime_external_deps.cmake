@@ -1097,6 +1097,23 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
           endif()
         endif()
       endforeach()
+      if(TARGET sqlite3_bundled)
+        # 1DS uses sqlite only for its narrow offline-event store. Keep the previous vcpkg
+        # size reductions and extension-loading hardening on the bundled replacement.
+        target_compile_definitions(sqlite3_bundled PRIVATE
+          SQLITE_OMIT_LOAD_EXTENSION
+          SQLITE_OMIT_DEPRECATED
+          SQLITE_OMIT_UTF16
+          SQLITE_OMIT_PROGRESS_CALLBACK
+          SQLITE_OMIT_SHARED_CACHE
+          SQLITE_OMIT_GET_TABLE
+          SQLITE_OMIT_COMPLETE
+          SQLITE_OMIT_TCL_VARIABLE
+          SQLITE_DQS=0
+          SQLITE_DEFAULT_MEMSTATUS=0
+          SQLITE_DEFAULT_FOREIGN_KEYS=0
+        )
+      endif()
       # ORT enables -ffast-math globally, which conflicts with
       # std::numeric_limits<double>::infinity() in the 1DS SDK's bundled nlohmann/json.hpp.
       # Also suppress warnings in the 1DS SDK code that ORT treats as errors.
