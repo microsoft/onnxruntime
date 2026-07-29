@@ -110,10 +110,10 @@ namespace HEAD_DIM_NAMESPACE {
 #undef GRP_SIZE
 #undef M_TILESIZE
 
-#define XQA_PAGED_DISPATCH(grp)                                                                            \
-  return XQA_PAGED_NS(grp)::Launch<XQA_PAGED_QUERY_T>(                                                    \
-      device_prop, stream, query, key_cache, value_cache, output, page_table, batch_size, num_heads,      \
-      kv_num_heads, head_size, max_pages_per_seq, scale, local_window_size, past_seq_lens,                \
+#define XQA_PAGED_DISPATCH(grp)                                                                      \
+  return XQA_PAGED_NS(grp)::Launch<XQA_PAGED_QUERY_T>(                                               \
+      device_prop, stream, query, key_cache, value_cache, output, page_table, batch_size, num_heads, \
+      kv_num_heads, head_size, max_pages_per_seq, scale, local_window_size, past_seq_lens,           \
       attention_sinks, k_cache_scale, v_cache_scale, workspace, workspace_size)
 
 Status XQA_PAGED_LAUNCH_FN(

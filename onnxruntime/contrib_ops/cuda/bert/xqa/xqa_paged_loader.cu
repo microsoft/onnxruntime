@@ -15,33 +15,33 @@ namespace contrib {
 namespace cuda {
 
 // Signature shared by every per-TU entry point.
-#define XQA_PAGED_DECL(fn)                     \
-  Status fn(                                   \
-      const cudaDeviceProp& device_prop,       \
-      cudaStream_t stream,                     \
-      const void* query,                       \
-      const void* key_cache,                   \
-      const void* value_cache,                 \
-      void* output,                            \
-      const int* page_table,                   \
-      const int batch_size,                    \
-      const int num_heads,                     \
-      const int kv_num_heads,                  \
-      const int head_size,                     \
-      const int max_pages_per_seq,             \
-      const float scale,                       \
-      const int local_window_size,             \
-      const int* past_seq_lens,                \
-      const float* attention_sinks,            \
-      const float* k_cache_scale,              \
-      const float* v_cache_scale,              \
-      void* workspace,                         \
-      size_t workspace_size);                  \
+#define XQA_PAGED_DECL(fn)               \
+  Status fn(                             \
+      const cudaDeviceProp& device_prop, \
+      cudaStream_t stream,               \
+      const void* query,                 \
+      const void* key_cache,             \
+      const void* value_cache,           \
+      void* output,                      \
+      const int* page_table,             \
+      const int batch_size,              \
+      const int num_heads,               \
+      const int kv_num_heads,            \
+      const int head_size,               \
+      const int max_pages_per_seq,       \
+      const float scale,                 \
+      const int local_window_size,       \
+      const int* past_seq_lens,          \
+      const float* attention_sinks,      \
+      const float* k_cache_scale,        \
+      const float* v_cache_scale,        \
+      void* workspace,                   \
+      size_t workspace_size);            \
   size_t fn##_SmemSize(const int num_heads, const int kv_num_heads)
 
-#define XQA_PAGED_ARGS                                                                             \
-  device_prop, stream, query, key_cache, value_cache, output, page_table, batch_size, num_heads,   \
-      kv_num_heads, head_size, max_pages_per_seq, scale, local_window_size, past_seq_lens,         \
+#define XQA_PAGED_ARGS                                                                           \
+  device_prop, stream, query, key_cache, value_cache, output, page_table, batch_size, num_heads, \
+      kv_num_heads, head_size, max_pages_per_seq, scale, local_window_size, past_seq_lens,       \
       attention_sinks, k_cache_scale, v_cache_scale, workspace, workspace_size
 
 namespace H64 {

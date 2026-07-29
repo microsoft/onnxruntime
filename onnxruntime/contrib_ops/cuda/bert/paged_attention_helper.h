@@ -401,6 +401,7 @@ Status CheckInputs(const T* query,
                    const T* k_norm_weight,
                    const T* k_scale,
                    const T* v_scale,
+                   const T* attention_metadata,
                    void* parameters,
                    int num_heads,
                    int kv_num_heads,
@@ -566,6 +567,19 @@ Status CheckInputs(const T* query,
   }
   ORT_RETURN_IF_ERROR(CheckKVCacheDataType(k_cache_dtype, cache_storage_dtype, "k_cache_dtype"));
   ORT_RETURN_IF_ERROR(CheckKVCacheDataType(v_cache_dtype, cache_storage_dtype, "v_cache_dtype"));
+
+  // Optional host-side [max_query_len_bound, max_kv_len_bound]. Only the shape is checked here.
+  // The entries are *trusted upper bounds* and cannot be cross-checked against the device tensors
+  // they bound without the readback this input exists to remove; see the trust boundary in
+  // docs/contrib_ops/cuda/paged_attention.md section 4.7.
+  if (attention_metadata != nullptr) {
+    const auto& metadata_dims = attention_metadata->Shape().GetDims();
+    if (metadata_dims.size() != 1 || metadata_dims[0] != 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'attention_metadata' must have shape (2), got ",
+                             attention_metadata->Shape().ToString());
+    }
+  }
 
   if (parameters != nullptr) {
     PagedAttentionParameters* output_parameters = reinterpret_cast<PagedAttentionParameters*>(parameters);

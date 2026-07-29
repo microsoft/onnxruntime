@@ -1415,6 +1415,7 @@ cumulative_sequence_length records cumulated length of each sequence length.
 // Input 'k_norm_weight':                (head_size)
 // Input 'k_scale':                      (1) for PER_TENSOR, (kv_num_heads, 1, head_size) for PER_CHANNEL
 // Input 'v_scale':                      (1) for PER_TENSOR, (kv_num_heads, 1, head_size) for PER_CHANNEL
+// Input 'attention_metadata':           (2), CPU memory: [max_query_len_bound, max_kv_len_bound]
 // Output 'output':                      (token_count, num_heads * v_head_size)
 // Output 'key_cache_out':               (num_blocks, block_size, kv_num_heads, head_size)
 // Output 'value_cache_out':             (num_blocks, block_size, kv_num_heads, head_size), absent for LATENT
@@ -1691,6 +1692,22 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Dequantization scale of the value cache. Shape is (1) when 'v_quant_type' is 'PER_TENSOR' and "
                "(kv_num_heads, 1, head_size) when it is 'PER_CHANNEL'. Quantization is symmetric (no zero point).",
                "T_KV_SCALE",
+               OpSchema::Optional)
+        .Input(16,
+               "attention_metadata",
+               "1D tensor with shape (2) holding [max_query_len_bound, max_kv_len_bound] in CPU memory. "
+               "max_query_len_bound is an upper bound on the number of new tokens any one sequence "
+               "contributes; max_kv_len_bound is an upper bound on past_seqlens[i] + query_len[i]. Both are "
+               "replay-wide upper bounds, never exact per-step values: they must hold for every step this node "
+               "-- or a CUDA Graph capturing it -- will serve, and 0 means 'unknown'. They may only select the "
+               "backend and size launch dimensions and workspaces; they never enter a mask comparison, so "
+               "over-estimating only costs empty work. The op can otherwise obtain these only by copying "
+               "'cumulative_sequence_length' and 'past_seqlens' back from the device and synchronizing the "
+               "stream on every call, which stalls the pipeline once per node per step and makes the op "
+               "impossible to capture into a CUDA Graph. Schedulers already track these bounds on the host, so "
+               "supplying them is normally free. When absent, the op falls back to the device readback. "
+               "The values are trusted: an under-sized bound violates the contract and may omit attention work.",
+               "S",
                OpSchema::Optional)
         .Output(0,
                 "output",

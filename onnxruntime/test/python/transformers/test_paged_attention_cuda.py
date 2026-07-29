@@ -180,6 +180,9 @@ def create_paged_attention_graph(
     # built and their rejection tested.
     has_k_scale = config.k_quant_type != "NONE"
     has_v_scale = config.v_quant_type != "NONE"
+    # Optional host-side [max_query_len_bound, max_kv_len_bound]. When present the kernel can skip
+    # the device readback of the cumulative length arrays, so results must be identical either way.
+    has_attention_metadata = getattr(config, "use_attention_metadata", False)
     quant_attrs = (
         {
             "k_quant_type": config.k_quant_type,
@@ -210,6 +213,7 @@ def create_paged_attention_graph(
                 "k_norm_weight" if config.use_qk_norm else "",
                 "k_scale" if has_k_scale else "",
                 "v_scale" if has_v_scale else "",
+                "attention_metadata" if has_attention_metadata else "",
             ],
             ["output", "key_cache_out", "value_cache_out"],
             "PagedAttention_0",
@@ -331,6 +335,10 @@ def create_paged_attention_graph(
         graph_input += [
             helper.make_tensor_value_info("v_scale", TensorProto.FLOAT, kv_scale_shape(config, config.v_quant_type)),
         ]
+    if has_attention_metadata:
+        graph_input += [
+            helper.make_tensor_value_info("attention_metadata", TensorProto.INT32, [2]),
+        ]
 
     graph_output = [
         helper.make_tensor_value_info(
@@ -415,6 +423,17 @@ def paged_attention_func(
         "past_seqlens": past_seqlens.detach().cpu().numpy(),
         "block_table": block_table.detach().cpu().numpy(),
     }
+    if getattr(config, "use_attention_metadata", False):
+        override = getattr(config, "attention_metadata_override", None)
+        if override is not None:
+            ort_inputs["attention_metadata"] = override
+        else:
+            cum_q = cumulative_sequence_length.detach().cpu().numpy().astype(numpy.int64)
+            query_lens = cum_q[1:] - cum_q[:-1]
+            kv_lens = past_seqlens.detach().cpu().numpy().astype(numpy.int64) + query_lens
+            # The exact per-step maxima are valid upper bounds for a single Run, which is what these
+            # tests do. A real scheduler would pass looser, replay-wide bounds instead.
+            ort_inputs["attention_metadata"] = numpy.array([query_lens.max(), kv_lens.max()], dtype=numpy.int32)
     if not quantized:
         ort_inputs["key_cache"] = OrtValue.ortvalue_from_numpy(key_cache.detach().cpu().numpy(), "cuda", 0)
         ort_inputs["value_cache"] = OrtValue.ortvalue_from_numpy(value_cache.detach().cpu().numpy(), "cuda", 0)
@@ -446,6 +465,8 @@ def paged_attention_func(
         if tensor is not None:
             ort_inputs[name] = tensor.detach().cpu().numpy()
             io_binding.bind_cpu_input(name, ort_inputs[name])
+    if "attention_metadata" in ort_inputs:
+        io_binding.bind_cpu_input("attention_metadata", ort_inputs["attention_metadata"])
     io_binding.bind_cpu_input("query", ort_inputs["query"])
     if quantized:
         # A quantized cache has no numpy dtype, so bind the torch device buffers directly.
@@ -1871,6 +1892,121 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
         config = self._config(
             sequence_length=2, kv_cache_type="int8", k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR"
         )
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+
+class TestPagedAttentionAttentionMetadata(unittest.TestCase):
+    """Coverage for the optional 'attention_metadata' input.
+
+    'cumulative_sequence_length' and 'past_seqlens' are device tensors, but the op needs the maximum
+    query length (to choose a backend) and the maximum KV length (to size its workspaces) on the
+    host. Without this input it copies them back and blocks the stream, once per node per step,
+    which also makes the node impossible to capture into a CUDA Graph. 'attention_metadata' supplies
+    upper bounds for both in CPU memory instead.
+
+    It is purely an optimization, so the contract under test is that it changes nothing: every case
+    here mirrors a config that is also covered without the input and must produce the same results.
+    The cases span the backends because they consume the bounds differently, and both the
+    readback-free path (a bound of 1 proves a pure decode step) and the fallback path (any looser
+    bound still needs the readback) are represented."""
+
+    def setUp(self):
+        torch.manual_seed(0)
+
+    def _config(self, **overrides):
+        kwargs = {
+            "batch_size": 4,
+            "sequence_length": 1,
+            "total_sequence_length": 1024,
+            "num_heads": 8,
+            "kv_num_heads": 2,
+            "head_size": 64,
+            "paged_kv_block_size": 256,
+            "local": False,
+            "rotary": False,
+            "rotary_interleaved": False,
+            "packed": False,
+            "softcap": 0.0,
+        }
+        feature_overrides = {k: overrides.pop(k) for k in list(overrides) if k not in kwargs}
+        kwargs.update(overrides)
+        config = Config(**kwargs)
+        config.use_attention_metadata = True
+        for key, value in feature_overrides.items():
+            setattr(config, key, value)
+        return config
+
+    def test_prefill_flash_attention(self):
+        # A prefill bound is > 1, so this still takes the readback path; the input must not perturb
+        # anything there either.
+        parity_check_paged_attention(self._config(sequence_length=256, total_sequence_length=256))
+
+    def test_decode_unquantized(self):
+        parity_check_paged_attention(self._config(), sdpa_kernel=SDPA_KERNEL_DECODER_ATTENTION)
+
+    def test_decode_xqa_int8(self):
+        config = self._config(kv_cache_type="int8", k_quant_type="PER_CHANNEL", v_quant_type="PER_CHANNEL")
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    @unittest.skipIf(not has_fp8_kv_cache(), reason="FP8 KV cache kernels are not built")
+    def test_decode_xqa_fp8(self):
+        config = self._config(kv_cache_type="fp8", k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR")
+        parity_check_paged_attention(config, rtol=5e-2, atol=5e-2)
+
+    def test_decode_softcap_portable_kernel(self):
+        # softcap rules out XQA, so this exercises the split-KV decode kernel, whose split count is
+        # derived from max_kv_len -- here from the bound rather than from a readback.
+        config = self._config(kv_cache_type="int8", k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR", softcap=50.0)
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    def test_decode_local_window(self):
+        config = self._config(local=True, kv_cache_type="int8", k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR")
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    def test_chunked_prefill_dense_gather(self):
+        # A quantized cache on a multi-token step gathers the live context into a dense buffer sized
+        # by the exact total_kv_tokens, which no bound can supply, so the readback must still happen.
+        config = self._config(
+            sequence_length=8,
+            kv_cache_type="int8",
+            k_quant_type="PER_TENSOR",
+            v_quant_type="PER_TENSOR",
+        )
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    def test_ragged_new_token_counts(self):
+        # The bound is 2 even though the batch averages one new token each, so the decode shortcut
+        # must not fire: one sequence really does contribute two tokens.
+        new_seqlens = torch.tensor([2, 0, 1, 1], dtype=torch.int32)
+        parity_check_paged_attention(self._config(sequence_length=2), new_seqlens_override=new_seqlens)
+
+    def test_zero_new_tokens_in_batch(self):
+        # token_count != batch_size, so the bound of 1 alone does not prove one token per sequence
+        # and the readback path is taken.
+        new_seqlens = torch.tensor([1, 0, 1, 1], dtype=torch.int32)
+        parity_check_paged_attention(self._config(), new_seqlens_override=new_seqlens)
+
+    def test_batch_one(self):
+        parity_check_paged_attention(self._config(batch_size=1), sdpa_kernel=SDPA_KERNEL_DECODER_ATTENTION)
+
+    def test_negative_entry_is_rejected(self):
+        config = self._config()
+        config.attention_metadata_override = numpy.array([-1, 1024], dtype=numpy.int32)
+        with self.assertRaises(Exception) as ctx:
+            parity_check_paged_attention(config)
+        self.assertIn("must be non-negative", str(ctx.exception))
+
+    def test_unknown_bounds_fall_back_to_readback(self):
+        # All-zero means "no bound", which must behave exactly like omitting the input.
+        config = self._config(kv_cache_type="int8", k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR")
+        config.attention_metadata_override = numpy.array([0, 0], dtype=numpy.int32)
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    def test_over_large_bounds_are_clamped(self):
+        # Bounds beyond the static limits are legal (they are still upper bounds) and must be
+        # clamped rather than used to size an allocation.
+        config = self._config(kv_cache_type="int8", k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR")
+        config.attention_metadata_override = numpy.array([1 << 20, 1 << 20], dtype=numpy.int32)
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
 
 

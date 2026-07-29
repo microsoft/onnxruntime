@@ -34,7 +34,8 @@ namespace cuda {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())              \
           .TypeConstraint("T_CACHE", DataTypeImpl::GetTensorType<TCACHE>())   \
           .TypeConstraint("T_KV_SCALE", DataTypeImpl::GetTensorType<float>()) \
-          .TypeConstraint("S", DataTypeImpl::GetTensorType<int32_t>()),       \
+          .TypeConstraint("S", DataTypeImpl::GetTensorType<int32_t>())        \
+          .InputMemoryType(OrtMemTypeCPUInput, 16),                           \
       PagedAttention<T, TCACHE>);
 
 REGISTER_KERNEL_TYPED(MLFloat16, MLFloat16)
@@ -160,6 +161,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const Tensor* k_norm_weight = context->Input<Tensor>(13);
   const Tensor* k_scale = context->Input<Tensor>(14);
   const Tensor* v_scale = context->Input<Tensor>(15);
+  // Resident in CPU memory (see the kernel def's InputMemoryType above).
+  const Tensor* attention_metadata = context->Input<Tensor>(16);
 
   auto& device_prop = GetDeviceProp();
   PagedAttentionParameters parameters;
@@ -185,6 +188,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                                                           k_norm_weight,
                                                           k_scale,
                                                           v_scale,
+                                                          attention_metadata,
                                                           &parameters,
                                                           num_heads_,
                                                           kv_num_heads_,
@@ -371,7 +375,62 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // Compute max_query_len on the host. The previous `token_count - batch_size + 1` heuristic
   // underestimates (or goes non-positive) when batches have zero new tokens. max_kv_len and
   // total_kv_tokens size the dense staging buffers and the decode split count.
-  {
+  //
+  // Obtaining them from the device means copying the two cumulative arrays back and blocking the
+  // host until they land, which drains everything already queued on the compute stream -- once per
+  // PagedAttention node, so once per layer per decoded token. It also makes the node impossible to
+  // capture into a CUDA Graph, since a stream synchronization is not a capturable operation.
+  //
+  // 'attention_metadata' lets the caller avoid all of that by supplying replay-wide *upper bounds*
+  // (see docs/contrib_ops/cuda/paged_attention.md section 4.7). Bounds alone are enough for the
+  // decode backends: the split count and the XQA workspace only need to be large enough, and every
+  // per-sequence length that enters a mask is re-read from device memory by the kernel. So when the
+  // caller states that no sequence contributes more than one new token, we can select and size the
+  // decode path with no device traffic at all. That is the case CUDA Graphs care about.
+  //
+  // The gather-based backends are not yet expressible in bounds -- MemoryEfficientAttention and
+  // quantized-cache FlashAttention stage the live context into a buffer indexed by the *exact*
+  // total_kv_tokens -- so a prefill or chunked-prefill step still pays for the readback. Prefill is
+  // not captured into a graph, so this costs nothing in practice; converting those backends to
+  // capacity-bound sizing is the remaining half of section 4.7.
+  int max_query_len_bound = 0;
+  int max_kv_len_bound = 0;
+  if (attention_metadata != nullptr) {
+    const int* metadata = attention_metadata->Data<int>();
+    max_query_len_bound = metadata[0];
+    max_kv_len_bound = metadata[1];
+    if (max_query_len_bound < 0 || max_kv_len_bound < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "PagedAttention: 'attention_metadata' entries must be non-negative, got [",
+                             max_query_len_bound, ", ", max_kv_len_bound, "]. Use 0 for 'unknown'.");
+    }
+    // Clamp each bound to the static limit it can never exceed, so an over-large (or unknown)
+    // bound degrades to the same sizing we would use with no metadata at all.
+    if (max_query_len_bound == 0 || max_query_len_bound > parameters.token_count) {
+      max_query_len_bound = parameters.token_count;
+    }
+    const int max_kv_len_capacity = parameters.max_num_blocks_per_seq * parameters.block_size;
+    if (max_kv_len_bound == 0 || max_kv_len_bound > max_kv_len_capacity) {
+      max_kv_len_bound = max_kv_len_capacity;
+    }
+  }
+
+  // A bound of 1 proves every sequence contributes at most one new token. Combined with
+  // token_count == batch_size it proves each contributes exactly one, which is what the decode
+  // kernels (and XQA's one-output-row-per-batch-index layout) require. Only take the shortcut when
+  // the decode backend would actually be selected: the gather backends additionally need the exact
+  // total_kv_tokens to size their staging buffer, which no upper bound can supply.
+  const bool skip_readback =
+      max_query_len_bound == 1 && parameters.token_count == parameters.batch_size &&
+      decode_eligible && (kIsQuantizedCache || !flash_eligible);
+
+  if (skip_readback) {
+    max_query_len = 1;
+    max_kv_len = max_kv_len_bound;
+    // Read only by the gather backends, which are excluded here. Keep it at the token count so a
+    // placeholder can never size a real allocation.
+    total_kv_tokens = parameters.token_count;
+  } else {
     const int kCumulativeCount = parameters.batch_size + 1;
     auto cum_q_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
     auto cum_kv_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
@@ -402,7 +461,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // Prefer the decode kernel only where it is a clear win: a quantized cache (it avoids
   // materializing and dequantizing the whole live context) or when FlashAttention is unavailable
   // (it beats the dense-gather MemoryEfficientAttention fallback). Unquantized FlashAttention-
-  // eligible shapes keep using FlashAttention.
+  // eligible shapes keep using FlashAttention. This must stay in sync with `skip_readback` above,
+  // which predicts this decision from the bounds alone.
   const bool use_paged_decode = decode_eligible && max_query_len == 1 && (kIsQuantizedCache || !flash_eligible);
   const bool use_flash_attention = flash_eligible && !use_paged_decode;
   const bool use_memory_efficient_attention = mea_eligible && !use_paged_decode;
