@@ -19,7 +19,7 @@
 
 #include "core/common/path_utils.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/graph/onnx_proto_serialize.h"
+#include <google/protobuf/io/zero_copy_stream_impl.h>
 #include "core/platform/env.h"
 #include "core/platform/env_var_utils.h"
 
@@ -174,8 +174,9 @@ void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, cons
   int output_fd;
   ORT_THROW_IF_ERROR(Env::Default().FileOpenWr(file_path_str, output_fd));
   try {
+    google::protobuf::io::FileOutputStream output(output_fd);
     ORT_ENFORCE(
-        onnxruntime::proto_io::SaveToFileDescriptor(tensor_proto, output_fd),
+        tensor_proto.SerializeToZeroCopyStream(&output) && output.Flush(),
         "Failed to write tensor to file - tensor: ", tensor_name, ", file: ", ToUTF8String(file_path_str));
   } catch (...) {
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(output_fd));
@@ -310,7 +311,7 @@ void InsertTensorInSqlDb(const Tensor& tensor, const TensorMetadata& tensor_meta
   SQL_OK(sqlite3_bind_text(stmt, 2, tensor_metadata.name.c_str(), -1, SQLITE_TRANSIENT));
 
   auto tensor_proto = utils::TensorToTensorProto(tensor, tensor_metadata.name);
-  std::string bytes = onnxruntime::proto_io::SerializeAsString(tensor_proto);
+  std::string bytes = tensor_proto.SerializeAsString();
   const char* data = bytes.data();
   int size = bytes.size();
 

@@ -16,7 +16,7 @@
 #include "core/graph/model_editor_api_types.h"
 #include "core/graph/model_helpers.h"
 #include "core/graph/model_load_utils.h"
-#include "core/graph/onnx_proto_serialize.h"
+#include <google/protobuf/io/zero_copy_stream_impl.h>
 
 #include <gsl/gsl>
 
@@ -447,7 +447,8 @@ Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Null model_proto ptr.");
   }
 
-  const bool result = onnxruntime::proto_io::ParseFromIStream(*p_model_proto, model_istream);
+  google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
+  const bool result = p_model_proto->ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Failed to load model because protobuf parsing failed.");
   }
@@ -610,7 +611,7 @@ static Status SaveModel(Model& model, const T& file_path) {
   auto model_proto = model.ToProto();
   auto buffer_size = model_proto.ByteSizeLong();
   void* buffer = malloc(buffer_size);
-  onnxruntime::proto_io::SerializeToArray(model_proto, buffer, buffer_size);
+  model_proto.SerializeToArray(buffer, static_cast<int>(buffer_size));
 
   EM_ASM(({
            const buffer = Number($0);
@@ -720,7 +721,7 @@ Status Model::SaveWithExternalInitializers(Model& model, const std::filesystem::
 }
 
 Status Model::LoadFromBytes(int count, const void* p_bytes, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) {
-  const bool result = onnxruntime::proto_io::ParseFromArray(model_proto, p_bytes, count);
+  const bool result = model_proto.ParseFromArray(p_bytes, count);
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
@@ -758,7 +759,7 @@ Status Model::Load(int fd, ONNX_NAMESPACE::ModelProto& model_proto) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> less than 0.");
   }
 
-  if (!onnxruntime::proto_io::ParseFromFileDescriptor(model_proto, fd)) {
+  if (!model_proto.ParseFromFileDescriptor(fd)) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
   return Status::OK();
@@ -869,7 +870,8 @@ Status Model::Save(Model& model, int p_fd) {
   ORT_RETURN_IF_ERROR(model.MainGraph().Resolve());
 
   auto model_proto = model.ToProto();
-  const bool result = onnxruntime::proto_io::SaveToFileDescriptor(model_proto, p_fd);
+  google::protobuf::io::FileOutputStream output(p_fd);
+  const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
   if (result) {
     return Status::OK();
   }
@@ -889,7 +891,8 @@ Status Model::SaveWithExternalInitializers(Model& model,
 
   auto model_proto = model.ToGraphProtoWithExternalInitializers(external_file_name, file_path,
                                                                 model_saving_options);
-  const bool result = onnxruntime::proto_io::SaveToFileDescriptor(model_proto, fd);
+  google::protobuf::io::FileOutputStream output(fd);
+  const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
   if (result) {
     return Status::OK();
   }
