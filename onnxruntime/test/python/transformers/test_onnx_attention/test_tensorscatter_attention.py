@@ -57,7 +57,13 @@ import torch
 from onnx import TensorProto, helper
 from parameterized import parameterized
 
-from onnxruntime import InferenceSession, OrtValue, SessionOptions, get_available_providers
+from onnxruntime import (
+    InferenceSession,
+    OrtValue,
+    SessionOptions,
+    get_available_providers,
+    set_default_logger_severity,
+)
 
 # #################################################################################################
 #  Helper Functions
@@ -2180,6 +2186,233 @@ class TestCausalTensorScatterBottomRight(unittest.TestCase):
             torch_type=torch.float16,
             ort_type=TensorProto.FLOAT16,
             is_causal=1,
+        )
+        numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp16"], atol=atol["fp16"])
+        numpy.testing.assert_allclose(present_k, ref_present_k, rtol=rtol["fp16"], atol=atol["fp16"])
+        numpy.testing.assert_allclose(present_v, ref_present_v, rtol=rtol["fp16"], atol=atol["fp16"])
+
+
+# #################################################################################################
+#  present_key/present_value redundant-copy skip (external-cache 4-D BNSH aliasing)
+# #################################################################################################
+# Attention::Run{Flash,CudnnSdpa,MemoryEfficient,Unfused}Attention populate present_key/present_value
+# for 4-D BNSH external-cache inputs via llm_attention_detail::CopyKVToPresent (attention.cc), which
+# skips the D2D copy entirely when present_key/present_value is bound to the SAME device buffer as
+# the K/V cache input (mirroring TensorScatter's own .MayInplace(0, 0) self-copy skip). These tests:
+#   1. Prove the skip actually fires when present_* aliases the cache buffer, via the greppable
+#      "present_copy_skipped" log tag emitted at VERBOSE severity — without this, a regression that
+#      re-introduced the unconditional copy would still pass on output correctness alone (the copy
+#      is redundant, not wrong, when src == dst).
+#   2. Prove the non-aliased path still runs the copy (tag absent) and both paths remain correct,
+#      across all four backends (Flash, cuDNN, Memory-Efficient, unfused/MATH).
+#
+# Only reachable for 4-D BNSH inputs (use_4d=True): the 3-D BSNH path always needs a
+# layout-changing transpose into present_*, so src and dst can never alias there.
+_PRESENT_COPY_SKIPPED_TAG = "present_copy_skipped"
+_ORT_LOG_SEVERITY_VERBOSE = 0
+_ORT_LOG_SEVERITY_WARNING = 2
+
+_SDPA_KERNEL_FLASH_ATTENTION = 1
+_SDPA_KERNEL_EFFICIENT_ATTENTION = 2
+
+
+def _run_tensorscatter_attention_4d(
+    batch_size,
+    total_kv_seq_len,
+    q_seq_len,
+    q_num_heads,
+    kv_num_heads,
+    head_size,
+    nonpad_seqlens,
+    scatter_positions,
+    provider_options,
+    alias_present,
+):
+    """4-D BNSH TensorScatter + Attention, with present_key/value optionally aliased to the K/V
+    cache buffer (the pattern llm_attention_detail::CopyKVToPresent's skip targets).
+
+    Runs at VERBOSE log severity and captures native stderr so callers can assert on
+    _PRESENT_COPY_SKIPPED_TAG. Returns (output, present_k, present_v, ref_output, ref_present_k,
+    ref_present_v, log_text).
+    """
+    torch.manual_seed(123)
+    std = 0.2
+    key_cache_t = torch.randn(batch_size, kv_num_heads, total_kv_seq_len, head_size, dtype=torch.float16) * std
+    value_cache_t = torch.randn(batch_size, kv_num_heads, total_kv_seq_len, head_size, dtype=torch.float16) * std
+    for b in range(batch_size):
+        old_valid = max(0, nonpad_seqlens[b] - q_seq_len)
+        if old_valid < total_kv_seq_len:
+            key_cache_t[b, :, old_valid:, :] = 0
+            value_cache_t[b, :, old_valid:, :] = 0
+    new_k_t = torch.randn(batch_size, kv_num_heads, q_seq_len, head_size, dtype=torch.float16) * std
+    new_v_t = torch.randn(batch_size, kv_num_heads, q_seq_len, head_size, dtype=torch.float16) * std
+    query_t = torch.randn(batch_size, q_num_heads, q_seq_len, head_size, dtype=torch.float16) * std
+
+    key_cache_ref = key_cache_t.float().cpu().numpy().copy()
+    value_cache_ref = value_cache_t.float().cpu().numpy().copy()
+    new_k_ref = new_k_t.float().cpu().numpy()
+    new_v_ref = new_v_t.float().cpu().numpy()
+    for b in range(batch_size):
+        pos = scatter_positions[b]
+        for t in range(q_seq_len):
+            key_cache_ref[b, :, pos + t, :] = new_k_ref[b, :, t, :]
+            value_cache_ref[b, :, pos + t, :] = new_v_ref[b, :, t, :]
+    q_ref = query_t.float().cpu().numpy().transpose(0, 2, 1, 3)
+    k_ref = key_cache_ref.transpose(0, 2, 1, 3)
+    v_ref = value_cache_ref.transpose(0, 2, 1, 3)
+    ref_output_bsnh = numpy_attention_ref(q_ref, k_ref, v_ref, nonpad_seqlens, is_causal=False)
+    ref_output = ref_output_bsnh.transpose(0, 2, 1, 3)
+    ref_present_k = key_cache_ref
+    ref_present_v = value_cache_ref
+
+    onnx_model_str = build_tensorscatter_attention_graph(
+        batch_size=batch_size,
+        total_kv_seq_len=total_kv_seq_len,
+        q_seq_len=q_seq_len,
+        q_num_heads=q_num_heads,
+        kv_num_heads=kv_num_heads,
+        head_size=head_size,
+        ort_type=TensorProto.FLOAT16,
+        is_causal=0,
+        use_4d=True,
+    )
+    # llm_attention_detail::CopyKVToPresent logs via LOGS_DEFAULT(VERBOSE), which goes through
+    # the process-wide DEFAULT logger (LoggingManager::DefaultLogger()), not the per-session
+    # logger session_options.log_severity_level configures. Both must be set to VERBOSE.
+    set_default_logger_severity(_ORT_LOG_SEVERITY_VERBOSE)
+    session_options = SessionOptions()
+    session_options.log_severity_level = _ORT_LOG_SEVERITY_VERBOSE
+    session = InferenceSession(
+        onnx_model_str,
+        session_options,
+        providers=["CUDAExecutionProvider"],
+        provider_options=[provider_options],
+    )
+
+    key_cache_ort = OrtValue.ortvalue_from_numpy(key_cache_t.cpu().numpy(), "cuda", 0)
+    value_cache_ort = OrtValue.ortvalue_from_numpy(value_cache_t.cpu().numpy(), "cuda", 0)
+    new_k_ort = OrtValue.ortvalue_from_numpy(new_k_t.cpu().numpy(), "cuda", 0)
+    new_v_ort = OrtValue.ortvalue_from_numpy(new_v_t.cpu().numpy(), "cuda", 0)
+    write_indices_ort = OrtValue.ortvalue_from_numpy(numpy.array(scatter_positions, dtype=numpy.int64), "cuda", 0)
+    query_ort = OrtValue.ortvalue_from_numpy(query_t.cpu().numpy(), "cuda", 0)
+    nonpad_ort = OrtValue.ortvalue_from_numpy(numpy.array(nonpad_seqlens, dtype=numpy.int64), "cuda", 0)
+
+    output_shape = [batch_size, q_num_heads, q_seq_len, head_size]
+    output_ort = OrtValue.ortvalue_from_shape_and_type(output_shape, numpy.float16, "cuda", 0)
+
+    io_binding = session.io_binding()
+    io_binding.bind_ortvalue_input("key_cache", key_cache_ort)
+    io_binding.bind_ortvalue_input("value_cache", value_cache_ort)
+    io_binding.bind_ortvalue_input("new_k", new_k_ort)
+    io_binding.bind_ortvalue_input("new_v", new_v_ort)
+    io_binding.bind_ortvalue_input("write_indices", write_indices_ort)
+    io_binding.bind_ortvalue_input("query", query_ort)
+    io_binding.bind_ortvalue_input("nonpad_kv_seqlen", nonpad_ort)
+    io_binding.bind_ortvalue_output("output", output_ort)
+    # In-place TensorScatter: the updated cache always aliases the cache input buffer.
+    io_binding.bind_ortvalue_output("updated_key_cache", key_cache_ort)
+    io_binding.bind_ortvalue_output("updated_value_cache", value_cache_ort)
+    if alias_present:
+        # Full 3-way alias: key_cache input == updated_key_cache output == present_key output.
+        # This is the production pattern CopyKVToPresent's skip targets.
+        io_binding.bind_ortvalue_output("present_key", key_cache_ort)
+        io_binding.bind_ortvalue_output("present_value", value_cache_ort)
+    else:
+        present_shape = [batch_size, kv_num_heads, total_kv_seq_len, head_size]
+        present_k_ort = OrtValue.ortvalue_from_shape_and_type(present_shape, numpy.float16, "cuda", 0)
+        present_v_ort = OrtValue.ortvalue_from_shape_and_type(present_shape, numpy.float16, "cuda", 0)
+        io_binding.bind_ortvalue_output("present_key", present_k_ort)
+        io_binding.bind_ortvalue_output("present_value", present_v_ort)
+
+    try:
+        with _CaptureNativeFd(_STDERR_FD) as captured_log:
+            io_binding.synchronize_inputs()
+            session.run_with_iobinding(io_binding)
+            io_binding.synchronize_outputs()
+    finally:
+        set_default_logger_severity(_ORT_LOG_SEVERITY_WARNING)
+
+    output = output_ort.numpy()
+    if alias_present:
+        present_k = key_cache_ort.numpy()
+        present_v = value_cache_ort.numpy()
+    else:
+        present_k = io_binding.get_outputs()[1].numpy()
+        present_v = io_binding.get_outputs()[2].numpy()
+
+    del io_binding, session
+    gc.collect()
+    return output, present_k, present_v, ref_output, ref_present_k, ref_present_v, captured_log.text
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping tests.")
+class TestAttentionPresentKVCopySkip(unittest.TestCase):
+    """present_key/present_value D2D-copy skip when aliased to the external KV cache buffer."""
+
+    _CASES = (
+        ("flash", {"sdpa_kernel": str(_SDPA_KERNEL_FLASH_ATTENTION | _SDPA_KERNEL_MATH)}),
+        ("efficient", {"sdpa_kernel": str(_SDPA_KERNEL_EFFICIENT_ATTENTION | _SDPA_KERNEL_MATH)}),
+        ("cudnn", {"sdpa_kernel": str(_SDPA_KERNEL_CUDNN_WITH_MATH_FALLBACK)}),
+        ("math", {"sdpa_kernel": str(_SDPA_KERNEL_MATH)}),
+    )
+
+    @parameterized.expand(_CASES)
+    def test_copy_skipped_when_present_aliases_cache(self, name, provider_options):
+        batch, total_kv, q_seq, q_heads, kv_heads, head_size = 2, 8, 1, 8, 2, 64
+        nonpad_seqlens = [4, 6]
+        scatter_positions = [3, 5]
+
+        output, present_k, present_v, ref_output, ref_present_k, ref_present_v, log_text = (
+            _run_tensorscatter_attention_4d(
+                batch,
+                total_kv,
+                q_seq,
+                q_heads,
+                kv_heads,
+                head_size,
+                nonpad_seqlens,
+                scatter_positions,
+                provider_options,
+                alias_present=True,
+            )
+        )
+
+        self.assertIn(
+            _PRESENT_COPY_SKIPPED_TAG,
+            log_text,
+            f"[{name}] present_key/value aliased the cache buffer but the redundant-copy skip "
+            "log tag never appeared — the D2D self-copy may have run unconditionally again.",
+        )
+        numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp16"], atol=atol["fp16"])
+        numpy.testing.assert_allclose(present_k, ref_present_k, rtol=rtol["fp16"], atol=atol["fp16"])
+        numpy.testing.assert_allclose(present_v, ref_present_v, rtol=rtol["fp16"], atol=atol["fp16"])
+
+    @parameterized.expand(_CASES)
+    def test_copy_still_runs_when_present_not_aliased(self, name, provider_options):
+        batch, total_kv, q_seq, q_heads, kv_heads, head_size = 2, 8, 1, 8, 2, 64
+        nonpad_seqlens = [4, 6]
+        scatter_positions = [3, 5]
+
+        output, present_k, present_v, ref_output, ref_present_k, ref_present_v, log_text = (
+            _run_tensorscatter_attention_4d(
+                batch,
+                total_kv,
+                q_seq,
+                q_heads,
+                kv_heads,
+                head_size,
+                nonpad_seqlens,
+                scatter_positions,
+                provider_options,
+                alias_present=False,
+            )
+        )
+
+        self.assertNotIn(
+            _PRESENT_COPY_SKIPPED_TAG,
+            log_text,
+            f"[{name}] present_key/value used SEPARATE buffers from the cache, but the skip tag "
+            "fired anyway — the aliasing check may have a false positive.",
         )
         numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp16"], atol=atol["fp16"])
         numpy.testing.assert_allclose(present_k, ref_present_k, rtol=rtol["fp16"], atol=atol["fp16"])
