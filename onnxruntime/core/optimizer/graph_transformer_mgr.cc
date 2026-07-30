@@ -5,6 +5,7 @@
 #include "core/optimizer/rule_based_graph_transformer.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
 using namespace onnxruntime;
@@ -63,12 +64,16 @@ void GraphTransformerManager::ClearGraphModified(void) {
 common::Status GraphTransformerManager::Register(std::unique_ptr<GraphTransformer> transformer,
                                                  TransformerLevel level) {
   const auto& name = transformer->Name();
-  const auto& registered = level_to_transformer_map_[level];
-  if (std::find(registered.begin(), registered.end(), transformer) != registered.end()) {
+  // Reject a duplicate transformer name at the same level. Keying transformers_info_ by (level, name)
+  // makes this an O(1) lookup while preserving the per-level semantics: the same name may still be
+  // registered at different levels (e.g. LayerNormFusion at both Level1 and Level2). The original
+  // std::find compared the incoming unique_ptr against the stored ones, which could never match (it owns
+  // a distinct, not-yet-inserted pointer), so duplicates slipped through and were applied twice per level.
+  auto level_scoped_name = std::to_string(static_cast<int>(level)) + ":" + name;
+  if (!transformers_info_.emplace(std::move(level_scoped_name), transformer.get()).second) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "This transformer is already registered " + name);
   }
 
-  transformers_info_[name] = transformer.get();
   level_to_transformer_map_[level].push_back(std::move(transformer));
   return Status::OK();
 }
