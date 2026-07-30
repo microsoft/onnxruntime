@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/signal/dft.h"
 
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <functional>
@@ -288,6 +289,9 @@ static Status dft_bluestein_z_chirp(
 
   const auto& X_shape = X->Shape();
   size_t number_of_samples = static_cast<size_t>(X_shape[onnxruntime::narrow<size_t>(axis)]);
+  // DFT length governs the transform domain. When input length is larger, we must ignore trailing
+  // samples instead of indexing beyond the N-sized chirp construction (and M-sized scratch buffers).
+  number_of_samples = std::min(number_of_samples, N);
 
   // Prepare "a" signal
   for (size_t n = 0; n < number_of_samples; n++) {
@@ -303,7 +307,7 @@ static Status dft_bluestein_z_chirp(
     // For the input X: X[N-k] = conj(X[k]) for k=1..floor((N-1)/2)
     // We need to apply this BEFORE the chirp multiplication
     // So: a[N-k] = conj(X[k]) * window[N-k] * chirp[N-k]
-    size_t conjugate_end = (N % 2 == 0) ? (number_of_samples - 1) : number_of_samples;
+    size_t conjugate_end = (N % 2 == 0 && number_of_samples > 0) ? (number_of_samples - 1) : number_of_samples;
     for (size_t k = 1; k < conjugate_end; k++) {
       auto x_k = *(X_data + k * X_stride);  // Original input at k
       auto window_nk = window_data ? *(window_data + N - k) : 1;

@@ -4,6 +4,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
@@ -53,19 +54,16 @@ class MatMul final : public WebGpuKernel {
 
   Status ComputeInternal(ComputeContext& context) const override;
 
-  Status PrePackInternal(ComputeContextBase& context,
-                         const Tensor& tensor,
-                         int input_idx,
-                         AllocatorPtr alloc,
-                         /*out*/ bool& is_packed) override;
-
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_X = 8;
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Y = 8;
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Z = 1;
 
  private:
-  // Alternative optimized implementation (created during PrePack if applicable)
+  // Alternative optimized implementation (lazily created on the first Compute call,
+  // once the device capabilities can be queried from the compute context). A null
+  // impl_ after initialization means this device has no optimized path.
   mutable std::unique_ptr<MatMulOptImpl> impl_;
+  mutable std::once_flag impl_init_flag_;
 };
 
 class MatMulNaiveProgram final : public Program<MatMulNaiveProgram> {

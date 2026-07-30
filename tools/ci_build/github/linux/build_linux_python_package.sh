@@ -6,7 +6,6 @@ set -e -x
 mkdir -p /build/dist
 
 EXTRA_ARG=""
-ENABLE_CACHE=false
 # Put 3.12 at the last because Ubuntu 24.04 use python 3.12 and we will upload the intermediate build files of this
 # config to Azure DevOps Artifacts and download them to a Ubuntu 24.04 machine to run the tests.
 PYTHON_EXES=(
@@ -39,7 +38,7 @@ c) BUILD_CONFIG=${OPTARG};;
 esac
 done
 
-BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--use_binskim_compliant_compile_flags" "--build_wheel" "--use_vcpkg" "--use_vcpkg_ms_internal_asset_cache")
+BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--use_binskim_compliant_compile_flags" "--build_wheel" "--use_telemetry" "--use_vcpkg" "--use_vcpkg_ms_internal_asset_cache")
 
 if [ "$BUILD_CONFIG" != "Debug" ]; then
     BUILD_ARGS+=("--enable_lto")
@@ -88,7 +87,7 @@ if [ "$BUILD_DEVICE" == "GPU" ]; then
     #Enable CUDA EP.
     BUILD_ARGS+=("--use_cuda" "--cuda_version=$SHORT_CUDA_VERSION" "--cuda_home=$CUDA_HOME" "--cudnn_home=$CUDA_HOME")
     BUILD_ARGS+=("--nvcc_threads=1" "--flash_nvcc_threads=1")
-    BUILD_ARGS+=("--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHS}" "onnxruntime_USE_FPA_INTB_GEMM=OFF")
+    BUILD_ARGS+=("--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHS}" "onnxruntime_USE_FPA_INTB_GEMM=ON")
     # Enable TRT EP only if TensorRT is installed.
     if [ -f /usr/include/NvInfer.h ]; then
         BUILD_ARGS+=("--use_tensorrt" "--tensorrt_home=/usr")

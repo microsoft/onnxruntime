@@ -31,7 +31,8 @@ namespace cuda {
 // 3. Appends K and V to the KV cache at the correct sequence index (past_seq_len + s).
 //    - Performs on-the-fly quantization (Int8 or Int4) if configured (BIT_WIDTH < 16).
 //    - Supports both BNSH and BSNH layouts for the KV cache.
-// 4. Writes the rotated Q back to global memory (unpacked_q) for the subsequent attention kernel.
+// 4. Writes the rotated Q back to global memory (unpacked_q) for the subsequent attention kernel,
+//    optionally pre-scaled by a per-channel K dequantization scale (q_fold_scale).
 //
 // Template Parameters:
 // - T: The floating point type for query (half or __nv_bfloat16).
@@ -49,6 +50,11 @@ __global__ void UnpackRoPEAppend(
     U* v_cache,
     const float* k_scale,
     const float* v_scale,
+    // Per-channel K dequantization scale of shape (kv_num_heads, head_size) to fold into the stored
+    // Q, or nullptr. Used by the XQA per-channel decode path: XQA only accepts a scalar dequant
+    // scale, and because the channel dim is contracted by Q*K.T, scaling Q by the K scale is exactly
+    // equivalent to dequantizing K. Folding it here is free -- this kernel already loads and stores Q.
+    const float* q_fold_scale,
     const int num_heads,
     const int kv_num_heads,
     const int head_size,
@@ -222,6 +228,15 @@ __global__ void UnpackRoPEAppend(
   if (valid) {
     if (head_type == QUERY) {
       if (unpacked_q != nullptr) {
+        if (q_fold_scale != nullptr) {
+          // Q head n attends to KV head n / group_size, whose per-channel K scale we fold in here.
+          const float* sc = q_fold_scale +
+                            static_cast<int64_t>(n / (num_heads / kv_num_heads)) * head_size + h;
+#pragma unroll
+          for (int i = 0; i < elements_per_thread; ++i) {
+            vals[i] = static_cast<T>(static_cast<float>(vals[i]) * sc[i]);
+          }
+        }
         // Store rotated Q to global memory for the Attention kernel
         const int64_t q_out_idx = static_cast<int64_t>(b) * sequence_length * q_hidden +
                                   static_cast<int64_t>(s) * q_hidden +
@@ -320,7 +335,7 @@ Status DispatchUnpackRoPEAppendHeadSize(
     const dim3& grid, const dim3& block, cudaStream_t stream,
     const T* packed_qkv, const T* query, const T* key, const T* value,
     T* unpacked_q, U* k_cache, U* v_cache,
-    const float* k_scale, const float* v_scale,
+    const float* k_scale, const float* v_scale, const float* q_fold_scale,
     const int num_heads, const int kv_num_heads, const int head_size, const int d,
     const int max_seqlen, const int* past_seq_lens,
     const T* cos_cache, const T* sin_cache, const int rotary_dim,
@@ -328,25 +343,25 @@ Status DispatchUnpackRoPEAppendHeadSize(
     const T* q_norm_weight, const T* k_norm_weight, const float qk_norm_epsilon) {
   if (head_size <= 64) {
     UnpackRoPEAppend<T, U, BIT_WIDTH, 64><<<grid, block, 0, stream>>>(
-        packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale,
+        packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale, q_fold_scale,
         num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
         cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel,
         q_norm_weight, k_norm_weight, qk_norm_epsilon);
   } else if (head_size <= 128) {
     UnpackRoPEAppend<T, U, BIT_WIDTH, 128><<<grid, block, 0, stream>>>(
-        packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale,
+        packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale, q_fold_scale,
         num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
         cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel,
         q_norm_weight, k_norm_weight, qk_norm_epsilon);
   } else if (head_size <= 256) {
     UnpackRoPEAppend<T, U, BIT_WIDTH, 256><<<grid, block, 0, stream>>>(
-        packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale,
+        packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale, q_fold_scale,
         num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
         cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel,
         q_norm_weight, k_norm_weight, qk_norm_epsilon);
   } else if (head_size <= 512) {
     UnpackRoPEAppend<T, U, BIT_WIDTH, 512><<<grid, block, 0, stream>>>(
-        packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale,
+        packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale, q_fold_scale,
         num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
         cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel,
         q_norm_weight, k_norm_weight, qk_norm_epsilon);
@@ -365,7 +380,7 @@ template <typename T, typename U>
 Status LaunchUnpackRoPEAppend(
     const T* packed_qkv, const T* query, const T* key, const T* value,
     T* unpacked_q, U* k_cache, U* v_cache,
-    const float* k_scale, const float* v_scale,
+    const float* k_scale, const float* v_scale, const float* q_fold_scale,
     const int num_heads, const int kv_num_heads, const int head_size,
     const int sequence_length, const int batch_size, const int max_seqlen,
     const int* past_seq_lens, const T* cos_cache, const T* sin_cache,
@@ -418,7 +433,7 @@ Status LaunchUnpackRoPEAppend(
     // No quantization: cache type same as input type
     return DispatchUnpackRoPEAppendHeadSize<T, U, 16>(
         grid, block, stream, packed_qkv, query, key, value, unpacked_q, k_cache, v_cache,
-        k_scale, v_scale, num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
+        k_scale, v_scale, q_fold_scale, num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
         cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel,
         q_norm_weight, k_norm_weight, qk_norm_epsilon);
   } else if constexpr (std::is_same<U, int8_t>::value
@@ -429,7 +444,7 @@ Status LaunchUnpackRoPEAppend(
     // INT8 or FP8 quantization (both 8-bit, distinguished inside kernel by type check)
     return DispatchUnpackRoPEAppendHeadSize<T, U, 8>(
         grid, block, stream, packed_qkv, query, key, value, unpacked_q, k_cache, v_cache,
-        k_scale, v_scale, num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
+        k_scale, v_scale, q_fold_scale, num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
         cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel,
         q_norm_weight, k_norm_weight, qk_norm_epsilon);
 #ifdef USE_INT4_KV_CACHE
@@ -437,7 +452,7 @@ Status LaunchUnpackRoPEAppend(
     // INT4 quantization (packed 2 elements per byte)
     return DispatchUnpackRoPEAppendHeadSize<T, U, 4>(
         grid, block, stream, packed_qkv, query, key, value, unpacked_q, k_cache, v_cache,
-        k_scale, v_scale, num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
+        k_scale, v_scale, q_fold_scale, num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
         cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel,
         q_norm_weight, k_norm_weight, qk_norm_epsilon);
 #endif

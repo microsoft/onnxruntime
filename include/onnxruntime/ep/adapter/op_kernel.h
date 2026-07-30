@@ -12,8 +12,12 @@
 #include <utility>
 #include <vector>
 
+#include <gsl/span>
+
+#include "core/common/inlined_containers_fwd.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
+#include "core/framework/workspace_requirement.h"
 
 #include "node.h"
 #include "op_kernel_info.h"
@@ -55,6 +59,17 @@ struct OpKernel {
                          /*out*/ bool& is_packed,
                          /*out*/ PrePackedWeights* /*prepacked_weights*/) {
     is_packed = false;
+    return Status::OK();
+  }
+
+  // Phase-A memory roadmap (issue microsoft/onnxruntime#29775). Mirrors the in-tree
+  // onnxruntime::OpKernel::DeclareWorkspaceRequirements default no-op so that kernels compiled into
+  // the plugin (BUILD_CUDA_EP_AS_PLUGIN) hierarchy still build. See
+  // core/framework/workspace_requirement.h.
+  [[nodiscard]] virtual Status DeclareWorkspaceRequirements(
+      gsl::span<const TensorShape> /*input_shapes*/,
+      /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const {
+    requirements.clear();
     return Status::OK();
   }
 
