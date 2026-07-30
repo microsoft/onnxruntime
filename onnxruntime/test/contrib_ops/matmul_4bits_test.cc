@@ -1762,6 +1762,14 @@ TEST(MatMulNBits, PrePack_LegacyFlattenedShapes_Accepted) {
 // session initialization because TryGetConstantInput could not find parent-scope
 // constants when building the kernel's OpKernelInfo.
 TEST(MatMulNBits, SubgraphParentScopeInitializers) {
+#if !defined(MLAS_TARGET_ARM64)
+  GTEST_SKIP() << "This test targets the Arm64 KleidiAI path.";
+#else
+  if (!MlasQNBitGemmScalesPacked(64, QBits, 32, SQNBIT_CompInt8, true, nullptr)) {
+    GTEST_SKIP() << "KleidiAI Q4 packed-scales path is not active.";
+  }
+#endif
+
   constexpr int64_t M = 4, K = 64, N = 64, BLK = 32, BITS = 4;
   constexpr int64_t nblk = K / BLK;
   constexpr int64_t blob = BLK * BITS / 8;
