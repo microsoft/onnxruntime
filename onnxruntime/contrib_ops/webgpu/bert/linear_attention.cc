@@ -227,12 +227,26 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   int subgroup_min_size = context.HasFeature(wgpu::FeatureName::Subgroups)
                               ? static_cast<int>(context.AdapterInfo().subgroupMinSize)
                               : 0;
-  // When subgroup is enabled, use larger tile_v for better data reuse.
-  // Only expand for longer sequences (>=16) where the benefit outweighs the
-  // increased register pressure and shared memory usage.
-  if (subgroup_min_size > 0 && seq_length >= 16) {
-    // Ensure the vectorized dimension is wide enough to warrant a larger tile.
-    if (head_dim_v / components >= tile_v * 4) {
+  // Two-regime tile_v widening:
+  //
+  //   Prefill (T >= 16): kernel is compute/register bound. Keep the original,
+  //   conservative widening — only when subgroups are available (better data reuse
+  //   with subgroup reductions), and only a single *4 step. Larger tile_v at
+  //   prefill quadruples per-thread private state and hurts occupancy (empirically
+  //   ~30% prefill regression on Qwen 3.5 when overgrown).
+  //
+  //   Decode (T < 16): kernel is dispatch bound. Aggressively grow tile_v to cut
+  //   workgroup count regardless of subgroup availability. For Qwen 3.5 (T=1,
+  //   H_kv=16, dv=128, comp=4) this drops workgroups per LA op from
+  //   B*16*32=512 down to B*16*2=32 (tile_v = 1 -> 16), which is a substantial
+  //   reduction in Dawn command-submission overhead on backends without subgroup
+  //   support (D3D12).
+  if (seq_length >= 16) {
+    if (subgroup_min_size > 0 && head_dim_v / components >= tile_v * 4) {
+      tile_v *= 4;
+    }
+  } else {
+    while (head_dim_v / components >= tile_v * 4) {
       tile_v *= 4;
     }
   }
