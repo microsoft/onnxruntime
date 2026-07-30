@@ -112,7 +112,7 @@ inline bool MoeGemvSkipExpandDisabledByEnv() {
 // Kill switch for folding softmax + top-k routing into the expert-map prologue. Enabled by default;
 // set ORT_DISABLE_MOE_FUSED_ROUTING=1 to run a standalone SoftmaxTopK kernel before runMoe.
 inline bool MoeFusedRoutingDisabledByEnv() {
-  static bool const disabled =
+  static const bool disabled =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_MOE_FUSED_ROUTING", 0) == 1;
   return disabled;
 }
