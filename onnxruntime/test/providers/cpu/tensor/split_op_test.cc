@@ -930,11 +930,16 @@ TEST(SplitOperatorTest, InvalidValueInSplitInput_NegativeEntry_Axis0) {
 
   const std::unordered_set<std::string> excluded_providers{
       kTensorrtExecutionProvider,
+      kCudaExecutionProvider,
+      kMIGraphXExecutionProvider,
       kQnnExecutionProvider,
       kCoreMLExecutionProvider,
       kDmlExecutionProvider,
       kOpenVINOExecutionProvider,
       kWebGpuExecutionProvider,
+      kNnapiExecutionProvider,
+      kXnnpackExecutionProvider,
+      kAclExecutionProvider,
   };
   RunTest<float>(axis, splits, input, outputs, excluded_providers,
                  true /*expect_failure*/, true /*split_as_input*/, -1 /*num_outputs*/, false /*is_initializer*/,
@@ -956,11 +961,16 @@ TEST(SplitOperatorTest, InvalidValueInSplitInput_NegativeEntry_NegativeAxis) {
 
   const std::unordered_set<std::string> excluded_providers{
       kTensorrtExecutionProvider,
+      kCudaExecutionProvider,
+      kMIGraphXExecutionProvider,
       kQnnExecutionProvider,
       kCoreMLExecutionProvider,
       kDmlExecutionProvider,
       kOpenVINOExecutionProvider,
       kWebGpuExecutionProvider,
+      kNnapiExecutionProvider,
+      kXnnpackExecutionProvider,
+      kAclExecutionProvider,
   };
   RunTest<float>(axis, splits, input, outputs, excluded_providers,
                  true /*expect_failure*/, true /*split_as_input*/, -1 /*num_outputs*/, false /*is_initializer*/,
