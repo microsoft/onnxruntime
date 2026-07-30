@@ -975,10 +975,17 @@ def parity_check_paged_attention(
         numpy.testing.assert_allclose(out_i, out_ref_i, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
 
 
+def has_cuda_device():
+    """Every test in this file allocates torch tensors on "cuda" and runs the CUDA EP.
+
+    Some pipelines install a CPU-only torch wheel, where any `device="cuda"` allocation raises
+    "AssertionError: Torch not compiled with CUDA enabled". Gate every test class on this so those
+    runs skip instead of erroring."""
+    return torch.cuda.is_available() and "CUDAExecutionProvider" in get_available_providers()
+
+
 def has_flash_attention():
-    if not torch.cuda.is_available():
-        return False
-    if "CUDAExecutionProvider" not in get_available_providers():
+    if not has_cuda_device():
         return False
     major, _ = torch.cuda.get_device_capability()
     return major >= 8 and (
@@ -990,9 +997,7 @@ def has_flash_attention():
 def has_memory_efficient_attention():
     # CUTLASS fMHA (MemoryEfficientAttention) gate — these tests are fp16-only,
     # so sm>=53 is sufficient. bf16 MEA would require sm>=80 but is not covered here.
-    if not torch.cuda.is_available():
-        return False
-    if "CUDAExecutionProvider" not in get_available_providers():
+    if not has_cuda_device():
         return False
     major, minor = torch.cuda.get_device_capability()
     return (major * 10 + minor) >= 53
@@ -1093,6 +1098,7 @@ class TestPagedAttentionMEA(unittest.TestCase):
         )
 
 
+@unittest.skipIf(not has_cuda_device(), reason="CUDA is not available, skipping tests.")
 class TestPagedAttentionFeatures(unittest.TestCase):
     """Coverage for the optional inputs and attributes added on top of the original schema:
     slot_mapping, head_sink and QK-Norm, plus the block_size and batch_size
@@ -1297,6 +1303,7 @@ class TestPagedAttentionFeatures(unittest.TestCase):
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
 
 
+@unittest.skipIf(not has_cuda_device(), reason="CUDA is not available, skipping tests.")
 class TestPagedAttentionRotaryZeroTokenRegression(unittest.TestCase):
     """Regression tests for the FA `max_query_len` heuristic when one or more
     batches have zero new tokens.
@@ -1796,6 +1803,7 @@ class TestPagedAttentionPagedDecode(unittest.TestCase):
         parity_check_paged_attention(config, rtol=5e-3, atol=2e-2)
 
 
+@unittest.skipIf(not has_cuda_device(), reason="CUDA is not available, skipping tests.")
 class TestPagedAttentionXqaDecode(unittest.TestCase):
     """Coverage for the XQA decode backend.
 
@@ -1936,6 +1944,7 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
 
 
+@unittest.skipIf(not has_cuda_device(), reason="CUDA is not available, skipping tests.")
 class TestPagedAttentionAttentionMetadata(unittest.TestCase):
     """Coverage for the optional 'attention_metadata' input.
 
@@ -2377,6 +2386,7 @@ def apply_offset_rope(x, cos, sin, positions, rotary_offset, rotary_dim, interle
     return out.to(x.dtype)
 
 
+@unittest.skipIf(not has_cuda_device(), reason="CUDA is not available, skipping tests.")
 class TestPagedAttentionMLA(unittest.TestCase):
     """Correctness of kv_cache_layout='LATENT' (design doc §12, phase P4)."""
 
