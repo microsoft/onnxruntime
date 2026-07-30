@@ -260,6 +260,7 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen32.h
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
+      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni_2bit.cpp
       ${MLAS_SRC_DIR}/qkv_quant_kernel_avx512vnni.cpp
       ${MLAS_SRC_DIR}/amd64/QgemmU8S8KernelAmx.asm
       ${MLAS_SRC_DIR}/amd64/QgemmU8S8KernelAvx2.asm
@@ -930,6 +931,7 @@ else()
 
         set(mlas_platform_srcs_avx512vnni
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni_2bit.cpp
           ${MLAS_SRC_DIR}/qkv_quant_kernel_avx512vnni.cpp
         )
         set_source_files_properties(
