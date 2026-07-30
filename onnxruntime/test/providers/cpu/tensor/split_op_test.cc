@@ -910,7 +910,6 @@ TEST(SplitOperatorTest, Split3Inner) {
   do_test(splits);
 }
 
-
 TEST(SplitOperatorTest, InvalidValueInSplitInput_NegativeEntry_Axis0) {
   constexpr int64_t axis = 0;
   ShapeAndFloatData input = {{6, 2},
