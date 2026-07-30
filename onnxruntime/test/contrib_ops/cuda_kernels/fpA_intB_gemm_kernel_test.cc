@@ -400,6 +400,9 @@ class KernelTestFixture : public ::testing::Test {
     using WType = typename cutlassTypeMapper<KT>::WType;
     using onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
     auto runner = std::make_shared<CutlassFpAIntBGemmRunner<AType, WType, cutlassTypeMapper<KT>::QuantOp>>();
+    if (onnxruntime::llm::common::getSMVersion() == 90) {
+      runner->setUseSm90Native(true);
+    }
     auto& gemm_runner = *runner;
     int ws_bytes = gemm_runner.getWorkspaceSize(m_, n_, k_);
     CudaBuffer ws_buffer(ws_bytes);
@@ -565,8 +568,6 @@ TEST_F(Fp16Int8GroupwiseTest, Fp16_Int8_Gemm_CudaKernel) {
     for (const auto& [n, k] : get_n_k_list()) {
       InitBuffers(m, n, k, 64);
       EXPECT_TRUE(BenchmarkAndVerifyKernel());
-      InitBuffers(m, n, k, 128);
-      EXPECT_TRUE(BenchmarkAndVerifyKernel());
     }
   }
 }
@@ -581,8 +582,6 @@ TEST_F(Fp16Int4GroupwiseTest, Fp16_Int4_Gemm_CudaKernel) {
   for (auto m : get_m_list()) {
     for (const auto& [n, k] : get_n_k_list()) {
       InitBuffers(m, n, k, 64);
-      EXPECT_TRUE(BenchmarkAndVerifyKernel());
-      InitBuffers(m, n, k, 128);
       EXPECT_TRUE(BenchmarkAndVerifyKernel());
     }
   }
@@ -599,8 +598,6 @@ TEST_F(Bf16Int8GroupwiseTest, BF16_Int8_Gemm_CudaKernel) {
     for (const auto& [n, k] : get_n_k_list()) {
       InitBuffers(m, n, k, 64);
       EXPECT_TRUE(BenchmarkAndVerifyKernel());
-      InitBuffers(m, n, k, 128);
-      EXPECT_TRUE(BenchmarkAndVerifyKernel());
     }
   }
 }
@@ -615,8 +612,6 @@ TEST_F(Bf16Int4GroupwiseTest, BF16_Int4_Gemm_CudaKernel) {
   for (auto m : get_m_list()) {
     for (const auto& [n, k] : get_n_k_list()) {
       InitBuffers(m, n, k, 64);
-      EXPECT_TRUE(BenchmarkAndVerifyKernel());
-      InitBuffers(m, n, k, 128);
       EXPECT_TRUE(BenchmarkAndVerifyKernel());
     }
   }

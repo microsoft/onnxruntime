@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <iostream>
+#include <chrono>
 #include <fstream>
 #include "core/common/inlined_containers.h"
 #include "core/common/span_utils.h"
@@ -3804,6 +3805,30 @@ TEST_F(GraphTest, GH_Issue_29071_HasExternalDataInMemory) {
   InferenceSession session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.Load(ORT_TSTR("testdata/gh_issue_29071_if_constant_folding.onnx")));
   ASSERT_STATUS_OK(session_object.Initialize());
+}
+
+// Regression test for exponential subgraph type/shape inferencing.
+// A model with deeply nested Loop nodes (each subgraph containing a single nested Loop) previously
+// triggered O(2^depth) re-traversal during Graph::Resolve because both InferAndVerifyTypeMatch and
+// the "verify subgraphs" loop in VerifyNodeAndOpMatch independently recursed into every subgraph.
+// With 30 levels that made model loading take many minutes/hours. The fix memoizes subgraphs that
+// already had type/shape inferencing performed, collapsing the work back to O(depth). This test
+// simply verifies the model loads well within a generous time bound.
+TEST_F(GraphTest, DeeplyNestedLoopSubgraphsResolveInReasonableTime) {
+  const auto start = std::chrono::steady_clock::now();
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(ORT_TSTR("testdata/30_nested_loops.onnx"), model, nullptr, *logger_));
+
+  const auto elapsed = std::chrono::steady_clock::now() - start;
+  const auto elapsed_seconds = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
+
+  // Without the memoization fix this takes many minutes (exponential in the nesting depth).
+  // A generous 60s bound reliably distinguishes the fixed O(depth) behavior from the regression
+  // without being flaky on slow/debug builds.
+  EXPECT_LT(elapsed_seconds, 60) << "Loading the 30-level nested Loop model took " << elapsed_seconds
+                                 << "s, which suggests the subgraph type/shape inferencing recursion "
+                                    "regression has returned.";
 }
 
 }  // namespace test

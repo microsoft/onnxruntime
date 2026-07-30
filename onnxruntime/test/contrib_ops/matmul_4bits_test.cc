@@ -88,6 +88,7 @@ struct TestOptions {
 
   bool has_zero_point{false};
   bool zp_is_4bit{true};
+  bool zero_points_are_initializers{true};
   bool has_g_idx{false};
   bool has_bias{false};
 
@@ -111,6 +112,7 @@ struct TestOptions {
             << ", accuracy_level:" << opts.accuracy_level
             << ", has_zero_point:" << opts.has_zero_point
             << ", zp_is_4bit:" << opts.zp_is_4bit
+            << ", zero_points_are_initializers:" << opts.zero_points_are_initializers
             << ", has_g_idx:" << opts.has_g_idx
             << ", has_bias:" << opts.has_bias;
 }
@@ -215,7 +217,7 @@ void RunTest(const TestOptions& opts,
     if (zp_is_4bit) {
       auto zp_shape = opts.legacy_shape ? std::vector<int64_t>{N * zero_point_blob_size}
                                         : std::vector<int64_t>{N, zero_point_blob_size};
-      test.AddInput<uint8_t>("zero_points", zp_shape, zp, true);
+      test.AddInput<uint8_t>("zero_points", zp_shape, zp, opts.zero_points_are_initializers);
     } else {
       std::vector<float> zp_f;
       zp_f.reserve(q_zp_size_in_bytes * 2);
@@ -230,11 +232,11 @@ void RunTest(const TestOptions& opts,
       }
 
       if constexpr (std::is_same_v<T1, float>) {
-        test.AddInput<T1>("zero_points", scales_shape, zp_f, true);
+        test.AddInput<T1>("zero_points", scales_shape, zp_f, opts.zero_points_are_initializers);
       } else if constexpr (std::is_same_v<T1, MLFloat16>) {
-        test.AddInput<T1>("zero_points", scales_shape, FloatsToMLFloat16s(zp_f), true);
+        test.AddInput<T1>("zero_points", scales_shape, FloatsToMLFloat16s(zp_f), opts.zero_points_are_initializers);
       } else if constexpr (std::is_same_v<T1, BFloat16>) {
-        test.AddInput<T1>("zero_points", scales_shape, FloatsToBFloat16s(zp_f), true);
+        test.AddInput<T1>("zero_points", scales_shape, FloatsToBFloat16s(zp_f), opts.zero_points_are_initializers);
       }
     }
   } else {
@@ -677,6 +679,54 @@ TEST(MatMulNBits, SharedPrepackedWeights_AddInitializer) {
   }
 }
 
+// Covers backends that fold asymmetric scales and zero points into the shared B buffer.
+TEST(MatMulNBits, SharedPrepackedWeights_AsymmetricPackedScales) {
+  auto opts = MakeSharingTestOptions(288, 1024, /*block_size*/ 128, /*accuracy_level*/ 4,
+                                     /*has_zero_point*/ true, /*has_bias*/ false,
+                                     PrepackSharingMode::kAddInitializer);
+  opts.M = 1;
+  RunTest<float>(opts);
+}
+
+// Uses a KleidiAI-compatible Q4 CompInt8 shape. Runtime zero points must not reuse a B pack
+// generated without them.
+TEST(MatMulNBits, DynamicZeroPoints_AsymmetricCompInt8) {
+#if !defined(MLAS_TARGET_ARM64)
+  GTEST_SKIP() << "This test targets the Arm64 KleidiAI path.";
+#else
+  if (!MlasQNBitGemmScalesPacked(1024, QBits, 128, SQNBIT_CompInt8, true, nullptr)) {
+    GTEST_SKIP() << "KleidiAI Q4 packed-scales path is not active.";
+  }
+#endif
+
+  TestOptions opts{};
+  opts.M = 1;
+  opts.N = 288;
+  opts.K = 1024;
+  opts.block_size = 128;
+  opts.accuracy_level = 4;
+  opts.has_zero_point = true;
+  opts.zero_points_are_initializers = false;
+  opts.output_abs_error = 0.1f;
+  opts.output_rel_error = 0.02f;
+  RunTest<float>(opts);
+}
+
+// Same runtime-ZP case with the shared container enabled. PrePack must decline B packing, so the
+// second session must not adopt a shared B buffer built without those runtime zero points.
+TEST(MatMulNBits, SharedPrepackedWeights_DynamicZeroPoints_AsymmetricCompInt8) {
+  if (!MlasQNBitGemmScalesPacked(1024, QBits, 128, SQNBIT_CompInt8, true, nullptr)) {
+    GTEST_SKIP() << "KleidiAI Q4 packed-scales path is not active.";
+  }
+
+  auto opts = MakeSharingTestOptions(288, 1024, /*block_size*/ 128, /*accuracy_level*/ 4,
+                                     /*has_zero_point*/ true, /*has_bias*/ false,
+                                     PrepackSharingMode::kAddInitializerExpectNoPrepack);
+  opts.M = 1;
+  opts.zero_points_are_initializers = false;
+  RunTest<float>(opts);
+}
+
 // Negative control: with the shared container present but neither opt-in mechanism enabled, no
 // pre-packed weights are shared across sessions.
 TEST(MatMulNBits, SharedPrepackedWeights_NotSharedWithoutOptIn) {
@@ -1018,10 +1068,11 @@ TEST(MatMulNBits, Fp16_Int4_PrepackedWeightRejectedWhenFpAIntBUnsupported) {
 // weight_prepacked=2 selects the native SM90 (Hopper) mixed-GEMM layout. It is rejected up front
 // unless the device is SM90 and block_size is 64 or 128 (the SM90 TMA kernel requires group_size to
 // be a multiple of the 64-element Hopper K tile, so block_size=32 is SM80-only). When the fpA_intB
-// path is compiled in, both rejection messages begin with "weight_prepacked=2 (SM90 layout)", so the
-// check is device-independent: non-Hopper hits the compute-capability guard, Hopper hits the
-// block_size guard. In a build without onnxruntime_USE_FPA_INTB_GEMM the kernel rejects any
-// weight_prepacked!=0 up front with a different ("weight_prepacked requires ...") message.
+// path is compiled in, all rejection messages begin with "weight_prepacked=2 (SM90 layout)", so the
+// assertion is stable across machine/build combinations: non-Hopper hits the compute-capability
+// guard, SM90 without native TMA support hits the build-support guard, and SM90 with native TMA
+// support hits the block_size guard. In a build without onnxruntime_USE_FPA_INTB_GEMM the kernel
+// rejects any weight_prepacked!=0 up front with a different ("weight_prepacked requires ...") message.
 TEST(MatMulNBits, Fp16_Int4_PrepackedSm90BlockSize32Rejected) {
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
 
@@ -1044,6 +1095,12 @@ TEST(MatMulNBits, Fp16_Int4_PrepackedSm90BlockSize32Rejected) {
   eps.push_back(std::move(cuda_ep));
   RunTest<MLFloat16>(opts, std::move(eps));
 }
+
+// This GTEST_SKIPs without a CUDA device, so it cannot cover the "build without the native SM90
+// kernel" throw on a real Hopper GPU (the only hardware/build combination that reaches it). That
+// throw is instead covered GPU-free, with synthetic (sm, block_size) values, by
+// MatMulNBitsSm90ValidationTest in test/contrib_ops/cuda_kernels/matmul_nbits_sm90_validation_test.cc
+// (see the comment there for why that coverage lives in a separate translation unit).
 
 // Exercises the CUDA small-M batched GEMV tiles: CtaM in {2,4,8,16} (with M values that are not a
 // multiple of CtaM so the row-skip path runs) and CtaN in {1,2} (N divisible / not divisible by 16).

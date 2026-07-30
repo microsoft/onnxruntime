@@ -29,6 +29,7 @@ jobs:
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
         "JobId=AndroidBinarySizeCheckJob_MinimalBaseline-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
+    timeout-minutes: 120
     env:
       CCACHE_DIR: ~/.cache/ccache # explicitly set to prevent any fallback to `~/.ccache`
     steps:
@@ -78,11 +79,10 @@ jobs:
       run: |
         set -e -x
         BINARY_SIZE_THRESHOLD_ARGS=""
-        # Raised from 1440768 to accommodate the C++20 atomic wait/notify
-        # runtime and the stop-token-style cancellation framework that replace
-        # the executor busy-spin and the plain terminate bool.
-        echo "Binary size threshold in bytes: 1474560"
-        BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes 1474560"
+        # Preserve main's 10 KiB allowance for configurable default thread pools
+        # and this PR's 33 KiB allowance for atomic wait/notify and cancellation.
+        echo "Binary size threshold in bytes: 1484800"
+        BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes 1484800"
 
         # Ensure ANDROID_NDK_HOME is available and get its real path
         if [ -z "$ANDROID_NDK_HOME" ]; then
@@ -125,6 +125,7 @@ jobs:
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
         "JobId=android_nnapi_ep-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
+    timeout-minutes: 120
     env:
       CCACHE_DIR: ~/.cache/ccache # explicitly set to prevent any fallback to `~/.ccache`
     steps:
@@ -230,6 +231,7 @@ jobs:
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
         "JobId=android_cpu_ep-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
+    timeout-minutes: 120
     env:
       CCACHE_DIR: ~/.cache/ccache # explicitly set to prevent any fallback to `~/.ccache`
     steps:

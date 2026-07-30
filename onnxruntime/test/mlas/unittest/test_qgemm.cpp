@@ -38,6 +38,7 @@ static size_t QGemmRegistShortExecute() {
   count += QgemmShortExecuteTest<int8_t, int8_t, int32_t, false, false>::RegisterShortExecuteTests();
   count += QgemmShortExecuteTest<int8_t, uint8_t, float, false, false>::RegisterShortExecuteTests();
   count += QgemmShortExecuteTest<int8_t, uint8_t, int32_t, false, false>::RegisterShortExecuteTests();
+  count += QgemmS8U8SignedInputTest<false>::RegisterShortExecuteTests();
   if (MlasGemmPackBSize(128, 128, false /*AIsSigned*/, false /*BIsSigned*/, nullptr) > 0) {
     // QGEMM U8U8=float packed tests
     count += QgemmShortExecuteTest<uint8_t, uint8_t, float, true, false>::RegisterShortExecuteTests();
@@ -72,6 +73,7 @@ static size_t QGemmRegistShortExecute() {
     count += QgemmShortExecuteTest<int8_t, int8_t, int32_t, false, true>::RegisterShortExecuteTests();
     count += QgemmShortExecuteTest<int8_t, uint8_t, float, false, true>::RegisterShortExecuteTests();
     count += QgemmShortExecuteTest<int8_t, uint8_t, int32_t, false, true>::RegisterShortExecuteTests();
+    count += QgemmS8U8SignedInputTest<true>::RegisterShortExecuteTests();
     if (MlasGemmPackBSize(128, 128, false /*AIsSigned*/, false /*BIsSigned*/, nullptr) > 0) {
       count += QgemmShortExecuteTest<uint8_t, uint8_t, float, true, true>::RegisterShortExecuteTests();
       count += QgemmShortExecuteTest<uint8_t, uint8_t, int32_t, true, true>::RegisterShortExecuteTests();
