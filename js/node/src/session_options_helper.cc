@@ -26,6 +26,9 @@
 #ifdef USE_COREML
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
+#ifdef USE_OPENVINO
+#include "core/providers/openvino/openvino_provider_factory.h"
+#endif
 
 const std::unordered_map<std::string, GraphOptimizationLevel> GRAPH_OPT_LEVEL_NAME_TO_ID_MAP = {
     {"disabled", ORT_DISABLE_ALL},
@@ -50,6 +53,9 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
 #endif
 #ifdef USE_QNN
     std::unordered_map<std::string, std::string> qnn_options;
+#endif
+#ifdef USE_OPENVINO
+    std::unordered_map<std::string, std::string> openvino_options;
 #endif
     if (epValue.IsString()) {
       name = epValue.As<Napi::String>().Utf8Value();
@@ -135,6 +141,19 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
         }
       }
 #endif
+#ifdef USE_OPENVINO
+      if (name == "openvino") {
+        // device_type: CPU, GPU, NPU, or combinations like AUTO:GPU,CPU or HETERO:GPU,CPU
+        Napi::Value device_type = obj.Get("deviceType");
+        if (!device_type.IsUndefined()) {
+          if (device_type.IsString()) {
+            openvino_options["device_type"] = device_type.As<Napi::String>().Utf8Value();
+          } else {
+            ORT_NAPI_THROW_TYPEERROR(epList.Env(), "Invalid argument: deviceType must be a string.");
+          }
+        }
+      }
+#endif
     }
 
     // CPU execution provider
@@ -171,6 +190,10 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
 #ifdef USE_QNN
     } else if (name == "qnn") {
       sessionOptions.AppendExecutionProvider("QNN", qnn_options);
+#endif
+#ifdef USE_OPENVINO
+    } else if (name == "openvino") {
+      sessionOptions.AppendExecutionProvider("OpenVINO", openvino_options);
 #endif
     } else {
       ORT_NAPI_THROW_ERROR(epList.Env(), "Invalid argument: sessionOptions.executionProviders[", i,
