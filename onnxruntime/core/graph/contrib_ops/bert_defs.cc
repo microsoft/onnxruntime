@@ -2563,5 +2563,118 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
+constexpr const char* LinearAttentionGate_ver1_doc = R"DOC(
+Fuses the gate projections that feed LinearAttention's gated-delta recurrence:
+
+  decay = decay_scale * Softplus(a + dt_bias)
+  beta  = Sigmoid(b)                            (only when b is provided)
+
+Reference implementations compute the decay in float32 because exp(decay) inside the
+recurrence exponentially amplifies any precision loss. Exporters therefore emit
+Cast -> Add -> Softplus -> Mul -> Cast, which is five kernel launches on a tensor with
+only num_heads elements per token. This operator keeps the intermediates in float32
+registers so a single launch replaces the whole chain.
+
+dt_bias and decay_scale are float32 per-head vectors of length H. decay_scale is the
+already-negated -exp(A_log) factor.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    LinearAttentionGate, 1,
+    OpSchema()
+        .SetDoc(LinearAttentionGate_ver1_doc)
+        .Input(0,
+               "a",
+               "Decay gate projection with shape (B, T, H).",
+               "T")
+        .Input(1,
+               "dt_bias",
+               "Per-head float32 bias added to a, with shape (H).",
+               "TF")
+        .Input(2,
+               "decay_scale",
+               "Per-head float32 multiplier applied to Softplus(a + dt_bias), with shape (H). "
+               "For gated DeltaNet this is -exp(A_log).",
+               "TF")
+        .Input(3,
+               "b",
+               "Update-rate projection with shape (B, T, H). Required when the beta output is requested.",
+               "T",
+               OpSchema::Optional)
+        .Output(0,
+                "decay",
+                "decay_scale * Softplus(a + dt_bias) with shape (B, T, H).",
+                "T")
+        .Output(1,
+                "beta",
+                "Sigmoid(b) with shape (B, T, H).",
+                "T",
+                OpSchema::Optional)
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain gate input and output types to float tensors.")
+        .TypeConstraint("TF",
+                        {"tensor(float)"},
+                        "Constrain the per-head parameters to float32.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+          if (ctx.getNumOutputs() > 1) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 1);
+            if (hasInputShape(ctx, 3)) {
+              propagateShapeFromInputToOutput(ctx, 3, 1);
+            } else {
+              propagateShapeFromInputToOutput(ctx, 0, 1);
+            }
+          }
+        }));
+
+constexpr const char* GatedRMSNorm_ver1_doc = R"DOC(
+Gated RMS normalization as used by Mamba2 / gated DeltaNet attention outputs:
+
+  Y = X * rsqrt(mean(X^2) + epsilon) * scale * SiLU(gate)
+
+The mean of squares is taken over the trailing `C` elements of each row, where `C` is the
+length of `scale`; the input's last dimension must be a multiple of `C`, which lets a
+per-head norm run on a packed (B, T, H * C) tensor without any surrounding Reshape.
+All arithmetic including SiLU is done in float32 regardless of the tensor type, matching
+the reference implementation, so this replaces the exported
+SimplifiedLayerNormalization -> Cast -> Sigmoid -> Mul -> Cast -> Mul -> Cast chain with a
+single launch.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    GatedRMSNorm, 1,
+    OpSchema()
+        .SetDoc(GatedRMSNorm_ver1_doc)
+        .Attr("epsilon",
+              "Epsilon added to the mean of squares before the reciprocal square root.",
+              AttributeProto::FLOAT,
+              1e-5f)
+        .Input(0,
+               "X",
+               "Input tensor with shape (..., H * C). Normalization is applied over each "
+               "contiguous group of C elements.",
+               "T")
+        .Input(1,
+               "scale",
+               "Normalization weight with shape (C).",
+               "T")
+        .Input(2,
+               "gate",
+               "Gate tensor with the same shape as X.",
+               "T")
+        .Output(0,
+                "Y",
+                "Output tensor with the same shape as X.",
+                "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        }));
+
 }  // namespace contrib
 }  // namespace onnxruntime
