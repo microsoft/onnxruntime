@@ -4513,7 +4513,7 @@ TEST(AttentionTest, Attention3DInconsistentHeadSizeInK) {
   const int64_t batch_size = 1;
   const int64_t q_num_heads = 2;
   const int64_t kv_num_heads = 2;
-  const int64_t head_size = 8;         // derived from Q as Q.shape[2] / q_num_heads = 16 / 2 = 8
+  const int64_t head_size = 8;  // derived from Q as Q.shape[2] / q_num_heads = 16 / 2 = 8
   const int64_t v_head_size = 8;
   const int64_t q_seq = 2;
   const int64_t kv_seq = 3;
