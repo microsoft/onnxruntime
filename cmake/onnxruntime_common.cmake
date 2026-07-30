@@ -265,16 +265,11 @@ endif()
 # Link telemetry library (1DS SDK) for non-Windows platforms
 if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
   if(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE AND TARGET MSTelemetry::mat)
-    # A caller-supplied package target propagates its include
+    # The vcpkg package target propagates its include
     # directories and transitive dependencies (curl/sqlite3/zlib/nlohmann-json), so no
     # manual include paths or system libraries are required here.
     target_link_libraries(onnxruntime_common PRIVATE MSTelemetry::mat)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES MSTelemetry::mat)
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND onnxruntime_USE_VCPKG)
-      # The ORT vcpkg overlay provides static curl/mbedTLS, so select a readable CA bundle at runtime
-      # instead of relying on the build machine's curl default.
-      target_compile_definitions(onnxruntime_common PRIVATE ORT_USE_EMBEDDED_TELEMETRY_CURL)
-    endif()
   elseif(TARGET mat)
     # Link mat directly. In a shared build its resolved dependency set is absorbed into
     # libonnxruntime; in a static build mat -- and the bundled static archives it links -- are shipped
@@ -303,7 +298,6 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
       target_link_options(onnxruntime_common INTERFACE
         "$<BUILD_INTERFACE:${_onnxruntime_telemetry_build_exclude_libs}>"
         "$<INSTALL_INTERFACE:${_onnxruntime_telemetry_install_exclude_libs}>")
-      target_compile_definitions(onnxruntime_common PRIVATE ORT_USE_EMBEDDED_TELEMETRY_CURL)
     endif()
     # mat propagates its public include dir as a normal (non-SYSTEM) include, so onnxruntime_common's
     # -Wall -Wextra -Werror would apply to the SDK's headers (they trip -Werror=unused-parameter in
@@ -359,6 +353,11 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     endif()
   else()
     message(FATAL_ERROR "Telemetry enabled but no 1DS SDK target ('MSTelemetry::mat' or 'mat') was found")
+  endif()
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # Every supported Linux telemetry path uses static curl/mbedTLS. Select a readable CA bundle
+    # at runtime instead of embedding a build-machine path in the curl configuration.
+    target_compile_definitions(onnxruntime_common PRIVATE ORT_TELEMETRY_USES_STATIC_CURL)
   endif()
 endif()
 
