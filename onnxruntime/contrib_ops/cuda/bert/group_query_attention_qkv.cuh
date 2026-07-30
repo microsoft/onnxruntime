@@ -50,17 +50,24 @@ __global__ void UnpackRoPEAppend(
     U* v_cache,
     const float* k_scale,
     const float* v_scale,
-    // Per-channel K dequantization scale of shape (kv_num_heads, head_size) to fold into the stored
-    // Q, or nullptr. Used by the XQA per-channel decode path: XQA only accepts a scalar dequant
-    // scale, and because the channel dim is contracted by Q*K.T, scaling Q by the K scale is exactly
-    // equivalent to dequantizing K. Folding it here is free -- this kernel already loads and stores Q.
+    // Per-channel K dequantization scale of shape (kv_num_heads, 1, head_size) to fold into the
+    // stored Q, or nullptr. The indexing flattens the singleton middle dimension. Used by the XQA
+    // per-channel decode path: XQA only accepts a scalar dequant scale, and because the channel dim
+    // is contracted by Q*K.T, scaling Q by the K scale is exactly equivalent to dequantizing K.
+    // Folding it here is free -- this kernel already loads and stores Q.
     const float* q_fold_scale,
     const int num_heads,
     const int kv_num_heads,
     const int head_size,
     const int d,               // packed QKV hidden stride = (num_heads + 2*kv_num_heads) * head_size
-    const int rope_max_pos,    // upper bound (exclusive) for absolute RoPE positions (cos/sin cache length)
-    const int cache_capacity,  // C: allocated sequence dim of the KV cache (== rope_max_pos when not windowed)
+    // RoPE position bound: number of valid entries in cos_cache/sin_cache. This is always an
+    // ABSOLUTE position limit and must not be conflated with the KV cache capacity below. For a
+    // windowed (shorter-than-total) cache the two differ, and using the capacity here would
+    // silently skip RoPE for every absolute position >= capacity -- an accuracy bug, not a crash.
+    const int rope_max_pos,
+    // KV cache capacity in positions: bounds the cache write index and defines the sequence
+    // stride. Equal to rope_max_pos for a full-length cache.
+    const int cache_capacity,
     const int* past_seq_lens,  // absolute past lengths, used for RoPE positions only
     // Cache-relative append offsets. Equals past_seq_lens for a full-length cache; for a windowed
     // (sliding_window_cache) layer it is the post-eviction offset within the capacity-C buffer.

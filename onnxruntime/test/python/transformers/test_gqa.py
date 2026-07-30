@@ -3089,9 +3089,9 @@ def gqa_xqa_quantized_sliding_window_test_cases():
     # Quantized (INT8 / FP8) sliding-window (local attention) decode through the XQA kernel.
     #
     # The XQA decode path now supports local_window_size > 0 on the quantized KV-cache paths as
-    # well. Quantized XQA selection requires: decode (q_seq=1), a shared KV buffer, per-tensor
-    # k/v scales that are the same tensor, head_size in {64, 128, 256} and group_size in
-    # {4, 8, 16, 32}. Attention sinks are covered separately by
+    # well. Quantized XQA selection requires: decode (q_seq=1), a shared KV buffer, supported
+    # head_size and group_size combinations for the active kernel configuration. Attention sinks
+    # are covered separately by
     # gqa_xqa_quantized_head_sink_test_cases(), so no head_sink here.
     #
     # Two window/past relationships are covered:
