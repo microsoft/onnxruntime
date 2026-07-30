@@ -324,6 +324,22 @@ inline QuantParams<QType> GetTestInputQuantParams(const TestInputDef<float>& inp
 }
 
 template <typename QType>
+inline QuantParams<QType> GetTestInputsQuantParams(const std::vector<TestInputDef<float>>& input_defs,
+                                                   bool symmetric = false) {
+  std::pair<float, float> frange = {std::numeric_limits<float>::max(), std::numeric_limits<float>::lowest()};
+
+  // Compute range across all input_defs
+  for (const auto& input_def : input_defs) {
+    const auto input_range = input_def.GetRange();
+    frange.first = std::min(frange.first, input_range.first);
+    frange.second = std::max(frange.second, input_range.second);
+  }
+
+  // Compute QuantParams using combined range
+  return QuantParams<QType>::Compute(frange.first, frange.second, symmetric);
+}
+
+template <typename QType>
 static void GetTestInputQuantParamsPerChannel(const TestInputDef<float>& input_def, std::vector<float>& scales,
                                               std::vector<QType>& zero_points, size_t axis, bool symmetric = false) {
   const auto f32_ranges = input_def.GetRangePerChannel(axis);
@@ -1259,17 +1275,24 @@ inline GetTestQDQModelFn<QuantType> BuildQDQOpTestCase(
     const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
     const std::string& op_domain = kOnnxDomain,
     bool use_contrib_qdq = false,
-    AllocatorPtr input_allocator = nullptr) {
+    AllocatorPtr input_allocator = nullptr,
+    bool combine_quant_inputs_qparams = false) {
   return [op_type, quant_input_defs, non_quant_input_defs, quant_input_defs_2, attrs, op_domain,
-          use_contrib_qdq, input_allocator](
+          use_contrib_qdq, input_allocator, combine_quant_inputs_qparams](
              ModelTestBuilder& builder, std::vector<QuantParams<QuantType>>& output_qparams) {
     std::vector<NodeArg*> op_inputs;
     op_inputs.reserve(quant_input_defs.size() + non_quant_input_defs.size() + quant_input_defs_2.size());
 
+    std::vector<TestInputDef<float>> combined_input_defs;
+    combined_input_defs.reserve(quant_input_defs.size() + quant_input_defs_2.size());
+    combined_input_defs.insert(combined_input_defs.end(), quant_input_defs.begin(), quant_input_defs.end());
+    combined_input_defs.insert(combined_input_defs.end(), quant_input_defs_2.begin(), quant_input_defs_2.end());
+    QuantParams<QuantType> combined_input_qparams = GetTestInputsQuantParams<QuantType>(combined_input_defs);
+
     // Create QDQ inputs
     for (const auto& input_def : quant_input_defs) {
       NodeArg* input = MakeTestInput<float>(builder, input_def, input_allocator);
-      QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
+      QuantParams<QuantType> input_qparams = combine_quant_inputs_qparams ? combined_input_qparams : GetTestInputQuantParams<QuantType>(input_def);
       NodeArg* input_after_qdq = AddQDQNodePair<QuantType>(builder, input, input_qparams.scale,
                                                            input_qparams.zero_point, use_contrib_qdq);
       op_inputs.push_back(input_after_qdq);
@@ -1284,7 +1307,7 @@ inline GetTestQDQModelFn<QuantType> BuildQDQOpTestCase(
     // Create QDQ inputs
     for (const auto& input_def : quant_input_defs_2) {
       NodeArg* input = MakeTestInput<float>(builder, input_def, input_allocator);
-      QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
+      QuantParams<QuantType> input_qparams = combine_quant_inputs_qparams ? combined_input_qparams : GetTestInputQuantParams<QuantType>(input_def);
       NodeArg* input_after_qdq = AddQDQNodePair<QuantType>(builder, input, input_qparams.scale,
                                                            input_qparams.zero_point, use_contrib_qdq);
       op_inputs.push_back(input_after_qdq);
