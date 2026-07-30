@@ -108,6 +108,9 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   ORT_ENFORCE(local_window_size_attr == -1 || (local_window_size_attr > 0 && local_window_size_attr <= std::numeric_limits<int>::max()),
               "local_window_size must be -1 or greater than 0 (and not exceed INT_MAX).");
   local_window_size_ = static_cast<int>(local_window_size_attr);
+  sliding_window_cache_ = info.GetAttrOrDefault<int64_t>("sliding_window_cache", 0) == 1;
+  ORT_ENFORCE(!sliding_window_cache_ || local_window_size_ > 0,
+              "GroupQueryAttention (CUDA): sliding_window_cache=1 requires local_window_size > 0.");
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
@@ -314,7 +317,10 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                                 scale_,
                                                                 softcap_,
                                                                 kv_cache_bit_width_,
-                                                                device_prop.maxThreadsPerBlock));
+                                                                device_prop.maxThreadsPerBlock,
+                                                                /*kv_cache_extra_bits=*/0,
+                                                                sliding_window_cache_,
+                                                                local_window_size_));
 #ifndef USE_INT4_KV_CACHE
   if (kv_cache_bit_width_ == 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kv_cache_bit_width==4 is not enabled in this build.");
@@ -425,6 +431,60 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   ORT_ENFORCE(past_key_shared == past_value_shared,
               "past_key/present_key and past_value/present_value must be both shared or both separate.");
   parameters.past_present_share_buffer = past_key_shared;
+
+  // Eviction rewrites the cache in place, so past and present must be the same buffer.
+  ORT_RETURN_IF(parameters.is_windowed_kv_cache && !parameters.past_present_share_buffer,
+                "sliding_window_cache=1 requires past_key/present_key and past_value/present_value "
+                "to share the same buffer.");
+
+  // The capacity C of a windowed cache is only guaranteed to cover the attention window, so a step
+  // that appends S > 1 tokens can transiently need min(P, C) + S entries: the earliest queries of
+  // the step still have to see keys that the last ones have already pushed out. Redirect such a
+  // step to a staging cache of that length, seeded with the resident window, and copy the surviving
+  // tail back afterwards.
+  //
+  // This is deliberately not gated on is_first_prompt. The op cannot tell a first prompt from a
+  // later prefill chunk: total_sequence_length is supplied by the caller and some frameworks
+  // (onnxruntime-genai) pass the allocated buffer length rather than the running total. Staging
+  // every multi-token step is correct for both cases and leaves the single-token decode path, which
+  // never needs more than C entries, on the cheap in-place eviction path.
+  //
+  // Doing this here, rather than inside a dedicated kernel path, keeps the staging independent of
+  // which attention backend is selected and reuses the existing RoPE/QK-Norm/quantization handling.
+  IAllocatorUniquePtr<void> staged_key_buffer;
+  IAllocatorUniquePtr<void> staged_value_buffer;
+  CudaU* windowed_present_key = nullptr;
+  CudaU* windowed_present_value = nullptr;
+  int windowed_cache_capacity = 0;
+  int staged_cache_capacity = 0;
+  if (parameters.is_windowed_kv_cache && parameters.sequence_length > 1) {
+    windowed_present_key = data.present_key;
+    windowed_present_value = data.present_value;
+    windowed_cache_capacity = parameters.seqlen_present_kv_cache;
+    staged_cache_capacity = SafeInt<int>(windowed_cache_capacity) + parameters.sequence_length;
+
+    const size_t staged_bytes = SafeInt<size_t>(parameters.batch_size) * parameters.kv_num_heads *
+                                staged_cache_capacity * dense_head_size * sizeof(U);
+    staged_key_buffer = GetScratchBuffer<void>(staged_bytes, GetComputeStream(context));
+    staged_value_buffer = GetScratchBuffer<void>(staged_bytes, GetComputeStream(context));
+
+    ORT_RETURN_IF_ERROR(LaunchCopyKvCacheWindow(
+        staged_key_buffer.get(), staged_value_buffer.get(),
+        windowed_present_key, windowed_present_value,
+        parameters.batch_size, parameters.kv_num_heads,
+        /*src_capacity=*/windowed_cache_capacity, /*dst_capacity=*/staged_cache_capacity,
+        /*rows=*/windowed_cache_capacity, /*src_offsets=*/nullptr,
+        static_cast<int>(dense_head_size * sizeof(U)), Stream(context)));
+
+    data.past_key = reinterpret_cast<const CudaU*>(staged_key_buffer.get());
+    data.past_value = reinterpret_cast<const CudaU*>(staged_value_buffer.get());
+    data.present_key = reinterpret_cast<CudaU*>(staged_key_buffer.get());
+    data.present_value = reinterpret_cast<CudaU*>(staged_value_buffer.get());
+
+    parameters.kv_cache_capacity = staged_cache_capacity;
+    parameters.seqlen_past_kv_cache = staged_cache_capacity;
+    parameters.seqlen_present_kv_cache = staged_cache_capacity;
+  }
 
   bool is_inputs_quantized = (k_quant_type_ != KVQuantizationType::NONE) || (v_quant_type_ != KVQuantizationType::NONE);
   constexpr bool is_int8 = std::is_same<U, int8_t>::value;
@@ -628,7 +688,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // The fast-decode path lets the flash kernel perform RoPE and KV-append internally, bypassing
   // PrepareQKV (and therefore the fused QK-Norm prologue). Disable it when q/k norm weights are
   // present so the regular FlashAttention path (which normalizes via PrepareQKV) is used instead.
-  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.kv_sequence_length > 0 && parameters.past_present_share_buffer && !is_inputs_quantized && !parameters.use_qk_norm;
+  // It is also disabled for a windowed KV cache: the kernel derives both the absolute RoPE position
+  // and the cache append offset from a single seqlens_k value, which those two no longer share.
+  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.kv_sequence_length > 0 && parameters.past_present_share_buffer && !is_inputs_quantized && !parameters.use_qk_norm && !parameters.is_windowed_kv_cache;
 
   if (use_flash_attention) {
     // Allocate Flash specific buffers (Softmax LSE, Accum)
@@ -683,24 +745,50 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   } else {
     // Compute sequence length buffers (past_seq_lens and total_seq_lens).
     // Allocate buffer for both: first half is past_seq_lens, second half is total_seq_lens.
-    seq_lens_buffer = GetScratchBuffer<int>(3 * parameters.batch_size, GetComputeStream(context));
+    // A windowed cache needs three more per-batch vectors expressed in cache-relative coordinates.
+    const int seq_lens_vectors = parameters.is_windowed_kv_cache ? 6 : 3;
+    seq_lens_buffer = GetScratchBuffer<int>(seq_lens_vectors * parameters.batch_size, GetComputeStream(context));
     auto cuda_stream = Stream(context);
     data.past_seq_lens = seq_lens_buffer.get();
     data.total_seq_lens = seq_lens_buffer.get() + parameters.batch_size;
     data.padded_seq_lens = data.total_seq_lens + parameters.batch_size;
+    if (parameters.is_windowed_kv_cache) {
+      data.cache_past_seq_lens = data.padded_seq_lens + parameters.batch_size;
+      data.cache_total_seq_lens = data.cache_past_seq_lens + parameters.batch_size;
+      data.evict_counts = data.cache_total_seq_lens + parameters.batch_size;
+    }
     ORT_RETURN_IF_ERROR(LaunchGetSequenceLengths(total_seq_lens_minus_one->Data<int>(),
                                                  data.past_seq_lens,
                                                  data.total_seq_lens,
                                                  data.padded_seq_lens,
+                                                 data.cache_past_seq_lens,
+                                                 data.cache_total_seq_lens,
+                                                 data.evict_counts,
                                                  parameters.batch_size,
                                                  parameters.sequence_length,
                                                  parameters.is_first_prompt,
+                                                 parameters.kv_cache_capacity,
+                                                 parameters.kv_cache_real_capacity,
                                                  cuda_stream,
                                                  device_prop.maxThreadsPerBlock));
     DUMP_TENSOR_INIT();
     DUMP_TENSOR("total_seq_lens", data.total_seq_lens, parameters.batch_size, 1);
     DUMP_TENSOR("past_seq_lens", data.past_seq_lens, parameters.batch_size, 1);
     DUMP_TENSOR("padded_seq_lens", data.padded_seq_lens, parameters.batch_size, 1);
+  }
+
+  // Scratch used to left-shift the KV cache when the sliding window advances. Sized for the whole
+  // cache because the number of evicted rows is only known on device (and must stay constant across
+  // CUDA graph replays). K and V shift in the same kernel, so each needs its own half.
+  IAllocatorUniquePtr<void> compaction_buffer;
+  if (parameters.is_windowed_kv_cache && staged_cache_capacity == 0) {
+    const size_t row_bytes = (parameters.kv_cache_bit_width == 0)
+                                 ? static_cast<size_t>(parameters.head_size) * sizeof(U)
+                                 : static_cast<size_t>(parameters.head_size) * parameters.kv_cache_bit_width / 8;
+    const size_t compaction_bytes = 2 * static_cast<size_t>(parameters.batch_size) * parameters.kv_num_heads *
+                                    parameters.kv_cache_real_capacity * row_bytes;
+    compaction_buffer = GetScratchBuffer<void>(compaction_bytes, GetComputeStream(context));
+    data.compaction_scratch = compaction_buffer.get();
   }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
@@ -854,6 +942,19 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
   ORT_RETURN_IF_ERROR((QkvToContext<CudaT, CudaU>(
       device_prop, cublas, ort_stream.get(), parameters, data)));
+
+  if (windowed_present_key != nullptr) {
+    // Attention ran against the staging cache; keep only the entries the sliding window can still
+    // reach. evict_counts[b] = max(0, min(P, C) + S - C) is exactly where that tail starts. The rows
+    // are already in their final (possibly quantized) form.
+    const int row_bytes = static_cast<int>(dense_head_size * sizeof(U));
+    ORT_RETURN_IF_ERROR(LaunchCopyKvCacheWindow(
+        windowed_present_key, windowed_present_value, data.present_key, data.present_value,
+        parameters.batch_size, parameters.kv_num_heads,
+        /*src_capacity=*/staged_cache_capacity, /*dst_capacity=*/windowed_cache_capacity,
+        /*rows=*/windowed_cache_capacity, /*src_offsets=*/data.evict_counts,
+        row_bytes, Stream(context)));
+  }
   return Status::OK();
 }
 
