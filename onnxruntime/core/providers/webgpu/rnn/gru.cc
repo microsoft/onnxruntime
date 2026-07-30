@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -70,6 +71,10 @@ Gru::Gru(const OpKernelInfo& info) : WebGpuKernel(info) {
     }
   }
   ORT_ENFORCE(activations_.size() == static_cast<size_t>(num_directions) * 2);
+  // Validate activations while loading the model rather than waiting until the first Run().
+  for (const auto& activation : activations_) {
+    static_cast<void>(ActivationToWgslFn(activation));
+  }
 }
 
 // ===========================================================================
@@ -305,6 +310,12 @@ Status Gru::ComputeInternal(ComputeContext& context) const {
 
   const auto& X_shape = X->Shape();
   int num_directions = (direction_ == "bidirectional") ? 2 : 1;
+  ORT_RETURN_IF(hidden_size_ <= 0 ||
+                    hidden_size_ > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
+                "GRU: hidden_size must be in the range [1, ", std::numeric_limits<uint32_t>::max(),
+                "]; actual: ", hidden_size_);
+  ORT_RETURN_IF(X_shape.NumDimensions() != 3,
+                "GRU: Input X must have 3 dimensions. Actual: ", X_shape);
   int64_t seq_length, batch_size, input_size;
   if (layout_ == 0) {
     seq_length = X_shape[0];
@@ -329,6 +340,33 @@ Status Gru::ComputeInternal(ComputeContext& context) const {
                     R_shape[1] != 3 * hidden_size_ || R_shape[2] != hidden_size_,
                 "GRU: Input R must have shape {", num_directions, ", 3*", hidden_size_, ", ", hidden_size_,
                 "}. Actual: ", R_shape);
+
+  if (B != nullptr) {
+    const auto& B_shape = B->Shape();
+    ORT_RETURN_IF(B_shape.NumDimensions() != 2 || B_shape[0] != num_directions ||
+                      B_shape[1] != 6 * hidden_size_,
+                  "GRU: Input B must have shape {", num_directions, ", 6*", hidden_size_,
+                  "}. Actual: ", B_shape);
+  }
+  if (sequence_lens != nullptr) {
+    const auto& sequence_lens_shape = sequence_lens->Shape();
+    ORT_RETURN_IF(sequence_lens_shape.NumDimensions() != 1 || sequence_lens_shape[0] != batch_size,
+                  "GRU: Input sequence_lens must have shape {", batch_size,
+                  "}. Actual: ", sequence_lens_shape);
+  }
+  if (initial_h != nullptr) {
+    const auto& initial_h_shape = initial_h->Shape();
+    const bool initial_h_shape_valid =
+        (layout_ == 0 && initial_h_shape.NumDimensions() == 3 &&
+         initial_h_shape[0] == num_directions && initial_h_shape[1] == batch_size &&
+         initial_h_shape[2] == hidden_size_) ||
+        (layout_ == 1 && initial_h_shape.NumDimensions() == 3 &&
+         initial_h_shape[0] == batch_size && initial_h_shape[1] == num_directions &&
+         initial_h_shape[2] == hidden_size_);
+    ORT_RETURN_IF(!initial_h_shape_valid,
+                  "GRU: Input initial_h has an invalid shape for layout ", layout_,
+                  ". Actual: ", initial_h_shape);
+  }
 
   uint32_t H = static_cast<uint32_t>(hidden_size_);
 
