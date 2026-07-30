@@ -59,13 +59,18 @@ struct WindowedStep {
 
 // Offset one past the last resident row, i.e. where the next entry is appended. Whole `gap`-sized
 // blocks are reclaimed at once, which keeps `end` in [C - gap + 1, C] once the cache has filled.
-int WindowedCacheEnd(int past_sequence_length, int capacity, int gap) {
+//
+// The intermediate math runs in int64_t: `past_sequence_length` is derived from the caller-supplied
+// seqlens_k input, so `overflow + gap - 1` and `gap * blocks` would be able to overflow for values
+// near INT32_MAX -- signed overflow is UB, so it has to be avoided even for inputs that later
+// validation would reject. The result is bounded by `capacity`, so narrowing back to int is safe.
+int WindowedCacheEnd(int64_t past_sequence_length, int64_t capacity, int64_t gap) {
   if (past_sequence_length <= capacity) {
-    return past_sequence_length;  // still filling: nothing has been reclaimed yet
+    return static_cast<int>(past_sequence_length);  // still filling: nothing has been reclaimed yet
   }
-  const int overflow = past_sequence_length - capacity;
-  const int reclaimed = gap * ((overflow + gap - 1) / gap);
-  return past_sequence_length - reclaimed;
+  const int64_t overflow = past_sequence_length - capacity;
+  const int64_t reclaimed = gap * ((overflow + gap - 1) / gap);
+  return static_cast<int>(past_sequence_length - reclaimed);
 }
 
 // Fills `steps` and the cache-relative seqlens_k, and decides whether the step needs a staging
@@ -88,7 +93,11 @@ void PlanWindowedKvCache(const int32_t* seqlens_k,
   int max_resident = 0;
   use_staging = false;
   for (int b = 0; b < batch_size; ++b) {
-    const int past_sequence_length = seqlens_k[b] + 1 - sequence_length;  // P
+    // Computed in int64_t for the same reason as in WindowedCacheEnd: seqlens_k is caller-supplied
+    // and `seqlens_k[b] + 1` would overflow at INT32_MAX. Clamping at zero keeps a bogus (too
+    // small) seqlens_k from turning into a negative row count downstream.
+    const int64_t past_sequence_length =
+        std::max<int64_t>(static_cast<int64_t>(seqlens_k[b]) + 1 - sequence_length, 0);  // P
     const int end_before = WindowedCacheEnd(past_sequence_length, capacity, gap);
     const int end_after = WindowedCacheEnd(past_sequence_length + sequence_length, capacity, gap);
     const int kept = end_after - sequence_length;  // resident rows that survive this step
@@ -96,7 +105,7 @@ void PlanWindowedKvCache(const int32_t* seqlens_k,
     // The first new row of the step is read by a query that also reaches local_window_size - 1
     // rows further back, so compacting down to `kept` rows in place is only valid while that much
     // history survives (all of it while the sequence is still shorter than the window).
-    const int required = std::min(past_sequence_length, local_window_size - 1);
+    const int64_t required = std::min<int64_t>(past_sequence_length, local_window_size - 1);
     use_staging = use_staging || kept < required;
 
     steps[b].seed_rows = end_before;
