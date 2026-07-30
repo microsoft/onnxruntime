@@ -1100,7 +1100,12 @@ Status FlashAttentionAndQuantizeKV(
       reinterpret_cast<void*>(data.softmax_lse_accum),
       reinterpret_cast<void*>(data.out_accum),
       true,  // kv_bsnh = true (BSNH)
-      local_window_size));
+      local_window_size,
+      /*cache_batch_idx*/ nullptr, /*leftpad_k*/ nullptr,
+      // head_sink must be forwarded here as well. This is the only prompt path taken when the KV
+      // cache is quantized, so dropping it silently disables attention sinks for the whole prompt
+      // while the unquantized prompt path (FlashAttention) keeps them.
+      reinterpret_cast<void*>(const_cast<T*>(data.head_sink))));
 
   if (parameters.k_quant_type != KVQuantizationType::NONE) {
     ORT_RETURN_IF_ERROR((LaunchQuantizeKV<T, U, float>(
