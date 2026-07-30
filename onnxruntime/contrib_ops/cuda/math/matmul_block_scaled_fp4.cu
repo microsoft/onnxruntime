@@ -6,7 +6,6 @@
 #include <cuda.h>
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
-#include <cstring>
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 12080
 #include <cuda_fp4.h>
@@ -14,6 +13,7 @@
 #endif
 
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 
 namespace onnxruntime::contrib::cuda {
 
@@ -21,31 +21,7 @@ namespace onnxruntime::contrib::cuda {
 
 namespace {
 
-template <typename T>
-__device__ __forceinline__ T FromFloat(float v);
-
-template <>
-__device__ __forceinline__ half FromFloat<half>(float v) {
-  return __float2half(v);
-}
-
-template <>
-__device__ __forceinline__ nv_bfloat16 FromFloat<nv_bfloat16>(float v) {
-  return __float2bfloat16(v);
-}
-
-template <typename T>
-__device__ __forceinline__ float ToFloat(T v);
-
-template <>
-__device__ __forceinline__ float ToFloat<half>(half v) {
-  return __half2float(v);
-}
-
-template <>
-__device__ __forceinline__ float ToFloat<nv_bfloat16>(nv_bfloat16 v) {
-  return __bfloat162float(v);
-}
+// bit_cast / e4m3_to_float / from_float / to_float / Vec2Traits come from cuda_type_helper.cuh.
 
 template <typename T>
 __global__ void DequantizeNvFp4Kernel(T* __restrict__ out,
@@ -75,16 +51,12 @@ __global__ void DequantizeNvFp4Kernel(T* __restrict__ out,
   const float g = *weight_scale_2;
   const int blk0 = k0 / block_size;
   const int blk1 = (k0 + 1) / block_size;
-  const float s0 = __half2float(__nv_cvt_fp8_to_halfraw(
-                       static_cast<__nv_fp8_storage_t>(weight_scale[row * k_blocks + blk0]), __NV_E4M3)) *
-                   g;
-  const float s1 = __half2float(__nv_cvt_fp8_to_halfraw(
-                       static_cast<__nv_fp8_storage_t>(weight_scale[row * k_blocks + blk1]), __NV_E4M3)) *
-                   g;
+  const float s0 = e4m3_to_float(weight_scale[row * k_blocks + blk0]) * g;
+  const float s1 = e4m3_to_float(weight_scale[row * k_blocks + blk1]) * g;
 
   const long long out_base = static_cast<long long>(row) * k + k0;
-  out[out_base] = FromFloat<T>(v.x * s0);
-  out[out_base + 1] = FromFloat<T>(v.y * s1);
+  out[out_base] = from_float<T>(v.x * s0);
+  out[out_base + 1] = from_float<T>(v.y * s1);
 }
 
 template <typename T>
@@ -95,7 +67,7 @@ __global__ void AddBiasKernel(T* __restrict__ y, const T* __restrict__ bias, int
     return;
   }
   const int col = static_cast<int>(idx % n);
-  y[idx] = FromFloat<T>(ToFloat<T>(y[idx]) + ToFloat<T>(bias[col]));
+  y[idx] = from_float<T>(to_float<T>(y[idx]) + to_float<T>(bias[col]));
 }
 
 // -----------------------------------------------------------------------------
@@ -125,36 +97,32 @@ struct Fp4Cvt;
 
 template <>
 struct Fp4Cvt<half> {
-  using T2 = half2;
+  using Traits = Vec2Traits<half>;
+  using T2 = typename Traits::Type2;
   static __device__ __forceinline__ T2 Raw(uint32_t b) {
     const uint32_t lo = ((b & 0x07u) << 9) | ((b & 0x08u) << 12);
     const uint32_t hi = ((b & 0x70u) << 5) | ((b & 0x80u) << 8);
-    const uint32_t bits = lo | (hi << 16);
-    T2 r;
-    memcpy(&r, &bits, sizeof(r));
-    return r;
+    return bit_cast<T2>(lo | (hi << 16));
   }
-  static __device__ __forceinline__ T2 Scale() { return __float2half2_rn(16384.0f); }  // 2^14
-  static __device__ __forceinline__ T2 Mul(T2 a, T2 b) { return __hmul2(a, b); }
-  static __device__ __forceinline__ float2 ToFloat2(T2 v) { return __half22float2(v); }
+  static __device__ __forceinline__ T2 Scale() { return Traits::splat(16384.0f); }  // 2^14
+  static __device__ __forceinline__ T2 Mul(T2 a, T2 b) { return Traits::mul2(a, b); }
+  static __device__ __forceinline__ float2 ToFloat2(T2 v) { return Traits::to_float2(v); }
 };
 
 template <>
 struct Fp4Cvt<nv_bfloat16> {
-  using T2 = nv_bfloat162;
+  using Traits = Vec2Traits<nv_bfloat16>;
+  using T2 = typename Traits::Type2;
   static __device__ __forceinline__ T2 Raw(uint32_t b) {
     const uint32_t lo = ((b & 0x07u) << 6) | ((b & 0x08u) << 12);
     const uint32_t hi = ((b & 0x70u) << 2) | ((b & 0x80u) << 8);
-    const uint32_t bits = lo | (hi << 16);
-    T2 r;
-    memcpy(&r, &bits, sizeof(r));
-    return r;
+    return bit_cast<T2>(lo | (hi << 16));
   }
   static __device__ __forceinline__ T2 Scale() {
-    return __float2bfloat162_rn(85070591730234615865843651857942052864.0f);  // 2^126
+    return Traits::splat(85070591730234615865843651857942052864.0f);  // 2^126
   }
-  static __device__ __forceinline__ T2 Mul(T2 a, T2 b) { return __hmul2(a, b); }
-  static __device__ __forceinline__ float2 ToFloat2(T2 v) { return __bfloat1622float2(v); }
+  static __device__ __forceinline__ T2 Mul(T2 a, T2 b) { return Traits::mul2(a, b); }
+  static __device__ __forceinline__ float2 ToFloat2(T2 v) { return Traits::to_float2(v); }
 };
 
 template <typename T>
@@ -191,6 +159,15 @@ __global__ void MatMulBlockQuantizedFp4WeightGemvKernel(T* __restrict__ y,
   for (int base = 0; base < k; base += stride) {
     const int koff = base + lane * kElemsPerLane;
     if (koff < k) {
+      // 16-byte vectorized loads. Both are guaranteed to be naturally aligned, so no guarded
+      // fallback is needed:
+      //   * b_packed / a come from ORT device allocations, whose base address is at least
+      //     256-byte aligned (see CUDAAllocator / cudaMalloc guarantees).
+      //   * The launcher enforces k % 32 == 0, so the row offsets are multiples of 16 bytes:
+      //     b_row = b_packed + col * (k / 2) with (k / 2) % 16 == 0, and
+      //     a_row = a + row * k with k * sizeof(T) % 16 == 0 for 2-byte T.
+      //   * Within a row, byte offsets are (koff / 2) for B and koff * sizeof(T) for A, and
+      //     koff is a multiple of kElemsPerLane == 32.
       const uint4 packed = *reinterpret_cast<const uint4*>(b_row + (koff >> 1));
       const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&packed);
 
@@ -215,10 +192,8 @@ __global__ void MatMulBlockQuantizedFp4WeightGemvKernel(T* __restrict__ y,
 
       const int kb0 = koff / kBlockSize;
       const int kb1 = kb0 + 1;
-      const float s0 = __half2float(__nv_cvt_fp8_to_halfraw(
-          static_cast<__nv_fp8_storage_t>(ws_row[kb0]), __NV_E4M3));
-      const float s1 = __half2float(__nv_cvt_fp8_to_halfraw(
-          static_cast<__nv_fp8_storage_t>(ws_row[kb1]), __NV_E4M3));
+      const float s0 = e4m3_to_float(ws_row[kb0]);
+      const float s1 = e4m3_to_float(ws_row[kb1]);
       acc += p0 * s0 + p1 * s1;
     }
   }
@@ -230,9 +205,9 @@ __global__ void MatMulBlockQuantizedFp4WeightGemvKernel(T* __restrict__ y,
   if (lane == 0) {
     float result = acc * (*weight_scale_2);
     if (bias != nullptr) {
-      result += ToFloat<T>(bias[col]);
+      result += to_float<T>(bias[col]);
     }
-    y[static_cast<size_t>(row) * n + col] = FromFloat<T>(result);
+    y[static_cast<size_t>(row) * n + col] = from_float<T>(result);
   }
 }
 

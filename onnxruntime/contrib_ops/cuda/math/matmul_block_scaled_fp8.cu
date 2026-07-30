@@ -7,6 +7,7 @@
 #include <cuda_fp16.h>
 
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 
 // cuda_fp8.h only ships with CUDA 11.8+. Guard the include so older toolkits (or
 // DISABLE_FLOAT8_TYPES builds) still compile. CUDA_VERSION is provided by <cuda.h>,
@@ -21,31 +22,7 @@ namespace onnxruntime::contrib::cuda {
 
 namespace {
 
-template <typename T>
-__device__ __forceinline__ T FromFloat(float v);
-
-template <>
-__device__ __forceinline__ half FromFloat<half>(float v) {
-  return __float2half(v);
-}
-
-template <>
-__device__ __forceinline__ __nv_bfloat16 FromFloat<__nv_bfloat16>(float v) {
-  return __float2bfloat16(v);
-}
-
-template <typename T>
-__device__ __forceinline__ float ToFloat(T v);
-
-template <>
-__device__ __forceinline__ float ToFloat<half>(half v) {
-  return __half2float(v);
-}
-
-template <>
-__device__ __forceinline__ float ToFloat<__nv_bfloat16>(__nv_bfloat16 v) {
-  return __bfloat162float(v);
-}
+// to_float / from_float / to_float2 / Vec2 come from core/providers/cuda/cu_inc/cuda_type_helper.cuh.
 
 // Dequantizes FP8 E4M3 weights with per-block FP32 scales into FP16/BF16.
 // b_fp8 is [N, K] row-major FP8 E4M3, weight_scale is [N, k_blocks] fp32. Scalar per-element
@@ -67,7 +44,7 @@ __global__ void DequantizeBlockScaledFp8Kernel(T* __restrict__ out,
   const int col = static_cast<int>(idx - static_cast<long long>(row) * k);
   const int blk = col / block_size;
   const float scale = weight_scale[row * k_blocks + blk];
-  out[idx] = FromFloat<T>(static_cast<float>(b_fp8[idx]) * scale);
+  out[idx] = from_float<T>(static_cast<float>(b_fp8[idx]) * scale);
 }
 
 // Vectorized dequantization for K % 16 == 0. Each thread converts one 16-element K chunk of a
@@ -101,12 +78,12 @@ __global__ void DequantizeBlockScaledFp8Vec16Kernel(T* __restrict__ out,
       const float scale = srow[col0 / block_size];
 #pragma unroll
       for (int i = 0; i < 16; ++i) {
-        outv[i] = FromFloat<T>(static_cast<float>(bp[i]) * scale);
+        outv[i] = from_float<T>(static_cast<float>(bp[i]) * scale);
       }
     } else {
 #pragma unroll
       for (int i = 0; i < 16; ++i) {
-        outv[i] = FromFloat<T>(static_cast<float>(bp[i]) * srow[(col0 + i) / block_size]);
+        outv[i] = from_float<T>(static_cast<float>(bp[i]) * srow[(col0 + i) / block_size]);
       }
     }
 
@@ -124,7 +101,7 @@ __global__ void AddBiasKernel(T* __restrict__ y, const T* __restrict__ bias, int
     return;
   }
   const int col = static_cast<int>(idx % n);
-  y[idx] = FromFloat<T>(ToFloat<T>(y[idx]) + ToFloat<T>(bias[col]));
+  y[idx] = from_float<T>(to_float<T>(y[idx]) + to_float<T>(bias[col]));
 }
 
 // Statically quantizes a FP16/BF16 activation to FP8 E4M3 using a single per-tensor scale and then
@@ -144,9 +121,9 @@ __global__ void QuantizeDequantizeActivationFp8Kernel(T* __restrict__ out,
   }
   const float scale = *a_scale;
   const float inv_scale = scale != 0.f ? 1.0f / scale : 0.f;
-  const float x = ToFloat<T>(in[idx]);
+  const float x = to_float<T>(in[idx]);
   const float q = static_cast<float>(__nv_fp8_e4m3(x * inv_scale));
-  out[idx] = FromFloat<T>(q * scale);
+  out[idx] = from_float<T>(q * scale);
 }
 
 // -----------------------------------------------------------------------------
@@ -175,20 +152,9 @@ __global__ void QuantizeDequantizeActivationFp8Kernel(T* __restrict__ out,
 // memory-level parallelism, which is the right trade when there is only one wave.
 // <RowsPerWarp, 1, 1> reproduces the original one-column-per-warp geometry.
 
-// Vector-2 companion type and float2 widening for the accumulate type.
-template <typename T>
-struct Fp8GemvVec2;
-template <>
-struct Fp8GemvVec2<half> {
-  using type = __half2;
-};
-template <>
-struct Fp8GemvVec2<__nv_bfloat16> {
-  using type = __nv_bfloat162;
-};
-
-__device__ __forceinline__ float2 Fp8GemvToFloat2(const __half2& v) { return __half22float2(v); }
-__device__ __forceinline__ float2 Fp8GemvToFloat2(const __nv_bfloat162& v) { return __bfloat1622float2(v); }
+// Vector-2 companion type and float2 widening for the accumulate type come from
+// core/providers/cuda/cu_inc/cuda_type_helper.cuh (Vec2 / to_float2), shared with
+// the NVFP4 GEMV in matmul_block_scaled_fp4.cu.
 
 // Convert 16 packed FP8 bytes into 8 half2 (one `cvt.rn.f16x2.e4m3x2` per pair
 // instead of 16 scalar converts). FP8 E4M3 is exactly representable in FP16, so
@@ -206,18 +172,23 @@ __device__ __forceinline__ float2 Fp8GemvToFloat2(const __nv_bfloat162& v) { ret
   } while (0)
 
 // acc += dot(A[0:16], B[0:16]) with FP32 accumulation, matching the scalar version bit for bit.
+//
+// `bh` is always __half2: ORT_FP8_GEMV_CVT16 decodes FP8 E4M3 through __nv_cvt_fp8x2_to_halfraw2
+// for both the half and the bfloat16 instantiation (E4M3 is exactly representable in FP16), so
+// __half22float2 is the correct widening here regardless of AType. If ORT_FP8_GEMV_CVT16 is ever
+// changed to emit __nv_bfloat162 for the bfloat16 path, this macro must be updated in lockstep.
 #define ORT_FP8_GEMV_DOT16(a0, a1, bh, acc)                   \
   do {                                                        \
     const AVec2* _a0 = reinterpret_cast<const AVec2*>(&(a0)); \
     const AVec2* _a1 = reinterpret_cast<const AVec2*>(&(a1)); \
     _Pragma("unroll") for (int _i = 0; _i < 4; ++_i) {        \
-      const float2 _av = Fp8GemvToFloat2(_a0[_i]);            \
+      const float2 _av = to_float2(_a0[_i]);                  \
       const float2 _bv = __half22float2((bh)[_i]);            \
       (acc) = fmaf(_av.x, _bv.x, (acc));                      \
       (acc) = fmaf(_av.y, _bv.y, (acc));                      \
     }                                                         \
     _Pragma("unroll") for (int _i = 0; _i < 4; ++_i) {        \
-      const float2 _av = Fp8GemvToFloat2(_a1[_i]);            \
+      const float2 _av = to_float2(_a1[_i]);                  \
       const float2 _bv = __half22float2((bh)[4 + _i]);        \
       (acc) = fmaf(_av.x, _bv.x, (acc));                      \
       (acc) = fmaf(_av.y, _bv.y, (acc));                      \
@@ -235,7 +206,7 @@ __global__ void MatMulBlockScaledFp8GemvKernel(AType* __restrict__ output,
                                                int k,
                                                int block_size,
                                                int k_blocks) {
-  using AVec2 = typename Fp8GemvVec2<AType>::type;
+  using AVec2 = Vec2<AType>;
 
   constexpr int kElemsPerLane = 16;
   constexpr int kStride = 32 * kElemsPerLane;  // 512 elements per warp sub-chunk
@@ -336,9 +307,9 @@ __global__ void MatMulBlockScaledFp8GemvKernel(AType* __restrict__ output,
         }
         float result = acc[r][c];
         if (bias != nullptr) {
-          result += ToFloat<AType>(bias[col]);
+          result += to_float<AType>(bias[col]);
         }
-        output[static_cast<size_t>(row) * n + col] = FromFloat<AType>(result);
+        output[static_cast<size_t>(row) * n + col] = from_float<AType>(result);
       }
     }
   }
