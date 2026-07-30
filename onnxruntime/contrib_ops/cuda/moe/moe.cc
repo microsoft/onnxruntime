@@ -116,8 +116,8 @@ Status MoEBase::RunMoe(OpKernelContext* context,
 
   using CudaT = typename OrtToCudaType<T>::type;
 
-  onnxruntime::Stream* stream_obj = context->GetComputeStream();
-  cudaStream_t stream = stream_obj == nullptr ? nullptr : static_cast<cudaStream_t>(stream_obj->GetHandle());
+  void* stream_obj = GetComputeStream(context);
+  cudaStream_t stream = Stream(context);
 
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
