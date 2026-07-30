@@ -16,7 +16,7 @@ float get_float_initializer_data(const void* initializer) {
 
   // A FLOAT scalar/tensor may store its value either in the typed float_data
   // field or in raw_data. Indexing float_data(0) when it is empty is undefined
-  // behaviour, so pick the field that actually holds the data.
+  // behavior, so pick the field that actually holds the data.
   if (tp->float_data_size() > 0) {
     return tp->float_data(0);
   }
