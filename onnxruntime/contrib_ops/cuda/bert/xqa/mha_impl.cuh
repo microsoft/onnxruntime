@@ -812,7 +812,7 @@ __device__ inline void copyOutputToGlobalMem(const Warp& warp, OutputHead* dst, 
 #endif
     assert(n < paddedInputHeadBytes / grainBytes);
     if (!isHeadPadded || n < ioHeadBytes / grainBytes) {
-      const auto outVec = convert<OutputHead::Elem>(const reinterpret_cast<Vec<InputElem, inputElemsPerGrain>&>(data));
+      const auto outVec = convert<OutputHead::Elem>(reinterpret_cast<const Vec<InputElem, inputElemsPerGrain>&>(data));
       reinterpret_cast<Vec<mha::decay_t<decltype(outVec)>, exactDiv(ioHeadBytes, grainBytes)>&>(
           dst[nbQHeads * idxBeam + idxHead])[n] = outVec;
     }
@@ -1144,7 +1144,7 @@ __device__ inline void rescaleAcc(const Warp& warp, WarpAcc& acc, float scale) {
 
 template <bool useFp32Acc, uint32_t nbWarps, uint32_t nbTiles, uint32_t rows, uint32_t cols>
 __device__ inline void smemFp16ArraySum(
-    uint32_t idxWarp, const Array2D<LdGrain, rows, cols>& dst, Array2D<LdGrain, rows, cols> tiles[nbTiles]) {
+    uint32_t idxWarp, Array2D<LdGrain, rows, cols>& dst, const Array2D<LdGrain, rows, cols> tiles[nbTiles]) {
   constexpr uint32_t nbThrds = warp_size * nbWarps;
   const uint32_t tid = warp_size * idxWarp + laneId();
   constexpr uint32_t nbGrains = SharedMem::XSmemBuffer::rows * SharedMem::XSmemBuffer::cols;
@@ -1158,7 +1158,7 @@ __device__ inline void smemFp16ArraySum(
     const uint32_t idx = nbThrds * i + tid;
 #pragma unroll
     for (uint32_t j = 0; j < nbTiles; j++) {
-      const auto data = const reinterpret_cast<Vec<InputElem2, LdGrain::size>(&)[nbGrains]>(tiles[j])[idx];
+      const auto data = reinterpret_cast<const Vec<InputElem2, LdGrain::size>(&)[nbGrains]>(tiles[j])[idx];
       if constexpr (useFp32Acc) {
 #if INPUT_FP16
         result = addFloat2(result, __half22float2(data));

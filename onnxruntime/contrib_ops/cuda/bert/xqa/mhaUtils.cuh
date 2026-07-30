@@ -209,7 +209,7 @@ __device__ inline void reorder16bQHeadsToMatch8bKCache(uint32_t idxWarp, Array2D
         qHeads.template at<swizzled>(r, c),
         qHeads.template at<swizzled>(r, c + 1),
     };
-    const auto& s = const reinterpret_cast<Vec<uint32_t, LdGrain::size * 2>&>(src);
+    const auto& s = reinterpret_cast<const Vec<uint32_t, LdGrain::size * 2>&>(src);
     if constexpr (isFwd) {
       qHeads.template at<swizzled>(r, c) = LdGrain{s[0], s[2], s[4], s[6]};
       qHeads.template at<swizzled>(r, c + 1) = LdGrain{s[1], s[3], s[5], s[7]};

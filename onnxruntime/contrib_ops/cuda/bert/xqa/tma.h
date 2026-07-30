@@ -244,7 +244,7 @@ __device__ inline void prefetchTensorMap(const CUtensorMap& tensorMap, StateSpac
 template <typename T>
 __device__ inline void storeAsync(void* dst, const T& src, CgaBarrier& bar) {
   constexpr uint32_t nbWords = exactDiv(sizeof(T), sizeof(uint32_t));
-  const Vec<uint32_t, nbWords>& srcVec = const reinterpret_cast<Vec<uint32_t, nbWords>&>(src);
+  const Vec<uint32_t, nbWords>& srcVec = reinterpret_cast<const Vec<uint32_t, nbWords>&>(src);
   if constexpr (nbWords == 1) {
     asm volatile("st.async.weak.shared::cluster.mbarrier::complete_tx::bytes.u32 [%0], %1, [%2];\n" ::"l"(
                      __cvta_generic_to_shared(dst)),

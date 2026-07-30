@@ -69,7 +69,7 @@ __device__ inline void assertWarpConverged() {
 #define DEFINE_VEC_BINARY_FUNC(func)                                                               \
   template <typename T, uint32_t size>                                                             \
   __device__ __host__ inline Vec<decltype(func(mha::declval<T>(), mha::declval<T>())), size> func( \
-      const Vec<T, size>& a, Vec<T, size>& b) {                                                    \
+      const Vec<T, size>& a, const Vec<T, size>& b) {                                              \
     Vec<decltype(func(mha::declval<T>(), mha::declval<T>())), size> result;                        \
     XQA_UNROLL for (uint32_t i = 0; i < size; i++) {                                               \
       result[i] = func(a[i], b[i]);                                                                \
@@ -88,7 +88,7 @@ DEFINE_VEC_BINARY_FUNC(addFloat2)
 #define DEFINE_VEC_BINARY_OP(op)                                                                      \
   template <typename T, uint32_t size>                                                                \
   __device__ __host__ inline Vec<decltype(mha::declval<T>() op mha::declval<T>()), size> operator op( \
-      const Vec<T, size>& a, Vec<T, size>& b) {                                                       \
+      const Vec<T, size>& a, const Vec<T, size>& b) {                                                 \
     Vec<decltype(mha::declval<T>() op mha::declval<T>()), size> result;                               \
     XQA_UNROLL for (uint32_t i = 0; i < size; i++) {                                                  \
       result[i] = a[i] op b[i];                                                                       \
@@ -422,7 +422,7 @@ struct alignas(mha::min<uint32_t>(maxArrayAlign<T>(rows_* cols_), cacheLineSize)
 #define DEFINE_ARRAY2D_BINARY_OP(op)                                                                            \
   template <typename T, uint32_t rows, uint32_t cols>                                                           \
   __device__ __host__ inline Array2D<decltype(mha::declval<T>() op mha::declval<T>()), rows, cols> operator op( \
-      const Array2D<T, rows, cols>& a, Array2D<T, rows, cols>& b) {                                             \
+      const Array2D<T, rows, cols>& a, const Array2D<T, rows, cols>& b) {                                       \
     Array2D<decltype(mha::declval<T>() op mha::declval<T>()), rows, cols> result;                               \
     XQA_UNROLL for (uint32_t i = 0; i < rows; i++) {                                                            \
       for (uint32_t j = 0; j < cols; j++) {                                                                     \
@@ -487,7 +487,7 @@ __device__ inline Vec<uint32_t, nbMat> ldmatrix(const LdGrain* row) {
             auto getRow = [&](uint32_t r) {
                 assert(r<8);
                 const auto ret = __shfl_sync(~0U, reinterpret_cast<const uint64_t&>(row), 8*idxMat+r);
-                return *const reinterpret_cast<Vec<uint16_t, 8>*>(ret);
+                return *reinterpret_cast<const Vec<uint16_t, 8>*>(ret);
             };
             auto checkEq = [](uint16_t x, uint16_t y) {
                 if (!(x==y)) {

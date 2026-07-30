@@ -1006,7 +1006,7 @@ size_t MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::calcMaxWorkspace
           num_experts, conf, multi_processor_count_, fpX_block_scaling_type);                                                  \
       max_size = std::max(max_size, size);                                                                                     \
       has_config = true;                                                                                                       \
-    } catch (::const onnxruntime::OnnxRuntimeException& e) {                                                                   \
+    } catch (const ::onnxruntime::OnnxRuntimeException& e) {                                                                   \
       ORT_LLM_LOG_DEBUG(onnxruntime::MakeString("Unsupported config skipped when calculating MOE workspace size ", e.what())); \
     }                                                                                                                          \
   } while (0)

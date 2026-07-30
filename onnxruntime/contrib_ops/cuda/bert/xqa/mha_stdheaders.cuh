@@ -483,7 +483,7 @@ class tuple : public _Tuple_impl<0, _Elements...> {
 
   template <typename... _UElements>
   DEVICE_FUNC tuple(const tuple<_UElements...>& __arg)
-      : _Inherited(const static_cast<_Tuple_impl<0, _UElements...>&>(__arg)) {
+      : _Inherited(static_cast<const _Tuple_impl<0, _UElements...>&>(__arg)) {
   }
 
   template <typename... _UElements>
@@ -494,7 +494,7 @@ class tuple : public _Tuple_impl<0, _Elements...> {
   // XXX http://gcc.gnu.org/ml/libstdc++/2008-02/msg00047.html
   template <typename... _UElements>
   DEVICE_FUNC tuple(tuple<_UElements...>& __arg)
-      : _Inherited(const static_cast<_Tuple_impl<0, _UElements...>&>(__arg)) {
+      : _Inherited(static_cast<const _Tuple_impl<0, _UElements...>&>(__arg)) {
   }
 
   DEVICE_FUNC tuple& operator=(const tuple& __arg) {
@@ -615,7 +615,7 @@ struct __tuple_compare<0, __i, __i, _Tp, _Up> {
 };
 
 template <typename... _TElements, typename... _UElements>
-DEVICE_FUNC bool operator==(const tuple<_TElements...>& __t, tuple<_UElements...>& __u) {
+DEVICE_FUNC bool operator==(const tuple<_TElements...>& __t, const tuple<_UElements...>& __u) {
   typedef tuple<_TElements...> _Tp;
   typedef tuple<_UElements...> _Up;
   return (__tuple_compare<tuple_size<_Tp>::value - tuple_size<_Up>::value, 0, tuple_size<_Tp>::value, _Tp, _Up>::__eq(
@@ -623,7 +623,7 @@ DEVICE_FUNC bool operator==(const tuple<_TElements...>& __t, tuple<_UElements...
 }
 
 template <typename... _TElements, typename... _UElements>
-DEVICE_FUNC bool operator<(const tuple<_TElements...>& __t, tuple<_UElements...>& __u) {
+DEVICE_FUNC bool operator<(const tuple<_TElements...>& __t, const tuple<_UElements...>& __u) {
   typedef tuple<_TElements...> _Tp;
   typedef tuple<_UElements...> _Up;
   return (
@@ -632,22 +632,22 @@ DEVICE_FUNC bool operator<(const tuple<_TElements...>& __t, tuple<_UElements...>
 }
 
 template <typename... _TElements, typename... _UElements>
-DEVICE_FUNC inline bool operator!=(const tuple<_TElements...>& __t, tuple<_UElements...>& __u) {
+DEVICE_FUNC inline bool operator!=(const tuple<_TElements...>& __t, const tuple<_UElements...>& __u) {
   return !(__t == __u);
 }
 
 template <typename... _TElements, typename... _UElements>
-DEVICE_FUNC inline bool operator>(const tuple<_TElements...>& __t, tuple<_UElements...>& __u) {
+DEVICE_FUNC inline bool operator>(const tuple<_TElements...>& __t, const tuple<_UElements...>& __u) {
   return __u < __t;
 }
 
 template <typename... _TElements, typename... _UElements>
-DEVICE_FUNC inline bool operator<=(const tuple<_TElements...>& __t, tuple<_UElements...>& __u) {
+DEVICE_FUNC inline bool operator<=(const tuple<_TElements...>& __t, const tuple<_UElements...>& __u) {
   return !(__u < __t);
 }
 
 template <typename... _TElements, typename... _UElements>
-DEVICE_FUNC inline bool operator>=(const tuple<_TElements...>& __t, tuple<_UElements...>& __u) {
+DEVICE_FUNC inline bool operator>=(const tuple<_TElements...>& __t, const tuple<_UElements...>& __u) {
   return !(__t < __u);
 }
 
@@ -674,38 +674,38 @@ struct __make_index_holder : __index_holder_impl<0, __index_holder<>, _Elements.
 
 template <typename... _TElements, size_t... _TIdx, typename... _UElements, size_t... _UIdx>
 DEVICE_FUNC inline tuple<_TElements..., _UElements...> __tuple_cat_helper(const tuple<_TElements...>& __t,
-                                                                          const __index_holder<_TIdx...>&, tuple<_UElements...>& __u, __index_holder<_UIdx...>&) {
+                                                                          const __index_holder<_TIdx...>&, const tuple<_UElements...>& __u, const __index_holder<_UIdx...>&) {
   return tuple<_TElements..., _UElements...>(get<_TIdx>(__t)..., get<_UIdx>(__u)...);
 }
 
 template <typename... _TElements, size_t... _TIdx, typename... _UElements, size_t... _UIdx>
 DEVICE_FUNC inline tuple<_TElements..., _UElements...> __tuple_cat_helper(tuple<_TElements...>&& __t,
-                                                                          const __index_holder<_TIdx...>&, tuple<_UElements...>& __u, __index_holder<_UIdx...>&) {
+                                                                          const __index_holder<_TIdx...>&, const tuple<_UElements...>& __u, const __index_holder<_UIdx...>&) {
   return tuple<_TElements..., _UElements...>(move(get<_TIdx>(__t))..., get<_UIdx>(__u)...);
 }
 
 template <typename... _TElements, size_t... _TIdx, typename... _UElements, size_t... _UIdx>
 DEVICE_FUNC inline tuple<_TElements..., _UElements...> __tuple_cat_helper(const tuple<_TElements...>& __t,
-                                                                          const __index_holder<_TIdx...>&, tuple<_UElements...>&& __u, __index_holder<_UIdx...>&) {
+                                                                          const __index_holder<_TIdx...>&, tuple<_UElements...>&& __u, const __index_holder<_UIdx...>&) {
   return tuple<_TElements..., _UElements...>(get<_TIdx>(__t)..., move(get<_UIdx>(__u))...);
 }
 
 template <typename... _TElements, size_t... _TIdx, typename... _UElements, size_t... _UIdx>
 DEVICE_FUNC inline tuple<_TElements..., _UElements...> __tuple_cat_helper(tuple<_TElements...>&& __t,
-                                                                          const __index_holder<_TIdx...>&, tuple<_UElements...>&& __u, __index_holder<_UIdx...>&) {
+                                                                          const __index_holder<_TIdx...>&, tuple<_UElements...>&& __u, const __index_holder<_UIdx...>&) {
   return tuple<_TElements..., _UElements...>(move(get<_TIdx>(__t))..., move(get<_UIdx>(__u))...);
 }
 
 template <typename... _TElements, typename... _UElements>
 DEVICE_FUNC inline tuple<_TElements..., _UElements...> tuple_cat(
-    const tuple<_TElements...>& __t, tuple<_UElements...>& __u) {
+    const tuple<_TElements...>& __t, const tuple<_UElements...>& __u) {
   return __tuple_cat_helper(__t, typename __make_index_holder<_TElements...>::type(), __u,
                             typename __make_index_holder<_UElements...>::type());
 }
 
 template <typename... _TElements, typename... _UElements>
 DEVICE_FUNC inline tuple<_TElements..., _UElements...> tuple_cat(
-    const tuple<_TElements...>&& __t, tuple<_UElements...>& __u) {
+    tuple<_TElements...>&& __t, const tuple<_UElements...>& __u) {
   return __tuple_cat_helper(move(__t), typename __make_index_holder<_TElements...>::type(), __u,
                             typename __make_index_holder<_UElements...>::type());
 }
