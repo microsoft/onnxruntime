@@ -2562,13 +2562,16 @@ class SymbolicShapeInference:
             kv_num_heads = get_attribute(node, "kv_num_heads")
             query_shape = self._get_shape(node, 0)
             output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
-            if query_shape is not None and len(query_shape) == 2 and is_literal(query_shape[1]):
-                if is_latent_kv:
-                    head_size = query_shape[1] // num_heads
-                    v_head_size = get_attribute(node, "v_head_size", 0) or head_size
-                else:
-                    head_size = query_shape[1] // (num_heads + 2 * kv_num_heads)
-                    v_head_size = head_size
+            # The head width is only recoverable when the query hidden size divides evenly. Otherwise the
+            # node is malformed (or the attributes are missing) and we fall back to generic propagation
+            # instead of silently emitting a truncated output width.
+            head_size = None
+            if query_shape is not None and len(query_shape) == 2 and is_literal(query_shape[1]) and num_heads:
+                divisor = num_heads if is_latent_kv else (num_heads + 2 * (kv_num_heads or 0))
+                if divisor > 0 and query_shape[1] % divisor == 0:
+                    head_size = query_shape[1] // divisor
+            if head_size is not None:
+                v_head_size = (get_attribute(node, "v_head_size", 0) or head_size) if is_latent_kv else head_size
                 vi = self.known_vi_[node.output[0]]
                 vi.CopyFrom(
                     helper.make_tensor_value_info(
@@ -2581,9 +2584,15 @@ class SymbolicShapeInference:
             self._propagate_shape_and_type(node)
 
         # The cache outputs alias the cache inputs, so they carry the cache element type and shape.
-        # value_cache_out is absent in LATENT mode.
+        # value_cache (input 4) and value_cache_out (output 2) are absent in LATENT mode, so guard the
+        # aliased input as well: a node may declare the output while omitting the corresponding input.
         for output_index, input_index in ((1, 3), (2, 4)):
-            if len(node.output) > output_index and node.output[output_index]:
+            if (
+                len(node.output) > output_index
+                and node.output[output_index]
+                and len(node.input) > input_index
+                and node.input[input_index]
+            ):
                 self._propagate_shape_and_type(node, input_index, output_index)
 
     def _infer_GroupQueryAttention(self, node):  # noqa: N802

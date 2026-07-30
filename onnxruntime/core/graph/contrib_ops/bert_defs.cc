@@ -1498,6 +1498,10 @@ void PagedAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
       }
     } else if (ctx.getNumOutputs() != 3) {
       fail_shape_inference("Key cache and value cache output tensors must be both present or both absent.");
+    } else if (!ctx.hasInput(4)) {
+      // value_cache is schema-optional (it must be absent for LATENT), so a SEPARATE node could omit it
+      // while still declaring value_cache_out. Fail with a clear message instead of reading input 4.
+      fail_shape_inference("value_cache is required when value_cache_out is present.");
     }
     // Types: the cache outputs alias the cache inputs, so their element type comes from inputs 3/4
     // (T_CACHE) rather than from the query (T) — the two differ for a quantized cache. This has to
