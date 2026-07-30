@@ -18,7 +18,9 @@ namespace onnxruntime::llm {
 namespace kernels {
 namespace moe_gemv {
 
-inline constexpr int64_t kMaxProfiledExpandedRows = 8;
+// Cover Qwen-style top_k=8 MTP decode. An (N+1)-token verification for
+// num_speculative_tokens=N expands to (N+1)*8 rows, up to 64 for N=7.
+inline constexpr int64_t kMaxProfiledExpandedRows = 64;
 inline constexpr int64_t kMaxProfiledExpandedRowsForSmallProblemDim = 4;
 inline constexpr int64_t kMinProfiledProblemDim = 512;
 // Lowered from 704 to 512 so block-wise decode shapes (e.g. Qwen top_k=8,

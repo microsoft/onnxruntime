@@ -631,7 +631,7 @@ class TestQMoENVFP4(unittest.TestCase):
 
     # ================================================================
     # Fused FP4 GEMV decode fast path (block size 16). The GEMV support window requires
-    # n, k >= 512 and expanded rows (num_tokens * top_k) <= 8, plus SwiGLU fusion, so these
+    # n, k >= 512 and expanded rows (num_tokens * top_k) <= 64, plus SwiGLU fusion, so these
     # decode-shaped SwiGLU cases route through the NVFP4 GEMV kernel (gemv_mode="1"). The
     # gemv_mode="0" companion forces the dequant fallback on the identical shape; both must
     # match the exact dequantized reference.
@@ -668,6 +668,37 @@ class TestQMoENVFP4(unittest.TestCase):
             num_experts=4,
             top_k=2,
             num_tokens=2,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+            gemv_mode="0",
+        )
+
+    @parameterized.expand(
+        [
+            (TensorProto.FLOAT16, 2),
+            (TensorProto.BFLOAT16, 2),
+            (TensorProto.FLOAT16, 3),
+        ]
+    )
+    def test_nvfp4_gemv_mtp_swiglu(self, onnx_dtype, num_tokens):
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=8,
+            top_k=8,
+            num_tokens=num_tokens,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+            gemv_mode="1",
+        )
+
+    def test_nvfp4_fp16_gemv_mtp_fallback_swiglu(self):
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=8,
+            top_k=8,
+            num_tokens=3,
             onnx_dtype=TensorProto.FLOAT16,
             use_swiglu=True,
             gemv_mode="0",
