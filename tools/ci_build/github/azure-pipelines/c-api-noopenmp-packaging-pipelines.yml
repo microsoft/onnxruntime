@@ -67,6 +67,20 @@ parameters:
 
 resources:
   repositories:
+  # DAWN dependencies
+  - repository: abseil-cpp
+    type: git
+    name: Lotus-Dependencies/abseil-cpp
+  - repository: jinja2
+    type: git
+    name: Lotus-Dependencies/jinja2
+  - repository: markupsafe
+    type: git
+    name: Lotus-Dependencies/markupsafe
+  - repository: protobuf
+    type: git
+    name: Lotus-Dependencies/protobuf
+  # testing
   - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
     type: github
     endpoint: ort-examples
@@ -118,6 +132,12 @@ extends:
         ignoreDirectories: '$(Build.Repository.LocalPath)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/benchmark,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11/tests,$(Build.Repository.LocalPath)/cmake/external/onnxruntime-extensions,$(Build.Repository.LocalPath)/js/react_native/e2e/node_modules,$(Build.Repository.LocalPath)/js/node_modules,$(Build.Repository.LocalPath)/onnxruntime-inference-examples,$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/benchmark,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11/tests,$(Build.SourcesDirectory)/cmake/external/onnxruntime-extensions,$(Build.SourcesDirectory)/js/react_native/e2e/node_modules,$(Build.SourcesDirectory)/js/node_modules,$(Build.SourcesDirectory)/onnxruntime-inference-examples,$(Build.BinariesDirectory)'
       sourceRepositoriesToScan:
         exclude:
+        # dependencies used by DAWN
+        - repository: abseil-cpp
+        - repository: jinja2
+        - repository: markupsafe
+        - repository: protobuf
+        # tests
         - repository: onnxruntime-inference-examples
       spotBugs:
         enabled: false

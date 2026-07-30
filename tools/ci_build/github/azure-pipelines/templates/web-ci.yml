@@ -76,8 +76,8 @@ stages:
     workspace:
       clean: all
     steps:
-    - checkout: self
-      submodules: false
+    - template: jobs/checkout-and-git-redirect.yml
+
     - script: |
         git submodule sync -- cmake/external/onnx
         git submodule update --init -- cmake/external/onnx

@@ -54,7 +54,8 @@ jobs:
           value: ${{ variables.linux_trt_version_cuda12 }}
     pool: ${{ parameters.machine_pool }}
     steps:
-      - checkout: self
+      - template: ../../templates/jobs/checkout-and-git-redirect.yml
+
       - task: DownloadPipelineArtifact@2
         inputs:
           artifact: 'linux_gpu_wheel_x86_64'

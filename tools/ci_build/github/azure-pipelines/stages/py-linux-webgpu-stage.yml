@@ -48,9 +48,9 @@ stages:
           value: ''
       - template: ../templates/common-variables.yml
     steps:
-      - checkout: self
-        clean: true
-        submodules: recursive
+      - template: ../templates/jobs/checkout-and-git-redirect.yml
+        parameters:
+          submodules: true
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
 

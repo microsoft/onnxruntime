@@ -74,9 +74,9 @@ jobs:
     clean: all
 
   steps:
-  - checkout: self
-    clean: true
-    submodules: recursive
+  - template: jobs/checkout-and-git-redirect.yml
+    parameters:
+      submodules: true
 
   - template: setup-build-tools.yml
     parameters:

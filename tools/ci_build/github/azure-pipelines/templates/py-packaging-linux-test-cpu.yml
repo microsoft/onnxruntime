@@ -42,9 +42,8 @@ jobs:
     clean: all
   pool: ${{ parameters.machine_pool }}
   steps:
-  - checkout: self
-    clean: true
-    submodules: none
+  - template: jobs/checkout-and-git-redirect.yml
+
   - download: build   # pipeline resource identifier.
     artifact: 'drop-linux-cpu-${{ parameters.arch }}-${{parameters.ep}}'
 

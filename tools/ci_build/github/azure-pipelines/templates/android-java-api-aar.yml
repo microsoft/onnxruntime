@@ -74,15 +74,13 @@ jobs:
     ${{ if contains(parameters.pool_name, 'mac')}}:
       os: macOS
 
-  templateContext:        
+  templateContext:
     outputs:
     - output: pipelineArtifact
       targetPath: $(Build.BinariesDirectory)/.artifacts
       artifactName: ${{parameters.artifactName}}
   steps:
-  - checkout: self
-    clean: true
-    submodules: none
+  - template: jobs/checkout-and-git-redirect.yml
 
   - task: CmdLine@2
     displayName: Create artifacts directory

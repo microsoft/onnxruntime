@@ -61,9 +61,7 @@ stages:
         --configuration Release
         --nuget-config "$(Build.SourcesDirectory)\NuGet.config"
     steps:
-    - checkout: self
-      clean: true
-      submodules: none
+    - template: ../templates/jobs/checkout-and-git-redirect.yml
 
     - template: ../templates/setup-build-tools.yml
       parameters:
