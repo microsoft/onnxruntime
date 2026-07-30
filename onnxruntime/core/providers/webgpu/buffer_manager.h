@@ -4,14 +4,13 @@
 #pragma once
 
 #include <iosfwd>
-#include <mutex>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "core/providers/webgpu/webgpu_external_header.h"
 
 #include "core/framework/execution_provider.h"
+#include "core/providers/webgpu/shared_buffer_pool.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -103,52 +102,6 @@ class IBufferCacheManager {
     }
   }
 };
-
-//
-// SharedBufferPool holds the free buffers that sessions hand back to each other.
-//
-// It is deliberately the *only* piece of buffer state shared across sessions. Splitting the
-// cache per session instead would make steady-state GPU memory scale with the number of live
-// sessions (measured: 8 identical sessions went from 241 MB with a shared pool to 1585 MB with
-// per-session pools), because every session would keep its own high-water mark of intermediates.
-//
-// The complementary half - the "released but not yet submitted" list - stays private to each
-// session (see the cache managers), which is what makes sharing safe: a buffer only becomes
-// visible to other sessions once the releasing session has submitted its commands. Handing it
-// over earlier is what previously produced silently wrong results.
-//
-// Thread safety: all methods are internally synchronized. The critical section covers only
-// map/vector operations - no GPU calls, no command encoding, no shader compilation - so it is
-// on the order of 100ns and does not serialize sessions in any meaningful way.
-//
-class SharedBufferPool {
- public:
-  // `limits` maps bucket size -> maximum number of buffers retained for that size. An empty map
-  // means unbounded and accepts any size (the "simple" cache policy).
-  explicit SharedBufferPool(std::unordered_map<size_t, size_t> limits);
-  ~SharedBufferPool();
-
-  // Rounds a request up to the nearest bucket size. Immutable after construction, so no lock.
-  size_t CalculateBufferSize(size_t request_size) const;
-
-  // Takes a buffer of exactly `buffer_size` out of the pool, or nullptr if none is available.
-  WGPUBuffer TryAcquire(size_t buffer_size);
-
-  // Returns buffers to the pool, releasing any that exceed the configured limit. `buffers` is
-  // cleared. Called only after the owning session has submitted the commands using them.
-  void Return(std::vector<std::pair<WGPUBuffer, size_t>>& buffers);
-
- private:
-  const std::unordered_map<size_t, size_t> limits_;
-  std::vector<size_t> sorted_sizes_;  // immutable after construction
-  std::unordered_map<size_t, std::vector<WGPUBuffer>> free_buffers_;
-  std::mutex mutex_;
-};
-
-// Pools shared by every session on a WebGpuContext: bucketed for storage buffers, unbounded for
-// the small uniform buffers.
-std::unique_ptr<SharedBufferPool> CreateDefaultStorageBufferPool();
-std::unique_ptr<SharedBufferPool> CreateDefaultUniformBufferPool();
 
 //
 // BufferManager manages operations on buffers.

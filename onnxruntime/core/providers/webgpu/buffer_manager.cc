@@ -9,10 +9,6 @@ namespace webgpu {
 
 namespace {
 
-constexpr size_t NormalizeBufferSize(size_t size) {
-  return (size + 15) / 16 * 16;
-}
-
 // WebGPU requires that the copy size in CopyBufferToBuffer must be a multiple of 4 bytes.
 constexpr size_t NormalizeCopySize(size_t size) {
   return (size + 3) / 4 * 4;
@@ -136,37 +132,6 @@ class SimpleCacheManager : public IBufferCacheManager {
 };
 
 // TODO: maybe use different bucket size for storage and uniform buffers?
-constexpr std::initializer_list<std::pair<const size_t, size_t>> BUCKET_DEFAULT_LIMIT_TABLE = {
-    {64, 250},
-    {128, 200},
-    {256, 200},
-    {512, 200},
-    {2048, 230},
-    {4096, 200},
-    {8192, 50},
-    {16384, 50},
-    {32768, 50},
-    {65536, 50},
-    {131072, 50},
-    {262144, 50},
-    {524288, 50},
-    {1048576, 50},
-    {2097152, 30},
-    {4194304, 20},
-    {8388608, 10},
-    {12582912, 10},
-    {16777216, 10},
-    {26214400, 15},
-    {33554432, 22},
-    {44236800, 2},
-    {58982400, 6},
-    // we don't want to cache the bucket sizes below but not caching them
-    // results in some major performance hits for models like sd-turbo.
-    {67108864, 6},
-    {134217728, 6},
-    {167772160, 6},
-};
-
 class BucketCacheManager : public IBufferCacheManager {
  public:
   BucketCacheManager(SharedBufferPool& pool, const CommandRecordingState& recording)
@@ -442,83 +407,6 @@ std::unique_ptr<IBufferCacheManager> CreateBufferCacheManager(BufferCacheMode ca
     default:
       ORT_NOT_IMPLEMENTED("Unsupported buffer cache mode");
   }
-}
-
-SharedBufferPool::SharedBufferPool(std::unordered_map<size_t, size_t> limits)
-    : limits_{std::move(limits)} {
-  sorted_sizes_.reserve(limits_.size());
-  for (const auto& [size, limit] : limits_) {
-    sorted_sizes_.push_back(size);
-  }
-  std::sort(sorted_sizes_.begin(), sorted_sizes_.end());
-
-#ifndef NDEBUG  // if debug build
-  ORT_ENFORCE(std::all_of(sorted_sizes_.begin(), sorted_sizes_.end(),
-                          [](size_t size) { return size % 16 == 0; }),
-              "Bucket sizes must be multiples of 16.");
-#endif
-}
-
-SharedBufferPool::~SharedBufferPool() {
-  for (auto& [size, buffers] : free_buffers_) {
-    for (auto* buffer : buffers) {
-      wgpuBufferRelease(buffer);
-    }
-  }
-}
-
-size_t SharedBufferPool::CalculateBufferSize(size_t request_size) const {
-  auto it = std::lower_bound(sorted_sizes_.begin(), sorted_sizes_.end(), request_size);
-  return it == sorted_sizes_.end() ? NormalizeBufferSize(request_size) : *it;
-}
-
-WGPUBuffer SharedBufferPool::TryAcquire(size_t buffer_size) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  auto it = free_buffers_.find(buffer_size);
-  if (it == free_buffers_.end() || it->second.empty()) {
-    return nullptr;
-  }
-  auto buffer = it->second.back();
-  it->second.pop_back();
-  return buffer;
-}
-
-void SharedBufferPool::Return(std::vector<std::pair<WGPUBuffer, size_t>>& buffers) {
-  if (buffers.empty()) {
-    return;
-  }
-
-  // Collected under the lock, released outside it: wgpuBufferRelease is a device call and has no
-  // business inside a critical section that other sessions are waiting on.
-  std::vector<WGPUBuffer> to_release;
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    for (auto& [buffer, size] : buffers) {
-      auto& bucket = free_buffers_[size];
-      auto limit = limits_.find(size);
-      const bool bounded = !limits_.empty();
-      if (bounded && (limit == limits_.end() || bucket.size() >= limit->second)) {
-        to_release.push_back(buffer);
-      } else {
-        bucket.push_back(buffer);
-      }
-    }
-  }
-  buffers.clear();
-
-  for (auto* buffer : to_release) {
-    wgpuBufferRelease(buffer);
-  }
-}
-
-std::unique_ptr<SharedBufferPool> CreateDefaultStorageBufferPool() {
-  return std::make_unique<SharedBufferPool>(
-      std::unordered_map<size_t, size_t>{BUCKET_DEFAULT_LIMIT_TABLE});
-}
-
-std::unique_ptr<SharedBufferPool> CreateDefaultUniformBufferPool() {
-  // Unbounded: uniform buffers are tiny and the working set is naturally small.
-  return std::make_unique<SharedBufferPool>(std::unordered_map<size_t, size_t>{});
 }
 
 std::ostream& operator<<(std::ostream& os, BufferCacheMode mode) {
