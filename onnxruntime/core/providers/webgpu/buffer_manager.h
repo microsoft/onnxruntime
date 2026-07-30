@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <atomic>
 #include <iosfwd>
 #include <mutex>
 #include <unordered_map>
@@ -33,10 +32,10 @@ struct CommandRecordingState {
   wgpu::ComputePassEncoder compute_pass_encoder;
   uint32_t num_pending_dispatches = 0;
 
-  // True between the creation of a command encoder and the submit that finishes it. Read from
-  // buffer release, which can happen on a different thread than the one recording (a tensor may
-  // outlive the Run that produced it and be dropped elsewhere), hence atomic.
-  std::atomic<bool> has_unsubmitted_work{false};
+  // True between the creation of a command encoder and the submit that finishes it. Decides
+  // whether a released buffer can be published to the shared pool immediately or has to wait
+  // for this session's submit.
+  bool has_unsubmitted_work = false;
 };
 
 // For command capture and replay

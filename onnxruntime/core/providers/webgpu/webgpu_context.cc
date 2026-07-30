@@ -889,7 +889,7 @@ void WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
   }
   recording.command_encoder = nullptr;
   recording.num_pending_dispatches = 0;
-  recording.has_unsubmitted_work.store(false, std::memory_order_release);
+  recording.has_unsubmitted_work = false;
 }
 
 void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,

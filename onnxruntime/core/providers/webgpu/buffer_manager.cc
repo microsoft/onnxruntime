@@ -111,7 +111,7 @@ class SimpleCacheManager : public IBufferCacheManager {
   // write into a buffer that this session has recorded but not yet submitted work for.
   void ReleaseBuffer(WGPUBuffer buffer) override {
     const size_t size = static_cast<size_t>(wgpuBufferGetSize(buffer));
-    if (!recording_.has_unsubmitted_work.load(std::memory_order_acquire)) {
+    if (!recording_.has_unsubmitted_work) {
       ReturnOne(pool_, buffer, size);
       return;
     }
@@ -199,7 +199,7 @@ class BucketCacheManager : public IBufferCacheManager {
     // With nothing recorded but unsubmitted, this buffer's last use is already on the queue, so
     // it is safe to publish immediately. This is the path taken when tensors are dropped outside
     // a Run; without it every session would sit on its final outputs until its next submit.
-    if (!recording_.has_unsubmitted_work.load(std::memory_order_acquire)) {
+    if (!recording_.has_unsubmitted_work) {
       ReturnOne(pool_, buffer, size);
       return;
     }

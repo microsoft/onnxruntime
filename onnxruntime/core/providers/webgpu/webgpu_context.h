@@ -180,7 +180,7 @@ class WebGpuContext final {
   const wgpu::CommandEncoder& GetCommandEncoder(CommandRecordingState& recording) {
     if (!recording.command_encoder) {
       recording.command_encoder = device_.CreateCommandEncoder();
-      recording.has_unsubmitted_work.store(true, std::memory_order_release);
+      recording.has_unsubmitted_work = true;
     }
     return recording.command_encoder;
   }
