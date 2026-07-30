@@ -59,7 +59,7 @@ __global__ void UnpackRoPEAppend(
     const int num_heads,
     const int kv_num_heads,
     const int head_size,
-    const int d,               // packed QKV hidden stride = (num_heads + 2*kv_num_heads) * head_size
+    const int d,  // packed QKV hidden stride = (num_heads + 2*kv_num_heads) * head_size
     // RoPE position bound: number of valid entries in cos_cache/sin_cache. This is always an
     // ABSOLUTE position limit and must not be conflated with the KV cache capacity below. For a
     // windowed (shorter-than-total) cache the two differ, and using the capacity here would
