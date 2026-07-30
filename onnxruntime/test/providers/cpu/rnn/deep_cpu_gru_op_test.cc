@@ -203,7 +203,7 @@ TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsNoBiasLayout1) {
   const std::vector<float> W_data{0.1f, 0.2f, 0.3f,
                                   1.f, 2.f, 3.f,
                                   10.f, 11.f, 12.f};
-  const std::vector<float> R_data(3 * 3, 0.1f);
+  const std::vector<float> R_data(3 * 3 * 3, 0.1f);
   const std::vector<float> Y_data{
       // batch 0
       0.4750208f, 0.450166f, 0.4255575f,
