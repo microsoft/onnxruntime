@@ -38,10 +38,13 @@
 namespace onnxruntime {
 namespace proto_io {
 
-// proto.ParseFromArray(data, size)
+// Parse a proto from a raw memory buffer.
+// Uses ArrayInputStream + ParseFromZeroCopyStream so that the same ZeroCopy
+// path is used for both the protobuf and the onnx-light backends.
 template <typename Proto>
 inline bool ParseFromArray(Proto& proto, const void* data, int size) {
-  return proto.ParseFromArray(data, size);
+  google::protobuf::io::ArrayInputStream zero_copy_input(data, size);
+  return proto.ParseFromZeroCopyStream(&zero_copy_input);
 }
 
 // proto.ParseFromString(data)
