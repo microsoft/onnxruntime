@@ -40,7 +40,10 @@ local_rank = get_rank()
 ORT_DTYPE = TensorProto.FLOAT16
 NP_TYPE = np.float16 if ORT_DTYPE == TensorProto.FLOAT16 else np.float32
 THRESHOLD_TP = 3e-2
-THRESHOLD_EP = 1e-6
+# Expert parallelism is not bit-exact anymore: the sharded and the unsharded session run the same
+# CUTLASS MoE kernels with a different number of experts per rank, so they may pick a different GEMM
+# tactic and accumulate in a different order. The difference stays within a couple of fp16 ulps.
+THRESHOLD_EP = 3e-2
 
 
 def create_moe_onnx_graph(
