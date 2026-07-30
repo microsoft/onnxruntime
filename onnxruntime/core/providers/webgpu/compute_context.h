@@ -230,8 +230,9 @@ class ComputeContext final : public ComputeContextBase {
   // Fill a GPU tensor with zeros.
   //
   inline void FillZero(Tensor& dst) {
-    webgpu_context_.EndComputePass();
-    auto& command_encoder = webgpu_context_.GetCommandEncoder();
+    auto& recording = ep_.BufferManager().Recording();
+    webgpu_context_.EndComputePass(recording);
+    auto& command_encoder = webgpu_context_.GetCommandEncoder(recording);
     WGPUBuffer buffer = reinterpret_cast<WGPUBuffer>(dst.MutableDataRaw());
     command_encoder.ClearBuffer(buffer, 0, dst.SizeInBytes());
   }

@@ -178,6 +178,16 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     for (size_t i = 0; i < supported_features.featureCount; i++) {
       device_features_.insert(supported_features.features[i]);
     }
+#if !defined(__wasm__)
+    // Without this feature Dawn's device-level entry points (buffer creation, Queue::Submit,
+    // WriteBuffer) are not thread-safe, so sessions sharing this context on different threads
+    // can corrupt Dawn's internal state. Per-session command recording alone does not cover it.
+    if (!DeviceHasFeature(wgpu::FeatureName::ImplicitDeviceSynchronization)) {
+      LOGS_DEFAULT(WARNING) << "WebGPU: ImplicitDeviceSynchronization is not available on this "
+                               "device. Using multiple inference sessions concurrently from "
+                               "different threads is not safe.";
+    }
+#endif
     // cache adapter info
 #if !defined(__wasm__)
     if (DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
@@ -187,18 +197,15 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_));
 
     // create buffer manager
+    buffer_cache_config_ = config.buffer_cache_config;
+    shared_storage_pool_ = CreateDefaultStorageBufferPool();
+    shared_uniform_pool_ = CreateDefaultUniformBufferPool();
     buffer_mgr_ = BufferManagerFactory::Create(*this,
+                                               default_recording_,
                                                config.buffer_cache_config.storage.mode,
                                                config.buffer_cache_config.uniform.mode,
                                                config.buffer_cache_config.query_resolve.mode,
                                                config.buffer_cache_config.default_entry.mode);
-
-    // create initializer buffer manager.
-    initializer_buffer_mgr_ = BufferManagerFactory::Create(*this,
-                                                           BufferCacheMode::LazyRelease,
-                                                           BufferCacheMode::LazyRelease,
-                                                           BufferCacheMode::Disabled,
-                                                           BufferCacheMode::Disabled);
 
     // create program manager
     program_mgr_ = std::make_unique<ProgramManager>(*this);
@@ -491,6 +498,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
   WGPUBuffer uniform_buffer = nullptr;
   const webgpu::BufferManager& buffer_mgr = ComputeContextBase::BufferManagerAccessor::Get(context);
+  CommandRecordingState& recording = buffer_mgr.Recording();
   if (uniform_buffer_total_size > 0) {
     std::vector<uint8_t> uniform_data_buffer(uniform_buffer_total_size);
 
@@ -502,9 +510,9 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
     device_queue_.WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
   }
 
-  const auto& compute_pass_encoder = GetComputePassEncoder();
+  const auto& compute_pass_encoder = GetComputePassEncoder(recording);
 
-  WriteTimestamp(num_pending_dispatches_ * 2);
+  WriteTimestamp(recording, recording.num_pending_dispatches * 2);
 
   const size_t total_buffer_count = inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0);
 
@@ -530,8 +538,8 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
     buffer_mgr.Release(uniform_buffer);
   }
 
-  WriteTimestamp(num_pending_dispatches_ * 2 + 1);
-  ++num_pending_dispatches_;
+  WriteTimestamp(recording, recording.num_pending_dispatches * 2 + 1);
+  ++recording.num_pending_dispatches;
 
   // Update profiling data after LaunchComputePipeline
   if (is_profiling_) {
@@ -553,13 +561,13 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
     }
   }
 
-  if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||
+  if (recording.num_pending_dispatches >= max_num_pending_dispatches_ ||
       (is_profiling_ && query_type_ == TimestampQueryType::AtPasses)) {
-    EndComputePass();
+    EndComputePass(recording);
   }
-  if (num_pending_dispatches_ >= max_num_pending_dispatches_) {
+  if (recording.num_pending_dispatches >= max_num_pending_dispatches_) {
     Flush(buffer_mgr);
-    num_pending_dispatches_ = 0;
+    recording.num_pending_dispatches = 0;
   }
 
   return Status::OK();
@@ -624,6 +632,7 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
 #if !defined(__wasm__)
       wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses,
       wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix,
+      wgpu::FeatureName::ImplicitDeviceSynchronization,
 #endif
       wgpu::FeatureName::TimestampQuery,
       wgpu::FeatureName::ShaderF16,
@@ -666,12 +675,12 @@ wgpu::Limits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) cons
   return required_limits;
 }
 
-void WebGpuContext::WriteTimestamp(uint32_t query_index) {
+void WebGpuContext::WriteTimestamp(CommandRecordingState& recording, uint32_t query_index) {
   if (!is_profiling_ || graph_capture_state_ == GraphCaptureState::Capturing || query_type_ != TimestampQueryType::InsidePasses) {
     return;
   }
 
-  const auto& compute_pass_encoder = GetComputePassEncoder();
+  const auto& compute_pass_encoder = GetComputePassEncoder(recording);
   compute_pass_encoder.WriteTimestamp(query_set_, query_index);
 }
 
@@ -832,15 +841,16 @@ Status WebGpuContext::PopErrorScope() {
 }
 
 void WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
-  if (!current_command_encoder_) {
+  auto& recording = buffer_mgr.Recording();
+  if (!recording.command_encoder) {
     return;
   }
 
-  EndComputePass();
+  EndComputePass(recording);
 
-  if (is_profiling_ && num_pending_dispatches_ > 0 && graph_capture_state_ != GraphCaptureState::Capturing) {
-    ORT_ENFORCE(num_pending_dispatches_ == pending_kernels_.size(),
-                "Number of pending dispatches (", num_pending_dispatches_,
+  if (is_profiling_ && recording.num_pending_dispatches > 0 && graph_capture_state_ != GraphCaptureState::Capturing) {
+    ORT_ENFORCE(recording.num_pending_dispatches == pending_kernels_.size(),
+                "Number of pending dispatches (", recording.num_pending_dispatches,
                 ") does not match pending kernels size (", pending_kernels_.size(), ")");
 
     // Capture the CPU elapsed time from the ORT profiler's start to this first submit.
@@ -849,8 +859,8 @@ void WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
       profiling_first_submit_cpu_offset_us_ = TimeDiffMicroSeconds(profiling_start_time_);
     }
 
-    uint32_t query_count = num_pending_dispatches_ * 2;
-    current_command_encoder_.ResolveQuerySet(
+    uint32_t query_count = recording.num_pending_dispatches * 2;
+    recording.command_encoder.ResolveQuerySet(
         query_set_,
         0,
         query_count,
@@ -862,7 +872,7 @@ void WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
     bufferDescriptor.usage = wgpu::BufferUsage::MapRead | wgpu::BufferUsage::CopyDst;
     wgpu::Buffer query_read_buffer = device_.CreateBuffer(&bufferDescriptor);
 
-    current_command_encoder_.CopyBufferToBuffer(
+    recording.command_encoder.CopyBufferToBuffer(
         query_resolve_buffer_,
         0,
         query_read_buffer,
@@ -872,13 +882,14 @@ void WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
     pending_queries_.emplace_back(std::move(pending_kernels_), query_read_buffer);
     pending_kernels_.clear();
   }
-  auto command_buffer = current_command_encoder_.Finish();
+  auto command_buffer = recording.command_encoder.Finish();
   device_queue_.Submit(1, &command_buffer);
   if (graph_capture_state_ != GraphCaptureState::Replaying) {
     buffer_mgr.RefreshPendingBuffers(graph_capture_state_);
   }
-  current_command_encoder_ = nullptr;
-  num_pending_dispatches_ = 0;
+  recording.command_encoder = nullptr;
+  recording.num_pending_dispatches = 0;
+  recording.has_unsubmitted_work = false;
 }
 
 void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
@@ -971,12 +982,13 @@ void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captu
 void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands, const webgpu::BufferManager& buffer_manager) {
   LOGS_DEFAULT(VERBOSE) << "Replay with external storage";
   graph_capture_state_ = GraphCaptureState::Replaying;
+  auto& recording = buffer_manager.Recording();
   // Replay all captured commands from the provided vector
   const size_t command_count = captured_commands.size();
   for (size_t i = 0; i < command_count; ++i) {
     auto& command = captured_commands[i];
-    const auto& compute_pass_encoder = GetComputePassEncoder();
-    WriteTimestamp(num_pending_dispatches_ * 2);
+    const auto& compute_pass_encoder = GetComputePassEncoder(recording);
+    WriteTimestamp(recording, recording.num_pending_dispatches * 2);
 
     // Restore profiling info when profiling is enabled. All commands are expected
     // to have profiling data in this mode to keep pending_kernels_ consistent
@@ -1000,15 +1012,15 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
       compute_pass_encoder.DispatchWorkgroups(command.dispatch_group[0], command.dispatch_group[1], command.dispatch_group[2]);
     }
 
-    WriteTimestamp(num_pending_dispatches_ * 2 + 1);
-    ++num_pending_dispatches_;
-    if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||
+    WriteTimestamp(recording, recording.num_pending_dispatches * 2 + 1);
+    ++recording.num_pending_dispatches;
+    if (recording.num_pending_dispatches >= max_num_pending_dispatches_ ||
         (is_profiling_ && query_type_ == TimestampQueryType::AtPasses)) {
-      EndComputePass();
+      EndComputePass(recording);
     }
-    if (num_pending_dispatches_ >= max_num_pending_dispatches_) {
+    if (recording.num_pending_dispatches >= max_num_pending_dispatches_) {
       Flush(buffer_manager);
-      num_pending_dispatches_ = 0;
+      recording.num_pending_dispatches = 0;
     }
   }
 
