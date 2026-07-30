@@ -312,7 +312,6 @@ Return Value:
     this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelRvv;
     this->RopeDispatch = &MlasRopeDispatchRvv;
     this->LayerNormF32Kernel = &MlasLayerNormKernelRvv;
-    this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchRvv;
 
 #if defined(MLAS_USE_RVV_ZVFH)
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration()) {
@@ -386,7 +385,6 @@ Return Value:
     this->QuantizeLinearU4Kernel = MlasQuantizeLinearU4Kernel;
     this->DequantizeLinearS8Kernel = MlasDequantizeLinearS8Kernel;
     this->DequantizeLinearU8Kernel = MlasDequantizeLinearU8Kernel;
-    this->DequantizeBlockwise2BitsKernel = MlasDequantizeBlockwise2BitsKernel;
 #ifndef __APPLE__
 #ifndef FORCE_GENERIC_ALGORITHMS
     this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelSse;
@@ -484,7 +482,6 @@ Return Value:
                 this->GemmU8U8Dispatch = &MlasGemmU8U8DispatchAvx2;
                 this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx2;
                 this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx2;
-                this->DequantizeBlockwise2BitsKernel = MlasDequantizeBlockwise2BitsKernelAvx2;
 
                 this->GemmFloatKernel = MlasGemmFloatKernelFma3;
                 this->GemmDoubleKernel = MlasGemmDoubleKernelFma3;
@@ -508,7 +505,6 @@ Return Value:
                 this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelAvx2;
                 this->RopeDispatch = &MlasRopeDispatchAvx2;
                 this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchAvx2;
-                this->KVQuantGemmFp16Supported_ = (Cpuid1[2] & (1u << 29)) != 0;  // F16C
 
                 // TODO(vraspar): check if this really goes here or if there are other platform reqs that we need to fulfill
                 this->LutGenKernel = &MlasLutGenKernelAvx2;
@@ -595,7 +591,6 @@ Return Value:
                             this->Q8Q4GemmDispatch = &MlasQ8Q4GemmDispatchAvx512vnni;
                             this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512vnni;
                             this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchAvx512Vnni;
-                            this->KVQuantGemmFp16Supported_ = (Cpuid1[2] & (1u << 29)) != 0;  // F16C
                         }
                     }
                 }
@@ -612,14 +607,14 @@ Return Value:
                 }
 
 #ifndef __APPLE__
-#if (defined(_MSC_VER) && (_MSC_VER >= 1933)) || (defined(__GNUC__) && (__GNUC__ >= 13))
+#if defined(MLAS_SUPPORTS_AVX512FP16)
                 //
                 // Check if the processor supports AVX NE CONVERT.
                 //
                 if ((Cpuid7_1[3] & (0b1 << 5)) != 0) {
                     this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelAvx;
                 }
-#endif  // (defined(_MSC_VER) && (_MSC_VER >= 1933)) || (defined(__GNUC__) && (__GNUC__ >= 13))
+#endif  // MLAS_SUPPORTS_AVX512FP16
 
 
                 //
@@ -651,7 +646,6 @@ Return Value:
     this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchNeon;
     this->GemmU8S8Dispatch = &MlasGemmX8S8DispatchNeon;
     this->GemmS8S8Dispatch = &MlasGemmX8S8DispatchNeon;
-    this->GemmS8U8Dispatch = &MlasGemmQuantDispatchDefault;
     this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchNeon;
     this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchNeon;
     this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchNeon;
@@ -660,7 +654,6 @@ Return Value:
     this->SoftmaxDispatch = &MlasSoftmaxDispatchNeon;
     this->EltwiseDispatch = &MlasEltwiseDispatchNeon;
     this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchNeon;
-    this->KVQuantGemmFp16Supported_ = true;
 
 #if defined(MLAS_USE_ARM_NEON_NCHWC)
     // Use the AArch64 assembly implementation on non-Windows platforms.
@@ -704,7 +697,6 @@ Return Value:
     if (HasDotProductInstructions) {
         this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchUdot;
         this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUdot;
-        this->GemmS8U8Dispatch = &MlasGemmU8X8DispatchUdot;
         this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchSdot;
         this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchSdot;
         this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchDot;
@@ -712,20 +704,13 @@ Return Value:
     }
 
 #if defined(USE_KLEIDIAI)
-    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME() || MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()){
+    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
         this->MlasSGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;
         this->MlasSGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSize;
         this->MlasSGemmPackBOverride = ArmKleidiAI::MlasGemmPackB;
         this->MlasDynamicQGemmBatchOverride = ArmKleidiAI::MlasDynamicQGemmBatch;
         this->MlasDynamicQGemmPackBSizeOverride = ArmKleidiAI::MlasDynamicQGemmPackBSize;
         this->MlasDynamicQGemmPackBOverride = ArmKleidiAI::MlasDynamicQGemmPackB;
-        this->MlasHalfGemmBatchOverride = ArmKleidiAI::MlasHalfGemmBatch;
-        this->MlasHalfGemmPackBSizeOverride = ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize;
-        this->MlasHalfGemmPackBOverride = ArmKleidiAI::MlasHalfGemmKleidiAIPackB;
-        this->MlasHalfConvPrepareOverride = ArmKleidiAI::MlasHalfConvPrepare;
-        this->MlasHalfConvOverride = ArmKleidiAI::MlasHalfConv;
-        this->MlasHalfConvPackWeightsAndBiasSizeOverride = ArmKleidiAI::MlasHalfConvPackWeightsAndBiasSize;
-        this->MlasHalfConvPackWeightsAndBiasOverride = ArmKleidiAI::MlasHalfConvPackWeightsAndBias;
         this->MlasConvPrepareOverride = ArmKleidiAI::MlasConvPrepare;
         this->MlasConvOverride = ArmKleidiAI::MlasConv;
         this->MlasConvSGemmRouteOverride = ArmKleidiAI::MlasConvSGemmRoute;
