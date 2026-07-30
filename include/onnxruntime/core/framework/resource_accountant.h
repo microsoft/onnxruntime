@@ -11,7 +11,8 @@
 #include <variant>
 
 #include "core/common/common.h"
-#include "core/common/inlined_containers_fwd.h"
+#include "core/common/inlined_containers.h"
+#include "core/framework/tensor_shape.h"
 
 namespace onnxruntime {
 
@@ -21,6 +22,9 @@ class Node;
 #else
 struct Node;
 #endif
+
+/// Map from input/NodeArg name to its max shape override for workspace estimation.
+using MaxShapeOverrideMap = InlinedHashMap<std::string, TensorShape>;
 
 // Common holder for potentially different resource accounting
 // for different EPs
@@ -89,6 +93,17 @@ class IResourceAccountant {
 
   static std::string MakeUniqueNodeName(const Node& node);
 
+  /// Set the max shape overrides for workspace estimation.
+  /// Called during graph partitioner initialization when session.max_shape_override is set.
+  void SetMaxShapeOverrides(MaxShapeOverrideMap overrides) {
+    max_shape_overrides_ = std::move(overrides);
+  }
+
+  /// Get the max shape overrides (may be empty if not configured).
+  const MaxShapeOverrideMap& GetMaxShapeOverrides() const {
+    return max_shape_overrides_;
+  }
+
  protected:
   // Override to discard EP-specific pending weight tracking.
   // Default no-op for stats-based accountants.
@@ -97,6 +112,7 @@ class IResourceAccountant {
  private:
   bool stop_assignment_ = false;
   std::optional<ResourceCount> threshold_;
+  MaxShapeOverrideMap max_shape_overrides_;
 };
 
 // A map of Ep Type to a resource accountant for this EP

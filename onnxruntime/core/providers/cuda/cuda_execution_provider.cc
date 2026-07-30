@@ -8,6 +8,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/parse_string.h"
 #include "core/framework/int4.h"
+#include "core/framework/node_shape_resolver.h"
 #include "core/framework/resource_accountant.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
@@ -3542,6 +3543,22 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         }
       }
 #endif
+
+      // Level-1 generic workspace estimation: if max shape overrides are available, resolve
+      // input shapes for this node. This enables future per-kernel estimation functions to
+      // compute workspace sizes from shapes at partition time.
+      const auto& shape_overrides = resource_accountant->GetMaxShapeOverrides();
+      if (!shape_overrides.empty()) {
+        auto resolved_shapes = ResolveNodeInputShapes(*node, graph, shape_overrides);
+        if (resolved_shapes.has_value()) {
+          // TODO: Look up workspace estimation function from KernelCreateInfo when available.
+          // For now, log that shapes were resolved successfully for this node.
+          LOGS(logger, VERBOSE) << "CUDA_EP Level-1: Resolved " << resolved_shapes->size()
+                                << " input shapes for node '" << node->Name()
+                                << "' (workspace estimation pending kernel registration)";
+        }
+      }
+
       const auto would_be_consumed = resource_count + consumed_memory;
       LOGS(logger, INFO) << "CUDA_EP Node: " << node_index << " Memory usage : " << resource_count
                          << " would be consumed " << static_cast<size_t>(would_be_consumed)

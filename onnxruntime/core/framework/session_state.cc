@@ -16,6 +16,8 @@
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/session_state_utils.h"
 #include "core/framework/utils.h"
+#include "core/framework/max_shape_override.h"
+#include "core/framework/node_shape_resolver.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -1758,6 +1760,41 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   if (!disable_prepacking) {
     ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count,
                                                           session_options.initializers_to_share_map));
+  }
+
+  // Level-2 workspace declaration: after kernels are created and PrePack'd, call
+  // DeclareWorkspaceRequirements() on each kernel with resolved input shapes.
+  // This collects workspace slot requirements for future offset planning.
+  {
+    const std::string max_shape_config = session_options.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsMaxShapeOverride, "");
+    MaxShapeOverrideMap shape_overrides;
+    if (!max_shape_config.empty()) {
+      ORT_RETURN_IF_ERROR(ParseMaxShapeOverride(max_shape_config, shape_overrides));
+    }
+
+    for (const auto& node : graph_viewer_->Nodes()) {
+      auto* kernel = GetMutableKernel(node.Index());
+      if (kernel == nullptr) continue;
+
+      auto resolved = ResolveNodeInputShapes(node, *graph_viewer_, shape_overrides);
+      if (!resolved.has_value()) continue;
+
+      InlinedVector<WorkspaceRequirement> requirements;
+      ORT_RETURN_IF_ERROR(kernel->DeclareWorkspaceRequirements(
+          gsl::make_span(resolved->data(), resolved->size()), requirements));
+
+      if (!requirements.empty()) {
+        LOGS(logger_, VERBOSE) << "Level-2 workspace: node '" << node.Name()
+                               << "' declared " << requirements.size() << " workspace slot(s)";
+        // TODO: Store requirements in WorkspacePattern for offset planning.
+        // For now, log the declarations so we can verify the wiring works.
+        for (const auto& req : requirements) {
+          LOGS(logger_, VERBOSE) << "  slot_id=" << req.slot_id
+                                 << " size=" << req.size_bytes << " bytes";
+        }
+      }
+    }
   }
 
   ORT_RETURN_IF_ERROR(

@@ -1,0 +1,136 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "gtest/gtest.h"
+#include "core/common/inlined_containers.h"
+#include "core/framework/max_shape_override.h"
+#include "core/framework/workspace_requirement.h"
+
+namespace onnxruntime::test {
+
+// ============================================================================
+// ParseMaxShapeOverride tests
+// ============================================================================
+
+TEST(MaxShapeOverride, ParseEmpty) {
+  MaxShapeOverrideMap result;
+  ASSERT_TRUE(ParseMaxShapeOverride("", result).IsOK());
+  EXPECT_TRUE(result.empty());
+}
+
+TEST(MaxShapeOverride, ParseSingleEntry) {
+  MaxShapeOverrideMap result;
+  ASSERT_TRUE(ParseMaxShapeOverride("input_ids:[8,4096]", result).IsOK());
+  ASSERT_EQ(result.size(), 1u);
+  auto it = result.find("input_ids");
+  ASSERT_NE(it, result.end());
+  EXPECT_EQ(it->second.NumDimensions(), 2u);
+  EXPECT_EQ(it->second[0], 8);
+  EXPECT_EQ(it->second[1], 4096);
+}
+
+TEST(MaxShapeOverride, ParseMultipleEntries) {
+  MaxShapeOverrideMap result;
+  ASSERT_TRUE(ParseMaxShapeOverride("input_ids:[8,4096];attention_mask:[8,4096];position_ids:[8,4096]", result).IsOK());
+  EXPECT_EQ(result.size(), 3u);
+  EXPECT_NE(result.find("input_ids"), result.end());
+  EXPECT_NE(result.find("attention_mask"), result.end());
+  EXPECT_NE(result.find("position_ids"), result.end());
+}
+
+TEST(MaxShapeOverride, ParseWithWhitespace) {
+  MaxShapeOverrideMap result;
+  ASSERT_TRUE(ParseMaxShapeOverride("  input_ids : [ 8 , 4096 ] ; mask : [ 1 , 128 ]  ", result).IsOK());
+  EXPECT_EQ(result.size(), 2u);
+  auto it = result.find("input_ids");
+  ASSERT_NE(it, result.end());
+  EXPECT_EQ(it->second[0], 8);
+  EXPECT_EQ(it->second[1], 4096);
+}
+
+TEST(MaxShapeOverride, ParseScalar) {
+  MaxShapeOverrideMap result;
+  ASSERT_TRUE(ParseMaxShapeOverride("scalar_input:[]", result).IsOK());
+  ASSERT_EQ(result.size(), 1u);
+  auto it = result.find("scalar_input");
+  ASSERT_NE(it, result.end());
+  EXPECT_EQ(it->second.NumDimensions(), 0u);
+}
+
+TEST(MaxShapeOverride, ParseHighRank) {
+  MaxShapeOverrideMap result;
+  ASSERT_TRUE(ParseMaxShapeOverride("tensor:[2,3,4,5,6]", result).IsOK());
+  auto it = result.find("tensor");
+  ASSERT_NE(it, result.end());
+  EXPECT_EQ(it->second.NumDimensions(), 5u);
+  EXPECT_EQ(it->second[0], 2);
+  EXPECT_EQ(it->second[4], 6);
+}
+
+TEST(MaxShapeOverride, ErrorMissingBracket) {
+  MaxShapeOverrideMap result;
+  auto status = ParseMaxShapeOverride("input_ids:[8,4096", result);
+  EXPECT_FALSE(status.IsOK());
+}
+
+TEST(MaxShapeOverride, ErrorMissingColon) {
+  MaxShapeOverrideMap result;
+  auto status = ParseMaxShapeOverride("input_ids[8,4096]", result);
+  EXPECT_FALSE(status.IsOK());
+}
+
+TEST(MaxShapeOverride, ErrorNegativeDimension) {
+  MaxShapeOverrideMap result;
+  auto status = ParseMaxShapeOverride("input_ids:[-1,4096]", result);
+  EXPECT_FALSE(status.IsOK());
+}
+
+TEST(MaxShapeOverride, ErrorZeroDimension) {
+  MaxShapeOverrideMap result;
+  auto status = ParseMaxShapeOverride("input_ids:[0,4096]", result);
+  EXPECT_FALSE(status.IsOK());
+}
+
+TEST(MaxShapeOverride, ErrorDuplicate) {
+  MaxShapeOverrideMap result;
+  auto status = ParseMaxShapeOverride("input_ids:[8,4096];input_ids:[4,2048]", result);
+  EXPECT_FALSE(status.IsOK());
+}
+
+TEST(MaxShapeOverride, ErrorEmptyName) {
+  MaxShapeOverrideMap result;
+  auto status = ParseMaxShapeOverride(":[8,4096]", result);
+  EXPECT_FALSE(status.IsOK());
+}
+
+TEST(MaxShapeOverride, ErrorNonNumericDimension) {
+  MaxShapeOverrideMap result;
+  auto status = ParseMaxShapeOverride("input_ids:[batch,4096]", result);
+  EXPECT_FALSE(status.IsOK());
+}
+
+// ============================================================================
+// WorkspaceRequirement struct tests
+// ============================================================================
+
+TEST(WorkspaceRequirement, BasicStruct) {
+  WorkspaceRequirement req{/*.size_bytes=*/4096, /*.slot_id=*/0, /*.alignment_bytes=*/0};
+  EXPECT_EQ(req.size_bytes, 4096u);
+  EXPECT_EQ(req.slot_id, 0);
+  EXPECT_EQ(req.alignment_bytes, 0u);
+}
+
+TEST(WorkspaceRequirement, MultipleSlots) {
+  InlinedVector<WorkspaceRequirement> reqs;
+  reqs.push_back({1024, 0, 0});
+  reqs.push_back({2048, 1, 256});
+  reqs.push_back({512, 2, 0});
+
+  EXPECT_EQ(reqs.size(), 3u);
+  EXPECT_EQ(reqs[0].slot_id, 0);
+  EXPECT_EQ(reqs[1].size_bytes, 2048u);
+  EXPECT_EQ(reqs[1].alignment_bytes, 256u);
+  EXPECT_EQ(reqs[2].slot_id, 2);
+}
+
+}  // namespace onnxruntime::test
