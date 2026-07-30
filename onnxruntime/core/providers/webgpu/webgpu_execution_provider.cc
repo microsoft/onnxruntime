@@ -35,6 +35,7 @@
 #include "core/providers/webgpu/tensor/grid_sample.h"
 #include "core/providers/webgpu/tensor/reshape.h"
 #include "core/providers/webgpu/generator/range.h"
+#include "core/providers/webgpu/tensor/tile.h"
 #include "core/providers/webgpu/tensor/trilu.h"
 #include "core/providers/webgpu/tensor/unsqueeze.h"
 #include "core/providers/webgpu/math/binary_elementwise_ops.h"
@@ -384,8 +385,6 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, Flatten)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 20, Flatten)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 21, Flatten)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 6, 12, Tile)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, Tile)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 14, Trilu)>,
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 17, LayerNormalization)>,
@@ -530,6 +529,12 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   // Register Where kernels with conditional int64 support
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateWhereVersionedKernelInfo<9, 15>(enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateWhereKernelInfo<16>(enable_int64)));
+
+  // Register Tile kernels with conditional int64 support.
+  // Tile is a pure data-movement op; int64 is safe because element values are never
+  // interpreted or used in shader arithmetic.
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateTileVersionedKernelInfo<6, 12>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateTileKernelInfo<13>(enable_int64)));
 
   // Register ReduceSum kernels with conditional int64 support
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReduceSumVersionedKernelInfo<1, 10>(enable_int64)));

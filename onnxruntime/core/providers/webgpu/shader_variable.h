@@ -71,7 +71,9 @@ struct ShaderUsage {
     UseGetByIndices = 2048,               // use implementation of fn get_{name}_by_indices
     UseGetByOffsetSegments = 4096,        // use implementation of fn get_{name}_by_offset
     UseSetByOffsetSegments = 8192,        // use implementation of fn set_{name}_by_offset
+    UseGetByOffsetSegmentsStorage = 16384,  // use implementation of fn get_{name}_by_offset_storage
     UseUniform = 32768,                   // use uniform for shape and stride
+    UseSetByOffsetSegmentsStorage = 65536,  // use implementation of fn set_{name}_by_offset_storage
   } usage;
 
   ShaderUsage(decltype(usage) usage) : usage{usage} {}
@@ -190,17 +192,20 @@ class ShaderVariableHelper : public ShaderIndicesHelper {
   // \param indices_var: name of the indices variable ({varname}_indices_t).
   inline std::string GetByIndices(std::string_view indices_var) const;
 
-  // create a WGSL expression ({varname}_value_t) for getting data at the given offset.
+  // create a WGSL expression for getting data at the given offset.
+  // Normally returns a {varname}_value_t expression; for int64/uint64 with use_storage_type=true,
+  // returns the storage type (vec2<u32>) instead.
   // \param offset: a WGSL expression (u32) representing the offset.
+  // \param use_storage_type: for int64/uint64, if true returns vec2<u32> (storage type).
   template <typename TOffset>
-  inline std::string GetByOffset(TOffset&& offset) const;
+  inline std::string GetByOffset(TOffset&& offset, bool use_storage_type = false) const;
 
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ShaderVariableHelper);
 
   void Impl(OStringStream& ss) const;
 
-  std::string GetByOffsetImpl(std::string_view offset) const;
+  std::string GetByOffsetImpl(std::string_view offset, bool use_storage_type) const;
   std::string SetByOffsetImpl(std::string_view offset, std::string_view value, bool use_storage_type) const;
   std::string_view StorageType() const;
   std::string_view ValueType() const;
@@ -329,8 +334,8 @@ inline std::string ShaderVariableHelper::SetByIndices(std::string_view indices_v
 }
 
 template <typename TOffset>
-inline std::string ShaderVariableHelper::GetByOffset(TOffset&& offset) const {
-  return GetByOffsetImpl(detail::pass_as_string(offset));
+inline std::string ShaderVariableHelper::GetByOffset(TOffset&& offset, bool use_storage_type) const {
+  return GetByOffsetImpl(detail::pass_as_string(offset), use_storage_type);
 }
 
 template <typename... TIndices>
