@@ -13,13 +13,21 @@
 //   * bool ParseFromString(const std::string&)
 //   * bool ParseFromIstream(std::istream*)
 //   * bool ParseFromFileDescriptor(int)
+//   * bool ParseFromZeroCopyStream(ZeroCopyInputStream*)  [protobuf] /
+//          ParseFromZeroCopyStream(BinaryStream*)         [onnx-light]
 //   * std::string SerializeAsString() const
 //   * bool SerializeToString(std::string*) const
 //   * bool SerializeToArray(void*, int) const
 //   * bool SerializeToOstream(std::ostream*) const
 //   * bool SerializeToFileDescriptor(int) const
+//
+// onnx-light 0.1.9+ also provides google::protobuf::io compat headers
+// (zero_copy_stream_impl.h, coded_stream.h) so code written against the
+// protobuf ZeroCopy API compiles unchanged against onnx-light.
 
 #include "core/graph/onnx_protobuf.h"
+
+#include <google/protobuf/io/zero_copy_stream_impl.h>
 
 #include <istream>
 #include <ostream>
@@ -41,9 +49,12 @@ inline bool ParseFromString(Proto& proto, const std::string& data) {
 }
 
 // Parse a proto from a std::istream (reads the stream to EOF).
+// Uses ParseFromZeroCopyStream with IstreamInputStream so that the EOF check
+// catches truncated inputs (mirrors the original protobuf-based implementation).
 template <typename Proto>
 inline bool ParseFromIStream(Proto& proto, std::istream& stream) {
-  return proto.ParseFromIstream(&stream);
+  google::protobuf::io::IstreamInputStream zero_copy_input(&stream);
+  return proto.ParseFromZeroCopyStream(&zero_copy_input) && stream.eof();
 }
 
 // Parse a proto from an OS file descriptor (reads to EOF).
