@@ -24,6 +24,8 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/scoped_resource.h"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.h"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_sha256.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_sha256.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.h"
     "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.cc"
     "${ONNXRUNTIME_ROOT}/core/quantization/*.h"

@@ -6,6 +6,7 @@
 #include "core/platform/posix/telemetry_context.h"
 #include "core/platform/posix/telemetry_no_throw.h"
 #include "core/platform/posix/telemetry_sampling.h"
+#include "core/platform/posix/telemetry_sha256.h"
 #include "core/platform/telemetry_environment.h"
 #include "core/platform/telemetry_guid.h"
 #include "core/platform/telemetry_redaction.h"
@@ -38,10 +39,8 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstdlib>
-#include <iomanip>
 #include <limits>
 #include <random>
-#include <sstream>
 #include <string_view>
 #include <utility>
 
@@ -270,24 +269,10 @@ class EventBuilder {
   EventProperties Build() { return std::move(props_); }
 };
 
-// Hash a device ID with a stable, platform-independent algorithm (FNV-1a 64-bit) and format as
-// fixed-width hex, so the same device maps to the same product-specific id across runs and platforms.
-// std::hash is implementation-defined (and may be process-salted), so it is unsuitable here.
-// Ensures raw device identifiers are never sent over the wire.
+// All Microsoft AI developer tools read the same UUID and derive the same upload identifier.
+// The raw UUID is never transmitted.
 [[maybe_unused]] static std::string HashDeviceId(const std::string& id) {
-  static constexpr std::string_view kDeviceIdHashSalt = "onnxruntime:";
-  uint64_t hash = 14695981039346656037ULL;  // FNV-1a offset basis
-  for (unsigned char c : kDeviceIdHashSalt) {
-    hash ^= static_cast<uint64_t>(c);
-    hash *= 1099511628211ULL;
-  }
-  for (unsigned char c : id) {
-    hash ^= static_cast<uint64_t>(c);
-    hash *= 1099511628211ULL;  // FNV-1a prime
-  }
-  std::ostringstream oss;
-  oss << std::hex << std::setfill('0') << std::setw(16) << hash;
-  return oss.str();
+  return telemetry_internal::Sha256::HashStringHex(id);
 }
 
 namespace {
