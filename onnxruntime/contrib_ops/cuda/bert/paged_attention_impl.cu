@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cassert>
+#include <cfloat>  // FLT_MAX
 #include <cuda_fp16.h>
 #include <type_traits>
 #include "core/providers/cuda/cu_inc/common.cuh"
