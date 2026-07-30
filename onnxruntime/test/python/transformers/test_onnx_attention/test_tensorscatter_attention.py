@@ -1032,6 +1032,8 @@ _CUDNN_DECODE_TOTAL_KV = 8
 
 # sdpa_kernel bitmask (AttentionBackend in attention_common.h): select cuDNN and keep the unfused
 # kernel as a fallback for configs where cuDNN is unsupported.
+_SDPA_KERNEL_FLASH_ATTENTION = 1
+_SDPA_KERNEL_EFFICIENT_ATTENTION = 2
 _SDPA_KERNEL_CUDNN_FLASH_ATTENTION = 8
 _SDPA_KERNEL_MATH = 16
 _SDPA_KERNEL_CUDNN_WITH_MATH_FALLBACK = _SDPA_KERNEL_CUDNN_FLASH_ATTENTION | _SDPA_KERNEL_MATH
@@ -2212,9 +2214,6 @@ _PRESENT_COPY_SKIPPED_TAG = "present_copy_skipped"
 _ORT_LOG_SEVERITY_VERBOSE = 0
 _ORT_LOG_SEVERITY_WARNING = 2
 
-_SDPA_KERNEL_FLASH_ATTENTION = 1
-_SDPA_KERNEL_EFFICIENT_ATTENTION = 2
-
 
 def _run_tensorscatter_attention_4d(
     batch_size,
@@ -2231,9 +2230,10 @@ def _run_tensorscatter_attention_4d(
     """4-D BNSH TensorScatter + Attention, with present_key/value optionally aliased to the K/V
     cache buffer (the pattern llm_attention_detail::CopyKVToPresent's skip targets).
 
-    Runs at VERBOSE log severity and captures native stderr so callers can assert on
-    _PRESENT_COPY_SKIPPED_TAG. Returns (output, present_k, present_v, ref_output, ref_present_k,
-    ref_present_v, log_text).
+    Runs at VERBOSE log severity and captures native stderr (present_copy_skipped tag) and
+    stdout (SdpaKernel=... dispatch tier, via ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO) so callers
+    can assert on both. Returns (output, present_k, present_v, ref_output, ref_present_k,
+    ref_present_v, log_text, sdpa_kernel).
     """
     torch.manual_seed(123)
     std = 0.2
@@ -2276,93 +2276,140 @@ def _run_tensorscatter_attention_4d(
         is_causal=0,
         use_4d=True,
     )
+
     # llm_attention_detail::CopyKVToPresent logs via LOGS_DEFAULT(VERBOSE), which goes through
     # the process-wide DEFAULT logger (LoggingManager::DefaultLogger()), not the per-session
-    # logger session_options.log_severity_level configures. Both must be set to VERBOSE.
+    # logger session_options.log_severity_level configures. Both must be set to VERBOSE, and
+    # BOTH global-state mutations (default logger severity, ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO)
+    # must be restored even if session creation itself throws — everything from here to the run
+    # is wrapped in one try/finally so no failure path can leak process-wide state to later tests.
     set_default_logger_severity(_ORT_LOG_SEVERITY_VERBOSE)
-    session_options = SessionOptions()
-    session_options.log_severity_level = _ORT_LOG_SEVERITY_VERBOSE
-    session = InferenceSession(
-        onnx_model_str,
-        session_options,
-        providers=["CUDAExecutionProvider"],
-        provider_options=[provider_options],
-    )
-
-    key_cache_ort = OrtValue.ortvalue_from_numpy(key_cache_t.cpu().numpy(), "cuda", 0)
-    value_cache_ort = OrtValue.ortvalue_from_numpy(value_cache_t.cpu().numpy(), "cuda", 0)
-    new_k_ort = OrtValue.ortvalue_from_numpy(new_k_t.cpu().numpy(), "cuda", 0)
-    new_v_ort = OrtValue.ortvalue_from_numpy(new_v_t.cpu().numpy(), "cuda", 0)
-    write_indices_ort = OrtValue.ortvalue_from_numpy(numpy.array(scatter_positions, dtype=numpy.int64), "cuda", 0)
-    query_ort = OrtValue.ortvalue_from_numpy(query_t.cpu().numpy(), "cuda", 0)
-    nonpad_ort = OrtValue.ortvalue_from_numpy(numpy.array(nonpad_seqlens, dtype=numpy.int64), "cuda", 0)
-
-    output_shape = [batch_size, q_num_heads, q_seq_len, head_size]
-    output_ort = OrtValue.ortvalue_from_shape_and_type(output_shape, numpy.float16, "cuda", 0)
-
-    io_binding = session.io_binding()
-    io_binding.bind_ortvalue_input("key_cache", key_cache_ort)
-    io_binding.bind_ortvalue_input("value_cache", value_cache_ort)
-    io_binding.bind_ortvalue_input("new_k", new_k_ort)
-    io_binding.bind_ortvalue_input("new_v", new_v_ort)
-    io_binding.bind_ortvalue_input("write_indices", write_indices_ort)
-    io_binding.bind_ortvalue_input("query", query_ort)
-    io_binding.bind_ortvalue_input("nonpad_kv_seqlen", nonpad_ort)
-    io_binding.bind_ortvalue_output("output", output_ort)
-    # In-place TensorScatter: the updated cache always aliases the cache input buffer.
-    io_binding.bind_ortvalue_output("updated_key_cache", key_cache_ort)
-    io_binding.bind_ortvalue_output("updated_value_cache", value_cache_ort)
-    if alias_present:
-        # Full 3-way alias: key_cache input == updated_key_cache output == present_key output.
-        # This is the production pattern CopyKVToPresent's skip targets.
-        io_binding.bind_ortvalue_output("present_key", key_cache_ort)
-        io_binding.bind_ortvalue_output("present_value", value_cache_ort)
-    else:
-        present_shape = [batch_size, kv_num_heads, total_kv_seq_len, head_size]
-        present_k_ort = OrtValue.ortvalue_from_shape_and_type(present_shape, numpy.float16, "cuda", 0)
-        present_v_ort = OrtValue.ortvalue_from_shape_and_type(present_shape, numpy.float16, "cuda", 0)
-        io_binding.bind_ortvalue_output("present_key", present_k_ort)
-        io_binding.bind_ortvalue_output("present_value", present_v_ort)
-
+    previous_debug_info_env = os.environ.get("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO")
+    os.environ["ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO"] = "1"
+    session = None
+    io_binding = None
     try:
-        with _CaptureNativeFd(_STDERR_FD) as captured_log:
+        session_options = SessionOptions()
+        session_options.log_severity_level = _ORT_LOG_SEVERITY_VERBOSE
+        session = InferenceSession(
+            onnx_model_str,
+            session_options,
+            providers=["CUDAExecutionProvider"],
+            provider_options=[provider_options],
+        )
+
+        key_cache_ort = OrtValue.ortvalue_from_numpy(key_cache_t.cpu().numpy(), "cuda", 0)
+        value_cache_ort = OrtValue.ortvalue_from_numpy(value_cache_t.cpu().numpy(), "cuda", 0)
+        new_k_ort = OrtValue.ortvalue_from_numpy(new_k_t.cpu().numpy(), "cuda", 0)
+        new_v_ort = OrtValue.ortvalue_from_numpy(new_v_t.cpu().numpy(), "cuda", 0)
+        write_indices_ort = OrtValue.ortvalue_from_numpy(numpy.array(scatter_positions, dtype=numpy.int64), "cuda", 0)
+        query_ort = OrtValue.ortvalue_from_numpy(query_t.cpu().numpy(), "cuda", 0)
+        nonpad_ort = OrtValue.ortvalue_from_numpy(numpy.array(nonpad_seqlens, dtype=numpy.int64), "cuda", 0)
+
+        output_shape = [batch_size, q_num_heads, q_seq_len, head_size]
+        output_ort = OrtValue.ortvalue_from_shape_and_type(output_shape, numpy.float16, "cuda", 0)
+
+        io_binding = session.io_binding()
+        io_binding.bind_ortvalue_input("key_cache", key_cache_ort)
+        io_binding.bind_ortvalue_input("value_cache", value_cache_ort)
+        io_binding.bind_ortvalue_input("new_k", new_k_ort)
+        io_binding.bind_ortvalue_input("new_v", new_v_ort)
+        io_binding.bind_ortvalue_input("write_indices", write_indices_ort)
+        io_binding.bind_ortvalue_input("query", query_ort)
+        io_binding.bind_ortvalue_input("nonpad_kv_seqlen", nonpad_ort)
+        io_binding.bind_ortvalue_output("output", output_ort)
+        # In-place TensorScatter: the updated cache always aliases the cache input buffer.
+        io_binding.bind_ortvalue_output("updated_key_cache", key_cache_ort)
+        io_binding.bind_ortvalue_output("updated_value_cache", value_cache_ort)
+        if alias_present:
+            # Full 3-way alias: key_cache input == updated_key_cache output == present_key output.
+            # This is the production pattern CopyKVToPresent's skip targets.
+            io_binding.bind_ortvalue_output("present_key", key_cache_ort)
+            io_binding.bind_ortvalue_output("present_value", value_cache_ort)
+        else:
+            present_shape = [batch_size, kv_num_heads, total_kv_seq_len, head_size]
+            present_k_ort = OrtValue.ortvalue_from_shape_and_type(present_shape, numpy.float16, "cuda", 0)
+            present_v_ort = OrtValue.ortvalue_from_shape_and_type(present_shape, numpy.float16, "cuda", 0)
+            io_binding.bind_ortvalue_output("present_key", present_k_ort)
+            io_binding.bind_ortvalue_output("present_value", present_v_ort)
+
+        # fd 2 (stderr) carries the present_copy_skipped VERBOSE tag; fd 1 (stdout) carries the
+        # AttentionKernelDebugInfo SdpaKernel=... dispatch tier. Both fds are redirected
+        # independently, so nesting (as elsewhere in this file) is safe.
+        with (
+            _CaptureNativeFd(_STDERR_FD) as captured_log,
+            _CaptureNativeFd(_STDOUT_FD) as captured_stdout,
+        ):
             io_binding.synchronize_inputs()
             session.run_with_iobinding(io_binding)
             io_binding.synchronize_outputs()
+        log_text = captured_log.text
+        sdpa_kernel = _parse_sdpa_kernel(captured_stdout.text)
+
+        output = output_ort.numpy()
+        if alias_present:
+            present_k = key_cache_ort.numpy()
+            present_v = value_cache_ort.numpy()
+        else:
+            present_k = io_binding.get_outputs()[1].numpy()
+            present_v = io_binding.get_outputs()[2].numpy()
     finally:
         set_default_logger_severity(_ORT_LOG_SEVERITY_WARNING)
-
-    output = output_ort.numpy()
-    if alias_present:
-        present_k = key_cache_ort.numpy()
-        present_v = value_cache_ort.numpy()
-    else:
-        present_k = io_binding.get_outputs()[1].numpy()
-        present_v = io_binding.get_outputs()[2].numpy()
+        if previous_debug_info_env is None:
+            os.environ.pop("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", None)
+        else:
+            os.environ["ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO"] = previous_debug_info_env
 
     del io_binding, session
     gc.collect()
-    return output, present_k, present_v, ref_output, ref_present_k, ref_present_v, captured_log.text
+    return output, present_k, present_v, ref_output, ref_present_k, ref_present_v, log_text, sdpa_kernel
 
 
 @unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping tests.")
 class TestAttentionPresentKVCopySkip(unittest.TestCase):
     """present_key/present_value D2D-copy skip when aliased to the external KV cache buffer."""
 
+    # (name, provider_options, expected SdpaKernel=... tier, "is this tier expected to be
+    # available on this HW/build" predicate). The predicate gates the dispatch assertion the
+    # same way the existing cuDNN decode tests do (see cudnn_decode_supported/
+    # require_cudnn_sdpa): a "PASSED" on numeric correctness alone does NOT prove which backend
+    # ran, since flash/efficient/cudnn all OR in a MATH fallback bit — without this assertion a
+    # regression that broke 3 of the 4 backends' call sites while leaving unfused/MATH intact
+    # would still pass all 8 tests green.
     _CASES = (
-        ("flash", {"sdpa_kernel": str(_SDPA_KERNEL_FLASH_ATTENTION | _SDPA_KERNEL_MATH)}),
-        ("efficient", {"sdpa_kernel": str(_SDPA_KERNEL_EFFICIENT_ATTENTION | _SDPA_KERNEL_MATH)}),
-        ("cudnn", {"sdpa_kernel": str(_SDPA_KERNEL_CUDNN_WITH_MATH_FALLBACK)}),
-        ("math", {"sdpa_kernel": str(_SDPA_KERNEL_MATH)}),
+        (
+            "flash",
+            {"sdpa_kernel": str(_SDPA_KERNEL_FLASH_ATTENTION | _SDPA_KERNEL_MATH)},
+            "FLASH_ATTENTION",
+            has_flash_attention,
+        ),
+        (
+            "efficient",
+            {"sdpa_kernel": str(_SDPA_KERNEL_EFFICIENT_ATTENTION | _SDPA_KERNEL_MATH)},
+            "EFFICIENT_ATTENTION",
+            lambda: True,  # cutlass memory-efficient attention supports this class's SM53+ floor.
+        ),
+        (
+            "cudnn",
+            {"sdpa_kernel": str(_SDPA_KERNEL_CUDNN_WITH_MATH_FALLBACK)},
+            "CUDNN_FLASH_ATTENTION",
+            lambda: require_cudnn_sdpa() or cudnn_decode_supported(8, 2, 64),
+        ),
+        (
+            "math",
+            {"sdpa_kernel": str(_SDPA_KERNEL_MATH)},
+            "MATH",
+            lambda: True,  # the unfused/MATH kernel has no HW/build gating.
+        ),
     )
 
     @parameterized.expand(_CASES)
-    def test_copy_skipped_when_present_aliases_cache(self, name, provider_options):
+    def test_copy_skipped_when_present_aliases_cache(self, name, provider_options, expected_kernel, is_supported):
         batch, total_kv, q_seq, q_heads, kv_heads, head_size = 2, 8, 1, 8, 2, 64
         nonpad_seqlens = [4, 6]
         scatter_positions = [3, 5]
 
-        output, present_k, present_v, ref_output, ref_present_k, ref_present_v, log_text = (
+        output, present_k, present_v, ref_output, ref_present_k, ref_present_v, log_text, sdpa_kernel = (
             _run_tensorscatter_attention_4d(
                 batch,
                 total_kv,
@@ -2377,6 +2424,13 @@ class TestAttentionPresentKVCopySkip(unittest.TestCase):
             )
         )
 
+        if is_supported():
+            self.assertEqual(
+                expected_kernel,
+                sdpa_kernel,
+                f"[{name}] expected the {expected_kernel} tier to dispatch on this HW/build, "
+                f"got {sdpa_kernel} — the per-backend coverage this test claims is not real.",
+            )
         self.assertIn(
             _PRESENT_COPY_SKIPPED_TAG,
             log_text,
@@ -2388,12 +2442,12 @@ class TestAttentionPresentKVCopySkip(unittest.TestCase):
         numpy.testing.assert_allclose(present_v, ref_present_v, rtol=rtol["fp16"], atol=atol["fp16"])
 
     @parameterized.expand(_CASES)
-    def test_copy_still_runs_when_present_not_aliased(self, name, provider_options):
+    def test_copy_still_runs_when_present_not_aliased(self, name, provider_options, expected_kernel, is_supported):
         batch, total_kv, q_seq, q_heads, kv_heads, head_size = 2, 8, 1, 8, 2, 64
         nonpad_seqlens = [4, 6]
         scatter_positions = [3, 5]
 
-        output, present_k, present_v, ref_output, ref_present_k, ref_present_v, log_text = (
+        output, present_k, present_v, ref_output, ref_present_k, ref_present_v, log_text, sdpa_kernel = (
             _run_tensorscatter_attention_4d(
                 batch,
                 total_kv,
@@ -2408,6 +2462,13 @@ class TestAttentionPresentKVCopySkip(unittest.TestCase):
             )
         )
 
+        if is_supported():
+            self.assertEqual(
+                expected_kernel,
+                sdpa_kernel,
+                f"[{name}] expected the {expected_kernel} tier to dispatch on this HW/build, "
+                f"got {sdpa_kernel} — the per-backend coverage this test claims is not real.",
+            )
         self.assertNotIn(
             _PRESENT_COPY_SKIPPED_TAG,
             log_text,
