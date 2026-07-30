@@ -175,7 +175,7 @@ void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, cons
   ORT_THROW_IF_ERROR(Env::Default().FileOpenWr(file_path_str, output_fd));
   try {
     ORT_ENFORCE(
-        onnxruntime::proto_io::SerializeToFileDescriptor(tensor_proto, output_fd),
+        onnxruntime::proto_io::SaveToFileDescriptor(tensor_proto, output_fd),
         "Failed to write tensor to file - tensor: ", tensor_name, ", file: ", ToUTF8String(file_path_str));
   } catch (...) {
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(output_fd));

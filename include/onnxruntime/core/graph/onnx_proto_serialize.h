@@ -19,7 +19,6 @@
 //   * bool SerializeToString(std::string*) const
 //   * bool SerializeToArray(void*, int) const
 //   * bool SerializeToOstream(std::ostream*) const
-//   * bool SerializeToFileDescriptor(int) const
 //   * bool SerializeToZeroCopyStream(ZeroCopyOutputStream*) [protobuf] /
 //          SerializeToZeroCopyStream(BinaryWriteStream*)    [onnx-light]
 //
@@ -90,12 +89,6 @@ inline bool SerializeToArray(const Proto& proto, void* data, int size) {
 template <typename Proto>
 inline bool SerializeToOStream(const Proto& proto, std::ostream& stream) {
   return proto.SerializeToOstream(&stream);
-}
-
-// proto.SerializeToFileDescriptor(fd)  (does not take ownership of fd)
-template <typename Proto>
-inline bool SerializeToFileDescriptor(const Proto& proto, int fd) {
-  return proto.SerializeToFileDescriptor(fd);
 }
 
 // Writes the serialized proto to an OS file descriptor without taking ownership of it.
