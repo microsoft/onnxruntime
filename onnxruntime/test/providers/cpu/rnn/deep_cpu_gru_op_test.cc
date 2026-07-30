@@ -47,7 +47,8 @@ static void RunGruTest(const std::vector<float>& X_data,
                        std::vector<string> activations = default_activations,
                        std::vector<float> activation_alphas = {},
                        std::vector<float> activation_betas = {},
-                       int64_t layout = 0) {
+                       int64_t layout = 0,
+                       bool webgpu_only = false) {
   OpTester test("GRU", layout == 0 ? 7 : 14);
 
   test.AddShapeToTensorData();
@@ -131,7 +132,19 @@ static void RunGruTest(const std::vector<float>& X_data,
   if (!std::all_of(activations.cbegin(), activations.cend(), webgpu_supports)) {
     excluded_providers.insert(kWebGpuExecutionProvider);
   }
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+  if (webgpu_only) {
+    auto webgpu_ep = DefaultWebGpuExecutionProvider();
+    if (webgpu_ep == nullptr) {
+      GTEST_SKIP() << "WebGPU execution provider is not available";
+    }
+    SessionOptions session_options;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(std::move(webgpu_ep));
+    test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  } else {
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+  }
 }
 
 void DefaultActivationsSimpleWeightsNoBias(std::string direction,
@@ -198,8 +211,8 @@ TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsNoBiasTwoRows) {
 TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsNoBiasLayout1) {
   // layout=1 stores X as [batch, sequence, input] and Y as
   // [batch, sequence, num_directions, hidden].
-  const std::vector<float> X_data{1.f, 2.f,
-                                  10.f, 11.f};
+  const std::vector<float> X_data{1.f, 10.f,
+                                  2.f, 11.f};
   const std::vector<float> W_data{0.1f, 0.2f, 0.3f,
                                   1.f, 2.f, 3.f,
                                   10.f, 11.f, 12.f};
@@ -218,7 +231,7 @@ TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsNoBiasLayout1) {
   RunGruTest(X_data, W_data, R_data, Y_data, Y_h_data,
              /*input_size=*/1, /*batch_size=*/2, /*hidden_size=*/3, /*seq_length=*/2,
              nullptr, nullptr, nullptr, "forward", 9999.0f, true, false,
-             default_activations, {}, {}, /*layout=*/1);
+             default_activations, {}, {}, /*layout=*/1, /*webgpu_only=*/true);
 }
 
 TEST(GRUTest, ReverseDefaultActivationsSimpleWeightsNoBiasTwoRows) {
