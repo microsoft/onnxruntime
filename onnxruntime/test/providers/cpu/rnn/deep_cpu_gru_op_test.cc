@@ -48,7 +48,7 @@ static void RunGruTest(const std::vector<float>& X_data,
                        std::vector<float> activation_alphas = {},
                        std::vector<float> activation_betas = {},
                        int64_t layout = 0) {
-  OpTester test("GRU");
+  OpTester test("GRU", layout == 0 ? 7 : 14);
 
   test.AddShapeToTensorData();
 
@@ -70,7 +70,8 @@ static void RunGruTest(const std::vector<float>& X_data,
   test.AddAttribute("hidden_size", hidden_size);
   // test.AddAttribute<int64_t>("output_sequence", output_sequence);
   test.AddAttribute<int64_t>("linear_before_reset", linear_before_reset);
-  test.AddAttribute<int64_t>("layout", layout);
+  if (layout != 0)
+    test.AddAttribute<int64_t>("layout", layout);
   // if clip is a very big number (usually it is default value), don't set the clip
   if (clip < 999.f)
     test.AddAttribute<float>("clip", clip);
