@@ -933,6 +933,7 @@ TEST(SplitOperatorTest, InvalidValueInSplitInput_NegativeEntry_Axis0) {
       kQnnExecutionProvider,
       kCoreMLExecutionProvider,
       kDmlExecutionProvider,
+      kOpenVINOExecutionProvider,
   };
   RunTest<float>(axis, splits, input, outputs, excluded_providers,
                  true /*expect_failure*/, true /*split_as_input*/, -1 /*num_outputs*/, false /*is_initializer*/,
@@ -957,6 +958,7 @@ TEST(SplitOperatorTest, InvalidValueInSplitInput_NegativeEntry_NegativeAxis) {
       kQnnExecutionProvider,
       kCoreMLExecutionProvider,
       kDmlExecutionProvider,
+      kOpenVINOExecutionProvider,
   };
   RunTest<float>(axis, splits, input, outputs, excluded_providers,
                  true /*expect_failure*/, true /*split_as_input*/, -1 /*num_outputs*/, false /*is_initializer*/,
