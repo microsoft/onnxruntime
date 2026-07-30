@@ -2783,11 +2783,13 @@ common::Status InferenceSession::Initialize() {
     // PrePack, initializer upload, memory planning) and early return here.
     //
     // Returning here also bypasses the model-save block below, because a compile-only session does not produce its
-    // output via optimized_model_filepath.
+    // output via optimized_model_filepath. We still log the session-creation telemetry and record the
+    // end-of-initialization bookkeeping that the normal path emits, so neither is lost by returning early.
     if (session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionCompileOnly, "0") == "1") {
       LOGS(*session_logger_, INFO)
           << "Compile-only session: skipping session-state finalization. The session is not runnable.";
-      return common::Status::OK();
+      LogSessionCreationTelemetry(graph, model_weight_type, model_graph_hash, model_weight_hash);
+      return RecordSessionCreationEndTelemetry(tp, status);
     }
 
     ORT_RETURN_IF_ERROR_SESSIONID_(
@@ -2860,33 +2862,7 @@ common::Status InferenceSession::Initialize() {
     session_state_->PruneRemovableAttributes();
 
     // and log telemetry
-    std::filesystem::path model_path = graph.ModelPath();
-    std::string model_file_name = PathToUTF8String(model_path.filename().native());
-    bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
-
-    // Populate per-(EP, hardware-device) telemetry data captured once at session
-    // initialization. The graph partitioning is complete at this point, so we can
-    // count how many nodes each EP is assigned. This populates telemetry_.ep_device_info_
-    // and the comma-separated summary strings used to enrich SessionCreation.
-    PopulateEpDeviceInfo(graph);
-
-    env.GetTelemetryProvider().LogSessionCreation(
-        session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
-        graph.DomainToVersionMap(), model_file_name, graph.Name(), model_weight_type, model_graph_hash, model_weight_hash,
-        model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(),
-        telemetry_.ep_device_types_summary_, telemetry_.ep_device_vendor_ids_summary_,
-        telemetry_.ep_versions_summary_,
-        model_has_fp16_inputs, false);
-
-    // Emit one initial EpDeviceUsage event per (EP, device) pair with run counts of 0.
-    // Ensures we capture EP/device topology even for sessions that end before the
-    // first RuntimePerf heartbeat (2s after the first Run()).
-    for (const auto& ep_info : telemetry_.ep_device_info_) {
-      env.GetTelemetryProvider().LogEpDeviceUsage(
-          session_id_, ep_info.ep_type, ep_info.hardware_device_type,
-          ep_info.vendor_id, ep_info.device_id, ep_info.vendor, ep_info.ep_vendor,
-          ep_info.ep_version, ep_info.assigned_node_count, 0, 0);
-    }
+    LogSessionCreationTelemetry(graph, model_weight_type, model_graph_hash, model_weight_hash);
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   }
@@ -2914,26 +2890,7 @@ common::Status InferenceSession::Initialize() {
     LOGS(*session_logger_, ERROR) << status.ErrorMessage();
   }
 
-  if (session_profiler_.IsEnabled()) {
-    session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "session_initialization", tp);
-  }
-
-  if (status.IsOK()) {
-    for (auto& xp : execution_providers_) {
-      auto end_status = xp->OnSessionInitializationEnd();
-      if (status.IsOK()) {
-        status = end_status;
-      }
-    }
-  }
-
-  // Log session creation end telemetry
-  {
-    const Env& init_env = Env::Default();
-    init_env.GetTelemetryProvider().LogSessionCreationEnd(session_id_, status);
-  }
-
-  return status;
+  return RecordSessionCreationEndTelemetry(tp, status);
 }
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
@@ -4284,6 +4241,58 @@ void InferenceSession::PopulateEpDeviceInfo(const onnxruntime::Graph& graph) {
   telemetry_.ep_device_types_summary_ = types_oss.str();
   telemetry_.ep_device_vendor_ids_summary_ = vendor_ids_oss.str();
   telemetry_.ep_versions_summary_ = versions_oss.str();
+}
+
+void InferenceSession::LogSessionCreationTelemetry(const onnxruntime::Graph& graph,
+                                                   const std::string& model_weight_type,
+                                                   const std::string& model_graph_hash,
+                                                   const std::string& model_weight_hash) {
+  const Env& env = Env::Default();
+  std::filesystem::path model_path = graph.ModelPath();
+  std::string model_file_name = PathToUTF8String(model_path.filename().native());
+  bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
+
+  // Populate per-(EP, hardware-device) telemetry data captured once at session
+  // initialization. The graph partitioning is complete at this point, so we can
+  // count how many nodes each EP is assigned. This populates telemetry_.ep_device_info_
+  // and the comma-separated summary strings used to enrich SessionCreation.
+  PopulateEpDeviceInfo(graph);
+
+  env.GetTelemetryProvider().LogSessionCreation(
+      session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
+      graph.DomainToVersionMap(), model_file_name, graph.Name(), model_weight_type, model_graph_hash, model_weight_hash,
+      model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(),
+      telemetry_.ep_device_types_summary_, telemetry_.ep_device_vendor_ids_summary_,
+      telemetry_.ep_versions_summary_,
+      model_has_fp16_inputs, false);
+
+  // Emit one initial EpDeviceUsage event per (EP, device) pair with run counts of 0.
+  // Ensures we capture EP/device topology even for sessions that end before the
+  // first RuntimePerf heartbeat (2s after the first Run()).
+  for (const auto& ep_info : telemetry_.ep_device_info_) {
+    env.GetTelemetryProvider().LogEpDeviceUsage(
+        session_id_, ep_info.ep_type, ep_info.hardware_device_type,
+        ep_info.vendor_id, ep_info.device_id, ep_info.vendor, ep_info.ep_vendor,
+        ep_info.ep_version, ep_info.assigned_node_count, 0, 0);
+  }
+}
+
+common::Status InferenceSession::RecordSessionCreationEndTelemetry(const TimePoint& tp, common::Status status) {
+  if (session_profiler_.IsEnabled()) {
+    session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "session_initialization", tp);
+  }
+
+  if (status.IsOK()) {
+    for (auto& xp : execution_providers_) {
+      auto end_status = xp->OnSessionInitializationEnd();
+      if (status.IsOK()) {
+        status = end_status;
+      }
+    }
+  }
+
+  Env::Default().GetTelemetryProvider().LogSessionCreationEnd(session_id_, status);
+  return status;
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
