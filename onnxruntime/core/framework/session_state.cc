@@ -1766,6 +1766,9 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // initializers belong to the outer graph but the MatMulNBits node is inside a subgraph (e.g. If branch).
   // The augmented map is only used for kernel creation; PrepackConstantInitializedTensors keeps using the
   // unaugmented constant_initialized_tensors_ to avoid double-prepacking outer-scope tensors.
+  // After the subgraph finalization loop below, the parent-scope OrtValue copies in this map are erased
+  // (via outer_scope_parent_only_indices_) to allow the parent's constant_initialized_tensors_ to release
+  // memory once all prepack use counts reach zero.
   if (parent_node != nullptr && parent_ != nullptr) {
     outer_scope_augmented_constant_tensors_ = constant_initialized_tensors_;
 
@@ -1799,6 +1802,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
         auto it = parent_const.find(parent_idx);
         if (it != parent_const.end()) {
           outer_scope_augmented_constant_tensors_.emplace(current_idx, it->second);
+          outer_scope_parent_only_indices_.insert(current_idx);
           break;
         }
 
@@ -1871,6 +1875,19 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     // inputs that are fed through as graph inputs in the graph level holding the subgraphs ? Ideally the planned
     // locations for these would be the locations they are explicitly consumed on in nested subgraphs.
   }
+
+  // Release the extra OrtValue copies from parent scope that were added to the augmented constant
+  // map for this subgraph session state. These copies were needed to let TryGetConstantInput resolve
+  // parent-scope constants during CreateKernels and PrepackConstantInitializedTensors above, and to
+  // let any nested (grandchild) subgraph session states read them via GetConstantInitializedTensorsForKernelCreation().
+  // Now that all subgraphs are fully finalized, the copies are no longer needed. Releasing them lets
+  // the parent's constant_initialized_tensors_ free the underlying tensor buffers once all prepack
+  // use counts reach zero, avoiding a memory regression for large initializers such as quantized B
+  // matrices and scales in MatMulNBits subgraph patterns.
+  for (int idx : outer_scope_parent_only_indices_) {
+    outer_scope_augmented_constant_tensors_.erase(idx);
+  }
+  outer_scope_parent_only_indices_.clear();
 
   return Status::OK();
 }

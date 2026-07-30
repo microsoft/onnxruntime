@@ -6,6 +6,7 @@
 #include <memory>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <string>
 #include <vector>
 
@@ -509,7 +510,14 @@ class SessionState {
   // Populated in FinalizeSessionStateImpl before CreateKernels; empty for top-level graphs.
   // Returned by GetConstantInitializedTensorsForKernelCreation() so kernel constructors and
   // PrePack can resolve parent-graph constants via TryGetConstantInput.
+  // After the subgraph finalization loop, the parent-scope copies in this map are erased
+  // (tracked via outer_scope_parent_only_indices_) to allow parent memory to be freed once
+  // prepack use counts reach zero.
   std::unordered_map<int, OrtValue> outer_scope_augmented_constant_tensors_;
+  // Indices in outer_scope_augmented_constant_tensors_ that were added from parent scope
+  // (not present in constant_initialized_tensors_).  Erased from the augmented map after
+  // all subgraphs are finalized to release the extra OrtValue refcounts.
+  std::unordered_set<int> outer_scope_parent_only_indices_;
   bool outer_scope_augmented_map_built_{false};
 
 #if !defined(DISABLE_SPARSE_TENSORS)
