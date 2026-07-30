@@ -20,7 +20,7 @@ constexpr const char* GetConvAutoPadMode(AutoPadType auto_pad) {
       return "SAME_LOWER";
   }
 
-  return nullptr;
+  return "NOTSET";
 }
 
 constexpr const char* GetPoolAutoPadMode(AutoPadType auto_pad) {
@@ -35,7 +35,7 @@ constexpr const char* GetPoolAutoPadMode(AutoPadType auto_pad) {
       return "SAME";
   }
 
-  return nullptr;
+  return "CALCULATED";
 }
 
 }  // namespace cann
