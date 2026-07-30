@@ -155,7 +155,9 @@ if(WIN32)
     # shell32.dll statically imports user32.dll, which is unavailable under Win32k lockdown. Delay-load
     # shell32.dll so the load-time dependency on user32.dll is deferred until the call is actually made,
     # letting onnxruntime.dll load in lockdown processes.
-    list(APPEND onnxruntime_DELAYLOAD_FLAGS "/DELAYLOAD:shell32.dll")
+    if(onnxruntime_ENABLE_DELAY_LOADING_WIN_DLLS)
+      list(APPEND onnxruntime_DELAYLOAD_FLAGS "/DELAYLOAD:shell32.dll")
+    endif()
   endif()
 endif()
 
