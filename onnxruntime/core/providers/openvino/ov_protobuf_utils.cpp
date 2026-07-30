@@ -41,7 +41,7 @@ void set_float_initializer_data(const void* initializer, float data) {
 
   ORT_ENFORCE(tp->has_raw_data() && tp->raw_data().size() >= sizeof(float),
               "FLOAT initializer has neither float_data nor sufficient raw_data to write a value");
-  std::memcpy(tp->mutable_raw_data()->data(), &data, sizeof(float));
+  tp->set_raw_data(&data, sizeof(float));
 }
 }  // namespace openvino_ep
 }  // namespace onnxruntime
