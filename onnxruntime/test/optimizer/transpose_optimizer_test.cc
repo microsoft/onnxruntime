@@ -11,7 +11,9 @@
 
 #include "core/framework/op_node_proto_helper.h"
 #include "core/graph/graph.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/node_attr_utils.h"
+#include "core/optimizer/initializer.h"
 #include "core/optimizer/transpose_optimization/onnx_transpose_optimization.h"
 #include "core/optimizer/transpose_optimization/optimizer_api.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
@@ -4349,6 +4351,184 @@ TEST(TransposeOptimizerTests, TestReshapeWithMinusOne) {
   TestTransposeReshape({1, 8, 4, 1}, {0, 3, 2, 1},  // transpose input shape and perms. output shape {1, 1, 4, 8}
                        {1, -1, 2, 8},               // reshape 'shape'. -1 -> 2 which is incompatible
                        TransposeReshapeResult::kUnchanged);
+}
+
+// Drives Transpose->Reshape(merge-only) graphs and asserts the post-optimization op layout:
+//   expected_transposes: surviving Transpose count (1 for the typical rewrite, 0 if new perm is identity)
+//   expected_reshape_shape: the shape initializer value on the surviving Reshape
+//   expected_post_transpose_perm: perm attr of the surviving (post-Reshape) Transpose, if any
+static void TestTransposeReshapeFlatten(const std::vector<int64_t>& input_shape,
+                                        const std::vector<int64_t>& perms,
+                                        const std::vector<int64_t>& reshape_shape,
+                                        int expected_transposes,
+                                        const std::vector<int64_t>& expected_reshape_shape,
+                                        const std::vector<int64_t>& expected_post_transpose_perm = {}) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>(input_shape, 0.0, 1.0);
+    auto* mul_arg1 = builder.MakeInput<float>({1}, 0.0, 1.0);
+    auto* reshape_shape_value =
+        builder.MakeInitializer<int64_t>({int64_t(reshape_shape.size())}, reshape_shape);
+
+    auto* mul_out_0 = builder.MakeOutput();
+    auto* transpose_out_0 = builder.MakeIntermediate();
+    auto* reshape_out_0 = builder.MakeIntermediate();
+    auto* identity_out_0 = builder.MakeOutput();
+
+    builder.AddNode("Mul", {input_arg, mul_arg1}, {mul_out_0});
+    auto& transpose_1 = builder.AddNode("Transpose", {mul_out_0}, {transpose_out_0});
+    transpose_1.AddAttribute("perm", perms);
+    builder.AddNode("Reshape", {transpose_out_0, reshape_shape_value}, {reshape_out_0});
+    builder.AddNode("Identity", {reshape_out_0}, {identity_out_0});
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    const auto& graph = session.GetGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Transpose"], expected_transposes);
+    ASSERT_EQ(op_to_count["Reshape"], 1);
+
+    // Locate the (single) Reshape and validate its `shape` initializer.
+    const auto& nodes = graph.Nodes();
+    const Node& reshape = *std::find_if(nodes.begin(), nodes.end(),
+                                        [](const auto& node) { return node.OpType() == "Reshape"; });
+    const ONNX_NAMESPACE::TensorProto* shape_init =
+        graph_utils::GetConstantInitializer(graph, reshape.InputDefs()[1]->Name());
+    ASSERT_NE(shape_init, nullptr);
+    Initializer shape_unpacked(graph, *shape_init, graph.ModelPath());
+    ASSERT_EQ(shape_init->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    const int64_t* shape_data = shape_unpacked.data<int64_t>();
+    std::vector<int64_t> actual_reshape_shape(shape_data, shape_data + shape_unpacked.size());
+    ASSERT_THAT(actual_reshape_shape, testing::ContainerEq(expected_reshape_shape));
+
+    if (expected_transposes == 1) {
+      const Node& transpose = *std::find_if(nodes.begin(), nodes.end(),
+                                            [](const auto& node) { return node.OpType() == "Transpose"; });
+      ProtoHelperNodeContext proto_helper_ctx(transpose);
+      OpNodeProtoHelper<ProtoHelperNodeContext> proto_helper(&proto_helper_ctx);
+      std::vector<int64_t> actual_perms;
+      ASSERT_STATUS_OK(proto_helper.GetAttrs<int64_t>("perm", actual_perms));
+      ASSERT_THAT(actual_perms, testing::ContainerEq(expected_post_transpose_perm));
+    }
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ {15, 23});
+}
+
+// Motivating case: Transpose([0,3,1,2]) -> Reshape({1,80,1600}) on a {1,40,40,80} input.
+// Expect the rewrite: Reshape({1,1600,80}) -> Transpose([0,2,1]).
+TEST(TransposeOptimizerTests, TestReshapeFlattenAfterTranspose) {
+  TestTransposeReshapeFlatten({1, 40, 40, 80}, {0, 3, 1, 2},  // perm => post-transpose shape {1,80,40,40}
+                              {1, 80, 1600},                   // reshape merges last two post-transpose dims
+                              /*expected_transposes*/ 1,
+                              /*expected_reshape_shape*/ {1, 1600, 80},
+                              /*expected_post_transpose_perm*/ {0, 2, 1});
+}
+
+TEST(TransposeOptimizerTests, TestReshapeFlattenContiguousMergeMultipleRuns) {
+  // Pre-transpose: {2,3,4,5,6}. Transpose perm [2,3,4,0,1] => {4,5,6,2,3}.
+  // Reshape({4,5,6,6}) merges last two post-transpose axes (2*3 = 6).
+  // Pre-transpose indices per run: [2], [3], [4], [0,1] — all contiguous ascending.
+  // New reshape shape (in pre-transpose order): {2*3, 4, 5, 6} = {6,4,5,6}.
+  // run_first_orig_axis = [2,3,4,0]. Sorted order = [3,0,1,2] (run that owns axis 0 goes first).
+  // So sorted_reshape_shape = {6, 4, 5, 6} reordered = {new_reshape_shape[3], new_reshape_shape[0],
+  //   new_reshape_shape[1], new_reshape_shape[2]} = {6, 6, 4, 5}.
+  // new_perm such that new_perm[sorted_indices[i]] = i:
+  //   sorted_indices = [3,0,1,2] => new_perm[3]=0, new_perm[0]=1, new_perm[1]=2, new_perm[2]=3
+  //   => new_perm = [1,2,3,0].
+  TestTransposeReshapeFlatten({2, 3, 4, 5, 6}, {2, 3, 4, 0, 1},
+                              {4, 5, 6, 6},
+                              /*expected_transposes*/ 1,
+                              /*expected_reshape_shape*/ {6, 6, 4, 5},
+                              /*expected_post_transpose_perm*/ {1, 2, 3, 0});
+}
+
+TEST(TransposeOptimizerTests, TestReshapeFlattenMergesAllAxesIntoTwoRuns) {
+  // Pre-transpose: {1,2,3,4}. Transpose perm [2,3,0,1] => post-transpose {3,4,1,2}.
+  // Reshape({12,2}) merges the first two and last two post-transpose axes.
+  // Pre-transpose indices per run: [2,3], [0,1] — both contiguous ascending.
+  // new_reshape_shape (pre-transpose order) = {3*4, 1*2} = {12, 2}.
+  // run_first_orig_axis = [2, 0] => sorted_indices = [1, 0]
+  //   => sorted_reshape_shape = {2, 12}.
+  // new_perm such that new_perm[sorted_indices[i]] = i => new_perm = {1, 0}.
+  TestTransposeReshapeFlatten({1, 2, 3, 4}, {2, 3, 0, 1},
+                              {12, 2},
+                              /*expected_transposes*/ 1,
+                              /*expected_reshape_shape*/ {2, 12},
+                              /*expected_post_transpose_perm*/ {1, 0});
+}
+
+TEST(TransposeOptimizerTests, TestReshapeFlattenBailsOnNonContiguousRun) {
+  // Pre-transpose: {2,3,4,5}. Transpose perm [0,2,1,3] => {2,4,3,5}.
+  // Transpose perm [0,2,1,3] — NOT ascending. Bail.
+  // Also HandleReshapeAsTranspose can't help (ranks differ). Graph stays unchanged.
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({2, 3, 4, 5}, 0.0, 1.0);
+    auto* mul_arg1 = builder.MakeInput<float>({1}, 0.0, 1.0);
+    auto* reshape_shape_value = builder.MakeInitializer<int64_t>({3}, {2, 12, 5});
+
+    auto* mul_out_0 = builder.MakeOutput();
+    auto* transpose_out_0 = builder.MakeIntermediate();
+    auto* reshape_out_0 = builder.MakeIntermediate();
+    auto* identity_out_0 = builder.MakeOutput();
+
+    builder.AddNode("Mul", {input_arg, mul_arg1}, {mul_out_0});
+    auto& transpose_1 = builder.AddNode("Transpose", {mul_out_0}, {transpose_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 2, 1, 3});
+    builder.AddNode("Reshape", {transpose_out_0, reshape_shape_value}, {reshape_out_0});
+    builder.AddNode("Identity", {reshape_out_0}, {identity_out_0});
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
+    ASSERT_EQ(op_to_count["Transpose"], 1);
+    ASSERT_EQ(op_to_count["Reshape"], 1);
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ {15, 23});
+}
+
+// Negative: a Reshape output dim that does not equal the product of any contiguous run
+// of post-transpose dims (i.e. it would have to split a transposed axis). Must bail.
+TEST(TransposeOptimizerTests, TestReshapeFlattenBailsOnSplittingDim) {
+  // Pre-transpose: {1,4,4,6}. Transpose perm [0,3,1,2] => post-transpose {1,6,4,4} (size 96).
+  // Reshape({1,3,2,16}).
+  // Reshape not merging on contiguous axes -> Bailed.
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 4, 4, 6}, 0.0, 1.0);
+    auto* mul_arg1 = builder.MakeInput<float>({1}, 0.0, 1.0);
+    auto* reshape_shape_value = builder.MakeInitializer<int64_t>({4}, {1, 3, 2, 16});
+
+    auto* mul_out_0 = builder.MakeOutput();
+    auto* transpose_out_0 = builder.MakeIntermediate();
+    auto* reshape_out_0 = builder.MakeIntermediate();
+    auto* identity_out_0 = builder.MakeOutput();
+
+    builder.AddNode("Mul", {input_arg, mul_arg1}, {mul_out_0});
+    auto& transpose_1 = builder.AddNode("Transpose", {mul_out_0}, {transpose_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("Reshape", {transpose_out_0, reshape_shape_value}, {reshape_out_0});
+    builder.AddNode("Identity", {reshape_out_0}, {identity_out_0});
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
+    ASSERT_EQ(op_to_count["Transpose"], 1);
+    ASSERT_EQ(op_to_count["Reshape"], 1);
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ {15, 23});
 }
 
 TEST(TransposeOptimizerTests, TestCancelingNodesGraphOutputs) {
