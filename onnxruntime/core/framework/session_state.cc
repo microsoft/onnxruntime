@@ -1823,7 +1823,6 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   ORT_RETURN_IF_ERROR(
       session_state_utils::SaveInputOutputNamesToNodeMapping(*graph_viewer_, *this, valid_outer_scope_node_args));
 
-
   // Need to recurse into subgraph session state instances to finalize them and add the execution info
 
   // Currently all subgraphs need to be executed using the sequential EP due to potential deadlock with the current
