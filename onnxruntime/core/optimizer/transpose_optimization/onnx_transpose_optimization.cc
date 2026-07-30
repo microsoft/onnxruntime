@@ -2539,6 +2539,15 @@ static bool HandleReshapeSplit(HandlerArgs& args) {
     transposed_shape[i] = transpose_input_shape[gsl::narrow_cast<size_t>(args.perm[i])];
   }
 
+  // Match HandleReshapeAsTranspose: require the shape input to be a constant.
+  // We drive the partition off the inferred output shape (so -1 / 0 are already
+  // resolved), but we also write a new constant shape initializer, so the
+  // original must have been constant too.
+  auto shape_input_constant = args.ctx.graph.GetConstant(args.node.Inputs()[1]);
+  if (shape_input_constant == nullptr || shape_input_constant->Data().size() == 0) {
+    return false;
+  }
+
   auto reshape_output_shape_opt = args.ctx.graph.GetValueInfo(args.node.Outputs()[0])->Shape();
   if (!reshape_output_shape_opt.has_value()) {
     return false;
@@ -2573,7 +2582,15 @@ static bool HandleReshapeSplit(HandlerArgs& args) {
       if (cursor >= requested_shape.size()) {
         return false;
       }
-      prod *= requested_shape[cursor];
+      const int64_t dim = requested_shape[cursor];
+      // Bail before prod * dim would exceed target; this also prevents int64 overflow.
+      // dim is guaranteed > 0 by the earlier requested_shape validation, and target > 0
+      // whenever it is reachable (target == 0 falls through the do-while and fails the
+      // prod != target check below).
+      if (target > 0 && prod > target / dim) {
+        return false;
+      }
+      prod *= dim;
       ++cursor;
     } while (prod < target);
     if (prod != target) {
@@ -2614,8 +2631,12 @@ static bool HandleReshapeSplit(HandlerArgs& args) {
   std::string_view new_shape_init =
       AddInitializerInt64(args.ctx.graph, shape_initializer_shape, new_reshape_shape);
 
+  const std::string old_shape_name(args.node.Inputs()[1]);
   args.node.SetInput(0, transpose_input);
   args.node.SetInput(1, new_shape_init);
+  if (!args.ctx.graph.HasValueConsumers(old_shape_name)) {
+    args.ctx.graph.RemoveInitializer(old_shape_name);
+  }
 
   if (!IsIdentityPerm(new_perm)) {
     TransposeOutput(args.ctx.graph, args.node, 0, new_perm, InvertPerm(new_perm));
