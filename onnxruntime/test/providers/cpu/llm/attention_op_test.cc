@@ -4507,11 +4507,6 @@ TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_MEA_MixedBatchOffsets_ForceF
 
 #undef SKIP_IF_MEA_NOT_COMPILED
 
-// Validation: 3D Attention where K.shape[2] is smaller than kv_num_heads * head_size (derived
-// from Q). The shape helper must reject this before the kernel indexes past the K allocation.
-// The 4D path enforces the analogous invariant on K.shape[3]; the 3D path used to skip it.
-// Excluded EPs implement Attention themselves and validate shapes independently: TensorRT,
-// CUDA, DML, CoreML, QNN, OpenVINO, WebGPU. This test targets the shared CPU shape helper.
 TEST(AttentionTest, Attention3DInconsistentHeadSizeInK) {
   OpTester test("Attention", 23, onnxruntime::kOnnxDomain);
 

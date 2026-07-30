@@ -105,9 +105,7 @@ inline Status ComputeOutputShapeForAttention(
 
     // The 3D branch derives head_size from Q alone and kv_sequence_length from K alone. The K
     // hidden width and V sequence length are used as strides / row counts in downstream GEMM and
-    // KV-cache copies, so they must line up with the derived values. The 4D branch enforces the
-    // analogous invariants directly on Shape()[3] and Shape()[2]; without these checks a shorter
-    // K.Shape()[2] or V.Shape()[1] lets the kernel step past the input allocations.
+    // KV-cache copies, so they must line up with the derived values.
     ORT_ENFORCE(K->Shape()[2] == SafeInt<int64_t>(parameters.kv_num_heads) * parameters.head_size,
                 "inconsistent head_size (between Q and K): K.shape[2]=", K->Shape()[2],
                 " expected kv_num_heads * head_size = ", parameters.kv_num_heads, " * ",
