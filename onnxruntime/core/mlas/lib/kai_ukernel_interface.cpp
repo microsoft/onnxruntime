@@ -17,6 +17,8 @@
 #include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod.h"
 #include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod.h"
 #include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm.h"
+#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa.h"
+#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4vlx4_1x4vl_sme2_dot.h"
 #include "kai/ukernels/matmul/matmul_clamp_f32_qsi8d32p_qai4c32p/kai_matmul_clamp_f32_qsi8d32p1x4_qai4c32p4x4_1x4_neon_dotprod.h"
 #include "kai/ukernels/matmul/matmul_clamp_f32_qsi8d32p_qai4c32p/kai_matmul_clamp_f32_qsi8d32p1x8_qai4c32p4x8_1x4_neon_dotprod.h"
 #include "kai/ukernels/matmul/matmul_clamp_f32_qsi8d32p_qai4c32p/kai_matmul_clamp_f32_qsi8d32p4x4_qai4c32p4x4_8x4_neon_dotprod.h"
@@ -252,6 +254,14 @@ const KaiQnbitGemmKernel kai_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neo
     KAI_WRAP_Q4_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm,
                                       KaiQ4RhsPackLayout::SymmetricNxK);
 
+const KaiQnbitGemmKernel kai_matmul_clamp_f32_qai8dxp1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa =
+    KAI_WRAP_Q4_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_qai8dxp1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa,
+                                      KaiQ4RhsPackLayout::SymmetricNxKInterleavedNrx4);
+
+const KaiQnbitGemmKernel kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4vlx4_1x4vl_sme2_dot =
+    KAI_WRAP_Q4_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_qai8dxp1x4_qsi4c32p4vlx4_1x4vl_sme2_dot,
+                                      KaiQ4RhsPackLayout::SymmetricNxKInterleavedNrx4);
+
 const KaiQnbitAsymGemmKernel kai_matmul_clamp_f32_qsi8d32p1x4_qai4c32p4x4_1x4_neon_dotprod =
     KAI_WRAP_Q4_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_qsi8d32p1x4_qai4c32p4x4_1x4_neon_dotprod,
                                       KaiQ4RhsPackLayout::AsymmetricNxK);
@@ -360,7 +370,9 @@ const KaiF32SgemvKernel sgemm_gemv_sme2 =
 
 
 const KaiQnbitGemmKernel& GetKleidiAIGemmUKernel() {
-    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
+        return kai_matmul_clamp_f32_qai8dxp1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa;
+    } else if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
         return kai_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm;
     } else {
         return kai_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod;
@@ -368,7 +380,11 @@ const KaiQnbitGemmKernel& GetKleidiAIGemmUKernel() {
 }
 
 const KaiQnbitGemmKernel& GetKleidiAIGemvUKernel() {
-    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
+    // The `sme2_dot` kernel uses SME2 SDOT instructions; `dot` here does not refer to
+    // the separate FEAT_DotProd feature.
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
+        return kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4vlx4_1x4vl_sme2_dot;
+    } else if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
         return kai_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod;
     } else {
         return kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod;

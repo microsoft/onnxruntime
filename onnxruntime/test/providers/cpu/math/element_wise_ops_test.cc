@@ -2437,6 +2437,120 @@ TEST(MathOpTest, Min_13_Float16_with_scalar_Nan) {
                      std::numeric_limits<float>::quiet_NaN(),
                      std::numeric_limits<float>::quiet_NaN()});
 }
+
+// The default Max/Min NaN tests above are pinned to CPU/CUDA. These WebGPU-specific cases lock in
+// the ONNX opset-12+ requirement that Max/Min propagate NaN (a plain WGSL max/min builtin does
+// not guarantee this). The broadcast case exercises the vec4 broadcast shader path; the scalar
+// case exercises the element-wise scalar-operand path.
+TEST(MathOpTest, Max_12_Float_Nan_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
+  OpTester test("Max", 12);
+  test.AddInput<float>("data_0", {3, 3},
+                       {std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        -0.5f, 0.0f, -2.0f,
+                        0.5f, 0.0f, 2.0f});
+  test.AddInput<float>("data_1", {3, 1},
+                       {0.0f, -1.0f, 1.0f});
+  test.AddOutput<float>("max", {3, 3},
+                        {std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         -0.5f, 0.0f, -1.0f,
+                         1.0f, 1.0f, 2.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, Min_12_Float_Nan_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
+  OpTester test("Min", 12);
+  test.AddInput<float>("data_0", {3, 3},
+                       {std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        -0.5f, 0.0f, -2.0f,
+                        0.5f, 0.0f, 2.0f});
+  test.AddInput<float>("data_1", {3, 1},
+                       {0.0f, -1.0f, 1.0f});
+  test.AddOutput<float>("min", {3, 3},
+                        {std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         -1.0f, -1.0f, -2.0f,
+                         0.5f, 0.0f, 1.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// A scalar NaN operand must turn every output element into NaN (element-wise scalar path).
+TEST(MathOpTest, Max_12_Float_with_scalar_Nan_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
+  OpTester test("Max", 12);
+  test.AddInput<float>("data_0", {2, 2},
+                       {0.25f, -0.25f, -0.5f, 0.5f});
+  test.AddInput<float>("data_1", {1}, {std::numeric_limits<float>::quiet_NaN()});
+  test.AddOutput<float>("max", {2, 2},
+                        {std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN()});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Variadic (3-input) fold must also propagate a NaN that appears in a middle operand.
+TEST(MathOpTest, Min_12_Float_Variadic_Nan_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
+  OpTester test("Min", 12);
+  test.AddInput<float>("data_0", {1, 3}, {1.0f, 2.0f, 3.0f});
+  test.AddInput<float>("data_1", {1, 3},
+                       {std::numeric_limits<float>::quiet_NaN(), 0.0f, 5.0f});
+  test.AddInput<float>("data_2", {1, 3}, {-1.0f, -2.0f, 4.0f});
+  test.AddOutput<float>("min", {1, 3},
+                        {std::numeric_limits<float>::quiet_NaN(), -2.0f, 3.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Float16 exercises the distinct NaN-detection path in the shader: f16 is widened to f32 before the
+// integer bitcast, since a vec4<f16> is too narrow for the vec4<u32> bitcast the check relies on.
+TEST(MathOpTest, Max_12_Float16_Nan_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not enabled in this build.";
+  }
+  OpTester test("Max", 12);
+  test.AddInput<MLFloat16>("data_0", {3, 1},
+                           MakeMLFloat16({-1.0f, std::numeric_limits<float>::quiet_NaN(), 1.0f}));
+  test.AddInput<MLFloat16>("data_1", {3, 1},
+                           MakeMLFloat16({0.5f, 1.0f, std::numeric_limits<float>::quiet_NaN()}));
+  test.AddOutput<MLFloat16>("max", {3, 1},
+                            MakeMLFloat16({0.5f,
+                                           std::numeric_limits<float>::quiet_NaN(),
+                                           std::numeric_limits<float>::quiet_NaN()}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(MathOpTest, Max_6) {
   OpTester test("Max", 6);
   std::vector<int64_t> dims{3, 3};
@@ -5204,6 +5318,83 @@ TEST(MathOpTest, Equal_webgpu_int64_broadcast_size_div4) {
   test.AddInput<int64_t>("A", {1, 4}, {1, 2, 3, 4});
   test.AddInput<int64_t>("B", {2, 4}, {1, 0, 3, 0, 1, 2, 3, 4});
   test.AddOutput<bool>("C", {2, 4}, {true, false, true, false, true, true, true, true});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+TEST(MathOpTest, Add_webgpu_int64) {
+  OpTester test("Add", 14);
+  test.AddInput<int64_t>("A", {4}, {10, 5, -3, 0});
+  test.AddInput<int64_t>("B", {4}, {3, 5, 1, -7});
+  test.AddOutput<int64_t>("C", {4}, {13, 10, -2, -7});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// INT64 Add with broadcast: A [1,3] broadcasts against B [2,3] -> output [2,3].
+TEST(MathOpTest, Add_webgpu_int64_broadcast) {
+  OpTester test("Add", 14);
+  test.AddInput<int64_t>("A", {1, 3}, {10, 20, 30});
+  test.AddInput<int64_t>("B", {2, 3}, {1, 2, 3, 4, 5, 6});
+  test.AddOutput<int64_t>("C", {2, 3}, {11, 22, 33, 14, 25, 36});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Size divisible by 4: catches future vec4 optimizations that might break INT64.
+TEST(MathOpTest, Add_webgpu_int64_size_div4) {
+  OpTester test("Add", 14);
+  test.AddInput<int64_t>("A", {8}, {10, 20, 30, 40, 50, 60, 70, 80});
+  test.AddInput<int64_t>("B", {8}, {1, 2, 3, 4, 5, 6, 7, 8});
+  test.AddOutput<int64_t>("C", {8}, {11, 22, 33, 44, 55, 66, 77, 88});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Scalar LHS: exercises is_lhs_scalar_ path for INT64 Add.
+TEST(MathOpTest, Add_webgpu_int64_lhs_scalar) {
+  OpTester test("Add", 14);
+  test.AddInput<int64_t>("A", {1}, {100});
+  test.AddInput<int64_t>("B", {5}, {1, 2, 3, 4, 5});
+  test.AddOutput<int64_t>("C", {5}, {101, 102, 103, 104, 105});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Scalar RHS: exercises is_rhs_scalar_ path for INT64 Add.
+TEST(MathOpTest, Add_webgpu_int64_rhs_scalar) {
+  OpTester test("Add", 14);
+  test.AddInput<int64_t>("A", {5}, {10, 20, 30, 40, 50});
+  test.AddInput<int64_t>("B", {1}, {7});
+  test.AddOutput<int64_t>("C", {5}, {17, 27, 37, 47, 57});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Shape broadcast, size divisible by 4: A [1,4] broadcasts against B [2,4] -> output [2,4].
+TEST(MathOpTest, Add_webgpu_int64_broadcast_size_div4) {
+  OpTester test("Add", 14);
+  test.AddInput<int64_t>("A", {1, 4}, {10, 20, 30, 40});
+  test.AddInput<int64_t>("B", {2, 4}, {1, 2, 3, 4, 5, 6, 7, 8});
+  test.AddOutput<int64_t>("C", {2, 4}, {11, 22, 33, 44, 15, 26, 37, 48});
   ConfigOptions config_options{};
   ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
   auto provider = WebGpuExecutionProviderWithOptions(config_options);

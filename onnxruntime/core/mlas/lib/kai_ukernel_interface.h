@@ -34,6 +34,7 @@ struct KaiMatmulKernel {
 
 enum class KaiQ4RhsPackLayout {
     SymmetricNxK,
+    SymmetricNxKInterleavedNrx4,
     AsymmetricNxK,
     AsymmetricNxKInterleavedNrx4,
 };
