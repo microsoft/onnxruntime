@@ -273,12 +273,16 @@ TEST(MathOpTest, Clip_uint32_WebGpu) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+#ifdef USE_WEBGPU
 // int64 Clip, run explicitly on the WebGPU EP. WebGPU has no native 64-bit integer type; the EP
 // stores int64 as vec2<u32> and the dedicated ClipInt64 kernel clamps on the truncated low 32 bits
 // (interpreted as i32), then sign-extends on write. Values are kept within the int32 range -- the
 // realistic index/position case and where the truncated clamp matches the reference result.
 TEST(MathOpTest, Clip_int64_WebGpu) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  // int64 Clip is gated behind the enableInt64 option, so build the EP with it enabled.
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(config_options);
   if (webgpu_ep == nullptr) {
     GTEST_SKIP() << "WebGPU EP is not available in this build.";
   }
@@ -308,7 +312,10 @@ TEST(MathOpTest, Clip_int64_WebGpu) {
 // the raw int64 bounds would be truncated to bogus i32 values and clamp incorrectly, so this pins
 // the saturate_to_i32 behavior.
 TEST(MathOpTest, Clip_int64_saturate_WebGpu) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  // int64 Clip is gated behind the enableInt64 option, so build the EP with it enabled.
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(config_options);
   if (webgpu_ep == nullptr) {
     GTEST_SKIP() << "WebGPU EP is not available in this build.";
   }
@@ -339,7 +346,10 @@ TEST(MathOpTest, Clip_int64_saturate_WebGpu) {
 // max defaults to INT32_MAX). Only the lower bound is applied; values above min pass through.
 // (Opset 12 is the earliest at which integer Clip is valid; opset 11 constrains T to float types.)
 TEST(MathOpTest, Clip_int64_min_only_opset12_WebGpu) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  // int64 Clip is gated behind the enableInt64 option, so build the EP with it enabled.
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(config_options);
   if (webgpu_ep == nullptr) {
     GTEST_SKIP() << "WebGPU EP is not available in this build.";
   }
@@ -368,7 +378,10 @@ TEST(MathOpTest, Clip_int64_min_only_opset12_WebGpu) {
 // (a missing lower bound means "no clamp on that side", so min defaults to INT32_MIN). Only the
 // upper bound is applied; values below max pass through.
 TEST(MathOpTest, Clip_int64_max_only_opset12_WebGpu) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  // int64 Clip is gated behind the enableInt64 option, so build the EP with it enabled.
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(config_options);
   if (webgpu_ep == nullptr) {
     GTEST_SKIP() << "WebGPU EP is not available in this build.";
   }
@@ -391,6 +404,7 @@ TEST(MathOpTest, Clip_int64_max_only_opset12_WebGpu) {
   execution_providers.push_back(std::move(webgpu_ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+#endif  // USE_WEBGPU
 
 TEST(MathOpTest, Clip) {
   // To test NNAPI EP, we need the min/max to be in initializers
