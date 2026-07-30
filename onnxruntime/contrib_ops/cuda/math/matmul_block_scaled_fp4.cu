@@ -229,17 +229,16 @@ struct Fp4Cvt<nv_bfloat16> {
 };
 
 template <typename T, int RowsPerBlock>
-__global__ __launch_bounds__(32 * kGemvWarpsPerBlock, GemvMinBlocksPerSm<RowsPerBlock>::value)
-    void MatMulBlockQuantizedFp4WeightGemvKernel(T* __restrict__ y,
-                                                 const T* __restrict__ a,
-                                                 const uint8_t* __restrict__ b_packed,
-                                                 const uint8_t* __restrict__ weight_scale,
-                                                 const float* __restrict__ weight_scale_2,
-                                                 const T* __restrict__ bias,
-                                                 int m,
-                                                 int n,
-                                                 int k,
-                                                 int k_blocks) {
+__global__ __launch_bounds__(32 * kGemvWarpsPerBlock, GemvMinBlocksPerSm<RowsPerBlock>::value) void MatMulBlockQuantizedFp4WeightGemvKernel(T* __restrict__ y,
+                                                                                                                                            const T* __restrict__ a,
+                                                                                                                                            const uint8_t* __restrict__ b_packed,
+                                                                                                                                            const uint8_t* __restrict__ weight_scale,
+                                                                                                                                            const float* __restrict__ weight_scale_2,
+                                                                                                                                            const T* __restrict__ bias,
+                                                                                                                                            int m,
+                                                                                                                                            int n,
+                                                                                                                                            int k,
+                                                                                                                                            int k_blocks) {
   using Cvt = Fp4Cvt<T>;
   using T2 = typename Cvt::T2;
 
@@ -823,25 +822,25 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
   const uint8_t* bp = reinterpret_cast<const uint8_t*>(b_packed);
   const uint8_t* ws = reinterpret_cast<const uint8_t*>(weight_scale);
 
-#define ORT_DISPATCH_FP4_GEMV(T)                                                                \
-  do {                                                                                          \
-    switch (rows_per_block) {                                                                   \
-      case 4:                                                                                   \
-        MatMulBlockQuantizedFp4WeightGemvKernel<T, 4><<<blocks, threads, 0, stream>>>(           \
-            reinterpret_cast<T*>(y), reinterpret_cast<const T*>(a), bp, ws, weight_scale_2,      \
-            reinterpret_cast<const T*>(bias), m, n, k, k_blocks);                                \
-        break;                                                                                  \
-      case 2:                                                                                   \
-        MatMulBlockQuantizedFp4WeightGemvKernel<T, 2><<<blocks, threads, 0, stream>>>(           \
-            reinterpret_cast<T*>(y), reinterpret_cast<const T*>(a), bp, ws, weight_scale_2,      \
-            reinterpret_cast<const T*>(bias), m, n, k, k_blocks);                                \
-        break;                                                                                  \
-      default:                                                                                  \
-        MatMulBlockQuantizedFp4WeightGemvKernel<T, 1><<<blocks, threads, 0, stream>>>(           \
-            reinterpret_cast<T*>(y), reinterpret_cast<const T*>(a), bp, ws, weight_scale_2,      \
-            reinterpret_cast<const T*>(bias), m, n, k, k_blocks);                                \
-        break;                                                                                  \
-    }                                                                                           \
+#define ORT_DISPATCH_FP4_GEMV(T)                                                            \
+  do {                                                                                      \
+    switch (rows_per_block) {                                                               \
+      case 4:                                                                               \
+        MatMulBlockQuantizedFp4WeightGemvKernel<T, 4><<<blocks, threads, 0, stream>>>(      \
+            reinterpret_cast<T*>(y), reinterpret_cast<const T*>(a), bp, ws, weight_scale_2, \
+            reinterpret_cast<const T*>(bias), m, n, k, k_blocks);                           \
+        break;                                                                              \
+      case 2:                                                                               \
+        MatMulBlockQuantizedFp4WeightGemvKernel<T, 2><<<blocks, threads, 0, stream>>>(      \
+            reinterpret_cast<T*>(y), reinterpret_cast<const T*>(a), bp, ws, weight_scale_2, \
+            reinterpret_cast<const T*>(bias), m, n, k, k_blocks);                           \
+        break;                                                                              \
+      default:                                                                              \
+        MatMulBlockQuantizedFp4WeightGemvKernel<T, 1><<<blocks, threads, 0, stream>>>(      \
+            reinterpret_cast<T*>(y), reinterpret_cast<const T*>(a), bp, ws, weight_scale_2, \
+            reinterpret_cast<const T*>(bias), m, n, k, k_blocks);                           \
+        break;                                                                              \
+    }                                                                                       \
   } while (0)
 
   if (is_bf16) {
