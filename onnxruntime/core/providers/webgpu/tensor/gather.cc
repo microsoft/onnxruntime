@@ -20,11 +20,13 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
   bool pack_as_bytes = is_bool || is_uint8;
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.data_size");
   if (pack_as_bytes) {
-    // For bool/uint8 packed paths, declare the output accumulator outside the per-comp blocks,
-    // but declare ALL intermediate computation variables INSIDE each comp's if-block scope.
-    // This avoids a cross-backend codegen bug (reproduces on both Metal/D3D12) where sequential
-    // if-blocks sharing the same mutable var names (output_indices, idx, etc.) cause comp=1..3
-    // to reuse comp=0's stale variable state, producing wrong results.
+    // bool and uint8 both pack four 1-byte elements per thread into one u32 storage word.
+    // The accumulator holds one element per lane and is handed to SetByOffset unpacked, because
+    // SetByOffset performs the byte packing for Uint8x4 (and Boolx4) itself. Do not pre-pack
+    // into a u32 here: SetByOffset would splat that scalar across all four lanes, mask each to
+    // its low byte and re-pack, so every output word would be element 0's byte repeated four
+    // times. uint8 needs an explicit vec4<u32> because output_value_t for Uint8x4 is the packed
+    // u32 storage type, unlike Boolx4's vec4<bool>.
     shader.MainFunctionBody() << (is_uint8 ? "  var value : vec4<u32> = vec4<u32>(0u);\n"
                                            : "  var value : output_value_t;\n");
     for (int comp = 0; comp < 4; comp++) {
@@ -95,12 +97,7 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << "  value = " << data.GetByOffset("data_offset") << ";\n";
   }
 
-  if (is_uint8) {
-    shader.MainFunctionBody() << "  let packed_value : output_value_t = value[0] | (value[1] << 8u) | (value[2] << 16u) | (value[3] << 24u);\n"
-                              << "  " << output.SetByOffset("global_idx", "packed_value");
-  } else {
-    shader.MainFunctionBody() << "  " << output.SetByOffset("global_idx", "value");
-  }
+  shader.MainFunctionBody() << "  " << output.SetByOffset("global_idx", "value");
 
   return Status::OK();
 }
