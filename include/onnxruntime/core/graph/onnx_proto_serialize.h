@@ -20,6 +20,8 @@
 //   * bool SerializeToArray(void*, int) const
 //   * bool SerializeToOstream(std::ostream*) const
 //   * bool SerializeToFileDescriptor(int) const
+//   * bool SerializeToZeroCopyStream(ZeroCopyOutputStream*) [protobuf] /
+//          SerializeToZeroCopyStream(BinaryWriteStream*)    [onnx-light]
 //
 // onnx-light 0.1.9+ also provides google::protobuf::io compat headers
 // (zero_copy_stream_impl.h, coded_stream.h) so code written against the
@@ -94,9 +96,12 @@ inline bool SerializeToFileDescriptor(const Proto& proto, int fd) {
 }
 
 // Writes the serialized proto to an OS file descriptor without taking ownership of it.
+// Uses FileOutputStream + SerializeToZeroCopyStream so that the same buffered,
+// ZeroCopy path is used for both the protobuf and the onnx-light backends.
 template <typename Proto>
 inline bool SaveToFileDescriptor(const Proto& proto, int fd) {
-  return proto.SerializeToFileDescriptor(fd);
+  google::protobuf::io::FileOutputStream output(fd);
+  return proto.SerializeToZeroCopyStream(&output) && output.Flush();
 }
 
 }  // namespace proto_io
