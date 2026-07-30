@@ -183,6 +183,21 @@ struct GroupQueryAttentionData {
   // Only used for first prompt: padded_seq_lens[b] = sequence_length
   int* padded_seq_lens = nullptr;
 
+  // Cache-relative sequence lengths, used when parameters.is_windowed_kv_cache is set. Shape [batch_size].
+  // For a full-length (non-windowed) cache these simply alias past_seq_lens / total_seq_lens.
+  //   cache_past_seq_lens[b]  : append offset inside the capacity-C buffer, after eviction. May be
+  //                             negative on a first prompt longer than the capacity, in which case
+  //                             the leading (out-of-window) tokens are skipped by the append kernel.
+  //   cache_total_seq_lens[b] : number of valid cache entries after the append, i.e. min(T, C).
+  //   evict_counts[b]         : number of entries D dropped from the front of the cache this step.
+  int* cache_past_seq_lens = nullptr;
+  int* cache_total_seq_lens = nullptr;
+  int* evict_counts = nullptr;
+
+  // Scratch used by the windowed-cache compaction shift. Sized for one KV cache:
+  // batch_size * kv_num_heads * capacity * head_size elements of the storage type U.
+  void* compaction_scratch = nullptr;
+
   // Flash buffers
   T* softmax_lse = nullptr;
   T* softmax_lse_accum = nullptr;

@@ -75,6 +75,11 @@ class BinaryElementwise : public WebGpuKernel {
 
 // Factory functions for ops with conditional int64 support (registered via RegisterKernels).
 template <int StartVersion, int EndVersion>
+KernelCreateInfo CreateAddVersionedKernelInfo(bool enable_int64);
+template <int SinceVersion>
+KernelCreateInfo CreateAddKernelInfo(bool enable_int64);
+
+template <int StartVersion, int EndVersion>
 KernelCreateInfo CreateEqualVersionedKernelInfo(bool enable_int64);
 template <int SinceVersion>
 KernelCreateInfo CreateEqualKernelInfo(bool enable_int64);

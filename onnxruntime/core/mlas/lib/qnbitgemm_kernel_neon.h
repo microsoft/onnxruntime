@@ -296,6 +296,11 @@ enum class KleidiAIQ4Backend {
 KleidiAIQ4Backend
 SelectKleidiAIQ4Backend(size_t K, size_t BlkLen, bool HasZp, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
+#if defined(MLAS_ENABLE_TEST_HOOKS) && defined(USE_KLEIDIAI)
+const char* GetKleidiAIQ4GemmKernelNameForTesting();
+const char* GetKleidiAIQ4GemvKernelNameForTesting();
+#endif
+
 //
 // General helpers.
 //

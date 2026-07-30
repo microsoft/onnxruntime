@@ -19,19 +19,26 @@ Arms, all decode-shaped (S_q = 1, causal, no RoPE, no attn_mask, no softcap):
   attn_scatter  ONNX Attention opset-24 external cache: in-place TensorScatter
                 appends the new token, Attention reads the full cache with
                 nonpad_kv_seqlen. present_* outputs are omitted (requesting
-                them adds a full-cache copy).
+                them adds a full-cache copy). cuDNN SDPA is pinned off so the
+                arm always measures the Flash dispatch.
+  attn_scatter_cudnn
+                Same graph/config as attn_scatter with cuDNN SDPA enabled, so
+                the opset-24 decode path takes the cuDNN SDPA tier instead of
+                Flash. Pair it with attn_scatter for a before/after read of
+                that tier.
 
 Measurement notes:
-  - attn_scatter includes the TensorScatter nodes so both ops pay their cache
+  - attn_scatter* includes the TensorScatter nodes so both ops pay their cache
     append (--attention-only drops them). Its latency also depends on
     --max-seq-len: the valid length is a device tensor, so the host sizes the
     Flash split-KV launch from the buffer length (attention.cc, nonpad path).
   - ONNX arms disable memory-efficient attention so a Flash ineligibility
     surfaces as the obviously slow unfused kernel, never a silent MEA flip.
-  - Before timing, gqa_* arms assert their resolved backend (SdpaKernel debug
-    print) and every session is checked for nodes placed off the CUDA EP.
-    ONNX Attention has no backend print; verify it from an nsys capture
-    (--profile).
+  - Before timing, every arm with a pinned backend (gqa_*, attn_scatter and
+    attn_scatter_cudnn) asserts its resolved backend from the SdpaKernel debug
+    print, and every session is checked for nodes placed off the CUDA EP.
+    Arms with no pinned backend (attn_past) do not assert a tier;
+    verify those from an nsys capture (--profile).
 
 Usage:
   python benchmark_onnx_attention_vs_gqa.py --dtype float16 --csv results.csv
@@ -59,7 +66,7 @@ from onnxruntime.transformers.io_binding_helper import CudaSession
 
 TIMER = "cuda-event per iteration, 256 MiB L2 flush between iterations, warmup=20, rep=100, mean"
 
-ALL_ARMS = ["gqa_xqa", "gqa_flash", "gqa_cudnn", "attn_past", "attn_scatter"]
+ALL_ARMS = ["gqa_xqa", "gqa_flash", "gqa_cudnn", "attn_past", "attn_scatter", "attn_scatter_cudnn"]
 
 TORCH_DTYPE = {"float16": torch.float16, "bfloat16": torch.bfloat16}
 
@@ -76,15 +83,37 @@ ARM_ENV = {
     },
     "gqa_cudnn": {"ORT_ENABLE_XQA": "0", "ORT_ENABLE_CUDNN_FLASH_ATTENTION": "1"},
     "attn_past": {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION": "1", "ORT_DISABLE_FLASH_ATTENTION": "0"},
-    "attn_scatter": {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION": "1", "ORT_DISABLE_FLASH_ATTENTION": "0"},
+    # ONNX Attention reuses the shared cuDNN option (attention.cc: UseCudnnFlashAttention /
+    # AllowCudnnFlashAttentionAuto), so ORT_ENABLE_CUDNN_FLASH_ATTENTION selects the tier for the
+    # opset-24 decode path exactly as it does for GQA. attn_scatter pins it OFF because the kernel
+    # auto-prefers cuDNN on SM90+ — without the pin the two ONNX arms would measure the same tier.
+    # NOTE: cuDNN is now explicitly disabled for attn_scatter (it used to be left unset, i.e.
+    # "whatever the production default cascade picks"). This arm is therefore a stable Flash-tier
+    # baseline for the attn_scatter_cudnn A/B comparison, NOT a measurement of the production
+    # default on SM90+ hardware (where the default would auto-prefer cuDNN).
+    "attn_scatter": {
+        "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION": "1",
+        "ORT_DISABLE_FLASH_ATTENTION": "0",
+        "ORT_ENABLE_CUDNN_FLASH_ATTENTION": "0",
+    },
+    "attn_scatter_cudnn": {
+        "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION": "1",
+        "ORT_DISABLE_FLASH_ATTENTION": "0",
+        "ORT_ENABLE_CUDNN_FLASH_ATTENTION": "1",
+    },
 }
 
-# GQA falls back silently when a pinned backend is ineligible, so build_arm
-# asserts the resolved kernel matches the arm name.
-GQA_EXPECTED_KERNEL = {
+# A pinned backend can silently fall back when ineligible, so build_arm asserts the resolved kernel
+# for every arm listed here (the ONNX Attention kernel emits the same SdpaKernel debug print as GQA).
+ARM_EXPECTED_KERNEL = {
     "gqa_xqa": "XQA",
     "gqa_flash": "FLASH_ATTENTION",
     "gqa_cudnn": "CUDNN_FLASH_ATTENTION",
+    # Disabling cuDNN does not by itself guarantee Flash: configs Flash rejects (e.g. a head size
+    # not divisible by 8) would silently fall through to Unfused while still being labeled the
+    # "Flash baseline" arm. Assert the tier so such a fallback fails loudly instead.
+    "attn_scatter": "FLASH_ATTENTION",
+    "attn_scatter_cudnn": "CUDNN_FLASH_ATTENTION",
 }
 
 
@@ -438,6 +467,7 @@ ARM_BUILDERS = {
     "gqa_cudnn": make_gqa_arm,
     "attn_past": make_attn_past_arm,
     "attn_scatter": make_attn_scatter_arm,
+    "attn_scatter_cudnn": make_attn_scatter_arm,
 }
 
 
@@ -487,8 +517,8 @@ def assert_nodes_on_cuda(arm, session, feeds):
 
 def build_arm(arm, args, past_seq_len, torch_dtype, canonical=None):
     """Build (session, feeds) under the arm's kernel pins; abort on backend
-    mismatch (gqa_* arms) or off-CUDA node placement."""
-    if arm in GQA_EXPECTED_KERNEL:
+    mismatch (arms in ARM_EXPECTED_KERNEL) or off-CUDA node placement."""
+    if arm in ARM_EXPECTED_KERNEL:
         # The debug print fires on every Run, so latch it on a throwaway
         # session only, never the timed one.
         with scoped_env({**ARM_ENV[arm], "ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1"}):
@@ -497,8 +527,8 @@ def build_arm(arm, args, past_seq_len, torch_dtype, canonical=None):
         with contextlib.suppress(Exception):
             os.remove(session.ort_session.end_profiling())
         del session
-        if resolved != GQA_EXPECTED_KERNEL[arm]:
-            sys.exit(f"{arm}: resolved SdpaKernel={resolved}, expected {GQA_EXPECTED_KERNEL[arm]}")
+        if resolved != ARM_EXPECTED_KERNEL[arm]:
+            sys.exit(f"{arm}: resolved SdpaKernel={resolved}, expected {ARM_EXPECTED_KERNEL[arm]}")
     with scoped_env(ARM_ENV[arm]):
         session, feeds = ARM_BUILDERS[arm](args, past_seq_len, torch_dtype, canonical)
     assert_nodes_on_cuda(arm, session, feeds)
@@ -708,12 +738,12 @@ def main():
     parser.add_argument(
         "--attention-only",
         action="store_true",
-        help="drop the TensorScatter nodes from the attn_scatter arm (attribution runs)",
+        help="drop the TensorScatter nodes from the attn_scatter* arms (attribution runs)",
     )
     parser.add_argument(
         "--cache-4d",
         action="store_true",
-        help="attn_scatter arm uses a 4D BNSH external cache (scatter axis=2) instead of 3D BSNH",
+        help="attn_scatter* arms use a 4D BNSH external cache (scatter axis=2) instead of 3D BSNH",
     )
     parser.add_argument("--csv", default=None, help="append results to this CSV file")
     parser.add_argument("--sanity", action="store_true", help="cross-arm output parity check, no timing")

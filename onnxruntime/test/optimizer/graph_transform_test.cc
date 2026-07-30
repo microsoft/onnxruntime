@@ -128,6 +128,25 @@ TEST_F(GraphTransformationTests, IdentityElimination) {
   ASSERT_TRUE(op_to_count["Identity"] == 0);
 }
 
+// Registering two transformers with the same Name() at the same level must fail (per-level
+// uniqueness); the same name at a different level is allowed.
+TEST_F(GraphTransformationTests, RegisterDuplicateTransformerNameFailsPerLevel) {
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1));
+
+  // Same name, same level -> rejected.
+  const auto duplicate_status = graph_transformation_mgr.Register(
+      std::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1);
+  ASSERT_FALSE(duplicate_status.IsOK());
+  ASSERT_THAT(duplicate_status.ErrorMessage(), ::testing::HasSubstr("already registered"));
+
+  // Same name, different level -> allowed.
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level2));
+}
+
 TEST_F(GraphTransformationTests, IdentityEliminationWithGraphOutput) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "abs-id.onnx";
   std::shared_ptr<Model> model;
@@ -3876,6 +3895,32 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusion) {
   ASSERT_TRUE(op_to_count["Transpose"] == 0);
   ASSERT_TRUE(op_to_count["MatMul"] == 0);
   ASSERT_TRUE(op_to_count["com.microsoft.FusedMatMul"] == 1);
+}
+
+TEST_F(GraphTransformationTests, TransposeMatmulNoFusionForCpuFp16) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* q = builder.MakeInput<MLFloat16>({{2, 4, 8, 16}});
+    auto* k = builder.MakeInput<MLFloat16>({{2, 4, 6, 16}});
+    auto* k_transposed = builder.MakeIntermediate<MLFloat16>({{2, 4, 16, 6}});
+    auto* output = builder.MakeOutput<MLFloat16>({{2, 4, 8, 6}});
+
+    builder.AddNode("Transpose", {k}, {k_transposed})
+        .AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
+    builder.AddNode("MatMul", {q, k_transposed}, {output})
+        .SetExecutionProviderType(kCpuExecutionProvider);
+  };
+
+  auto check_unfused = [](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Transpose"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["MatMul"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["com.microsoft.FusedMatMul"] == 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 13, *logger_, std::make_unique<MatmulTransposeFusion>(),
+      TransformerLevel::Level2, 1, check_unfused, check_unfused));
 }
 
 TEST_F(GraphTransformationTests, TransposeCastMatmulFusion) {

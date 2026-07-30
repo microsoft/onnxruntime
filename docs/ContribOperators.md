@@ -2637,6 +2637,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
+<dt><tt>sliding_window_cache</tt> : int</dt>
+<dd>Set to 1 when the past/present KV buffers are window-sized instead of holding the whole sequence. The op then keeps only the min(total_sequence_length, cache_capacity) most recent tokens, contiguously, using cache-relative indexing and evicting from the front as needed. Requires local_window_size > 0 and a cache capacity of at least local_window_size. Multi-token steps may use a temporary staging buffer, so the capacity need not cover the entire step. Default value is 0 (full-length cache).</dd>
 <dt><tt>smooth_softmax</tt> : int</dt>
 <dd>Use a smooth factor in softmax.</dd>
 <dt><tt>softcap</tt> : float</dt>

@@ -37,6 +37,7 @@
 #include "core/providers/webgpu/tensor/trilu.h"
 #include "core/providers/webgpu/tensor/unsqueeze.h"
 #include "core/providers/webgpu/math/binary_elementwise_ops.h"
+#include "core/providers/webgpu/math/unary_elementwise_ops.h"
 #include "core/providers/webgpu/tensor/where.h"
 #include "core/providers/webgpu/reduction/reduction_ops.h"
 
@@ -153,8 +154,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, int32_t, Clip)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, 12, uint32_t, Clip)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, uint32_t, Clip)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, 12, int64_t, Clip)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, int64_t, Clip)>,
+    // int64 Clip is registered conditionally in RegisterKernels (gated on enable_int64).
     KERNEL_CREATE_INFO(6, Elu),
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Relu),
     KERNEL_CREATE_INFO_VERSIONED(13, 13, Relu),
@@ -167,9 +167,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO(22, Softplus),
 
     // // binary - math
-    KERNEL_CREATE_INFO_VERSIONED(7, 12, Add),
-    KERNEL_CREATE_INFO_VERSIONED(13, 13, Add),
-    KERNEL_CREATE_INFO(14, Add),
+    // Add: registered via RegisterKernels with conditional int64 support
     // Sub: registered via RegisterKernels with conditional int64 support
     KERNEL_CREATE_INFO_VERSIONED(7, 12, Mul),
     KERNEL_CREATE_INFO_VERSIONED(13, 13, Mul),
@@ -187,6 +185,9 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO_VERSIONED(12, 12, Pow),
     KERNEL_CREATE_INFO_VERSIONED(13, 14, Pow),
     KERNEL_CREATE_INFO(15, Pow),
+    KERNEL_CREATE_INFO_VERSIONED(7, 8, PRelu),
+    KERNEL_CREATE_INFO_VERSIONED(9, 15, PRelu),
+    KERNEL_CREATE_INFO(16, PRelu),
     // Equal: registered via RegisterKernels with conditional int64 support
     KERNEL_CREATE_INFO_VERSIONED(7, 8, Greater),
     KERNEL_CREATE_INFO_VERSIONED(9, 12, Greater),
@@ -443,6 +444,9 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 13, CumSum)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 14, CumSum)>,
 
+    KERNEL_CREATE_INFO_VERSIONED(17, 19, DFT),
+    KERNEL_CREATE_INFO(20, DFT),
+
     KERNEL_CREATE_INFO_VERSIONED(1, 9, TopK),
     KERNEL_CREATE_INFO_VERSIONED(10, 10, TopK),
     KERNEL_CREATE_INFO_VERSIONED(11, 23, TopK),
@@ -483,6 +487,9 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<23, 23>(enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<24>(enable_int64)));
 
+  // Register int64 Clip kernels with conditional int64 support
+  RegisterClipInt64Kernels(*kernel_registry, enable_int64);
+
   // Register Range kernels with conditional int64 support
   RegisterRangeKernels(*kernel_registry, enable_int64);
 
@@ -498,6 +505,11 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   // Register Expand kernels with conditional int64 support
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandVersionedKernelInfo<8, 12>(enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandKernelInfo<13>(enable_int64)));
+
+  // Register Add kernels with conditional int64 support
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateAddVersionedKernelInfo<7, 12>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateAddVersionedKernelInfo<13, 13>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateAddKernelInfo<14>(enable_int64)));
 
   // Register Reshape kernels with conditional int64 support
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo<5, 12>(enable_int64)));
