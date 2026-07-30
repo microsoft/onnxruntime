@@ -69,7 +69,6 @@ StreamExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::spa
                                                                         const DeviceStreamCollection* device_streams,
                                                                         onnxruntime::CancellationToken terminate_token) {
   auto* execution_plan = session_state.GetExecutionPlan();
-  LOGS(sess_logger, VERBOSE) << "Number of streams: " << execution_plan->execution_plan.size();
   int32_t valid_streams = 0;
   for (auto& stream : execution_plan->execution_plan) {
     if (stream && !stream->steps_.empty()) {
@@ -78,6 +77,7 @@ StreamExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::spa
   }
 
   if (execution_context_ == nullptr) {
+    LOGS(sess_logger, VERBOSE) << "Number of streams: " << execution_plan->execution_plan.size();
     execution_context_ = std::make_unique<StreamExecutionContext>(
         session_state,
         valid_streams,

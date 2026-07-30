@@ -144,6 +144,8 @@ class CancellationToken {
   }
 
   bool stop_possible() const noexcept {
+    // ORT only needs to distinguish a default token from one with shared state.
+    // Unlike std::stop_token, this remains true after all source handles are gone.
     return state_ != nullptr;
   }
 
@@ -175,7 +177,9 @@ class CancellationSource {
 
   // Returns true only for the call that performs the stop transition.
   bool request_stop() noexcept {
-    return state_ != nullptr && state_->RequestStop();
+    // A callback may destroy the source and all other state owners.
+    const auto state = state_;
+    return state != nullptr && state->RequestStop();
   }
 
   bool stop_requested() const noexcept {
@@ -213,6 +217,7 @@ class CancellationCallback final : private cancellation_detail::CancellationCall
   CancellationCallback& operator=(CancellationCallback&&) = delete;
 
  private:
+  // Matches std::stop_callback: throwing from a callback terminates the process.
   void Invoke() noexcept override {
     callback_();
   }

@@ -111,6 +111,17 @@ TEST(StreamExecutionContextTest, CountDownBarrierSupportsDynamicTaskAddition) {
   EXPECT_EQ(barrier.Get(), 0);
 }
 
+TEST(StreamExecutionContextTest, CountDownBarrierCanBeResetAfterCompletion) {
+  StreamExecutionContext::CountDownBarrier barrier;
+  for (size_t round = 0; round < 2; ++round) {
+    barrier.Set(2);
+    EXPECT_FALSE(barrier.Dec());
+    EXPECT_TRUE(barrier.Dec());
+    barrier.Wait();
+    EXPECT_EQ(barrier.Get(), 0);
+  }
+}
+
 TEST(StreamExecutionContextTest, FirstFailureStatusPublishesOneCompetingFailure) {
   StreamExecutionContext::FirstFailureStatus first_failure;
   constexpr size_t kWorkerCount = 16;
@@ -163,6 +174,24 @@ TEST(RunOptionsTerminationTest, SnapshotFanoutAndReset) {
   EXPECT_TRUE(copied_token.stop_requested());
   EXPECT_FALSE(reset_token.stop_requested());
   EXPECT_TRUE(first_token.stop_requested());
+}
+
+TEST(RunOptionsTerminationTest, CopyAndMovePreserveUsableTerminationState) {
+  RunOptions stopped_options;
+  stopped_options.RequestTerminate();
+  RunOptions copied_stopped_options = stopped_options;
+  EXPECT_TRUE(copied_stopped_options.GetTerminateToken().stop_requested());
+
+  RunOptions moved_options = std::move(stopped_options);
+  EXPECT_TRUE(moved_options.GetTerminateToken().stop_requested());
+  stopped_options.ResetTerminate();
+  EXPECT_FALSE(stopped_options.GetTerminateToken().stop_requested());
+
+  RunOptions move_assigned_options;
+  move_assigned_options = std::move(moved_options);
+  EXPECT_TRUE(move_assigned_options.GetTerminateToken().stop_requested());
+  moved_options.ResetTerminate();
+  EXPECT_FALSE(moved_options.GetTerminateToken().stop_requested());
 }
 
 }  // namespace test

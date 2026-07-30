@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/framework/stream_execution_context.h"
+
+#include <functional>
+
 #include "core/framework/execution_provider.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/bfc_arena.h"
@@ -72,12 +75,6 @@ StreamExecutionContext::StreamExecutionContext(const SessionState& sess_state,
 #pragma warning(pop)
 #endif
 
-  // init barriers
-  // one for the producer node: BarrierStep in execution_plan[i]->steps_
-  // one for the downstream node: run via plan_.downstream_map
-  for (size_t i = 0; i < num_barriers; ++i) {
-    count_down_barriers_[i].Set(2);
-  }
   ResetForExecution(num_streams, terminate_token);
   // generate release plan (the ref counts)
   auto& release_actions = sess_state.GetExecutionPlan()->release_actions;
@@ -164,15 +161,18 @@ Status StreamExecutionContext ::TaskStatus() const {
 }
 
 void StreamExecutionContext ::CompleteTask() {
-  remain_tasks_.Dec();
+  // WaitAll() may return as soon as Dec() publishes zero, before notify_all()
+  // returns. Pin the wait state so context destruction cannot race the notify.
+  const auto remaining_tasks = remain_tasks_;
+  remaining_tasks->Dec();
 }
 
 void StreamExecutionContext ::AddTask() {
-  remain_tasks_.Inc();
+  remain_tasks_->Inc();
 }
 
 void StreamExecutionContext ::WaitAll() {
-  remain_tasks_.Wait();
+  remain_tasks_->Wait();
 }
 
 void StreamExecutionContext ::SetStatus(const Status& status) {
@@ -183,12 +183,19 @@ void StreamExecutionContext ::SetStatus(const Status& status) {
 }
 
 void StreamExecutionContext::ResetForExecution(int32_t num_tasks, onnxruntime::CancellationToken terminate_token) {
-  ORT_ENFORCE(remain_tasks_.Get() == 0);
+  ORT_ENFORCE(remain_tasks_->Get() == 0);
 
   external_stop_callback_.reset();
   stop_source_ = onnxruntime::CancellationSource{};
   task_status_.Reset();
-  remain_tasks_.Set(num_tasks);
+  remain_tasks_->Set(num_tasks);
+#ifdef ORT_ENABLE_STREAM
+  // Each cross-stream barrier has one producer and one downstream consumer.
+  // Re-arm them when a partial-execution context is reused.
+  for (auto& barrier : count_down_barriers_) {
+    barrier.Set(2);
+  }
+#endif
   external_stop_callback_.emplace(terminate_token, RequestStop{stop_source_});
 }
 
@@ -205,10 +212,10 @@ void StreamExecutionContext::RecycleNodeInputs(onnxruntime::NodeIndex node_index
 }
 
 void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& session_scope,
-              onnxruntime::CancellationToken terminate_token, size_t since) {
+              onnxruntime::CancellationToken cancellation_token, size_t since) {
   [[maybe_unused]] auto complete_task = gsl::finally([&ctx]() { ctx.CompleteTask(); });
 
-  if (terminate_token.stop_requested()) {
+  if (cancellation_token.stop_requested()) {
     ctx.SetStatus(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true."));
     return;
   }
@@ -254,14 +261,14 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
 #endif
 
   while (since < end) {
-    if (terminate_token.stop_requested()) {
+    if (cancellation_token.stop_requested()) {
       ctx.SetStatus(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true."));
       return;
     }
     bool continue_flag = true;
     Status status;
     ORT_TRY {
-      status = logic_stream->steps_[since]->Execute(ctx, stream_idx, session_scope, terminate_token, continue_flag);
+      status = logic_stream->steps_[since]->Execute(ctx, stream_idx, session_scope, cancellation_token, continue_flag);
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {
@@ -281,18 +288,21 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
 }
 
 void ScheduleDownstream(StreamExecutionContext& ctx, size_t trigger, bool single_thread_mode,
-                        onnxruntime::CancellationToken terminate_token, SessionScope& session_scope) {
+                        onnxruntime::CancellationToken cancellation_token, SessionScope& session_scope) {
   auto* plan = ctx.GetSessionState().GetExecutionPlan();
   auto& downstream_map = plan->downstream_map;
   auto* tp = single_thread_mode ? nullptr : ctx.GetSessionState().GetInterOpThreadPool();
   auto it = downstream_map.find(trigger);
   if (it != downstream_map.end()) {
     for (auto downstream : it->second) {
+      // Construct the type-erased task before reserving its completion count so
+      // an allocation failure cannot leave WaitAll() waiting for unscheduled work.
+      std::function<void()> task = [&ctx, downstream, cancellation_token, &session_scope]() {
+        RunSince(downstream.first, ctx, session_scope, cancellation_token, downstream.second);
+      };
       // increase the task count before schedule down-stream
       ctx.AddTask();
-      concurrency::ThreadPool::Schedule(tp, [&ctx, downstream, terminate_token, &session_scope]() {
-        RunSince(downstream.first, ctx, session_scope, terminate_token, downstream.second);
-      });
+      concurrency::ThreadPool::Schedule(tp, std::move(task));
     }
   }
 }

@@ -6,6 +6,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
 
 #include "core/common/inlined_containers_fwd.h"
 #include "core/framework/cancellation.h"
@@ -64,8 +65,8 @@ struct OrtRunOptions {
   OrtRunOptions();
   OrtRunOptions(const OrtRunOptions& other);
   OrtRunOptions& operator=(const OrtRunOptions& other);
-  OrtRunOptions(OrtRunOptions&&) noexcept = default;
-  OrtRunOptions& operator=(OrtRunOptions&&) noexcept = default;
+  OrtRunOptions(OrtRunOptions&& other);
+  OrtRunOptions& operator=(OrtRunOptions&& other);
   ~OrtRunOptions() = default;
 
   // The token snapshots the current termination state. ResetTerminate replaces
@@ -98,6 +99,7 @@ struct OrtRunOptions {
         source = source_;
       }
 
+      // Callbacks may re-enter RunOptions, so invoke them without this lock.
       source.request_stop();
     }
 
@@ -144,6 +146,31 @@ inline OrtRunOptions& OrtRunOptions::operator=(const OrtRunOptions& other) {
   if (this != &other) {
     OrtRunOptions copy{other};
     *this = std::move(copy);
+  }
+
+  return *this;
+}
+
+inline OrtRunOptions::OrtRunOptions(OrtRunOptions&& other)
+    : OrtRunOptions() {
+  *this = std::move(other);
+}
+
+inline OrtRunOptions& OrtRunOptions::operator=(OrtRunOptions&& other) {
+  if (this != &other) {
+    run_log_severity_level = other.run_log_severity_level;
+    run_log_verbosity_level = other.run_log_verbosity_level;
+    run_tag = std::move(other.run_tag);
+    only_execute_path_to_fetches = other.only_execute_path_to_fetches;
+    enable_profiling = other.enable_profiling;
+    profile_file_prefix = std::move(other.profile_file_prefix);
+#ifdef ENABLE_TRAINING
+    training_mode = other.training_mode;
+#endif
+    config_options = std::move(other.config_options);
+    active_adapters = std::move(other.active_adapters);
+    sync_stream = other.sync_stream;
+    termination_state_.swap(other.termination_state_);
   }
 
   return *this;

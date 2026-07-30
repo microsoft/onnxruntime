@@ -34,7 +34,7 @@ using OrtValueCachePtr = std::shared_ptr<OrtValueCache>;
 onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
                                   NodeIndex idx,
                                   size_t stream_idx,
-                                  onnxruntime::CancellationToken terminate_token,
+                                  onnxruntime::CancellationToken cancellation_token,
                                   SessionScope& session_scope);
 
 onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,

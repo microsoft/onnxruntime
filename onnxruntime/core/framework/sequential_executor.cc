@@ -526,7 +526,7 @@ class KernelScope {
 onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
                                   NodeIndex idx,
                                   size_t stream_idx,
-                                  onnxruntime::CancellationToken terminate_token,
+                                  onnxruntime::CancellationToken cancellation_token,
                                   SessionScope& session_scope) {
   auto* p_kernel = ctx.GetSessionState().GetKernel(idx);
   if (p_kernel->KernelDef().OpName() == "YieldOp") {
@@ -542,7 +542,7 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
                                      ctx.GetExecutionFrame(),
                                      *p_kernel,
                                      ctx.GetLogger(),
-                                     terminate_token,
+                                     cancellation_token,
                                      ctx.GetDeviceStream(stream_idx),
                                      session_scope.GetRunProfiler());
   onnxruntime::Status status;

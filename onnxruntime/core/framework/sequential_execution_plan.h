@@ -116,7 +116,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
     virtual Status Execute(StreamExecutionContext& ctx,
                            size_t stream_idx,
                            SessionScope& session_scope,
-                           onnxruntime::CancellationToken terminate_token,
+                           onnxruntime::CancellationToken cancellation_token,
                            bool& continue_flag) = 0;
     virtual std::string ToString() const = 0;
     inline NodeIndex GetNodeIndex() { return node_index_; }

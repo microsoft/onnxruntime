@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include "core/framework/cancellation.h"
@@ -35,11 +36,10 @@ typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
 // 3. a set of notification instances needed to perform synchronization in current execution plan.
 class StreamExecutionContext {
  public:
-  /*
-   * LIMITATION:
-   * CountDownBarrier is only for scenario that the v is set
-   * to the # of consumers and each consumer calls Dec() exactly once.
-   */
+  // Waitable countdown that supports adding work while the count is positive.
+  // Set() requires no active users, and every counted unit must call Dec()
+  // exactly once. The barrier must remain alive until all Dec() calls return;
+  // Wait() only guarantees that the count reached zero.
   class CountDownBarrier {
    public:
     CountDownBarrier() : v_{0} {};
@@ -170,6 +170,8 @@ class StreamExecutionContext {
   void SetStatus(const Status& status);
 
   onnxruntime::CancellationToken GetCancellationToken() const noexcept {
+    // This token combines external termination with internal worker failure so
+    // one failed stream promptly cancels its siblings.
     return stop_source_.get_token();
   }
 
@@ -218,7 +220,9 @@ class StreamExecutionContext {
 
   std::unique_ptr<std::atomic_int[]> release_plan_;
 
-  CountDownBarrier remain_tasks_;
+  // A worker can perform the final decrement immediately before WaitAll()
+  // returns. Shared ownership keeps the atomic alive through its notify_all().
+  std::shared_ptr<CountDownBarrier> remain_tasks_{std::make_shared<CountDownBarrier>()};
 
   struct RequestStop {
     mutable onnxruntime::CancellationSource stop_source;
@@ -229,6 +233,8 @@ class StreamExecutionContext {
   };
 
   onnxruntime::CancellationSource stop_source_;
+  // CancellationCallback is non-movable, so reuse destroys and reconstructs
+  // the external-token registration in place.
   std::optional<onnxruntime::CancellationCallback<RequestStop>> external_stop_callback_;
   FirstFailureStatus task_status_;
 
@@ -258,13 +264,13 @@ using NotificationIndex = size_t;
 void RunSince(size_t stream_idx,
               StreamExecutionContext& ctx,
               SessionScope& session_scope,
-              onnxruntime::CancellationToken terminate_token,
+              onnxruntime::CancellationToken cancellation_token,
               size_t since);
 
 // Schedule the downstream jobs from other streams at 'trigger' step, based on the execution plan.
 void ScheduleDownstream(StreamExecutionContext& ctx,
                         size_t trigger,
                         bool single_thread_mode,
-                        onnxruntime::CancellationToken terminate_token,
+                        onnxruntime::CancellationToken cancellation_token,
                         SessionScope& session_scope);
 }  // namespace onnxruntime
