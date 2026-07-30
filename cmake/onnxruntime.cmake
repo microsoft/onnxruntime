@@ -297,7 +297,9 @@ else()
   )
 endif()
 
-if(WIN32)
+# In a static build the onnxruntime target is an INTERFACE library, which rejects
+# the PRIVATE keyword.
+if(WIN32 AND onnxruntime_BUILD_SHARED_LIB)
   target_link_options(onnxruntime PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
 endif()
 #See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
