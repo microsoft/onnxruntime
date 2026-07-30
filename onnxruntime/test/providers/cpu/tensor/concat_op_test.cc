@@ -556,11 +556,11 @@ TEST(ConcatOpTest, Concat_int64_webgpu) {
 
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{0});
-  // Values stay within the int32 range: the WebGPU EP represents int64 with a 32-bit value type,
-  // so larger magnitudes would be truncated (a known limitation shared with other int64 kernels).
-  test.AddInput<int64_t>("input1", {1, 2}, {1, 2});
-  test.AddInput<int64_t>("input2", {2, 2}, {3, 4, 5, 6});
-  test.AddOutput<int64_t>("concat_result", {3, 2}, {1, 2, 3, 4, 5, 6});
+  // Include values outside the int32 range (2^32, 2^33+1, a large negative, INT64_MAX) to prove
+  // the full 64-bit value is preserved via a raw vec2<u32> storage copy rather than truncated to i32.
+  test.AddInput<int64_t>("input1", {1, 2}, {1, 4294967296});                                          // 1, 2^32
+  test.AddInput<int64_t>("input2", {2, 2}, {8589934593, -4294967297, 100, 9223372036854775807LL});   // 2^33+1, -(2^32+1), 100, INT64_MAX
+  test.AddOutput<int64_t>("concat_result", {3, 2}, {1, 4294967296, 8589934593, -4294967297, 100, 9223372036854775807LL});
 
   // Disable CPU-EP fallback so the Concat node must run on the WebGPU kernel.
   SessionOptions so;
