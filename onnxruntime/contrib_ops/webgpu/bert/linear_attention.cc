@@ -108,6 +108,8 @@ LinearAttention::LinearAttention(const OpKernelInfo& info)
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
   q_num_heads_ = static_cast<int>(info.GetAttr<int64_t>("q_num_heads"));
   kv_num_heads_ = static_cast<int>(info.GetAttr<int64_t>("kv_num_heads"));
+  ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("state_window", 0) == 0,
+              "WebGPU LinearAttention does not support state_window > 0 (CUDA EP only)");
 }
 
 /*

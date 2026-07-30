@@ -3,6 +3,7 @@
 
 #include "contrib_ops/cuda/bert/linear_attention.h"
 #include "contrib_ops/cuda/bert/linear_attention_impl.h"
+#include "contrib_ops/cpu/bert/linear_attention_helper.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 
@@ -45,6 +46,11 @@ LinearAttention<T>::LinearAttention(const OpKernelInfo& info) : CudaKernel(info)
   int64_t chunk_size = info.GetAttrOrDefault<int64_t>("chunk_size", 64);
   // chunk_size_ reserved for future chunk-parallel prefill algorithm; not yet used.
   chunk_size_ = static_cast<int>(chunk_size);
+
+  // Only the trailing states are ever consumed (speculative-decoding rollback), while one state
+  // per token costs d_k*d_v per token per layer -- ~88 GB for a 2.8k prefill on a 30-layer model.
+  // A window caps both the allocation and the write traffic; 0 keeps the plain 4D single state.
+  ORT_THROW_IF_ERROR(linear_attention_helper::ParseStateWindow(info, state_window_));
 }
 
 template <typename T>
@@ -118,31 +124,30 @@ Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
   TensorShape output_shape({batch_size, seq_len, output_hidden});
   Tensor* output_tensor = context->Output(0, output_shape);
 
-  TensorShape state_shape({batch_size, kv_num_heads_, d_k, d_v});
+  // past_state / present_state are [B, H_kv, d_k, d_v], or [W, B, H_kv, d_k, d_v] when
+  // state_window_ = W > 0. Right-aligned: token t lands in slot t + W - seq_len, so slot W-1
+  // always holds the state after the last token (and is the slot past_state is read from) and,
+  // when W < seq_len, only the last W states are written.
+  const int state_slots = state_window_ > 0 ? state_window_ : 1;
+  TensorShape state_shape;
+  ORT_RETURN_IF_ERROR(linear_attention_helper::CheckInputs(
+      state_window_, batch_size, kv_num_heads_, d_k, d_v, past_state_tensor, state_shape));
   Tensor* present_state_tensor = context->Output(1, state_shape);
 
-  // If past_state is nullptr, zero-init present_state on device
+  T* present_state_data = present_state_tensor->MutableData<T>();
+  const T* initial_state_data = present_state_data;
+
+  // If past_state is nullptr, zero-init the buffer used as the initial state. Only slot W-1 is
+  // actually read by the kernel, but zeroing the whole thing also defines the slots below
+  // W - seq_len, which the kernel deliberately leaves alone when the window is wider than the
+  // sequence (that is what bounds the per-step work).
   if (past_state_tensor == nullptr) {
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
-        present_state_tensor->MutableData<T>(), 0,
-        static_cast<size_t>(batch_size) * kv_num_heads_ * d_k * d_v * sizeof(T),
+        present_state_data, 0,
+        present_state_tensor->SizeInBytes(),
         Stream(context)));
   } else {
-    // Validate past_state shape matches expected (B, H_kv, d_k, d_v)
-    const auto& past_shape = past_state_tensor->Shape();
-    ORT_ENFORCE(past_shape.NumDimensions() == 4,
-                "past_state must be rank 4 (B, H_kv, d_k, d_v), got rank ", past_shape.NumDimensions());
-    ORT_ENFORCE(past_shape[0] == batch_size && past_shape[1] == kv_num_heads_ &&
-                    past_shape[2] == d_k && past_shape[3] == d_v,
-                "past_state shape mismatch: expected (", batch_size, ", ", kv_num_heads_, ", ", d_k, ", ", d_v,
-                "), got (", past_shape[0], ", ", past_shape[1], ", ", past_shape[2], ", ", past_shape[3], ")");
-    // Copy past_state -> present_state (will be updated in-place by kernel)
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-        present_state_tensor->MutableData<T>(),
-        past_state_tensor->Data<T>(),
-        static_cast<size_t>(batch_size) * kv_num_heads_ * d_k * d_v * sizeof(T),
-        cudaMemcpyDeviceToDevice,
-        Stream(context)));
+    initial_state_data = past_state_tensor->Data<T>();
   }
 
   typedef typename OrtToCudaType<T>::type CudaT;
@@ -155,7 +160,8 @@ Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
       decay_tensor ? reinterpret_cast<const CudaT*>(decay_tensor->Data<T>()) : nullptr,
       beta_tensor ? reinterpret_cast<const CudaT*>(beta_tensor->Data<T>()) : nullptr,
       reinterpret_cast<CudaT*>(output_tensor->MutableData<T>()),
-      reinterpret_cast<CudaT*>(present_state_tensor->MutableData<T>()),
+      reinterpret_cast<const CudaT*>(initial_state_data),
+      reinterpret_cast<CudaT*>(present_state_data),
       batch_size,
       seq_len,
       q_num_heads_,
@@ -169,7 +175,8 @@ Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
       needs_beta,
       beta_per_head,
       needs_retrieval,
-      GetDeviceProp().maxThreadsPerBlock);
+      GetDeviceProp().maxThreadsPerBlock,
+      state_slots);
 }
 
 }  // namespace cuda
