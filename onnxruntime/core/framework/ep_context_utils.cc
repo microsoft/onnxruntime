@@ -5,8 +5,10 @@
 #include <limits>
 #include <memory>
 #include <utility>
+#include "core/common/inlined_containers.h"
 #include "core/framework/ep_context_utils.h"
 #include "core/framework/error_code_helper.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/model_saving_options.h"
 #include "core/platform/env.h"
 
@@ -173,28 +175,92 @@ Status BuildAndSaveOptimizedModel(const onnxruntime::Model& model,
                                                   gen_options.error_if_output_file_exists));
   }
 
-  // Build the ModelProto from the in-memory model (optimized to the session's configured level). The
+  // Rebuild a fresh, self-consistent copy of the (already optimized/partitioned) graph and Resolve() it
+  // before serialization. Serializing the live session graph as-is (ToGraphProto on `model`) can emit a
+  // model that reflects mid-transformation state (e.g. missing value_info on intermediate edges produced
+  // by the layout transform), which a downstream session cannot re-partition cleanly - leaving layout
+  // boundary Transpose nodes stranded on the CPU EP. Rebuilding node-by-node with explicit inputs/outputs
+  // and a full Resolve() regenerates complete type/shape information and a canonical graph, matching the
+  // model that CreateEpContextModel produces for the EPContext path. This does no EPContext-node
+  // substitution - it is a plain optimized copy.
+  const Graph& src_graph = model.MainGraph();
+
+  Model rebuilt_model(src_graph.Name(), false, model.MetaData(),
+                      model.ModelPath(),  // use source model path so external initializers can find the data file
+                      IOnnxRuntimeOpSchemaRegistryList{src_graph.GetSchemaRegistry()},
+                      src_graph.DomainToVersionMap(), {}, logger);
+  Graph& dst_graph = rebuilt_model.MainGraph();
+  dst_graph.SetDescription(src_graph.Description());
+
+  // Set inputs/outputs explicitly to preserve the order from the source graph.
+  const auto& src_inputs = src_graph.GetInputs();
+  const auto& src_outputs = src_graph.GetOutputs();
+
+  InlinedVector<const NodeArg*> dst_graph_inputs;
+  dst_graph_inputs.reserve(src_inputs.size());
+  for (const auto* input : src_inputs) {
+    const auto* input_arg = src_graph.GetNodeArg(input->Name());
+    auto& dst_input_arg = dst_graph.GetOrCreateNodeArg(input_arg->Name(), input_arg->TypeAsProto());
+    dst_graph_inputs.push_back(&dst_input_arg);
+  }
+
+  InlinedVector<const NodeArg*> dst_graph_outputs;
+  dst_graph_outputs.reserve(src_outputs.size());
+  for (const auto* output : src_outputs) {
+    const auto* output_arg = src_graph.GetNodeArg(output->Name());
+    auto& dst_output_arg = dst_graph.GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
+    dst_graph_outputs.push_back(&dst_output_arg);
+  }
+
+  dst_graph.SetInputs(dst_graph_inputs);
+  dst_graph.SetOutputs(dst_graph_outputs);
+
+  // Reject an already-compiled input model: a Fused node whose domain is not in the graph's domain map
+  // indicates the model was previously compiled. This mirrors the guard in CreateEpContextModel.
+  auto is_invalid_fused_node = [&src_graph](const Node& node) {
+    const std::unordered_map<std::string, int>& supported_domains = src_graph.DomainToVersionMap();
+    return (node.NodeType() == Node::Type::Fused) &&
+           (supported_domains.find(node.Domain()) == supported_domains.end());
+  };
+
+  for (const auto& node : src_graph.Nodes()) {
+    if (is_invalid_fused_node(node)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Encountered an invalid node while compiling a model. ",
+                             "Please ensure the input model is not already compiled.");
+    }
+    dst_graph.AddNode(node);
+  }
+
+  for (const auto& [name, _] : src_graph.GetAllInitializedTensors()) {
+    if (dst_graph.GetNodeArg(name) != nullptr) {
+      graph_utils::MakeInitializerCopyIfNotExist(src_graph, dst_graph, name);
+    }
+  }
+
+  ORT_RETURN_IF_ERROR(dst_graph.Resolve());
+
+  // Build the ModelProto from the rebuilt model (optimized to the session's configured level). The
   // initializer location is one of three mutually exclusive cases; the default (neither external file
   // nor custom handler) embeds them inline.
   ONNX_NAMESPACE::ModelProto model_proto;
   if (const epctx::ExternalInitializerFileInfo* ext_info = gen_options.TryGetExternalInitializerFileInfo();
       ext_info != nullptr) {
     ModelSavingOptions model_saving_options{ext_info->size_threshold};
-    model_proto = model.ToGraphProtoWithExternalInitializers(ext_info->file_path,
-                                                             valid_output_model_path,
-                                                             model_saving_options);
+    model_proto = rebuilt_model.ToGraphProtoWithExternalInitializers(ext_info->file_path,
+                                                                     valid_output_model_path,
+                                                                     model_saving_options);
   } else if (const epctx::InitializerHandler* custom_handler = gen_options.TryGetInitializerHandler();
              custom_handler != nullptr) {
-    ORT_RETURN_IF_ERROR(model.ToGraphProtoWithCustomInitializerHandling(
+    ORT_RETURN_IF_ERROR(rebuilt_model.ToGraphProtoWithCustomInitializerHandling(
         custom_handler->handle_initializer_func, custom_handler->state, model_proto));
   } else {
     // Default: embed all initializers inline. Passing an empty external-file path with a SIZE_MAX
     // threshold and force_embed_external_ini avoids creating an intermediate file.
     ModelSavingOptions model_saving_options{/*size_threshold*/ SIZE_MAX};
     model_saving_options.force_embed_external_ini = true;
-    model_proto = model.ToGraphProtoWithExternalInitializers(std::filesystem::path{},
-                                                             valid_output_model_path,
-                                                             model_saving_options);
+    model_proto = rebuilt_model.ToGraphProtoWithExternalInitializers(std::filesystem::path{},
+                                                                     valid_output_model_path,
+                                                                     model_saving_options);
   }
 
   return SaveModelProtoToLocation(model_proto, gen_options, valid_output_model_path, logger);
