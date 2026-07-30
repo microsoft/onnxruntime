@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <type_traits>
@@ -24,6 +27,57 @@
 
 namespace onnxruntime {
 namespace utils {
+namespace detail {
+
+inline constexpr std::array<uint8_t, ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE>
+    kTensorProtoDataTypeElementSizes{
+        0,                 // UNDEFINED
+        sizeof(float),     // FLOAT
+        sizeof(uint8_t),   // UINT8
+        sizeof(int8_t),    // INT8
+        sizeof(uint16_t),  // UINT16
+        sizeof(int16_t),   // INT16
+        sizeof(int32_t),   // INT32
+        sizeof(int64_t),   // INT64
+        0,                 // STRING
+        sizeof(uint8_t),   // BOOL
+        sizeof(uint16_t),  // FLOAT16
+        sizeof(double),    // DOUBLE
+        sizeof(uint32_t),  // UINT32
+        sizeof(uint64_t),  // UINT64
+        sizeof(float),     // COMPLEX64: byteswap each component individually
+        sizeof(double),    // COMPLEX128: byteswap each component individually
+        sizeof(uint16_t),  // BFLOAT16
+        sizeof(uint8_t),   // FLOAT8E4M3FN
+        sizeof(uint8_t),   // FLOAT8E4M3FNUZ
+        sizeof(uint8_t),   // FLOAT8E5M2
+        sizeof(uint8_t),   // FLOAT8E5M2FNUZ
+        sizeof(uint8_t),   // UINT4
+        sizeof(uint8_t),   // INT4
+        sizeof(uint8_t),   // FLOAT4E2M1
+        sizeof(uint8_t),   // FLOAT8E8M0
+        sizeof(uint8_t),   // UINT2
+        sizeof(uint8_t),   // INT2
+    };
+
+consteval bool IsTensorProtoDataTypeElementSizeMapComplete() {
+  for (size_t index = 0; index < kTensorProtoDataTypeElementSizes.size(); ++index) {
+    const bool has_no_numeric_element_size =
+        index == ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED ||
+        index == ONNX_NAMESPACE::TensorProto_DataType_STRING;
+    if ((kTensorProtoDataTypeElementSizes[index] == 0) != has_no_numeric_element_size) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+static_assert(IsTensorProtoDataTypeElementSizeMapComplete(),
+              "TensorProto data type element-size map must cover every numeric data type.");
+
+}  // namespace detail
+
 /**
  * This function is used to get the external data info from the given tensor proto.
  * @param tensor_proto       given initializer tensor
@@ -57,7 +111,14 @@ void ConvertRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto);
  * after unpacking data.
  * @param tensor_data_type tensor data type to get element size from
  */
-size_t GetElementSizeOfTensor(ONNX_NAMESPACE::TensorProto_DataType tensor_data_type);
+constexpr size_t GetElementSizeOfTensor(ONNX_NAMESPACE::TensorProto_DataType tensor_data_type) noexcept {
+  const int index = static_cast<int>(tensor_data_type);
+  if (index < 0 || static_cast<size_t>(index) >= detail::kTensorProtoDataTypeElementSizes.size()) {
+    return 0;
+  }
+
+  return detail::kTensorProtoDataTypeElementSizes[static_cast<size_t>(index)];
+}
 
 /**
  * Wrapper function for set_raw_data.

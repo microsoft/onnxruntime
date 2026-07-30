@@ -32,9 +32,12 @@
 #include "core/providers/webgpu/tensor/cast.h"
 #include "core/providers/webgpu/tensor/expand.h"
 #include "core/providers/webgpu/tensor/grid_sample.h"
+#include "core/providers/webgpu/tensor/reshape.h"
 #include "core/providers/webgpu/generator/range.h"
+#include "core/providers/webgpu/tensor/trilu.h"
 #include "core/providers/webgpu/tensor/unsqueeze.h"
 #include "core/providers/webgpu/math/binary_elementwise_ops.h"
+#include "core/providers/webgpu/math/unary_elementwise_ops.h"
 #include "core/providers/webgpu/tensor/where.h"
 #include "core/providers/webgpu/reduction/reduction_ops.h"
 
@@ -121,6 +124,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Sigmoid),
     KERNEL_CREATE_INFO(13, Sigmoid),
     KERNEL_CREATE_INFO(6, HardSigmoid),
+    KERNEL_CREATE_INFO(14, HardSwish),
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Log),
     KERNEL_CREATE_INFO(13, Log),
 
@@ -146,6 +150,11 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 11, MLFloat16, Clip)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, 12, MLFloat16, Clip)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, MLFloat16, Clip)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, 12, int32_t, Clip)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, int32_t, Clip)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, 12, uint32_t, Clip)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, uint32_t, Clip)>,
+    // int64 Clip is registered conditionally in RegisterKernels (gated on enable_int64).
     KERNEL_CREATE_INFO(6, Elu),
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Relu),
     KERNEL_CREATE_INFO_VERSIONED(13, 13, Relu),
@@ -158,9 +167,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO(22, Softplus),
 
     // // binary - math
-    KERNEL_CREATE_INFO_VERSIONED(7, 12, Add),
-    KERNEL_CREATE_INFO_VERSIONED(13, 13, Add),
-    KERNEL_CREATE_INFO(14, Add),
+    // Add: registered via RegisterKernels with conditional int64 support
     // Sub: registered via RegisterKernels with conditional int64 support
     KERNEL_CREATE_INFO_VERSIONED(7, 12, Mul),
     KERNEL_CREATE_INFO_VERSIONED(13, 13, Mul),
@@ -168,10 +175,19 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO_VERSIONED(7, 12, Div),
     KERNEL_CREATE_INFO_VERSIONED(13, 13, Div),
     KERNEL_CREATE_INFO(14, Div),
+    KERNEL_CREATE_INFO_VERSIONED(8, 11, Max),
+    KERNEL_CREATE_INFO_VERSIONED(12, 12, Max),
+    KERNEL_CREATE_INFO(13, Max),
+    KERNEL_CREATE_INFO_VERSIONED(8, 11, Min),
+    KERNEL_CREATE_INFO_VERSIONED(12, 12, Min),
+    KERNEL_CREATE_INFO(13, Min),
     KERNEL_CREATE_INFO_VERSIONED(7, 11, Pow),
     KERNEL_CREATE_INFO_VERSIONED(12, 12, Pow),
     KERNEL_CREATE_INFO_VERSIONED(13, 14, Pow),
     KERNEL_CREATE_INFO(15, Pow),
+    KERNEL_CREATE_INFO_VERSIONED(7, 8, PRelu),
+    KERNEL_CREATE_INFO_VERSIONED(9, 15, PRelu),
+    KERNEL_CREATE_INFO(16, PRelu),
     // Equal: registered via RegisterKernels with conditional int64 support
     KERNEL_CREATE_INFO_VERSIONED(7, 8, Greater),
     KERNEL_CREATE_INFO_VERSIONED(9, 12, Greater),
@@ -192,14 +208,6 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 21, 22, Shape)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 23, 23, Shape)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 24, Shape)>,
-
-    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 5, 12, Reshape)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 13, Reshape)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 14, 18, Reshape)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 19, 20, Reshape)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 21, 22, Reshape)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 23, 24, Reshape)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 25, Reshape)>,
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 12, Identity)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 13, Identity)>,
@@ -306,10 +314,14 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 7, 9, AveragePool)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 10, 10, AveragePool)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, AveragePool)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 18, AveragePool)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 19, 21, AveragePool)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 22, AveragePool)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 7, 9, AveragePool)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 10, 10, AveragePool)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 11, AveragePool)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 11, 18, AveragePool)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 19, 21, AveragePool)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 22, AveragePool)>,
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, GlobalAveragePool)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 1, GlobalAveragePool)>,
@@ -381,6 +393,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 21, Flatten)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 6, 12, Tile)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, Tile)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 14, Trilu)>,
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 17, LayerNormalization)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 23, RMSNormalization)>,
@@ -431,6 +444,9 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 13, CumSum)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 14, CumSum)>,
 
+    KERNEL_CREATE_INFO_VERSIONED(17, 19, DFT),
+    KERNEL_CREATE_INFO(20, DFT),
+
     KERNEL_CREATE_INFO_VERSIONED(1, 9, TopK),
     KERNEL_CREATE_INFO_VERSIONED(10, 10, TopK),
     KERNEL_CREATE_INFO_VERSIONED(11, 23, TopK),
@@ -471,6 +487,9 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<23, 23>(enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<24>(enable_int64)));
 
+  // Register int64 Clip kernels with conditional int64 support
+  RegisterClipInt64Kernels(*kernel_registry, enable_int64);
+
   // Register Range kernels with conditional int64 support
   RegisterRangeKernels(*kernel_registry, enable_int64);
 
@@ -486,6 +505,20 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   // Register Expand kernels with conditional int64 support
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandVersionedKernelInfo<8, 12>(enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandKernelInfo<13>(enable_int64)));
+
+  // Register Add kernels with conditional int64 support
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateAddVersionedKernelInfo<7, 12>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateAddVersionedKernelInfo<13, 13>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateAddKernelInfo<14>(enable_int64)));
+
+  // Register Reshape kernels with conditional int64 support
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo<5, 12>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo<13, 13>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo<14, 18>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo<19, 20>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo<21, 22>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo<23, 24>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeKernelInfo<25>(enable_int64)));
 
   // Register Equal kernels with conditional int64 support
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateEqualVersionedKernelInfo<7, 10>(enable_int64)));

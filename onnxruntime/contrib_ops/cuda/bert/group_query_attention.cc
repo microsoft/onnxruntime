@@ -448,7 +448,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // Q and the appended cache. Keep quantized QK-Norm off the XQA route until scale correctness is
   // validated for normalized K before quantized-cache append.
   const bool xqa_qk_norm_ok = !parameters.use_qk_norm || !is_inputs_quantized;
-  const bool use_xqa_attention_sinks = head_sink != nullptr && !is_inputs_quantized;
+  // Attention sinks (smooth softmax) work on the quantized INT8/FP8 XQA paths as well: the sink
+  // term is folded into the softmax row sum by the same kernel code, and the KV dequant scale is
+  // already applied to the QK scores (qkScale) before the row max/sum are computed, so sink and
+  // score live in the same dequantized domain. This holds for both the single-block and the
+  // multi-block (Flash Decoding) reductions, where the sink is added to the merged row sum.
+  const bool use_xqa_attention_sinks = head_sink != nullptr;
   const bool is_xqa_smooth_softmax_supported = !parameters.use_smooth_softmax || use_xqa_attention_sinks;
   // XQA is enabled when enable_xqa_=true; ineligible shapes/group sizes fall back via data.use_xqa below.
   // The XQA kernel has no attention_bias input.
@@ -466,18 +471,24 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
     // Sliding window (local_window_size > 0) is wired through to the quantized XQA kernels as well,
     // so the INT8/FP8 variants no longer need to be restricted to global attention.
+    // K and V may use different scales: for PER_TENSOR the kernel folds k_scale into qkScale (applied
+    // to Q*K.T before softmax) and v_scale into voScale (applied to the P*V accumulator). PER_CHANNEL
+    // scales cannot be scalars inside the kernel, so ExtremeDecoding folds them into Q and into the
+    // attention output instead, which is exact and costs two O(num_heads * head_size) passes -- far
+    // cheaper than the alternative of dequantizing the whole cache on every decode step.
+    auto is_supported_quant_type = [](KVQuantizationType t) {
+      return t == KVQuantizationType::PER_TENSOR || t == KVQuantizationType::PER_CHANNEL;
+    };
     bool is_int8_quantized_supported = is_int8 &&
-                                       (k_quant_type_ == KVQuantizationType::PER_TENSOR &&
-                                        v_quant_type_ == KVQuantizationType::PER_TENSOR &&
-                                        data.k_scale == data.v_scale &&  // XQA requires k_scale and v_scale to be the same. Here requires k_scale and v_scale are same tensor.
+                                       (is_supported_quant_type(k_quant_type_) &&
+                                        is_supported_quant_type(v_quant_type_) &&
                                         (parameters.head_size == 256 || parameters.head_size == 128 || parameters.head_size == 64) &&
                                         (group_size == 4 || group_size == 8 || group_size == 16 || group_size == 32));
 
 #ifdef USE_FP8_KV_CACHE
     bool is_fp8_quantized_supported = is_fp8 &&
-                                      (k_quant_type_ == KVQuantizationType::PER_TENSOR &&
-                                       v_quant_type_ == KVQuantizationType::PER_TENSOR &&
-                                       data.k_scale == data.v_scale &&
+                                      (is_supported_quant_type(k_quant_type_) &&
+                                       is_supported_quant_type(v_quant_type_) &&
                                        (parameters.head_size == 256 || parameters.head_size == 128 || parameters.head_size == 64) &&
                                        (group_size == 4 || group_size == 8 || group_size == 16 || group_size == 32) &&
                                        (device_prop.major >= 9 || (device_prop.major == 8 && device_prop.minor == 9)));  // FP8 requires SM89+ (Ada Lovelace)

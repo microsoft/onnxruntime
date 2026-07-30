@@ -250,6 +250,30 @@ struct QuantParams {
   }
 };
 
+// Optional fused routing (optimization C). When router_logits is non-null, runMoe computes the
+// softmax + top-k itself, fused into the kernel that builds the expert permutation maps, instead of
+// the caller launching a separate softmax/top-k kernel first. At decode both are single-block
+// kernels dominated by launch latency, so merging them removes close to a full kernel's overhead
+// per layer.
+//
+// The caller must have checked isFusedMoeRoutingSupported() for the same shape parameters, and must
+// pass the same buffers it passes as runMoe's token_selected_experts / token_final_scales arguments
+// (runMoe fills them before reading them). router_logits is [num_rows, num_experts] and its element
+// type must match the runner's InputType.
+struct FusedRoutingParams {
+  void const* router_logits{nullptr};
+  int* token_selected_experts{nullptr};
+  float* token_final_scales{nullptr};
+  bool normalize_routing_weights{false};
+};
+
+// Host-side, deterministic predicate for the fused routing prologue. It must be the single source
+// of truth: the caller uses it to decide whether to skip its own softmax/top-k launch, and runMoe
+// re-checks it, so the two can never disagree about who computed the routing.
+bool isFusedMoeRoutingSupported(int64_t const num_tokens, int const num_experts,
+                                int const num_experts_per_node, int const experts_per_token,
+                                int const ep_size);
+
 class CutlassMoeFCRunnerInterface {
  public:
   virtual ~CutlassMoeFCRunnerInterface() = default;
@@ -260,13 +284,19 @@ class CutlassMoeFCRunnerInterface {
                          std::optional<cutlass_extensions::CutlassGemmConfig> gemm2_config) = 0;
   virtual std::vector<cutlass_extensions::CutlassGemmConfig> getTactics() = 0;
 
+  // wfp4a16 only: route prefill through the SM80 fused-dequant grouped GEMM (vs the SM90 TMA WS
+  // path). The QMoE op decides this at construction time (reading the relevant env vars then) and
+  // pushes it in here, so inference-time config selection does not depend on the live environment.
+  // Default no-op for runners that do not implement the SM80 FP4 path.
+  virtual void setUseSm80Fp4(bool /*use_sm80_fp4*/) {}
+
   virtual void runMoe(void const* input_activations, void const* input_sf, int const* token_selected_experts,
                       float const* token_final_scales, void const* fc1_expert_weights, void const* fc1_expert_biases,
                       ActivationType fc1_activation_type, void const* fc2_expert_weights, void const* fc2_expert_biases,
                       QuantParams quant_params, int64_t const num_rows, int64_t const hidden_size, int64_t const inter_size,
                       int const num_experts, int const experts_per_token, char* workspace_ptr, void* final_output,
                       int* unpermuted_row_to_permuted_row, MOEParallelismConfig parallelism_config,
-                      ActivationParameters activation_params,
+                      ActivationParameters activation_params, FusedRoutingParams fused_routing,
                       cudaStream_t stream) = 0;
 
   // Aliases for profiling the gemms
@@ -399,6 +429,18 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
     return moe_gemm_runner_.getConfigs();
   }
 
+  // Push the QMoE op's SM80-FP4 decision into the inner runner and re-pick a valid default tactic
+  // from the (now filtered) config list, so even if profiling later finds nothing, the preserved
+  // default matches the selected GEMM family (SM80 Ampere vs SM90 TMA WS).
+  void setUseSm80Fp4(bool use_sm80_fp4) override {
+    moe_gemm_runner_.setUseSm80Fp4(use_sm80_fp4);
+    auto tactics = moe_gemm_runner_.getConfigs();
+    if (!tactics.empty()) {
+      gemm1_config_ = tactics[0];
+      gemm2_config_ = tactics[0];
+    }
+  }
+
   static std::vector<cutlass_extensions::CutlassGemmConfig> getTactics(int sm) {
     using RunnerType = decltype(moe_gemm_runner_);
     return RunnerType::getConfigs(sm);
@@ -410,7 +452,7 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
               QuantParams quant_params, int64_t const num_rows, int64_t const hidden_size, int64_t const inter_size,
               int const num_experts, int const experts_per_token, char* workspace_ptr, void* final_output,
               int* unpermuted_row_to_permuted_row, MOEParallelismConfig parallelism_config,
-              ActivationParameters activation_params,
+              ActivationParameters activation_params, FusedRoutingParams fused_routing,
               cudaStream_t stream) override;
 
   // We make these GEMM1 & GEMM2 static because they need to be stateless for the profiler to work
@@ -424,7 +466,8 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
                     TmaWarpSpecializedGroupedGemmInput::ElementSF* fc2_fp4_act_flat, QuantParams quant_params,
                     int64_t const num_rows, int64_t const expanded_num_rows, int64_t const hidden_size, int64_t const inter_size,
                     int const num_experts_per_node, ActivationType fc1_activation_type, float const** alpha_scale_ptr_array,
-                    int const* permuted_row_to_expert, float* moe_gemv_splitk_partials, bool bias_is_broadcast,
+                    int const* permuted_row_to_expert, float* moe_gemv_splitk_partials,
+                    int const* permuted_row_to_source_row, bool bias_is_broadcast,
                     cudaStream_t stream, MOEParallelismConfig parallelism_config,
                     cutlass_extensions::CutlassGemmConfig config,
                     ActivationParameters activation_params);
@@ -462,8 +505,8 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
                        static_cast<WeightType const*>(fc1_expert_weights), static_cast<ScaleBiasType const*>(fc1_expert_biases),
                        num_valid_tokens_ptr, static_cast<ScaleBiasType const*>(fc1_int_scales), fc1_fp8_dequant, fc2_fp8_quant,
                        fc1_fp4_act_flat, fc2_fp4_act_flat, quant_params, num_rows, expanded_num_rows, hidden_size, inter_size,
-                       num_experts_per_node, fc1_activation_type, alpha_scale_ptr_array, nullptr, nullptr, bias_is_broadcast, stream,
-                       MOEParallelismConfig{}, config, activation_params);
+                       num_experts_per_node, fc1_activation_type, alpha_scale_ptr_array, nullptr, nullptr, nullptr,
+                       bias_is_broadcast, stream, MOEParallelismConfig{}, config, activation_params);
   }
 
   void gemm2(void const* const input, void* const gemm_output, void* const final_output,

@@ -28,6 +28,7 @@ function(onnxruntime_filter_cuda_cu_sources CU_SRC_LIST)
     list(FILTER _list EXCLUDE REGEX "moe_gemm_tma_ws_sm120_fp8_fp4\\.generated\\.cu")
     list(FILTER _list EXCLUDE REGEX "moe_gemm_kernels_(fp16|bf16)_fp4\\.cu")
     list(FILTER _list EXCLUDE REGEX "moe_gemm_kernels_fp8_fp4\\.cu")
+    list(FILTER _list EXCLUDE REGEX "moe_gemm_kernels_fp4_fp4\\.cu")
   else()
     # CUDA 13 PTXAS does not complete the FP4 M=128/N=64 pingpong specializations in
     # this build configuration. The dispatcher routes that tile through cooperative
@@ -66,6 +67,19 @@ function(onnxruntime_extract_sm_specific_cuda_sources CU_SRC_LIST)
 
   set(_list "${${CU_SRC_LIST}}")
 
+  # MatMulBlockQuantizedFp4Weight native SM120 path must never be compiled in the default
+  # CUDA source list (e.g., SM86-only builds). Keep it only in SM120-specific
+  # object libraries when SM120 is requested.
+  set(_matmul_block_scaled_fp4_sm120_srcs)
+  foreach(_src IN LISTS _list)
+    if(_src MATCHES "matmul_block_scaled_fp4_sm120\\.cu$")
+      list(APPEND _matmul_block_scaled_fp4_sm120_srcs "${_src}")
+    endif()
+  endforeach()
+  if(_matmul_block_scaled_fp4_sm120_srcs)
+    list(REMOVE_ITEM _list ${_matmul_block_scaled_fp4_sm120_srcs})
+  endif()
+
   # Extract SM90 TMA WS generated files
   set(_sm90_srcs)
   if(ORT_HAS_SM90_OR_LATER)
@@ -81,7 +95,10 @@ function(onnxruntime_extract_sm_specific_cuda_sources CU_SRC_LIST)
 
   # Extract SM120 TMA WS generated files
   set(_sm120_srcs)
-  if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
+  if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG OR "121" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
+    if(_matmul_block_scaled_fp4_sm120_srcs)
+      list(APPEND _sm120_srcs ${_matmul_block_scaled_fp4_sm120_srcs})
+    endif()
     foreach(_src IN LISTS _list)
       if(_src MATCHES "moe_gemm_tma_ws_sm120_.*\\.generated\\.cu$")
         list(APPEND _sm120_srcs "${_src}")

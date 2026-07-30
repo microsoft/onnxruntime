@@ -406,7 +406,7 @@ Q8ComputePackBlkSum(
     });
 }
 
-static void
+inline void
 PackQuantBDataAndBlkSum(
     size_t N,
     size_t BlockCountK,
@@ -433,7 +433,7 @@ PackQuantBDataAndBlkSum(
     }
 }
 
-static void
+inline void
 Q8PackQuantBDataAndBlkSum(
     size_t N,
     size_t BlockCountK,

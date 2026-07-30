@@ -355,6 +355,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
         params.limit = swiglu_limit_;
         return params;
       }(),
+      onnxruntime::llm::kernels::cutlass_kernels::FusedRoutingParams{},
       stream);
 
   return Status::OK();

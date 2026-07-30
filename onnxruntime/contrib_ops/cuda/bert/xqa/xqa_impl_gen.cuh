@@ -57,7 +57,8 @@ inline Status Launch(
     [[maybe_unused]] const bool is_bsnh,
     [[maybe_unused]] const int* past_seq_lens,
     [[maybe_unused]] const float* attention_sinks,
-    [[maybe_unused]] const float* kv_cache_scale,
+    [[maybe_unused]] const float* k_cache_scale,
+    [[maybe_unused]] const float* v_cache_scale,
     [[maybe_unused]] void* workspace,
     [[maybe_unused]] size_t workspace_size,
     // No default: every caller must thread local_window_size through explicitly so a future
@@ -125,9 +126,10 @@ inline Status Launch(
       static_cast<uint32_t>(max_seq_len),
       reinterpret_cast<const uint32_t*>(past_seq_lens),
       static_cast<uint32_t>(batch_size),
-      kv_cache_scale,  // Pass kv_cache_scale for INT8 dequantization
-      semaphores,      // semaphores
-      scratch,         // scratch
+      k_cache_scale,  // K dequantization scale (INT8/FP8 KV cache only)
+      v_cache_scale,  // V dequantization scale (INT8/FP8 KV cache only)
+      semaphores,     // semaphores
+      scratch,        // scratch
       stream);
   return Status::OK();
 #else

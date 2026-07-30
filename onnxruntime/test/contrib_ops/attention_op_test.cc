@@ -5,6 +5,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "test/contrib_ops/attention_op_test_helper.h"
 
@@ -879,6 +880,71 @@ TEST(ContribOpAttentionTest, Causal_EmptyPastState) {
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
                    use_past_state, past_sequence_length, &past_data, &present_data);
+}
+
+TEST(ContribOpAttentionTest, CudnnFlashAttentionWithKeySequenceLengthMask) {
+#if !defined(USE_CUDA) || !GTEST_HAS_STREAM_REDIRECTION
+  GTEST_SKIP() << "Kernel selection verification requires CUDA and stdout capture support.";
+#else
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "cuDNN SDPA requires a CUDA device with compute capability 8.0 or later.";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 2;
+  constexpr int hidden_size = 64;
+  constexpr int number_of_heads = 2;
+
+  std::vector<float> input_data(sequence_length * hidden_size);
+  for (int i = 0; i < hidden_size; ++i) {
+    input_data[i] = static_cast<float>((i % 7) - 3) / 8.0f;
+    input_data[hidden_size + i] = static_cast<float>((i % 5) - 2) / 4.0f;
+  }
+
+  std::vector<float> weight_data(hidden_size * 3 * hidden_size, 0.0f);
+  for (int i = 0; i < hidden_size; ++i) {
+    weight_data[i * 3 * hidden_size + i] = 1.0f;
+    weight_data[i * 3 * hidden_size + hidden_size + i] = 1.0f;
+    weight_data[i * 3 * hidden_size + 2 * hidden_size + i] = 1.0f;
+  }
+  std::vector<float> bias_data(3 * hidden_size, 0.0f);
+
+  // Only the first key/value token is valid, so both output tokens must equal its value.
+  // Use a non-zero attention bias to cover bias forwarding through the cuDNN path.
+  std::vector<int32_t> mask_index_data = {1};
+  std::vector<float> attention_bias_data = {
+      0.25f, -0.5f, 0.75f, -1.0f,
+      -0.25f, 0.5f, -0.75f, 1.0f};
+  std::vector<float> output_data(2 * hidden_size);
+  std::copy_n(input_data.begin(), hidden_size, output_data.begin());
+  std::copy_n(input_data.begin(), hidden_size, output_data.begin() + hidden_size);
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  constexpr bool use_float16 = true;
+  constexpr bool is_unidirectional = false;
+  testing::internal::CaptureStdout();
+  RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
+                   batch_size, sequence_length, hidden_size, number_of_heads,
+                   use_float16, is_unidirectional,
+                   false /*use_past_state*/, 0 /*past_sequence_length*/, nullptr, nullptr,
+                   AttentionMaskType::MASK_1D_KEY_SEQ_LEN, 0 /*input_hidden_size*/, 0 /*max_sequence_length*/,
+                   false /*disable_cpu*/, false /*disable_cuda*/, false /*disable_dml*/, false /*disable_webgpu*/,
+                   {} /*qkv_sizes*/, attention_bias_data);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (debug_output.find("cuDNN Flash Attention is disabled") != std::string::npos) {
+    GTEST_SKIP() << debug_output;
+  }
+  EXPECT_NE(debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos)
+      << debug_output;
+#endif
 }
 
 TEST(ContribOpAttentionTest, AttentionEmptyPastState) {

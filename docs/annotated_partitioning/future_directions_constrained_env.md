@@ -969,6 +969,16 @@ The **estimation function** signature differs between in-tree and plugin paths:
 
 But both compute the same result. For shared-source kernels (compiled both in-tree and as plugin), a single static helper function (e.g., `ComputeAttentionWorkspace()`) is called from both wrappers — ensuring the estimate is identical regardless of build configuration.
 
+**Implementation-confirmed boundary (issue #29775 Phase-A pilot, PR #29811, MatMulNBits):** the split above
+is sharper than "same function, different signature" — it is two functions with different reusability.
+`ComputeFpAIntBGemmWorkspaceSize(m, n, k, sm, multiProcessorCount)` takes only plain shape/arch integers
+(no ORT graph types) and is the part that can be shared verbatim by a future plugin implementation. The
+logic that extracts `m`/`n`/`k` from `const Node&`/`NodeArg`/`TensorShape` (in-tree types only) is a
+separate, thinner wrapper that plugin code cannot reuse and must re-implement against whatever shape
+representation the C ABI exposes (`OrtNode`/`Node_GetInputShape`). Keep any future shared-source kernel's
+math core free of in-tree-only graph types for exactly this reason — see the
+`workspace-estimation-shared-header` skill for the related header-boundary pitfall this pilot hit.
+
 ---
 
 #### Phase A: Workspace Pre-declaration (`DeclareWorkspaceRequirements`)
@@ -984,6 +994,7 @@ struct WorkspaceRequirement {
   size_t size_bytes;        // Size of this workspace buffer
   int slot_id;             // Kernel-defined slot identifier (0, 1, 2, ...)
                            // Unique within a single kernel instance
+  size_t alignment_bytes;   // 0 = allocator default is sufficient. See prose below.
 };
 
 // Optional override on OpKernel (called during FinalizeSessionState):
@@ -993,6 +1004,29 @@ virtual Status DeclareWorkspaceRequirements(
   return Status::OK();  // Default: no declaration (fall back to arena)
 }
 ```
+
+**`alignment_bytes` (added in PR #29811):** reserved for a future shared-arena packer that co-locates
+multiple kernels' declared slots and needs per-slot alignment metadata. Unused by any kernel today — the
+CUDA allocator's default ≥256-byte alignment already satisfies every current kernel's needs (each gets
+its own `GetScratchBuffer` call, or — like GQA's unfused path — hand-rolls sub-offsets assuming the
+outer buffer is already ≥256-byte aligned). A plain `size_t` with a `0` sentinel is used rather than
+`std::optional<size_t>` because this struct is meant to be usable across a plugin-DLL boundary
+eventually, and `std::optional`'s layout is not guaranteed stable across compilers/STL versions the way
+a scalar with a sentinel value is.
+
+**Shape source is not yet wired:** as implemented today, neither
+`EstimateWorkspace` (Level 1) nor `DeclareWorkspaceRequirements` (Level 2) automatically receives "real"
+runtime tensor shapes. Both simply operate on whatever `TensorShape`/shape info a caller passes in. As of
+PR #29811, the *only* caller is that PR's own test harness, which hand-constructs shapes (including a
+symbolic/-1-dim case to exercise the fallback). No `onnxruntime/core/` framework code calls either API
+yet — `GetCapability()`'s cost-for-budget loop and `FinalizeSessionState()`'s eventual call sites
+described in this doc are still to be written. Whoever writes that framework caller will need to decide
+*where the shapes come from*: graph-declared shapes from ONNX shape inference (which may still be
+symbolic for dynamic models), or worst-case/user-declared shapes for constrained/static-shape deployments
+(the target scenario this document already describes above under "Implication for workspace
+estimation"). The two-level split (Level 1 vs. Level 2) does not by itself resolve this — it only changes
+*when* the estimate can be computed relative to kernel construction, not *what* shape information is
+available.
 
 A kernel can declare multiple workspace slots (e.g., attention needs separate Q transpose buffer, output buffer, seqlens buffer). The `slot_id` is defined by the kernel author and is stable across calls — it identifies *which* buffer within that kernel's logic.
 
@@ -1228,6 +1262,31 @@ class AttentionKernel : public OrtKernelImplBase {
 - No coordination between kernel authors
 - No registration step during plugin initialization
 - No versioning concerns (IDs never cross the plugin boundary as semantic values)
+
+##### Cost of a Real Plugin-Side Override (Deferred)
+
+The issue #29775 Phase-A pilot (PR #29811, MatMulNBits) deliberately implemented Level 1 and Level 2
+**only** for the in-tree CUDA EP, and left the plugin-side path unimplemented — the C ABI surface above
+describes the *design*, not something that pilot built or exercised. This was an explicit scope decision
+made when the pilot's design doc (issue #29810) was written, for these reasons, which remain the
+concrete cost of picking this up next:
+
+1. **DLL-boundary verification.** The shared math helper (e.g. `ComputeFpAIntBGemmWorkspaceSize`) needs
+   to actually be confirmed to link and execute correctly when called from the plugin DLL — the struct
+   crossing the ABI boundary compiling is not the same as the helper function being callable/linked
+   there.
+2. **A second build configuration's worth of test infrastructure.** The plugin EP is a separate CMake
+   build configuration from the in-tree CUDA EP; verifying Level 1/2 for a plugin kernel means building
+   and testing under that configuration too, which this pilot's test infra does not cover.
+3. **Wiring the plugin EP's own, separate memory-budget consumer.** `ep_plugin_provider_interfaces.cc`
+   (around line 356) has its own existing budget loop, independent of the in-tree `IResourceAccountant`
+   path, currently using a flat 1.5x safety multiplier. Having Level 1/2 estimates available does not by
+   itself make the plugin EP use them — that loop needs to be updated to consume the estimates, which is
+   a separate piece of work from declaring the estimates.
+
+None of the above is started. A kernel author picking up plugin-side workspace estimation should expect
+to do all three, not just implement the `DeclareWorkspaceRequirements` override on the plugin kernel
+class.
 
 #### Phase B: Eliminate Arena for Static-Shape Models
 

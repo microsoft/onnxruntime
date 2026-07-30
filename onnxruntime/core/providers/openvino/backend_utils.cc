@@ -188,7 +188,7 @@ void FillOutputsWithConstantData(std::shared_ptr<ov::Node> node, Ort::UnownedVal
       break;
     }
     case ov::element::Type_t::f16: {
-      FillOutputHelper<float>(out_tensor, std::move(node));
+      FillOutputHelper<ov::float16>(out_tensor, std::move(node));
       break;
     }
     default:
