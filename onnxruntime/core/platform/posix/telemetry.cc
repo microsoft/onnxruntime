@@ -328,7 +328,7 @@ const std::string& GetAppSessionGuid() {
   return guid;
 }
 
-#if defined(ORT_USE_EMBEDDED_TELEMETRY_CURL)
+#if defined(ORT_TELEMETRY_USES_STATIC_CURL)
 std::string GetCertificateAuthorityBundlePath() {
   if (const char* ssl_cert_file = std::getenv("SSL_CERT_FILE");
       ssl_cert_file != nullptr && access(ssl_cert_file, R_OK) == 0) {
@@ -478,7 +478,7 @@ void PosixTelemetry::Initialize() {
   config[CFG_STR_COLLECTOR_URL] = "https://mobile.events.data.microsoft.com/OneCollector/1.0";
   config[CFG_INT_TRACE_LEVEL_MASK] = 0;                      // Disable SDK internal logging
   config[CFG_INT_SDK_MODE] = SdkModeTypes::SdkModeTypes_CS;  // Common Schema 4.0 mode
-#if defined(ORT_USE_EMBEDDED_TELEMETRY_CURL)
+#if defined(ORT_TELEMETRY_USES_STATIC_CURL)
   if (std::string ca_bundle = GetCertificateAuthorityBundlePath(); !ca_bundle.empty()) {
     config[CFG_MAP_HTTP][CFG_STR_HTTP_SSL_CAINFO] = ca_bundle;
   } else {
