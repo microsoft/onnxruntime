@@ -935,8 +935,8 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     # integration cannot silently switch dependency models within a vcpkg build.
     find_package(MSTelemetry CONFIG REQUIRED)
   endif()
-  if(TARGET MSTelemetry::mat AND NOT ANDROID)
-    message(STATUS "Telemetry: using the caller-supplied MSTelemetry::mat package")
+  if(onnxruntime_USE_VCPKG AND TARGET MSTelemetry::mat AND NOT ANDROID)
+    message(STATUS "Telemetry: using the vcpkg MSTelemetry::mat package")
     set(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE ON)
   else()
     # Linux packages must not depend on a host libcurl. Build an internal HTTP(S)-only static curl
