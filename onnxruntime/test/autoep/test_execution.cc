@@ -819,7 +819,7 @@ TEST(OrtEpLibrary, PluginEp_GenWeightlessEpContextModel) {
 }
 
 // Test weightless EP context model generation using the new ep.enable_weightless session option
-// and ModelCompilationOptions_SetWeightlessMode API.
+// and ModelCompilationOptions_SetWeightlessEnabled API.
 TEST(OrtEpLibrary, PluginEp_WeightlessAllInitializers_CompileApi) {
   RegisteredEpDeviceUniquePtr example_ep;
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
@@ -842,7 +842,7 @@ TEST(OrtEpLibrary, PluginEp_WeightlessAllInitializers_CompileApi) {
     compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
     compile_options.SetInputModelPath(input_model_file);
     compile_options.SetOutputModelPath(output_model_file);
-    compile_options.SetWeightlessMode(true);
+    compile_options.SetWeightlessEnabled(true);
 
     // Compile the model.
     ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
@@ -908,7 +908,7 @@ TEST(OrtEpLibrary, PluginEp_WeightlessMode_ErrorWhenEpDoesNotSupport) {
   Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
   compile_options.SetInputModelPath(input_model_file);
   compile_options.SetOutputModelPath(output_model_file);
-  compile_options.SetWeightlessMode(true);
+  compile_options.SetWeightlessEnabled(true);
 
   // CompileModel should fail because the virtual GPU EP does not implement GetWeightlessSupport.
   auto status = Ort::CompileModel(*ort_env, compile_options);

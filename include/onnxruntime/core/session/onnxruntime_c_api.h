@@ -8410,7 +8410,7 @@ struct OrtCompileApi {
    *
    * \since Version 1.29.
    */
-  ORT_API2_STATUS(ModelCompilationOptions_SetWeightlessMode,
+  ORT_API2_STATUS(ModelCompilationOptions_SetWeightlessEnabled,
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ bool use_weightless);
 };

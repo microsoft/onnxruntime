@@ -188,7 +188,7 @@ class ModelCompilationOptions {
   /// </summary>
   /// <param name="use_weightless">True to enable weightless mode</param>
   /// <returns>Status indicating potential error</returns>
-  Status SetWeightlessMode(bool use_weightless);
+  Status SetWeightlessEnabled(bool use_weightless);
 
   /// <summary>
   /// Checks if the compilation options described by this object are valid.
