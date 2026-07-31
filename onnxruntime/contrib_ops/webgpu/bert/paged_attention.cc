@@ -104,6 +104,68 @@ static Status RunScatterKVToPagedCache(onnxruntime::webgpu::ComputeContext& cont
   return context.RunProgram(program);
 }
 
+Status PagedAttentionRotaryProgram::GenerateShaderCode(ShaderHelper& sh) const {
+  const auto& input = sh.AddInput("input", ShaderUsage::UseUniform);
+  const auto& cos_cache = sh.AddInput("cos_cache", ShaderUsage::UseUniform);
+  const auto& sin_cache = sh.AddInput("sin_cache", ShaderUsage::UseUniform);
+  const auto& cumulative_sequence_length = sh.AddInput("cumulative_sequence_length", ShaderUsage::UseUniform);
+  const auto& past_seqlens = sh.AddInput("past_seqlens", ShaderUsage::UseUniform);
+  const auto& output = sh.AddOutput("output", ShaderUsage::UseUniform);
+  return WGSL_TEMPLATE_APPLY(sh, "bert/paged_attention_rotary.wgsl.template",
+                             WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache),
+                             WGSL_TEMPLATE_VARIABLE(cumulative_sequence_length, cumulative_sequence_length),
+                             WGSL_TEMPLATE_VARIABLE(input, input),
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(past_seqlens, past_seqlens),
+                             WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache));
+}
+
+// Dispatch the rotary embedding program for one 2-D packed token tensor
+// (input : (token_count, n_heads * head_size)). Rotated Q and K each call
+// this once with the appropriate `n_heads` (num_heads for Q, kv_num_heads
+// for K). V is not rotated.
+static Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
+                                 const PagedAttentionParameters& parameters,
+                                 uint32_t n_heads,
+                                 bool interleaved,
+                                 const Tensor* input,
+                                 const Tensor* cos_cache,
+                                 const Tensor* sin_cache,
+                                 const Tensor* cumulative_seqlens_q,
+                                 const Tensor* past_seqlens,
+                                 Tensor* output) {
+  const uint32_t token_count = static_cast<uint32_t>(parameters.token_count);
+  const uint32_t batch_size = static_cast<uint32_t>(parameters.batch_size);
+  const uint32_t head_size = static_cast<uint32_t>(parameters.head_size);
+  const uint32_t rotary_dim = static_cast<uint32_t>(parameters.rotary_dim);
+  const uint32_t interleaved_u = interleaved ? 1u : 0u;
+  const uint32_t dispatch_size = token_count * n_heads * head_size;
+
+  PagedAttentionRotaryProgram program{};
+  program
+      .AddInputs({
+          {input, ProgramTensorMetadataDependency::TypeAndRank},
+          {cos_cache, ProgramTensorMetadataDependency::TypeAndRank},
+          {sin_cache, ProgramTensorMetadataDependency::TypeAndRank},
+          {cumulative_seqlens_q, ProgramTensorMetadataDependency::TypeAndRank},
+          {past_seqlens, ProgramTensorMetadataDependency::TypeAndRank},
+      })
+      .AddOutputs({
+          {output, ProgramTensorMetadataDependency::TypeAndRank},
+      })
+      .AddUniformVariables({
+          {token_count},
+          {batch_size},
+          {n_heads},
+          {head_size},
+          {rotary_dim},
+          {interleaved_u},
+          {dispatch_size},
+      })
+      .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+  return context.RunProgram(program);
+}
+
 PagedAttention::PagedAttention(const OpKernelInfo& info) : WebGpuKernel(info) {
   int64_t num_heads = 0;
   int64_t kv_num_heads = 0;
@@ -210,12 +272,7 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   if (parameters.is_packed_qkv) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "PagedAttention (WebGPU): packed QKV layout is not yet "
-                           "implemented (Phase 1b.2).");
-  }
-  if (do_rotary_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "PagedAttention (WebGPU): fused rotary is not yet "
-                           "implemented (Phase 1b.2).");
+                           "implemented (Phase 1b.2b).");
   }
 
   // Scatter new K,V tokens into the paged cache. In the aliased fast path this
@@ -229,17 +286,51 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   if (!value_cache_aliased) {
     ORT_RETURN_IF_ERROR(context.CopyTensor(*value_cache, *value_cache_out));
   }
-  ORT_RETURN_IF_ERROR(RunScatterKVToPagedCache(context, parameters, key, value,
+
+  // Phase 1b.2: fused rotary path. Mirrors paged_attention_impl.cu:
+  //   1) rotate query into a workspace (in production this feeds the
+  //      attention kernel; in Phase 1b.2 there is no attention yet, so we
+  //      route rotated Q into `output` — the same buffer 1b.3 will overwrite
+  //      with attention results — so tests can validate Q rotation directly
+  //      instead of leaving it unexercised until 1b.3);
+  //   2) rotate key into a temp workspace tensor;
+  //   3) scatter the rotated key alongside the untouched value into the
+  //      paged cache using the same ScatterKVToPagedCacheProgram from 1b.1.
+  //
+  // When do_rotary_ == false, key is scattered directly (Phase 1b.1 flow)
+  // and `output` is filled with zeros as a well-defined placeholder for the
+  // attention result until 1b.3 lands.
+  const Tensor* key_for_scatter = key;
+  Tensor rotated_key_tensor;
+  if (do_rotary_) {
+    ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters,
+                                           static_cast<uint32_t>(parameters.num_heads),
+                                           rotary_interleaved_,
+                                           query, cos_cache, sin_cache,
+                                           cumulative_seqlens_q, past_seqlens,
+                                           output));
+
+    rotated_key_tensor = context.CreateGPUTensor(key->DataType(), key->Shape());
+    ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters,
+                                           static_cast<uint32_t>(parameters.kv_num_heads),
+                                           rotary_interleaved_,
+                                           key, cos_cache, sin_cache,
+                                           cumulative_seqlens_q, past_seqlens,
+                                           &rotated_key_tensor));
+    key_for_scatter = &rotated_key_tensor;
+  }
+
+  ORT_RETURN_IF_ERROR(RunScatterKVToPagedCache(context, parameters, key_for_scatter, value,
                                                cumulative_seqlens_q, past_seqlens,
                                                block_table, key_cache_out, value_cache_out));
 
   // TODO(Phase 1b.3 / 1b.4): dispatch the attention kernel over the newly
-  // updated paged cache. Until that lands, we zero the packed attention output
-  // so the kernel returns a well-defined value and downstream OpTester-based
-  // scatter tests can validate the cache writes without inspecting a
-  // meaningless attention result. This is safe on the feature branch — the op
-  // schema and CUDA counterpart also produce zeros for zero queries.
-  context.FillZero(*output);
+  // updated paged cache. Until that lands, `output` holds either a
+  // well-defined zero (do_rotary_ == false) or the rotated query
+  // (do_rotary_ == true) so tests can validate the pre-attention pipeline.
+  if (!do_rotary_) {
+    context.FillZero(*output);
+  }
   return Status::OK();
 }
 

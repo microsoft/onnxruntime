@@ -50,6 +50,42 @@ class ScatterKVToPagedCacheProgram final : public Program<ScatterKVToPagedCacheP
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 };
 
+// Rotary embedding (RoPE) for one packed 2-D tensor of the shape
+//   (token_count, n_heads * head_size)
+// used by the WebGPU PagedAttention op for both the query and key rotation
+// stages of Phase 1b.2. Value is not rotated.
+//
+// Inputs (all read):
+//   input                        : (token_count, n_heads * head_size)  [T]
+//   cos_cache                    : (M, rotary_dim / 2)                 [T]
+//   sin_cache                    : (M, rotary_dim / 2)                 [T]
+//   cumulative_sequence_length_q : (batch_size + 1,)                   [S]
+//   past_seqlens                 : (batch_size,)                       [S]
+//
+// Output (write):
+//   output                       : (token_count, n_heads * head_size)  [T]
+//
+// The math matches paged_attention_impl.cu::RotaryEmbeddingTNH (`interleaved`
+// vs. split layout), keyed off `rotary_interleaved` propagated as a uniform.
+// `n_heads` is `num_heads` for the query rotation and `kv_num_heads` for the
+// key rotation; the same program handles both by taking `n_heads` as a
+// uniform. Dims `>= rotary_dim` are copied through unchanged (matches CUDA).
+class PagedAttentionRotaryProgram final : public Program<PagedAttentionRotaryProgram> {
+ public:
+  PagedAttentionRotaryProgram() : Program{"PagedAttentionRotary"} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"token_count", ProgramUniformVariableDataType::Uint32},
+      {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"n_heads", ProgramUniformVariableDataType::Uint32},
+      {"head_size", ProgramUniformVariableDataType::Uint32},
+      {"rotary_dim", ProgramUniformVariableDataType::Uint32},
+      {"interleaved", ProgramUniformVariableDataType::Uint32},
+      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+};
+
 // WebGPU PagedAttention kernel — v1 skeleton.
 //
 // Op contract, phased delivery plan, and reuse strategy are documented in
