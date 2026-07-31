@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/providers/cpu/cpu_kernel_registration.h"
+#include "core/providers/kernel_registration_validation.h"
 
 #include "core/framework/allocator_utils.h"
 #include "core/framework/memcpy.h"
@@ -3715,7 +3715,7 @@ Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
       // opset 27
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 27, Range)>,
   };
-  static_assert(cpu::registration_internal::IsKernelRegistrationTableValid(
+  static_assert(registration_internal::IsKernelRegistrationTableValid(
       function_table, BuildKernelCreateInfo<void>));
 
   for (auto& function_table_entry : function_table) {
@@ -3769,7 +3769,7 @@ Status RegisterFp16Kernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 14, MLFloat16, Div)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 20, MLFloat16,
                                                                   Gelu)>};
-  static_assert(cpu::registration_internal::IsKernelRegistrationTableValid(
+  static_assert(registration_internal::IsKernelRegistrationTableValid(
       function_table, BuildKernelCreateInfo<void>));
 
   for (auto& function_table_entry : function_table) {
@@ -4010,7 +4010,7 @@ Status RegisterOnnxMLOperatorKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMLDomain, 4, double_double,
                                                                   LabelEncoder)>,
   };
-  static_assert(cpu::registration_internal::IsKernelRegistrationTableValid(
+  static_assert(registration_internal::IsKernelRegistrationTableValid(
       function_table, BuildKernelCreateInfo<void>));
 
   for (auto& function_table_entry : function_table) {

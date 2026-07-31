@@ -5,10 +5,14 @@
 
 #include <cstddef>
 
+#ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
+#endif
 
-namespace onnxruntime::cpu::registration_internal {
+namespace onnxruntime::registration_internal {
 
+// Validates the `BuildKernelCreateInfoFn function_table[]` + `BuildKernelCreateInfo<void>` sentinel
+// pattern that execution providers use to register kernels.
 template <size_t N>
 consteval bool IsKernelRegistrationTableValid(
     const BuildKernelCreateInfoFn (&function_table)[N],
@@ -27,4 +31,4 @@ consteval bool IsKernelRegistrationTableValid(
   return true;
 }
 
-}  // namespace onnxruntime::cpu::registration_internal
+}  // namespace onnxruntime::registration_internal

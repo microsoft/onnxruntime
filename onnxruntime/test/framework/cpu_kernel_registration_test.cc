@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/kernel_registry.h"
-#include "core/providers/cpu/cpu_kernel_registration.h"
+#include "core/providers/kernel_registration_validation.h"
 
 #include "gtest/gtest.h"
 #include "test/util/include/default_providers.h"
@@ -18,7 +18,7 @@ KernelCreateInfo BuildTestEntry() {
   return {};
 }
 
-using cpu::registration_internal::IsKernelRegistrationTableValid;
+using registration_internal::IsKernelRegistrationTableValid;
 
 constexpr BuildKernelCreateInfoFn kValidTable[] = {
     BuildDisabledEntry,
