@@ -59,7 +59,7 @@ struct NormalizedFunctionPattern {
   InlinedVector<PatternValueId> formal_input_value_ids;
   InlinedVector<PatternValueId> formal_output_value_ids;
   InlinedVector<PatternValue, 1> values;
-  InlinedVector<PatternNode> nodes;
+  InlinedVector<PatternNode, 1> nodes;
   InlinedVector<PatternNodeId> reverse_topological_node_ids;
   common::Status construction_status{common::Status::OK()};
 };
@@ -89,8 +89,8 @@ struct FormalOutputProducerGroup {
 struct CompiledFunctionPattern {
   // Non-owning. The referenced normalized pattern must outlive this object.
   const NormalizedFunctionPattern* normalized_pattern{};
-  InlinedVector<ResolvedPatternNode> resolved_nodes;
-  InlinedVector<FormalOutputProducerGroup> formal_output_producer_groups;
+  InlinedVector<ResolvedPatternNode, 1> resolved_nodes;
+  InlinedVector<FormalOutputProducerGroup, 1> formal_output_producer_groups;
 };
 
 NormalizedFunctionPattern NormalizeFunctionPattern(

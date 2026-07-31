@@ -66,7 +66,7 @@ struct MatchState {
   InlinedVector<const NodeArg*> pattern_value_to_target;
   InlinedVector<ValueVisitState> value_visit_states;
   InlinedVector<const NodeArg*> formal_input_bindings;
-  InlinedVector<LiteralWitness> literal_witnesses;
+  InlinedVector<LiteralWitness, 1> literal_witnesses;
   size_t scheduled_binding_count{};
 };
 
@@ -78,7 +78,7 @@ struct ReplacementPlan {
   InlinedVector<NodeArg*> call_inputs;
   InlinedVector<NodeArg*> call_outputs;
   InlinedVector<NodeIndex> pattern_node_to_target;
-  InlinedVector<LiteralWitness> literal_witnesses;
+  InlinedVector<LiteralWitness, 1> literal_witnesses;
   std::vector<graph_utils::GraphEdge> matched_input_edges;
   std::vector<graph_utils::GraphEdge> explicit_input_edges;
   std::vector<graph_utils::GraphEdge> explicit_output_edges;
