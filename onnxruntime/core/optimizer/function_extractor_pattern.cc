@@ -146,7 +146,7 @@ void AddSchemaDefaults(const ONNX_NAMESPACE::OpSchema& schema, NodeAttributes& a
 bool IsAllowedOnnxPureOp(std::string_view op_type) {
   static const InlinedHashSet<std::string> pure_ops{
       "Identity", "Add", "Sub", "Mul", "Div", "Relu", "Cast", "MatMul",
-      "Transpose", "Reshape", "Clip", "Concat"};
+      "Transpose", "Reshape", "Clip", "Concat", "MaxPool"};
   return pure_ops.find(op_type) != pure_ops.end();
 }
 
@@ -328,12 +328,10 @@ NormalizedFunctionPattern NormalizeFunctionPattern(
   status = add_formals(function_proto.output(), false);
   if (!status.IsOK()) return fail(InvalidPattern(status.ErrorMessage()));
 
-  InlinedHashSet<std::string> declared_attributes;
-  for (const auto& name : function_proto.attribute()) {
-    if (name.empty() || !declared_attributes.insert(name).second) {
-      return fail(InvalidPattern("function attribute declarations must be non-empty and unique"));
-    }
+  if (function_proto.attribute_size() != 0) {
+    return fail(InvalidPattern("required function attributes are not supported in v1"));
   }
+  InlinedHashSet<std::string> declared_attributes;
   for (const auto& attribute : function_proto.attribute_proto()) {
     if (attribute.name().empty() || !declared_attributes.insert(attribute.name()).second) {
       return fail(InvalidPattern("function attribute defaults must be non-empty and non-duplicated"));
@@ -393,8 +391,11 @@ NormalizedFunctionPattern NormalizeFunctionPattern(
   }
 
   for (const auto& value_info : function_proto.value_info()) {
+    if (!value_info.has_type() || !value_info.type().has_tensor_type()) {
+      return fail(InvalidPattern("only tensor value_info entries are supported"));
+    }
     const auto value = value_ids.find(value_info.name());
-    if (value != value_ids.end() && value_info.has_type()) {
+    if (value != value_ids.end()) {
       result.values[value->second].type = value_info.type();
       result.values[value->second].has_type = true;
     }
@@ -468,6 +469,37 @@ NormalizedFunctionPattern NormalizeFunctionPattern(
     return fail(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Function literal byte budget exceeded."));
   }
 
+  InlinedVector<InlinedVector<PatternNodeId>> weak_neighbors(result.nodes.size());
+  for (const auto& value : result.values) {
+    InlinedVector<PatternNodeId> incident_nodes;
+    if (value.producer_node_id != kNoPatternNode) {
+      incident_nodes.push_back(value.producer_node_id);
+    }
+    for (const auto& consumer : value.consumers) {
+      if (std::find(incident_nodes.begin(), incident_nodes.end(), consumer.node_id) ==
+          incident_nodes.end()) {
+        incident_nodes.push_back(consumer.node_id);
+      }
+    }
+    for (size_t i = 1; i < incident_nodes.size(); ++i) {
+      weak_neighbors[incident_nodes.front()].push_back(incident_nodes[i]);
+      weak_neighbors[incident_nodes[i]].push_back(incident_nodes.front());
+    }
+  }
+  InlinedHashSet<PatternNodeId> connected_nodes;
+  InlinedVector<PatternNodeId> connectivity_pending{PatternNodeId{0}};
+  while (!connectivity_pending.empty()) {
+    const auto node_id = connectivity_pending.back();
+    connectivity_pending.pop_back();
+    if (!connected_nodes.insert(node_id).second) continue;
+    connectivity_pending.insert(connectivity_pending.end(),
+                                weak_neighbors[node_id].begin(),
+                                weak_neighbors[node_id].end());
+  }
+  if (connected_nodes.size() != result.nodes.size()) {
+    return fail(InvalidPattern("function operation and leaf data flow must form one connected component"));
+  }
+
   InlinedVector<size_t> indegree(result.nodes.size(), 0);
   InlinedVector<InlinedVector<PatternNodeId>> successors(result.nodes.size());
   for (PatternNodeId node_id = 0; node_id < result.nodes.size(); ++node_id) {
@@ -532,8 +564,6 @@ Status CompileFunctionPattern(
   ORT_RETURN_IF_ERROR(normalized_pattern.construction_status);
   compiled_pattern = CompiledFunctionPattern{};
   compiled_pattern.normalized_pattern = &normalized_pattern;
-  compiled_pattern.canonical_function_fingerprint =
-      CanonicalFunctionFingerprint(normalized_pattern.function_proto);
   compiled_pattern.resolved_nodes.resize(normalized_pattern.nodes.size());
 
   for (PatternNodeId node_id = 0; node_id < normalized_pattern.nodes.size(); ++node_id) {
@@ -560,7 +590,6 @@ Status CompileFunctionPattern(
     group.formal_output_indices.push_back(formal_output_index);
     group.producer_output_indices.push_back(value.producer_output_index);
   }
-  compiled_pattern.primary_output_producer_group = 0;
   return Status::OK();
 }
 
@@ -610,31 +639,6 @@ bool AreAttributesSemanticallyEqual(const NodeAttributes& lhs, const NodeAttribu
   for (const auto& [name, attribute] : lhs) {
     const auto other = rhs.find(name);
     if (other == rhs.end() || !AttributeEqual(attribute, other->second)) return false;
-  }
-  return true;
-}
-
-bool AreTypesCompatible(const NodeArg& pattern_value, const NodeArg& target_value) {
-  const auto* lhs = pattern_value.TypeAsProto();
-  const auto* rhs = target_value.TypeAsProto();
-  if (lhs == nullptr || rhs == nullptr) return true;
-  if (lhs->value_case() != rhs->value_case()) return false;
-  if (!lhs->has_tensor_type() || !rhs->has_tensor_type()) return false;
-  const auto& lhs_tensor = lhs->tensor_type();
-  const auto& rhs_tensor = rhs->tensor_type();
-  if (lhs_tensor.elem_type() != 0 && rhs_tensor.elem_type() != 0 &&
-      lhs_tensor.elem_type() != rhs_tensor.elem_type()) {
-    return false;
-  }
-  if (!lhs_tensor.has_shape() || !rhs_tensor.has_shape()) return true;
-  if (lhs_tensor.shape().dim_size() != rhs_tensor.shape().dim_size()) return false;
-  for (int i = 0; i < lhs_tensor.shape().dim_size(); ++i) {
-    const auto& lhs_dim = lhs_tensor.shape().dim(i);
-    const auto& rhs_dim = rhs_tensor.shape().dim(i);
-    if (lhs_dim.has_dim_value() && rhs_dim.has_dim_value() &&
-        lhs_dim.dim_value() != rhs_dim.dim_value()) {
-      return false;
-    }
   }
   return true;
 }

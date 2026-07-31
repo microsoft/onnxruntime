@@ -55,15 +55,59 @@ bool NodeSignatureMatches(const ResolvedPatternNode& pattern_node, const Node& t
          AreAttributesSemanticallyEqual(pattern_node.effective_attributes, target_node.GetAttributes());
 }
 
-bool HasControlRelationship(const TargetGraphSnapshot& snapshot, const Node& node) {
-  if (!node.ControlInputs().empty()) return true;
-  for (const auto node_index : snapshot.topological_node_indices) {
-    const auto* other = snapshot.graph_viewer->GetNode(node_index);
-    if (other != nullptr && other->ControlInputs().find(node.Name()) != other->ControlInputs().end()) {
-      return true;
-    }
+void AppendKeyPart(std::string_view part, std::string& key) {
+  key += std::to_string(part.size());
+  key.push_back(':');
+  key.append(part);
+  key.push_back(';');
+}
+
+std::string AttributeFingerprint(const NodeAttributes& attributes) {
+  InlinedVector<std::string_view> names;
+  names.reserve(attributes.size());
+  for (const auto& [name, unused] : attributes) {
+    ORT_UNUSED_PARAMETER(unused);
+    names.push_back(name);
   }
-  return false;
+  std::sort(names.begin(), names.end());
+  std::string fingerprint;
+  for (const auto name : names) {
+    AppendKeyPart(name, fingerprint);
+    auto attribute = attributes.at(std::string{name});
+    attribute.clear_doc_string();
+    AppendKeyPart(attribute.SerializeAsString(), fingerprint);
+  }
+  return fingerprint;
+}
+
+std::string SignatureKey(std::string_view domain,
+                         std::string_view op_type,
+                         std::string_view overload,
+                         int since_version,
+                         size_t input_arity,
+                         size_t output_arity,
+                         const NodeAttributes& attributes) {
+  std::string key;
+  AppendKeyPart(domain, key);
+  AppendKeyPart(op_type, key);
+  AppendKeyPart(overload, key);
+  AppendKeyPart(std::to_string(since_version), key);
+  AppendKeyPart(std::to_string(input_arity), key);
+  AppendKeyPart(std::to_string(output_arity), key);
+  AppendKeyPart(AttributeFingerprint(attributes), key);
+  return key;
+}
+
+std::string SignatureKey(const ResolvedPatternNode& node) {
+  return SignatureKey(node.canonical_domain, node.op_type, node.overload,
+                      node.since_version, node.input_arity, node.output_arity,
+                      node.effective_attributes);
+}
+
+std::string SignatureKey(const Node& node) {
+  return SignatureKey(node.Domain(), node.OpType(), node.Overload(),
+                      node.SinceVersion(), node.InputDefs().size(),
+                      node.OutputDefs().size(), node.GetAttributes());
 }
 
 Status MatchLiteral(const PatternValue& pattern_value,
@@ -103,7 +147,6 @@ Status MatchLiteral(const PatternValue& pattern_value,
   const auto& model_path = snapshot.graph->ModelPath();
   ORT_RETURN_IF_ERROR(CompareTensorLiterals(pattern_value.literal.tensor, *target_tensor,
                                             options.max_literal_bytes, matched, &model_path));
-  if (matched) witness.fingerprint = pattern_value.literal.fingerprint;
   return Status::OK();
 }
 
@@ -113,8 +156,16 @@ struct CandidateMatcher {
   const FunctionExtractorOptions& options;
   MatcherDiagnostics* diagnostics;
   size_t& literal_bytes_compared;
+  size_t& aggregate_work_units;
   size_t primary_output_group;
   MatchState state;
+
+  Status ConsumeWork() {
+    ORT_RETURN_IF(aggregate_work_units >= options.max_worklist_bindings,
+                  "FunctionExtractor aggregate matcher work budget exceeded.");
+    ++aggregate_work_units;
+    return Status::OK();
+  }
 
   Status Schedule(PatternValueId pattern_value_id, const NodeArg* target_value, bool& matched) {
     if (target_value == nullptr || !target_value->Exists()) {
@@ -130,11 +181,10 @@ struct CandidateMatcher {
       matched = state.pattern_value_to_target[pattern_value_id] == target_value;
       return Status::OK();
     }
-    ORT_RETURN_IF(state.processed_binding_count >= options.max_worklist_bindings,
-                  "FunctionExtractor worklist binding budget exceeded.");
+    ORT_RETURN_IF_ERROR(ConsumeWork());
     state.pattern_value_to_target[pattern_value_id] = target_value;
     visit_state = ValueVisitState::Scheduled;
-    ++state.processed_binding_count;
+    ++state.scheduled_binding_count;
     if (diagnostics != nullptr) ++diagnostics->worklist_bindings_scheduled;
     return Status::OK();
   }
@@ -143,6 +193,7 @@ struct CandidateMatcher {
     const auto& normalized = *compiled.normalized_pattern;
     for (const auto node_id : normalized.reverse_topological_node_ids) {
       for (const auto output_id : normalized.nodes[node_id].output_value_ids) {
+        if (output_id == kMissingPatternValue) continue;
         if (state.value_visit_states[output_id] == ValueVisitState::Scheduled) return output_id;
       }
       for (const auto input_id : normalized.nodes[node_id].input_value_ids) {
@@ -174,7 +225,7 @@ struct CandidateMatcher {
     if (target_node == nullptr ||
         !NodeSignatureMatches(compiled.resolved_nodes[pattern_node_id], *target_node) ||
         !target_node->GetExecutionProviderType().empty() ||
-        HasControlRelationship(snapshot, *target_node)) {
+        snapshot.control_edge_nodes.find(target_node_index) != snapshot.control_edge_nodes.end()) {
       matched = false;
       return Status::OK();
     }
@@ -252,10 +303,10 @@ struct CandidateMatcher {
           matched = false;
           return Status::OK();
         }
-        bool scheduled = true;
+        bool binding_matches = true;
         ORT_RETURN_IF_ERROR(Schedule(normalized.formal_output_value_ids[formal_output_index],
-                                     target_node->OutputDefs()[target_output_index], scheduled));
-        if (!scheduled) {
+                                     target_node->OutputDefs()[target_output_index], binding_matches));
+        if (!binding_matches) {
           matched = false;
           return Status::OK();
         }
@@ -305,10 +356,10 @@ struct CandidateMatcher {
       }
     }
 
-    return BuildPlan(plan, matched);
+    return ValidateCandidateAndBuildPlan(plan, matched);
   }
 
-  Status BuildPlan(ReplacementPlan& plan, bool& matched) {
+  Status ValidateCandidateAndBuildPlan(ReplacementPlan& plan, bool& matched) {
     const auto& normalized = *compiled.normalized_pattern;
     plan = ReplacementPlan{};
     plan.removable_node_indices.assign(state.pattern_node_to_target.begin(), state.pattern_node_to_target.end());
@@ -323,6 +374,7 @@ struct CandidateMatcher {
     const InlinedHashSet<NodeIndex> removable(plan.removable_node_indices.begin(),
                                               plan.removable_node_indices.end());
 
+    // Boundary closure and scheduling constraints.
     for (const auto* formal_input : state.formal_input_bindings) {
       const auto producer = snapshot.producers.find(formal_input);
       if (producer != snapshot.producers.end() &&
@@ -347,6 +399,7 @@ struct CandidateMatcher {
     plan.layering_annotation = std::move(annotation);
 
     for (PatternValueId value_id = 0; value_id < normalized.values.size(); ++value_id) {
+      ORT_RETURN_IF_ERROR(ConsumeWork());
       const auto& pattern_value = normalized.values[value_id];
       if (pattern_value.producer_node_id == kNoPatternNode || pattern_value.is_formal_output) continue;
       const auto* target_value = state.pattern_value_to_target[value_id];
@@ -358,6 +411,7 @@ struct CandidateMatcher {
       const auto explicit_consumers = snapshot.explicit_consumers.find(target_value);
       if (explicit_consumers != snapshot.explicit_consumers.end()) {
         for (const auto& consumer : explicit_consumers->second) {
+          ORT_RETURN_IF_ERROR(ConsumeWork());
           if (removable.find(consumer.node_index) == removable.end()) {
             matched = false;
             return Status::OK();
@@ -367,6 +421,7 @@ struct CandidateMatcher {
       const auto implicit_consumers = snapshot.implicit_consumers.find(target_value);
       if (implicit_consumers != snapshot.implicit_consumers.end()) {
         for (const auto consumer : implicit_consumers->second) {
+          ORT_RETURN_IF_ERROR(ConsumeWork());
           if (removable.find(consumer) == removable.end()) {
             matched = false;
             return Status::OK();
@@ -375,12 +430,14 @@ struct CandidateMatcher {
       }
     }
 
+    // Convexity: no path may leave R and later re-enter it.
     InlinedHashSet<NodeIndex> visited_outside;
     std::deque<NodeIndex> pending;
-    auto enqueue_consumers = [&](const NodeArg* value) {
+    auto enqueue_consumers = [&](const NodeArg* value) -> Status {
       const auto explicit_consumers = snapshot.explicit_consumers.find(value);
       if (explicit_consumers != snapshot.explicit_consumers.end()) {
         for (const auto& consumer : explicit_consumers->second) {
+          ORT_RETURN_IF_ERROR(ConsumeWork());
           if (removable.find(consumer.node_index) == removable.end()) {
             pending.push_back(consumer.node_index);
           }
@@ -389,18 +446,21 @@ struct CandidateMatcher {
       const auto implicit_consumers = snapshot.implicit_consumers.find(value);
       if (implicit_consumers != snapshot.implicit_consumers.end()) {
         for (const auto consumer : implicit_consumers->second) {
+          ORT_RETURN_IF_ERROR(ConsumeWork());
           if (removable.find(consumer) == removable.end()) pending.push_back(consumer);
         }
       }
+      return Status::OK();
     };
     for (const auto node_index : plan.removable_node_indices) {
       const auto* node = snapshot.graph_viewer->GetNode(node_index);
       for (const auto* output : node->OutputDefs()) {
         if (output == nullptr || !output->Exists()) continue;
-        enqueue_consumers(output);
+        ORT_RETURN_IF_ERROR(enqueue_consumers(output));
       }
     }
     while (!pending.empty()) {
+      ORT_RETURN_IF_ERROR(ConsumeWork());
       const auto outside = pending.front();
       pending.pop_front();
       if (!visited_outside.insert(outside).second) continue;
@@ -411,6 +471,7 @@ struct CandidateMatcher {
         const auto explicit_consumers = snapshot.explicit_consumers.find(output);
         if (explicit_consumers != snapshot.explicit_consumers.end()) {
           for (const auto& consumer : explicit_consumers->second) {
+            ORT_RETURN_IF_ERROR(ConsumeWork());
             if (removable.find(consumer.node_index) != removable.end()) {
               matched = false;
               return Status::OK();
@@ -420,16 +481,18 @@ struct CandidateMatcher {
         const auto implicit_consumers = snapshot.implicit_consumers.find(output);
         if (implicit_consumers != snapshot.implicit_consumers.end()) {
           for (const auto consumer : implicit_consumers->second) {
+            ORT_RETURN_IF_ERROR(ConsumeWork());
             if (removable.find(consumer) != removable.end()) {
               matched = false;
               return Status::OK();
             }
           }
         }
-        enqueue_consumers(output);
+        ORT_RETURN_IF_ERROR(enqueue_consumers(output));
       }
     }
 
+    // Materialize the immutable replacement recipe only after validation.
     for (const auto* input : state.formal_input_bindings) {
       plan.call_inputs.push_back(const_cast<NodeArg*>(input));
     }
@@ -437,6 +500,7 @@ struct CandidateMatcher {
       plan.call_outputs.push_back(const_cast<NodeArg*>(state.pattern_value_to_target[output_id]));
     }
     plan.literal_witnesses = state.literal_witnesses;
+    plan.pattern_node_to_target = state.pattern_node_to_target;
     plan.primary_root_topological_position =
         snapshot.topological_positions.at(
             state.pattern_node_to_target[compiled.formal_output_producer_groups[primary_output_group].producer_node_id]);
@@ -452,9 +516,15 @@ struct CandidateMatcher {
         if (removable.find(edge.dst_node) == removable.end()) plan.explicit_output_edges.push_back(edge);
       }
       for (const auto* output : node->OutputDefs()) {
+        if (output == nullptr || !output->Exists()) continue;
         const auto implicit = snapshot.implicit_consumers.find(output);
         if (implicit != snapshot.implicit_consumers.end()) {
           plan.implicit_consumers.emplace(output, implicit->second);
+        } else {
+          plan.implicit_consumers.emplace(output, InlinedVector<NodeIndex>{});
+        }
+        if (snapshot.graph_outputs.find(output) != snapshot.graph_outputs.end()) {
+          plan.graph_outputs.insert(output);
         }
       }
     }
@@ -482,7 +552,7 @@ bool PlansConflict(const ReplacementPlan& lhs, const ReplacementPlan& rhs) {
 
 Status BuildTargetGraphSnapshot(
     const Graph& graph,
-    const CompiledFunctionPattern&,
+    const CompiledFunctionPattern& compiled_pattern,
     const FunctionExtractorOptions& options,
     TargetGraphSnapshot& snapshot) {
   snapshot = TargetGraphSnapshot{};
@@ -492,12 +562,38 @@ Status BuildTargetGraphSnapshot(
                 "FunctionExtractor target node budget exceeded.");
   const auto& topological_order = snapshot.graph_viewer->GetNodesInTopologicalOrder();
   snapshot.topological_node_indices.assign(topological_order.begin(), topological_order.end());
+  snapshot.root_candidates_by_group.resize(
+      compiled_pattern.formal_output_producer_groups.size());
+  InlinedHashMap<std::string, InlinedVector<size_t>> groups_by_signature;
+  for (size_t group_index = 0;
+       group_index < compiled_pattern.formal_output_producer_groups.size();
+       ++group_index) {
+    const auto pattern_node_id =
+        compiled_pattern.formal_output_producer_groups[group_index].producer_node_id;
+    groups_by_signature[SignatureKey(compiled_pattern.resolved_nodes[pattern_node_id])]
+        .push_back(group_index);
+  }
+  InlinedHashMap<std::string, NodeIndex> node_indices_by_name;
+  for (const auto node_index : snapshot.topological_node_indices) {
+    const auto* node = snapshot.graph_viewer->GetNode(node_index);
+    ORT_RETURN_IF(node == nullptr || node->Op() == nullptr,
+                  "FunctionExtractor requires a resolved target graph.");
+    node_indices_by_name.emplace(node->Name(), node_index);
+  }
+  size_t candidate_entry_count = 0;
   for (size_t position = 0; position < snapshot.topological_node_indices.size(); ++position) {
     const auto node_index = snapshot.topological_node_indices[position];
     snapshot.topological_positions.emplace(node_index, position);
     const auto* node = snapshot.graph_viewer->GetNode(node_index);
-    ORT_RETURN_IF(node == nullptr || node->Op() == nullptr,
-                  "FunctionExtractor requires a resolved target graph.");
+    if (!node->ControlInputs().empty()) {
+      snapshot.control_edge_nodes.insert(node_index);
+      for (const auto& control_input : node->ControlInputs()) {
+        const auto source = node_indices_by_name.find(control_input);
+        if (source != node_indices_by_name.end()) {
+          snapshot.control_edge_nodes.insert(source->second);
+        }
+      }
+    }
     for (size_t output_index = 0; output_index < node->OutputDefs().size(); ++output_index) {
       const auto* output = node->OutputDefs()[output_index];
       if (output != nullptr && output->Exists()) {
@@ -513,6 +609,15 @@ Status BuildTargetGraphSnapshot(
     for (const auto* implicit_input : node->ImplicitInputDefs()) {
       if (implicit_input != nullptr && implicit_input->Exists()) {
         snapshot.implicit_consumers[implicit_input].push_back(node_index);
+      }
+    }
+    const auto compatible_groups = groups_by_signature.find(SignatureKey(*node));
+    if (compatible_groups != groups_by_signature.end()) {
+      for (const auto group_index : compatible_groups->second) {
+        ORT_RETURN_IF(candidate_entry_count >= options.max_output_root_tuples,
+                      "FunctionExtractor root candidate-entry budget exceeded.");
+        snapshot.root_candidates_by_group[group_index].push_back(node_index);
+        ++candidate_entry_count;
       }
     }
   }
@@ -536,19 +641,11 @@ Status DiscoverReplacementPlans(
   plans.clear();
   const auto& groups = compiled_pattern.formal_output_producer_groups;
   ORT_RETURN_IF(groups.empty(), "FunctionExtractor pattern has no formal output producer.");
-  InlinedVector<InlinedVector<NodeIndex>> candidates(groups.size());
-  for (size_t group_index = 0; group_index < groups.size(); ++group_index) {
-    const auto& resolved = compiled_pattern.resolved_nodes[groups[group_index].producer_node_id];
-    for (const auto node_index : snapshot.topological_node_indices) {
-      const auto* node = snapshot.graph_viewer->GetNode(node_index);
-      if (node != nullptr && NodeSignatureMatches(resolved, *node)) {
-        candidates[group_index].push_back(node_index);
-      }
-    }
-  }
+  const auto& candidates = snapshot.root_candidates_by_group;
 
   size_t tuple_count = 0;
   size_t literal_bytes_compared = 0;
+  size_t aggregate_work_units = 0;
   InlinedVector<NodeIndex> tuple(groups.size(), std::numeric_limits<NodeIndex>::max());
   InlinedVector<size_t> group_order(groups.size());
   for (size_t i = 0; i < group_order.size(); ++i) group_order[i] = i;
@@ -569,7 +666,8 @@ Status DiscoverReplacementPlans(
       }
       if (diagnostics != nullptr) ++diagnostics->output_root_tuples_considered;
       CandidateMatcher matcher{compiled_pattern, snapshot, options, diagnostics,
-                               literal_bytes_compared, primary_output_group};
+                               literal_bytes_compared, aggregate_work_units,
+                               primary_output_group};
       ReplacementPlan plan;
       bool matched = false;
       enumeration_status = matcher.Run(tuple, plan, matched);
@@ -583,6 +681,12 @@ Status DiscoverReplacementPlans(
     }
     const size_t group_index = group_order[order_index];
     for (const auto candidate : candidates[group_index]) {
+      if (aggregate_work_units >= options.max_worklist_bindings) {
+        enumeration_status =
+            MatcherError("aggregate output-root enumeration budget exceeded");
+        return;
+      }
+      ++aggregate_work_units;
       if (!chosen_nodes.insert(candidate).second) continue;
       tuple[group_index] = candidate;
       enumerate(order_index + 1);
@@ -624,7 +728,9 @@ Status PrevalidatePlans(
   FunctionExtractorOptions snapshot_options;
   snapshot_options.max_target_nodes = std::numeric_limits<size_t>::max();
   TargetGraphSnapshot snapshot;
-  ORT_RETURN_IF_ERROR(BuildTargetGraphSnapshot(graph, compiled_pattern, snapshot_options, snapshot));
+  CompiledFunctionPattern snapshot_pattern;
+  snapshot_pattern.normalized_pattern = compiled_pattern.normalized_pattern;
+  ORT_RETURN_IF_ERROR(BuildTargetGraphSnapshot(graph, snapshot_pattern, snapshot_options, snapshot));
 
   auto edge_less = [](const graph_utils::GraphEdge& lhs, const graph_utils::GraphEdge& rhs) {
     return std::tie(lhs.src_node, lhs.dst_node, lhs.src_arg_index, lhs.dst_arg_index, lhs.arg_name) <
@@ -650,6 +756,20 @@ Status PrevalidatePlans(
       ORT_RETURN_IF(node == nullptr, "Replacement plan references a removed node.");
       ORT_RETURN_IF(node->GetLayeringAnnotation() != plan.layering_annotation,
                     "Replacement plan layering annotation changed.");
+    }
+    ORT_RETURN_IF(plan.pattern_node_to_target.size() != compiled_pattern.resolved_nodes.size(),
+                  "Replacement plan pattern mapping changed.");
+    for (PatternNodeId pattern_node_id = 0;
+         pattern_node_id < plan.pattern_node_to_target.size();
+         ++pattern_node_id) {
+      const auto target_node_index = plan.pattern_node_to_target[pattern_node_id];
+      const auto* node = graph.GetNode(target_node_index);
+      ORT_RETURN_IF(node == nullptr ||
+                        !NodeSignatureMatches(compiled_pattern.resolved_nodes[pattern_node_id], *node) ||
+                        !node->GetExecutionProviderType().empty() ||
+                        snapshot.control_edge_nodes.find(target_node_index) !=
+                            snapshot.control_edge_nodes.end(),
+                    "Replacement plan node semantics changed.");
     }
     std::vector<graph_utils::GraphEdge> current_input_edges;
     std::vector<graph_utils::GraphEdge> current_output_edges;
@@ -685,6 +805,61 @@ Status PrevalidatePlans(
       std::sort(expected.begin(), expected.end());
       ORT_RETURN_IF(current_consumers != expected,
                     "Replacement plan implicit consumers changed.");
+      const bool currently_graph_output =
+          snapshot.graph_outputs.find(value) != snapshot.graph_outputs.end();
+      const bool expected_graph_output =
+          plan.graph_outputs.find(value) != plan.graph_outputs.end();
+      ORT_RETURN_IF(currently_graph_output != expected_graph_output,
+                    "Replacement plan graph-output membership changed.");
+    }
+
+    InlinedHashSet<NodeIndex> visited_outside;
+    std::deque<NodeIndex> pending;
+    for (const auto node_index : plan.removable_node_indices) {
+      const auto* node = graph.GetNode(node_index);
+      for (const auto* output : node->OutputDefs()) {
+        if (output == nullptr || !output->Exists()) continue;
+        const auto explicit_consumers = snapshot.explicit_consumers.find(output);
+        if (explicit_consumers != snapshot.explicit_consumers.end()) {
+          for (const auto& consumer : explicit_consumers->second) {
+            if (removable.find(consumer.node_index) == removable.end()) {
+              pending.push_back(consumer.node_index);
+            }
+          }
+        }
+        const auto implicit_consumers = snapshot.implicit_consumers.find(output);
+        if (implicit_consumers != snapshot.implicit_consumers.end()) {
+          for (const auto consumer : implicit_consumers->second) {
+            if (removable.find(consumer) == removable.end()) pending.push_back(consumer);
+          }
+        }
+      }
+    }
+    while (!pending.empty()) {
+      const auto outside = pending.front();
+      pending.pop_front();
+      if (!visited_outside.insert(outside).second) continue;
+      const auto* node = graph.GetNode(outside);
+      ORT_RETURN_IF(node == nullptr, "Replacement plan outside dependency changed.");
+      for (const auto* output : node->OutputDefs()) {
+        if (output == nullptr || !output->Exists()) continue;
+        const auto explicit_consumers = snapshot.explicit_consumers.find(output);
+        if (explicit_consumers != snapshot.explicit_consumers.end()) {
+          for (const auto& consumer : explicit_consumers->second) {
+            ORT_RETURN_IF(removable.find(consumer.node_index) != removable.end(),
+                          "Replacement plan is no longer convex.");
+            pending.push_back(consumer.node_index);
+          }
+        }
+        const auto implicit_consumers = snapshot.implicit_consumers.find(output);
+        if (implicit_consumers != snapshot.implicit_consumers.end()) {
+          for (const auto consumer : implicit_consumers->second) {
+            ORT_RETURN_IF(removable.find(consumer) != removable.end(),
+                          "Replacement plan is no longer convex.");
+            pending.push_back(consumer);
+          }
+        }
+      }
     }
     if (!plan.generated_call_name.empty()) {
       for (const auto& node : graph.Nodes()) {
@@ -708,7 +883,8 @@ Status PrevalidatePlans(
         ORT_RETURN_IF_NOT(equal, "Replacement plan initializer literal changed.");
       } else {
         const auto* constant = graph.GetNode(witness.constant_node_index);
-        ORT_RETURN_IF(constant == nullptr,
+        ORT_RETURN_IF(constant == nullptr || constant->Domain() != kOnnxDomain ||
+                          constant->OpType() != "Constant",
                       "Replacement plan Constant witness was removed.");
         ONNX_NAMESPACE::TensorProto normalized_constant;
         ORT_RETURN_IF_ERROR(

@@ -31,6 +31,8 @@ struct LiteralDescriptor {
   size_t byte_count{};
 };
 
+// Flags are independent: a value may be both produced and formal output, while
+// formal inputs and normalized literals are terminal leaves with no producer.
 struct PatternValue {
   std::string name;
   ONNX_NAMESPACE::TypeProto type;
@@ -50,6 +52,8 @@ struct PatternNode {
   InlinedVector<PatternValueId> output_value_ids;
 };
 
+// Owns the context-free validated pattern. Values use stable numeric IDs, and
+// every operation is connected, acyclic, and backward-reachable from an output.
 struct NormalizedFunctionPattern {
   ONNX_NAMESPACE::FunctionProto function_proto;
   InlinedVector<PatternValueId> formal_input_value_ids;
@@ -60,6 +64,8 @@ struct NormalizedFunctionPattern {
   common::Status construction_status{common::Status::OK()};
 };
 
+// Per-Graph semantic resolution of a pattern node. Schema pointers are borrowed
+// from the Graph/model registry and remain valid only while that context lives.
 struct ResolvedPatternNode {
   PatternNodeId pattern_node_id{kNoPatternNode};
   std::string canonical_domain;
@@ -81,11 +87,10 @@ struct FormalOutputProducerGroup {
 };
 
 struct CompiledFunctionPattern {
+  // Non-owning. The referenced normalized pattern must outlive this object.
   const NormalizedFunctionPattern* normalized_pattern{};
   InlinedVector<ResolvedPatternNode> resolved_nodes;
   InlinedVector<FormalOutputProducerGroup> formal_output_producer_groups;
-  size_t primary_output_producer_group{};
-  std::string canonical_function_fingerprint;
 };
 
 NormalizedFunctionPattern NormalizeFunctionPattern(
@@ -104,8 +109,6 @@ common::Status ValidateRegisteredFunction(
 bool IsV1PureOperator(const ResolvedPatternNode& node);
 
 bool AreAttributesSemanticallyEqual(const NodeAttributes& lhs, const NodeAttributes& rhs);
-
-bool AreTypesCompatible(const NodeArg& pattern_value, const NodeArg& target_value);
 
 common::Status NormalizeConstantAttributes(
     const NodeAttributes& attributes,

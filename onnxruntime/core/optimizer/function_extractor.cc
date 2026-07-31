@@ -27,6 +27,9 @@ common::Status ApplyReplacementPlan(
   InlinedHashSet<NodeIndex> removable(plan.removable_node_indices.begin(),
                                       plan.removable_node_indices.end());
 
+  // PrevalidatePlans proves the complete batch is semantically stable. From
+  // this first edge removal onward ORT has no rollback, so failures are
+  // deliberately reported with the graph possibly modified and unresolved.
   for (auto node_index = plan.removable_node_indices.rbegin();
        node_index != plan.removable_node_indices.rend(); ++node_index) {
     Node* node = graph.GetNode(*node_index);
@@ -193,13 +196,11 @@ struct FunctionExtractor::Impl {
       : owned_function_proto(function_proto),
         options(std::move(extractor_options)),
         normalized_pattern(
-            function_extractor_internal::NormalizeFunctionPattern(owned_function_proto, options)),
-        construction_status(normalized_pattern.construction_status) {}
+            function_extractor_internal::NormalizeFunctionPattern(owned_function_proto, options)) {}
 
   ONNX_NAMESPACE::FunctionProto owned_function_proto;
   FunctionExtractorOptions options;
   function_extractor_internal::NormalizedFunctionPattern normalized_pattern;
-  common::Status construction_status;
 };
 
 FunctionExtractor::FunctionExtractor(

@@ -28,6 +28,8 @@ struct ConsumerSlot {
   size_t input_index{};
 };
 
+// Immutable, scope-local indexes over one resolved Graph. Both explicit uses
+// and nested-subgraph captures are indexed because either affects closure.
 struct TargetGraphSnapshot {
   const Graph* graph{};
   std::unique_ptr<GraphViewer> graph_viewer;
@@ -37,7 +39,10 @@ struct TargetGraphSnapshot {
   InlinedHashMap<const NodeArg*, InlinedVector<ConsumerSlot>> explicit_consumers;
   InlinedHashMap<const NodeArg*, InlinedVector<NodeIndex>> implicit_consumers;
   InlinedHashSet<const NodeArg*> graph_outputs;
+  InlinedHashSet<NodeIndex> control_edge_nodes;
   InlinedHashMap<std::string, const ONNX_NAMESPACE::TensorProto*> constant_initializers;
+  // One bounded candidate list per formal-output producer group.
+  InlinedVector<InlinedVector<NodeIndex>> root_candidates_by_group;
 };
 
 enum class ValueVisitState : uint8_t {
@@ -51,9 +56,10 @@ struct LiteralWitness {
   const NodeArg* target_value{};
   NodeIndex constant_node_index{};
   bool is_initializer{};
-  std::string fingerprint;
 };
 
+// Schedule binds each pattern value once; Processed values are never expanded
+// again. The two node maps maintain an injective operation-node mapping.
 struct MatchState {
   InlinedVector<NodeIndex> pattern_node_to_target;
   InlinedHashMap<NodeIndex, PatternNodeId> target_node_to_pattern;
@@ -61,19 +67,23 @@ struct MatchState {
   InlinedVector<ValueVisitState> value_visit_states;
   InlinedVector<const NodeArg*> formal_input_bindings;
   InlinedVector<LiteralWitness> literal_witnesses;
-  size_t processed_binding_count{};
+  size_t scheduled_binding_count{};
 };
 
+// Immutable mutation recipe. Every NodeArg is borrowed from the target Graph
+// and is valid only until that graph is mutated.
 struct ReplacementPlan {
   size_t primary_root_topological_position{};
   InlinedVector<NodeIndex> removable_node_indices;
   InlinedVector<NodeArg*> call_inputs;
   InlinedVector<NodeArg*> call_outputs;
+  InlinedVector<NodeIndex> pattern_node_to_target;
   InlinedVector<LiteralWitness> literal_witnesses;
   std::vector<graph_utils::GraphEdge> matched_input_edges;
   std::vector<graph_utils::GraphEdge> explicit_input_edges;
   std::vector<graph_utils::GraphEdge> explicit_output_edges;
   InlinedHashMap<const NodeArg*, InlinedVector<NodeIndex>> implicit_consumers;
+  InlinedHashSet<const NodeArg*> graph_outputs;
   std::string layering_annotation;
   std::string generated_call_name;
 };
