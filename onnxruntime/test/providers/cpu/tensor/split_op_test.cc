@@ -5,6 +5,7 @@
 #include "core/framework/to_tensor_proto_element_type.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
