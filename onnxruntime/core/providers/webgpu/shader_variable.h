@@ -57,22 +57,22 @@ std::string GetElementAt(std::string_view var, const TIdx& idx, TRank rank, bool
 
 struct ShaderUsage {
   enum : uint32_t {
-    None = 0,                             // no usage. this means no additional implementation code will be generated.
-    UseIndicesTypeAlias = 1,              // use type alias "{name}_indices_t" for indices (eg. u32, vec2<u32>, vec3<u32>, vec4<u32>, ...)
-    UseValueTypeAlias = 2,                // use type alias "{name}_value_t" for value (eg. f32, vecT<f32>, vec4<bool>, ...)
-    UseElementTypeAlias = 4,              // use type alias "{name}_element_t" for element (eg. f32, bool, ...)
-    UseShapeAndStride = 16,               // use shape and stride for the variable
-    UseOffsetToIndices = 32,              // use implementation of fn o2i_{name}
-    UseIndicesToOffset = 64,              // use implementation of fn i2o_{name}
-    UseBroadcastedIndicesToOffset = 128,  // use implementation of fn {broadcasted_result_name}_bi2o_{name}
-    UseSet = 256,                         // use implementation of fn set_{name}
-    UseSetByIndices = 512,                // use implementation of fn set_{name}_by_indices
-    UseGet = 1024,                        // use implementation of fn get_{name}
-    UseGetByIndices = 2048,               // use implementation of fn get_{name}_by_indices
-    UseGetByOffsetSegments = 4096,        // use implementation of fn get_{name}_by_offset
-    UseSetByOffsetSegments = 8192,        // use implementation of fn set_{name}_by_offset
+    None = 0,                               // no usage. this means no additional implementation code will be generated.
+    UseIndicesTypeAlias = 1,                // use type alias "{name}_indices_t" for indices (eg. u32, vec2<u32>, vec3<u32>, vec4<u32>, ...)
+    UseValueTypeAlias = 2,                  // use type alias "{name}_value_t" for value (eg. f32, vecT<f32>, vec4<bool>, ...)
+    UseElementTypeAlias = 4,                // use type alias "{name}_element_t" for element (eg. f32, bool, ...)
+    UseShapeAndStride = 16,                 // use shape and stride for the variable
+    UseOffsetToIndices = 32,                // use implementation of fn o2i_{name}
+    UseIndicesToOffset = 64,                // use implementation of fn i2o_{name}
+    UseBroadcastedIndicesToOffset = 128,    // use implementation of fn {broadcasted_result_name}_bi2o_{name}
+    UseSet = 256,                           // use implementation of fn set_{name}
+    UseSetByIndices = 512,                  // use implementation of fn set_{name}_by_indices
+    UseGet = 1024,                          // use implementation of fn get_{name}
+    UseGetByIndices = 2048,                 // use implementation of fn get_{name}_by_indices
+    UseGetByOffsetSegments = 4096,          // use implementation of fn get_{name}_by_offset
+    UseSetByOffsetSegments = 8192,          // use implementation of fn set_{name}_by_offset
     UseGetByOffsetSegmentsStorage = 16384,  // use implementation of fn get_{name}_by_offset_storage
-    UseUniform = 32768,                   // use uniform for shape and stride
+    UseUniform = 32768,                     // use uniform for shape and stride
     UseSetByOffsetSegmentsStorage = 65536,  // use implementation of fn set_{name}_by_offset_storage
   } usage;
 

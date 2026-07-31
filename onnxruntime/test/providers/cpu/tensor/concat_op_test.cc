@@ -558,8 +558,8 @@ TEST(ConcatOpTest, Concat_int64_webgpu) {
   test.AddAttribute("axis", int64_t{0});
   // Include values outside the int32 range (2^32, 2^33+1, a large negative, INT64_MAX) to prove
   // the full 64-bit value is preserved via a raw vec2<u32> storage copy rather than truncated to i32.
-  test.AddInput<int64_t>("input1", {1, 2}, {1, 4294967296});                                          // 1, 2^32
-  test.AddInput<int64_t>("input2", {2, 2}, {8589934593, -4294967297, 100, 9223372036854775807LL});   // 2^33+1, -(2^32+1), 100, INT64_MAX
+  test.AddInput<int64_t>("input1", {1, 2}, {1, 4294967296});                                        // 1, 2^32
+  test.AddInput<int64_t>("input2", {2, 2}, {8589934593, -4294967297, 100, 9223372036854775807LL});  // 2^33+1, -(2^32+1), 100, INT64_MAX
   test.AddOutput<int64_t>("concat_result", {3, 2}, {1, 4294967296, 8589934593, -4294967297, 100, 9223372036854775807LL});
 
   // Disable CPU-EP fallback so the Concat node must run on the WebGPU kernel.
