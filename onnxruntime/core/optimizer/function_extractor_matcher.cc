@@ -189,24 +189,35 @@ struct CandidateMatcher {
     return Status::OK();
   }
 
-  PatternValueId NextScheduledValue() const {
+  Status NextScheduledValue(PatternValueId& scheduled_value_id) {
     const auto& normalized = *compiled.normalized_pattern;
     for (const auto node_id : normalized.reverse_topological_node_ids) {
       for (const auto output_id : normalized.nodes[node_id].output_value_ids) {
+        ORT_RETURN_IF_ERROR(ConsumeWork());
         if (output_id == kMissingPatternValue) continue;
-        if (state.value_visit_states[output_id] == ValueVisitState::Scheduled) return output_id;
+        if (state.value_visit_states[output_id] == ValueVisitState::Scheduled) {
+          scheduled_value_id = output_id;
+          return Status::OK();
+        }
       }
       for (const auto input_id : normalized.nodes[node_id].input_value_ids) {
+        ORT_RETURN_IF_ERROR(ConsumeWork());
         if (input_id != kMissingPatternValue &&
             state.value_visit_states[input_id] == ValueVisitState::Scheduled) {
-          return input_id;
+          scheduled_value_id = input_id;
+          return Status::OK();
         }
       }
     }
     for (PatternValueId value_id = 0; value_id < state.value_visit_states.size(); ++value_id) {
-      if (state.value_visit_states[value_id] == ValueVisitState::Scheduled) return value_id;
+      ORT_RETURN_IF_ERROR(ConsumeWork());
+      if (state.value_visit_states[value_id] == ValueVisitState::Scheduled) {
+        scheduled_value_id = value_id;
+        return Status::OK();
+      }
     }
-    return kMissingPatternValue;
+    scheduled_value_id = kMissingPatternValue;
+    return Status::OK();
   }
 
   Status BindProducer(PatternValueId value_id, const NodeArg& target_value, bool& matched) {
@@ -245,6 +256,7 @@ struct CandidateMatcher {
 
     const auto& pattern_node = normalized.nodes[pattern_node_id];
     for (size_t output_index = 0; output_index < pattern_node.output_value_ids.size(); ++output_index) {
+      ORT_RETURN_IF_ERROR(ConsumeWork());
       const auto pattern_output = pattern_node.output_value_ids[output_index];
       const auto* target_output = target_node->OutputDefs()[output_index];
       if (pattern_output == kMissingPatternValue) {
@@ -262,6 +274,7 @@ struct CandidateMatcher {
       if (!matched) return Status::OK();
     }
     for (size_t input_index = 0; input_index < pattern_node.input_value_ids.size(); ++input_index) {
+      ORT_RETURN_IF_ERROR(ConsumeWork());
       const auto pattern_input = pattern_node.input_value_ids[input_index];
       const auto* target_input = target_node->InputDefs()[input_index];
       if (pattern_input == kMissingPatternValue) {
@@ -297,6 +310,7 @@ struct CandidateMatcher {
         return Status::OK();
       }
       for (size_t i = 0; i < group.formal_output_indices.size(); ++i) {
+        ORT_RETURN_IF_ERROR(ConsumeWork());
         const auto formal_output_index = group.formal_output_indices[i];
         const auto target_output_index = group.producer_output_indices[i];
         if (target_output_index >= target_node->OutputDefs().size()) {
@@ -314,7 +328,8 @@ struct CandidateMatcher {
     }
 
     while (true) {
-      const auto value_id = NextScheduledValue();
+      PatternValueId value_id;
+      ORT_RETURN_IF_ERROR(NextScheduledValue(value_id));
       if (value_id == kMissingPatternValue) break;
       state.value_visit_states[value_id] = ValueVisitState::Processed;
       if (diagnostics != nullptr) ++diagnostics->worklist_bindings_processed;
