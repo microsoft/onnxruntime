@@ -911,70 +911,41 @@ TEST(SplitOperatorTest, Split3Inner) {
 }
 
 TEST(SplitOperatorTest, InvalidValueInSplitInput_NegativeEntry_Axis0) {
-  constexpr int64_t axis = 0;
-  ShapeAndFloatData input = {{6, 2},
-                             {1.f, 2.f,
-                              3.f, 4.f,
-                              5.f, 6.f,
-                              7.f, 8.f,
-                              9.f, 10.f,
-                              11.f, 12.f}};
-
-  // Sum equals the axis dim (8 + -2 == 6) and the count equals the number of outputs, so the existing
+  // Force CPU-only execution: the negative-value guard lives in the CPU Split kernel
+  // Other EPs (CUDA, TensorRT, etc.) have their own Split implementations
+  // that either fail with a different error or hit the framework's negative-shape check
+  // downstream.
+  OpTester test("Split", 13, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddInput<float>("input", {6, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f, 11.f, 12.f});
+  // Sum equals axis dim (8 + -2 == 6) and count matches num outputs, so existing
   // count/sum guards do not trigger; only the per-value check can catch this case.
-  std::vector<int64_t> splits{8, -2};
+  test.AddInput<int64_t>("split", {2}, {8, -2}, /*is_initializer=*/false);
+  test.AddOutput<float>("output0", {1, 2}, {0.f, 0.f});
+  test.AddOutput<float>("output1", {1, 2}, {0.f, 0.f});
 
-  std::vector<ShapeAndFloatData> outputs;
-  outputs.push_back({{1, 2}, {0.f, 0.f}});
-  outputs.push_back({{1, 2}, {0.f, 0.f}});
-
-  const std::unordered_set<std::string> excluded_providers{
-      kTensorrtExecutionProvider,
-      kCudaExecutionProvider,
-      kMIGraphXExecutionProvider,
-      kQnnExecutionProvider,
-      kCoreMLExecutionProvider,
-      kDmlExecutionProvider,
-      kOpenVINOExecutionProvider,
-      kWebGpuExecutionProvider,
-      kNnapiExecutionProvider,
-      kXnnpackExecutionProvider,
-      kAclExecutionProvider,
-  };
-  RunTest<float>(axis, splits, input, outputs, excluded_providers,
-                 true /*expect_failure*/, true /*split_as_input*/, -1 /*num_outputs*/, false /*is_initializer*/,
-                 "Invalid value in 'split' input. All values must be >= 0.");
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Invalid value in 'split' input. All values must be >= 0.",
+           {}, nullptr, &execution_providers);
 }
 
 TEST(SplitOperatorTest, InvalidValueInSplitInput_NegativeEntry_NegativeAxis) {
-  constexpr int64_t axis = -1;
-  ShapeAndFloatData input = {{2, 4},
-                             {1.f, 2.f, 3.f, 4.f,
-                              5.f, 6.f, 7.f, 8.f}};
+  // Same reason as above: force CPU-only. Negative entry in the leading position;
+  // sum still matches the split-axis dim (-1 + 5 == 4).
+  OpTester test("Split", 13, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("axis", -1);
+  test.AddInput<float>("input", {2, 4}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f});
+  test.AddInput<int64_t>("split", {2}, {-1, 5}, /*is_initializer=*/false);
+  test.AddOutput<float>("output0", {2, 1}, {0.f, 0.f});
+  test.AddOutput<float>("output1", {2, 1}, {0.f, 0.f});
 
-  // Negative entry in the leading position; sum still matches the split-axis dim (-1 + 5 == 4).
-  std::vector<int64_t> splits{-1, 5};
-
-  std::vector<ShapeAndFloatData> outputs;
-  outputs.push_back({{2, 1}, {0.f, 0.f}});
-  outputs.push_back({{2, 1}, {0.f, 0.f}});
-
-  const std::unordered_set<std::string> excluded_providers{
-      kTensorrtExecutionProvider,
-      kCudaExecutionProvider,
-      kMIGraphXExecutionProvider,
-      kQnnExecutionProvider,
-      kCoreMLExecutionProvider,
-      kDmlExecutionProvider,
-      kOpenVINOExecutionProvider,
-      kWebGpuExecutionProvider,
-      kNnapiExecutionProvider,
-      kXnnpackExecutionProvider,
-      kAclExecutionProvider,
-  };
-  RunTest<float>(axis, splits, input, outputs, excluded_providers,
-                 true /*expect_failure*/, true /*split_as_input*/, -1 /*num_outputs*/, false /*is_initializer*/,
-                 "Invalid value in 'split' input. All values must be >= 0.");
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Invalid value in 'split' input. All values must be >= 0.",
+           {}, nullptr, &execution_providers);
 }
 
 }  // namespace test
