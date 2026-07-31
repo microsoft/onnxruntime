@@ -276,6 +276,29 @@ NormalizedFunctionPattern NormalizeFunctionPattern(
   if (static_cast<size_t>(function_proto.node_size()) > options.max_pattern_nodes) {
     return fail(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Function pattern node budget exceeded."));
   }
+
+  size_t pattern_slot_units = 0;
+  auto consume_pattern_slots = [&](size_t units) {
+    if (pattern_slot_units > options.max_worklist_bindings ||
+        units > options.max_worklist_bindings - pattern_slot_units) {
+      return false;
+    }
+    pattern_slot_units += units;
+    return true;
+  };
+  for (const auto& node : function_proto.node()) {
+    const size_t input_slots = static_cast<size_t>(node.input_size());
+    const size_t output_slots = static_cast<size_t>(node.output_size());
+    // Count every input conservatively as both a body slot and a consumer incidence.
+    if (!consume_pattern_slots(input_slots) ||
+        !consume_pattern_slots(input_slots) ||
+        !consume_pattern_slots(output_slots)) {
+      return fail(ORT_MAKE_STATUS(
+          ONNXRUNTIME, FAIL,
+          "Function extraction invariant/resource limit exceeded: pattern slot budget."));
+    }
+  }
+
   result.function_proto = function_proto;
 
   try {

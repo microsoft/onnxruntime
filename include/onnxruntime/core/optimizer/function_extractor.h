@@ -27,7 +27,7 @@ struct FunctionExtractorOptions {
   size_t max_target_nodes{1'000'000};
   /** Maximum candidate-root entries and output-root tuples per discovery pass. */
   size_t max_output_root_tuples{100'000};
-  /** Maximum aggregate matcher scheduling and boundary-traversal work per pass. */
+  /** Maximum pattern-slot normalization and aggregate matcher work per pass. */
   size_t max_worklist_bindings{1'000'000};
   /** Maximum aggregate literal bytes normalized or compared per pass. */
   size_t max_literal_bytes{64U * 1024U * 1024U};
