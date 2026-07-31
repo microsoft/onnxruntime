@@ -269,6 +269,10 @@ TEST_F(FunctionExtractorTest, RejectsInvalidFormalNames) {
 }
 
 TEST_F(FunctionExtractorTest, RejectsInvalidAttributes) {
+  FunctionProto required_attribute = MakeLinearFunction("RequiredAttribute");
+  required_attribute.add_attribute("axis");
+  ExpectConstructionRejected(std::move(required_attribute));
+
   FunctionProto duplicate_declaration = MakeLinearFunction("DuplicateAttribute");
   duplicate_declaration.add_attribute("axis");
   duplicate_declaration.add_attribute("axis");
@@ -307,6 +311,15 @@ TEST_F(FunctionExtractorTest, RejectsMalformedDataflow) {
     ExpectConstructionRejected(MakeFunction("Malformed" + std::to_string(i),
                                             invalid_bodies[i], inputs, outputs));
   }
+
+  const std::vector<NodeDef> disconnected_body{
+      {{"left"}, "Add", {"x", "y"}},
+      {{"right"}, "Mul", {"z", "w"}},
+  };
+  ExpectConstructionRejected(
+      MakeFunction("DisconnectedOutputs", disconnected_body,
+                   std::vector<std::string>{"x", "y", "z", "w"},
+                   std::vector<std::string>{"left", "right"}));
 }
 
 TEST_F(FunctionExtractorTest, RejectsOutputUnreachableOperations) {
@@ -806,31 +819,61 @@ TEST_F(FunctionExtractorTest, RequiresExactEffectiveAttributes) {
 }
 
 TEST_F(FunctionExtractorTest, MatchesOptionalAndVariadicSlotsPositionally) {
-  const std::vector<NodeDef> nodes{
-      {{"clipped"}, "Clip", {"x", "", ""}},
-      {{"out"}, "Concat", {"clipped", "y"}, {ONNX_NAMESPACE::MakeAttribute("axis", int64_t{0})}},
-  };
-  const FunctionProto function_proto =
-      MakeFunction("OptionalVariadic", nodes, std::vector<std::string>{"x", "y"},
-                   std::vector<std::string>{"out"});
-  auto model = MakeModel(function_proto);
-  Graph& graph = model->MainGraph();
-  ModelTestBuilder builder(graph);
-  NodeArg* x = builder.MakeInput<float>({1}, 0.0f, 1.0f);
-  NodeArg* y = builder.MakeInput<float>({1}, 0.0f, 1.0f);
-  NodeArg* empty = builder.MakeEmptyInput();
-  NodeArg* clipped = builder.MakeIntermediate<float>({1});
-  NodeArg* output = builder.MakeOutput<float>({2});
-  builder.AddNode("Clip", {x, empty, empty}, {clipped});
-  NodeAttributes attributes{{"axis", ONNX_NAMESPACE::MakeAttribute("axis", int64_t{0})}};
-  builder.AddNode("Concat", {clipped, y}, {output}, kOnnxDomain, &attributes);
-  builder.SetGraphOutputs();
-  ASSERT_STATUS_OK(graph.Resolve());
+  {
+    const std::vector<NodeDef> nodes{
+        {{"clipped"}, "Clip", {"x", "", ""}},
+        {{"out"}, "Concat", {"clipped", "y"}, {ONNX_NAMESPACE::MakeAttribute("axis", int64_t{0})}},
+    };
+    const FunctionProto function_proto =
+        MakeFunction("OptionalVariadic", nodes, std::vector<std::string>{"x", "y"},
+                     std::vector<std::string>{"out"});
+    auto model = MakeModel(function_proto);
+    Graph& graph = model->MainGraph();
+    ModelTestBuilder builder(graph);
+    NodeArg* x = builder.MakeInput<float>({1}, 0.0f, 1.0f);
+    NodeArg* y = builder.MakeInput<float>({1}, 0.0f, 1.0f);
+    NodeArg* empty = builder.MakeEmptyInput();
+    NodeArg* clipped = builder.MakeIntermediate<float>({1});
+    NodeArg* output = builder.MakeOutput<float>({2});
+    builder.AddNode("Clip", {x, empty, empty}, {clipped});
+    NodeAttributes attributes{{"axis", ONNX_NAMESPACE::MakeAttribute("axis", int64_t{0})}};
+    builder.AddNode("Concat", {clipped, y}, {output}, kOnnxDomain, &attributes);
+    builder.SetGraphOutputs();
+    ASSERT_STATUS_OK(graph.Resolve());
 
-  FunctionExtractor extractor(function_proto);
-  const FunctionExtractionResult result = extractor.Extract(graph);
-  ASSERT_STATUS_OK(result.status);
-  EXPECT_EQ(result.replacements_applied, 1u);
+    FunctionExtractor extractor(function_proto);
+    const FunctionExtractionResult result = extractor.Extract(graph);
+    ASSERT_STATUS_OK(result.status);
+    EXPECT_EQ(result.replacements_applied, 1u);
+  }
+
+  {
+    const std::vector<NodeDef> nodes{
+        {{"pooled"}, "MaxPool", {"x"}, {ONNX_NAMESPACE::MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2})}},
+        {{"out"}, "Identity", {"pooled"}},
+    };
+    const FunctionProto function_proto =
+        MakeFunction("OmittedOptionalOutput", nodes, std::vector<std::string>{"x"},
+                     std::vector<std::string>{"out"});
+    auto model = MakeModel(function_proto);
+    Graph& graph = model->MainGraph();
+    ModelTestBuilder builder(graph);
+    NodeArg* x = builder.MakeInput<float>({1, 1, 4, 4}, 0.0f, 1.0f);
+    NodeArg* pooled = builder.MakeIntermediate<float>({1, 1, 3, 3});
+    NodeArg* output = builder.MakeOutput<float>({1, 1, 3, 3});
+    NodeAttributes attributes{
+        {"kernel_shape", ONNX_NAMESPACE::MakeAttribute(
+                             "kernel_shape", std::vector<int64_t>{2, 2})}};
+    builder.AddNode("MaxPool", {x}, {pooled}, kOnnxDomain, &attributes);
+    builder.AddNode("Identity", {pooled}, {output});
+    builder.SetGraphOutputs();
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    FunctionExtractor extractor(function_proto);
+    const FunctionExtractionResult result = extractor.Extract(graph);
+    ASSERT_STATUS_OK(result.status);
+    EXPECT_EQ(result.replacements_applied, 1u);
+  }
 }
 
 TEST_F(FunctionExtractorTest, AppliesKnownTypeCompatibilityRules) {
