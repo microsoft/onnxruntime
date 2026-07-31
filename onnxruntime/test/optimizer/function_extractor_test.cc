@@ -223,6 +223,10 @@ Node& AddCapturingIf(ModelTestBuilder& builder, NodeArg& captured,
   return if_node;
 }
 
+common::Status FailGraphResolve(Graph&, const Graph::ResolveOptions&) {
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "injected resolve failure");
+}
+
 }  // namespace
 
 class FunctionExtractorTest : public ::testing::Test {
@@ -1344,6 +1348,62 @@ TEST_F(FunctionExtractorTest, RejectsStalePlanBeforeMutation) {
   ASSERT_TRUE(graph.RemoveNode(stale_node_index));
   EXPECT_FALSE(PrevalidatePlans(graph, compiled, plans).IsOK());
   EXPECT_EQ(CountOp(graph, kFunctionDomain, function_proto.name()), 0u);
+}
+
+TEST_F(FunctionExtractorTest, ReturnsInvariantErrorAtPassCap) {
+  const FunctionProto function_proto = MakeLinearFunction();
+  auto model = MakeModel(function_proto);
+  Graph& graph = model->MainGraph();
+  NodeArg* x;
+  NodeArg* y;
+  NodeArg* sum;
+  NodeArg* output;
+  BuildLinearTarget(graph, x, y, sum, output);
+  ASSERT_STATUS_OK(graph.Resolve());
+  const size_t original_node_count = graph.NumberOfNodes();
+
+  using namespace function_extractor_internal;
+  const NormalizedFunctionPattern normalized =
+      NormalizeFunctionPattern(function_proto, FunctionExtractorOptions{});
+  ASSERT_STATUS_OK(normalized.construction_status);
+  ExtractionControls controls;
+  controls.maximum_passes = 0;
+
+  const FunctionExtractionResult result =
+      ExtractGraph(graph, normalized, FunctionExtractorOptions{}, controls);
+  EXPECT_FALSE(result.status.IsOK());
+  EXPECT_NE(result.status.ErrorMessage().find("defensive pass cap"), std::string::npos);
+  EXPECT_EQ(result.replacements_applied, 0u);
+  EXPECT_EQ(graph.NumberOfNodes(), original_node_count);
+  AssertResolved(graph);
+}
+
+TEST_F(FunctionExtractorTest, ReportsAppliedCountOnResolveFailure) {
+  const FunctionProto function_proto = MakeLinearFunction();
+  auto model = MakeModel(function_proto);
+  Graph& graph = model->MainGraph();
+  NodeArg* x;
+  NodeArg* y;
+  NodeArg* sum;
+  NodeArg* output;
+  BuildLinearTarget(graph, x, y, sum, output);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  using namespace function_extractor_internal;
+  const NormalizedFunctionPattern normalized =
+      NormalizeFunctionPattern(function_proto, FunctionExtractorOptions{});
+  ASSERT_STATUS_OK(normalized.construction_status);
+  ExtractionControls controls;
+  controls.resolve_graph = FailGraphResolve;
+
+  const FunctionExtractionResult result =
+      ExtractGraph(graph, normalized, FunctionExtractorOptions{}, controls);
+  EXPECT_FALSE(result.status.IsOK());
+  EXPECT_NE(result.status.ErrorMessage().find("injected resolve failure"), std::string::npos);
+  EXPECT_EQ(result.replacements_applied, 1u);
+  EXPECT_TRUE(graph.GraphResolveNeeded());
+  EXPECT_EQ(graph.NumberOfNodes(), 1u);
+  EXPECT_EQ(CountOp(graph, kFunctionDomain, function_proto.name()), 1u);
 }
 
 TEST_F(FunctionExtractorTest, StrictlyDecreasesNodeCountPerReplacement) {
