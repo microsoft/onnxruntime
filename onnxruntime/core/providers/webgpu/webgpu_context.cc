@@ -43,6 +43,20 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, &config]() {
     max_num_pending_dispatches_ = config.max_num_pending_dispatches;
 
+    // Three easily-conflated concepts, at three layers (a pipeline, not the same flag):
+    //   * allow_virtual_devices (env)     -- selectability: surface a virtual GPU OrtEpDevice so WebGPU is
+    //                                        pickable when OS enumeration finds no GPU (e.g. Win32k sandbox).
+    //   * compile_only (session)          -- intent: transform only, never finalize/run.
+    //   * device-free / HasDevice() (ctx) -- mechanism: no Dawn device, no-op allocator.
+    // compile_only alone is valid (device-free even with a real GPU); a virtual device without compile_only is
+    // rejected at factory CreateEp -- it would try to build a real Dawn device with no hardware.
+    if (config.compile_only) {
+      // Device-free: skip Dawn adapter/device creation. Such a context only transforms the graph; the session
+      // stops before finalization and never executes kernels or allocates.
+      LOGS_DEFAULT(INFO) << "WebGPU EP context created device-free (compile-only session, no Dawn device).";
+      return;
+    }
+
     if (device_ == nullptr) {
       // Create wgpu::Adapter
       wgpu::RequestAdapterOptions req_adapter_options = {};

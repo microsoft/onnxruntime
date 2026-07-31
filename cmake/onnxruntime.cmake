@@ -285,8 +285,15 @@ else()
   )
 endif()
 
-if(WIN32)
+# Delay-load flags only apply to the actual onnxruntime.dll. In a static build the onnxruntime target is an
+# INTERFACE library, which rejects the PRIVATE keyword ("may only set INTERFACE properties on INTERFACE targets"),
+# and delay-loading is meaningless for a static lib anyway. Consumers that need delay-load in a static build (e.g.
+# the WebGPU plugin EP DLL) apply onnxruntime_DELAYLOAD_FLAGS to their own target.
+if(WIN32 AND onnxruntime_BUILD_SHARED_LIB)
   target_link_options(onnxruntime PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
+  if(onnxruntime_DELAYLOAD_FLAGS)
+    target_link_libraries(onnxruntime PRIVATE delayimp.lib)
+  endif()
 endif()
 #See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
 if(NOT WIN32)
