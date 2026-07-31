@@ -1586,7 +1586,7 @@ constexpr static int FINALIZE_MAX_STAGED_TOPK = FINALIZE_THREADS_PER_BLOCK;
 
 // Final kernel to unpermute and scale
 // This kernel unpermutes the original data, does the k-way reduction and performs the final skip connection.
-template <typename OutputType, class GemmOutputType, class ScaleBiasType, ScaleMode SCALE_MODE>
+template <typename OutputType, class GemmOutputType, class ScaleBiasType, ScaleMode SCALE_MODE, bool STAGE_ROUTING>
 __global__ void finalizeMoeRoutingKernel(const GemmOutputType* expanded_permuted_rows,
                                          OutputType* reduced_unpermuted_output, const ScaleBiasType* bias, const float* scales,
                                          const int* unpermuted_row_to_permuted_row, const int* token_selected_experts, const int64_t orig_cols,
