@@ -124,8 +124,7 @@ No behavior change.
 1. **WebGL warn-once.** In `OnnxjsBackend` (`js/web/lib/backend-onnxjs.ts`), `init(backendName)` /
    `createInferenceSessionHandler`, gated on `logLevel` and deduped via a module flag. Uses the shared
    deprecation-warning utility (from the JSEP effort, or here — whichever lands first).
-2. **Docs.** Deprecation banner + migration guidance in `js/web/README` and `js/web/docs/webgl-operators.md`, plus
-   release notes.
+2. **Docs.** Deprecation banner + migration guidance in `js/web/README` (hand-authored), plus release notes.
 
 ---
 
@@ -134,7 +133,17 @@ No behavior change.
 Timed one release after Phase 1, kept independent of the JSEP removal schedule. Extend only if WebGL-reliant
 consumers report friction migrating to `wasm`/WebGPU.
 
-1. Delete the `onnxjs` backend (`js/web/lib/onnxjs`), the `'webgl'` registration, and `backend-onnxjs.ts`.
+**Versioning.** ONNX Runtime follows SemVer for its stable public API ([docs/Versioning.md](../Versioning.md)),
+but WebGL has always been experimental/maintenance-mode — negative priority, partial op coverage, never GA — so
+removing it in a minor release after a deprecation window is within policy and does not require a major bump.
+
+1. Delete the whole `onnxjs` tree, but not with a naive `rm -rf`. Production reaches it only through
+   `backend-onnxjs.ts` and the `'webgl'` registration, so remove those plus the WebGL-only code (`onnxjs/backends/webgl`,
+   the `test/unittests/backends/webgl/*` tests, and `generate-webgl-operator-md.ts`) outright. First relocate the
+   few shared, non-WebGL utilities that test infra imports — protobuf/ONNX decoding (`ort-schema/protobuf`,
+   `tensor`), `instrument` (`Logger`/`Profiler`), and `util` (`ProtoUtil`, `PoolConvUtil`, `ShapeUtil`) — to a
+   neutral path and repoint their importers; then delete the legacy `onnxjs` session, graph, execution engine, and
+   operators (git history preserves them).
 2. Remove the `ort.webgl` build variant and the `./webgl` export.
 3. Drop WebGL from `ort.all` (§6). If the JSEP → native flip has landed, this collapses `/all` into the
    webgpu/default alias; otherwise `/all` stays a distinct JSEP bundle until it does.

@@ -11,15 +11,16 @@
 
 `onnxruntime-web` implements WebGPU/WebNN compute two ways:
 
-- **JSEP** — WebGPU/WebNN implemented in TypeScript over an Asyncify-compiled WASM core. Powers the default (`.`)
-  and `./all` bundles.
-- **Native WebGPU EP** — the C++ WebGPU execution provider compiled to WASM. Powers the `./webgpu` and `./jspi`
-  bundles.
+- **JSEP** — the WebGPU compute path implemented in TypeScript over an Asyncify-compiled WASM core (it also hosts
+  WebNN). Powers the default (`.`) and `./all` bundles.
+- **Native WebGPU EP** — the C++ WebGPU execution provider compiled to WASM (hosting WebNN natively). Powers the
+  `./webgpu` and `./jspi` bundles.
 
 This document proposes removing JSEP and standardizing on the native WebGPU EP. The default bundle keeps the
-`webgpu` backend key and swaps implementation at build time, so the change is transparent for existing code.
+`webgpu` backend key and swaps implementation at build time, so the change is transparent for existing code. WebNN
+comes along unchanged — the default bundle just switches to the native WebNN host that `./webgpu` already uses.
 
-- **Phase 1 (this release):** flip the default (`.`) and `./all` bundles to the native EP, add a temporary
+- **Phase 1 (this release):** flip the default (`.`) and `./all` bundles to the native WebGPU EP, add a temporary
   `onnxruntime-web/jsep` escape-hatch export for one release, and ship deprecation warnings + docs.
 - **Phase 2 (subsequent release):** delete JSEP and remove the temporary `/jsep` export and build flags.
 
@@ -27,8 +28,8 @@ This document proposes removing JSEP and standardizing on the native WebGPU EP. 
 
 ## 2. Motivation
 
-- **Remove duplicate maintenance.** JSEP and the native EP implement the same operators twice (TypeScript and
-  C++). The native EP is the strategic direction and receives new op work.
+- **Remove duplicate maintenance.** JSEP and the native WebGPU EP implement the same operators twice (TypeScript
+  and C++). The native WebGPU EP is the strategic direction and receives new op work.
 - **Consistent runtime semantics.** The browser build shares kernel behavior with the rest of ONNX Runtime
   instead of maintaining a parallel TS implementation.
 - **Simpler build matrix.** Removing JSEP deletes the temporary `USE_WEBGPU_EP` / `DISABLE_JSEP` build plumbing.
@@ -55,30 +56,27 @@ This document proposes removing JSEP and standardizing on the native WebGPU EP. 
 ## 4. Background: backend selection
 
 Whether a bundle uses JSEP or the native WebGPU EP is a build-time choice (distinct from the runtime
-`executionProviders` selection), gated by `BUILD_DEFS` flags: `DISABLE_JSEP`, `DISABLE_WEBGPU` (native EP), and
-`DISABLE_WASM`. The pivot is the temporary `USE_WEBGPU_EP` flag in `js/web/script/build.ts` (default `false`),
+`executionProviders` selection), gated by the `BUILD_DEFS` flags `DISABLE_JSEP` and `DISABLE_WEBGPU` (native WebGPU
+EP). The pivot is the temporary `USE_WEBGPU_EP` flag in `js/web/script/build.ts` (default `false`),
 which sets `DISABLE_JSEP = !!USE_WEBGPU_EP` and `DISABLE_WEBGPU = !USE_WEBGPU_EP`. Both `USE_WEBGPU_EP` and
 `USE_JSPI` are annotated in the source as temporary.
 
 ### 4.1 Current bundle / export map (`js/web/package.json`)
 
-| Export | Artifact | WebGPU/WebNN path |
-|---|---|---|
-| `.` (default) | `ort.min` / `ort.bundle.min` | JSEP WebGPU + WebNN |
-| `./all` | `ort.all.*` | JSEP WebGPU + WebNN (+ WebGL) |
-| `./webgpu` | `ort.webgpu.*` | **Native** WebGPU EP + native WebNN |
-| `./jspi` | `ort.jspi.*` | Native WebGPU EP + JSPI |
-| `./wasm` | `ort.wasm.*` | WASM/CPU only |
-
-WebNN in the default/`all` bundles is JSEP-hosted; in `./webgpu` it is native. WASM artifacts are variant-specific:
-`*.jsep.wasm` (JSEP), `*.asyncify.wasm` (native EP), `*.jspi.wasm`, and base `*.wasm`.
+| Export | WebGPU impl | Async bridge | WASM binary suffix |
+|---|---|---|---|
+| `.` (default) | JSEP | Asyncify | `.jsep.wasm` |
+| `./all` | JSEP | Asyncify | `.jsep.wasm` |
+| `./webgpu` | native WebGPU EP | Asyncify | `.asyncify.wasm` |
+| `./jspi` | native WebGPU EP | JSPI | `.jspi.wasm` |
+| `./wasm` | — (CPU only) | — | `.wasm` |
 
 ---
 
 ## 5. Approach
 
-- **Transparent default swap.** Both JSEP and the native EP register under the `webgpu` key, so flipping the
-  default bundle to the native EP requires no consumer source changes.
+- **Transparent default swap.** Both JSEP and the native WebGPU EP register under the `webgpu` key, so flipping
+  the default bundle to the native WebGPU EP requires no consumer source changes.
 - **Escape hatch.** Phase 1 adds a temporary `onnxruntime-web/jsep` export (built `USE_WEBGPU_EP=false`) that pins
   JSEP for one release. It is deprecated and warns once, doubling as a parity-bug funnel.
 - **`/all` bundle.** `/all` bundles the WebGPU/WebNN backend and WebGL — two independent things changed by two
@@ -90,22 +88,23 @@ WebNN in the default/`all` bundles is JSEP-hosted; in `./webgpu` it is native. W
 
 ## 6. int64 handling
 
-The native EP reads int64 support from `ep.webgpuexecutionprovider.enableInt64` (`webgpu_provider_factory.cc`),
+The native WebGPU EP reads int64 support from `ep.webgpuexecutionprovider.enableInt64` (`webgpu_provider_factory.cc`),
 default `false`. It is reachable on `/webgpu` today via the untyped `extra` map
 (`extra: { 'ep.webgpuexecutionprovider.enableInt64': '1' }`).
 
-With int64 **off** (the default), the native EP matches JSEP exactly: int64 arithmetic runs on CPU/WASM with full
+With int64 **off** (the default), the native WebGPU EP matches JSEP exactly: int64 arithmetic runs on CPU/WASM with full
 `int64_t` precision, while int64 indices (`Gather` / `GatherElements` / `MaxPool`) run on the GPU with i32
 truncation. `enableInt64 = 1` is an opt-in that additionally runs int64 arithmetic on the GPU — faster, but
-i32-truncated and therefore lossy for genuine `> 2³¹` values. `transformers.js` already runs the native EP with
-int64 off at scale.
+i32-truncated and therefore lossy for genuine `> 2³¹` values. `transformers.js` already runs the native WebGPU EP
+with int64 off at scale.
 
 **Decision:** keep int64 off by default. `enableInt64 = 1` is an opt-in tradeoff, not needed for JSEP parity.
-Optional follow-ups: a typed `enableInt64?: boolean` option, and a benchmark of an int64-heavy graph.
+Optional follow-up: a typed `enableInt64?: boolean` option.
 
 Graph capture forces int64 on (`enable_int64_{enable_graph_capture || enable_int64}` in
-`webgpu_execution_provider.cc`) to keep the captured region all-GPU; capture users accept i32 truncation, which
-fits the LLM-decode token-ID case.
+`webgpu_execution_provider.cc`) to keep the captured region all-GPU. So `enableGraphCapture = true` silently moves
+int64 arithmetic to the GPU and truncates genuine `> 2³¹` values — an exception to default parity, flagged in the
+migration guide (§11).
 
 ---
 
@@ -114,14 +113,18 @@ fits the LLM-decode token-ID case.
 Parity checks to close before Phase 1. Items 1–3 need a real browser + GPU/WebNN run; item 4 is a known wiring gap
 to fix.
 
-1. **Proxy-worker (`wasm.proxy = true`).** The proxy wrapper (`proxy-wrapper.ts`) is EP-agnostic and CPU-I/O-only;
-   verify the native EP's device init and threading work inside a Worker under Asyncify.
+1. **Proxy-worker (`wasm.proxy = true`).** `./webgpu` already ships this exact path (native EP + Asyncify + proxy
+   over the EP-agnostic `proxy-wrapper.ts`), so this is a coverage check, not new wiring. CI today runs `--wasm.proxy`
+   only with `-b=wasm` (CPU) on the JSEP build — never `-b=webgpu`, and the `--webgpu-ep` leg runs no proxy. Confirm a
+   real proxy-mode run on a GPU: native EP device init and threading inside a Worker.
 2. **IO-binding.** The `'gpu-buffer'` / `'ml-tensor'` paths in `wasm-core-impl.ts` have symmetric native/JSEP
-   hooks; confirm the native path delivers true zero-copy handoff and matching dispose/lifetime semantics.
-3. **WebNN.** The flip also moves default-bundle WebNN from JSEP-hosted to native; validate in a
-   `navigator.ml`-capable environment.
+   hooks. CI today runs the `--io-binding=gpu-tensor` / `gpu-location` legs on the JSEP build only; the `--webgpu-ep`
+   leg passes no `--io-binding`. Confirm the native path delivers true zero-copy handoff and matching dispose/lifetime
+   semantics on a GPU.
+3. **WebNN.** The default bundle switches to the same native WebNN host `./webgpu` already ships, so WebNN itself
+   is unchanged; just confirm the default bundle behaves the same in a `navigator.ml`-capable environment.
 4. **Global `env.webgpu.*` settings (wiring gap).** `wasm-core-impl.ts` requests the adapter on the JS side but
-   calls `webgpuInit()` without forwarding it to the native EP, and `startProfiling()` is a TODO on the native
+   calls `webgpuInit()` without forwarding it to the native WebGPU EP, and `startProfiling()` is a TODO on the native
    path — so `adapter` / `powerPreference` / `forceFallbackAdapter` / `profiling` are silently dropped. Wire these
    into the native path (or document the change) before the flip.
 
@@ -131,19 +134,25 @@ Per-session typed options are already a superset of JSEP's, confirmed by source 
 
 ## 8. Phase 1 — Flip + deprecate (this release)
 
-1. **Flip the default.** Build `.` and `./all` with the native EP (`USE_WEBGPU_EP=true`). The `webgpu` key and
+1. **Flip the default.** Build `.` and `./all` with the native EPs (`USE_WEBGPU_EP=true`). The `webgpu` key and
    public API are unchanged. `/all` keeps WebGL until the WebGL effort removes it.
 2. **Escape hatch.** Add the temporary, deprecated `onnxruntime-web/jsep` export (`USE_WEBGPU_EP=false`).
 3. **Warn once.** The `/jsep` build warns once (respecting `env.logLevel`) via a shared deprecation-warning
    utility, also used by the WebGL effort; the native default emits nothing.
 4. **Publish the tracking issue** ahead of the release as the early-warning channel.
-5. **Docs.** Deprecation banners + migration guidance in `js/web/README` and `js/web/docs/webgpu-operators.md`,
-   and a release-notes entry covering the `.jsep.wasm` → `.asyncify.wasm` filename change, `/jsep` pinning, the
-   int64 `extra` opt-in, and the WebNN swap to native (which the WebGPU-centric framing otherwise hides).
+5. **Docs.** Deprecation banners + migration guidance in `js/web/README` (hand-authored) and a release-notes entry
+   covering the `.jsep.wasm` → `.asyncify.wasm` filename change, `/jsep` pinning, the int64 `extra` opt-in, and the
+   default bundle's WebNN switching to the native host (already used by `./webgpu`). `webgpu-operators.md` is
+   generated — emit any banner from its generator (item 6), not by hand.
+6. **Retarget the operator-doc generator.** `generate-webgpu-operator-md.ts` parses the JSEP registrations
+   (`js_execution_provider.cc`, `js_contrib_kernels.cc`), so post-flip `webgpu-operators.md` describes the wrong
+   EP; point it at the native WebGPU EP registrations (those JSEP sources are removed in Phase 2).
 
-**Release gate.** The flip is gated on both: (a) CI running the default `.` bundle against the native EP — a green
-`/webgpu` run is not sufficient, since the bundles differ in proxy/IO-binding/WebNN wiring even when op kernels
-match; and (b) the §7 items resolved with targeted coverage (op-parity tests don't exercise those paths).
+**Release gate.** The flip is gated on both: (a) a **blocking** CI job running the native WebGPU EP — the current
+native-WebGPU-EP legs are advisory (`continue-on-error` in `windows-web-ci-workflow.yml`, `continueOnError` in
+`win-web-ci.yml`) and must be promoted to blocking. The default `.` bundle and `./webgpu` are the same build, so a
+green `/webgpu` run covers the flip only if it exercises proxy/IO-binding/WebNN — which the current op-parity leg
+does not; and (b) the §7 items resolved with targeted coverage (op-parity tests don't exercise those paths).
 
 ---
 
@@ -170,7 +179,7 @@ native-EP parity regressions surface via real `/jsep` usage.
 |---|---|---|
 | Undiscovered native-EP parity gap vs. JSEP | Medium | One-release `/jsep` escape hatch + warn-once funnel; differential tests |
 | int64 behavior change vs. JSEP | Low | None by default (native-off matches JSEP); `enableInt64 = 1` is an opt-in tradeoff |
-| Proxy / IO-binding / WebNN differ under native | Unknown | Validate before flip (§7) |
+| Proxy / IO-binding / WebNN unexercised under the native EP in CI | Unknown | Validate before flip (§7) |
 | Global `env.webgpu.*` settings dropped on native | Medium | Wire into the native path or document — release gate (§7, §8) |
 | WASM filename change breaks `wasmPaths` | Medium | Document `.jsep.wasm` → `.asyncify.wasm` |
 | No telemetry on JSEP adoption | Medium | Warn-once funnel + one-release escape hatch |
@@ -179,15 +188,18 @@ native-EP parity regressions surface via real `/jsep` usage.
 
 ## 11. Migration guide
 
-- **Default import (`onnxruntime-web`) and `onnxruntime-web/all`:** no code change needed; the `webgpu` backend
-  keeps working and converges to the native EP.
+- **Default import (`onnxruntime-web`) and `onnxruntime-web/all`:** no source change if you use default,
+  package-managed asset resolution; the `webgpu` backend keeps working and converges to the native WebGPU EP.
+  Consumers that pin WASM artifacts must still update the path (see `wasmPaths` below).
 - **Lower-overhead build (`onnxruntime-web/jspi`):** on JSPI-capable browsers, prefer `./jspi` — the same native
-  EP with a smaller WASM binary and lower per-call overhead than Asyncify (the universal fallback).
+  WebGPU EP with a smaller WASM binary and lower per-call overhead than Asyncify (the universal fallback).
 - **Need JSEP for one more release:** import `onnxruntime-web/jsep` (temporary, deprecated). File an issue if the
-  native EP does not work for your model.
-- **int64-heavy models:** no change needed — the default matches JSEP. To run int64 arithmetic on the GPU (lossy
-  for genuine `> 2³¹` values), set `extra: { 'ep.webgpuexecutionprovider.enableInt64': '1' }`.
-- **`wasmPaths`:** the backing artifact changes (`.jsep.wasm` → `.asyncify.wasm`); update hardcoded paths.
+  native EPs do not work for your model.
+- **int64-heavy models:** no change needed — the default matches JSEP. Exceptions that move int64 arithmetic to the
+  GPU (lossy for genuine `> 2³¹` values): `extra: { 'ep.webgpuexecutionprovider.enableInt64': '1' }`, and
+  `enableGraphCapture = true` (forces int64 on; see §6).
+- **`wasmPaths` / pinned artifacts:** the backing artifact changes (`.jsep.wasm` → `.asyncify.wasm`). Update
+  object-form `env.wasm.wasmPaths`, direct artifact imports, preload/CSP rules, and any copied assets.
 
 > A pinned tracking issue (link TBD) is the authoritative, continuously-updated migration guidance. Warnings,
 > docs, and CHANGELOG entries link to it.
