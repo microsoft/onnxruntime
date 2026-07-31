@@ -160,6 +160,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateLRNOpBuilder("LRN", op_registrations);
   }
 
+  {  // LpNormalization
+    CreateLpNormalizationOpBuilder("LpNormalization", op_registrations);
+  }
+
   {  // LSTM
     CreateLstmOpBuilder("LSTM", op_registrations);
   }
