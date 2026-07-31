@@ -14,6 +14,42 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
+// Scatter unpacked K and V into the paged (block-based) KV cache.
+//
+// This is Phase 1b.1: the plain, non-fused scatter (no rotary, no packing).
+// The fused rotary + scatter variant lands in Phase 1b.2.
+//
+// Inputs (all read):
+//   key                          : (token_count, kv_hidden_size)      [T]
+//   value                        : (token_count, kv_hidden_size)      [T]
+//   cumulative_sequence_length_q : (batch_size + 1,)                  [S]
+//   past_seqlens                 : (batch_size,)                      [S]
+//   block_table                  : (batch_size, max_num_blocks_per_seq) [S]
+//
+// Outputs (write, aliased by the calling op with the corresponding cache inputs):
+//   key_cache   : (num_blocks, block_size, kv_num_heads, head_size)   [T]
+//   value_cache : (num_blocks, block_size, kv_num_heads, head_size)   [T]
+//
+// Dispatch model: one invocation per (token_idx, kv_head_idx, dim_idx),
+// unrolled row-major into a single 1-D dispatch. Each invocation writes one
+// element into both caches (see the .wgsl.template for the address model).
+class ScatterKVToPagedCacheProgram final : public Program<ScatterKVToPagedCacheProgram> {
+ public:
+  ScatterKVToPagedCacheProgram() : Program{"ScatterKVToPagedCache"} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"token_count", ProgramUniformVariableDataType::Uint32},
+      {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
+      {"head_size", ProgramUniformVariableDataType::Uint32},
+      {"kv_hidden_size", ProgramUniformVariableDataType::Uint32},
+      {"block_size", ProgramUniformVariableDataType::Uint32},
+      {"max_num_blocks_per_seq", ProgramUniformVariableDataType::Uint32},
+      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+};
+
 // WebGPU PagedAttention kernel — v1 skeleton.
 //
 // Op contract, phased delivery plan, and reuse strategy are documented in
