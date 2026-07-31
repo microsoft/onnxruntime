@@ -881,7 +881,7 @@ TEST_F(FunctionExtractorTest, MatchesOptionalAndVariadicSlotsPositionally) {
 
 TEST_F(FunctionExtractorTest, MatchesOperatorWithOmittedOptionalOutput) {
   const std::vector<NodeDef> nodes{
-      {{"pooled"}, "MaxPool", {"x"}, {ONNX_NAMESPACE::MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2})}},
+      {{"pooled", ""}, "MaxPool", {"x"}, {ONNX_NAMESPACE::MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2})}},
       {{"out"}, "Identity", {"pooled"}},
   };
   const FunctionProto function_proto =
@@ -892,11 +892,13 @@ TEST_F(FunctionExtractorTest, MatchesOperatorWithOmittedOptionalOutput) {
   FunctionExtractorGraphBuilder builder(graph);
   NodeArg* x = builder.MakeInput<float>({1, 1, 4, 4}, 0.0f, 1.0f);
   NodeArg* pooled = builder.MakeIntermediate<float>({1, 1, 3, 3});
+  NodeArg* missing_indices = builder.MakeEmptyInput();
   NodeArg* output = builder.MakeOutput<float>({1, 1, 3, 3});
   NodeAttributes attributes{
       {"kernel_shape", ONNX_NAMESPACE::MakeAttribute(
                            "kernel_shape", std::vector<int64_t>{2, 2})}};
-  builder.AddNode("MaxPool", {x}, {pooled}, kOnnxDomain, &attributes);
+  builder.AddNode("MaxPool", {x}, {pooled, missing_indices}, kOnnxDomain,
+                  &attributes);
   builder.AddNode("Identity", {pooled}, {output});
   builder.SetGraphOutputs();
   ASSERT_STATUS_OK(graph.Resolve());
@@ -965,6 +967,19 @@ TEST_F(FunctionExtractorTest, AppliesKnownTypeCompatibilityRules) {
   const FunctionExtractionResult result = extractor.Extract(graph);
   ASSERT_STATUS_OK(result.status);
   EXPECT_EQ(result.replacements_applied, 0u);
+}
+
+TEST_F(FunctionExtractorTest, RejectsNonTensorValueInfo) {
+  FunctionProto function_proto = MakeLinearFunction("NonTensorValueInfo");
+  auto& value_info = *function_proto.add_value_info();
+  value_info.set_name("sum");
+  value_info.mutable_type()
+      ->mutable_sequence_type()
+      ->mutable_elem_type()
+      ->mutable_tensor_type()
+      ->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  ExpectConstructionRejected(std::move(function_proto));
 }
 
 // Literal matching and preservation.
