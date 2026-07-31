@@ -235,6 +235,11 @@ Below `N = 4096` the wider tiles leave too few warps to fill the GPU, and for
 `M > 1` the extra live registers (accumulators plus pre-issued loads) cost more
 than the added parallelism returns. Both measured slower, hence the guards.
 
+> Superseded for `M > 1` by section 6.4, which re-tunes `ColsPerWarp` / `Unroll`
+> for the speculative-decode tiles. Because `Unroll` changes the K chunk each
+> lane accumulates first, the `M > 1` dispatch there is not bit-identical to
+> `<RowsPerWarp, 1, 1>` (last-ulp only; the accumulation is still FP32).
+
 ### 5.4 Results (H200, `M = 1`, CUDA graph, us, includes 0.68 us node overhead)
 
 | Shape (N x K) | cuBLAS FP16 | GEMV before | GEMV after | vs before | vs cuBLAS |
@@ -345,6 +350,37 @@ per step, `M = 4`), CUDA graphs on:
 | wall | 9.80 ms/step | **9.54 ms/step** |
 
 No other kernel family moved. This optimization is kept.
+
+### 6.4 FMA fallback re-tune for `M > 1`
+
+The FMA kernel still runs when the tensor-core preconditions do not hold (pre-SM80,
+`K < 256`, `K % 64 != 0` or `block_size % 64 != 0`), so the `M > 1` tiles were
+re-tuned there as well. Widening `A` to FP32 is now hoisted out of the column loop
+(one widening per row instead of one per row/column pair), which makes `ColsPerWarp`
+profitable at `M > 1` for a second reason beyond memory-level parallelism:
+
+| Condition | Config |
+|---|---|
+| `2 <= M <= 2, N >= 8192` | `<2, 4, 1>` |
+| `2 <= M <= 2, N >= 2048` | `<2, 2, 1>` |
+| `2 <= M <= 2` otherwise | `<2, 1, 2>` |
+| `3 <= M <= 4, N >= 4096` | `<4, 4, 1>` |
+| `3 <= M <= 4, N >= 2048` | `<4, 2, 2>` |
+| `3 <= M <= 4` otherwise | `<4, 1, 2>` |
+| `M > 4` | `<8, 1, 1>` |
+
+Measured on H200 (us, `M = 4`, versus the previous `<R, 1, 1>` and cuBLAS FP16):
+
+| Shape (N x K) | cuBLAS | `<4, 1, 1>` | tuned |
+|---|---|---|---|
+| 8192 x 2048 | 10.9 | 13.7 | **9.7** (`<4, 4, 1>`) |
+| 4096 x 2048 | 8.3 | 8.1 | **6.9** (`<4, 4, 1>`) |
+| 2048 x 4096 | 8.3 | 9.0 | **7.9** (`<4, 2, 2>`) |
+| 512 x 2048 | 7.3 | 5.0 | **4.6** (`<4, 1, 2>`) |
+
+The hoisting itself is bit-identical (the per-lane `fmaf` sequence is unchanged),
+but a different `Unroll` changes which K chunk a lane accumulates first, so the
+re-tuned dispatch is a last-ulp change relative to `<RowsPerWarp, 1, 1>`.
 
 ---
 

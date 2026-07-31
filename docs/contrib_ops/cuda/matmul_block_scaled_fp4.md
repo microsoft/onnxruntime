@@ -137,6 +137,10 @@ Per-row fp32 accumulation order does not depend on `RowsPerBlock`, so results ar
 bit-identical across tilings. Set `ORT_FP4_GEMV_ROW_TILING=0` to force
 `RowsPerBlock == 1`.
 
+Note that the tensor-core sub-path below takes precedence on SM80+ whenever
+`K % 128 == 0`, which covers most production shapes. Row tiling is therefore what
+actually runs on pre-SM80 devices or when `K` is not a multiple of 128.
+
 ### Tensor-core sub-path (SM80+)
 
 On SM80 and newer, when `K % 128 == 0` and `M <= 8`, the warp reduction above is

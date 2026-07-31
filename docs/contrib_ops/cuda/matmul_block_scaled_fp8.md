@@ -159,9 +159,11 @@ instructions with it. `KSplit` warps per block take a strided share of the K
 windows and are reduced through shared memory, which restores the memory-level
 parallelism lost by giving each warp 16 columns instead of 1-4.
 
-Accuracy is unchanged: E4M3 to FP16/BF16 is lossless, the products are exact and
-the mma accumulates in FP32 just like the FMA path. Set `ORT_FP8_GEMV_MMA=0` to
-fall back to the FMA kernel.
+Every individual product is exact (E4M3 to FP16/BF16 is lossless) and the mma
+accumulates in FP32 just like the FMA path, but the summation order differs, so
+the result is **not** bit-identical to the FMA kernel. Note also that the mma
+path is preferred over the FMA kernel by default on SM80+, including at `M == 1`.
+Set `ORT_FP8_GEMV_MMA=0` to fall back to the FMA kernel.
 
 ---
 

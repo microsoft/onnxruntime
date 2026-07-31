@@ -251,9 +251,10 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvSpeculativeDecodeTilesFp16) {
     GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp8Weight.";
   }
 
-  // m = 2 -> RowsPerWarp 2, m = 3/4 -> RowsPerWarp 4 (m = 3 also leaves a ragged row tail).
-  // n picks ColsPerWarp 1 (n < 2048), 2 and 4; all leave a ragged column tail.
-  for (const int64_t m : {2, 3, 4}) {
+  // m = 2 -> RowsPerWarp 2, m = 3/4 -> RowsPerWarp 4, m = 5/8 -> RowsPerWarp 8 (m = 3 and m = 5
+  // also leave a ragged row tail). n picks ColsPerWarp 1 (n < 2048), 2 and 4; all leave a ragged
+  // column tail.
+  for (const int64_t m : {2, 3, 4, 5, 8}) {
     for (const int64_t n : {1026, 2050, 4098, 8194}) {
       constexpr int64_t k = 64;  // K % 16 == 0 -> GEMV path; two 32-element K blocks
       constexpr int64_t block_size = 32;
@@ -320,7 +321,10 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreTilesFp16) {
     const int64_t k_blocks = c.k / c.block_size;
     for (const int64_t m : {1, 3, 4, 8}) {
       // Periods 3 (weight) and 4 (activation) are coprime, so no (row, col) pair sums to zero by
-      // symmetry. Scales are 1/256-based so the reference stays small enough to be exact in FP16.
+      // symmetry. Even so the signed terms cancel heavily, so the scales are kept in [0.25, 0.75]
+      // rather than scaled down: every product is a multiple of 1/8 and the reference stays exact
+      // in FP16, while |expected| stays well above the tolerance below (an all-zero output must
+      // not pass).
       std::vector<Float8E4M3FN> b(static_cast<size_t>(c.n * c.k));
       std::vector<float> b_ref(static_cast<size_t>(c.n * c.k));
       for (int64_t col = 0; col < c.n; ++col) {
@@ -333,7 +337,7 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreTilesFp16) {
       std::vector<float> b_scale(static_cast<size_t>(c.n * k_blocks));
       for (int64_t col = 0; col < c.n; ++col) {
         for (int64_t kb = 0; kb < k_blocks; ++kb) {
-          b_scale[static_cast<size_t>(col * k_blocks + kb)] = static_cast<float>(1 + (col + kb) % 3) / 256.0f;
+          b_scale[static_cast<size_t>(col * k_blocks + kb)] = static_cast<float>(1 + (col + kb) % 3) / 4.0f;
         }
       }
       std::vector<float> a(static_cast<size_t>(m * c.k));
@@ -360,7 +364,7 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreTilesFp16) {
       test.AddInput<Float8E4M3FN>("B", {c.n, c.k}, b);
       test.AddInput<float>("b_scale", {c.n, k_blocks}, b_scale);
       test.AddOutput<MLFloat16>("Y", {m, c.n}, FloatsToMLFloat16s(expected));
-      test.SetOutputTolerance(0.05f);
+      test.SetOutputTolerance(0.005f);
 
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultCudaExecutionProvider());
@@ -397,7 +401,7 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreTilesBf16) {
   std::vector<float> b_scale(static_cast<size_t>(n * k_blocks));
   for (int64_t col = 0; col < n; ++col) {
     for (int64_t kb = 0; kb < k_blocks; ++kb) {
-      b_scale[static_cast<size_t>(col * k_blocks + kb)] = static_cast<float>(1 + (col + kb) % 3) / 256.0f;
+      b_scale[static_cast<size_t>(col * k_blocks + kb)] = static_cast<float>(1 + (col + kb) % 3) / 4.0f;
     }
   }
   std::vector<float> a(static_cast<size_t>(m * k));
@@ -430,7 +434,7 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreTilesBf16) {
   test.AddOptionalInputEdge<float>();  // a_scale (skipped)
   test.AddInput<BFloat16>("bias", {n}, FloatsToBFloat16s(bias));
   test.AddOutput<BFloat16>("Y", {m, n}, FloatsToBFloat16s(expected));
-  test.SetOutputTolerance(0.1f);
+  test.SetOutputTolerance(0.02f);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());

@@ -14,7 +14,6 @@
 #include <cuda_fp8.h>
 #endif
 
-#include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
@@ -82,13 +81,22 @@ constexpr int kGemvWarpsPerBlock = 8;
 // fragments starts to cost more occupancy than the extra weight reuse buys.
 constexpr int kGemvMaxRowsPerBlock = 4;
 
+// SM75 allows only 1024 resident threads per multiprocessor, i.e. 4 blocks of 256. Asking for
+// more there is unsatisfiable and only makes ptxas over-restrict registers and spill.
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800
+constexpr int kGemvMaxBlocksPerSm = 4;
+#else
+constexpr int kGemvMaxBlocksPerSm = 8;
+#endif
+
 // Occupancy target for the GEMV. Holding RowsPerBlock accumulators costs registers, and left
 // unconstrained nvcc trades occupancy for scheduling freedom: the 4-row tile lands on 66
 // registers, which drops the block from 4 to 3 per SM and costs ~7% on the large shapes. Pin a
 // register budget per tile instead; all three instantiations compile spill-free at these targets.
 template <int RowsPerBlock>
 struct GemvMinBlocksPerSm {
-  static constexpr int value = (RowsPerBlock == 1) ? 6 : ((RowsPerBlock == 2) ? 5 : 4);
+  static constexpr int target = (RowsPerBlock == 1) ? 6 : ((RowsPerBlock == 2) ? 5 : 4);
+  static constexpr int value = target < kGemvMaxBlocksPerSm ? target : kGemvMaxBlocksPerSm;
 };
 
 // -----------------------------------------------------------------------------
@@ -109,7 +117,12 @@ struct GemvMinBlocksPerSm {
 // the launcher only enables it when gridDim.x alone already fills the device; see
 // Fp4GemvRowsPerBlock() below. The per-row fp32 accumulation order is independent of
 // RowsPerBlock, so results are bit-identical across tilings.
+//
+// Note that on SM80+ the tensor-core kernel further below takes precedence whenever
+// K % 128 == 0, so row tiling is what actually runs on pre-SM80 devices or when K is not a
+// multiple of 128.
 // -----------------------------------------------------------------------------
+
 // -----------------------------------------------------------------------------
 // Fast NVFP4 (E2M1) -> half / bfloat16 conversion.
 //
@@ -229,16 +242,18 @@ struct Fp4Cvt<nv_bfloat16> {
 };
 
 template <typename T, int RowsPerBlock>
-__global__ __launch_bounds__(32 * kGemvWarpsPerBlock, GemvMinBlocksPerSm<RowsPerBlock>::value) void MatMulBlockQuantizedFp4WeightGemvKernel(T* __restrict__ y,
-                                                                                                                                            const T* __restrict__ a,
-                                                                                                                                            const uint8_t* __restrict__ b_packed,
-                                                                                                                                            const uint8_t* __restrict__ weight_scale,
-                                                                                                                                            const float* __restrict__ weight_scale_2,
-                                                                                                                                            const T* __restrict__ bias,
-                                                                                                                                            int m,
-                                                                                                                                            int n,
-                                                                                                                                            int k,
-                                                                                                                                            int k_blocks) {
+__global__ __launch_bounds__(32 * kGemvWarpsPerBlock,
+                             GemvMinBlocksPerSm<RowsPerBlock>::value) void MatMulBlockQuantizedFp4WeightGemvKernel(
+    T* __restrict__ y,
+    const T* __restrict__ a,
+    const uint8_t* __restrict__ b_packed,
+    const uint8_t* __restrict__ weight_scale,
+    const float* __restrict__ weight_scale_2,
+    const T* __restrict__ bias,
+    int m,
+    int n,
+    int k,
+    int k_blocks) {
   using Cvt = Fp4Cvt<T>;
   using T2 = typename Cvt::T2;
 
@@ -608,7 +623,7 @@ __global__ __launch_bounds__(32 * KSplit * ColTiles, 1) void MatMulBlockQuantize
 
 bool Fp4GemvRowTilingEnabled() {
   static bool const enabled =
-      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_ROW_TILING", 1) == 1;
+      onnxruntime::ParseEnvironmentVariableWithDefault<bool>("ORT_FP4_GEMV_ROW_TILING", true);
   return enabled;
 }
 
@@ -625,11 +640,10 @@ bool Fp4GemvRowTilingEnabled() {
 //   N =    512 (shared gate)     64 col blocks     3.47 ->  4.27 us  (0.81x, fewer blocks than SMs)
 //
 // So gate on the column grid covering at least one full wave of SMs on its own.
-int Fp4GemvRowsPerBlock(int m, int n) {
+int Fp4GemvRowsPerBlock(int m, int n, int sm_count) {
   if (m <= 1 || !Fp4GemvRowTilingEnabled()) {
     return 1;
   }
-  static int const sm_count = onnxruntime::llm::common::getMultiProcessorCount();
   const int col_blocks = (n + kGemvWarpsPerBlock - 1) / kGemvWarpsPerBlock;
   if (col_blocks < sm_count) {
     return 1;
@@ -641,7 +655,7 @@ int Fp4GemvRowsPerBlock(int m, int n) {
 
 bool Fp4GemvMmaEnabled() {
   static bool const enabled =
-      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_MMA", 1) == 1;
+      onnxruntime::ParseEnvironmentVariableWithDefault<bool>("ORT_FP4_GEMV_MMA", true);
   return enabled;
 }
 
@@ -661,8 +675,7 @@ struct Fp4MmaConfig {
 //   N = 248320, K = 2048 (lm_head)      538.5 -> 107.7 us (5.00x)  KSplit 2,  ColTiles 4
 //   N =    512, K = 2048 (gate/up)        3.90 ->  3.34 us (1.11x) KSplit 16, ColTiles 1
 //   N =   2048, K =  512 (down)           4.16 ->  2.97 us (1.40x) KSplit 4,  ColTiles 1
-Fp4MmaConfig PickFp4MmaConfig(int n, int k) {
-  static int const sm_count = onnxruntime::llm::common::getMultiProcessorCount();
+Fp4MmaConfig PickFp4MmaConfig(int n, int k, int sm_count) {
   const int windows = k >> 7;  // >= 1; the launcher only takes this path when k % 128 == 0
   const int col_tiles = (n + 15) / 16;
 
@@ -768,7 +781,7 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
                                                int k,
                                                int block_size,
                                                bool is_bf16,
-                                               int sm_major,
+                                               const cudaDeviceProp& device_prop,
                                                cudaStream_t stream) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 12080
   if (m <= 0 || n <= 0 || k <= 0) {
@@ -787,8 +800,8 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
   // The M <= 8 bound is structural: one warp owns a 16-column x 8-row output tile, where lane
   // (g = lane >> 2, t = lane & 3) reads activation row g, covers weight columns 16 * tile + g and
   // + 8, and stores output rows 2t and 2t + 1 of those two columns.
-  if (sm_major >= 8 && k % 128 == 0 && m <= 8 && Fp4GemvMmaEnabled()) {
-    const Fp4MmaConfig cfg = PickFp4MmaConfig(n, k);
+  if (device_prop.major >= 8 && k % 128 == 0 && m <= 8 && Fp4GemvMmaEnabled()) {
+    const Fp4MmaConfig cfg = PickFp4MmaConfig(n, k, device_prop.multiProcessorCount);
     const int cols_per_block = 16 * cfg.col_tiles;
     const dim3 mma_threads{32, static_cast<unsigned int>(cfg.k_split * cfg.col_tiles)};
     const dim3 mma_blocks{static_cast<unsigned int>((n + cols_per_block - 1) / cols_per_block)};
@@ -841,7 +854,7 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
     return CUDA_CALL(cudaGetLastError());
   }
 
-  const int rows_per_block = Fp4GemvRowsPerBlock(m, n);
+  const int rows_per_block = Fp4GemvRowsPerBlock(m, n, device_prop.multiProcessorCount);
   const dim3 threads{32, kGemvWarpsPerBlock};
   const dim3 blocks{static_cast<unsigned int>((n + kGemvWarpsPerBlock - 1) / kGemvWarpsPerBlock),
                     static_cast<unsigned int>((m + rows_per_block - 1) / rows_per_block)};
@@ -888,7 +901,7 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
   ORT_UNUSED_PARAMETER(k);
   ORT_UNUSED_PARAMETER(block_size);
   ORT_UNUSED_PARAMETER(is_bf16);
-  ORT_UNUSED_PARAMETER(sm_major);
+  ORT_UNUSED_PARAMETER(device_prop);
   ORT_UNUSED_PARAMETER(stream);
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MatMulBlockQuantizedFp4Weight requires CUDA 12.8 or newer for NVFP4 support.");
 #endif

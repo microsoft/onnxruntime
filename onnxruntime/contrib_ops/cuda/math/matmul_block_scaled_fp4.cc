@@ -196,7 +196,7 @@ Status MatMulBlockQuantizedFp4Weight::ComputeImpl(OpKernelContext* context) cons
         k_i,
         SafeInt<int>(block_size_),
         std::is_same<T, BFloat16>::value,
-        sm_ / 10,
+        GetDeviceProp(),
         Stream(context));
   }
 

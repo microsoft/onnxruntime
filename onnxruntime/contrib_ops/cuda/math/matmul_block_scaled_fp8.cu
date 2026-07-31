@@ -630,7 +630,7 @@ __global__ void MatMulBlockScaledFp8MmaGemvKernel(AType* __restrict__ output,
 
 // Kill switch for A/B testing the tensor-core path against the FMA path in the same binary.
 bool Fp8GemvMmaEnabled() {
-  static bool const enabled = onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP8_GEMV_MMA", 1) == 1;
+  static bool const enabled = onnxruntime::ParseEnvironmentVariableWithDefault<bool>("ORT_FP8_GEMV_MMA", true);
   return enabled;
 }
 
@@ -771,7 +771,7 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
                                       int k,
                                       int block_size,
                                       bool is_bf16,
-                                      int sm_major,
+                                      const cudaDeviceProp& device_prop,
                                       cudaStream_t stream) {
 #if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
   if (m <= 0 || n <= 0 || k <= 0) {
@@ -794,7 +794,7 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
   // where lane (g = lane >> 2, t = lane & 3) reads activation row g, covers weight columns
   // 16 * blockIdx.x + g and + 8, and stores output rows 2t and 2t + 1 of those two columns. Rows
   // beyond the mma's 8-row N extent have nowhere to live.
-  if (sm_major >= 8 && m <= 8 && k % 64 == 0 && k >= 256 && block_size % 64 == 0 && Fp8GemvMmaEnabled()) {
+  if (device_prop.major >= 8 && m <= 8 && k % 64 == 0 && k >= 256 && block_size % 64 == 0 && Fp8GemvMmaEnabled()) {
     const int windows = k / 64;
     int k_split = (n >= 8192) ? 8 : 16;  // wide N already fills the grid, so fewer warps per block
     if (windows < k_split) {
@@ -896,7 +896,7 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
   ORT_UNUSED_PARAMETER(k);
   ORT_UNUSED_PARAMETER(block_size);
   ORT_UNUSED_PARAMETER(is_bf16);
-  ORT_UNUSED_PARAMETER(sm_major);
+  ORT_UNUSED_PARAMETER(device_prop);
   ORT_UNUSED_PARAMETER(stream);
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MatMulBlockQuantizedFp8Weight requires CUDA 11.8 or later.");
 #endif

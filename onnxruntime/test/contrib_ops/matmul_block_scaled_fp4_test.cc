@@ -522,8 +522,10 @@ struct MmaShape {
 };
 
 // N = 8704 gives 544 column tiles, i.e. 136 blocks at ColTiles = 4, which is above the SM count
-// of every current device and so selects the wide shape.
-constexpr MmaShape kMmaShapes[] = {{40, 128}, {512, 256}, {2048, 512}, {8704, 256}};
+// of every current device and so selects the wide shape. N = 36 leaves 4 columns in the last
+// 16-column tile, which is the only way to make a lane's *low* column fall out of range (N = 40
+// only exercises the high column), so it covers the lo_ok == false predication.
+constexpr MmaShape kMmaShapes[] = {{36, 128}, {40, 128}, {512, 256}, {2048, 512}, {8704, 256}};
 
 }  // namespace
 
