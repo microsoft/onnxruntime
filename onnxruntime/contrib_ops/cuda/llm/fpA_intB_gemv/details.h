@@ -358,8 +358,6 @@ struct Fp4I2FConverter {
 
   template <int N>
   __device__ __forceinline__ static void convert(void* src, void* dst) {
-    uint8_t const* s = reinterpret_cast<uint8_t const*>(src);
-    AType* d = reinterpret_cast<AType*>(dst);
     if constexpr (!PairInterleaved) {
       static_assert(N % 2 == 0);
 #if defined(__CUDA_ARCH__)
@@ -382,16 +380,21 @@ struct Fp4I2FConverter {
           decode_quad(mag, sgn, dw[i * 4 + 0], dw[i * 4 + 1]);
           decode_quad(mag >> 16, sgn >> 16, dw[i * 4 + 2], dw[i * 4 + 3]);
         }
-        return;
-      }
+      } else
 #endif
+      {
+        uint8_t const* s = reinterpret_cast<uint8_t const*>(src);
+        AType* d = reinterpret_cast<AType*>(dst);
 #pragma unroll
-      for (int i = 0; i < N; i += 2) {
-        uint8_t byte = s[i >> 1];
-        d[i] = decode(static_cast<uint8_t>(byte & 0x0F));
-        d[i + 1] = decode(static_cast<uint8_t>((byte >> 4) & 0x0F));
+        for (int i = 0; i < N; i += 2) {
+          uint8_t byte = s[i >> 1];
+          d[i] = decode(static_cast<uint8_t>(byte & 0x0F));
+          d[i + 1] = decode(static_cast<uint8_t>((byte >> 4) & 0x0F));
+        }
       }
     } else {
+      uint8_t const* s = reinterpret_cast<uint8_t const*>(src);
+      AType* d = reinterpret_cast<AType*>(dst);
       // The pair-interleave permutes whole 32-bit words, so N must cover complete words.
       static_assert(N % 8 == 0, "Pair-interleaved FP4 decode needs a multiple of 8 elements");
       // Packing writes element i to nibble slot (i even ? i/2 : (i - 1)/2 + 4), so logical

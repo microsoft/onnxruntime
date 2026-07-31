@@ -8,6 +8,7 @@
 #pragma once
 
 #include <cuda_fp16.h>
+#include <cstdint>
 #include <type_traits>
 
 #include "core/common/common.h"
@@ -156,13 +157,16 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
     fill<CtaN>(tile_k_acc, Math::to_vec2(static_cast<typename Math::Type>(0.f)));
   }
 
-  TypeA vec_scale[CtaN];
+  // load_scales() writes through a ScalesAccessT::TVec* (float4 when vectorized), and the
+  // iterators/converters below write tile_a through AccessTypeA* and tile_w through uint32_t*,
+  // so these arrays need the alignment of the widest access, not just of TypeA.
+  alignas(alignof(typename ScalesAccessT::TVec)) TypeA vec_scale[CtaN];
   if constexpr (GroupSize == 0) {
     load_scales<ScalesAccessT, CtaN>(scales_iterator, vec_scale, 0);
   }
 
   for (int idx_k = tid * StepK, iter = 0; idx_k < interleaved_k; idx_k += CtaK, ++iter) {
-    TypeA tile_a[StepK];
+    alignas(alignof(AccessTypeA)) TypeA tile_a[StepK];
     // Issue all CtaN weight loads before consuming any of them: interleaving a load with its own
     // decode leaves a single load in flight and makes the kernel long-scoreboard bound.
     AccessTypeW tile_w_quantized[CtaN * Details::kAccessNumW];
@@ -176,7 +180,7 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
     }
 #pragma unroll
     for (int i = 0; i < CtaN; ++i) {
-      TypeA tile_w[StepK];
+      alignas(alignof(uint32_t)) TypeA tile_w[StepK];
       Converter::template convert<StepK>(tile_w_quantized + i * Details::kAccessNumW, tile_w);
       accumulate_column_tile<Details, StepK>(tile_k_acc[i], tile_w, tile_a, vec_scale[i]);
     }
@@ -326,13 +330,14 @@ __global__ void moe_gemv_interleaved_swiglu_kernel(
     fill<CtaN>(tile_k_acc, Math::to_vec2(static_cast<typename Math::Type>(0.f)));
   }
 
-  TypeA vec_scale[CtaN];
+  // See moe_gemv_kernel: these are written through wider pointer casts than TypeA.
+  alignas(alignof(typename ScalesAccessT::TVec)) TypeA vec_scale[CtaN];
   if constexpr (GroupSize == 0) {
     load_scales<ScalesAccessT, CtaN>(scales_iterator, vec_scale, 0);
   }
 
   for (int idx_k = tid * StepK, iter = 0; idx_k < interleaved_k; idx_k += CtaK, ++iter) {
-    TypeA tile_a[StepK];
+    alignas(alignof(AccessTypeA)) TypeA tile_a[StepK];
     // See moe_gemv_kernel: keep all CtaN weight loads in flight at once.
     AccessTypeW tile_w_quantized[CtaN * Details::kAccessNumW];
     if constexpr (GroupSize != 0) {
@@ -345,7 +350,7 @@ __global__ void moe_gemv_interleaved_swiglu_kernel(
     }
 #pragma unroll
     for (int i = 0; i < CtaN; ++i) {
-      TypeA tile_w[StepK];
+      alignas(alignof(uint32_t)) TypeA tile_w[StepK];
       Converter::template convert<StepK>(tile_w_quantized + i * Details::kAccessNumW, tile_w);
       accumulate_column_tile<Details, StepK>(tile_k_acc[i], tile_w, tile_a, vec_scale[i]);
     }
