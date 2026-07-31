@@ -110,6 +110,50 @@ namespace onnxruntime {
 namespace test {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
+
+namespace {
+
+class NoOpTraceGraphTransformer : public GraphTransformer {
+ public:
+  NoOpTraceGraphTransformer() : GraphTransformer("NoOpTraceGraphTransformer") {}
+
+ private:
+  Status ApplyImpl(Graph& /*graph*/, bool& modified, int /*graph_level*/,
+                   const logging::Logger& /*logger*/) const override {
+    modified = false;
+    return Status::OK();
+  }
+};
+
+}  // namespace
+
+TEST_F(GraphTransformationTests, GraphTransformerManagerEmitsVerboseTrace) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "abs-id-max.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+
+  auto capturing_sink = std::make_unique<CapturingSink>();
+  const auto* capturing_sink_raw = capturing_sink.get();
+  logging::LoggingManager logging_manager(std::move(capturing_sink), logging::Severity::kVERBOSE, false,
+                                          logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("GraphTransformerTraceTest");
+
+  GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<NoOpTraceGraphTransformer>(),
+                                                     TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(model->MainGraph(), TransformerLevel::Level1, *logger));
+
+  const auto& messages = capturing_sink_raw->Messages();
+  EXPECT_THAT(messages, testing::Contains(testing::HasSubstr(
+                            "Applying 1 graph transformer(s) for level 1 for up to 5 step(s).")));
+  EXPECT_THAT(messages, testing::Contains(testing::HasSubstr(
+                            "Applying graph transformer NoOpTraceGraphTransformer on step 1.")));
+  EXPECT_THAT(messages, testing::Contains(testing::HasSubstr(
+                            "Graph transformer step 1 of 5 for level 1 completed. graph_changed: 0.")));
+  EXPECT_THAT(messages, testing::Contains(testing::HasSubstr(
+                            "Stopping graph transformer iteration for level 1 after step 1 because the graph was not modified.")));
+}
+
 TEST_F(GraphTransformationTests, IdentityElimination) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "abs-id-max.onnx";
   std::shared_ptr<Model> model;
@@ -126,6 +170,25 @@ TEST_F(GraphTransformationTests, IdentityElimination) {
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 0);
+}
+
+// Registering two transformers with the same Name() at the same level must fail (per-level
+// uniqueness); the same name at a different level is allowed.
+TEST_F(GraphTransformationTests, RegisterDuplicateTransformerNameFailsPerLevel) {
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1));
+
+  // Same name, same level -> rejected.
+  const auto duplicate_status = graph_transformation_mgr.Register(
+      std::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1);
+  ASSERT_FALSE(duplicate_status.IsOK());
+  ASSERT_THAT(duplicate_status.ErrorMessage(), ::testing::HasSubstr("already registered"));
+
+  // Same name, different level -> allowed.
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level2));
 }
 
 TEST_F(GraphTransformationTests, IdentityEliminationWithGraphOutput) {

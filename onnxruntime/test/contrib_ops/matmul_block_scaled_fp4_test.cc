@@ -200,6 +200,135 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvDecodeScalesBiasBf16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+// Exercises K that is not a multiple of block_size: K = 24 with block_size == 16 gives
+// ceil(K / 16) == 2 scale blocks where the second block only covers 8 of the 16 K elements.
+// K % 32 != 0 also forces the reference dequantize + GEMM path instead of the decode GEMV.
+TEST(MatMulBlockQuantizedFp4WeightOpTest, PartialTrailingScaleBlockFp16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp4Weight.";
+  }
+
+  constexpr int64_t m = 1;
+  constexpr int64_t n = 2;
+  constexpr int64_t k = 24;  // ceil(24 / 16) == 2 blocks; the trailing block holds only 8 elements
+  constexpr int64_t k_blocks = 2;
+
+  // Weight row 0 = +1.0 (byte 0x22), row 1 = +2.0 (byte 0x44).
+  std::vector<uint8_t> b(n * (k / 2));
+  for (int64_t j = 0; j < k / 2; ++j) {
+    b[0 * (k / 2) + j] = 0x22;
+    b[1 * (k / 2) + j] = 0x44;
+  }
+  // Row 0: block 0 scale 1.0 (0x38), block 1 scale 2.0 (0x40). Row 1: both blocks 1.0.
+  std::vector<uint8_t> weight_scale = {0x38, 0x40, 0x38, 0x38};
+  std::vector<float> weight_scale_2 = {1.0f};
+
+  std::vector<float> a(m * k, 1.0f);
+  // Y[0, 0] = 16 * (1.0 * 1.0) + 8 * (1.0 * 2.0) = 32.
+  // Y[0, 1] = 16 * (2.0 * 1.0) + 8 * (2.0 * 1.0) = 48.
+  std::vector<float> expected = {32.0f, 48.0f};
+
+  OpTester test("MatMulBlockQuantizedFp4Weight", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("block_size", 16);
+  test.AddInput<MLFloat16>("A", {m, k}, FloatsToMLFloat16s(a));
+  test.AddInput<uint8_t>("B", {n, k / 2}, b);
+  test.AddInput<uint8_t>("weight_scale", {n, k_blocks}, weight_scale);
+  test.AddInput<float>("weight_scale_2", {1}, weight_scale_2);
+  test.AddOutput<MLFloat16>("Y", {m, n}, FloatsToMLFloat16s(expected));
+  test.SetOutputTolerance(0.5f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// K = 48 is a multiple of block_size (3 full scale blocks) but not of 32, so the decode GEMV
+// (which requires K % 32 == 0) must be skipped even though M is small. Uses per-block scales that
+// differ across all three blocks so a wrong ceil(K / block_size) index would change the result.
+TEST(MatMulBlockQuantizedFp4WeightOpTest, KMultipleOf16NotOf32Bf16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp4Weight.";
+  }
+
+  constexpr int64_t m = 1;
+  constexpr int64_t n = 1;
+  constexpr int64_t k = 48;  // 3 blocks with block_size == 16; 48 % 32 != 0
+  constexpr int64_t k_blocks = k / 16;
+
+  // Single weight row, all +1.0 (byte 0x22).
+  std::vector<uint8_t> b(n * (k / 2), 0x22);
+  // Block scales 1.0 (0x38), 2.0 (0x40), 0.5 (0x30).
+  std::vector<uint8_t> weight_scale = {0x38, 0x40, 0x30};
+  std::vector<float> weight_scale_2 = {1.0f};
+
+  std::vector<float> a(m * k, 1.0f);
+  // Y = 16 * 1.0 + 16 * 2.0 + 16 * 0.5 = 56.
+  std::vector<float> expected = {56.0f};
+
+  OpTester test("MatMulBlockQuantizedFp4Weight", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("block_size", 16);
+  test.AddInput<BFloat16>("A", {m, k}, FloatsToBFloat16s(a));
+  test.AddInput<uint8_t>("B", {n, k / 2}, b);
+  test.AddInput<uint8_t>("weight_scale", {n, k_blocks}, weight_scale);
+  test.AddInput<float>("weight_scale_2", {1}, weight_scale_2);
+  test.AddOutput<BFloat16>("Y", {m, n}, FloatsToBFloat16s(expected));
+  test.SetOutputTolerance(0.5f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// K == 0 reduces to an empty sum: Y must be exactly zero (no uninitialized output) even though
+// K % 32 == 0 would otherwise select a fast path. FP16, no bias.
+TEST(MatMulBlockQuantizedFp4WeightOpTest, ZeroKNoBiasFp16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp4Weight.";
+  }
+
+  constexpr int64_t m = 3;
+  constexpr int64_t n = 2;
+
+  OpTester test("MatMulBlockQuantizedFp4Weight", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("block_size", 16);
+  test.AddInput<MLFloat16>("A", {m, 0}, std::vector<MLFloat16>{});
+  test.AddInput<uint8_t>("B", {n, 0}, std::vector<uint8_t>{});
+  test.AddInput<uint8_t>("weight_scale", {n, 0}, std::vector<uint8_t>{});
+  test.AddInput<float>("weight_scale_2", {1}, std::vector<float>{1.0f});
+  test.AddOutput<MLFloat16>("Y", {m, n}, FloatsToMLFloat16s(std::vector<float>(m * n, 0.0f)));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// K == 0 with a bias: Y must be the broadcast bias row. BF16.
+TEST(MatMulBlockQuantizedFp4WeightOpTest, ZeroKWithBiasBf16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp4Weight.";
+  }
+
+  constexpr int64_t m = 2;
+  constexpr int64_t n = 3;
+
+  std::vector<float> bias = {1.0f, -2.0f, 0.5f};
+  std::vector<float> expected = {1.0f, -2.0f, 0.5f, 1.0f, -2.0f, 0.5f};
+
+  OpTester test("MatMulBlockQuantizedFp4Weight", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("block_size", 16);
+  test.AddInput<BFloat16>("A", {m, 0}, std::vector<BFloat16>{});
+  test.AddInput<uint8_t>("B", {n, 0}, std::vector<uint8_t>{});
+  test.AddInput<uint8_t>("weight_scale", {n, 0}, std::vector<uint8_t>{});
+  test.AddInput<float>("weight_scale_2", {1}, std::vector<float>{1.0f});
+  test.AddOptionalInputEdge<float>();  // input_scale (skipped)
+  test.AddInput<BFloat16>("bias", {n}, FloatsToBFloat16s(bias));
+  test.AddOutput<BFloat16>("Y", {m, n}, FloatsToBFloat16s(expected));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 #endif  // USE_CUDA && defined(CUDA_VERSION) && CUDA_VERSION >= 12080
 
 }  // namespace onnxruntime::test

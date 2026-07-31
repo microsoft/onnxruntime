@@ -5,10 +5,13 @@
 
 #include "core/providers/cuda/cuda_common.h"
 
+#include <cfloat>
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <cuda_fp4.h>
 #include <cuda_fp8.h>
+
+#include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 
 #include "cutlass/bfloat16.h"
 #include "cutlass/cutlass.h"
@@ -25,21 +28,11 @@ namespace {
 
 using namespace cute;
 
+// e4m3_to_float / float_to_e4m3 / Vec2Traits come from cuda_type_helper.cuh.
+
 constexpr int kScaleVectorSize = 16;
 constexpr int kAlignment = 32;
-
-template <typename T>
-__device__ __forceinline__ float LoadAsFloat(const T* data, int index);
-
-template <>
-__device__ __forceinline__ float LoadAsFloat<half>(const half* data, int index) {
-  return __half2float(data[index]);
-}
-
-template <>
-__device__ __forceinline__ float LoadAsFloat<nv_bfloat16>(const nv_bfloat16* data, int index) {
-  return __bfloat162float(data[index]);
-}
+constexpr int kQuantizeThreadsPerBlock = 128;
 
 __device__ __forceinline__ int SwizzledScaleOffset(int row, int k_block, int num_k_tiles) {
   const int row_tile = row >> 7;
@@ -50,17 +43,25 @@ __device__ __forceinline__ int SwizzledScaleOffset(int row, int k_block, int num
   return ((row_tile * num_k_tiles + k_tile) << 9) | (outer_row << 4) | (inner_row << 2) | inner_k;
 }
 
-__device__ __forceinline__ uint8_t FloatToE4m3(float value) {
-  __nv_fp8_e4m3 converted(value);
-  uint8_t raw;
-  reinterpret_cast<__nv_fp8_e4m3&>(raw) = converted;
-  return raw;
+// The activation global scale divides both `alpha` and every per-block scale, so a malformed value
+// would poison the whole GEMM. Fall back to 1 (i.e. "no global scale") when the caller did not
+// supply one or supplied zero, a denormal, a negative number, or a NaN/Inf.
+__device__ __forceinline__ float SafeActivationGlobalScale(const float* input_scale) {
+  if (input_scale == nullptr) {
+    return 1.0f;
+  }
+  const float scale = input_scale[0];
+  // NaN fails both comparisons, +/-Inf fails the upper bound, and zero/denormals/negatives fail
+  // the lower bound, so every malformed value falls back to 1.
+  return (scale >= FLT_MIN && scale <= FLT_MAX) ? scale : 1.0f;
 }
 
-__device__ __forceinline__ float E4m3ToFloat(uint8_t raw) {
-  return __half2float(__nv_cvt_fp8_to_halfraw(static_cast<__nv_fp8_storage_t>(raw), __NV_E4M3));
-}
-
+// Quantizes the FP16/BF16 activation [m, k] to NVFP4 with one E4M3 scale per 16-element block.
+//
+// One thread owns one 16-element block: it issues two 16-byte loads for its slice, reduces the
+// block maximum in registers, and writes the 8 packed FP4 bytes back with a single 8-byte store.
+// grid = (ceil(k_blocks / kQuantizeThreadsPerBlock), m), so consecutive threads cover consecutive
+// K blocks of the same row and the loads/stores coalesce across the warp.
 template <typename T>
 __global__ void QuantizeActivationNvFp4Kernel(const T* __restrict__ a,
                                               const float* __restrict__ input_scale,
@@ -70,39 +71,60 @@ __global__ void QuantizeActivationNvFp4Kernel(const T* __restrict__ a,
                                               const float* __restrict__ weight_scale_2,
                                               int m,
                                               int k,
+                                              int k_blocks,
                                               int rounded_k_blocks) {
-  if (blockIdx.x == 0 && threadIdx.x == 0) {
-    const float activation_global_scale = input_scale != nullptr ? input_scale[0] : 1.0f;
+  const float activation_global_scale = SafeActivationGlobalScale(input_scale);
+  if (blockIdx.x == 0 && blockIdx.y == 0 && threadIdx.x == 0) {
     alpha[0] = weight_scale_2[0] / activation_global_scale;
   }
 
   const int row = static_cast<int>(blockIdx.y);
-  const int k_block = static_cast<int>(blockIdx.x);
-  if (row >= m || k_block >= k / kScaleVectorSize) {
+  const int k_block = static_cast<int>(blockIdx.x) * kQuantizeThreadsPerBlock + static_cast<int>(threadIdx.x);
+  if (row >= m || k_block >= k_blocks) {
     return;
   }
 
-  const int k_base = k_block * kScaleVectorSize;
-  float values[kScaleVectorSize];
+  using Traits = Vec2Traits<T>;
+  using T2 = typename Traits::Type2;
+  constexpr int kPairs = kScaleVectorSize / 2;
+
+  // 16 elements of a 2-byte type = 32 bytes = two uint4 loads. The launcher enforces
+  // k % kAlignment == 0 (and kAlignment is a multiple of kScaleVectorSize), so
+  // (row * k + k_block * 16) * sizeof(T) is always a multiple of 16 bytes.
+  const uint4* a_vec = reinterpret_cast<const uint4*>(a + static_cast<size_t>(row) * k + k_block * kScaleVectorSize);
+  uint4 raw_lo = a_vec[0];
+  uint4 raw_hi = a_vec[1];
+  const T2* raw_pairs[2] = {reinterpret_cast<const T2*>(&raw_lo), reinterpret_cast<const T2*>(&raw_hi)};
+
+  float2 values[kPairs];
   float max_abs = 0.0f;
 #pragma unroll
-  for (int offset = 0; offset < kScaleVectorSize; ++offset) {
-    const float value = LoadAsFloat<T>(a, row * k + k_base + offset);
-    values[offset] = value;
-    max_abs = fmaxf(max_abs, fabsf(value));
+  for (int pair = 0; pair < kPairs; ++pair) {
+    const float2 value = Traits::to_float2(raw_pairs[pair >> 2][pair & 3]);
+    values[pair] = value;
+    max_abs = fmaxf(max_abs, fmaxf(fabsf(value.x), fabsf(value.y)));
   }
 
-  const float activation_global_scale = input_scale != nullptr ? input_scale[0] : 1.0f;
-  const uint8_t raw_scale = FloatToE4m3(fmaxf(max_abs / 6.0f, 1.0f / 1024.0f) * activation_global_scale);
+  const uint8_t raw_scale = float_to_e4m3(fmaxf(max_abs / 6.0f, 1.0f / 1024.0f) * activation_global_scale);
   a_scale[SwizzledScaleOffset(row, k_block, rounded_k_blocks / 4)] = raw_scale;
-  const float local_scale = E4m3ToFloat(raw_scale) / activation_global_scale;
+  const float local_scale = e4m3_to_float(raw_scale) / activation_global_scale;
 
+  uint2 packed;
+  packed.x = 0;
+  packed.y = 0;
 #pragma unroll
-  for (int pair = 0; pair < kScaleVectorSize / 2; ++pair) {
-    const float2 scaled = make_float2(values[pair * 2] / local_scale, values[pair * 2 + 1] / local_scale);
-    a_packed[row * (k / 2) + k_base / 2 + pair] =
-        static_cast<uint8_t>(__nv_cvt_float2_to_fp4x2(scaled, __NV_E2M1, cudaRoundNearest));
+  for (int pair = 0; pair < kPairs; ++pair) {
+    const float2 scaled = make_float2(values[pair].x / local_scale, values[pair].y / local_scale);
+    const uint32_t byte = static_cast<uint32_t>(
+        static_cast<uint8_t>(__nv_cvt_float2_to_fp4x2(scaled, __NV_E2M1, cudaRoundNearest)));
+    if (pair < 4) {
+      packed.x |= byte << (8 * pair);
+    } else {
+      packed.y |= byte << (8 * (pair - 4));
+    }
   }
+  // 8 packed bytes per 16-element block; k % kAlignment == 0 keeps this 8-byte aligned.
+  *reinterpret_cast<uint2*>(a_packed + static_cast<size_t>(row) * (k / 2) + k_block * kPairs) = packed;
 }
 
 __global__ void RepackWeightScaleNvFp4Kernel(const uint8_t* __restrict__ weight_scale,
@@ -317,7 +339,6 @@ Status LaunchRepackWeightScaleNvFp4ForNativeSm120(void* b_scale,
 Status LaunchMatMulBlockQuantizedFp4WeightNativeSm120(void* y,
                                                       const void* a,
                                                       const void* b_packed,
-                                                      const void* weight_scale,
                                                       const float* weight_scale_2,
                                                       const float* input_scale,
                                                       void* a_packed,
@@ -333,7 +354,6 @@ Status LaunchMatMulBlockQuantizedFp4WeightNativeSm120(void* y,
                                                       size_t workspace_size,
                                                       cudaStream_t stream) {
   ORT_UNUSED_PARAMETER(workspace_size);
-  ORT_UNUSED_PARAMETER(weight_scale);
   ORT_RETURN_IF_NOT(block_size == kScaleVectorSize,
                     "SM120 native FP4 GEMM only supports block_size == ", kScaleVectorSize);
   ORT_RETURN_IF_NOT(k % kAlignment == 0, "SM120 native FP4 GEMM requires K divisible by ", kAlignment);
@@ -341,15 +361,16 @@ Status LaunchMatMulBlockQuantizedFp4WeightNativeSm120(void* y,
 
   const int k_blocks = k / kScaleVectorSize;
   const int rounded_k_blocks = ((k_blocks + 3) / 4) * 4;
-  const dim3 quant_grid{static_cast<unsigned int>(k_blocks), static_cast<unsigned int>(m)};
+  const dim3 quant_grid{static_cast<unsigned int>((k_blocks + kQuantizeThreadsPerBlock - 1) / kQuantizeThreadsPerBlock),
+                        static_cast<unsigned int>(m)};
   if (is_bf16) {
-    QuantizeActivationNvFp4Kernel<nv_bfloat16><<<quant_grid, 1, 0, stream>>>(
+    QuantizeActivationNvFp4Kernel<nv_bfloat16><<<quant_grid, kQuantizeThreadsPerBlock, 0, stream>>>(
         reinterpret_cast<const nv_bfloat16*>(a), input_scale, reinterpret_cast<uint8_t*>(a_packed),
-        reinterpret_cast<uint8_t*>(a_scale), alpha, weight_scale_2, m, k, rounded_k_blocks);
+        reinterpret_cast<uint8_t*>(a_scale), alpha, weight_scale_2, m, k, k_blocks, rounded_k_blocks);
   } else {
-    QuantizeActivationNvFp4Kernel<half><<<quant_grid, 1, 0, stream>>>(
+    QuantizeActivationNvFp4Kernel<half><<<quant_grid, kQuantizeThreadsPerBlock, 0, stream>>>(
         reinterpret_cast<const half*>(a), input_scale, reinterpret_cast<uint8_t*>(a_packed),
-        reinterpret_cast<uint8_t*>(a_scale), alpha, weight_scale_2, m, k, rounded_k_blocks);
+        reinterpret_cast<uint8_t*>(a_scale), alpha, weight_scale_2, m, k, k_blocks, rounded_k_blocks);
   }
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
 

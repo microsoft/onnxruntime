@@ -73,10 +73,11 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
                                                bool is_bf16,
                                                cudaStream_t stream);
 
-// Native Blackwell SM120 NVFP4 x NVFP4 GEMM path. The caller provides scratch buffers for
-// packed activation FP4, swizzled A/B scale tensors, alpha, and CUTLASS workspace. A is [M, K]
-// FP16/BF16, B is [N, K/2] packed NVFP4, weight_scale is [N, K/16] E4M3, and Y is [M, N]
-// FP16/BF16. Requires block_size == 16, K % 32 == 0, and N % 32 == 0.
+// Repacks the [N, ceil(K/block_size)] row-major E4M3 weight-scale tensor into the swizzled layout
+// the SM120 block-scaled tensor cores expect. b_scale must be sized for the *rounded* dimensions:
+// RoundUp(N, 128) * RoundUp(K / 16, 4) bytes. Only the first N rows are written; the padding rows
+// created by rounding N up to 128 are never read by the GEMM. Requires block_size == 16,
+// K % 32 == 0 and N % 32 == 0.
 Status LaunchRepackWeightScaleNvFp4ForNativeSm120(void* b_scale,
                                                   const void* weight_scale,
                                                   int n,
@@ -84,10 +85,30 @@ Status LaunchRepackWeightScaleNvFp4ForNativeSm120(void* b_scale,
                                                   int block_size,
                                                   cudaStream_t stream);
 
+// Native Blackwell SM120 NVFP4 x NVFP4 GEMM path: quantizes the activation to NVFP4 on the fly and
+// runs a CUTLASS block-scaled GEMM. Requires block_size == 16, K % 32 == 0 and N % 32 == 0.
+//
+// Inputs:
+//   a              [M, K] FP16/BF16 activation (is_bf16 selects the type).
+//   b_packed       [N, K/2] uint8 packed NVFP4 weight (two E2M1 values per byte, low nibble first).
+//   weight_scale_2 device fp32 scalar, the global weight scale.
+//   input_scale    optional device fp32 scalar, the global activation scale (may be null, meaning
+//                  1.0). A zero/denormal/NaN value is treated as 1.0.
+// Scratch buffers owned by the caller (contents are overwritten):
+//   a_packed       M * (K/2) bytes, the quantized NVFP4 activation.
+//   a_scale        RoundUp(M, 128) * RoundUp(K/16, 4) bytes, the swizzled activation scales.
+//   alpha          one float; set to weight_scale_2 / input_scale and consumed by the epilogue.
+//   workspace      workspace_size bytes, from
+//                  GetMatMulBlockQuantizedFp4WeightNativeSm120WorkspaceSize().
+// Prepacked input:
+//   b_scale        RoundUp(N, 128) * RoundUp(K/16, 4) bytes in the swizzled layout produced by
+//                  LaunchRepackWeightScaleNvFp4ForNativeSm120(). The raw [N, K/16] weight_scale is
+//                  not accepted here, which is why it is not a parameter.
+// Output:
+//   y              [M, N] in the activation type. Bias, if any, is added by the caller.
 Status LaunchMatMulBlockQuantizedFp4WeightNativeSm120(void* y,
                                                       const void* a,
                                                       const void* b_packed,
-                                                      const void* weight_scale,
                                                       const float* weight_scale_2,
                                                       const float* input_scale,
                                                       void* a_packed,

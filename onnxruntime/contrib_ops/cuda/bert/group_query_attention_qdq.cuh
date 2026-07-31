@@ -430,7 +430,7 @@ __global__ void ScaleHeadsByChannelScaleKernel(T* __restrict__ dst,
   }
   const int h = static_cast<int>(i / head_size) % num_heads;  // q head, layout is [..., num_heads, head_size]
   const int d = static_cast<int>(i % head_size);
-  const float scale = channel_scale[(h / group_size) * head_size + d];  // scale is [kv_num_heads, head_size]
+  const float scale = channel_scale[(h / group_size) * head_size + d];  // scale is [kv_num_heads, 1, head_size]
   dst[i] = static_cast<T>(static_cast<float>(src[i]) * scale);
 }
 

@@ -56,6 +56,7 @@ Selected attributes:
 | `scale` | Softmax scale. Defaults to `1/sqrt(head_size)`. |
 | `softcap` | Optional logit soft-capping value. `0` disables it. |
 | `local_window_size` | Left window size for local attention. `-1` means global attention. |
+| `sliding_window_cache` | Set to `1` when using a windowed (sliding-window) KV cache instead of full-length. When enabled, the operator keeps only the most recent tokens, using cache-relative indexing and evicting from the front as needed. Requires `local_window_size > 0`. Defaults to `0` (full-length cache). |
 | `do_rotary` / `rotary_interleaved` | Enable RoPE and select interleaved vs. half-rotary layout. |
 | `smooth_softmax` | Add a smooth factor to the softmax denominator. |
 | `qk_norm_epsilon` | Epsilon for the fused per-head Q/K RMSNorm (QK-Norm) prologue. Defaults to `1e-6`. |
@@ -154,6 +155,40 @@ The past/present KV cache uses BNSH layout
 holds (the past and present tensors alias the same memory), the cache length is the maximum
 sequence length and new keys/values are appended in place. This shared-buffer mode is required by
 the XQA decode path and by the Flash-Decoding fast path.
+
+### Sliding Window (Windowed) KV Cache
+
+When the `sliding_window_cache` attribute is set to `1`, the KV cache operates in a windowed
+(sliding-window) mode, keeping only the most recent `local_window_size` tokens instead of growing
+to the full sequence length. This significantly reduces memory usage for long-context models that
+employ local attention (e.g., GPT-OSS with layer-wise sliding windows).
+
+**Key behaviors:**
+
+- **Cache capacity:** The cache buffer size is fixed to `kv_cache_capacity` (the initial allocation
+  size), which must be at least `local_window_size`. Allocating a little more than the window is
+  worthwhile on CPU: the surplus is what lets the append point drift, so the cache is compacted once
+  every `kv_cache_capacity - local_window_size + 1` steps instead of on every step. A modest surplus
+  (order tens of entries) is the sweet spot; a much larger buffer starts costing more in attention
+  over out-of-window entries than it saves in compaction.
+- **Cache-relative indexing:** New keys/values are appended at cache-relative positions, not global
+  positions. Once the window is full, old tokens are evicted from the front.
+- **RoPE position bounds:** The `rotary_max_position` parameter controls the upper bound (exclusive)
+  for RoPE position indices, decoupling absolute sequence positions from cache buffer indices.
+- **Multi-token staging:** For multi-token (prompt) steps that exceed window size, a temporary
+  staging buffer is used internally to handle compaction and eviction.
+- **Present shape:** When using windowed cache with `past_present_share_buffer`, the `present_key`
+  and `present_value` shapes remain bounded by `kv_cache_capacity` in the sequence dimension,
+  rather than growing with `total_sequence_length`.
+- **Constraints:** `sliding_window_cache=1` requires `local_window_size > 0`. Windowed caches are
+  incompatible with the Flash-Attention fast-decode path and instead use the XQA or standard
+  attention backends.
+- **CPU support:** The CPU kernel implements the same contract. Entries live at `[0, end)` and are
+  appended at `end`, so a step only moves memory when the append would run past the capacity; at
+  that point the surviving entries are compacted to the front in one go. Multi-token steps that
+  would drop entries the step itself still reads are staged instead, so results match a full-length
+  cache exactly. On CPU the `attention_bias` input, the `qk_output` attribute and a shared KV layout
+  (`key`/`value` folded into `query`) are not supported together with `sliding_window_cache=1`.
 
 ### Quantized KV cache
 

@@ -4507,5 +4507,87 @@ TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_MEA_MixedBatchOffsets_ForceF
 
 #undef SKIP_IF_MEA_NOT_COMPILED
 
+TEST(AttentionTest, Attention3DInconsistentHeadSizeInK) {
+  OpTester test("Attention", 23, onnxruntime::kOnnxDomain);
+
+  const int64_t batch_size = 1;
+  const int64_t q_num_heads = 2;
+  const int64_t kv_num_heads = 2;
+  const int64_t head_size = 8;  // derived from Q as Q.shape[2] / q_num_heads = 16 / 2 = 8
+  const int64_t v_head_size = 8;
+  const int64_t q_seq = 2;
+  const int64_t kv_seq = 3;
+
+  // Q hidden = q_num_heads * head_size = 16 (consistent).
+  const std::vector<int64_t> q_shape = {batch_size, q_seq, q_num_heads * head_size};
+  // Deliberately undersized K hidden width: should be kv_num_heads * head_size = 16, use 8.
+  const std::vector<int64_t> k_shape = {batch_size, kv_seq, kv_num_heads * head_size / 2};
+  const std::vector<int64_t> v_shape = {batch_size, kv_seq, kv_num_heads * v_head_size};
+
+  test.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  test.AddAttribute<int64_t>("q_num_heads", q_num_heads);
+
+  test.AddInput<float>("Q", q_shape, std::vector<float>(batch_size * q_seq * q_num_heads * head_size, 1.0f));
+  test.AddInput<float>("K", k_shape,
+                       std::vector<float>(batch_size * kv_seq * (kv_num_heads * head_size / 2), 1.0f));
+  test.AddInput<float>("V", v_shape, std::vector<float>(batch_size * kv_seq * kv_num_heads * v_head_size, 1.0f));
+  test.AddOptionalInputEdge<bool>();   // attn_mask
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+
+  // Output shape is only used for allocation; the run must fail before producing it.
+  test.AddOutput<float>("Y", {batch_size, q_seq, q_num_heads * v_head_size},
+                        std::vector<float>(batch_size * q_seq * q_num_heads * v_head_size, 0.0f));
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "inconsistent head_size",
+           {kTensorrtExecutionProvider, kCudaExecutionProvider, kDmlExecutionProvider,
+            kCoreMLExecutionProvider, kQnnExecutionProvider, kOpenVINOExecutionProvider,
+            kWebGpuExecutionProvider});
+}
+
+// Validation: 3D Attention where V.shape[1] does not match K.shape[1] (kv_sequence_length).
+// The 4D path enforces this on shape[2]; the 3D path used to skip it, letting the kernel walk
+// past the V allocation when V.shape[1] < K.shape[1]. Excluded EPs implement Attention
+// themselves and validate shapes independently: TensorRT, CUDA, DML, CoreML, QNN, OpenVINO,
+// WebGPU. This test targets the shared CPU shape helper.
+TEST(AttentionTest, Attention3DInconsistentKvSequenceLength) {
+  OpTester test("Attention", 23, onnxruntime::kOnnxDomain);
+
+  const int64_t batch_size = 1;
+  const int64_t q_num_heads = 2;
+  const int64_t kv_num_heads = 2;
+  const int64_t head_size = 4;
+  const int64_t v_head_size = 4;
+  const int64_t q_seq = 2;
+  const int64_t k_seq = 5;
+  const int64_t v_seq = 3;  // Mismatch with k_seq.
+
+  const std::vector<int64_t> q_shape = {batch_size, q_seq, q_num_heads * head_size};
+  const std::vector<int64_t> k_shape = {batch_size, k_seq, kv_num_heads * head_size};
+  const std::vector<int64_t> v_shape = {batch_size, v_seq, kv_num_heads * v_head_size};
+
+  test.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  test.AddAttribute<int64_t>("q_num_heads", q_num_heads);
+
+  test.AddInput<float>("Q", q_shape, std::vector<float>(batch_size * q_seq * q_num_heads * head_size, 1.0f));
+  test.AddInput<float>("K", k_shape, std::vector<float>(batch_size * k_seq * kv_num_heads * head_size, 1.0f));
+  test.AddInput<float>("V", v_shape, std::vector<float>(batch_size * v_seq * kv_num_heads * v_head_size, 1.0f));
+  test.AddOptionalInputEdge<bool>();   // attn_mask
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+
+  test.AddOutput<float>("Y", {batch_size, q_seq, q_num_heads * v_head_size},
+                        std::vector<float>(batch_size * q_seq * q_num_heads * v_head_size, 0.0f));
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "inconsistent kv_sequence_length",
+           {kTensorrtExecutionProvider, kCudaExecutionProvider, kDmlExecutionProvider,
+            kCoreMLExecutionProvider, kQnnExecutionProvider, kOpenVINOExecutionProvider,
+            kWebGpuExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

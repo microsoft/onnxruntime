@@ -75,7 +75,17 @@ Status MatMulBlockQuantizedFp4Weight::PrePack(const Tensor& tensor, int input_id
   b_scale_prepacked_ = IAllocator::MakeUniquePtr<uint8_t>(
       alloc, SafeInt<size_t>(rounded_n) * SafeInt<size_t>(rounded_k_blocks), true);
 
-  cudaStream_t stream = cudaStreamLegacy;
+  // PrePack runs once at session initialization and is not given an EP compute stream (the
+  // OpKernel::PrePack contract has no stream parameter), so the repack is issued on the per-thread
+  // default stream rather than on cudaStreamLegacy: the legacy default stream implicitly
+  // synchronizes with every other blocking stream in the process, which would serialize unrelated
+  // sessions initializing concurrently.
+  //
+  // The cudaStreamSynchronize below is required for correctness, not just ordering: the staging
+  // buffer `weight_scale_device` and the source `tensor` are released as soon as this function
+  // returns, and `b_scale_prepacked_` must be fully written before any Run() reads it from a
+  // different stream. It costs one synchronization per session, outside the inference hot path.
+  cudaStream_t stream = cudaStreamPerThread;
   const void* weight_scale = tensor.DataRaw();
   IAllocatorUniquePtr<uint8_t> weight_scale_device;
   if (tensor.Location().device.Type() != OrtDevice::GPU) {
@@ -217,7 +227,6 @@ Status MatMulBlockQuantizedFp4Weight::ComputeImpl(OpKernelContext* context) cons
         Y->MutableDataRaw(),
         a->DataRaw(),
         b->DataRaw(),
-        weight_scale->DataRaw(),
         weight_scale_2->Data<float>(),
         input_scale != nullptr ? input_scale->Data<float>() : nullptr,
         a_packed.get(),

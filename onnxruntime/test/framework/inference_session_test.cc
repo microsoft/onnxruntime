@@ -518,6 +518,53 @@ TEST(InferenceSessionTests, RunWithWrongOutputTypeReturnsError) {
                                       "Unexpected output data type");
 }
 
+// Error-path coverage for InferenceSession model ingestion (audit T8/T9 continuation).
+TEST(InferenceSessionTests, LoadModelTwiceReturnsError) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.LoadModelTwiceReturnsError";
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  // A second Load on the same session must be rejected.
+  const auto status = session_object.Load(MODEL_URI);
+  ASSERT_FALSE(status.IsOK());
+  ASSERT_EQ(status.Code(), common::StatusCode::MODEL_LOADED);
+  ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("already contains a loaded model"));
+}
+
+TEST(InferenceSessionTests, LoadInvalidGraphReturnsError) {
+  // Build a model whose only node consumes an input that is never defined (not a graph
+  // input, initializer, or another node's output), so graph Resolve must reject it gracefully.
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(7);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("invalid_graph");
+  auto* node = graph_proto->add_node();
+  node->set_op_type("Identity");
+  node->set_domain("");
+  node->add_input("undefined_input");
+  node->add_output("Y");
+  auto* output = graph_proto->add_output();
+  output->set_name("Y");
+  output->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  std::string serialized;
+  ASSERT_TRUE(model_proto.SerializeToString(&serialized));
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.LoadInvalidGraphReturnsError";
+  InferenceSession session_object{so, GetEnvironment()};
+  auto status = session_object.Load(serialized.data(), static_cast<int>(serialized.size()));
+  if (status.IsOK()) {
+    status = session_object.Initialize();
+  }
+  ASSERT_FALSE(status.IsOK()) << "Invalid graph (undefined node input) should be rejected gracefully";
+  ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("undefined_input"));
+}
+
 TEST(InferenceSessionTests, CheckRunLogger) {
   if constexpr (!SessionOptions::DEFAULT_USE_PER_SESSION_THREADS) {
     GTEST_SKIP() << "Skipping the test";
