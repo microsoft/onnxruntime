@@ -591,7 +591,7 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
   if (weightless_requested_) {
     if (ort_ep_->ort_version_supported >= 29) {
       if (ort_ep_->GetWeightlessSupport == nullptr) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                                "Weightless mode requested (ep.enable_weightless=1) but EP '", Type(),
                                "' does not implement GetWeightlessSupport.");
       }
