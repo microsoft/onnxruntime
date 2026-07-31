@@ -1125,23 +1125,31 @@ TEST_F(FunctionExtractorTest, RejectsDownstreamFormalInputBinding) {
   const FunctionProto function_proto =
       MakeFunction("DownstreamInput", nodes, std::vector<std::string>{"x", "y"},
                    std::vector<std::string>{"out"});
-  auto model = MakeModel(function_proto);
-  Graph& graph = model->MainGraph();
-  ModelTestBuilder builder(graph);
-  NodeArg* x = builder.MakeInput<float>({2}, 0.0f, 1.0f);
-  NodeArg* activated = builder.MakeIntermediate<float>({2});
-  NodeArg* downstream = builder.MakeIntermediate<float>({2});
-  NodeArg* output = builder.MakeOutput<float>({2});
-  builder.AddNode("Relu", {x}, {activated});
-  builder.AddNode("Identity", {activated}, {downstream});
-  builder.AddNode("Add", {activated, downstream}, {output});
-  builder.SetGraphOutputs();
-  ASSERT_STATUS_OK(graph.Resolve());
+  for (const bool bind_formal_directly_to_matched_output : {false, true}) {
+    SCOPED_TRACE(bind_formal_directly_to_matched_output);
+    auto model = MakeModel(function_proto);
+    Graph& graph = model->MainGraph();
+    ModelTestBuilder builder(graph);
+    NodeArg* x = builder.MakeInput<float>({2}, 0.0f, 1.0f);
+    NodeArg* activated = builder.MakeIntermediate<float>({2});
+    NodeArg* output = builder.MakeOutput<float>({2});
+    builder.AddNode("Relu", {x}, {activated});
 
-  FunctionExtractor extractor(function_proto);
-  const FunctionExtractionResult result = extractor.Extract(graph);
-  ASSERT_STATUS_OK(result.status);
-  EXPECT_EQ(result.replacements_applied, 0u);
+    NodeArg* formal_input_binding = activated;
+    if (!bind_formal_directly_to_matched_output) {
+      formal_input_binding = builder.MakeIntermediate<float>({2});
+      builder.AddNode("Identity", {activated}, {formal_input_binding});
+    }
+
+    builder.AddNode("Add", {activated, formal_input_binding}, {output});
+    builder.SetGraphOutputs();
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    FunctionExtractor extractor(function_proto);
+    const FunctionExtractionResult result = extractor.Extract(graph);
+    ASSERT_STATUS_OK(result.status);
+    EXPECT_EQ(result.replacements_applied, 0u);
+  }
 }
 
 TEST_F(FunctionExtractorTest, RejectsNonConvexLeaveAndReenterPath) {
