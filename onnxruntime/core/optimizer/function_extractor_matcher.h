@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -106,6 +107,19 @@ common::Status PrevalidatePlans(
     const Graph& graph,
     const CompiledFunctionPattern& compiled_pattern,
     gsl::span<const ReplacementPlan> plans);
+
+using GraphResolveFunction = common::Status (*)(Graph&, const Graph::ResolveOptions&);
+
+struct ExtractionControls {
+  std::optional<size_t> maximum_passes;
+  GraphResolveFunction resolve_graph{};
+};
+
+FunctionExtractionResult ExtractGraph(
+    Graph& graph,
+    const NormalizedFunctionPattern& normalized_pattern,
+    const FunctionExtractorOptions& options,
+    const ExtractionControls& controls = {});
 
 }  // namespace function_extractor_internal
 }  // namespace onnxruntime

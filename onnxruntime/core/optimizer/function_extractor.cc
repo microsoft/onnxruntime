@@ -77,6 +77,117 @@ common::Status ApplyReplacementPlan(
 
 }  // namespace
 
+namespace function_extractor_internal {
+
+FunctionExtractionResult ExtractGraph(
+    Graph& graph,
+    const NormalizedFunctionPattern& normalized_pattern,
+    const FunctionExtractorOptions& options,
+    const ExtractionControls& controls) {
+  FunctionExtractionResult result;
+  if (!normalized_pattern.construction_status.IsOK()) {
+    result.status = normalized_pattern.construction_status;
+    return result;
+  }
+  if (graph.GraphResolveNeeded()) {
+    result.status = ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "FunctionExtractor requires a resolved graph; GraphResolveNeeded() is true.");
+    return result;
+  }
+  for (const auto& node : graph.Nodes()) {
+    if (node.Op() == nullptr) {
+      result.status = ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT,
+          "FunctionExtractor requires every target node to have a resolved schema.");
+      return result;
+    }
+  }
+
+  result.status = ValidateRegisteredFunction(normalized_pattern, graph);
+  if (!result.status.IsOK()) return result;
+
+  CompiledFunctionPattern compiled_pattern;
+  result.status = CompileFunctionPattern(normalized_pattern, graph, compiled_pattern);
+  if (!result.status.IsOK()) return result;
+
+  const size_t pass_cap =
+      controls.maximum_passes.value_or(static_cast<size_t>(graph.NumberOfNodes()));
+  std::unordered_set<std::string> literal_initializers_to_preserve;
+  for (size_t pass = 0; pass <= pass_cap; ++pass) {
+    std::vector<ReplacementPlan> selected_plans;
+    {
+      TargetGraphSnapshot snapshot;
+      result.status = BuildTargetGraphSnapshot(graph, compiled_pattern, options, snapshot);
+      if (!result.status.IsOK()) return result;
+
+      std::vector<ReplacementPlan> discovered_plans;
+      result.status = DiscoverReplacementPlans(
+          compiled_pattern, snapshot, options, discovered_plans);
+      if (!result.status.IsOK()) return result;
+
+      std::vector<size_t> selected_indices;
+      result.status = SelectNonConflictingPlans(discovered_plans, selected_indices);
+      if (!result.status.IsOK()) return result;
+      if (selected_indices.empty()) {
+        result.status = common::Status::OK();
+        return result;
+      }
+      selected_plans.reserve(selected_indices.size());
+      for (const auto index : selected_indices) {
+        selected_plans.push_back(std::move(discovered_plans[index]));
+      }
+      for (auto& plan : selected_plans) {
+        plan.generated_call_name = graph.GenerateNodeName(normalized_pattern.function_proto.name());
+      }
+      result.status = PrevalidatePlans(graph, compiled_pattern, selected_plans);
+      if (!result.status.IsOK()) return result;
+    }
+
+    if (pass >= pass_cap) {
+      result.status = ORT_MAKE_STATUS(
+          ONNXRUNTIME, FAIL,
+          "FunctionExtractor reached its defensive pass cap despite strict node-count decrease.");
+      return result;
+    }
+
+    std::sort(selected_plans.begin(), selected_plans.end(),
+              [](const ReplacementPlan& lhs, const ReplacementPlan& rhs) {
+                return lhs.primary_root_topological_position > rhs.primary_root_topological_position;
+              });
+    for (const auto& plan : selected_plans) {
+      for (const auto& witness : plan.literal_witnesses) {
+        if (witness.is_initializer) {
+          literal_initializers_to_preserve.insert(witness.target_value->Name());
+        }
+      }
+      bool call_added = false;
+      result.status =
+          ApplyReplacementPlan(graph, normalized_pattern.function_proto, plan, call_added);
+      if (call_added) ++result.replacements_applied;
+      if (!result.status.IsOK()) return result;
+    }
+
+    graph.SetGraphResolveNeeded().SetGraphProtoSyncNeeded();
+    Graph::ResolveOptions resolve_options;
+    resolve_options.initializer_names_to_preserve = &literal_initializers_to_preserve;
+    result.status = controls.resolve_graph != nullptr
+                        ? controls.resolve_graph(graph, resolve_options)
+                        : graph.Resolve(resolve_options);
+    if (!result.status.IsOK()) return result;
+
+    result.status = ValidateRegisteredFunction(normalized_pattern, graph);
+    if (!result.status.IsOK()) return result;
+    result.status = CompileFunctionPattern(normalized_pattern, graph, compiled_pattern);
+    if (!result.status.IsOK()) return result;
+  }
+
+  result.status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "FunctionExtractor pass invariant failure.");
+  return result;
+}
+
+}  // namespace function_extractor_internal
+
 struct FunctionExtractor::Impl {
   Impl(const ONNX_NAMESPACE::FunctionProto& function_proto, FunctionExtractorOptions extractor_options)
       : owned_function_proto(function_proto),
@@ -103,109 +214,8 @@ FunctionExtractionResult FunctionExtractor::Extract(Model& model) {
 }
 
 FunctionExtractionResult FunctionExtractor::Extract(Graph& graph) {
-  FunctionExtractionResult result;
-  if (!impl_->construction_status.IsOK()) {
-    result.status = impl_->construction_status;
-    return result;
-  }
-  if (graph.GraphResolveNeeded()) {
-    result.status = ORT_MAKE_STATUS(
-        ONNXRUNTIME, INVALID_ARGUMENT,
-        "FunctionExtractor requires a resolved graph; GraphResolveNeeded() is true.");
-    return result;
-  }
-  for (const auto& node : graph.Nodes()) {
-    if (node.Op() == nullptr) {
-      result.status = ORT_MAKE_STATUS(
-          ONNXRUNTIME, INVALID_ARGUMENT,
-          "FunctionExtractor requires every target node to have a resolved schema.");
-      return result;
-    }
-  }
-
-  result.status =
-      function_extractor_internal::ValidateRegisteredFunction(impl_->normalized_pattern, graph);
-  if (!result.status.IsOK()) return result;
-
-  CompiledFunctionPattern compiled_pattern;
-  result.status = function_extractor_internal::CompileFunctionPattern(
-      impl_->normalized_pattern, graph, compiled_pattern);
-  if (!result.status.IsOK()) return result;
-
-  const size_t pass_cap = static_cast<size_t>(graph.NumberOfNodes());
-  std::unordered_set<std::string> literal_initializers_to_preserve;
-  for (size_t pass = 0; pass <= pass_cap; ++pass) {
-    std::vector<ReplacementPlan> selected_plans;
-    {
-      function_extractor_internal::TargetGraphSnapshot snapshot;
-      result.status = function_extractor_internal::BuildTargetGraphSnapshot(
-          graph, compiled_pattern, impl_->options, snapshot);
-      if (!result.status.IsOK()) return result;
-
-      std::vector<ReplacementPlan> discovered_plans;
-      result.status = function_extractor_internal::DiscoverReplacementPlans(
-          compiled_pattern, snapshot, impl_->options, discovered_plans);
-      if (!result.status.IsOK()) return result;
-
-      std::vector<size_t> selected_indices;
-      result.status = function_extractor_internal::SelectNonConflictingPlans(
-          discovered_plans, selected_indices);
-      if (!result.status.IsOK()) return result;
-      if (selected_indices.empty()) {
-        result.status = common::Status::OK();
-        return result;
-      }
-      selected_plans.reserve(selected_indices.size());
-      for (const auto index : selected_indices) {
-        selected_plans.push_back(std::move(discovered_plans[index]));
-      }
-      for (auto& plan : selected_plans) {
-        plan.generated_call_name = graph.GenerateNodeName(impl_->owned_function_proto.name());
-      }
-      result.status = function_extractor_internal::PrevalidatePlans(
-          graph, compiled_pattern, selected_plans);
-      if (!result.status.IsOK()) return result;
-    }
-
-    if (pass >= pass_cap) {
-      result.status = ORT_MAKE_STATUS(
-          ONNXRUNTIME, FAIL,
-          "FunctionExtractor reached its defensive pass cap despite strict node-count decrease.");
-      return result;
-    }
-
-    std::sort(selected_plans.begin(), selected_plans.end(),
-              [](const ReplacementPlan& lhs, const ReplacementPlan& rhs) {
-                return lhs.primary_root_topological_position > rhs.primary_root_topological_position;
-              });
-    for (const auto& plan : selected_plans) {
-      for (const auto& witness : plan.literal_witnesses) {
-        if (witness.is_initializer) {
-          literal_initializers_to_preserve.insert(witness.target_value->Name());
-        }
-      }
-      bool call_added = false;
-      result.status = ApplyReplacementPlan(graph, impl_->owned_function_proto, plan, call_added);
-      if (call_added) ++result.replacements_applied;
-      if (!result.status.IsOK()) return result;
-    }
-
-    graph.SetGraphResolveNeeded().SetGraphProtoSyncNeeded();
-    Graph::ResolveOptions resolve_options;
-    resolve_options.initializer_names_to_preserve = &literal_initializers_to_preserve;
-    result.status = graph.Resolve(resolve_options);
-    if (!result.status.IsOK()) return result;
-
-    result.status =
-        function_extractor_internal::ValidateRegisteredFunction(impl_->normalized_pattern, graph);
-    if (!result.status.IsOK()) return result;
-    result.status = function_extractor_internal::CompileFunctionPattern(
-        impl_->normalized_pattern, graph, compiled_pattern);
-    if (!result.status.IsOK()) return result;
-  }
-
-  result.status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "FunctionExtractor pass invariant failure.");
-  return result;
+  return function_extractor_internal::ExtractGraph(
+      graph, impl_->normalized_pattern, impl_->options);
 }
 
 }  // namespace onnxruntime
