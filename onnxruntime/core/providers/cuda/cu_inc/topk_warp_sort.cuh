@@ -164,6 +164,95 @@ struct Greater {
 };
 
 /**
+ * @brief Sort `keys[0..N)` descending with an in-register bitonic network.
+ *
+ * N must be a power of two. The network is fully unrolled and touches no memory,
+ * so the whole sort stays in registers.
+ */
+template <int N>
+__device__ __forceinline__ void BitonicSortRegistersDescending(uint64_t (&keys)[N]) {
+  static_assert(N > 0 && (N & (N - 1)) == 0, "N must be a power of two.");
+#pragma unroll
+  for (int k = 2; k <= N; k <<= 1) {
+#pragma unroll
+    for (int j = k >> 1; j > 0; j >>= 1) {
+#pragma unroll
+      for (int i = 0; i < N; ++i) {
+        const int partner = i ^ j;
+        if (partner > i) {
+          const uint64_t a = keys[i];
+          const uint64_t b = keys[partner];
+          const bool a_first = ((i & k) == 0) == (a > b);
+          keys[i] = a_first ? a : b;
+          keys[partner] = a_first ? b : a;
+        }
+      }
+    }
+  }
+}
+
+/**
+ * @brief Sort a bitonic sequence `keys[0..N)` descending (half-cleaner cascade).
+ *
+ * N must be a power of two and the input must already be bitonic.
+ */
+template <int N>
+__device__ __forceinline__ void BitonicCleanDescending(uint64_t (&keys)[N]) {
+  static_assert(N > 0 && (N & (N - 1)) == 0, "N must be a power of two.");
+#pragma unroll
+  for (int j = N >> 1; j > 0; j >>= 1) {
+#pragma unroll
+    for (int i = 0; i < N; ++i) {
+      const int partner = i ^ j;
+      if (partner > i) {
+        const uint64_t a = keys[i];
+        const uint64_t b = keys[partner];
+        keys[i] = a > b ? a : b;
+        keys[partner] = a > b ? b : a;
+      }
+    }
+  }
+}
+
+/**
+ * @brief Single-warp Top-N over the warp's 32 * N packed keys, entirely in registers.
+ *
+ * Every lane contributes N packed keys (see PackStableSortKey; the packing makes a
+ * plain unsigned comparison equivalent to "larger score first, smaller index on a
+ * tie"). On return every lane holds the N largest keys of the whole warp in
+ * `keys[0..N)`, sorted descending; a caller that wants the top k <= N simply reads
+ * the first k entries. Which N of the 32 * N inputs a lane starts with is
+ * irrelevant, so callers should pick the layout that loads best (e.g. strided by
+ * warp size for coalescing).
+ *
+ * The algorithm is a bitonic sort of each lane's own keys followed by a butterfly
+ * of bitonic Top-N merges over the warp. Merging two descending sequences A and B
+ * as C[i] = max(A[i], B[N-1-i]) yields a bitonic sequence holding exactly the top N
+ * of A union B, which the half-cleaner cascade then sorts. Because that construction
+ * is symmetric in A and B, a single __shfl_xor_sync per key leaves both partners
+ * with the same result, so no shared memory and no barriers are needed.
+ */
+template <int N>
+__device__ __forceinline__ void WarpBitonicTopN(uint64_t (&keys)[N]) {
+  BitonicSortRegistersDescending<N>(keys);
+#pragma unroll
+  for (int step = 1; step < kWarpSize; step <<= 1) {
+    uint64_t partner[N];
+#pragma unroll
+    for (int i = 0; i < N; ++i) {
+      partner[i] = static_cast<uint64_t>(
+          __shfl_xor_sync(0xFFFFFFFFu, static_cast<unsigned long long>(keys[i]), step));
+    }
+#pragma unroll
+    for (int i = 0; i < N; ++i) {
+      const uint64_t other = partner[N - 1 - i];
+      keys[i] = keys[i] > other ? keys[i] : other;
+    }
+    BitonicCleanDescending<N>(keys);
+  }
+}
+
+/**
  * @brief Single-warp CUB merge sort of up to `BufferSize` (score, index) pairs
  *        held in shared memory, producing a descending order.
  *
