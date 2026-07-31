@@ -7487,14 +7487,16 @@ struct OrtApi {
   /** \brief Retrieve an experimental function pointer by name.
    *
    * Experimental functions are not part of the stable ABI and may be added or removed between releases without notice.
-   * Use the companion header onnxruntime_experimental_c_api.h for typedefs, name constants, and (for C++) typed
-   * accessors.
+   *
+   * Use the companion headers:
+   * - onnxruntime_experimental_c_api.h for function pointer typedefs and name constants.
+   * - onnxruntime_experimental_cxx_api.h for C++ typed accessors and wrapper types.
    *
    * \param[in] name The null-terminated name of the experimental function to look up.
    *                 Names follow the pattern "<target struct>_<function name>_SinceV<ORT API version added>".
    *                 Name constants are defined in onnxruntime_experimental_c_api.h.
-   * \return The function pointer cast to ::OrtExperimentalFnPtr, or nullptr if the function is not available in this
-   *         build. The caller must cast the returned pointer to the correct function pointer type before calling.
+   * \return The function pointer cast to ::OrtExperimentalFnPtr, or NULL if the function is not available.
+   *         The caller must cast the returned pointer to the correct function pointer type before calling.
    *         Function pointer typedefs are defined in onnxruntime_experimental_c_api.h.
    *
    * \since Version 1.28.
