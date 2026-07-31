@@ -602,6 +602,81 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreTilesBf16) {
   }
 }
 
+// Lane-ownership probe for the tensor-core path.
+//
+// The tests above sum over the whole K axis, so a wrong lane -> (row, column) mapping could in
+// principle still land on a plausible value. Here the activation is one-hot, which collapses
+// Y[row, col] to a single decoded weight times its block scale, and the probe offset differs per
+// row. Both the weight code and the block scale cycle modulo 3 along N, so the two columns a lane
+// owns (g and g + 8, which differ by 8 == 2 mod 3) never carry the same value, and every one of
+// the 8 rows produces a different value in a given column. Any swap of the mma ownership -- rows
+// 2t / 2t + 1 against columns g / g + 8, or the activation row against the output column -- shows
+// up as a mismatch instead of cancelling out.
+namespace {
+
+// E2M1 codes +1.0, -2.0, +0.5 and their values.
+constexpr uint8_t kProbeCodes[3] = {0x2, 0xC, 0x1};
+constexpr float kProbeValues[3] = {1.0f, -2.0f, 0.5f};
+// E4M3 scale bytes 1.0, 4.0, 16.0 and their values. The 3 x 3 weight-times-scale products are all
+// distinct, so no two (row, column) mappings can produce the same output value.
+constexpr uint8_t kProbeScaleBytes[3] = {0x38, 0x48, 0x58};
+constexpr float kProbeScaleValues[3] = {1.0f, 4.0f, 16.0f};
+
+int ProbeIndex(int64_t col, int64_t x) { return static_cast<int>((col + x) % 3); }
+
+}  // namespace
+
+TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreLaneOwnershipFp16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp4Weight.";
+  }
+
+  constexpr int64_t m = 8;    // full mma N extent: output rows 2t and 2t + 1 for every t
+  constexpr int64_t n = 40;   // ragged: the last 16-column tile has only its low half in range
+  constexpr int64_t k = 128;  // one K window
+  constexpr int64_t k_blocks = k / 16;
+
+  std::vector<uint8_t> b(n * (k / 2), 0);
+  std::vector<uint8_t> weight_scale(n * k_blocks, 0);
+  for (int64_t col = 0; col < n; ++col) {
+    for (int64_t kk = 0; kk < k; kk += 2) {
+      const uint8_t lo = kProbeCodes[ProbeIndex(col, kk)];
+      const uint8_t hi = kProbeCodes[ProbeIndex(col, kk + 1)];
+      b[col * (k / 2) + kk / 2] = static_cast<uint8_t>(lo | (hi << 4));
+    }
+    for (int64_t blk = 0; blk < k_blocks; ++blk) {
+      weight_scale[col * k_blocks + blk] = kProbeScaleBytes[ProbeIndex(col, blk)];
+    }
+  }
+
+  // Row `row` probes K offset 11 * row. The eight (code index, scale-block index) pairs that
+  // produces are all different, and each row lands in a different 32-element lane slice of the
+  // window, so no two rows can be confused for one another.
+  std::vector<float> a(m * k, 0.0f);
+  std::vector<float> expected(m * n, 0.0f);
+  for (int64_t row = 0; row < m; ++row) {
+    const int64_t kk = 11 * row;
+    a[row * k + kk] = 1.0f;
+    for (int64_t col = 0; col < n; ++col) {
+      expected[row * n + col] =
+          kProbeValues[ProbeIndex(col, kk)] * kProbeScaleValues[ProbeIndex(col, kk / 16)];
+    }
+  }
+
+  OpTester test("MatMulBlockQuantizedFp4Weight", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("block_size", 16);
+  test.AddInput<MLFloat16>("A", {m, k}, FloatsToMLFloat16s(a));
+  test.AddInput<uint8_t>("B", {n, k / 2}, b);
+  test.AddInput<uint8_t>("weight_scale", {n, k_blocks}, weight_scale);
+  test.AddInput<float>("weight_scale_2", {1}, {1.0f});
+  test.AddOutput<MLFloat16>("Y", {m, n}, FloatsToMLFloat16s(expected));
+  test.SetOutputTolerance(0.01f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 #endif  // USE_CUDA && defined(CUDA_VERSION) && CUDA_VERSION >= 12080
 
 }  // namespace onnxruntime::test

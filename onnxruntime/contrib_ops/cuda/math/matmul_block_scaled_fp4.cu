@@ -358,6 +358,25 @@ __global__ __launch_bounds__(32 * kGemvWarpsPerBlock, GemvMinBlocksPerSm<RowsPer
 // transpose, no ldmatrix, no shared-memory staging. The mma "M" extent becomes our column
 // count (16) and the mma "N" extent becomes our row count (M <= 8).
 //
+// Per-lane fragment ownership (PTX m16n8k16 layout, g = lane >> 2, t = lane & 3). A lane does NOT
+// compute a whole dot product on its own: the tensor core exchanges partial products across the
+// warp, so the A rows, the B column and the D rows a lane holds are three independent slices.
+//
+//   ra[0] = (mma row g,     mma k 2t,   2t+1)  <- weight column col_lo
+//   ra[1] = (mma row g + 8, mma k 2t,   2t+1)  <- weight column col_hi = col_lo + 8
+//   ra[2] = (mma row g,     mma k 2t+8, 2t+9)  <- weight column col_lo
+//   ra[3] = (mma row g + 8, mma k 2t+8, 2t+9)  <- weight column col_hi
+//   rb[0] = (mma k 2t,   2t+1, mma col g)      <- activation row g
+//   rb[1] = (mma k 2t+8, 2t+9, mma col g)      <- activation row g
+//   acc[0], acc[1] = (mma row g,     mma col 2t, 2t+1) -> y[2t][col_lo], y[2t+1][col_lo]
+//   acc[2], acc[3] = (mma row g + 8, mma col 2t, 2t+1) -> y[2t][col_hi], y[2t+1][col_hi]
+//
+// So `g` selects both the output-column pair (through the A fragment) and the activation row
+// (through the B fragment), while the accumulator the lane ends up owning covers output rows 2t
+// and 2t + 1. Loads keyed off `g` and stores keyed off `t` are therefore both correct and are
+// deliberately different; see the GemvTensorCoreLaneOwnership* tests for a one-hot probe of this
+// mapping.
+//
 // The K axis is then permuted so that the four k-slots a lane needs per mma step are
 // contiguous in memory. This is legal because K is a reduction axis and the same
 // permutation is applied to both operands. A window is 128 K elements = 64 packed bytes;
@@ -476,8 +495,11 @@ __global__ __launch_bounds__(32 * KSplit * ColTiles, 1) void MatMulBlockQuantize
   using T2 = typename Cvt::T2;
 
   const int lane = threadIdx.x;
-  const int g = lane >> 2;  // mma A row  -> output column within the 16-column tile
-  const int t = lane & 3;   // mma k-slot -> which 32-element slice of the window
+  // See the fragment-ownership table above: `g` indexes the A rows (output columns col_lo/col_hi)
+  // and the B column (activation row); `t` indexes the 32-element K slice and, in the accumulator,
+  // the output rows 2t / 2t + 1 this lane stores.
+  const int g = lane >> 2;
+  const int t = lane & 3;
   const int warp = static_cast<int>(threadIdx.y);
   const int warp_k = (KSplit == 1) ? 0 : (warp % KSplit);
   const int warp_c = (KSplit == 1) ? warp : (warp / KSplit);
@@ -761,6 +783,10 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
 
   // Tensor-core sub-path: needs mma.m16n8k16 (SM80+), a whole number of 128-element K windows,
   // and M within the mma's 8-row N extent. Everything else falls back to the scalar GEMV.
+  //
+  // The M <= 8 bound is structural: one warp owns a 16-column x 8-row output tile, where lane
+  // (g = lane >> 2, t = lane & 3) reads activation row g, covers weight columns 16 * tile + g and
+  // + 8, and stores output rows 2t and 2t + 1 of those two columns.
   if (sm_major >= 8 && k % 128 == 0 && m <= 8 && Fp4GemvMmaEnabled()) {
     const Fp4MmaConfig cfg = PickFp4MmaConfig(n, k);
     const int cols_per_block = 16 * cfg.col_tiles;

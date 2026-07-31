@@ -154,6 +154,13 @@ The fragments are free because the **weight goes in the mma `A` slot** and the
 `B`-col-major fragment. No transpose, no `ldmatrix`, no shared-memory staging. The
 mma `M` extent becomes the column count (16) and the mma `N` extent becomes `M`.
 
+A lane does not own a whole dot product: with `g = lane >> 2` and `t = lane & 3`,
+it supplies the weights of output columns `g` and `g + 8` (the `A` fragment) and
+activation row `g` (the `B` fragment), and the accumulator it receives back covers
+output rows `2t` and `2t + 1` of those two columns. Loads are therefore keyed off
+`g` and stores off `t`; the kernel source carries the full fragment table, and the
+`GemvTensorCoreLaneOwnership*` tests probe the mapping with a one-hot activation.
+
 The K axis is then permuted so the four k-slots a lane needs are contiguous in
 memory, which is legal because K is a reduction axis and the same permutation is
 applied to both operands. A window is 128 K elements = 64 packed bytes; lane

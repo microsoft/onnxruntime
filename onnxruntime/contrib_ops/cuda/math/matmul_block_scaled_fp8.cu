@@ -393,8 +393,28 @@ __global__ void MatMulBlockScaledFp8GemvKernel(AType* __restrict__ output,
 //   mma D[16,  8]            -> y[16 output columns][8 rows]
 //
 // The mma "M" extent is therefore our N (16 output columns per warp) and the mma "N" extent is
-// our M (up to 8 rows). At M == 4 half the mma N lanes are idle, but the instruction count per
-// weight byte still drops about 10x, which is what the ALU-bound path needs.
+// our M (up to 8 rows, which is why the caller caps the GEMV at M <= 8). At M == 4 half the mma N
+// lanes are idle, but the instruction count per weight byte still drops about 10x, which is what
+// the ALU-bound path needs.
+//
+// Per-lane fragment ownership (PTX m16n8k16 layout, g = lane >> 2, t = lane & 3). A lane does NOT
+// compute a whole dot product on its own: the tensor core exchanges partial products across the
+// warp, so the A rows, the B column and the D rows a lane holds are three independent slices.
+//
+//   ra[0] = (mma row g,     mma k 2t,   2t+1)  <- weight column col_lo = 16 * blockIdx.x + g
+//   ra[1] = (mma row g + 8, mma k 2t,   2t+1)  <- weight column col_hi = col_lo + 8
+//   ra[2] = (mma row g,     mma k 2t+8, 2t+9)  <- weight column col_lo
+//   ra[3] = (mma row g + 8, mma k 2t+8, 2t+9)  <- weight column col_hi
+//   rb[0] = (mma k 2t,   2t+1, mma col g)      <- activation row g
+//   rb[1] = (mma k 2t+8, 2t+9, mma col g)      <- activation row g
+//   acc[0], acc[1] = (mma row g,     mma col 2t, 2t+1) -> y[2t][col_lo], y[2t+1][col_lo]
+//   acc[2], acc[3] = (mma row g + 8, mma col 2t, 2t+1) -> y[2t][col_hi], y[2t+1][col_hi]
+//
+// So `g` selects both the output-column pair (through the A fragment) and the activation row
+// (through the B fragment), while the accumulator the lane ends up owning covers output rows 2t
+// and 2t + 1. Loads keyed off `g` and stores keyed off `t` are therefore both correct and are
+// deliberately different; see the GemvTensorCoreLaneOwnership* tests for a one-hot probe of this
+// mapping.
 //
 // Fragment loads are made fully coalesced by PERMUTING the K axis. K is a reduction axis, so any
 // permutation applied to BOTH operands leaves the result unchanged. Within a 64-element K window,
@@ -486,8 +506,11 @@ __global__ void MatMulBlockScaledFp8MmaGemvKernel(AType* __restrict__ output,
 
   const int lane = threadIdx.x;
   const int warp = threadIdx.y;
-  const int g = lane >> 2;  // mma group: output-column offset in the tile AND activation row
-  const int t = lane & 3;   // mma thread-in-group: k sub-offset
+  // See the fragment-ownership table above: `g` indexes the A rows (output columns col_lo/col_hi)
+  // and the B column (activation row); `t` indexes the k sub-slice and, in the accumulator, the
+  // output rows 2t / 2t + 1 this lane stores.
+  const int g = lane >> 2;
+  const int t = lane & 3;
   const int windows = k >> 6;
 
   const int col_lo = blockIdx.x * 16 + g;
@@ -766,7 +789,12 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
   // Tensor-core path (SM80+). Beats the FMA kernel at every M on H200: 1.06-1.23x at M == 1 and
   // 1.4-1.87x at M == 4, where the FMA kernel is ALU bound. Needs 64-element K windows, and at
   // least 4 of them so KSplit warps have something to do.
-  if (sm_major >= 8 && k % 64 == 0 && k >= 256 && block_size % 64 == 0 && Fp8GemvMmaEnabled()) {
+  //
+  // M <= 8 is a hard requirement, not a heuristic: one warp owns a 16-column x 8-row output tile,
+  // where lane (g = lane >> 2, t = lane & 3) reads activation row g, covers weight columns
+  // 16 * blockIdx.x + g and + 8, and stores output rows 2t and 2t + 1 of those two columns. Rows
+  // beyond the mma's 8-row N extent have nowhere to live.
+  if (sm_major >= 8 && m <= 8 && k % 64 == 0 && k >= 256 && block_size % 64 == 0 && Fp8GemvMmaEnabled()) {
     const int windows = k / 64;
     int k_split = (n >= 8192) ? 8 : 16;  // wide N already fills the grid, so fewer warps per block
     if (windows < k_split) {
