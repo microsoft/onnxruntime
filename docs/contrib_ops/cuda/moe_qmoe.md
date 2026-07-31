@@ -23,6 +23,7 @@ and have been significantly modified for ONNX Runtime — see
 9. [FP4 (MXFP4) Details](#9-fp4-mxfp4-details)
   - [9.9 Runtime environment variables](#99-runtime-environment-variables)
   - [9.10 Interleaved GEMV layout + dtype-conditional accumulation](#910-interleaved-gemv-layout--dtype-conditional-accumulation)
+  - [9.11 Single-copy SM80 weights (prefill + decode share one buffer)](#911-single-copy-sm80-weights-prefill--decode-share-one-buffer)
 9b. [NVFP4 (W4A16, block-16) Details](#9b-nvfp4-w4a16-block-16-details)
   - [9b.2 Fused GEMV decode (group-16)](#9b2-fused-gemv-decode-group-16)
   - [9b.3 Fast E2M1 → half/bf16 decode](#9b3-fast-e2m1--halfbf16-decode)
@@ -253,6 +254,12 @@ A16 runner. Helper kernels:
 
 The decoded buffers are owned by the QMoE op for the lifetime of the session.
 
+> **MXFP4 exception.** With `ORT_FP4_SM80_GEMM=1` (default on SM80–SM119) both prefill and
+> decode are served by pre-packed e2m1 buffers, so `LaunchQMoEDequantizeFp4Weights` is never
+> reached and the raw initializers are released in `PrePack`
+> ([§9.11](#911-single-copy-sm80-weights-prefill--decode-share-one-buffer)). Set
+> `ORT_FP4_SM80_GEMM=0` to restore the dequant fallback.
+
 ### 4.4 Target hardware (developer matrix)
 
 RTX 3090 (SM86), RTX 4090 (SM89), H200 (SM90), GB200/B200 (SM100), RTX 5090 (SM120).
@@ -314,6 +321,13 @@ pointers are read at compute time instead.
 
 MXFP4 weights must be packed by `pack_fp4_weights_for_cuda_moe_gemm`. FP8 weights
 are stored as raw e4m3 bytes (no packing).
+
+> **MXFP4 on SM80–SM119.** When `ORT_FP4_SM80_GEMM` is on (the default), `PrePack`
+> produces a **single** pre-packed e2m1 buffer per FC that serves both the grouped-GEMM
+> prefill and the fused GEMV decode, and reports `is_packed = true` so ORT releases the
+> raw `[E, K, N/2]` initializers. Peak MXFP4 weight memory is ~1×; without this it was
+> ~3× (raw initializer + prefill layout + decode layout). See
+> [§9.11](#911-single-copy-sm80-weights-prefill--decode-share-one-buffer).
 
 
 ### 5.2 INT4/INT8 scales + zero-point → bias
@@ -777,7 +791,7 @@ debug switches.
 | `ORT_FP4_GEMV_AUTOTUNE_LOG` | `0` | Set to `1` to log the chosen GEMV configs per shape. |
 | `ORT_FP4_GEMV_INTERLEAVED` | `0` | **Experimental, opt-in.** Routes the MXFP4 decode GEMV through the `ColumnMajorInterleaved` weight layout (`kInterleave=4`, `kStepK=32`) with dtype-conditional accumulation. fp16 gets faster decode; bf16 stays accuracy-safe. Default off keeps the shipping `ColumnMajor` path byte-for-byte unchanged. See [§9.10](#910-interleaved-gemv-layout--dtype-conditional-accumulation). |
 | `ORT_FP4_GEMV_INTERLEAVED_HALFACC` | `0` | **Override.** When `ORT_FP4_GEMV_INTERLEAVED=1`, forces 16-bit accumulation for *both* fp16 and bf16, overriding the dtype-conditional policy; regresses bf16 accuracy, so it is off by default. |
-| `ORT_FP4_SM80_GEMM` | `1` | Routes SM80/Ampere FP4 prefill through the fused-dequant grouped GEMM. Set to `0` to force dense fallback for debugging or comparison. Decode still routes through fused MXFP4 GEMV when supported. |
+| `ORT_FP4_SM80_GEMM` | `1` | Routes SM80–SM119 FP4 prefill through the fused-dequant grouped GEMM. Set to `0` to force dense fallback for debugging or comparison. Decode routes through the fused MXFP4 GEMV, reading the *same* pre-packed buffer as prefill. In this regime the raw e2m1 initializers are released after `PrePack`. See [§9.11](#911-single-copy-sm80-weights-prefill--decode-share-one-buffer). |
 | `ORT_ENABLE_FP4_CUTLASS_GEMM` | `0` | Opt-in native SM90 WFP4A16 CUTLASS GEMM (fast prefill). Requires FP16, SM90, and aligned shapes (`hidden`/`inter` divisible by 256). Must be combined with `ORT_ENABLE_FP4_CUTLASS_UNSAFE=1`. |
 | `ORT_ENABLE_FP4_CUTLASS_UNSAFE` | `0` | Confirms use of the experimental native SM90 path. Without it, a request to enable native GEMM logs a warning and falls back to dequant/GEMV. |
 | `ORT_FP4_PREFILL_MIN_TOKENS` | `64` | When native CUTLASS is enabled, the per-node decode threshold. Tokens with `M >= threshold` (prefill) route to native CUTLASS; `M < threshold` (decode) route to the fused GEMV. Both weight/scale layouts are pre-packed so one node serves both regimes. |
@@ -817,6 +831,65 @@ weights.
 The interleaved layout speeds up fp16 decode; bf16 gets no speedup (the fp32 register cost cancels
 it) but stays accurate. The path is opt-in so fp16 deployments can take the win without affecting
 bf16 or the shipping default.
+
+### 9.11 Single-copy SM80 weights (prefill + decode share one buffer)
+
+**Default on SM80–SM119 (`ORT_FP4_SM80_GEMM=1`).** The SM80 grouped GEMM and the fused decode
+GEMV historically needed *different* e2m1 weight layouts, so a QMoE node kept up to three
+persistent copies of the expert weights:
+
+| copy | layout | consumer |
+|------|--------|----------|
+| raw initializer | `[E, K, N/2]` schema layout | dequant fallback — **unreachable** in this regime |
+| `gemv_fp4_fc*_weights_` | SM80 `ColumnMajorTileInterleave` + nibble pair-interleave | grouped-GEMM prefill |
+| `gemv_fp4_fc*_weights_decode_` | `ColToRow` (or interleave steps 1–3) | fused GEMV decode |
+
+For a 20B-class MXFP4 MoE each copy is ~9 GiB, which put post-load VRAM out of reach of 24 GB
+consumer cards. Two changes collapse this to a single copy:
+
+1. **Release the raw initializers.** In this regime every dispatch is served by a pre-packed
+   buffer, so the dequant fallback — the only consumer of the raw layout — is unreachable.
+   `PrePack` now caches `fc*_weights_shape_` for `CheckInputs` and reports `is_packed = true`.
+2. **Teach the GEMV to read the SM80 layout.** The two layouts differ by exactly one
+   preprocessor step: the `[e0,e2,e4,e6,e1,e3,e5,e7]` nibble pair-interleave applied by
+   `interleave_int4s_inplace_kernel`. Inverting it in the decoder is a compile-time index
+   remap of the same eight `decode` calls — no branches, no extra registers:
+
+```cpp
+// onnxruntime/contrib_ops/cuda/llm/fpA_intB_gemv/details.h
+template <typename AType, bool PairInterleaved = false>
+struct Fp4I2FConverter { ... };            // PairInterleaved un-permutes the SM80 nibble order
+
+// onnxruntime/contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.cu
+template <typename T>
+using Fp4KernelDetailsSm80Pair =
+    fiv::KernelDetails<typename Fp4ADetails<T>::Type, fiv::Fp4DetailsW,
+                       fiv::ColumnMajorInterleaved, /*UseInterleavedConverter=*/true,
+                       kTileSizeKFp4>;
+```
+
+`ConverterWrapper` now forwards `kUseInterleavedConverter` to the FP4 branch, so selecting
+`Fp4KernelDetailsSm80Pair` is all that is needed to decode the prefill buffer directly.
+
+**Shape gate.** Because this reuses the interleaved GEMV (`kInterleave=4`, `kStepK=32`), it
+inherits the interleaved rules — MXFP4 `group_size == 32`, `n % 16 == 0`, `k % 64 == 0` —
+checked at pack time by `is_moe_gemv_fp4_sm80_layout_supported`. Shapes that miss the gate
+transparently fall back to a dedicated `gemv_fp4_fc*_weights_decode_` copy (logged at INFO);
+NVFP4 (block 16) always uses the plain `ColToRow` layout. `gpt-oss-20b`
+(`k=2880`, `n=5760`/`2880`) clears the gate.
+
+**Measured** — `gpt-oss-20b` MXFP4, post-load device memory:
+
+| configuration | post-load |
+|---|---|
+| before (3 copies) | 32908 MiB |
+| release initializers only (2 copies) | 23164 MiB |
+| **single copy (default)** | **13996 MiB** |
+
+> **Returning the memory to the device.** Released initializers only shrink the process's
+> device footprint when initializers bypass the BFC arena. Set the session option
+> `session.use_device_allocator_for_initializers = 1`; otherwise the freed bytes are merely
+> recycled inside the arena for later activation/KV allocations.
 
 ---
 
@@ -1431,6 +1504,10 @@ Architecture filtering of the LLM library (`onnxruntime_filter_cuda_archs`):
   so a separate parity harness for this path is still pending.
 - **Hopper W4A8** (INT4 weight + FP8 activation) is not supported — TRT-LLM gates
   its fast path to SM89 only.
+- **MXFP4 single-copy weights** require `group_size == 32`, `n % 16 == 0` and
+  `k % 64 == 0`. Shapes outside that gate keep a second decode-layout copy
+  (~2× weight memory); NVFP4 (block 16) always does.
+  See [§9.11](#911-single-copy-sm80-weights-prefill--decode-share-one-buffer).
 
 ---
 

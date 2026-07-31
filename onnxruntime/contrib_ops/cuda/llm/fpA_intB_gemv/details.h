@@ -232,7 +232,20 @@ struct I2FConverter<AType, WElemBits, false> {
   }
 };
 
-template <typename AType>
+// E2M1 (FP4) -> half/bf16 converter.
+//
+// ``PairInterleaved`` selects the nibble order of the packed source:
+//   false -- linear order, i.e. element ``i`` occupies nibble ``i`` of the 32-bit word. This is
+//            what ``LaunchQMoERepackFP4ColToRow`` emits and what the CUTLASS fpA_intB W4_A16
+//            preprocessor's layout-only steps 1-3 preserve.
+//   true  -- the ``[e0,e2,e4,e6,e1,e3,e5,e7]`` pair-interleave applied by
+//            ``interleave_int4s_inplace_kernel`` (preprocessor step 4 without the integer +8
+//            bias). This is the layout the SM80 grouped GEMM consumes, so reading it here lets a
+//            single pre-packed weight buffer serve both the grouped-GEMM prefill and the fused
+//            GEMV decode instead of keeping two full copies of the expert weights.
+// The un-permutation is a compile-time index remap of the same eight ``decode`` calls, so it
+// costs no extra registers, branches or ALU work.
+template <typename AType, bool PairInterleaved = false>
 struct Fp4I2FConverter {
   static_assert(std::is_same_v<AType, half> || std::is_same_v<AType, __nv_bfloat16>);
 
@@ -271,14 +284,33 @@ struct Fp4I2FConverter {
 
   template <int N>
   __device__ __forceinline__ static void convert(void* src, void* dst) {
-    static_assert(N % 2 == 0);
     uint8_t const* s = reinterpret_cast<uint8_t const*>(src);
     AType* d = reinterpret_cast<AType*>(dst);
+    if constexpr (!PairInterleaved) {
+      static_assert(N % 2 == 0);
 #pragma unroll
-    for (int i = 0; i < N; i += 2) {
-      uint8_t byte = s[i >> 1];
-      d[i] = decode(static_cast<uint8_t>(byte & 0x0F));
-      d[i + 1] = decode(static_cast<uint8_t>((byte >> 4) & 0x0F));
+      for (int i = 0; i < N; i += 2) {
+        uint8_t byte = s[i >> 1];
+        d[i] = decode(static_cast<uint8_t>(byte & 0x0F));
+        d[i + 1] = decode(static_cast<uint8_t>((byte >> 4) & 0x0F));
+      }
+    } else {
+      // The pair-interleave permutes whole 32-bit words, so N must cover complete words.
+      static_assert(N % 8 == 0, "Pair-interleaved FP4 decode needs a multiple of 8 elements");
+      // Packing writes element i to nibble slot (i even ? i/2 : (i - 1)/2 + 4), so logical
+      // element i is read back from slot kSlot[i]. Nibble slot j lives in byte j/2, low nibble
+      // for even j. kSlot is constexpr and the loops are unrolled, so every index below folds
+      // to a compile-time constant.
+      constexpr int kSlot[8] = {0, 4, 1, 5, 2, 6, 3, 7};
+#pragma unroll
+      for (int w = 0; w < N / 8; ++w) {
+        uint8_t const* word = s + w * 4;
+#pragma unroll
+        for (int i = 0; i < 8; ++i) {
+          uint8_t const byte = word[kSlot[i] >> 1];
+          d[w * 8 + i] = decode(static_cast<uint8_t>((byte >> ((kSlot[i] & 1) * 4)) & 0x0F));
+        }
+      }
     }
   }
 };
@@ -290,7 +322,7 @@ struct ConverterWrapper {
   static constexpr bool kUseInterleavedConverter = Details::kUseInterleavedConverter;
   using Converter = std::conditional_t<
       IsFp4Weight<TypeDetailsW>::value,
-      Fp4I2FConverter<typename TypeDetailsA::Type>,
+      Fp4I2FConverter<typename TypeDetailsA::Type, kUseInterleavedConverter>,
       I2FConverter<typename TypeDetailsA::Type, TypeDetailsW::kElemBits, kUseInterleavedConverter>>;
 };
 
