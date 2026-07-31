@@ -84,8 +84,13 @@ void RunLinearAttentionGateTest(int batch_size, int seq_length, int num_heads, b
     tester.AddOutput<T>("beta", dims, ToTensorType<T>(expected_beta), false, tolerance, tolerance);
   }
 
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+  execution_providers.push_back(std::move(cuda_ep));
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
@@ -123,8 +128,13 @@ void RunGatedRMSNormTest(int batch_size, int seq_length, int num_heads, int head
   tester.AddInput<T>("gate", dims, ToTensorType<T>(gate));
   tester.AddOutput<T>("Y", dims, ToTensorType<T>(expected), false, tolerance, tolerance);
 
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+  execution_providers.push_back(std::move(cuda_ep));
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
