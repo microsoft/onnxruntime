@@ -26,9 +26,13 @@ endfunction()
 
 function(onnxruntime_telemetry_restore_cache_variable name)
   if(_onnxruntime_telemetry_cache_${name}_is_set)
+    set(cache_type "${_onnxruntime_telemetry_cache_${name}_type}")
+    if(cache_type STREQUAL "UNINITIALIZED")
+      set(cache_type STRING)
+    endif()
     set(${name}
       "${_onnxruntime_telemetry_cache_${name}_value}"
-      CACHE "${_onnxruntime_telemetry_cache_${name}_type}"
+      CACHE "${cache_type}"
       "${_onnxruntime_telemetry_cache_${name}_help}"
       FORCE)
   else()
@@ -215,9 +219,9 @@ block(SCOPE_FOR VARIABLES POLICIES)
   set(CURL_CA_PATH none CACHE STRING "Select the target Linux CA path at runtime" FORCE)
   set(CURL_CA_EMBED "" CACHE STRING "Do not embed a build-host CA bundle" FORCE)
   set(CURL_DEFAULT_SSL_BACKEND mbedtls CACHE STRING "Use the pinned mbedTLS backend" FORCE)
-  set(CURL_ZLIB OFF CACHE STRING "Disable zlib" FORCE)
-  set(CURL_BROTLI OFF CACHE STRING "Disable brotli" FORCE)
-  set(CURL_ZSTD OFF CACHE STRING "Disable zstd" FORCE)
+  set(CURL_ZLIB OFF CACHE BOOL "Disable zlib" FORCE)
+  set(CURL_BROTLI OFF CACHE BOOL "Disable brotli" FORCE)
+  set(CURL_ZSTD OFF CACHE BOOL "Disable zstd" FORCE)
 
   onnxruntime_fetchcontent_declare(
     onnxruntime_mbedtls
