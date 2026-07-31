@@ -554,6 +554,32 @@ TEST_F(FunctionExtractorTest, EnforcesResourceBudgetsBeforeMutation) {
   }
 }
 
+TEST_F(FunctionExtractorTest, RejectsHighArityPatternBeforeMutation) {
+  constexpr size_t input_count = 128;
+  std::vector<std::string> inputs;
+  inputs.reserve(input_count);
+  for (size_t i = 0; i < input_count; ++i) {
+    inputs.push_back("x" + std::to_string(i));
+  }
+  const std::vector<NodeDef> nodes{
+      {{"joined"}, "Concat", inputs, {ONNX_NAMESPACE::MakeAttribute("axis", int64_t{0})}},
+      {{"out"}, "Identity", {"joined"}},
+  };
+  const FunctionProto function_proto =
+      MakeFunction("HighArity", nodes, inputs, std::vector<std::string>{"out"});
+  auto model = MakeModel(function_proto);
+  Graph& graph = model->MainGraph();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  FunctionExtractorOptions options;
+  options.max_worklist_bindings = 16;
+  FunctionExtractor extractor(function_proto, options);
+  const FunctionExtractionResult result = extractor.Extract(graph);
+  EXPECT_FALSE(result.status.IsOK());
+  EXPECT_EQ(result.replacements_applied, 0u);
+  EXPECT_EQ(graph.NumberOfNodes(), 0u);
+}
+
 // Deterministic structural matching.
 
 TEST_F(FunctionExtractorTest, ExtractsLinearPattern) {
