@@ -626,7 +626,12 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
 }
 
 Status Environment::CreateAndRegisterInternalEps() {
-  auto internal_ep_libraries = EpLibraryInternal::CreateInternalEps();
+  // Capture allow_virtual_devices here (lock-free) and pass it to the internal EP factories at
+  // construction. The internal WebGPU EP factory needs it in GetSupportedDevices but cannot query the
+  // OrtEnv singleton there: internal EPs are registered while OrtEnv's creation mutex is already held on
+  // this thread, so the query would self-deadlock.
+  const bool allow_virtual_devices = num_allow_virtual_device_uses_ > 0;
+  auto internal_ep_libraries = EpLibraryInternal::CreateInternalEps(allow_virtual_devices);
   for (auto& ep_library : internal_ep_libraries) {
     // we do a std::move in the function call so need a valid pointer for the args after the move
     auto* internal_library_ptr = ep_library.get();
