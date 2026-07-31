@@ -9,12 +9,35 @@
 #include <queue>
 
 #include "core/framework/op_kernel.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 
 namespace onnxruntime {
 
 namespace {
 constexpr int64_t kSmallInitializerThreshold = 100;
+
+constexpr bool IsUnsupportedCpuFallbackElemType(int32_t elem_type) noexcept {
+  switch (elem_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN:
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ:
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2:
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ:
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool IsUnsupportedCpuFallbackType(const NodeArg& arg) {
+  const ONNX_NAMESPACE::TypeProto* type_proto = arg.TypeAsProto();
+  return type_proto != nullptr &&
+         utils::HasTensorType(*type_proto) &&
+         IsUnsupportedCpuFallbackElemType(type_proto->tensor_type().elem_type());
+}
 
 static bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const NodeArg* arg) {
   // 'true' in the function call is to let the searching for the initializer
@@ -126,10 +149,8 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
     for (size_t i = 0; i < node->InputDefs().size(); ++i) {
       auto* input = node->InputDefs()[i];
 
-      // Skip CPU placement for float16, bfloat16, float8e4m3fn, float8e4m3fnuz,
-      // float8e5m2, float8e5m2fnuz, and float4e2m1 inputs.
-      const auto* input_type = input->Type();
-      if (input_type != nullptr && fallback_cpu_capability_internal::IsUnsupportedCpuFallbackType(*input_type)) {
+      // Reduced-precision types have little to no CPU kernel coverage, so never force them to CPU.
+      if (IsUnsupportedCpuFallbackType(*input)) {
         place_in_cpu = false;
         break;
       }
