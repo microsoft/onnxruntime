@@ -49,7 +49,7 @@ extends:
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
     settings:
-      networkIsolationPolicy: Permissive
+      networkIsolationPolicy: Permissive,AzureContainerRegistry
     sdl:
       # No top-level `pool:` is declared for this pipeline (each stage
       # template pins its own pool), so source analysis needs an
