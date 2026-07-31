@@ -1,0 +1,59 @@
+parameters:
+- name: machine_pool
+  displayName: 'The agent pool to run on (must use onnxruntime-win-cpu-vs2022-latest-nvme-x64 image)'
+  type: string
+  default: 'Onnxruntime-QNNEP-Windows-2022-CPU'
+
+stages:
+- stage: Windows_CPU_x64_Build_Test
+  dependsOn: []
+  jobs:
+  - job: Build_CPU_x64
+    pool:
+      name: ${{ parameters.machine_pool }}
+      os: windows
+    variables:
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      skipComponentGovernanceDetection: true
+      BuildConfig: 'RelWithDebInfo'
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
+    timeoutInMinutes: 240
+    workspace:
+      clean: all
+    steps:
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.x'
+        addToPath: true
+        architecture: 'x64'
+
+    - task: NuGetToolInstaller@1
+      inputs:
+        versionSpec: 6.4.x
+
+    - task: PythonScript@0
+      displayName: 'Build ORT x64 CPU'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: >-
+          --config $(BuildConfig)
+          --build_dir $(Build.BinariesDirectory)
+          --cmake_generator "Visual Studio 17 2022"
+          --build_shared_lib --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+          --use_binskim_compliant_compile_flags
+          --update --build --parallel
+
+    - task: PythonScript@0
+      displayName: 'Run unit tests'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: >-
+          --config $(BuildConfig)
+          --build_dir $(Build.BinariesDirectory)
+          --cmake_generator "Visual Studio 17 2022"
+          --build_shared_lib
+          --test --enable_onnx_tests
