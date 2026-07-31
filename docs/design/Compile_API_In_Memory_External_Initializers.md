@@ -2,8 +2,14 @@
 
 ## Goal
 
-Allow `OrtCompileApi` to save and reload compiled or optimized ONNX models whose initializer data makes the complete
-model exceed the protobuf 2 GB limit, without filesystem access.
+Support external initializer data without filesystem access through two separate capabilities:
+
+- Allow `OrtCompileApi` to write an external initializer file to a caller-owned buffer when saving a compiled or
+  optimized ONNX model.
+- Allow an application to provide an external initializer file as a buffer when creating an inference session.
+
+Together, these capabilities support models whose initializer data makes the complete model exceed the protobuf 2 GB
+limit.
 
 Compilation produces two buffers:
 
@@ -22,11 +28,36 @@ Add `ModelCompilationOptions_SetOutputModelExternalInitializersBuffer` with:
 - an `OrtAllocator`; and
 - output pointers for the allocated buffer and its size.
 
+```cpp
+ModelCompilationOptions_SetOutputModelExternalInitializersBuffer(
+  OrtModelCompilationOptions* options,
+  const ORTCHAR_T* logical_file_name,
+  size_t initializer_size_threshold,
+  OrtAllocator* allocator,
+  void** output_buffer,
+  size_t* output_buffer_size);
+```
+
 Add the corresponding C++ wrapper and an `ExternalInitializerBufferHolder` alternative to
 `epctx::ModelGenOptions::initializers_location`.
 
+Add `ModelCompilationOptions_SetOutputModelExternalInitializersAlignment`, which accepts a power-of-two alignment and a
+minimum initializer size at which to apply it. It affects both file and buffer output; an alignment of zero disables
+this additional policy. This allows a buffer to be persisted later with mmap-friendly offsets.
+
+```cpp
+ModelCompilationOptions_SetOutputModelExternalInitializersAlignment(
+  OrtModelCompilationOptions* options,
+  size_t alignment,
+  size_t minimum_size);
+```
+
+Store the alignment settings separately from the initializer destination in `ModelGenOptions`, then apply them when
+constructing `ModelSavingOptions` for either file or buffer output. Setter call order does not matter.
+
 On failure, ORT must free any temporary allocation and leave the caller's output pointer and size unchanged. On
-success, the caller owns the buffer and releases it with the supplied allocator.
+success, the caller owns the buffer and releases it with the supplied allocator. If no initializer meets the threshold,
+return a null buffer and size zero.
 
 ## Serialization
 
@@ -40,39 +71,53 @@ Use a two-pass implementation:
 2. Allocate the exact size once, write each initializer to its assigned span, and emit its logical filename, offset,
    and length into the `TensorProto`.
 
-Initializers may be tightly packed. ONNX external data has no data-type alignment requirement because loading uses byte
-offsets and lengths. If the existing optional mmap alignment policy is enabled, preserve its padding and 4 KiB offset
-alignment; do not introduce a new data-type-based policy.
+Write externalized initializers in load-ready tensor storage and naturally align each tensor. Apply alignment configured
+by `ModelCompilationOptions_SetOutputModelExternalInitializersAlignment` above its size threshold; the existing default
+policy is mmap-friendly 4 KiB alignment for data larger than 1 MiB. Prepacked blobs are opaque and use only the
+configured alignment policy.
 
 The serialized ONNX protobuf must still be smaller than 2 GB. Externalizing initializer bytes keeps the protobuf small;
 this feature does not support graph metadata that independently exceeds protobuf's limit.
 
 ## Loading
 
-The existing `OrtApi::AddExternalInitializersFromFilesInMemory` API already accepts an array of logical files, not an
-array of initializers. Pass one entry whose filename matches the logical filename recorded in the model and whose buffer
-contains all externalized initializers. ORT locates each initializer within that buffer using its `TensorProto` offset
-and length.
+The existing `OrtApi::AddExternalInitializersFromFilesInMemory` accepts whole logical files, and one supplied file may
+contain multiple initializers. It copies initializer data during session creation by default.
 
-That API copies initializer data during session creation so the application can immediately release the file buffer.
-Keep it as the compatible loading path.
+Add `kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly` with the config key
+`session.use_external_initializer_file_buffers_directly`. Its default is `"0"`. When set to `"1"`, buffers supplied
+through `AddExternalInitializersFromFilesInMemory` are borrowed and used directly for initializers. This follows the
+existing ORT-format direct-buffer options and avoids adding another C/C++ API. Update the existing API documentation to
+state that every session created from the options may outlive the options, and the application must keep each buffer
+unchanged and alive until those sessions are released. If session creation fails, the buffers may be released after the
+call returns.
 
-Add a separate borrowed-buffer variant for memory-constrained callers. It uses the same filename-to-buffer mapping but
-creates tensors over validated buffer slices without copying. Its contract requires the application to keep every
-buffer unchanged and alive until the session is released. Small initializers needed by shape inference and data that
-requires endian conversion may still be copied.
+During model load, recursively match each external initializer's logical filename, validate its declared and computed
+size, and use checked arithmetic to validate its offset and length against the file buffer. Create an initializer
+`OrtValue` over the validated slice and retain it in the graph/session instead of copying its data into the
+`TensorProto`. Small values that must remain in the `TensorProto` for shape inference and values requiring endian
+conversion may be copied.
+
+Require each direct buffer base address plus initializer offset to satisfy the runtime storage type's natural
+alignment. Reject a null buffer, a filename mismatch, out-of-range slices, and misalignment rather than silently falling
+back to a copy. Valid overlapping slices are allowed.
 
 ## Validation
 
-Reject an empty or absolute logical filename, null allocator or output pointers, invalid thresholds, and offset or size
-overflow. Validate that generated offsets and lengths fit the ONNX signed 64-bit external-data fields.
+Reject an empty or absolute logical filename, null allocator or output pointers, invalid thresholds, a non-power-of-two
+alignment, a misaligned base allocation, and offset or size overflow. Validate that generated offsets and lengths fit
+the ONNX signed 64-bit external-data fields.
 
 ## Tests
 
 - Compile a model to an ONNX buffer plus one external initializer buffer, with multiple initializers sharing the buffer.
-- Reload both buffers through both the copying and borrowed-buffer APIs and verify inference results.
-- Cover threshold boundaries, subgraph initializers, and existing optional alignment behavior.
-- Verify logical filename metadata, offsets, lengths, output ownership, and borrowed-buffer lifetime requirements.
+- Reload both buffers through the existing API in its default copying mode and direct-buffer mode, and verify inference
+  results.
+- Verify internally that large direct-use initializer tensors point into the supplied file buffer, while required small
+  or endian-converted values use owned storage.
+- Cover threshold boundaries, subgraph initializers, natural and configured offset alignment, and misaligned direct
+  buffers.
+- Verify logical filename metadata, offsets, lengths, output ownership, and direct-buffer lifetime requirements.
 - Verify invalid arguments, allocation failure, checked-arithmetic failure, and unchanged outputs on failure.
 - Exercise aggregate external-data sizes beyond 2 GB with a counting or sparse test sink so routine CI does not require
   a 2 GB allocation.
