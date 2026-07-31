@@ -569,7 +569,27 @@ TEST_F(FunctionExtractorTest, RejectsHighArityPatternBeforeMutation) {
       MakeFunction("HighArity", nodes, inputs, std::vector<std::string>{"out"});
   auto model = MakeModel(function_proto);
   Graph& graph = model->MainGraph();
+  FunctionExtractorGraphBuilder builder(graph);
+  std::vector<NodeArg*> target_inputs;
+  target_inputs.reserve(input_count);
+  for (size_t i = 0; i < input_count; ++i) {
+    target_inputs.push_back(builder.MakeInput<float>({1}, 0.0f, 1.0f));
+  }
+  NodeArg* joined = builder.MakeIntermediate<float>({static_cast<int64_t>(input_count)});
+  NodeArg* output = builder.MakeOutput<float>({static_cast<int64_t>(input_count)});
+  NodeAttributes attributes{{"axis", ONNX_NAMESPACE::MakeAttribute("axis", int64_t{0})}};
+  builder.AddNode("Concat", target_inputs, {joined}, kOnnxDomain, &attributes);
+  builder.AddNode("Identity", {joined}, {output});
+  builder.SetGraphOutputs();
   ASSERT_STATUS_OK(graph.Resolve());
+
+  const size_t node_count_before = graph.NumberOfNodes();
+  std::vector<std::pair<NodeIndex, const Node*>> node_identities_before;
+  for (const Node& node : graph.Nodes()) {
+    node_identities_before.emplace_back(node.Index(), &node);
+  }
+  const std::string graph_proto_before = graph.ToGraphProto().SerializeAsString();
+  ASSERT_FALSE(graph.GraphResolveNeeded());
 
   FunctionExtractorOptions options;
   options.max_worklist_bindings = 16;
@@ -577,7 +597,16 @@ TEST_F(FunctionExtractorTest, RejectsHighArityPatternBeforeMutation) {
   const FunctionExtractionResult result = extractor.Extract(graph);
   EXPECT_FALSE(result.status.IsOK());
   EXPECT_EQ(result.replacements_applied, 0u);
-  EXPECT_EQ(graph.NumberOfNodes(), 0u);
+  EXPECT_EQ(graph.NumberOfNodes(), node_count_before);
+  EXPECT_EQ(CountOp(graph, kFunctionDomain, function_proto.name()), 0u);
+  EXPECT_FALSE(graph.GraphResolveNeeded());
+  EXPECT_EQ(graph.ToGraphProto().SerializeAsString(), graph_proto_before);
+
+  std::vector<std::pair<NodeIndex, const Node*>> node_identities_after;
+  for (const Node& node : graph.Nodes()) {
+    node_identities_after.emplace_back(node.Index(), &node);
+  }
+  EXPECT_EQ(node_identities_after, node_identities_before);
 }
 
 // Deterministic structural matching.
