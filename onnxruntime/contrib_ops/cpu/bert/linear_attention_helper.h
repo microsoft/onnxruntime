@@ -16,8 +16,9 @@ namespace linear_attention_helper {
 //
 // 0 (the default, i.e. attribute absent) selects the legacy unwindowed state layout. Every model
 // exported before the attribute existed lands here, so this must stay the default.
-inline Status ParseStateWindow(const OpKernelInfo& info, int& state_window) {
-  const int64_t value = info.GetAttrOrDefault<int64_t>("state_window", 0);
+template <typename TKernelInfo>
+Status ParseStateWindow(const TKernelInfo& info, int& state_window) {
+  const int64_t value = info.template GetAttrOrDefault<int64_t>("state_window", 0);
   if (value < 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "state_window must be >= 0, got ", value);
