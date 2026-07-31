@@ -158,15 +158,15 @@ class QDQPad(QDQOperatorBase):
 
         return False
 
-    def quantize(self):
+    def reg2quant(self):
         assert self.node.op_type == "Pad"
 
         for input_name in self.node.input:
             if input_name:
-                self.quantizer.quantize_activation_tensor(input_name)
+                self.quantizer.reg2quant_activation_tensor(input_name)
 
         if not self.disable_qdq_for_node_output:
             if self._should_quantize_output_same_as_input():
-                self.quantizer.quantize_output_same_as_input(self.node.output[0], self.node.input[0], self.node.name)
+                self.quantizer.reg2quant_output_same_as_input(self.node.output[0], self.node.input[0], self.node.name)
             else:
-                self.quantizer.quantize_activation_tensor(self.node.output[0])
+                self.quantizer.reg2quant_activation_tensor(self.node.output[0])
