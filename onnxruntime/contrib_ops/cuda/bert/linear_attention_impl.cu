@@ -1117,10 +1117,39 @@ Status LaunchLinearAttentionKernel(
   // (DK in {64,128,256});
   // everything else falls through to the recurrent kernels below.
   // ---------------------------------------------------------------------------
-  // This cutoff keeps short decode/continuation runs on the column-parallel kernels;
-  // longer prefill-like runs benefit from amortizing state in shared memory below.
-  constexpr int kDecodeSeqThreshold = 16;
-  if (seq_len <= kDecodeSeqThreshold && (d_k == 64 || d_k == 128 || d_k == 256)) {
+  // This cutoff keeps short decode/continuation runs on the column-parallel kernels.
+  static const int kDecodeSeqThreshold =
+      ParseEnvironmentVariableWithDefault<int>("ORT_LINEAR_ATTENTION_COL_SEQ_THRESHOLD", 16);
+
+  // Prefill is *also* routed to the column-parallel kernels whenever the recurrent grid would
+  // leave the GPU idle. The recurrent kernels launch exactly batch_size * kv_num_heads blocks, so
+  // a single-sequence hybrid model with 32 KV heads occupies 32 of 132 SMs on H200 while walking
+  // the token loop with ~5 __syncthreads() apiece. Splitting d_v across kColsPerBlock-wide blocks
+  // multiplies the block count by d_v / kColsPerBlock at identical total thread count, and the
+  // column recurrence is mathematically independent per column so the result is unchanged up to
+  // reduction order. Measured on Qwen3.6-35B-A3B (batch 1, 32 KV heads, d_k = d_v = 128, 30
+  // linear-attention layers): 1024-token prefill 215 -> 97 us/token.
+  //
+  // Once batch_size * kv_num_heads already fills the machine the recurrent kernels keep their
+  // shared-memory state amortization, so the split is only applied below that point.
+  static const int kSmCount = []() {
+    int device = 0;
+    int count = 0;
+    if (cudaGetDevice(&device) != cudaSuccess ||
+        cudaDeviceGetAttribute(&count, cudaDevAttrMultiProcessorCount, device) != cudaSuccess) {
+      return 0;
+    }
+    return count;
+  }();
+  const bool recurrent_grid_underfills_gpu = batch_size * kv_num_heads < kSmCount;
+  // Only the v2 (column-per-thread) kernel below has been validated at prefill lengths, so the
+  // occupancy-based override is limited to the shapes it accepts; everything else keeps the
+  // original seq_len cutoff.
+  const bool prefill_column_split =
+      recurrent_grid_underfills_gpu && d_k <= 128 && (d_v % kColsPerBlock) == 0;
+
+  if ((seq_len <= kDecodeSeqThreshold || prefill_column_split) &&
+      (d_k == 64 || d_k == 128 || d_k == 256)) {
     // v2 (column-per-thread, coalesced row-major state) is the default for
     // DK <= 128. It requires d_v % kColsPerBlock == 0; otherwise fall back
     // to the v1 warp-per-column kernel (which handles any d_v). DK=256 also
