@@ -497,8 +497,8 @@ struct ProviderHostImpl : ProviderHost {
   int float32s__size(const ONNX_NAMESPACE::float32s* p) override { return p->size(); }
 
   // StringStringEntryProto
-  std::string* StringStringEntryProto__mutable_key(ONNX_NAMESPACE::StringStringEntryProto* p) override { return p->mutable_key(); }
-  std::string* StringStringEntryProto__mutable_value(ONNX_NAMESPACE::StringStringEntryProto* p) override { return p->mutable_value(); }
+  std::string* StringStringEntryProto__mutable_key(ONNX_NAMESPACE::StringStringEntryProto* p) override { return p->mutable_key()->mutable_ptr(); }
+  std::string* StringStringEntryProto__mutable_value(ONNX_NAMESPACE::StringStringEntryProto* p) override { return p->mutable_value()->mutable_ptr(); }
 
   // StringStringEntryProtos
   void StringStringEntryProtos__Clear(ONNX_NAMESPACE::StringStringEntryProtos* p) override { p->Clear(); };
@@ -507,7 +507,7 @@ struct ProviderHostImpl : ProviderHost {
   ONNX_NAMESPACE::StringStringEntryProto& StringStringEntryProtos__at(ONNX_NAMESPACE::StringStringEntryProtos* p, int index) override { return p->at(index); };
 
   // OperatorSetIdProto
-  std::string* OperatorSetIdProto__mutable_domain(ONNX_NAMESPACE::OperatorSetIdProto* p) override { return p->mutable_domain(); }
+  std::string* OperatorSetIdProto__mutable_domain(ONNX_NAMESPACE::OperatorSetIdProto* p) override { return p->mutable_domain()->mutable_ptr(); }
   void OperatorSetIdProto__set_version(ONNX_NAMESPACE::OperatorSetIdProto* p, int64_t version) override { return p->set_version(version); }
   int64_t OperatorSetIdProto__version(const ONNX_NAMESPACE::OperatorSetIdProto* p) override { return p->version(); }
 
@@ -620,7 +620,7 @@ struct ProviderHostImpl : ProviderHost {
   ONNX_NAMESPACE::TensorProtos* GraphProto__mutable_initializer(ONNX_NAMESPACE::GraphProto* p) override { return p->mutable_initializer(); }
   ONNX_NAMESPACE::TensorProto* GraphProto__add_initializer(ONNX_NAMESPACE::GraphProto* p) override { return p->add_initializer(); }
   ONNX_NAMESPACE::NodeProto* GraphProto__add_node(ONNX_NAMESPACE::GraphProto* p) override { return p->add_node(); }
-  std::string* GraphProto__mutable_name(ONNX_NAMESPACE::GraphProto* p) override { return p->mutable_name(); }
+  std::string* GraphProto__mutable_name(ONNX_NAMESPACE::GraphProto* p) override { return p->mutable_name()->mutable_ptr(); }
   ONNX_NAMESPACE::NodeProto* GraphProto__mutable_node(ONNX_NAMESPACE::GraphProto* p, int index) override { return p->mutable_node(index); }
 
   ONNX_NAMESPACE::GraphProto& GraphProto__operator_assign(ONNX_NAMESPACE::GraphProto* p, const ONNX_NAMESPACE::GraphProto& v) override {
@@ -687,8 +687,23 @@ struct ProviderHostImpl : ProviderHost {
   int TensorProto__data_location(const ONNX_NAMESPACE::TensorProto* p) override { return p->data_location(); }
   void TensorProto__set_data_location(ONNX_NAMESPACE::TensorProto* p, ONNX_NAMESPACE::TensorProto_DataLocation data_location) override { return p->set_data_location(data_location); }
   bool TensorProto__has_raw_data(const ONNX_NAMESPACE::TensorProto* p) override { return p->has_raw_data(); }
+#ifdef ORT_USE_ONNX_LIGHT
+  const std::string& TensorProto__raw_data(const ONNX_NAMESPACE::TensorProto* p) override {
+    // ByteSpan → thread-local string copy for compatibility.
+    thread_local std::string buf;
+    const auto& rd = p->raw_data();
+    buf.assign(reinterpret_cast<const char*>(rd.data()), rd.size());
+    return buf;
+  }
+  std::string* TensorProto__mutable_raw_data(ONNX_NAMESPACE::TensorProto* /*p*/) override {
+    // Not directly supported with ByteSpan; return nullptr.
+    // Provider bridge callers that mutate raw_data need onnx-light-specific handling.
+    ORT_NOT_IMPLEMENTED("mutable_raw_data not supported with onnx-light");
+  }
+#else
   const std::string& TensorProto__raw_data(const ONNX_NAMESPACE::TensorProto* p) override { return p->raw_data(); }
   std::string* TensorProto__mutable_raw_data(ONNX_NAMESPACE::TensorProto* p) override { return p->mutable_raw_data(); }
+#endif
 
   bool TensorProto__has_data_type(const ONNX_NAMESPACE::TensorProto* p) override { return p->has_data_type(); }
   int32_t TensorProto__data_type(const ONNX_NAMESPACE::TensorProto* p) override { return p->data_type(); }

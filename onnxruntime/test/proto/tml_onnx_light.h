@@ -246,6 +246,13 @@ class TraditionalMLData {
     debug_info_.clear();
   }
 
+  bool ParseFromArray(const void* data, int size) {
+    ol::utils::StringStream stream(data, static_cast<int64_t>(size));
+    ol::ParseOptions opts;
+    ParseFromStream(stream, opts);
+    return true;
+  }
+
   void ParseFromStream(ol::utils::BinaryStream& s, ol::ParseOptions& opts) {
     while (s.NotEnd()) {
       const ol::utils::FieldNumber f = s.next_field();

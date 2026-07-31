@@ -736,7 +736,7 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::OptionalProto& test_dat
                                    std::unordered_map<std::string, Ort::Value>& out) const {
   // Optional Tensor
   if (test_data_pb.elem_type() ==
-      ONNX_NAMESPACE::OptionalProto_DataType::OptionalProto_DataType_TENSOR) {
+      static_cast<decltype(test_data_pb.elem_type())>(ONNX_NAMESPACE::OptionalProto::DataType::TENSOR)) {
     // The optional tensor is not "None", deal with it as a regular tensor
     if (test_data_pb.has_tensor_value()) {
       ConvertTestData(test_data_pb.tensor_value(), b, is_input, i, out);
@@ -760,7 +760,7 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::OptionalProto& test_dat
     }
   }  // Optional Sequence Tensor
   else if (test_data_pb.elem_type() ==
-           ONNX_NAMESPACE::OptionalProto_DataType::OptionalProto_DataType_SEQUENCE) {
+           static_cast<decltype(test_data_pb.elem_type())>(ONNX_NAMESPACE::OptionalProto::DataType::SEQUENCE)) {
     // The optional sequence tensor is not "None", deal with it as a regular tensor
     if (test_data_pb.has_sequence_value()) {
       // ConvertTestData() ensures that sequence contains only tensors - we do no need

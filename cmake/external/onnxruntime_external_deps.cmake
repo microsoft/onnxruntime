@@ -112,7 +112,7 @@ if(onnxruntime_USE_MIMALLOC)
 endif()
 
 # Download a protoc binary from Internet if needed
-if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT onnxruntime_USE_VCPKG)
+if(NOT onnxruntime_USE_ONNX_LIGHT AND NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT onnxruntime_USE_VCPKG)
   # This part of code is only for users' convenience. The code couldn't handle all cases. Users always can manually
   # download protoc from Protobuf's Github release page and pass the local path to the ONNX_CUSTOM_PROTOC_EXECUTABLE
   # variable.
@@ -170,6 +170,10 @@ if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT onnxruntime_USE_VCPKG)
     endif()
   endif()
 endif()
+
+# onnx-light provides protobuf::libprotobuf and protobuf::libprotobuf-lite as
+# INTERFACE compatibility aliases, so the entire protobuf fetch is skipped.
+if(NOT onnxruntime_USE_ONNX_LIGHT)
 
 # if ONNX_CUSTOM_PROTOC_EXECUTABLE is set we don't need to build the protoc binary
 if (ONNX_CUSTOM_PROTOC_EXECUTABLE)
@@ -260,6 +264,9 @@ else()
     target_compile_options(libprotobuf-lite PRIVATE "-w")
   endif()
 endif()
+
+endif() # NOT onnxruntime_USE_ONNX_LIGHT
+
 if (onnxruntime_USE_FULL_PROTOBUF)
   set(PROTOBUF_LIB protobuf::libprotobuf)
 else()
@@ -558,6 +565,46 @@ if(onnxruntime_USE_ONNX_LIGHT)
   endif()
 
   onnxruntime_fetchcontent_makeavailable(onnx_light)
+
+  # Suppress warnings-as-errors for onnx-light sources (e.g. -Wreorder).
+  # ORT builds with -Werror, but onnx-light headers may trigger warnings that
+  # are harmless.  Mirror the same "-w" suppression used for protobuf/onnx.
+  # Also mark the include directories as SYSTEM so that ORT translation units
+  # including onnx-light headers do not trigger -Werror.
+  set(_onnx_light_all_targets
+    lib_onnx_proto lib_onnx_core lib_onnx_manipulations lib_onnx_lib
+    lib_onnx_op lib_onnx_shape onnx_compat onnx_light_protobuf_compat)
+  if(ONNX_LIGHT_BUILD_KERNELS)
+    list(APPEND _onnx_light_all_targets lib_onnx_kernels lib_onnx_backend_test lib_onnx_gradient)
+  endif()
+  foreach(_tgt IN LISTS _onnx_light_all_targets)
+    if(TARGET ${_tgt})
+      get_target_property(_tgt_type ${_tgt} TYPE)
+      if(NOT _tgt_type STREQUAL "INTERFACE_LIBRARY")
+        target_compile_options(${_tgt} PRIVATE "-w")
+      endif()
+      set_target_properties(${_tgt} PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES
+        "$<TARGET_PROPERTY:${_tgt},INTERFACE_INCLUDE_DIRECTORIES>")
+    endif()
+  endforeach()
+
+  # For static builds the onnx-light targets propagate through INTERFACE linking
+  # and must be present in ORT's install-export set, otherwise CMake's
+  # install(EXPORT onnxruntimeTargets ...) fails with "target X is not in any
+  # export set".  Add every real (non-ALIAS) onnx-light library to the export.
+  if(NOT onnxruntime_BUILD_SHARED_LIB)
+    set(_onnx_light_export_targets
+      lib_onnx_proto lib_onnx_core lib_onnx_manipulations lib_onnx_lib
+      lib_onnx_op lib_onnx_shape onnx_compat onnx_light_protobuf_compat)
+    if(ONNX_LIGHT_BUILD_KERNELS)
+      list(APPEND _onnx_light_export_targets lib_onnx_kernels lib_onnx_backend_test lib_onnx_gradient)
+    endif()
+    install(TARGETS ${_onnx_light_export_targets}
+      EXPORT ${PROJECT_NAME}Targets
+      ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+      LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    )
+  endif()
 
   # Let ORT C++ sources detect at compile time that the protobuf-free onnx-light
   # backend is in use, so they can call onnx-light's native (de)serialization API

@@ -55,8 +55,7 @@
 namespace onnxruntime {
 #if defined(ORT_USE_ONNX_LIGHT)
 // onnx-light build: MessageLite / MergeFromCodedStream do not exist, so the
-// length-delimited parse is driven directly through the BinaryStream that backs
-// the (compat) CodedInputStream. Templated on the concrete message type.
+// length-delimited parse reads the message bytes and uses ParseFromArray.
 template <typename Msg>
 bool ParseDelimitedFromCodedStream(Msg* message,
                                    google::protobuf::io::CodedInputStream* input,
@@ -71,18 +70,10 @@ bool ParseDelimitedFromCodedStream(Msg* message,
     return false;
   }
 
-  // Tell the stream not to read beyond that size.
-  google::protobuf::io::CodedInputStream::Limit limit = input->PushLimit(static_cast<int>(size));
-
-  // Parse the message from the underlying onnx-light stream.
-  ONNX_LIGHT_NAMESPACE::ParseOptions opts;
-  message->ParseFromStream(*input->stream(), opts);
-  if (!input->ConsumedEntireMessage()) return false;
-
-  // Release the limit.
-  input->PopLimit(limit);
-
-  return true;
+  // Read exactly 'size' bytes and parse.
+  std::string buf(static_cast<size_t>(size), '\0');
+  if (!input->ReadRaw(buf.data(), static_cast<int>(size))) return false;
+  return message->ParseFromArray(buf.data(), static_cast<int>(size));
 }
 #else
 bool ParseDelimitedFromCodedStream(google::protobuf::MessageLite* message,
