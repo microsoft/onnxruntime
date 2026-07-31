@@ -10,6 +10,7 @@
 // also returns the per-node replay overhead of the nodes that disappear.
 
 #include <cub/cub.cuh>
+#include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math.h>
@@ -166,6 +167,7 @@ Status LaunchGatedRMSNormKernel(
 
 INSTANTIATE_LINEAR_ATTENTION_GATES(float)
 INSTANTIATE_LINEAR_ATTENTION_GATES(half)
+INSTANTIATE_LINEAR_ATTENTION_GATES(__nv_bfloat16)
 
 #undef INSTANTIATE_LINEAR_ATTENTION_GATES
 

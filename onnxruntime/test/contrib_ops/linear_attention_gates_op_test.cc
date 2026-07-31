@@ -7,9 +7,11 @@
 
 #include <cmath>
 #include <random>
+#include <type_traits>
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -38,6 +40,17 @@ std::vector<float> RandomFloats(size_t count, float lo, float hi, uint32_t seed)
 }
 
 template <typename T>
+std::vector<T> ToTensorType(const std::vector<float>& data) {
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    return ToFloat16(data);
+  } else if constexpr (std::is_same_v<T, BFloat16>) {
+    return ToBFloat16(data);
+  } else {
+    return data;
+  }
+}
+
+template <typename T>
 void RunLinearAttentionGateTest(int batch_size, int seq_length, int num_heads, bool with_beta,
                                 float tolerance) {
   const size_t count = static_cast<size_t>(batch_size) * seq_length * num_heads;
@@ -58,32 +71,17 @@ void RunLinearAttentionGateTest(int batch_size, int seq_length, int num_heads, b
   const std::vector<int64_t> param_dims = {num_heads};
 
   OpTester tester("LinearAttentionGate", 1, onnxruntime::kMSDomain);
-  if constexpr (std::is_same_v<T, MLFloat16>) {
-    tester.AddInput<MLFloat16>("a", dims, ToFloat16(a));
-    tester.AddInput<float>("dt_bias", param_dims, dt_bias);
-    tester.AddInput<float>("decay_scale", param_dims, decay_scale);
-    if (with_beta) {
-      tester.AddInput<MLFloat16>("b", dims, ToFloat16(b));
-    } else {
-      tester.AddOptionalInputEdge<MLFloat16>();
-    }
-    tester.AddOutput<MLFloat16>("decay", dims, ToFloat16(expected_decay), false, tolerance, tolerance);
-    if (with_beta) {
-      tester.AddOutput<MLFloat16>("beta", dims, ToFloat16(expected_beta), false, tolerance, tolerance);
-    }
+  tester.AddInput<T>("a", dims, ToTensorType<T>(a));
+  tester.AddInput<float>("dt_bias", param_dims, dt_bias);
+  tester.AddInput<float>("decay_scale", param_dims, decay_scale);
+  if (with_beta) {
+    tester.AddInput<T>("b", dims, ToTensorType<T>(b));
   } else {
-    tester.AddInput<float>("a", dims, a);
-    tester.AddInput<float>("dt_bias", param_dims, dt_bias);
-    tester.AddInput<float>("decay_scale", param_dims, decay_scale);
-    if (with_beta) {
-      tester.AddInput<float>("b", dims, b);
-    } else {
-      tester.AddOptionalInputEdge<float>();
-    }
-    tester.AddOutput<float>("decay", dims, expected_decay, false, tolerance, tolerance);
-    if (with_beta) {
-      tester.AddOutput<float>("beta", dims, expected_beta, false, tolerance, tolerance);
-    }
+    tester.AddOptionalInputEdge<T>();
+  }
+  tester.AddOutput<T>("decay", dims, ToTensorType<T>(expected_decay), false, tolerance, tolerance);
+  if (with_beta) {
+    tester.AddOutput<T>("beta", dims, ToTensorType<T>(expected_beta), false, tolerance, tolerance);
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
@@ -120,17 +118,10 @@ void RunGatedRMSNormTest(int batch_size, int seq_length, int num_heads, int head
 
   OpTester tester("GatedRMSNorm", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<float>("epsilon", epsilon);
-  if constexpr (std::is_same_v<T, MLFloat16>) {
-    tester.AddInput<MLFloat16>("X", dims, ToFloat16(x));
-    tester.AddInput<MLFloat16>("scale", scale_dims, ToFloat16(scale));
-    tester.AddInput<MLFloat16>("gate", dims, ToFloat16(gate));
-    tester.AddOutput<MLFloat16>("Y", dims, ToFloat16(expected), false, tolerance, tolerance);
-  } else {
-    tester.AddInput<float>("X", dims, x);
-    tester.AddInput<float>("scale", scale_dims, scale);
-    tester.AddInput<float>("gate", dims, gate);
-    tester.AddOutput<float>("Y", dims, expected, false, tolerance, tolerance);
-  }
+  tester.AddInput<T>("X", dims, ToTensorType<T>(x));
+  tester.AddInput<T>("scale", scale_dims, ToTensorType<T>(scale));
+  tester.AddInput<T>("gate", dims, ToTensorType<T>(gate));
+  tester.AddOutput<T>("Y", dims, ToTensorType<T>(expected), false, tolerance, tolerance);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
@@ -164,6 +155,36 @@ TEST(ContribOpLinearAttentionGateTest, Float16_RaggedTail) {
   RunLinearAttentionGateTest<MLFloat16>(1, 5, 7, /*with_beta=*/true, 2e-3f);
 }
 
+TEST(ContribOpLinearAttentionGateTest, BFloat16_SpeculativeDecodeTile) {
+  if (!CudaHasBF16Support()) {
+    GTEST_SKIP() << "bfloat16 requires compute capability 8.0 or later";
+  }
+  RunLinearAttentionGateTest<BFloat16>(1, 4, 32, /*with_beta=*/true, 2e-2f);
+}
+
+// Requesting beta without b must be rejected by shape inference, not at execution time.
+TEST(ContribOpLinearAttentionGateTest, BetaWithoutB_FailsShapeInference) {
+  constexpr int kNumHeads = 8;
+  const std::vector<int64_t> dims = {1, 2, kNumHeads};
+  const std::vector<int64_t> param_dims = {kNumHeads};
+  const std::vector<float> values(static_cast<size_t>(2 * kNumHeads), 0.5f);
+  const std::vector<float> params(kNumHeads, 0.5f);
+
+  OpTester tester("LinearAttentionGate", 1, onnxruntime::kMSDomain);
+  tester.AddInput<float>("a", dims, values);
+  tester.AddInput<float>("dt_bias", param_dims, params);
+  tester.AddInput<float>("decay_scale", param_dims, params);
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOutput<float>("decay", dims, values);
+  tester.AddOutput<float>("beta", dims, values);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "The b input is required when the beta output is requested",
+             {}, nullptr, &execution_providers);
+}
+
 TEST(ContribOpGatedRMSNormTest, Float_PerHead) {
   RunGatedRMSNormTest<float>(1, 4, 32, 128, 1e-6f, 1e-4f);
 }
@@ -187,6 +208,13 @@ TEST(ContribOpGatedRMSNormTest, Float16_SmallNormSize) {
 
 TEST(ContribOpGatedRMSNormTest, Float16_LargeNormSize) {
   RunGatedRMSNormTest<MLFloat16>(1, 2, 2, 1536, 1e-6f, 4e-3f);
+}
+
+TEST(ContribOpGatedRMSNormTest, BFloat16_PerHead) {
+  if (!CudaHasBF16Support()) {
+    GTEST_SKIP() << "bfloat16 requires compute capability 8.0 or later";
+  }
+  RunGatedRMSNormTest<BFloat16>(1, 4, 32, 128, 1e-6f, 2e-2f);
 }
 
 }  // namespace test

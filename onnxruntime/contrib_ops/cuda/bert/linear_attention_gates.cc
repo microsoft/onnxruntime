@@ -4,12 +4,13 @@
 #include "contrib_ops/cuda/bert/linear_attention_gates.h"
 #include "contrib_ops/cuda/bert/linear_attention_gates_impl.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_type_conversion.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;  // CudaKernel, ToCudaType
+using namespace onnxruntime::cuda;  // CudaKernel, OrtToCudaType
 
 #define REGISTER_KERNEL_TYPED(Op, T)                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                       \
@@ -25,6 +26,7 @@ using namespace onnxruntime::cuda;  // CudaKernel, ToCudaType
 
 REGISTER_KERNEL_TYPED(LinearAttentionGate, float)
 REGISTER_KERNEL_TYPED(LinearAttentionGate, MLFloat16)
+REGISTER_KERNEL_TYPED(LinearAttentionGate, BFloat16)
 
 #undef REGISTER_KERNEL_TYPED
 
@@ -41,12 +43,13 @@ REGISTER_KERNEL_TYPED(LinearAttentionGate, MLFloat16)
 
 REGISTER_KERNEL_TYPED(GatedRMSNorm, float)
 REGISTER_KERNEL_TYPED(GatedRMSNorm, MLFloat16)
+REGISTER_KERNEL_TYPED(GatedRMSNorm, BFloat16)
 
 #undef REGISTER_KERNEL_TYPED
 
 template <typename T>
 Status LinearAttentionGate<T>::ComputeInternal(OpKernelContext* context) const {
-  typedef typename ToCudaType<T>::MappedType CudaT;
+  typedef typename OrtToCudaType<T>::type CudaT;
 
   const Tensor* a = context->Input<Tensor>(0);
   const Tensor* dt_bias = context->Input<Tensor>(1);
@@ -91,7 +94,7 @@ GatedRMSNorm<T>::GatedRMSNorm(const OpKernelInfo& info) : CudaKernel(info) {
 
 template <typename T>
 Status GatedRMSNorm<T>::ComputeInternal(OpKernelContext* context) const {
-  typedef typename ToCudaType<T>::MappedType CudaT;
+  typedef typename OrtToCudaType<T>::type CudaT;
 
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* scale = context->Input<Tensor>(1);
@@ -124,8 +127,10 @@ Status GatedRMSNorm<T>::ComputeInternal(OpKernelContext* context) const {
 
 template class LinearAttentionGate<float>;
 template class LinearAttentionGate<MLFloat16>;
+template class LinearAttentionGate<BFloat16>;
 template class GatedRMSNorm<float>;
 template class GatedRMSNorm<MLFloat16>;
+template class GatedRMSNorm<BFloat16>;
 
 }  // namespace cuda
 }  // namespace contrib

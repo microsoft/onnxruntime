@@ -2620,6 +2620,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateShapeFromInputToOutput(ctx, 0, 0);
           if (ctx.getNumOutputs() > 1) {
+            if (ctx.getNumInputs() < 4 || ctx.getInputType(3) == nullptr) {
+              fail_shape_inference("The b input is required when the beta output is requested.");
+            }
             propagateElemTypeFromInputToOutput(ctx, 0, 1);
             if (hasInputShape(ctx, 3)) {
               propagateShapeFromInputToOutput(ctx, 3, 1);
