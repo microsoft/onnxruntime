@@ -243,17 +243,16 @@ struct Fp4Cvt<nv_bfloat16> {
 
 template <typename T, int RowsPerBlock>
 __global__ __launch_bounds__(32 * kGemvWarpsPerBlock,
-                             GemvMinBlocksPerSm<RowsPerBlock>::value) void MatMulBlockQuantizedFp4WeightGemvKernel(
-    T* __restrict__ y,
-    const T* __restrict__ a,
-    const uint8_t* __restrict__ b_packed,
-    const uint8_t* __restrict__ weight_scale,
-    const float* __restrict__ weight_scale_2,
-    const T* __restrict__ bias,
-    int m,
-    int n,
-    int k,
-    int k_blocks) {
+                             GemvMinBlocksPerSm<RowsPerBlock>::value) void MatMulBlockQuantizedFp4WeightGemvKernel(T* __restrict__ y,
+                                                                                                                   const T* __restrict__ a,
+                                                                                                                   const uint8_t* __restrict__ b_packed,
+                                                                                                                   const uint8_t* __restrict__ weight_scale,
+                                                                                                                   const float* __restrict__ weight_scale_2,
+                                                                                                                   const T* __restrict__ bias,
+                                                                                                                   int m,
+                                                                                                                   int n,
+                                                                                                                   int k,
+                                                                                                                   int k_blocks) {
   using Cvt = Fp4Cvt<T>;
   using T2 = typename Cvt::T2;
 
