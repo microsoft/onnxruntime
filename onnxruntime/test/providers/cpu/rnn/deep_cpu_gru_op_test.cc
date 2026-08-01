@@ -209,6 +209,7 @@ TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsNoBiasTwoRows) {
   DefaultActivationsSimpleWeightsNoBias("forward", Y_data, {});
 }
 
+#if defined(USE_WEBGPU)
 TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsNoBiasLayout1) {
   // layout=1 stores X as [batch, sequence, input] and Y as
   // [batch, sequence, num_directions, hidden].
@@ -234,6 +235,7 @@ TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsNoBiasLayout1) {
              nullptr, nullptr, nullptr, "forward", 9999.0f, true, false,
              default_activations, {}, {}, /*layout=*/1, /*webgpu_only=*/true);
 }
+#endif
 
 TEST(GRUTest, ReverseDefaultActivationsSimpleWeightsNoBiasTwoRows) {
   std::vector<float> Y_data{
