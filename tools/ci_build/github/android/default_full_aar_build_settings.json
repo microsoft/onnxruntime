@@ -17,6 +17,7 @@
         "--use_nnapi",
         "--use_xnnpack",
         "--use_webgpu",
-        "--skip_tests"
+        "--skip_tests",
+        "--use_telemetry"
     ]
 }

@@ -130,7 +130,7 @@ MlasFlashAttentionQuantizedKVThreaded(
         // Q pointer: layout [batch, num_heads, seq, head_size]. The batch stride is
         // supplied separately (args->q_batch_stride) so the kernel works with both the
         // standard BNSH layout and packed-QKV input where Q/K/V are interleaved per batch.
-        const float* q_ptr = args->query +
+        const size_t q_offset =
             static_cast<size_t>(batch_idx) * args->q_batch_stride +
             static_cast<size_t>(head_idx) * static_cast<size_t>(sequence_length) * static_cast<size_t>(head_size) +
             static_cast<size_t>(q_idx) * static_cast<size_t>(head_size);
@@ -143,23 +143,22 @@ MlasFlashAttentionQuantizedKVThreaded(
             // K cache at row offset ir: pointer arithmetic on packed rows
             const uint8_t* k_block = k_cache_head + static_cast<size_t>(ir) * packed_row_bytes;
 
-            MlasQKGemm(
-                row_size_q,                         // M
-                row_size_kv,                        // N
-                static_cast<size_t>(head_size),     // K
-                scale,                              // Alpha
-                q_ptr,                              // A (FP32 query)
-                static_cast<size_t>(head_size),     // lda
-                k_block,                            // B (quantized K block)
-                quant_type,
-                head_k_scale,
-                scores,                             // C (output scores)
-                row_size_kv,                        // ldc
-                nullptr                             // no thread pool (already threaded)
-            );
+            if (args->query_fp16 != nullptr) {
+                MlasQKGemmFp16(
+                    row_size_q, static_cast<size_t>(row_size_kv), static_cast<size_t>(head_size), scale,
+                    args->query_fp16 + q_offset, static_cast<size_t>(head_size), k_block, quant_type,
+                    head_k_scale, scores, row_size_kv, nullptr
+                );
+            } else {
+                MlasQKGemm(
+                    row_size_q, static_cast<size_t>(row_size_kv), static_cast<size_t>(head_size), scale,
+                    args->query + q_offset, static_cast<size_t>(head_size), k_block, quant_type,
+                    head_k_scale, scores, row_size_kv, nullptr
+                );
+            }
 
             // Step 1b: Apply attention bias (additive) if present
-            if (args->attention_bias != nullptr) {
+            if (args->attention_bias != nullptr || args->attention_bias_fp16 != nullptr) {
                 const ptrdiff_t bias_seqlen_stride =
                     static_cast<ptrdiff_t>(args->attention_bias_seqlen_stride);
                 const ptrdiff_t bias_matrix_size =
@@ -178,11 +177,12 @@ MlasFlashAttentionQuantizedKVThreaded(
                 }
                 // Add bias tile: bias[q_idx + irow, ir + jcol]
                 for (ptrdiff_t irow = 0; irow < static_cast<ptrdiff_t>(row_size_q); ++irow) {
-                    const float* bias_row = args->attention_bias + bias_offset +
-                        (q_idx + irow) * bias_seqlen_stride + ir;
                     float* s_row = scores + irow * static_cast<ptrdiff_t>(row_size_kv);
                     for (ptrdiff_t jcol = 0; jcol < static_cast<ptrdiff_t>(row_size_kv); ++jcol) {
-                        s_row[jcol] += bias_row[jcol];
+                        const ptrdiff_t bias_index = bias_offset + (q_idx + irow) * bias_seqlen_stride + ir + jcol;
+                        s_row[jcol] += args->attention_bias != nullptr
+                                           ? args->attention_bias[bias_index]
+                                           : static_cast<float>(args->attention_bias_fp16[bias_index]);
                     }
                 }
             }
@@ -274,9 +274,10 @@ MlasFlashAttentionQuantizedKVThreaded(
 
         // Final: normalize output by l (softmax denominator)
         // Output layout: [batch, sequence_length, num_heads, head_size]
-        float* output_row = args->output +
+        const size_t output_offset =
             (static_cast<size_t>(batch_idx) * static_cast<size_t>(sequence_length) +
-             static_cast<size_t>(q_idx)) * static_cast<size_t>(num_heads) * static_cast<size_t>(head_size) +
+             static_cast<size_t>(q_idx)) *
+                static_cast<size_t>(num_heads) * static_cast<size_t>(head_size) +
             static_cast<size_t>(head_idx) * static_cast<size_t>(head_size);
         const ptrdiff_t output_row_stride = num_heads * head_size;
 
@@ -284,9 +285,13 @@ MlasFlashAttentionQuantizedKVThreaded(
             float inv_l = (l[irow] > 0.0f) ? (1.0f / l[irow]) : 0.0f;
             float* src = temp_output + irow * head_size;
             for (ptrdiff_t icol = 0; icol < head_size; ++icol) {
-                output_row[icol] = src[icol] * inv_l;
+                const size_t output_index = output_offset + static_cast<size_t>(irow * output_row_stride + icol);
+                if (args->output_fp16 != nullptr) {
+                    args->output_fp16[output_index] = MLAS_FP16(src[icol] * inv_l);
+                } else {
+                    args->output[output_index] = src[icol] * inv_l;
+                }
             }
-            output_row += output_row_stride;
         }
     }
 }
@@ -386,29 +391,28 @@ MlasFlashDecodingQuantizedKVThreaded(
 
         // Q pointer: layout [batch, num_heads, 1, head_size] (sequence_length=1).
         // The batch stride is supplied separately to support packed-QKV input.
-        const float* q_ptr = args->query +
+        const size_t q_offset =
             static_cast<size_t>(batch_idx) * args->q_batch_stride +
             static_cast<size_t>(head_idx) * static_cast<size_t>(head_size);
 
         // Step 1: QK^T GEMM for this KV chunk
         const uint8_t* k_block = k_cache_head + static_cast<size_t>(ir) * packed_row_bytes;
-        MlasQKGemm(
-            1,                                  // M (single query row)
-            row_size_kv,                        // N
-            static_cast<size_t>(head_size),     // K
-            scale,                              // Alpha
-            q_ptr,                              // A (FP32 query)
-            static_cast<size_t>(head_size),     // lda
-            k_block,                            // B (quantized K block)
-            quant_type,
-            head_k_scale,
-            scores,                             // C (output scores)
-            row_size_kv,                        // ldc
-            nullptr
-        );
+        if (args->query_fp16 != nullptr) {
+            MlasQKGemmFp16(
+                1, row_size_kv, static_cast<size_t>(head_size), scale,
+                args->query_fp16 + q_offset, static_cast<size_t>(head_size), k_block, quant_type,
+                head_k_scale, scores, row_size_kv, nullptr
+            );
+        } else {
+            MlasQKGemm(
+                1, row_size_kv, static_cast<size_t>(head_size), scale,
+                args->query + q_offset, static_cast<size_t>(head_size), k_block, quant_type,
+                head_k_scale, scores, row_size_kv, nullptr
+            );
+        }
 
         // Step 1b: Apply attention bias if present
-        if (args->attention_bias != nullptr) {
+        if (args->attention_bias != nullptr || args->attention_bias_fp16 != nullptr) {
             const ptrdiff_t bias_seqlen_stride =
                 static_cast<ptrdiff_t>(args->attention_bias_seqlen_stride);
             const ptrdiff_t bias_matrix_size = bias_seqlen_stride;  // S=1
@@ -424,9 +428,11 @@ MlasFlashDecodingQuantizedKVThreaded(
             if (!args->attention_bias_broadcast_head) {
                 bias_offset += static_cast<ptrdiff_t>(head_idx) * bias_matrix_size;
             }
-            const float* bias_row = args->attention_bias + bias_offset + ir;
             for (ptrdiff_t jcol = 0; jcol < static_cast<ptrdiff_t>(row_size_kv); ++jcol) {
-                scores[jcol] += bias_row[jcol];
+                const ptrdiff_t bias_index = bias_offset + ir + jcol;
+                scores[jcol] += args->attention_bias != nullptr
+                                    ? args->attention_bias[bias_index]
+                                    : static_cast<float>(args->attention_bias_fp16[bias_index]);
             }
         }
 
@@ -523,6 +529,10 @@ MlasFlashDecodingReduceThreaded(
     const ptrdiff_t thread_count = static_cast<ptrdiff_t>(args->thread_count);
     const ptrdiff_t partial_stride = 2 + head_size;
 
+    char* buffer_ptr = reinterpret_cast<char*>(args->buffer) +
+                       static_cast<size_t>(thread_id) * args->buffer_size_per_thread;
+    float* output_accumulator = reinterpret_cast<float*>(buffer_ptr);
+
     // Total reduction tasks: one per (batch, head)
     const ptrdiff_t total_task_count = batch_size * num_heads;
 
@@ -554,57 +564,78 @@ MlasFlashDecodingReduceThreaded(
         }
 
         // If all chunks are masked, output zeros
+        const size_t output_offset =
+            static_cast<size_t>(batch_idx) * static_cast<size_t>(num_heads) * static_cast<size_t>(head_size) +
+            static_cast<size_t>(head_idx) * static_cast<size_t>(head_size);
         if (global_m == std::numeric_limits<float>::lowest()) {
-            float* output_ptr = args->output +
-                static_cast<size_t>(batch_idx) * static_cast<size_t>(num_heads) * static_cast<size_t>(head_size) +
-                static_cast<size_t>(head_idx) * static_cast<size_t>(head_size);
-            memset(output_ptr, 0, static_cast<size_t>(head_size) * sizeof(float));
+            if (args->output_fp16 != nullptr) {
+                for (ptrdiff_t i = 0; i < head_size; ++i) {
+                    args->output_fp16[output_offset + static_cast<size_t>(i)] = MLAS_FP16(0.0f);
+                }
+            } else {
+                memset(args->output + output_offset, 0, static_cast<size_t>(head_size) * sizeof(float));
+            }
             continue;
         }
 
-        // Accumulate rescaled outputs and l values
-        float global_l = 0.0f;
-        // Use the output location directly for accumulation
-        // Output layout: [batch, sequence_length=1, num_heads, head_size]
-        float* output_ptr = args->output +
-            static_cast<size_t>(batch_idx) * static_cast<size_t>(num_heads) * static_cast<size_t>(head_size) +
-            static_cast<size_t>(head_idx) * static_cast<size_t>(head_size);
-        memset(output_ptr, 0, static_cast<size_t>(head_size) * sizeof(float));
+        if (args->output_fp16 == nullptr) {
+            float* output_ptr = args->output + output_offset;
+            memset(output_ptr, 0, static_cast<size_t>(head_size) * sizeof(float));
 
-        for (ptrdiff_t c = 0; c < kv_chunk_count; ++c) {
-            const float* partial = partials_base + c * partial_stride;
-            float chunk_m = partial[0];
-            float chunk_l = partial[1];
-            const float* chunk_output = partial + 2;
+            float global_l = 0.0f;
+            for (ptrdiff_t c = 0; c < kv_chunk_count; ++c) {
+                const float* partial = partials_base + c * partial_stride;
+                const float chunk_l = partial[1];
+                if (chunk_l <= 0.0f) {
+                    continue;
+                }
 
-            if (chunk_l <= 0.0f) {
-                continue;  // masked chunk contributes nothing
+                const float rescale = std::exp(partial[0] - global_m);
+                global_l += rescale * chunk_l;
+                const float* chunk_output = partial + 2;
+                for (ptrdiff_t i = 0; i < head_size; ++i) {
+                    output_ptr[i] += rescale * chunk_output[i];
+                }
             }
 
-            float rescale = std::exp(chunk_m - global_m);
-            global_l += rescale * chunk_l;
-
-            // partial_output = S_exp * V where sum(S_exp) = l_c (unnormalized).
-            // Rescale by exp(m_c - global_m) to align all chunks to the same max.
+            const float inv_l = global_l > 0.0f ? 1.0f / global_l : 0.0f;
             for (ptrdiff_t i = 0; i < head_size; ++i) {
-                output_ptr[i] += rescale * chunk_output[i];
+                output_ptr[i] *= inv_l;
+            }
+            continue;
+        }
+
+        float global_l = 0.0f;
+        memset(output_accumulator, 0, static_cast<size_t>(head_size) * sizeof(float));
+        for (ptrdiff_t c = 0; c < kv_chunk_count; ++c) {
+            const float* partial = partials_base + c * partial_stride;
+            const float chunk_l = partial[1];
+            if (chunk_l <= 0.0f) {
+                continue;
+            }
+
+            const float rescale = std::exp(partial[0] - global_m);
+            global_l += rescale * chunk_l;
+            const float* chunk_output = partial + 2;
+            for (ptrdiff_t i = 0; i < head_size; ++i) {
+                output_accumulator[i] += rescale * chunk_output[i];
             }
         }
 
-        // output = sum_c(rescale_c * partial_output_c) / global_l
-        float inv_l = (global_l > 0.0f) ? (1.0f / global_l) : 0.0f;
+        const float inv_l = global_l > 0.0f ? 1.0f / global_l : 0.0f;
         for (ptrdiff_t i = 0; i < head_size; ++i) {
-            output_ptr[i] *= inv_l;
+            args->output_fp16[output_offset + static_cast<size_t>(i)] =
+                MLAS_FP16(output_accumulator[i] * inv_l);
         }
     }
 }
 
 void
-MLASCALL
-MlasFlashAttentionQuantizedKV(
-    MlasFlashAttentionQuantizedKVArgs* args,
-    MLAS_THREADPOOL* ThreadPool
-)
+    MLASCALL
+    MlasFlashAttentionQuantizedKV(
+        MlasFlashAttentionQuantizedKVArgs* args,
+        MLAS_THREADPOOL* ThreadPool
+    )
 {
     if (args->flash_decoding_partials != nullptr && args->sequence_length == 1) {
         // Flash decoding: two-phase approach.

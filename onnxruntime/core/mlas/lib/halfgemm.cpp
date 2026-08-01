@@ -125,7 +125,7 @@ MlasHalfGemmBatch(
     if (TryGetHalfGemmBackendSelectorConfig(BatchN, DataParams, BackendKernelSelectorConfig) &&
         GetMlasPlatform().MlasHalfGemmBatchOverride != nullptr &&
         GetMlasPlatform().MlasHalfGemmBatchOverride(
-            M, N, K, BatchN, DataParams, ThreadPool, BackendKernelSelectorConfig)) {
+            M, N, K, BatchN, DataParams, ThreadPool)) {
         return;
     }
 
@@ -472,6 +472,10 @@ MlasHGemmSupported(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB
 ) {
+    if (!MlasFp16AccelerationSupported()) {
+        return false;
+    }
+
     auto* dispatch = GetMlasPlatform().HGemmDispatch;
     if (TransA == CblasNoTrans && TransB == CblasTrans) {
         return dispatch &&

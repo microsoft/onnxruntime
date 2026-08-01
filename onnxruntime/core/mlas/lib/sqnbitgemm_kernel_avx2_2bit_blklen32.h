@@ -84,9 +84,9 @@ dot_accumulate_4blk_w2_blklen32(
     const float* scale_a, const float* scale_b, __m256& acc)
 {
     __m256i d0, d1, d2, d3;
-    // GCC 11+ is needed for _mm256_dpbusds_avx_epi32; older toolchains fall
-    // through to the vpmaddubsw+vpmaddwd path even on AVX-VNNI hardware.
-#if !defined(__GNUC__) || (__GNUC__ > 10)
+    // Requires -mavxvnni (__AVXVNNI__ defined); without it falls through to
+    // the vpmaddubsw+vpmaddwd path.
+#if defined(__AVXVNNI__) || (defined(_MSC_VER) && !defined(__clang__))
     if constexpr (kVnni) {
         // dpbusds: 2nd operand (bv=unsigned [0,3]) x 3rd operand (av=signed int8); consistent with maddubs(bv, av)
         d0 = _mm256_dpbusds_avx_epi32(_mm256_setzero_si256(), bv0, av0);
