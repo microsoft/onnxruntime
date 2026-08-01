@@ -3,14 +3,34 @@
 
 #include "core/providers/cuda/math/matmul.h"
 
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/math/matmul_small_n_gemv.h"
 #ifndef BUILD_CUDA_EP_AS_PLUGIN
 #include "core/providers/cuda/tunable/math/matmul.h"
 #endif
 
 namespace onnxruntime {
 namespace cuda {
+
+// Opt-in: the split-K GEMV path beats cuBLAS on the decode shapes measured so
+// far (M<=8, N<=1024, K>=128) but has not been swept over the whole shape space.
+static bool SmallNGemvEnabled() {
+  static const bool enabled = ParseEnvironmentVariableWithDefault<bool>("ORT_ENABLE_SMALL_N_GEMV", false);
+  return enabled;
+}
+
+template <typename T>
+Status MatMul<T>::EnsureGemvCounter(size_t count) const {
+  std::lock_guard<std::mutex> guard(gemv_counter_mutex_);
+  if (gemv_counter_ && gemv_counter_count_ >= count) return Status::OK();
+  auto buffer = GetScratchBuffer<unsigned int>(count, nullptr);
+  CUDA_RETURN_IF_ERROR(cudaMemset(buffer.get(), 0, count * sizeof(unsigned int)));
+  gemv_counter_ = std::move(buffer);
+  gemv_counter_count_ = count;
+  return Status::OK();
+}
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
@@ -322,6 +342,26 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
   auto& device_prop = GetDeviceProp();
 
   if (helper.OutputOffsets().size() == 1) {
+    if constexpr (std::is_same<T, MLFloat16>::value) {
+      // cuBLAS tiles this class of shape onto a handful of CTAs and spends
+      // several microseconds on a few hundred KiB of weights.
+      if (SmallNGemvEnabled() && !transa && !transb && alpha_ == 1.0f &&
+          lda == static_cast<int>(helper.K()) && ldb == static_cast<int>(helper.N()) &&
+          ldc == static_cast<int>(helper.N()) &&
+          CanUseSmallNGemv(helper.M(), helper.N(), helper.K(), left_X->DataRaw(), right_X->DataRaw(),
+                           Y->MutableDataRaw())) {
+        const int m = static_cast<int>(helper.M());
+        const int n = static_cast<int>(helper.N());
+        const int k = static_cast<int>(helper.K());
+        ORT_RETURN_IF_ERROR(EnsureGemvCounter(SmallNGemvCounterElements(n)));
+        auto workspace = GetScratchBuffer<float>(SmallNGemvWorkspaceElements(m, n, k), ctx->GetComputeStream());
+        return LaunchSmallNGemv(Stream(ctx),
+                                reinterpret_cast<const half*>(left_X->Data<T>()),
+                                reinterpret_cast<const half*>(right_X->Data<T>()),
+                                reinterpret_cast<half*>(Y->MutableData<T>()),
+                                m, n, k, workspace.get(), gemv_counter_.get());
+      }
+    }
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         GetCublasHandle(ctx),
         transB,
