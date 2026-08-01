@@ -104,6 +104,21 @@ struct GroupQueryAttentionParameters : AttentionParameters {
   KVQuantizationType k_quant_type = KVQuantizationType::NONE;
   KVQuantizationType v_quant_type = KVQuantizationType::NONE;
   int kv_cache_bit_width = 0;
+
+  // Windowed (sliding-window) KV cache. Set from the sliding_window_cache attribute.
+  // When true, past/present KV buffers are allocated with capacity C = kv_cache_capacity, which may
+  // be much smaller than total_sequence_length. The cache then holds only the min(T, C) most recent
+  // tokens at cache indices [0, L) and the kernel uses cache-relative indexing plus a shift
+  // compaction step. Requires local_window_size > 0. See docs: windowed KV cache design.
+  bool is_windowed_kv_cache = false;
+  int kv_cache_capacity = 0;       // Capacity of the KV buffer used by this step.
+  int kv_cache_real_capacity = 0;  // C: allocated sequence dim of the past/present KV buffers.
+  // A multi-token step runs against a longer staging buffer (see GroupQueryAttention::ComputeInternal),
+  // in which case kv_cache_capacity is the staging capacity and differs from kv_cache_real_capacity.
+
+  // Upper bound (exclusive) for absolute RoPE positions: dim 0 of the cos/sin caches.
+  // 0 when rotary is not configured.
+  int rotary_max_position = 0;
 };
 
 // Parameters deduced from node attributes and inputs/outputs.

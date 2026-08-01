@@ -31,7 +31,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     14,
     kCpuExecutionProvider,
-    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double, int64_t, bool>()),
+    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double, int32_t, int64_t, bool>()),
     Trilu);
 
 template <typename T>
@@ -101,20 +101,24 @@ Status Trilu::Compute(OpKernelContext* ctx) const {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Input tensor should have a rank of at least 2");
   }
 
-  MLDataType data_type = X->DataType();
-  const auto element_size = data_type->Size();
-  switch (element_size) {
-    case sizeof(float):
+  switch (X->GetElementType()) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       status = TriluImpl<float>(X, Y, k_val, up);
       break;
-    case sizeof(double):
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
       status = TriluImpl<double>(X, Y, k_val, up);
       break;
-    case sizeof(bool):
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      status = TriluImpl<int32_t>(X, Y, k_val, up);
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      status = TriluImpl<int64_t>(X, Y, k_val, up);
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
       status = TriluImpl<bool>(X, Y, k_val, up);
       break;
     default:
-      ORT_THROW("Unsupported input data type of ", data_type);
+      ORT_THROW("Unsupported input data type of ", X->DataType());
   }
   return status;
 }

@@ -405,6 +405,78 @@ TEST(GatherOpTest, Gather_axis1_indices2d_bool) {
   test.Run();
 }
 
+TEST(GatherOpTest, Gather_axis1_indices2d_uint8) {
+  OpTester test("Gather");
+  test.AddAttribute<int64_t>("axis", 1LL);
+  test.AddInput<uint8_t>("data", {3, 3},
+                         {10, 20, 30,
+                          40, 50, 60,
+                          70, 80, 90});
+  test.AddInput<int32_t>("indices", {2, 2},
+                         {1, 0,
+                          2, 1});
+  test.AddOutput<uint8_t>("output", {3, 2, 2},
+                          {20, 10, 30, 20,
+                           50, 40, 60, 50,
+                           80, 70, 90, 80});
+  // int8 and uint8 are not supported by some EPs for Gather
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+#ifdef USE_WEBGPU
+// Validates the WebGPU Gather kernel's packed-byte path for uint8 (bit-shift/mask read,
+// OR-shift assembly write). Without this test, a non-WebGPU build would only exercise
+// the CPU EP path and miss shader regressions.
+TEST(GatherOpTest, Gather_axis1_indices2d_uint8_webgpu) {
+  if (DefaultWebGpuExecutionProvider().get() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  OpTester test("Gather");
+  test.AddAttribute<int64_t>("axis", 1LL);
+  test.AddInput<uint8_t>("data", {3, 3},
+                         {10, 20, 30,
+                          40, 50, 60,
+                          70, 80, 90});
+  test.AddInput<int32_t>("indices", {2, 2},
+                         {1, 0,
+                          2, 1});
+  test.AddOutput<uint8_t>("output", {3, 2, 2},
+                          {20, 10, 30, 20,
+                           50, 40, 60, 50,
+                           80, 70, 90, 80});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Validates the WebGPU uint8 Gather kernel with output_size NOT a multiple of 4.
+// output shape {3,3} = 9 elements: the last packed u32 word holds only 1 valid byte,
+// with the remaining 3 bytes zero-padded (partial-thread boundary path).
+TEST(GatherOpTest, Gather_axis0_uint8_non_multiple_of_4_webgpu) {
+  if (DefaultWebGpuExecutionProvider().get() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  OpTester test("Gather");
+  test.AddAttribute<int64_t>("axis", 0LL);
+  // 3×3 input with byte-diverse values
+  test.AddInput<uint8_t>("data", {3, 3},
+                         {10, 20, 30,
+                          40, 50, 60,
+                          70, 80, 90});
+  // 1-D indices of length 3: gather rows 1, 2, 0
+  test.AddInput<int32_t>("indices", {3}, {1, 2, 0});
+  // output shape {3,3} = 9 bytes (not a multiple of 4)
+  test.AddOutput<uint8_t>("output", {3, 3},
+                          {40, 50, 60,
+                           70, 80, 90,
+                           10, 20, 30});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  // USE_WEBGPU
+
 TEST(GatherOpTest, Gather_perf) {
   OpTester test("Gather");
   test.AddAttribute<int64_t>("axis", 0LL);

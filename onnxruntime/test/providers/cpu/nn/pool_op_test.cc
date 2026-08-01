@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "core/providers/cpu/nn/pool.h"
 #include "default_providers.h"
 #include "gtest/gtest.h"
@@ -344,6 +346,62 @@ TEST(PoolTest, MaxPool1D_12_With_Index_8bits) {
   MaxPool1D_12_WithIndexTest_uint8(1 /*storage_order*/);
 }
 
+// Regression test: every VALID window equals the type's lowest value (uint8_t all-zero,
+// int8_t all -128). The CUDA kernel seeds maxval with NumericLimits<T>::Lowest() and used a
+// strict '>' comparison, so it never recorded a max-index for such windows and incorrectly
+// emitted Indices = -1 even though the window is not empty. CPU is used here as the oracle
+// (expected_indices = {0, 2}); the buggy CUDA kernel would produce {-1, -1} instead.
+static void MaxPool1D_12_WithIndexTest_int8_LowestValue(int64_t storage_order) {
+  OpTester test("MaxPool", 12);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+  test.AddAttribute("storage_order", storage_order);
+
+  std::vector<int8_t> x_vals = {-128, -128, -128, -128};
+  std::vector<int64_t> x_dims = {1, 1, 4};
+  std::vector<int64_t> expected_dims = {1, 1, 2};
+  std::vector<int8_t> expected_vals = {-128, -128};
+  std::vector<int64_t> expected_indices = {0, 2};
+
+  test.AddInput<int8_t>("X", x_dims, x_vals);
+  test.AddOutput<int8_t>("Y", expected_dims, expected_vals);
+  test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+static void MaxPool1D_12_WithIndexTest_uint8_LowestValue(int64_t storage_order) {
+  OpTester test("MaxPool", 12);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+  test.AddAttribute("storage_order", storage_order);
+
+  std::vector<uint8_t> x_vals = {0, 0, 0, 0};
+  std::vector<int64_t> x_dims = {1, 1, 4};
+  std::vector<int64_t> expected_dims = {1, 1, 2};
+  std::vector<uint8_t> expected_vals = {0, 0};
+  std::vector<int64_t> expected_indices = {0, 2};
+
+  test.AddInput<uint8_t>("X", x_dims, x_vals);
+  test.AddOutput<uint8_t>("Y", expected_dims, expected_vals);
+  test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool1D_12_With_Index_8bits_LowestValue) {
+  MaxPool1D_12_WithIndexTest_int8_LowestValue(0 /*storage_order*/);
+  MaxPool1D_12_WithIndexTest_int8_LowestValue(1 /*storage_order*/);
+  MaxPool1D_12_WithIndexTest_uint8_LowestValue(0 /*storage_order*/);
+  MaxPool1D_12_WithIndexTest_uint8_LowestValue(1 /*storage_order*/);
+}
+
 // Used by MaxPool2D_uint8
 template <typename InputIter>
 void print_vector(std::ostream& os, const std::string& txt, InputIter begin, InputIter end) {
@@ -478,8 +536,7 @@ TEST(PoolTest, MaxPool_10_DilationPadding_1d) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   // TODO: Re-enable DML when fixed #41968513
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider,
-            kDmlExecutionProvider});
+           {kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_2d) {
@@ -555,7 +612,93 @@ TEST(PoolTest, MaxPool_10_DilationPadding_2d) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+           {kTensorrtExecutionProvider});
+}
+
+// Regression test for a CUDA MaxPool bug where dilation > 1 combined with a non-zero begin
+// (head) pad produced wrong values and indices because the negative window start was clamped
+// to 0 without preserving the dilation phase. CPU is the oracle and the CUDA leg now runs too
+// (it is intentionally not excluded below).
+TEST(PoolTest, MaxPool_DilationPadding_1d_Indices) {
+  OpTester test("MaxPool", 12);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+  test.AddAttribute("dilations", std::vector<int64_t>{2});
+
+  std::vector<float> x_vals = {1, 9, 2, 8, 3, 7, 4, 6, 5};
+  std::vector<int64_t> x_dims = {1, 1, 9};
+  std::vector<int64_t> expected_dims = {1, 1, 9};
+  std::vector<float> expected_vals = {9, 2, 9, 3, 8, 4, 7, 5, 6};
+  std::vector<int64_t> expected_indices = {1, 2, 1, 4, 3, 6, 5, 8, 7};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider, kOpenVINOExecutionProvider,
+            kAclExecutionProvider, kWebGpuExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool_DilationPadding_2d_Indices) {
+  OpTester test("MaxPool", 12);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals = {
+      1, 9, 2, 8, 3,
+      7, 4, 6, 5, 10,
+      15, 11, 14, 12, 13,
+      20, 16, 19, 17, 18};
+  std::vector<int64_t> x_dims = {1, 1, 4, 5};
+  std::vector<int64_t> expected_dims = {1, 1, 4, 5};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims,
+                        {4, 7, 5, 10, 5,
+                         11, 15, 12, 14, 12,
+                         16, 20, 17, 19, 17,
+                         11, 15, 12, 14, 12});
+  test.AddOutput<int64_t>("Indices", expected_dims,
+                          {6, 5, 8, 9, 8,
+                           11, 10, 13, 12, 13,
+                           16, 15, 18, 17, 18,
+                           11, 10, 13, 12, 13});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider, kOpenVINOExecutionProvider,
+            kAclExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// Empty-window regression test: with dilation > 1 and begin padding, a window can have no valid
+// tap (all dilated taps land in the padding). The CUDA kernel must not read out of bounds and must
+// emit the type's lowest value and a -1 index, matching the CPU/ONNX reference.
+TEST(PoolTest, MaxPool_DilationPadding_1d_EmptyWindow) {
+  OpTester test("MaxPool", 12);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+  test.AddAttribute("dilations", std::vector<int64_t>{2});
+
+  std::vector<float> x_vals = {42};
+  std::vector<int64_t> x_dims = {1, 1, 1};
+  std::vector<int64_t> expected_dims = {1, 1, 1};
+  std::vector<float> expected_vals = {std::numeric_limits<float>::lowest()};
+  std::vector<int64_t> expected_indices = {-1};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider, kOpenVINOExecutionProvider,
+            kAclExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_Ceil0_2d) {
@@ -668,7 +811,7 @@ TEST(PoolTest, MaxPool_10_DilationPadding_3d) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+           {kTensorrtExecutionProvider});
 }
 
 TYPED_TEST(PoolTest, GlobalMaxPool) {
@@ -1507,6 +1650,74 @@ TEST(PoolTest, AveragePool_18_ceil_count_exclude_pad_2d) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCountIncludePadTests);
+}
+
+TEST(PoolTest, AveragePool_19_ceil_count_include_pad_1d_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available in this build.";
+  }
+
+  OpTester test("AveragePool", 19);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3});
+  test.AddAttribute("pads", std::vector<int64_t>{3, 3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{7});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals = {2.0903f, 4.6493f, 1.6320f, -3.2051f, 4.6975f, 4.7296f, 3.3653f, -1.5815f, -2.3832f, 0.9628f, -1.5899f, -2.6820f, 5.7529f, 7.7346f, -0.8910f, -2.0151f, 0.1313f, -0.5374f};
+  std::vector<int64_t> x_dims = {1, 2, 9};
+  std::vector<int64_t> expected_dims = {1, 2, 4};
+  std::vector<float> expected_vals = {0.73807144f, 2.5655572f, 0.8032287f, -0.09990001f, 0.34911433f, 1.0389f, 1.4536142f, -0.40353334f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// AveragePool registered on WebGPU for opsets 11-18, 19-21 and 22 (a single kernel). The opset-19
+// test above exercises the 19-21 registration (and pins the count_include_pad divisor fix); the two
+// tests below exercise the other two registration ranges so none is left unverified. All three use
+// the same shared kernel, so these use a trivially hand-verifiable case (kernel 2, stride 2, no pad)
+// and just confirm the registration for that opset resolves and runs on WebGPU.
+// Window means of {1,2,3,4}: (1+2)/2=1.5, (3+4)/2=3.5.
+TEST(PoolTest, AveragePool_11_1d_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available in this build.";
+  }
+
+  OpTester test("AveragePool", 11);  // exercises the 11-18 registration
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddInput<float>("X", {1, 1, 4}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddOutput<float>("Y", {1, 1, 2}, {1.5f, 3.5f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(PoolTest, AveragePool_22_1d_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available in this build.";
+  }
+
+  OpTester test("AveragePool", 22);  // exercises the opset-22 registration
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddInput<float>("X", {1, 1, 4}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddOutput<float>("Y", {1, 1, 2}, {1.5f, 3.5f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(PoolTest, GlobalAveragePool) {
