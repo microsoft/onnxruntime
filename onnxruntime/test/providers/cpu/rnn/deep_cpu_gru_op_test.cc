@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "core/providers/cpu/rnn/deep_cpu_gru.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 using namespace std;
