@@ -129,6 +129,42 @@ This path avoids a materialized dequant buffer and runs on all supported CUDA
 architectures because it uses regular FP8 conversion and warp-shuffle reduction,
 not architecture-specific block-scaled tensor cores.
 
+### 4.1 Tensor-Core Sub-Path (SM80+)
+
+When the device is SM80 or newer and, in addition to the predicate above,
+
+- `K % 64 == 0` and `K >= 256`,
+- `block_size % 64 == 0`,
+- `M <= 8` (the mma "N" extent),
+
+the GEMV runs `MatMulBlockScaledFp8MmaGemvKernel`, which replaces the FP32 FMA
+dot products with `mma.m16n8k16` (FP32 accumulate). The FMA kernel is ALU bound
+for `M > 1` because it re-widens `A` and `B` to FP32 for every row/column pair;
+the tensor-core kernel cuts instructions per weight byte roughly 10x.
+
+The weight is fed to the mma **A** operand and the activation to the **B**
+operand, so both fragments match the tensors' natural row-major layouts. The mma
+"M" extent is therefore the output column count (16 columns per warp) and the mma
+"N" extent is `M` (up to 8 rows). A lane does not own a whole dot product: with
+`g = lane >> 2` and `t = lane & 3`, it supplies the weights of output columns
+`g` and `g + 8` (the A fragment) and activation row `g` (the B fragment), and the
+accumulator it receives back covers output rows `2t` and `2t + 1` of those two
+columns. Loads are therefore keyed off `g` and stores off `t`; the kernel source
+carries the full fragment table, and the `GemvTensorCoreLaneOwnership*` tests
+probe the mapping with a one-hot activation. Fragment loads are made fully
+coalesced by permuting the K axis - K is a reduction axis, so any permutation
+applied to both operands leaves the result unchanged - which lets each lane load
+one contiguous `uint4` of weight bytes per 64-element K window and feed four mma
+instructions with it. `KSplit` warps per block take a strided share of the K
+windows and are reduced through shared memory, which restores the memory-level
+parallelism lost by giving each warp 16 columns instead of 1-4.
+
+Every individual product is exact (E4M3 to FP16/BF16 is lossless) and the mma
+accumulates in FP32 just like the FMA path, but the summation order differs, so
+the result is **not** bit-identical to the FMA kernel. Note also that the mma
+path is preferred over the FMA kernel by default on SM80+, including at `M == 1`.
+Set `ORT_FP8_GEMV_MMA=0` to fall back to the FMA kernel.
+
 ---
 
 ## 5. Default Path - Dequantize + cuBLAS

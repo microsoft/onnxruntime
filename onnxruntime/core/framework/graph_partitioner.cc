@@ -1024,36 +1024,6 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
   return Status::OK();
 }
 
-// Validate the ep_context_path to make sure it is file path and check whether the file exist already
-// TODO: Move function to ep_context_utils.h/cc
-static Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_path,
-                                        const std::filesystem::path& model_path,
-                                        std::filesystem::path& context_cache_path,
-                                        bool error_if_output_file_exists = true) {
-  if (!ep_context_path.empty()) {
-    context_cache_path = ep_context_path;
-    if (!(context_cache_path.has_filename() && context_cache_path.extension() != "")) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "context_file_path should not point to a folder.");
-    }
-  } else if (!model_path.empty()) {
-    auto pos = model_path.native().find_last_of(ORT_TSTR("."));
-    if (pos != std::string::npos) {
-      context_cache_path = model_path.native().substr(0, pos) + ORT_TSTR("_ctx.onnx");
-    } else {
-      context_cache_path = model_path.native() + ORT_TSTR("_ctx.onnx");
-    }
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty.");
-  }
-
-  if (std::filesystem::exists(context_cache_path) && error_if_output_file_exists) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to generate EP context model since the file '",
-                           context_cache_path, "' exists already. Please remove the EP context model if you want to re-generate it.");
-  }
-
-  return Status::OK();
-}
-
 // TODO: Move function to ep_context_utils.h/cc
 static Status CreateEpContextModel(const ExecutionProviders& execution_providers,
                                    const Graph& graph,
@@ -1065,27 +1035,10 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     all_ep_context_nodes.insert(all_ep_context_nodes.begin(), ep_context_nodes.begin(), ep_context_nodes.end());
   }
 
-  if (all_ep_context_nodes.size() < 1) {
-    auto action_if_no_compiled_nodes = ep_context_gen_options.action_if_no_compiled_nodes;
-
-    ORT_RETURN_IF(action_if_no_compiled_nodes == epctx::ModelGenOptions::ActionIfNoCompiledNodes::kReturnError,
-                  "Unable to compile any nodes. Check that the session EPs support compilation and can execute "
-                  "at least one subgraph in the model.");
-
-    if (action_if_no_compiled_nodes == epctx::ModelGenOptions::ActionIfNoCompiledNodes::kDontGenerateModel) {
-      LOGS(logger, WARNING) << "Unable to compile any nodes. ONNX Runtime will not generate a compiled model. "
-                               "Either the session EPs do not support compilation or the model is already compiled.";
-      // Note: this path is only taken if a model is compiled with the original compilation approach that uses
-      // session options configs only. The explicit compile API instead only chooses between
-      // kReturnError and kGenerateModel.
-      return Status::OK();
-    }
-
-    // Assert so that this is caught in a test in DEBUG builds (in case a new enum value is added)
-    assert(action_if_no_compiled_nodes == epctx::ModelGenOptions::ActionIfNoCompiledNodes::kGenerateModel);
-    LOGS(logger, INFO) << "Unable to compile any nodes but will still generate an output model. "
-                          "Either the session EPs do not support compilation or the model is already compiled.";
-  }
+  // This function serializes the EPContext form only; the sole caller (GraphPartitioner::Partition) invokes
+  // it just when AnyEpContextNodesProduced() is true, so at least one EPContext node is guaranteed here. The
+  // no-compiled-nodes policy (kReturnError / kGenerateModel) is handled by InferenceSession instead.
+  assert(!all_ep_context_nodes.empty());
 
   auto get_ep_context_node = [&all_ep_context_nodes](const std::string& node_name) -> std::pair<bool, const Node*> {
     for (auto& node : all_ep_context_nodes) {
@@ -1113,10 +1066,10 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
       (output_model_path_ptr != nullptr || !graph.ModelPath().empty())) {
     std::filesystem::path output_model_path = (output_model_path_ptr != nullptr) ? *output_model_path_ptr
                                                                                  : std::filesystem::path("");
-    ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(output_model_path,
-                                                  graph.ModelPath(),
-                                                  valid_output_model_path,
-                                                  ep_context_gen_options.error_if_output_file_exists));
+    ORT_RETURN_IF_ERROR(epctx::GetValidatedEpContextPath(output_model_path,
+                                                         graph.ModelPath(),
+                                                         valid_output_model_path,
+                                                         ep_context_gen_options.error_if_output_file_exists));
   }
 
   // Utility function to detect a fused node with an unsupported domain.
@@ -1215,59 +1168,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   ORT_RETURN_IF_ERROR(EpContextModelToProto(ep_context_model, valid_output_model_path, ep_context_gen_options,
                                             /*out*/ model_proto));
 
-  if (output_buffer_holder != nullptr) {
-    // Write output model into a buffer ORT allocates for the user.
-    size_t buffer_size = model_proto.ByteSizeLong();
-    ORT_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<int>::max()),
-                  "Cannot serialize ONNX ModelProto larger than 2GB");
-
-    AllocatorPtr allocator = output_buffer_holder->buffer_allocator;
-    IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(allocator, buffer_size);
-    model_proto.SerializeToArray(buffer.get(), static_cast<int>(buffer_size));
-
-    *output_buffer_holder->buffer_size_ptr = buffer_size;
-    *output_buffer_holder->buffer_ptr = buffer.release();
-  } else if (output_write_func_holder != nullptr) {
-    // Write output model to user's output stream.
-    size_t buffer_size = model_proto.ByteSizeLong();
-    ORT_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<int>::max()),
-                  "Cannot serialize ONNX ModelProto larger than 2GB");
-
-    auto out_stream_buf = std::make_unique<epctx::OutStreamBuf>(*output_write_func_holder);
-    std::ostream out_stream(out_stream_buf.get());
-
-    model_proto.SerializeToOstream(&out_stream);
-    out_stream.flush();
-    ORT_RETURN_IF_ERROR(out_stream_buf->GetStatus());
-  } else {
-    // Write output model to a file.
-    int fd = 0;
-    Status status = Env::Default().FileOpenWr(valid_output_model_path, fd);
-    ORT_RETURN_IF_ERROR(status);
-
-    ORT_TRY {
-      google::protobuf::io::FileOutputStream output(fd);
-      bool serialize_result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
-      if (!serialize_result) {
-        status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_PROTOBUF,
-                                 "Protobuf serialization failed when generating EPContext model ",
-                                 valid_output_model_path);
-      }
-    }
-    ORT_CATCH(const std::exception& ex) {
-      ORT_HANDLE_EXCEPTION([&]() {
-        status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
-      });
-    }
-    if (!status.IsOK()) {
-      GSL_SUPPRESS(es .84)
-      ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
-      return status;
-    }
-    ORT_RETURN_IF_ERROR(Env::Default().FileClose(fd));
-  }
-
-  return Status::OK();
+  return epctx::SaveModelProtoToLocation(model_proto, ep_context_gen_options, valid_output_model_path, logger);
 }
 
 static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, GraphPartitioner::Mode mode,
@@ -1579,9 +1480,9 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
           output_model_path_ptr != nullptr) {
         // Check before EP compile graphs
         std::filesystem::path context_cache_path;
-        ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(*output_model_path_ptr, graph.ModelPath(),
-                                                      context_cache_path,
-                                                      ep_context_gen_options.error_if_output_file_exists));
+        ORT_RETURN_IF_ERROR(epctx::GetValidatedEpContextPath(*output_model_path_ptr, graph.ModelPath(),
+                                                             context_cache_path,
+                                                             ep_context_gen_options.error_if_output_file_exists));
       }
     }
 
@@ -1595,7 +1496,10 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                                                  ep_acc_map, *graph_optimizer_registry_, logger,
                                                  disable_model_compile));  // Pass param
 
-    if (ep_context_gen_options.enable) {
+    // Serialize here only when the output is EPContext-based (some EP produced EPContext nodes). The plain
+    // form (no nodes compiled) is instead emitted by InferenceSession (epctx::BuildAndSaveOptimizedModel);
+    // see there for how its serialization point is chosen.
+    if (ep_context_gen_options.enable && AnyEpContextNodesProduced()) {
       ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_gen_options, logger));
     }
 #else
@@ -1616,5 +1520,16 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
 
   return Status::OK();
 }
+
+#ifndef ORT_MINIMAL_BUILD
+bool GraphPartitioner::AnyEpContextNodesProduced() const {
+  for (const auto& ep : providers_) {
+    if (!ep->GetEpContextNodes().empty()) {
+      return true;
+    }
+  }
+  return false;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace onnxruntime
