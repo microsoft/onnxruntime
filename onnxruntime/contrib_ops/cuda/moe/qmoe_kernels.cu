@@ -950,7 +950,7 @@ __device__ __forceinline__ float DecodeFp4E2M1(uint8_t code) {
   const uint32_t sign = static_cast<uint32_t>(code & 0x8u) << 28;
   const uint32_t normal = ((126u + e) << 23) | (m << 22);
   const uint32_t subnormal = m ? (126u << 23) : 0u;
-  return __int_as_float(static_cast<int>(sign | (e ? normal : subnormal)));
+  return __uint_as_float(sign | (e ? normal : subnormal));
 }
 
 __device__ __forceinline__ float DecodeUE8M0(uint8_t code) {
