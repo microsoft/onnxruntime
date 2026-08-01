@@ -86,6 +86,37 @@ class PagedAttentionRotaryProgram final : public Program<PagedAttentionRotaryPro
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 };
 
+// Split a packed-QKV tensor into three separate Q, K, V tensors so the rest
+// of the WebGPU PagedAttention pipeline can consume them the same way it
+// consumes the non-packed layout. Phase 1b.2b — packed-QKV support.
+//
+// Input row layout (row-major within each token):
+//   cols [0, q_hidden_size)                            → Q
+//   cols [q_hidden_size, q_hidden_size + kv_hidden)    → K
+//   cols [q_hidden_size + kv_hidden, packed_hidden)    → V
+//
+// Inputs:
+//   input : (token_count, q_hidden_size + 2 * kv_hidden_size)  [T]
+//
+// Outputs:
+//   q_out : (token_count, q_hidden_size)                       [T]
+//   k_out : (token_count, kv_hidden_size)                      [T]
+//   v_out : (token_count, kv_hidden_size)                      [T]
+class PagedAttentionSplitPackedQKVProgram final
+    : public Program<PagedAttentionSplitPackedQKVProgram> {
+ public:
+  PagedAttentionSplitPackedQKVProgram() : Program{"PagedAttentionSplitPackedQKV"} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"token_count", ProgramUniformVariableDataType::Uint32},
+      {"q_hidden_size", ProgramUniformVariableDataType::Uint32},
+      {"kv_hidden_size", ProgramUniformVariableDataType::Uint32},
+      {"packed_hidden_size", ProgramUniformVariableDataType::Uint32},
+      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+};
+
 // WebGPU PagedAttention kernel — v1 skeleton.
 //
 // Op contract, phased delivery plan, and reuse strategy are documented in

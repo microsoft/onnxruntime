@@ -43,10 +43,32 @@ struct ScatterCase {
   int block_size = 256;  // helper enforces block_size % 256 == 0
   int num_blocks = 2;
   int max_num_blocks_per_seq = 1;
+  bool is_packed = false;                     // when true, feed Q|K|V concatenated as `query` input
   std::vector<int32_t> cumulative_seqlens_q;  // size batch_size + 1
   std::vector<int32_t> past_seqlens;          // size batch_size
   std::vector<int32_t> block_table;           // size batch_size * max_num_blocks_per_seq
 };
+
+// Concatenate Q, K, V into the packed row layout expected by PagedAttention:
+//   cols [0, q_hidden)                       -> Q
+//   cols [q_hidden, q_hidden + kv_hidden)    -> K
+//   cols [q_hidden + kv_hidden, packed_end)  -> V
+std::vector<float> PackQKV(const std::vector<float>& q,
+                           const std::vector<float>& k,
+                           const std::vector<float>& v,
+                           int token_count, int q_hidden, int kv_hidden) {
+  const int packed_hidden = q_hidden + 2 * kv_hidden;
+  std::vector<float> out(static_cast<size_t>(token_count) * packed_hidden);
+  for (int t = 0; t < token_count; ++t) {
+    std::copy_n(q.begin() + t * q_hidden, q_hidden,
+                out.begin() + t * packed_hidden);
+    std::copy_n(k.begin() + t * kv_hidden, kv_hidden,
+                out.begin() + t * packed_hidden + q_hidden);
+    std::copy_n(v.begin() + t * kv_hidden, kv_hidden,
+                out.begin() + t * packed_hidden + q_hidden + kv_hidden);
+  }
+  return out;
+}
 
 // Build inputs, run the scatter path through PagedAttention, and validate that
 // each new (token, kv_head, dim) element lands in the correct cache slot while
@@ -127,9 +149,19 @@ void RunScatterCase(const ScatterCase& c) {
   test.AddAttribute<float>("scale", 0.0f);
   test.AddAttribute<int64_t>("do_rotary", 0);
 
-  test.AddInput<MLFloat16>("query", {c.token_count, hidden_size}, FloatsToMLFloat16s(query_f));
-  test.AddInput<MLFloat16>("key", {c.token_count, kv_hidden_size}, FloatsToMLFloat16s(key_f));
-  test.AddInput<MLFloat16>("value", {c.token_count, kv_hidden_size}, FloatsToMLFloat16s(value_f));
+  if (c.is_packed) {
+    const std::vector<float> packed_f =
+        PackQKV(query_f, key_f, value_f, c.token_count, hidden_size, kv_hidden_size);
+    const int packed_hidden = hidden_size + 2 * kv_hidden_size;
+    test.AddInput<MLFloat16>("query", {c.token_count, packed_hidden},
+                             FloatsToMLFloat16s(packed_f));
+    test.AddOptionalInputEdge<MLFloat16>();  // key
+    test.AddOptionalInputEdge<MLFloat16>();  // value
+  } else {
+    test.AddInput<MLFloat16>("query", {c.token_count, hidden_size}, FloatsToMLFloat16s(query_f));
+    test.AddInput<MLFloat16>("key", {c.token_count, kv_hidden_size}, FloatsToMLFloat16s(key_f));
+    test.AddInput<MLFloat16>("value", {c.token_count, kv_hidden_size}, FloatsToMLFloat16s(value_f));
+  }
   test.AddInput<MLFloat16>("key_cache",
                            {c.num_blocks, c.block_size, c.kv_num_heads, c.head_size},
                            FloatsToMLFloat16s(key_cache_f));
@@ -232,6 +264,7 @@ struct RotaryCase {
   int num_blocks = 2;
   int max_num_blocks_per_seq = 1;
   bool interleaved = false;
+  bool is_packed = false;  // when true, feed Q|K|V concatenated as `query` input
   std::vector<int32_t> cumulative_seqlens_q;
   std::vector<int32_t> past_seqlens;
   std::vector<int32_t> block_table;
@@ -396,9 +429,19 @@ void RunRotaryCase(const RotaryCase& c) {
   test.AddAttribute<int64_t>("do_rotary", 1);
   test.AddAttribute<int64_t>("rotary_interleaved", c.interleaved ? 1 : 0);
 
-  test.AddInput<MLFloat16>("query", {c.token_count, hidden_size}, FloatsToMLFloat16s(query_f));
-  test.AddInput<MLFloat16>("key", {c.token_count, kv_hidden_size}, FloatsToMLFloat16s(key_f));
-  test.AddInput<MLFloat16>("value", {c.token_count, kv_hidden_size}, FloatsToMLFloat16s(value_f));
+  if (c.is_packed) {
+    const std::vector<float> packed_f =
+        PackQKV(query_f, key_f, value_f, c.token_count, hidden_size, kv_hidden_size);
+    const int packed_hidden = hidden_size + 2 * kv_hidden_size;
+    test.AddInput<MLFloat16>("query", {c.token_count, packed_hidden},
+                             FloatsToMLFloat16s(packed_f));
+    test.AddOptionalInputEdge<MLFloat16>();  // key
+    test.AddOptionalInputEdge<MLFloat16>();  // value
+  } else {
+    test.AddInput<MLFloat16>("query", {c.token_count, hidden_size}, FloatsToMLFloat16s(query_f));
+    test.AddInput<MLFloat16>("key", {c.token_count, kv_hidden_size}, FloatsToMLFloat16s(key_f));
+    test.AddInput<MLFloat16>("value", {c.token_count, kv_hidden_size}, FloatsToMLFloat16s(value_f));
+  }
   test.AddInput<MLFloat16>("key_cache",
                            {c.num_blocks, c.block_size, c.kv_num_heads, c.head_size},
                            FloatsToMLFloat16s(key_cache_f));
@@ -475,6 +518,67 @@ TEST(WebGpuPagedAttention, Rotary_PartialDim_MultiBatch_MultiHead) {
   c.head_size = 32;
   c.rotary_dim = 16;  // tail dims 16..31 must be copied through
   c.interleaved = false;
+  c.num_blocks = 3;
+  c.cumulative_seqlens_q = {0, 3, 5};
+  c.past_seqlens = {4, 0};
+  c.block_table = {0, 2};
+  RunRotaryCase(c);
+}
+
+// -----------------------------------------------------------------------------
+// Packed QKV — Phase 1b.2b
+// -----------------------------------------------------------------------------
+
+// Packed layout without rotary: same math as the scatter-only tests, but Q, K,
+// V arrive concatenated in the `query` input; `key`/`value` inputs are absent.
+// Validates that the split kernel routes each row to the right output tensor
+// and that the downstream scatter path is bit-identical to the non-packed
+// flow.
+TEST(WebGpuPagedAttention, PackedQKV_NoRotary_MultiToken_SingleBatch) {
+  ScatterCase c{};
+  c.batch_size = 1;
+  c.token_count = 2;
+  c.num_heads = 2;
+  c.kv_num_heads = 1;  // GQA broadcast factor = 2 exercises Q vs K/V column widths
+  c.head_size = 8;
+  c.is_packed = true;
+  c.cumulative_seqlens_q = {0, 2};
+  c.past_seqlens = {3};
+  c.block_table = {0};
+  RunScatterCase(c);
+}
+
+// Packed layout with rotary, non-interleaved, single sequence, one new token.
+// Exercises the packed-split → rotary → scatter chain end to end.
+TEST(WebGpuPagedAttention, PackedQKV_Rotary_NonInterleaved_SingleToken) {
+  RotaryCase c{};
+  c.batch_size = 1;
+  c.token_count = 1;
+  c.num_heads = 2;
+  c.kv_num_heads = 1;
+  c.head_size = 16;
+  c.rotary_dim = 16;
+  c.interleaved = false;
+  c.is_packed = true;
+  c.cumulative_seqlens_q = {0, 1};
+  c.past_seqlens = {0};
+  c.block_table = {0};
+  RunRotaryCase(c);
+}
+
+// Packed layout with rotary, interleaved, multi-batch GQA with non-zero past.
+// Simultaneously exercises: packed split, interleaved rotary math, per-seq
+// position offsets, and Q-vs-K/V head-count asymmetry across the pipeline.
+TEST(WebGpuPagedAttention, PackedQKV_Rotary_Interleaved_MultiBatch_GQA) {
+  RotaryCase c{};
+  c.batch_size = 2;
+  c.token_count = 5;  // seq 0: 3 tokens, seq 1: 2 tokens
+  c.num_heads = 2;
+  c.kv_num_heads = 1;  // GQA broadcast factor = 2
+  c.head_size = 16;
+  c.rotary_dim = 16;
+  c.interleaved = true;
+  c.is_packed = true;
   c.num_blocks = 3;
   c.cumulative_seqlens_q = {0, 3, 5};
   c.past_seqlens = {4, 0};

@@ -166,6 +166,54 @@ static Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
   return context.RunProgram(program);
 }
 
+Status PagedAttentionSplitPackedQKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
+  const auto& input = sh.AddInput("input", ShaderUsage::UseUniform);
+  const auto& q_out = sh.AddOutput("q_out", ShaderUsage::UseUniform);
+  const auto& k_out = sh.AddOutput("k_out", ShaderUsage::UseUniform);
+  const auto& v_out = sh.AddOutput("v_out", ShaderUsage::UseUniform);
+  return WGSL_TEMPLATE_APPLY(sh, "bert/paged_attention_split_packed_qkv.wgsl.template",
+                             WGSL_TEMPLATE_VARIABLE(input, input),
+                             WGSL_TEMPLATE_VARIABLE(k_out, k_out),
+                             WGSL_TEMPLATE_VARIABLE(q_out, q_out),
+                             WGSL_TEMPLATE_VARIABLE(v_out, v_out));
+}
+
+// Dispatch the split-packed-QKV program: slice the packed query into three
+// standalone Q, K, V tensors (each with the non-packed hidden layout) so the
+// rest of the pipeline can consume them unchanged.
+static Status RunSplitPackedQKV(onnxruntime::webgpu::ComputeContext& context,
+                                const PagedAttentionParameters& parameters,
+                                const Tensor* packed_qkv,
+                                Tensor* q_out,
+                                Tensor* k_out,
+                                Tensor* v_out) {
+  const uint32_t token_count = static_cast<uint32_t>(parameters.token_count);
+  const uint32_t q_hidden_size = static_cast<uint32_t>(parameters.hidden_size);
+  const uint32_t kv_hidden_size = static_cast<uint32_t>(parameters.kv_hidden_size);
+  const uint32_t packed_hidden_size = q_hidden_size + 2u * kv_hidden_size;
+  const uint32_t dispatch_size = token_count * packed_hidden_size;
+
+  PagedAttentionSplitPackedQKVProgram program{};
+  program
+      .AddInputs({
+          {packed_qkv, ProgramTensorMetadataDependency::TypeAndRank},
+      })
+      .AddOutputs({
+          {q_out, ProgramTensorMetadataDependency::TypeAndRank},
+          {k_out, ProgramTensorMetadataDependency::TypeAndRank},
+          {v_out, ProgramTensorMetadataDependency::TypeAndRank},
+      })
+      .AddUniformVariables({
+          {token_count},
+          {q_hidden_size},
+          {kv_hidden_size},
+          {packed_hidden_size},
+          {dispatch_size},
+      })
+      .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+  return context.RunProgram(program);
+}
+
 PagedAttention::PagedAttention(const OpKernelInfo& info) : WebGpuKernel(info) {
   int64_t num_heads = 0;
   int64_t kv_num_heads = 0;
@@ -267,12 +315,31 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
     return Status::OK();
   }
 
-  // Phase 1b.1 does not yet handle these two axes; they land in Phase 1b.2 with
-  // a fused rotary + scatter WGSL variant.
+  // Packed-QKV support (Phase 1b.2b): the CUDA kernel treats packed-QKV as a
+  // special addressing mode inside the rotary + scatter kernels. On WebGPU we
+  // instead materialize three standalone Q, K, V tensors from the packed input
+  // and then fall through to the same non-packed rotary + scatter pipeline
+  // from Phase 1b.2. That trades some memory bandwidth for a clean reuse of
+  // the existing kernels; perf-focused fusion can revisit this in Phase 1c.
+  Tensor packed_q_tensor;
+  Tensor packed_k_tensor;
+  Tensor packed_v_tensor;
   if (parameters.is_packed_qkv) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "PagedAttention (WebGPU): packed QKV layout is not yet "
-                           "implemented (Phase 1b.2b).");
+    const auto* dtype = query->DataType();
+    packed_q_tensor = context.CreateGPUTensor(
+        dtype, TensorShape({parameters.token_count, parameters.hidden_size}));
+    packed_k_tensor = context.CreateGPUTensor(
+        dtype, TensorShape({parameters.token_count, parameters.kv_hidden_size}));
+    packed_v_tensor = context.CreateGPUTensor(
+        dtype, TensorShape({parameters.token_count, parameters.kv_hidden_size}));
+    ORT_RETURN_IF_ERROR(RunSplitPackedQKV(context, parameters, query,
+                                          &packed_q_tensor, &packed_k_tensor,
+                                          &packed_v_tensor));
+    // Re-point the local Q/K/V so the rest of the routine sees the
+    // non-packed layout and needs no further branching.
+    query = &packed_q_tensor;
+    key = &packed_k_tensor;
+    value = &packed_v_tensor;
   }
 
   // Scatter new K,V tokens into the paged cache. In the aliased fast path this
