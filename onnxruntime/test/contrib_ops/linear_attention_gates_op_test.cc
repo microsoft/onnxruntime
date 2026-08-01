@@ -53,6 +53,11 @@ std::vector<T> ToTensorType(const std::vector<float>& data) {
 template <typename T>
 void RunLinearAttentionGateTest(int batch_size, int seq_length, int num_heads, bool with_beta,
                                 float tolerance) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
   const size_t count = static_cast<size_t>(batch_size) * seq_length * num_heads;
   const auto a = RandomFloats(count, -6.0f, 6.0f, 11);
   const auto b = RandomFloats(count, -6.0f, 6.0f, 12);
@@ -84,11 +89,6 @@ void RunLinearAttentionGateTest(int batch_size, int seq_length, int num_heads, b
     tester.AddOutput<T>("beta", dims, ToTensorType<T>(expected_beta), false, tolerance, tolerance);
   }
 
-  auto cuda_ep = DefaultCudaExecutionProvider();
-  if (!cuda_ep) {
-    GTEST_SKIP() << "CUDA EP not available";
-  }
-
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(cuda_ep));
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
@@ -97,6 +97,11 @@ void RunLinearAttentionGateTest(int batch_size, int seq_length, int num_heads, b
 template <typename T>
 void RunGatedRMSNormTest(int batch_size, int seq_length, int num_heads, int head_dim,
                          float epsilon, float tolerance) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
   const int hidden = num_heads * head_dim;
   const size_t count = static_cast<size_t>(batch_size) * seq_length * hidden;
   const auto x = RandomFloats(count, -3.0f, 3.0f, 21);
@@ -127,11 +132,6 @@ void RunGatedRMSNormTest(int batch_size, int seq_length, int num_heads, int head
   tester.AddInput<T>("scale", scale_dims, ToTensorType<T>(scale));
   tester.AddInput<T>("gate", dims, ToTensorType<T>(gate));
   tester.AddOutput<T>("Y", dims, ToTensorType<T>(expected), false, tolerance, tolerance);
-
-  auto cuda_ep = DefaultCudaExecutionProvider();
-  if (!cuda_ep) {
-    GTEST_SKIP() << "CUDA EP not available";
-  }
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(cuda_ep));
@@ -174,6 +174,11 @@ TEST(ContribOpLinearAttentionGateTest, BFloat16_SpeculativeDecodeTile) {
 
 // Requesting beta without b must be rejected by shape inference, not at execution time.
 TEST(ContribOpLinearAttentionGateTest, BetaWithoutB_FailsShapeInference) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
   constexpr int kNumHeads = 8;
   const std::vector<int64_t> dims = {1, 2, kNumHeads};
   const std::vector<int64_t> param_dims = {kNumHeads};
@@ -189,7 +194,7 @@ TEST(ContribOpLinearAttentionGateTest, BetaWithoutB_FailsShapeInference) {
   tester.AddOutput<float>("beta", dims, values);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+  execution_providers.push_back(std::move(cuda_ep));
   tester.Run(OpTester::ExpectResult::kExpectFailure,
              "The b input is required when the beta output is requested",
              {}, nullptr, &execution_providers);
