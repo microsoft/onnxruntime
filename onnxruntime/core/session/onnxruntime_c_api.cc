@@ -4032,7 +4032,7 @@ static OrtStatus* ExtractCompatibilityInfoFromModelProto(
   for (const auto& prop : model_proto.metadata_props()) {
     if (prop.key() == target_key) {
       // Found it - allocate and copy the value using the provided allocator
-      *compatibility_info = onnxruntime::StrDup(std::string(prop.value()), allocator);
+      *compatibility_info = onnxruntime::StrDup(prop.value(), allocator);
       if (*compatibility_info == nullptr) {
         return OrtApis::CreateStatus(ORT_FAIL, "Failed to allocate memory for compatibility info.");
       }
