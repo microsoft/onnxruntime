@@ -24,6 +24,10 @@ enum class MoeGemvConfig {
   kThreads64,
 };
 
+// Cover Qwen-style top_k=8 MTP decode. An (N+1)-token verification for
+// num_speculative_tokens=N expands to (N+1)*8 rows, up to 64 for N=7.
+inline constexpr int64_t kMaxProfiledExpandedRowsFp4 = 64;
+
 // True when the opt-in interleaved MXFP4 GEMV path is enabled (env ORT_FP4_GEMV_INTERLEAVED=1).
 // It combines three changes over the default path: (a) the INT4-style ColumnMajorInterleaved FP4
 // weight layout (kInterleave=4, kStepK=32) for 4x fewer K-trips, (b) dtype-conditional accumulation
@@ -39,7 +43,8 @@ bool Fp4MoeGemvUseInterleaved();
 // during CUDA-graph capture. Only Threads is derived; CtaN stays at the default, so the result
 // never changes which shapes is_moe_gemv_fp4_supported accepts. Set ORT_FP4_GEMV_DEFAULT_TILING=0
 // to fall back to the fixed default tiling.
-MoeGemvConfig Fp4MoeGemvDefaultConfig(int64_t expanded_num_rows, int64_t n, int64_t k);
+MoeGemvConfig Fp4MoeGemvDefaultConfig(int64_t expanded_num_rows, int64_t n, int64_t k,
+                                      int multi_processor_count);
 
 // FP4 GEMV shape support for the non-interleaved ColumnMajor layout (kInterleave = 1). Shared by
 // both MXFP4 (group_size == 32) and NVFP4 (group_size == 16). Requires sm >= 80, n divisible by

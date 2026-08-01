@@ -71,7 +71,8 @@ static bool Fp4MoeGemvUseDefaultTilingHeuristic() {
 // keeps the SM just as full while halving the epilogue's reduction width.
 static constexpr int64_t kMinBlocksPerSmForThreads64 = 16;
 
-MoeGemvConfig Fp4MoeGemvDefaultConfig(int64_t expanded_num_rows, int64_t n, int64_t k) {
+MoeGemvConfig Fp4MoeGemvDefaultConfig(int64_t expanded_num_rows, int64_t n, int64_t k,
+                                      int multi_processor_count) {
   // The interleaved path pins its own CtaN/Threads and ignores `config`.
   if (Fp4MoeGemvUseInterleaved() || !Fp4MoeGemvUseDefaultTilingHeuristic()) {
     return MoeGemvConfig::kDefault;
@@ -91,9 +92,8 @@ MoeGemvConfig Fp4MoeGemvDefaultConfig(int64_t expanded_num_rows, int64_t n, int6
   //     epilogue reduces partial sums across Threads/32 warps through shared memory. A narrower
   //     block does the same math with half the barriers and a shallower reduction tree, so prefer
   //     it whenever the grid is large enough that the SM still fills up (see the constant above).
-  static int const sm_count = common::getMultiProcessorCount();
   const int64_t blocks = expanded_num_rows * (n / kDefaultCtaN);
-  if (blocks >= kMinBlocksPerSmForThreads64 * sm_count) {
+  if (blocks >= kMinBlocksPerSmForThreads64 * multi_processor_count) {
     return MoeGemvConfig::kThreads64;
   }
   return MoeGemvConfig::kDefault;
@@ -176,7 +176,7 @@ bool is_moe_gemv_fp4_supported(int sm, int64_t expanded_num_rows, int64_t n, int
   if (k % group_size != 0) {
     return false;
   }
-  if (expanded_num_rows <= 0 || expanded_num_rows > kMaxProfiledExpandedRows) {
+  if (expanded_num_rows <= 0 || expanded_num_rows > kMaxProfiledExpandedRowsFp4) {
     return false;
   }
   if (n < kMinProfiledProblemDim || k < kMinProfiledProblemDim) {

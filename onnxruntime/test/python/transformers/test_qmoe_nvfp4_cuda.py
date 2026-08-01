@@ -308,6 +308,8 @@ class TestQMoENVFP4(unittest.TestCase):
         use_swiglu=False,
         block_size=NVFP4_BLOCK_SIZE,
         gemv_mode=None,
+        input_scale=1.0,
+        atol_override=None,
     ):
         self._skip_if_no_fp4()
 
@@ -389,7 +391,7 @@ class TestQMoENVFP4(unittest.TestCase):
                 else:
                     os.environ["ORT_ENABLE_FP4_GEMV"] = prev_gemv_env
 
-        input_tensor = torch.randn(num_tokens, hidden_size, device=device, dtype=torch_dtype)
+        input_tensor = torch.randn(num_tokens, hidden_size, device=device, dtype=torch_dtype) * input_scale
         router_logits = torch.randn(num_tokens, num_experts, device=device, dtype=torch_dtype)
         output_tensor = torch.zeros(num_tokens, hidden_size, device=device, dtype=torch_dtype)
 
@@ -409,6 +411,7 @@ class TestQMoENVFP4(unittest.TestCase):
         iobinding.synchronize_outputs()
 
         ort_output = output_tensor.clone()
+        self.assertTrue(torch.isfinite(ort_output).all().item(), "NVFP4 MoE output contains NaN or infinity")
 
         ref_output = self._compute_reference(
             input_tensor,
@@ -432,6 +435,8 @@ class TestQMoENVFP4(unittest.TestCase):
         )
 
         atol = 0.15 if torch_dtype == torch.bfloat16 else 0.12
+        if atol_override is not None:
+            atol = atol_override
         # The native block-scaled FP4xFP4 CUTLASS prefill kernel (Blackwell / SM120+, taken
         # only when the per-run token count reaches the prefill threshold) additionally
         # quantizes the *activations* to 4-bit NVFP4 (block-16 with E4M3 block scales). The
@@ -659,6 +664,20 @@ class TestQMoENVFP4(unittest.TestCase):
             onnx_dtype=TensorProto.BFLOAT16,
             use_swiglu=True,
             gemv_mode="1",
+        )
+
+    def test_nvfp4_fp16_gemv_scales_weights_before_multiply(self):
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=4,
+            top_k=2,
+            num_tokens=1,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+            gemv_mode="1",
+            input_scale=10000.0,
+            atol_override=3.0,
         )
 
     def test_nvfp4_fp16_gemv_disabled_swiglu(self):

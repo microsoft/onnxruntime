@@ -1438,8 +1438,11 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       // analytic default and, when autotune is on, profile on a non-captured (warmup) call
       // and freeze the choice for CUDA-graph replay. During capture (or when autotune is
       // off, which is the shipping default) the analytic default is what actually runs.
-      MoeGemvConfig fc1_config = gemv::Fp4MoeGemvDefaultConfig(expanded, fc1_n, hidden);
-      MoeGemvConfig fc2_config = gemv::Fp4MoeGemvDefaultConfig(expanded, hidden, inter);
+        const int multi_processor_count = GetDeviceProp().multiProcessorCount;
+        MoeGemvConfig fc1_config =
+          gemv::Fp4MoeGemvDefaultConfig(expanded, fc1_n, hidden, multi_processor_count);
+        MoeGemvConfig fc2_config =
+          gemv::Fp4MoeGemvDefaultConfig(expanded, hidden, inter, multi_processor_count);
 
       const int64_t row_bucket =
           onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler::bucketM(expanded);

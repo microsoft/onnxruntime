@@ -20,8 +20,8 @@ namespace kernels {
 namespace fpA_intB_gemv {
 
 // Accumulator element of the K-paired inner loop, see accumulate_column_tile below. 16-bit
-// accumulation keeps the two k lanes of the vec2 apart until the epilogue so that folding in the
-// group scale costs a single fma2; fp32 accumulation reduces each tile to one float right away.
+// accumulation keeps the two k lanes of the vec2 apart until the epilogue; fp32 accumulation
+// reduces each pair to one float right away.
 template <typename Details, typename AccT>
 using TileAccType =
     std::conditional_t<std::is_same_v<AccT, float>, float,
@@ -37,10 +37,10 @@ using TileAccType =
 // (Mapper sends a logical pair to a physical pair, and to an even physical index, so the vec2 load
 // stays aligned).
 //
-// The group scale is applied once to the tile sum instead of to every decoded weight, turning four
-// fma2 per column and K tile into one. This is the same product either way: the caller loads a
-// single scale per column and K tile, so it already required the tile to sit inside one scale
-// group (StepK <= GroupSize), which every launched configuration satisfies.
+// Apply the group scale to each decoded weight before multiplying by the activation. Besides
+// matching the original dequantize-then-mma order, this prevents an unscaled fp16 product from
+// overflowing even when the final scaled product is representable. The fp32 policy converts each
+// scaled pair before multiplying so BF16 products are not accumulated in BF16 first.
 template <typename Details, int K, typename TileAccT, typename TypeA>
 __device__ __forceinline__ void accumulate_column_tile(TileAccT& acc, void const* w, void const* act, TypeA scale) {
   using Math = MathWrapper<typename Details::TypeDetailsA>;
@@ -49,18 +49,20 @@ __device__ __forceinline__ void accumulate_column_tile(TileAccT& acc, void const
   static_assert(K % 2 == 0);
   typename Details::LayoutDetails::Mapper mapper;
 
-  Type2 partial = Math::to_vec2(static_cast<Type>(0.f));
+  Type2 const zero = Math::to_vec2(static_cast<Type>(0.f));
+  Type2 const scale2 = Math::to_vec2(scale);
 #pragma unroll
   for (int j = 0; j < K / 2; ++j) {
     Type2 const w2 = *reinterpret_cast<Type2 const*>(reinterpret_cast<Type const*>(w) + mapper(2 * j));
-    partial = Math::fma2(w2, reinterpret_cast<Type2 const*>(act)[j], partial);
-  }
-
-  if constexpr (std::is_same_v<TileAccT, float>) {
-    float2 const p = Math::to_float2(partial);
-    acc += static_cast<float>(scale) * (p.x + p.y);
-  } else {
-    acc = Math::fma2(partial, Math::to_vec2(scale), acc);
+    Type2 const scaled_w2 = Math::fma2(w2, scale2, zero);
+    Type2 const a2 = reinterpret_cast<Type2 const*>(act)[j];
+    if constexpr (std::is_same_v<TileAccT, float>) {
+      float2 const scaled_w_f2 = Math::to_float2(scaled_w2);
+      float2 const a_f2 = Math::to_float2(a2);
+      acc += scaled_w_f2.x * a_f2.x + scaled_w_f2.y * a_f2.y;
+    } else {
+      acc = Math::fma2(scaled_w2, a2, acc);
+    }
   }
 }
 
