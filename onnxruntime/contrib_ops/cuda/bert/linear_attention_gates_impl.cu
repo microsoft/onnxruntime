@@ -119,7 +119,7 @@ Status LaunchLinearAttentionGateKernel(
   }
 
   constexpr int kThreads = 256;
-  const int64_t blocks = (count + kThreads - 1) / kThreads;
+  const int64_t blocks = (count - 1) / kThreads + 1;
   ORT_RETURN_IF_NOT(blocks <= std::numeric_limits<int>::max(),
                     "LinearAttentionGate launch requires too many blocks");
   LinearAttentionGateKernel<T><<<static_cast<int>(blocks), kThreads, 0, stream>>>(
