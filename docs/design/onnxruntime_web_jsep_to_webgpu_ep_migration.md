@@ -115,10 +115,10 @@ migration guide (§11).
 Parity checks to close before Phase 1. Items 1–3 need a real browser + GPU/WebNN run; item 4 is a known wiring gap
 to fix.
 
-1. **Proxy-worker (`wasm.proxy = true`).** `./webgpu` already ships this exact path (native EP + Asyncify + proxy
+1. **Proxy-worker (`wasm.proxy = true`).** `./webgpu` already ships this exact path (native WebGPU EP + Asyncify + proxy
    over the EP-agnostic `proxy-wrapper.ts`), so this is a coverage check, not new wiring. CI today runs `--wasm.proxy`
    only with `-b=wasm` (CPU) on the JSEP build — never `-b=webgpu`, and the `--webgpu-ep` leg runs no proxy. Confirm a
-   real proxy-mode run on a GPU: native EP device init and threading inside a Worker.
+   real proxy-mode run on a GPU: native WebGPU EP device init and threading inside a Worker.
 2. **IO-binding.** The `'gpu-buffer'` / `'ml-tensor'` paths in `wasm-core-impl.ts` have symmetric native/JSEP
    hooks. CI today runs the `--io-binding=gpu-tensor` / `gpu-location` legs on the JSEP build only; the `--webgpu-ep`
    leg passes no `--io-binding`. Confirm the native path delivers true zero-copy handoff and matching dispose/lifetime
@@ -137,7 +137,7 @@ Per-session typed options are already a superset of JSEP's, confirmed by source 
 
 ## 8. Phase 1 — Flip + deprecate (this release)
 
-1. **Flip the default.** Build `.` and `./all` with the native EPs (`USE_WEBGPU_EP=true`). The `webgpu` key and
+1. **Flip the default.** Build `.` and `./all` with the native WebGPU EP (`USE_WEBGPU_EP=true`). The `webgpu` key and
    public API are unchanged. `/all` keeps WebGL until the WebGL effort removes it.
 2. **Escape hatch.** Add the temporary, deprecated `onnxruntime-web/jsep` export (`USE_WEBGPU_EP=false`).
 3. **Warn once.** The `/jsep` build warns once (respecting `env.logLevel`) via a shared deprecation-warning
@@ -160,7 +160,7 @@ does not; and (b) the §7 items resolved with targeted coverage (op-parity tests
 ## 9. Phase 2 — Removal (subsequent release)
 
 Timed one release after Phase 1, keeping the `/jsep` hatch available for exactly one release. Extend only if
-native-EP parity regressions surface via real `/jsep` usage.
+native-WebGPU-EP parity regressions surface via real `/jsep` usage.
 
 1. Drop JSEP WASM artifacts; update `build.ts` / `package.json`; remove the `USE_WEBGPU_EP` flag. Repoint `/all`
    to the webgpu/default artifact — only once WebGL has also been dropped (WebGL doc §8); otherwise `/all` stays a
@@ -178,9 +178,9 @@ native-EP parity regressions surface via real `/jsep` usage.
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| Undiscovered native-EP parity gap vs. JSEP | Medium | One-release `/jsep` escape hatch + warn-once funnel; differential tests |
+| Undiscovered native-WebGPU-EP parity gap vs. JSEP | Medium | One-release `/jsep` escape hatch + warn-once funnel; differential tests |
 | int64 behavior change vs. JSEP | Low | None by default (native-off matches JSEP); `enableInt64 = 1` is an opt-in tradeoff |
-| Proxy / IO-binding / WebNN unexercised under the native EP in CI | Unknown | Validate before flip (§7) |
+| Proxy / IO-binding / WebNN unexercised in the native-WebGPU build in CI | Unknown | Validate before flip (§7) |
 | Global `env.webgpu.*` settings dropped on native | Medium | Wire into the native path or document — release gate (§7, §8) |
 | WASM filename change breaks `wasmPaths` | Medium | Document `.jsep.wasm` → `.asyncify.wasm` |
 | No telemetry on JSEP adoption | Medium | Warn-once funnel + one-release escape hatch |
@@ -195,7 +195,7 @@ native-EP parity regressions surface via real `/jsep` usage.
 - **Lower-overhead build (`onnxruntime-web/jspi`):** on JSPI-capable browsers, prefer `./jspi` — the same native
   WebGPU EP with a smaller WASM binary and lower per-call overhead than Asyncify (the universal fallback).
 - **Need JSEP for one more release:** import `onnxruntime-web/jsep` (temporary, deprecated). File an issue if the
-  native EPs do not work for your model.
+  native WebGPU EP does not work for your model.
 - **int64-heavy models:** no change needed — the default matches JSEP. Exceptions that move int64 arithmetic to the
   GPU (lossy for genuine `> 2³¹` values): `extra: { 'ep.webgpuexecutionprovider.enableInt64': '1' }`, and
   `enableGraphCapture = true` (forces int64 on; see §6).
