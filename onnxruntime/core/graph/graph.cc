@@ -5236,7 +5236,7 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
         }
         if (process_prepacks) {
           // These pre-packs will reside in memory
-          processed_weights.insert(std::string(initializer.name()));
+          processed_weights.insert(initializer.name());
         }
         continue;
       }
@@ -5286,7 +5286,7 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
           ORT_RETURN_IF_NOT(os.good(), "Failed to write pre-packed blobs to external file");
         }
 
-        processed_weights.insert(std::string(initializer.name()));
+        processed_weights.insert(initializer.name());
       }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -5385,7 +5385,7 @@ Status Graph::ToGraphProtoWithCustomInitializerHandlingImpl(
 
   std::sort(initializers.begin(), initializers.end(),
             [](const ONNX_NAMESPACE::TensorProto* a, const ONNX_NAMESPACE::TensorProto* b) {
-              return std::string(a->name()) < std::string(b->name());
+              return a->name() < b->name();
             });
 
   // Call user's handler function for each initializer. We store the initializer externally
