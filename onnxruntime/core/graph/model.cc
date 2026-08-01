@@ -448,17 +448,9 @@ Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
   }
 
   google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
-  // onnx-light's IstreamInputStream reads the entire istream into an internal
-  // buffer via std::istreambuf_iterator (which does not set eofbit on the
-  // source stream), so the eof() check must be skipped.  With real protobuf
-  // the IstreamInputStream calls istream::read(), which does set eofbit.
-#ifdef ORT_USE_ONNX_LIGHT
   const bool result = p_model_proto->ParseFromZeroCopyStream(&zero_copy_input);
-#else
-  const bool result = p_model_proto->ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
-#endif
   if (!result) {
-    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Failed to load model because protobuf parsing failed.");
+    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
   return Status::OK();
 }

@@ -2152,7 +2152,7 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
       break;
     case AttributeProto_AttributeType_STRING:
       tensor.set_data_type(TensorProto_DataType_STRING);
-      tensor.add_string_data(std::string(constant_attribute.s()));
+      tensor.add_string_data(constant_attribute.s());
       break;
     case AttributeProto_AttributeType_STRINGS: {
       tensor.set_data_type(TensorProto_DataType_STRING);
