@@ -35,21 +35,36 @@ __device__ __forceinline__ void AccumulateEightElements8b(
 #if (!defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530)
   // --- Dequantization Setup ---
   half2 scale_h2 = __half2half2(scale);  // Broadcast scale
-  half zp_h = __ushort2half_rn(zp);      // Convert zp to half
-  half2 zp_h2 = __half2half2(zp_h);      // Broadcast zp_h
 
-  // --- Extract 8 uint8_t values ---
-  uint8_t q[8];
-#pragma unroll
-  for (int i = 0; i < 8; ++i) {
-    q[i] = (values_quant >> (i * 8)) & 0xFF;
-  }
+  // Fast uint8 -> half conversion via the "magic half" trick. The half bit pattern
+  // (0x6400 | q) encodes exactly 1024 + q for any q in [0, 255] (exponent 2^10, so the
+  // low 10 mantissa bits are integer-valued and ulp == 1). Byte-permuting the packed
+  // weights against the constant 0x64646464 therefore materializes two halves per PRMT,
+  // replacing 8 u16->half converts plus 4 pack ops with 4 instructions.
+  //
+  // Subtracting the matching biased zero point (0x6400 | zp) == 1024 + zp cancels the
+  // 1024 offset exactly: both operands are exact halves and the result (q - zp) lies in
+  // [-255, 255], which is exactly representable, so this is bit-identical to the
+  // straightforward __ushort2half_rn(q) - __ushort2half_rn(zp) formulation.
+  const uint32_t kMagicBytes = 0x64646464u;
+  const uint32_t lo32 = static_cast<uint32_t>(values_quant);
+  const uint32_t hi32 = static_cast<uint32_t>(values_quant >> 32);
 
-  // --- Dequantize 8 values into 4 half2 vectors: b_vec = (q - zp) * scale ---
-  half2 q_01 = __halves2half2(__ushort2half_rn(q[0]), __ushort2half_rn(q[1]));
-  half2 q_23 = __halves2half2(__ushort2half_rn(q[2]), __ushort2half_rn(q[3]));
-  half2 q_45 = __halves2half2(__ushort2half_rn(q[4]), __ushort2half_rn(q[5]));
-  half2 q_67 = __halves2half2(__ushort2half_rn(q[6]), __ushort2half_rn(q[7]));
+  // Selector nibbles (LSB first) pick result bytes from {x[0..3], y[4..7]}:
+  // 0x4140 -> {q0, 0x64, q1, 0x64}; 0x4342 -> {q2, 0x64, q3, 0x64}.
+  const uint32_t b_01 = __byte_perm(lo32, kMagicBytes, 0x4140);
+  const uint32_t b_23 = __byte_perm(lo32, kMagicBytes, 0x4342);
+  const uint32_t b_45 = __byte_perm(hi32, kMagicBytes, 0x4140);
+  const uint32_t b_67 = __byte_perm(hi32, kMagicBytes, 0x4342);
+
+  const half2 q_01 = *reinterpret_cast<const half2*>(&b_01);
+  const half2 q_23 = *reinterpret_cast<const half2*>(&b_23);
+  const half2 q_45 = *reinterpret_cast<const half2*>(&b_45);
+  const half2 q_67 = *reinterpret_cast<const half2*>(&b_67);
+
+  // Biased zero point: 1024 + zp, matching the bias baked into q_* above.
+  const uint16_t zp_biased_bits = static_cast<uint16_t>(0x6400u | static_cast<uint32_t>(zp));
+  const half2 zp_h2 = __half2half2(__ushort_as_half(zp_biased_bits));
 
   half2 diff_01 = __hsub2(q_01, zp_h2);
   half2 diff_23 = __hsub2(q_23, zp_h2);
@@ -200,12 +215,39 @@ __device__ __forceinline__ float ToFloat8b<nv_bfloat16>(nv_bfloat16 v) { return 
 template <class T>
 __device__ __forceinline__ void DequantizeEight8b(uint64_t values_quant, T scale, uint8_t zp, float dq[8]) {
   float scale_f = ToFloat8b<T>(scale);
+#if (!defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530)
+  // Magic-half decode of the packed uint8 weights. The half bit pattern (0x6400 | q)
+  // encodes exactly 1024 + q for q in [0, 255] (exponent 2^10, so ulp == 1), so two
+  // weights are materialized per __byte_perm. Subtracting half(1024 + zp) cancels the
+  // bias and leaves the exact integer (q - zp) in [-255, 255], which half represents
+  // exactly -- so this is bit-identical to float(q) - float(zp) while replacing
+  // 8 int->float converts and 8 subtracts with 4 permutes and 4 half2 subtracts.
+  const uint32_t kMagicBytes = 0x64646464u;
+  const uint32_t lo32 = static_cast<uint32_t>(values_quant);
+  const uint32_t hi32 = static_cast<uint32_t>(values_quant >> 32);
+  const half2 bias_h2 = __half2half2(
+      __ushort_as_half(static_cast<uint16_t>(0x6400u | static_cast<uint32_t>(zp))));
+
+  uint32_t packed[4];
+  packed[0] = __byte_perm(lo32, kMagicBytes, 0x4140);  // {q0, q1}
+  packed[1] = __byte_perm(lo32, kMagicBytes, 0x4342);  // {q2, q3}
+  packed[2] = __byte_perm(hi32, kMagicBytes, 0x4140);  // {q4, q5}
+  packed[3] = __byte_perm(hi32, kMagicBytes, 0x4342);  // {q6, q7}
+
+#pragma unroll
+  for (int i = 0; i < 4; ++i) {
+    const float2 d = __half22float2(__hsub2(*reinterpret_cast<const half2*>(&packed[i]), bias_h2));
+    dq[2 * i] = d.x * scale_f;
+    dq[2 * i + 1] = d.y * scale_f;
+  }
+#else
   float zp_f = static_cast<float>(zp);
 #pragma unroll
   for (int i = 0; i < 8; ++i) {
     uint8_t q = (values_quant >> (i * 8)) & 0xFF;
     dq[i] = (static_cast<float>(q) - zp_f) * scale_f;
   }
+#endif
 }
 
 // Load 8 consecutive activations (one lane's iteration tile) into float[8].
