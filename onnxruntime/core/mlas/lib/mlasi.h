@@ -1642,6 +1642,7 @@ struct MLAS_PLATFORM {
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeSoftmaxOutputF32Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ComputeExpF32Kernel;
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL* ReduceMinimumMaximumF32Kernel;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* TanhKernelRoutine;
 #endif
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_RISCV64)
     // Hoisted under combined guard so future "shared between AMD64 and RISCV64"
@@ -1649,7 +1650,6 @@ struct MLAS_PLATFORM {
     // assigns these fields independently in platform.cpp.
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* GeluErfKernelRoutine;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* SiluKernelRoutine;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* TanhKernelRoutine;
 #endif
 
 #if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)

@@ -106,8 +106,25 @@ struct MLAS_EXP_CONSTANTS {
     int32_t MaximumExponent;
 };
 
+struct MLAS_TANH_CONSTANTS {
+    float LowerRange;
+    float UpperRange;
+    float alpha_13;
+    float alpha_11;
+    float alpha_9;
+    float alpha_7;
+    float alpha_5;
+    float alpha_3;
+    float alpha_1;
+    float beta_6;
+    float beta_4;
+    float beta_2;
+    float beta_0;
+};
+
 extern "C" const MLAS_ERF_CONSTANTS MlasErfConstants;
 extern "C" const MLAS_LOGISTIC_CONSTANTS MlasLogisticConstants;
+extern "C" const MLAS_TANH_CONSTANTS MlasTanhConstants;
 extern "C" const MLAS_EXP_CONSTANTS MlasExpConstants;
 extern "C" const float MlasMinimumF32Value;
 
@@ -153,6 +170,14 @@ MlasSveErfKernel(
 void
 MLASCALL
 MlasSveLogisticKernel(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+void
+MLASCALL
+MlasSveTanhKernel(
     const float* Input,
     float* Output,
     size_t N

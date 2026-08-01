@@ -504,6 +504,81 @@ Return Value:
     return svaddv_f32(ptrue, svadd_f32_x(ptrue, Accumulator0, Accumulator1));
 }
 
+extern "C" void
+MLASCALL
+MlasSveTanhKernelImpl(
+    const float* Input,
+    float* Output,
+    size_t N,
+    const MLAS_TANH_CONSTANTS* Constants
+    )
+/*++
+
+Routine Description:
+
+    This routine implements the SVE kernel for the hyperbolic tangent
+    function: the same clamped P13/Q6 rational polynomial as the generic
+    kernel, evaluated per whilelt-predicated vector.
+
+Arguments:
+
+    Input - Supplies the input buffer.
+
+    Output - Supplies the output buffer.
+
+    N - Supplies the number of elements to process.
+
+    Constants - Supplies the coefficient table (passed by pointer so the
+        frozen machine-code variant needs no data relocations).
+
+Return Value:
+
+    None.
+
+--*/
+{
+    const svfloat32_t LowerRange = svdup_n_f32(Constants->LowerRange);
+    const svfloat32_t UpperRange = svdup_n_f32(Constants->UpperRange);
+
+    const svfloat32_t Alpha13 = svdup_n_f32(Constants->alpha_13);
+    const svfloat32_t Alpha11 = svdup_n_f32(Constants->alpha_11);
+    const svfloat32_t Alpha9 = svdup_n_f32(Constants->alpha_9);
+    const svfloat32_t Alpha7 = svdup_n_f32(Constants->alpha_7);
+    const svfloat32_t Alpha5 = svdup_n_f32(Constants->alpha_5);
+    const svfloat32_t Alpha3 = svdup_n_f32(Constants->alpha_3);
+    const svfloat32_t Alpha1 = svdup_n_f32(Constants->alpha_1);
+
+    const svfloat32_t Beta6 = svdup_n_f32(Constants->beta_6);
+    const svfloat32_t Beta4 = svdup_n_f32(Constants->beta_4);
+    const svfloat32_t Beta2 = svdup_n_f32(Constants->beta_2);
+    const svfloat32_t Beta0 = svdup_n_f32(Constants->beta_0);
+
+    for (size_t i = 0; i < N; i += svcntw()) {
+
+        const svbool_t pg = svwhilelt_b32_u64(i, N);
+
+        svfloat32_t Value = svld1_f32(pg, Input + i);
+        Value = svmax_f32_x(pg, LowerRange, Value);
+        Value = svmin_f32_x(pg, UpperRange, Value);
+
+        const svfloat32_t ValueSquared = svmul_f32_x(pg, Value, Value);
+
+        svfloat32_t p = svmla_f32_x(pg, Alpha11, ValueSquared, Alpha13);
+        p = svmla_f32_x(pg, Alpha9, p, ValueSquared);
+        p = svmla_f32_x(pg, Alpha7, p, ValueSquared);
+        p = svmla_f32_x(pg, Alpha5, p, ValueSquared);
+        p = svmla_f32_x(pg, Alpha3, p, ValueSquared);
+        p = svmla_f32_x(pg, Alpha1, p, ValueSquared);
+        p = svmul_f32_x(pg, p, Value);
+
+        svfloat32_t q = svmla_f32_x(pg, Beta4, ValueSquared, Beta6);
+        q = svmla_f32_x(pg, Beta2, q, ValueSquared);
+        q = svmla_f32_x(pg, Beta0, q, ValueSquared);
+
+        svst1_f32(pg, Output + i, svdiv_f32_x(pg, p, q));
+    }
+}
+
 extern "C" float
 MLASCALL
 MlasSveReduceMaximumF32KernelImpl(
@@ -601,21 +676,69 @@ Return Value:
 --*/
 {
     const svbool_t ptrue = svptrue_b32();
+    const size_t veclen = svcntw();
 
-    svfloat32_t MinimumVector = svdup_n_f32(std::numeric_limits<float>::max());
-    svfloat32_t MaximumVector = svdup_n_f32(std::numeric_limits<float>::lowest());
+    svfloat32_t MinimumVector0 = svdup_n_f32(std::numeric_limits<float>::max());
+    svfloat32_t MaximumVector0 = svdup_n_f32(std::numeric_limits<float>::lowest());
 
-    for (size_t i = 0; i < N; i += svcntw()) {
+    //
+    // Unrolled main loop: four independent accumulator pairs with
+    // unpredicated operations, matching the generic kernel's structure (a
+    // single predicated accumulator loop measured 2-3.9x slower than the
+    // generic NEON kernel on Cortex-A725/X925).
+    //
+
+    if (N >= veclen * 4) {
+
+        svfloat32_t MinimumVector1 = MinimumVector0;
+        svfloat32_t MinimumVector2 = MinimumVector0;
+        svfloat32_t MinimumVector3 = MinimumVector0;
+
+        svfloat32_t MaximumVector1 = MaximumVector0;
+        svfloat32_t MaximumVector2 = MaximumVector0;
+        svfloat32_t MaximumVector3 = MaximumVector0;
+
+        while (N >= veclen * 4) {
+
+            const svfloat32_t InputVector0 = svld1_f32(ptrue, Input);
+            const svfloat32_t InputVector1 = svld1_f32(ptrue, Input + veclen);
+            const svfloat32_t InputVector2 = svld1_f32(ptrue, Input + 2 * veclen);
+            const svfloat32_t InputVector3 = svld1_f32(ptrue, Input + 3 * veclen);
+
+            MinimumVector0 = svmin_f32_x(ptrue, MinimumVector0, InputVector0);
+            MinimumVector1 = svmin_f32_x(ptrue, MinimumVector1, InputVector1);
+            MinimumVector2 = svmin_f32_x(ptrue, MinimumVector2, InputVector2);
+            MinimumVector3 = svmin_f32_x(ptrue, MinimumVector3, InputVector3);
+
+            MaximumVector0 = svmax_f32_x(ptrue, MaximumVector0, InputVector0);
+            MaximumVector1 = svmax_f32_x(ptrue, MaximumVector1, InputVector1);
+            MaximumVector2 = svmax_f32_x(ptrue, MaximumVector2, InputVector2);
+            MaximumVector3 = svmax_f32_x(ptrue, MaximumVector3, InputVector3);
+
+            Input += veclen * 4;
+            N -= veclen * 4;
+        }
+
+        MinimumVector0 = svmin_f32_x(ptrue, MinimumVector0, MinimumVector1);
+        MinimumVector2 = svmin_f32_x(ptrue, MinimumVector2, MinimumVector3);
+        MinimumVector0 = svmin_f32_x(ptrue, MinimumVector0, MinimumVector2);
+
+        MaximumVector0 = svmax_f32_x(ptrue, MaximumVector0, MaximumVector1);
+        MaximumVector2 = svmax_f32_x(ptrue, MaximumVector2, MaximumVector3);
+        MaximumVector0 = svmax_f32_x(ptrue, MaximumVector0, MaximumVector2);
+    }
+
+    for (size_t i = 0; i < N; i += veclen) {
 
         const svbool_t pg = svwhilelt_b32_u64(i, N);
         const svfloat32_t Vector = svld1_f32(pg, Input + i);
 
-        MinimumVector = svmin_f32_m(pg, MinimumVector, Vector);
-        MaximumVector = svmax_f32_m(pg, MaximumVector, Vector);
+        MinimumVector0 = svmin_f32_m(pg, MinimumVector0, Vector);
+        MaximumVector0 = svmax_f32_m(pg, MaximumVector0, Vector);
     }
 
-    *Min = svminv_f32(ptrue, MinimumVector);
-    *Max = svmaxv_f32(ptrue, MaximumVector);
+    *Min = svminv_f32(ptrue, MinimumVector0);
+    *Max = svmaxv_f32(ptrue, MaximumVector0);
 }
 
 extern "C" void

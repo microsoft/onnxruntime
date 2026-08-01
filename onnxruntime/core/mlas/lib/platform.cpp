@@ -730,6 +730,7 @@ Return Value:
         this->ErfKernelRoutine = MlasSveErfKernel;
         this->LogisticKernelRoutine = MlasSveLogisticKernel;
         this->ComputeExpF32Kernel = MlasSveComputeExpF32Kernel;
+        this->TanhKernelRoutine = MlasSveTanhKernel;
         this->ReduceMaximumF32Kernel = MlasSveReduceMaximumF32Kernel;
         this->ReduceMinimumMaximumF32Kernel = MlasSveReduceMinimumMaximumF32Kernel;
         this->ComputeSumExpF32Kernel = MlasSveComputeSumExpF32Kernel;
@@ -740,6 +741,7 @@ Return Value:
         this->ErfKernelRoutine = MlasErfKernel;
         this->LogisticKernelRoutine = MlasLogisticKernel;
         this->ComputeExpF32Kernel = MlasComputeExpF32Kernel;
+        this->TanhKernelRoutine = MlasTanhKernel;
         this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
         this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32Kernel;
         this->ComputeSumExpF32Kernel = MlasComputeSumExpF32Kernel;

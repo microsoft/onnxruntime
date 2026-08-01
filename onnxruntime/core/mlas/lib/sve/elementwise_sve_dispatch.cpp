@@ -40,6 +40,10 @@ MlasSveErfKernelImpl(const float* Input, float* Output, size_t N, const MLAS_ERF
 void MLASCALL
 MlasSveLogisticKernelImpl(const float* Input, float* Output, size_t N, const MLAS_LOGISTIC_CONSTANTS* Constants);
 
+void
+MLASCALL
+MlasSveTanhKernelImpl(const float* Input, float* Output, size_t N, const MLAS_TANH_CONSTANTS* Constants);
+
 void MLASCALL
 MlasSveComputeExpF32KernelImpl(const float* Input, float* Output, size_t N, const MLAS_SVE_EXP_CONSTANTS* Constants);
 
@@ -126,6 +130,17 @@ MlasSveLogisticKernel(
     )
 {
     MlasSveLogisticKernelImpl(Input, Output, N, &MlasLogisticConstants);
+}
+
+void
+MLASCALL
+MlasSveTanhKernel(
+    const float* Input,
+    float* Output,
+    size_t N
+    )
+{
+    MlasSveTanhKernelImpl(Input, Output, N, &MlasTanhConstants);
 }
 
 void

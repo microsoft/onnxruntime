@@ -10,28 +10,27 @@ Module Name:
 
 Abstract:
 
-    Portable machine-code variant of the SVE elementwise kernels, in the
-    style of Arm's KleidiAI library: every instruction is emitted as a raw
+    Portable machine-code variant of the SVE elementwise_sve kernels, in the style
+    of Arm's KleidiAI library: every instruction is emitted as a raw
     instruction word (GAS ".inst" / armasm64 "DCD" via KAI_ASM_INST), so the
     file assembles with toolchains that have no SVE support, and the bytes
     are identical on every platform.
 
     GENERATED FILE - DO NOT EDIT BY HAND.
 
-    Generated from the SVE intrinsics translation units
-    (sve/elementwise_sve.cpp, sve/elementwise_sve_fp16.cpp), which remain
-    the reference implementation and regeneration source (script:
-    gen_ew_asm.py). The functions here export the same MlasSve*KernelImpl
+    Generated from the SVE intrinsics translation unit(s) (sve/elementwise_sve.cpp, sve/elementwise_sve_fp16.cpp), which
+    remain the reference implementation and regeneration source (script:
+    sve/gen_sve_asm.py). The functions here export the same extern "C"
     symbols; the build links exactly one of the two implementations. The
     code is fully position-independent (the generator verifies there are no
-    relocations) and vector-length agnostic (the loops execute cntw/cnth and
-    whilelo at run time).
+    relocations, calls, or literal pools).
 
 --*/
 
 #include "kai_asm_macros.h"
 
     KAI_ASM_CODE(elementwise_sve)
+
 
     KAI_ASM_ALIGN
     KAI_ASM_GLOBAL(MlasSveErfKernelImpl)
@@ -41,7 +40,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveErfKernelImpl)
     KAI_ASM_INST(0x0423e3ec)  // cntb	x12, all, mul #4
     KAI_ASM_INST(0x9101018c)  // add	x12, x12, #0x40
     KAI_ASM_INST(0xf1403d9f)  // cmp	x12, #0xf, lsl #12
-    KAI_ASM_INST(0x540000ab)  // b.lt	24 <.SVLPEND0>  // b.tstop
+    KAI_ASM_INST(0x540000ab)  // b.lt	24 <.SVLPEND0>
     KAI_ASM_INST(0xd1403fff)  // sub	sp, sp, #0xf, lsl #12
     KAI_ASM_INST(0xf90003ff)  // str	xzr, [sp]
     KAI_ASM_INST(0xd1403d8c)  // sub	x12, x12, #0xf, lsl #12
@@ -87,7 +86,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveErfKernelImpl)
     KAI_ASM_INST(0x855bc066)  // ld1rw	{z6.s}, p0/z, [x3, #108]
     KAI_ASM_INST(0x8550c064)  // ld1rw	{z4.s}, p0/z, [x3, #64]
     KAI_ASM_INST(0xb4000762)  // cbz	x2, 1b0 <.SVLPEND0+0x18c>
-    KAI_ASM_INST(0xd2800004)  // mov	x4, #0x0                   	// #0
+    KAI_ASM_INST(0xd2800004)  // mov	x4, #0x0
     KAI_ASM_INST(0x04a0e3e3)  // cntw	x3
     KAI_ASM_INST(0xe5804ca6)  // str	z6, [x5, #3, mul vl]
     KAI_ASM_INST(0xd503201f)  // nop
@@ -144,7 +143,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveErfKernelImpl)
     KAI_ASM_INST(0xe5444020)  // st1w	{z0.s}, p0, [x1, x4, lsl #2]
     KAI_ASM_INST(0x8b030084)  // add	x4, x4, x3
     KAI_ASM_INST(0xeb04005f)  // cmp	x2, x4
-    KAI_ASM_INST(0x54fff968)  // b.hi	d8 <.SVLPEND0+0xb4>  // b.pmore
+    KAI_ASM_INST(0x54fff968)  // b.hi	d8 <.SVLPEND0+0xb4>
     KAI_ASM_INST(0x6d4027e8)  // ldp	d8, d9, [sp]
     KAI_ASM_INST(0x6d412fea)  // ldp	d10, d11, [sp, #16]
     KAI_ASM_INST(0x6d4237ec)  // ldp	d12, d13, [sp, #32]
@@ -174,7 +173,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveLogisticKernelImpl)
     KAI_ASM_INST(0x854cc078)  // ld1rw	{z24.s}, p0/z, [x3, #48]
     KAI_ASM_INST(0x854dc079)  // ld1rw	{z25.s}, p0/z, [x3, #52]
     KAI_ASM_INST(0xb40003e2)  // cbz	x2, b8 <MlasSveLogisticKernelImpl+0xb8>
-    KAI_ASM_INST(0xd2800003)  // mov	x3, #0x0                   	// #0
+    KAI_ASM_INST(0xd2800003)  // mov	x3, #0x0
     KAI_ASM_INST(0x04a0e3e4)  // cntw	x4
     KAI_ASM_INST(0x25b8c01b)  // mov	z27.s, #0
     KAI_ASM_INST(0x25b9ce1a)  // fmov	z26.s, #1.000000000000000000e+00
@@ -203,9 +202,57 @@ KAI_ASM_FUNCTION_LABEL(MlasSveLogisticKernelImpl)
     KAI_ASM_INST(0xe5434020)  // st1w	{z0.s}, p0, [x1, x3, lsl #2]
     KAI_ASM_INST(0x8b040063)  // add	x3, x3, x4
     KAI_ASM_INST(0xeb03005f)  // cmp	x2, x3
-    KAI_ASM_INST(0x54fffce8)  // b.hi	50 <MlasSveLogisticKernelImpl+0x50>  // b.pmore
+    KAI_ASM_INST(0x54fffce8)  // b.hi	50 <MlasSveLogisticKernelImpl+0x50>
     KAI_ASM_INST(0xd65f03c0)  // ret
     KAI_ASM_FUNCTION_END(MlasSveLogisticKernelImpl)
+
+    KAI_ASM_ALIGN
+    KAI_ASM_GLOBAL(MlasSveTanhKernelImpl)
+    KAI_ASM_FUNCTION_TYPE(MlasSveTanhKernelImpl)
+KAI_ASM_FUNCTION_LABEL(MlasSveTanhKernelImpl)
+    KAI_ASM_INST(0x2518e3e0)  // ptrue	p0.b
+    KAI_ASM_INST(0x8540c064)  // ld1rw	{z4.s}, p0/z, [x3]
+    KAI_ASM_INST(0x8541c065)  // ld1rw	{z5.s}, p0/z, [x3, #4]
+    KAI_ASM_INST(0x8542c066)  // ld1rw	{z6.s}, p0/z, [x3, #8]
+    KAI_ASM_INST(0x8543c067)  // ld1rw	{z7.s}, p0/z, [x3, #12]
+    KAI_ASM_INST(0x8544c070)  // ld1rw	{z16.s}, p0/z, [x3, #16]
+    KAI_ASM_INST(0x8545c071)  // ld1rw	{z17.s}, p0/z, [x3, #20]
+    KAI_ASM_INST(0x8546c072)  // ld1rw	{z18.s}, p0/z, [x3, #24]
+    KAI_ASM_INST(0x8547c073)  // ld1rw	{z19.s}, p0/z, [x3, #28]
+    KAI_ASM_INST(0x8548c074)  // ld1rw	{z20.s}, p0/z, [x3, #32]
+    KAI_ASM_INST(0x8549c075)  // ld1rw	{z21.s}, p0/z, [x3, #36]
+    KAI_ASM_INST(0x854ac076)  // ld1rw	{z22.s}, p0/z, [x3, #40]
+    KAI_ASM_INST(0x854bc077)  // ld1rw	{z23.s}, p0/z, [x3, #44]
+    KAI_ASM_INST(0x854cc078)  // ld1rw	{z24.s}, p0/z, [x3, #48]
+    KAI_ASM_INST(0xb4000362)  // cbz	x2, a4 <MlasSveTanhKernelImpl+0xa4>
+    KAI_ASM_INST(0xd2800003)  // mov	x3, #0x0
+    KAI_ASM_INST(0x04a0e3e4)  // cntw	x4
+    KAI_ASM_INST(0xd503201f)  // nop
+    KAI_ASM_INST(0x25a21c60)  // whilelo	p0.s, x3, x2
+    KAI_ASM_INST(0xa5434002)  // ld1w	{z2.s}, p0/z, [x0, x3, lsl #2]
+    KAI_ASM_INST(0x65868082)  // fmax	z2.s, p0/m, z2.s, z4.s
+    KAI_ASM_INST(0x658780a2)  // fmin	z2.s, p0/m, z2.s, z5.s
+    KAI_ASM_INST(0x0420bc41)  // movprfx	z1, z2
+    KAI_ASM_INST(0x65828041)  // fmul	z1.s, p0/m, z1.s, z2.s
+    KAI_ASM_INST(0x0420bce0)  // movprfx	z0, z7
+    KAI_ASM_INST(0x65a60020)  // fmla	z0.s, p0/m, z1.s, z6.s
+    KAI_ASM_INST(0x0420bec3)  // movprfx	z3, z22
+    KAI_ASM_INST(0x65b50023)  // fmla	z3.s, p0/m, z1.s, z21.s
+    KAI_ASM_INST(0x65b08020)  // fmad	z0.s, p0/m, z1.s, z16.s
+    KAI_ASM_INST(0x65b78023)  // fmad	z3.s, p0/m, z1.s, z23.s
+    KAI_ASM_INST(0x65b18020)  // fmad	z0.s, p0/m, z1.s, z17.s
+    KAI_ASM_INST(0x65b88023)  // fmad	z3.s, p0/m, z1.s, z24.s
+    KAI_ASM_INST(0x65b28020)  // fmad	z0.s, p0/m, z1.s, z18.s
+    KAI_ASM_INST(0x65b38020)  // fmad	z0.s, p0/m, z1.s, z19.s
+    KAI_ASM_INST(0x65b48020)  // fmad	z0.s, p0/m, z1.s, z20.s
+    KAI_ASM_INST(0x65828040)  // fmul	z0.s, p0/m, z0.s, z2.s
+    KAI_ASM_INST(0x658d8060)  // fdiv	z0.s, p0/m, z0.s, z3.s
+    KAI_ASM_INST(0xe5434020)  // st1w	{z0.s}, p0, [x1, x3, lsl #2]
+    KAI_ASM_INST(0x8b040063)  // add	x3, x3, x4
+    KAI_ASM_INST(0xeb03005f)  // cmp	x2, x3
+    KAI_ASM_INST(0x54fffd48)  // b.hi	48 <MlasSveTanhKernelImpl+0x48>
+    KAI_ASM_INST(0xd65f03c0)  // ret
+    KAI_ASM_FUNCTION_END(MlasSveTanhKernelImpl)
 
     KAI_ASM_ALIGN
     KAI_ASM_GLOBAL(MlasSveComputeExpF32KernelImpl)
@@ -225,7 +272,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveComputeExpF32KernelImpl)
     KAI_ASM_INST(0x854ac077)  // ld1rw	{z23.s}, p0/z, [x3, #40]
     KAI_ASM_INST(0x854bc078)  // ld1rw	{z24.s}, p0/z, [x3, #44]
     KAI_ASM_INST(0xb40003e2)  // cbz	x2, b0 <MlasSveComputeExpF32KernelImpl+0xb0>
-    KAI_ASM_INST(0xd2800003)  // mov	x3, #0x0                   	// #0
+    KAI_ASM_INST(0xd2800003)  // mov	x3, #0x0
     KAI_ASM_INST(0x04a0e3e4)  // cntw	x4
     KAI_ASM_INST(0x25a21c60)  // whilelo	p0.s, x3, x2
     KAI_ASM_INST(0xa5434002)  // ld1w	{z2.s}, p0/z, [x0, x3, lsl #2]
@@ -254,7 +301,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveComputeExpF32KernelImpl)
     KAI_ASM_INST(0xe5434020)  // st1w	{z0.s}, p0, [x1, x3, lsl #2]
     KAI_ASM_INST(0x8b040063)  // add	x3, x3, x4
     KAI_ASM_INST(0xeb03005f)  // cmp	x2, x3
-    KAI_ASM_INST(0x54fffca8)  // b.hi	40 <MlasSveComputeExpF32KernelImpl+0x40>  // b.pmore
+    KAI_ASM_INST(0x54fffca8)  // b.hi	40 <MlasSveComputeExpF32KernelImpl+0x40>
     KAI_ASM_INST(0xd65f03c0)  // ret
     KAI_ASM_FUNCTION_END(MlasSveComputeExpF32KernelImpl)
 
@@ -272,7 +319,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveComputeSumExpF32KernelImpl)
     KAI_ASM_INST(0x8540c076)  // ld1rw	{z22.s}, p0/z, [x3]
     KAI_ASM_INST(0xb4000602)  // cbz	x2, e0 <MlasSveComputeSumExpF32KernelImpl+0xe0>
     KAI_ASM_INST(0x04a0e3e4)  // cntw	x4
-    KAI_ASM_INST(0xd2800003)  // mov	x3, #0x0                   	// #0
+    KAI_ASM_INST(0xd2800003)  // mov	x3, #0x0
     KAI_ASM_INST(0x0460e3e5)  // cnth	x5
     KAI_ASM_INST(0x25b8c010)  // mov	z16.s, #0
     KAI_ASM_INST(0x04703200)  // mov	z0.d, z16.d
@@ -313,7 +360,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveComputeSumExpF32KernelImpl)
     KAI_ASM_INST(0x658084c0)  // fadd	z0.s, p1/m, z0.s, z6.s
     KAI_ASM_INST(0x658080b0)  // fadd	z16.s, p0/m, z16.s, z5.s
     KAI_ASM_INST(0xeb03005f)  // cmp	x2, x3
-    KAI_ASM_INST(0x54fffb68)  // b.hi	38 <MlasSveComputeSumExpF32KernelImpl+0x38>  // b.pmore
+    KAI_ASM_INST(0x54fffb68)  // b.hi	38 <MlasSveComputeSumExpF32KernelImpl+0x38>
     KAI_ASM_INST(0x2518e3e0)  // ptrue	p0.b
     KAI_ASM_INST(0x65900000)  // fadd	z0.s, z0.s, z16.s
     KAI_ASM_INST(0x65802000)  // faddv	s0, p0, z0.s
@@ -333,7 +380,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveReduceMaximumF32KernelImpl)
     KAI_ASM_INST(0x0420e3e2)  // cntb	x2
     KAI_ASM_INST(0x05242000)  // mov	z0.s, s0
     KAI_ASM_INST(0xeb02003f)  // cmp	x1, x2
-    KAI_ASM_INST(0x540002c3)  // b.cc	64 <MlasSveReduceMaximumF32KernelImpl+0x64>  // b.lo, b.ul, b.last
+    KAI_ASM_INST(0x540002c3)  // b.cc	64 <MlasSveReduceMaximumF32KernelImpl+0x64>
     KAI_ASM_INST(0x0423e3e3)  // cntb	x3, all, mul #4
     KAI_ASM_INST(0x04603002)  // mov	z2.d, z0.d
     KAI_ASM_INST(0x04603001)  // mov	z1.d, z0.d
@@ -351,19 +398,19 @@ KAI_ASM_FUNCTION_LABEL(MlasSveReduceMaximumF32KernelImpl)
     KAI_ASM_INST(0x8b030000)  // add	x0, x0, x3
     KAI_ASM_INST(0x65868082)  // fmax	z2.s, p0/m, z2.s, z4.s
     KAI_ASM_INST(0xeb02003f)  // cmp	x1, x2
-    KAI_ASM_INST(0x54fffea2)  // b.cs	28 <MlasSveReduceMaximumF32KernelImpl+0x28>  // b.hs, b.nlast
+    KAI_ASM_INST(0x54fffea2)  // b.cs	28 <MlasSveReduceMaximumF32KernelImpl+0x28>
     KAI_ASM_INST(0x65868060)  // fmax	z0.s, p0/m, z0.s, z3.s
     KAI_ASM_INST(0x65868041)  // fmax	z1.s, p0/m, z1.s, z2.s
     KAI_ASM_INST(0x65868020)  // fmax	z0.s, p0/m, z0.s, z1.s
     KAI_ASM_INST(0xb4000121)  // cbz	x1, 88 <MlasSveReduceMaximumF32KernelImpl+0x88>
-    KAI_ASM_INST(0xd2800002)  // mov	x2, #0x0                   	// #0
+    KAI_ASM_INST(0xd2800002)  // mov	x2, #0x0
     KAI_ASM_INST(0x04a0e3e3)  // cntw	x3
     KAI_ASM_INST(0x25a11c40)  // whilelo	p0.s, x2, x1
     KAI_ASM_INST(0xa5424001)  // ld1w	{z1.s}, p0/z, [x0, x2, lsl #2]
     KAI_ASM_INST(0x8b030042)  // add	x2, x2, x3
     KAI_ASM_INST(0x65868020)  // fmax	z0.s, p0/m, z0.s, z1.s
     KAI_ASM_INST(0xeb02003f)  // cmp	x1, x2
-    KAI_ASM_INST(0x54ffff68)  // b.hi	70 <MlasSveReduceMaximumF32KernelImpl+0x70>  // b.pmore
+    KAI_ASM_INST(0x54ffff68)  // b.hi	70 <MlasSveReduceMaximumF32KernelImpl+0x70>
     KAI_ASM_INST(0x2518e3e0)  // ptrue	p0.b
     KAI_ASM_INST(0x65862000)  // fmaxv	s0, p0, z0.s
     KAI_ASM_INST(0xd65f03c0)  // ret
@@ -373,34 +420,63 @@ KAI_ASM_FUNCTION_LABEL(MlasSveReduceMaximumF32KernelImpl)
     KAI_ASM_GLOBAL(MlasSveReduceMinimumMaximumF32KernelImpl)
     KAI_ASM_FUNCTION_TYPE(MlasSveReduceMinimumMaximumF32KernelImpl)
 KAI_ASM_FUNCTION_LABEL(MlasSveReduceMinimumMaximumF32KernelImpl)
-    KAI_ASM_INST(0xb4000263)  // cbz	x3, 4c <MlasSveReduceMinimumMaximumF32KernelImpl+0x4c>
-    KAI_ASM_INST(0xd2800004)  // mov	x4, #0x0                   	// #0
-    KAI_ASM_INST(0x04a0e3e6)  // cntw	x6
-    KAI_ASM_INST(0x12b01005)  // mov	w5, #0x7f7fffff            	// #2139095039
-    KAI_ASM_INST(0x05c043c1)  // mov	z1.s, #0xff7fffff
-    KAI_ASM_INST(0x05a038a0)  // mov	z0.s, w5
+    KAI_ASM_INST(0x0420e3e5)  // cntb	x5
+    KAI_ASM_INST(0xeb05007f)  // cmp	x3, x5
+    KAI_ASM_INST(0x54000663)  // b.cc	d4 <MlasSveReduceMinimumMaximumF32KernelImpl+0xd4>
+    KAI_ASM_INST(0x0423e3e6)  // cntb	x6, all, mul #4
+    KAI_ASM_INST(0x05c043c4)  // mov	z4.s, #0xff7fffff
+    KAI_ASM_INST(0x12b01004)  // mov	w4, #0x7f7fffff
+    KAI_ASM_INST(0x04643085)  // mov	z5.d, z4.d
+    KAI_ASM_INST(0x05a03880)  // mov	z0.s, w4
+    KAI_ASM_INST(0x04643087)  // mov	z7.d, z4.d
+    KAI_ASM_INST(0x04603010)  // mov	z16.d, z0.d
+    KAI_ASM_INST(0x04603006)  // mov	z6.d, z0.d
+    KAI_ASM_INST(0x04603011)  // mov	z17.d, z0.d
+    KAI_ASM_INST(0x04643081)  // mov	z1.d, z4.d
+    KAI_ASM_INST(0x2518e3e0)  // ptrue	p0.b
+    KAI_ASM_INST(0xa540a003)  // ld1w	{z3.s}, p0/z, [x0]
+    KAI_ASM_INST(0xa541a002)  // ld1w	{z2.s}, p0/z, [x0, #1, mul vl]
+    KAI_ASM_INST(0xcb050063)  // sub	x3, x3, x5
+    KAI_ASM_INST(0x65878060)  // fmin	z0.s, p0/m, z0.s, z3.s
+    KAI_ASM_INST(0x65868061)  // fmax	z1.s, p0/m, z1.s, z3.s
+    KAI_ASM_INST(0x65878051)  // fmin	z17.s, p0/m, z17.s, z2.s
+    KAI_ASM_INST(0xa542a003)  // ld1w	{z3.s}, p0/z, [x0, #2, mul vl]
+    KAI_ASM_INST(0x65868047)  // fmax	z7.s, p0/m, z7.s, z2.s
+    KAI_ASM_INST(0x65878066)  // fmin	z6.s, p0/m, z6.s, z3.s
+    KAI_ASM_INST(0xa543a002)  // ld1w	{z2.s}, p0/z, [x0, #3, mul vl]
+    KAI_ASM_INST(0x65868065)  // fmax	z5.s, p0/m, z5.s, z3.s
+    KAI_ASM_INST(0x8b060000)  // add	x0, x0, x6
+    KAI_ASM_INST(0x65878050)  // fmin	z16.s, p0/m, z16.s, z2.s
+    KAI_ASM_INST(0x65868044)  // fmax	z4.s, p0/m, z4.s, z2.s
+    KAI_ASM_INST(0xeb05007f)  // cmp	x3, x5
+    KAI_ASM_INST(0x54fffe22)  // b.cs	38 <MlasSveReduceMinimumMaximumF32KernelImpl+0x38>
+    KAI_ASM_INST(0x65878220)  // fmin	z0.s, p0/m, z0.s, z17.s
+    KAI_ASM_INST(0x65878206)  // fmin	z6.s, p0/m, z6.s, z16.s
+    KAI_ASM_INST(0x658680e1)  // fmax	z1.s, p0/m, z1.s, z7.s
+    KAI_ASM_INST(0x65868085)  // fmax	z5.s, p0/m, z5.s, z4.s
+    KAI_ASM_INST(0x658780c0)  // fmin	z0.s, p0/m, z0.s, z6.s
+    KAI_ASM_INST(0x658680a1)  // fmax	z1.s, p0/m, z1.s, z5.s
+    KAI_ASM_INST(0xb4000163)  // cbz	x3, bc <MlasSveReduceMinimumMaximumF32KernelImpl+0xbc>
+    KAI_ASM_INST(0xd2800004)  // mov	x4, #0x0
+    KAI_ASM_INST(0x04a0e3e5)  // cntw	x5
+    KAI_ASM_INST(0xd503201f)  // nop
     KAI_ASM_INST(0x25a31c80)  // whilelo	p0.s, x4, x3
     KAI_ASM_INST(0xa5444002)  // ld1w	{z2.s}, p0/z, [x0, x4, lsl #2]
-    KAI_ASM_INST(0x8b060084)  // add	x4, x4, x6
+    KAI_ASM_INST(0x8b050084)  // add	x4, x4, x5
     KAI_ASM_INST(0x65878040)  // fmin	z0.s, p0/m, z0.s, z2.s
     KAI_ASM_INST(0x65868041)  // fmax	z1.s, p0/m, z1.s, z2.s
     KAI_ASM_INST(0xeb04007f)  // cmp	x3, x4
-    KAI_ASM_INST(0x54ffff48)  // b.hi	18 <MlasSveReduceMinimumMaximumF32KernelImpl+0x18>  // b.pmore
+    KAI_ASM_INST(0x54ffff48)  // b.hi	a0 <MlasSveReduceMinimumMaximumF32KernelImpl+0xa0>
     KAI_ASM_INST(0x2518e3e0)  // ptrue	p0.b
     KAI_ASM_INST(0x65872000)  // fminv	s0, p0, z0.s
     KAI_ASM_INST(0xbd000020)  // str	s0, [x1]
     KAI_ASM_INST(0x65862021)  // fmaxv	s1, p0, z1.s
     KAI_ASM_INST(0xbd000041)  // str	s1, [x2]
     KAI_ASM_INST(0xd65f03c0)  // ret
-    KAI_ASM_INST(0x2518e3e0)  // ptrue	p0.b
-    KAI_ASM_INST(0x12b01000)  // mov	w0, #0x7f7fffff            	// #2139095039
-    KAI_ASM_INST(0x05a03800)  // mov	z0.s, w0
-    KAI_ASM_INST(0x65872000)  // fminv	s0, p0, z0.s
-    KAI_ASM_INST(0xbd000020)  // str	s0, [x1]
+    KAI_ASM_INST(0x12b01004)  // mov	w4, #0x7f7fffff
     KAI_ASM_INST(0x05c043c1)  // mov	z1.s, #0xff7fffff
-    KAI_ASM_INST(0x65862021)  // fmaxv	s1, p0, z1.s
-    KAI_ASM_INST(0xbd000041)  // str	s1, [x2]
-    KAI_ASM_INST(0xd65f03c0)  // ret
+    KAI_ASM_INST(0x05a03880)  // mov	z0.s, w4
+    KAI_ASM_INST(0x17ffffec)  // b	90 <MlasSveReduceMinimumMaximumF32KernelImpl+0x90>
     KAI_ASM_FUNCTION_END(MlasSveReduceMinimumMaximumF32KernelImpl)
 
     KAI_ASM_ALIGN
@@ -410,7 +486,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveComputeSoftmaxOutputF32KernelImpl)
     KAI_ASM_INST(0x2518e3e0)  // ptrue	p0.b
     KAI_ASM_INST(0x8540c041)  // ld1rw	{z1.s}, p0/z, [x2]
     KAI_ASM_INST(0xb4000161)  // cbz	x1, 34 <MlasSveComputeSoftmaxOutputF32KernelImpl+0x34>
-    KAI_ASM_INST(0xd2800002)  // mov	x2, #0x0                   	// #0
+    KAI_ASM_INST(0xd2800002)  // mov	x2, #0x0
     KAI_ASM_INST(0x04a0e3e3)  // cntw	x3
     KAI_ASM_INST(0xd503201f)  // nop
     KAI_ASM_INST(0x25a11c40)  // whilelo	p0.s, x2, x1
@@ -419,7 +495,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveComputeSoftmaxOutputF32KernelImpl)
     KAI_ASM_INST(0xe5424000)  // st1w	{z0.s}, p0, [x0, x2, lsl #2]
     KAI_ASM_INST(0x8b030042)  // add	x2, x2, x3
     KAI_ASM_INST(0xeb02003f)  // cmp	x1, x2
-    KAI_ASM_INST(0x54ffff48)  // b.hi	18 <MlasSveComputeSoftmaxOutputF32KernelImpl+0x18>  // b.pmore
+    KAI_ASM_INST(0x54ffff48)  // b.hi	18 <MlasSveComputeSoftmaxOutputF32KernelImpl+0x18>
     KAI_ASM_INST(0xd65f03c0)  // ret
     KAI_ASM_FUNCTION_END(MlasSveComputeSoftmaxOutputF32KernelImpl)
 
@@ -431,7 +507,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveComputeLogSoftmaxOutputF32KernelImpl)
     KAI_ASM_INST(0x8540c061)  // ld1rw	{z1.s}, p0/z, [x3]
     KAI_ASM_INST(0x8541c062)  // ld1rw	{z2.s}, p0/z, [x3, #4]
     KAI_ASM_INST(0xb4000162)  // cbz	x2, 38 <MlasSveComputeLogSoftmaxOutputF32KernelImpl+0x38>
-    KAI_ASM_INST(0xd2800003)  // mov	x3, #0x0                   	// #0
+    KAI_ASM_INST(0xd2800003)  // mov	x3, #0x0
     KAI_ASM_INST(0x04a0e3e4)  // cntw	x4
     KAI_ASM_INST(0x25a21c60)  // whilelo	p0.s, x3, x2
     KAI_ASM_INST(0xa5434000)  // ld1w	{z0.s}, p0/z, [x0, x3, lsl #2]
@@ -440,7 +516,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveComputeLogSoftmaxOutputF32KernelImpl)
     KAI_ASM_INST(0xe5434020)  // st1w	{z0.s}, p0, [x1, x3, lsl #2]
     KAI_ASM_INST(0x8b040063)  // add	x3, x3, x4
     KAI_ASM_INST(0xeb03005f)  // cmp	x2, x3
-    KAI_ASM_INST(0x54ffff28)  // b.hi	18 <MlasSveComputeLogSoftmaxOutputF32KernelImpl+0x18>  // b.pmore
+    KAI_ASM_INST(0x54ffff28)  // b.hi	18 <MlasSveComputeLogSoftmaxOutputF32KernelImpl+0x18>
     KAI_ASM_INST(0xd65f03c0)  // ret
     KAI_ASM_FUNCTION_END(MlasSveComputeLogSoftmaxOutputF32KernelImpl)
 
@@ -450,18 +526,18 @@ KAI_ASM_FUNCTION_LABEL(MlasSveComputeLogSoftmaxOutputF32KernelImpl)
 KAI_ASM_FUNCTION_LABEL(MlasSveTanhFP16KernelImpl)
     KAI_ASM_INST(0xb4000502)  // cbz	x2, a0 <MlasSveTanhFP16KernelImpl+0xa0>
     KAI_ASM_INST(0x4f078730)  // movi	v16.8h, #0xf9
-    KAI_ASM_INST(0x12879ee4)  // mov	w4, #0xffffc308            	// #-15608
-    KAI_ASM_INST(0xd2800003)  // mov	x3, #0x0                   	// #0
+    KAI_ASM_INST(0x12879ee4)  // mov	w4, #0xffffc308
+    KAI_ASM_INST(0xd2800003)  // mov	x3, #0x0
     KAI_ASM_INST(0x05603891)  // mov	z17.h, w4
     KAI_ASM_INST(0x0460e3e6)  // cnth	x6
-    KAI_ASM_INST(0x52822704)  // mov	w4, #0x1138                	// #4408
-    KAI_ASM_INST(0x52886105)  // mov	w5, #0x4308                	// #17160
+    KAI_ASM_INST(0x52822704)  // mov	w4, #0x1138
+    KAI_ASM_INST(0x52886105)  // mov	w5, #0x4308
     KAI_ASM_INST(0x05603887)  // mov	z7.h, w4
-    KAI_ASM_INST(0x5283a064)  // mov	w4, #0x1d03                	// #7427
+    KAI_ASM_INST(0x5283a064)  // mov	w4, #0x1d03
     KAI_ASM_INST(0x056038b2)  // mov	z18.h, w5
     KAI_ASM_INST(0x05603884)  // mov	z4.h, w4
-    KAI_ASM_INST(0x5280f8a5)  // mov	w5, #0x7c5                 	// #1989
-    KAI_ASM_INST(0x528314a4)  // mov	w4, #0x18a5                	// #6309
+    KAI_ASM_INST(0x5280f8a5)  // mov	w5, #0x7c5
+    KAI_ASM_INST(0x528314a4)  // mov	w4, #0x18a5
     KAI_ASM_INST(0x05302210)  // mov	z16.q, q16
     KAI_ASM_INST(0x056038a6)  // mov	z6.h, w5
     KAI_ASM_INST(0x2578c034)  // mov	z20.h, #1
@@ -487,7 +563,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveTanhFP16KernelImpl)
     KAI_ASM_INST(0xe4a34020)  // st1h	{z0.h}, p0, [x1, x3, lsl #1]
     KAI_ASM_INST(0x8b060063)  // add	x3, x3, x6
     KAI_ASM_INST(0xeb03005f)  // cmp	x2, x3
-    KAI_ASM_INST(0x54fffda8)  // b.hi	50 <MlasSveTanhFP16KernelImpl+0x50>  // b.pmore
+    KAI_ASM_INST(0x54fffda8)  // b.hi	50 <MlasSveTanhFP16KernelImpl+0x50>
     KAI_ASM_INST(0xd65f03c0)  // ret
     KAI_ASM_FUNCTION_END(MlasSveTanhFP16KernelImpl)
 
@@ -496,30 +572,30 @@ KAI_ASM_FUNCTION_LABEL(MlasSveTanhFP16KernelImpl)
     KAI_ASM_FUNCTION_TYPE(MlasSveErfFP16KernelImpl)
 KAI_ASM_FUNCTION_LABEL(MlasSveErfFP16KernelImpl)
     KAI_ASM_INST(0xb4000b22)  // cbz	x2, 164 <MlasSveErfFP16KernelImpl+0x164>
-    KAI_ASM_INST(0x5286a7e6)  // mov	w6, #0x353f                	// #13631
-    KAI_ASM_INST(0x52868045)  // mov	w5, #0x3402                	// #13314
+    KAI_ASM_INST(0x5286a7e6)  // mov	w6, #0x353f
+    KAI_ASM_INST(0x52868045)  // mov	w5, #0x3402
     KAI_ASM_INST(0x056038d7)  // mov	z23.h, w6
     KAI_ASM_INST(0x056038b6)  // mov	z22.h, w5
-    KAI_ASM_INST(0x12896c66)  // mov	w6, #0xffffb49c            	// #-19300
-    KAI_ASM_INST(0x5287b485)  // mov	w5, #0x3da4                	// #15780
+    KAI_ASM_INST(0x12896c66)  // mov	w6, #0xffffb49c
+    KAI_ASM_INST(0x5287b485)  // mov	w5, #0x3da4
     KAI_ASM_INST(0x056038d5)  // mov	z21.h, w6
     KAI_ASM_INST(0x056038b4)  // mov	z20.h, w5
-    KAI_ASM_INST(0x128849c6)  // mov	w6, #0xffffbdb1            	// #-16975
-    KAI_ASM_INST(0x52878705)  // mov	w5, #0x3c38                	// #15416
+    KAI_ASM_INST(0x128849c6)  // mov	w6, #0xffffbdb1
+    KAI_ASM_INST(0x52878705)  // mov	w5, #0x3c38
     KAI_ASM_INST(0x056038d3)  // mov	z19.h, w6
     KAI_ASM_INST(0x056038b2)  // mov	z18.h, w5
-    KAI_ASM_INST(0x12893846)  // mov	w6, #0xffffb63d            	// #-18883
-    KAI_ASM_INST(0x5287aa45)  // mov	w5, #0x3d52                	// #15698
-    KAI_ASM_INST(0xd2800003)  // mov	x3, #0x0                   	// #0
+    KAI_ASM_INST(0x12893846)  // mov	w6, #0xffffb63d
+    KAI_ASM_INST(0x5287aa45)  // mov	w5, #0x3d52
+    KAI_ASM_INST(0xd2800003)  // mov	x3, #0x0
     KAI_ASM_INST(0x0460e3e4)  // cnth	x4
     KAI_ASM_INST(0x056038d1)  // mov	z17.h, w6
     KAI_ASM_INST(0x056038b0)  // mov	z16.h, w5
-    KAI_ASM_INST(0x5284ebe6)  // mov	w6, #0x275f                	// #10079
-    KAI_ASM_INST(0x52875925)  // mov	w5, #0x3ac9                	// #15049
+    KAI_ASM_INST(0x5284ebe6)  // mov	w6, #0x275f
+    KAI_ASM_INST(0x52875925)  // mov	w5, #0x3ac9
     KAI_ASM_INST(0x056038c7)  // mov	z7.h, w6
     KAI_ASM_INST(0x056038a6)  // mov	z6.h, w5
-    KAI_ASM_INST(0x5287ab46)  // mov	w6, #0x3d5a                	// #15706
-    KAI_ASM_INST(0x5286ef25)  // mov	w5, #0x3779                	// #14201
+    KAI_ASM_INST(0x5287ab46)  // mov	w6, #0x3d5a
+    KAI_ASM_INST(0x5286ef25)  // mov	w5, #0x3779
     KAI_ASM_INST(0x056038c5)  // mov	z5.h, w6
     KAI_ASM_INST(0x056038a4)  // mov	z4.h, w5
     KAI_ASM_INST(0x2579de19)  // fmov	z25.h, #-1.000000000000000000e+00
@@ -581,7 +657,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveErfFP16KernelImpl)
     KAI_ASM_INST(0xe4a34020)  // st1h	{z0.h}, p0, [x1, x3, lsl #1]
     KAI_ASM_INST(0x8b040063)  // add	x3, x3, x4
     KAI_ASM_INST(0xeb03005f)  // cmp	x2, x3
-    KAI_ASM_INST(0x54fff948)  // b.hi	80 <MlasSveErfFP16KernelImpl+0x80>  // b.pmore
+    KAI_ASM_INST(0x54fff948)  // b.hi	80 <MlasSveErfFP16KernelImpl+0x80>
     KAI_ASM_INST(0xfc4107e8)  // ldr	d8, [sp], #16
     KAI_ASM_INST(0xd65f03c0)  // ret
     KAI_ASM_INST(0xd65f03c0)  // ret
@@ -592,10 +668,10 @@ KAI_ASM_FUNCTION_LABEL(MlasSveErfFP16KernelImpl)
     KAI_ASM_FUNCTION_TYPE(MlasSveGeluTanhArgFP16KernelImpl)
 KAI_ASM_FUNCTION_LABEL(MlasSveGeluTanhArgFP16KernelImpl)
     KAI_ASM_INST(0xb40002c2)  // cbz	x2, 58 <MlasSveGeluTanhArgFP16KernelImpl+0x58>
-    KAI_ASM_INST(0xd2800003)  // mov	x3, #0x0                   	// #0
+    KAI_ASM_INST(0xd2800003)  // mov	x3, #0x0
     KAI_ASM_INST(0x0460e3e6)  // cnth	x6
-    KAI_ASM_INST(0x52851225)  // mov	w5, #0x2891                	// #10385
-    KAI_ASM_INST(0x52874c44)  // mov	w4, #0x3a62                	// #14946
+    KAI_ASM_INST(0x52851225)  // mov	w5, #0x2891
+    KAI_ASM_INST(0x52874c44)  // mov	w4, #0x3a62
     KAI_ASM_INST(0x056038a3)  // mov	z3.h, w5
     KAI_ASM_INST(0x05603882)  // mov	z2.h, w4
     KAI_ASM_INST(0x2579c285)  // fmov	z5.h, #5.000000000000000000e+00
@@ -612,7 +688,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveGeluTanhArgFP16KernelImpl)
     KAI_ASM_INST(0xe4a34020)  // st1h	{z0.h}, p0, [x1, x3, lsl #1]
     KAI_ASM_INST(0x8b060063)  // add	x3, x3, x6
     KAI_ASM_INST(0xeb03005f)  // cmp	x2, x3
-    KAI_ASM_INST(0x54fffea8)  // b.hi	28 <MlasSveGeluTanhArgFP16KernelImpl+0x28>  // b.pmore
+    KAI_ASM_INST(0x54fffea8)  // b.hi	28 <MlasSveGeluTanhArgFP16KernelImpl+0x28>
     KAI_ASM_INST(0xd65f03c0)  // ret
     KAI_ASM_FUNCTION_END(MlasSveGeluTanhArgFP16KernelImpl)
 
@@ -621,9 +697,9 @@ KAI_ASM_FUNCTION_LABEL(MlasSveGeluTanhArgFP16KernelImpl)
     KAI_ASM_FUNCTION_TYPE(MlasSveGeluScaleFP16KernelImpl)
 KAI_ASM_FUNCTION_LABEL(MlasSveGeluScaleFP16KernelImpl)
     KAI_ASM_INST(0xb40001a2)  // cbz	x2, 34 <MlasSveGeluScaleFP16KernelImpl+0x34>
-    KAI_ASM_INST(0xd2800003)  // mov	x3, #0x0                   	// #0
+    KAI_ASM_INST(0xd2800003)  // mov	x3, #0x0
     KAI_ASM_INST(0x0460e3e5)  // cnth	x5
-    KAI_ASM_INST(0x52873504)  // mov	w4, #0x39a8                	// #14760
+    KAI_ASM_INST(0x52873504)  // mov	w4, #0x39a8
     KAI_ASM_INST(0x05603881)  // mov	z1.h, w4
     KAI_ASM_INST(0xd503201f)  // nop
     KAI_ASM_INST(0x25621c60)  // whilelo	p0.h, x3, x2
@@ -632,7 +708,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveGeluScaleFP16KernelImpl)
     KAI_ASM_INST(0xe4a34020)  // st1h	{z0.h}, p0, [x1, x3, lsl #1]
     KAI_ASM_INST(0x8b050063)  // add	x3, x3, x5
     KAI_ASM_INST(0xeb03005f)  // cmp	x2, x3
-    KAI_ASM_INST(0x54ffff48)  // b.hi	18 <MlasSveGeluScaleFP16KernelImpl+0x18>  // b.pmore
+    KAI_ASM_INST(0x54ffff48)  // b.hi	18 <MlasSveGeluScaleFP16KernelImpl+0x18>
     KAI_ASM_INST(0xd65f03c0)  // ret
     KAI_ASM_FUNCTION_END(MlasSveGeluScaleFP16KernelImpl)
 
@@ -641,7 +717,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveGeluScaleFP16KernelImpl)
     KAI_ASM_FUNCTION_TYPE(MlasSveGeluCombineFP16KernelImpl)
 KAI_ASM_FUNCTION_LABEL(MlasSveGeluCombineFP16KernelImpl)
     KAI_ASM_INST(0xb4000203)  // cbz	x3, 40 <MlasSveGeluCombineFP16KernelImpl+0x40>
-    KAI_ASM_INST(0xd2800004)  // mov	x4, #0x0                   	// #0
+    KAI_ASM_INST(0xd2800004)  // mov	x4, #0x0
     KAI_ASM_INST(0x0460e3e5)  // cnth	x5
     KAI_ASM_INST(0x2579ce03)  // fmov	z3.h, #1.000000000000000000e+00
     KAI_ASM_INST(0x2579cc02)  // fmov	z2.h, #5.000000000000000000e-01
@@ -655,7 +731,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveGeluCombineFP16KernelImpl)
     KAI_ASM_INST(0xe4a44040)  // st1h	{z0.h}, p0, [x2, x4, lsl #1]
     KAI_ASM_INST(0x8b050084)  // add	x4, x4, x5
     KAI_ASM_INST(0xeb04007f)  // cmp	x3, x4
-    KAI_ASM_INST(0x54fffee8)  // b.hi	18 <MlasSveGeluCombineFP16KernelImpl+0x18>  // b.pmore
+    KAI_ASM_INST(0x54fffee8)  // b.hi	18 <MlasSveGeluCombineFP16KernelImpl+0x18>
     KAI_ASM_INST(0xd65f03c0)  // ret
     KAI_ASM_FUNCTION_END(MlasSveGeluCombineFP16KernelImpl)
 
