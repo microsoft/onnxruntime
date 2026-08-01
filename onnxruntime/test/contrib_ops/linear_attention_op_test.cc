@@ -532,17 +532,17 @@ void RunCudaLinearAttentionShapeFailure(
 #ifdef USE_CUDA
 TEST(ContribOpLinearAttentionTest, CudaRejectsNonDivisibleQueryHidden) {
   RunCudaLinearAttentionShapeFailure({1, 1, 3}, {1, 1, 4}, {1, 1, 4},
-                                      {1, 1, 4}, {1, 2, 1, 2}, "query last dim");
+                                     {1, 1, 4}, {1, 2, 1, 2}, "query last dim");
 }
 
 TEST(ContribOpLinearAttentionTest, CudaRejectsNonDivisibleValueHidden) {
   RunCudaLinearAttentionShapeFailure({1, 1, 4}, {1, 1, 4}, {1, 1, 3},
-                                      {1, 1, 2}, {1, 2, 2, 1}, "value last dim");
+                                     {1, 1, 2}, {1, 2, 2, 1}, "value last dim");
 }
 
 TEST(ContribOpLinearAttentionTest, CudaRejectsInvalidDecayRank) {
   RunCudaLinearAttentionShapeFailure({1, 1, 4}, {1, 1, 4}, {1, 1, 4},
-                                      {1, 1, 4}, {1, 2, 2, 2}, "decay must be rank 3", {1, 2});
+                                     {1, 1, 4}, {1, 2, 2, 2}, "decay must be rank 3", {1, 2});
 }
 #endif
 

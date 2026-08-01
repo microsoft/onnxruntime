@@ -102,7 +102,7 @@ Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const int d_k = static_cast<int>(query_hidden_64 / q_num_heads_);
   int d_v = static_cast<int>(value_shape[2]) / kv_num_heads_;
   ORT_RETURN_IF_NOT(key_shape[2] > 0 && key_shape[2] % d_k == 0,
-              "key last dim (", key_shape[2], ") must be divisible by d_k (", d_k, ")");
+                    "key last dim (", key_shape[2], ") must be divisible by d_k (", d_k, ")");
   int n_k_heads = static_cast<int>(key_shape[2]) / d_k;
 
   // GQA head mapping validations
