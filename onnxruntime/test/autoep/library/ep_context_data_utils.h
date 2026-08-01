@@ -417,7 +417,7 @@ inline OrtStatus* ReadEpContextDataFromFileWithAllocator(const OrtApi& api, cons
   }
 
   // Free the freshly allocated buffer via the same allocator on any error path below; release it to the caller on
-  // success. Release any AllocatorFree status without throwing (exception-free OrtStatus* style).
+  // success. Release any AllocatorFree status without throwing, keeping errors on the OrtStatus* path.
   auto buffer_deleter = [&api, allocator](void* buffer_to_free) {
     if (buffer_to_free != nullptr) {
       Ort::Status free_status{api.AllocatorFree(allocator, buffer_to_free)};
@@ -495,8 +495,8 @@ class EpContextData {
 
   void FreeAllocatorBuffer() noexcept {
     if (buffer_ != nullptr && allocator_ != nullptr && api_ != nullptr) {
-      // Best-effort free; release any returned status without throwing (matches the OrtStatus*-based, exception-free
-      // style of these helpers). The default allocator is owned by ORT and must not be released here.
+      // Best-effort free; release any returned status without throwing, since this function is noexcept. The default
+      // allocator is owned by ORT and must not be released here.
       Ort::Status free_status{api_->AllocatorFree(allocator_, buffer_)};
       static_cast<void>(free_status);
     }
@@ -558,9 +558,11 @@ inline OrtStatus* ReadEpContextData(const OrtApi& api, OrtReadNamedBufferFunc re
 
   // Use the caller-provided allocator if any; otherwise ORT's default allocator. Whatever allocates the output buffer
   // is also what frees it (stored in `out` for the matching free), so a caller-supplied allocator is honored on both
-  // the callback and file paths. Use the C allocator API (not Ort::AllocatorWithDefaultOptions, whose constructor
-  // throws) so this OrtStatus*-based helper stays exception-free. The default allocator is owned by ORT and must not
-  // be released here.
+  // the callback and file paths. Prefer the C allocator API over Ort::AllocatorWithDefaultOptions, whose constructor
+  // throws on failure, so an allocator error is reported through the OrtStatus* return like every other failure here.
+  // This is about the error-reporting style, not a no-throw guarantee: allocation done elsewhere (paths, strings,
+  // streams) can still throw, and making the function truly no-throw would need try/catch that is not worth the
+  // complexity. The default allocator is owned by ORT and must not be released here.
   OrtAllocator* effective_allocator = allocator;
   if (effective_allocator == nullptr) {
     RETURN_IF_ERROR(api.GetAllocatorWithDefaultOptions(&effective_allocator));
@@ -584,10 +586,10 @@ inline OrtStatus* ReadEpContextData(const OrtApi& api, OrtReadNamedBufferFunc re
 
   // Hold any callback-allocated buffer in a local RAII guard so it is freed via the same allocator on every error
   // path below, while `out` stays empty (it was reset above). Ownership is transferred to `out` only on success,
-  // matching the reset-first / bytes-on-success contract and the std::vector overload's empty-on-failure guarantee.
+  // matching the reset-first / bytes-on-success contract.
   auto buffer_deleter = [&api, effective_allocator](void* buffer_to_free) {
     if (buffer_to_free != nullptr) {
-      // Best-effort free; release any returned status without throwing (exception-free OrtStatus* style).
+      // Best-effort free; release any returned status without throwing, keeping errors on the OrtStatus* path.
       Ort::Status free_status{api.AllocatorFree(effective_allocator, buffer_to_free)};
       static_cast<void>(free_status);
     }

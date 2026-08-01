@@ -338,6 +338,19 @@ bool tryLaunchMoeGemvIntSymmetricInterleavedSwiGLU(
   }
 }
 
+// Ranker used to group the (token, top-k slot) pairs by selected expert.
+//
+// cub::BlockRadixRank keeps a private set of packed digit counters per thread, so its
+// shared memory and its per-thread scan both grow with 2^LOG2_NUM_EXPERTS. At 256
+// experts (LOG2_NUM_EXPERTS == 9) and a decode-sized block of 32 threads that is 512
+// bins spread over a single warp, which costs ~16KB of shared memory, 255 registers per
+// thread and enough spilling that the kernel is dominated by counter bookkeeping rather
+// than by the handful of assignments it actually ranks. The match-based ranker ranks
+// with warp ballots instead of per-thread counters, so its cost tracks the number of
+// keys rather than the number of bins.
+template <int BLOCK_SIZE, int LOG2_NUM_EXPERTS>
+using MoeExpertRadixRank = cub::BlockRadixRankMatch<BLOCK_SIZE, LOG2_NUM_EXPERTS, false>;
+
 template <int BLOCK_SIZE, int EXPERTS_PER_TOKEN, int LOG2_NUM_EXPERTS>
 __global__ void fusedBuildExpertMapsSortFirstTokenKernel(const int* const token_selected_experts,
                                                          int* const permuted_row_to_unpermuted_row, int* const unpermuted_row_to_permuted_row,
@@ -385,7 +398,7 @@ __global__ void fusedBuildExpertMapsSortFirstTokenKernel(const int* const token_
   // that to elide the binary search
 
   // sort the expert map
-  using BlockRadixRank = cub::BlockRadixRank<BLOCK_SIZE, LOG2_NUM_EXPERTS, false>;
+  using BlockRadixRank = MoeExpertRadixRank<BLOCK_SIZE, LOG2_NUM_EXPERTS>;
   extern __shared__ unsigned char temp_storage[];
   auto& sort_temp = *reinterpret_cast<typename BlockRadixRank::TempStorage*>(temp_storage);
 
@@ -437,7 +450,7 @@ bool fusedBuildExpertMapsSortFirstTokenDispatch(const int* token_selected_expert
   const int blocks = (num_tokens + threads - 1) / threads;
   ORT_ENFORCE(blocks == 1, "Current implementation requires single block");
 
-  using BlockRadixRank = cub::BlockRadixRank<BLOCK_SIZE, LOG2_NUM_EXPERTS, false>;
+  using BlockRadixRank = MoeExpertRadixRank<BLOCK_SIZE, LOG2_NUM_EXPERTS>;
   size_t shared_size = sizeof(typename BlockRadixRank::TempStorage);
 
   cudaLaunchConfig_t config;
@@ -1562,9 +1575,18 @@ enum class ScaleMode : int {
 
 constexpr static int FINALIZE_THREADS_PER_BLOCK = 256;
 
+// The routing metadata (selected expert, permuted row, routing scale) only varies with the
+// top-k slot, not with the column, yet the naive reduction loop re-reads it from global memory
+// for every column tile through a chain of two dependent loads (expert map -> permuted row ->
+// expanded row data). With a small grid (one block per token, i.e. a decode step) there is not
+// enough occupancy to hide that chain and the kernel becomes long-scoreboard bound. Staging the
+// metadata in shared memory once per block turns the k expanded-row loads into independent
+// accesses that can all be in flight at the same time.
+constexpr static int FINALIZE_MAX_STAGED_TOPK = FINALIZE_THREADS_PER_BLOCK;
+
 // Final kernel to unpermute and scale
 // This kernel unpermutes the original data, does the k-way reduction and performs the final skip connection.
-template <typename OutputType, class GemmOutputType, class ScaleBiasType, ScaleMode SCALE_MODE>
+template <typename OutputType, class GemmOutputType, class ScaleBiasType, ScaleMode SCALE_MODE, bool STAGE_ROUTING>
 __global__ void finalizeMoeRoutingKernel(const GemmOutputType* expanded_permuted_rows,
                                          OutputType* reduced_unpermuted_output, const ScaleBiasType* bias, const float* scales,
                                          const int* unpermuted_row_to_permuted_row, const int* token_selected_experts, const int64_t orig_cols,
@@ -1594,21 +1616,47 @@ __global__ void finalizeMoeRoutingKernel(const GemmOutputType* expanded_permuted
   asm volatile("griddepcontrol.wait;");
 #endif
 
+  __shared__ int s_permuted_row[STAGE_ROUTING ? FINALIZE_MAX_STAGED_TOPK : 1];
+  __shared__ int s_expert_id[STAGE_ROUTING ? FINALIZE_MAX_STAGED_TOPK : 1];
+  __shared__ float s_row_scale[STAGE_ROUTING ? FINALIZE_MAX_STAGED_TOPK : 1];
+  if constexpr (STAGE_ROUTING) {
+    for (int64_t k_idx = threadIdx.x; k_idx < experts_per_token; k_idx += FINALIZE_THREADS_PER_BLOCK) {
+      int64_t const k_offset = original_row * experts_per_token + k_idx;
+      int const expert_id = token_selected_experts[k_offset] - start_expert_id;
+      bool const is_local_expert = expert_id >= 0 && expert_id < num_experts_per_node;
+      s_expert_id[k_idx] = expert_id;
+      // -1 marks a slot routed to an expert owned by another rank, which is skipped below.
+      s_permuted_row[k_idx] = is_local_expert ? unpermuted_row_to_permuted_row[original_row + k_idx * num_rows] : -1;
+      s_row_scale[k_idx] = (SCALE_MODE == ScaleMode::NO_SCALE) ? 1.f : scales[k_offset];
+    }
+    __syncthreads();
+  }
+
 #pragma unroll
   for (int elem_index = start_offset; elem_index < num_elems_in_col; elem_index += stride) {
     ComputeElem thread_output;
     thread_output.fill(0);
+#pragma unroll 4
     for (int k_idx = 0; k_idx < experts_per_token; ++k_idx) {
-      const int64_t k_offset = original_row * experts_per_token + k_idx;
-      const int64_t expert_id = token_selected_experts[k_offset] - start_expert_id;
-      if (expert_id < 0 || expert_id >= num_experts_per_node) {
-        continue;
+      int64_t expanded_permuted_row;
+      int64_t expert_id;
+      float row_scale;
+      if constexpr (STAGE_ROUTING) {
+        expanded_permuted_row = s_permuted_row[k_idx];
+        expert_id = s_expert_id[k_idx];
+        row_scale = s_row_scale[k_idx];
+        if (expanded_permuted_row < 0) {
+          continue;
+        }
+      } else {
+        const int64_t k_offset = original_row * experts_per_token + k_idx;
+        expert_id = token_selected_experts[k_offset] - start_expert_id;
+        if (expert_id < 0 || expert_id >= num_experts_per_node) {
+          continue;
+        }
+        expanded_permuted_row = unpermuted_row_to_permuted_row[original_row + k_idx * num_rows];
+        row_scale = (SCALE_MODE == ScaleMode::NO_SCALE) ? 1.f : scales[k_offset];
       }
-
-      const int64_t expanded_original_row = original_row + k_idx * num_rows;
-      const int64_t expanded_permuted_row = unpermuted_row_to_permuted_row[expanded_original_row];
-
-      const float row_scale = (SCALE_MODE == ScaleMode::NO_SCALE) ? 1.f : scales[k_offset];
 
       const auto* expanded_permuted_rows_row_ptr = expanded_permuted_rows_v + expanded_permuted_row * num_elems_in_col;
 
@@ -1858,10 +1906,17 @@ void finalizeMoeRoutingKernelLauncher(const GemmOutputType* expanded_permuted_ro
           break;
       }
 #undef LAUNCH_FINALIZE_ONE_ROW
+    } else if (experts_per_token <= FINALIZE_MAX_STAGED_TOPK) {
+      auto func = final_scales
+                      ? &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::DEFAULT, true>
+                      : &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::NO_SCALE, true>;
+      cudaLaunchKernelEx(&config, func, expanded_permuted_rows, reduced_unpermuted_output, bias_ptr, final_scales,
+                         unpermuted_row_to_permuted_row, token_selected_experts, cols, experts_per_token, num_experts_per_node_int,
+                         start_expert_id);
     } else {
       auto func = final_scales
-                      ? &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::DEFAULT>
-                      : &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::NO_SCALE>;
+                      ? &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::DEFAULT, false>
+                      : &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::NO_SCALE, false>;
       cudaLaunchKernelEx(&config, func, expanded_permuted_rows, reduced_unpermuted_output, bias_ptr, final_scales,
                          unpermuted_row_to_permuted_row, token_selected_experts, cols, experts_per_token, num_experts_per_node_int,
                          start_expert_id);
