@@ -315,7 +315,7 @@ bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto) {
     // Retrieve the external data info
     for (const auto& entry : ten_proto.external_data()) {
       if (entry.key() == "location") {
-        PathString location = ToWideString(std::string(entry.value()));
+        PathString location = ToWideString(entry.value());
         return ((location == kTensorProtoLittleEndianMemoryAddressTag) || (location == kTensorProtoNativeEndianMemoryAddressTag));
       }
     }

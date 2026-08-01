@@ -40,11 +40,11 @@ Status ExternalDataInfo::Create(const RepeatedPtrField<StringStringEntryProto>& 
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model format error! Need a value for the external data info");
 
     if (stringmap.key() == "location" && !stringmap.value().empty()) {
-      external_data_info->rel_path_ = ToWideString(std::string(stringmap.value()));
+      external_data_info->rel_path_ = ToWideString(stringmap.value());
     } else if (stringmap.key() == "offset" && !stringmap.value().empty()) {
-      ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(std::string(stringmap.value()), external_data_info->offset_));
+      ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(stringmap.value(), external_data_info->offset_));
     } else if (stringmap.key() == "length" && !stringmap.value().empty()) {
-      ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(std::string(stringmap.value()), external_data_info->length_));
+      ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(stringmap.value(), external_data_info->length_));
     } else if (stringmap.key() == "checksum" && !stringmap.value().empty()) {
       external_data_info->checksum_ = stringmap.value();
     } else if (stringmap.key().find("prepacked", 0) == 0) {
