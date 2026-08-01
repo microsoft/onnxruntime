@@ -1101,6 +1101,7 @@ Status LaunchLinearAttentionKernel(
     bool needs_beta,
     bool beta_per_head,
     bool needs_retrieval,
+    int multiprocessor_count,
     int max_threads_per_block,
     int state_window) {
   // Grid: one block per (batch, kv_head)
@@ -1132,16 +1133,7 @@ Status LaunchLinearAttentionKernel(
   //
   // Once batch_size * kv_num_heads already fills the machine the recurrent kernels keep their
   // shared-memory state amortization, so the split is only applied below that point.
-  static const int kSmCount = []() {
-    int device = 0;
-    int count = 0;
-    if (cudaGetDevice(&device) != cudaSuccess ||
-        cudaDeviceGetAttribute(&count, cudaDevAttrMultiProcessorCount, device) != cudaSuccess) {
-      return 0;
-    }
-    return count;
-  }();
-  const bool recurrent_grid_underfills_gpu = batch_size * kv_num_heads < kSmCount;
+  const bool recurrent_grid_underfills_gpu = batch_size * kv_num_heads < multiprocessor_count;
   // Only the v2 (column-per-thread) kernel below has been validated at prefill lengths, so the
   // occupancy-based override is limited to the shapes it accepts; everything else keeps the
   // original seq_len cutoff.
@@ -1277,18 +1269,18 @@ Status LaunchLinearAttentionKernel(
 template Status LaunchLinearAttentionKernel<float>(
     cudaStream_t, const float*, const float*, const float*,
     const float*, const float*, float*, const float*, float*,
-    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int);
+    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int);
 
 template Status LaunchLinearAttentionKernel<half>(
     cudaStream_t, const half*, const half*, const half*,
     const half*, const half*, half*, const half*, half*,
-    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int);
+    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int);
 
 #if __CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__)
 template Status LaunchLinearAttentionKernel<__nv_bfloat16>(
     cudaStream_t, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*,
     const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
-    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int);
+    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int);
 #endif
 
 }  // namespace cuda

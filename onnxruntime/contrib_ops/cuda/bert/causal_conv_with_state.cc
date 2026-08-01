@@ -67,6 +67,8 @@ Status CausalConvWithState<T>::ComputeInternal(OpKernelContext* context) const {
   const int K = static_cast<int>(weight_shape[2]);
   const int pad = K - 1;
 
+  ORT_RETURN_IF_NOT(L > 0, "input length must be positive, got ", L);
+
   // Validate weight shape compatibility
   ORT_RETURN_IF_NOT(weight_shape[0] == channels,
                     "weight[0] (", weight_shape[0], ") must match input channels (", channels, ")");

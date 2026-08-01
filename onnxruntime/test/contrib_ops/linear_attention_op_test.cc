@@ -11,6 +11,10 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
+#ifdef USE_CUDA
+#include <cuda_runtime_api.h>
+#endif
+
 using namespace onnxruntime::test;
 
 namespace onnxruntime {
@@ -1457,6 +1461,30 @@ TEST(ContribOpLinearAttentionTest, StateWindowAboveMaxIsRejected) {
 // tensor the unwindowed op produces). past_state is read from slot W-1. Slots below max(0, W - T)
 // hold no token from this call and come back zeroed.
 #ifdef USE_CUDA
+TEST(ContribOpLinearAttentionTest, StateWindowRejectsEmptySequence) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+    return;
+  }
+
+  OpTester tester("LinearAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", "linear");
+  tester.AddAttribute<int64_t>("q_num_heads", 1);
+  tester.AddAttribute<int64_t>("kv_num_heads", 1);
+  tester.AddAttribute<int64_t>("state_window", 1);
+  tester.AddInput<float>("query", {1, 0, 1}, {});
+  tester.AddInput<float>("key", {1, 0, 1}, {});
+  tester.AddInput<float>("value", {1, 0, 1}, {});
+  tester.AddOutput<float>("output", {1, 0, 1}, {});
+  tester.AddOutput<float>("present_state", {1, 1, 1, 1, 1}, {0.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "sequence length must be positive", {}, nullptr,
+             &execution_providers);
+}
+
 // The state_window attribute is only implemented by the CUDA kernel. The four CUDA kernel families
 // (generic recurrent, fixed-shape recurrent, warp-per-column decode, column-per-thread decode) each
 // compute the window slot offsets themselves, so every family gets its own shape below.
@@ -1596,7 +1624,21 @@ TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow_DecodeWarpKernel) 
 // T > 16 with a (d_k, d_v) fast-path pair selects the compile-time specialized recurrent kernel,
 // whose final state write is a vectorized epilogue into slot W-1.
 TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow_FixedShapeKernel) {
-  RunLinearAttentionStateWindowTest(/*B=*/2, /*q_H=*/2, /*kv_H=*/2, /*n_k=*/1, /*T=*/24,
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+    return;
+  }
+
+  int device = 0;
+  int multiprocessor_count = 0;
+  ASSERT_EQ(cudaSuccess, cudaGetDevice(&device));
+  ASSERT_EQ(cudaSuccess,
+            cudaDeviceGetAttribute(&multiprocessor_count, cudaDevAttrMultiProcessorCount, device));
+  constexpr int kv_num_heads = 2;
+  const int batch_size = (multiprocessor_count + kv_num_heads - 1) / kv_num_heads;
+
+  RunLinearAttentionStateWindowTest(/*B=*/batch_size, /*q_H=*/2, /*kv_H=*/kv_num_heads, /*n_k=*/1, /*T=*/17,
                                     /*dk=*/128, /*dv=*/128, /*W=*/4);
 }
 

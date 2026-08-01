@@ -669,6 +669,29 @@ TEST(CausalConvWithStateTest, StateWindowAboveMaxIsRejected) {
 }
 
 #ifdef USE_CUDA
+TEST(CausalConvWithStateTest, StateWindowRejectsEmptySequence) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+    return;
+  }
+
+  OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<std::string>("activation", "none");
+  test.AddAttribute<int64_t>("state_window", 1);
+  test.AddInput<float>("input", {1, 3, 0}, {});
+  test.AddInput<float>("weight", {3, 1, 2}, std::vector<float>(6, 1.0f));
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("output", {1, 3, 0}, {});
+  test.AddOutput<float>("present_state", {1, 1, 3, 1}, std::vector<float>(3, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "input length must be positive", {}, nullptr,
+           &execution_providers);
+}
+
 // The state_window attribute is only implemented by the CUDA kernel. past_state / present_state
 // then hold the last W per-position carry states, right-aligned; slot W-1 is the state after the
 // last position (what the unwindowed op produces) and is the slot past_state is read from.
