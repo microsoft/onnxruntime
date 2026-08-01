@@ -193,6 +193,16 @@ Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
         Stream(context)));
   } else {
     initial_state_data = past_state_tensor->Data<T>();
+
+    // present_state is a freshly allocated output that never aliases past_state, so the slots the
+    // kernel skips would otherwise be uninitialized device memory. Zero them instead.
+    if (state_window_ > 0 && state_slots > seq_len) {
+      const size_t leading_bytes = static_cast<size_t>(state_slots - seq_len) *
+                                   (present_state_tensor->SizeInBytes() / static_cast<size_t>(state_slots));
+      if (leading_bytes > 0) {
+        CUDA_RETURN_IF_ERROR(cudaMemsetAsync(present_state_data, 0, leading_bytes, Stream(context)));
+      }
+    }
   }
 
   typedef typename OrtToCudaType<T>::type CudaT;

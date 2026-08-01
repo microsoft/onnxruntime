@@ -1437,16 +1437,29 @@ TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N4_Dim128) {
   RunStandardGQA("gated_delta", 8, 2, 128, 128);
 }
 
+// The state tensors grow linearly with state_window, so the schema caps it at 8.
+TEST(ContribOpLinearAttentionTest, StateWindowAboveMaxIsRejected) {
+  OpTester tester("LinearAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", "linear");
+  tester.AddAttribute<int64_t>("q_num_heads", 1);
+  tester.AddAttribute<int64_t>("kv_num_heads", 1);
+  tester.AddAttribute<int64_t>("state_window", 9);
+  tester.AddInput<float>("query", {1, 1, 1}, {1.0f});
+  tester.AddInput<float>("key", {1, 1, 1}, {1.0f});
+  tester.AddInput<float>("value", {1, 1, 1}, {1.0f});
+  tester.AddOutput<float>("output", {1, 1, 1}, {1.0f});
+  tester.AddOutput<float>("present_state", {9, 1, 1, 1, 1}, std::vector<float>(9, 0.0f));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "state_window must be in [0, 8]");
+}
+
 // state_window: past_state / present_state hold the last W per-token states, right-aligned, so
 // slot j is the state after token (T - W + j) and slot W-1 is the state after the last token (the
-// tensor the unwindowed op produces). past_state is read from slot W-1. Earlier positions are
-// never written -- that is the point of the window (it bounds the arena for long prompts).
+// tensor the unwindowed op produces). past_state is read from slot W-1. Slots below max(0, W - T)
+// hold no token from this call and come back zeroed.
 #ifdef USE_CUDA
 // The state_window attribute is only implemented by the CUDA kernel. The four CUDA kernel families
 // (generic recurrent, fixed-shape recurrent, warp-per-column decode, column-per-thread decode) each
-// compute the window slot offsets themselves, so every family gets its own shape below. W > T is
-// only exercised without a past_state, because that is the only case in which the slots below
-// W - T are defined (zeroed rather than left alone).
+// compute the window slot offsets themselves, so every family gets its own shape below.
 static void RunLinearAttentionStateWindowTest(int B, int q_H, int kv_H, int n_k, int T, int dk, int dv, int W,
                                               bool with_past_state = true) {
   auto ep = DefaultCudaExecutionProvider();
@@ -1588,10 +1601,17 @@ TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow_FixedShapeKernel) 
 }
 
 // W > T is the shape genai actually runs during MTP decode: the leading W - T slots belong to
-// positions before this call and are left alone (zeroed here because there is no past_state).
+// positions before this call, so the kernel skips them and they come back zeroed.
 TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow_WiderThanSequence) {
   RunLinearAttentionStateWindowTest(/*B=*/2, /*q_H=*/2, /*kv_H=*/2, /*n_k=*/1, /*T=*/2,
                                     /*dk=*/128, /*dv=*/128, /*W=*/5, /*with_past_state=*/false);
+}
+
+// Same shape with a past_state: present_state is a fresh allocation, so the skipped leading slots
+// must be zeroed rather than left as uninitialized device memory.
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow_WiderThanSequenceWithPastState) {
+  RunLinearAttentionStateWindowTest(/*B=*/2, /*q_H=*/2, /*kv_H=*/2, /*n_k=*/1, /*T=*/2,
+                                    /*dk=*/128, /*dv=*/128, /*W=*/5, /*with_past_state=*/true);
 }
 #endif  // USE_CUDA
 }  // namespace test

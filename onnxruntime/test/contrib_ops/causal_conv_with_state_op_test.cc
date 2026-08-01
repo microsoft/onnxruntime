@@ -654,6 +654,20 @@ TEST(CausalConvWithStateTest, LargerDimensions) {
       batch_size, channels, input_length, kernel_size, "silu");
 }
 
+// The state tensors grow linearly with state_window, so the schema caps it at 8.
+TEST(CausalConvWithStateTest, StateWindowAboveMaxIsRejected) {
+  OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<std::string>("activation", "none");
+  test.AddAttribute<int64_t>("state_window", 9);
+  test.AddInput<float>("input", {1, 1, 2}, {1.0f, 2.0f});
+  test.AddInput<float>("weight", {1, 1, 2}, {0.5f, 0.25f});
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("output", {1, 1, 2}, {0.5f, 1.25f});
+  test.AddOutput<float>("present_state", {9, 1, 1, 1}, std::vector<float>(9, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "state_window must be in [0, 8]");
+}
+
 #ifdef USE_CUDA
 // The state_window attribute is only implemented by the CUDA kernel. past_state / present_state
 // then hold the last W per-position carry states, right-aligned; slot W-1 is the state after the
@@ -661,8 +675,8 @@ TEST(CausalConvWithStateTest, LargerDimensions) {
 //
 // The CUDA kernel has four families (fixed-K decode, generic-K decode, batched prefill,
 // single-channel prefill) and each computes the slot offsets itself, so every family gets its own
-// shape below. `window` > `input_length` is only exercised without a past_state, because that is
-// the only case in which the slots below W - L are defined (zeroed rather than left alone).
+// shape below. When `window` > `input_length` the slots below W - L hold no position from this
+// call and are zero-filled, with or without a past_state.
 static void RunCausalConvStateWindowTest(int batch_size, int channels, int input_length,
                                          int kernel_size, int window, bool with_past_state) {
   auto ep = DefaultCudaExecutionProvider();
@@ -790,6 +804,18 @@ TEST(CausalConvWithStateTest, StateWindow_DecodeFixedK) {
 TEST(CausalConvWithStateTest, StateWindow_DecodeGenericK) {
   RunCausalConvStateWindowTest(/*batch_size=*/2, /*channels=*/8, /*input_length=*/1,
                                /*kernel_size=*/7, /*window=*/3, /*with_past_state=*/false);
+}
+
+// W > L with a past_state: the kernel writes only slot W-1, so the leading W-1 slots must come
+// back zeroed rather than as uninitialized device memory.
+TEST(CausalConvWithStateTest, StateWindow_DecodeFixedKWithPastState) {
+  RunCausalConvStateWindowTest(/*batch_size=*/2, /*channels=*/8, /*input_length=*/1,
+                               /*kernel_size=*/4, /*window=*/3, /*with_past_state=*/true);
+}
+
+TEST(CausalConvWithStateTest, StateWindow_DecodeGenericKWithPastState) {
+  RunCausalConvStateWindowTest(/*batch_size=*/2, /*channels=*/8, /*input_length=*/1,
+                               /*kernel_size=*/7, /*window=*/3, /*with_past_state=*/true);
 }
 #endif  // USE_CUDA
 
