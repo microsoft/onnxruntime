@@ -582,6 +582,10 @@ if(onnxruntime_USE_ONNX_LIGHT)
       get_target_property(_tgt_type ${_tgt} TYPE)
       if(NOT _tgt_type STREQUAL "INTERFACE_LIBRARY")
         target_compile_options(${_tgt} PRIVATE "-w")
+        # ORT registers ONNX schemas itself in Environment::Initialize().
+        # Prevent onnx-light's static SchemasRegisterer from also registering
+        # them, which would cause "already registered" errors.
+        target_compile_definitions(${_tgt} PRIVATE "__ONNX_DISABLE_STATIC_REGISTRATION")
       endif()
       set_target_properties(${_tgt} PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES
         "$<TARGET_PROPERTY:${_tgt},INTERFACE_INCLUDE_DIRECTORIES>")

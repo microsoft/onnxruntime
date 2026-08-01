@@ -452,7 +452,7 @@ def generate_build_tree(
         "-DPython_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_VCPKG=" + ("ON" if args.use_vcpkg else "OFF"),
         "-Donnxruntime_USE_MIMALLOC=" + ("ON" if args.use_mimalloc else "OFF"),
-        "-Donnxruntime_USE_ONNX_LIGHT=" + ("ON" if args.use_onnx_light else "OFF"),
+        "-Donnxruntime_USE_ONNX_LIGHT=" + ("ON" if args.use_onnx_light or args.onnx_light_source_dir else "OFF"),
         "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
         "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
         "-Donnxruntime_BUILD_JAVA=" + ("ON" if args.build_java else "OFF"),
@@ -543,6 +543,8 @@ def generate_build_tree(
         "-Donnxruntime_DISABLE_STRING_TYPE=" + ("ON" if disable_string_type else "OFF"),
         "-Donnxruntime_CUDA_MINIMAL=" + ("ON" if args.enable_cuda_minimal_build else "OFF"),
     ]
+    if args.onnx_light_source_dir:
+        cmake_args.append("-Donnxruntime_ONNX_LIGHT_SOURCE_DIR=" + os.path.abspath(args.onnx_light_source_dir))
     if args.minimal_build is not None:
         add_default_definition(cmake_extra_defines, "ONNX_MINIMAL_BUILD", "ON")
     if args.rv64:

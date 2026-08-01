@@ -150,6 +150,7 @@ option(onnxruntime_DONT_VECTORIZE "Do not vectorize operations in Eigen" OFF)
 
 option(onnxruntime_USE_FULL_PROTOBUF "Link to libprotobuf instead of libprotobuf-lite when this option is ON" OFF)
 option(onnxruntime_USE_ONNX_LIGHT "Replace the upstream onnx dependency with onnx-light (drop-in onnx/onnx_proto targets, no protobuf codegen)." OFF)
+set(onnxruntime_ONNX_LIGHT_SOURCE_DIR "" CACHE PATH "Path to a local onnx-light source tree (overrides the pinned archive when onnxruntime_USE_ONNX_LIGHT is ON).")
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump debug information about node inputs and outputs when executing the model." OFF)
 option(onnxruntime_DUMP_TENSOR "Dump tensor inside kernel." OFF)
 cmake_dependent_option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB "Build dump debug information about node inputs and outputs with support for sql database." OFF "onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS" OFF)
