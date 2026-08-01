@@ -14,6 +14,7 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math.h>
+#include <limits>
 
 #include "contrib_ops/cuda/bert/linear_attention_gates_impl.h"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
@@ -119,6 +120,8 @@ Status LaunchLinearAttentionGateKernel(
 
   constexpr int kThreads = 256;
   const int64_t blocks = (count + kThreads - 1) / kThreads;
+  ORT_RETURN_IF_NOT(blocks <= std::numeric_limits<int>::max(),
+                    "LinearAttentionGate launch requires too many blocks");
   LinearAttentionGateKernel<T><<<static_cast<int>(blocks), kThreads, 0, stream>>>(
       decay, beta, a, b, dt_bias, decay_scale, count, num_heads);
   return CUDA_CALL(cudaGetLastError());
@@ -138,6 +141,8 @@ Status LaunchGatedRMSNormKernel(
     return Status::OK();
   }
 
+  ORT_RETURN_IF_NOT(num_rows <= std::numeric_limits<int>::max(),
+                    "GatedRMSNorm launch requires too many blocks");
   const int blocks = static_cast<int>(num_rows);
 #define LAUNCH_GATED_RMS_NORM(threads)                            \
   GatedRMSNormKernel<T, threads><<<blocks, threads, 0, stream>>>( \

@@ -6,6 +6,8 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 
+#include <limits>
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -60,6 +62,8 @@ Status LinearAttentionGate<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(a_shape.NumDimensions() >= 1, "a must have rank >= 1");
   const int64_t num_heads = a_shape[a_shape.NumDimensions() - 1];
   ORT_RETURN_IF_NOT(num_heads > 0, "a last dimension must be positive");
+  ORT_RETURN_IF_NOT(num_heads <= std::numeric_limits<int>::max(),
+                    "a last dimension is too large for the CUDA kernel");
 
   ORT_RETURN_IF_NOT(dt_bias->Shape().Size() == num_heads,
                     "dt_bias must have ", num_heads, " elements, got ", dt_bias->Shape().Size());
@@ -106,6 +110,8 @@ Status GatedRMSNorm<T>::ComputeInternal(OpKernelContext* context) const {
 
   const int64_t norm_size = scale->Shape().Size();
   ORT_RETURN_IF_NOT(norm_size > 0, "scale must not be empty");
+  ORT_RETURN_IF_NOT(norm_size <= std::numeric_limits<int>::max(),
+                    "scale is too large for the CUDA kernel");
   const int64_t last_dim = shape[shape.NumDimensions() - 1];
   ORT_RETURN_IF_NOT(last_dim % norm_size == 0,
                     "X last dimension (", last_dim, ") must be a multiple of the scale length (",

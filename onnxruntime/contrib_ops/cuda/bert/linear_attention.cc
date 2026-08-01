@@ -7,6 +7,8 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 
+#include <limits>
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -67,18 +69,39 @@ Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const auto& query_shape = query_tensor->Shape();
   ORT_RETURN_IF_NOT(query_shape.NumDimensions() == 3, "query must be 3D");
 
-  const int batch_size = static_cast<int>(query_shape[0]);
-  const int seq_len = static_cast<int>(query_shape[1]);
-  const int query_hidden = static_cast<int>(query_shape[2]);
+  const int64_t batch_size_64 = query_shape[0];
+  const int64_t seq_len_64 = query_shape[1];
+  const int64_t query_hidden_64 = query_shape[2];
+  ORT_RETURN_IF_NOT(batch_size_64 <= std::numeric_limits<int>::max() &&
+                        seq_len_64 <= std::numeric_limits<int>::max() &&
+                        query_hidden_64 <= std::numeric_limits<int>::max(),
+                    "query dimensions are too large for the CUDA kernel");
+  const int batch_size = static_cast<int>(batch_size_64);
+  const int seq_len = static_cast<int>(seq_len_64);
 
   ORT_RETURN_IF_NOT(key_tensor != nullptr && value_tensor != nullptr, "key and value inputs are required");
 
   const auto& key_shape = key_tensor->Shape();
   const auto& value_shape = value_tensor->Shape();
 
-  int d_k = query_hidden / q_num_heads_;
+  ORT_RETURN_IF_NOT(key_shape.NumDimensions() == 3 && value_shape.NumDimensions() == 3,
+                    "key and value must be 3D");
+  ORT_RETURN_IF_NOT(key_shape[2] <= std::numeric_limits<int>::max() &&
+                        value_shape[2] <= std::numeric_limits<int>::max(),
+                    "key and value dimensions are too large for the CUDA kernel");
+  ORT_RETURN_IF_NOT(key_shape[0] == query_shape[0] && value_shape[0] == query_shape[0],
+                    "key and value batch dimensions must match query");
+  ORT_RETURN_IF_NOT(key_shape[1] == query_shape[1] && value_shape[1] == query_shape[1],
+                    "key and value sequence dimensions must match query");
+  ORT_RETURN_IF_NOT(query_hidden_64 > 0 && query_hidden_64 % q_num_heads_ == 0,
+                    "query last dim (", query_hidden_64, ") must be positive and divisible by q_num_heads (",
+                    q_num_heads_, ")");
+  ORT_RETURN_IF_NOT(value_shape[2] > 0 && value_shape[2] % kv_num_heads_ == 0,
+                    "value last dim (", value_shape[2], ") must be positive and divisible by kv_num_heads (",
+                    kv_num_heads_, ")");
+  const int d_k = static_cast<int>(query_hidden_64 / q_num_heads_);
   int d_v = static_cast<int>(value_shape[2]) / kv_num_heads_;
-  ORT_ENFORCE(static_cast<int>(key_shape[2]) % d_k == 0,
+  ORT_RETURN_IF_NOT(key_shape[2] > 0 && key_shape[2] % d_k == 0,
               "key last dim (", key_shape[2], ") must be divisible by d_k (", d_k, ")");
   int n_k_heads = static_cast<int>(key_shape[2]) / d_k;
 
@@ -109,18 +132,40 @@ Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   bool decay_per_key_dim = false;
   if (decay_tensor != nullptr) {
-    int64_t decay_last = decay_tensor->Shape()[2];
-    decay_per_key_dim = (decay_last == kv_num_heads_ * d_k);
+    const auto& decay_shape = decay_tensor->Shape();
+    ORT_RETURN_IF_NOT(decay_shape.NumDimensions() == 3,
+                      "decay must be rank 3 (B, T, ...), got rank ", decay_shape.NumDimensions());
+    ORT_RETURN_IF_NOT(decay_shape[0] == batch_size && decay_shape[1] == seq_len,
+                      "decay batch/sequence dimensions must match query");
+    const int64_t decay_last = decay_shape[2];
+    if (decay_last == static_cast<int64_t>(kv_num_heads_) * d_k) {
+      decay_per_key_dim = true;
+    } else {
+      ORT_RETURN_IF_NOT(decay_last == kv_num_heads_,
+                        "decay last dim must be H_kv or H_kv*d_k");
+    }
   }
 
   bool beta_per_head = false;
   if (beta_tensor != nullptr) {
-    int64_t beta_last = beta_tensor->Shape()[2];
-    beta_per_head = (beta_last == kv_num_heads_);
+    const auto& beta_shape = beta_tensor->Shape();
+    ORT_RETURN_IF_NOT(beta_shape.NumDimensions() == 3,
+                      "beta must be rank 3 (B, T, ...), got rank ", beta_shape.NumDimensions());
+    ORT_RETURN_IF_NOT(beta_shape[0] == batch_size && beta_shape[1] == seq_len,
+                      "beta batch/sequence dimensions must match query");
+    const int64_t beta_last = beta_shape[2];
+    if (beta_last == kv_num_heads_) {
+      beta_per_head = true;
+    } else {
+      ORT_RETURN_IF_NOT(beta_last == 1, "beta last dim must be H_kv or 1");
+    }
   }
 
   // Allocate outputs
-  int output_hidden = std::max(q_num_heads_, kv_num_heads_) * d_v;
+  const int64_t output_hidden_64 = static_cast<int64_t>(std::max(q_num_heads_, kv_num_heads_)) * d_v;
+  ORT_RETURN_IF_NOT(output_hidden_64 <= std::numeric_limits<int>::max(),
+                    "output hidden dimension is too large for the CUDA kernel");
+  int output_hidden = static_cast<int>(output_hidden_64);
   TensorShape output_shape({batch_size, seq_len, output_hidden});
   Tensor* output_tensor = context->Output(0, output_shape);
 

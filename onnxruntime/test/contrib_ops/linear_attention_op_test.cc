@@ -481,8 +481,71 @@ void RunLinearAttentionGQATest(
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+#ifdef USE_CUDA
+void RunCudaLinearAttentionShapeFailure(
+    const std::vector<int64_t>& query_dims,
+    const std::vector<int64_t>& key_dims,
+    const std::vector<int64_t>& value_dims,
+    const std::vector<int64_t>& output_dims,
+    const std::vector<int64_t>& state_dims,
+    const std::string& expected_error,
+    const std::vector<int64_t>& decay_dims = {}) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+    return;
+  }
+
+  auto element_count = [](const std::vector<int64_t>& dims) {
+    size_t count = 1;
+    for (int64_t dim : dims) {
+      count *= static_cast<size_t>(dim);
+    }
+    return count;
+  };
+
+  OpTester tester("LinearAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", "linear");
+  tester.AddAttribute<int64_t>("q_num_heads", 2);
+  tester.AddAttribute<int64_t>("kv_num_heads", 2);
+  tester.AddInput<float>("query", query_dims, std::vector<float>(element_count(query_dims), 0.1f));
+  tester.AddInput<float>("key", key_dims, std::vector<float>(element_count(key_dims), 0.1f));
+  tester.AddInput<float>("value", value_dims, std::vector<float>(element_count(value_dims), 0.1f));
+  tester.AddOptionalInputEdge<float>();
+  if (decay_dims.empty()) {
+    tester.AddOptionalInputEdge<float>();
+  } else {
+    tester.AddInput<float>("decay", decay_dims, std::vector<float>(element_count(decay_dims), 0.1f));
+  }
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOutput<float>("output", output_dims, std::vector<float>(element_count(output_dims), 0.0f));
+  tester.AddOutput<float>("present_state", state_dims, std::vector<float>(element_count(state_dims), 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, expected_error, {}, nullptr, &execution_providers);
+}
+#endif
+
 }  // namespace
 // ===========================================================================
+#ifdef USE_CUDA
+TEST(ContribOpLinearAttentionTest, CudaRejectsNonDivisibleQueryHidden) {
+  RunCudaLinearAttentionShapeFailure({1, 1, 3}, {1, 1, 4}, {1, 1, 4},
+                                      {1, 1, 4}, {1, 2, 1, 2}, "query last dim");
+}
+
+TEST(ContribOpLinearAttentionTest, CudaRejectsNonDivisibleValueHidden) {
+  RunCudaLinearAttentionShapeFailure({1, 1, 4}, {1, 1, 4}, {1, 1, 3},
+                                      {1, 1, 2}, {1, 2, 2, 1}, "value last dim");
+}
+
+TEST(ContribOpLinearAttentionTest, CudaRejectsInvalidDecayRank) {
+  RunCudaLinearAttentionShapeFailure({1, 1, 4}, {1, 1, 4}, {1, 1, 4},
+                                      {1, 1, 4}, {1, 2, 2, 2}, "decay must be rank 3", {1, 2});
+}
+#endif
+
 TEST(ContribOpLinearAttentionTest, LinearRule_SingleToken) {
   const int B = 1, H = 1, T = 1, dk = 4, dv = 4;
   float scale = 1.0f / std::sqrt(static_cast<float>(dk));
