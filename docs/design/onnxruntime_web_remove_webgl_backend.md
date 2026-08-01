@@ -3,7 +3,7 @@
 **Scope:** `onnxruntime-web` JavaScript/TypeScript package — WebGL backend
 
 **Related work:**
-[Migrate onnxruntime-web WebGPU/WebNN from JSEP to the native WebGPU EP](onnxruntime_web_jsep_to_webgpu_ep_migration.md)
+[Migrate onnxruntime-web from JSEP to the native WebGPU EP](onnxruntime_web_jsep_to_webgpu_ep_migration.md)
 — independent, but shares the `onnxruntime-web/all` bundle (§6) and the deprecation-warning utility (§7).
 
 ---
@@ -110,7 +110,7 @@ a sufficient soft landing.
 ## 6. `/all` bundle coupling
 
 `./all` bundles two independent things: WebGL and the WebGPU/WebNN backend. This effort removes WebGL; the
-[JSEP → native migration](onnxruntime_web_jsep_to_webgpu_ep_migration.md) flips WebGPU/WebNN to the native EP. The
+[JSEP → native migration](onnxruntime_web_jsep_to_webgpu_ep_migration.md) flips WebGPU to the native EP. The
 two are independent and may land in either order; `/all` collapses into a single alias of the webgpu/default
 bundle once both have landed (whichever lands second performs the repoint). `/all` is kept as an export to avoid
 breaking imports (see JSEP doc §5).

@@ -1,6 +1,6 @@
-# Design: Migrate onnxruntime-web WebGPU/WebNN from JSEP to the native WebGPU EP
+# Design: Migrate onnxruntime-web from JSEP to the native WebGPU EP
 
-**Scope:** `onnxruntime-web` JavaScript/TypeScript package — WebGPU and WebNN backends
+**Scope:** `onnxruntime-web` JavaScript/TypeScript package — WebGPU backend; WebNN initialization glue
 
 **Related work:** [Remove the WebGL (onnxjs) backend from onnxruntime-web](onnxruntime_web_remove_webgl_backend.md)
 — independent, but shares the `onnxruntime-web/all` bundle and the deprecation-warning utility.
@@ -9,16 +9,18 @@
 
 ## 1. Summary
 
-`onnxruntime-web` implements WebGPU/WebNN compute two ways:
+`onnxruntime-web` implements WebGPU compute two ways:
 
-- **JSEP** — the WebGPU compute path implemented in TypeScript over an Asyncify-compiled WASM core (it also hosts
-  WebNN). Powers the default (`.`) and `./all` bundles.
-- **Native WebGPU EP** — the C++ WebGPU execution provider compiled to WASM (hosting WebNN natively). Powers the
-  `./webgpu` and `./jspi` bundles.
+- **JSEP** — the WebGPU compute path implemented in TypeScript over an Asyncify-compiled WASM core. Powers the
+  default (`.`) and `./all` bundles.
+- **Native WebGPU EP** — the C++ WebGPU execution provider compiled to WASM. Powers the `./webgpu` and `./jspi`
+  bundles.
 
 This document proposes removing JSEP and standardizing on the native WebGPU EP. The default bundle keeps the
 `webgpu` backend key and swaps implementation at build time, so the change is transparent for existing code. WebNN
-comes along unchanged — the default bundle just switches to the native WebNN host that `./webgpu` already uses.
+is unaffected: it is already the native C++ WebNN EP in both builds (both link `--use_webnn`; `session-options.ts`
+selects the `WEBNN` EP either way). Removing JSEP only drops the shared JS init glue (`jsepInit('webnn', …)` →
+`webnnInit(…)`, same `WebNNBackend`), not the WebNN EP itself.
 
 - **Phase 1 (this release):** flip the default (`.`) and `./all` bundles to the native WebGPU EP, add a temporary
   `onnxruntime-web/jsep` escape-hatch export for one release, and ship deprecation warnings + docs.
@@ -40,7 +42,7 @@ comes along unchanged — the default bundle just switches to the native WebNN h
 
 ### Goals
 
-- Make the native WebGPU EP the default WebGPU/WebNN backend, transparently for existing consumers (same import,
+- Make the native WebGPU EP the default WebGPU backend, transparently for existing consumers (same import,
   `webgpu` key, and public API).
 - Give JSEP consumers a low-effort migration path plus a one-release safety net.
 - Remove the JSEP TypeScript compute path and its build variants.
@@ -80,7 +82,7 @@ which sets `DISABLE_JSEP = !!USE_WEBGPU_EP` and `DISABLE_WEBGPU = !USE_WEBGPU_EP
 - **Escape hatch.** Phase 1 adds a temporary `onnxruntime-web/jsep` export (built `USE_WEBGPU_EP=false`) that pins
   JSEP for one release. It is deprecated and warns once, doubling as a parity-bug funnel.
 - **`/all` bundle.** `/all` bundles the WebGPU/WebNN backend and WebGL — two independent things changed by two
-  efforts (this one flips WebGPU/WebNN to native; the WebGL effort drops WebGL). It is kept to avoid breaking
+  efforts (this one flips WebGPU to native; the WebGL effort drops WebGL). It is kept to avoid breaking
   imports. Once both land, `/all` becomes a real alias of the webgpu/default artifact (`.asyncify.wasm`). The two
   efforts may land in either order; whichever lands second performs the repoint (§9, WebGL doc §8).
 
@@ -121,8 +123,9 @@ to fix.
    hooks. CI today runs the `--io-binding=gpu-tensor` / `gpu-location` legs on the JSEP build only; the `--webgpu-ep`
    leg passes no `--io-binding`. Confirm the native path delivers true zero-copy handoff and matching dispose/lifetime
    semantics on a GPU.
-3. **WebNN.** The default bundle switches to the same native WebNN host `./webgpu` already ships, so WebNN itself
-   is unchanged; just confirm the default bundle behaves the same in a `navigator.ml`-capable environment.
+3. **WebNN.** WebNN is already the native C++ WebNN EP in both builds (`session-options.ts` selects `WEBNN`
+   either way); the flip only swaps the JS init bridge (`jsepInit('webnn', …)` → `webnnInit(…)`, same
+   `WebNNBackend`). Confirm the native `webnnInit` path behaves the same in a `navigator.ml`-capable environment.
 4. **Global `env.webgpu.*` settings (wiring gap).** `wasm-core-impl.ts` requests the adapter on the JS side but
    calls `webgpuInit()` without forwarding it to the native WebGPU EP, and `startProfiling()` is a TODO on the native
    path — so `adapter` / `powerPreference` / `forceFallbackAdapter` / `profiling` are silently dropped. Wire these
@@ -141,9 +144,7 @@ Per-session typed options are already a superset of JSEP's, confirmed by source 
    utility, also used by the WebGL effort; the native default emits nothing.
 4. **Publish the tracking issue** ahead of the release as the early-warning channel.
 5. **Docs.** Deprecation banners + migration guidance in `js/web/README` (hand-authored) and a release-notes entry
-   covering the `.jsep.wasm` → `.asyncify.wasm` filename change, `/jsep` pinning, the int64 `extra` opt-in, and the
-   default bundle's WebNN switching to the native host (already used by `./webgpu`). `webgpu-operators.md` is
-   generated — emit any banner from its generator (item 6), not by hand.
+   covering the `.jsep.wasm` → `.asyncify.wasm` filename change, `/jsep` pinning, and the int64 `extra` opt-in.
 6. **Retarget the operator-doc generator.** `generate-webgpu-operator-md.ts` parses the JSEP registrations
    (`js_execution_provider.cc`, `js_contrib_kernels.cc`), so post-flip `webgpu-operators.md` describes the wrong
    EP; point it at the native WebGPU EP registrations (those JSEP sources are removed in Phase 2).
