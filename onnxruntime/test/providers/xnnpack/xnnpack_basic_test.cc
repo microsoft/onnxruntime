@@ -692,6 +692,39 @@ TEST(XnnpackEP, TestGemm_EmptyC_NoSegfault) {
                });
 }
 
+// Regression test for https://github.com/microsoft/onnxruntime/issues/31153.
+// A Gemm whose M dimension is symbolic used to have M cached as 1 by the kernel
+// constructor (dim_value() returns 0 for a symbolic dim), so Compute() produced a
+// [1, N] output and only multiplied the first row. M must come from the input tensor
+// at Compute() time.
+TEST(XnnpackEP, TestGemm_DynamicM) {
+  // a_shape is the runtime shape fed for the symbolic M; it must have M > 1 to catch the bug.
+  const std::vector<int64_t> a_shape = {10, 3};
+  const std::vector<int64_t> b_shape = {3, 4};
+  auto modelBuilder = [&](ModelTestBuilder& builder) {
+    auto* input_a = builder.MakeSymbolicInput<float>({std::string("dynamic_m"), b_shape[0]});
+    auto* input_b = builder.MakeInitializer<float>(b_shape, -1.f, 1.f);
+    auto* input_c = builder.MakeInitializer<float>({b_shape[1]}, -1.f, 1.f);
+    auto* output_arg = builder.MakeOutput();
+    auto& gemm_node = builder.AddNode("Gemm", {input_a, input_b, input_c}, {output_arg});
+    gemm_node.AddAttribute("alpha", 1.0f);
+    gemm_node.AddAttribute("beta", 1.0f);
+    gemm_node.AddAttribute("transA", static_cast<int64_t>(0));
+    gemm_node.AddAttribute("transB", static_cast<int64_t>(0));
+
+    // MakeSymbolicInput doesn't register a feed, so add one ourselves.
+    OrtValue input_value;
+    CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], a_shape,
+                         builder.rand_gen_.Uniform<float>(a_shape, -1.f, 1.f), &input_value);
+    builder.feeds_.insert(std::make_pair(input_a->Name(), input_value));
+  };
+  RunModelTest(modelBuilder, "xnnpack_test_graph_gemm_dynamic_m",
+               {
+                   ExpectedEPNodeAssignment::All,
+                   1e-4f /* fp32_abs_err */,
+               });
+}
+
 #endif
 
 }  // namespace test

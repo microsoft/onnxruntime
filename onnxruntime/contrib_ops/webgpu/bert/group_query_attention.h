@@ -59,6 +59,11 @@ class GroupQueryAttention final : public WebGpuKernel {
 
     local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
 
+    // The windowed KV cache (cache-relative indexing + shift compaction) is implemented only by the
+    // CUDA kernel. Fail loudly rather than treating the window-sized buffer as a full-length cache.
+    ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("sliding_window_cache", 0) == 0,
+                "GroupQueryAttention (WebGPU): sliding_window_cache=1 is not implemented.");
+
     qk_norm_epsilon_ = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
   }
 

@@ -16,7 +16,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     24,
     KernelDefBuilder()
         .MayInplace(0, 0)
-        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     TensorScatter);
 
 TensorScatter::TensorScatter(const OpKernelInfo& info) : OpKernel(info) {

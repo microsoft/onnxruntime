@@ -52,20 +52,24 @@ bool IsTilingValid(const SubgroupMatrixTiling& t, uint32_t K) {
   return t.tile_m * t.tile_n * t.split_k <= kMaxScratchElems;
 }
 
+// HwSubgroups returns 0 for an unrecognized arch; fall back to a conservative
+// default so the occupancy target is still reasonable.
+uint32_t EffectiveHwSubgroups(std::string_view arch) {
+  const uint32_t hw = HwSubgroups(arch);
+  return hw == 0 ? 256u : hw;
+}
+
 // Fallback tiling selection when no pretuned entry applies. The goal is to keep
 // the GPU busy without over-subscribing it: pick the tile whose independent
 // output-tile grid just fills the resident subgroups, preferring larger tiles
 // (more data reuse) among those that qualify, and only using smaller tiles when
 // nothing else would fill the machine. Split-K then adds cooperative subgroups
 // to reach up to 2x occupancy, subject to the per-subgroup K-work minimum and
-// the scratch (SLM) budget.
-SubgroupMatrixTiling HeuristicTiling(std::string_view arch, uint32_t M, uint32_t N, uint32_t K) {
-  // HwSubgroups returns 0 for an unrecognized arch; fall back to a conservative
-  // default so the occupancy target is still reasonable.
-  uint32_t hw = HwSubgroups(arch);
-  if (hw == 0) {
-    hw = 256;
-  }
+// the scratch (SLM) budget. batch scales the independent-tile count: each z
+// slice contributes its own output-tile grid, so a larger batch fills the
+// machine with bigger tiles and needs less (or no) split-K.
+SubgroupMatrixTiling HeuristicTiling(std::string_view arch, uint32_t M, uint32_t N, uint32_t K, uint32_t batch) {
+  const uint32_t hw = EffectiveHwSubgroups(arch);
   const uint32_t k_blocks = K / kSubgroupMatrixK;
   auto tile_count = [](uint32_t dim, uint32_t tile) { return (dim + tile - 1) / tile; };
 
@@ -86,7 +90,7 @@ SubgroupMatrixTiling HeuristicTiling(std::string_view arch, uint32_t M, uint32_t
       if (tn > N && tn != kTileNCandidates[0]) {
         continue;
       }
-      const uint32_t tiles = tile_count(M, tm) * tile_count(N, tn);
+      const uint32_t tiles = batch * tile_count(M, tm) * tile_count(N, tn);
       const uint32_t area = tm * tn;
       if (tiles >= hw) {
         // This tile fills the machine on its own. Among all such tiles, keep the
@@ -111,7 +115,7 @@ SubgroupMatrixTiling HeuristicTiling(std::string_view arch, uint32_t M, uint32_t
 
   // Add split-K only while the independent tiles under-fill the machine; cap the
   // total at 2x hardware and keep enough K work per subgroup and scratch budget.
-  const uint32_t num_tiles = tile_count(M, tile_m) * tile_count(N, tile_n);
+  const uint32_t num_tiles = batch * tile_count(M, tile_m) * tile_count(N, tile_n);
   constexpr uint32_t kMinBlocksPerSplit = 2;
   uint32_t split_k = 1;
   for (uint32_t cand : kSplitKCandidates) {
@@ -158,13 +162,34 @@ std::optional<SubgroupMatrixTiling> LookupPretunedTiling(std::string_view arch, 
   return std::nullopt;
 }
 
+// Batch slices are dispatched on z as independent output-tile grids, so batch is
+// a pure occupancy multiplier. The pretuned table and heuristic pick tile shape
+// for a single (M, N, K) slice; once batch fills the machine, split-K's
+// cooperative subgroups are redundant. Retire split-K factors whose batch-scaled
+// occupancy would exceed ~2x hardware.
+void ClampSplitKForBatch(SubgroupMatrixTiling& t, uint32_t M, uint32_t N, uint32_t batch, uint32_t hw) {
+  auto tile_count = [](uint32_t dim, uint32_t tile) { return (dim + tile - 1) / tile; };
+  const uint32_t eff_tiles = batch * tile_count(M, t.tile_m) * tile_count(N, t.tile_n);
+  while (t.split_k > 1 && eff_tiles * t.split_k > 2 * hw) {
+    t.split_k /= 2;
+  }
+}
+
 // Chooses the tile + split-K tiling for the given problem: use the pretuned
 // table entry when one exists and fits, otherwise fall back to the heuristic.
-SubgroupMatrixTiling SelectTiling(std::string_view arch, uint32_t M, uint32_t N, uint32_t K) {
+// batch is the number of z-dispatched slices; it scales occupancy (see
+// ClampSplitKForBatch) but not the per-slice tile shape.
+SubgroupMatrixTiling SelectTiling(std::string_view arch, uint32_t M, uint32_t N, uint32_t K, uint32_t batch) {
   if (const auto tuned = LookupPretunedTiling(arch, M, N, K); tuned && IsTilingValid(*tuned, K)) {
-    return *tuned;
+    SubgroupMatrixTiling tiling = *tuned;
+    // The table is tuned per (M, N, K) at batch 1, so only revisit split-K when
+    // batch adds occupancy.
+    if (batch > 1) {
+      ClampSplitKForBatch(tiling, M, N, batch, EffectiveHwSubgroups(arch));
+    }
+    return tiling;
   }
-  return HeuristicTiling(arch, M, N, K);
+  return HeuristicTiling(arch, M, N, K, batch);
 }
 
 }  // namespace
@@ -178,14 +203,14 @@ SubgroupMatrixTilingSelector CreateSubgroupMatrixTilingSelector(
   // the tile shape and split-K factor from the pretuned table or the heuristic.
   // The subgroup-matrix shape itself is fixed by the kernel and not selected here.
   return [](const ComputeContext& context, uint32_t M, uint32_t N,
-            uint32_t K) -> std::optional<SubgroupMatrixTiling> {
+            uint32_t K, uint32_t batch) -> std::optional<SubgroupMatrixTiling> {
     // Only K needs to align to the subgroup tiling; M and N partial tiles are
     // handled by bounds-checked stores in the kernel.
     if (K % kSubgroupMatrixK != 0) {
       return std::nullopt;
     }
     const std::string_view arch = std::string_view{context.AdapterInfo().architecture};
-    return SelectTiling(arch, M, N, K);
+    return SelectTiling(arch, M, N, K, batch);
   };
 }
 

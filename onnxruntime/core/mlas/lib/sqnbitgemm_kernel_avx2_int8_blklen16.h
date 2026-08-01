@@ -182,7 +182,7 @@ accumulate_q8_blklen16_r1c1blk4_avx2(
     __m256 scale_a0b_4_ps = _mm256_mul_ps(scale_b_4_ps, scale_a0_4_ps);
     __m256 scale_a0b_4_shuffle_ps = _mm256_permutevar_ps(scale_a0b_4_ps, scale_mask);
 
-#if !defined(__GNUC__) || (__GNUC__ > 10)
+#if defined(__AVXVNNI__) || (defined(_MSC_VER) && !defined(__clang__))
     if constexpr (vnni)
     {
         // 0000, 1111
@@ -257,7 +257,7 @@ accumulate_q8_blklen16_r2c1blk4_avx2(
     __m256 scale_a1b_4_ps = _mm256_mul_ps(scale_b_4_ps, scale_a1_4_ps);
     __m256 scale_a1b_4_shuffle_ps = _mm256_permutevar_ps(scale_a1b_4_ps, scale_mask);
 
-#if !defined(__GNUC__) || (__GNUC__ > 10)
+#if defined(__AVXVNNI__) || (defined(_MSC_VER) && !defined(__clang__))
     if constexpr (vnni)
     {
         // 0000, 1111
@@ -340,7 +340,7 @@ accumulate_q8_blklen16_r1c1blk1_avx2(
     const __m128i bv0_16_epi8 = _mm_lddqu_si128(reinterpret_cast<const __m128i*>(QuantBDataPtr));
     __m256 scale_a0b_1_ps = _mm256_set1_ps(scale_a0b);
 
-#if !defined(__GNUC__) || (__GNUC__ > 10)
+#if defined(__AVXVNNI__) || (defined(_MSC_VER) && !defined(__clang__))
     if constexpr (vnni)
     {
         const __m128i dot00_4_epi32 = _mm_dpbusds_avx_epi32(_mm_setzero_si128(), bv0_16_epi8, av00_16_epi8);
