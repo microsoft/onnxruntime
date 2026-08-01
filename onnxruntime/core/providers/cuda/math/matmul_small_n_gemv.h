@@ -26,9 +26,8 @@ size_t SmallNGemvCounterElements(int n);
 // deterministic.
 //
 // `workspace` must hold SmallNGemvWorkspaceElements() floats. `counter` must
-// hold SmallNGemvCounterElements() unsigned ints and must be zeroed before the
-// first launch -- every launch leaves it zeroed again for the next one, so a
-// single memset at allocation time is enough.
+// hold SmallNGemvCounterElements() zeroed unsigned ints. Both buffers are
+// exclusive to this launch.
 Status LaunchSmallNGemv(cudaStream_t stream, const half* a, const half* b, half* c,
                         int m, int n, int k, float* workspace, unsigned int* counter);
 

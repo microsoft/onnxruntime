@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <mutex>
-
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 
@@ -27,18 +25,11 @@ class MatMul final : public CudaKernel {
   Status ComputeDefault(OpKernelContext* context, MatMulComputeHelper& helper) const;
 
  private:
-  // Arrival counters for the split-K small-N GEMV path. The kernel leaves them
-  // zeroed, so they are allocated and cleared once and then reused.
-  Status EnsureGemvCounter(size_t count) const;
-
   const float alpha_;
   const bool trans_A_;
   const bool trans_B_;
   const bool trans_batch_a_;
   const bool trans_batch_b_;
-  mutable std::mutex gemv_counter_mutex_;
-  mutable IAllocatorUniquePtr<unsigned int> gemv_counter_;
-  mutable size_t gemv_counter_count_{0};
 };
 
 template <typename T>

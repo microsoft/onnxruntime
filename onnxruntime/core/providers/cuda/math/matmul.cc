@@ -21,17 +21,6 @@ static bool SmallNGemvEnabled() {
   return enabled;
 }
 
-template <typename T>
-Status MatMul<T>::EnsureGemvCounter(size_t count) const {
-  std::lock_guard<std::mutex> guard(gemv_counter_mutex_);
-  if (gemv_counter_ && gemv_counter_count_ >= count) return Status::OK();
-  auto buffer = GetScratchBuffer<unsigned int>(count, nullptr);
-  CUDA_RETURN_IF_ERROR(cudaMemset(buffer.get(), 0, count * sizeof(unsigned int)));
-  gemv_counter_ = std::move(buffer);
-  gemv_counter_count_ = count;
-  return Status::OK();
-}
-
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       MatMul,                                                     \
@@ -341,6 +330,7 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
   int64_t stride_A, stride_B, stride_C, batch_count;
   auto& device_prop = GetDeviceProp();
 
+  onnxruntime::Stream* stream = this->GetComputeStream(ctx);
   if (helper.OutputOffsets().size() == 1) {
     if constexpr (std::is_same<T, MLFloat16>::value) {
       // cuBLAS tiles this class of shape onto a handful of CTAs and spends
@@ -353,13 +343,15 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
         const int m = static_cast<int>(helper.M());
         const int n = static_cast<int>(helper.N());
         const int k = static_cast<int>(helper.K());
-        ORT_RETURN_IF_ERROR(EnsureGemvCounter(SmallNGemvCounterElements(n)));
-        auto workspace = GetScratchBuffer<float>(SmallNGemvWorkspaceElements(m, n, k), ctx->GetComputeStream());
+        const size_t counter_elements = SmallNGemvCounterElements(n);
+        auto counter = GetScratchBuffer<unsigned int>(counter_elements, stream);
+        CUDA_RETURN_IF_ERROR(cudaMemsetAsync(counter.get(), 0, counter_elements * sizeof(unsigned int), Stream(ctx)));
+        auto workspace = GetScratchBuffer<float>(SmallNGemvWorkspaceElements(m, n, k), stream);
         return LaunchSmallNGemv(Stream(ctx),
                                 reinterpret_cast<const half*>(left_X->Data<T>()),
                                 reinterpret_cast<const half*>(right_X->Data<T>()),
                                 reinterpret_cast<half*>(Y->MutableData<T>()),
-                                m, n, k, workspace.get(), gemv_counter_.get());
+                                m, n, k, workspace.get(), counter.get());
       }
     }
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
@@ -414,9 +406,9 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(left_X->Data<T>()), helper.LeftOffsets(), left_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(right_X->Data<T>()), helper.RightOffsets(), right_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<CudaT*>(Y->MutableData<T>()), helper.OutputOffsets(), output_arrays.CpuSpan());
-  ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu(this->GetComputeStream(ctx)));
-  ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu(this->GetComputeStream(ctx)));
-  ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu(this->GetComputeStream(ctx)));
+  ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu(stream));
+  ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu(stream));
+  ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu(stream));
 
   // TF32 provides a huge performance gain for training and inference while preserving FP32 levels of accuracy.
   // It requires Ampere or newer GPU, and pointers of matrices shall be aligned (ideal alignment is 16-byte).
