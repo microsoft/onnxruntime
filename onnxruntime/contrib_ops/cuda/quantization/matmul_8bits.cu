@@ -6,6 +6,7 @@
 #include <cuda_bf16.h>
 #include <math_constants.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
 
@@ -57,10 +58,10 @@ __device__ __forceinline__ void AccumulateEightElements8b(
   const uint32_t b_45 = __byte_perm(hi32, kMagicBytes, 0x4140);
   const uint32_t b_67 = __byte_perm(hi32, kMagicBytes, 0x4342);
 
-  const half2 q_01 = *reinterpret_cast<const half2*>(&b_01);
-  const half2 q_23 = *reinterpret_cast<const half2*>(&b_23);
-  const half2 q_45 = *reinterpret_cast<const half2*>(&b_45);
-  const half2 q_67 = *reinterpret_cast<const half2*>(&b_67);
+  const half2 q_01 = bit_cast<half2>(b_01);
+  const half2 q_23 = bit_cast<half2>(b_23);
+  const half2 q_45 = bit_cast<half2>(b_45);
+  const half2 q_67 = bit_cast<half2>(b_67);
 
   // Biased zero point: 1024 + zp, matching the bias baked into q_* above.
   const uint16_t zp_biased_bits = static_cast<uint16_t>(0x6400u | static_cast<uint32_t>(zp));
@@ -236,7 +237,7 @@ __device__ __forceinline__ void DequantizeEight8b(uint64_t values_quant, T scale
 
 #pragma unroll
   for (int i = 0; i < 4; ++i) {
-    const float2 d = __half22float2(__hsub2(*reinterpret_cast<const half2*>(&packed[i]), bias_h2));
+    const float2 d = __half22float2(__hsub2(bit_cast<half2>(packed[i]), bias_h2));
     dq[2 * i] = d.x * scale_f;
     dq[2 * i + 1] = d.y * scale_f;
   }
