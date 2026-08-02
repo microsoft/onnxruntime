@@ -14,8 +14,8 @@
 namespace onnxruntime {
 namespace cuda {
 
-// Opt-in: the split-K GEMV path beats cuBLAS on the decode shapes measured so
-// far (M<=8, N<=1024, K>=128) but has not been swept over the whole shape space.
+// Experimental opt-in: this path is currently slower than cuBLAS in-model, but
+// remains available for further tuning of small-N decode shapes.
 static bool SmallNGemvEnabled() {
   static const bool enabled = ParseEnvironmentVariableWithDefault<bool>("ORT_ENABLE_SMALL_N_GEMV", false);
   return enabled;

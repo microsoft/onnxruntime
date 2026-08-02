@@ -4,9 +4,10 @@
 #include "gtest/gtest.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/providers/cuda/math/matmul_small_n_gemv.h"
 #include "test/util/include/asserts.h"
 
@@ -29,11 +30,8 @@ std::unique_ptr<T, CudaDeviceMemoryDeleter> AllocateDeviceMemory(size_t count) {
   return std::unique_ptr<T, CudaDeviceMemoryDeleter>(buffer);
 }
 
-TEST(MatMulSmallNGemvTest, HandlesUnevenSplitsAndResetsCounters) {
-  constexpr int m = 3;
-  constexpr int n = 37;
-  constexpr int k = 133;
-
+void RunSmallNGemvCase(int m, int n, int k) {
+  SCOPED_TRACE("m=" + std::to_string(m) + ", n=" + std::to_string(n) + ", k=" + std::to_string(k));
   std::vector<MLFloat16> a(static_cast<size_t>(m) * k);
   std::vector<MLFloat16> b(static_cast<size_t>(k) * n);
   for (int row = 0; row < m; ++row) {
@@ -72,6 +70,18 @@ TEST(MatMulSmallNGemvTest, HandlesUnevenSplitsAndResetsCounters) {
         EXPECT_EQ(output[static_cast<size_t>(row) * n + col].ToFloat(), k * (row + 1) * scale);
       }
     }
+  }
+}
+
+TEST(MatMulSmallNGemvTest, HandlesAllMVariantsAndResetsCounters) {
+  for (int m = 1; m <= 8; ++m) {
+    RunSmallNGemvCase(m, 37, 133);
+  }
+}
+
+TEST(MatMulSmallNGemvTest, HandlesColumnTileBoundaries) {
+  for (const int n : {1, 32, 1024}) {
+    RunSmallNGemvCase(1, n, 128);
   }
 }
 
