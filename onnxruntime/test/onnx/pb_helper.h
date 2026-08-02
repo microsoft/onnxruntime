@@ -68,11 +68,21 @@ using ONNX_LIGHT_NAMESPACE::proto::VectorMapInt64ToFloat;
 #pragma GCC diagnostic pop
 #endif
 namespace onnxruntime {
-#if defined(ORT_USE_ONNX_LIGHT)
-using google::protobuf::ParseDelimitedFromCodedStream;
-#else
-bool ParseDelimitedFromCodedStream(google::protobuf::MessageLite* message,
+template <typename Msg>
+bool ParseDelimitedFromCodedStream(Msg* message,
                                    google::protobuf::io::CodedInputStream* input,
-                                   bool* clean_eof);
-#endif
+                                   bool* clean_eof) {
+  if (clean_eof != nullptr) *clean_eof = false;
+  int start = input->CurrentPosition();
+
+  uint32_t size;
+  if (!input->ReadVarint32(&size)) {
+    if (clean_eof != nullptr) *clean_eof = input->CurrentPosition() == start;
+    return false;
+  }
+
+  std::string buf(static_cast<size_t>(size), '\0');
+  if (!input->ReadRaw(buf.data(), static_cast<int>(size))) return false;
+  return message->ParseFromArray(buf.data(), static_cast<int>(size));
+}
 }
