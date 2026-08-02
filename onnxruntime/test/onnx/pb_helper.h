@@ -44,7 +44,22 @@
 #include <onnx/onnx-data.pb.h>
 #if defined(ORT_USE_ONNX_LIGHT)
 #include <cstdint>
-#include "tml_onnx_light.h"
+#include <onnx_light/onnx_proto/tml.h>
+namespace onnxruntime {
+namespace proto {
+using ONNX_LIGHT_NAMESPACE::proto::TraditionalMLData;
+using ONNX_LIGHT_NAMESPACE::proto::MapStringToString;
+using ONNX_LIGHT_NAMESPACE::proto::MapStringToInt64;
+using ONNX_LIGHT_NAMESPACE::proto::MapStringToFloat;
+using ONNX_LIGHT_NAMESPACE::proto::MapStringToDouble;
+using ONNX_LIGHT_NAMESPACE::proto::MapInt64ToString;
+using ONNX_LIGHT_NAMESPACE::proto::MapInt64ToInt64;
+using ONNX_LIGHT_NAMESPACE::proto::MapInt64ToFloat;
+using ONNX_LIGHT_NAMESPACE::proto::MapInt64ToDouble;
+using ONNX_LIGHT_NAMESPACE::proto::VectorMapStringToFloat;
+using ONNX_LIGHT_NAMESPACE::proto::VectorMapInt64ToFloat;
+}  // namespace proto
+}  // namespace onnxruntime
 #else
 #include <google/protobuf/message_lite.h>
 #include "tml.pb.h"

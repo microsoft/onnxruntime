@@ -1305,16 +1305,14 @@ endif()
 set(test_data_target onnxruntime_test_all)
 
 if(onnxruntime_USE_ONNX_LIGHT)
-  # onnx-light build: there is no protobuf/protoc and no onnx .proto sources, so
-  # tml.proto cannot be code-generated. Compile the hand-written, protobuf-free
-  # replacement (test/proto/tml_onnx_light.h, header-only) instead. Expose the
-  # proto directory as a PUBLIC include so consumers that include the tml header
-  # (via pb_helper.h) resolve it.
-  onnxruntime_add_static_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml_onnx_light.cc)
+  # onnx-light build: the tml implementation lives in onnx-light
+  # (onnx_light/onnx_proto/tml.h, header-only). This stub library exists
+  # only to satisfy the onnx_test_data_proto target dependency.
+  onnxruntime_add_static_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml_onnx_light_stub.cc)
   add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_compile_definitions(onnx_test_data_proto PRIVATE "-DONNX_API=")
   onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto onnx)
-  target_link_libraries(onnx_test_data_proto PRIVATE absl::inlined_vector)
+  target_link_libraries(onnx_test_data_proto PRIVATE)
   target_include_directories(onnx_test_data_proto PUBLIC ${TEST_SRC_DIR}/proto)
   if (MSVC)
     target_compile_options(onnx_test_data_proto PRIVATE "/wd4100")
