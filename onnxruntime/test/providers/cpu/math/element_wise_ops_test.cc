@@ -1486,9 +1486,13 @@ TEST(MathOpTest, Pow_double_int64) {
 }
 
 TEST(MathOpTest, Pow_float16_float16) {
+#if defined(USE_CUDA) || defined(USE_COREML)
   std::vector<int64_t> dims{4};
   TestBinaryFloat16("Pow", dims, {2.0f, 2.0f, std::sqrt(2.0f), 1.0f}, dims, {0.0f, 8.0f, 2.0f, 9.0f},
                     dims, {1.0f, 256.0f, 2.0f, 1.0f}, false);
+#else
+  GTEST_SKIP() << "Pow float16 is only exercised on CUDA or CoreML EP builds.";
+#endif
 }
 
 #if defined(USE_CUDA) || defined(USE_COREML)
