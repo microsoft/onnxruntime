@@ -241,15 +241,9 @@ static void ConstructSparseTensor(const std::string& name,
   m_values.set_name(name);
   m_values.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   *m_values.mutable_dims()->Add() = static_cast<int64_t>(values.size());
-#ifdef ORT_USE_ONNX_LIGHT
-  auto& raw_data = *m_values.mutable_raw_data();
-  raw_data.resize(values.size() * sizeof(float));
-  auto dest_span = gsl::make_span<float>(reinterpret_cast<float*>(raw_data.data()), values.size());
-#else
   std::string& raw_data = *m_values.mutable_raw_data();
   raw_data.resize(values.size() * sizeof(float));
   auto dest_span = gsl::make_span<float>(reinterpret_cast<float*>(&raw_data[0]), values.size());
-#endif
   std::copy(values.cbegin(), values.cend(), dest_span.begin());
 
   const std::vector<int64_t>& indices = sparse_details::indices;  // Not to exceed 59
