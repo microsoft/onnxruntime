@@ -819,6 +819,35 @@ class TestQMoENVFP4(unittest.TestCase):
             f"ORT_FP4_GEMV_DEFAULT_TILING=0 run failed:\n{proc.stdout}\n{proc.stderr}",
         )
 
+    def test_nvfp4_fp16_gemv_skip_expand_parity(self):
+        shape = dict(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=8,
+            top_k=8,
+            num_tokens=3,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+            gemv_mode="1",
+        )
+        env_name = "ORT_DISABLE_FP4_GEMV_SKIP_EXPAND"
+        previous_value = os.environ.get(env_name)
+        try:
+            os.environ[env_name] = "1"
+            expanded_output = self._run_nvfp4_moe_test(**shape)
+            os.environ[env_name] = "0"
+            skip_expand_output = self._run_nvfp4_moe_test(**shape)
+        finally:
+            if previous_value is None:
+                os.environ.pop(env_name, None)
+            else:
+                os.environ[env_name] = previous_value
+
+        self.assertTrue(
+            torch.equal(expanded_output, skip_expand_output),
+            "FP4 GEMV skip-expand output differs from the expanded-activation path",
+        )
+
     def test_nvfp4_fp16_gemv_vs_fallback_parity(self):
         # Dispatch-equivalence regression: run the identical decode-shaped NVFP4 case twice — once
         # forcing the fused FP4 GEMV path (ORT_ENABLE_FP4_GEMV=1) and once forcing the dequant
