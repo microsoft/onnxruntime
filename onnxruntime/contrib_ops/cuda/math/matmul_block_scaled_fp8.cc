@@ -3,11 +3,11 @@
 
 #include "contrib_ops/cuda/math/matmul_block_scaled_fp8.h"
 
-#include <cstdlib>
 #include <type_traits>
 
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 
@@ -16,10 +16,8 @@ using namespace onnxruntime::cuda;
 
 namespace {
 bool FusedFp8ActivationQdqDisabled() {
-  static const bool disabled = [] {
-    const char* v = std::getenv("ORT_DISABLE_FUSED_FP8_ACT_QDQ");
-    return v != nullptr && v[0] != '\0' && v[0] != '0';
-  }();
+  static const bool disabled =
+      ParseEnvironmentVariableWithDefault<bool>("ORT_DISABLE_FUSED_FP8_ACT_QDQ", false);
   return disabled;
 }
 }  // namespace
