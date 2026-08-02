@@ -327,6 +327,43 @@ void LaunchQMoECombineNvfp4ScalesForGemv(
     int k_blocks,
     cudaStream_t stream);
 
+// LaunchTopKWithRouterWeights: DeepSeek-style noaux_tc routing.
+// Selects top-k experts from `logits` (via raw TopK, no softmax) and gathers
+// aggregation weights from `router_weights` at the selected expert indices.
+// When normalize_scales is true, gathered weights are normalized to sum to 1.
+void LaunchTopKWithRouterWeights(
+    const float* logits,
+    const float* router_weights,
+    float* topk_scales,
+    int* topk_indices,
+    int num_rows,
+    int num_experts,
+    int k,
+    bool normalize_scales,
+    cudaStream_t stream);
+
+void LaunchTopKWithRouterWeights(
+    const half* logits,
+    const half* router_weights,
+    float* topk_scales,
+    int* topk_indices,
+    int num_rows,
+    int num_experts,
+    int k,
+    bool normalize_scales,
+    cudaStream_t stream);
+
+void LaunchTopKWithRouterWeights(
+    const __nv_bfloat16* logits,
+    const __nv_bfloat16* router_weights,
+    float* topk_scales,
+    int* topk_indices,
+    int num_rows,
+    int num_experts,
+    int k,
+    bool normalize_scales,
+    cudaStream_t stream);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

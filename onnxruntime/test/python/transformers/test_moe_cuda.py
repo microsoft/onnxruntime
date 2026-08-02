@@ -1905,5 +1905,180 @@ class TestSparseMixer(unittest.TestCase):
         )
 
 
+def create_moe_router_weights_onnx_graph(
+    num_tokens: int,
+    num_experts: int,
+    hidden_size: int,
+    inter_size: int,
+    topk: int,
+    onnx_dtype: int,
+    fc1_experts_weights: torch.Tensor,
+    fc1_experts_bias: torch.Tensor,
+    fc2_experts_weights: torch.Tensor,
+    fc2_experts_bias: torch.Tensor,
+    swiglu_fusion: int = 2,
+    activation_alpha: float = 1.0,
+    activation_beta: float = 0.0,
+):
+    """Build a MoE ONNX graph with router_weights (input 8) for DeepSeek V4-style noaux_tc routing.
+
+    router_probs is used for top-k selection only; router_weights provides aggregation weights.
+    swiglu_fusion=2 uses the standard [gate; value] concatenated layout (silu(gate) * value).
+    """
+    nodes = [
+        helper.make_node(
+            "MoE",
+            [
+                "input",
+                "router_probs",
+                "fc1_experts_weights",
+                "fc1_experts_bias",
+                "fc2_experts_weights",
+                "fc2_experts_bias",
+                "",  # fc3_experts_weights (not provided)
+                "",  # fc3_experts_bias (not provided)
+                "router_weights",
+            ],
+            ["output"],
+            "MoE_0",
+            k=topk,
+            normalize_routing_weights=0,  # router_weights are already normalized
+            activation_type="swiglu",
+            swiglu_fusion=swiglu_fusion,
+            activation_alpha=activation_alpha,
+            activation_beta=activation_beta,
+            domain="com.microsoft",
+        ),
+    ]
+
+    fc1_weight_shape = [num_experts, 2 * inter_size, hidden_size]
+    fc1_bias_shape = [num_experts, 2 * inter_size]
+    fc2_weight_shape = [num_experts, hidden_size, inter_size]
+    fc2_bias_shape = [num_experts, hidden_size]
+
+    initializers = []
+
+    graph_inputs = [
+        helper.make_tensor_value_info("input", onnx_dtype, [num_tokens, hidden_size]),
+        helper.make_tensor_value_info("router_probs", onnx_dtype, [num_tokens, num_experts]),
+        helper.make_tensor_value_info("fc1_experts_weights", onnx_dtype, fc1_weight_shape),
+        helper.make_tensor_value_info("fc1_experts_bias", onnx_dtype, fc1_bias_shape),
+        helper.make_tensor_value_info("fc2_experts_weights", onnx_dtype, fc2_weight_shape),
+        helper.make_tensor_value_info("fc2_experts_bias", onnx_dtype, fc2_bias_shape),
+        helper.make_tensor_value_info("router_weights", onnx_dtype, [num_tokens, num_experts]),
+    ]
+
+    graph_outputs = [
+        helper.make_tensor_value_info("output", onnx_dtype, [num_tokens, hidden_size]),
+    ]
+
+    graph = helper.make_graph(nodes, "MoE_RouterWeights_Graph", graph_inputs, graph_outputs, initializers)
+    model = helper.make_model(graph)
+    return model
+
+
+router_weights_moe_test_cases = list(
+    itertools.product(
+        [1, 2],  # batch_size
+        [16, 32],  # sequence_length
+    )
+)
+
+
+@unittest.skipIf(not use_cuda, "skipping moe router_weights test since it requires cuda environment.")
+class TestMoECUDARouterWeights(unittest.TestCase):
+    """Tests for CUDA MoE with separate router_weights (DeepSeek V4-style noaux_tc routing).
+
+    In this routing mode, router_probs is used only for top-k expert selection,
+    and router_weights provides the pre-computed aggregation weights.
+    """
+
+    @parameterized.expand(router_weights_moe_test_cases)
+    def test_moe_router_weights_parity(self, batch_size, sequence_length):
+        torch.manual_seed(42)
+        numpy.random.seed(42)
+
+        hidden_size = 64
+        inter_size = 128
+        num_experts = 8
+        topk = 2
+        num_tokens = batch_size * sequence_length
+        onnx_dtype = TensorProto.FLOAT16
+
+        # Standard silu(gate) * value SwiGLU layout (swiglu_fusion=2)
+        # fc1 output is [gate, value] concatenated along dim 0
+        fc1_weights = torch.randn(num_experts, 2 * inter_size, hidden_size, dtype=torch.float16, device=device)
+        fc2_weights = torch.randn(num_experts, hidden_size, inter_size, dtype=torch.float16, device=device)
+        fc1_biases = torch.randn(num_experts, 2 * inter_size, dtype=torch.float16, device=device)
+        fc2_biases = torch.randn(num_experts, hidden_size, dtype=torch.float16, device=device)
+
+        input_tensor = torch.randn(num_tokens, hidden_size, dtype=torch.float16, device=device)
+        router_logits = torch.randn(num_tokens, num_experts, dtype=torch.float, device=device)
+        router_probs = torch.sigmoid(router_logits).to(torch.float16)
+
+        # Simulate DeepSeek noaux_tc routing
+        topk_indices = router_probs.float().topk(topk, dim=-1).indices  # [T, k]
+        gathered = router_probs.float().gather(1, topk_indices)  # [T, k]
+        gathered_normalized = gathered / (gathered.sum(dim=-1, keepdim=True) + 1e-20)
+
+        router_weights = torch.zeros_like(router_probs.float())
+        router_weights.scatter_(1, topk_indices, gathered_normalized)
+        router_weights = router_weights.to(torch.float16)
+
+        # Build reference output using standard silu(gate) * value
+        def swiglu_fwd(x):
+            gate, value = x.chunk(2, dim=-1)
+            return F.silu(gate) * value
+
+        ref_output = torch.zeros(num_tokens, hidden_size, dtype=torch.float, device=device)
+        with torch.no_grad():
+            for i in range(num_tokens):
+                for j in range(topk):
+                    eid = topk_indices[i, j].item()
+                    weight = gathered_normalized[i, j].item()
+                    x = input_tensor[i].float().unsqueeze(0)  # [1, H]
+                    h1 = x @ fc1_weights[eid].float().T + fc1_biases[eid].float()  # [1, 2*I]
+                    h1 = swiglu_fwd(h1)
+                    h2 = h1 @ fc2_weights[eid].float().T + fc2_biases[eid].float()  # [1, H]
+                    ref_output[i] += weight * h2.squeeze(0)
+
+        onnx_model = create_moe_router_weights_onnx_graph(
+            num_tokens=num_tokens,
+            num_experts=num_experts,
+            hidden_size=hidden_size,
+            inter_size=inter_size,
+            topk=topk,
+            onnx_dtype=onnx_dtype,
+            fc1_experts_weights=fc1_weights,
+            fc1_experts_bias=fc1_biases,
+            fc2_experts_weights=fc2_weights,
+            fc2_experts_bias=fc2_biases,
+        )
+
+        sess_options = SessionOptions()
+        sess_options.log_severity_level = 2
+        ort_session = InferenceSession(onnx_model.SerializeToString(), sess_options, providers=get_ort_provider())
+
+        ort_inputs = {
+            "input": input_tensor.cpu().numpy(),
+            "router_probs": router_probs.cpu().numpy(),
+            "fc1_experts_weights": fc1_weights.cpu().numpy(),
+            "fc1_experts_bias": fc1_biases.cpu().numpy(),
+            "fc2_experts_weights": fc2_weights.cpu().numpy(),
+            "fc2_experts_bias": fc2_biases.cpu().numpy(),
+            "router_weights": router_weights.cpu().numpy(),
+        }
+
+        ort_outputs = ort_session.run(None, ort_inputs)
+        ort_output = torch.from_numpy(ort_outputs[0]).float().to(device)
+
+        max_diff = (ort_output - ref_output).abs().max().item()
+        print(
+            f"CUDA MoE router_weights parity: batch={batch_size}, seq={sequence_length}, "
+            f"max_diff={max_diff:.6f}"
+        )
+        torch.testing.assert_close(ort_output, ref_output, atol=1e-1, rtol=1e-2)
+
+
 if __name__ == "__main__":
     unittest.main()

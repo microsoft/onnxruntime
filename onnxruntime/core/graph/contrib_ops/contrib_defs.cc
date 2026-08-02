@@ -1434,6 +1434,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(5, "fc2_experts_bias", "2D optional input tensor with shape (num_experts, hidden_size)", "T", OpSchema::Optional)
         .Input(6, "fc3_experts_weights", "3D optional input tensor with shape (num_experts, inter_size, hidden_size)", "T", OpSchema::Optional)
         .Input(7, "fc3_experts_bias", "2D optional input tensor with shape (num_experts, inter_size)", "T", OpSchema::Optional)
+        .Input(8, "router_weights",
+               "2D optional tensor with shape (num_tokens, num_experts). "
+               "When provided, router_probs is used only for Top-K expert selection, and router_weights is used "
+               "for aggregating expert outputs (the values at the selected expert indices are gathered and used as "
+               "mixing weights). This enables DeepSeek-style noaux_tc routing where different tensors are used for "
+               "selection and aggregation. When not provided, router_probs is used for both selection and aggregation "
+               "(backward compatible).",
+               "T", OpSchema::Optional)
         .Output(0, "output", "2D input tensor with shape (num_tokens, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));

@@ -20,6 +20,7 @@ class MoE final : public OpKernel, public MoEBaseCPU {
   Status ComputeMoE(const OpKernelContext* context,
                     const Tensor* input,
                     const Tensor* router_probs,
+                    const Tensor* router_weights,
                     const Tensor* fc1_experts_weights,
                     const Tensor* fc1_experts_bias,
                     const Tensor* fc2_experts_weights,

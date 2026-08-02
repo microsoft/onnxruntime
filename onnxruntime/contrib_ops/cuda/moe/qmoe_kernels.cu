@@ -491,6 +491,128 @@ void LaunchSoftmaxTopK(
   DispatchSoftmaxTopK<__nv_bfloat16>(logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales, stream);
 }
 
+// TopK selection from `logits` + gather of aggregation weights from `router_weights`.
+// DeepSeek-style noaux_tc routing: router_probs is used only for top-k selection
+// (raw topk, no softmax), and router_weights provides the pre-computed mixing weights.
+template <typename T>
+__global__ void TopKWithRouterWeightsKernel(
+    const T* logits,
+    const T* router_weights,
+    float* topk_scales,
+    int* topk_indices,
+    int num_rows,
+    int num_experts,
+    int k,
+    bool normalize_scales) {
+  const int row = blockIdx.x * blockDim.x + threadIdx.x;
+  if (row >= num_rows) return;
+
+  const T* row_logits = logits + row * num_experts;
+  const T* row_weights = router_weights + row * num_experts;
+  float* row_scales = topk_scales + row * k;
+  int* row_indices = topk_indices + row * k;
+
+  // Simple top-k selection using partial insertion sort.
+  // Initialize with -infinity / invalid indices.
+  for (int i = 0; i < k; ++i) {
+    row_scales[i] = -FLT_MAX;  // used as scratch for logit values during selection
+    row_indices[i] = -1;
+  }
+
+  for (int i = 0; i < num_experts; ++i) {
+    float logit = static_cast<float>(row_logits[i]);
+    for (int j = 0; j < k; ++j) {
+      if (logit > row_scales[j]) {
+        for (int m = k - 1; m > j; --m) {
+          row_scales[m] = row_scales[m - 1];
+          row_indices[m] = row_indices[m - 1];
+        }
+        row_scales[j] = logit;
+        row_indices[j] = i;
+        break;
+      }
+    }
+  }
+
+  // Replace logit-based scratch values with aggregation weights from router_weights.
+  float weight_sum = 0.0f;
+  for (int j = 0; j < k; ++j) {
+    int expert_idx = row_indices[j];
+    float w = (expert_idx >= 0) ? static_cast<float>(row_weights[expert_idx]) : 0.0f;
+    row_scales[j] = w;
+    weight_sum += w;
+  }
+
+  if (normalize_scales) {
+    const float inv_sum = (weight_sum > kTopKNormalizeEpsilon) ? (1.0f / weight_sum) : 0.0f;
+    for (int j = 0; j < k; ++j) {
+      row_scales[j] *= inv_sum;
+    }
+  }
+}
+
+template <typename T>
+void DispatchTopKWithRouterWeights(
+    const T* logits,
+    const T* router_weights,
+    float* topk_scales,
+    int* topk_indices,
+    int num_rows,
+    int num_experts,
+    int k,
+    bool normalize_scales,
+    cudaStream_t stream) {
+  ORT_ENFORCE(k > 0 && k <= num_experts,
+              "TopKWithRouterWeights requires 0 < k <= num_experts, got k=", k,
+              " and num_experts=", num_experts);
+  const int block = 256;
+  const int grid = Compute1DGridSize(num_rows, block);
+  TopKWithRouterWeightsKernel<T><<<grid, block, 0, stream>>>(
+      logits, router_weights, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales);
+}
+
+void LaunchTopKWithRouterWeights(
+    const float* logits,
+    const float* router_weights,
+    float* topk_scales,
+    int* topk_indices,
+    int num_rows,
+    int num_experts,
+    int k,
+    bool normalize_scales,
+    cudaStream_t stream) {
+  DispatchTopKWithRouterWeights<float>(logits, router_weights, topk_scales, topk_indices,
+                                      num_rows, num_experts, k, normalize_scales, stream);
+}
+
+void LaunchTopKWithRouterWeights(
+    const half* logits,
+    const half* router_weights,
+    float* topk_scales,
+    int* topk_indices,
+    int num_rows,
+    int num_experts,
+    int k,
+    bool normalize_scales,
+    cudaStream_t stream) {
+  DispatchTopKWithRouterWeights<half>(logits, router_weights, topk_scales, topk_indices,
+                                     num_rows, num_experts, k, normalize_scales, stream);
+}
+
+void LaunchTopKWithRouterWeights(
+    const __nv_bfloat16* logits,
+    const __nv_bfloat16* router_weights,
+    float* topk_scales,
+    int* topk_indices,
+    int num_rows,
+    int num_experts,
+    int k,
+    bool normalize_scales,
+    cudaStream_t stream) {
+  DispatchTopKWithRouterWeights<__nv_bfloat16>(logits, router_weights, topk_scales, topk_indices,
+                                               num_rows, num_experts, k, normalize_scales, stream);
+}
+
 template <typename T>
 __global__ void QMoEPrePackZPKernel(const uint8_t* zp, const T* scales, T* out, int num_elements, float offset) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;

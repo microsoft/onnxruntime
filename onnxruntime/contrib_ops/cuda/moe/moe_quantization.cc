@@ -555,6 +555,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
               "QMoE in CUDA execution provider does not support separate fc3_experts_weights. "
               "Gate and up projection weights must be pre-concatenated into fc1.");
 
+  // Optional router_weights for DeepSeek-style noaux_tc routing (input 14).
+  const Tensor* router_weights_optional = context->Input<Tensor>(14);
+
   // Backward compatibility: the published gpt-oss-20b model (and any model exported by ORT < 1.27)
   // hard-coded the interleaved SwiGLU fusion layout and did not emit a swiglu_fusion attribute, so it
   // falls back to the default of 0 ("not fused"). QMoE never has a separate FC3 (enforced above), so a
@@ -941,57 +944,107 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
   cudaStream_t stream = Stream(context);
 
-  // Perform Softmax + TopK
-  // Input router_probs is (num_rows, num_experts)
+  // Perform routing: TopK selection + weight gathering.
+  // When router_weights is provided (DeepSeek-style noaux_tc routing), use raw TopK on
+  // router_probs for expert selection and gather aggregation weights from router_weights.
+  // The fused routing optimization is disabled when router_weights is provided because
+  // the fused kernel always uses softmax of router_probs for both selection and aggregation.
   bool is_fp16 = input->IsDataType<MLFloat16>();
   bool is_bf16 = input->IsDataType<BFloat16>();
 
-  // Optimization C: at decode the runner can fold softmax + top-k into the kernel that builds the
-  // expert permutation maps, saving a launch per MoE layer. Both are single-block kernels there, so
-  // the launch is most of the cost. The predicate below is the same one runMoe re-checks, so the two
-  // can never disagree about who computed the routing. Excluded for the FP4 family because its
-  // decode fast path below consumes expert_indices/expert_scales itself instead of calling runMoe.
+  // fused_routing is populated only when no router_weights override is active and the runner
+  // supports in-kernel routing (Optimization C). Declared here so it is visible at the runMoe call.
   onnxruntime::llm::kernels::cutlass_kernels::FusedRoutingParams fused_routing;
-  if (!is_fp4_family &&
-      onnxruntime::llm::kernels::cutlass_kernels::isFusedMoeRoutingSupported(
-          moe_params.num_rows, static_cast<int>(moe_params.num_experts),
-          static_cast<int>(moe_params.num_experts) / parallelism_config.ep_size, static_cast<int>(k_),
-          parallelism_config.ep_size)) {
-    fused_routing.router_logits = router_probs->DataRaw();
-    fused_routing.token_selected_experts = expert_indices;
-    fused_routing.token_final_scales = expert_scales;
-    fused_routing.normalize_routing_weights = normalize_routing_weights_;
-  } else if (is_fp16) {
-    LaunchSoftmaxTopK(
-        reinterpret_cast<const half*>(router_probs->DataRaw()),
-        expert_scales,
-        expert_indices,
-        static_cast<int>(moe_params.num_rows),
-        static_cast<int>(moe_params.num_experts),
-        static_cast<int>(k_),
-        normalize_routing_weights_,
-        stream);
-  } else if (is_bf16) {
-    LaunchSoftmaxTopK(
-        reinterpret_cast<const __nv_bfloat16*>(router_probs->DataRaw()),
-        expert_scales,
-        expert_indices,
-        static_cast<int>(moe_params.num_rows),
-        static_cast<int>(moe_params.num_experts),
-        static_cast<int>(k_),
-        normalize_routing_weights_,
-        stream);
+
+  if (router_weights_optional != nullptr) {
+    ORT_RETURN_IF(router_weights_optional->Shape().NumDimensions() != 2 ||
+                      router_weights_optional->Shape()[0] != moe_params.num_rows ||
+                      router_weights_optional->Shape()[1] != moe_params.num_experts,
+                  "router_weights must have shape (", moe_params.num_rows, ", ", moe_params.num_experts,
+                  "), got ", router_weights_optional->Shape());
+    // DeepSeek-style noaux_tc routing: raw TopK on router_probs, gather from router_weights.
+    if (is_fp16) {
+      LaunchTopKWithRouterWeights(
+          reinterpret_cast<const half*>(router_probs->DataRaw()),
+          reinterpret_cast<const half*>(router_weights_optional->DataRaw()),
+          expert_scales,
+          expert_indices,
+          static_cast<int>(moe_params.num_rows),
+          static_cast<int>(moe_params.num_experts),
+          static_cast<int>(k_),
+          normalize_routing_weights_,
+          stream);
+    } else if (is_bf16) {
+      LaunchTopKWithRouterWeights(
+          reinterpret_cast<const __nv_bfloat16*>(router_probs->DataRaw()),
+          reinterpret_cast<const __nv_bfloat16*>(router_weights_optional->DataRaw()),
+          expert_scales,
+          expert_indices,
+          static_cast<int>(moe_params.num_rows),
+          static_cast<int>(moe_params.num_experts),
+          static_cast<int>(k_),
+          normalize_routing_weights_,
+          stream);
+    } else {
+      LaunchTopKWithRouterWeights(
+          reinterpret_cast<const float*>(router_probs->DataRaw()),
+          reinterpret_cast<const float*>(router_weights_optional->DataRaw()),
+          expert_scales,
+          expert_indices,
+          static_cast<int>(moe_params.num_rows),
+          static_cast<int>(moe_params.num_experts),
+          static_cast<int>(k_),
+          normalize_routing_weights_,
+          stream);
+    }
   } else {
-    // Fallback for float
-    LaunchSoftmaxTopK(
-        reinterpret_cast<const float*>(router_probs->DataRaw()),
-        expert_scales,
-        expert_indices,
-        static_cast<int>(moe_params.num_rows),
-        static_cast<int>(moe_params.num_experts),
-        static_cast<int>(k_),
-        normalize_routing_weights_,
-        stream);
+    // Standard Softmax + TopK
+    // Optimization C: at decode the runner can fold softmax + top-k into the kernel that builds the
+    // expert permutation maps, saving a launch per MoE layer. Both are single-block kernels there, so
+    // the launch is most of the cost. The predicate below is the same one runMoe re-checks, so the two
+    // can never disagree about who computed the routing. Excluded for the FP4 family because its
+    // decode fast path below consumes expert_indices/expert_scales itself instead of calling runMoe.
+    if (!is_fp4_family &&
+        onnxruntime::llm::kernels::cutlass_kernels::isFusedMoeRoutingSupported(
+            moe_params.num_rows, static_cast<int>(moe_params.num_experts),
+            static_cast<int>(moe_params.num_experts) / parallelism_config.ep_size, static_cast<int>(k_),
+            parallelism_config.ep_size)) {
+      fused_routing.router_logits = router_probs->DataRaw();
+      fused_routing.token_selected_experts = expert_indices;
+      fused_routing.token_final_scales = expert_scales;
+      fused_routing.normalize_routing_weights = normalize_routing_weights_;
+    } else if (is_fp16) {
+      LaunchSoftmaxTopK(
+          reinterpret_cast<const half*>(router_probs->DataRaw()),
+          expert_scales,
+          expert_indices,
+          static_cast<int>(moe_params.num_rows),
+          static_cast<int>(moe_params.num_experts),
+          static_cast<int>(k_),
+          normalize_routing_weights_,
+          stream);
+    } else if (is_bf16) {
+      LaunchSoftmaxTopK(
+          reinterpret_cast<const __nv_bfloat16*>(router_probs->DataRaw()),
+          expert_scales,
+          expert_indices,
+          static_cast<int>(moe_params.num_rows),
+          static_cast<int>(moe_params.num_experts),
+          static_cast<int>(k_),
+          normalize_routing_weights_,
+          stream);
+    } else {
+      // Fallback for float
+      LaunchSoftmaxTopK(
+          reinterpret_cast<const float*>(router_probs->DataRaw()),
+          expert_scales,
+          expert_indices,
+          static_cast<int>(moe_params.num_rows),
+          static_cast<int>(moe_params.num_experts),
+          static_cast<int>(k_),
+          normalize_routing_weights_,
+          stream);
+    }
   }
 
   // Holders for packed tensors (if packing is needed for SwiGLU)

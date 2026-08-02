@@ -3148,5 +3148,205 @@ class TestQMoECudaGraph(unittest.TestCase):
         self.assertFalse(numpy.isinf(out_updated).any(), "QMoE CUDA graph updated-input output has Inf")
 
 
+def create_qmoe_router_weights_onnx_graph(
+    num_tokens: int,
+    num_experts: int,
+    hidden_size: int,
+    inter_size: int,
+    topk: int,
+    fc1_weights_quant: torch.Tensor,
+    fc1_scales: torch.Tensor,
+    fc2_weights_quant: torch.Tensor,
+    fc2_scales: torch.Tensor,
+    quant_bits: int = 4,
+):
+    """Build a QMoE ONNX graph with router_weights (input 14) for DeepSeek V4 noaux_tc routing.
+
+    QMoE schema layout (14 inputs from 0..13, plus router_weights at 14):
+      0: input, 1: router_probs, 2: fc1_weights, 3: fc1_scales, 4: fc1_bias,
+      5: fc2_weights, 6: fc2_scales, 7: fc2_bias, 8: fc3_weights, 9: fc3_scales,
+      10: fc3_bias, 11: fc1_zero_points, 12: fc2_zero_points, 13: fc3_zero_points,
+      14: router_weights
+    """
+    nodes = [
+        helper.make_node(
+            "QMoE",
+            [
+                "input",        # 0
+                "router_probs", # 1
+                "fc1_weights",  # 2
+                "fc1_scales",   # 3
+                "",             # 4: fc1_bias
+                "fc2_weights",  # 5
+                "fc2_scales",   # 6
+                "",             # 7: fc2_bias
+                "",             # 8: fc3_weights
+                "",             # 9: fc3_scales
+                "",             # 10: fc3_bias
+                "",             # 11: fc1_zero_points
+                "",             # 12: fc2_zero_points
+                "",             # 13: fc3_zero_points
+                "router_weights",  # 14
+            ],
+            ["output"],
+            "QMoE_0",
+            k=topk,
+            normalize_routing_weights=0,  # router_weights already normalized
+            expert_weight_bits=quant_bits,
+            activation_type="silu",
+            domain="com.microsoft",
+        ),
+    ]
+
+    graph_inputs = [
+        helper.make_tensor_value_info("input", TensorProto.FLOAT16, [num_tokens, hidden_size]),
+        helper.make_tensor_value_info("router_probs", TensorProto.FLOAT16, [num_tokens, num_experts]),
+        helper.make_tensor_value_info("fc1_weights", TensorProto.UINT8, [num_experts, inter_size, hidden_size // 2]),
+        helper.make_tensor_value_info("fc1_scales", TensorProto.FLOAT16, [num_experts, inter_size]),
+        helper.make_tensor_value_info("fc2_weights", TensorProto.UINT8, [num_experts, hidden_size, inter_size // 2]),
+        helper.make_tensor_value_info("fc2_scales", TensorProto.FLOAT16, [num_experts, hidden_size]),
+        helper.make_tensor_value_info("router_weights", TensorProto.FLOAT16, [num_tokens, num_experts]),
+    ]
+
+    graph_outputs = [
+        helper.make_tensor_value_info("output", TensorProto.FLOAT16, [num_tokens, hidden_size]),
+    ]
+
+    graph = helper.make_graph(nodes, "QMoE_RouterWeights_Graph", graph_inputs, graph_outputs, [])
+    model = helper.make_model(graph)
+    return model
+
+
+@unittest.skipIf(
+    "CUDAExecutionProvider" not in onnxruntime.get_available_providers() or not torch.cuda.is_available(),
+    "skipping QMoE router_weights test since it requires cuda environment.",
+)
+class TestQMoECUDARouterWeights(unittest.TestCase):
+    """Tests for CUDA QMoE with separate router_weights (DeepSeek V4-style noaux_tc routing).
+
+    router_probs is used only for top-k expert selection; router_weights provides aggregation weights.
+    Uses 4-bit quantized expert weights (int4 packed as uint8).
+    """
+
+    def test_qmoe_router_weights_parity(self):
+        import itertools
+
+        torch.manual_seed(42)
+        numpy.random.seed(42)
+
+        hidden_size = 64
+        inter_size = 64
+        num_experts = 8
+        topk = 2
+        batch_size = 2
+        sequence_length = 16
+        num_tokens = batch_size * sequence_length
+        quant_bits = 4
+
+        # Create float expert weights for reference computation
+        fc1_weights_fp = torch.randn(num_experts, inter_size, hidden_size, dtype=torch.float16, device=device)
+        fc2_weights_fp = torch.randn(num_experts, hidden_size, inter_size, dtype=torch.float16, device=device)
+
+        # Quantize to 4-bit (pack two int4 values per byte) — symmetric
+        def quantize_4bit_symmetric(w):
+            # w: [E, out, in] float16 -> uint8 [E, out, in//2]
+            scale = w.float().abs().amax(dim=-1, keepdim=True) / 7.0  # [E, out, 1]
+            scale = scale.clamp(min=1e-8)
+            qw = (w.float() / scale).round().clamp(-8, 7).to(torch.int8)
+            # Pack two int4 per byte: low nibble = col 2i, high nibble = col 2i+1
+            qw_lo = qw[..., 0::2] & 0xF
+            qw_hi = qw[..., 1::2] & 0xF
+            packed = (qw_lo | (qw_hi << 4)).to(torch.uint8)
+            return packed, scale.squeeze(-1).to(torch.float16)
+
+        fc1_q, fc1_scales = quantize_4bit_symmetric(fc1_weights_fp)  # [E, I, H//2], [E, I]
+        fc2_q, fc2_scales = quantize_4bit_symmetric(fc2_weights_fp)  # [E, H, I//2], [E, H]
+
+        # Dequantize for reference
+        def dequantize_4bit_symmetric(packed, scale):
+            qw_lo = (packed & 0xF).to(torch.int8)
+            # Sign-extend from 4-bit
+            qw_lo = torch.where(qw_lo > 7, qw_lo - 16, qw_lo.to(torch.int32)).to(torch.int8)
+            qw_hi = ((packed >> 4) & 0xF).to(torch.int8)
+            qw_hi = torch.where(qw_hi > 7, qw_hi - 16, qw_hi.to(torch.int32)).to(torch.int8)
+            # Interleave columns back
+            E, out, _ = packed.shape
+            inp = packed.shape[-1] * 2
+            qw = torch.zeros(E, out, inp, dtype=torch.int8)
+            qw[..., 0::2] = qw_lo
+            qw[..., 1::2] = qw_hi
+            return qw.float() * scale.float().unsqueeze(-1)
+
+        fc1_deq = dequantize_4bit_symmetric(fc1_q.cpu(), fc1_scales.cpu())  # [E, I, H]
+        fc2_deq = dequantize_4bit_symmetric(fc2_q.cpu(), fc2_scales.cpu())  # [E, H, I]
+
+        input_tensor = torch.randn(num_tokens, hidden_size, dtype=torch.float16, device=device)
+        router_logits = torch.randn(num_tokens, num_experts, dtype=torch.float, device=device)
+        router_probs = torch.sigmoid(router_logits).to(torch.float16)
+
+        # Simulate DeepSeek noaux_tc routing
+        topk_indices = router_probs.float().topk(topk, dim=-1).indices
+        gathered = router_probs.float().gather(1, topk_indices)
+        gathered_normalized = gathered / (gathered.sum(dim=-1, keepdim=True) + 1e-20)
+        router_weights = torch.zeros_like(router_probs.float())
+        router_weights.scatter_(1, topk_indices, gathered_normalized)
+        router_weights = router_weights.to(torch.float16)
+
+        # Build reference output using dequantized weights
+        ref_output = torch.zeros(num_tokens, hidden_size, dtype=torch.float)
+        with torch.no_grad():
+            for i in range(num_tokens):
+                for j in range(topk):
+                    eid = topk_indices[i, j].item()
+                    weight = gathered_normalized[i, j].item()
+                    x = input_tensor[i].float().unsqueeze(0)  # [1, H]
+                    h1 = x @ fc1_deq[eid].T  # [1, I]
+                    h1 = F.silu(h1)
+                    h2 = h1 @ fc2_deq[eid].T  # [1, H]
+                    ref_output[i] += weight * h2.squeeze(0)
+
+        onnx_model = create_qmoe_router_weights_onnx_graph(
+            num_tokens=num_tokens,
+            num_experts=num_experts,
+            hidden_size=hidden_size,
+            inter_size=inter_size,
+            topk=topk,
+            fc1_weights_quant=fc1_q,
+            fc1_scales=fc1_scales,
+            fc2_weights_quant=fc2_q,
+            fc2_scales=fc2_scales,
+            quant_bits=quant_bits,
+        )
+
+        from onnxruntime import InferenceSession, SessionOptions
+
+        sess_options = SessionOptions()
+        sess_options.log_severity_level = 2
+        ort_session = InferenceSession(
+            onnx_model.SerializeToString(), sess_options, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")]
+        )
+
+        ort_inputs = {
+            "input": input_tensor.cpu().numpy(),
+            "router_probs": router_probs.cpu().numpy(),
+            "fc1_weights": fc1_q.cpu().numpy(),
+            "fc1_scales": fc1_scales.cpu().numpy(),
+            "fc2_weights": fc2_q.cpu().numpy(),
+            "fc2_scales": fc2_scales.cpu().numpy(),
+            "router_weights": router_weights.cpu().numpy(),
+        }
+
+        ort_outputs = ort_session.run(None, ort_inputs)
+        ort_output = torch.from_numpy(ort_outputs[0]).float()
+
+        max_diff = (ort_output - ref_output).abs().max().item()
+        print(f"CUDA QMoE router_weights parity: max_diff={max_diff:.6f}")
+        # QMoE has quantization error; use loose tolerance
+        self.assertTrue(
+            numpy.allclose(ort_output.numpy(), ref_output.numpy(), atol=5e-1, rtol=1e-1),
+            msg=f"Max diff {max_diff} exceeds tolerance for QMoE router_weights test",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
