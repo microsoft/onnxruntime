@@ -4119,5 +4119,412 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_CrossValidate_Prefill8_MultiKVHe
 
 #endif  // USE_WEBGPU
 
+// ============================================================================
+// Trailing RoPE + output de-rotation tests (DeepSeek V4 attention)
+// ============================================================================
+
+// Applies GPT-NeoX (rotate_half) rotary embedding in-place.
+// When trailing=true, RoPE is applied to channels [nope_dim, head_size) and the
+// leading nope_dim channels are left unchanged.
+// When negate_sin=true, the sin contribution is negated (conjugate de-rotation).
+static void ApplyRotaryInPlace(std::vector<float>& data,
+                                const std::vector<float>& cos_cache,
+                                const std::vector<float>& sin_cache,
+                                const std::vector<int64_t>& position_ids,
+                                int batch_size, int sequence_length,
+                                int num_heads, int head_size,
+                                int rotary_dim, bool trailing, bool negate_sin) {
+  // data is BSNH layout: (B, S, N, H) flattened.
+  const int nope_dim = trailing ? (head_size - rotary_dim) : 0;
+  const int half_rot = rotary_dim / 2;
+  for (int b = 0; b < batch_size; ++b) {
+    for (int s = 0; s < sequence_length; ++s) {
+      const int pos = static_cast<int>(position_ids[b * sequence_length + s]);
+      for (int n = 0; n < num_heads; ++n) {
+        const int head_off = (b * sequence_length * num_heads + s * num_heads + n) * head_size;
+        // GPT-NeoX rotate_half: x[:half_rot] -> x[:half_rot]*cos - x[half_rot:]*sin
+        //                       x[half_rot:] -> x[half_rot:]*cos + x[:half_rot]*sin
+        float* h_ptr = data.data() + head_off + nope_dim;
+        const float* cos_ptr = cos_cache.data() + pos * half_rot;
+        const float* sin_ptr = sin_cache.data() + pos * half_rot;
+        float sign = negate_sin ? -1.0f : 1.0f;
+        std::vector<float> orig(h_ptr, h_ptr + rotary_dim);
+        for (int d = 0; d < half_rot; ++d) {
+          h_ptr[d] = orig[d] * cos_ptr[d] + sign * (-orig[d + half_rot]) * sin_ptr[d];
+          h_ptr[d + half_rot] = orig[d + half_rot] * cos_ptr[d] + sign * orig[d] * sin_ptr[d];
+        }
+      }
+    }
+  }
+}
+
+// Compute reference SDPA: Q(B,S_q,N,H) @ K^T(B,S_kv,Nkv,H) -> attn(B,N,S_q,S_kv) -> V(B,S_kv,Nkv,H)
+// Returns output in BSNH: (B, S_q, N, H).
+static std::vector<float> RefSDPA(
+    const std::vector<float>& q_bsnh,
+    const std::vector<float>& k_bsnh,  // includes past; shape (B, S_kv, Nkv, H)
+    const std::vector<float>& v_bsnh,  // includes past; shape (B, S_kv, Nkv, H)
+    int batch_size, int seq_q, int seq_kv,
+    int num_heads, int kv_num_heads, int head_size) {
+  const int group_size = num_heads / kv_num_heads;
+  const float scale = 1.0f / std::sqrt(static_cast<float>(head_size));
+  std::vector<float> out(batch_size * seq_q * num_heads * head_size, 0.0f);
+
+  for (int b = 0; b < batch_size; ++b) {
+    for (int n = 0; n < num_heads; ++n) {
+      const int kv_n = n / group_size;
+      for (int sq = 0; sq < seq_q; ++sq) {
+        // Compute raw scores
+        std::vector<float> scores(seq_kv);
+        for (int sk = 0; sk < seq_kv; ++sk) {
+          float dot = 0.0f;
+          for (int d = 0; d < head_size; ++d) {
+            float qv = q_bsnh[(b * seq_q + sq) * num_heads * head_size + n * head_size + d];
+            float kv = k_bsnh[(b * seq_kv + sk) * kv_num_heads * head_size + kv_n * head_size + d];
+            dot += qv * kv;
+          }
+          scores[sk] = dot * scale;
+        }
+        // Softmax
+        float max_s = *std::max_element(scores.begin(), scores.end());
+        float sum_exp = 0.0f;
+        for (float& s : scores) {
+          s = std::exp(s - max_s);
+          sum_exp += s;
+        }
+        for (float& s : scores) s /= sum_exp;
+        // Weighted sum over V
+        for (int sk = 0; sk < seq_kv; ++sk) {
+          for (int d = 0; d < head_size; ++d) {
+            float vv = v_bsnh[(b * seq_kv + sk) * kv_num_heads * head_size + kv_n * head_size + d];
+            out[(b * seq_q + sq) * num_heads * head_size + n * head_size + d] += scores[sk] * vv;
+          }
+        }
+      }
+    }
+  }
+  return out;
+}
+
+// Runs GQA with trailing RoPE and optional output de-rotation, returns output.
+static std::vector<float> RunGQATrailingRope(
+    int batch_size, int sequence_length, int past_seq_len,
+    int num_heads, int kv_num_heads, int head_size, int rotary_dim,
+    bool do_output_derotate,
+    const std::vector<float>& query_data,
+    const std::vector<float>& key_data,
+    const std::vector<float>& value_data,
+    const std::vector<float>& past_key_data,
+    const std::vector<float>& past_value_data,
+    const std::vector<float>& cos_cache,
+    const std::vector<float>& sin_cache,
+    const std::vector<int64_t>& position_ids,
+    int max_seq_len) {
+  const int hidden_size = num_heads * head_size;
+  const int kv_hidden_size = kv_num_heads * head_size;
+  const int total_sequence_length = past_seq_len + sequence_length;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+  tester.AddAttribute<int64_t>("do_rotary", 1);
+  tester.AddAttribute<int64_t>("rotary_interleaved", 0);  // GPT-NeoX style
+  tester.AddAttribute<int64_t>("rotary_trailing", 1);
+  tester.AddAttribute<int64_t>("do_output_derotate", do_output_derotate ? 1 : 0);
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, query_data);
+  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
+  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
+  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, past_seq_len, head_size}, past_key_data);
+  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, past_seq_len, head_size}, past_value_data);
+  tester.AddInput<int32_t>("seqlens_k", {batch_size},
+                           std::vector<int32_t>(batch_size, total_sequence_length - 1));
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
+
+  const int half_rotary = rotary_dim / 2;
+  tester.AddInput<float>("cos_cache", {max_seq_len, half_rotary}, cos_cache);
+  tester.AddInput<float>("sin_cache", {max_seq_len, half_rotary}, sin_cache);
+  tester.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, position_ids);
+
+  const int output_size = batch_size * sequence_length * hidden_size;
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(output_size, 0.0f));
+  const int present_seq_len = total_sequence_length;
+  const int present_size = batch_size * kv_num_heads * present_seq_len * head_size;
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, present_seq_len, head_size},
+                          std::vector<float>(present_size, 0.0f));
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, present_seq_len, head_size},
+                          std::vector<float>(present_size, 0.0f));
+
+  tester.SetOutputTolerance(1e6f);
+  tester.SetCustomOutputVerifier([output_size](const std::vector<OrtValue>& fetches,
+                                               const std::string& /*provider_type*/) {
+    ASSERT_FALSE(fetches.empty());
+    ASSERT_TRUE(fetches[0].IsTensor());
+    EXPECT_EQ(fetches[0].Get<Tensor>().Shape().Size(), output_size);
+  });
+
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+
+  auto fetches = tester.GetFetches();
+  const float* out_data = fetches[0].Get<Tensor>().Data<float>();
+  return std::vector<float>(out_data, out_data + output_size);
+}
+
+// Build cos/sin cache for tests: shape (max_seq_len, half_rotary).
+static void BuildCosSinCache(std::vector<float>& cos_cache, std::vector<float>& sin_cache,
+                              int max_seq_len, int rotary_dim) {
+  const int half_rotary = rotary_dim / 2;
+  cos_cache.resize(max_seq_len * half_rotary);
+  sin_cache.resize(max_seq_len * half_rotary);
+  for (int pos = 0; pos < max_seq_len; ++pos) {
+    for (int d = 0; d < half_rotary; ++d) {
+      const float freq = 1.0f / std::pow(10000.0f, 2.0f * static_cast<float>(d) / static_cast<float>(rotary_dim));
+      cos_cache[pos * half_rotary + d] = std::cos(static_cast<float>(pos) * freq);
+      sin_cache[pos * half_rotary + d] = std::sin(static_cast<float>(pos) * freq);
+    }
+  }
+}
+
+// Reference computation for trailing RoPE + output de-rotation.
+// 1. Apply trailing rotary to Q and K.
+// 2. Concatenate past K/V with new K/V (past is in BNSH format, convert to BSNH).
+// 3. Compute scaled dot-product attention.
+// 4. Optionally apply conjugate de-rotation to output.
+static std::vector<float> ComputeTrailingRopeReference(
+    int batch_size, int sequence_length, int past_seq_len,
+    int num_heads, int kv_num_heads, int head_size, int rotary_dim,
+    bool do_output_derotate,
+    const std::vector<float>& query_data,
+    const std::vector<float>& key_data,
+    const std::vector<float>& value_data,
+    const std::vector<float>& past_key_bnsh,   // (B, Nkv, past_seq, H)
+    const std::vector<float>& past_value_bnsh,  // (B, Nkv, past_seq, H)
+    const std::vector<float>& cos_cache,
+    const std::vector<float>& sin_cache,
+    const std::vector<int64_t>& position_ids) {
+  const int total_seq = past_seq_len + sequence_length;
+
+  // Step 1: Apply trailing RoPE to Q and K (operate on copies).
+  std::vector<float> q_rot = query_data;  // BSNH
+  std::vector<float> k_rot = key_data;    // BSNH
+  ApplyRotaryInPlace(q_rot, cos_cache, sin_cache, position_ids,
+                     batch_size, sequence_length, num_heads, head_size,
+                     rotary_dim, /*trailing=*/true, /*negate_sin=*/false);
+  ApplyRotaryInPlace(k_rot, cos_cache, sin_cache, position_ids,
+                     batch_size, sequence_length, kv_num_heads, head_size,
+                     rotary_dim, /*trailing=*/true, /*negate_sin=*/false);
+
+  // Step 2: Convert past K/V from BNSH to BSNH and build full KV (past + new).
+  const int kv_hidden_size = kv_num_heads * head_size;
+  std::vector<float> full_k_bsnh(batch_size * total_seq * kv_hidden_size, 0.0f);
+  std::vector<float> full_v_bsnh(batch_size * total_seq * kv_hidden_size, 0.0f);
+
+  // Past tokens (BNSH -> BSNH).
+  for (int b = 0; b < batch_size; ++b) {
+    for (int n = 0; n < kv_num_heads; ++n) {
+      for (int s = 0; s < past_seq_len; ++s) {
+        for (int d = 0; d < head_size; ++d) {
+          // BNSH index: b * kv_num_heads * past_seq_len * head_size + n * past_seq_len * head_size + s * head_size + d
+          int bnsh_idx = ((b * kv_num_heads + n) * past_seq_len + s) * head_size + d;
+          // BSNH index: b * total_seq * kv_hidden_size + s * kv_hidden_size + n * head_size + d
+          int bsnh_idx = b * total_seq * kv_hidden_size + s * kv_hidden_size + n * head_size + d;
+          full_k_bsnh[bsnh_idx] = past_key_bnsh[bnsh_idx];
+          full_v_bsnh[bsnh_idx] = past_value_bnsh[bnsh_idx];
+        }
+      }
+    }
+  }
+
+  // New tokens (already BSNH).
+  for (int b = 0; b < batch_size; ++b) {
+    for (int s = 0; s < sequence_length; ++s) {
+      for (int n = 0; n < kv_num_heads; ++n) {
+        for (int d = 0; d < head_size; ++d) {
+          int src_idx = (b * sequence_length + s) * kv_hidden_size + n * head_size + d;
+          int dst_idx = b * total_seq * kv_hidden_size + (past_seq_len + s) * kv_hidden_size + n * head_size + d;
+          full_k_bsnh[dst_idx] = k_rot[src_idx];
+          full_v_bsnh[dst_idx] = value_data[src_idx];
+        }
+      }
+    }
+  }
+
+  // Step 3: Scaled dot-product attention.
+  std::vector<float> out = RefSDPA(q_rot, full_k_bsnh, full_v_bsnh,
+                                   batch_size, sequence_length, total_seq,
+                                   num_heads, kv_num_heads, head_size);
+
+  // Step 4: Optional conjugate de-rotation of output.
+  if (do_output_derotate) {
+    ApplyRotaryInPlace(out, cos_cache, sin_cache, position_ids,
+                       batch_size, sequence_length, num_heads, head_size,
+                       rotary_dim, /*trailing=*/true, /*negate_sin=*/true);
+  }
+  return out;
+}
+
+// Test: CPU prompt (sequence_length > 1) with trailing RoPE + output de-rotation.
+TEST(GroupQueryAttentionTest, TrailingRopePromptCpu) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 4;
+  constexpr int past_seq_len = 0;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 32;  // must be multiple of 16
+  constexpr int rotary_dim = 16;  // trailing 16 channels; nope_dim = 16; half_rotary = 8 (multiple of 8)
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int total_seq = past_seq_len + sequence_length;
+  constexpr int max_seq_len = total_seq + 4;
+  constexpr bool do_derotate = true;
+
+  std::vector<float> cos_cache, sin_cache;
+  BuildCosSinCache(cos_cache, sin_cache, max_seq_len, rotary_dim);
+
+  std::vector<float> query_data(batch_size * sequence_length * hidden_size);
+  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
+  for (size_t i = 0; i < query_data.size(); ++i) query_data[i] = 0.1f * static_cast<float>((i % 13) + 1);
+  for (size_t i = 0; i < key_data.size(); ++i) key_data[i] = 0.08f * static_cast<float>((i % 11) + 1);
+  for (size_t i = 0; i < value_data.size(); ++i) value_data[i] = 0.05f * static_cast<float>((i % 7) + 1);
+
+  std::vector<float> past_key_data, past_value_data;  // empty past
+
+  std::vector<int64_t> position_ids(batch_size * sequence_length);
+  for (int b = 0; b < batch_size; ++b)
+    for (int s = 0; s < sequence_length; ++s)
+      position_ids[b * sequence_length + s] = static_cast<int64_t>(past_seq_len + s);
+
+  // Compute reference.
+  auto ref_out = ComputeTrailingRopeReference(
+      batch_size, sequence_length, past_seq_len, num_heads, kv_num_heads, head_size, rotary_dim,
+      do_derotate, query_data, key_data, value_data, past_key_data, past_value_data,
+      cos_cache, sin_cache, position_ids);
+
+  // Run ORT kernel.
+  auto ort_out = RunGQATrailingRope(
+      batch_size, sequence_length, past_seq_len, num_heads, kv_num_heads, head_size, rotary_dim,
+      do_derotate, query_data, key_data, value_data, past_key_data, past_value_data,
+      cos_cache, sin_cache, position_ids, max_seq_len);
+
+  ASSERT_EQ(ref_out.size(), ort_out.size());
+  for (size_t i = 0; i < ref_out.size(); ++i) {
+    EXPECT_NEAR(ref_out[i], ort_out[i], 1e-4f) << "Mismatch at index " << i;
+  }
+}
+
+// Test: CPU decode (sequence_length = 1) with trailing RoPE + output de-rotation.
+TEST(GroupQueryAttentionTest, TrailingRopeDecodeCpu) {
+  constexpr int batch_size = 2;
+  constexpr int sequence_length = 1;
+  constexpr int past_seq_len = 3;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 32;  // must be multiple of 16
+  constexpr int rotary_dim = 16;  // trailing 16 channels; nope_dim = 16; half_rotary = 8 (multiple of 8)
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int total_seq = past_seq_len + sequence_length;
+  constexpr int max_seq_len = total_seq + 4;
+  constexpr bool do_derotate = true;
+
+  std::vector<float> cos_cache, sin_cache;
+  BuildCosSinCache(cos_cache, sin_cache, max_seq_len, rotary_dim);
+
+  std::vector<float> query_data(batch_size * sequence_length * hidden_size);
+  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> past_key_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  std::vector<float> past_value_data(batch_size * kv_num_heads * past_seq_len * head_size);
+
+  for (size_t i = 0; i < query_data.size(); ++i) query_data[i] = 0.1f * static_cast<float>((i % 17) + 1);
+  for (size_t i = 0; i < key_data.size(); ++i) key_data[i] = 0.07f * static_cast<float>((i % 13) + 1);
+  for (size_t i = 0; i < value_data.size(); ++i) value_data[i] = 0.04f * static_cast<float>((i % 11) + 1);
+  for (size_t i = 0; i < past_key_data.size(); ++i) past_key_data[i] = 0.03f * static_cast<float>((i % 9) + 1);
+  for (size_t i = 0; i < past_value_data.size(); ++i) past_value_data[i] = 0.02f * static_cast<float>((i % 7) + 1);
+
+  std::vector<int64_t> position_ids(batch_size * sequence_length);
+  for (int b = 0; b < batch_size; ++b)
+    for (int s = 0; s < sequence_length; ++s)
+      position_ids[b * sequence_length + s] = static_cast<int64_t>(past_seq_len + s);
+
+  auto ref_out = ComputeTrailingRopeReference(
+      batch_size, sequence_length, past_seq_len, num_heads, kv_num_heads, head_size, rotary_dim,
+      do_derotate, query_data, key_data, value_data, past_key_data, past_value_data,
+      cos_cache, sin_cache, position_ids);
+
+  auto ort_out = RunGQATrailingRope(
+      batch_size, sequence_length, past_seq_len, num_heads, kv_num_heads, head_size, rotary_dim,
+      do_derotate, query_data, key_data, value_data, past_key_data, past_value_data,
+      cos_cache, sin_cache, position_ids, max_seq_len);
+
+  ASSERT_EQ(ref_out.size(), ort_out.size());
+  for (size_t i = 0; i < ref_out.size(); ++i) {
+    EXPECT_NEAR(ref_out[i], ort_out[i], 1e-4f) << "Mismatch at index " << i;
+  }
+}
+
+// Test: Backward compatibility — rotary_trailing=1 with do_output_derotate=0 is simply trailing RoPE
+// (no de-rotation). The output should be a valid finite tensor matching reference.
+TEST(GroupQueryAttentionTest, TrailingRopeBackwardCompatibility) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 2;
+  constexpr int past_seq_len = 0;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 32;
+  constexpr int rotary_dim = 16;  // trailing 16 channels; nope_dim = 16
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int total_seq = past_seq_len + sequence_length;
+  constexpr int max_seq_len = total_seq + 4;
+
+  std::vector<float> cos_cache, sin_cache;
+  BuildCosSinCache(cos_cache, sin_cache, max_seq_len, rotary_dim);
+
+  std::vector<float> query_data(batch_size * sequence_length * hidden_size);
+  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
+  for (size_t i = 0; i < query_data.size(); ++i) query_data[i] = 0.1f * static_cast<float>((i % 7) + 1);
+  for (size_t i = 0; i < key_data.size(); ++i) key_data[i] = 0.08f * static_cast<float>((i % 5) + 1);
+  for (size_t i = 0; i < value_data.size(); ++i) value_data[i] = 0.05f * static_cast<float>((i % 3) + 1);
+
+  std::vector<float> past_key_data, past_value_data;
+  std::vector<int64_t> position_ids(batch_size * sequence_length);
+  for (int b = 0; b < batch_size; ++b)
+    for (int s = 0; s < sequence_length; ++s)
+      position_ids[b * sequence_length + s] = static_cast<int64_t>(past_seq_len + s);
+
+  // Trailing RoPE without de-rotation — verify finite output and reference match.
+  auto ref_out = ComputeTrailingRopeReference(
+      batch_size, sequence_length, past_seq_len, num_heads, kv_num_heads, head_size, rotary_dim,
+      /*do_derotate=*/false, query_data, key_data, value_data, past_key_data, past_value_data,
+      cos_cache, sin_cache, position_ids);
+
+  auto ort_out = RunGQATrailingRope(
+      batch_size, sequence_length, past_seq_len, num_heads, kv_num_heads, head_size, rotary_dim,
+      /*do_output_derotate=*/false, query_data, key_data, value_data, past_key_data, past_value_data,
+      cos_cache, sin_cache, position_ids, max_seq_len);
+
+  ASSERT_EQ(ref_out.size(), ort_out.size());
+  for (size_t i = 0; i < ref_out.size(); ++i) {
+    EXPECT_TRUE(std::isfinite(ort_out[i])) << "Non-finite value at index " << i;
+    EXPECT_NEAR(ref_out[i], ort_out[i], 1e-4f) << "Mismatch at index " << i;
+  }
+
+  // Also verify that trailing RoPE with de-rotation produces valid finite output.
+  auto ort_out_derotate = RunGQATrailingRope(
+      batch_size, sequence_length, past_seq_len, num_heads, kv_num_heads, head_size, rotary_dim,
+      /*do_output_derotate=*/true, query_data, key_data, value_data, past_key_data, past_value_data,
+      cos_cache, sin_cache, position_ids, max_seq_len);
+
+  for (size_t i = 0; i < ort_out_derotate.size(); ++i) {
+    EXPECT_TRUE(std::isfinite(ort_out_derotate[i])) << "Non-finite value at index " << i;
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime

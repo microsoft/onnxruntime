@@ -18,6 +18,7 @@
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/xqa/xqa_loader.h"
 #include "contrib_ops/cuda/bert/unfused_attention.h"
+#include "contrib_ops/cuda/bert/rotary_embedding_impl.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
@@ -113,6 +114,10 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
               "GroupQueryAttention (CUDA): sliding_window_cache=1 requires local_window_size > 0.");
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
+  rotary_trailing_ = info.GetAttrOrDefault<int64_t>("rotary_trailing", 0) == 1;
+  do_output_derotate_ = info.GetAttrOrDefault<int64_t>("do_output_derotate", 0) == 1;
+  ORT_ENFORCE(!do_output_derotate_ || (do_rotary_ && rotary_trailing_),
+              "GroupQueryAttention (CUDA): do_output_derotate=1 requires do_rotary=1 and rotary_trailing=1.");
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
   use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
@@ -369,6 +374,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   parameters.kv_cache_bit_width = kv_cache_bit_width_;
   parameters.do_rotary = do_rotary_;
   parameters.rotary_interleaved = rotary_interleaved_;
+  parameters.rotary_trailing = rotary_trailing_;
+  parameters.do_output_derotate = do_output_derotate_;
 
   // The current GQA CUDA implementation will never be able to have a QK output.
   // GQA CUDA uses either flash attention or memory efficient attention. Neither kernel supports returning the QK output.
@@ -517,8 +524,10 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   const bool is_xqa_smooth_softmax_supported = !parameters.use_smooth_softmax || use_xqa_attention_sinks;
   // XQA is enabled when enable_xqa_=true; ineligible shapes/group sizes fall back via data.use_xqa below.
   // The XQA kernel has no attention_bias input.
+  // XQA does not support post-attention output de-rotation, so disable it when do_output_derotate_ is true.
   if (enable_xqa_ &&
       !has_attention_bias &&
+      !do_output_derotate_ &&
       (device_prop.major >= 8) &&
       !parameters.is_first_prompt &&
       parameters.sequence_length == 1 &&
@@ -690,7 +699,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // present so the regular FlashAttention path (which normalizes via PrepareQKV) is used instead.
   // It is also disabled for a windowed KV cache: the kernel derives both the absolute RoPE position
   // and the cache append offset from a single seqlens_k value, which those two no longer share.
-  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.kv_sequence_length > 0 && parameters.past_present_share_buffer && !is_inputs_quantized && !parameters.use_qk_norm && !parameters.is_windowed_kv_cache;
+  // Also disabled when do_output_derotate_ is true: the fast-decode kernel does not support
+  // post-attention output de-rotation.
+  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.kv_sequence_length > 0 && parameters.past_present_share_buffer && !is_inputs_quantized && !parameters.use_qk_norm && !parameters.is_windowed_kv_cache && !do_output_derotate_;
 
   if (use_flash_attention) {
     // Allocate Flash specific buffers (Softmax LSE, Accum)
@@ -942,6 +953,25 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
   ORT_RETURN_IF_ERROR((QkvToContext<CudaT, CudaU>(
       device_prop, cublas, ort_stream.get(), parameters, data)));
+
+  // Output de-rotation for DeepSeek V4: after attention, apply conjugate rotation (cos, -sin) to the
+  // trailing rotary channels of the output to undo V-value RoPE leakage into the attention output.
+  if (do_output_derotate_) {
+    const int pos_format = data.position_ids != nullptr ? 1 : 2;
+    // Output is in BSNH format: (batch, sequence, num_heads * head_size). Apply rotary in-place.
+    ORT_RETURN_IF_ERROR((LaunchRotaryEmbeddingKernel<CudaT>(
+        ort_stream->GetHandle(),
+        reinterpret_cast<CudaT*>(output->MutableData<T>()),
+        reinterpret_cast<const CudaT*>(output->Data<T>()),
+        data.position_ids, data.past_seq_lens,
+        data.cos_cache, data.sin_cache,
+        parameters.batch_size, parameters.sequence_length, parameters.num_heads, parameters.head_size,
+        parameters.rotary_dim, RopeMaxPosition(parameters),
+        pos_format, parameters.rotary_interleaved,
+        device_prop.maxThreadsPerBlock,
+        false /* is_input_bnsh_format: output is BSNH */,
+        /*trailing=*/true, /*negate_sin=*/true)));
+  }
 
   if (windowed_present_key != nullptr) {
     // Attention ran against the staging cache; keep only the entries the sliding window can still

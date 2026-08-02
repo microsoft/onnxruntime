@@ -1269,6 +1269,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Default value is 1e-6.",
               AttributeProto::FLOAT,
               1e-6f)
+        .Attr("rotary_trailing",
+              "When 1, apply RoPE to the trailing rotary_embedding_dim channels of each head rather than the leading channels. "
+              "The preceding (head_size - rotary_embedding_dim) channels are passed through unchanged. "
+              "Requires do_rotary=1. Default value is 0.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("do_output_derotate",
+              "When 1, apply conjugate de-rotation (cos, -sin) to the trailing rotary_embedding_dim channels of the attention "
+              "output after attention is computed. Used by DeepSeek V4 where K==V carries RoPE that leaks into the output "
+              "and must be unwound. Requires do_rotary=1 and rotary_trailing=1. Default value is 0.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape"

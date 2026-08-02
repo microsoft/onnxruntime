@@ -196,6 +196,13 @@ Status LaunchCopyKvCacheWindow(void* dst_k,
                                const int row_bytes,
                                cudaStream_t stream);
 
+// Returns the maximum position bound for the rotary embedding cache.
+// Falls back to the KV cache sequence length when rotary_max_position is not set explicitly.
+inline int RopeMaxPosition(const GroupQueryAttentionParameters& parameters) {
+  return parameters.rotary_max_position > 0 ? parameters.rotary_max_position
+                                            : parameters.seqlen_present_kv_cache;
+}
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

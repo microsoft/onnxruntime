@@ -397,6 +397,36 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   OrtValue RotaryK;
   T* q_rotary = Q.GetMutable<Tensor>()->MutableData<T>();
   T* k_rotary = packed_qkv ? nullptr : K.GetMutable<Tensor>()->MutableData<T>();
+
+  // Position IDs are needed for both the Q/K rotary embedding (if do_rotary) and for the output
+  // de-rotation (if do_output_derotate). Hoist them here so both can share the same vector.
+  const int pos_ids_size = parameters.is_first_prompt ? 1 : batch_size * sequence_length;
+  std::vector<int64_t> default_pos_ids;
+  const int64_t* pos_ids_data = nullptr;
+
+  if (do_rotary_ || do_output_derotate_) {
+    default_pos_ids.resize(pos_ids_size);
+    pos_ids_data = default_pos_ids.data();
+    if (position_ids != nullptr) {
+      pos_ids_data = position_ids->Data<int64_t>();
+    } else if (parameters.is_first_prompt) {
+      default_pos_ids[0] = static_cast<int64_t>(0);
+    } else {
+      // Note: As of now, continuous decoding supports only batch size 1 and token generation supports only sequence length 1.
+      for (int b = 0; b < batch_size; b++) {
+        const int total_seqlen = seqlens_k->Data<int32_t>()[b] + 1;
+        const int past_seqlen = total_seqlen - sequence_length;
+        for (int s = 0; s < sequence_length; s++) {
+          if (past_seqlen + s < total_seqlen) {
+            default_pos_ids[b * sequence_length + s] = static_cast<int64_t>(past_seqlen) + s;
+          } else {
+            default_pos_ids[b * sequence_length + s] = static_cast<int64_t>(1);
+          }
+        }
+      }
+    }
+  }
+
   if (do_rotary_) {
     // When kv_sequence_length == 0 (shared KV), only Q needs RoPE — K is skipped below.
     ORT_ENFORCE(cos_cache != nullptr && sin_cache != nullptr, "cos_cache and sin_cache must be provided when do_rotary is true");
@@ -419,29 +449,6 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     rotary_params.position_ids_format = !parameters.is_first_prompt ? 1 : 0;
     rotary_params.transposed = true;
     auto* tp = context->GetOperatorThreadPool();
-    // Generate position ids
-    const int pos_ids_size = parameters.is_first_prompt ? 1 : batch_size * sequence_length;
-    std::vector<int64_t> default_pos_ids(pos_ids_size);
-    const int64_t* pos_ids_data = default_pos_ids.data();
-
-    if (position_ids != nullptr) {
-      pos_ids_data = position_ids->Data<int64_t>();
-    } else if (parameters.is_first_prompt) {
-      default_pos_ids[0] = static_cast<int64_t>(0);
-    } else {
-      // Note: As of now, continuous decoding supports only batch size 1 and token generation supports only sequence length 1.
-      for (int b = 0; b < batch_size; b++) {
-        const int total_seqlen = seqlens_k->Data<int32_t>()[b] + 1;
-        const int past_seqlen = total_seqlen - sequence_length;
-        for (int s = 0; s < sequence_length; s++) {
-          if (past_seqlen + s < total_seqlen) {
-            default_pos_ids[b * sequence_length + s] = static_cast<int64_t>(past_seqlen) + s;
-          } else {
-            default_pos_ids[b * sequence_length + s] = static_cast<int64_t>(1);
-          }
-        }
-      }
-    }
 
     // Initialize separate buffers for rotary embeddings
     const T* q_input;
@@ -463,7 +470,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     // Run rotary embedding for Q
     ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, q_input,
                                               pos_ids_data, cos_cache->Data<T>(),
-                                              sin_cache->Data<T>(), q_rotary, rotary_interleaved_));
+                                              sin_cache->Data<T>(), q_rotary, rotary_interleaved_,
+                                              rotary_trailing_));
 
     // Run rotary embedding for K (skip when kv_sequence_length == 0, i.e. shared KV with no new tokens)
     if (kv_sequence_length > 0) {
@@ -474,7 +482,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       }
       ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, k_input,
                                                 pos_ids_data, cos_cache->Data<T>(),
-                                                sin_cache->Data<T>(), k_rotary, rotary_interleaved_));
+                                                sin_cache->Data<T>(), k_rotary, rotary_interleaved_,
+                                                rotary_trailing_));
     }
     // Pack V into rotary QKV buffer
     if (packed_qkv) {
@@ -671,6 +680,34 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   };
 
   ORT_RETURN_IF_ERROR(run_attention());
+
+  // Output de-rotation for DeepSeek V4: after attention, undo the V-value RoPE that leaked
+  // into the output by applying the conjugate rotation (cos, -sin) to the trailing rope channels.
+  if (do_output_derotate_) {
+    auto* tp = context->GetOperatorThreadPool();
+    rotary_embedding_helper::RotaryParameters derotate_params = {};
+    derotate_params.batch_size = batch_size;
+    derotate_params.sequence_length = sequence_length;
+    derotate_params.hidden_size = q_hidden_size;
+    derotate_params.head_size = head_size;
+    derotate_params.rotary_embedding_dim = parameters.rotary_dim;
+    derotate_params.num_heads = num_heads_;
+    derotate_params.max_sequence_length = static_cast<int>(cos_cache->Shape().GetDims()[0]);
+    // Output is BSNH: stride within head = 1, stride across heads = head_size,
+    //                 stride across seq = num_heads * head_size, stride across batch = seq * num_heads * head_size
+    derotate_params.seq_stride = num_heads_ * head_size;
+    derotate_params.head_stride = head_size;
+    derotate_params.batch_stride = sequence_length * derotate_params.seq_stride;
+    derotate_params.position_ids_format = !parameters.is_first_prompt ? 1 : 0;
+    derotate_params.transposed = false;
+    T* output_data = output->MutableData<T>();
+    // Apply de-rotation in-place: output is BSNH and RunRotaryEmbedding supports in-place when
+    // input == output (the MLAS kernel is safe for in-place reads of the non-rotated copy).
+    ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, derotate_params, output_data,
+                                              pos_ids_data, cos_cache->Data<T>(),
+                                              sin_cache->Data<T>(), output_data,
+                                              rotary_interleaved_, /*trailing=*/true, /*negate_sin=*/true));
+  }
 
   if (windowed_use_staging) {
     // Attention ran against the staging cache; keep only the entries the sliding window can still

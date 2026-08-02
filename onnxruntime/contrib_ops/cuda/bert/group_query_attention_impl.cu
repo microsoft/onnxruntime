@@ -151,11 +151,7 @@ Status LaunchPerHeadRMSNorm(
 // fall back to the KV cache sequence dimension when rotary caches are absent so behaviour is
 // unchanged for models that do not use rotary embeddings. With a windowed KV cache these two differ
 // by construction: RoPE stays in absolute coordinates while the cache is capacity-relative.
-inline int RopeMaxPosition(const GroupQueryAttentionParameters& parameters) {
-  return parameters.rotary_max_position > 0 ? parameters.rotary_max_position
-                                            : parameters.seqlen_present_kv_cache;
-}
-
+//
 // This function orchestrates the preparation of Q, K, and V tensors for attention kernels.
 // It performs:
 // 1. Handling packed vs. unpacked QKV inputs.
@@ -242,7 +238,8 @@ Status PrepareQKV(
             reinterpret_cast<const half*>(data.cos_cache), reinterpret_cast<const half*>(data.sin_cache),
             batch_size, sequence_length, num_heads, head_size, parameters.rotary_dim, RopeMaxPosition(parameters),
             pos_format, parameters.rotary_interleaved,
-            max_threads_per_block, false /* is_input_bnsh_format: Q is BSNH */)));
+            max_threads_per_block, false /* is_input_bnsh_format: Q is BSNH */,
+            parameters.rotary_trailing, false /* negate_sin */)));
       } else if constexpr (std::is_same<T, __nv_bfloat16>::value) {
         ORT_RETURN_IF_ERROR((LaunchRotaryEmbeddingKernel<onnxruntime::BFloat16>(
             stream, reinterpret_cast<onnxruntime::BFloat16*>(q_out), reinterpret_cast<const onnxruntime::BFloat16*>(q_rope_input),
@@ -250,7 +247,8 @@ Status PrepareQKV(
             reinterpret_cast<const onnxruntime::BFloat16*>(data.cos_cache), reinterpret_cast<const onnxruntime::BFloat16*>(data.sin_cache),
             batch_size, sequence_length, num_heads, head_size, parameters.rotary_dim, RopeMaxPosition(parameters),
             pos_format, parameters.rotary_interleaved,
-            max_threads_per_block, false /* is_input_bnsh_format: Q is BSNH */)));
+            max_threads_per_block, false /* is_input_bnsh_format: Q is BSNH */,
+            parameters.rotary_trailing, false /* negate_sin */)));
       }
     }
     // If do_rotary is false and QK-Norm is off, Q is used directly from data.query (q_out == nullptr).
@@ -269,7 +267,7 @@ Status PrepareQKV(
         parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
         is_cache_bnsh, parameters.k_quant_type,
         data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
-        stream, max_threads_per_block)));
+        stream, max_threads_per_block, parameters.rotary_trailing)));
   }
 
   if (q_out != nullptr) {
@@ -1072,7 +1070,8 @@ Status ExtremeDecoding(
       parameters.k_quant_type,
       data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
       stream,
-      device_prop.maxThreadsPerBlock)));
+      device_prop.maxThreadsPerBlock,
+      parameters.rotary_trailing)));
 
   // Determine workspace size for XQA
   void* xqa_workspace = data.xqa_buffer;
@@ -1314,7 +1313,7 @@ Status DequantizeFlashAttentionFallback(
       (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH),
       parameters.k_quant_type,
       data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
-      stream, device_prop.maxThreadsPerBlock)));
+      stream, device_prop.maxThreadsPerBlock, parameters.rotary_trailing)));
 
   // Step 2: Dequantize Entire Cache
   // We now have the updated quantized cache in data.present_key/value. We need to dequantize it to k_dequant/v_dequant.
@@ -1408,7 +1407,7 @@ Status FlashAttentionAndQuantizeKV(
       false,  // BSNH for scratch
       KVQuantizationType::NONE,
       data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
-      stream, max_threads_per_block)));
+      stream, max_threads_per_block, parameters.rotary_trailing)));
 
   // 2. Run Float Flash Attention
   bool is_causal = parameters.is_unidirectional;

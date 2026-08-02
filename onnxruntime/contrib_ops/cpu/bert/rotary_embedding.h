@@ -12,7 +12,7 @@ namespace contrib {
 template <typename T>
 Status RunRotaryEmbedding(onnxruntime::concurrency::ThreadPool* tp, rotary_embedding_helper::RotaryParameters parameters, const T* input,
                           const int64_t* position_ids, const T* cos_cache, const T* sin_cache, T* output,
-                          bool interleaved);
+                          bool interleaved, bool trailing = false, bool negate_sin = false);
 
 template <typename T>
 class RotaryEmbedding final : public OpKernel {
