@@ -2141,14 +2141,20 @@ def create_mla_graph(
     kv_cache_layout="LATENT",
     v_head_size=None,
     max_selected_kv=0,
+    num_kv_tokens=None,
+    with_slot_mapping=False,
 ):
     """Build a single-node LATENT PagedAttention model. Every deviation from a valid MLA graph is a
-    keyword here so that the negative tests can construct rejected models."""
+    keyword here so that the negative tests can construct rejected models.
+
+    'num_kv_tokens' defaults to num_tokens; a larger value gives 'key' surplus rows that no query
+    token owns."""
     cache_proto_type = KV_CACHE_TENSOR_PROTO[mla_config.kv_cache_type]
     head_size = mla_config.head_size
     v_head_size = mla_config.v_head_size if v_head_size is None else v_head_size
     rotary_offset = mla_config.rotary_offset if rotary_offset is None else rotary_offset
     rotary_dim = mla_config.qk_rope_head_dim
+    num_kv_tokens = num_tokens if num_kv_tokens is None else num_kv_tokens
 
     attrs = {
         "num_heads": mla_config.num_heads,
@@ -2186,7 +2192,7 @@ def create_mla_graph(
                 "block_table",
                 "cos_cache" if do_rotary else "",
                 "sin_cache" if do_rotary else "",
-                "",  # slot_mapping
+                "slot_mapping" if with_slot_mapping else "",
                 "head_sink" if with_head_sink else "",
                 "q_norm_weight" if with_qk_norm else "",
                 "k_norm_weight" if with_qk_norm else "",
@@ -2204,7 +2210,7 @@ def create_mla_graph(
     cache_dims = [num_blocks, mla_config.block_size, mla_config.kv_num_heads, head_size]
     graph_input = [
         helper.make_tensor_value_info("query", TensorProto.FLOAT16, [num_tokens, mla_config.num_heads * head_size]),
-        helper.make_tensor_value_info("key", TensorProto.FLOAT16, [num_tokens, mla_config.kv_num_heads * head_size]),
+        helper.make_tensor_value_info("key", TensorProto.FLOAT16, [num_kv_tokens, mla_config.kv_num_heads * head_size]),
         helper.make_tensor_value_info("key_cache", cache_proto_type, cache_dims),
         helper.make_tensor_value_info("cumulative_sequence_length", TensorProto.INT32, [mla_config.batch_size + 1]),
         helper.make_tensor_value_info("past_seqlens", TensorProto.INT32, [mla_config.batch_size]),
@@ -2241,6 +2247,8 @@ def create_mla_graph(
     if mla_config.k_quant_type != "NONE":
         scale_shape = [1] if mla_config.k_quant_type == "PER_TENSOR" else [mla_config.kv_num_heads, 1, head_size]
         graph_input.append(helper.make_tensor_value_info("k_scale", TensorProto.FLOAT, scale_shape))
+    if with_slot_mapping:
+        graph_input.append(helper.make_tensor_value_info("slot_mapping", TensorProto.INT32, [num_kv_tokens]))
     if max_selected_kv:
         graph_input.append(
             helper.make_tensor_value_info("kv_indices", TensorProto.INT32, [num_tokens, max_selected_kv])
@@ -2270,6 +2278,7 @@ def run_mla(
     k_scale=None,
     head_sink=None,
     kv_indices=None,
+    slot_mapping=None,
     **graph_kwargs,
 ):
     """Run a LATENT PagedAttention model and return (output, key_cache) with the cache updated in
@@ -2283,6 +2292,8 @@ def run_mla(
         do_rotary=cos is not None,
         with_head_sink=head_sink is not None,
         max_selected_kv=0 if kv_indices is None else kv_indices.shape[1],
+        num_kv_tokens=key.shape[0],
+        with_slot_mapping=slot_mapping is not None,
         **graph_kwargs,
     )
     ort_session = InferenceSession(onnx_model_str, SessionOptions(), providers=["CUDAExecutionProvider"])
@@ -2302,6 +2313,8 @@ def run_mla(
         io_binding.bind_cpu_input("head_sink", head_sink.detach().cpu().numpy())
     if kv_indices is not None:
         io_binding.bind_cpu_input("kv_indices", kv_indices.detach().cpu().numpy())
+    if slot_mapping is not None:
+        io_binding.bind_cpu_input("slot_mapping", slot_mapping.detach().cpu().numpy())
 
     cache_proto_type = KV_CACHE_TENSOR_PROTO[mla_config.kv_cache_type]
     key_cache = key_cache.contiguous()
@@ -2557,6 +2570,87 @@ class TestPagedAttentionMLA(unittest.TestCase):
         config = self._config()
         head_sink = torch.tensor([-1.0, 0.0, 2.5, 8.0], device="cuda", dtype=torch.float16)
         self._run_case(config, past_seqlens=[14, 6], new_seqlens=[5, 3], head_sink=head_sink)
+
+    def test_surplus_kv_rows(self):
+        """'key' may carry rows that no query token owns (§12.11).
+
+        DeepSeek-V4-Flash's compressor emits pooled latent rows that must be stored *and* attended
+        to in the same step, but the op writes one cache row per query token, so there is no second
+        write port. Surplus rows are that port: they are stored at their slot_mapping slots, are
+        immediately visible to kv_indices, and own no output row.
+        """
+        device = "cuda"
+        config = self._config()
+        past_seqlens = torch.tensor([12, 5], dtype=torch.int32, device=device)
+        new_seqlens = torch.tensor([3, 3], dtype=torch.int32, device=device)
+        surplus_per_seq = 2
+
+        # Park the surplus rows above every sequence's token range, which is where the compressed
+        # stream lives in the model's own flat cache.
+        capacity = int((past_seqlens + new_seqlens).max().item()) + surplus_per_seq
+        latent_paged, block_table, cum_seqlens, total_len = make_mla_batch(
+            config, past_seqlens, new_seqlens, capacity=capacity
+        )
+        token_count = int(cum_seqlens[-1].item())
+        surplus_count = config.batch_size * surplus_per_seq
+
+        def slot_of(b, logical):
+            block = int(block_table[b, logical // config.block_size].item())
+            return block * config.block_size + logical % config.block_size
+
+        # Real tokens land at their own sequence positions; surplus rows at the parked positions.
+        slots = []
+        surplus_positions = []
+        for b in range(config.batch_size):
+            for j in range(int(new_seqlens[b].item())):
+                slots.append(slot_of(b, int(past_seqlens[b].item()) + j))
+        for b in range(config.batch_size):
+            base = int((past_seqlens[b] + new_seqlens[b]).item())
+            for e in range(surplus_per_seq):
+                surplus_positions.append((b, base + e))
+                slots.append(slot_of(b, base + e))
+        slot_mapping = torch.tensor(slots, dtype=torch.int32, device=device)
+
+        query = torch.randn(token_count, config.num_heads, config.head_size, device=device, dtype=torch.float16)
+        key = torch.randn(token_count + surplus_count, config.head_size, device=device, dtype=torch.float16)
+
+        # Every query token attends to its causal range plus the surplus rows written this step, so
+        # the test fails if those rows are not already in the cache when attention runs.
+        rows = []
+        for b in range(config.batch_size):
+            extra = [p for (sb, p) in surplus_positions if sb == b]
+            for j in range(int(new_seqlens[b].item())):
+                rows.append(torch.tensor(list(range(int(past_seqlens[b].item()) + j + 1)) + extra, dtype=torch.int32))
+        width = max(r.numel() for r in rows)
+        kv_indices = torch.full((token_count, width), -1, dtype=torch.int32)
+        for i, r in enumerate(rows):
+            kv_indices[i, : r.numel()] = r
+        kv_indices = kv_indices.to(device)
+
+        scale = config.softmax_scale
+        out, latent_paged = run_mla(
+            config,
+            query.reshape(token_count, -1),
+            key,
+            latent_paged,
+            cum_seqlens,
+            past_seqlens,
+            block_table,
+            scale=scale,
+            kv_indices=kv_indices,
+            slot_mapping=slot_mapping,
+        )
+        self.assertEqual(out.shape[0], token_count)
+
+        dense = densify_latent(config, latent_paged, block_table, total_len)
+        # Load-bearing: without this the output comparison below would pass even if the surplus
+        # rows were never written, since the reference reads the same (stale) cache.
+        for i, (b, pos) in enumerate(surplus_positions):
+            torch.testing.assert_close(dense[b, pos].to(torch.float32), key[token_count + i].to(torch.float32))
+
+        ref = mla_reference(config, query, dense, past_seqlens, new_seqlens, cum_seqlens, scale, kv_indices=kv_indices)
+        out = out.reshape(token_count, config.num_heads, config.v_head_size).to(device).to(torch.float32)
+        torch.testing.assert_close(out, ref, rtol=2e-3, atol=2e-3)
 
     def test_head_sink_dominates(self):
         # A very large sink drives every real probability to ~0, so the output must approach zero.
@@ -2857,7 +2951,7 @@ class TestPagedAttentionMLA(unittest.TestCase):
         out = out.reshape(token_count, config.num_heads, config.v_head_size).to(device).to(torch.float32)
         torch.testing.assert_close(out, ref, rtol=5e-3, atol=5e-3)
 
-    # ---- rejected configurations (design doc §12.9, §12.10) ----
+    # ---- rejected configurations (design doc §12.9, §12.10, §12.11) ----
 
     def _expect_rejected(self, message_fragment, **graph_kwargs):
         """Build a LATENT model with one deliberate violation and assert the op rejects it. Schema
@@ -2865,6 +2959,7 @@ class TestPagedAttentionMLA(unittest.TestCase):
         wrapped."""
         config = graph_kwargs.pop("config", None) or self._config()
         num_tokens, num_blocks, max_blocks = 4, 4, 2
+        num_kv_tokens = graph_kwargs.get("num_kv_tokens") or num_tokens
         head_size = config.head_size
 
         def build_and_run():
@@ -2872,7 +2967,7 @@ class TestPagedAttentionMLA(unittest.TestCase):
             session = InferenceSession(model, SessionOptions(), providers=["CUDAExecutionProvider"])
             feeds = {
                 "query": torch.randn(num_tokens, config.num_heads * head_size).to(torch.float16).numpy(),
-                "key": torch.randn(num_tokens, config.kv_num_heads * head_size).to(torch.float16).numpy(),
+                "key": torch.randn(num_kv_tokens, config.kv_num_heads * head_size).to(torch.float16).numpy(),
                 "key_cache": torch.randn(num_blocks, config.block_size, config.kv_num_heads, head_size)
                 .to(torch.float16)
                 .numpy(),
@@ -2897,6 +2992,8 @@ class TestPagedAttentionMLA(unittest.TestCase):
                 feeds["k_norm_weight"] = torch.ones(head_size).to(torch.float16).numpy()
             if graph_kwargs.get("max_selected_kv"):
                 feeds["kv_indices"] = numpy.zeros((num_tokens, graph_kwargs["max_selected_kv"]), dtype=numpy.int32)
+            if graph_kwargs.get("with_slot_mapping"):
+                feeds["slot_mapping"] = numpy.zeros(num_kv_tokens, dtype=numpy.int32)
             session.run(None, feeds)
 
         with self.assertRaises(Exception) as ctx:
@@ -2960,6 +3057,25 @@ class TestPagedAttentionMLA(unittest.TestCase):
         config = self._config()
         self._expect_rejected(
             "must not exceed head_size", config=config, scale=0.1, do_rotary=True, rotary_offset=config.head_size
+        )
+
+    def test_rejects_fewer_key_rows_than_query(self):
+        # Surplus KV rows are allowed; a deficit is not, since every query token stores its own row.
+        self._expect_rejected("must be at least", scale=0.1, num_kv_tokens=2, with_slot_mapping=True)
+
+    def test_rejects_surplus_key_rows_without_slot_mapping(self):
+        # Without slot_mapping the slot is derived from cumulative_sequence_length, which does not
+        # describe a row that belongs to no query token.
+        self._expect_rejected("'slot_mapping' is required", scale=0.1, num_kv_tokens=6)
+
+    def test_rejects_surplus_key_rows_with_rotary(self):
+        # Same reason: the surplus rows have no sequence position to rotate by.
+        self._expect_rejected(
+            "In-kernel rotary is not supported",
+            scale=0.1,
+            num_kv_tokens=6,
+            with_slot_mapping=True,
+            do_rotary=True,
         )
 
 

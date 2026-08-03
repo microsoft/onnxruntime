@@ -1411,10 +1411,13 @@ Status PrepareQueryAndCache(cudaStream_t stream, contrib::PagedAttentionParamete
   const int value_stride = parameters.is_packed_qkv ? q_hidden_size + 2 * kv_hidden_size : kv_hidden_size;
   const bool k_per_channel = parameters.k_quant_type == KVQuantizationType::PER_CHANNEL;
   const bool v_per_channel = parameters.v_quant_type == KVQuantizationType::PER_CHANNEL;
+  // Stores span kv_token_count, not token_count: LATENT lets 'key' carry rows that no query token
+  // owns. Validation guarantees slot_mapping covers them, so the resolver is never consulted for a
+  // row whose sequence position is unknown.
   ORT_RETURN_IF_ERROR((LaunchReshapeAndCache<T, TCACHE>(
       key, value, data.key_cache, data.value_cache, data.k_scale, data.v_scale, k_per_channel, v_per_channel,
       const_cast<int*>(data.block_table), past_seqlens, cumulative_seqlens_q, data.slot_mapping, batch_size,
-      parameters.max_num_blocks_per_seq, token_count, kv_hidden_size, parameters.block_size,
+      parameters.max_num_blocks_per_seq, parameters.kv_token_count, kv_hidden_size, parameters.block_size,
       parameters.num_blocks, key_stride, value_stride, stream, max_threads_per_block)));
 
   *query_out = query;
