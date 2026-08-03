@@ -315,23 +315,24 @@ void ShaderVariableHelper::Impl(OStringStream& ss) const {
     const bool is_64bit = type_ == ProgramVariableDataType::Int64 || type_ == ProgramVariableDataType::Uint64;
     const bool is_boolx4 = type_ == ProgramVariableDataType::Boolx4;
     // Returns the WGSL return expression for a given buffer name, mirroring GetByOffsetImpl.
-    auto make_get_return_expr = [&](const std::string& buf) -> std::string {
+    auto make_get_return_expr = [&](std::string_view buf) -> std::string {
+      SS(expr, 128);
       if (is_64bit) {
-        return MakeStringWithClassicLocale(std::string(ElementType()), "(", buf, "[local_offset].x)");
+        expr << ElementType() << "(" << buf << "[local_offset].x)";
+      } else if (is_boolx4) {
+        expr << "vec4<bool>(bool(" << buf << "[local_offset] & 0xFFu), bool(" << buf
+             << "[local_offset] & 0xFF00u), bool(" << buf << "[local_offset] & 0xFF0000u), bool("
+             << buf << "[local_offset] & 0xFF000000u))";
+      } else {
+        expr << buf << "[local_offset]";
       }
-      if (is_boolx4) {
-        return MakeStringWithClassicLocale(
-            "vec4<bool>(bool(", buf, "[local_offset] & 0xFFu), bool(", buf,
-            "[local_offset] & 0xFF00u), bool(", buf,
-            "[local_offset] & 0xFF0000u), bool(", buf, "[local_offset] & 0xFF000000u))");
-      }
-      return MakeStringWithClassicLocale(buf, "[local_offset]");
+      return SS_GET(expr);
     };
     SS_APPEND(ss, "  switch(buffer_index) {\n");
     // case 0 (base buffer name_)
     SS_APPEND(ss, "    case 0u: { return ", make_get_return_expr(name_), "; }\n");
     for (uint32_t i = 1; i < segments_; ++i) {
-      SS_APPEND(ss, "    case ", i, "u: { return ", make_get_return_expr(MakeStringWithClassicLocale(name_, i)), "; }\n");
+      SS_APPEND(ss, "    case ", i, "u: { return ", make_get_return_expr(name_ + std::to_string(i)), "; }\n");
     }
     SS_APPEND(ss, "    default: { return ", make_get_return_expr(name_), "; }\n");
     SS_APPEND(ss, "  }\n");
@@ -397,9 +398,11 @@ std::string ShaderVariableHelper::GetByOffsetImpl(std::string_view offset, bool 
     if (use_storage_type &&
         (type_ == ProgramVariableDataType::Int64 || type_ == ProgramVariableDataType::Uint64)) {
       usage_ |= ShaderUsage::UseGetByOffsetSegmentsStorage;
-      return MakeStringWithClassicLocale("get_", name_, "_by_offset_storage(", offset, ")");
+      ss << "get_" << name_ << "_by_offset_storage(" << offset << ")";
+      return SS_GET(ss);
     }
-    return MakeStringWithClassicLocale("get_", name_, "_by_offset(", offset, ")");
+    ss << "get_" << name_ << "_by_offset(" << offset << ")";
+    return SS_GET(ss);
   }
   switch (type_) {
     case onnxruntime::webgpu::ProgramVariableDataType::InvalidType:
@@ -438,9 +441,11 @@ std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::
     if (use_storage_type &&
         (type_ == ProgramVariableDataType::Int64 || type_ == ProgramVariableDataType::Uint64)) {
       usage_ |= ShaderUsage::UseSetByOffsetSegmentsStorage;
-      return MakeStringWithClassicLocale("set_", name_, "_by_offset_storage(", offset, ",", value, ");");
+      ss << "set_" << name_ << "_by_offset_storage(" << offset << "," << value << ");";
+      return SS_GET(ss);
     }
-    return MakeStringWithClassicLocale("set_", name_, "_by_offset(", offset, ",", value, ");");
+    ss << "set_" << name_ << "_by_offset(" << offset << "," << value << ");";
+    return SS_GET(ss);
   }
 
   switch (type_) {
