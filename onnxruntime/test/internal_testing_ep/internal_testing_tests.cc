@@ -225,7 +225,7 @@ TEST(InternalTestingEP, TestMixOfStaticAndCompiledKernels) {
 
   // Error message should come from the Conv implementation with the statically registered kernel
   ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Run(feeds, output_names, &fetches),
-                                      "Non-zero status code returned while running Conv node. Name:'_token_2' "
+                                      "Non-zero status code returned while running Conv node. Name:'Conv' "
                                       "Status Message: TODO: add NHWC implementation here.");
 }
 
@@ -272,7 +272,7 @@ TEST(InternalTestingEP, TestNhwcConversionOfStaticKernels) {
     std::vector<OrtValue> fetches;
 
     ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Run(feeds, output_names, &fetches),
-                                        "Non-zero status code returned while running Conv node. Name:'_token_2' "
+                                        "Non-zero status code returned while running Conv node. Name:'Conv' "
                                         "Status Message: TODO: add NHWC implementation here.");
   };
 
