@@ -176,7 +176,55 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
       }
     }
   }
-#else  // not MLAS_TARGET_ARM64
+#elif defined(MLAS_TARGET_RISCV64)
+  // The RVV dispatch uses a plain layout private to itself: weights [N][ldb],
+  // scales [N][BlockCountK], block-sums [N][BlockCountK] with block-sum =
+  // scale * zeroPoint (zeroPoint defaults to 128). These references mirror that
+  // layout so the prepack self-consistency check matches what the RVV kernels
+  // consume. End-to-end correctness is covered separately by SQ8BitGemmKernel.
+  template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
+  void PrepackB(const uint8_t* src, uint8_t* dst, float* /*blkUnsignedQuantAZeroPointCorrection*/) {
+    constexpr size_t ldb = (K + BlkLen - 1) & (~(BlkLen - 1));
+    for (size_t n = 0; n < N; ++n) {
+      for (size_t k = 0; k < K; ++k) {
+        dst[n * ldb + k] = src[n * ldb + k];
+      }
+    }
+  }
+
+  template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
+  void PrepackBlkSumAndScale(const float* scale, const uint8_t* zp, float* packedScale, float* blkSum, float* /*corr*/) {
+    constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
+    for (size_t n = 0; n < N; ++n) {
+      for (size_t k = 0; k < BlkCount; ++k) {
+        const size_t idx = n * BlkCount + k;
+        const float zpv = zp ? static_cast<float>(zp[idx]) : 128.f;
+        packedScale[idx] = scale[idx];
+        blkSum[idx] = scale[idx] * zpv;
+      }
+    }
+  }
+
+  template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
+  void CheckB(const uint8_t* packedB, const uint8_t* refB) {
+    constexpr size_t ldb = (K + BlkLen - 1) & (~(BlkLen - 1));
+    for (size_t n = 0; n < N; ++n) {
+      for (size_t k = 0; k < K; ++k) {
+        ASSERT_EQ(packedB[n * ldb + k], refB[n * ldb + k]) << " at n=" << n << " k=" << k;
+      }
+    }
+  }
+
+  template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
+  void CheckScale(const float* packedScale, const float* refScale) {
+    constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
+    for (size_t n = 0; n < N; ++n) {
+      for (size_t k = 0; k < BlkCount; ++k) {
+        ASSERT_EQ(packedScale[n * BlkCount + k], refScale[n * BlkCount + k]) << " at n=" << n << " k=" << k;
+      }
+    }
+  }
+#else  // not MLAS_TARGET_ARM64 and not MLAS_TARGET_RISCV64 (e.g. x86)
   template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
   void PrepackB(const uint8_t* src, uint8_t* dst, float* blkUnsignedQuantAZeroPointCorrection) {
     MLAS_UNREFERENCED_PARAMETER(blkUnsignedQuantAZeroPointCorrection);
@@ -334,7 +382,11 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
 
     for (size_t n = 0; n < N; ++n) {
       for (size_t k = 0; k < BlkCount; ++k) {
+#if defined(MLAS_TARGET_RISCV64)
+        size_t idx = n * BlkCount + k;  // RVV dispatch stores block-sums in a plain [N][BlockCountK] layout
+#else
         size_t idx = (((n) / 16) * BlkCount + k) * 16 + (n) % 16;
+#endif
         ASSERT_EQ(packedBlkSum[idx], refBlkSum[idx])
             << " n " << n << " k " << k;
       }

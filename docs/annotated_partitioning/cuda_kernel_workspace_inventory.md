@@ -345,7 +345,13 @@ This document catalogs all CUDA kernels in ONNX Runtime that allocate temporary/
 
 **What's needed:** M, N, K dimensions, quantization bits, SM version.
 
-**Static determinability:** ⚠️ — Runner workspace depends on profiled tactic. Could use upper bound.
+**Static determinability:** ✅ — Confirmed exact downstream (issue #29775 Phase-A pilot, PR #29811):
+`weightOnlyGemmRunner_`'s workspace size is a closed-form function of `(m, n, k, sm, multiProcessorCount)`
+(`ComputeFpAIntBGemmWorkspaceSize`), independent of which CUTLASS tactic `profileTactics()` later
+selects for the actual GEMM. The earlier "upper bound only" note in this row was superseded once the
+formula was extracted and verified against the runtime value for MatMulNBits; see
+`onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.{h,cc}` (`EstimateWorkspace` /
+`DeclareWorkspaceRequirements`).
 
 ---
 
@@ -357,7 +363,9 @@ This document catalogs all CUDA kernels in ONNX Runtime that allocate temporary/
 
 **What's needed:** M, N, K + CUTLASS template specialization.
 
-**Static determinability:** ⚠️ — Depends on selected CUTLASS config/tactic.
+**Static determinability:** ✅ — Same runner/formula as #20 (MatMulNBits is the CUDA EP consumer of this
+GEMM); see that entry. Not re-verified independently of MatMulNBits's call sites, but there is only one
+`getWorkspaceSize` implementation shared by both.
 
 ---
 
@@ -398,16 +406,23 @@ This document catalogs all CUDA kernels in ONNX Runtime that allocate temporary/
 | **Shapes only** | 12 | ✅ Exact, trivial | BatchNorm, InstanceNorm, Dropout, TopK, MatMulInteger, IntegerGemm, Compress, GatherND, NonZero, Upsample, Inverse, Generation |
 | **Shapes + device properties** | 3 | ✅ Exact | Attention (SM count), DeformConv (totalGlobalMem), Contrib Attention (SM version) |
 | **Shapes + cuDNN/cuBLAS handle** | 4 | ✅* Exact via API query | Conv, ConvTranspose, Reduction, RNN |
-| **Shapes + tactic profiling** | 3 | ⚠️ Upper bound only | MOE, MatMulNBits, fpA_intB_GEMM |
+| **Shapes + closed-form GEMM formula** | 2 | ✅ Exact (confirmed PR #29811) | MatMulNBits, fpA_intB_GEMM |
+| **Shapes + tactic profiling** | 1 | ⚠️† Upper bound only | MOE |
+
+† MOE was not re-investigated as part of PR #29811 (different runner from the fpA_intB pair above) —
+do not assume it shares their exact-formula property.
 
 ### Key takeaways
 
-1. **~75% of kernels** (19/25) can produce **exact** workspace estimates at `GetCapability()` time using only shapes + attributes + device properties (+ cuDNN handle for API queries).
+1. **~84% of kernels** (21/25) can produce **exact** workspace estimates at `GetCapability()` time using only shapes + attributes + device properties (+ cuDNN handle for API queries, or a closed-form GEMM formula for the fpA_intB pair).
 
-2. **~12% of kernels** (3/25) require tactic profiling (CUTLASS/CUB autotuning). For these, options are:
+2. **~4% of kernels** (1/25, MOE) require tactic profiling (CUTLASS/CUB autotuning). For this kernel, options are:
    - Use worst-case workspace across all tactics (safe upper bound)
    - Run tactic selection eagerly at estimation time (expensive but exact)
-   - Accept 1.5x multiplier for these few kernels
+   - Accept a safety multiplier for this one kernel
+
+   MatMulNBits and fpA_intB_GEMM were previously grouped here too; see entries #20/#21 above for why
+   PR #29811 moved them to the closed-form-exact row instead.
 
 3. **The cuDNN handle requirement** affects only 4 kernel types (Conv, ConvTranspose, Reduction, RNN). All are standard cuDNN API queries that are fast and deterministic given the handle + tensor descriptors.
 
@@ -424,9 +439,12 @@ This document catalogs all CUDA kernels in ONNX Runtime that allocate temporary/
 |---------------|-------------|------------------------|
 | `Node_GetInputShape()` | OrtEpApi (generic) | All 25 kernels |
 | `Node_GetAttributeInt/Ints()` | OrtEpApi (generic) | Conv, Attention, RNN, MOE |
-| `device_prop.multiProcessorCount` | Cast `OrtEp*` to concrete EP type | Attention, DeformConv |
+| `device_prop.multiProcessorCount` | Cast `OrtEp*` to concrete EP type | Attention, DeformConv, MatMulNBits, fpA_intB |
 | `device_prop.totalGlobalMem` | Cast `OrtEp*` to concrete EP type | DeformConv |
 | cuDNN handle | Cast `OrtEp*` to concrete EP type | Conv, ConvTranspose, Reduction, RNN |
-| Tactic profiler state (or worst-case constant) | Cast `OrtEp*` to concrete EP type | MOE, MatMulNBits, fpA_intB |
+| Tactic profiler state (or worst-case constant) | Cast `OrtEp*` to concrete EP type | MOE only† |
+
+† MatMulNBits/fpA_intB need only `device_prop.multiProcessorCount` (see "Key takeaways" above), not
+profiler state — they moved out of this row in PR #29811.
 
 **API surface:** Only `Node_GetInputShape` and `Node_GetAttributeInt/Ints` need to be added to `OrtEpApi` (generic, EP-agnostic). All device-specific state (cuDNN handles, device properties, profiler state) is accessed by casting `OrtEp*` to the EP's concrete type — no public API needed since the estimation function is EP-specific code.

@@ -18,6 +18,11 @@ Abstract:
 #include "mlas_q4.h"
 #include "mlas_qnbit.h"
 
+#if defined(MLAS_TARGET_ARM64) && defined(USE_KLEIDIAI) && defined(MLAS_ENABLE_TEST_HOOKS)
+#include "core/mlas/lib/mlasi.h"
+#include "core/mlas/lib/qnbitgemm_kernel_neon.h"
+#endif
+
 static constexpr const char* ComputeTypeName(MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType) {
   switch (ComputeType) {
     case SQNBIT_CompFp32:
@@ -64,7 +69,8 @@ class MlasSQNBitGemmTest : public MlasTestBase {
                 size_t ldc,
                 void* Workspace,
                 MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
-                MLAS_THREADPOOL* Threadpool) {
+                MLAS_THREADPOOL* Threadpool,
+                const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig) {
     MLAS_QNBIT_GEMM_DATA_PARAMS<float> params;
     params.A = A;
     params.lda = lda;
@@ -81,7 +87,8 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     params.QuantBZeroPoint = QuantBZeroPoint;
     params.PostProcessor = nullptr;
 
-    MlasQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace, Threadpool, nullptr);
+    MlasQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace, Threadpool,
+                       BackendKernelSelectorConfig);
   }
 
   void QuantizeA(size_t M, size_t K, const float* A, int8_t* QuantAData, float* QuantAScale) {
@@ -202,7 +209,8 @@ class MlasSQNBitGemmTest : public MlasTestBase {
  public:
   void Test(size_t M, size_t N, size_t K,
             MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
-            bool WithThreadpool, bool Symmetric, bool WithBias) {
+            bool WithThreadpool, bool Symmetric, bool WithBias,
+            const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig = nullptr) {
     MLAS_THREADPOOL* Threadpool = WithThreadpool ? GetMlasThreadPool() : nullptr;
 
     const float* A = BufferA.GetBuffer(K * M);
@@ -265,19 +273,21 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     }
 
     void* Workspace = nullptr;
-    if (const auto WorkspaceSize = MlasQNBitGemmBatchWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, !Symmetric, ComputeType, nullptr);
+    if (const auto WorkspaceSize = MlasQNBitGemmBatchWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, !Symmetric,
+                                                                   ComputeType, BackendKernelSelectorConfig);
         WorkspaceSize > 0) {
       Workspace = BufferWorkspace.GetBuffer(WorkspaceSize);
     }
 
     void* PackedQuantBDataWorkspace = nullptr;
-    if (const auto PackedQuantBDataSize = MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, !Symmetric, ComputeType, nullptr);
+    if (const auto PackedQuantBDataSize = MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, !Symmetric,
+                                                                          ComputeType, BackendKernelSelectorConfig);
         PackedQuantBDataSize > 0) {
       PackedQuantBDataWorkspace = BufferPackedQuantBData.GetBuffer(PackedQuantBDataSize);
       bool has_zp_input = QuantBZeroPoint != nullptr;
       MlasQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData, PackedQuantBDataWorkspace,
                                   QuantBScale, has_zp_input, QuantBZeroPoint,
-                                  GetMlasThreadPool(), nullptr);
+                                  GetMlasThreadPool(), BackendKernelSelectorConfig);
     }
 
     CallGemm(M, N, K,
@@ -287,7 +297,8 @@ class MlasSQNBitGemmTest : public MlasTestBase {
              C, /* ldc */ N,
              Workspace,
              ComputeType,
-             Threadpool);
+             Threadpool,
+             BackendKernelSelectorConfig);
 
     if (ComputeType == SQNBIT_CompFp32) {
       CallReferenceGemm_CompFp32(M, N, K, A, QuantBData, QuantBScale, QuantBZeroPoint, Bias, CReference);
@@ -306,6 +317,86 @@ class MlasSQNBitGemmTest : public MlasTestBase {
             << "M=" << M << ", N=" << N << ", K=" << K;
       }
     }
+  }
+
+  void TestAsymmetricKleidiAICompInt8(size_t M, size_t N, size_t K, bool WithThreadpool, bool WithBias) {
+#if defined(MLAS_TARGET_ARM64)
+    MLAS_BACKEND_KERNEL_SELECTOR_CONFIG config;
+    config.use_kleidiai = true;
+    constexpr bool HasZeroPoint = true;
+
+    if (!MlasIsQNBitGemmAvailable(BlkBitWidth, BlkLen, SQNBIT_CompInt8) ||
+        !MlasQNBitGemmScalesPacked(K, BlkBitWidth, BlkLen, SQNBIT_CompInt8, HasZeroPoint, &config)) {
+      GTEST_SKIP() << "KleidiAI packed asymmetric SQ4 path is unavailable.";
+    }
+
+    ASSERT_GT(MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, HasZeroPoint,
+                                              SQNBIT_CompInt8, &config),
+              0u);
+    ASSERT_GT(MlasQNBitGemmBatchWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, HasZeroPoint,
+                                              SQNBIT_CompInt8, &config),
+              0u);
+
+    Test(M, N, K, SQNBIT_CompInt8, WithThreadpool, /*Symmetric=*/false, WithBias, &config);
+#else
+    (void)M;
+    (void)N;
+    (void)K;
+    (void)WithThreadpool;
+    (void)WithBias;
+    GTEST_SKIP() << "KleidiAI Q4 tests require ARM64.";
+#endif
+  }
+
+  void TestSymmetricKleidiAICompInt8(size_t M, size_t N, size_t K, bool WithThreadpool, bool WithBias) {
+#if defined(MLAS_TARGET_ARM64) && defined(USE_KLEIDIAI) && defined(MLAS_ENABLE_TEST_HOOKS)
+    const auto& cpuid = MLAS_CPUIDINFO::GetCPUIDInfo();
+    if (!cpuid.HasArm_SME2() && !cpuid.HasArmNeon_I8MM() && !cpuid.HasArmNeonDot()) {
+      GTEST_SKIP() << "KleidiAI symmetric Q4 tests require SME2, I8MM, or DotProd.";
+    }
+
+    MLAS_BACKEND_KERNEL_SELECTOR_CONFIG config;
+    config.use_kleidiai = true;
+    constexpr bool HasZeroPoint = false;
+
+    ASSERT_TRUE(MlasIsQNBitGemmAvailable(BlkBitWidth, BlkLen, SQNBIT_CompInt8));
+    ASSERT_TRUE(MlasQNBitGemmScalesPacked(K, BlkBitWidth, BlkLen, SQNBIT_CompInt8, HasZeroPoint, &config));
+
+    const char* selected_kernel = M == 1
+                                      ? sqnbitgemm_neon::GetKleidiAIQ4GemvKernelNameForTesting()
+                                      : sqnbitgemm_neon::GetKleidiAIQ4GemmKernelNameForTesting();
+    const char* expected_kernel;
+    if (cpuid.HasArm_SME2()) {
+      expected_kernel = M == 1
+                            ? "kai_run_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4vlx4_1x4vl_sme2_dot"
+                            : "kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa";
+    } else if (cpuid.HasArmNeon_I8MM()) {
+      expected_kernel = M == 1
+                            ? "kai_run_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod"
+                            : "kai_run_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm";
+    } else {
+      expected_kernel = M == 1
+                            ? "kai_run_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod"
+                            : "kai_run_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod";
+    }
+    ASSERT_STREQ(selected_kernel, expected_kernel);
+
+    ASSERT_GT(MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, HasZeroPoint,
+                                              SQNBIT_CompInt8, &config),
+              0u);
+    ASSERT_GT(MlasQNBitGemmBatchWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, HasZeroPoint,
+                                              SQNBIT_CompInt8, &config),
+              0u);
+
+    Test(M, N, K, SQNBIT_CompInt8, WithThreadpool, /*Symmetric=*/true, WithBias, &config);
+#else
+    (void)M;
+    (void)N;
+    (void)K;
+    (void)WithThreadpool;
+    (void)WithBias;
+    GTEST_SKIP() << "KleidiAI symmetric Q4 tests require an ARM64 KleidiAI test-hook build.";
+#endif
   }
 
  public:
@@ -420,6 +511,71 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
   bool WithThreadpool_, Symmetric_, WithBias_;
 };
 
+class SQNBitGemmKleidiAIShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<4, 128>> {
+ public:
+  explicit SQNBitGemmKleidiAIShortExecuteTest(size_t M, size_t N, size_t K,
+                                              bool WithThreadpool, bool Symmetric, bool WithBias)
+      : M_(M),
+        N_(N),
+        K_(K),
+        WithThreadpool_(WithThreadpool),
+        Symmetric_(Symmetric),
+        WithBias_(WithBias) {
+  }
+
+  void TestBody() override {
+    if (Symmetric_) {
+      MlasTestFixture<MlasSQNBitGemmTest<4, 128>>::mlas_tester->TestSymmetricKleidiAICompInt8(
+          M_, N_, K_, WithThreadpool_, WithBias_);
+    } else {
+      MlasTestFixture<MlasSQNBitGemmTest<4, 128>>::mlas_tester->TestAsymmetricKleidiAICompInt8(
+          M_, N_, K_, WithThreadpool_, WithBias_);
+    }
+  }
+
+  static size_t RegisterSingleTest(const char* test_name, size_t M, size_t N, size_t K,
+                                   bool WithThreadpool, bool Symmetric, bool WithBias) {
+    testing::RegisterTest(
+        MlasSQNBitGemmTest<4, 128>::GetTestSuiteName(),
+        test_name,
+        nullptr,
+        test_name,
+        __FILE__,
+        __LINE__,
+        [=]() -> MlasTestFixture<MlasSQNBitGemmTest<4, 128>>* {
+          return new SQNBitGemmKleidiAIShortExecuteTest(M, N, K, WithThreadpool, Symmetric, WithBias);
+        });
+
+    return 1;
+  }
+
+  static size_t RegisterShortExecuteTests() {
+    size_t tests_registered = 0;
+
+    tests_registered += RegisterSingleTest(
+        "KleidiAIAsymGemv_M1_N257_K128", 1, 257, 128,
+        /*WithThreadpool=*/false, /*Symmetric=*/false, /*WithBias=*/true);
+    tests_registered += RegisterSingleTest(
+        "KleidiAIAsymGemm_M5_N257_K128", 5, 257, 128,
+        /*WithThreadpool=*/true, /*Symmetric=*/false, /*WithBias=*/true);
+    tests_registered += RegisterSingleTest(
+        "KleidiAIAsymGemv_M1_N288_K1024_NoBias", 1, 288, 1024,
+        /*WithThreadpool=*/false, /*Symmetric=*/false, /*WithBias=*/false);
+    tests_registered += RegisterSingleTest(
+        "KleidiAISymGemv_M1_N257_K128_NoBias", 1, 257, 128,
+        /*WithThreadpool=*/false, /*Symmetric=*/true, /*WithBias=*/false);
+    tests_registered += RegisterSingleTest(
+        "KleidiAISymGemm_M5_N257_K1024", 5, 257, 1024,
+        /*WithThreadpool=*/true, /*Symmetric=*/true, /*WithBias=*/true);
+
+    return tests_registered;
+  }
+
+ private:
+  size_t M_, N_, K_;
+  bool WithThreadpool_, Symmetric_, WithBias_;
+};
+
 static size_t SQNBitGemmRegisterAllShortExecuteTests() {
   size_t count = 0;
 
@@ -428,6 +584,7 @@ static size_t SQNBitGemmRegisterAllShortExecuteTests() {
   count += SQNBitGemmShortExecuteTest<4, 64>::RegisterShortExecuteTests();
   count += SQNBitGemmShortExecuteTest<4, 128>::RegisterShortExecuteTests();
   count += SQNBitGemmShortExecuteTest<4, 256>::RegisterShortExecuteTests();
+  count += SQNBitGemmKleidiAIShortExecuteTest::RegisterShortExecuteTests();
 
   return count;
 }

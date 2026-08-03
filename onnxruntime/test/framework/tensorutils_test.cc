@@ -12,6 +12,7 @@
 #include "test/util/include/asserts.h"
 #include "file_util.h"
 
+#include <array>
 #include <cstdint>
 #include <limits>
 #include <fstream>
@@ -30,6 +31,49 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace test {
+
+constexpr bool TensorProtoElementSizesAreConstexpr() {
+  constexpr std::array<size_t, TensorProto_DataType_DataType_ARRAYSIZE> expected_sizes{
+      0,                 // UNDEFINED
+      sizeof(float),     // FLOAT
+      sizeof(uint8_t),   // UINT8
+      sizeof(int8_t),    // INT8
+      sizeof(uint16_t),  // UINT16
+      sizeof(int16_t),   // INT16
+      sizeof(int32_t),   // INT32
+      sizeof(int64_t),   // INT64
+      0,                 // STRING
+      sizeof(uint8_t),   // BOOL
+      sizeof(uint16_t),  // FLOAT16
+      sizeof(double),    // DOUBLE
+      sizeof(uint32_t),  // UINT32
+      sizeof(uint64_t),  // UINT64
+      sizeof(float),     // COMPLEX64
+      sizeof(double),    // COMPLEX128
+      sizeof(uint16_t),  // BFLOAT16
+      sizeof(uint8_t),   // FLOAT8E4M3FN
+      sizeof(uint8_t),   // FLOAT8E4M3FNUZ
+      sizeof(uint8_t),   // FLOAT8E5M2
+      sizeof(uint8_t),   // FLOAT8E5M2FNUZ
+      sizeof(uint8_t),   // UINT4
+      sizeof(uint8_t),   // INT4
+      sizeof(uint8_t),   // FLOAT4E2M1
+      sizeof(uint8_t),   // FLOAT8E8M0
+      sizeof(uint8_t),   // UINT2
+      sizeof(uint8_t),   // INT2
+  };
+
+  for (size_t index = 0; index < expected_sizes.size(); ++index) {
+    if (GetElementSizeOfTensor(static_cast<TensorProto_DataType>(index)) != expected_sizes[index]) {
+      return false;
+    }
+  }
+
+  return GetElementSizeOfTensor(static_cast<TensorProto_DataType>(-1)) == 0 &&
+         GetElementSizeOfTensor(static_cast<TensorProto_DataType>(expected_sizes.size())) == 0;
+}
+
+static_assert(TensorProtoElementSizesAreConstexpr());
 
 // if `expected_error_message_substring` is nullptr, parsing is expected to be successful
 static void TestExternalDataInfoParsingOffsetAndLengthWithStrings(

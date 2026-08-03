@@ -1507,16 +1507,21 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("block_size",
               "Size of each quantization block along the K (input feature) dimension. "
               "Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). "
-              "If provided, both hidden_size and inter_size must be divisible by the block size. "
-              "Otherwise, there is no blocking and a whole column shares one scaling factor. ",
+              "Both hidden_size and inter_size must be divisible by the block size. "
+              "The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 "
+              "and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. "
+              "For integer quantization ('int'), omitting block_size means there is no blocking "
+              "and a whole column shares one scaling factor. ",
               AttributeProto::INT,
               OPTIONAL_VALUE)
         .Attr("quant_type",
               "Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, "
-              "'fp8' for FP8 e4m3 weight-only quantization, "
+              "'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, "
               "or 'wfp4afp8' for MXFP4 weight with FP8 activation. "
-              "When quant_type is 'fp4', weights are stored in MXFP4 format (2 values per byte), "
-              "fc*_scales inputs contain MXFP4 block scales, and fc*_global_scale inputs must be provided.",
+              "When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), "
+              "fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. "
+              "'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales "
+              "with block_size 16.",
               AttributeProto::STRING,
               std::string("int"))
         .Attr("weights_prepacked",
@@ -1546,7 +1551,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "(num_experts, fusion_size * inter_size), or a 3D tensor with shape "
                "(num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided. "
                "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
-               "(num_experts, fusion_size * inter_size, hidden_size / 32). Not used for quant_type='fp8'.",
+               "(num_experts, fusion_size * inter_size, hidden_size / 32). "
+               "For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape "
+               "(num_experts, fusion_size * inter_size, hidden_size / 16). Not used for quant_type='fp8'.",
                "T2",
                OpSchema::Optional)
         .Input(4,
@@ -1562,7 +1569,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "(num_experts, hidden_size), or a 3D tensor with shape "
                "(num_experts, hidden_size, inter_size / block_size) when block_size is provided. "
                "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
-               "(num_experts, hidden_size, inter_size / 32). Not used for quant_type='fp8'.",
+               "(num_experts, hidden_size, inter_size / 32). "
+               "For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape "
+               "(num_experts, hidden_size, inter_size / 16). Not used for quant_type='fp8'.",
                "T2",
                OpSchema::Optional)
         .Input(7,
@@ -1620,13 +1629,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(15,
                "fc1_global_scale",
                "1D optional tensor with shape (num_experts,). "
-               "Per-expert global weight scale for FC1. Required when quant_type is 'fp4', 'fp8', or 'wfp4afp8'.",
+               "Per-expert global weight scale for FC1. Required when quant_type is 'fp4', 'nvfp4', 'fp8', or 'wfp4afp8'.",
                "T4",
                OpSchema::Optional)
         .Input(16,
                "fc2_global_scale",
                "1D optional tensor with shape (num_experts,). "
-               "Per-expert global weight scale for FC2. Required when quant_type is 'fp4', 'fp8', or 'wfp4afp8'.",
+               "Per-expert global weight scale for FC2. Required when quant_type is 'fp4', 'nvfp4', 'fp8', or 'wfp4afp8'.",
                "T4",
                OpSchema::Optional)
         .Input(17,
@@ -1656,9 +1665,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
         .TypeConstraint("T1", {"tensor(uint8)", "tensor(float8e4m3fn)"},
                         "Constrain quantized weight types. Integer and FP4 weights use uint8. FP8 weights use float8e4m3fn.")
-        .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)", "tensor(float8e8m0)"},
+        .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)", "tensor(float8e8m0)", "tensor(float8e4m3fn)"},
                         "Constrain scale types. Float tensors are used for integer quantization scales. "
-                        "Float8e8m0 tensors are used for MXFP block scales.")
+                        "Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.")
         .TypeConstraint("T4", {"tensor(float)"}, "Constrain FP4 global scale type to float32 tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
@@ -2996,6 +3005,117 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloat8, 1,
                                   updateOutputShape(ctx, 0, {first_input_shape.dim(transA ? 1 : 0), second_input_shape.dim(transB ? 0 : 1)});
                                 }));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MatMulBlockQuantizedFp4Weight, 1,
+    OpSchema()
+        .SetDoc(R"DOC(Weight-only NVFP4 (E2M1) matrix multiplication.
+
+The weight tensor B is stored as packed NVFP4: two E2M1 values per byte (low nibble first).
+The dequantized weight value is `e2m1(B) * weight_scale_2 * e4m3(weight_scale[n, k / block_size])`,
+where `weight_scale` holds one E4M3 scale per `block_size` (default 16) consecutive K values and
+`weight_scale_2` is a single global fp32 scale. The weight is dequantized to the activation type
+(FP16/BF16) and multiplied with the FP16/BF16 activation. This path is architecture independent and
+runs on Hopper (SM90) as well as Blackwell.
+
+The output columns `N` and the contraction dimension `K` are derived from the weight shape:
+`N = B.shape[0]` and `K = 2 * B.shape[1]`. `K` must therefore be even.)DOC")
+        .Attr("block_size", "Number of consecutive K values that share one E4M3 weight scale. Default 16.",
+              AttributeProto::INT, static_cast<int64_t>(16))
+        .Input(0, "A", "Row-major FP16/BF16 activation of shape [..., K].", "T")
+        .Input(1, "B",
+               "Packed NVFP4 weight of shape [N, K/2] stored as uint8 (two E2M1 values per byte, low nibble first).",
+               "T1")
+        .Input(2, "weight_scale",
+               "Per-block E4M3 weight scales of shape [N, ceil(K / block_size)] stored as raw uint8 bytes.", "T2")
+        .Input(3, "weight_scale_2", "Global fp32 weight scale (scalar).", "T3")
+        .Input(4, "input_scale",
+               "Optional global fp32 activation scale (scalar). Accepted for parity with quantized checkpoints; "
+               "it is a no-op on the weight-only FP16/BF16 path and is reserved for the native NVFP4 path on Blackwell.",
+               "T3", OpSchema::Optional)
+        .Input(5, "bias", "Optional bias of shape [N].", "T", OpSchema::Optional)
+        .Output(0, "Y", "Output of shape [..., N] in the activation type.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain activation, bias and output to FP16 or BF16.")
+        .TypeConstraint("T1", {"tensor(uint8)"}, "Constrain packed NVFP4 weight to uint8.")
+        .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain E4M3 weight scales to uint8.")
+        .TypeConstraint("T3", {"tensor(float)"}, "Constrain scalar scales to FP32.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (!hasNInputShapes(ctx, 2)) {
+            return;
+          }
+          const auto& a_shape = getInputShape(ctx, 0);
+          const auto& b_shape = getInputShape(ctx, 1);
+          if (a_shape.dim_size() < 1 || b_shape.dim_size() != 2) {
+            fail_shape_inference("A must have rank at least 1 and B must have rank 2.");
+          }
+          // B is packed two E2M1 values per byte, so the logical K is twice B's last dimension.
+          const auto& a_k = a_shape.dim(a_shape.dim_size() - 1);
+          if (a_k.has_dim_value() && b_shape.dim(1).has_dim_value() &&
+              a_k.dim_value() != 2 * b_shape.dim(1).dim_value()) {
+            fail_shape_inference("A and B have incompatible K dimensions.");
+          }
+          ONNX_NAMESPACE::TensorShapeProto output_shape;
+          for (int i = 0; i < a_shape.dim_size() - 1; ++i) {
+            *output_shape.add_dim() = a_shape.dim(i);
+          }
+          *output_shape.add_dim() = b_shape.dim(0);
+          updateOutputShape(ctx, 0, output_shape);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MatMulBlockQuantizedFp8Weight, 1,
+    OpSchema()
+        .SetDoc(R"DOC(Weight-only block-scaled FP8 (E4M3) matrix multiplication.
+
+The weight tensor B is FP8 E4M3 of shape [N, K] with one FP32 scale per `block_size` consecutive
+K values (`b_scale` of shape [N, ceil(K / block_size)]). The dequantized weight value is
+`fp8_e4m3(B[n, k]) * b_scale[n, k / block_size]`. The weight is dequantized to the activation
+type (FP16/BF16) and multiplied with the FP16/BF16 activation A. This path is architecture
+independent and runs on any CUDA architecture (SM80+).
+
+When the optional `a_scale` (a single fp32 scalar) is provided, the activation A is statically
+quantized to FP8 E4M3 and dequantized back (`a_deq = fp8_e4m3(A / a_scale) * a_scale`) before the
+matmul, realizing W8A8 activation numerics. When `a_scale` is omitted the activation is kept at
+full FP16/BF16 precision (weight-only W8A16).)DOC")
+        .Attr("block_size", "Number of consecutive K values that share one weight scale. Default 128.",
+              AttributeProto::INT, static_cast<int64_t>(128))
+        .Input(0, "A", "Row-major FP16/BF16 activation of shape [..., K].", "T")
+        .Input(1, "B", "Row-major FP8 E4M3 weight of shape [N, K].", "T1")
+        .Input(2, "b_scale", "Per-block FP32 weight scales of shape [N, ceil(K / block_size)].", "T2")
+        .Input(3, "a_scale",
+               "Optional global fp32 activation scale (scalar). When present, A is statically "
+               "quantized to FP8 E4M3 with this scale and dequantized back before the matmul (W8A8 "
+               "numerics); when absent, A stays in full FP16/BF16 precision.",
+               "T2", OpSchema::Optional)
+        .Input(4, "bias", "Optional bias of shape [N].", "T", OpSchema::Optional)
+        .Output(0, "Y", "Output of shape [..., N] in the activation type.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain activation, bias and output to FP16 or BF16.")
+        .TypeConstraint("T1", {"tensor(float8e4m3fn)"}, "Constrain weight to FP8 E4M3.")
+        .TypeConstraint("T2", {"tensor(float)"}, "Constrain scales to FP32.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (!hasNInputShapes(ctx, 2)) {
+            return;
+          }
+          const auto& a_shape = getInputShape(ctx, 0);
+          const auto& b_shape = getInputShape(ctx, 1);
+          if (a_shape.dim_size() < 1 || b_shape.dim_size() != 2) {
+            fail_shape_inference("A must have rank at least 1 and B must have rank 2.");
+          }
+          if (a_shape.dim(a_shape.dim_size() - 1).has_dim_value() && b_shape.dim(1).has_dim_value() &&
+              a_shape.dim(a_shape.dim_size() - 1).dim_value() != b_shape.dim(1).dim_value()) {
+            fail_shape_inference("A and B have incompatible K dimensions.");
+          }
+          ONNX_NAMESPACE::TensorShapeProto output_shape;
+          for (int i = 0; i < a_shape.dim_size() - 1; ++i) {
+            *output_shape.add_dim() = a_shape.dim(i);
+          }
+          *output_shape.add_dim() = b_shape.dim(0);
+          updateOutputShape(ctx, 0, output_shape);
+        }));
+
 static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
                                                 int64_t K,
                                                 int64_t N,
@@ -3549,7 +3669,7 @@ void RegisterContribSchemas() {
           "T",
           OpSchema::Variadic,
           false,
-          1,
+          0,
           OpSchema::NonDifferentiable)
       .Output(
           0,

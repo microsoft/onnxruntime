@@ -17,6 +17,7 @@ import random
 import re
 import sys
 import threading
+import typing
 import unittest
 from copy import deepcopy
 from dataclasses import dataclass
@@ -139,6 +140,16 @@ class GQAConfig:
     buffer_sequence_length: int = 0
     # Test-specific parameters
     local_window_size: int = -1
+    # Opt into the cache-relative (windowed) KV cache. Requires local_window_size > 0 and a
+    # past/present shared buffer whose capacity C is at least local_window_size. There is no
+    # requirement involving q_sequence_length: a multi-token step that would need more than C
+    # entries runs against a longer staging buffer, so prefill of any length works at C == W.
+    # Slack above local_window_size is worth allocating anyway: it lets the append point drift, so
+    # the CPU kernel compacts once every C - W + 1 steps instead of on every step.
+    sliding_window_cache: int = 0
+    # Length of the cos/sin caches. 0 means "same as buffer_sequence_length". A windowed KV cache is
+    # shorter than the sequence, so RoPE positions must be driven by a separately sized rotary cache.
+    rope_cache_length: int = 0
     rotary: bool = False
     rotary_interleaved: bool = False
     packed: bool = False
@@ -368,6 +379,8 @@ def create_gqa_node_and_io(
 
     qk_norm_attributes = {"qk_norm_epsilon": config.qk_norm_epsilon} if config.has_qk_norm else {}
 
+    windowed_cache_attributes = {"sliding_window_cache": 1} if config.sliding_window_cache else {}
+
     node = helper.make_node(
         op_type="GroupQueryAttention",
         inputs=inputs,
@@ -383,6 +396,7 @@ def create_gqa_node_and_io(
         qk_output=output_qk,
         **quantization_attributes,
         **qk_norm_attributes,
+        **windowed_cache_attributes,
         domain="com.microsoft",
     )
 
@@ -433,7 +447,7 @@ def create_gqa_node_and_io(
 
     if config.rotary:
         rotary_dim = (math.floor(config.head_size / 16) * 16) // 2
-        cache_seq_len = config.buffer_sequence_length
+        cache_seq_len = config.rope_cache_length or config.buffer_sequence_length
         graph_input.extend(
             [
                 helper.make_tensor_value_info("cos_cache", ort_type, [cache_seq_len, rotary_dim]),
@@ -2199,6 +2213,11 @@ def has_xqa():
     return has_cuda_device(80)
 
 
+def has_fp8_xqa():
+    # FP8 XQA kernels require Hopper (SM 8.9) or newer.
+    return has_cuda_device(89)
+
+
 rtol = {
     "fp16": 5e-3,
     "bf16": 5e-2,
@@ -2688,6 +2707,35 @@ class TestGQAAttentionBias(unittest.TestCase):
             atol=atol["fp16"],
         )
 
+    def test_windowed_cache_attention_bias_is_rejected(self):
+        config = GQAConfig(
+            batch_size=1,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=128,
+            buffer_sequence_length=129,
+            num_heads=8,
+            kv_num_heads=2,
+            head_size=64,
+            local_window_size=128,
+            share_buffer=True,
+            sliding_window_cache=1,
+            has_attention_bias=True,
+            attention_bias_per_head=True,
+        )
+
+        with self.assertRaisesRegex(Exception, "attention_bias with sliding_window_cache"):
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=True,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
+
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 class TestFlashGQAPaddingPrompt(unittest.TestCase):
@@ -3041,16 +3089,17 @@ def gqa_xqa_quantized_sliding_window_test_cases():
     # Quantized (INT8 / FP8) sliding-window (local attention) decode through the XQA kernel.
     #
     # The XQA decode path now supports local_window_size > 0 on the quantized KV-cache paths as
-    # well. Quantized XQA selection requires: decode (q_seq=1), a shared KV buffer, per-tensor
-    # k/v scales that are the same tensor, head_size in {64, 128, 256} and group_size in
-    # {4, 8, 16, 32}. Attention sinks are not supported with quantized KV cache, so no head_sink.
+    # well. Quantized XQA selection requires: decode (q_seq=1), a shared KV buffer, supported
+    # head_size and group_size combinations for the active kernel configuration. Attention sinks
+    # are covered separately by
+    # gqa_xqa_quantized_head_sink_test_cases(), so no head_sink here.
     #
     # Two window/past relationships are covered:
     #   past > window  -> the sliding mask drops the oldest keys (the new code path).
     #   past <= window -> the window spans the whole cache (parity with global attention).
     #   past + 1 == window -> the exact guard boundary (cacheSeqLen == slidingWinSize).
     kv_cache_types = ["int8"]
-    if has_fp8_kv_cache:
+    if has_fp8_kv_cache and has_fp8_xqa():
         kv_cache_types.append("fp8")
     for kv_cache_type in kv_cache_types:
         for torch_type, ort_type in [(torch.float16, TensorProto.FLOAT16), (torch.bfloat16, TensorProto.BFLOAT16)]:
@@ -3125,6 +3174,297 @@ class TestXQAQuantizedSlidingWindowParity(unittest.TestCase):
             )
 
         # XQA is enabled by default for fp16/bf16, so the quantized sliding-window path is selected.
+        self.assertEqual("XQA", get_sdpa_kernel_from_debug_info(run_parity_check))
+
+
+def gqa_xqa_quantized_head_sink_test_cases():
+    # Quantized (INT8 / FP8) decode with an attention sink (head_sink / smooth softmax) through
+    # the XQA kernel -- the GPT-OSS style configuration.
+    #
+    # The sink term is folded into the softmax row sum by the same kernel code used on the
+    # non-quantized path, and the KV dequant scale is applied to the QK scores before the row
+    # max/sum are computed, so the sink and the scores live in the same dequantized domain.
+    #
+    # Coverage:
+    #   local_window_size == -1 -> global attention with a sink.
+    #   local_window_size > 0 with past > window -> sliding window composed with a sink.
+    #   past_kv_sequence_length 512 also forces the multi-block (Flash Decoding) reduction, where
+    #   the sink is added to the merged row sum instead of the per-CTA row sum.
+    #   head_sink_as_initializer toggles the PrePack'd FP32 sink buffer vs. the per-launch
+    #   conversion scratch path.
+    kv_cache_types = ["int8"]
+    if has_fp8_kv_cache:
+        kv_cache_types.append("fp8")
+    for kv_cache_type in kv_cache_types:
+        for torch_type, ort_type in [(torch.float16, TensorProto.FLOAT16), (torch.bfloat16, TensorProto.BFLOAT16)]:
+            for head_size in [64, 128]:
+                for group_size in [4, 8]:
+                    for past_kv_sequence_length, local_window_size in [(4, -1), (512, -1), (512, 128)]:
+                        for head_sink_as_initializer in [False, True]:
+                            kv_num_heads = 4
+                            num_heads = kv_num_heads * group_size
+                            config = GQAConfig(
+                                batch_size=2,
+                                q_sequence_length=1,
+                                kv_sequence_length=1,
+                                num_heads=num_heads,
+                                kv_num_heads=kv_num_heads,
+                                head_size=head_size,
+                                past_kv_sequence_length=past_kv_sequence_length,
+                                buffer_sequence_length=past_kv_sequence_length + 128,
+                                local_window_size=local_window_size,
+                                rotary=True,
+                                rotary_interleaved=False,
+                                packed=False,
+                                share_buffer=True,
+                                has_head_sink=True,
+                                head_sink_as_initializer=head_sink_as_initializer,
+                                k_quant_type="PER_TENSOR",
+                                v_quant_type="PER_TENSOR",
+                                kv_cache_type=kv_cache_type,
+                                share_kv_scale=True,
+                            )
+                            type_str = "bf16" if torch_type == torch.bfloat16 else "fp16"
+                            win_str = f"past{past_kv_sequence_length}_win{local_window_size}"
+                            pack_str = "prepack" if head_sink_as_initializer else "runtime"
+                            name = f"{kv_cache_type}_{type_str}_g{group_size}_h{head_size}_{win_str}_{pack_str}"
+                            yield name, config, torch_type, ort_type
+
+
+@unittest.skipIf(not has_xqa(), "XQA is not available, skipping tests.")
+@unittest.skipIf(not has_quantized_kv_cache(), "Quantized KV Cache is not available, skipping tests.")
+class TestXQAQuantizedHeadSinkParity(unittest.TestCase):
+    """Verify the quantized (INT8/FP8) XQA attention-sink decode path matches the reference."""
+
+    def setUp(self):
+        # Force XQA on so the test is hermetic even if ORT_ENABLE_XQA=0 is set in the environment.
+        self._prev_enable_xqa = os.environ.get("ORT_ENABLE_XQA")
+        os.environ["ORT_ENABLE_XQA"] = "1"
+
+    def tearDown(self):
+        """Clear CUDA cache after each test to prevent memory corruption in batch runs."""
+        if self._prev_enable_xqa is None:
+            os.environ.pop("ORT_ENABLE_XQA", None)
+        else:
+            os.environ["ORT_ENABLE_XQA"] = self._prev_enable_xqa
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+        gc.collect()
+
+    @parameterized.expand(gqa_xqa_quantized_head_sink_test_cases())
+    def test_xqa_quantized_head_sink_parity(self, name, config, torch_type, ort_type):
+        """Test XQA quantized parity with an attention sink (head_sink) input."""
+        type_str = "bf16" if torch_type == torch.bfloat16 else "fp16"
+        rtol_key = f"{config.kv_cache_type}_{type_str}"
+
+        def run_parity_check():
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch_type,
+                ort_type=ort_type,
+                causal=True,
+                rtol=rtol[rtol_key],
+                atol=atol[rtol_key],
+                std=0.1,
+            )
+
+        # Guard against silently falling back: the quantized + sink combination must reach XQA.
+        self.assertEqual("XQA", get_sdpa_kernel_from_debug_info(run_parity_check))
+
+
+def gqa_xqa_separate_kv_scale_test_cases():
+    # Quantized (INT8 / FP8) decode where K and V use *different* per-tensor scales.
+    #
+    # The XQA kernel keeps the two scales apart: k_scale is folded into qkScale (applied to Q*K.T
+    # before the softmax row max/sum) and v_scale into voScale (applied to the P*V accumulator).
+    # These tests guard both the numerics and the dispatch decision -- XQA used to require the two
+    # scale inputs to be the same tensor, which silently disqualified any model that calibrates K
+    # and V independently.
+    #
+    # Coverage includes global attention, sliding window, the multi-block (Flash Decoding)
+    # reduction (past 512), and attention sinks, since each of those paths touches the rescales.
+    kv_cache_types = ["int8"]
+    if has_fp8_kv_cache:
+        kv_cache_types.append("fp8")
+    for kv_cache_type in kv_cache_types:
+        for torch_type, ort_type in [(torch.float16, TensorProto.FLOAT16), (torch.bfloat16, TensorProto.BFLOAT16)]:
+            for head_size in [64, 128, 256]:
+                for group_size in [4, 8]:
+                    for past_kv_sequence_length, local_window_size in [(4, -1), (512, -1), (512, 128)]:
+                        for has_head_sink in [False, True]:
+                            kv_num_heads = 4
+                            num_heads = kv_num_heads * group_size
+                            config = GQAConfig(
+                                batch_size=2,
+                                q_sequence_length=1,
+                                kv_sequence_length=1,
+                                num_heads=num_heads,
+                                kv_num_heads=kv_num_heads,
+                                head_size=head_size,
+                                past_kv_sequence_length=past_kv_sequence_length,
+                                buffer_sequence_length=past_kv_sequence_length + 128,
+                                local_window_size=local_window_size,
+                                rotary=True,
+                                rotary_interleaved=False,
+                                packed=False,
+                                share_buffer=True,
+                                has_head_sink=has_head_sink,
+                                head_sink_as_initializer=True,
+                                k_quant_type="PER_TENSOR",
+                                v_quant_type="PER_TENSOR",
+                                kv_cache_type=kv_cache_type,
+                                share_kv_scale=False,
+                            )
+                            type_str = "bf16" if torch_type == torch.bfloat16 else "fp16"
+                            win_str = f"past{past_kv_sequence_length}_win{local_window_size}"
+                            sink_str = "sink" if has_head_sink else "nosink"
+                            name = f"{kv_cache_type}_{type_str}_g{group_size}_h{head_size}_{win_str}_{sink_str}"
+                            yield name, config, torch_type, ort_type
+
+
+@unittest.skipIf(not has_xqa(), "XQA is not available, skipping tests.")
+@unittest.skipIf(not has_quantized_kv_cache(), "Quantized KV Cache is not available, skipping tests.")
+class TestXQASeparateKVScaleParity(unittest.TestCase):
+    """Verify XQA handles independent K and V dequantization scales."""
+
+    def setUp(self):
+        # Force XQA on so the test is hermetic even if ORT_ENABLE_XQA=0 is set in the environment.
+        self._prev_enable_xqa = os.environ.get("ORT_ENABLE_XQA")
+        os.environ["ORT_ENABLE_XQA"] = "1"
+
+    def tearDown(self):
+        """Clear CUDA cache after each test to prevent memory corruption in batch runs."""
+        if self._prev_enable_xqa is None:
+            os.environ.pop("ORT_ENABLE_XQA", None)
+        else:
+            os.environ["ORT_ENABLE_XQA"] = self._prev_enable_xqa
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+        gc.collect()
+
+    @parameterized.expand(gqa_xqa_separate_kv_scale_test_cases())
+    def test_xqa_separate_kv_scale_parity(self, name, config, torch_type, ort_type):
+        """Test XQA quantized parity when k_scale and v_scale are distinct tensors."""
+        type_str = "bf16" if torch_type == torch.bfloat16 else "fp16"
+        rtol_key = f"{config.kv_cache_type}_{type_str}"
+
+        def run_parity_check():
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch_type,
+                ort_type=ort_type,
+                causal=True,
+                rtol=rtol[rtol_key],
+                atol=atol[rtol_key],
+                std=0.1,
+            )
+
+        # Distinct k_scale/v_scale tensors must not disqualify the op from XQA.
+        self.assertEqual("XQA", get_sdpa_kernel_from_debug_info(run_parity_check))
+
+
+def gqa_xqa_per_channel_scale_test_cases():
+    # Quantized (INT8 / FP8) decode with PER_CHANNEL k/v scales on the XQA path.
+    #
+    # XQA only understands a scalar dequant scale, so per-channel scales are folded out of the
+    # kernel: k_scale into Q (the channel dim is contracted by Q*K.T) and v_scale into the
+    # attention output (the channel dim is free in P*V). Both foldings are exact because
+    # dequantization is linear, so these tests are ordinary parity tests -- but they also guard
+    # the dispatch decision, since per-channel used to fall back to
+    # "dequantize the whole cache, then run flash attention" on every decode step.
+    #
+    # Coverage: global attention, sliding window, the multi-block (Flash Decoding) reduction
+    # (past 512), attention sinks, and rotary on/off (rotary decides whether the folded Q lands in
+    # the RoPE scratch buffer or in a scratch buffer allocated only for the folding).
+    kv_cache_types = ["int8"]
+    if has_fp8_kv_cache:
+        kv_cache_types.append("fp8")
+    for kv_cache_type in kv_cache_types:
+        for torch_type, ort_type in [(torch.float16, TensorProto.FLOAT16), (torch.bfloat16, TensorProto.BFLOAT16)]:
+            for head_size in [64, 128]:
+                for group_size in [4, 8]:
+                    for past_kv_sequence_length, local_window_size in [(4, -1), (512, -1), (512, 128)]:
+                        for has_head_sink, rotary in [(False, True), (True, True), (True, False)]:
+                            kv_num_heads = 4
+                            num_heads = kv_num_heads * group_size
+                            config = GQAConfig(
+                                batch_size=2,
+                                q_sequence_length=1,
+                                kv_sequence_length=1,
+                                num_heads=num_heads,
+                                kv_num_heads=kv_num_heads,
+                                head_size=head_size,
+                                past_kv_sequence_length=past_kv_sequence_length,
+                                buffer_sequence_length=past_kv_sequence_length + 128,
+                                local_window_size=local_window_size,
+                                rotary=rotary,
+                                rotary_interleaved=False,
+                                packed=False,
+                                share_buffer=True,
+                                has_head_sink=has_head_sink,
+                                head_sink_as_initializer=True,
+                                k_quant_type="PER_CHANNEL",
+                                v_quant_type="PER_CHANNEL",
+                                kv_cache_type=kv_cache_type,
+                                share_kv_scale=False,
+                            )
+                            type_str = "bf16" if torch_type == torch.bfloat16 else "fp16"
+                            win_str = f"past{past_kv_sequence_length}_win{local_window_size}"
+                            sink_str = "sink" if has_head_sink else "nosink"
+                            rot_str = "rot" if rotary else "norot"
+                            name = (
+                                f"{kv_cache_type}_{type_str}_g{group_size}_h{head_size}_{win_str}_{sink_str}_{rot_str}"
+                            )
+                            yield name, config, torch_type, ort_type
+
+
+@unittest.skipIf(not has_xqa(), "XQA is not available, skipping tests.")
+@unittest.skipIf(not has_quantized_kv_cache(), "Quantized KV Cache is not available, skipping tests.")
+class TestXQAPerChannelScaleParity(unittest.TestCase):
+    """Verify XQA serves PER_CHANNEL quantized KV caches by folding the scales into Q / the output."""
+
+    def setUp(self):
+        # Force XQA on so the test is hermetic even if ORT_ENABLE_XQA=0 is set in the environment.
+        self._prev_enable_xqa = os.environ.get("ORT_ENABLE_XQA")
+        os.environ["ORT_ENABLE_XQA"] = "1"
+
+    def tearDown(self):
+        """Clear CUDA cache after each test to prevent memory corruption in batch runs."""
+        if self._prev_enable_xqa is None:
+            os.environ.pop("ORT_ENABLE_XQA", None)
+        else:
+            os.environ["ORT_ENABLE_XQA"] = self._prev_enable_xqa
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+        gc.collect()
+
+    @parameterized.expand(gqa_xqa_per_channel_scale_test_cases())
+    def test_xqa_per_channel_scale_parity(self, name, config, torch_type, ort_type):
+        """Test XQA quantized parity with per-channel k/v dequantization scales."""
+        type_str = "bf16" if torch_type == torch.bfloat16 else "fp16"
+        rtol_key = f"{config.kv_cache_type}_{type_str}"
+
+        def run_parity_check():
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch_type,
+                ort_type=ort_type,
+                causal=True,
+                rtol=rtol[rtol_key],
+                atol=atol[rtol_key],
+                std=0.1,
+            )
+
+        # Per-channel scales must reach XQA instead of the dequantize-the-whole-cache fallback.
         self.assertEqual("XQA", get_sdpa_kernel_from_debug_info(run_parity_check))
 
 
@@ -3529,6 +3869,370 @@ class TestGQARegressions(unittest.TestCase):
             is_prompt=False,
             local_window_size=128,
         )
+
+
+# #################################################################################################
+#  Windowed (cache-relative) KV cache: sliding_window_cache=1
+# #################################################################################################
+
+
+def _windowed_make_session(config: GQAConfig, ort_type, providers=None):
+    onnx_model_str = create_group_query_attention_graph_past(config, ort_type=ort_type, share_buffer=True)
+    if providers is None:
+        providers = [resolve_cuda_plugin_ep("CUDAExecutionProvider")]
+    return InferenceSession(onnx_model_str, SessionOptions(), providers=providers)
+
+
+def _windowed_run_steps(
+    base_config: GQAConfig,
+    buffer_sequence_length: int,
+    sliding_window_cache: int,
+    step_lengths,
+    q_all,
+    k_all,
+    v_all,
+    cos,
+    sin,
+    device,
+    ort_type,
+    torch_type,
+    head_sink=None,
+    k_scale=None,
+    v_scale=None,
+    providers=None,
+):
+    """Drives a GroupQueryAttention node token-chunk by token-chunk over a shared past/present buffer.
+
+    `q_all`/`k_all`/`v_all` hold the whole sequence in BSNH layout, so the same inputs can be replayed
+    against a full-length cache and against a windowed one. Returns the per-step `output` tensors.
+    """
+    batch_size = base_config.batch_size
+    kv_hidden_size = base_config.kv_num_heads * base_config.head_size
+    q_hidden_size = base_config.num_heads * base_config.head_size
+
+    cache_torch_type = TORCH_DTYPE_MAP[base_config.kv_cache_type] if base_config.kv_cache_type else torch_type
+    cache_ort_type = ONNX_TENSOR_TYPE_MAP[base_config.kv_cache_type] if base_config.kv_cache_type else ort_type
+    dense_head_size = base_config.head_size // 2 if base_config.kv_cache_type == "int4" else base_config.head_size
+    cache_shape = (batch_size, base_config.kv_num_heads, buffer_sequence_length, dense_head_size)
+    cache_k = torch.zeros(cache_shape, dtype=cache_torch_type, device=device)
+    cache_v = torch.zeros(cache_shape, dtype=cache_torch_type, device=device)
+
+    sessions = {}
+    outputs = []
+    past_length = 0
+
+    for step_length in step_lengths:
+        config = deepcopy(base_config)
+        config.q_sequence_length = step_length
+        config.kv_sequence_length = step_length
+        config.past_kv_sequence_length = past_length
+        config.buffer_sequence_length = buffer_sequence_length
+        config.sliding_window_cache = sliding_window_cache
+
+        if step_length not in sessions:
+            sessions[step_length] = _windowed_make_session(config, ort_type, providers=providers)
+        session = sessions[step_length]
+
+        io_binding = session.io_binding()
+
+        q = q_all[:, past_length : past_length + step_length].reshape(batch_size, step_length, q_hidden_size)
+        k = k_all[:, past_length : past_length + step_length].reshape(batch_size, step_length, kv_hidden_size)
+        v = v_all[:, past_length : past_length + step_length].reshape(batch_size, step_length, kv_hidden_size)
+        # Keep references: io_binding only records data pointers, so temporaries would be freed.
+        q, k, v = q.contiguous(), k.contiguous(), v.contiguous()
+        bind_tensor(io_binding, "query", q, device, ort_type)
+        bind_tensor(io_binding, "key", k, device, ort_type)
+        bind_tensor(io_binding, "value", v, device, ort_type)
+        bind_tensor(io_binding, "past_key", cache_k, device, cache_ort_type)
+        bind_tensor(io_binding, "past_value", cache_v, device, cache_ort_type)
+
+        total_length = past_length + step_length
+        seqlens_k = torch.full((batch_size,), total_length - 1, dtype=torch.int32, device=device)
+        bind_tensor(io_binding, "seqlens_k", seqlens_k, device, TensorProto.INT32)
+        cpu_device = torch.device("cpu")
+        # Keep a reference: io_binding only records the data pointer, so a temporary would be freed.
+        total_sequence_length = torch.tensor([total_length], dtype=torch.int32, device=cpu_device)
+        bind_tensor(
+            io_binding,
+            "total_sequence_length",
+            total_sequence_length,
+            cpu_device,
+            TensorProto.INT32,
+        )
+
+        if cos is not None:
+            bind_tensor(io_binding, "cos_cache", cos, device, ort_type)
+            bind_tensor(io_binding, "sin_cache", sin, device, ort_type)
+
+        if head_sink is not None:
+            bind_tensor(io_binding, "head_sink", head_sink, device, ort_type)
+
+        if k_scale is not None:
+            bind_tensor(io_binding, "k_scale", k_scale, device, TensorProto.FLOAT)
+            bind_tensor(io_binding, "v_scale", v_scale, device, TensorProto.FLOAT)
+
+        out = torch.zeros((batch_size, step_length, q_hidden_size), dtype=torch_type, device=device)
+        bind_output_tensor(io_binding, "output", out, device, ort_type)
+        io_binding.bind_output("present_key", device, 0, cache_ort_type, tuple(cache_k.shape), cache_k.data_ptr())
+        io_binding.bind_output("present_value", device, 0, cache_ort_type, tuple(cache_v.shape), cache_v.data_ptr())
+
+        io_binding.synchronize_inputs()
+        session.run_with_iobinding(io_binding)
+        io_binding.synchronize_outputs()
+
+        outputs.append(out.clone())
+        past_length = total_length
+
+    return outputs
+
+
+class TestGQAWindowedKvCache(unittest.TestCase):
+    """`sliding_window_cache=1` stores only the most recent `capacity` positions of a sliding-window
+    layer, in cache-relative coordinates. Because RoPE stays absolute and the retained positions are
+    exactly those the window can attend to, results must match a full-length cache."""
+
+    max_length = 1024
+    window_size = 128
+    slack = 256
+
+    device = "cuda"
+    torch_type = torch.float16
+    ort_type = TensorProto.FLOAT16
+    providers = None  # None -> resolve the CUDA (plugin) EP.
+
+    def _require_ep(self):
+        if not has_flash_attention():
+            self.skipTest("Flash Attention is not available, skipping test.")
+
+    def _base_config(self, **overrides):
+        config = GQAConfig(
+            batch_size=2,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            num_heads=8,
+            kv_num_heads=2,
+            head_size=64,
+            local_window_size=self.window_size,
+            share_buffer=True,
+            rope_cache_length=self.max_length,
+        )
+        for name, value in overrides.items():
+            setattr(config, name, value)
+        return config
+
+    def _check_parity(self, base_config, step_lengths, rtol=1e-3, atol=1e-3, buffer_sequence_length=None):
+        self._require_ep()
+
+        device = self.device
+        torch_type = self.torch_type
+        ort_type = self.ort_type
+        capacity = buffer_sequence_length or min(self.max_length, self.window_size + self.slack)
+        total_length = sum(step_lengths)
+        self.assertLessEqual(total_length, self.max_length)
+
+        torch.manual_seed(0)
+        shape = (base_config.batch_size, total_length, base_config.num_heads, base_config.head_size)
+        kv_shape = (base_config.batch_size, total_length, base_config.kv_num_heads, base_config.head_size)
+        q_all = torch.randn(shape, device=device, dtype=torch_type) * 0.2
+        k_all = torch.randn(kv_shape, device=device, dtype=torch_type) * 0.2
+        v_all = torch.randn(kv_shape, device=device, dtype=torch_type) * 0.2
+
+        cos, sin = None, None
+        if base_config.rotary:
+            rotary_dim = math.floor(base_config.head_size / 16) * 16
+            angle = torch.rand(self.max_length, rotary_dim // 2, device=device) * 2 * math.pi
+            cos = torch.cos(angle).to(dtype=torch_type)
+            sin = torch.sin(angle).to(dtype=torch_type)
+
+        head_sink = None
+        if base_config.has_head_sink:
+            head_sink = torch.rand(base_config.num_heads, dtype=torch_type, device=device)
+
+        k_scale, v_scale = None, None
+        if base_config.k_quant_type != "NONE":
+            k_scale, v_scale = get_static_scale(base_config, device, torch_type, 0.2)
+            k_scale = k_scale.to(torch.float32).contiguous()
+            v_scale = v_scale.to(torch.float32).contiguous()
+
+        common = {
+            "step_lengths": step_lengths,
+            "q_all": q_all,
+            "k_all": k_all,
+            "v_all": v_all,
+            "cos": cos,
+            "sin": sin,
+            "device": device,
+            "ort_type": ort_type,
+            "torch_type": torch_type,
+            "head_sink": head_sink,
+            "k_scale": k_scale,
+            "v_scale": v_scale,
+            "providers": self.providers,
+        }
+        reference = _windowed_run_steps(base_config, self.max_length, 0, **common)
+        if base_config.k_quant_type != "NONE" and any(torch.isnan(step).any() for step in reference):
+            # A quantized KV cache is only read correctly by the flash-attention prefill kernels.
+            # Builds without them route the first prompt through memory-efficient attention, which
+            # reinterprets the quantized cache as unquantized and produces NaN for both the
+            # windowed and the full-length run, so there is nothing to compare.
+            self.skipTest("quantized prefill needs a build with flash attention enabled")
+        windowed = _windowed_run_steps(base_config, capacity, 1, **common)
+
+        for step_index, (expected, actual) in enumerate(zip(reference, windowed, strict=True)):
+            numpy.testing.assert_allclose(
+                actual.float().cpu().numpy(),
+                expected.float().cpu().numpy(),
+                rtol=rtol,
+                atol=atol,
+                err_msg=f"mismatch at step {step_index} (step_lengths={step_lengths})",
+            )
+
+    def test_prompt_shorter_than_capacity_then_decode(self):
+        # Prompt fits in the cache; eviction only starts once the window slides past the capacity.
+        steps = [64, *([1] * 400)]
+        self._check_parity(self._base_config(), steps)
+
+    def test_prompt_longer_than_capacity_then_decode(self):
+        # Prompt exceeds the capacity, so the first call must attend over the full prompt while
+        # seeding the cache with only the tail. Exercises the windowed first-prompt path.
+        steps = [512, *([1] * 200)]
+        self._check_parity(self._base_config(), steps)
+
+    def test_chunked_prefill(self):
+        # Chunks of 128 fit in the capacity (128 + 256) without staging.
+        # GroupQueryAttention only allows a subsequent prompt (1 < S < T) at batch_size 1.
+        steps = [128] * 6 + [1] * 32
+        self._check_parity(self._base_config(batch_size=1), steps)
+
+    def test_eviction_boundaries(self):
+        # Land exactly on capacity - 1, capacity and capacity + 1 with single-token steps.
+        capacity = self.window_size + self.slack
+        steps = [capacity - 2, *([1] * 8)]
+        self._check_parity(self._base_config(), steps)
+
+    def test_with_rotary(self):
+        # RoPE positions stay absolute even though the cache is indexed relative to its start.
+        steps = [64, *([1] * 400)]
+        self._check_parity(self._base_config(rotary=True), steps)
+
+    def test_gpt_oss_shape_with_head_sink(self):
+        # gpt-oss: attention sinks, RoPE, and alternating 128-token sliding-window layers.
+        steps = [512, *([1] * 200)]
+        self._check_parity(
+            self._base_config(num_heads=8, kv_num_heads=2, head_size=64, rotary=True, has_head_sink=True), steps
+        )
+
+    @unittest.skipIf(not has_quantized_kv_cache(), "Quantized KV cache is not available, skipping test.")
+    def test_int8_quantized_cache(self):
+        # gpt-oss stores the cache as PER_CHANNEL int8; eviction and staging must move the
+        # quantized rows around without dequantizing them.
+        steps = [512, *([1] * 200)]
+        self._check_parity(
+            self._base_config(
+                num_heads=8,
+                kv_num_heads=2,
+                head_size=64,
+                rotary=True,
+                has_head_sink=True,
+                kv_cache_type="int8",
+                k_quant_type="PER_CHANNEL",
+                v_quant_type="PER_CHANNEL",
+                kv_cache_bit_width=8,
+            ),
+            steps,
+            rtol=5e-2,
+            atol=1e-1,
+        )
+
+    def test_batch_one_packed_head_layout(self):
+        steps = [200, *([1] * 300)]
+        self._check_parity(self._base_config(batch_size=1, num_heads=4, kv_num_heads=4, head_size=128), steps)
+
+    def test_capacity_equal_to_window_size(self):
+        # C == W leaves no slack, so a multi-token step needs more entries than the cache can hold.
+        # The op stages such a step, so this must still match a full cache exactly.
+        capacity = self.window_size
+        self._check_parity(
+            self._base_config(batch_size=1), step_lengths=[32, 16, 1, 1], buffer_sequence_length=capacity
+        )
+
+    def test_small_slack_many_compactions(self):
+        # C == W + 8 reclaims only 9 rows per compaction, so a long decode run crosses the
+        # compaction boundary dozens of times instead of once or twice.
+        self._check_parity(
+            self._base_config(), step_lengths=[64, *([1] * 400)], buffer_sequence_length=self.window_size + 8
+        )
+
+    def test_chunked_prefill_small_slack(self):
+        # 32-token chunks onto a cache with 9 free rows: once the cache has filled, every chunk
+        # drops rows its own first query still reads, so it must stage from a drifted append point.
+        # GroupQueryAttention only allows a subsequent prompt (1 < S < T) at batch_size 1.
+        self._check_parity(
+            self._base_config(batch_size=1),
+            step_lengths=[32] * 10 + [1] * 20,
+            buffer_sequence_length=self.window_size + 8,
+        )
+
+    def test_capacity_too_small_is_rejected(self):
+        self._require_ep()
+
+        device = self.device
+        torch_type = self.torch_type
+        ort_type = self.ort_type
+        # A cache shorter than the attention window can never hold everything the window covers.
+        capacity = self.window_size - 1
+        config = self._base_config(rope_cache_length=capacity)
+        with self.assertRaisesRegex(Exception, "sliding_window_cache"):
+            _windowed_run_steps(
+                config,
+                capacity,
+                1,
+                step_lengths=[32, 16],
+                q_all=torch.zeros(
+                    (config.batch_size, 48, config.num_heads, config.head_size), device=device, dtype=torch_type
+                ),
+                k_all=torch.zeros(
+                    (config.batch_size, 48, config.kv_num_heads, config.head_size), device=device, dtype=torch_type
+                ),
+                v_all=torch.zeros(
+                    (config.batch_size, 48, config.kv_num_heads, config.head_size), device=device, dtype=torch_type
+                ),
+                cos=None,
+                sin=None,
+                device=device,
+                ort_type=ort_type,
+                torch_type=torch_type,
+                providers=self.providers,
+            )
+
+    def test_requires_local_window_size(self):
+        self._require_ep()
+
+        config = self._base_config(
+            local_window_size=-1,
+            sliding_window_cache=1,
+            buffer_sequence_length=self.window_size + self.slack,
+            rope_cache_length=self.window_size + self.slack,
+        )
+        with self.assertRaisesRegex(Exception, "sliding_window_cache"):
+            _windowed_make_session(config, self.ort_type, providers=self.providers)
+
+
+class TestGQAWindowedKvCacheCpu(TestGQAWindowedKvCache):
+    """Same parity contract as the CUDA suite, run against the CPU GroupQueryAttention kernel."""
+
+    device = "cpu"
+    torch_type = torch.float32
+    ort_type = TensorProto.FLOAT
+    providers: typing.ClassVar[list[str]] = ["CPUExecutionProvider"]
+
+    def _require_ep(self):
+        pass
+
+    def _base_config(self, **overrides):
+        # The float32 CPU kernel keeps an unquantized float32 cache by default.
+        overrides.setdefault("kv_cache_type", "float32")
+        return super()._base_config(**overrides)
 
 
 if __name__ == "__main__":
