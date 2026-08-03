@@ -603,16 +603,34 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
 
   // Split-KV workspaces for the decode kernel: one partial (accumulator, max, denominator) per
   // split. Splitting only pays off when there are too few (token, head) pairs to fill the GPU.
+  //
+  // The latent (MLA) kernel needs the same treatment and needs it more: it is the only backend
+  // DeepSeek-V4-Flash decode reaches, and with 64 heads sharded over 8 ranks a single-token step
+  // launches 8 CTAs against ~132 SMs. Its accumulator is v_head_size wide, not head_size, and its
+  // KV extent is the selection length when 'kv_indices' is supplied.
   int num_splits = 1;
   IAllocatorUniquePtr<void> decode_partial_out_buffer;
   IAllocatorUniquePtr<void> decode_partial_max_buffer;
   IAllocatorUniquePtr<void> decode_partial_sum_buffer;
-  if (use_paged_decode && !use_xqa_decode) {
-    num_splits = ComputePagedDecodeSplits(parameters.token_count, parameters.num_heads, max_kv_len,
-                                          device_prop.multiProcessorCount);
+  if (use_latent_attention || (use_paged_decode && !use_xqa_decode)) {
+    // The latent split is sized from replay-invariant bounds, never from a device read: the
+    // selection length when 'kv_indices' is supplied, the block-table capacity otherwise. An
+    // over-estimate only costs splits that publish a neutral partial and exit.
+    const int split_kv_len = !use_latent_attention   ? max_kv_len
+                             : kv_indices != nullptr ? parameters.max_selected_kv
+                                                     : max_kv_len_bound;
+    const int accum_size = use_latent_attention ? parameters.v_head_size : parameters.head_size;
+    num_splits = use_latent_attention
+                     ? ComputePagedLatentSplits(parameters.token_count, parameters.num_heads, split_kv_len,
+                                                device_prop.multiProcessorCount)
+                     : ComputePagedDecodeSplits(parameters.token_count, parameters.num_heads, split_kv_len,
+                                                device_prop.multiProcessorCount);
+    // Allocated regardless of num_splits: PagedDecodeSplitKV publishes its partials and
+    // PagedDecodeReduce runs even for a single split, so the buffers are not optional there. The
+    // latent kernel writes straight to the output when it is not split, and simply ignores them.
     const size_t rows = static_cast<size_t>(num_splits) * parameters.token_count * parameters.num_heads;
     decode_partial_out_buffer =
-        GetScratchBuffer<void>(sizeof(float) * rows * parameters.head_size, GetComputeStream(context));
+        GetScratchBuffer<void>(sizeof(float) * rows * accum_size, GetComputeStream(context));
     decode_partial_max_buffer = GetScratchBuffer<void>(sizeof(float) * rows, GetComputeStream(context));
     decode_partial_sum_buffer = GetScratchBuffer<void>(sizeof(float) * rows, GetComputeStream(context));
   }
@@ -716,7 +734,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     data.total_kv_tokens = total_kv_tokens;
     data.max_kv_len = max_kv_len;
   }
-  if (use_paged_decode && !use_xqa_decode) {
+  if (decode_partial_out_buffer != nullptr) {
     data.decode_partial_out = reinterpret_cast<float*>(decode_partial_out_buffer.get());
     data.decode_partial_max = reinterpret_cast<float*>(decode_partial_max_buffer.get());
     data.decode_partial_sum = reinterpret_cast<float*>(decode_partial_sum_buffer.get());
