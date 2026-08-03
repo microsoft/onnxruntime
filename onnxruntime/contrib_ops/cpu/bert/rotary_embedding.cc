@@ -176,7 +176,7 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
       // Build the negated row inside the per-thread scratch buffer.
       if (negate_sin) {
         for (int d = 0; d < half_rotary_emb_dim; ++d) {
-          neg_sin_row[d] = -sin_data[d];
+          neg_sin_row[d] = T(-static_cast<float>(sin_data[d]));
         }
         sin_data = neg_sin_row;
       }

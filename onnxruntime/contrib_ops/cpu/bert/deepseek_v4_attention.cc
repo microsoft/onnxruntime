@@ -16,7 +16,7 @@
 namespace onnxruntime {
 namespace contrib {
 
-namespace {
+namespace deepseek_v4_attention_impl {
 
 enum class DeepSeekV4AttentionMode {
   kSliding,
@@ -1066,6 +1066,8 @@ class DeepSeekV4Attention final : public OpKernel {
   DeepSeekV4AttentionMode attention_mode_{};
 };
 
+}  // namespace deepseek_v4_attention_impl
+
 #define REGISTER_KERNEL_TYPED(T)                                            \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                            \
       DeepSeekV4Attention,                                                  \
@@ -1077,12 +1079,10 @@ class DeepSeekV4Attention final : public OpKernel {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())            \
           .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())      \
           .TypeConstraint("P", DataTypeImpl::GetTensorType<int64_t>()),     \
-      DeepSeekV4Attention<T>);
+      deepseek_v4_attention_impl::DeepSeekV4Attention<T>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
-
-}  // namespace
 
 }  // namespace contrib
 }  // namespace onnxruntime

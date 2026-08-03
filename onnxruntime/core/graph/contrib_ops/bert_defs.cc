@@ -469,7 +469,7 @@ constexpr int kDeepSeekV4PresentKeyOutput = 1;
 constexpr int kDeepSeekV4PresentValueOutput = 2;
 
 void PropagateOutputTypeAndShapeFromInput(ONNX_NAMESPACE::InferenceContext& ctx, int input_index, int output_index) {
-  if (ctx.getNumOutputs() <= output_index) {
+  if (ctx.getNumOutputs() <= static_cast<size_t>(output_index)) {
     return;
   }
 

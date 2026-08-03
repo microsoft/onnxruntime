@@ -74,6 +74,7 @@ std::vector<std::unique_ptr<IExecutionProvider>> CpuEpOnly() {
   return execution_providers;
 }
 
+#ifdef USE_CUDA
 // Helper to add inputs as MLFloat16 so the CUDA EP (which registers MLFloat16) accepts them.
 void AddBaseDeepSeekV4InputsHalf(OpTester& tester) {
   auto make_half = [](int n, float val) {
@@ -124,6 +125,7 @@ void AddBaseDeepSeekV4AttributesHalf(OpTester& tester) {
   tester.AddAttribute<float>("rms_norm_epsilon", 1e-6f);
   tester.AddAttribute<std::string>("attention_mode", "sliding");
 }
+#endif  // USE_CUDA
 
 }  // namespace
 
@@ -170,6 +172,87 @@ TEST(DeepSeekV4AttentionTest, SlidingModeRejectsCompressorInputs) {
   tester.Run(OpTester::ExpectResult::kExpectFailure,
              "compressor inputs are not allowed",
              {}, nullptr, &execution_providers);
+}
+
+TEST(DeepSeekV4AttentionTest, HcaModeUpdatesCompressorState) {
+  OpTester tester("DeepSeekV4Attention", 1, onnxruntime::kMSDomain);
+  AddBaseDeepSeekV4Attributes(tester);
+  tester.AddAttribute<std::string>("attention_mode", "hca");
+  tester.AddAttribute<float>("compress_rate", 1.0f);
+  AddBaseDeepSeekV4Inputs(tester);
+
+  tester.AddInput<float>("hca_kv_weight", {kHiddenSize, kHeadSize}, std::vector<float>(16, 0.0f));
+  tester.AddInput<float>("hca_gate_weight", {kHiddenSize, kHeadSize}, std::vector<float>(16, 0.0f));
+  tester.AddInput<float>("hca_position_bias", {1, kHeadSize}, std::vector<float>(4, 0.0f));
+  tester.AddInput<float>("hca_kv_norm_weight", {kHeadSize}, std::vector<float>(4, 1.0f));
+  tester.AddInput<float>("past_hca_pending_kv", {kBatchSize, 0, kHeadSize}, {});
+  tester.AddInput<float>("past_hca_pending_gate", {kBatchSize, 0, kHeadSize}, {});
+  tester.AddInput<float>("past_hca_entries", {kBatchSize, 1, 0, kHeadSize}, {});
+
+  tester.AddOutput<float>("output", {1, 1, 4}, std::vector<float>(4, 0.0f));
+  tester.AddOutput<float>("present_key", {1, 1, 1, 4}, std::vector<float>(4, 0.0f));
+  tester.AddOutput<float>("present_value", {1, 1, 1, 4}, std::vector<float>(4, 0.0f));
+  tester.AddOutput<float>("present_hca_pending_kv", {1, 0, 4}, {});
+  tester.AddOutput<float>("present_hca_pending_gate", {1, 0, 4}, {});
+  tester.AddOutput<float>("present_hca_entries", {1, 1, 1, 4}, std::vector<float>(4, 0.0f));
+
+  auto execution_providers = CpuEpOnly();
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(DeepSeekV4AttentionTest, CsaModeUpdatesCompressorState) {
+  OpTester tester("DeepSeekV4Attention", 1, onnxruntime::kMSDomain);
+  AddBaseDeepSeekV4Attributes(tester);
+  tester.AddAttribute<std::string>("attention_mode", "csa");
+  tester.AddAttribute<float>("compress_rate", 1.0f);
+  tester.AddAttribute<int64_t>("index_topk", 1);
+  tester.AddAttribute<int64_t>("index_num_heads", 1);
+  tester.AddAttribute<int64_t>("index_head_dim", kHeadSize);
+  AddBaseDeepSeekV4Inputs(tester);
+  for (int i = 17; i < 24; ++i) {
+    tester.AddOptionalInputEdge<float>();
+  }
+
+  tester.AddInput<float>("csa_kv_weight", {kHiddenSize, 2 * kHeadSize}, std::vector<float>(32, 0.0f));
+  tester.AddInput<float>("csa_gate_weight", {kHiddenSize, 2 * kHeadSize}, std::vector<float>(32, 0.0f));
+  tester.AddInput<float>("csa_position_bias", {1, 2 * kHeadSize}, std::vector<float>(8, 0.0f));
+  tester.AddInput<float>("csa_kv_norm_weight", {kHeadSize}, std::vector<float>(4, 1.0f));
+  tester.AddInput<float>("index_kv_weight", {kHiddenSize, 2 * kHeadSize}, std::vector<float>(32, 0.0f));
+  tester.AddInput<float>("index_gate_weight", {kHiddenSize, 2 * kHeadSize}, std::vector<float>(32, 0.0f));
+  tester.AddInput<float>("index_position_bias", {1, 2 * kHeadSize}, std::vector<float>(8, 0.0f));
+  tester.AddInput<float>("index_kv_norm_weight", {kHeadSize}, std::vector<float>(4, 1.0f));
+  tester.AddInput<float>("index_q_b_weight", {kQLorRank, kHeadSize}, std::vector<float>(8, 0.0f));
+  tester.AddInput<float>("index_weights_proj_weight", {kHiddenSize, 1}, std::vector<float>(4, 0.0f));
+  tester.AddInput<float>("past_csa_pending_kv", {kBatchSize, 0, 2 * kHeadSize}, {});
+  tester.AddInput<float>("past_csa_pending_gate", {kBatchSize, 0, 2 * kHeadSize}, {});
+  tester.AddInput<float>("past_csa_entries", {kBatchSize, 1, 0, kHeadSize}, {});
+  tester.AddInput<float>("past_csa_overlap_kv", {kBatchSize, 1, kHeadSize}, std::vector<float>(4, 0.0f));
+  tester.AddInput<float>("past_csa_overlap_gate", {kBatchSize, 1, kHeadSize}, std::vector<float>(4, 0.0f));
+  tester.AddInput<float>("past_index_pending_kv", {kBatchSize, 0, 2 * kHeadSize}, {});
+  tester.AddInput<float>("past_index_pending_gate", {kBatchSize, 0, 2 * kHeadSize}, {});
+  tester.AddInput<float>("past_index_entries", {kBatchSize, 1, 0, kHeadSize}, {});
+  tester.AddInput<float>("past_index_overlap_kv", {kBatchSize, 1, kHeadSize}, std::vector<float>(4, 0.0f));
+  tester.AddInput<float>("past_index_overlap_gate", {kBatchSize, 1, kHeadSize}, std::vector<float>(4, 0.0f));
+
+  tester.AddOutput<float>("output", {1, 1, 4}, std::vector<float>(4, 0.0f));
+  tester.AddOutput<float>("present_key", {1, 1, 1, 4}, std::vector<float>(4, 0.0f));
+  tester.AddOutput<float>("present_value", {1, 1, 1, 4}, std::vector<float>(4, 0.0f));
+  tester.AddOptionalOutputEdge<float>();
+  tester.AddOptionalOutputEdge<float>();
+  tester.AddOptionalOutputEdge<float>();
+  tester.AddOutput<float>("present_csa_pending_kv", {1, 0, 8}, {});
+  tester.AddOutput<float>("present_csa_pending_gate", {1, 0, 8}, {});
+  tester.AddOutput<float>("present_csa_entries", {1, 1, 1, 4}, std::vector<float>(4, 0.0f));
+  tester.AddOutput<float>("present_csa_overlap_kv", {1, 1, 4}, std::vector<float>(4, 0.0f));
+  tester.AddOutput<float>("present_csa_overlap_gate", {1, 1, 4}, std::vector<float>(4, 0.0f));
+  tester.AddOutput<float>("present_index_pending_kv", {1, 0, 8}, {});
+  tester.AddOutput<float>("present_index_pending_gate", {1, 0, 8}, {});
+  tester.AddOutput<float>("present_index_entries", {1, 1, 0, 4}, {});
+  tester.AddOutput<float>("present_index_overlap_kv", {1, 1, 4}, std::vector<float>(4, 0.0f));
+  tester.AddOutput<float>("present_index_overlap_gate", {1, 1, 4}, std::vector<float>(4, 0.0f));
+
+  auto execution_providers = CpuEpOnly();
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 #ifdef USE_CUDA
