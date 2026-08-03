@@ -60,10 +60,11 @@ Status LpNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   const char* reduce_op = (p == 1) ? "reduceL1" : "reduceL2";
   emscripten::val norm = wnn_builder.call<emscripten::val>(reduce_op, input, reduce_options);
 
-  // The epsilon must be representable in the input's data type. 1e-12 underflows to 0 in float16
-  // (smallest subnormal ~6e-8), which would defeat the divide-by-zero guard, so use a larger value
-  // for float16. float32 has enough exponent range for 1e-12.
-  const float eps = (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) ? 1e-6f : 1e-12f;
+  // The epsilon must be representable in the input's data type. Use the smallest positive normalized
+  // value for each type to avoid divide-by-zero while preserving maximum numeric range.
+  const float eps = (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)
+                        ? std::numeric_limits<MLFloat16>::min().ToFloat()
+                        : std::numeric_limits<float>::min();
   emscripten::val eps_constant = model_builder.CreateOrGetConstant<float>(input_type, eps);
   emscripten::val common_options = emscripten::val::object();
   common_options.set("label", node.Name() + "_max");
