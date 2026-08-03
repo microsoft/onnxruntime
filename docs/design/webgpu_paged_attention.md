@@ -192,7 +192,7 @@ lift-and-shift plan is spelled out under §5 Phase 2 "Graph-capture support".
 
 ## 5. Phased delivery plan
 
-### Phase 0 — Skeleton (this PR)
+### Phase 0 — Skeleton (early commits in this PR)
 
 - Add `contrib_ops/webgpu/bert/paged_attention.{h,cc}` with the kernel class
   and `ComputeInternal` returning `NOT_IMPLEMENTED`. Same shape as the CPU
@@ -204,9 +204,11 @@ lift-and-shift plan is spelled out under §5 Phase 2 "Graph-capture support".
   wire it in). The helper is pure host code; no CUDA deps.
 
 **Ships:** a kernel that says "not implemented" gracefully rather than
-"missing." Unblocks the file layout for Phase 1.
+"missing." Unblocks the file layout for Phase 1. Included in this PR only as
+the first two commits of the branch history; the final state delivered by
+this PR is Phase 1 below.
 
-### Phase 1 — Functional decode + gather-then-flash prefill (unquantized, SEPARATE)
+### Phase 1 — Functional decode + gather-then-flash prefill (unquantized, SEPARATE) — this PR
 
 1. `PagedAttentionValidateInputs` — reuse the CUDA helper. Refactor its
    location to `contrib_ops/cpu/bert/paged_attention_helper.h` (or a similar
