@@ -3544,12 +3544,12 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       }
 #endif
 
-      // Level-1 generic workspace estimation: if max shape overrides are available, resolve
-      // input shapes for this node. This enables future per-kernel estimation functions to
-      // compute workspace sizes from shapes at partition time.
-      const auto& shape_overrides = resource_accountant->GetMaxShapeOverrides();
-      if (!shape_overrides.empty()) {
-        auto resolved_shapes = ResolveNodeInputShapes(*node, graph, shape_overrides);
+      // Level-1 generic workspace estimation: use shapes propagated from maximum graph inputs.
+      // This enables future per-kernel estimation functions to compute workspace sizes at
+      // partition time without changing the executable graph's shape metadata.
+      const auto& inferred_shapes = resource_accountant->GetMaxShapeInferenceResult();
+      if (!inferred_shapes.Empty()) {
+        auto resolved_shapes = ResolveNodeInputShapes(*node, inferred_shapes);
         if (resolved_shapes.has_value()) {
           // TODO: Look up workspace estimation function from KernelCreateInfo when available.
           // For now, log that shapes were resolved successfully for this node.

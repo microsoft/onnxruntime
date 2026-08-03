@@ -3,14 +3,33 @@
 
 #pragma once
 
+#include <optional>
+#include <string>
 #include <string_view>
 
+#include "core/common/inlined_containers.h"
 #include "core/common/status.h"
-#include "core/framework/resource_accountant.h"  // for MaxShapeOverrideMap
+#include "core/framework/tensor_shape.h"
 
 namespace onnxruntime {
 
-/// Parses the session.max_shape_override config string into a name→shape map.
+/// Maximum input shapes supplied by the user for estimation.
+using MaxShapeOverrideMap = InlinedHashMap<std::string, TensorShape>;
+
+/// Concrete shapes inferred from a graph after applying maximum input shapes to a
+/// separate shadow graph. The executable graph is never modified.
+class MaxShapeInferenceResult {
+ public:
+  const TensorShape* GetShape(const void* graph_identity, std::string_view node_arg_name) const;
+  bool Empty() const noexcept { return graph_shapes_.empty(); }
+
+ private:
+  friend class MaxShapeInferenceBuilder;
+  using ShapeMap = InlinedHashMap<std::string, TensorShape>;
+  InlinedHashMap<const void*, ShapeMap> graph_shapes_;
+};
+
+/// Parses the session.max_shape_override config string into a name -> shape map.
 ///
 /// Format: "name1:[d0,d1,...];name2:[d0,d1,...]"
 /// Example: "input_ids:[8,4096];attention_mask:[8,4096]"

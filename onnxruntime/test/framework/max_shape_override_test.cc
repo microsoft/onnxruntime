@@ -3,8 +3,14 @@
 
 #include "gtest/gtest.h"
 #include "core/common/inlined_containers.h"
+#include "core/framework/max_shape_inference.h"
 #include "core/framework/max_shape_override.h"
 #include "core/framework/workspace_requirement.h"
+#include "core/graph/constants.h"
+#include "core/graph/model.h"
+#include "test/test_environment.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
+#include "test/util/include/asserts.h"
 
 namespace onnxruntime::test {
 
@@ -107,6 +113,75 @@ TEST(MaxShapeOverride, ErrorNonNumericDimension) {
   MaxShapeOverrideMap result;
   auto status = ParseMaxShapeOverride("input_ids:[batch,4096]", result);
   EXPECT_FALSE(status.IsOK());
+}
+
+namespace {
+
+std::unique_ptr<Model> MakeDynamicIdentityModel() {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 18}};
+  auto model = std::make_unique<Model>(
+      "max_shape_inference", true, ModelMetaData(), PathString(),
+      IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+      std::vector<ONNX_NAMESPACE::FunctionProto>{}, DefaultLoggingManager().DefaultLogger());
+
+  ModelTestBuilder builder(model->MainGraph());
+  NodeArg* input = builder.MakeInput<float>(std::vector<int64_t>{-1, 4}, "input");
+  NodeArg* output = builder.MakeOutput<float>(std::nullopt);
+  builder.AddNode("Identity", {input}, {output});
+  builder.SetGraphOutputs();
+  ORT_THROW_IF_ERROR(model->MainGraph().Resolve());
+  return model;
+}
+
+}  // namespace
+
+TEST(MaxShapeOverride, InferPropagatesGraphInputShapeWithoutMutatingGraph) {
+  auto model = MakeDynamicIdentityModel();
+  Graph& graph = model->MainGraph();
+  const NodeArg* canonical_input = graph.GetNodeArg("input");
+  ASSERT_NE(canonical_input, nullptr);
+  ASSERT_NE(canonical_input->Shape(), nullptr);
+  EXPECT_FALSE(canonical_input->Shape()->dim(0).has_dim_value());
+
+  MaxShapeOverrideMap overrides;
+  overrides.emplace("input", TensorShape({8, 4}));
+  MaxShapeInferenceResult result;
+  ASSERT_STATUS_OK(InferMaxShapes(graph, overrides, result));
+
+  const TensorShape* input_shape = result.GetShape(&graph, "input");
+  ASSERT_NE(input_shape, nullptr);
+  ASSERT_EQ(input_shape->NumDimensions(), 2u);
+  EXPECT_EQ((*input_shape)[0], 8);
+  EXPECT_EQ((*input_shape)[1], 4);
+
+  const Node& identity = *graph.Nodes().begin();
+  const TensorShape* output_shape = result.GetShape(&graph, identity.OutputDefs()[0]->Name());
+  ASSERT_NE(output_shape, nullptr);
+  ASSERT_EQ(output_shape->NumDimensions(), 2u);
+  EXPECT_EQ((*output_shape)[0], 8);
+  EXPECT_EQ((*output_shape)[1], 4);
+  EXPECT_FALSE(canonical_input->Shape()->dim(0).has_dim_value());
+  EXPECT_FALSE(identity.OutputDefs()[0]->Shape()->dim(0).has_dim_value());
+}
+
+TEST(MaxShapeOverride, InferRejectsUnknownInput) {
+  auto model = MakeDynamicIdentityModel();
+  MaxShapeOverrideMap overrides;
+  overrides.emplace("missing", TensorShape({8, 4}));
+  MaxShapeInferenceResult result;
+  const auto status = InferMaxShapes(model->MainGraph(), overrides, result);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("is not a graph input"));
+}
+
+TEST(MaxShapeOverride, InferRejectsStaticDimensionConflict) {
+  auto model = MakeDynamicIdentityModel();
+  MaxShapeOverrideMap overrides;
+  overrides.emplace("input", TensorShape({8, 5}));
+  MaxShapeInferenceResult result;
+  const auto status = InferMaxShapes(model->MainGraph(), overrides, result);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("is static"));
 }
 
 // ============================================================================

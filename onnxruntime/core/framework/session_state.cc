@@ -17,6 +17,7 @@
 #include "core/framework/session_state_utils.h"
 #include "core/framework/utils.h"
 #include "core/framework/max_shape_override.h"
+#include "core/framework/max_shape_inference.h"
 #include "core/framework/node_shape_resolver.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -1412,10 +1413,20 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
 
   InlinedHashMap<std::string, size_t> constant_initializers_use_count;
   ComputeConstantInitializerUseCount(graph_, constant_initializers_use_count);
+
+  MaxShapeInferenceResult max_shape_inference_result;
+  const std::string max_shape_config = sess_options_.config_options.GetConfigOrDefault(
+      kOrtSessionOptionsMaxShapeOverride, "");
+  if (!max_shape_config.empty()) {
+    MaxShapeOverrideMap input_overrides;
+    ORT_RETURN_IF_ERROR(ParseMaxShapeOverride(max_shape_config, input_overrides));
+    ORT_RETURN_IF_ERROR(InferMaxShapes(graph_, input_overrides, max_shape_inference_result));
+  }
+
   return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, sess_options_,
                                   remove_initializers,
                                   GetSaveModeForPrepacks(!remove_initializers, saving_ort_format),
-                                  constant_initializers_use_count);
+                                  constant_initializers_use_count, max_shape_inference_result);
 }
 
 bool SessionState::GetSaveModeForPrepacks(bool saving_model, bool saving_ort_format) {
@@ -1571,6 +1582,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                               bool remove_initializers,
                                               bool save_prepacked_initializers,
                                               InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
+                                              const MaxShapeInferenceResult& max_shape_inference_result,
                                               const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map,
                                               bool graph_info_already_created) {
   if (!graph_info_already_created) {
@@ -1766,18 +1778,11 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // DeclareWorkspaceRequirements() on each kernel with resolved input shapes.
   // This collects workspace slot requirements for future offset planning.
   {
-    const std::string max_shape_config = session_options.config_options.GetConfigOrDefault(
-        kOrtSessionOptionsMaxShapeOverride, "");
-    MaxShapeOverrideMap shape_overrides;
-    if (!max_shape_config.empty()) {
-      ORT_RETURN_IF_ERROR(ParseMaxShapeOverride(max_shape_config, shape_overrides));
-    }
-
     for (const auto& node : graph_viewer_->Nodes()) {
       auto* kernel = GetMutableKernel(node.Index());
       if (kernel == nullptr) continue;
 
-      auto resolved = ResolveNodeInputShapes(node, *graph_viewer_, shape_overrides);
+      auto resolved = ResolveNodeInputShapes(node, max_shape_inference_result);
       if (!resolved.has_value()) continue;
 
       InlinedVector<WorkspaceRequirement> requirements;
@@ -1835,7 +1840,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       ORT_RETURN_IF_ERROR(subgraph_session_state.FinalizeSessionStateImpl(
           graph_location, kernel_registry_manager, &node, subgraph_session_options, remove_initializers,
           save_prepacked_initializers,
-          constant_initializers_use_count, subgraph_outer_scope_node_arg_to_location_map, true));
+          constant_initializers_use_count, max_shape_inference_result,
+          subgraph_outer_scope_node_arg_to_location_map, true));
 
       // setup all the info for handling the feeds and fetches used in subgraph execution
       auto* p_op_kernel = GetMutableKernel(node.Index());

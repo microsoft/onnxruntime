@@ -18,6 +18,7 @@
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/layering_annotations.h"
+#include "core/framework/max_shape_inference.h"
 #include "core/framework/resource_accountant.h"
 #include "core/graph/function.h"
 #include "core/graph/function_utils.h"
@@ -195,6 +196,13 @@ auto get_capabilities = [](const IExecutionProvider& ep,
 
   return capabilities;
 };
+
+Status RefreshMaxShapeInference(Graph& graph, IResourceAccountant& resource_accountant) {
+  MaxShapeInferenceResult result;
+  ORT_RETURN_IF_ERROR(InferMaxShapes(graph, resource_accountant.GetMaxShapeOverrides(), result));
+  resource_accountant.SetMaxShapeInferenceResult(std::move(result));
+  return Status::OK();
+}
 }  // namespace
 
 static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const logging::Logger& logger) {
@@ -396,6 +404,9 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     std::unique_ptr<GraphViewer> graph_viewer;
     ORT_RETURN_IF_ERROR(create_graph_viewer(sub_graph_holder, graph_viewer));
 
+    if (params.resource_accountant && graph.ParentGraph() == nullptr) {
+      ORT_RETURN_IF_ERROR(RefreshMaxShapeInference(graph, *params.resource_accountant));
+    }
     if (params.resource_accountant) {
       params.resource_accountant->ResetForNewPass();
     }
@@ -1301,6 +1312,9 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
         if (hit != acc_map->end()) {
           resource_accountant = hit->second.get();
         }
+      }
+      if (resource_accountant != nullptr) {
+        ORT_RETURN_IF_ERROR(RefreshMaxShapeInference(graph, *resource_accountant));
       }
       ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(graph, func_mgr, kernel_registry_manager,
                                                        fused_kernel_registry, *ep, mode, fused_node_unique_id,

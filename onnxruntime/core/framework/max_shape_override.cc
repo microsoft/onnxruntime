@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/max_shape_override.h"
+#include "core/framework/max_shape_inference.h"
 
 #include <charconv>
 #include <string_view>
@@ -9,8 +10,26 @@
 #include "core/common/common.h"
 #include "core/common/string_utils.h"
 #include "core/framework/tensor_shape.h"
+#include "core/graph/graph.h"
+#include "core/graph/graph_proto_serializer.h"
+#include "core/graph/graph_viewer.h"
+#include "core/graph/function_template.h"
+#include "core/graph/model.h"
+#include "core/graph/schema_registry.h"
 
 namespace onnxruntime {
+
+class MaxShapeInferenceBuilder {
+ public:
+  static void Clear(MaxShapeInferenceResult& result) {
+    result.graph_shapes_.clear();
+  }
+
+  static MaxShapeInferenceResult::ShapeMap& AddGraph(
+      MaxShapeInferenceResult& result, const Graph& graph) {
+    return result.graph_shapes_[&graph];
+  }
+};
 
 namespace {
 
@@ -21,7 +40,101 @@ std::string_view Trim(std::string_view s) {
   return s;
 }
 
+Status CaptureGraphShapes(const Graph& source_graph,
+                          const Graph& shadow_graph,
+                          MaxShapeInferenceResult& result) {
+  auto& shapes = MaxShapeInferenceBuilder::AddGraph(result, source_graph);
+  auto capture_shape = [&shapes](const NodeArg* node_arg) {
+    if (node_arg == nullptr || !node_arg->Exists()) return;
+    const auto* shape_proto = node_arg->Shape();
+    if (shape_proto == nullptr) return;
+
+    TensorShapeVector dims;
+    dims.reserve(shape_proto->dim_size());
+    for (const auto& dim : shape_proto->dim()) {
+      if (!dim.has_dim_value() || dim.dim_value() < 0) return;
+      dims.push_back(dim.dim_value());
+    }
+    shapes.insert_or_assign(node_arg->Name(), TensorShape{dims});
+  };
+
+  const GraphViewer shadow_viewer{shadow_graph};
+  for (const NodeArg* input : shadow_viewer.GetInputsIncludingInitializers()) capture_shape(input);
+  for (const NodeArg* output : shadow_viewer.GetOutputs()) capture_shape(output);
+  for (const NodeArg* value_info : shadow_viewer.GetValueInfo()) capture_shape(value_info);
+  for (const Node& node : shadow_viewer.Nodes()) {
+    for (const NodeArg* input : node.InputDefs()) capture_shape(input);
+    for (const NodeArg* output : node.OutputDefs()) capture_shape(output);
+  }
+
+  const GraphViewer source_viewer{source_graph};
+  const auto& source_order = source_viewer.GetNodesInTopologicalOrder();
+  const auto& shadow_order = shadow_viewer.GetNodesInTopologicalOrder();
+  ORT_RETURN_IF(source_order.size() != shadow_order.size(),
+                "max_shape_override: shadow graph topology does not match source graph");
+
+  for (size_t i = 0; i < source_order.size(); ++i) {
+    const Node* source_node = source_viewer.GetNode(source_order[i]);
+    const Node* shadow_node = shadow_viewer.GetNode(shadow_order[i]);
+    ORT_RETURN_IF(source_node == nullptr || shadow_node == nullptr ||
+                      source_node->OpType() != shadow_node->OpType() ||
+                      source_node->Domain() != shadow_node->Domain(),
+                  "max_shape_override: shadow graph node does not match source graph");
+
+    const auto source_subgraphs = source_node->GetAttributeNameToSubgraphMap();
+    const auto shadow_subgraphs = shadow_node->GetAttributeNameToSubgraphMap();
+    ORT_RETURN_IF(source_subgraphs.size() != shadow_subgraphs.size(),
+                  "max_shape_override: shadow graph subgraphs do not match source graph");
+    for (const auto& [attribute_name, source_subgraph] : source_subgraphs) {
+      const auto shadow_it = shadow_subgraphs.find(attribute_name);
+      ORT_RETURN_IF(shadow_it == shadow_subgraphs.end(),
+                    "max_shape_override: shadow graph is missing subgraph attribute '",
+                    attribute_name, "'");
+      ORT_RETURN_IF_ERROR(CaptureGraphShapes(*source_subgraph, *shadow_it->second, result));
+    }
+  }
+
+  return Status::OK();
+}
+
+void CollectGeneratedSchemas(
+    const Graph& graph,
+    InlinedHashMap<std::string, std::vector<ONNX_NAMESPACE::OpSchema>>& schemas_by_domain,
+    InlinedHashSet<std::string>& schema_keys) {
+  const auto schema_registry = graph.GetSchemaRegistry();
+  for (const Node& node : graph.Nodes()) {
+    const auto* node_schema = node.Op();
+    if (node_schema != nullptr) {
+      const auto domain_it = graph.DomainToVersionMap().find(node.Domain());
+      const auto* registered_schema =
+          domain_it == graph.DomainToVersionMap().end() || schema_registry == nullptr
+              ? nullptr
+              : schema_registry->GetSchema(node.OpType(), domain_it->second, node.Domain());
+      if (registered_schema != node_schema) {
+        const std::string key = node.Domain() + ":" + node.OpType() + ":" +
+                                std::to_string(node_schema->SinceVersion());
+        if (schema_keys.insert(key).second) {
+          schemas_by_domain[node.Domain()].push_back(*node_schema);
+        }
+      }
+    }
+
+    for (const auto& [attribute_name, subgraph] : node.GetAttributeNameToSubgraphMap()) {
+      ORT_UNUSED_PARAMETER(attribute_name);
+      CollectGeneratedSchemas(*subgraph, schemas_by_domain, schema_keys);
+    }
+  }
+}
+
 }  // namespace
+
+const TensorShape* MaxShapeInferenceResult::GetShape(
+    const void* graph_identity, std::string_view node_arg_name) const {
+  const auto graph_it = graph_shapes_.find(graph_identity);
+  if (graph_it == graph_shapes_.end()) return nullptr;
+  const auto shape_it = graph_it->second.find(std::string{node_arg_name});
+  return shape_it == graph_it->second.end() ? nullptr : &shape_it->second;
+}
 
 Status ParseMaxShapeOverride(std::string_view config_value, MaxShapeOverrideMap& out) {
   out.clear();
@@ -105,6 +218,149 @@ Status ParseMaxShapeOverride(std::string_view config_value, MaxShapeOverrideMap&
   }
 
   return Status::OK();
+}
+
+Status InferMaxShapes(const Graph& graph,
+                      const MaxShapeOverrideMap& input_overrides,
+                      MaxShapeInferenceResult& result) {
+  MaxShapeInferenceBuilder::Clear(result);
+  if (input_overrides.empty()) {
+    return Status::OK();
+  }
+
+#if defined(ORT_MINIMAL_BUILD)
+  ORT_UNUSED_PARAMETER(graph);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                         "session.max_shape_override is not supported in a minimal build");
+#else
+  const GraphViewer source_viewer{graph};
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(graph.GetModel().IrVersion());
+  for (const auto& [domain, version] : graph.DomainToVersionMap()) {
+    auto* opset = model_proto.add_opset_import();
+    opset->set_domain(domain);
+    opset->set_version(version);
+  }
+
+  GraphViewerToProto(source_viewer, *model_proto.mutable_graph(),
+                     true, true, ExecutionOrder::DEFAULT, false);
+  for (const auto& [id, function_template] : graph.GetModel().GetModelLocalFunctionTemplates()) {
+    ORT_UNUSED_PARAMETER(id);
+    *model_proto.add_functions() = *function_template->onnx_func_proto_;
+  }
+
+  IOnnxRuntimeOpSchemaRegistryList registries;
+  if (auto source_registry = graph.GetSchemaRegistry()) {
+    registries.push_back(std::move(source_registry));
+  }
+
+  InlinedHashMap<std::string, std::vector<ONNX_NAMESPACE::OpSchema>> generated_schemas;
+  InlinedHashSet<std::string> generated_schema_keys;
+  CollectGeneratedSchemas(graph, generated_schemas, generated_schema_keys);
+  if (!generated_schemas.empty()) {
+    auto generated_schema_registry = std::make_shared<OnnxRuntimeOpSchemaRegistry>();
+    for (auto& [domain, schemas] : generated_schemas) {
+      const auto version_it = graph.DomainToVersionMap().find(domain);
+      ORT_RETURN_IF(version_it == graph.DomainToVersionMap().end(),
+                    "max_shape_override: no opset import for generated schema domain '", domain, "'");
+      ORT_RETURN_IF_ERROR(generated_schema_registry->RegisterOpSet(
+          schemas, domain, 0, version_it->second));
+    }
+    registries.push_back(std::move(generated_schema_registry));
+  }
+
+  ModelOptions model_options;
+  model_options.strict_shape_type_inference = graph.StrictShapeTypeInference();
+  Model shadow_model{std::move(model_proto), graph.ModelPath().native(), &registries,
+                     graph.GetLogger(), model_options};
+  Graph& shadow_graph = shadow_model.MainGraph();
+
+  // GraphViewerToProto omits raw initializer payloads. Share converted OrtValues
+  // and copy only initializers that still live in protobuf storage.
+  for (const auto& [name, initializer] : source_viewer.GetAllInitializedTensors()) {
+    shadow_graph.RemoveInitializedTensor(name);
+    OrtValue ort_value;
+    if (source_viewer.GetOrtValueInitializer(name, ort_value)) {
+      ORT_RETURN_IF_ERROR(shadow_graph.AddInitializedOrtValue(*initializer, ort_value));
+    } else {
+      shadow_graph.AddInitializedTensor(*initializer);
+    }
+  }
+
+  InlinedHashMap<std::string, const NodeArg*> graph_inputs;
+  graph_inputs.reserve(graph.GetInputs().size());
+  for (const NodeArg* input : graph.GetInputs()) {
+    graph_inputs.emplace(input->Name(), input);
+  }
+
+  InlinedHashMap<std::string, int64_t> symbolic_values;
+  for (const auto& [name, override_shape] : input_overrides) {
+    const auto input_it = graph_inputs.find(name);
+    ORT_RETURN_IF(input_it == graph_inputs.end(),
+                  "max_shape_override: '", name, "' is not a graph input");
+
+    const NodeArg& input = *input_it->second;
+    const auto* declared_shape = input.Shape();
+    ORT_RETURN_IF(declared_shape == nullptr,
+                  "max_shape_override: graph input '", name, "' has no declared rank");
+    ORT_RETURN_IF(static_cast<size_t>(declared_shape->dim_size()) != override_shape.NumDimensions(),
+                  "max_shape_override: rank mismatch for graph input '", name, "': model rank ",
+                  declared_shape->dim_size(), ", override rank ", override_shape.NumDimensions());
+
+    for (int dim_index = 0; dim_index < declared_shape->dim_size(); ++dim_index) {
+      const auto& declared_dim = declared_shape->dim(dim_index);
+      const int64_t override_dim = override_shape[static_cast<size_t>(dim_index)];
+      ORT_RETURN_IF(declared_dim.has_dim_value() && declared_dim.dim_value() != override_dim,
+                    "max_shape_override: dimension ", dim_index, " for graph input '", name,
+                    "' is static (", declared_dim.dim_value(), ") but override specifies ", override_dim);
+
+      if (declared_dim.has_dim_param() && !declared_dim.dim_param().empty()) {
+        const auto [symbol_it, inserted] = symbolic_values.emplace(declared_dim.dim_param(), override_dim);
+        ORT_RETURN_IF(!inserted && symbol_it->second != override_dim,
+                      "max_shape_override: symbolic dimension '", declared_dim.dim_param(),
+                      "' has inconsistent values ", symbol_it->second, " and ", override_dim);
+      }
+    }
+  }
+
+  for (const auto& [name, input] : graph_inputs) {
+    const auto* declared_shape = input->Shape();
+    if (declared_shape == nullptr) continue;
+
+    const auto override_it = input_overrides.find(name);
+    const bool has_override = override_it != input_overrides.end();
+    bool changed = has_override;
+    ONNX_NAMESPACE::TensorShapeProto max_shape_proto;
+    for (int dim_index = 0; dim_index < declared_shape->dim_size(); ++dim_index) {
+      auto* max_dim = max_shape_proto.add_dim();
+      if (has_override) {
+        max_dim->set_dim_value(override_it->second[static_cast<size_t>(dim_index)]);
+        continue;
+      }
+
+      const auto& declared_dim = declared_shape->dim(dim_index);
+      if (declared_dim.has_dim_param()) {
+        const auto symbol_it = symbolic_values.find(declared_dim.dim_param());
+        if (symbol_it != symbolic_values.end()) {
+          max_dim->set_dim_value(symbol_it->second);
+          changed = true;
+          continue;
+        }
+      }
+
+      *max_dim = declared_dim;
+    }
+
+    if (!changed) continue;
+    NodeArg* shadow_input = shadow_graph.GetNodeArg(name);
+    ORT_RETURN_IF_NOT(shadow_input != nullptr,
+                      "max_shape_override: graph input '", name, "' is missing from shadow graph");
+    shadow_input->SetShape(max_shape_proto);
+  }
+
+  ORT_RETURN_IF_ERROR(shadow_graph.Resolve());
+  return CaptureGraphShapes(graph, shadow_graph, result);
+#endif
 }
 
 }  // namespace onnxruntime

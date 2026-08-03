@@ -446,10 +446,10 @@ static const char* const kOrtSessionOptionsNameBasedLayerAssignment = "session.n
 /// Format: "input_name:[d0,d1,...];input_name2:[d0,d1,...]"
 /// Example: "input_ids:[8,4096];attention_mask:[8,4096]"
 ///
-/// Each input_name must match a model input or an intermediate NodeArg name.
-/// Dimensions must be positive integers. Unknown/symbolic dimensions in the model
-/// will be replaced by the corresponding override value for estimation purposes only
-/// (runtime shapes are not constrained by this setting).
+/// Each input_name must match a model graph input. Dimensions must be positive integers.
+/// Unknown/symbolic dimensions in the model will be replaced by the corresponding override
+/// value and propagated through a separate shape-inference graph for estimation purposes only.
+/// Runtime shapes are not constrained by this setting.
 /// </summary>
 static const char* const kOrtSessionOptionsMaxShapeOverride = "session.max_shape_override";
 
