@@ -16,9 +16,9 @@ __global__ void _ComputeSliceOffsetsKernel(
     const size_t num_slices_per_batch,
     const size_t input_batch_stride,
     const size_t num_slice_dims,
-    const int64_t* const sizes_from_slice_dims_data,  // num_slice_dims elements
-    const TIndex* const indices_data,                 // num_slices * num_slice_dims elements
-    int64_t* const input_slice_offsets_data) {        // num_slices elements
+    const TArray<int64_t> sizes_from_slice_dims,  // num_slice_dims elements
+    const TIndex* const indices_data,             // num_slices * num_slice_dims elements
+    int64_t* const input_slice_offsets_data) {    // num_slices elements
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(slice_idx, num_slices)
 
   const size_t batch_idx = slice_idx / num_slices_per_batch;
@@ -32,7 +32,7 @@ __global__ void _ComputeSliceOffsetsKernel(
     CUDA_KERNEL_ASSERT(index >= -input_dims[input_dim_idx] && index < input_dims[input_dim_idx]);
     if (index < 0) index += input_dims[input_dim_idx];
 
-    relative_slice_offset += index * sizes_from_slice_dims_data[dim_idx];
+    relative_slice_offset += index * sizes_from_slice_dims[dim_idx];
   }
 
   input_slice_offsets_data[slice_idx] = base_offset + relative_slice_offset;
@@ -59,9 +59,9 @@ void ComputeSliceOffsetsImpl(
     const size_t num_slices_per_batch,
     const size_t input_batch_stride,
     const size_t num_slice_dims,
-    const int64_t* const sizes_from_slice_dims_data,  // num_slice_dims elements
-    const TIndex* const indices_data,                 // num_slices * num_slice_dims elements
-    int64_t* const input_slice_offsets_data) {        // num_slices elements
+    const TArray<int64_t> sizes_from_slice_dims,  // num_slice_dims elements
+    const TIndex* const indices_data,             // num_slices * num_slice_dims elements
+    int64_t* const input_slice_offsets_data) {    // num_slices elements
   const unsigned int blocks_per_grid = static_cast<unsigned int>(CeilDiv(num_slices, GridDim::maxThreadsPerBlock));
   _ComputeSliceOffsetsKernel<<<blocks_per_grid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       batch_dims,
@@ -70,7 +70,7 @@ void ComputeSliceOffsetsImpl(
       num_slices_per_batch,
       input_batch_stride,
       num_slice_dims,
-      sizes_from_slice_dims_data,
+      sizes_from_slice_dims,
       indices_data,
       input_slice_offsets_data);
 }
@@ -97,7 +97,7 @@ void GatherNDImpl(
       const size_t num_slices_per_batch,               \
       const size_t input_batch_stride,                 \
       const size_t num_slice_dims,                     \
-      const int64_t* const sizes_from_slice_dims_data, \
+      const TArray<int64_t> sizes_from_slice_dims,     \
       const TIndex* const indices_data,                \
       int64_t* const input_slice_offsets_data);
 
