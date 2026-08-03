@@ -461,6 +461,74 @@ void SparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
   BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, use_max_past_present_buffer, qk_output_index);
 }
 
+namespace {
+constexpr int kDeepSeekV4PastKeyInput = 3;
+constexpr int kDeepSeekV4PastValueInput = 4;
+constexpr int kDeepSeekV4Output = 0;
+constexpr int kDeepSeekV4PresentKeyOutput = 1;
+constexpr int kDeepSeekV4PresentValueOutput = 2;
+
+void PropagateOutputTypeAndShapeFromInput(ONNX_NAMESPACE::InferenceContext& ctx, int input_index, int output_index) {
+  if (ctx.getNumOutputs() <= output_index) {
+    return;
+  }
+
+  if (ctx.getInputType(input_index) != nullptr) {
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, input_index, output_index);
+  }
+
+  if (hasInputShape(ctx, input_index)) {
+    ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, input_index, output_index);
+  }
+}
+}  // namespace
+
+void DeepSeekV4AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  PropagateOutputTypeAndShapeFromInput(ctx, 0, kDeepSeekV4Output);
+
+  if (ctx.getNumOutputs() > kDeepSeekV4PresentKeyOutput) {
+    if (ctx.getInputType(kDeepSeekV4PastKeyInput) != nullptr) {
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, kDeepSeekV4PastKeyInput, kDeepSeekV4PresentKeyOutput);
+    } else {
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, kDeepSeekV4PresentKeyOutput);
+    }
+    if (hasInputShape(ctx, kDeepSeekV4PastKeyInput)) {
+      ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, kDeepSeekV4PastKeyInput, kDeepSeekV4PresentKeyOutput);
+    }
+  }
+
+  if (ctx.getNumOutputs() > kDeepSeekV4PresentValueOutput) {
+    if (ctx.getInputType(kDeepSeekV4PastValueInput) != nullptr) {
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, kDeepSeekV4PastValueInput, kDeepSeekV4PresentValueOutput);
+    } else {
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, kDeepSeekV4PresentValueOutput);
+    }
+    if (hasInputShape(ctx, kDeepSeekV4PastValueInput)) {
+      ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, kDeepSeekV4PastValueInput, kDeepSeekV4PresentValueOutput);
+    }
+  }
+
+  // HCA state outputs.
+  PropagateOutputTypeAndShapeFromInput(ctx, 21, 3);  // present_hca_pending_kv
+  PropagateOutputTypeAndShapeFromInput(ctx, 22, 4);  // present_hca_pending_gate
+  PropagateOutputTypeAndShapeFromInput(ctx, 23, 5);  // present_hca_entries
+
+  // CSA/index state outputs.
+  PropagateOutputTypeAndShapeFromInput(ctx, 34, 6);   // present_csa_pending_kv
+  PropagateOutputTypeAndShapeFromInput(ctx, 35, 7);   // present_csa_pending_gate
+  PropagateOutputTypeAndShapeFromInput(ctx, 36, 8);   // present_csa_entries
+  PropagateOutputTypeAndShapeFromInput(ctx, 37, 9);   // present_csa_overlap_kv
+  PropagateOutputTypeAndShapeFromInput(ctx, 38, 10);  // present_csa_overlap_gate
+  PropagateOutputTypeAndShapeFromInput(ctx, 39, 11);  // present_index_pending_kv
+  PropagateOutputTypeAndShapeFromInput(ctx, 40, 12);  // present_index_pending_gate
+  PropagateOutputTypeAndShapeFromInput(ctx, 41, 13);  // present_index_entries
+  PropagateOutputTypeAndShapeFromInput(ctx, 42, 14);  // present_index_overlap_kv
+  PropagateOutputTypeAndShapeFromInput(ctx, 43, 15);  // present_index_overlap_gate
+
+  // Optional debug output.
+  PropagateOutputTypeAndShapeFromInput(ctx, 0, 16);
+}
+
 constexpr const char* Attention_ver1_doc = R"DOC(
 Multi-Head Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
 
@@ -1392,6 +1460,104 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           // Otherwise, pass -1 to signal that the optional output is not present and validation should be skipped.
           int qk_output_index = ctx.getNumOutputs() > 3 ? 3 : -1;
           GroupQueryAttentionTypeAndShapeInference(ctx, 3, qk_output_index);
+        }));
+
+constexpr const char* DeepSeekV4Attention_ver1_doc = R"DOC(
+DeepSeek V4 Attention frontend op.
+
+This operator encapsulates the module-local DeepSeek V4 attention preprocessing/postprocessing and compressor state
+contract, while reusing ORT GroupQueryAttention-style core attention semantics (MQA with kv_num_heads=1, trailing
+interleaved RoPE, sliding KV cache, attention sink augmentation, and output de-rotation).
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    DeepSeekV4Attention, 1,
+    OpSchema()
+        .SetDoc(DeepSeekV4Attention_ver1_doc)
+        .Attr("num_heads", "Number of Q heads.", AttributeProto::INT)
+        .Attr("head_size", "Per-head hidden size.", AttributeProto::INT)
+        .Attr("kv_num_heads", "Number of KV heads. Must be 1.", AttributeProto::INT)
+        .Attr("q_lora_rank", "Low-rank Q projection rank.", AttributeProto::INT)
+        .Attr("o_groups", "Number of output projection groups.", AttributeProto::INT)
+        .Attr("o_lora_rank", "Low-rank grouped output projection rank.", AttributeProto::INT)
+        .Attr("rotary_dim", "Rotary dimension.", AttributeProto::INT)
+        .Attr("rotary_interleaved", "Must be 1 (interleaved rotary).", AttributeProto::INT)
+        .Attr("rotary_trailing", "Must be 1 (trailing rotary).", AttributeProto::INT)
+        .Attr("do_output_derotate", "Must be 1 (apply output de-rotation).", AttributeProto::INT)
+        .Attr("local_window_size", "Local/sliding attention window size.", AttributeProto::INT)
+        .Attr("rms_norm_epsilon", "RMSNorm epsilon.", AttributeProto::FLOAT)
+        .Attr("scale", "Scale for QK, default is 1/sqrt(head_size).", AttributeProto::FLOAT, OPTIONAL_VALUE)
+        .Attr("attention_mode", "One of: 'sliding', 'csa', 'hca'.", AttributeProto::STRING, std::string("sliding"))
+        .Attr("compress_rate", "Required for csa/hca mode.", AttributeProto::FLOAT, OPTIONAL_VALUE)
+        .Attr("index_topk", "Required for csa mode.", AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("index_num_heads", "Required for csa mode.", AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("index_head_dim", "Required for csa mode.", AttributeProto::INT, OPTIONAL_VALUE)
+        .Input(0, "hidden_states", "Input hidden states with shape (B, S, hidden_size).", "T")
+        .Input(1, "position_ids", "Position ids with shape (B, S).", "P")
+        .Input(2, "attention_bias", "Optional sliding-window causal bias for normal KV region.", "T", OpSchema::Optional)
+        .Input(3, "past_key", "Sliding KV cache key state.", "T")
+        .Input(4, "past_value", "Sliding KV cache value state.", "T")
+        .Input(5, "seqlens_k", "1D tensor of shape (B).", "M")
+        .Input(6, "total_sequence_length", "Scalar max total sequence length in batch.", "M")
+        .Input(7, "cos_cache", "RoPE cosine cache.", "T")
+        .Input(8, "sin_cache", "RoPE sine cache.", "T")
+        .Input(9, "q_a_weight", "q_a projection weights.", "T")
+        .Input(10, "q_a_norm_weight", "q_a RMSNorm weight.", "T")
+        .Input(11, "q_b_weight", "q_b projection weights.", "T")
+        .Input(12, "kv_weight", "Shared kv projection weights.", "T")
+        .Input(13, "kv_norm_weight", "Shared kv RMSNorm weight.", "T")
+        .Input(14, "o_a_weight", "Grouped low-rank output projection A weight.", "T")
+        .Input(15, "o_b_weight", "Grouped low-rank output projection B weight.", "T")
+        .Input(16, "head_sink", "Per-head softmax sink augmentation tensor.", "T")
+        .Input(17, "hca_kv_weight", "HCA compressor KV projection weight.", "T", OpSchema::Optional)
+        .Input(18, "hca_gate_weight", "HCA compressor gate projection weight.", "T", OpSchema::Optional)
+        .Input(19, "hca_position_bias", "HCA compressor position bias.", "T", OpSchema::Optional)
+        .Input(20, "hca_kv_norm_weight", "HCA compressor KV RMSNorm weight.", "T", OpSchema::Optional)
+        .Input(21, "past_hca_pending_kv", "HCA pending KV state.", "T", OpSchema::Optional)
+        .Input(22, "past_hca_pending_gate", "HCA pending gate state.", "T", OpSchema::Optional)
+        .Input(23, "past_hca_entries", "HCA entries state.", "T", OpSchema::Optional)
+        .Input(24, "csa_kv_weight", "CSA compressor KV projection weight.", "T", OpSchema::Optional)
+        .Input(25, "csa_gate_weight", "CSA compressor gate projection weight.", "T", OpSchema::Optional)
+        .Input(26, "csa_position_bias", "CSA compressor position bias.", "T", OpSchema::Optional)
+        .Input(27, "csa_kv_norm_weight", "CSA compressor KV RMSNorm weight.", "T", OpSchema::Optional)
+        .Input(28, "index_kv_weight", "CSA indexer KV projection weight.", "T", OpSchema::Optional)
+        .Input(29, "index_gate_weight", "CSA indexer gate projection weight.", "T", OpSchema::Optional)
+        .Input(30, "index_position_bias", "CSA indexer position bias.", "T", OpSchema::Optional)
+        .Input(31, "index_kv_norm_weight", "CSA indexer KV RMSNorm weight.", "T", OpSchema::Optional)
+        .Input(32, "index_q_b_weight", "CSA indexer q_b projection weight.", "T", OpSchema::Optional)
+        .Input(33, "index_weights_proj_weight", "CSA indexer weights projection weight.", "T", OpSchema::Optional)
+        .Input(34, "past_csa_pending_kv", "CSA pending KV state.", "T", OpSchema::Optional)
+        .Input(35, "past_csa_pending_gate", "CSA pending gate state.", "T", OpSchema::Optional)
+        .Input(36, "past_csa_entries", "CSA entries state.", "T", OpSchema::Optional)
+        .Input(37, "past_csa_overlap_kv", "CSA overlap KV state.", "T", OpSchema::Optional)
+        .Input(38, "past_csa_overlap_gate", "CSA overlap gate state.", "T", OpSchema::Optional)
+        .Input(39, "past_index_pending_kv", "CSA index pending KV state.", "T", OpSchema::Optional)
+        .Input(40, "past_index_pending_gate", "CSA index pending gate state.", "T", OpSchema::Optional)
+        .Input(41, "past_index_entries", "CSA index entries state.", "T", OpSchema::Optional)
+        .Input(42, "past_index_overlap_kv", "CSA index overlap KV state.", "T", OpSchema::Optional)
+        .Input(43, "past_index_overlap_gate", "CSA index overlap gate state.", "T", OpSchema::Optional)
+        .Output(0, "output", "Output tensor with shape (B, S, hidden_size).", "T")
+        .Output(1, "present_key", "Updated sliding KV key cache.", "T")
+        .Output(2, "present_value", "Updated sliding KV value cache.", "T")
+        .Output(3, "present_hca_pending_kv", "Updated HCA pending KV state.", "T", OpSchema::Optional)
+        .Output(4, "present_hca_pending_gate", "Updated HCA pending gate state.", "T", OpSchema::Optional)
+        .Output(5, "present_hca_entries", "Updated HCA entries state.", "T", OpSchema::Optional)
+        .Output(6, "present_csa_pending_kv", "Updated CSA pending KV state.", "T", OpSchema::Optional)
+        .Output(7, "present_csa_pending_gate", "Updated CSA pending gate state.", "T", OpSchema::Optional)
+        .Output(8, "present_csa_entries", "Updated CSA entries state.", "T", OpSchema::Optional)
+        .Output(9, "present_csa_overlap_kv", "Updated CSA overlap KV state.", "T", OpSchema::Optional)
+        .Output(10, "present_csa_overlap_gate", "Updated CSA overlap gate state.", "T", OpSchema::Optional)
+        .Output(11, "present_index_pending_kv", "Updated CSA index pending KV state.", "T", OpSchema::Optional)
+        .Output(12, "present_index_pending_gate", "Updated CSA index pending gate state.", "T", OpSchema::Optional)
+        .Output(13, "present_index_entries", "Updated CSA index entries state.", "T", OpSchema::Optional)
+        .Output(14, "present_index_overlap_kv", "Updated CSA index overlap KV state.", "T", OpSchema::Optional)
+        .Output(15, "present_index_overlap_gate", "Updated CSA index overlap gate state.", "T", OpSchema::Optional)
+        .Output(16, "output_qk", "Optional debug attention output.", "T", OpSchema::Optional)
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"}, "Constrain tensors to floating-point types.")
+        .TypeConstraint("M", {"tensor(int32)"}, "Constrain sequence length tensors.")
+        .TypeConstraint("P", {"tensor(int64)"}, "Constrain position ids tensor.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          DeepSeekV4AttentionTypeAndShapeInference(ctx);
         }));
 
 constexpr const char* PagedAttention_ver1_doc = R"DOC(
