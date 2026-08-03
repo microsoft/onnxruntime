@@ -862,6 +862,34 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BiasSoftmax, 1,
                                     "Constrain input and output types to float tensors.")
                                 .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(SinkhornNormalize, 1,
+                            OpSchema()
+                                .SetDoc(
+                                    "Sinkhorn-Knopp normalization of a batch of square matrices, making each one "
+                                    "approximately doubly stochastic. Writing norm(Y, axis) = Y / (ReduceSum(Y, axis, "
+                                    "keepdims=1) + epsilon), the output is Y = norm(X, -2) followed by "
+                                    "`iterations - 1` repetitions of norm(norm(Y, -1), -2). Fusing the whole "
+                                    "alternation into one node keeps small matrices off the dispatch path.")
+                                .Attr("iterations", "Number of Sinkhorn iterations, at least 1.", AttributeProto::INT, static_cast<int64_t>(1))
+                                .Attr("epsilon", "Value added to each sum before dividing.", AttributeProto::FLOAT, 1e-6f)
+                                .Input(0, "X", "Input tensor of shape (..., N, N).", "T")
+                                .Output(0, "Y", "Normalized tensor with the same shape as X.", "T")
+                                .TypeConstraint(
+                                    "T",
+                                    {"tensor(float)"},
+                                    "Constrain input and output types to float tensors.")
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                                  if (!hasInputShape(ctx, 0)) {
+                                    return;
+                                  }
+                                  const auto& shape = getInputShape(ctx, 0);
+                                  if (shape.dim_size() < 2) {
+                                    fail_shape_inference("Input rank must be >= 2.");
+                                  }
+                                  propagateShapeFromInputToOutput(ctx, 0, 0);
+                                }));
+
 ONNX_MS_OPERATOR_SET_SCHEMA(BiasDropout, 1,
                             OpSchema()
                                 .SetDoc(

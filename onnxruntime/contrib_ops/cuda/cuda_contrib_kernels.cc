@@ -173,6 +173,7 @@ class CUDA_MS_OP_CLASS_NAME(1, Sampling);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, float, ScaledTanh);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, double, ScaledTanh);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16, ScaledTanh);
+class CUDA_MS_OP_CLASS_NAME(1, SinkhornNormalize);
 class CUDA_MS_OP_CLASS_NAME(1, SkipGroupNorm);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, SkipLayerNormalization);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, SkipLayerNormalization);
@@ -454,6 +455,7 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, float, ScaledTanh)>,
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, double, ScaledTanh)>,
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16, ScaledTanh)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, SinkhornNormalize)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, SkipGroupNorm)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, SkipLayerNormalization)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, SkipLayerNormalization)>,
