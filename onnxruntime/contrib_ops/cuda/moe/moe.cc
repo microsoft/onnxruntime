@@ -228,12 +228,10 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   // Otherwise use the standard Softmax + TopK path.
   bool is_fp16 = input->IsDataType<MLFloat16>();
 
-  if (use_sparse_mixer_) {
+  if (use_sparse_mixer_ && router_weights_optional == nullptr) {
     ORT_ENFORCE(k_ == 2, "Sparse mixer only supports k=2");
     ORT_ENFORCE(moe_params.num_experts == 8 || moe_params.num_experts == 16,
                 "Sparse mixer only supports 8 or 16 experts, got ", moe_params.num_experts);
-    ORT_RETURN_IF(router_weights_optional != nullptr,
-                  "Sparse mixer does not support separate router_weights.");
 
     if (is_fp16) {
       LaunchSparseMixerTop2(
