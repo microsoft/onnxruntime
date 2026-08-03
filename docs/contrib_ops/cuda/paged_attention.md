@@ -1216,7 +1216,48 @@ exactly as decode does. The operator itself does not distinguish the three cases
   (§22.4).
 - `v_scale` and a non-`"NONE"` `v_quant_type` combined with `"LATENT"` ⇒ `INVALID_ARGUMENT`: there is
   one physical cache and `k_scale` already describes it (§12.9).
+- `key` dimension 0 must be **at least** `token_count`; a surplus is allowed only in `"LATENT"` mode
+  and only with `slot_mapping` present and in-kernel rotary off (§12.11).
+- `slot_mapping` dimension 0 must equal `key` dimension 0, not `token_count`.
 - Dispatch only to an MLA-capable backend or the unfused reference; never silently ignore an input.
+
+### 12.11 Surplus KV rows
+
+In every other mode `key` has exactly one row per query token, because the row a token writes is the
+row it is. `"LATENT"` relaxes that to `kv_token_count >= token_count`: the trailing
+`kv_token_count - token_count` rows of `key` are **stored and nothing else**. They own no output row
+and no `kv_indices` row; `output` stays `(token_count, num_heads * v_head_size)`.
+
+The reason is a model with a second KV stream. DeepSeek-V4-Flash-0731 keeps, besides the sliding
+window, a *compressed* stream: every `compress_ratio` tokens, a pooled latent row is written at
+cache position `window_size + pos / compress_ratio`. That row is read by the very step that produces
+it — the model's `should_compress` fires on the same forward pass whose `topk_idxs` then select the
+new row — so the write cannot be deferred to the next step. And it cannot be a separate `ScatterND`
+on the cache, because `key_cache` and `key_cache_out` must alias the same buffer (§5), so exactly one
+node may touch a given cache tensor. Surplus rows are the write port that removes the conflict: the
+graph concatenates the compressed rows onto `key`, gives them slots in `slot_mapping`, and selects
+them through `kv_indices` in the same node.
+
+The alternative — padding the batch with *phantom query tokens* whose `kv_indices` rows are all `-1`
+purely to carry the extra writes — costs real time. The latent kernel is indexed by global query
+token, so a phantom still launches its CTA, loads `q`, walks its full `kv_indices` row and writes an
+output row it then discards. Measured at DeepSeek-V4-Flash's released geometry (1M context,
+`compress_ratio` 4, 640 selected positions, 8-way TP, H200): ~0.9–1.3 µs per phantom token at batch
+256 and ~1.9 µs at batch 64, against ~6.3 µs for a real token — **+30% at batch 256 and +60% at
+batch 64**, on 41 of 43 layers, forever. Relaxing the shape check costs nothing at all: the store
+and the attention are already two separate kernel launches, and only the store's loop bound changes.
+
+Two restrictions follow from what a surplus row does *not* have, namely a sequence position:
+
+- **`slot_mapping` is required.** Without it the destination slot is derived from the token's
+  position via `cumulative_sequence_length`, which does not describe a row that belongs to no token.
+- **In-kernel rotary is rejected** (`cos_cache` present). The rotation angle is that same position.
+  A model that needs its surplus rows rotated must rotate them in the graph, which is where a pooled
+  row's position is known anyway.
+
+`kv_indices` is unchanged: it stays `(token_count, max_selected_kv)`, one row per *query* token. The
+surplus rows are referred to by the logical positions their slots correspond to, exactly like any
+row written on an earlier step.
 
 ## 13. Kernel Dispatch and Backend Plan
 
@@ -1973,4 +2014,3 @@ mechanism inside this operator. Likewise DeepSeek-V4-Flash's MoE, hyper-connecti
 speculative decoding are model-level structures with no bearing on the attention contract — the
 speculative path already has what it needs in `slot_mapping` (§5), which lets a scheduler suppress
 cache writes for rejected tokens.
-
