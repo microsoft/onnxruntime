@@ -45,6 +45,9 @@ tabs, Electron desktop apps, native WebGPU on Windows/macOS via Dawn).
 | Precision | `MLFloat16` only. Registered as a single typed kernel. |
 | Schema baseline | Build v1 against the **current-on-main** schema (10 inputs / 3 outputs). Adopt PR #29912's expanded surface once it merges. |
 | `slot_mapping = -1` | v1 accepts `slot_mapping` when present and uses it as an authoritative override of the derived slot, but leaves the "skip write on negative" branch out. GenAI does not emit `< 0` today. Adding it later is a one-line shader change. |
+| `softcap != 0` | v1 rejects with `ORT_NOT_IMPLEMENTED`. FlashAttention has no softcap today; adding it is a Phase 2 change. |
+| `local_window_size != -1` | v1 rejects with `ORT_NOT_IMPLEMENTED`. Sliding-window attention lands in Phase 2 (port from GQA). |
+| `T = bfloat16` | v1 rejects (registers `MLFloat16` only). FA has no `bf16` path yet either; both add together in Phase 2 when Dawn's `bf16` support on target adapters stabilizes. |
 
 ---
 
@@ -99,63 +102,91 @@ The paged decoder step provides:
 
 ## 4. Reuse strategy
 
-The core WebGPU FlashAttention kernel is doing the attention math in **every**
-paged path. We never rewrite the online softmax, the tiling, the split-K
-reduce, or the head_sink apply. What we add is a **paged-aware addressing
-skin** around it.
+v1 unifies decode and prefill into a **single gather-then-flash** code path
+that reuses [`ApplyFlashAttention`](../../onnxruntime/contrib_ops/webgpu/bert/flash_attention.cc)
+verbatim. No new attention math is written. The paged specifics are contained
+in shape-transform kernels around the FA call.
 
-### 4.1 Decode path (max_query_len == 1) — full reuse
+### 4.1 What FA already provides
 
-The existing WebGPU flash-decode split-K kernels
-([`ComputeFlashAttentionDecodeQKV` + `ComputeFlashAttentionDecodeVxReduce`](../../onnxruntime/contrib_ops/webgpu/bert/flash_attention.cc)),
-including the reduce shader, indirect dispatch plumbing, and per-vendor
-cache-hint variants, are mathematically identical to what paged decode needs.
-The only site that changes is the K/V load:
+`ApplyFlashAttention` gives us everything the attention math needs:
 
-```wgsl
-// Existing (dense present):
-let k = present_key[((batch * num_heads + head) * total_seq_len + t) * head_size + h];
+- **Per-batch causal mask** via the optional `seqlen_k` input
+  (`seq_causal_length = past_sequence_length + q_idx_global + 1`), which
+  handles the per-token cutoff prefill needs and degenerates to the decode
+  case when `seqlens_q[b] = 1`.
+- **Automatic decode-vs-prefill tier dispatch** based on Q sequence length
+  (`use_split_reduce = sequence_length < 32`) — decode picks the split-K
+  decode + reduce kernels; prefill picks the flash-prefill kernel. Both
+  tiers are reused as-is.
+- **GQA head grouping** via `n_reps = num_heads / kv_num_heads`.
+- **Custom `scale`**.
 
-// Paged (selected by cache-hint):
-let block_row = block_table[batch * max_blocks_per_seq + (t / block_size)];
-let in_block  = t % block_size;
-let k = key_cache[((block_row * block_size + in_block) * kv_num_heads + head) * head_size + h];
-```
+FA does **not** apply rotary, does **not** write present K/V (it only reads
+them), does **not** support softcap, and does **not** yet support `bf16` —
+all of which line up with our v1 constraints and pre-passes.
 
-Per-batch `total_kv_len` — GQA already reads this per-batch from `seqlens_k`
-when present ([`use_seqlen_k` branch](../../onnxruntime/contrib_ops/webgpu/bert/flash_attention.cc)).
-PA gets it from `past_seqlens[b] + 1` (decode) or `past_seqlens[b] +
-(cumulative_seqlens_q[b+1] - cumulative_seqlens_q[b])` (prefill). We bind
-`past_seqlens` in the same slot the shader expects for the per-batch length
-input and the code path is reused unchanged.
+### 4.2 Paged-aware skin around FA (v1)
 
-### 4.2 Prefill path (max_query_len > 1) — two levels
+What we add for v1 is a paged-aware skin consisting of the Phase 1b passes
+(already done) plus three new shape-transform programs:
 
-- **Option A — Gather-then-flash (v1).** Materialize a dense per-batch K/V
-  from the paged cache into `[B, kv_num_heads, max_kv_len, head_size]`
-  scratch, un-pack Q into `[B, num_heads, max_q_len, head_size]` (padded),
-  call `ApplyFlashAttention` verbatim. Two scratch allocs per layer per step;
-  throwaway perf but zero shader rewrite. **Recommended for v1.**
-- **Option B — Paged prefill (Phase 2).** Take the FlashAttention prefill
-  shader, apply the same paged-K/V-load parameterization we did for decode,
-  teach it to slice Q from packed `[num_tokens, num_heads, head_size]` using
-  `cumulative_seqlens_q`. Reuses the online-softmax math and tiling; rewrites
-  the K/V load site and Q addressing. About half the shader is reused.
+| Existing (Phase 1b, packed varlen throughout) | Purpose |
+|---|---|
+| `PagedAttentionSplitPackedQKVProgram` | Split packed QKV → separate Q, K, V (varlen). |
+| `PagedAttentionRotaryProgram` | RoPE on packed varlen Q or K. |
+| `ScatterKVToPagedCacheProgram` | Write K, V into the paged cache. |
 
-### 4.3 What can't be absorbed by the FlashAttention kernel
+| New (Phase 1, this PR) | Purpose |
+|---|---|
+| `PagedAttentionGatherKVProgram` | Un-page `key_cache` / `value_cache` through `block_table` into padded contiguous scratch tensors `(B, kv_num_heads, max_kv_len, head_size)`. |
+| `PagedAttentionUnpackQueryProgram` | Expand packed varlen Q from `(token_count, num_heads * head_size)` to padded BSNH `(B, max_seqlen_q, num_heads, head_size)` using `cumulative_sequence_length`. Padding slots hold arbitrary values (their outputs are dropped in the repack). |
+| `PagedAttentionRepackOutputProgram` | Inverse of unpack: gather valid slots of the padded FA output back to `(token_count, hidden_size)`. |
 
-- **`ReshapeAndCache`** (K/V writer into the paged cache). New program, ~40
-  lines of WGSL. Uses `slot_mapping` when present else derives the slot from
-  `past_seqlens + block_table`.
-- **RoPE + QK-Norm prologue.** GQA already has
-  [`SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram`](../../onnxruntime/contrib_ops/webgpu/bert/flash_attention.cc);
-  the RoPE math and shape are the same, only the position lookup differs
-  (`past_seqlens[batch] + token_offset` instead of `seqlens_k[batch] - 1`).
-  Reuse with a cache-hint variant.
-- **Per-batch varlen bookkeeping** — binary search over `cumulative_seqlens_q`
-  to map a token index to a batch index. Shared WGSL helper reused across all
-  three paged programs (rotary prologue, `ReshapeAndCache`, paged flash
-  prefill).
+Plus a tiny computation of `seqlen_k[b] = past_seqlens[b] + seqlens_q[b]` to
+drive FA's per-batch causal mask.
+
+The `past_key`, `present_key`, `past_value`, `present_value` FA parameters are
+all passed `nullptr` — our scatter kernel already updated the paged cache, so
+FA reads its K/V from the gathered scratch and does not touch the cache.
+
+### 4.3 Cost of the fallback path
+
+Two full paged K/V reads plus two contiguous K/V writes per layer per step
+(gather), Q/output shuffles proportional to `token_count`, and a scratch
+allocation of `2 * B * kv_num_heads * max_kv_len * head_size + B *
+max_seqlen_q * hidden_size` bytes. Fusing all of these into a paged-aware FA
+kernel is the Phase 2 optimization — see §5 Phase 2.
+
+### 4.4 Graph capture vs. host-visible values (deferred to Phase 2)
+
+The v1 op is **not** graph-capture safe. `ApplyFlashAttention`'s prologue
+(§4.2) reads `cumulative_seqlens_q` and `past_seqlens` back to the CPU each
+step to build `seqlen_k_cpu` and to compute
+`max_seqlen_q` / `max_kv_len`. Those two scalars drive:
+
+- **Dispatch dims** of `PagedAttentionGatherKVProgram`,
+  `PagedAttentionUnpackQueryProgram`, `FlashAttentionProgram` /
+  `FlashAttentionDecodeQKVProgram`, and `PagedAttentionRepackOutputProgram`.
+- **Scratch tensor sizes** for `k_padded`, `v_padded`, `q_padded`, and
+  `output_padded`.
+
+Both are captured as literals when a WebGPU graph is recorded, so any
+subsequent step that presents different per-batch lengths would replay with
+wrong grids and undersized scratch. This is the exact same class of blocker
+that keeps the CUDA PagedAttention op out of CUDA Graphs — see the
+`cudaMemcpyAsync(cumulative_seqlens_q → host)` + `cudaStreamSynchronize`
+pair in [`onnxruntime/contrib_ops/cuda/bert/paged_attention.cc`][cuda-pa-sync]
+that computes `data.max_query_len` from a D→H sync.
+
+GQA/FA-decode escape the blocker via `use_indirect_dispatch` +
+`PrepareIndirectDispatchProgram`, but they only had **one** host-visible
+scalar to hide (`total_sequence_length`) and got static scratch for free
+from `past_present_share_buffer=true`. Paged has four (`q_len_b`,
+`total_kv_b`, `max_seqlen_q`, `max_kv_len`) and no free scratch — the
+lift-and-shift plan is spelled out under §5 Phase 2 "Graph-capture support".
+
+[cuda-pa-sync]: ../../onnxruntime/contrib_ops/cuda/bert/paged_attention.cc
 
 ---
 
@@ -221,12 +252,42 @@ layout, with GenAI's builder gate flipped to allow `-e webgpu`.
 - **Fused split-packed-QKV + rotary + reshape-and-cache**, mirroring
   `SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram`. Saves one full-tokens
   read of Q/K/V.
-- **`attention_metadata` consumption.** Read the CPU-side `int32[2]` when
-  the model provides it (input 16 under #29912's schema); use it for
-  workspace sizing and to skip D→H sync in decode. Enables WebGPU graph
-  capture with PagedAttention.
-- **Indirect dispatch for decode**, mirroring GQA's graph-capture-friendly
-  path.
+- **Graph-capture support via `attention_metadata` + indirect dispatch.**
+  A prerequisite for WebGPU graph capture with PagedAttention. The v1 op
+  reads `cumulative_seqlens_q` and `past_seqlens` back to the host each step
+  to compute `max_seqlen_q` / `max_kv_len` (grid dims + scratch sizes) and to
+  build `seqlen_k_cpu`. That D→H sync + per-step scratch
+  alloc are the two hard blockers for graph capture (see §4 "Graph capture
+  vs. host-visible values" — this is analogous to how the CUDA PA op is
+  blocked by its `cudaMemcpyAsync` of `cumulative_seqlens_q`). To lift both:
+
+    1. **Consume `attention_metadata: int32[2]` on CPU** (input 16 under
+       #29912's schema) = `[max_query_len_bound, max_kv_len_bound]`, produced
+       once per step by the GenAI engine. Size `k_padded`, `v_padded`,
+       `q_padded`, `output_padded` from the *bound*, not the per-step exact
+       value — scratch is then captured once and persists across replays.
+    2. **Move `seqlen_k` construction to the GPU.** Replace the
+       `seqlen_k_cpu` loop with a `PrepareIndirectDispatchProgram`-style
+       helper that reads `cumulative_seqlens_q` + `past_seqlens` on-device
+       and writes both a `seqlen_k`/`seqlens_kv` int32 buffer *and* the 3
+       uint32 grid dims into an indirect-dispatch buffer for each Program.
+       Per-batch new-Q length is already implicit in `cumulative_seqlens_q`
+       (`q_len_b = cum[b+1] − cum[b]`); the shader can read it there or
+       through a small derived buffer. Note that the current v1 op does
+       **not** need per-batch new-Q length in the causal-mask math because
+       `RunUnpackQuery` right-aligns Q so the existing FA formula
+       `past_sequence_length_b = total_kv_b − max_seqlen_q` produces the
+       correct causal window without any new shader input.
+    3. **Convert every Program's `SetDispatchGroupSize(...)` to
+       `SetDispatchGroupSize(indirect_buffer)`** for the four Programs whose
+       grids currently come from `max_seqlen_q` / `max_kv_len`:
+       `PagedAttentionGatherKVProgram`, `PagedAttentionUnpackQueryProgram`,
+       `FlashAttentionProgram` (prefill) / `FlashAttentionDecodeQKVProgram`
+       (decode split-reduce), and `PagedAttentionRepackOutputProgram`.
+       Mirrors GQA's graph-capture path, but scaled from one Program to four.
+
+  Once (1)+(2)+(3) land, `context.CopyTensor(gpu, cpu)` disappears from the
+  fallback path and PagedAttention becomes graph-capture-safe.
 - **`head_sink` + `use_smooth_softmax`**. Small change: extra add of
   `exp(sink_logit[h])` in the softmax denominator. The existing decode-reduce
   shader already accepts a `head_sink` tensor in the GQA path — reuse.
@@ -329,12 +390,17 @@ Feature guards (v1 rejects with `NOT_IMPLEMENTED` and a specific message):
 - **Correctness (host-side enforce paths, lavapipe-compatible)**: input
   validation tests. See the [`webgpu-local-testing`](../../.agents/skills/webgpu-local-testing/SKILL.md)
   skill for lavapipe details.
-- **Numerical correctness against GQA**: port [`test_paged_attention_cuda.py`](../../onnxruntime/test/python/transformers/test_paged_attention_cuda.py)
-  into `test_paged_attention_webgpu.py`; parameterize the EP. Cross-check
-  output against the WebGPU GQA op run on the same K/V materialized into a
-  dense past_key/past_value. Because lavapipe crashes on MatMul, the
-  numerical tests must run on **macOS-arm64 Metal** as the source of truth
-  (same policy as the expanded-Attention tests).
+- **Numerical correctness against GQA**: [`test_paged_attention.py`](../../onnxruntime/test/python/transformers/test_paged_attention.py)
+  is EP-parametrized on `Config.ep`. The CUDA classes
+  (`TestPagedAttention`, `TestPagedAttentionMEA`,
+  `TestPagedAttentionRotaryZeroTokenRegression`) remain the CUDA source of
+  truth. `TestPagedAttentionWebGpu` runs the same PyTorch reference
+  (`attention_ref`) over a WebGPU-scoped config matrix (rotary + packed QKV +
+  GQA), filtered by `_webgpu_supports_config` to skip `softcap != 0` and
+  `local_window_size != -1` until the WebGPU kernel implements them. Because
+  lavapipe crashes on MatMul, the numerical tests must run on
+  **macOS-arm64 Metal** or on a discrete Windows/Linux WebGPU adapter as the
+  source of truth (same policy as the expanded-Attention tests).
 - **GenAI E2E**: run Phi-3-mini or Llama-3.2-1B through the GenAI continuous
   batching engine on WebGPU once GenAI PR #2330's `-e webgpu` gate is
   flipped.

@@ -15,9 +15,7 @@ namespace webgpu {
 using namespace onnxruntime::webgpu;
 
 // Scatter unpacked K and V into the paged (block-based) KV cache.
-//
-// This is Phase 1b.1: the plain, non-fused scatter (no rotary, no packing).
-// The fused rotary + scatter variant lands in Phase 1b.2.
+// Plain non-fused scatter (no rotary, no packing).
 //
 // Inputs (all read):
 //   key                          : (token_count, kv_hidden_size)      [T]
@@ -53,7 +51,7 @@ class ScatterKVToPagedCacheProgram final : public Program<ScatterKVToPagedCacheP
 // Rotary embedding (RoPE) for one packed 2-D tensor of the shape
 //   (token_count, n_heads * head_size)
 // used by the WebGPU PagedAttention op for both the query and key rotation
-// stages of Phase 1b.2. Value is not rotated.
+// stages. Value is not rotated.
 //
 // Inputs (all read):
 //   input                        : (token_count, n_heads * head_size)  [T]
@@ -88,7 +86,7 @@ class PagedAttentionRotaryProgram final : public Program<PagedAttentionRotaryPro
 
 // Split a packed-QKV tensor into three separate Q, K, V tensors so the rest
 // of the WebGPU PagedAttention pipeline can consume them the same way it
-// consumes the non-packed layout. Phase 1b.2b — packed-QKV support.
+// consumes the non-packed layout.
 //
 // Input row layout (row-major within each token):
 //   cols [0, q_hidden_size)                            → Q
@@ -117,15 +115,95 @@ class PagedAttentionSplitPackedQKVProgram final
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 };
 
-// WebGPU PagedAttention kernel — v1 skeleton.
+// Gather paged K/V into padded contiguous BNSH scratch tensors so
+// ApplyFlashAttention can consume them the same way GQA/Attention consume
+// their present_key/present_value tensors.
 //
+// Inputs (all read):
+//   key_cache   : (num_blocks, block_size, kv_num_heads, head_size)      [T]
+//   value_cache : (num_blocks, block_size, kv_num_heads, head_size)      [T]
+//   cumulative_sequence_length : (batch_size + 1,)                       [S]
+//   past_seqlens               : (batch_size,)                           [S]
+//   block_table                : (batch_size, max_num_blocks_per_seq)    [S]
+//
+// Outputs (write):
+//   k_padded : (batch_size, kv_num_heads, max_kv_len, head_size)         [T]  BNSH
+//   v_padded : (batch_size, kv_num_heads, max_kv_len, head_size)         [T]  BNSH
+//
+// Slots [s >= total_kv_len_b) are zero-filled so FlashAttention's dot-product
+// contributions are zero there. (Combined with the per-batch causal mask driven
+// by seqlen_k, the pad tokens produce no leakage into the visible logits.)
+class PagedAttentionGatherKVProgram final : public Program<PagedAttentionGatherKVProgram> {
+ public:
+  PagedAttentionGatherKVProgram() : Program{"PagedAttentionGatherKV"} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
+      {"head_size", ProgramUniformVariableDataType::Uint32},
+      {"block_size", ProgramUniformVariableDataType::Uint32},
+      {"max_num_blocks_per_seq", ProgramUniformVariableDataType::Uint32},
+      {"max_kv_len", ProgramUniformVariableDataType::Uint32},
+      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+};
+
+// Unpack packed varlen Q into padded BSNH so it can be fed to
+// ApplyFlashAttention (which expects a real batch dimension).
+//
+// Inputs (all read):
+//   input                        : (token_count, num_heads * head_size)  [T]  packed
+//   cumulative_sequence_length   : (batch_size + 1,)                     [S]
+//
+// Output (write):
+//   output : (batch_size, max_seqlen_q, num_heads, head_size)            [T]  BSNH
+//
+// Pad slots (s >= seq_len_b) hold zero; their outputs from FlashAttention
+// are discarded by the repack kernel and never surface in the packed
+// PagedAttention output tensor.
+class PagedAttentionUnpackQueryProgram final : public Program<PagedAttentionUnpackQueryProgram> {
+ public:
+  PagedAttentionUnpackQueryProgram() : Program{"PagedAttentionUnpackQuery"} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"num_heads", ProgramUniformVariableDataType::Uint32},
+      {"head_size", ProgramUniformVariableDataType::Uint32},
+      {"hidden_size", ProgramUniformVariableDataType::Uint32},
+      {"max_seqlen_q", ProgramUniformVariableDataType::Uint32},
+      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+};
+
+// Repack padded BSNH FlashAttention output back to the packed varlen layout
+// PagedAttention's caller expects. Inverse of PagedAttentionUnpackQuery.
+//
+// Inputs (read):
+//   input                        : (batch_size, max_seqlen_q, num_heads, head_size)  [T]
+//   cumulative_sequence_length   : (batch_size + 1,)                                 [S]
+//
+// Output (write):
+//   output : (token_count, num_heads * head_size)                                    [T]
+class PagedAttentionRepackOutputProgram final : public Program<PagedAttentionRepackOutputProgram> {
+ public:
+  PagedAttentionRepackOutputProgram() : Program{"PagedAttentionRepackOutput"} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"num_heads", ProgramUniformVariableDataType::Uint32},
+      {"head_size", ProgramUniformVariableDataType::Uint32},
+      {"hidden_size", ProgramUniformVariableDataType::Uint32},
+      {"max_seqlen_q", ProgramUniformVariableDataType::Uint32},
+      {"token_count", ProgramUniformVariableDataType::Uint32},
+      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+};
+
 // Op contract, phased delivery plan, and reuse strategy are documented in
 // docs/design/webgpu_paged_attention.md.
-//
-// This class registers the op with the WebGPU EP so a graph containing
-// PagedAttention no longer fails at kernel-matching time. ComputeInternal
-// currently returns NOT_IMPLEMENTED; the real implementation is added in
-// Phase 1.
 class PagedAttention final : public WebGpuKernel {
  public:
   explicit PagedAttention(const OpKernelInfo& info);

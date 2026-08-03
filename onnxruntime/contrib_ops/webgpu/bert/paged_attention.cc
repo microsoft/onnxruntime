@@ -5,6 +5,8 @@
 
 #include "contrib_ops/cpu/bert/attention_parameters.h"
 #include "contrib_ops/cpu/bert/paged_attention_helper.h"
+#include "contrib_ops/webgpu/bert/attention_common.h"
+#include "contrib_ops/webgpu/bert/flash_attention.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/webgpu/webgpu_utils.h"
@@ -214,6 +216,169 @@ static Status RunSplitPackedQKV(onnxruntime::webgpu::ComputeContext& context,
   return context.RunProgram(program);
 }
 
+Status PagedAttentionGatherKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
+  const auto& key_cache = sh.AddInput("key_cache", ShaderUsage::UseUniform);
+  const auto& value_cache = sh.AddInput("value_cache", ShaderUsage::UseUniform);
+  const auto& cumulative_sequence_length =
+      sh.AddInput("cumulative_sequence_length", ShaderUsage::UseUniform);
+  const auto& past_seqlens = sh.AddInput("past_seqlens", ShaderUsage::UseUniform);
+  const auto& block_table = sh.AddInput("block_table", ShaderUsage::UseUniform);
+  const auto& k_padded = sh.AddOutput("k_padded", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& v_padded = sh.AddOutput("v_padded", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  return WGSL_TEMPLATE_APPLY(sh, "bert/paged_attention_gather_kv.wgsl.template",
+                             WGSL_TEMPLATE_VARIABLE(block_table, block_table),
+                             WGSL_TEMPLATE_VARIABLE(cumulative_sequence_length, cumulative_sequence_length),
+                             WGSL_TEMPLATE_VARIABLE(k_padded, k_padded),
+                             WGSL_TEMPLATE_VARIABLE(key_cache, key_cache),
+                             WGSL_TEMPLATE_VARIABLE(past_seqlens, past_seqlens),
+                             WGSL_TEMPLATE_VARIABLE(v_padded, v_padded),
+                             WGSL_TEMPLATE_VARIABLE(value_cache, value_cache));
+}
+
+// Materialize a padded BNSH (batch, kv_num_heads, max_kv_len, head_size)
+// view of the paged K and V caches so ApplyFlashAttention can consume them
+// as its present_key / present_value tensors. Slots beyond each batch's
+// effective total_kv_len are zero-filled.
+static Status RunGatherKV(onnxruntime::webgpu::ComputeContext& context,
+                          const PagedAttentionParameters& parameters,
+                          uint32_t max_kv_len,
+                          const Tensor* key_cache,
+                          const Tensor* value_cache,
+                          const Tensor* cumulative_seqlens_q,
+                          const Tensor* past_seqlens,
+                          const Tensor* block_table,
+                          Tensor* k_padded,
+                          Tensor* v_padded) {
+  const uint32_t batch_size = static_cast<uint32_t>(parameters.batch_size);
+  const uint32_t kv_num_heads = static_cast<uint32_t>(parameters.kv_num_heads);
+  const uint32_t head_size = static_cast<uint32_t>(parameters.head_size);
+  const uint32_t block_size = static_cast<uint32_t>(parameters.block_size);
+  const uint32_t max_num_blocks_per_seq = static_cast<uint32_t>(parameters.max_num_blocks_per_seq);
+  const uint32_t dispatch_size = batch_size * kv_num_heads * max_kv_len * head_size;
+
+  PagedAttentionGatherKVProgram program{};
+  program
+      .AddInputs({
+          {key_cache, ProgramTensorMetadataDependency::TypeAndRank},
+          {value_cache, ProgramTensorMetadataDependency::TypeAndRank},
+          {cumulative_seqlens_q, ProgramTensorMetadataDependency::TypeAndRank},
+          {past_seqlens, ProgramTensorMetadataDependency::TypeAndRank},
+          {block_table, ProgramTensorMetadataDependency::TypeAndRank},
+      })
+      .AddOutputs({
+          {k_padded, ProgramTensorMetadataDependency::TypeAndRank},
+          {v_padded, ProgramTensorMetadataDependency::TypeAndRank},
+      })
+      .AddUniformVariables({
+          {batch_size},
+          {kv_num_heads},
+          {head_size},
+          {block_size},
+          {max_num_blocks_per_seq},
+          {max_kv_len},
+          {dispatch_size},
+      })
+      .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+  return context.RunProgram(program);
+}
+
+Status PagedAttentionUnpackQueryProgram::GenerateShaderCode(ShaderHelper& sh) const {
+  const auto& input = sh.AddInput("input", ShaderUsage::UseUniform);
+  const auto& cumulative_sequence_length =
+      sh.AddInput("cumulative_sequence_length", ShaderUsage::UseUniform);
+  const auto& output = sh.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  return WGSL_TEMPLATE_APPLY(sh, "bert/paged_attention_unpack_query.wgsl.template",
+                             WGSL_TEMPLATE_VARIABLE(cumulative_sequence_length, cumulative_sequence_length),
+                             WGSL_TEMPLATE_VARIABLE(input, input),
+                             WGSL_TEMPLATE_VARIABLE(output, output));
+}
+
+// Unpack the packed varlen query tensor into a padded BSNH
+// (batch, max_seqlen_q, num_heads, head_size) tensor for FlashAttention.
+// Pad rows (s >= seq_len_b) are zero-filled; their FA outputs are discarded
+// by the repack kernel.
+static Status RunUnpackQuery(onnxruntime::webgpu::ComputeContext& context,
+                             const PagedAttentionParameters& parameters,
+                             uint32_t max_seqlen_q,
+                             const Tensor* query,
+                             const Tensor* cumulative_seqlens_q,
+                             Tensor* q_padded) {
+  const uint32_t batch_size = static_cast<uint32_t>(parameters.batch_size);
+  const uint32_t num_heads = static_cast<uint32_t>(parameters.num_heads);
+  const uint32_t head_size = static_cast<uint32_t>(parameters.head_size);
+  const uint32_t hidden_size = static_cast<uint32_t>(parameters.hidden_size);
+  const uint32_t dispatch_size = batch_size * max_seqlen_q * num_heads * head_size;
+
+  PagedAttentionUnpackQueryProgram program{};
+  program
+      .AddInputs({
+          {query, ProgramTensorMetadataDependency::TypeAndRank},
+          {cumulative_seqlens_q, ProgramTensorMetadataDependency::TypeAndRank},
+      })
+      .AddOutputs({
+          {q_padded, ProgramTensorMetadataDependency::TypeAndRank},
+      })
+      .AddUniformVariables({
+          {batch_size},
+          {num_heads},
+          {head_size},
+          {hidden_size},
+          {max_seqlen_q},
+          {dispatch_size},
+      })
+      .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+  return context.RunProgram(program);
+}
+
+Status PagedAttentionRepackOutputProgram::GenerateShaderCode(ShaderHelper& sh) const {
+  const auto& input = sh.AddInput("input", ShaderUsage::UseUniform);
+  const auto& cumulative_sequence_length =
+      sh.AddInput("cumulative_sequence_length", ShaderUsage::UseUniform);
+  const auto& output = sh.AddOutput("output", ShaderUsage::UseUniform);
+  return WGSL_TEMPLATE_APPLY(sh, "bert/paged_attention_repack_output.wgsl.template",
+                             WGSL_TEMPLATE_VARIABLE(cumulative_sequence_length, cumulative_sequence_length),
+                             WGSL_TEMPLATE_VARIABLE(input, input),
+                             WGSL_TEMPLATE_VARIABLE(output, output));
+}
+
+// Inverse of RunUnpackQuery: pull the valid (s < seq_len_b) slots out of the
+// padded BSNH attention output and write them into the packed varlen
+// (token_count, hidden_size) layout PagedAttention's caller expects.
+static Status RunRepackOutput(onnxruntime::webgpu::ComputeContext& context,
+                              const PagedAttentionParameters& parameters,
+                              uint32_t max_seqlen_q,
+                              const Tensor* padded_output,
+                              const Tensor* cumulative_seqlens_q,
+                              Tensor* output) {
+  const uint32_t batch_size = static_cast<uint32_t>(parameters.batch_size);
+  const uint32_t num_heads = static_cast<uint32_t>(parameters.num_heads);
+  const uint32_t head_size = static_cast<uint32_t>(parameters.head_size);
+  const uint32_t hidden_size = static_cast<uint32_t>(parameters.hidden_size);
+  const uint32_t token_count = static_cast<uint32_t>(parameters.token_count);
+  const uint32_t dispatch_size = token_count * hidden_size;
+
+  PagedAttentionRepackOutputProgram program{};
+  program
+      .AddInputs({
+          {padded_output, ProgramTensorMetadataDependency::TypeAndRank},
+          {cumulative_seqlens_q, ProgramTensorMetadataDependency::TypeAndRank},
+      })
+      .AddOutputs({
+          {output, ProgramTensorMetadataDependency::TypeAndRank},
+      })
+      .AddUniformVariables({
+          {batch_size},
+          {num_heads},
+          {head_size},
+          {hidden_size},
+          {max_seqlen_q},
+          {token_count},
+          {dispatch_size},
+      })
+      .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+  return context.RunProgram(program);
+}
+
 PagedAttention::PagedAttention(const OpKernelInfo& info) : WebGpuKernel(info) {
   int64_t num_heads = 0;
   int64_t kv_num_heads = 0;
@@ -232,10 +397,7 @@ PagedAttention::PagedAttention(const OpKernelInfo& info) : WebGpuKernel(info) {
 }
 
 Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
-  // See docs/design/webgpu_paged_attention.md §5 for the phased plan.
-  // Phase 1a wires up input parsing, shape validation, output allocation,
-  // and the aliased-vs-non-aliased cache branching. Actual kernel dispatch
-  // (decode / prefill) lands in Phase 1b.3 / 1b.4.
+  // See docs/design/webgpu_paged_attention.md for the phased plan and reuse strategy.
   const Tensor* query = context.Input<Tensor>(0);
   const Tensor* key = context.Input<Tensor>(1);
   const Tensor* value = context.Input<Tensor>(2);
@@ -269,6 +431,17 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   parameters.local_window_size = local_window_size_;
   parameters.do_rotary = do_rotary_;
   parameters.rotary_interleaved = rotary_interleaved_;
+
+  // Feature guards. softcap and local_window_size are rejected until FA gains
+  // the corresponding shader-side support (tracked in the design doc).
+  if (softcap_ != 0.0f) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "PagedAttention (WebGPU): non-zero softcap is not supported yet.");
+  }
+  if (local_window_size_ != -1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "PagedAttention (WebGPU): local_window_size != -1 is not supported yet.");
+  }
 
   if (do_rotary_ && (cos_cache == nullptr || sin_cache == nullptr)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -315,12 +488,10 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
     return Status::OK();
   }
 
-  // Packed-QKV support (Phase 1b.2b): the CUDA kernel treats packed-QKV as a
-  // special addressing mode inside the rotary + scatter kernels. On WebGPU we
-  // instead materialize three standalone Q, K, V tensors from the packed input
-  // and then fall through to the same non-packed rotary + scatter pipeline
-  // from Phase 1b.2. That trades some memory bandwidth for a clean reuse of
-  // the existing kernels; perf-focused fusion can revisit this in Phase 1c.
+  // Packed-QKV: materialize three standalone Q/K/V tensors from the packed
+  // input so the rest of the routine can use the non-packed path unchanged.
+  // The CUDA kernel handles packed-QKV as an addressing mode inside its
+  // rotary/scatter kernels; we trade some bandwidth for kernel reuse.
   Tensor packed_q_tensor;
   Tensor packed_k_tensor;
   Tensor packed_v_tensor;
@@ -354,28 +525,22 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
     ORT_RETURN_IF_ERROR(context.CopyTensor(*value_cache, *value_cache_out));
   }
 
-  // Phase 1b.2: fused rotary path. Mirrors paged_attention_impl.cu:
-  //   1) rotate query into a workspace (in production this feeds the
-  //      attention kernel; in Phase 1b.2 there is no attention yet, so we
-  //      route rotated Q into `output` — the same buffer 1b.3 will overwrite
-  //      with attention results — so tests can validate Q rotation directly
-  //      instead of leaving it unexercised until 1b.3);
-  //   2) rotate key into a temp workspace tensor;
-  //   3) scatter the rotated key alongside the untouched value into the
-  //      paged cache using the same ScatterKVToPagedCacheProgram from 1b.1.
-  //
-  // When do_rotary_ == false, key is scattered directly (Phase 1b.1 flow)
-  // and `output` is filled with zeros as a well-defined placeholder for the
-  // attention result until 1b.3 lands.
+  // Fused rotary path. Rotate Q and K into scratch tensors, then scatter the
+  // rotated K + untouched V into the paged cache. When do_rotary_ is false Q
+  // is passed through and K is scattered directly.
+  const Tensor* query_for_fa = query;
   const Tensor* key_for_scatter = key;
+  Tensor rotated_query_tensor;
   Tensor rotated_key_tensor;
   if (do_rotary_) {
+    rotated_query_tensor = context.CreateGPUTensor(query->DataType(), query->Shape());
     ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters,
                                            static_cast<uint32_t>(parameters.num_heads),
                                            rotary_interleaved_,
                                            query, cos_cache, sin_cache,
                                            cumulative_seqlens_q, past_seqlens,
-                                           output));
+                                           &rotated_query_tensor));
+    query_for_fa = &rotated_query_tensor;
 
     rotated_key_tensor = context.CreateGPUTensor(key->DataType(), key->Shape());
     ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters,
@@ -391,13 +556,131 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                                                cumulative_seqlens_q, past_seqlens,
                                                block_table, key_cache_out, value_cache_out));
 
-  // TODO(Phase 1b.3 / 1b.4): dispatch the attention kernel over the newly
-  // updated paged cache. Until that lands, `output` holds either a
-  // well-defined zero (do_rotary_ == false) or the rotated query
-  // (do_rotary_ == true) so tests can validate the pre-attention pipeline.
-  if (!do_rotary_) {
-    context.FillZero(*output);
+  // Fallback attention: gather paged K/V into padded BNSH, unpack varlen Q
+  // into LEFT-aligned padded BSNH, dispatch ApplyFlashAttention, then repack.
+  // See docs/design/webgpu_paged_attention.md §4.
+  //
+  // Sync the two int32 metadata tensors D→H so we can derive max_seqlen_q,
+  // max_kv_len and the per-batch seqlen_k / seqlens_q values on the host.
+  const auto* int32_type = DataTypeImpl::GetType<int32_t>();
+  const int64_t batch_size_i64 = static_cast<int64_t>(parameters.batch_size);
+
+  Tensor cum_seqlens_q_cpu = context.CreateCPUTensor(int32_type, TensorShape({batch_size_i64 + 1}));
+  Tensor past_seqlens_cpu = context.CreateCPUTensor(int32_type, TensorShape({batch_size_i64}));
+  ORT_RETURN_IF_ERROR(context.CopyTensor(*cumulative_seqlens_q, cum_seqlens_q_cpu));
+  ORT_RETURN_IF_ERROR(context.CopyTensor(*past_seqlens, past_seqlens_cpu));
+  const int32_t* cum_ptr = cum_seqlens_q_cpu.Data<int32_t>();
+  const int32_t* past_ptr = past_seqlens_cpu.Data<int32_t>();
+
+  // Compute per-batch effective lengths and the tightest max_seqlen_q /
+  // max_kv_len bounds. FA's seqlens_k convention is the LAST VALID KV INDEX
+  // (0-based), so entry b is (past + q_len - 1); the shader reads it back as
+  // u32(seqlens_k[b]) + 1u. seqlens_q is the raw per-batch new-Q length.
+  Tensor seqlen_k_cpu = context.CreateCPUTensor(int32_type, TensorShape({batch_size_i64}));
+  int32_t* seqlen_k_ptr = seqlen_k_cpu.MutableData<int32_t>();
+  Tensor seqlens_q_cpu = context.CreateCPUTensor(int32_type, TensorShape({batch_size_i64}));
+  int32_t* seqlens_q_ptr = seqlens_q_cpu.MutableData<int32_t>();
+  int32_t max_seqlen_q_i = 0;
+  int32_t max_kv_len_i = 0;
+  for (int b = 0; b < parameters.batch_size; ++b) {
+    const int32_t q_len = cum_ptr[b + 1] - cum_ptr[b];
+    const int32_t past_len = past_ptr[b];
+    const int32_t total_kv_len = past_len + q_len;
+    seqlen_k_ptr[b] = total_kv_len - 1;  // FA's "last valid index" convention.
+    seqlens_q_ptr[b] = q_len;            // Raw per-batch new-Q length.
+    if (q_len > max_seqlen_q_i) {
+      max_seqlen_q_i = q_len;
+    }
+    if (total_kv_len > max_kv_len_i) {
+      max_kv_len_i = total_kv_len;
+    }
   }
+  const uint32_t max_seqlen_q = static_cast<uint32_t>(max_seqlen_q_i);
+  const uint32_t max_kv_len = static_cast<uint32_t>(max_kv_len_i);
+
+  // Empty-attention fast path.
+  if (max_seqlen_q == 0 || max_kv_len == 0) {
+    context.FillZero(*output);
+    return Status::OK();
+  }
+
+  const auto* dtype = query->DataType();
+
+  Tensor seqlen_k_gpu = context.CreateGPUTensor(int32_type, TensorShape({batch_size_i64}));
+  ORT_RETURN_IF_ERROR(context.CopyTensor(seqlen_k_cpu, seqlen_k_gpu));
+
+  Tensor seqlens_q_gpu = context.CreateGPUTensor(int32_type, TensorShape({batch_size_i64}));
+  ORT_RETURN_IF_ERROR(context.CopyTensor(seqlens_q_cpu, seqlens_q_gpu));
+
+  Tensor k_padded = context.CreateGPUTensor(
+      dtype, TensorShape({batch_size_i64,
+                          static_cast<int64_t>(parameters.kv_num_heads),
+                          static_cast<int64_t>(max_kv_len),
+                          static_cast<int64_t>(parameters.head_size)}));
+  Tensor v_padded = context.CreateGPUTensor(
+      dtype, TensorShape({batch_size_i64,
+                          static_cast<int64_t>(parameters.kv_num_heads),
+                          static_cast<int64_t>(max_kv_len),
+                          static_cast<int64_t>(parameters.head_size)}));
+  Tensor q_padded = context.CreateGPUTensor(
+      dtype, TensorShape({batch_size_i64,
+                          static_cast<int64_t>(max_seqlen_q),
+                          static_cast<int64_t>(parameters.num_heads),
+                          static_cast<int64_t>(parameters.head_size)}));
+  Tensor output_padded = context.CreateGPUTensor(
+      dtype, TensorShape({batch_size_i64,
+                          static_cast<int64_t>(max_seqlen_q),
+                          static_cast<int64_t>(parameters.num_heads),
+                          static_cast<int64_t>(parameters.head_size)}));
+
+  // Gather paged K/V into padded BNSH. The gather reads from the just-scattered
+  // key_cache_out / value_cache_out so it sees new tokens + past cache.
+  ORT_RETURN_IF_ERROR(RunGatherKV(context, parameters, max_kv_len,
+                                  key_cache_out, value_cache_out,
+                                  cumulative_seqlens_q, past_seqlens,
+                                  block_table, &k_padded, &v_padded));
+
+  ORT_RETURN_IF_ERROR(RunUnpackQuery(context, parameters, max_seqlen_q,
+                                     query_for_fa, cumulative_seqlens_q, &q_padded));
+
+  // WebgpuAttentionParameters via the GQA constructor so is_gqa_ is set.
+  // kv_sequence_length = 0 triggers FA's kv_empty aliasing path (K=V=nullptr;
+  // FA aliases present_key/value to past_key/value).
+  GroupQueryAttentionParameters gqa_params{};
+  gqa_params.batch_size = parameters.batch_size;
+  gqa_params.sequence_length = static_cast<int>(max_seqlen_q);
+  gqa_params.kv_sequence_length = 0;
+  gqa_params.total_sequence_length = static_cast<int>(max_kv_len);
+  gqa_params.hidden_size = parameters.hidden_size;
+  gqa_params.head_size = parameters.head_size;
+  gqa_params.v_hidden_size = parameters.kv_hidden_size;
+  gqa_params.v_head_size = parameters.head_size;
+  gqa_params.num_heads = parameters.num_heads;
+  gqa_params.is_unidirectional = true;
+  gqa_params.past_present_share_buffer = false;
+  gqa_params.do_rotary = false;  // Q/K already rotated above.
+  gqa_params.scale = parameters.scale;
+  gqa_params.kv_num_heads = parameters.kv_num_heads;
+  gqa_params.kv_hidden_size = parameters.kv_hidden_size;
+  gqa_params.seqlen_past_kv_cache = 0;
+  gqa_params.seqlen_present_kv_cache = static_cast<int>(max_kv_len);
+  gqa_params.qkv_format = Q_K_V_BSNH;
+  gqa_params.mask_type = MASK_NONE;
+  WebgpuAttentionParameters fa_params(gqa_params);
+
+  ORT_RETURN_IF_ERROR(ApplyFlashAttention(
+      &q_padded,
+      /*K=*/nullptr, /*V=*/nullptr, /*attention_bias=*/nullptr,
+      &output_padded,
+      /*past_key=*/&k_padded, /*present_key=*/nullptr,
+      /*past_value=*/&v_padded, /*present_value=*/nullptr,
+      fa_params, context, &seqlen_k_gpu,
+      /*cos_cache=*/nullptr, /*sin_cache=*/nullptr, /*head_sink=*/nullptr,
+      /*total_seqlen=*/nullptr, /*seqlens_q=*/&seqlens_q_gpu));
+
+  ORT_RETURN_IF_ERROR(RunRepackOutput(context, parameters, max_seqlen_q,
+                                      &output_padded, cumulative_seqlens_q, output));
+
   return Status::OK();
 }
 
