@@ -226,6 +226,13 @@ if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
     endif()
 endif()
 
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0 AND MSVC)
+    # Suppress unrecognized __pragma warnings emitted from CUDA headers in device code.
+    list(APPEND _cuda_plugin_shared_compile_options
+        "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20199>"
+    )
+  endif()
+
 if (MSVC)
     list(APPEND _cuda_plugin_shared_compile_options
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /permissive>"

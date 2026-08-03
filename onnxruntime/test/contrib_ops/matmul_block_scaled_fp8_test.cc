@@ -241,6 +241,269 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvDecodeWideTilesFp16) {
   }
 }
 
+// Covers the M > 1 (speculative decode / MTP verify) GEMV dispatch. There RowsPerWarp is 2 or 4
+// and ColsPerWarp is chosen from N (1 / 2 / 4), which selects the hoisted-widening code path in
+// the kernel. Every (RowsPerWarp, ColsPerWarp, Unroll) combination is exercised with a ragged N so
+// the per-column bounds predication is hit, and both the row and the column vary so a mis-mapped
+// row or column cannot pass by accident.
+TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvSpeculativeDecodeTilesFp16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp8Weight.";
+  }
+
+  // m = 2 -> RowsPerWarp 2, m = 3/4 -> RowsPerWarp 4, m = 5/8 -> RowsPerWarp 8 (m = 3 and m = 5
+  // also leave a ragged row tail). n picks ColsPerWarp 1 (n < 2048), 2 and 4; all leave a ragged
+  // column tail.
+  for (const int64_t m : {2, 3, 4, 5, 8}) {
+    for (const int64_t n : {1026, 2050, 4098, 8194}) {
+      constexpr int64_t k = 64;  // K % 16 == 0 -> GEMV path; two 32-element K blocks
+      constexpr int64_t block_size = 32;
+      constexpr int64_t k_blocks = k / block_size;
+
+      static const float kRowValues[] = {1.0f, 2.0f, -1.0f, -2.0f};
+      std::vector<float> row_value(static_cast<size_t>(n));
+      for (int64_t r = 0; r < n; ++r) {
+        row_value[static_cast<size_t>(r)] = kRowValues[r % 4];
+      }
+      std::vector<Float8E4M3FN> b = MakeConstRowWeight(row_value, k);
+      std::vector<float> b_scale(static_cast<size_t>(n * k_blocks), 1.0f);
+
+      // A[row, :] = row + 1 -> Y[row, col] = row_value[col] * k * (row + 1).
+      std::vector<float> a(static_cast<size_t>(m * k));
+      for (int64_t row = 0; row < m; ++row) {
+        for (int64_t i = 0; i < k; ++i) {
+          a[static_cast<size_t>(row * k + i)] = static_cast<float>(row + 1);
+        }
+      }
+      std::vector<float> expected(static_cast<size_t>(m * n));
+      for (int64_t row = 0; row < m; ++row) {
+        for (int64_t col = 0; col < n; ++col) {
+          expected[static_cast<size_t>(row * n + col)] =
+              row_value[static_cast<size_t>(col)] * static_cast<float>(k) * static_cast<float>(row + 1);
+        }
+      }
+
+      OpTester test("MatMulBlockQuantizedFp8Weight", 1, onnxruntime::kMSDomain);
+      test.AddAttribute<int64_t>("block_size", block_size);
+      test.AddInput<MLFloat16>("A", {m, k}, FloatsToMLFloat16s(a));
+      test.AddInput<Float8E4M3FN>("B", {n, k}, b);
+      test.AddInput<float>("b_scale", {n, k_blocks}, b_scale);
+      test.AddOutput<MLFloat16>("Y", {m, n}, FloatsToMLFloat16s(expected));
+      test.SetOutputTolerance(0.5f);
+
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
+  }
+}
+
+// Covers the SM80+ tensor-core (mma.m16n8k16) GEMV dispatch, taken when K is a multiple of 64
+// with at least 4 K windows and block_size is a multiple of 64. It shares no code with the FMA
+// kernel: the K axis is permuted, one warp owns a 16-column tile (each lane holding two columns
+// eight apart and two rows), and the K split is reduced across warps through shared memory. So
+// it needs its own coverage - ragged N and M, several K blocks with per-block scales that vary by
+// column, and inputs that vary along every one of M, N and K so a mis-mapped index cannot pass.
+TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreTilesFp16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp8Weight.";
+  }
+
+  struct Case {
+    int64_t n, k, block_size;
+  };
+  // k = 256/320 give 4/5 K windows, which selects the small-KSplit fallback; k = 1024 gives the
+  // full KSplit (16 below N = 8192, 8 at or above it). Every N is ragged modulo the 16-column tile.
+  const Case cases[] = {{18, 256, 64}, {1026, 320, 64}, {4098, 1024, 256}, {8194, 1024, 512}};
+  static const float kWeightValues[] = {1.0f, 2.0f, -1.0f};      // exact in E4M3
+  static const float kActValues[] = {1.0f, -1.0f, 0.5f, -0.5f};  // exact in FP16
+  for (const Case& c : cases) {
+    const int64_t k_blocks = c.k / c.block_size;
+    for (const int64_t m : {1, 3, 4, 8}) {
+      // Periods 3 (weight) and 4 (activation) are coprime, so no (row, col) pair sums to zero by
+      // symmetry. Even so the signed terms cancel heavily, so the scales are kept in [0.25, 0.75]
+      // rather than scaled down: every product is a multiple of 1/8 and the reference stays exact
+      // in FP16, while |expected| stays well above the tolerance below (an all-zero output must
+      // not pass).
+      std::vector<Float8E4M3FN> b(static_cast<size_t>(c.n * c.k));
+      std::vector<float> b_ref(static_cast<size_t>(c.n * c.k));
+      for (int64_t col = 0; col < c.n; ++col) {
+        for (int64_t i = 0; i < c.k; ++i) {
+          const float v = kWeightValues[(col + i) % 3];
+          b[static_cast<size_t>(col * c.k + i)] = Float8E4M3FN(v);
+          b_ref[static_cast<size_t>(col * c.k + i)] = v;
+        }
+      }
+      std::vector<float> b_scale(static_cast<size_t>(c.n * k_blocks));
+      for (int64_t col = 0; col < c.n; ++col) {
+        for (int64_t kb = 0; kb < k_blocks; ++kb) {
+          b_scale[static_cast<size_t>(col * k_blocks + kb)] = static_cast<float>(1 + (col + kb) % 3) / 4.0f;
+        }
+      }
+      std::vector<float> a(static_cast<size_t>(m * c.k));
+      for (int64_t row = 0; row < m; ++row) {
+        for (int64_t i = 0; i < c.k; ++i) {
+          a[static_cast<size_t>(row * c.k + i)] = kActValues[(row + i) % 4];
+        }
+      }
+      std::vector<float> expected(static_cast<size_t>(m * c.n));
+      for (int64_t row = 0; row < m; ++row) {
+        for (int64_t col = 0; col < c.n; ++col) {
+          float acc = 0.0f;
+          for (int64_t i = 0; i < c.k; ++i) {
+            acc += a[static_cast<size_t>(row * c.k + i)] * b_ref[static_cast<size_t>(col * c.k + i)] *
+                   b_scale[static_cast<size_t>(col * k_blocks + i / c.block_size)];
+          }
+          expected[static_cast<size_t>(row * c.n + col)] = acc;
+        }
+      }
+
+      OpTester test("MatMulBlockQuantizedFp8Weight", 1, onnxruntime::kMSDomain);
+      test.AddAttribute<int64_t>("block_size", c.block_size);
+      test.AddInput<MLFloat16>("A", {m, c.k}, FloatsToMLFloat16s(a));
+      test.AddInput<Float8E4M3FN>("B", {c.n, c.k}, b);
+      test.AddInput<float>("b_scale", {c.n, k_blocks}, b_scale);
+      test.AddOutput<MLFloat16>("Y", {m, c.n}, FloatsToMLFloat16s(expected));
+      test.SetOutputTolerance(0.005f);
+
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
+  }
+}
+
+// BF16 companion to GemvTensorCoreTilesFp16. BF16 has its own mma instruction and its own FP8
+// converter (E4M3 -> FP16 -> FP32 -> BF16), neither shared with the FP16 instantiation. Also
+// covers the bias input on the tensor-core path.
+TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreTilesBf16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp8Weight.";
+  }
+
+  constexpr int64_t n = 1026;  // ragged modulo the 16-column tile
+  constexpr int64_t k = 256;
+  constexpr int64_t block_size = 64;
+  constexpr int64_t k_blocks = k / block_size;
+  constexpr int64_t m = 4;
+  static const float kWeightValues[] = {1.0f, 2.0f, -1.0f};
+  static const float kActValues[] = {1.0f, -1.0f, 0.5f, -0.5f};
+
+  std::vector<Float8E4M3FN> b(static_cast<size_t>(n * k));
+  std::vector<float> b_ref(static_cast<size_t>(n * k));
+  for (int64_t col = 0; col < n; ++col) {
+    for (int64_t i = 0; i < k; ++i) {
+      const float v = kWeightValues[(col + i) % 3];
+      b[static_cast<size_t>(col * k + i)] = Float8E4M3FN(v);
+      b_ref[static_cast<size_t>(col * k + i)] = v;
+    }
+  }
+  std::vector<float> b_scale(static_cast<size_t>(n * k_blocks));
+  for (int64_t col = 0; col < n; ++col) {
+    for (int64_t kb = 0; kb < k_blocks; ++kb) {
+      b_scale[static_cast<size_t>(col * k_blocks + kb)] = static_cast<float>(1 + (col + kb) % 3) / 4.0f;
+    }
+  }
+  std::vector<float> a(static_cast<size_t>(m * k));
+  for (int64_t row = 0; row < m; ++row) {
+    for (int64_t i = 0; i < k; ++i) {
+      a[static_cast<size_t>(row * k + i)] = kActValues[(row + i) % 4];
+    }
+  }
+  std::vector<float> bias(static_cast<size_t>(n));
+  for (int64_t col = 0; col < n; ++col) {
+    bias[static_cast<size_t>(col)] = static_cast<float>(col % 5) - 2.0f;
+  }
+  std::vector<float> expected(static_cast<size_t>(m * n));
+  for (int64_t row = 0; row < m; ++row) {
+    for (int64_t col = 0; col < n; ++col) {
+      float acc = 0.0f;
+      for (int64_t i = 0; i < k; ++i) {
+        acc += a[static_cast<size_t>(row * k + i)] * b_ref[static_cast<size_t>(col * k + i)] *
+               b_scale[static_cast<size_t>(col * k_blocks + i / block_size)];
+      }
+      expected[static_cast<size_t>(row * n + col)] = acc + bias[static_cast<size_t>(col)];
+    }
+  }
+
+  OpTester test("MatMulBlockQuantizedFp8Weight", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddInput<BFloat16>("A", {m, k}, FloatsToBFloat16s(a));
+  test.AddInput<Float8E4M3FN>("B", {n, k}, b);
+  test.AddInput<float>("b_scale", {n, k_blocks}, b_scale);
+  test.AddOptionalInputEdge<float>();  // a_scale (skipped)
+  test.AddInput<BFloat16>("bias", {n}, FloatsToBFloat16s(bias));
+  test.AddOutput<BFloat16>("Y", {m, n}, FloatsToBFloat16s(expected));
+  test.SetOutputTolerance(0.02f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Lane-ownership probe for the tensor-core path.
+//
+// The tests above sum over the whole K axis, so a wrong lane -> (row, column) mapping could in
+// principle still land on a plausible value. Here the activation is one-hot, which collapses
+// Y[row, col] to a single weight times its block scale, and the probe offset differs per row.
+// Both the weight and the block scale cycle modulo 3 along N, so the two columns a lane owns
+// (g and g + 8, which differ by 8 == 2 mod 3) never carry the same value, and the 3 x 3 possible
+// weight-times-scale products are all distinct, so the eight rows give eight different values in
+// any given column. Any swap of the mma ownership -- output rows 2t / 2t + 1 against columns
+// g / g + 8, or the activation row against the output column -- shows up as a mismatch instead of
+// cancelling out.
+TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreLaneOwnershipFp16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp8Weight.";
+  }
+
+  constexpr int64_t m = 8;   // full mma N extent: output rows 2t and 2t + 1 for every t
+  constexpr int64_t n = 40;  // ragged: the last 16-column tile has only its low half in range
+  constexpr int64_t k = 256;
+  constexpr int64_t block_size = 64;
+  constexpr int64_t k_blocks = k / block_size;
+
+  static const float kProbeWeights[3] = {1.0f, -2.0f, 0.5f};  // exact in E4M3
+  static const float kProbeScales[3] = {1.0f, 4.0f, 16.0f};   // all 9 products are distinct
+
+  std::vector<Float8E4M3FN> b(static_cast<size_t>(n * k));
+  std::vector<float> b_scale(static_cast<size_t>(n * k_blocks));
+  for (int64_t col = 0; col < n; ++col) {
+    for (int64_t i = 0; i < k; ++i) {
+      b[static_cast<size_t>(col * k + i)] = Float8E4M3FN(kProbeWeights[(col + i) % 3]);
+    }
+    for (int64_t kb = 0; kb < k_blocks; ++kb) {
+      b_scale[static_cast<size_t>(col * k_blocks + kb)] = kProbeScales[(col + kb) % 3];
+    }
+  }
+
+  // Row `row` probes K offset 23 * row. The eight (weight index, scale-block index) pairs that
+  // produces are all different, and each row lands in a different 16-element lane slice of its
+  // 64-element K window, so no two rows can be confused for one another.
+  std::vector<float> a(static_cast<size_t>(m * k), 0.0f);
+  std::vector<float> expected(static_cast<size_t>(m * n), 0.0f);
+  for (int64_t row = 0; row < m; ++row) {
+    const int64_t i = 23 * row;
+    a[static_cast<size_t>(row * k + i)] = 1.0f;
+    for (int64_t col = 0; col < n; ++col) {
+      expected[static_cast<size_t>(row * n + col)] =
+          kProbeWeights[(col + i) % 3] * kProbeScales[(col + i / block_size) % 3];
+    }
+  }
+
+  OpTester test("MatMulBlockQuantizedFp8Weight", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddInput<MLFloat16>("A", {m, k}, FloatsToMLFloat16s(a));
+  test.AddInput<Float8E4M3FN>("B", {n, k}, b);
+  test.AddInput<float>("b_scale", {n, k_blocks}, b_scale);
+  test.AddOutput<MLFloat16>("Y", {m, n}, FloatsToMLFloat16s(expected));
+  test.SetOutputTolerance(0.01f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 #endif  // USE_CUDA && !DISABLE_FLOAT8_TYPES && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 
 }  // namespace onnxruntime::test
