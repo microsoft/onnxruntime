@@ -51,6 +51,7 @@ import sys
 import threading
 import unittest
 import warnings
+from unittest.mock import patch
 
 import numpy
 import torch
@@ -62,7 +63,6 @@ from onnxruntime import (
     OrtValue,
     SessionOptions,
     get_available_providers,
-    set_default_logger_severity,
 )
 
 # #################################################################################################
@@ -2212,7 +2212,40 @@ class TestCausalTensorScatterBottomRight(unittest.TestCase):
 # layout-changing transpose into present_*, so src and dst can never alias there.
 _PRESENT_COPY_SKIPPED_TAG = "present_copy_skipped"
 _ORT_LOG_SEVERITY_VERBOSE = 0
-_ORT_LOG_SEVERITY_WARNING = 2
+
+# CopyKVToPresent logs through this SESSION's logger (llm_attention_detail::KernelSessionLogger,
+# which returns the logger InferenceSession hands the execution provider), so the tag is controlled
+# purely by session_options.log_severity_level — no process-global logger mutation is needed.
+# Every ORT log line carries its session's logid, so a unique logid lets the assertions below
+# require BOTH the tag AND this test's own logid on the SAME line. fd 2 is a process-global
+# descriptor: without the logid anchor, a concurrently running session (e.g. a parallel test
+# worker) emitting the same tag during the redirected window would satisfy a bare substring match
+# for the wrong session — which would make the negative (tag-absent) assertion racy.
+_PRESENT_COPY_SKIP_TEST_LOGID = "test_attention_present_kv_copy_skip"
+
+# Matches a captured log line that carries BOTH this test's session logid and the skip tag.
+# OStreamSink writes "<timestamp> [<severity>:<category>:<logger_id>, <location>] <message>"
+# (onnxruntime/core/common/logging/sinks/ostream_sink.cc), so the logid is delimited by ':' before
+# and ', ' after. Matching those delimiters (rather than a bare substring) keeps a different
+# session whose logid merely CONTAINS this one from false-matching.
+_PRESENT_COPY_SKIPPED_LINE = re.compile(
+    rf"^.*:{re.escape(_PRESENT_COPY_SKIP_TEST_LOGID)}, .*{re.escape(_PRESENT_COPY_SKIPPED_TAG)}.*$",
+    re.MULTILINE,
+)
+
+
+# Env overrides applied (per backend case) before the session — and therefore
+# AttentionKernelOptions — is created, so an observed MATH fallback cannot be caused by an ambient
+# ORT_DISABLE_* env var and TestAttentionPresentKVCopySkip._check_dispatched_tier's skip stays as
+# narrow as possible. (These cases also pass an explicit sdpa_kernel provider option, which already
+# bypasses the env vars in AttentionKernelOptions::Initialize; this is defense-in-depth against an
+# ambient environment.) cuDNN has no ORT_DISABLE_* switch in this cascade (only the opt-in
+# ORT_ENABLE_CUDNN_FLASH_ATTENTION, superseded by the sdpa_kernel option), and the unfused/MATH
+# kernel cannot be disabled at all, so those two cases need no override.
+_FORCE_ENABLE_ENV = {
+    "flash": {"ORT_DISABLE_FLASH_ATTENTION": "0"},
+    "efficient": {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION": "0"},
+}
 
 
 def _run_tensorscatter_attention_4d(
@@ -2277,13 +2310,12 @@ def _run_tensorscatter_attention_4d(
         use_4d=True,
     )
 
-    # llm_attention_detail::CopyKVToPresent logs via LOGS_DEFAULT(VERBOSE), which goes through
-    # the process-wide DEFAULT logger (LoggingManager::DefaultLogger()), not the per-session
-    # logger session_options.log_severity_level configures. Both must be set to VERBOSE, and
-    # BOTH global-state mutations (default logger severity, ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO)
-    # must be restored even if session creation itself throws — everything from here to the run
-    # is wrapped in one try/finally so no failure path can leak process-wide state to later tests.
-    set_default_logger_severity(_ORT_LOG_SEVERITY_VERBOSE)
+    # llm_attention_detail::CopyKVToPresent logs via LOGS(KernelSessionLogger(...), VERBOSE), i.e.
+    # through this session's own logger, so session_options.log_severity_level alone controls it and a
+    # unique session logid anchors the assertions to this session (see _PRESENT_COPY_SKIP_TEST_LOGID).
+    # ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO is still process-global state and must be restored even
+    # if session creation itself throws, so everything from here to the run is wrapped in one
+    # try/finally.
     previous_debug_info_env = os.environ.get("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO")
     os.environ["ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO"] = "1"
     session = None
@@ -2291,6 +2323,7 @@ def _run_tensorscatter_attention_4d(
     try:
         session_options = SessionOptions()
         session_options.log_severity_level = _ORT_LOG_SEVERITY_VERBOSE
+        session_options.logid = _PRESENT_COPY_SKIP_TEST_LOGID
         session = InferenceSession(
             onnx_model_str,
             session_options,
@@ -2351,10 +2384,9 @@ def _run_tensorscatter_attention_4d(
             present_k = key_cache_ort.numpy()
             present_v = value_cache_ort.numpy()
         else:
-            present_k = io_binding.get_outputs()[1].numpy()
-            present_v = io_binding.get_outputs()[2].numpy()
+            present_k = present_k_ort.numpy()
+            present_v = present_v_ort.numpy()
     finally:
-        set_default_logger_severity(_ORT_LOG_SEVERITY_WARNING)
         if previous_debug_info_env is None:
             os.environ.pop("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", None)
         else:
@@ -2375,7 +2407,9 @@ class TestAttentionPresentKVCopySkip(unittest.TestCase):
     # require_cudnn_sdpa): a "PASSED" on numeric correctness alone does NOT prove which backend
     # ran, since flash/efficient/cudnn all OR in a MATH fallback bit — without this assertion a
     # regression that broke 3 of the 4 backends' call sites while leaving unfused/MATH intact
-    # would still pass all 8 tests green.
+    # would still pass all 8 tests green. The predicates only see HW capability, so a tier that is
+    # compiled out of this build is detected from the observed MATH fallback instead and turned
+    # into a skip (see _check_dispatched_tier and _FORCE_ENABLE_ENV).
     _CASES = (
         (
             "flash",
@@ -2403,39 +2437,63 @@ class TestAttentionPresentKVCopySkip(unittest.TestCase):
         ),
     )
 
+    def _check_dispatched_tier(self, name, expected_kernel, sdpa_kernel, is_supported):
+        """Assert the expected backend actually dispatched, skipping when it is not available.
+
+        Numeric correctness alone does NOT prove which backend ran (flash/efficient/cudnn all OR in
+        a MATH fallback bit), hence the assertion. But a fused tier can also be compiled out
+        (onnxruntime_USE_FLASH_ATTENTION / onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION), which the
+        HW-only predicates above cannot see. The runtime ORT_DISABLE_* switches are already ruled
+        out by _FORCE_ENABLE_ENV, so observing MATH where a fused tier was expected means "this
+        tier is not compiled into this build": skip instead of failing, since the aliasing logic
+        under test is backend-independent and the "math" case still covers it. (Residual
+        ambiguity: a genuine backend regression would also surface as MATH here. That limitation
+        is shared with the other backend-gated tests in this file and is accepted.)
+        """
+        if not is_supported():
+            return
+        if expected_kernel != "MATH" and sdpa_kernel == "MATH":
+            self.skipTest(
+                f"[{name}] the {expected_kernel} tier fell back to MATH even with its "
+                "ORT_DISABLE_* override forced off, so it is not compiled into this build."
+            )
+        self.assertEqual(
+            expected_kernel,
+            sdpa_kernel,
+            f"[{name}] expected the {expected_kernel} tier to dispatch on this HW/build, "
+            f"got {sdpa_kernel} — the per-backend coverage this test claims is not real.",
+        )
+
     @parameterized.expand(_CASES)
     def test_copy_skipped_when_present_aliases_cache(self, name, provider_options, expected_kernel, is_supported):
         batch, total_kv, q_seq, q_heads, kv_heads, head_size = 2, 8, 1, 8, 2, 64
         nonpad_seqlens = [4, 6]
         scatter_positions = [3, 5]
 
-        output, present_k, present_v, ref_output, ref_present_k, ref_present_v, log_text, sdpa_kernel = (
-            _run_tensorscatter_attention_4d(
-                batch,
-                total_kv,
-                q_seq,
-                q_heads,
-                kv_heads,
-                head_size,
-                nonpad_seqlens,
-                scatter_positions,
-                provider_options,
-                alias_present=True,
+        with patch.dict(os.environ, _FORCE_ENABLE_ENV.get(name, {})):
+            output, present_k, present_v, ref_output, ref_present_k, ref_present_v, log_text, sdpa_kernel = (
+                _run_tensorscatter_attention_4d(
+                    batch,
+                    total_kv,
+                    q_seq,
+                    q_heads,
+                    kv_heads,
+                    head_size,
+                    nonpad_seqlens,
+                    scatter_positions,
+                    provider_options,
+                    alias_present=True,
+                )
             )
-        )
 
-        if is_supported():
-            self.assertEqual(
-                expected_kernel,
-                sdpa_kernel,
-                f"[{name}] expected the {expected_kernel} tier to dispatch on this HW/build, "
-                f"got {sdpa_kernel} — the per-backend coverage this test claims is not real.",
-            )
-        self.assertIn(
-            _PRESENT_COPY_SKIPPED_TAG,
+        self._check_dispatched_tier(name, expected_kernel, sdpa_kernel, is_supported)
+        self.assertRegex(
             log_text,
-            f"[{name}] present_key/value aliased the cache buffer but the redundant-copy skip "
-            "log tag never appeared — the D2D self-copy may have run unconditionally again.",
+            _PRESENT_COPY_SKIPPED_LINE,
+            f"[{name}] present_key/value aliased the cache buffer but no captured log line carries "
+            f"both this session's logid ('{_PRESENT_COPY_SKIP_TEST_LOGID}') and the "
+            f"'{_PRESENT_COPY_SKIPPED_TAG}' tag — the D2D self-copy may have run "
+            "unconditionally again.",
         )
         numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp16"], atol=atol["fp16"])
         numpy.testing.assert_allclose(present_k, ref_present_k, rtol=rtol["fp16"], atol=atol["fp16"])
@@ -2447,33 +2505,29 @@ class TestAttentionPresentKVCopySkip(unittest.TestCase):
         nonpad_seqlens = [4, 6]
         scatter_positions = [3, 5]
 
-        output, present_k, present_v, ref_output, ref_present_k, ref_present_v, log_text, sdpa_kernel = (
-            _run_tensorscatter_attention_4d(
-                batch,
-                total_kv,
-                q_seq,
-                q_heads,
-                kv_heads,
-                head_size,
-                nonpad_seqlens,
-                scatter_positions,
-                provider_options,
-                alias_present=False,
+        with patch.dict(os.environ, _FORCE_ENABLE_ENV.get(name, {})):
+            output, present_k, present_v, ref_output, ref_present_k, ref_present_v, log_text, sdpa_kernel = (
+                _run_tensorscatter_attention_4d(
+                    batch,
+                    total_kv,
+                    q_seq,
+                    q_heads,
+                    kv_heads,
+                    head_size,
+                    nonpad_seqlens,
+                    scatter_positions,
+                    provider_options,
+                    alias_present=False,
+                )
             )
-        )
 
-        if is_supported():
-            self.assertEqual(
-                expected_kernel,
-                sdpa_kernel,
-                f"[{name}] expected the {expected_kernel} tier to dispatch on this HW/build, "
-                f"got {sdpa_kernel} — the per-backend coverage this test claims is not real.",
-            )
-        self.assertNotIn(
-            _PRESENT_COPY_SKIPPED_TAG,
+        self._check_dispatched_tier(name, expected_kernel, sdpa_kernel, is_supported)
+        self.assertNotRegex(
             log_text,
-            f"[{name}] present_key/value used SEPARATE buffers from the cache, but the skip tag "
-            "fired anyway — the aliasing check may have a false positive.",
+            _PRESENT_COPY_SKIPPED_LINE,
+            f"[{name}] present_key/value used SEPARATE buffers from the cache, but a log line with "
+            f"this session's logid ('{_PRESENT_COPY_SKIP_TEST_LOGID}') still carries the "
+            f"'{_PRESENT_COPY_SKIPPED_TAG}' tag — the aliasing check may have a false positive.",
         )
         numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp16"], atol=atol["fp16"])
         numpy.testing.assert_allclose(present_k, ref_present_k, rtol=rtol["fp16"], atol=atol["fp16"])
