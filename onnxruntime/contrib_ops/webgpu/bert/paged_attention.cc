@@ -475,15 +475,30 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                                 static_cast<int64_t>(parameters.head_size)};
   Tensor* key_cache_out = context.Output(1, cache_shape);
   Tensor* value_cache_out = context.Output(2, cache_shape);
-  ORT_ENFORCE(key_cache_out != nullptr && value_cache_out != nullptr,
-              "PagedAttention (WebGPU): key_cache_out and value_cache_out outputs "
-              "are required (both must be present or both absent per the schema).");
+  // The schema marks these outputs Optional, but the scatter kernel needs a
+  // destination buffer; require both to be bound.
+  ORT_RETURN_IF(key_cache_out == nullptr || value_cache_out == nullptr,
+                "PagedAttention (WebGPU): key_cache_out and value_cache_out outputs "
+                "are required by this kernel (schema marks them Optional, but the "
+                "WebGPU implementation needs them as scatter destinations).");
 
   const bool key_cache_aliased = (key_cache->DataRaw() == key_cache_out->MutableDataRaw());
   const bool value_cache_aliased = (value_cache->DataRaw() == value_cache_out->MutableDataRaw());
 
-  // Empty-query fast path: output is [0, hidden_size] and caches are pre-aliased,
-  // so there is no kernel work to do.
+  // Non-aliased path (OpTester and any future non-IO-bound consumer): materialize
+  // the input caches into the freshly allocated output tensors so untouched slots
+  // are preserved through the op. Done before the empty-query fast path so the
+  // outputs are correctly initialized even when there is no scatter work to do.
+  if (!key_cache_aliased) {
+    ORT_RETURN_IF_ERROR(context.CopyTensor(*key_cache, *key_cache_out));
+  }
+  if (!value_cache_aliased) {
+    ORT_RETURN_IF_ERROR(context.CopyTensor(*value_cache, *value_cache_out));
+  }
+
+  // Empty-query fast path: output is [0, hidden_size] and the cache outputs
+  // already reflect the input caches (either via aliasing or via the copies
+  // above), so there is no kernel work to do.
   if (parameters.token_count == 0) {
     return Status::OK();
   }
@@ -511,18 +526,6 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
     query = &packed_q_tensor;
     key = &packed_k_tensor;
     value = &packed_v_tensor;
-  }
-
-  // Scatter new K,V tokens into the paged cache. In the aliased fast path this
-  // writes directly into the caller's cache buffers. In the non-aliased path
-  // (OpTester and any future non-IO-bound consumer) we first materialize the
-  // input caches into the freshly allocated output tensors so untouched slots
-  // are preserved through the op.
-  if (!key_cache_aliased) {
-    ORT_RETURN_IF_ERROR(context.CopyTensor(*key_cache, *key_cache_out));
-  }
-  if (!value_cache_aliased) {
-    ORT_RETURN_IF_ERROR(context.CopyTensor(*value_cache, *value_cache_out));
   }
 
   // Fused rotary path. Rotate Q and K into scratch tensors, then scatter the
