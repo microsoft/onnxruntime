@@ -83,8 +83,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Setup QEMU
+        if: inputs.architecture == 's390x'
+        run: |
+          #!/bin/bash
+          set -e -x
+          docker run --rm --privileged docker.io/tonistiigi/binfmt:qemu-v10.0.4-56@sha256:30cc9a4d03765acac9be2ed0afc23af1ad018aed2c28ea4be8c2eb9afe03fbd1 --install s390x
+
       - name: Set up Python ${{ inputs.python_version }}
-        if: inputs.architecture != 'arm64'
+        if: inputs.architecture == 'x64'
         uses: actions/setup-python@v6
         with:
           python-version: ${{ inputs.python_version }}
@@ -125,6 +132,7 @@ jobs:
           execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
           extra_build_flags: ${{ inputs.extra_build_flags }} --use_cache
           python_path_prefix: ${{ inputs.python_path_prefix }}
+          use_vcpkg: ${{ inputs.architecture != 's390x' }}
 
       # ------------- Build Step (Compilation) -------------
       - name: Build ONNX Runtime (${{ inputs.architecture }} / ${{ inputs.build_config }})
@@ -137,6 +145,7 @@ jobs:
           execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
           extra_build_flags: ${{ inputs.extra_build_flags }} --use_cache
           python_path_prefix: ${{ inputs.python_path_prefix }}
+          use_vcpkg: ${{ inputs.architecture != 's390x' }}
 
       # ------------- Test Step -------------
       - name: Test ONNX Runtime (${{ inputs.architecture }} / ${{ inputs.build_config }})
@@ -150,6 +159,7 @@ jobs:
           execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
           extra_build_flags: ${{ inputs.extra_build_flags }} --use_cache
           python_path_prefix: ${{ inputs.python_path_prefix }}
+          use_vcpkg: ${{ inputs.architecture != 's390x' }}
 
       # ------------- Prepare Artifact Step -------------
       - name: Prepare Build Output for Upload
@@ -197,3 +207,10 @@ jobs:
           name: vcpkg-manifest-install-log-${{ inputs.architecture }}-${{ inputs.build_config }}
           path: ${{ runner.temp }}/${{ inputs.build_config }}/${{ inputs.build_config }}/vcpkg-manifest-install.log
           if-no-files-found: ignore
+
+      - name: Clean up QEMU
+        if: always() && inputs.architecture == 's390x'
+        run: |
+          #!/bin/bash
+          set -e -x
+          docker run --rm --privileged docker.io/tonistiigi/binfmt:qemu-v10.0.4-56@sha256:30cc9a4d03765acac9be2ed0afc23af1ad018aed2c28ea4be8c2eb9afe03fbd1 --uninstall s390x

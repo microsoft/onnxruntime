@@ -132,3 +132,34 @@ jobs:
       job_identifier: build-linux-arm64-release
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # --- s390x Builds ---
+  build-linux-s390x-debug:
+    name: Build Linux s390x Debug
+    uses: ./.github/workflows/reusable_linux_build.yml
+    with:
+      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
+      build_config: Debug
+      architecture: s390x
+      dockerfile_path: tools/ci_build/github/linux/docker/inference/s390x/python/cpu/Dockerfile
+      docker_image_repo: onnxruntimecpubuildpythons390x
+      # ASan disabled due to excessive runtime (>4hr). Includes wheel build for basic checks.
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_shared_lib'
+      job_identifier: build-linux-s390x-debug
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-linux-s390x-release:
+    name: Build Linux s390x Release
+    uses: ./.github/workflows/reusable_linux_build.yml
+    with:
+      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
+      build_config: Release
+      architecture: s390x
+      dockerfile_path: tools/ci_build/github/linux/docker/inference/s390x/python/cpu/Dockerfile
+      docker_image_repo: onnxruntimecpubuildpythons390x
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON'
+      python_path_prefix: 'PATH=/opt/python/cp314-cp314/bin:$PATH' # $ needs escaping in single quotes
+      job_identifier: build-linux-s390x-release
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
