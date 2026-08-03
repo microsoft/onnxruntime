@@ -42,8 +42,9 @@ The config defines shared output defaults:
 
 Each preset defines:
 
-1. `versionFile`
-2. `pathsFile` (nullable)
+1. `displayName`: reader-facing product or component name
+2. `versionFile`
+3. `pathsFile` (nullable)
 
 Example presets:
 
@@ -54,6 +55,8 @@ Example presets:
 
 1. Determine release mode.
    - Select preset and load configuration from [presets.json](./presets.json).
+   - Use the preset's `displayName` whenever the release-note content names the product or component. The preset
+     key is internal and must not appear in published content.
    - If preset has `pathsFile`, run in scoped mode. Otherwise run full mode.
 2. Resolve version, in this order:
    1. explicit `version` input
@@ -81,18 +84,23 @@ Example presets:
      - Intro sentence
      - `## Highlights`
      - Inline PR links on every highlight bullet
-     - Optional AI disclaimer if AI drafted highlights
      - `## Contributors`
      - Optional scope note for scoped-component releases
-       - Include the component/preset name.
-       - Include a brief scope statement that commits were filtered by the preset `pathsFile`.
+       - Use the preset's reader-facing `displayName`, not the internal preset key.
+       - Describe the scope in reader-facing terms, such as "commits affecting WebGPU Plugin EP code and
+         packaging."
+     - AI disclaimer if AI drafted
+   - Do not mention presets, `pathsFile`, configuration files, or other release-note-generation implementation
+     details in the release-note content.
+   - Do not refer to the release notes as a "draft" in their content. "Draft" is only an internal workflow
+     and file-naming concept.
 8. Build contributors section.
    - Start from `detail.csv` output
    - Include humans only
    - Exclude bots/agents (for example: `github-actions[bot]`, `app/copilot-swe-agent`, `claude`)
    - Sort alphabetically
 9. Validate draft quality.
-   - Every bullet has at least one PR link
+   - Every highlight bullet has at least one PR link
    - PRs are traceable to metadata or git history
    - Contributor list is human-only and alphabetical
    - Scope is correct for full vs component release
