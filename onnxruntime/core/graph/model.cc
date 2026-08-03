@@ -68,8 +68,6 @@ void Model::RemoveLocalFunctionsProtos(const InlinedHashSet<std::string>& retain
   }
 }
 
-static constexpr int DEFAULT_PROTOBUF_BLOCK_SIZE = 4 * 1024 * 1024;
-
 Model::Model(const std::string& graph_name,
              bool is_onnx_domain_only,
              const ModelMetaData& model_metadata,
