@@ -1,0 +1,17 @@
+{
+  "defaultPreset": "ort",
+  "outputDirPattern": "release-notes-output.{preset}.{version}",
+  "draftFileName": "release-notes-draft.md",
+  "presets": {
+    "ort": {
+      "description": "Full ONNX Runtime release notes",
+      "versionFile": "VERSION_NUMBER",
+      "pathsFile": null
+    },
+    "webgpu-plugin-ep": {
+      "description": "WebGPU Plugin EP scoped release notes",
+      "versionFile": "plugin-ep-webgpu/VERSION_NUMBER",
+      "pathsFile": "plugin-ep-webgpu/paths.txt"
+    }
+  }
+}
