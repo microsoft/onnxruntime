@@ -165,6 +165,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const Tensor* v_scale = context->Input<Tensor>(15);
   // Resident in CPU memory (see the kernel def's InputMemoryType above).
   const Tensor* attention_metadata = context->Input<Tensor>(16);
+  const Tensor* kv_indices = context->Input<Tensor>(17);
 
   auto& device_prop = GetDeviceProp();
   PagedAttentionParameters parameters;
@@ -191,6 +192,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                                                           k_scale,
                                                           v_scale,
                                                           attention_metadata,
+                                                          kv_indices,
                                                           &parameters,
                                                           num_heads_,
                                                           kv_num_heads_,
@@ -211,6 +213,16 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   parameters.do_rotary = do_rotary_;
   parameters.rotary_interleaved = rotary_interleaved_;
 
+  // 'kv_indices' is the complete selection, so a sliding window on top of it would be either
+  // redundant (the window positions are already listed, as in DeepSeek-V4) or a second mask the
+  // producer did not ask for. Reject the combination instead of silently ignoring one of them.
+  if (kv_indices != nullptr && local_window_size_ > 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "PagedAttention: 'local_window_size' (", local_window_size_,
+                           ") must be unset when 'kv_indices' is provided: the selection is complete, so a "
+                           "sliding window must be expressed by listing its positions in 'kv_indices'.");
+  }
+
   DUMP_STRING_INIT();
   DUMP_STRING("Batch size = ", parameters.batch_size);
   DUMP_STRING("Token count = ", parameters.token_count);
@@ -227,6 +239,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   DUMP_STRING("Max num blocks per sequence = ", parameters.max_num_blocks_per_seq);
   DUMP_STRING("Rotary dimension = ", parameters.rotary_dim);
   DUMP_STRING("Is packed QKV = ", parameters.is_packed_qkv);
+  DUMP_STRING("Max selected KV per token = ", parameters.max_selected_kv);
 
   // Check rotary
   if (do_rotary_ && (cos_cache == nullptr || sin_cache == nullptr)) {
@@ -679,6 +692,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   data.head_sink = head_sink == nullptr ? nullptr : reinterpret_cast<const CudaT*>(head_sink->Data<T>());
   data.q_norm_weight = q_norm_weight == nullptr ? nullptr : reinterpret_cast<const CudaT*>(q_norm_weight->Data<T>());
   data.k_norm_weight = k_norm_weight == nullptr ? nullptr : reinterpret_cast<const CudaT*>(k_norm_weight->Data<T>());
+  data.kv_indices = kv_indices == nullptr ? nullptr : reinterpret_cast<const int*>(kv_indices->Data<int>());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;

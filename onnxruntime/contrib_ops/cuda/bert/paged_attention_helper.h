@@ -285,6 +285,32 @@ Status CheckHeadSink(const T* head_sink, const int num_heads) {
   return Status::OK();
 }
 
+// Query-aware token sparsity (input 17): one row of logical KV positions per query token, with
+// negative entries used as padding. Element values are not validated on the host -- that would
+// require a device-to-host copy every step, exactly as for 'block_table' and 'slot_mapping'. The
+// kernel skips negative positions, positions beyond the sequence's block-table capacity, and
+// positions whose block is unmapped, so an out-of-range entry drops that position rather than
+// reading out of bounds.
+template <typename T = Tensor>
+Status CheckKVIndices(const T* kv_indices, const int token_count, int& max_selected_kv) {
+  const auto& dims = kv_indices->Shape().GetDims();
+  if (dims.size() != 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'kv_indices' is expected to have 2 dimensions, got ", dims.size());
+  }
+  if (dims[0] != token_count) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'kv_indices' dimension 0 should be token_count (", token_count,
+                           "), got ", dims[0]);
+  }
+  if (dims[1] <= 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'kv_indices' dimension 1 (max_selected_kv) must be positive, got ", dims[1]);
+  }
+  max_selected_kv = static_cast<int>(dims[1]);
+  return Status::OK();
+}
+
 template <typename T = Tensor>
 Status CheckQKNormWeights(const T* q_norm_weight, const T* k_norm_weight, const int head_size) {
   if ((q_norm_weight != nullptr) != (k_norm_weight != nullptr)) {
@@ -402,6 +428,7 @@ Status CheckInputs(const T* query,
                    const T* k_scale,
                    const T* v_scale,
                    const T* attention_metadata,
+                   const T* kv_indices,
                    void* parameters,
                    int num_heads,
                    int kv_num_heads,
@@ -485,10 +512,6 @@ Status CheckInputs(const T* query,
     }
     // §12.9: both combinations are well defined mathematically but no MLA model uses them, and an
     // untested silent result is worse than a rejection.
-    if (head_sink != nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'head_sink' is not supported when 'kv_cache_layout' is 'LATENT'.");
-    }
     if (q_norm_weight != nullptr || k_norm_weight != nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Inputs 'q_norm_weight' / 'k_norm_weight' are not supported when 'kv_cache_layout' is "
@@ -522,6 +545,18 @@ Status CheckInputs(const T* query,
   ORT_RETURN_IF_ERROR(CheckBlockTable(block_table, batch_size, max_num_blocks_per_seq));
   if (slot_mapping != nullptr) {
     ORT_RETURN_IF_ERROR(CheckSlotMapping(slot_mapping, token_count));
+  }
+
+  // Query-aware token sparsity. Only the LATENT backend implements it; every other backend either
+  // is a vendored dense kernel (FlashAttention, CUTLASS fMHA) or assumes a contiguous KV range, so
+  // accepting the input there would silently ignore the selection and return dense attention.
+  int max_selected_kv = 0;
+  if (kv_indices != nullptr) {
+    if (!is_latent_kv) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'kv_indices' is only supported when 'kv_cache_layout' is 'LATENT'.");
+    }
+    ORT_RETURN_IF_ERROR(CheckKVIndices(kv_indices, token_count, max_selected_kv));
   }
 
   // Check attention sink and QK-Norm weights
@@ -594,6 +629,7 @@ Status CheckInputs(const T* query,
     output_parameters->v_hidden_size = num_heads * v_head_size;
     output_parameters->is_latent_kv = is_latent_kv;
     output_parameters->rotary_offset = rotary_offset;
+    output_parameters->max_selected_kv = max_selected_kv;
     output_parameters->block_size = block_size;
     output_parameters->max_num_blocks_per_seq = max_num_blocks_per_seq;
     output_parameters->num_blocks = num_blocks;
