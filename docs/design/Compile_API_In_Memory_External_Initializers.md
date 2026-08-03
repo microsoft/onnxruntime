@@ -41,6 +41,14 @@ ModelCompilationOptions_SetOutputModelExternalInitializersBuffer(
 Add the corresponding C++ wrapper and an `ExternalInitializerBufferHolder` alternative to
 `epctx::ModelGenOptions::initializers_location`.
 
+The external-initializer file destination (`ModelCompilationOptions_SetOutputModelExternalInitializersFile`) and the
+buffer destination (`ModelCompilationOptions_SetOutputModelExternalInitializersBuffer`) are mutually exclusive: the
+caller provides one or the other, never both. Because both map to the single `initializers_location` variant, the
+last setter called wins and silently replaces any prior external-initializer destination. Document this and, in
+`ModelCompilationOptions::Check`, reject a buffer destination combined with a file-based output model path (a
+buffer-backed external file is only meaningful when the output model is itself written to a buffer or a write
+callback).
+
 Add `ModelCompilationOptions_SetOutputModelExternalInitializersAlignment`, which accepts a power-of-two alignment and a
 minimum initializer size at which to apply it. It affects both file and buffer output; an alignment of zero disables
 this additional policy. This allows a buffer to be persisted later with mmap-friendly offsets.
@@ -67,14 +75,19 @@ conversion, subgraph handling, and prepacked-weight handling.
 
 Use a two-pass implementation:
 
-1. Compute each externalized initializer's offset and the total buffer size with checked arithmetic.
+1. Compute each externalized initializer's offset and the total buffer size with checked arithmetic, applying the same
+   alignment padding that the write pass will. Prepacked-blob sizes are not known from the `TensorProto` alone, so add
+   a size-query path that mirrors the offset/padding math in `ExternalDataInfo::WritePrepackedToFileAndAddToProto`
+   (sum of `PrepackedWeightsForGraph` `buffer_sizes_` plus `AlignAndPad` padding for blobs above the alignment
+   threshold) without writing. Factor that math out so the query and write passes cannot diverge.
 2. Allocate the exact size once, write each initializer to its assigned span, and emit its logical filename, offset,
    and length into the `TensorProto`.
 
-Write externalized initializers in load-ready tensor storage and naturally align each tensor. Apply alignment configured
-by `ModelCompilationOptions_SetOutputModelExternalInitializersAlignment` above its size threshold; the existing default
-policy is mmap-friendly 4 KiB alignment for data larger than 1 MiB. Prepacked blobs are opaque and use only the
-configured alignment policy.
+Write externalized initializers in load-ready tensor storage and align each tensor's offset to its natural alignment;
+the writer controls the layout, so this alignment is guaranteed for ORT-produced buffers. Additionally apply the
+alignment configured by `ModelCompilationOptions_SetOutputModelExternalInitializersAlignment` above its size threshold;
+the existing default policy is mmap-friendly 4 KiB alignment for data larger than 1 MiB. Prepacked blobs are opaque and
+use only the configured alignment policy.
 
 The serialized ONNX protobuf must still be smaller than 2 GB. Externalizing initializer bytes keeps the protobuf small;
 this feature does not support graph metadata that independently exceeds protobuf's limit.
@@ -92,15 +105,22 @@ state that every session created from the options may outlive the options, and t
 unchanged and alive until those sessions are released. If session creation fails, the buffers may be released after the
 call returns.
 
-During model load, recursively match each external initializer's logical filename, validate its declared and computed
-size, and use checked arithmetic to validate its offset and length against the file buffer. Create an initializer
-`OrtValue` over the validated slice and retain it in the graph/session instead of copying its data into the
-`TensorProto`. Small values that must remain in the `TensorProto` for shape inference and values requiring endian
-conversion may be copied.
+During model load, recursively match each external initializer's logical filename (the existing copy path only visits
+the top-level graph's initializers, so extend the traversal into subgraphs for both the copy and direct-use paths),
+validate its declared and computed size, and use checked arithmetic to validate its offset and length against the file
+buffer. When the slice is naturally aligned for the runtime storage type, create an initializer `OrtValue` over the
+validated slice with non-owning storage and retain it in the graph/session instead of copying. The borrowed `OrtValue`
+must be non-owning (wrap the slice in a `Tensor` with a plain CPU `OrtMemoryInfo` and no deleter, as the existing
+native-endian inject branch already does) so the `SessionOptions` can be released while the underlying buffer persists.
+Small values that must remain in the `TensorProto` for shape inference and values requiring endian conversion may be
+copied.
 
-Require each direct buffer base address plus initializer offset to satisfy the runtime storage type's natural
-alignment. Reject a null buffer, a filename mismatch, out-of-range slices, and misalignment rather than silently falling
-back to a copy. Valid overlapping slices are allowed.
+Natural alignment is preferable but not required in direct-use mode. Even for an ORT-produced buffer whose tensor
+offsets are naturally aligned, the supplied buffer's base address is caller/allocator-controlled, and the buffer may not
+have been produced by ORT at all, so `base + offset` can fail to meet the runtime storage type's natural alignment. When
+that happens, fall back to copying that individual initializer into owned storage instead of borrowing; the rest of the
+initializers in the same buffer still borrow directly. Reject a null buffer, a filename mismatch, and out-of-range
+slices. Valid overlapping slices are allowed.
 
 ## Validation
 
@@ -115,9 +135,12 @@ the ONNX signed 64-bit external-data fields.
   results.
 - Verify internally that large direct-use initializer tensors point into the supplied file buffer, while required small
   or endian-converted values use owned storage.
-- Cover threshold boundaries, subgraph initializers, natural and configured offset alignment, and misaligned direct
-  buffers.
+- Cover threshold boundaries, subgraph initializers (compiled and reloaded through both copy and direct-use paths),
+  natural and configured offset alignment, and misaligned direct buffers that fall back to per-initializer copies while
+  neighboring aligned initializers still borrow.
 - Verify logical filename metadata, offsets, lengths, output ownership, and direct-buffer lifetime requirements.
+- Verify that the file and buffer external-initializer destinations are mutually exclusive (last setter wins) and that a
+  buffer destination combined with a file output-model path is rejected.
 - Verify invalid arguments, allocation failure, checked-arithmetic failure, and unchanged outputs on failure.
 - Exercise aggregate external-data sizes beyond 2 GB with a counting or sparse test sink so routine CI does not require
   a 2 GB allocation.
