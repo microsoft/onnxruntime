@@ -3319,6 +3319,83 @@ class TestPagedAttentionDeepSeekV4Flash(unittest.TestCase):
         )
         self._run(config, seqlen, 0, topk, self._head_sink(config), capacity=seqlen + seqlen // ratio)
 
+    def test_decode_compressed_row_written_in_same_step(self):
+        """The compressor's row for the step being decoded is stored *and* read by that step.
+
+        The cases above pre-park the compressed rows, which sidesteps the hard part. In the model
+        `should_compress` fires exactly when `start_pos // ratio < (start_pos + 1) // ratio`, and
+        the row it then produces is already inside get_compress_topk_idxs' range, so the write
+        cannot be deferred to the next step. It also cannot be a second node, because key_cache may
+        be touched once. The graph therefore carries it as a surplus 'key' row (§12.11): this test
+        is that path end to end, at DeepSeek's own cache layout of window rows followed by the
+        compressed stream at offset window_size.
+        """
+        device = "cuda"
+        config = self._config()
+        window, ratio, start_pos = 16, 4, 11
+        n_comp = (start_pos + 1) // ratio  # compressed rows visible to this step
+        self.assertLess(start_pos // ratio, n_comp)  # ... the last of which is produced by it
+        batch_size = config.batch_size
+
+        past_seqlens = torch.full((batch_size,), start_pos, dtype=torch.int32, device=device)
+        new_seqlens = torch.ones(batch_size, dtype=torch.int32, device=device)
+        latent_paged, block_table, cum_seqlens, total_len = make_mla_batch(
+            config, past_seqlens, new_seqlens, capacity=window + n_comp
+        )
+        token_count = int(cum_seqlens[-1].item())
+        self.assertEqual(token_count, batch_size)
+
+        def slot_of(b, logical):
+            block = int(block_table[b, logical // config.block_size].item())
+            return block * config.block_size + logical % config.block_size
+
+        fresh_slot = window + n_comp - 1
+        slot_mapping = torch.tensor(
+            [slot_of(b, start_pos) for b in range(batch_size)] + [slot_of(b, fresh_slot) for b in range(batch_size)],
+            dtype=torch.int32,
+            device=device,
+        )
+
+        query = torch.randn(token_count, config.num_heads, config.head_size, device=device, dtype=torch.float16)
+        # Rows 0..batch_size-1 are the new tokens' latent rows; the rest are the compressor's.
+        key = torch.randn(token_count + batch_size, config.head_size, device=device, dtype=torch.float16)
+
+        topk = torch.cat(
+            [
+                dsv4_window_topk_idxs(window, batch_size, 1, start_pos),
+                dsv4_compress_topk_idxs(ratio, batch_size, 1, start_pos, window),
+            ],
+            dim=-1,
+        )
+        head_sink = self._head_sink(config)
+        out, latent_paged = run_mla(
+            config,
+            query.reshape(token_count, -1),
+            key,
+            latent_paged,
+            cum_seqlens,
+            past_seqlens,
+            block_table,
+            head_sink=head_sink,
+            kv_indices=topk.reshape(token_count, -1).to(device).to(torch.int32),
+            slot_mapping=slot_mapping,
+        )
+
+        kv = densify_latent(config, latent_paged, block_table, total_len)
+        for b in range(batch_size):
+            torch.testing.assert_close(
+                kv[b, fresh_slot].to(torch.float32), key[token_count + b].to(torch.float32)
+            )
+        ref = dsv4_sparse_attn(
+            query.reshape(batch_size, 1, config.num_heads, config.head_size),
+            kv,
+            head_sink,
+            topk.to(device),
+            config.head_size**-0.5,
+        )
+        out = out.reshape(batch_size, 1, config.num_heads, config.v_head_size).to(device).to(torch.float32)
+        torch.testing.assert_close(out, ref.to(torch.float32), rtol=2e-3, atol=2e-3)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
