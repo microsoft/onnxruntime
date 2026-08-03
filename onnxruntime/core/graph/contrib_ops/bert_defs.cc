@@ -1430,6 +1430,7 @@ cumulative_sequence_length records cumulated length of each sequence length.
 // Input 'k_scale':                      (1) for PER_TENSOR, (kv_num_heads, 1, head_size) for PER_CHANNEL
 // Input 'v_scale':                      (1) for PER_TENSOR, (kv_num_heads, 1, head_size) for PER_CHANNEL
 // Input 'attention_metadata':           (2), CPU memory: [max_query_len_bound, max_kv_len_bound]
+// Input 'kv_indices':                   (token_count, max_selected_kv)
 // Output 'output':                      (token_count, num_heads * v_head_size)
 // Output 'key_cache_out':               (num_blocks, block_size, kv_num_heads, head_size)
 // Output 'value_cache_out':             (num_blocks, block_size, kv_num_heads, head_size), absent for LATENT
@@ -1725,6 +1726,22 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "impossible to capture into a CUDA Graph. Schedulers already track these bounds on the host, so "
                "supplying them is normally free. When absent, the op falls back to the device readback. "
                "The values are trusted: an under-sized bound violates the contract and may omit attention work.",
+               "S",
+               OpSchema::Optional)
+        .Input(17,
+               "kv_indices",
+               "2D tensor with shape (num_tokens, max_selected_kv) selecting, per query token, the logical KV "
+               "positions it attends. Entry (t, j) is a 0-based position within the sequence that token t "
+               "belongs to, resolved through 'block_table' exactly like a dense position; a negative entry is "
+               "padding and is skipped, so rows may select fewer than max_selected_kv positions. This is the "
+               "query-aware token sparsity used by DeepSeek sparse attention, where a lightning indexer picks "
+               "the top-k cached positions per token and the selected set is not an interval. The selection is "
+               "authoritative and complete: the kernel applies no causal or sliding-window mask on top of it, so "
+               "the producer owns causality and must not list a position at or beyond the query token's own, nor "
+               "list the same position twice (a duplicate would be counted twice by the softmax). Positions "
+               "outside the sequence's block-table capacity, and positions whose block is unmapped, are skipped. "
+               "Only supported when 'kv_cache_layout' is 'LATENT'. When absent, every token attends the dense "
+               "causal range narrowed by 'local_window_size'.",
                "S",
                OpSchema::Optional)
         .Output(0,

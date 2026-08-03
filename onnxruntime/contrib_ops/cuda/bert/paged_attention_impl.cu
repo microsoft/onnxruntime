@@ -1098,16 +1098,21 @@ Status LaunchPagedDecodeAttention(const T* query, const TCACHE* key_cache, const
 // an online-softmax (m, l) state and a v_head_size-wide fp32 accumulator in shared memory. The
 // quantization scales are folded exactly as in the decode kernel: k_scale into Q at load time, and
 // v_scale into the epilogue, so neither ever enters the softmax denominator.
+//
+// When 'kv_indices' is supplied the tile loop walks that token's list of selected logical KV
+// positions instead of the contiguous causal range (docs/contrib_ops/cuda/paged_attention.md §22).
+// Everything downstream is unchanged: a selected position is scored and accumulated exactly as a
+// dense one, so the sparse and dense paths share the same online-softmax state.
 
 constexpr int kLatentThreads = 256;
 constexpr int kLatentTile = 64;  // KV tokens scored per iteration
 
 // Shared memory: Q (head_size) + output accumulator (v_head_size) + tile logits + block reduction
-// scratchpad, all fp32, followed by the tile's resolved page ids.
+// scratchpad, all fp32, followed by the tile's resolved page ids and in-page offsets.
 size_t GetPagedLatentSharedMemoryBytes(const int head_size, const int v_head_size) {
   const size_t float_elems = static_cast<size_t>(head_size) + static_cast<size_t>(v_head_size) +
                              kLatentTile + kLatentThreads;
-  return float_elems * sizeof(float) + static_cast<size_t>(kLatentTile) * sizeof(int);
+  return float_elems * sizeof(float) + 2 * static_cast<size_t>(kLatentTile) * sizeof(int);
 }
 
 template <typename T, typename TCACHE>
@@ -1119,7 +1124,9 @@ __global__ void PagedLatentAttentionKernel(const T* __restrict__ query,         
                                            const int* __restrict__ cumulative_seqlens_q,
                                            const int* __restrict__ past_seqlens,
                                            const int* __restrict__ block_table,
-                                           T* __restrict__ output,  // [token, N, v_head_size]
+                                           const T* __restrict__ head_sink,
+                                           const int* __restrict__ kv_indices,  // [token, max_selected_kv]
+                                           T* __restrict__ output,              // [token, N, v_head_size]
                                            const int batch_size,
                                            const int num_heads,
                                            const int kv_num_heads,
@@ -1127,6 +1134,7 @@ __global__ void PagedLatentAttentionKernel(const T* __restrict__ query,         
                                            const int v_head_size,
                                            const int block_size,
                                            const int max_num_blocks_per_seq,
+                                           const int max_selected_kv,
                                            const float scale,
                                            const float softcap,
                                            const int local_window_size,
@@ -1138,6 +1146,7 @@ __global__ void PagedLatentAttentionKernel(const T* __restrict__ query,         
   float* logits_sh = acc_sh + v_head_size;
   float* red_sh = logits_sh + kLatentTile;
   int* block_id_sh = reinterpret_cast<int*>(red_sh + kLatentThreads);
+  int* block_offset_sh = block_id_sh + kLatentTile;
 
   const int token_id = blockIdx.x;
   const int head_id = blockIdx.y;
@@ -1162,9 +1171,18 @@ __global__ void PagedLatentAttentionKernel(const T* __restrict__ query,         
   // Causality: this token's logical position is past_seqlens[b] + s, and it attends every cached
   // position up to and including its own. That is exactly FlashAttention's bottom-right-aligned
   // causal convention for seqlen_k = past + seqlen_q.
-  const int kv_end = past_seqlens[batch_id] + s + 1;
+  //
+  // With an explicit selection the roles change: 'kv_indices' is the complete, authoritative list
+  // of positions, so no causal or sliding-window mask is layered on top and the loop counter ranges
+  // over list slots rather than positions. The only bound the kernel still enforces is the
+  // sequence's block-table capacity, which keeps a malformed entry from reading out of bounds.
+  const bool is_sparse = kv_indices != nullptr;
+  const int kv_capacity = max_num_blocks_per_seq * block_size;
+  const int* selected = is_sparse ? kv_indices + static_cast<int64_t>(token_id) * max_selected_kv : nullptr;
+
+  const int kv_end = is_sparse ? max_selected_kv : (past_seqlens[batch_id] + s + 1);
   int kv_begin = 0;
-  if (local_window_size > 0) {
+  if (!is_sparse && local_window_size > 0) {
     // local_window_size counts the current token, matching mha_varlen_fwd's window_size_left = W-1.
     kv_begin = max(0, kv_end - local_window_size);
   }
@@ -1197,15 +1215,16 @@ __global__ void PagedLatentAttentionKernel(const T* __restrict__ query,         
 
     // ---- QK over the full head_size (compressed_kv and k_pe together) ----
     for (int t = warp_id; t < tile_len; t += kNumWarps) {
-      const int pos = tile_begin + t;
-      const int block_index = pos / block_size;
-      const int block_id = block_index < max_num_blocks_per_seq
-                               ? block_table[batch_id * max_num_blocks_per_seq + block_index]
-                               : -1;
+      // Dense: the tile covers positions [tile_begin, tile_begin + tile_len). Sparse: it covers
+      // slots of this token's selection list, and a negative or out-of-capacity entry is padding.
+      const int pos = is_sparse ? selected[tile_begin + t] : (tile_begin + t);
+      const int block_index = (pos >= 0 && pos < kv_capacity) ? (pos / block_size) : -1;
+      const int block_id = block_index >= 0 ? block_table[batch_id * max_num_blocks_per_seq + block_index] : -1;
+      const int block_offset = block_id >= 0 ? (pos % block_size) : 0;
       float dot = 0.0f;
       if (block_id >= 0) {
         const TCACHE* k_ptr = key_cache +
-                              (static_cast<int64_t>(block_id) * block_size + (pos % block_size)) * token_stride_in_page +
+                              (static_cast<int64_t>(block_id) * block_size + block_offset) * token_stride_in_page +
                               head_offset_in_page;
         for (int c = lane_id; c < head_size; c += 32) {
           dot += q_sh[c] * CacheToFloat<TCACHE>(k_ptr[c]);
@@ -1217,6 +1236,7 @@ __global__ void PagedLatentAttentionKernel(const T* __restrict__ query,         
       }
       if (lane_id == 0) {
         block_id_sh[t] = block_id;
+        block_offset_sh[t] = block_offset;
         logits_sh[t] = block_id < 0 ? -FLT_MAX
                                     : (softcap > 0.0f ? softcap * tanhf(dot * softcap_scale) : dot * scale);
       }
@@ -1276,15 +1296,23 @@ __global__ void PagedLatentAttentionKernel(const T* __restrict__ query,         
         if (block_id < 0) {
           continue;
         }
-        const int pos = tile_begin + t;
         const TCACHE* v_ptr = value_cache +
-                              (static_cast<int64_t>(block_id) * block_size + (pos % block_size)) * token_stride_in_page +
+                              (static_cast<int64_t>(block_id) * block_size + block_offset_sh[t]) *
+                                  token_stride_in_page +
                               head_offset_in_page;
         acc += logits_sh[t] * CacheToFloat<TCACHE>(v_ptr[c]);
       }
       acc_sh[c] = acc;
     }
     __syncthreads();
+  }
+
+  // Attention sink: a per-head learnable logit that joins the softmax denominator without
+  // contributing a value, letting a head attend to nothing. Spelled exactly as in the decode
+  // kernel -- the sink is a raw logit, so it is not multiplied by `scale` and is not folded into
+  // the running max.
+  if (head_sink != nullptr && m_state != -FLT_MAX) {
+    l_state += __expf(static_cast<float>(head_sink[head_id]) - m_state);
   }
 
   const int64_t out_base = (static_cast<int64_t>(token_id) * num_heads + head_id) * v_head_size;
@@ -1301,17 +1329,19 @@ template <typename T, typename TCACHE>
 Status LaunchPagedLatentAttention(const T* query, const TCACHE* key_cache, const TCACHE* value_cache,
                                   const float* k_scale, const float* v_scale, const bool k_per_channel,
                                   const bool v_per_channel, const int* cumulative_seqlens_q,
-                                  const int* past_seqlens, const int* block_table, T* output,
+                                  const int* past_seqlens, const int* block_table, const T* head_sink,
+                                  const int* kv_indices, T* output,
                                   const int batch_size, const int num_heads, const int kv_num_heads,
                                   const int head_size, const int v_head_size, const int block_size,
-                                  const int max_num_blocks_per_seq, const int token_count, const float scale,
+                                  const int max_num_blocks_per_seq, const int max_selected_kv,
+                                  const int token_count, const float scale,
                                   const float softcap, const int local_window_size, cudaStream_t stream) {
   const size_t smem_bytes = GetPagedLatentSharedMemoryBytes(head_size, v_head_size);
   const dim3 grid(token_count, num_heads);
   PagedLatentAttentionKernel<T, TCACHE><<<grid, kLatentThreads, smem_bytes, stream>>>(
-      query, key_cache, value_cache, k_scale, v_scale, cumulative_seqlens_q, past_seqlens, block_table, output,
-      batch_size, num_heads, kv_num_heads, head_size, v_head_size, block_size, max_num_blocks_per_seq, scale,
-      softcap, local_window_size, k_per_channel, v_per_channel);
+      query, key_cache, value_cache, k_scale, v_scale, cumulative_seqlens_q, past_seqlens, block_table, head_sink,
+      kv_indices, output, batch_size, num_heads, kv_num_heads, head_size, v_head_size, block_size,
+      max_num_blocks_per_seq, max_selected_kv, scale, softcap, local_window_size, k_per_channel, v_per_channel);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -1411,10 +1441,11 @@ Status LatentAttention(
       query, data.key_cache, /*value_cache*/ data.key_cache, data.k_scale, /*v_scale*/ data.k_scale,
       parameters.k_quant_type == KVQuantizationType::PER_CHANNEL,
       parameters.k_quant_type == KVQuantizationType::PER_CHANNEL,
-      data.cumulative_seqlens_q, data.past_seqlens, data.block_table, data.output,
+      data.cumulative_seqlens_q, data.past_seqlens, data.block_table, data.head_sink, data.kv_indices, data.output,
       parameters.batch_size, parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
       parameters.v_head_size, parameters.block_size, parameters.max_num_blocks_per_seq,
-      parameters.token_count, scale, parameters.softcap, parameters.local_window_size, stream)));
+      parameters.max_selected_kv, parameters.token_count, scale, parameters.softcap,
+      parameters.local_window_size, stream)));
 
   DUMP_TENSOR_INIT();
   DUMP_TENSOR("latent (MLA) paged attention output", data.output, parameters.token_count, parameters.num_heads,
