@@ -86,7 +86,7 @@ TEST_F(ONNXModelsTest, TestModelsWithAnOpContainingAFunctionBody) {
 
 void BuildFunction(FunctionProto& function_proto,
                    const std::string& name, const std::string& domain,
-                   const google::protobuf::RepeatedPtrField<NodeProto>& nodes,
+                   const std::vector<NodeProto>& nodes,
                    const std::vector<std::string>& inputs,
                    const std::vector<std::string>& outputs,
                    const std::unordered_map<std::string, int>& opset_imports) {
