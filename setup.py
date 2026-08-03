@@ -864,6 +864,7 @@ def save_build_and_package_info(package_name, version_number, cuda_version, qnn_
 
 save_build_and_package_info(package_name, version_number, cuda_version, qnn_version)
 
+
 # sympy is optional - only needed for symbolic shape inference
 # ml_dtypes is optional - needed for quantization utilities
 def read_requirements_extra(fname):

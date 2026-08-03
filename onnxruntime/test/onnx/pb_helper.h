@@ -47,17 +47,17 @@
 #include <onnx_light/onnx_proto/tml.h>
 namespace onnxruntime {
 namespace proto {
-using ONNX_LIGHT_NAMESPACE::proto::TraditionalMLData;
-using ONNX_LIGHT_NAMESPACE::proto::MapStringToString;
-using ONNX_LIGHT_NAMESPACE::proto::MapStringToInt64;
-using ONNX_LIGHT_NAMESPACE::proto::MapStringToFloat;
-using ONNX_LIGHT_NAMESPACE::proto::MapStringToDouble;
-using ONNX_LIGHT_NAMESPACE::proto::MapInt64ToString;
-using ONNX_LIGHT_NAMESPACE::proto::MapInt64ToInt64;
-using ONNX_LIGHT_NAMESPACE::proto::MapInt64ToFloat;
 using ONNX_LIGHT_NAMESPACE::proto::MapInt64ToDouble;
-using ONNX_LIGHT_NAMESPACE::proto::VectorMapStringToFloat;
+using ONNX_LIGHT_NAMESPACE::proto::MapInt64ToFloat;
+using ONNX_LIGHT_NAMESPACE::proto::MapInt64ToInt64;
+using ONNX_LIGHT_NAMESPACE::proto::MapInt64ToString;
+using ONNX_LIGHT_NAMESPACE::proto::MapStringToDouble;
+using ONNX_LIGHT_NAMESPACE::proto::MapStringToFloat;
+using ONNX_LIGHT_NAMESPACE::proto::MapStringToInt64;
+using ONNX_LIGHT_NAMESPACE::proto::MapStringToString;
+using ONNX_LIGHT_NAMESPACE::proto::TraditionalMLData;
 using ONNX_LIGHT_NAMESPACE::proto::VectorMapInt64ToFloat;
+using ONNX_LIGHT_NAMESPACE::proto::VectorMapStringToFloat;
 }  // namespace proto
 }  // namespace onnxruntime
 #else
@@ -85,4 +85,4 @@ bool ParseDelimitedFromCodedStream(Msg* message,
   if (!input->ReadRaw(buf.data(), static_cast<int>(size))) return false;
   return message->ParseFromArray(buf.data(), static_cast<int>(size));
 }
-}
+}  // namespace onnxruntime
