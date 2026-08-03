@@ -75,6 +75,11 @@ __global__ void UnpackRoPEAppend(
     const T* cos_cache,
     const T* sin_cache,
     const int rotary_dim,
+    // First channel within head_size covered by RoPE. The rotated span is
+    // [rotary_offset, rotary_offset + rotary_dim); channels outside it are left untouched. 0 is the
+    // usual prefix RoPE. Required to be a multiple of 8 by the schema, so the span stays aligned
+    // with the LoadT (float4) vectorization below for every supported T.
+    const int rotary_offset,
     const int64_t* position_ids,
     const bool interleaved,
     const bool is_cache_bnsh,
@@ -212,26 +217,33 @@ __global__ void UnpackRoPEAppend(
   __syncthreads();
 
   if (valid && rotary_dim > 0 && is_qk) {
-    const int past_seq_len = past_seq_lens[b];
-    const int64_t pos_base = static_cast<int64_t>(b) * sequence_length;
-    // Calculate global position for RoPE: use position_ids if provided, else rely on past_seq_len.
-    int64_t pos_val = (position_ids != nullptr) ? position_ids[pos_base + s] : static_cast<int64_t>(past_seq_len + s);
+    // Channel offset relative to the start of the rotated span. Negative or >= rotary_dim means
+    // this thread's channels are outside the span and are passed through untouched.
+    const int hr = h - rotary_offset;
+    if (hr >= 0 && hr < rotary_dim) {
+      const int past_seq_len = past_seq_lens[b];
+      const int64_t pos_base = static_cast<int64_t>(b) * sequence_length;
+      // Calculate global position for RoPE: use position_ids if provided, else rely on past_seq_len.
+      int64_t pos_val = (position_ids != nullptr) ? position_ids[pos_base + s] : static_cast<int64_t>(past_seq_len + s);
 #if !defined(NDEBUG)
-    if (tid == 0) {
-      CUDA_KERNEL_ASSERT(pos_val >= 0 && pos_val < static_cast<int64_t>(rope_max_pos));
-    }
+      if (tid == 0) {
+        CUDA_KERNEL_ASSERT(pos_val >= 0 && pos_val < static_cast<int64_t>(rope_max_pos));
+      }
 #endif
-    if (pos_val >= 0 && pos_val < static_cast<int64_t>(rope_max_pos)) {
-      int pos_id = static_cast<int>(pos_val);
-      const int h_idx = h / elements_per_thread;
+      if (pos_val >= 0 && pos_val < static_cast<int64_t>(rope_max_pos)) {
+        int pos_id = static_cast<int>(pos_val);
+        const int h_idx = hr / elements_per_thread;
 
-      onnxruntime::contrib::cuda::RotaryDispatcher<LoadT, T>::apply(
-          *reinterpret_cast<LoadT*>(vals),
-          reinterpret_cast<const LoadT*>(cos_cache),
-          reinterpret_cast<const LoadT*>(sin_cache),
-          rotary_dim, h_idx, pos_id, interleaved,
-          reinterpret_cast<const LoadT*>(shared_head),
-          0);
+        // new_kv_base + in_offset addresses shared_head[rotary_offset], so the half-split partner
+        // lookup inside the dispatcher (which indexes in [0, rotary_dim)) lands on the right channel.
+        onnxruntime::contrib::cuda::RotaryDispatcher<LoadT, T>::apply(
+            *reinterpret_cast<LoadT*>(vals),
+            reinterpret_cast<const LoadT*>(cos_cache),
+            reinterpret_cast<const LoadT*>(sin_cache),
+            rotary_dim, h_idx, pos_id, interleaved,
+            reinterpret_cast<const LoadT*>(shared_head),
+            rotary_offset / elements_per_thread);
+      }
     }
   }
 
@@ -350,32 +362,32 @@ Status DispatchUnpackRoPEAppendHeadSize(
     const int num_heads, const int kv_num_heads, const int head_size, const int d,
     const int rope_max_pos, const int cache_capacity,
     const int* past_seq_lens, const int* cache_past_seq_lens,
-    const T* cos_cache, const T* sin_cache, const int rotary_dim,
+    const T* cos_cache, const T* sin_cache, const int rotary_dim, const int rotary_offset,
     const int64_t* position_ids, const bool interleaved, const bool is_cache_bnsh, const bool per_channel,
     const T* q_norm_weight, const T* k_norm_weight, const float qk_norm_epsilon) {
   if (head_size <= 64) {
     UnpackRoPEAppend<T, U, BIT_WIDTH, 64><<<grid, block, 0, stream>>>(
         packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale, q_fold_scale,
         num_heads, kv_num_heads, head_size, d, rope_max_pos, cache_capacity, past_seq_lens, cache_past_seq_lens,
-        cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel,
+        cos_cache, sin_cache, rotary_dim, rotary_offset, position_ids, interleaved, is_cache_bnsh, per_channel,
         q_norm_weight, k_norm_weight, qk_norm_epsilon);
   } else if (head_size <= 128) {
     UnpackRoPEAppend<T, U, BIT_WIDTH, 128><<<grid, block, 0, stream>>>(
         packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale, q_fold_scale,
         num_heads, kv_num_heads, head_size, d, rope_max_pos, cache_capacity, past_seq_lens, cache_past_seq_lens,
-        cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel,
+        cos_cache, sin_cache, rotary_dim, rotary_offset, position_ids, interleaved, is_cache_bnsh, per_channel,
         q_norm_weight, k_norm_weight, qk_norm_epsilon);
   } else if (head_size <= 256) {
     UnpackRoPEAppend<T, U, BIT_WIDTH, 256><<<grid, block, 0, stream>>>(
         packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale, q_fold_scale,
         num_heads, kv_num_heads, head_size, d, rope_max_pos, cache_capacity, past_seq_lens, cache_past_seq_lens,
-        cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel,
+        cos_cache, sin_cache, rotary_dim, rotary_offset, position_ids, interleaved, is_cache_bnsh, per_channel,
         q_norm_weight, k_norm_weight, qk_norm_epsilon);
   } else if (head_size <= 512) {
     UnpackRoPEAppend<T, U, BIT_WIDTH, 512><<<grid, block, 0, stream>>>(
         packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale, q_fold_scale,
         num_heads, kv_num_heads, head_size, d, rope_max_pos, cache_capacity, past_seq_lens, cache_past_seq_lens,
-        cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel,
+        cos_cache, sin_cache, rotary_dim, rotary_offset, position_ids, interleaved, is_cache_bnsh, per_channel,
         q_norm_weight, k_norm_weight, qk_norm_epsilon);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Head size (", head_size, ") exceeds maximum supported MAX_HEAD_SIZE (512).");
@@ -398,7 +410,7 @@ Status LaunchUnpackRoPEAppend(
     const int rope_max_pos, const int cache_capacity,
     const int* past_seq_lens, const int* cache_past_seq_lens,
     const T* cos_cache, const T* sin_cache,
-    const int rotary_dim, const int64_t* position_ids, const bool interleaved,
+    const int rotary_dim, const int rotary_offset, const int64_t* position_ids, const bool interleaved,
     const bool is_cache_bnsh, const KVQuantizationType k_quant_type,
     const T* q_norm_weight, const T* k_norm_weight, const float qk_norm_epsilon,
     cudaStream_t stream, const int max_threads_per_block) {
@@ -422,6 +434,15 @@ Status LaunchUnpackRoPEAppend(
 
   if (!interleaved && rotary_dim % 2 != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Non-interleaved RoPE requires even rotary_dim.");
+  }
+
+  // The rotated span must fit inside the head and start on a vector boundary, otherwise the
+  // float4-vectorized channel indexing below would split a rotation pair across threads.
+  if (rotary_offset < 0 || rotary_offset % elements_per_vector != 0 || rotary_offset + rotary_dim > head_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "rotary_offset (", rotary_offset,
+                           ") must be non-negative, a multiple of ", elements_per_vector,
+                           ", and satisfy rotary_offset + rotary_dim (", rotary_dim, ") <= head_size (",
+                           head_size, ").");
   }
 
   const int total_heads = num_heads + 2 * kv_num_heads;
@@ -454,7 +475,7 @@ Status LaunchUnpackRoPEAppend(
         grid, block, stream, packed_qkv, query, key, value, unpacked_q, k_cache, v_cache,
         k_scale, v_scale, q_fold_scale, num_heads, kv_num_heads, head_size, d, rope_max_pos, cache_capacity,
         past_seq_lens, cache_past_seq_lens,
-        cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel,
+        cos_cache, sin_cache, rotary_dim, rotary_offset, position_ids, interleaved, is_cache_bnsh, per_channel,
         q_norm_weight, k_norm_weight, qk_norm_epsilon);
   } else if constexpr (std::is_same<U, int8_t>::value
 #ifdef USE_FP8_KV_CACHE
@@ -466,7 +487,7 @@ Status LaunchUnpackRoPEAppend(
         grid, block, stream, packed_qkv, query, key, value, unpacked_q, k_cache, v_cache,
         k_scale, v_scale, q_fold_scale, num_heads, kv_num_heads, head_size, d, rope_max_pos, cache_capacity,
         past_seq_lens, cache_past_seq_lens,
-        cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel,
+        cos_cache, sin_cache, rotary_dim, rotary_offset, position_ids, interleaved, is_cache_bnsh, per_channel,
         q_norm_weight, k_norm_weight, qk_norm_epsilon);
 #ifdef USE_INT4_KV_CACHE
   } else if constexpr (std::is_same<U, uint8_t>::value) {
@@ -475,7 +496,7 @@ Status LaunchUnpackRoPEAppend(
         grid, block, stream, packed_qkv, query, key, value, unpacked_q, k_cache, v_cache,
         k_scale, v_scale, q_fold_scale, num_heads, kv_num_heads, head_size, d, rope_max_pos, cache_capacity,
         past_seq_lens, cache_past_seq_lens,
-        cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel,
+        cos_cache, sin_cache, rotary_dim, rotary_offset, position_ids, interleaved, is_cache_bnsh, per_channel,
         q_norm_weight, k_norm_weight, qk_norm_epsilon);
 #endif
   } else {

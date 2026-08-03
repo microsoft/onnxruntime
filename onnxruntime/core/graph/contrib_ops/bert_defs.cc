@@ -1253,6 +1253,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Rotate using interleaved pattern. Default value is 0 (False).",
               AttributeProto::INT,
               OPTIONAL_VALUE)
+        .Attr("rotary_offset",
+              "First channel within head_size covered by rotary embedding. RoPE covers "
+              "[rotary_offset, rotary_offset + rotary_dim) of every head and copies the channels outside that "
+              "span through unchanged, where rotary_dim is 2 * cos_cache.shape[1]. Must be non-negative, a "
+              "multiple of 8, and satisfy rotary_offset + rotary_dim <= head_size. Requires do_rotary=1. "
+              "The default 0 is the usual prefix RoPE. Models that split each head into a non-positional block "
+              "followed by a positional one (DeepSeek's nope/rope split) set rotary_offset = head_size - "
+              "rotary_dim. Same meaning as the PagedAttention attribute of the same name. Default value is 0.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
         .Attr("smooth_softmax",
               "Use a smooth factor in softmax.",
               AttributeProto::INT,

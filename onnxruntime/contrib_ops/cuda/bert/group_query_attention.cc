@@ -113,6 +113,15 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
               "GroupQueryAttention (CUDA): sliding_window_cache=1 requires local_window_size > 0.");
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
+  rotary_offset_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("rotary_offset", 0));
+  // The multiple-of-8 rule keeps the rotated span aligned with the vectorized loads in
+  // UnpackRoPEAppend, so the offset never splits a float4. The upper bound needs rotary_dim, which
+  // is only known once cos_cache is bound, and is checked in the helper.
+  ORT_ENFORCE(rotary_offset_ >= 0 && rotary_offset_ % 8 == 0,
+              "GroupQueryAttention (CUDA): 'rotary_offset' must be non-negative and a multiple of 8, got ",
+              rotary_offset_);
+  ORT_ENFORCE(rotary_offset_ == 0 || do_rotary_,
+              "GroupQueryAttention (CUDA): 'rotary_offset' requires do_rotary=1.");
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
   use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
@@ -369,6 +378,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   parameters.kv_cache_bit_width = kv_cache_bit_width_;
   parameters.do_rotary = do_rotary_;
   parameters.rotary_interleaved = rotary_interleaved_;
+  parameters.rotary_offset = rotary_offset_;
+  if (rotary_offset_ + parameters.rotary_dim > parameters.head_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "GroupQueryAttention: 'rotary_offset' + rotary_dim must not exceed head_size. Got ",
+                           rotary_offset_, " + ", parameters.rotary_dim, " > ", parameters.head_size);
+  }
 
   // The current GQA CUDA implementation will never be able to have a QK output.
   // GQA CUDA uses either flash attention or memory efficient attention. Neither kernel supports returning the QK output.
@@ -690,7 +705,11 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // present so the regular FlashAttention path (which normalizes via PrepareQKV) is used instead.
   // It is also disabled for a windowed KV cache: the kernel derives both the absolute RoPE position
   // and the cache append offset from a single seqlens_k value, which those two no longer share.
-  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.kv_sequence_length > 0 && parameters.past_present_share_buffer && !is_inputs_quantized && !parameters.use_qk_norm && !parameters.is_windowed_kv_cache;
+  // Finally it is disabled for rotary_offset != 0: the flash kernel's built-in RoPE always rotates
+  // the leading rotary_dim channels and has no notion of an offset, so an offset model would be
+  // silently mis-rotated. PrepareQKV's rotary path honours the offset, so the regular FlashAttention
+  // path is correct.
+  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.kv_sequence_length > 0 && parameters.past_present_share_buffer && !is_inputs_quantized && !parameters.use_qk_norm && !parameters.is_windowed_kv_cache && parameters.rotary_offset == 0;
 
   if (use_flash_attention) {
     // Allocate Flash specific buffers (Softmax LSE, Accum)

@@ -463,7 +463,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     // Run rotary embedding for Q
     ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, q_input,
                                               pos_ids_data, cos_cache->Data<T>(),
-                                              sin_cache->Data<T>(), q_rotary, rotary_interleaved_));
+                                              sin_cache->Data<T>(), q_rotary, rotary_interleaved_,
+                                              rotary_offset_));
 
     // Run rotary embedding for K (skip when kv_sequence_length == 0, i.e. shared KV with no new tokens)
     if (kv_sequence_length > 0) {
@@ -474,7 +475,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       }
       ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, k_input,
                                                 pos_ids_data, cos_cache->Data<T>(),
-                                                sin_cache->Data<T>(), k_rotary, rotary_interleaved_));
+                                                sin_cache->Data<T>(), k_rotary, rotary_interleaved_,
+                                                rotary_offset_));
     }
     // Pack V into rotary QKV buffer
     if (packed_qkv) {

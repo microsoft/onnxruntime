@@ -36,6 +36,7 @@ class GroupQueryAttention final : public CudaKernel {
   bool is_past_bsnh_;
   bool do_rotary_;
   bool rotary_interleaved_;
+  int rotary_offset_;  // first head channel covered by RoPE; see the schema attribute of the same name
   bool use_smooth_softmax_;
   float qk_norm_epsilon_;  // epsilon for the per-head Q/K RMSNorm (QK-Norm) prologue
   float scale_;

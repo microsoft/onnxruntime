@@ -27,7 +27,11 @@ Status LaunchRotaryEmbeddingKernel(
     const int position_ids_format,
     const bool interleaved,
     const int max_threads_per_block,
-    const bool is_input_bnsh_format);
+    const bool is_input_bnsh_format,
+    // First channel within head_size covered by RoPE. The rotated span is
+    // [rotary_offset, rotary_offset + rotary_embedding_dim) and channels outside it are copied
+    // through. 0 is the usual prefix RoPE.
+    const int rotary_offset = 0);
 
 template <typename T>
 Status LaunchRotaryEmbeddingKernel(
@@ -48,7 +52,8 @@ Status LaunchRotaryEmbeddingKernel(
     const bool interleaved,
     const int max_threads_per_block,
     int4 in_strides,
-    int4 out_strides);
+    int4 out_strides,
+    const int rotary_offset = 0);
 
 }  // namespace cuda
 }  // namespace contrib

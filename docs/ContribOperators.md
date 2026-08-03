@@ -2635,6 +2635,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Output values of QK matrix multiplication before (1) or after (2) softmax normalization. Default value is 0 (don't output).</dd>
 <dt><tt>rotary_interleaved</tt> : int</dt>
 <dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
+<dt><tt>rotary_offset</tt> : int</dt>
+<dd>First channel within head_size covered by rotary embedding. RoPE covers [rotary_offset, rotary_offset + rotary_dim) of every head and copies the channels outside that span through unchanged, where rotary_dim is 2 * cos_cache.shape[1]. Must be non-negative, a multiple of 8, and satisfy rotary_offset + rotary_dim <= head_size. Requires do_rotary=1. The default 0 is the usual prefix RoPE. Models that split each head into a non-positional block followed by a positional one (DeepSeek's nope/rope split) set rotary_offset = head_size - rotary_dim. Same meaning as the PagedAttention attribute of the same name. Default value is 0.</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 <dt><tt>sliding_window_cache</tt> : int</dt>

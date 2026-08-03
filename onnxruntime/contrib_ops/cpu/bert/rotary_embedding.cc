@@ -61,7 +61,7 @@ RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : OpKernel(info) {
 template <typename T>
 Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters parameters, const T* input,
                           const int64_t* position_ids, const T* cos_cache, const T* sin_cache, T* output,
-                          bool interleaved) {
+                          bool interleaved, int rotary_offset) {
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   const int n_heads = parameters.num_heads;
@@ -73,6 +73,15 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   const int max_sequence_length = parameters.max_sequence_length;
   const int rotary_emb_dim = parameters.rotary_embedding_dim;
   const int half_rotary_emb_dim = rotary_emb_dim / 2;
+
+  // RoPE covers [rotary_offset, rotary_offset + rotary_emb_dim) of every head; the channels before
+  // and after that span are copied through. rotary_offset == 0 is the usual prefix RoPE.
+  if (rotary_offset < 0 || rotary_offset + rotary_emb_dim > head_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "rotary_offset (", rotary_offset, ") + rotary_embedding_dim (", rotary_emb_dim,
+                           ") must not exceed head_size (", head_size, ").");
+  }
+  const int rotary_tail = head_size - rotary_offset - rotary_emb_dim;
 
   // Validate position_ids values are within cos/sin cache bounds
   if (position_ids_format == 0) {
@@ -161,12 +170,18 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
       const T* cos_data = cos_cache + cache_offset;
       const T* sin_data = sin_cache + cache_offset;
 
-      MlasRotaryEmbedOneRow<T>(input_data, sin_data, cos_data, rotary_emb_dim, interleaved, output_data);
+      MlasRotaryEmbedOneRow<T>(input_data + rotary_offset, sin_data, cos_data, rotary_emb_dim, interleaved,
+                               output_data + rotary_offset);
 
-      if (rotary_emb_dim < head_size) {
-        std::memcpy(output_data + rotary_emb_dim,
-                    input_data + rotary_emb_dim,
-                    (head_size - rotary_emb_dim) * sizeof(T));
+      if (input_data != output_data) {
+        if (rotary_offset > 0) {
+          std::memcpy(output_data, input_data, rotary_offset * sizeof(T));
+        }
+        if (rotary_tail > 0) {
+          std::memcpy(output_data + rotary_offset + rotary_emb_dim,
+                      input_data + rotary_offset + rotary_emb_dim,
+                      rotary_tail * sizeof(T));
+        }
       }
     }
   });
@@ -176,11 +191,11 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
 
 template Status RunRotaryEmbedding<float>(concurrency::ThreadPool* tp, RotaryParameters parameters, const float* input,
                                           const int64_t* position_ids, const float* cos_cache, const float* sin_cache, float* output,
-                                          bool interleaved);
+                                          bool interleaved, int rotary_offset);
 
 template Status RunRotaryEmbedding<MLFloat16>(concurrency::ThreadPool* tp, RotaryParameters parameters, const MLFloat16* input,
                                               const int64_t* position_ids, const MLFloat16* cos_cache, const MLFloat16* sin_cache,
-                                              MLFloat16* output, bool interleaved);
+                                              MLFloat16* output, bool interleaved, int rotary_offset);
 
 template <typename T>
 Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {

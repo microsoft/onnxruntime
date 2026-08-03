@@ -91,6 +91,14 @@ class GQAAttentionBase {
 
     do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
     rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
+    rotary_offset_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("rotary_offset", 0));
+    // The multiple-of-8 rule matches PagedAttention and keeps the CUDA kernel's vectorized channel
+    // indexing valid; it is enforced here too so CPU and CUDA accept exactly the same models.
+    ORT_ENFORCE(rotary_offset_ >= 0 && rotary_offset_ % 8 == 0,
+                "GroupQueryAttention: 'rotary_offset' must be non-negative and a multiple of 8, got ",
+                rotary_offset_);
+    ORT_ENFORCE(rotary_offset_ == 0 || do_rotary_,
+                "GroupQueryAttention: 'rotary_offset' requires do_rotary=1.");
 
     use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
 
@@ -114,6 +122,7 @@ class GQAAttentionBase {
   float softcap_;
   bool do_rotary_;  // whether or not to use rotary embeddings
   bool rotary_interleaved_;
+  int rotary_offset_;  // first head channel covered by RoPE; see the schema attribute of the same name
   int local_window_size_;
   int qk_output_;
 

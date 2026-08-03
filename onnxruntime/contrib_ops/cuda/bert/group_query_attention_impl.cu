@@ -242,7 +242,7 @@ Status PrepareQKV(
             reinterpret_cast<const half*>(data.cos_cache), reinterpret_cast<const half*>(data.sin_cache),
             batch_size, sequence_length, num_heads, head_size, parameters.rotary_dim, RopeMaxPosition(parameters),
             pos_format, parameters.rotary_interleaved,
-            max_threads_per_block, false /* is_input_bnsh_format: Q is BSNH */)));
+            max_threads_per_block, false /* is_input_bnsh_format: Q is BSNH */, parameters.rotary_offset)));
       } else if constexpr (std::is_same<T, __nv_bfloat16>::value) {
         ORT_RETURN_IF_ERROR((LaunchRotaryEmbeddingKernel<onnxruntime::BFloat16>(
             stream, reinterpret_cast<onnxruntime::BFloat16*>(q_out), reinterpret_cast<const onnxruntime::BFloat16*>(q_rope_input),
@@ -250,7 +250,7 @@ Status PrepareQKV(
             reinterpret_cast<const onnxruntime::BFloat16*>(data.cos_cache), reinterpret_cast<const onnxruntime::BFloat16*>(data.sin_cache),
             batch_size, sequence_length, num_heads, head_size, parameters.rotary_dim, RopeMaxPosition(parameters),
             pos_format, parameters.rotary_interleaved,
-            max_threads_per_block, false /* is_input_bnsh_format: Q is BSNH */)));
+            max_threads_per_block, false /* is_input_bnsh_format: Q is BSNH */, parameters.rotary_offset)));
       }
     }
     // If do_rotary is false and QK-Norm is off, Q is used directly from data.query (q_out == nullptr).
@@ -266,7 +266,7 @@ Status PrepareQKV(
         RopeMaxPosition(parameters), max_cache_length,
         data.past_seq_lens, data.cache_past_seq_lens,
         reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
-        parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
+        parameters.rotary_dim, parameters.rotary_offset, data.position_ids, parameters.rotary_interleaved,
         is_cache_bnsh, parameters.k_quant_type,
         data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
         stream, max_threads_per_block)));
@@ -1066,6 +1066,7 @@ Status ExtremeDecoding(
       reinterpret_cast<const T*>(data.cos_cache),
       reinterpret_cast<const T*>(data.sin_cache),
       parameters.do_rotary ? parameters.rotary_dim : 0,
+      parameters.rotary_offset,
       data.position_ids,
       parameters.rotary_interleaved,
       !past_bsnh,  // is_cache_bnsh
@@ -1310,7 +1311,7 @@ Status DequantizeFlashAttentionFallback(
       RopeMaxPosition(parameters), parameters.seqlen_present_kv_cache,
       data.past_seq_lens, data.cache_past_seq_lens,
       reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
-      parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
+      parameters.rotary_dim, parameters.rotary_offset, data.position_ids, parameters.rotary_interleaved,
       (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH),
       parameters.k_quant_type,
       data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
@@ -1404,7 +1405,7 @@ Status FlashAttentionAndQuantizeKV(
       RopeMaxPosition(parameters), sequence_length,
       data.past_seq_lens, data.past_seq_lens,
       reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
-      parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
+      parameters.rotary_dim, parameters.rotary_offset, data.position_ids, parameters.rotary_interleaved,
       false,  // BSNH for scratch
       KVQuantizationType::NONE,
       data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,

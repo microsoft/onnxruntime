@@ -119,6 +119,12 @@ struct GroupQueryAttentionParameters : AttentionParameters {
   // Upper bound (exclusive) for absolute RoPE positions: dim 0 of the cos/sin caches.
   // 0 when rotary is not configured.
   int rotary_max_position = 0;
+
+  // First channel within head_size covered by rotary embedding. RoPE covers
+  // [rotary_offset, rotary_offset + rotary_dim); channels outside are copied through. Default 0
+  // reproduces the original prefix-RoPE behavior. Same meaning as PagedAttention's attribute of the
+  // same name: DeepSeek-style layouts that rotate only a suffix pass rotary_offset = nope width.
+  int rotary_offset = 0;
 };
 
 // Parameters deduced from node attributes and inputs/outputs.

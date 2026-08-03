@@ -152,6 +152,11 @@ class GQAConfig:
     rope_cache_length: int = 0
     rotary: bool = False
     rotary_interleaved: bool = False
+    # Width of the rotated span. 0 means the default floor(head_size / 16) * 16.
+    rotary_dim: int = 0
+    # First head channel covered by RoPE (the 'rotary_offset' attribute). Channels outside
+    # [rotary_offset, rotary_offset + rotary_dim) are copied through. Must be a multiple of 8.
+    rotary_offset: int = 0
     packed: bool = False
     softcap: float = 0.0
     use_smooth_softmax: bool = False
@@ -381,6 +386,8 @@ def create_gqa_node_and_io(
 
     windowed_cache_attributes = {"sliding_window_cache": 1} if config.sliding_window_cache else {}
 
+    rotary_offset_attributes = {"rotary_offset": config.rotary_offset} if config.rotary_offset else {}
+
     node = helper.make_node(
         op_type="GroupQueryAttention",
         inputs=inputs,
@@ -397,6 +404,7 @@ def create_gqa_node_and_io(
         **quantization_attributes,
         **qk_norm_attributes,
         **windowed_cache_attributes,
+        **rotary_offset_attributes,
         domain="com.microsoft",
     )
 
@@ -446,7 +454,7 @@ def create_gqa_node_and_io(
             graph_input.append(helper.make_tensor_value_info("v_scale", TensorProto.FLOAT, None))
 
     if config.rotary:
-        rotary_dim = (math.floor(config.head_size / 16) * 16) // 2
+        rotary_dim = (config.rotary_dim or (math.floor(config.head_size / 16) * 16)) // 2
         cache_seq_len = config.rope_cache_length or config.buffer_sequence_length
         graph_input.extend(
             [
@@ -4233,6 +4241,217 @@ class TestGQAWindowedKvCacheCpu(TestGQAWindowedKvCache):
         # The float32 CPU kernel keeps an unquantized float32 cache by default.
         overrides.setdefault("kv_cache_type", "float32")
         return super()._base_config(**overrides)
+
+
+# #################################################################################################
+#  rotary_offset: RoPE applied to a sub-span of each head
+# #################################################################################################
+
+
+def offset_rope_ref(x, cos, sin, rotary_offset, rotary_dim, interleaved):
+    """Reference for the `rotary_offset` attribute.
+
+    `x` is BSNH and the position of token `s` is `s`, which is what the kernel derives from
+    past_seq_lens when `position_ids` is absent. Rotates only
+    `x[..., rotary_offset : rotary_offset + rotary_dim]` and copies every other channel through,
+    using the same half-split / interleaved conventions as the op.
+    """
+    out = x.clone().to(torch.float32)
+    seg = out[..., rotary_offset : rotary_offset + rotary_dim]
+    positions = torch.arange(x.shape[1], device=x.device)
+    c = cos[positions].to(torch.float32)[:, : rotary_dim // 2][None, :, None, :]
+    s = sin[positions].to(torch.float32)[:, : rotary_dim // 2][None, :, None, :]
+    if interleaved:
+        even = seg[..., 0::2]
+        odd = seg[..., 1::2]
+        rotated = torch.stack([even * c - odd * s, even * s + odd * c], dim=-1).flatten(-2)
+    else:
+        half = rotary_dim // 2
+        x1, x2 = seg[..., :half], seg[..., half:]
+        rotated = torch.cat([x1 * c - x2 * s, x1 * s + x2 * c], dim=-1)
+    out[..., rotary_offset : rotary_offset + rotary_dim] = rotated
+    return out.to(x.dtype)
+
+
+class TestGQARotaryOffset(unittest.TestCase):
+    """`rotary_offset` moves the rotated span from the head prefix to an arbitrary aligned window.
+
+    Models that split every head into a non-positional block followed by a positional one --
+    DeepSeek's nope/rope split, and DeepSeek-V4-Flash in particular, where each 512-wide head is
+    448 nope channels followed by 64 rope channels -- need RoPE on a *suffix* rather than a prefix.
+    `rotary_offset` is the same integer attribute PagedAttention already exposes
+    (docs/contrib_ops/cuda/paged_attention.md section 12.5), so both ops describe the layout the
+    same way.
+
+    The oracle is the op itself with `do_rotary=0` fed inputs that were rotated outside the graph:
+    if the attribute is honoured, the two runs must be numerically equivalent.
+    """
+
+    device = "cuda"
+    torch_type = torch.float16
+    ort_type = TensorProto.FLOAT16
+    providers = None  # None -> resolve the CUDA (plugin) EP.
+    kv_cache_type = ""
+
+    batch_size = 2
+    num_heads = 4
+    # DeepSeek-V4-Flash serves all query heads from a single KV head; keep that shape here.
+    kv_num_heads = 1
+    head_size = 128
+    buffer_length = 16
+    step_lengths = (8, 1, 1, 1)  # one prefill chunk, then decode steps
+
+    def _require_ep(self):
+        if not has_cuda_device():
+            self.skipTest("CUDA is not available, skipping test.")
+
+    def _config(self, **overrides):
+        config = GQAConfig(
+            batch_size=self.batch_size,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            num_heads=self.num_heads,
+            kv_num_heads=self.kv_num_heads,
+            head_size=self.head_size,
+            share_buffer=True,
+            rope_cache_length=self.buffer_length,
+            kv_cache_type=self.kv_cache_type,
+        )
+        for name, value in overrides.items():
+            setattr(config, name, value)
+        return config
+
+    def _run(self, config, q_all, k_all, v_all, cos, sin):
+        return _windowed_run_steps(
+            config,
+            self.buffer_length,
+            0,
+            step_lengths=list(self.step_lengths),
+            q_all=q_all,
+            k_all=k_all,
+            v_all=v_all,
+            cos=cos,
+            sin=sin,
+            device=self.device,
+            ort_type=self.ort_type,
+            torch_type=self.torch_type,
+            providers=self.providers,
+        )
+
+    def _check(self, rotary_dim, rotary_offset, interleaved):
+        self._require_ep()
+
+        device = self.device
+        torch_type = self.torch_type
+        total_length = sum(self.step_lengths)
+        self.assertLessEqual(total_length, self.buffer_length)
+
+        torch.manual_seed(20260204)
+        q_all = torch.randn(
+            (self.batch_size, total_length, self.num_heads, self.head_size), device=device, dtype=torch_type
+        )
+        kv_shape = (self.batch_size, total_length, self.kv_num_heads, self.head_size)
+        k_all = torch.randn(kv_shape, device=device, dtype=torch_type)
+        v_all = torch.randn(kv_shape, device=device, dtype=torch_type)
+
+        angle = torch.rand(self.buffer_length, rotary_dim // 2, device=device) * 2 * math.pi
+        cos = torch.cos(angle).to(dtype=torch_type)
+        sin = torch.sin(angle).to(dtype=torch_type)
+
+        in_op = self._run(
+            self._config(
+                rotary=True,
+                rotary_interleaved=interleaved,
+                rotary_dim=rotary_dim,
+                rotary_offset=rotary_offset,
+            ),
+            q_all,
+            k_all,
+            v_all,
+            cos,
+            sin,
+        )
+
+        # Same model with do_rotary=0, fed inputs whose rope span was already rotated.
+        q_pre = offset_rope_ref(q_all, cos, sin, rotary_offset, rotary_dim, interleaved)
+        k_pre = offset_rope_ref(k_all, cos, sin, rotary_offset, rotary_dim, interleaved)
+        in_graph = self._run(self._config(rotary=False), q_pre, k_pre, v_all, None, None)
+
+        self.assertEqual(len(in_op), len(in_graph))
+        for step, (a, b) in enumerate(zip(in_op, in_graph, strict=True)):
+            with self.subTest(step=step):
+                torch.testing.assert_close(a, b, rtol=2e-3, atol=5e-3)
+
+    def test_suffix_rope_matches_graph_applied_rope(self):
+        """The DeepSeek layout: the rotated span is flush with the end of the head."""
+        for interleaved in (False, True):
+            with self.subTest(interleaved=interleaved):
+                self._check(rotary_dim=64, rotary_offset=self.head_size - 64, interleaved=interleaved)
+
+    def test_interior_rope_matches_graph_applied_rope(self):
+        """The span need not be flush with either end -- this is why the attribute is an integer
+        rather than a `rotary_trailing` flag."""
+        for interleaved in (False, True):
+            with self.subTest(interleaved=interleaved):
+                self._check(rotary_dim=32, rotary_offset=32, interleaved=interleaved)
+
+    def test_zero_offset_is_the_shipped_prefix_rope(self):
+        """rotary_offset=0 must not perturb the existing partial-RoPE behaviour."""
+        self._check(rotary_dim=64, rotary_offset=0, interleaved=False)
+
+    def test_reject_unaligned_offset(self):
+        self._require_ep()
+        config = self._config(rotary=True, rotary_dim=64, rotary_offset=4)
+        with self.assertRaisesRegex(Exception, "rotary_offset"):
+            _windowed_make_session(config, self.ort_type, providers=self.providers)
+
+    def test_reject_offset_without_do_rotary(self):
+        self._require_ep()
+        config = self._config(rotary=False, rotary_offset=64)
+        with self.assertRaisesRegex(Exception, "rotary_offset"):
+            _windowed_make_session(config, self.ort_type, providers=self.providers)
+
+    def test_reject_span_past_end_of_head(self):
+        self._require_ep()
+        # rotary_dim is 64 here, so the span would need channels [96, 160) of a 128-wide head.
+        # rotary_dim is only known once cos_cache is bound, so this fails at Run() rather than at
+        # session creation.
+        config = self._config(rotary=True, rotary_dim=64, rotary_offset=96)
+        q = torch.zeros((self.batch_size, 1, self.num_heads, self.head_size), device=self.device, dtype=self.torch_type)
+        kv = torch.zeros(
+            (self.batch_size, 1, self.kv_num_heads, self.head_size), device=self.device, dtype=self.torch_type
+        )
+        cos = torch.ones(self.buffer_length, 32, device=self.device, dtype=self.torch_type)
+        sin = torch.zeros(self.buffer_length, 32, device=self.device, dtype=self.torch_type)
+        with self.assertRaisesRegex(Exception, "rotary_offset"):
+            _windowed_run_steps(
+                config,
+                self.buffer_length,
+                0,
+                step_lengths=[1],
+                q_all=q,
+                k_all=kv,
+                v_all=kv,
+                cos=cos,
+                sin=sin,
+                device=self.device,
+                ort_type=self.ort_type,
+                torch_type=self.torch_type,
+                providers=self.providers,
+            )
+
+
+class TestGQARotaryOffsetCpu(TestGQARotaryOffset):
+    """Same contract against the CPU GroupQueryAttention kernel."""
+
+    device = "cpu"
+    torch_type = torch.float32
+    ort_type = TensorProto.FLOAT
+    providers: typing.ClassVar[list[str]] = ["CPUExecutionProvider"]
+    kv_cache_type = "float32"
+
+    def _require_ep(self):
+        pass
 
 
 if __name__ == "__main__":

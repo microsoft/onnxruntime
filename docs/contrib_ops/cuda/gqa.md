@@ -58,6 +58,7 @@ Selected attributes:
 | `local_window_size` | Left window size for local attention. `-1` means global attention. |
 | `sliding_window_cache` | Set to `1` when using a windowed (sliding-window) KV cache instead of full-length. When enabled, the operator keeps only the most recent tokens, using cache-relative indexing and evicting from the front as needed. Requires `local_window_size > 0`. Defaults to `0` (full-length cache). |
 | `do_rotary` / `rotary_interleaved` | Enable RoPE and select interleaved vs. half-rotary layout. |
+| `rotary_offset` | First head channel covered by RoPE (see §3, *Offset RoPE*). Defaults to `0` (prefix RoPE). |
 | `smooth_softmax` | Add a smooth factor to the softmax denominator. |
 | `qk_norm_epsilon` | Epsilon for the fused per-head Q/K RMSNorm (QK-Norm) prologue. Defaults to `1e-6`. |
 | `k_quant_type` / `v_quant_type` | KV cache quantization mode: `NONE`, `PER_TENSOR`, or `PER_CHANNEL`. |
@@ -145,6 +146,38 @@ numerical stability and the result is cast back to the operator type `T`.
 - Because the Flash-Decoding fast path does its own RoPE/append internally and bypasses `PrepareQKV`,
   it is disabled when QK-Norm is present (see §6). The non-quantized XQA decode path can still run
   with QK-Norm: CUDA normalizes Q/K in the `UnpackRoPEAppend` preprocess before launching XQA.
+
+### Offset RoPE (`rotary_offset`)
+
+By default RoPE rotates the **leading** `rotary_dim` channels of each head, where
+`rotary_dim = 2 * cos_cache.shape[1]`, and passes the remaining channels through unchanged. The
+`rotary_offset` attribute moves that span: RoPE covers
+`[rotary_offset, rotary_offset + rotary_dim)` and every channel outside it is copied through.
+
+```text
+rotary_offset = 0                 |<-- rotary_dim -->|<------ pass-through ------>|
+rotary_offset = H - rotary_dim    |<------ pass-through ------>|<-- rotary_dim -->|
+```
+
+This is the layout used by **DeepSeek**-family models, which split every head into a
+non-positional ("nope") block followed by a positional ("rope") one. In
+**DeepSeek-V4-Flash-0731** each of the 64 query heads is 512 wide with a 64-wide rope suffix, so
+the model sets `rotary_offset = 448`. Without the attribute the pattern has to be expressed as
+Slice → RotaryEmbedding → Concat around the node, which materializes two extra copies of Q and K
+per layer and blocks the fused `UnpackRoPEAppend` prologue.
+
+- `rotary_offset` is an **integer**, not a `trailing` flag, so an interior span is expressible too.
+- Constraints (enforced at kernel construction and at `Run()`): non-negative, a multiple of `8`, and
+  `rotary_offset + rotary_dim <= head_size`. It requires `do_rotary = 1`. The multiple-of-8 rule
+  keeps the rotated span aligned with the `float4` vectorization in `UnpackRoPEAppend`, so an offset
+  never splits a rotation pair across threads.
+- Supported by both the CPU and CUDA kernels. On CUDA it is honoured by the `PrepareQKV` rotary path
+  (`UnpackRoPEAppend` and `RotaryEmbeddingBSNH`), which covers the FlashAttention, memory-efficient,
+  unfused, and XQA backends. The **Flash-Decoding fast path is disabled** when `rotary_offset != 0`
+  (see §6): it delegates RoPE to flash's `mha_fwd_kvcache`, which always rotates the leading
+  channels and has no notion of an offset.
+- `PagedAttention` exposes an attribute with the same name and identical semantics; see
+  [paged_attention.md](paged_attention.md) §12.5.
 
 ## 4. KV Cache and Quantization
 
@@ -309,7 +342,9 @@ Eligible when:
 
 Flash supports local window, softcap, RoPE, and packed QKV. For decode it additionally uses a
 **Flash-Decoding** split-KV fast path (`seq_len == 1`, shared buffer, non-quantized), unless
-`ORT_DISABLE_FLASH_DECODE=1`.
+`ORT_DISABLE_FLASH_DECODE=1`. It is also skipped when `rotary_offset != 0`, because that path lets
+flash's `mha_fwd_kvcache` do the RoPE and it always rotates the leading channels (see §3,
+*Offset RoPE*).
 
 ### 6.4 Memory Efficient Attention (MEA)
 
@@ -529,9 +564,14 @@ popular LLMs. Listed roughly by impact.
 6. **Paged KV cache / continuous batching.** GQA uses a contiguous shared buffer; there is a
    separate `PagedAttention` op, but GQA itself has no paged-cache path. Paged KV is what
    high-throughput serving (vLLM-style) needs.
-7. **MLA (Multi-head Latent Attention).** **DeepSeek-V2/V3** use latent KV compression with a
-   `v_head_size` that differs from `head_size`; GQA assumes `head_size == v_head_size`. This needs a
-   distinct kernel/op rather than a GQA tweak.
+7. **MLA (Multi-head Latent Attention) and DeepSeek-style sparse attention.** **DeepSeek-V2/V3**
+   use latent KV compression with a `v_head_size` that differs from `head_size`; GQA assumes
+   `head_size == v_head_size`. **DeepSeek-V4-Flash** additionally uses a single latent row as both K
+   and V (`K == V`, which GQA would store twice) and query-aware token sparsity. The nope/rope head
+   split those models need *is* covered, by `rotary_offset` (see §3), so GQA can already serve their
+   dense sliding-window layers with `rotary_offset` + `local_window_size` + `head_sink` +
+   `q_norm_weight` + `kv_num_heads = 1`. The latent-cache and sparsity pieces need a distinct
+   kernel/op rather than a GQA tweak; `PagedAttention` covers both today.
 
 ### Lower impact / niche
 
