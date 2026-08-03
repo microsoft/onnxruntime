@@ -3,7 +3,11 @@
 
 #pragma once
 
+// ShardedMoE still targets the ft_moe CutlassMoeFCRunner, which was removed when MoE moved to
+// llm/moe_gemm. Opt in only once it has been ported; otherwise an NCCL build cannot compile.
+#if defined(ORT_USE_NCCL) && defined(ORT_ENABLE_SHARDED_MOE)
 #include "contrib_ops/cuda/moe/ft_moe/moe_kernel.h"
+#endif
 #include "contrib_ops/cuda/moe/moe_base.h"
 #include "core/common/common.h"
 #include "nccl_kernels.h"
@@ -12,7 +16,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#if defined(ORT_USE_NCCL)
+#if defined(ORT_USE_NCCL) && defined(ORT_ENABLE_SHARDED_MOE)
 
 using namespace onnxruntime::cuda;
 

@@ -260,8 +260,10 @@ class CUDA_MS_OP_CLASS_NAME(1, AllReduce);
 class CUDA_MS_OP_CLASS_NAME(1, AllGather);
 class CUDA_MS_OP_CLASS_NAME(1, AllToAll);
 
+#if defined(ORT_ENABLE_SHARDED_MOE)
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, ShardedMoE);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, ShardedMoE);
+#endif
 
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DistributedMatMul);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DistributedMatMul);
@@ -536,8 +538,10 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, AllGather)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, AllToAll)>,
 
+#if defined(ORT_ENABLE_SHARDED_MOE)
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, ShardedMoE)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, ShardedMoE)>,
+#endif
 
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DistributedMatMul)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DistributedMatMul)>,

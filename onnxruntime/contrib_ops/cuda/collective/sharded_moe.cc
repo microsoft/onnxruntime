@@ -17,7 +17,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#if defined(ORT_USE_NCCL)
+#if defined(ORT_USE_NCCL) && defined(ORT_ENABLE_SHARDED_MOE)
 
 #define CHECK_CUDA(res)     \
   if (res != cudaSuccess) { \
