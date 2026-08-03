@@ -376,6 +376,11 @@ const std::unordered_map<int, OrtValue>& SessionState::GetConstantInitializedTen
   return constant_initialized_tensors_;
 }
 
+const std::unordered_map<int, OrtValue>& SessionState::GetConstantInitializedTensorsForKernelCreation() const {
+  return outer_scope_augmented_map_built_ ? outer_scope_augmented_constant_tensors_
+                                          : constant_initialized_tensors_;
+}
+
 const PrepackedWeightsForGraph& onnxruntime::SessionState::GetPrepackedIniitializersForGraph() const {
   return graph_.GetPrepacked();
 }
@@ -1753,6 +1758,61 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     CleanInitializedTensorsFromGraph();
   }
 
+  // For subgraph session states: build a merged constant-tensor map (outer_scope_augmented_constant_tensors_)
+  // that extends this subgraph's own constant_initialized_tensors_ with any outer-scope constant initializers
+  // from parent graphs, re-indexed into this subgraph's ort_value_name_idx_map_. This allows
+  // TryGetConstantInput (called from kernel constructors and PrePack) to resolve constants that live in
+  // parent-graph scope, such as the scales/zero_points paired with a MatMulNBits B tensor when all three
+  // initializers belong to the outer graph but the MatMulNBits node is inside a subgraph (e.g. If branch).
+  // The augmented map is only used for kernel creation; PrepackConstantInitializedTensors keeps using the
+  // unaugmented constant_initialized_tensors_ to avoid double-prepacking outer-scope tensors.
+  // After the subgraph finalization loop below, the parent-scope OrtValue copies in this map are erased
+  // (via outer_scope_parent_only_indices_) to allow the parent's constant_initialized_tensors_ to release
+  // memory once all prepack use counts reach zero.
+  if (parent_node != nullptr && parent_ != nullptr) {
+    outer_scope_augmented_constant_tensors_ = constant_initialized_tensors_;
+
+    for (const NodeArg* outer_arg : parent_node->ImplicitInputDefs()) {
+      const std::string& name = outer_arg->Name();
+
+      // Get the index for this name in the current (subgraph) scope.
+      int current_idx = -1;
+      if (!ort_value_name_idx_map_.GetIdx(name, current_idx).IsOK()) {
+        continue;
+      }
+
+      // Skip if this name is already covered by the subgraph's own constants.
+      if (constant_initialized_tensors_.count(current_idx) > 0) {
+        continue;
+      }
+
+      // Walk the parent session state chain (handles deeply nested subgraphs) until we either
+      // find the constant or exhaust all ancestors.
+      const SessionState* p = parent_;
+      while (p != nullptr) {
+        int parent_idx = -1;
+        if (!p->ort_value_name_idx_map_.GetIdx(name, parent_idx).IsOK()) {
+          p = p->parent_;
+          continue;
+        }
+
+        // Use the parent's already-augmented map so that constants from grandparent scopes
+        // are also visible (the parent's FinalizeSessionStateImpl has already run).
+        const auto& parent_const = p->GetConstantInitializedTensorsForKernelCreation();
+        auto it = parent_const.find(parent_idx);
+        if (it != parent_const.end()) {
+          outer_scope_augmented_constant_tensors_.emplace(current_idx, it->second);
+          outer_scope_parent_only_indices_.insert(current_idx);
+          break;
+        }
+
+        p = p->parent_;
+      }
+    }
+
+    outer_scope_augmented_map_built_ = true;
+  }
+
   ORT_RETURN_IF_ERROR(CreateKernels(kernel_registry_manager));
 
   if (!disable_prepacking) {
@@ -1814,6 +1874,19 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     // inputs that are fed through as graph inputs in the graph level holding the subgraphs ? Ideally the planned
     // locations for these would be the locations they are explicitly consumed on in nested subgraphs.
   }
+
+  // Release the extra OrtValue copies from parent scope that were added to the augmented constant
+  // map for this subgraph session state. These copies were needed to let TryGetConstantInput resolve
+  // parent-scope constants during CreateKernels and PrepackConstantInitializedTensors above, and to
+  // let any nested (grandchild) subgraph session states read them via GetConstantInitializedTensorsForKernelCreation().
+  // Now that all subgraphs are fully finalized, the copies are no longer needed. Releasing them lets
+  // the parent's constant_initialized_tensors_ free the underlying tensor buffers once all prepack
+  // use counts reach zero, avoiding a memory regression for large initializers such as quantized B
+  // matrices and scales in MatMulNBits subgraph patterns.
+  for (int idx : outer_scope_parent_only_indices_) {
+    outer_scope_augmented_constant_tensors_.erase(idx);
+  }
+  outer_scope_parent_only_indices_.clear();
 
   return Status::OK();
 }
