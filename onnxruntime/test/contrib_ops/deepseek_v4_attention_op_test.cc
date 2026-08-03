@@ -32,13 +32,13 @@ void AddBaseDeepSeekV4Inputs(OpTester& tester) {
   tester.AddInput<int32_t>("total_sequence_length", {1}, {1});
   tester.AddInput<float>("cos_cache", {2, head_size / 2}, std::vector<float>(4, 1.0f));
   tester.AddInput<float>("sin_cache", {2, head_size / 2}, std::vector<float>(4, 0.0f));
-  tester.AddInput<float>("q_a_weight", {hidden_size, q_lora_rank}, std::vector<float>(8, 0.01f));
+  tester.AddInput<float>("q_a_weight", {hidden_size, q_lora_rank}, std::vector<float>(8, 0.0f));
   tester.AddInput<float>("q_a_norm_weight", {q_lora_rank}, std::vector<float>(2, 1.0f));
-  tester.AddInput<float>("q_b_weight", {q_lora_rank, hidden_size}, std::vector<float>(8, 0.01f));
-  tester.AddInput<float>("kv_weight", {hidden_size, kv_width}, std::vector<float>(32, 0.01f));
+  tester.AddInput<float>("q_b_weight", {q_lora_rank, hidden_size}, std::vector<float>(8, 0.0f));
+  tester.AddInput<float>("kv_weight", {hidden_size, kv_width}, std::vector<float>(32, 0.0f));
   tester.AddInput<float>("kv_norm_weight", {kv_width}, std::vector<float>(8, 1.0f));
-  tester.AddInput<float>("o_a_weight", {hidden_size, o_groups * o_lora_rank}, std::vector<float>(8, 0.01f));
-  tester.AddInput<float>("o_b_weight", {o_groups * o_lora_rank, hidden_size}, std::vector<float>(8, 0.01f));
+  tester.AddInput<float>("o_a_weight", {hidden_size, o_groups * o_lora_rank}, std::vector<float>(8, 0.0f));
+  tester.AddInput<float>("o_b_weight", {o_groups * o_lora_rank, hidden_size}, std::vector<float>(8, 0.0f));
   tester.AddInput<float>("head_sink", {1}, {0.0f});
 }
 
@@ -66,15 +66,17 @@ std::vector<std::unique_ptr<IExecutionProvider>> CpuEpOnly() {
 
 }  // namespace
 
-TEST(DeepSeekV4AttentionTest, SlidingModeContractPlaceholder) {
+TEST(DeepSeekV4AttentionTest, SlidingModeRunsMathPath) {
   OpTester tester("DeepSeekV4Attention", 1, onnxruntime::kMSDomain);
   AddBaseDeepSeekV4Attributes(tester);
   AddBaseDeepSeekV4Inputs(tester);
 
+  tester.AddOutput<float>("output", {1, 1, 4}, std::vector<float>(4, 0.0f));
+  tester.AddOutput<float>("present_key", {1, 1, 1, 4}, std::vector<float>(4, 0.0f));
+  tester.AddOutput<float>("present_value", {1, 1, 1, 4}, std::vector<float>(4, 0.0f));
+
   auto execution_providers = CpuEpOnly();
-  tester.Run(OpTester::ExpectResult::kExpectFailure,
-             "frontend contract placeholder and is not implemented yet",
-             {}, nullptr, &execution_providers);
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(DeepSeekV4AttentionTest, CsaModeRequiresCompressRate) {
