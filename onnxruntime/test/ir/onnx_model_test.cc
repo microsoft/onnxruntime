@@ -84,9 +84,10 @@ TEST_F(ONNXModelsTest, TestModelsWithAnOpContainingAFunctionBody) {
 // The following tests verify ORT can successfully load models which reference functions
 // present in the ModelProto aka model local functions. This feature was added to ONNX standard starting IRv8
 
+template <typename NodeContainer>
 void BuildFunction(FunctionProto& function_proto,
                    const std::string& name, const std::string& domain,
-                   const std::vector<NodeProto>& nodes,
+                   const NodeContainer& nodes,
                    const std::vector<std::string>& inputs,
                    const std::vector<std::string>& outputs,
                    const std::unordered_map<std::string, int>& opset_imports) {
