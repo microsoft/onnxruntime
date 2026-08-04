@@ -44,14 +44,10 @@ permissions:
   contents: read
 
 env:
-  # Prebuilt onnx-light C++ release artifact (0.1.6). Pinned by sha256.
-  # NOTE: 0.1.6 adds the protobuf-compat surface the C++ unit tests need
-  # (google::protobuf::Map, io::FileInputStream, delimited CodedInputStream and
-  # onnx/onnx-data.pb.h). Update ONNX_LIGHT_CPP_SHA256 to the published 0.1.6
-  # linux artifact's sha256 once the release is cut.
-  ONNX_LIGHT_VERSION: "0.1.6"
+  # Prebuilt onnx-light C++ release artifact. Pinned by sha256.
+  ONNX_LIGHT_VERSION: "0.1.11"
   ONNX_LIGHT_CPP_ASSET: "onnx-light-cpp-linux-x86_64.tar.gz"
-  ONNX_LIGHT_CPP_SHA256: "REPLACE_WITH_0.1.6_LINUX_ARTIFACT_SHA256"
+  ONNX_LIGHT_CPP_SHA256: "88e10ec54842cb0bb212a6e61cd1f2657f9f022ae285c6f8f2206cb448c2ad97"
 
 jobs:
   build-linux-onnx-light:
