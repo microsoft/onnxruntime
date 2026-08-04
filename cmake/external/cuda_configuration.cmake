@@ -203,7 +203,7 @@ macro(setup_cuda_architectures)
   endforeach()
 
   # Enable accelerated features (like WGMMA, TMA and setmaxnreg) for SM >= 90.
-  set(ARCHITECTURES_WITH_ACCEL "90" "100" "101" "110" "120")
+  set(ARCHITECTURES_WITH_ACCEL "90" "100" "103" "110" "120" "121")
   unset(CMAKE_CUDA_ARCHITECTURES_NORMALIZED)
   foreach(CUDA_ARCH IN LISTS CMAKE_CUDA_ARCHITECTURES)
     if(CUDA_ARCH MATCHES "^([0-9]+)f$")
