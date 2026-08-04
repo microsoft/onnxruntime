@@ -171,8 +171,7 @@ if(NOT onnxruntime_USE_ONNX_LIGHT AND NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT 
   endif()
 endif()
 
-# onnx-light provides protobuf::libprotobuf and protobuf::libprotobuf-lite as
-# INTERFACE compatibility aliases, so the entire protobuf fetch is skipped.
+# When onnx-light is used, protobuf is not needed and PROTOBUF_LIB is left empty.
 if(NOT onnxruntime_USE_ONNX_LIGHT)
 
 # if ONNX_CUSTOM_PROTOC_EXECUTABLE is set we don't need to build the protoc binary
@@ -267,7 +266,12 @@ endif()
 
 endif() # NOT onnxruntime_USE_ONNX_LIGHT
 
-if (onnxruntime_USE_FULL_PROTOBUF)
+if(onnxruntime_USE_ONNX_LIGHT)
+  # onnx-light has no protobuf dependency; leave PROTOBUF_LIB empty so that
+  # targets which reference ${PROTOBUF_LIB} do not try to link a non-existent
+  # protobuf target.
+  set(PROTOBUF_LIB "")
+elseif(onnxruntime_USE_FULL_PROTOBUF)
   set(PROTOBUF_LIB protobuf::libprotobuf)
 else()
   set(PROTOBUF_LIB protobuf::libprotobuf-lite)
