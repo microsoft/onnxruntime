@@ -13,9 +13,9 @@ retrieve the definition of its inputs and outputs.
 """
 
 import numpy
-from onnxruntime.datasets import get_example
 
 import onnxruntime as rt
+from onnxruntime.datasets import get_example
 
 #########################
 # Let's load a very simple model.
