@@ -910,5 +910,30 @@ TEST(SplitOperatorTest, Split3Inner) {
   do_test(splits);
 }
 
+// Negative split sizes in the input tensor cause an OOB read before the negative-size
+// allocation for a later output throws. Validate per-element >= 0 on the input path.
+TEST(SplitOperatorTest, NegativeSplitSizeInputTensor) {
+  constexpr int64_t axis = 0;
+  std::vector<ShapeAndFloatData> outputs;
+
+  // input shape [4,2], axis-0 dim = 4.
+  // split = [6, -2]: sum = 4, count = 2 (passes aggregate checks),
+  // but the first output would read 6 rows from a 4-row input (OOB).
+  ShapeAndFloatData input = {{4, 2},
+                             {1.f, 2.f,
+                              3.f, 4.f,
+                              5.f, 6.f,
+                              7.f, 8.f}};
+
+  std::vector<int64_t> splits{6, -2};
+
+  outputs.push_back({{6, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 0.f, 0.f, 0.f, 0.f}});
+  outputs.push_back({{0, 2}, {}});
+
+  // split_as_input = true so the split sizes come from an input tensor, not the attribute.
+  RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, true, true, -1, true,
+                 "Invalid negative value in 'split'");
+}
+
 }  // namespace test
 }  // namespace onnxruntime

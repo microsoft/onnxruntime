@@ -61,6 +61,15 @@ class SplitBase {
       }
       split_sizes = std::vector<int64_t>(static_cast<size_t>(num_outputs), split_dim_size / num_outputs);
     } else {
+      // Reject negative split sizes. The attribute path validates this in the constructor;
+      // this check covers the input-tensor path where sizes are not otherwise validated.
+      for (int64_t s : split_sizes) {
+        if (s < 0) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Invalid negative value in 'split'. All split sizes must be >= 0.");
+        }
+      }
+
       int64_t split_size_sum = split_size_sum_;
       if (split_size_sum == -1) {
         split_size_sum = std::accumulate(split_sizes.cbegin(), split_sizes.cend(), 0LL);
