@@ -2080,7 +2080,8 @@ static ProviderLibrary s_library_migraphx(LIBRARY_PREFIX ORT_TSTR("onnxruntime_p
 #ifndef _WIN32
                                         ,
                                         false /* unload - On Linux if we unload the migraphx shared provider we crash */
-#endif);
+#endif
+);
 
 // QNN EP can be built either as a static library or a shared library. Can safely define s_library_qnn even if static.
 static ProviderLibrary s_library_qnn(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_qnn") LIBRARY_EXTENSION);
