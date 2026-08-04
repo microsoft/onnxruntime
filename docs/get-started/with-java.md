@@ -37,6 +37,21 @@ For customization of the loading mechanism of the shared library, please see [ad
 
 The Javadoc is available [here](https://javadoc.io/doc/com.microsoft.onnxruntime/onnxruntime).
 
+## Third-party JVM bindings
+
+The official ONNX Runtime Java package is maintained by the ONNX Runtime project. The community also
+maintains other JVM projects that wrap ONNX Runtime or provide higher-level ONNX model APIs:
+
+| Project | Notes |
+|---------|-------|
+| [SMILE ONNX](https://github.com/haifengl/smile/blob/master/core/ONNX.md) | Provides an idiomatic Java API for running ONNX models as part of the SMILE machine learning library. |
+| [JavaCPP Presets for ONNX Runtime](https://github.com/bytedeco/javacpp-presets/tree/master/onnxruntime) | Provides JavaCPP-generated bindings for the ONNX Runtime C API. |
+| [OpenJDK Babylon ONNX example](https://github.com/openjdk/babylon/tree/code-reflection/cr-examples/onnx) | Experimental ONNX Runtime usage through the OpenJDK Babylon code reflection examples. |
+| [onnxruntime-java](https://github.com/yuzawa-san/onnxruntime-java) | Provides an alternative Java Foreign Function & Memory API binding for ONNX Runtime. |
+
+These third-party projects are not maintained by the ONNX Runtime project. Please report issues or
+feature requests for those bindings in the corresponding project repository.
+
 ## Sample
 
 An example implementation is located in
