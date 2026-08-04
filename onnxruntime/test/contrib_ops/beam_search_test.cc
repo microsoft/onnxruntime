@@ -49,6 +49,34 @@ TEST(BeamSearchParametersTest, SetSubgraphParametersUsesSubgraphSizeWhenAttribut
   EXPECT_EQ(parameters.num_heads, 2);
 }
 
+TEST(BeamSearchParametersTest, SetSubgraphParametersRejectsNegativeWhisperBeginningTimestampTokenId) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
+  parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
+  parameters.beginning_timestamp_token_id = -1;
+
+  EXPECT_THROW(parameters.SetSubgraphParameters(128, 2, 4, 6), OnnxRuntimeException);
+}
+
+TEST(BeamSearchParametersTest, SetSubgraphParametersRejectsWhisperBeginningTimestampTokenIdEqualToVocabSize) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
+  parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
+  parameters.beginning_timestamp_token_id = 128;
+
+  EXPECT_THROW(parameters.SetSubgraphParameters(128, 2, 4, 6), OnnxRuntimeException);
+}
+
+TEST(BeamSearchParametersTest, SetSubgraphParametersAcceptsValidWhisperBeginningTimestampTokenId) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
+  parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
+  parameters.beginning_timestamp_token_id = 0;
+
+  EXPECT_NO_THROW(parameters.SetSubgraphParameters(128, 2, 4, 6));
+  EXPECT_EQ(parameters.vocab_size, 128);
+}
+
 void RunGptBeamSearchFp32() {
   std::vector<int64_t> input_ids_shape{3, 12};
   std::vector<int32_t> input_ids{

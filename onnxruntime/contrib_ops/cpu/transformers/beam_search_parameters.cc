@@ -152,6 +152,16 @@ void BeamSearchParameters::SetSubgraphParameters(int vocabulary_size, int heads,
     ORT_THROW("vocab_size attribute (", vocab_size,
               ") cannot exceed decoder subgraph logits width (", vocabulary_size, ")");
   }
+
+  // Whisper timestamp logits processing indexes token-score spans by
+  // beginning_timestamp_token_id. Reject out-of-range ids up front.
+  if (model_type == IGenerationParameters::kModelTypeWhisper &&
+      logits_processor == IGenerationParameters::kLogitsProcessorTypeWhisper) {
+    ORT_ENFORCE(beginning_timestamp_token_id >= 0 && beginning_timestamp_token_id < vocab_size,
+                "beginning_timestamp_token_id is out of range, it is ", beginning_timestamp_token_id,
+                ", vocab_size is ", vocab_size);
+  }
+
   num_heads = heads;
   head_size = hidden_size_per_head;
   num_layers = layers;
