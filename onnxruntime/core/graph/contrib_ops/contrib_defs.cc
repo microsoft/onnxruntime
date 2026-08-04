@@ -863,6 +863,113 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BiasSoftmax, 1,
                                 .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
+    DSV4Compressor, 1,
+    OpSchema()
+        .SetDoc(
+            "Gated pooling of `ratio` consecutive tokens into one latent row, as used by the KV "
+            "compressor and the Lightning Indexer of DeepSeek-V4.\n"
+            "\n"
+            "`kv` and `score` are this step's raw projections, `coff * head_dim` wide. They are "
+            "appended to the rolling state, which holds the `coff * ratio` projections that "
+            "preceded them, so a row whose window straddles the step boundary can still be "
+            "pooled:\n"
+            "  full_kv = Concat(past_state_kv, kv, axis=1), likewise for the score\n"
+            "Row `j` of sequence `b` covers slot `past_lens[b] / ratio + j`, that is the "
+            "`ratio` absolute positions starting at `slot * ratio`. When `coff` is 2 the window "
+            "is twice as wide: the preceding `ratio` positions are read from the low half of "
+            "each projection and the current ones from the high half. Positions that are out of "
+            "the state's range, negative, or not yet generated are masked out.\n"
+            "  w      = Softmax(Where(valid, full_score[window] + ape, -1e30), over the window)\n"
+            "  pooled = ReduceSum(full_kv[window] * w, over the window)\n"
+            "  normed = norm_weight * pooled / Sqrt(ReduceMean(pooled * pooled, -1) + epsilon)\n"
+            "The trailing `rope_head_dim` channels are then rotated with the tables read at "
+            "`Clip(slot * ratio, 0, max_seq_len - 1)`. With `act_quant`, the leading channels "
+            "take a simulated FP8-E4M3 round trip in blocks of 64 with a power-of-two scale. "
+            "With `rotate_fp4`, the whole row is Hadamard-rotated and takes a simulated "
+            "FP4-E2M1 round trip in blocks of 32.\n"
+            "\n"
+            "`rows` is `(seq_len - 1) / ratio + 2` wide: one row per slot the step can touch, "
+            "plus a spare, so the shape never depends on `past_lens`. `first_slot`, `last_slot` "
+            "and `row_count` say which of those rows are live. Intermediates are computed in "
+            "float and rounded to T where the unfused subgraph rounds.")
+        .Attr("ratio", "How many consecutive tokens pool into one row.", AttributeProto::INT,
+              static_cast<int64_t>(4))
+        .Attr("coff", "1, or 2 when consecutive windows overlap and the projections are paired.",
+              AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("head_dim", "Width of one latent row.", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("rope_head_dim", "Width of the trailing slice that gets rotated.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("max_seq_len", "Number of rows in the rotary tables.", AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("epsilon", "Value added to the mean of squares before the square root.",
+              AttributeProto::FLOAT, 1e-6f)
+        .Attr("act_quant", "Simulate the FP8 round trip on the un-rotated channels.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("rotate_fp4", "Hadamard-rotate the row and simulate the FP4 round trip.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("dtype",
+              "Element type of `rows`. T appears on no input, so it cannot be inferred.",
+              AttributeProto::INT, static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT))
+        .Input(0, "kv", "Pooled-value projection, shape (batch, seq, coff * head_dim).", "M")
+        .Input(1, "score", "Pooling-gate projection, same shape as kv.", "M")
+        .Input(2, "past_state_kv",
+               "Preceding value projections, shape (batch, coff * ratio, coff * head_dim).", "M")
+        .Input(3, "past_state_score", "Preceding gate projections, same shape as past_state_kv.",
+               "M")
+        .Input(4, "ape", "Positional bias added to the gate, shape (ratio, coff * head_dim).", "M")
+        .Input(5, "norm_weight", "Weights of the RMS norm applied to the pooled row, shape (head_dim).",
+               "M")
+        .Input(6, "cos", "Rotary cosines, shape (max_seq_len, rope_head_dim).", "M")
+        .Input(7, "sin", "Rotary sines, shape (max_seq_len, rope_head_dim).", "M")
+        .Input(8, "past_lens", "Tokens already generated per sequence, shape (batch).", "I")
+        .Output(0, "rows", "Candidate latent rows, shape (batch, (seq - 1) / ratio + 2, head_dim).",
+                "T")
+        .Output(1, "first_slot", "Slot the first row lands in, shape (batch, 1).", "I")
+        .Output(2, "last_slot", "Slot of the last live row, shape (batch, 1).", "I")
+        .Output(3, "row_count", "Number of candidate rows, a scalar, on the device.", "I")
+        .Output(4, "present_state_kv", "Rolled-forward value projections, same shape as past_state_kv.",
+                "M")
+        .Output(5, "present_state_score", "Rolled-forward gate projections, same shape as past_state_score.",
+                "M")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain the latent row type to float tensors.")
+        .TypeConstraint("M", {"tensor(float)"},
+                        "Constrain the projections and the weights to float tensors.")
+        .TypeConstraint("I", {"tensor(int64)"}, "Constrain the slot bookkeeping to int64 tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          const int64_t ratio = getAttribute(ctx, "ratio", static_cast<int64_t>(4));
+          const int64_t head_dim = getAttribute(ctx, "head_dim", static_cast<int64_t>(0));
+          const int64_t dtype = getAttribute(
+              ctx, "dtype", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+          updateOutputElemType(ctx, 0, static_cast<int32_t>(dtype));
+          for (int i : {1, 2, 3}) {
+            updateOutputElemType(ctx, i, ONNX_NAMESPACE::TensorProto_DataType_INT64);
+          }
+          for (int i : {4, 5}) {
+            propagateElemTypeFromInputToOutput(ctx, 2, i);
+            if (hasInputShape(ctx, 2)) propagateShapeFromInputToOutput(ctx, 2, i);
+          }
+          if (!hasInputShape(ctx, 0) || ratio < 1) return;
+
+          const auto& in = getInputShape(ctx, 0);
+          if (in.dim_size() != 3) fail_shape_inference("kv must have rank 3.");
+          auto* rows = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          *rows->add_dim() = in.dim(0);
+          if (in.dim(1).has_dim_value()) {
+            rows->add_dim()->set_dim_value((in.dim(1).dim_value() - 1) / ratio + 2);
+          } else {
+            rows->add_dim();
+          }
+          rows->add_dim()->set_dim_value(head_dim);
+          for (int i : {1, 2}) {
+            auto* slot = ctx.getOutputType(i)->mutable_tensor_type()->mutable_shape();
+            *slot->add_dim() = in.dim(0);
+            slot->add_dim()->set_dim_value(1);
+          }
+          ctx.getOutputType(3)->mutable_tensor_type()->mutable_shape();
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
     HyperConnectionMix, 1,
     OpSchema()
         .SetDoc(
