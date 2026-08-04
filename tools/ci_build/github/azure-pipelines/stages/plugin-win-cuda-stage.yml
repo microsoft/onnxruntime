@@ -47,6 +47,10 @@ parameters:
   type: string
   default: '61-real;75-real;86-real;89-real;120-real;120-virtual'
 
+- name: enable_cuda_fatbin_size_compression
+  type: boolean
+  default: false
+
 stages:
   - stage: Win_plugin_cuda_${{ parameters.arch }}_Build
     dependsOn: []
@@ -85,6 +89,11 @@ stages:
         value: '-Dorg.gradle.daemon=false'
       - name: VSGenerator
         value: 'Visual Studio 17 2022'
+      - name: FatbinCompressOption
+        ${{ if eq(parameters.enable_cuda_fatbin_size_compression, true) }}:
+          value: '--cmake_extra_defines onnxruntime_CUDA_FATBIN_COMPRESS_SIZE=ON'
+        ${{ else }}:
+          value: ''
       steps:
       - checkout: self
         clean: true
@@ -192,6 +201,7 @@ stages:
               --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="${{ parameters.cmake_cuda_archs }}"
               --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
               --cmake_extra_defines $(PluginEpVersionDefine)
+              $(FatbinCompressOption)
               $(TelemetryOption)
             workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -221,6 +231,7 @@ stages:
               --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="${{ parameters.cmake_cuda_archs }}"
               --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
               --cmake_extra_defines $(PluginEpVersionDefine)
+              $(FatbinCompressOption)
               $(TelemetryOption)
             workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -252,6 +263,7 @@ stages:
               --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
               --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
               --cmake_extra_defines $(PluginEpVersionDefine)
+              $(FatbinCompressOption)
               $(TelemetryOption)
             workingDirectory: '$(Build.BinariesDirectory)'
 

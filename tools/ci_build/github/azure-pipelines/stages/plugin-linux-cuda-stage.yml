@@ -57,6 +57,10 @@ parameters:
   type: string
   default: 'cuda_plugin_linux_x64'
 
+- name: enable_cuda_fatbin_size_compression
+  type: boolean
+  default: false
+
 stages:
 - stage: ${{ parameters.stage_name }}
   dependsOn: []
@@ -115,7 +119,10 @@ stages:
         workingDirectory: $(Build.SourcesDirectory)
         displayName: 'Build CUDA Plugin (Python ${{ parameters.python_version }}, ${{ parameters.arch }}, CUDA ${{ parameters.cuda_version }})'
         env:
-          EXTRA_CMAKE_DEFINES: $(PluginEpVersionDefine)
+          ${{ if eq(parameters.enable_cuda_fatbin_size_compression, true) }}:
+            EXTRA_CMAKE_DEFINES: $(PluginEpVersionDefine) onnxruntime_CUDA_FATBIN_COMPRESS_SIZE=ON
+          ${{ else }}:
+            EXTRA_CMAKE_DEFINES: $(PluginEpVersionDefine)
 
       - script: |
           set -e -x

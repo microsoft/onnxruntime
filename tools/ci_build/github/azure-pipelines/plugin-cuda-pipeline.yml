@@ -55,6 +55,14 @@ parameters:
   - dev
   default: dev
 
+# CUDA 13.x always compresses fatbins with -compress-mode=size. Enabling this makes the
+# CUDA 12.8 build match it, which shrinks the binary a lot but raises the minimum driver
+# to the CUDA 12.4 level (Linux >= 550.54.14, Windows >= 551.61).
+- name: enable_cuda_fatbin_size_compression
+  displayName: 'Compress CUDA fatbins for size (CUDA 12.8 only; needs r550+ driver)'
+  type: boolean
+  default: false
+
 - name: cmake_build_type
   type: string
   default: 'Release'
@@ -140,6 +148,7 @@ extends:
             package_type: ${{ parameters.package_type }}
             version_file: ${{ variables.epVersionFile }}
             cmake_build_type: ${{ parameters.cmake_build_type }}
+            enable_cuda_fatbin_size_compression: ${{ parameters.enable_cuda_fatbin_size_compression }}
             ${{ if eq(parameters.cuda_version, '12.8') }}:
               python_package_name: 'onnxruntime-ep-cuda12'
               docker_base_image: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
