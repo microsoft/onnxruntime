@@ -197,6 +197,7 @@ auto get_capabilities = [](const IExecutionProvider& ep,
   return capabilities;
 };
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 Status RefreshMaxShapeInference(Graph& graph, IResourceAccountant& resource_accountant) {
   // Overrides are scoped to top-level inputs. Starting from the root also refreshes
   // recursively inferred shapes when a layout transformation modifies a subgraph.
@@ -211,6 +212,7 @@ Status RefreshMaxShapeInference(Graph& graph, IResourceAccountant& resource_acco
   resource_accountant.SetMaxShapeInferenceResult(std::move(result));
   return Status::OK();
 }
+#endif
 }  // namespace
 
 static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const logging::Logger& logger) {
