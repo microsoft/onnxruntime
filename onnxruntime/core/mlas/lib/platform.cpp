@@ -277,6 +277,12 @@ Return Value:
     this->CastF16ToF32Kernel = nullptr;
     this->CastF32ToF16Kernel = nullptr;
 
+    //
+    // Linear attention: portable baseline for every target. ISA-specific
+    // implementations override this in the target-specific blocks below.
+    //
+    this->LinearAttentionDispatch = &MlasLinearAttentionDispatchDefault;
+
 #if defined(MLAS_TARGET_RISCV64)
     this->GemmFloatKernel = nullptr;
     this->GemmU8S8Dispatch = &MlasGemmQuantDispatchDefault;

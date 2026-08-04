@@ -1599,6 +1599,12 @@ extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchAvx512Vnni;
 extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchNeon;
 
 //
+// Linear (recurrent) attention dispatch structure.
+//
+struct MLAS_LINEAR_ATTENTION_DISPATCH;
+extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchDefault;
+
+//
 // Quantized depthwise convolution kernels.
 //
 
@@ -1846,6 +1852,7 @@ MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine = nullptr;
     const MLAS_SOFTMAX_DISPATCH* SoftmaxDispatch{nullptr};
     const MLAS_ELTWISE_DISPATCH* EltwiseDispatch{nullptr};
     const MLAS_KV_QUANT_GEMM_DISPATCH* KVQuantGemmDispatch{nullptr};
+    const MLAS_LINEAR_ATTENTION_DISPATCH* LinearAttentionDispatch{nullptr};
 };
 
 inline

@@ -59,6 +59,8 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/flashattn_qkv.cpp
   ${MLAS_SRC_DIR}/flashattn_gqa.cpp
   ${MLAS_SRC_DIR}/qkv_quant.cpp
+  ${MLAS_SRC_DIR}/linear_attention.h
+  ${MLAS_SRC_DIR}/linear_attention.cpp
   ${MLAS_SRC_DIR}/cast.cpp
   ${MLAS_SRC_DIR}/layernorm.cpp
   ${MLAS_SRC_DIR}/rotary_embedding.h
