@@ -169,6 +169,8 @@ void ScalarLinearAttention(LinearAttentionProblem& p) {
 void LinearAttentionArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames({"B", "T", "Hq", "Hkv", "Hk", "dk", "dv", "rule"});
   for (int rule : {static_cast<int>(MlasLinearAttentionRuleLinear),
+                   static_cast<int>(MlasLinearAttentionRuleGated),
+                   static_cast<int>(MlasLinearAttentionRuleDelta),
                    static_cast<int>(MlasLinearAttentionRuleGatedDelta)}) {
     // Below the SGEMM threshold (32*64 = 2048).
     for (int t : {1, 128, 1024}) {

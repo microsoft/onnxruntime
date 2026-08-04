@@ -269,10 +269,15 @@ class MlasLinearAttentionTest : public MlasTestBase {
   }
 
   void ExecuteShort(void) override {
-    // (d_k, d_v) pairs straddling the d_k*d_v >= 4096 SGEMM threshold in the
-    // portable kernel: 4096 itself is the inclusive boundary.
+    // (d_k, d_v) pairs chosen to straddle two independent boundaries:
+    //   - the d_k*d_v >= 4096 SGEMM threshold in the portable kernel (4096 is
+    //     the inclusive boundary);
+    //   - the AVX-512 kernel's eligibility envelope, d_k % 16 == 0 &&
+    //     d_k <= 256 && d_v % 32 == 0. {32,64}, {64,64}, {128,128} are
+    //     eligible; the rest exercise the fallback to the portable kernel,
+    //     including {272,32} which fails only the d_k <= 256 bound.
     static const int kShapes[][2] = {
-        {8, 8}, {16, 16}, {32, 64}, {24, 40}, {64, 64}, {48, 96}, {128, 128},
+        {8, 8}, {16, 16}, {32, 64}, {24, 40}, {64, 64}, {48, 96}, {128, 128}, {272, 32},
     };
     static const MLAS_LINEAR_ATTENTION_RULE kRules[] = {
         MlasLinearAttentionRuleLinear,
@@ -280,10 +285,22 @@ class MlasLinearAttentionTest : public MlasTestBase {
         MlasLinearAttentionRuleDelta,
         MlasLinearAttentionRuleGatedDelta,
     };
-    // {H_q, H_kv, H_k}: MHA, standard GQA, standard GQA + key sharing,
-    // key sharing alone, inverse GQA, inverse GQA + key sharing, large group.
+    // {H_q, H_kv, H_k}: MHA, standard GQA, standard GQA + key sharing, key
+    // sharing alone, inverse GQA, inverse GQA + key sharing, large group.
+    // The implied heads-per-group covers every value the AVX-512 kernel
+    // specializes on (1, 2, 4, 8) plus 16, which must fall back.
     static const int kHeads[][3] = {
-        {1, 1, 1}, {2, 2, 2}, {4, 2, 2}, {4, 2, 1}, {4, 4, 2}, {2, 4, 4}, {2, 4, 2}, {16, 2, 1},
+        {1, 1, 1},   // n_out = 1
+        {2, 2, 2},   // n_out = 1
+        {4, 2, 2},   // n_out = 2
+        {4, 2, 1},   // n_out = 2, key sharing
+        {8, 2, 2},   // n_out = 4
+        {8, 2, 1},   // n_out = 4, key sharing
+        {16, 2, 1},  // n_out = 8, key sharing
+        {16, 1, 1},  // n_out = 16 - outside the kernel's specializations
+        {4, 4, 2},   // n_out = 1, key sharing
+        {2, 4, 4},   // inverse GQA
+        {2, 4, 2},   // inverse GQA + key sharing
     };
 
     // All rules x all shapes x both layouts, at a fixed head config.
