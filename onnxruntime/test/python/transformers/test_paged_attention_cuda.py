@@ -3383,9 +3383,7 @@ class TestPagedAttentionDeepSeekV4Flash(unittest.TestCase):
 
         kv = densify_latent(config, latent_paged, block_table, total_len)
         for b in range(batch_size):
-            torch.testing.assert_close(
-                kv[b, fresh_slot].to(torch.float32), key[token_count + b].to(torch.float32)
-            )
+            torch.testing.assert_close(kv[b, fresh_slot].to(torch.float32), key[token_count + b].to(torch.float32))
         ref = dsv4_sparse_attn(
             query.reshape(batch_size, 1, config.num_heads, config.head_size),
             kv,
