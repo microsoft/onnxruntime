@@ -21,7 +21,13 @@ using MaxShapeOverrideMap = InlinedHashMap<std::string, TensorShape>;
 class MaxShapeInferenceResult {
  public:
   /// graph_identity must be the address of the source Graph passed to InferMaxShapes.
-  const TensorShape* GetShape(const void* graph_identity, std::string_view node_arg_name) const;
+  const TensorShape* GetShape(const void* graph_identity, std::string_view node_arg_name) const {
+    const auto graph_it = graph_shapes_.find(graph_identity);
+    if (graph_it == graph_shapes_.end()) return nullptr;
+    const auto shape_it = graph_it->second.find(std::string{node_arg_name});
+    return shape_it == graph_it->second.end() ? nullptr : &shape_it->second;
+  }
+
   bool Empty() const noexcept { return graph_shapes_.empty(); }
 
  private:

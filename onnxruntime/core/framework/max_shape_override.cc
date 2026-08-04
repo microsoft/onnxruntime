@@ -128,14 +128,6 @@ void CollectGeneratedSchemas(
 
 }  // namespace
 
-const TensorShape* MaxShapeInferenceResult::GetShape(
-    const void* graph_identity, std::string_view node_arg_name) const {
-  const auto graph_it = graph_shapes_.find(graph_identity);
-  if (graph_it == graph_shapes_.end()) return nullptr;
-  const auto shape_it = graph_it->second.find(std::string{node_arg_name});
-  return shape_it == graph_it->second.end() ? nullptr : &shape_it->second;
-}
-
 Status ParseMaxShapeOverride(std::string_view config_value, MaxShapeOverrideMap& out) {
   out.clear();
 
