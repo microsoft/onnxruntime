@@ -125,8 +125,19 @@ stages:
             echo "Error: Expected plugin binary not found at '$plugin_path'. Failing build to avoid publishing an invalid package."
             exit 1
           fi
+
+          dynamic_search_path="$(readelf -d "$plugin_path" | sed -nE 's/.*\((RPATH|RUNPATH)\).*\[([^]]*)\].*/\2/p')"
+          if [[ -n "$dynamic_search_path" && ":$dynamic_search_path:" == *::* ]]; then
+            echo "Error: Plugin binary contains an empty RPATH/RUNPATH component: '$dynamic_search_path'"
+            exit 1
+          fi
+          if [[ "$dynamic_search_path" == *cuda* ]]; then
+            echo "Error: Plugin binary contains a hard-coded CUDA RPATH/RUNPATH: '$dynamic_search_path'"
+            exit 1
+          fi
+
           cp "$plugin_path" "$(Build.ArtifactStagingDirectory)/bin/"
-        displayName: 'Copy plugin binaries'
+        displayName: 'Verify and copy plugin binaries'
 
       - script: |
           set -e -x

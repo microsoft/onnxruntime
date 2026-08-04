@@ -123,6 +123,17 @@ onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_plugin
     ${CUDA_PLUGIN_EP_CU_SRCS}
 )
 
+if(WIN32)
+  # Add version information to the packaged plugin DLL.
+  target_sources(onnxruntime_providers_cuda_plugin PRIVATE
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/onnxruntime_providers_cuda.rc")
+  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE
+      FILE_NAME=\"onnxruntime_providers_cuda.dll\")
+elseif(UNIX AND NOT APPLE)
+  # The build output is packaged directly, so do not embed the build machine's CUDA path.
+  set_target_properties(onnxruntime_providers_cuda_plugin PROPERTIES SKIP_BUILD_RPATH TRUE)
+endif()
+
 # Mirror directory structure in the Visual Studio solution tree under "onnxruntime".
 source_group(TREE ${ONNXRUNTIME_ROOT} PREFIX "onnxruntime" FILES ${CUDA_EP_CC_SRCS} ${CUDA_EP_CU_SRCS})
 source_group(TREE ${ONNXRUNTIME_ROOT} PREFIX "onnxruntime" FILES ${CUDA_CONTRIB_OPS_CC_SRCS} ${CUDA_CONTRIB_OPS_CU_SRCS})

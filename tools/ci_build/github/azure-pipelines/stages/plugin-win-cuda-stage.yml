@@ -269,8 +269,29 @@ stages:
             Write-Error "Expected plugin binary not found at '$pluginPath'. Failing build to avoid publishing an invalid package."
             exit 1
           }
-          Write-Host "Verified plugin binary exists at: $pluginPath"
-        displayName: 'Verify plugin binary exists'
+
+          $versionInfo = (Get-Item $pluginPath).VersionInfo
+          $requiredProperties = @(
+            'FileDescription',
+            'FileVersion',
+            'OriginalFilename',
+            'ProductName',
+            'ProductVersion',
+            'LegalCopyright',
+            'Language'
+          )
+          foreach ($property in $requiredProperties) {
+            if ([string]::IsNullOrWhiteSpace($versionInfo.$property)) {
+              throw "Plugin DLL version property '$property' is missing."
+            }
+          }
+          if ($versionInfo.OriginalFilename -ne 'onnxruntime_providers_cuda.dll') {
+            throw "Unexpected OriginalFilename '$($versionInfo.OriginalFilename)'."
+          }
+
+          Write-Host "Verified plugin DLL version information:"
+          $versionInfo | Format-List $requiredProperties
+        displayName: 'Verify plugin binary and version information'
 
       - task: CopyFiles@2
         displayName: 'Copy plugin binaries to staging directory'
