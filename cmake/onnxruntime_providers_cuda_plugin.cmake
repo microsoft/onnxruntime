@@ -226,6 +226,13 @@ if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
     endif()
 endif()
 
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0 AND MSVC)
+    # Suppress unrecognized __pragma warnings emitted from CUDA headers in device code.
+    list(APPEND _cuda_plugin_shared_compile_options
+        "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20199>"
+    )
+  endif()
+
 if (MSVC)
     list(APPEND _cuda_plugin_shared_compile_options
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /permissive>"
@@ -317,7 +324,9 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     endif()
   endif()
 
-  if(_cuda_plugin_sm120_tma_srcs)
+  # CUDA 13 generates host stubs with 128-byte aligned by-value CUTLASS parameters for these
+  # native SM120 TMA kernels. MSVC rejects those stubs with C2719, so retain the portable path.
+  if(_cuda_plugin_sm120_tma_srcs AND (NOT MSVC OR CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0))
     onnxruntime_filter_cuda_archs(_plugin_sm120_cuda_architectures MIN_SM 120)
     if(_plugin_sm120_cuda_architectures)
       onnxruntime_add_cuda_plugin_object_library(

@@ -208,7 +208,7 @@ Status MatMulBlockQuantizedFp4Weight::ComputeImpl(OpKernelContext* context) cons
     const int64_t rounded_m = RoundUp(m_i, 128);
     const int64_t rounded_n = RoundUp(n_i, 128);
 
-    onnxruntime::Stream* stream = GetComputeStream(context);
+    auto* stream = GetComputeStream(context);
     auto a_packed = GetScratchBuffer<uint8_t>(SafeInt<size_t>(m_i) * SafeInt<size_t>(k_i / 2), stream);
     auto a_scale = GetScratchBuffer<uint8_t>(SafeInt<size_t>(rounded_m) * SafeInt<size_t>(k_scale_blocks), stream);
     IAllocatorUniquePtr<uint8_t> b_scale;
