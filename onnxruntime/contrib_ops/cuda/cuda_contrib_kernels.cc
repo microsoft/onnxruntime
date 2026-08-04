@@ -159,6 +159,9 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HyperConnectionMix);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DSV4Compressor);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DSV4Compressor);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, DSV4Compressor);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LightningIndexer);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LightningIndexer);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, LightningIndexer);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, CausalConvWithState);
@@ -439,6 +442,9 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DSV4Compressor)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DSV4Compressor)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, DSV4Compressor)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LightningIndexer)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LightningIndexer)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, LightningIndexer)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, CausalConvWithState)>,

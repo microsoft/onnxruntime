@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cuda_fp16.h>
 
+#include "contrib_ops/cuda/math/dsv4_common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
@@ -18,54 +19,6 @@ namespace {
 constexpr int kThreads = kDSV4CompressorThreads;
 constexpr int kWarps = kThreads / 32;
 constexpr float kNegInf = -1e30f;
-constexpr float kLog2 = 0.69314718f;  // the graph divides by float(math.log(2.0))
-constexpr float kFp8Max = 448.0f;
-constexpr float kFp4Max = 6.0f;
-
-template <typename CudaT>
-struct Conv;
-
-template <>
-struct Conv<float> {
-  static __device__ __forceinline__ float ToFloat(float v) { return v; }
-  static __device__ __forceinline__ float Round(float v) { return v; }
-  static __device__ __forceinline__ float FromFloat(float v) { return v; }
-};
-
-template <>
-struct Conv<half> {
-  static __device__ __forceinline__ float ToFloat(half v) { return __half2float(v); }
-  static __device__ __forceinline__ float Round(float v) { return __half2float(__float2half_rn(v)); }
-  static __device__ __forceinline__ half FromFloat(float v) { return __float2half_rn(v); }
-};
-
-template <>
-struct Conv<BFloat16> {
-  static __device__ __forceinline__ float ToFloat(BFloat16 v) { return static_cast<float>(v); }
-  static __device__ __forceinline__ float Round(float v) { return static_cast<float>(BFloat16(v)); }
-  static __device__ __forceinline__ BFloat16 FromFloat(float v) { return BFloat16(v); }
-};
-
-// A power-of-two scale whose exponent is `ceil(log2(amax / limit))`, matching the graph's
-// Log/Div/Ceil/Pow chain including its clamp on the way into the logarithm.
-__device__ __forceinline__ float BlockScale(float amax, float limit, float floor_value) {
-  float r = amax / limit;
-  if (r < floor_value) r = floor_value;
-  return amax > 0.0f ? exp2f(ceilf(logf(r) / kLog2)) : 1.0f;
-}
-
-// Round onto the FP8-E4M3FN grid. `v` is already clipped to the finite range, so this only has
-// to snap to the 3-bit mantissa of the containing binade, with 2^-6 as the subnormal floor.
-__device__ __forceinline__ float RoundE4M3(float v) {
-  const float a = fabsf(v);
-  if (!(a > 0.0f)) return v;
-  int e;
-  frexpf(a, &e);
-  e -= 1;
-  if (e < -6) e = -6;
-  const float step = ldexpf(1.0f, e - 3);
-  return copysignf(rintf(a / step) * step, v);
-}
 
 // One candidate row's worth of pooling, one thread per channel.
 //
@@ -162,7 +115,7 @@ __global__ void DSV4CompressorPoolKernel(const DSV4CompressorParams p,
   }
 
   rows[(static_cast<int64_t>(b) * p.num_rows + j) * p.head_dim + ch] =
-      Conv<CudaT>::FromFloat(acc);
+      DSV4Conv<CudaT>::FromFloat(acc);
 }
 
 // Norm, rotate, and the simulated low-precision round trips, one block per candidate row.
@@ -192,7 +145,7 @@ __global__ void DSV4CompressorFinishKernel(const DSV4CompressorParams p,
 
   float ss = 0.0f;
   for (int c = tid; c < d; c += kThreads) {
-    const float v = Conv<CudaT>::ToFloat(row[c]);
+    const float v = DSV4Conv<CudaT>::ToFloat(row[c]);
     s_row[c] = v;
     ss += v * v;
   }
@@ -233,56 +186,20 @@ __global__ void DSV4CompressorFinishKernel(const DSV4CompressorParams p,
     if (tid < blocks) {
       float amax = 0.0f;
       for (int i = 0; i < 64; ++i) amax = fmaxf(amax, fabsf(s_row[tid * 64 + i]));
-      s_scale[tid] = BlockScale(amax, kFp8Max, 1e-30f);
+      s_scale[tid] = DSV4BlockScale(amax, kDSV4Fp8Max, 1e-30f);
     }
     __syncthreads();
     for (int c = tid; c < p.nope_dim; c += kThreads) {
       const float scale = s_scale[c >> 6];
-      const float q = fminf(fmaxf(s_row[c] / scale, -kFp8Max), kFp8Max);
-      s_row[c] = RoundE4M3(q) * scale;
+      const float q = fminf(fmaxf(s_row[c] / scale, -kDSV4Fp8Max), kDSV4Fp8Max);
+      s_row[c] = DSV4RoundE4M3(q) * scale;
     }
     __syncthreads();
   }
 
-  if (p.rotate_fp4) {
-    // Walsh-Hadamard butterfly: the same orthogonal rotation the graph writes as a dense
-    // MatMul against a Sylvester matrix, minus the matrix.
-    for (int len = 1; len < d; len <<= 1) {
-      for (int i = tid; i < d / 2; i += kThreads) {
-        const int lo = (i / len) * (len << 1) + (i % len);
-        const float a = s_row[lo];
-        const float c = s_row[lo + len];
-        s_row[lo] = a + c;
-        s_row[lo + len] = a - c;
-      }
-      __syncthreads();
-    }
-    const float hscale = rsqrtf(static_cast<float>(d));
-    for (int c = tid; c < d; c += kThreads) {
-      s_row[c] = Conv<CudaT>::Round(s_row[c] * hscale);
-    }
-    __syncthreads();
+  if (p.rotate_fp4) DSV4RotateFp4<CudaT>(s_row, s_scale, d, tid, kThreads);
 
-    const int blocks = d / 32;
-    if (tid < blocks) {
-      float amax = 0.0f;
-      for (int i = 0; i < 32; ++i) amax = fmaxf(amax, fabsf(s_row[tid * 32 + i]));
-      s_scale[tid] = BlockScale(amax, kFp4Max, 1e-38f);
-    }
-    __syncthreads();
-    for (int c = tid; c < d; c += kThreads) {
-      const float scale = s_scale[c >> 5];
-      const float v = fminf(fmaxf(s_row[c] / scale, -kFp4Max), kFp4Max);
-      const float u = fabsf(v);
-      // E2M1 grid {0,.5,1,1.5,2,3,4,6}: the step doubles at 2 and 4, and ties go toward zero.
-      const float step = u < 2.0f ? 0.5f : (u < 4.0f ? 1.0f : 2.0f);
-      const float sign = v > 0.0f ? 1.0f : (v < 0.0f ? -1.0f : 0.0f);
-      s_row[c] = sign * step * ceilf(u / step - 0.5f) * scale;
-    }
-    __syncthreads();
-  }
-
-  for (int c = tid; c < d; c += kThreads) row[c] = Conv<CudaT>::FromFloat(s_row[c]);
+  for (int c = tid; c < d; c += kThreads) row[c] = DSV4Conv<CudaT>::FromFloat(s_row[c]);
 }
 
 // Roll the raw projections forward by one step and publish the slot bookkeeping.

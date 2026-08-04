@@ -970,6 +970,79 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
+    LightningIndexer, 1,
+    OpSchema()
+        .SetDoc(
+            "DeepSeek-V4's Lightning Indexer: which compressed rows each query token may "
+            "attend to.\n"
+            "\n"
+            "`query` is this step's raw projection, `num_heads * head_dim` wide. Its trailing "
+            "`rope_head_dim` channels are rotated with `cos`/`sin`, and the whole row is then "
+            "Hadamard-rotated and put through a simulated FP4-E2M1 round trip in blocks of 32 "
+            "when `rotate_fp4` is set -- the same treatment the cached rows already had, which "
+            "is what makes the rotation matter instead of cancelling.\n"
+            "\n"
+            "`rows` are the candidate rows a DSV4Compressor produced this step; row `j` lands "
+            "in cache slot `first_slot + j`, and slots outside `[first_slot, last_slot]` keep "
+            "what `past_cache` held:\n"
+            "  present_cache[b, c] = rows[b, c - first_slot[b]] if first_slot[b] <= c <= "
+            "last_slot[b] else past_cache[b, c]\n"
+            "Every row is then scored against every head and the heads are folded together "
+            "with the per-head `weights`:\n"
+            "  score[b, s, c] = sum_h Relu(dot(query[b, s, h], present_cache[b, c])) * "
+            "weights[b, s, h] * scale\n"
+            "A query at absolute position `past_lens[b] + s` may only see the first "
+            "`(past_lens[b] + s + 1) / ratio` rows. `selection` holds the `topk` highest "
+            "scoring of those, given as `max_seq_len + c` so they can be concatenated straight "
+            "into a paged cache's index list, padded with -1 when fewer are visible.\n"
+            "\n"
+            "Attention does not depend on the order of the rows it gathers, so the selection "
+            "is emitted in ascending row order rather than by descending score.")
+        .Attr("num_heads", "Scoring heads. These are replicated, never sharded.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("head_dim", "Width of one scoring head.", AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("rope_head_dim", "Width of the trailing slice that gets rotated.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("ratio", "How many tokens one compressed row covers.", AttributeProto::INT,
+              static_cast<int64_t>(1))
+        .Attr("topk", "Rows kept per query token.", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("max_seq_len", "Logical offset that marks a compressed row in the cache.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("scale", "Factor folded into the per-head weight.", AttributeProto::FLOAT, 1.0f)
+        .Attr("rotate_fp4", "Hadamard-rotate the query and simulate the FP4 round trip.",
+              AttributeProto::INT, static_cast<int64_t>(1))
+        .Input(0, "query", "Query projection, shape (batch, seq, num_heads * head_dim).", "T")
+        .Input(1, "cos", "Rotary cosines for this step, shape (batch, seq, rope_head_dim).", "M")
+        .Input(2, "sin", "Rotary sines for this step, same shape as cos.", "M")
+        .Input(3, "rows", "Candidate compressed rows, shape (batch, num_rows, head_dim).", "T")
+        .Input(4, "first_slot", "Slot the first candidate row lands in, shape (batch, 1).", "I")
+        .Input(5, "last_slot", "Slot of the last live candidate row, shape (batch, 1).", "I")
+        .Input(6, "past_cache", "Indexer cache, shape (batch, capacity, head_dim).", "T")
+        .Input(7, "weights", "Per-head scoring weights, shape (batch, seq, num_heads).", "T")
+        .Input(8, "past_lens", "Tokens already generated per sequence, shape (batch).", "I")
+        .Output(0, "selection", "Selected cache rows, shape (batch, seq, topk).", "I")
+        .Output(1, "present_cache", "Updated indexer cache, same shape as past_cache.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain the activation type to float tensors.")
+        .TypeConstraint("M", {"tensor(float)"}, "Constrain the rotary tables to float tensors.")
+        .TypeConstraint("I", {"tensor(int64)"}, "Constrain the row bookkeeping to int64 tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          const int64_t topk = getAttribute(ctx, "topk", static_cast<int64_t>(0));
+          updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto_DataType_INT64);
+          propagateElemTypeFromInputToOutput(ctx, 6, 1);
+          if (hasInputShape(ctx, 6)) propagateShapeFromInputToOutput(ctx, 6, 1);
+          if (!hasInputShape(ctx, 0)) return;
+
+          const auto& in = getInputShape(ctx, 0);
+          if (in.dim_size() != 3) fail_shape_inference("query must have rank 3.");
+          auto* sel = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          *sel->add_dim() = in.dim(0);
+          *sel->add_dim() = in.dim(1);
+          sel->add_dim()->set_dim_value(topk);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
     HyperConnectionMix, 1,
     OpSchema()
         .SetDoc(
