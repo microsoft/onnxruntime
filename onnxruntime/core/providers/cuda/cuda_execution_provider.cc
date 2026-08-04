@@ -3520,6 +3520,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // These are usually shape related computation subgraphs
   // Following logic can be extended for other EPs
   auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes, logger);
+  size_t total_workspace_estimate = 0;
   for (auto& node_index : candidates) {
     if (cpu_nodes.count(node_index) > 0)
       continue;
@@ -3547,15 +3548,50 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       // Level-1 generic workspace estimation: use shapes propagated from maximum graph inputs.
       // This enables future per-kernel estimation functions to compute workspace sizes at
       // partition time without changing the executable graph's shape metadata.
+      size_t level1_workspace_estimate = 0;
       const auto& inferred_shapes = resource_accountant->GetMaxShapeInferenceResult();
       if (!inferred_shapes.Empty()) {
-        auto resolved_shapes = ResolveNodeInputShapes(*node, inferred_shapes);
+        auto resolved_shapes = ResolveNodeInputShapes(*node, &graph.GetGraph(), inferred_shapes);
         if (resolved_shapes.has_value()) {
-          // TODO: Look up workspace estimation function from KernelCreateInfo when available.
-          // For now, log that shapes were resolved successfully for this node.
-          LOGS(logger, VERBOSE) << "CUDA_EP Level-1: Resolved " << resolved_shapes->size()
-                                << " input shapes for node '" << node->Name()
-                                << "' (workspace estimation pending kernel registration)";
+          // Compute a conservative workspace estimate from output tensor sizes.
+          // Many CUDA kernels allocate workspace proportional to their output size
+          // (e.g., attention, softmax, layernorm). This serves as an upper-bound heuristic
+          // until per-kernel OrtKernelWorkspaceEstimateFunc functions are registered.
+          for (const auto* output_def : node->OutputDefs()) {
+            if (!output_def || !output_def->Exists()) continue;
+            if (const TensorShape* out_shape = inferred_shapes.GetShape(&graph.GetGraph(), output_def->Name())) {
+              // Assume float32 (4 bytes) as a conservative default element size.
+              const auto* type_proto = output_def->TypeAsProto();
+              size_t elem_size = 4;  // default to float32
+              if (type_proto != nullptr && type_proto->has_tensor_type() &&
+                  type_proto->tensor_type().has_elem_type()) {
+                switch (type_proto->tensor_type().elem_type()) {
+                  case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+                  case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
+                    elem_size = 2;
+                    break;
+                  case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+                  case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+                  case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
+                    elem_size = 8;
+                    break;
+                  case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+                  case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+                  case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+                    elem_size = 1;
+                    break;
+                  default:
+                    break;
+                }
+              }
+              level1_workspace_estimate += static_cast<size_t>(out_shape->Size()) * elem_size;
+            }
+          }
+          if (level1_workspace_estimate > 0) {
+            LOGS(logger, INFO) << "CUDA_EP Level-1 workspace estimate for node '" << node->Name()
+                               << "' (" << node->OpType() << "): " << level1_workspace_estimate << " bytes";
+            total_workspace_estimate += level1_workspace_estimate;
+          }
         }
       }
 
@@ -3582,6 +3618,18 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       }
     }
   }
+
+  // Log summary of estimated memory usage for the app to see.
+  if (resource_accountant != nullptr) {
+    LOGS(logger, INFO) << "CUDA_EP GetCapability summary: "
+                       << result.size() << " nodes assigned to CUDA, "
+                       << "weight+activation memory: " << static_cast<size_t>(consumed_memory) << " bytes, "
+                       << "estimated workspace (Level-1): " << total_workspace_estimate << " bytes, "
+                       << "total estimated GPU memory: "
+                       << (static_cast<size_t>(consumed_memory) + total_workspace_estimate) << " bytes "
+                       << "(threshold: " << memory_threshold << " bytes)";
+  }
+
   /*
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {

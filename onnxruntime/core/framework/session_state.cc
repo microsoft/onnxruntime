@@ -1782,7 +1782,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       auto* kernel = GetMutableKernel(node.Index());
       if (kernel == nullptr) continue;
 
-      auto resolved = ResolveNodeInputShapes(node, max_shape_inference_result);
+      auto resolved = ResolveNodeInputShapes(node, &graph_, max_shape_inference_result);
       if (!resolved.has_value()) continue;
 
       InlinedVector<WorkspaceRequirement> requirements;

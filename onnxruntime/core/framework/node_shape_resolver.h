@@ -8,7 +8,6 @@
 #include "core/common/inlined_containers.h"
 #include "core/framework/max_shape_override.h"
 #include "core/framework/tensor_shape.h"
-#include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {
 
@@ -19,25 +18,25 @@ namespace onnxruntime {
 ///   - If any input remains dynamic, return nullopt.
 ///
 /// @param node             The node whose input shapes to resolve.
+/// @param graph_identity   Address of the node's containing graph.
 /// @param inferred_shapes  Shapes propagated from maximum graph inputs.
 /// @return                 Vector of shapes for each input, or nullopt if any input has unresolvable dims.
+template <typename TNode>
 inline std::optional<InlinedVector<TensorShape>> ResolveNodeInputShapes(
-    const Node& node,
+    const TNode& node,
+    const void* graph_identity,
     const MaxShapeInferenceResult& inferred_shapes) {
   InlinedVector<TensorShape> result;
   result.reserve(node.InputDefs().size());
 
   for (const auto* input_def : node.InputDefs()) {
-    if (!input_def || !input_def->Exists() || !input_def->HasTensorOrScalarShape()) {
+    if (!input_def || !input_def->Exists()) {
       return std::nullopt;  // Cannot resolve shape for this input
     }
 
-    const Graph* graph = node.GetContainingGraph();
-    if (graph != nullptr) {
-      if (const TensorShape* inferred_shape = inferred_shapes.GetShape(graph, input_def->Name())) {
-        result.push_back(*inferred_shape);
-        continue;
-      }
+    if (const TensorShape* inferred_shape = inferred_shapes.GetShape(graph_identity, input_def->Name())) {
+      result.push_back(*inferred_shape);
+      continue;
     }
 
     const auto* shape_proto = input_def->Shape();

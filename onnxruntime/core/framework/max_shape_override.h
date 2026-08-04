@@ -20,6 +20,7 @@ using MaxShapeOverrideMap = InlinedHashMap<std::string, TensorShape>;
 /// separate shadow graph. The executable graph is never modified.
 class MaxShapeInferenceResult {
  public:
+  /// graph_identity must be the address of the source Graph passed to InferMaxShapes.
   const TensorShape* GetShape(const void* graph_identity, std::string_view node_arg_name) const;
   bool Empty() const noexcept { return graph_shapes_.empty(); }
 
