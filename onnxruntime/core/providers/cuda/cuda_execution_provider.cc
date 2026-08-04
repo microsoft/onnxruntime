@@ -8,7 +8,6 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/parse_string.h"
 #include "core/framework/int4.h"
-#include "core/framework/node_shape_resolver.h"
 #include "core/framework/resource_accountant.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
@@ -3532,32 +3531,28 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     } else {
       auto* node = graph.GetNode(node_index);
       auto resource_count = std::get<0>(resource_accountant->ComputeResourceCount(*node));
+
 #if !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
       // Level 1 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): a partition-time,
       // kernel-independent workspace estimate for MatMulNBits. For this pilot it is log-only and
       // does NOT change the budget number used by the accept/reject decision below (see the issue's
       // "Open decision" (a)); it proves the estimate is available and correct at this pipeline stage.
       if (node != nullptr && node->OpType() == "MatMulNBits" && node->Domain() == kMSDomain) {
-        if (auto ws = contrib::cuda::EstimateMatMulNBitsWorkspace(*node, GetDeviceProp())) {
+        const auto& inferred_shapes = resource_accountant->GetMaxShapeInferenceResult();
+        const auto& input_defs = node->InputDefs();
+        const TensorShape* input_a_shape =
+            inferred_shapes.Empty() || input_defs.empty() || input_defs[0] == nullptr
+                ? nullptr
+                : inferred_shapes.GetShape(&graph.GetGraph(), input_defs[0]->Name());
+        const auto ws = input_a_shape != nullptr
+                            ? contrib::cuda::EstimateMatMulNBitsWorkspace(
+                                  *node, input_a_shape->GetDims(), GetDeviceProp())
+                            : contrib::cuda::EstimateMatMulNBitsWorkspace(*node, GetDeviceProp());
+        if (ws.has_value()) {
           LOGS(logger, INFO) << "Level-1 workspace estimate for " << node->Name() << ": " << *ws << " bytes";
         }
       }
 #endif
-
-      // Level-1 generic workspace estimation: use shapes propagated from maximum graph inputs.
-      // This enables future per-kernel estimation functions to compute workspace sizes at
-      // partition time without changing the executable graph's shape metadata.
-      const auto& inferred_shapes = resource_accountant->GetMaxShapeInferenceResult();
-      if (!inferred_shapes.Empty()) {
-        auto resolved_shapes = ResolveNodeInputShapes(*node, &graph.GetGraph(), inferred_shapes);
-        if (resolved_shapes.has_value()) {
-          // TODO: Look up workspace estimation function from KernelCreateInfo when available.
-          // For now, log that shapes were resolved successfully for this node.
-          LOGS(logger, VERBOSE) << "CUDA_EP Level-1: Resolved " << resolved_shapes->size()
-                                << " input shapes for node '" << node->Name()
-                                << "' (workspace estimation pending kernel registration)";
-        }
-      }
 
       const auto would_be_consumed = resource_count + consumed_memory;
       LOGS(logger, INFO) << "CUDA_EP Node: " << node_index << " Memory usage : " << resource_count
