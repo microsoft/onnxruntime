@@ -149,14 +149,14 @@ __global__ void HyperConnectionFinishKernel(const CudaT* __restrict__ residual_o
   using C = Conv<CudaT>;
 
   extern __shared__ float smem[];
-  float* s_y = smem;                          // [dim]      pre-mix output, kept for the norm
-  float* s_red = s_y + dim;                   // [kWarps]
-  float* s_tot = s_red + kWarps;              // [kMixDim + 1]
-  float* s_mix = s_tot + (kMixDim + 1);       // [kMixDim]
-  float* s_pre = s_mix + kMixDim;             // [HC]
-  float* s_comb = s_pre + HC;                 // [HC * HC]
-  float* s_sums = s_comb + HC * HC;           // [HC]       Sinkhorn scratch
-  float* s_scalar = s_sums + HC;              // [1]
+  float* s_y = smem;                     // [dim]      pre-mix output, kept for the norm
+  float* s_red = s_y + dim;              // [kWarps]
+  float* s_tot = s_red + kWarps;         // [kMixDim + 1]
+  float* s_mix = s_tot + (kMixDim + 1);  // [kMixDim]
+  float* s_pre = s_mix + kMixDim;        // [HC]
+  float* s_comb = s_pre + HC;            // [HC * HC]
+  float* s_sums = s_comb + HC * HC;      // [HC]       Sinkhorn scratch
+  float* s_scalar = s_sums + HC;         // [1]
 
   const int token = blockIdx.x;
   const int tid = threadIdx.x;
@@ -244,6 +244,184 @@ __global__ void HyperConnectionFinishKernel(const CudaT* __restrict__ residual_o
   }
 }
 
+// Same operator as HyperConnectionFinishKernel, restructured for the single-block decode case
+// where the grid is one block and the whole kernel is a latency chain. Every step is
+// value-preserving, so the two kernels agree bit for bit:
+//
+//   * `scale` and `base` are loaded before the reduction over `partial`, so their global
+//     latency overlaps that reduction instead of sitting behind it in the gate expression.
+//   * `s_tot` and `s_mix` were only ever read by warp 0, so they move into registers and the
+//     first __syncthreads disappears; the other warps start streaming `residual_out` right
+//     away instead of waiting out the reduction. The weighted sum still multiplies by
+//     `s_pre` in h order after the barrier, so only the loads moved, not the arithmetic.
+//   * Each lane of the combination matrix recomputes its own row's softmax, over the same
+//     h = 0..HC-1 max and sum, rather than one lane per row publishing through shared memory.
+//   * Sinkhorn runs on registers through SinkhornNormalizeWarpReg, which walks each axis in
+//     the same order and performs the same single division per element.
+//   * Sinkhorn feeds `comb_mix_out` alone -- `s_pre` comes off the sigmoid gate ahead of it --
+//     so the barrier is placed as soon as `s_pre` is published and warp 0 runs its Sinkhorn
+//     chain while the other warps stream the weighted sum. Warp 0 is therefore held out of the
+//     dim loops and the remaining BLOCK - 32 threads cover `dim`. That only relabels which
+//     thread handles which `d`; each `d` is still one thread accumulating over h in order.
+//   * The dim loops use the whole worker set, but `sy2` is deliberately replayed afterwards by
+//     threads 0..255 over d = t, t + 256, ... out of s_y, feeding the same eight-warp tree and
+//     the same serial tail. The RMS scale therefore keeps the 256-thread grouping at any block
+//     width, which is what makes the wider block bit-exact.
+template <typename CudaT, int HC, int BLOCK, int PER>
+__global__ __launch_bounds__(BLOCK) void HyperConnectionFinishFastKernel(
+    const CudaT* __restrict__ residual_out, const float* __restrict__ partial,
+    const float* __restrict__ scale, const float* __restrict__ base,
+    const float* __restrict__ norm_weight, float* __restrict__ post_mix_out,
+    float* __restrict__ comb_mix_out, CudaT* __restrict__ layer_input, int dim, int split,
+    int iterations, float epsilon, float hc_epsilon, float sinkhorn_epsilon, float post_alpha) {
+  constexpr int kMixDim = (2 + HC) * HC;
+  constexpr int kWorkers = BLOCK - 32;  // warp 0 is reserved for the pre-mix and Sinkhorn
+  using C = Conv<CudaT>;
+
+  extern __shared__ float smem[];
+  float* s_y = smem;              // [dim]
+  float* s_red = s_y + dim;       // [kWarps]  the 256-thread tree, whatever BLOCK is
+  float* s_pre = s_red + kWarps;  // [HC]
+  float* s_scalar = s_pre + HC;   // [1]
+
+  const int token = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int lane = tid & 31;
+  const int warp = tid >> 5;
+  const int wtid = tid - 32;  // worker index, valid when warp != 0
+
+  const size_t off_x = static_cast<size_t>(token) * dim;
+  const size_t off_r = static_cast<size_t>(token) * HC * dim;
+
+  // Nothing warp 0 is about to compute feeds these addresses, so issue them first.
+  float rv[PER * HC];
+  if (warp != 0) {
+#pragma unroll
+    for (int i = 0; i < PER; ++i) {
+      const int d = wtid + i * kWorkers;
+      if (d < dim) {
+#pragma unroll
+        for (int h = 0; h < HC; ++h) {
+          rv[i * HC + h] = C::ToFloat(residual_out[off_r + static_cast<size_t>(h) * dim + d]);
+        }
+      }
+    }
+  }
+
+  float cv = 0.f;
+  if (warp == 0) {
+    const float bv = (lane < kMixDim) ? base[lane] : 0.f;
+    const float sc = (lane < 3) ? scale[lane] : 0.f;
+
+    float tot = 0.f;
+    if (lane <= kMixDim) {
+      const float* p = partial + static_cast<size_t>(token) * split * (kMixDim + 1) + lane;
+      for (int s = 0; s < split; ++s) tot += p[static_cast<size_t>(s) * (kMixDim + 1)];
+    }
+    const float sq = __shfl_sync(0xffffffffu, tot, kMixDim);
+    const float rs = 1.0f / sqrtf(sq / static_cast<float>(HC * dim) + epsilon);
+    const float mix = tot * rs;
+
+    const float sc0 = __shfl_sync(0xffffffffu, sc, 0);
+    const float sc1 = __shfl_sync(0xffffffffu, sc, 1);
+    const float sc2 = __shfl_sync(0xffffffffu, sc, 2);
+
+    // The shuffles must run on the whole warp, so gather first and narrow afterwards.
+    const int g = (lane < HC) ? lane : 0;
+    const float mp = __shfl_sync(0xffffffffu, mix, g);
+    const float bp = __shfl_sync(0xffffffffu, bv, g);
+    const float mq = __shfl_sync(0xffffffffu, mix, HC + g);
+    const float bq = __shfl_sync(0xffffffffu, bv, HC + g);
+    if (lane < HC) {
+      const float p = mp * sc0 + bp;
+      s_pre[lane] = 1.0f / (1.0f + expf(-p)) + hc_epsilon;
+
+      const float q = mq * sc1 + bq;
+      post_mix_out[token * HC + lane] = (1.0f / (1.0f + expf(-q))) * post_alpha;
+    }
+
+    // Lane `lane` owns element (r, c) and softmaxes row r locally.
+    const int e = (lane < HC * HC) ? lane : 0;
+    const int r = e / HC;
+    const int c = e - r * HC;
+    float row[HC];
+    float m = -FLT_MAX;
+#pragma unroll
+    for (int h = 0; h < HC; ++h) {
+      const int idx = 2 * HC + r * HC + h;
+      row[h] = __shfl_sync(0xffffffffu, mix, idx) * sc2 + __shfl_sync(0xffffffffu, bv, idx);
+      m = fmaxf(m, row[h]);
+    }
+    float s = 0.f;
+#pragma unroll
+    for (int h = 0; h < HC; ++h) {
+      row[h] = expf(row[h] - m);
+      s += row[h];
+    }
+    cv = row[c] / s + hc_epsilon;
+  }
+  __syncthreads();  // publishes s_pre; Sinkhorn has deliberately not run yet
+
+  if (warp == 0) {
+    // Overlaps the weighted sum below, which does not depend on it.
+    cv = SinkhornNormalizeWarpReg<HC>(cv, lane, iterations, sinkhorn_epsilon);
+    if (lane < HC * HC) comb_mix_out[token * HC * HC + lane] = cv;
+  } else {
+    float pre[HC];
+#pragma unroll
+    for (int h = 0; h < HC; ++h) pre[h] = s_pre[h];
+
+#pragma unroll
+    for (int i = 0; i < PER; ++i) {
+      const int d = wtid + i * kWorkers;
+      if (d < dim) {
+        float a = 0.f;
+#pragma unroll
+        for (int h = 0; h < HC; ++h) a += pre[h] * rv[i * HC + h];
+        s_y[d] = C::Round(a);
+      }
+    }
+    for (int d = wtid + PER * kWorkers; d < dim; d += kWorkers) {
+      float a = 0.f;
+#pragma unroll
+      for (int h = 0; h < HC; ++h) {
+        a += pre[h] * C::ToFloat(residual_out[off_r + static_cast<size_t>(h) * dim + d]);
+      }
+      s_y[d] = C::Round(a);
+    }
+  }
+  __syncthreads();
+
+  // Replay of the 256-thread accumulation so the RMS scale does not depend on BLOCK.
+  if (tid < kThreadsPerBlock) {
+    float sy2 = 0.f;
+    for (int d = tid; d < dim; d += kThreadsPerBlock) {
+      const float yv = s_y[d];
+      sy2 += yv * yv;
+    }
+    const float v = WarpReduceSum(sy2);
+    if (lane == 0) s_red[warp] = v;
+  }
+  __syncthreads();
+  if (tid == 0) {
+    float t = 0.f;
+#pragma unroll
+    for (int w = 0; w < kWarps; ++w) t += s_red[w];
+    s_scalar[0] = 1.0f / sqrtf(t / static_cast<float>(dim) + epsilon);
+  }
+  __syncthreads();
+
+  const float inv = s_scalar[0];
+  for (int d = tid; d < dim; d += BLOCK) {
+    layer_input[off_x + d] = C::FromFloat(s_y[d] * inv * norm_weight[d]);
+  }
+}
+
+// Kill switch for the restructured finish kernel. It is bit-identical to the original, so this
+// exists only to bisect a regression; set ORT_DISABLE_HC_FINISH_FAST=1 to take the old path.
+// The environment helper drags in logging macros that clash with provider_api.h under nvcc,
+// so the query itself lives in hyper_connection_mix.cc.
+
 template <typename CudaT, int HC>
 Status Launch(cudaStream_t stream, const HyperConnectionMixParams& params, const CudaT* x,
               const CudaT* residual, const float* post_mix, const float* comb_mix,
@@ -267,8 +445,23 @@ Status Launch(cudaStream_t stream, const HyperConnectionMixParams& params, const
       <<<dim3(split, params.num_tokens), kPartialThreads, 0, stream>>>(
           x, residual, post_mix, comb_mix, fn, residual_out, workspace, params.dim, split);
 
-  HyperConnectionFinishKernel<CudaT, HC>
-      <<<params.num_tokens, kThreadsPerBlock, shared_bytes, stream>>>(
+  if (HyperConnectionFinishFastDisabled()) {
+    HyperConnectionFinishKernel<CudaT, HC>
+        <<<params.num_tokens, kThreadsPerBlock, shared_bytes, stream>>>(
+            residual_out, workspace, scale, base, norm_weight, post_mix_out, comb_mix_out,
+            layer_input, params.dim, split, params.sinkhorn_iterations, params.epsilon,
+            params.hc_epsilon, params.sinkhorn_epsilon, params.post_alpha);
+    return CUDA_CALL(cudaGetLastError());
+  }
+
+  // One block per token, so at decode the whole kernel is a single block on a single SM and
+  // wants a wide block; at prefill the blocks hide each other and a wide block only costs
+  // occupancy. 512 measured best or tied at every token count from 1 to 4096, so there is no
+  // reason to carry a second instantiation.
+  constexpr int kFastBlock = 512;
+  constexpr int kFastPrefetch = 4;
+  HyperConnectionFinishFastKernel<CudaT, HC, kFastBlock, kFastPrefetch>
+      <<<params.num_tokens, kFastBlock, shared_bytes, stream>>>(
           residual_out, workspace, scale, base, norm_weight, post_mix_out, comb_mix_out,
           layer_input, params.dim, split, params.sinkhorn_iterations, params.epsilon,
           params.hc_epsilon, params.sinkhorn_epsilon, params.post_alpha);
@@ -295,9 +488,9 @@ Status LaunchHyperConnectionMix(cudaStream_t stream, const HyperConnectionMixPar
   auto* ro = reinterpret_cast<CudaT*>(residual_out);
   auto* li = reinterpret_cast<CudaT*>(layer_input);
 
-#define LAUNCH_HC(hc)                                                                       \
-  case hc:                                                                                  \
-    return Launch<CudaT, hc>(stream, params, xc, rc, post_mix, comb_mix, fn, scale, base,    \
+#define LAUNCH_HC(hc)                                                                     \
+  case hc:                                                                                \
+    return Launch<CudaT, hc>(stream, params, xc, rc, post_mix, comb_mix, fn, scale, base, \
                              norm_weight, workspace, ro, post_mix_out, comb_mix_out, li)
 
   switch (params.hc) {

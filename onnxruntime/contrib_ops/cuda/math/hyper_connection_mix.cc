@@ -4,6 +4,7 @@
 #include "contrib_ops/cuda/math/hyper_connection_mix.h"
 
 #include "contrib_ops/cuda/math/hyper_connection_mix_impl.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 
 using namespace onnxruntime::cuda;
@@ -11,6 +12,12 @@ using namespace onnxruntime::cuda;
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+bool HyperConnectionFinishFastDisabled() {
+  static const bool disabled =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_HC_FINISH_FAST", 0) == 1;
+  return disabled;
+}
 
 #define REGISTER_KERNEL_TYPED(T)                                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \

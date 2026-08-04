@@ -42,6 +42,36 @@ __device__ __forceinline__ void SinkhornNormalizeWarp(float* tile, float* sums, 
   }
 }
 
+// Register-resident form of the two routines above. Lane `l` of a fully converged warp owns
+// element (l / ORDER, l % ORDER); lanes past ORDER * ORDER must still call in so the shuffles
+// see the whole warp, and their value is ignored. The axis sum starts at 0.f and walks the axis
+// in index order, and the result is a single `v / (sum + epsilon)`, so every rounding step
+// matches SinkhornNormalizeAxis element for element -- the two forms are bit-identical.
+template <int ORDER>
+__device__ __forceinline__ float SinkhornNormalizeAxisReg(float v, int lane, float epsilon,
+                                                          bool by_row) {
+  const int i = lane / ORDER;
+  const int j = lane - i * ORDER;
+  const int src0 = by_row ? i * ORDER : j;
+  const int stride = by_row ? 1 : ORDER;
+  float sum = 0.f;
+#pragma unroll
+  for (int k = 0; k < ORDER; ++k) sum += __shfl_sync(0xffffffffu, v, src0 + k * stride);
+  sum += epsilon;
+  return v / sum;
+}
+
+template <int ORDER>
+__device__ __forceinline__ float SinkhornNormalizeWarpReg(float v, int lane, int iterations,
+                                                          float epsilon) {
+  v = SinkhornNormalizeAxisReg<ORDER>(v, lane, epsilon, /*by_row=*/false);
+  for (int it = 1; it < iterations; ++it) {
+    v = SinkhornNormalizeAxisReg<ORDER>(v, lane, epsilon, /*by_row=*/true);
+    v = SinkhornNormalizeAxisReg<ORDER>(v, lane, epsilon, /*by_row=*/false);
+  }
+  return v;
+}
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

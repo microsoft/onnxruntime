@@ -36,6 +36,11 @@ inline size_t HyperConnectionMixWorkspaceFloats(int num_tokens, int hc, int dim)
          (mix_dim + 1);
 }
 
+// Kill switch for the restructured finish kernel, which is bit-identical to the original one.
+// Set ORT_DISABLE_HC_FINISH_FAST=1 to take the old path. Defined in hyper_connection_mix.cc
+// because the environment helper cannot be included from a .cu translation unit.
+bool HyperConnectionFinishFastDisabled();
+
 struct HyperConnectionMixParams {
   int num_tokens;
   int hc;       // hc_mult, the number of residual streams
