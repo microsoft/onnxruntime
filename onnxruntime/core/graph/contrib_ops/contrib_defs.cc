@@ -1043,6 +1043,118 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
+    DSV4QKVNormRope, 1,
+    OpSchema()
+        .SetDoc(
+            "DeepSeek-V4's per-token preparation of the query and latent KV rows, from the raw "
+            "projections up to the attention kernel.\n"
+            "\n"
+            "The query is split into heads and given a weightless RMS norm:\n"
+            "  q = Reshape(query, (batch, seq, num_heads, head_dim))\n"
+            "  q = q * T(1 / Sqrt(ReduceMean(q * q, -1) + epsilon))\n"
+            "The reciprocal is rounded to T before the multiply, and the multiply itself is "
+            "done in T, matching the unfused subgraph.\n"
+            "\n"
+            "The latent KV row is shared by every head and gets a weighted RMS norm:\n"
+            "  kv = kv_norm_weight * kv / Sqrt(ReduceMean(kv * kv, -1) + epsilon)\n"
+            "computed in float and then rounded to T.\n"
+            "\n"
+            "Both rows then have their trailing `rope_head_dim` channels rotated with "
+            "`cos`/`sin`, which are stored pre-interleaved so the rotation is the signed swap "
+            "of each adjacent pair:\n"
+            "  x[nope + t] = x[nope + t] * cos[t] + (t odd ? x[nope + t - 1] : -x[nope + t + 1])"
+            " * sin[t]\n"
+            "\n"
+            "Finally, when `act_quant` is set, the leading `head_dim - rope_head_dim` channels "
+            "of the KV row are put through a simulated FP8-E4M3 round trip in blocks of 64 with "
+            "a power-of-two scale, which is what the attention kernel's cache expects.")
+        .Attr("num_heads", "Query heads on this rank.", AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("head_dim", "Width of one head, and of the latent KV row.", AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("rope_head_dim", "Width of the trailing slice that gets rotated.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("epsilon", "Value added to each mean of squares before the square root.",
+              AttributeProto::FLOAT, 1e-6f)
+        .Attr("act_quant", "Simulate the FP8 round trip on the KV row's non-rotary half.",
+              AttributeProto::INT, static_cast<int64_t>(1))
+        .Input(0, "query", "Query projection, shape (batch, seq, num_heads * head_dim).", "T")
+        .Input(1, "kv", "Latent KV projection, shape (batch, seq, head_dim).", "T")
+        .Input(2, "kv_norm_weight", "Gain for the KV norm, shape (head_dim).", "M")
+        .Input(3, "cos", "Rotary cosines for this step, shape (batch, seq, rope_head_dim).", "M")
+        .Input(4, "sin", "Rotary sines for this step, same shape as cos.", "M")
+        .Output(0, "query_out",
+                "Prepared query, shape (batch, seq, num_heads, head_dim).", "T")
+        .Output(1, "kv_out", "Prepared latent KV row, shape (batch, seq, head_dim).", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain the activation type to float tensors.")
+        .TypeConstraint("M", {"tensor(float)"},
+                        "Constrain the norm gain and rotary tables to "
+                        "float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateElemTypeFromInputToOutput(ctx, 1, 1);
+          if (hasInputShape(ctx, 1)) propagateShapeFromInputToOutput(ctx, 1, 1);
+          if (!hasInputShape(ctx, 0)) return;
+
+          const auto& in = getInputShape(ctx, 0);
+          if (in.dim_size() != 3) fail_shape_inference("query must have rank 3.");
+          auto* out = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          *out->add_dim() = in.dim(0);
+          *out->add_dim() = in.dim(1);
+          out->add_dim()->set_dim_value(getAttribute(ctx, "num_heads", static_cast<int64_t>(0)));
+          out->add_dim()->set_dim_value(getAttribute(ctx, "head_dim", static_cast<int64_t>(0)));
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    DSV4InvRopeGroup, 1,
+    OpSchema()
+        .SetDoc(
+            "Undoes the rotation DSV4QKVNormRope applied to the query and regroups the heads "
+            "for DeepSeek-V4's grouped output projection.\n"
+            "\n"
+            "The rotation is the inverse of the forward one, so the signed swap flips sign:\n"
+            "  x[nope + t] = x[nope + t] * cos[t] + (t odd ? -x[nope + t - 1] : x[nope + t + 1])"
+            " * sin[t]\n"
+            "\n"
+            "The regrouping is the reshape/transpose/reshape trio that turns "
+            "(tokens, num_heads * head_dim) into (num_groups, tokens, group_dim) with "
+            "group_dim = num_heads * head_dim / num_groups. Both views index the same flat "
+            "channel, so this is only a change of addressing.")
+        .Attr("num_heads", "Query heads on this rank.", AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("head_dim", "Width of one head.", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("rope_head_dim", "Width of the trailing slice that gets rotated.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("num_groups", "Output projection groups on this rank.", AttributeProto::INT,
+              static_cast<int64_t>(1))
+        .Input(0, "input", "Attention output, shape (tokens, num_heads * head_dim).", "T")
+        .Input(1, "cos", "Rotary cosines for this step, shape (tokens, rope_head_dim).", "M")
+        .Input(2, "sin", "Rotary sines for this step, same shape as cos.", "M")
+        .Output(0, "output", "Regrouped output, shape (num_groups, tokens, group_dim).", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain the activation type to float tensors.")
+        .TypeConstraint("M", {"tensor(float)"}, "Constrain the rotary tables to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          const int64_t num_heads = getAttribute(ctx, "num_heads", static_cast<int64_t>(0));
+          const int64_t head_dim = getAttribute(ctx, "head_dim", static_cast<int64_t>(0));
+          const int64_t num_groups = getAttribute(ctx, "num_groups", static_cast<int64_t>(1));
+          if (num_groups <= 0 || num_heads * head_dim % num_groups != 0) return;
+
+          auto* out = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          out->add_dim()->set_dim_value(num_groups);
+          if (hasInputShape(ctx, 0)) {
+            const auto& in = getInputShape(ctx, 0);
+            if (in.dim_size() != 2) fail_shape_inference("input must have rank 2.");
+            *out->add_dim() = in.dim(0);
+          } else {
+            out->add_dim();
+          }
+          out->add_dim()->set_dim_value(num_heads * head_dim / num_groups);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
     HyperConnectionMix, 1,
     OpSchema()
         .SetDoc(
