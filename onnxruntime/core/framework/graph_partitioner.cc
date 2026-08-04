@@ -198,8 +198,16 @@ auto get_capabilities = [](const IExecutionProvider& ep,
 };
 
 Status RefreshMaxShapeInference(Graph& graph, IResourceAccountant& resource_accountant) {
+  // Overrides are scoped to top-level inputs. Starting from the root also refreshes
+  // recursively inferred shapes when a layout transformation modifies a subgraph.
+  Graph* top_level_graph = &graph;
+  while (Graph* parent_graph = top_level_graph->MutableParentGraph()) {
+    top_level_graph = parent_graph;
+  }
+
   MaxShapeInferenceResult result;
-  ORT_RETURN_IF_ERROR(InferMaxShapes(graph, resource_accountant.GetMaxShapeOverrides(), result));
+  ORT_RETURN_IF_ERROR(
+      InferMaxShapes(*top_level_graph, resource_accountant.GetMaxShapeOverrides(), result));
   resource_accountant.SetMaxShapeInferenceResult(std::move(result));
   return Status::OK();
 }
@@ -404,7 +412,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     std::unique_ptr<GraphViewer> graph_viewer;
     ORT_RETURN_IF_ERROR(create_graph_viewer(sub_graph_holder, graph_viewer));
 
-    if (params.resource_accountant && graph.ParentGraph() == nullptr) {
+    if (params.resource_accountant) {
       ORT_RETURN_IF_ERROR(RefreshMaxShapeInference(graph, *params.resource_accountant));
     }
     if (params.resource_accountant) {
