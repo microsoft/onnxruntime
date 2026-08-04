@@ -166,7 +166,7 @@ Status CheckSequenceLengthTensors(const T* cumulative_sequence_length, const T* 
   batch_size = static_cast<int>(cumulative_seqlen_dim[0]) - 1;
 
   const auto& seqlens_dim = seqlens->Shape().GetDims();
-  if (seqlens_dim.size() != 1 && seqlens_dim[0] != batch_size) {
+  if (seqlens_dim.size() != 1 || seqlens_dim[0] != batch_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "seqlens must be shape (batch_size).");
   }
