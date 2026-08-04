@@ -1,0 +1,337 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "contrib_ops/cuda/math/hyper_connection_mix_impl.h"
+
+#include <cfloat>
+#include <cuda_fp16.h>
+
+#include "contrib_ops/cuda/math/sinkhorn_normalize_impl.cuh"
+#include "core/providers/cuda/cuda_common.h"
+
+namespace onnxruntime {
+namespace contrib {
+namespace cuda {
+namespace {
+
+constexpr int kThreadsPerBlock = 256;
+constexpr int kWarps = kThreadsPerBlock / 32;
+constexpr int kPartialThreads = kHyperConnectionPartialThreads;
+constexpr int kPartialWarps = kPartialThreads / 32;
+
+// The unfused graph rounds to the activation type between the post mix and the pre mix, and
+// again between the pre mix and the layer norm. `Round` reproduces those two trips so the
+// operator stays comparable against the subgraph it replaces.
+template <typename CudaT>
+struct Conv;
+
+template <>
+struct Conv<float> {
+  static __device__ __forceinline__ float ToFloat(float v) { return v; }
+  static __device__ __forceinline__ float Round(float v) { return v; }
+  static __device__ __forceinline__ float FromFloat(float v) { return v; }
+};
+
+template <>
+struct Conv<half> {
+  static __device__ __forceinline__ float ToFloat(half v) { return __half2float(v); }
+  static __device__ __forceinline__ float Round(float v) { return __half2float(__float2half_rn(v)); }
+  static __device__ __forceinline__ half FromFloat(float v) { return __float2half_rn(v); }
+};
+
+template <>
+struct Conv<BFloat16> {
+  static __device__ __forceinline__ float ToFloat(BFloat16 v) { return static_cast<float>(v); }
+  static __device__ __forceinline__ float Round(float v) { return static_cast<float>(BFloat16(v)); }
+  static __device__ __forceinline__ BFloat16 FromFloat(float v) { return BFloat16(v); }
+};
+
+__device__ __forceinline__ float WarpReduceSum(float v) {
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    v += __shfl_down_sync(0xffffffffu, v, offset);
+  }
+  return v;
+}
+
+// Post mix plus the mixing GEMV, over a slice of the hidden dimension.
+//
+// grid is (split, num_tokens). HC is a template parameter so every mixing accumulator is
+// indexed at compile time and stays in registers; a runtime bound would spill the 25-wide
+// array to local memory and the fused operator would lose to the subgraph it replaces.
+template <typename CudaT, int HC>
+__global__ void HyperConnectionPartialKernel(const CudaT* __restrict__ x,
+                                             const CudaT* __restrict__ residual,
+                                             const float* __restrict__ post_mix,
+                                             const float* __restrict__ comb_mix,
+                                             const float* __restrict__ fn,
+                                             CudaT* __restrict__ residual_out,
+                                             float* __restrict__ partial,
+                                             int dim, int split) {
+  constexpr int kMixDim = (2 + HC) * HC;
+  using C = Conv<CudaT>;
+
+  __shared__ float s_pin[HC];
+  __shared__ float s_cin[HC * HC];
+  __shared__ float s_red[kPartialWarps * (kMixDim + 1)];
+
+  const int part = blockIdx.x;
+  const int token = blockIdx.y;
+  const int tid = threadIdx.x;
+  const int lane = tid & 31;
+  const int warp = tid >> 5;
+
+  const size_t off_x = static_cast<size_t>(token) * dim;
+  const size_t off_r = static_cast<size_t>(token) * HC * dim;
+
+  if (tid < HC) s_pin[tid] = post_mix[token * HC + tid];
+  if (tid < HC * HC) s_cin[tid] = comb_mix[token * HC * HC + tid];
+  __syncthreads();
+
+  float acc[kMixDim + 1];
+#pragma unroll
+  for (int i = 0; i <= kMixDim; ++i) acc[i] = 0.f;
+
+  for (int d = part * kPartialThreads + tid; d < dim; d += split * kPartialThreads) {
+    const float xv = C::ToFloat(x[off_x + d]);
+    float rv[HC];
+#pragma unroll
+    for (int g = 0; g < HC; ++g) rv[g] = C::ToFloat(residual[off_r + static_cast<size_t>(g) * dim + d]);
+
+    float v[HC];
+#pragma unroll
+    for (int h = 0; h < HC; ++h) {
+      float t2 = 0.f;
+#pragma unroll
+      for (int g = 0; g < HC; ++g) t2 += s_cin[g * HC + h] * rv[g];
+      v[h] = C::Round(s_pin[h] * xv + t2);
+    }
+
+#pragma unroll
+    for (int h = 0; h < HC; ++h) {
+      residual_out[off_r + static_cast<size_t>(h) * dim + d] = C::FromFloat(v[h]);
+      acc[kMixDim] += v[h] * v[h];
+      const float* frow = fn + static_cast<size_t>(h * dim + d) * kMixDim;
+#pragma unroll
+      for (int j = 0; j < kMixDim; ++j) acc[j] += v[h] * frow[j];
+    }
+  }
+
+#pragma unroll
+  for (int i = 0; i <= kMixDim; ++i) {
+    const float v = WarpReduceSum(acc[i]);
+    if (lane == 0) s_red[warp * (kMixDim + 1) + i] = v;
+  }
+  __syncthreads();
+  if (tid <= kMixDim) {
+    float v = 0.f;
+#pragma unroll
+    for (int w = 0; w < kPartialWarps; ++w) v += s_red[w * (kMixDim + 1) + tid];
+    partial[(static_cast<size_t>(token) * split + part) * (kMixDim + 1) + tid] = v;
+  }
+}
+
+// One block per token: finish the reduction, derive the gates, then the weighted sum of the
+// streams and the layer's RMS norm.
+template <typename CudaT, int HC>
+__global__ void HyperConnectionFinishKernel(const CudaT* __restrict__ residual_out,
+                                            const float* __restrict__ partial,
+                                            const float* __restrict__ scale,
+                                            const float* __restrict__ base,
+                                            const float* __restrict__ norm_weight,
+                                            float* __restrict__ post_mix_out,
+                                            float* __restrict__ comb_mix_out,
+                                            CudaT* __restrict__ layer_input,
+                                            int dim, int split, int iterations, float epsilon,
+                                            float hc_epsilon, float sinkhorn_epsilon,
+                                            float post_alpha) {
+  constexpr int kMixDim = (2 + HC) * HC;
+  using C = Conv<CudaT>;
+
+  extern __shared__ float smem[];
+  float* s_y = smem;                          // [dim]      pre-mix output, kept for the norm
+  float* s_red = s_y + dim;                   // [kWarps]
+  float* s_tot = s_red + kWarps;              // [kMixDim + 1]
+  float* s_mix = s_tot + (kMixDim + 1);       // [kMixDim]
+  float* s_pre = s_mix + kMixDim;             // [HC]
+  float* s_comb = s_pre + HC;                 // [HC * HC]
+  float* s_sums = s_comb + HC * HC;           // [HC]       Sinkhorn scratch
+  float* s_scalar = s_sums + HC;              // [1]
+
+  const int token = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int lane = tid & 31;
+  const int warp = tid >> 5;
+
+  const size_t off_x = static_cast<size_t>(token) * dim;
+  const size_t off_r = static_cast<size_t>(token) * HC * dim;
+
+  if (tid <= kMixDim) {
+    const float* p = partial + static_cast<size_t>(token) * split * (kMixDim + 1) + tid;
+    float v = 0.f;
+    for (int s = 0; s < split; ++s) v += p[static_cast<size_t>(s) * (kMixDim + 1)];
+    s_tot[tid] = v;
+  }
+  __syncthreads();
+
+  // ---- pre mix: gates and the doubly stochastic combination matrix ----
+  if (warp == 0) {
+    const float rs = 1.0f / sqrtf(s_tot[kMixDim] / static_cast<float>(HC * dim) + epsilon);
+    if (lane < kMixDim) s_mix[lane] = s_tot[lane] * rs;
+    __syncwarp();
+
+    if (lane < HC) {
+      const float p = s_mix[lane] * scale[0] + base[lane];
+      s_pre[lane] = 1.0f / (1.0f + expf(-p)) + hc_epsilon;
+
+      const float q = s_mix[HC + lane] * scale[1] + base[HC + lane];
+      const float gate = (1.0f / (1.0f + expf(-q))) * post_alpha;
+      post_mix_out[token * HC + lane] = gate;
+
+      // Row `lane` of the combination matrix, softmaxed over its last axis.
+      float row[HC];
+      float m = -FLT_MAX;
+#pragma unroll
+      for (int h = 0; h < HC; ++h) {
+        const int idx = 2 * HC + lane * HC + h;
+        row[h] = s_mix[idx] * scale[2] + base[idx];
+        m = fmaxf(m, row[h]);
+      }
+      float s = 0.f;
+#pragma unroll
+      for (int h = 0; h < HC; ++h) {
+        row[h] = expf(row[h] - m);
+        s += row[h];
+      }
+#pragma unroll
+      for (int h = 0; h < HC; ++h) s_comb[lane * HC + h] = row[h] / s + hc_epsilon;
+    }
+    __syncwarp();
+
+    SinkhornNormalizeWarp(s_comb, s_sums, HC, lane, iterations, sinkhorn_epsilon);
+    if (lane < HC * HC) comb_mix_out[token * HC * HC + lane] = s_comb[lane];
+  }
+  __syncthreads();
+
+  // ---- weighted sum of the streams, then the layer's RMS norm ----
+  float sy2 = 0.f;
+  for (int d = tid; d < dim; d += kThreadsPerBlock) {
+    float a = 0.f;
+#pragma unroll
+    for (int h = 0; h < HC; ++h) {
+      a += s_pre[h] * C::ToFloat(residual_out[off_r + static_cast<size_t>(h) * dim + d]);
+    }
+    const float yv = C::Round(a);
+    s_y[d] = yv;
+    sy2 += yv * yv;
+  }
+
+  {
+    const float v = WarpReduceSum(sy2);
+    if (lane == 0) s_red[warp] = v;
+    __syncthreads();
+    if (tid == 0) {
+      float t = 0.f;
+      for (int w = 0; w < kWarps; ++w) t += s_red[w];
+      s_scalar[0] = 1.0f / sqrtf(t / static_cast<float>(dim) + epsilon);
+    }
+    __syncthreads();
+  }
+
+  const float inv = s_scalar[0];
+  for (int d = tid; d < dim; d += kThreadsPerBlock) {
+    layer_input[off_x + d] = C::FromFloat(s_y[d] * inv * norm_weight[d]);
+  }
+}
+
+template <typename CudaT, int HC>
+Status Launch(cudaStream_t stream, const HyperConnectionMixParams& params, const CudaT* x,
+              const CudaT* residual, const float* post_mix, const float* comb_mix,
+              const float* fn, const float* scale, const float* base, const float* norm_weight,
+              float* workspace, CudaT* residual_out, float* post_mix_out, float* comb_mix_out,
+              CudaT* layer_input) {
+  constexpr int kMixDim = (2 + HC) * HC;
+  const size_t floats = static_cast<size_t>(params.dim) + kWarps + (kMixDim + 1) + kMixDim +
+                        2 * HC + HC * HC + 1;
+  const size_t shared_bytes = floats * sizeof(float);
+  if (shared_bytes > 48u * 1024u) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "HyperConnectionMix needs ", shared_bytes,
+                           " bytes of shared memory per block, which exceeds the 48 KiB limit. "
+                           "Reduce the hidden size.");
+  }
+
+  const int split = HyperConnectionMixSplit(params.num_tokens, params.dim);
+
+  HyperConnectionPartialKernel<CudaT, HC>
+      <<<dim3(split, params.num_tokens), kPartialThreads, 0, stream>>>(
+          x, residual, post_mix, comb_mix, fn, residual_out, workspace, params.dim, split);
+
+  HyperConnectionFinishKernel<CudaT, HC>
+      <<<params.num_tokens, kThreadsPerBlock, shared_bytes, stream>>>(
+          residual_out, workspace, scale, base, norm_weight, post_mix_out, comb_mix_out,
+          layer_input, params.dim, split, params.sinkhorn_iterations, params.epsilon,
+          params.hc_epsilon, params.sinkhorn_epsilon, params.post_alpha);
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
+}  // namespace
+
+template <typename T>
+Status LaunchHyperConnectionMix(cudaStream_t stream, const HyperConnectionMixParams& params,
+                                const T* x, const T* residual, const float* post_mix,
+                                const float* comb_mix, const float* fn, const float* scale,
+                                const float* base, const float* norm_weight, float* workspace,
+                                T* residual_out, float* post_mix_out, float* comb_mix_out,
+                                T* layer_input) {
+  if (params.num_tokens == 0) {
+    return Status::OK();
+  }
+
+  using CudaT = typename onnxruntime::cuda::ToCudaType<T>::MappedType;
+  auto* xc = reinterpret_cast<const CudaT*>(x);
+  auto* rc = reinterpret_cast<const CudaT*>(residual);
+  auto* ro = reinterpret_cast<CudaT*>(residual_out);
+  auto* li = reinterpret_cast<CudaT*>(layer_input);
+
+#define LAUNCH_HC(hc)                                                                       \
+  case hc:                                                                                  \
+    return Launch<CudaT, hc>(stream, params, xc, rc, post_mix, comb_mix, fn, scale, base,    \
+                             norm_weight, workspace, ro, post_mix_out, comb_mix_out, li)
+
+  switch (params.hc) {
+    LAUNCH_HC(1);
+    LAUNCH_HC(2);
+    LAUNCH_HC(3);
+    LAUNCH_HC(4);
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "HyperConnectionMix supports a multiplicity of at most ",
+                             kHyperConnectionMaxMult, ", got ", params.hc);
+  }
+#undef LAUNCH_HC
+}
+
+template Status LaunchHyperConnectionMix<float>(cudaStream_t, const HyperConnectionMixParams&,
+                                                const float*, const float*, const float*,
+                                                const float*, const float*, const float*,
+                                                const float*, const float*, float*, float*,
+                                                float*, float*, float*);
+
+template Status LaunchHyperConnectionMix<MLFloat16>(cudaStream_t, const HyperConnectionMixParams&,
+                                                    const MLFloat16*, const MLFloat16*,
+                                                    const float*, const float*, const float*,
+                                                    const float*, const float*, const float*,
+                                                    float*, MLFloat16*, float*, float*,
+                                                    MLFloat16*);
+
+template Status LaunchHyperConnectionMix<BFloat16>(cudaStream_t, const HyperConnectionMixParams&,
+                                                   const BFloat16*, const BFloat16*, const float*,
+                                                   const float*, const float*, const float*,
+                                                   const float*, const float*, float*, BFloat16*,
+                                                   float*, float*, BFloat16*);
+
+}  // namespace cuda
+}  // namespace contrib
+}  // namespace onnxruntime
