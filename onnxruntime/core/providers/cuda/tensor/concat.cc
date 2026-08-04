@@ -81,6 +81,19 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
           Stream(ctx), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim, concat_sizes[0],
           p.output_tensor->MutableDataRaw(), input_ptr.GpuPtr(), static_cast<size_t>(p.output_num_elements)));
     }
+  } else if (input_count <= 32) {
+    TArray<const void*, 32> input_ptr_array(input_count);
+    TArray<int64_t, 32> concat_sizes_range(input_count);
+    int64_t running = 0;
+    for (int i = 0; i < input_count; ++i) {
+      input_ptr_array[i] = input_ptr_cpuspan[i];
+      running += concat_sizes[i];
+      concat_sizes_range[i] = running;
+    }
+    ORT_RETURN_IF_ERROR(ConcatImpl(Stream(ctx), element_bytes, block_size_including_axis_dim,
+                                   block_size_inside_axis_dim, concat_sizes_range,
+                                   p.output_tensor->MutableDataRaw(), input_ptr_array,
+                                   static_cast<size_t>(p.output_num_elements)));
   } else {
     CudaAsyncBuffer<int64_t> concat_sizes_gpu(this, concat_sizes);
     CudaAsyncBuffer<int64_t> axis_dimension_input_output_mapping_gpu(this, axis_dimension_input_output_mapping);
