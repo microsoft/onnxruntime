@@ -44,7 +44,7 @@ Each preset defines:
 
 1. `displayName`: reader-facing product or component name
 2. `versionFile`
-3. `pathsFile` (nullable)
+3. `pathsFile` (nullable): file of git pathspecs to filter to, one per line. Use `:(top)` to anchor an entry at repo root.
 
 Example presets:
 
@@ -69,7 +69,8 @@ Example presets:
 4. Gather metadata.
    - If the output directory is missing or lacks contributor artifacts, generate them with
      `tools/python/compile_contributors.py`.
-   - Use `--paths` only when preset has a `pathsFile`.
+   - Generation can take a while because it scans commit history and fetches PR metadata.
+   - Use `--paths-file` only when preset has a `pathsFile`.
    - If existing contributor artifacts are reused, verify `resolved_output_dir/logs.txt` matches base/target before trusting them.
 5. Read `resolved_output_dir/detail.csv` as the primary source for PR numbers, titles, authors, target commits, and cherry-pick mapping.
    - Use `resolved_output_dir/logs.txt` for contributor summary context and base/target verification.
@@ -121,13 +122,11 @@ python .\tools\python\compile_contributors.py \
 Scoped metadata:
 
 ```powershell
-$pathList = Get-Content <paths_file> | Where-Object { $_ -and $_.Trim() }
-
 python .\tools\python\compile_contributors.py \
    --base <previous_tag> \
    --target <target_ref> \
    --dir <resolved_output_dir> \
-   --paths $pathList
+   --paths-file <paths_file>
 ```
 
 ## Style and Policy
