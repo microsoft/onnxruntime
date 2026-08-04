@@ -60,6 +60,14 @@ class IResourceAccountant {
   virtual void RemoveConsumedAmount(const ResourceCount& amount) = 0;
   virtual ResourceCount ComputeResourceCount(const Node& node) = 0;
 
+  // Replaces the fallback workspace portion of a previously computed node cost
+  // with an EP/kernel-specific Level-1 estimate. The returned cost should be used
+  // for the capability's budget decision and stored node cost.
+  virtual ResourceCount UpdateResourceCountWithWorkspaceEstimate(
+      size_t /*node_index*/, const ResourceCount& resource_count, size_t /*workspace_bytes*/) {
+    return resource_count;
+  }
+
   std::optional<ResourceCount> GetThreshold() const {
     return threshold_;
   }
@@ -76,17 +84,24 @@ class IResourceAccountant {
 
   // Called before each GetCapability pass to reset per-pass state:
   // clears the stop flag (which only applies to the pass that set it)
-  // and discards pending weight tracking from a previous (discarded) pass.
-  // Subclasses override ResetPendingWeightsImpl for EP-specific cleanup.
+  // and discards pending resource tracking from a previous (discarded) pass.
   void ResetForNewPass() {
     stop_assignment_ = false;
-    ResetPendingWeightsImpl();
+    ResetPendingResourcesImpl();
   }
 
   // Called when a node's cost is committed (AccountForNode/AccountForAllNodes).
-  // Moves the node's pending weights into the committed set so they persist
-  // across GetCapability passes. Default no-op for stats-based accountants.
-  virtual void CommitWeightsForNode(size_t /*node_index*/) {}
+  // Commits any per-node resource breakdown tracked while ComputeResourceCount()
+  // was called. Default no-op for accountants without a resource breakdown.
+  virtual void CommitResourcesForNode(size_t /*node_index*/) {}
+
+  // Returns the pending workspace estimate recorded while computing a node's cost.
+  // Used when layout transformation defers committing first-pass capabilities.
+  virtual size_t GetPendingWorkspaceEstimate(size_t /*node_index*/) const { return 0; }
+
+  // Commits a workspace estimate whose original pending state is no longer available.
+  // Used for nodes that survive a layout-transformation second pass.
+  virtual void AddCommittedWorkspaceEstimate(size_t /*workspace_bytes*/) {}
 
   static std::string MakeUniqueNodeName(const Node& node);
 
@@ -108,10 +123,12 @@ class IResourceAccountant {
     return max_shape_inference_result_;
   }
 
+  /// Returns workspace for nodes that were accepted and committed by partitioning.
+  virtual size_t GetCommittedWorkspaceEstimate() const { return 0; }
+
  protected:
-  // Override to discard EP-specific pending weight tracking.
-  // Default no-op for stats-based accountants.
-  virtual void ResetPendingWeightsImpl() {}
+  // Override to discard per-pass state for capabilities that were only probed.
+  virtual void ResetPendingResourcesImpl() {}
 
  private:
   bool stop_assignment_ = false;

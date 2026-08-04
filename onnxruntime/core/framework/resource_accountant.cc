@@ -60,6 +60,7 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
       auto hit = node_stats_->find(node_name);
       if (hit != node_stats_->end()) {
         const auto& stats = hit->second;
+        pending_workspace_by_node_.insert_or_assign(node.Index(), stats.total_temp_allocations);
         return stats.input_sizes + stats.initializers_sizes +
                stats.total_dynamic_sizes + stats.total_temp_allocations;
       }
@@ -67,6 +68,7 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
     } else {
       const auto* graph = node.GetContainingGraph();
       if (!graph) return static_cast<size_t>(0);
+      const auto& max_shapes = GetMaxShapeInferenceResult();
 
       SafeInt<size_t> total_size = 0;
       for (const auto* input_def : node.InputDefs()) {
@@ -99,34 +101,71 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
       }
 
       // Account for intermediate output tensors when shape info is available.
-      // GetSizeInBytesFromTensorTypeProto will only succeed when all dims are known
-      // (static shape) and a valid element type is present, so dynamic outputs are
-      // naturally skipped.
+      // When max-shape inference is available, use it to resolve dynamic outputs.
+      // Otherwise, GetSizeInBytesFromTensorTypeProto will only succeed when all dims
+      // are known (static shape).
       SafeInt<size_t> output_size = 0;
+      const auto* graph_for_shapes = node.GetContainingGraph();
       for (const auto* output_def : node.OutputDefs()) {
         if (!output_def->Exists() || !output_def->HasTensorOrScalarShape()) continue;
         const auto* type_proto = output_def->TypeAsProto();
         if (!type_proto || !utils::HasTensorType(*type_proto)) continue;
 
         size_t size = 0;
-        if (utils::GetSizeInBytesFromTensorTypeProto<0>(type_proto->tensor_type(), &size).IsOK()) {
-          output_size += size;
+        // Try max-shape inference first for dynamic outputs
+        if (graph_for_shapes != nullptr && !max_shapes.Empty()) {
+          if (const TensorShape* max_shape =
+                  max_shapes.GetShape(graph_for_shapes, output_def->Name())) {
+            const auto& tensor_type = type_proto->tensor_type();
+            if (tensor_type.has_elem_type()) {
+              const SafeInt<size_t> inferred_size =
+                  SafeInt<size_t>(max_shape->Size()) *
+                  utils::GetElementSizeOfTensor(
+                      static_cast<ONNX_NAMESPACE::TensorProto_DataType>(tensor_type.elem_type()));
+              size = inferred_size;
+            }
+          }
         }
+        // Fall back to static shape
+        if (size == 0) {
+          utils::GetSizeInBytesFromTensorTypeProto<0>(type_proto->tensor_type(), &size).IsOK();
+        }
+        output_size += size;
       }
 
-      // Apply a safety multiplier for workspace/temp allocations we can't see
-      constexpr size_t kAdHocSafetyMultiplierPercent = 150;  // 1.5x
+      // Apply the existing safety multiplier for workspace/temp allocations we can't see.
+      // Max-shape inference makes tensor sizes concrete but does not, by itself, make
+      // kernel workspace requirements known.
+      constexpr size_t kAdHocSafetyMultiplierPercent = 150;
       SafeInt<size_t> estimated = total_size + output_size;
-      return static_cast<size_t>(estimated * kAdHocSafetyMultiplierPercent / 100);
+      size_t node_cost = static_cast<size_t>(estimated * kAdHocSafetyMultiplierPercent / 100);
+      const size_t workspace_estimate = node_cost - static_cast<size_t>(estimated);
+      pending_workspace_by_node_.insert_or_assign(node.Index(), workspace_estimate);
+      return node_cost;
     }
   }
 
-  void ResetPendingWeightsImpl() override {
-    pending_weights_.clear();
-    pending_weights_by_node_.clear();
+  ResourceCount UpdateResourceCountWithWorkspaceEstimate(
+      NodeIndex node_index, const ResourceCount& resource_count, size_t workspace_bytes) override {
+    if (!std::holds_alternative<size_t>(resource_count)) {
+      return resource_count;
+    }
+
+    const size_t current_cost = std::get<size_t>(resource_count);
+    const size_t fallback_workspace = GetPendingWorkspaceEstimate(node_index);
+    ORT_ENFORCE(current_cost >= fallback_workspace);
+    pending_workspace_by_node_.insert_or_assign(node_index, workspace_bytes);
+    return static_cast<size_t>(
+        SafeInt<size_t>(current_cost - fallback_workspace) + workspace_bytes);
   }
 
-  void CommitWeightsForNode(NodeIndex node_index) override {
+  void ResetPendingResourcesImpl() override {
+    pending_weights_.clear();
+    pending_weights_by_node_.clear();
+    pending_workspace_by_node_.clear();
+  }
+
+  void CommitResourcesForNode(NodeIndex node_index) override {
     auto it = pending_weights_by_node_.find(node_index);
     if (it != pending_weights_by_node_.end()) {
       for (const auto& name : it->second) {
@@ -135,6 +174,25 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
       committed_weights_.insert(it->second.begin(), it->second.end());
       pending_weights_by_node_.erase(it);
     }
+
+    auto workspace_it = pending_workspace_by_node_.find(node_index);
+    if (workspace_it != pending_workspace_by_node_.end()) {
+      committed_workspace_estimate_ += workspace_it->second;
+      pending_workspace_by_node_.erase(workspace_it);
+    }
+  }
+
+  size_t GetPendingWorkspaceEstimate(NodeIndex node_index) const override {
+    auto it = pending_workspace_by_node_.find(node_index);
+    return it == pending_workspace_by_node_.end() ? 0 : it->second;
+  }
+
+  void AddCommittedWorkspaceEstimate(size_t workspace_bytes) override {
+    committed_workspace_estimate_ += workspace_bytes;
+  }
+
+  size_t GetCommittedWorkspaceEstimate() const override {
+    return committed_workspace_estimate_;
   }
 
  private:
@@ -145,8 +203,10 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
   InlinedHashSet<std::string> committed_weights_;
   // Flat set of all pending weight names for O(1) membership checks.
   InlinedHashSet<std::string> pending_weights_;
-  // Same pending weights keyed by node index, used by CommitWeightsForNode.
+  // Same pending weights keyed by node index, used by CommitResourcesForNode.
   InlinedHashMap<NodeIndex, InlinedHashSet<std::string>> pending_weights_by_node_;
+  InlinedHashMap<NodeIndex, size_t> pending_workspace_by_node_;
+  size_t committed_workspace_estimate_ = 0;
 };
 
 struct NodeStatsRecorder::Impl {
