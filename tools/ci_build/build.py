@@ -993,18 +993,14 @@ def generate_build_tree(
             cmake_args += [
                 "-DCMAKE_SYSTEM_NAME=visionOS",
                 "-DCMAKE_TOOLCHAIN_FILE="
-                + (
-                    args.visionos_toolchain_file or "../cmake/onnxruntime_visionos.toolchain.cmake"
-                ),
+                + (args.visionos_toolchain_file or "../cmake/onnxruntime_visionos.toolchain.cmake"),
                 "-Donnxruntime_ENABLE_CPUINFO=OFF",
             ]
         if args.tvos:
             cmake_args += [
                 "-DCMAKE_SYSTEM_NAME=tvOS",
                 "-DCMAKE_TOOLCHAIN_FILE="
-                + (
-                    args.tvos_toolchain_file or "../cmake/onnxruntime_tvos.toolchain.cmake"
-                ),
+                + (args.tvos_toolchain_file or "../cmake/onnxruntime_tvos.toolchain.cmake"),
             ]
 
     if args.build_wasm:

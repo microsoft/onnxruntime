@@ -18,9 +18,9 @@
 
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_USE_ONNX_LIGHT)
 #include "onnx/defs/schema.h"
-#else
+#elif !defined(ORT_USE_ONNX_LIGHT)
 #include "onnx/defs/data_type_utils.h"
 #endif
 
