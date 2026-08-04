@@ -764,18 +764,26 @@ TEST(TensorrtExecutionProviderTest, DDSOutputTest) {
   ASSERT_TRUE(status.IsOK());
 }
 
-TEST(TensorrtExecutionProviderTest, SelectOptimizationProfile) {
-  const PathString model_name = ORT_TSTR("trt_execution_provider_multi_profile_test.onnx");
-  const PathString context_model_name = ORT_TSTR("trt_execution_provider_multi_profile_ctx.onnx");
+void RunWithOneSessionMultiProfiles(bool multi_thread) {
+  const PathString model_name = multi_thread
+                                    ? ORT_TSTR("trt_execution_provider_multi_profile_multithread_test.onnx")
+                                    : ORT_TSTR("trt_execution_provider_multi_profile_test.onnx");
+  const std::string context_model_name_string = multi_thread
+                                                    ? "trt_execution_provider_multi_profile_multithread_ctx.onnx"
+                                                    : "trt_execution_provider_multi_profile_ctx.onnx";
+  const PathString context_model_name = ToPathString(context_model_name_string);
   std::filesystem::remove(model_name);
   std::filesystem::remove(context_model_name);
   CreateBaseModel(model_name, "multi_profile_test", {1, -1, -1});
 
   SessionOptions so;
-  so.session_logid = "TensorrtExecutionProviderMultiProfileTest";
+  so.session_logid = multi_thread
+                         ? "TensorrtExecutionProviderMultiProfileMultiThreadTest"
+                         : "TensorrtExecutionProviderMultiProfileTest";
   InferenceSession session_object{so, GetEnvironment()};
 
   OrtTensorRTProviderOptionsV2 params;
+  // Create two optimization profiles with fixed input shapes of 1x2x2 and 1x4x4.
   params.trt_profile_min_shapes =
       "X:1x2x2,X:1x4x4,Y:1x2x2,Y:1x4x4,Z:1x2x2,Z:1x4x4";
   params.trt_profile_opt_shapes =
@@ -784,7 +792,7 @@ TEST(TensorrtExecutionProviderTest, SelectOptimizationProfile) {
       "X:1x2x2,X:1x4x4,Y:1x2x2,Y:1x4x4,Z:1x2x2,Z:1x4x4";
   params.trt_dump_ep_context_model = 1;
   params.trt_ep_context_embed_mode = 1;
-  params.trt_ep_context_file_path = "trt_execution_provider_multi_profile_ctx.onnx";
+  params.trt_ep_context_file_path = context_model_name_string.c_str();
 
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(TensorrtExecutionProviderWithOptions(&params)));
   ASSERT_STATUS_OK(session_object.Load(model_name));
@@ -822,10 +830,26 @@ TEST(TensorrtExecutionProviderTest, SelectOptimizationProfile) {
     VerifyOutputs(fetches, input_shape, std::vector<float>(element_count, 3.0f));
   };
 
-  run_and_verify(session_object, {1, 2, 2});
-  run_and_verify(session_object, {1, 4, 4});
-  run_and_verify(session_object, {1, 4, 4});
-  run_and_verify(session_object, {1, 2, 2});
+  const auto run_profiles = [&](InferenceSession& session) {
+    if (multi_thread) {
+      std::vector<std::thread> threads;
+      for (int i = 0; i < 4; ++i) {
+        threads.emplace_back(run_and_verify, std::ref(session),
+                             i % 2 == 0 ? std::vector<int64_t>{1, 2, 2} : std::vector<int64_t>{1, 4, 4});
+      }
+      for (auto& thread : threads) {
+        thread.join();
+      }
+      return;
+    }
+
+    run_and_verify(session, {1, 2, 2});
+    run_and_verify(session, {1, 4, 4});
+    run_and_verify(session, {1, 4, 4});
+    run_and_verify(session, {1, 2, 2});
+  };
+
+  run_profiles(session_object);
 
   InferenceSession context_session{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 context_params;
@@ -835,9 +859,7 @@ TEST(TensorrtExecutionProviderTest, SelectOptimizationProfile) {
   ASSERT_STATUS_OK(context_session.Load(context_model_name));
   ASSERT_STATUS_OK(context_session.Initialize());
 
-  run_and_verify(context_session, {1, 2, 2});
-  run_and_verify(context_session, {1, 4, 4});
-  run_and_verify(context_session, {1, 2, 2});
+  run_profiles(context_session);
 
   const std::vector<int64_t> unmatched_shape{1, 3, 3};
   const std::vector<float> unmatched_values(9, 1.0f);
@@ -855,6 +877,14 @@ TEST(TensorrtExecutionProviderTest, SelectOptimizationProfile) {
 
   std::filesystem::remove(model_name);
   std::filesystem::remove(context_model_name);
+}
+
+TEST(TensorrtExecutionProviderTest, MultiProfilesSingleThread) {
+  RunWithOneSessionMultiProfiles(false);
+}
+
+TEST(TensorrtExecutionProviderTest, MultiProfilesMultiThread) {
+  RunWithOneSessionMultiProfiles(true);
 }
 
 TEST_P(TensorrtExecutionProviderCacheTest, Run) {
