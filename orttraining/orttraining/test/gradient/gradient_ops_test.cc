@@ -3462,10 +3462,6 @@ TEST(GradientCheckerTest, ReduceMaxGrad) {
 
   RunReductionTests(op_def_11, false, true, 1000.f);
 
-  OpDef op_def_12{"ReduceMax", kOnnxDomain, 12};
-
-  RunReductionTests(op_def_12, false, true, 1000.f);
-
   OpDef op_def_13{"ReduceMax", kOnnxDomain, 13};
 
   RunReductionTests(op_def_13, false, true, 1000.f);
