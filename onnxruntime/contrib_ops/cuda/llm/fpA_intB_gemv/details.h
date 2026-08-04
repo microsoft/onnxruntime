@@ -331,26 +331,40 @@ struct Fp4I2FConverter {
   // bits as 0/1 nibbles. One prmt then performs *four* magnitude table lookups at once, which is
   // where this beats the per-element `decode()` above: prmt selects four bytes per instruction,
   // so the whole 4-element lookup costs one instruction instead of four.
+  //
+  // Selector notation below: `prmt.b32 d, a, b, c` views {a0,a1,a2,a3,b0,b1,b2,b3} as source
+  // bytes 0..7 and uses nibble j of `c` (nibble 0 is the least significant) to pick source byte
+  // for result byte j. All the selectors here are written most-significant nibble first, i.e.
+  // 0x1404 means d3=src1, d2=src4, d1=src0, d0=src4.
   __device__ __forceinline__ static void decode_quad(uint32_t mag_sel, uint32_t sgn_sel,
                                                      uint32_t& lo2, uint32_t& hi2) {
     uint32_t sb;
-    // Sign bytes: nibble 0 -> 0x00, nibble 1 -> 0x80 (bit 7 of the AType high byte).
+    // Sign bytes. Source bytes are {0x00,0x80,0x00,0x00, 0,0,0,0}, so a `sgn_sel` nibble of 0
+    // picks 0x00 and 1 picks 0x80 -- bit 7 of the AType high byte, i.e. the float sign bit.
     asm("prmt.b32 %0, %1, %2, %3;" : "=r"(sb) : "r"(0x00008000u), "r"(0u), "r"(sgn_sel));
     if constexpr (std::is_same_v<AType, half>) {
       uint32_t hb;
+      // Same magnitude table as decode(): codes 0..3 -> {0x00,0x38,0x3C,0x3E},
+      // codes 4..7 -> {0x40,0x42,0x44,0x46}. hb byte j is element j's half high byte.
       asm("prmt.b32 %0, %1, %2, %3;" : "=r"(hb) : "r"(0x3E3C3800u), "r"(0x46444240u), "r"(mag_sel));
       hb |= sb;
       // half low byte is always 0, so expand {b0,b1,b2,b3} to {0,b0,0,b1} and {0,b2,0,b3} by
       // pulling the zero bytes from the second (all-zero) prmt operand.
+      // 0x1404: d = {hb1, 0, hb0, 0} (byte 3..0) = half2{elem0, elem1}.
       asm("prmt.b32 %0, %1, %2, %3;" : "=r"(lo2) : "r"(hb), "r"(0u), "n"(0x1404));
+      // 0x3424: d = {hb3, 0, hb2, 0} = half2{elem2, elem3}.
       asm("prmt.b32 %0, %1, %2, %3;" : "=r"(hi2) : "r"(hb), "r"(0u), "n"(0x3424));
     } else {
       uint32_t hb, lb;
+      // Same two bf16 tables as decode(): high byte {0x00,0x3F,0x3F,0x3F, 0x40,0x40,0x40,0x40}
+      // and low byte {0x00,0x00,0x80,0xC0, 0x00,0x40,0x80,0xC0}. Byte j is element j.
       asm("prmt.b32 %0, %1, %2, %3;" : "=r"(hb) : "r"(0x3F3F3F00u), "r"(0x40404040u), "r"(mag_sel));
       asm("prmt.b32 %0, %1, %2, %3;" : "=r"(lb) : "r"(0xC0800000u), "r"(0xC0804000u), "r"(mag_sel));
       hb |= sb;
-      // bf16 needs both bytes: interleave low/high bytes of elements 0,1 and 2,3.
+      // bf16 needs both bytes, so source bytes are {lb0..lb3, hb0..hb3}.
+      // 0x5140: d = {hb1, lb1, hb0, lb0} = bfloat162{elem0, elem1}.
       asm("prmt.b32 %0, %1, %2, %3;" : "=r"(lo2) : "r"(lb), "r"(hb), "n"(0x5140));
+      // 0x7362: d = {hb3, lb3, hb2, lb2} = bfloat162{elem2, elem3}.
       asm("prmt.b32 %0, %1, %2, %3;" : "=r"(hi2) : "r"(lb), "r"(hb), "n"(0x7362));
     }
   }
@@ -370,6 +384,9 @@ struct Fp4I2FConverter {
         // the two QMoE GEMVs drop 33.2 -> 26.2 us (fc1 swiglu) and 30.2 -> 22.2 us (fc2).
         // Only valid for the plain (non pair-interleaved) nibble order: nibble j of the word
         // is logical element j, which is exactly what the prmt selectors below assume.
+        //
+        // Both operands are re-typed to uint32_t, so callers must supply 4-byte-aligned
+        // buffers; the GEMV kernels declare their tiles `alignas(alignof(uint32_t))`.
         uint32_t const* sw = reinterpret_cast<uint32_t const*>(src);
         uint32_t* dw = reinterpret_cast<uint32_t*>(dst);
 #pragma unroll

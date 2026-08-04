@@ -16,8 +16,11 @@ namespace onnxruntime::llm {
 namespace kernels {
 namespace moe_gemv {
 
-// Tiling/parallelization knob selected by the FP4 GEMV autotuner. CtaN/Threads are pure
-// tiling knobs (numerically bit-exact), so the sweep only picks the fastest.
+// Tiling/parallelization knob selected by the FP4 GEMV autotuner. Every config computes the same
+// dot products with the same accumulation dtype, so the sweep only picks the fastest. CtaN is
+// bit-exact (it only changes how many output columns a block owns). Threads is *not*: a block
+// walks K in strides of StepK * Threads and the epilogue reduces across Threads/32 warps, so
+// changing it changes the summation order and the low bits of the result can move.
 enum class MoeGemvConfig {
   kDefault,
   kCtaN16,
@@ -41,8 +44,9 @@ bool Fp4MoeGemvUseInterleaved();
 // runtime does not have a profiled result for the shape, which is the shipping default because
 // ORT_FP4_GEMV_AUTOTUNE is off (it synchronizes the inference stream) and is skipped entirely
 // during CUDA-graph capture. Only Threads is derived; CtaN stays at the default, so the result
-// never changes which shapes is_moe_gemv_fp4_supported accepts. Set ORT_FP4_GEMV_DEFAULT_TILING=0
-// to fall back to the fixed default tiling.
+// never changes which shapes is_moe_gemv_fp4_supported accepts. Note that Threads sets the K
+// partition, so the choice moves the last bits of the output (see MoeGemvConfig above). Set
+// ORT_FP4_GEMV_DEFAULT_TILING=0 to fall back to the fixed default tiling.
 MoeGemvConfig Fp4MoeGemvDefaultConfig(int64_t expanded_num_rows, int64_t n, int64_t k,
                                       int multi_processor_count);
 

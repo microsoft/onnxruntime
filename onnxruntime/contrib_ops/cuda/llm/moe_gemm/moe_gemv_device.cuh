@@ -41,6 +41,12 @@ using TileAccType =
 // matching the original dequantize-then-mma order, this prevents an unscaled fp16 product from
 // overflowing even when the final scaled product is representable. The fp32 policy converts each
 // scaled pair before multiplying so BF16 products are not accumulated in BF16 first.
+//
+// Numerics: this is a reassociation, not a rewrite. The 16-bit policy keeps the even-k and odd-k
+// partial sums in the two halves of one vec2 and only adds them together in collapse_tile_acc,
+// where the previous code summed a column's K terms in one serial chain. Floating-point addition
+// is not associative, so results are close but not bit-identical to that order; the per-thread
+// chain is now half as long, which if anything reduces accumulated rounding error.
 template <typename Details, int K, typename TileAccT, typename TypeA>
 __device__ __forceinline__ void accumulate_column_tile(TileAccT& acc, void const* w, void const* act, TypeA scale) {
   using Math = MathWrapper<typename Details::TypeDetailsA>;

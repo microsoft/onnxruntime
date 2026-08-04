@@ -1431,8 +1431,10 @@ Result: graph transformer tests `3 passed`; provider test `1 passed`.
 ### Bit-Exactness
 
 A standalone harness compared `decode_quad` against the per-element reference for
-both `half` and `__nv_bfloat16` over 256x256x64 randomized 32-bit words
-(every code value in every nibble position):
+both `half` and `__nv_bfloat16`. The reachable input space is only 2^16 wide (a
+`decode_quad` call is fully described by its 4x3-bit magnitude selector plus its
+4x1-bit sign selector), so the sweep of 256x256x64 randomized 32-bit words covers
+every reachable pattern -- this is an exhaustive check, not a sample:
 
 ```
 cuda=no error mismatches=0
@@ -1546,8 +1548,11 @@ New `gemv::Fp4MoeGemvDefaultConfig(expanded_num_rows, n, k)` in
 now seeds `fc1_config` / `fc2_config` from it rather than from `kDefault`; the
 autotuner, when enabled, still overrides it and the per-shape cache is unchanged.
 Only `Threads` is derived. `CtaN` stays at `kDefaultCtaN`, so the analytic config
-never changes which shapes `is_moe_gemv_fp4_supported` accepts, and `Threads` is a
-pure tiling knob so the result stays bit-exact.
+never changes which shapes `is_moe_gemv_fp4_supported` accepts. Note that
+`Threads` is a tiling knob but **not** a bit-exact one: a block walks K in strides
+of `CtaK = StepK * Threads` and the epilogue reduces across `Threads / 32` warps,
+so changing it changes the floating-point summation order and the low bits of the
+result can move.
 
 Two clauses, both about the fact that the grid is `(expanded_num_rows, n / CtaN)`
 and therefore does **not** depend on `Threads`:
@@ -1619,9 +1624,11 @@ ORT_ENABLE_FP4_GEMV=1 ORT_FP4_GEMV_DEFAULT_TILING=0 \
 
 ### Decision
 
-- Keep. The tiling is bit-exact, so this is purely about picking the faster
-  launch shape, and it now happens without a stream sync and works under CUDA
-  graph capture.
+- Keep. Every config computes the same dot products with the same accumulation
+  dtype, so this is purely about picking the faster launch shape, and it now
+  happens without a stream sync and works under CUDA graph capture. The summation
+  order does depend on `Threads`, so the choice is not bit-neutral; the tests
+  cover both clauses of the heuristic and the `=0` opt-out.
 - Clause (a) is unconditional and carries most of the win (fc2: 22.2 -> 17.5 us).
   Clause (b) adds the fc1 win (26.2 -> 23.9 us) and is the part that generalizes
   least, hence the deliberately conservative occupancy-derived threshold and the

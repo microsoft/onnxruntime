@@ -273,7 +273,8 @@ void launch_moe_gemv_fp4_symmetric(const T* act, const uint8_t* weight, const T*
   // AccT follows the Fp4GemvAccT policy (fp16->fp16 accum, bf16->fp32 accum): bf16 has only 7
   // mantissa bits, so 16-bit accumulation over K loses too much precision and fails tolerance
   // (e.g. NVFP4 block-16 decode at k=512). CtaN/Threads remain pure parallelization/tiling knobs
-  // and the accumulation dtype is identical for every config, so this sweep stays bit-exact.
+  // and the accumulation dtype is identical for every config, so every config computes the same
+  // dot products; Threads additionally sets the K partition, so it perturbs the summation order.
   auto launch = [&](auto cta_n, auto threads) {
     fiv::dispatch_moe_gemv_group_size<Details, cta_n(), threads(), T, Fp4GemvAccT<T>>(
         const_cast<T*>(act), const_cast<uint8_t*>(weight), const_cast<T*>(scales), const_cast<T*>(bias), out,
@@ -329,7 +330,8 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
   }
   using Details = Fp4KernelDetails<T>;
   // AccT follows the Fp4GemvAccT policy (fp16->fp16, bf16->fp32); see launch_moe_gemv_fp4_symmetric.
-  // The CtaN/Threads sweep stays bit-exact across configs since the accumulation dtype is fixed.
+  // The accumulation dtype is fixed across the CtaN/Threads sweep; Threads still changes the K
+  // partition, so it is a tiling knob, not a bit-exact one.
   auto launch = [&](auto cta_n, auto threads) {
     fiv::dispatch_moe_gemv_interleaved_swiglu_group_size<Details, cta_n(), threads(), T, Fp4GemvAccT<T>>(
         const_cast<T*>(act), const_cast<uint8_t*>(weight), const_cast<T*>(scales), const_cast<T*>(bias), out,

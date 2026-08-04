@@ -19,6 +19,8 @@
 # --------------------------------------------------------------------------
 
 import os
+import subprocess
+import sys
 import unittest
 
 import numpy
@@ -640,6 +642,9 @@ class TestQMoENVFP4(unittest.TestCase):
     # decode-shaped SwiGLU cases route through the NVFP4 GEMV kernel (gemv_mode="1"). The
     # gemv_mode="0" companion forces the dequant fallback on the identical shape; both must
     # match the exact dequantized reference.
+    #
+    # "MTP" below is multi-token prediction (speculative decode): verifying N speculative
+    # tokens runs N+1 tokens at once, so a top_k=8 model expands to (N+1)*8 rows.
     # ================================================================
 
     def test_nvfp4_fp16_gemv_decode_swiglu(self):
@@ -667,6 +672,13 @@ class TestQMoENVFP4(unittest.TestCase):
         )
 
     def test_nvfp4_fp16_gemv_scales_weights_before_multiply(self):
+        # Overflow guard for accumulate_column_tile(): it must apply the group scale to the
+        # decoded weight *before* multiplying by the activation. FP4 codes reach 6.0 and the
+        # group scales are well below 1, so multiplying first can overflow FP16 (max 65504)
+        # even when the scaled product is representable. Driving the activations to ~1e4 puts
+        # the unscaled products past that limit, which the isfinite() check in the helper
+        # catches. atol is raised because the outputs themselves are ~1e4 times larger; 3.0
+        # there is ~3e-4 relative, i.e. far tighter than the default 0.12 at unit scale.
         self._run_nvfp4_moe_test(
             hidden_size=512,
             inter_size=512,
@@ -721,6 +733,90 @@ class TestQMoENVFP4(unittest.TestCase):
             onnx_dtype=TensorProto.FLOAT16,
             use_swiglu=True,
             gemv_mode="0",
+        )
+
+    def test_nvfp4_fp16_gemv_expanded_rows_at_window_limit(self):
+        # 8 tokens x top_k 8 = 64 expanded rows, exactly kMaxProfiledExpandedRowsFp4, so this
+        # is the largest shape is_moe_gemv_fp4_supported still accepts onto the GEMV path.
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=8,
+            top_k=8,
+            num_tokens=8,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+            gemv_mode="1",
+        )
+
+    def test_nvfp4_fp16_gemv_expanded_rows_above_window_limit(self):
+        # 9 tokens x top_k 8 = 72 > kMaxProfiledExpandedRowsFp4, so the GEMV path is rejected
+        # even with gemv_mode="1" and the run must still be correct on the dequant fallback.
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=8,
+            top_k=8,
+            num_tokens=9,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+            gemv_mode="1",
+        )
+
+    def test_nvfp4_fp16_gemv_long_k_tiling(self):
+        # Two gaps in one case.
+        # (a) Tiling: every other GEMV test uses k = 512 < kDefaultCtaK (StepK 8 * 128 threads),
+        #     which only exercises the "idle threads" clause of Fp4MoeGemvDefaultConfig. k = 1024
+        #     reaches the second clause, where the choice is driven by blocks-per-SM instead; 64
+        #     expanded rows keep the grid large enough to actually take the 64-thread branch.
+        # (b) Accumulation order: the GEMV keeps even-k and odd-k partial sums apart until the
+        #     epilogue, so it does not sum a column in the same order as the dequant fallback.
+        #     Comparing the two ORT outputs directly at twice the K of the other parity test
+        #     bounds that reordering drift where it has the most terms to cancel against.
+        shape = dict(
+            hidden_size=1024,
+            inter_size=1024,
+            num_experts=8,
+            top_k=8,
+            num_tokens=8,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+        )
+        gemv_out = self._run_nvfp4_moe_test(**shape, gemv_mode="1")
+        fallback_out = self._run_nvfp4_moe_test(**shape, gemv_mode="0")
+        max_diff = (gemv_out.float() - fallback_out.float()).abs().max().item()
+        print(f"NVFP4 GEMV-vs-fallback parity (k=1024): FP16 SwiGLU max_diff={max_diff:.6f}")
+        self.assertLess(
+            max_diff,
+            0.12,
+            f"NVFP4 fused GEMV diverged from dequant fallback at k=1024: max_diff={max_diff:.6f}",
+        )
+
+    def test_nvfp4_gemv_default_tiling_optout(self):
+        # ORT_FP4_GEMV_DEFAULT_TILING=0 restores the fixed kDefault tiling. The kernel latches
+        # it in a function-local static on first use, so it can only be exercised in a fresh
+        # process; re-run one GEMV test there with the opt-out set.
+        self._skip_if_no_fp4()
+        env = dict(os.environ)
+        env["ORT_FP4_GEMV_DEFAULT_TILING"] = "0"
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "unittest",
+                "-v",
+                f"{os.path.splitext(os.path.basename(__file__))[0]}.TestQMoENVFP4.test_nvfp4_fp16_gemv_long_k_tiling",
+            ],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(
+            proc.returncode,
+            0,
+            f"ORT_FP4_GEMV_DEFAULT_TILING=0 run failed:\n{proc.stdout}\n{proc.stderr}",
         )
 
     def test_nvfp4_fp16_gemv_vs_fallback_parity(self):
