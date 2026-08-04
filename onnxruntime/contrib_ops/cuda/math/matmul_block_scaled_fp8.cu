@@ -127,6 +127,19 @@ __global__ void QuantizeDequantizeActivationFp8Kernel(T* __restrict__ out,
   out[idx] = from_float<T>(q * scale);
 }
 
+// In-register form of QuantizeDequantizeActivationFp8Kernel for the 8 activations packed in one
+// uint4. Bit-identical to the standalone kernel, so the GEMV can absorb the W8A8 activation
+// rounding instead of round-tripping A through a scratch buffer.
+template <typename AType>
+__device__ __forceinline__ void Fp8ActQdq16(uint4& raw, float inv_scale, float scale) {
+  AType* v = reinterpret_cast<AType*>(&raw);
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    const float q = static_cast<float>(__nv_fp8_e4m3(to_float<AType>(v[i]) * inv_scale));
+    v[i] = from_float<AType>(q * scale);
+  }
+}
+
 // -----------------------------------------------------------------------------
 // Fused FP8 weight-only GEMV fast path for the decode phase (small M).
 //
@@ -202,6 +215,7 @@ __global__ void MatMulBlockScaledFp8GemvKernel(AType* __restrict__ output,
                                                const __nv_fp8_e4m3* __restrict__ input_b,
                                                const float* __restrict__ weight_scale,
                                                const AType* __restrict__ bias,
+                                               const float* __restrict__ act_scale,
                                                int m,
                                                int n,
                                                int k,
@@ -218,6 +232,10 @@ __global__ void MatMulBlockScaledFp8GemvKernel(AType* __restrict__ output,
   if (row_base >= m || col_base >= n) {
     return;
   }
+
+  const bool act_qdq = act_scale != nullptr;
+  const float a_scale = act_qdq ? *act_scale : 0.f;
+  const float a_inv_scale = a_scale != 0.f ? 1.0f / a_scale : 0.f;
 
   float acc[RowsPerWarp][ColsPerWarp] = {};
 
@@ -247,6 +265,10 @@ __global__ void MatMulBlockScaledFp8GemvKernel(AType* __restrict__ output,
           const uint4* ap = reinterpret_cast<const uint4*>(input_a + static_cast<size_t>(row) * k + koff[u]);
           a_lo[u][r] = ap[0];
           a_hi[u][r] = ap[1];
+          if (act_qdq) {
+            Fp8ActQdq16<AType>(a_lo[u][r], a_inv_scale, a_scale);
+            Fp8ActQdq16<AType>(a_hi[u][r], a_inv_scale, a_scale);
+          }
         } else {
           a_lo[u][r] = make_uint4(0, 0, 0, 0);
           a_hi[u][r] = make_uint4(0, 0, 0, 0);
@@ -497,12 +519,17 @@ __global__ void MatMulBlockScaledFp8MmaGemvKernel(AType* __restrict__ output,
                                                   const __nv_fp8_e4m3* __restrict__ input_b,
                                                   const float* __restrict__ weight_scale,
                                                   const AType* __restrict__ bias,
+                                                  const float* __restrict__ act_scale,
                                                   int m,
                                                   int n,
                                                   int k,
                                                   int block_size,
                                                   int k_blocks) {
   using Mma = Fp8GemvMma<AType>;
+
+  const bool act_qdq = act_scale != nullptr;
+  const float a_scale = act_qdq ? *act_scale : 0.f;
+  const float a_inv_scale = a_scale != 0.f ? 1.0f / a_scale : 0.f;
 
   const int lane = threadIdx.x;
   const int warp = threadIdx.y;
@@ -587,6 +614,10 @@ __global__ void MatMulBlockScaledFp8MmaGemvKernel(AType* __restrict__ output,
         const uint4* ap = reinterpret_cast<const uint4*>(input_a + a_off + k0);
         a_raw[0] = ap[0];
         a_raw[1] = ap[1];
+        if (act_qdq) {
+          Fp8ActQdq16<AType>(a_raw[0], a_inv_scale, a_scale);
+          Fp8ActQdq16<AType>(a_raw[1], a_inv_scale, a_scale);
+        }
       } else {
         a_raw[0] = make_uint4(0, 0, 0, 0);
         a_raw[1] = make_uint4(0, 0, 0, 0);
@@ -814,6 +845,7 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
                                       const void* b_fp8,
                                       const float* weight_scale,
                                       const void* bias,
+                                      const float* act_scale,
                                       int m,
                                       int n,
                                       int k,
@@ -855,11 +887,11 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
       if (is_bf16) {
         MatMulBlockScaledFp8MmaGemvKernel<KSplit, Stages><<<mma_blocks, mma_threads, 0, stream>>>(
             reinterpret_cast<__nv_bfloat16*>(y), reinterpret_cast<const __nv_bfloat16*>(a), b,
-            weight_scale, reinterpret_cast<const __nv_bfloat16*>(bias), m, n, k, block_size, k_blocks);
+            weight_scale, reinterpret_cast<const __nv_bfloat16*>(bias), act_scale, m, n, k, block_size, k_blocks);
       } else {
         MatMulBlockScaledFp8MmaGemvKernel<KSplit, Stages><<<mma_blocks, mma_threads, 0, stream>>>(
             reinterpret_cast<half*>(y), reinterpret_cast<const half*>(a), b,
-            weight_scale, reinterpret_cast<const half*>(bias), m, n, k, block_size, k_blocks);
+            weight_scale, reinterpret_cast<const half*>(bias), act_scale, m, n, k, block_size, k_blocks);
       }
     };
     const auto launch_staged = [&]<int KSplit>() {
@@ -890,11 +922,11 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
     if (is_bf16) {
       MatMulBlockScaledFp8GemvKernel<RowsPerWarp, ColsPerWarp, Unroll><<<blocks, threads, 0, stream>>>(
           reinterpret_cast<__nv_bfloat16*>(y), reinterpret_cast<const __nv_bfloat16*>(a), b,
-          weight_scale, reinterpret_cast<const __nv_bfloat16*>(bias), m, n, k, block_size, k_blocks);
+          weight_scale, reinterpret_cast<const __nv_bfloat16*>(bias), act_scale, m, n, k, block_size, k_blocks);
     } else {
       MatMulBlockScaledFp8GemvKernel<RowsPerWarp, ColsPerWarp, Unroll><<<blocks, threads, 0, stream>>>(
           reinterpret_cast<half*>(y), reinterpret_cast<const half*>(a), b,
-          weight_scale, reinterpret_cast<const half*>(bias), m, n, k, block_size, k_blocks);
+          weight_scale, reinterpret_cast<const half*>(bias), act_scale, m, n, k, block_size, k_blocks);
     }
   };
 
