@@ -973,7 +973,7 @@ def generate_build_tree(
             cmake_args += [
                 "-DCMAKE_SYSTEM_NAME=iOS",
                 "-DCMAKE_TOOLCHAIN_FILE="
-                + (args.ios_toolchain_file if args.ios_toolchain_file else "../cmake/onnxruntime_ios.toolchain.cmake"),
+                + (args.ios_toolchain_file or "../cmake/onnxruntime_ios.toolchain.cmake"),
             ]
         # for catalyst build, we need to manually specify cflags for target e.g. x86_64-apple-ios14.0-macabi, etc.
         # https://forums.developer.apple.com/forums/thread/122571
@@ -994,9 +994,7 @@ def generate_build_tree(
                 "-DCMAKE_SYSTEM_NAME=visionOS",
                 "-DCMAKE_TOOLCHAIN_FILE="
                 + (
-                    args.visionos_toolchain_file
-                    if args.visionos_toolchain_file
-                    else "../cmake/onnxruntime_visionos.toolchain.cmake"
+                    args.visionos_toolchain_file or "../cmake/onnxruntime_visionos.toolchain.cmake"
                 ),
                 "-Donnxruntime_ENABLE_CPUINFO=OFF",
             ]
@@ -1005,9 +1003,7 @@ def generate_build_tree(
                 "-DCMAKE_SYSTEM_NAME=tvOS",
                 "-DCMAKE_TOOLCHAIN_FILE="
                 + (
-                    args.tvos_toolchain_file
-                    if args.tvos_toolchain_file
-                    else "../cmake/onnxruntime_tvos.toolchain.cmake"
+                    args.tvos_toolchain_file or "../cmake/onnxruntime_tvos.toolchain.cmake"
                 ),
             ]
 
@@ -1440,8 +1436,8 @@ def setup_cuda_vars(args):
     cudnn_home = ""
 
     if args.use_cuda:
-        cuda_home = args.cuda_home if args.cuda_home else os.getenv("CUDA_HOME")
-        cudnn_home = args.cudnn_home if args.cudnn_home else os.getenv("CUDNN_HOME")
+        cuda_home = args.cuda_home or os.getenv("CUDA_HOME")
+        cudnn_home = args.cudnn_home or os.getenv("CUDNN_HOME")
 
         cuda_home_valid = cuda_home is not None and os.path.exists(cuda_home)
         cudnn_home_valid = cudnn_home is not None and os.path.exists(cudnn_home)
@@ -1459,7 +1455,7 @@ def setup_cann_vars(args):
     cann_home = ""
 
     if args.use_cann:
-        cann_home = args.cann_home if args.cann_home else os.getenv("ASCEND_HOME_PATH")
+        cann_home = args.cann_home or os.getenv("ASCEND_HOME_PATH")
 
         cann_home_valid = cann_home is not None and os.path.exists(cann_home)
 
@@ -1475,7 +1471,7 @@ def setup_cann_vars(args):
 def setup_tensorrt_vars(args):
     tensorrt_home = ""
     if args.use_tensorrt:
-        tensorrt_home = args.tensorrt_home if args.tensorrt_home else os.getenv("TENSORRT_HOME")
+        tensorrt_home = args.tensorrt_home or os.getenv("TENSORRT_HOME")
         tensorrt_home_valid = tensorrt_home is not None and os.path.exists(tensorrt_home)
         if not tensorrt_home_valid:
             raise BuildError(
