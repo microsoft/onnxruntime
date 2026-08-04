@@ -1661,6 +1661,83 @@ to one per token and multiplied by routed_scaling_factor.)DOC")
           updateOutputShape(ctx, 2, selected_shape);
         }));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+  HyperConnection, 1,
+    OpSchema()
+        .SetDoc(R"DOC(DeepSeek V4 manifold-constrained hyper-connection mapping.
+
+The operator applies an FP32 unweighted RMS normalization and learned projection to the
+parallel residual streams, computes the post scale and Sinkhorn-normalized stream mixing
+matrix, and collapses the streams for the following transformer sublayer.)DOC")
+        .Attr("epsilon", "Epsilon used by RMS normalization and Sinkhorn normalization.",
+              AttributeProto::FLOAT, 1e-6f)
+        .Attr("sinkhorn_iterations", "Number of Sinkhorn row/column normalization iterations.",
+              AttributeProto::INT, static_cast<int64_t>(20))
+        .Input(0, "hidden_streams", "Input residual streams with shape (B, S, H, D).", "T")
+        .Input(1, "projection_weight", "FP32 projection weight with shape ((2 + H) * H, H * D).", "F")
+        .Input(2, "projection_bias", "FP32 projection bias with shape ((2 + H) * H).", "F")
+        .Input(3, "projection_scale", "FP32 pre, post, and combination scales with shape (3).", "F")
+        .Output(0, "post", "Sublayer output placement weights with shape (B, S, H).", "T")
+        .Output(1, "comb", "Doubly-stochastic stream mixing matrices with shape (B, S, H, H).", "T")
+        .Output(2, "collapsed", "Collapsed sublayer input with shape (B, S, D).", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain activations and outputs to floating-point tensors.")
+        .TypeConstraint("F", {"tensor(float)"}, "Constrain learned parameters to FP32 tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          for (int output = 0; output < 3; ++output) {
+            ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, output);
+          }
+          if (!hasInputShape(ctx, 0)) return;
+          const auto& hidden_shape = getInputShape(ctx, 0);
+          if (hidden_shape.dim_size() != 4) {
+            fail_shape_inference("hidden_streams must have rank 4.");
+          }
+          TensorShapeProto post_shape;
+          *post_shape.add_dim() = hidden_shape.dim(0);
+          *post_shape.add_dim() = hidden_shape.dim(1);
+          *post_shape.add_dim() = hidden_shape.dim(2);
+          updateOutputShape(ctx, 0, post_shape);
+          TensorShapeProto comb_shape(post_shape);
+          *comb_shape.add_dim() = hidden_shape.dim(2);
+          updateOutputShape(ctx, 1, comb_shape);
+          TensorShapeProto collapsed_shape;
+          *collapsed_shape.add_dim() = hidden_shape.dim(0);
+          *collapsed_shape.add_dim() = hidden_shape.dim(1);
+          *collapsed_shape.add_dim() = hidden_shape.dim(3);
+          updateOutputShape(ctx, 2, collapsed_shape);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+  HyperHead, 1,
+    OpSchema()
+        .SetDoc(R"DOC(DeepSeek V4 final hyper-connection stream collapse.
+
+The operator applies an FP32 unweighted RMS normalization and learned sigmoid mixing weights,
+then reduces the parallel residual streams to the final hidden state.)DOC")
+        .Attr("epsilon", "Epsilon used by RMS normalization and sigmoid mixing.",
+              AttributeProto::FLOAT, 1e-6f)
+        .Input(0, "hidden_streams", "Input residual streams with shape (B, S, H, D).", "T")
+        .Input(1, "projection_weight", "FP32 projection weight with shape (H, H * D).", "F")
+        .Input(2, "projection_bias", "FP32 projection bias with shape (H).", "F")
+        .Input(3, "projection_scale", "FP32 scalar projection scale.", "F")
+        .Output(0, "output", "Collapsed hidden states with shape (B, S, D).", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain activations and output to floating-point tensors.")
+        .TypeConstraint("F", {"tensor(float)"}, "Constrain learned parameters to FP32 tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (!hasInputShape(ctx, 0)) return;
+          const auto& hidden_shape = getInputShape(ctx, 0);
+          if (hidden_shape.dim_size() != 4) {
+            fail_shape_inference("hidden_streams must have rank 4.");
+          }
+          TensorShapeProto output_shape;
+          *output_shape.add_dim() = hidden_shape.dim(0);
+          *output_shape.add_dim() = hidden_shape.dim(1);
+          *output_shape.add_dim() = hidden_shape.dim(3);
+          updateOutputShape(ctx, 0, output_shape);
+        }));
+
 constexpr const char* PagedAttention_ver1_doc = R"DOC(
 Paged Attention.
 

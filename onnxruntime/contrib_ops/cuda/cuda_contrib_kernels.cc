@@ -133,6 +133,12 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CompressedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, CompressedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HashRouter);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HashRouter);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, HyperConnection);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HyperConnection);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HyperConnection);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, HyperHead);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HyperHead);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HyperHead);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DecoderAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DecoderAttention);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, int32_t, DynamicSlice);
@@ -408,6 +414,12 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, CompressedAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HashRouter)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HashRouter)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, HyperConnection)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HyperConnection)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HyperConnection)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, HyperHead)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HyperHead)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HyperHead)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DecoderAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DecoderAttention)>,
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, int32_t, DynamicSlice)>,

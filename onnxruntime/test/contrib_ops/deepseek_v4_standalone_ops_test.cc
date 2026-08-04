@@ -156,12 +156,78 @@ TEST(DeepSeekV4StandaloneOpsTest, HashRouterGathersNormalizesAndScales) {
   }
 }
 
+TEST(DeepSeekV4StandaloneOpsTest, HyperConnectionComputesThreeModuleOutputs) {
+  OpTester tester("HyperConnection", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<float>("epsilon", 1e-6f);
+  tester.AddAttribute<int64_t>("sinkhorn_iterations", 1);
+  tester.AddInput<float>("hidden_streams", {1, 1, 2, 1}, {1.0f, 3.0f});
+  tester.AddInput<float>("projection_weight", {8, 2}, std::vector<float>(16, 0.0f));
+  tester.AddInput<float>("projection_bias", {8}, {std::log(3.0f), std::log(3.0f), 0.0f, 0.0f,
+                                                   0.0f, 0.0f, 0.0f, 0.0f});
+  tester.AddInput<float>("projection_scale", {3}, {2.0f, 2.0f, 2.0f});
+  tester.AddOutput<float>("post", {1, 1, 2}, {1.0f, 1.0f});
+  tester.AddOutput<float>("comb", {1, 1, 2, 2}, std::vector<float>(4, 0.5f));
+  tester.AddOutput<float>("collapsed", {1, 1, 1}, {3.000004f});
+  tester.SetOutputAbsErr("comb", 1e-5f);
+  tester.SetOutputAbsErr("collapsed", 1e-5f);
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(DeepSeekV4StandaloneOpsTest, HyperHeadCollapsesStreams) {
+  OpTester tester("HyperHead", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<float>("epsilon", 1e-6f);
+  tester.AddInput<float>("hidden_streams", {1, 1, 2, 1}, {1.0f, 3.0f});
+  tester.AddInput<float>("projection_weight", {2, 2}, std::vector<float>(4, 0.0f));
+  tester.AddInput<float>("projection_bias", {2}, {std::log(3.0f), std::log(3.0f)});
+  tester.AddInput<float>("projection_scale", {1}, {2.0f});
+  tester.AddOutput<float>("output", {1, 1, 1}, {3.000004f});
+  tester.SetOutputAbsErr("output", 1e-5f);
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
 #ifdef USE_CUDA
 
 static std::vector<MLFloat16> ToHalf(const std::vector<float>& values) {
   std::vector<MLFloat16> result(values.size());
   ConvertFloatToMLFloat16(values.data(), result.data(), values.size());
   return result;
+}
+
+TEST(DeepSeekV4StandaloneOpsTest, CudaHyperConnectionComputesThreeModuleOutputs) {
+  OpTester tester("HyperConnection", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<float>("epsilon", 1e-6f);
+  tester.AddAttribute<int64_t>("sinkhorn_iterations", 1);
+  tester.AddInput<MLFloat16>("hidden_streams", {1, 1, 2, 1}, ToHalf({1.0f, 3.0f}));
+  tester.AddInput<float>("projection_weight", {8, 2}, std::vector<float>(16, 0.0f));
+  tester.AddInput<float>("projection_bias", {8}, {std::log(3.0f), std::log(3.0f), 0.0f, 0.0f,
+                                                   0.0f, 0.0f, 0.0f, 0.0f});
+  tester.AddInput<float>("projection_scale", {3}, {2.0f, 2.0f, 2.0f});
+  tester.AddOutput<MLFloat16>("post", {1, 1, 2}, ToHalf({1.0f, 1.0f}));
+  tester.AddOutput<MLFloat16>("comb", {1, 1, 2, 2}, ToHalf(std::vector<float>(4, 0.5f)));
+  tester.AddOutput<MLFloat16>("collapsed", {1, 1, 1}, ToHalf({3.000004f}));
+  tester.SetOutputAbsErr("comb", 0.002f);
+  tester.SetOutputAbsErr("collapsed", 0.002f);
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(DeepSeekV4StandaloneOpsTest, CudaHyperHeadCollapsesStreams) {
+  OpTester tester("HyperHead", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<float>("epsilon", 1e-6f);
+  tester.AddInput<MLFloat16>("hidden_streams", {1, 1, 2, 1}, ToHalf({1.0f, 3.0f}));
+  tester.AddInput<float>("projection_weight", {2, 2}, std::vector<float>(4, 0.0f));
+  tester.AddInput<float>("projection_bias", {2}, {std::log(3.0f), std::log(3.0f)});
+  tester.AddInput<float>("projection_scale", {1}, {2.0f});
+  tester.AddOutput<MLFloat16>("output", {1, 1, 1}, ToHalf({3.000004f}));
+  tester.SetOutputAbsErr("output", 0.002f);
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
 TEST(DeepSeekV4StandaloneOpsTest, CudaHeavilyCompressedAttentionCompressesAndMasksCausally) {
