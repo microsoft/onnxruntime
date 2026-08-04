@@ -862,6 +862,67 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BiasSoftmax, 1,
                                     "Constrain input and output types to float tensors.")
                                 .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    HyperConnectionMix, 1,
+    OpSchema()
+        .SetDoc(
+            "Fused hyper-connection post mix, pre mix and layer norm, as used between two "
+            "consecutive blocks of a hyper-connection network.\n"
+            "\n"
+            "The post mix folds the finished block output back into the `hc` residual streams:\n"
+            "  residual_out[..,h,:] = post_mix[..,h] * x[..,:] "
+            "+ ReduceSum(comb_mix[..,g,h] * residual[..,g,:], g)\n"
+            "The pre mix then collapses those streams into the next block's input and produces "
+            "the weights that block will need when its own output comes back:\n"
+            "  flat   = Reshape(residual_out, (.., hc * dim))\n"
+            "  mixes  = MatMul(flat, fn) / Sqrt(ReduceMean(flat * flat, -1) + epsilon)\n"
+            "  pre    = Sigmoid(mixes[..,0:hc] * scale[0] + base[0:hc]) + hc_epsilon\n"
+            "  post_mix_out = Sigmoid(mixes[..,hc:2*hc] * scale[1] + base[hc:2*hc]) * post_alpha\n"
+            "  comb   = Reshape(mixes[..,2*hc:] * scale[2] + base[2*hc:], (.., hc, hc))\n"
+            "  comb_mix_out = SinkhornNormalize(Softmax(comb, -1) + hc_epsilon)\n"
+            "  y      = ReduceSum(pre[..,h] * residual_out[..,h,:], h)\n"
+            "  layer_input = norm_weight * y / Sqrt(ReduceMean(y * y, -1) + epsilon)\n"
+            "\n"
+            "Intermediates are computed in float. `y` and `residual_out` are rounded to T, "
+            "matching the unfused subgraph. The multiplicity `hc` is at most 4.")
+        .Attr("sinkhorn_iterations", "Number of Sinkhorn iterations applied to the combination matrix.",
+              AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("epsilon", "Value added to each mean of squares before the square root.",
+              AttributeProto::FLOAT, 1e-6f)
+        .Attr("hc_epsilon", "Floor added to the gates and to the combination matrix.",
+              AttributeProto::FLOAT, 1e-6f)
+        .Attr("sinkhorn_epsilon", "Value added to each Sinkhorn sum before dividing.",
+              AttributeProto::FLOAT, 1e-6f)
+        .Attr("post_alpha", "Multiplier applied to the post gate after the sigmoid.",
+              AttributeProto::FLOAT, 2.0f)
+        .Input(0, "x", "Output of the block that just finished, shape (batch, seq, dim).", "T")
+        .Input(1, "residual", "Residual streams, shape (batch, seq, hc, dim).", "T")
+        .Input(2, "post_mix", "Post gate produced by the previous mix, shape (batch, seq, hc).", "M")
+        .Input(3, "comb_mix",
+               "Combination matrix produced by the previous mix, shape (batch, seq, hc, hc).", "M")
+        .Input(4, "fn", "Mixing weights, shape (hc * dim, (2 + hc) * hc).", "M")
+        .Input(5, "scale", "Scales for the pre gate, the post gate and the combination matrix, shape (3).", "M")
+        .Input(6, "base", "Biases for the same three slices, shape ((2 + hc) * hc).", "M")
+        .Input(7, "norm_weight", "Weights of the RMS norm applied to the pre-mix output, shape (dim).", "M")
+        .Output(0, "residual_out", "Updated residual streams, same shape as residual.", "T")
+        .Output(1, "post_mix_out", "Post gate for the next block, same shape as post_mix.", "M")
+        .Output(2, "comb_mix_out", "Combination matrix for the next block, same shape as comb_mix.", "M")
+        .Output(3, "layer_input", "Normalized input of the next block, same shape as x.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain the activation type to float tensors.")
+        .TypeConstraint("M", {"tensor(float)"},
+                        "Constrain the mixing state and the weights to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          // residual -> residual_out, post_mix -> post_mix_out, comb_mix -> comb_mix_out, x -> layer_input
+          constexpr int kFrom[4] = {1, 2, 3, 0};
+          for (int i = 0; i < 4; ++i) {
+            propagateElemTypeFromInputToOutput(ctx, kFrom[i], i);
+            if (hasInputShape(ctx, kFrom[i])) {
+              propagateShapeFromInputToOutput(ctx, kFrom[i], i);
+            }
+          }
+        }));
+
 ONNX_MS_OPERATOR_SET_SCHEMA(SinkhornNormalize, 1,
                             OpSchema()
                                 .SetDoc(

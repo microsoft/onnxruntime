@@ -163,6 +163,9 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GemmaRotaryEmbedding);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, HyperConnectionMix);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HyperConnectionMix);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HyperConnectionMix);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, CausalConvWithState);
@@ -445,6 +448,9 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GemmaRotaryEmbedding)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, HyperConnectionMix)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HyperConnectionMix)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HyperConnectionMix)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, CausalConvWithState)>,

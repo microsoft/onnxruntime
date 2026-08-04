@@ -3,6 +3,7 @@
 
 #include "contrib_ops/cuda/math/sinkhorn_normalize_impl.h"
 
+#include "contrib_ops/cuda/math/sinkhorn_normalize_impl.cuh"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
@@ -12,28 +13,6 @@ namespace {
 
 constexpr int kWarpSize = 32;
 constexpr int kWarpsPerBlock = 8;
-
-// Divide every element by its row (or column) sum, epsilon-padded. The calling warp owns
-// `tile` exclusively, so __syncwarp is enough to order the sum against the division.
-__device__ __forceinline__ void NormalizeAxis(float* tile, float* sums, int order, int lane,
-                                              float epsilon, bool by_row) {
-  if (lane < order) {
-    float sum = 0.f;
-    if (by_row) {
-      for (int j = 0; j < order; ++j) sum += tile[lane * order + j];
-    } else {
-      for (int i = 0; i < order; ++i) sum += tile[i * order + lane];
-    }
-    sums[lane] = sum + epsilon;
-  }
-  __syncwarp();
-
-  const int count = order * order;
-  for (int e = lane; e < count; e += kWarpSize) {
-    tile[e] /= by_row ? sums[e / order] : sums[e % order];
-  }
-  __syncwarp();
-}
 
 __global__ void SinkhornNormalizeKernel(const float* input, float* output, int order,
                                         int iterations, float epsilon, int num_matrices) {
@@ -52,11 +31,7 @@ __global__ void SinkhornNormalizeKernel(const float* input, float* output, int o
   for (int e = lane; e < count; e += kWarpSize) tile[e] = src[e];
   __syncwarp();
 
-  NormalizeAxis(tile, sums, order, lane, epsilon, /*by_row=*/false);
-  for (int it = 1; it < iterations; ++it) {
-    NormalizeAxis(tile, sums, order, lane, epsilon, /*by_row=*/true);
-    NormalizeAxis(tile, sums, order, lane, epsilon, /*by_row=*/false);
-  }
+  SinkhornNormalizeWarp(tile, sums, order, lane, iterations, epsilon);
 
   float* dst = output + static_cast<size_t>(matrix) * count;
   for (int e = lane; e < count; e += kWarpSize) dst[e] = tile[e];
