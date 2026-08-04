@@ -155,5 +155,71 @@ Status ConcatImpl(cudaStream_t stream, const size_t element_bytes, const int blo
   return Status::OK();
 }
 
+template <typename T>
+__global__ void _ConcatKernelByValue(const fast_divmod block_size_including_axis_dim_div,
+                                     const fast_divmod block_size_inside_axis_dim_div,
+                                     const TArray<int64_t, 32> concat_sizes_range, T* output_data,
+                                     const TArray<const void*, 32> input_data, const CUDA_LONG N) {
+  CUDA_LONG start = kNumElementsPerThread * kNumThreadsPerBlock * blockIdx.x + threadIdx.x;
+  T value[kNumElementsPerThread];
+
+  CUDA_LONG id = start;
+#pragma unroll
+  for (int i = 0; i < kNumElementsPerThread; ++i) {
+    if (id < N) {
+      int outer_block_index, block_index, offset;
+      block_size_including_axis_dim_div.divmod(id, outer_block_index, offset);
+      block_size_inside_axis_dim_div.divmod(offset, block_index, offset);
+      // Scanning the prefix sums replaces the output-sized mapping table; with
+      // at most 32 inputs it is cheaper than the extra global load.
+      int input_index = 0;
+      while (block_index >= static_cast<int>(concat_sizes_range[input_index])) ++input_index;
+      int64_t range_left = (input_index == 0) ? 0 : concat_sizes_range[input_index - 1];
+      int64_t concat_size = concat_sizes_range[input_index] - range_left;
+      int block_offset = block_index - static_cast<int>(range_left);
+      CUDA_LONG input_pos =
+          (outer_block_index * concat_size + block_offset) * block_size_inside_axis_dim_div.d_ + offset;
+      value[i] = reinterpret_cast<const T*>(input_data[input_index])[input_pos];
+      id += kNumThreadsPerBlock;
+    }
+  }
+
+  id = start;
+#pragma unroll
+  for (int i = 0; i < kNumElementsPerThread; ++i) {
+    if (id < N) {
+      output_data[id] = value[i];
+      id += kNumThreadsPerBlock;
+    }
+  }
+}
+
+Status ConcatImpl(cudaStream_t stream, const size_t element_bytes, const int block_size_including_axis_dim,
+                  const int block_size_inside_axis_dim, const TArray<int64_t, 32>& concat_sizes_range,
+                  void* output_data, const TArray<const void*, 32>& input_data, const size_t output_size) {
+  CUDA_LONG N = static_cast<CUDA_LONG>(output_size);
+  int blocksPerGrid = CeilDiv(N, kNumElementsPerThread * kNumThreadsPerBlock);
+  fast_divmod block_size_including_axis_dim_div = fast_divmod(block_size_including_axis_dim);
+  fast_divmod block_size_inside_axis_dim_div = fast_divmod(block_size_inside_axis_dim);
+
+  switch (element_bytes) {
+#define CASE_ELEMENT_TYPE(type)                                                                \
+  case sizeof(type): {                                                                         \
+    _ConcatKernelByValue<<<blocksPerGrid, kNumThreadsPerBlock, 0, stream>>>(                   \
+        block_size_including_axis_dim_div, block_size_inside_axis_dim_div, concat_sizes_range, \
+        reinterpret_cast<ToCudaType<type>::MappedType*>(output_data), input_data, N);          \
+  } break;
+    CASE_ELEMENT_TYPE(int8_t);
+    CASE_ELEMENT_TYPE(int16_t);
+    CASE_ELEMENT_TYPE(int32_t);
+    CASE_ELEMENT_TYPE(int64_t);
+#undef CASE_ELEMENT_TYPE
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for Concat operator");
+  }
+
+  return Status::OK();
+}
+
 }  // namespace cuda
 }  // namespace onnxruntime
