@@ -972,8 +972,7 @@ def generate_build_tree(
         if args.ios:
             cmake_args += [
                 "-DCMAKE_SYSTEM_NAME=iOS",
-                "-DCMAKE_TOOLCHAIN_FILE="
-                + (args.ios_toolchain_file or "../cmake/onnxruntime_ios.toolchain.cmake"),
+                "-DCMAKE_TOOLCHAIN_FILE=" + (args.ios_toolchain_file or "../cmake/onnxruntime_ios.toolchain.cmake"),
             ]
         # for catalyst build, we need to manually specify cflags for target e.g. x86_64-apple-ios14.0-macabi, etc.
         # https://forums.developer.apple.com/forums/thread/122571
@@ -999,8 +998,7 @@ def generate_build_tree(
         if args.tvos:
             cmake_args += [
                 "-DCMAKE_SYSTEM_NAME=tvOS",
-                "-DCMAKE_TOOLCHAIN_FILE="
-                + (args.tvos_toolchain_file or "../cmake/onnxruntime_tvos.toolchain.cmake"),
+                "-DCMAKE_TOOLCHAIN_FILE=" + (args.tvos_toolchain_file or "../cmake/onnxruntime_tvos.toolchain.cmake"),
             ]
 
     if args.build_wasm:

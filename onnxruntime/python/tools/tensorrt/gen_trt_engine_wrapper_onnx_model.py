@@ -5,6 +5,7 @@
 from argparse import ArgumentParser
 
 import tensorrt as trt
+
 from onnxruntime._onnx_shim import onnx
 from onnxruntime._onnx_shim.onnx import TensorProto, helper
 

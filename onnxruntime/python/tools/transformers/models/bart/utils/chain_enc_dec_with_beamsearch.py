@@ -6,9 +6,10 @@
 
 import os
 
+from utils import export_helper
+
 from onnxruntime._onnx_shim import onnx
 from onnxruntime._onnx_shim.onnx import TensorProto, helper
-from utils import export_helper
 
 
 def make_dim_proto_numeric(model, config):
