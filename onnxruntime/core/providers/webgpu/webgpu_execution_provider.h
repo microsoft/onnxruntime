@@ -55,7 +55,7 @@ struct WebGpuExecutionProviderConfig {
   // Accumulate MatMulNBits dot products in f32 rather than in the output element type.
   // This is the single line that decides the shipped default for the
   // "preferredMatmulAccumulatorPrecision" provider option.
-  bool matmul_accumulator_precision_f32{true};
+  bool matmul_accumulator_precision_f32{false};
   std::vector<std::string> force_cpu_node_names{};
 };
 
@@ -144,7 +144,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool enable_int64_ = false;
   uint32_t multi_rotary_cache_concat_offset_ = 0;
   uint32_t kv_cache_quantization_bits_ = 0;
-  bool matmul_accumulator_precision_f32_ = true;
+  bool matmul_accumulator_precision_f32_ = false;
   std::unordered_map<int, int> graph_id_to_run_count_;
   // Required regular runs before graph capture for any necessary allocations.
   const int min_num_runs_before_graph_capture_ = 0;
