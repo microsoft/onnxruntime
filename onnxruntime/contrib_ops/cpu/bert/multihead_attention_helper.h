@@ -249,15 +249,20 @@ inline Status CheckCacheIndirection(
                            cache_indir_dims.size());
   }
   num_beams = static_cast<int>(cache_indir_dims[1]);
-  if (cache_indir_dims[1] == 0) {
+  if (cache_indir_dims[1] <= 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'cache_indirection' dimension 1 should be num_beams, got ",
                            cache_indir_dims[1]);
   }
-  if (cache_indir_dims[0] != static_cast<int64_t>(batch_beam_size / num_beams)) {
+  // Require num_beams to evenly divide batch_beam_size, and dim 0 to be exactly batch_beam_size / num_beams.
+  // Using only truncating division to derive the expected dim 0 would accept shapes that are inconsistent
+  // with the loops that later iterate the full [0, batch_beam_size) range with stride max_sequence_length.
+  if (batch_beam_size % num_beams != 0 ||
+      cache_indir_dims[0] * static_cast<int64_t>(num_beams) != static_cast<int64_t>(batch_beam_size)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'cache_indirection' dimension 0 should be batch_size, got ",
-                           cache_indir_dims[0]);
+                           "Input 'cache_indirection' dimension 0 (", cache_indir_dims[0],
+                           ") times dimension 1 (num_beams=", num_beams,
+                           ") must equal batch_beam_size (", batch_beam_size, ")");
   }
   if (max_sequence_length > 0 && cache_indir_dims[2] != static_cast<int64_t>(max_sequence_length)) {
     // First condition is to avoid this check for cross attention layers where
