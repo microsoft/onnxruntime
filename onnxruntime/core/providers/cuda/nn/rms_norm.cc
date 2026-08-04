@@ -6,6 +6,7 @@
 #include "core/providers/cuda/nn/layer_norm_impl.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cpu/nn/layer_norm_helper.h"
+#include <limits>
 #include <vector>
 
 namespace onnxruntime {
@@ -75,6 +76,10 @@ Status RMSNorm<T, U, V>::ComputeInternal(OpKernelContext* ctx) const {
   if (x_shape.Size() == 0) {
     return Status::OK();
   }
+
+  ORT_RETURN_IF(params.num_rows > 0 &&
+                    params.norm_size > std::numeric_limits<int>::max() / params.num_rows,
+                "RMSNormalization input is too large for CUDA kernel indexing: num_rows * norm_size exceeds INT_MAX");
 
   // For RMSNorm, we don't need mean and inv_var data, so we can pass nullptr.
   CudaU* mean_data = nullptr;

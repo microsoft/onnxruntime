@@ -6,6 +6,7 @@
 #include "core/providers/cuda/nn/layer_norm_impl.h"
 #include "core/providers/cpu/nn/layer_norm_helper.h"
 #include "core/providers/cuda/cuda_common.h"
+#include <limits>
 
 namespace onnxruntime {
 namespace cuda {
@@ -87,6 +88,10 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
   if (x_shape.Size() == 0) {
     return Status::OK();
   }
+
+  ORT_RETURN_IF(params.num_rows > 0 &&
+                    params.norm_size > std::numeric_limits<int>::max() / params.num_rows,
+                "LayerNormalization input is too large for CUDA kernel indexing: num_rows * norm_size exceeds INT_MAX");
 
   HostApplyLayerNorm<CudaT, CudaU, CudaV, simplified>(
       GetDeviceProp(), Stream(ctx), Y_data, mean_data, inv_var_data, X_data,
