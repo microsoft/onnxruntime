@@ -568,10 +568,12 @@ else()
         if (onnxruntime_USE_SVE)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlasi_sve.h)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve_dispatch.cpp)
-          # The portable machine-code variant is the production default; set
-          # to OFF to build the SVE intrinsics reference implementation (the
-          # regeneration source for elementwise_sve_asm.S).
-          set(onnxruntime_SVE_ELEMENTWISE_ASM ON)
+          # The portable machine-code variant is the production default;
+          # configure with -Donnxruntime_SVE_ELEMENTWISE_ASM=OFF to build the
+          # SVE intrinsics reference implementation instead (the regeneration
+          # source for elementwise_sve_asm.S).
+          option(onnxruntime_SVE_ELEMENTWISE_ASM
+                 "Build the portable machine-code SVE elementwise kernels instead of the intrinsics reference" ON)
           if (onnxruntime_SVE_ELEMENTWISE_ASM)
             # Portable machine-code variant (same symbols as the intrinsics TUs).
             list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/aarch64/elementwise_sve_asm.S)

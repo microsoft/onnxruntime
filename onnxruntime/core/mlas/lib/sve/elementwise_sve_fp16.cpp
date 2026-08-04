@@ -32,6 +32,8 @@ Abstract:
 
 #include "mlasi_sve.h"
 
+#include <cmath>  // M_SQRT1_2
+
 #if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 
 #include <arm_sve.h>

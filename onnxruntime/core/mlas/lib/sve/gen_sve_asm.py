@@ -42,7 +42,7 @@ LITERAL_LOAD_RE = re.compile(r"^ldr\s+[^,]+,\s+0x[0-9a-f]+\s*$")
 
 
 def run(cmd):
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         sys.exit(f"FAILED: {' '.join(cmd)}\n{result.stderr}")
     return result.stdout
@@ -155,13 +155,13 @@ def emit(functions, symbols, module, src, out_path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--src", required=True, action="append",
-                    help="intrinsics TU; repeatable, objects are scanned in order")
+    ap.add_argument(
+        "--src", required=True, action="append", help="intrinsics TU; repeatable, objects are scanned in order"
+    )
     ap.add_argument("--out", required=True)
     ap.add_argument("--march", required=True)
     ap.add_argument("--opt", default="O3", help="optimization level (O2/O3)")
-    ap.add_argument("--include", action="append", default=[],
-                    help="extra -I directory; repeatable")
+    ap.add_argument("--include", action="append", default=[], help="extra -I directory; repeatable")
     ap.add_argument("--define", action="append", default=[])
     ap.add_argument("--symbols", required=True)
     ap.add_argument("--module", required=True)
@@ -169,23 +169,27 @@ def main():
     args = ap.parse_args()
 
     symbols = args.symbols.split(",")
-    src_dir = os.path.dirname(os.path.abspath(args.src[0]))
 
     functions = {}
     with tempfile.TemporaryDirectory() as tmp:
         for i, src in enumerate(args.src):
             obj = os.path.join(tmp, f"frozen{i}.o")
-            cmd = [args.cxx, "-std=c++17", f"-{args.opt}", f"-march={args.march}",
-                   "-fno-stack-protector", "-ffunction-sections",
-                   f"-I{os.path.dirname(os.path.abspath(src))}"]
+            cmd = [
+                args.cxx,
+                "-std=c++17",
+                f"-{args.opt}",
+                f"-march={args.march}",
+                "-fno-stack-protector",
+                "-ffunction-sections",
+                f"-I{os.path.dirname(os.path.abspath(src))}",
+            ]
             cmd += [f"-I{d}" for d in args.include]
             cmd += [f"-D{d}" for d in args.define]
             cmd += ["-c", "-o", obj, src]
             run(cmd)
             wanted = [s for s in symbols if s not in functions]
             check_relocations(obj, wanted)
-            for name, body in extract_functions(obj, wanted, allow_missing=True).items():
-                functions[name] = body
+            functions.update(extract_functions(obj, wanted, allow_missing=True))
     missing = [s for s in symbols if s not in functions]
     if missing:
         sys.exit(f"symbols not found in any object: {missing}")

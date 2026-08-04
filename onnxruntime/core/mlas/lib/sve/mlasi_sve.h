@@ -25,102 +25,15 @@ Abstract:
 #pragma once
 
 #include "../mlasi.h"
+#include "../elementwise_constants.h"
 
 //
-// Layouts of the shared constant tables defined in erf.cpp, logistic.cpp and
-// compute.cpp ("bundles the constants for use by kernels written in
-// assembly"). The tables have C linkage precisely so other implementations of
-// the same kernels can reference them; the SVE kernels bind to the same
-// symbols instead of maintaining duplicate copies.
+// The shared constant tables defined in erf.cpp, logistic.cpp, tanh.cpp and
+// compute.cpp (layouts in elementwise_constants.h). The tables have C linkage
+// precisely so other implementations of the same kernels can reference them;
+// the SVE kernels bind to the same symbols instead of maintaining duplicate
+// copies.
 //
-
-struct MLAS_ERF_CONSTANTS {
-    float ErfUpperAbsRange;
-    float ErfSplitBoundary;
-    float ErfSMALL_P0;
-    float ErfSMALL_P1;
-    float ErfSMALL_P2;
-    float ErfSMALL_P3;
-    float ErfSMALL_P4;
-    float ErfSMALL_P5_Minus_One;
-    float ErfReserved0;
-    float ErfBIG_P0;
-    float ErfBIG_P1;
-    float ErfBIG_P2;
-    float ErfBIG_P3;
-    float ErfBIG_P4;
-    float ErfBIG_P5;
-    float ErfBIG_P6_Minus_One;
-    float ErfNegZero;
-    float ErfOne;
-
-    float Exp_UpperRange;
-    float Exp_LowerRange;
-    float Exp_Log2Reciprocal;
-    float Exp_log2_hi;
-    float Exp_log2_lo;
-    float Exp_P0;
-    float Exp_P1;
-    float Exp_P2;
-    float Exp_P3;
-    float Exp_P4;
-    float Exp_P5;
-    float Exp_P6;
-    float Exp_C;
-    int32_t Exp_X7F;
-};
-
-struct MLAS_LOGISTIC_CONSTANTS {
-    float LowerRange;
-    float UpperRange;
-    float alpha_9;
-    float alpha_7;
-    float alpha_5;
-    float alpha_3;
-    float alpha_1;
-    float beta_10;
-    float beta_8;
-    float beta_6;
-    float beta_4;
-    float beta_2;
-    float beta_0;
-    float one_half;
-};
-
-struct MLAS_EXP_CONSTANTS {
-    float LowerRange;
-    float UpperRange;
-    float LowerRangeSumExp;
-    float UpperRangeSumExp;
-    float RoundingBias;
-    float Log2Reciprocal;
-    float Log2High;
-    float Log2Low;
-    float poly_0;
-    float poly_1;
-    float poly_2;
-    float poly_3;
-    float poly_4;
-    float poly_56;
-    int32_t MinimumExponent;
-    int32_t MaximumExponent;
-};
-
-struct MLAS_TANH_CONSTANTS {
-    float LowerRange;
-    float UpperRange;
-    float alpha_13;
-    float alpha_11;
-    float alpha_9;
-    float alpha_7;
-    float alpha_5;
-    float alpha_3;
-    float alpha_1;
-    float beta_6;
-    float beta_4;
-    float beta_2;
-    float beta_0;
-};
 
 extern "C" const MLAS_ERF_CONSTANTS MlasErfConstants;
 extern "C" const MLAS_LOGISTIC_CONSTANTS MlasLogisticConstants;
