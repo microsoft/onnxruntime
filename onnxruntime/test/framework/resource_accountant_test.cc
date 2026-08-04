@@ -166,6 +166,60 @@ TEST(ResourceAccountantTest, ComputeAndAccountForNode_CorrectAfterReset) {
       << "After ResetForNewPass, re-probe should see full weight cost";
 }
 
+TEST(ResourceAccountantTest, WorkspaceEstimateCommittedOnlyForAcceptedNodes) {
+  SharedWeightGraph h;
+  ASSERT_NO_FATAL_FAILURE(SharedWeightGraph::Create(h));
+  std::optional<ResourceAccountantMap> acc_map;
+  IResourceAccountant* accountant = nullptr;
+  ASSERT_NO_FATAL_FAILURE(CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map, accountant));
+
+  // Probing records a pending estimate but does not affect the user-visible total.
+  const auto uncommitted_cost = accountant->ComputeResourceCount(*h.node_a);
+  ORT_UNUSED_PARAMETER(uncommitted_cost);
+  EXPECT_EQ(accountant->GetPendingWorkspaceEstimate(h.node_a->Index()), size_t{1000});
+  EXPECT_EQ(accountant->GetCommittedWorkspaceEstimate(), size_t{0});
+
+  // Discarding the pass removes estimates for rejected or superseded capabilities.
+  accountant->ResetForNewPass();
+  EXPECT_EQ(accountant->GetPendingWorkspaceEstimate(h.node_a->Index()), size_t{0});
+  EXPECT_EQ(accountant->GetCommittedWorkspaceEstimate(), size_t{0});
+
+  IndexedSubGraph sub_graph;
+  sub_graph.nodes.push_back(h.node_a->Index());
+  sub_graph.SetAccountant(accountant);
+  sub_graph.AppendNodeCost(accountant->ComputeResourceCount(*h.node_a));
+  sub_graph.AccountForNode(0);
+
+  EXPECT_EQ(accountant->GetCommittedWorkspaceEstimate(), size_t{1000});
+  EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), size_t{3000});
+}
+
+TEST(ResourceAccountantTest, Level1WorkspaceEstimateReplacesFallbackEstimate) {
+  SharedWeightGraph h;
+  ASSERT_NO_FATAL_FAILURE(SharedWeightGraph::Create(h));
+  std::optional<ResourceAccountantMap> acc_map;
+  IResourceAccountant* accountant = nullptr;
+  ASSERT_NO_FATAL_FAILURE(CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map, accountant));
+
+  auto resource_count = accountant->ComputeResourceCount(*h.node_a);
+  EXPECT_EQ(GetSizeT(resource_count), size_t{3000});
+  EXPECT_EQ(accountant->GetPendingWorkspaceEstimate(h.node_a->Index()), size_t{1000});
+
+  resource_count = accountant->UpdateResourceCountWithWorkspaceEstimate(
+      h.node_a->Index(), resource_count, /*workspace_bytes=*/250);
+  EXPECT_EQ(GetSizeT(resource_count), size_t{2250});
+  EXPECT_EQ(accountant->GetPendingWorkspaceEstimate(h.node_a->Index()), size_t{250});
+
+  IndexedSubGraph sub_graph;
+  sub_graph.nodes.push_back(h.node_a->Index());
+  sub_graph.SetAccountant(accountant);
+  sub_graph.AppendNodeCost(resource_count);
+  sub_graph.AccountForNode(0);
+
+  EXPECT_EQ(accountant->GetCommittedWorkspaceEstimate(), size_t{250});
+  EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), size_t{2250});
+}
+
 // ResetForNewPass clears the stop flag so a second GetCapability pass
 // (e.g., after layout transformation) can run from scratch.
 TEST(ResourceAccountantTest, ResetForNewPass_ClearsStopFlag) {
@@ -295,7 +349,6 @@ TEST(ResourceAccountantTest, CrossSubGraph_DedupWorks) {
   sub1.SetAccountant(accountant);
   sub1.AppendNodeCost(accountant->ComputeResourceCount(*h.node_a));
   sub1.AccountForNode(0);
-  accountant->CommitWeightsForNode(h.node_a->Index());
   EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), size_t{3000});
 
   // Reset for new pass to simulate new GetCapability pass

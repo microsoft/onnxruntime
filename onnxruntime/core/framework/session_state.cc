@@ -1845,26 +1845,39 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // DeclareWorkspaceRequirements() on each kernel whose input shapes can be resolved.
   // Static graph shapes remain usable when no max-shape inference result is available.
   // This collects workspace slot requirements for future offset planning.
-  for (const auto& node : graph_viewer_->Nodes()) {
-    auto* kernel = GetMutableKernel(node.Index());
-    if (kernel == nullptr) continue;
+  {
+    size_t total_level2_workspace = 0;
+    size_t nodes_with_workspace = 0;
+    for (const auto& node : graph_viewer_->Nodes()) {
+      auto* kernel = GetMutableKernel(node.Index());
+      if (kernel == nullptr) continue;
 
-    auto resolved = ResolveNodeInputShapes(node, &graph_, max_shape_inference_result);
-    if (!resolved.has_value()) continue;
+      auto resolved = ResolveNodeInputShapes(node, &graph_, max_shape_inference_result);
+      if (!resolved.has_value()) continue;
 
-    InlinedVector<WorkspaceRequirement> requirements;
-    ORT_RETURN_IF_ERROR(kernel->DeclareWorkspaceRequirements(
-        gsl::make_span(resolved->data(), resolved->size()), requirements));
+      InlinedVector<WorkspaceRequirement> requirements;
+      ORT_RETURN_IF_ERROR(kernel->DeclareWorkspaceRequirements(
+          gsl::make_span(resolved->data(), resolved->size()), requirements));
 
-    if (!requirements.empty()) {
-      LOGS(logger_, VERBOSE) << "Level-2 workspace: node '" << node.Name()
-                             << "' declared " << requirements.size() << " workspace slot(s)";
-      // TODO: Store requirements in WorkspacePattern for offset planning.
-      // For now, log the declarations so we can verify the wiring works.
-      for (const auto& req : requirements) {
-        LOGS(logger_, VERBOSE) << "  slot_id=" << req.slot_id
-                               << " size=" << req.size_bytes << " bytes";
+      if (!requirements.empty()) {
+        size_t node_workspace = 0;
+        for (const auto& req : requirements) {
+          node_workspace += req.size_bytes;
+          LOGS(logger_, VERBOSE) << "Level-2 workspace: node '" << node.Name()
+                                 << "' slot_id=" << req.slot_id
+                                 << " size=" << req.size_bytes << " bytes";
+        }
+        total_level2_workspace += node_workspace;
+        ++nodes_with_workspace;
+        LOGS(logger_, INFO) << "Level-2 workspace: node '" << node.Name()
+                            << "' (" << node.OpType() << "): " << requirements.size()
+                            << " slot(s), " << node_workspace << " bytes total";
       }
+    }
+    if (total_level2_workspace > 0) {
+      LOGS(logger_, INFO) << "Level-2 workspace estimation summary: "
+                          << nodes_with_workspace << " kernel(s) declared workspace, "
+                          << "total estimated workspace: " << total_level2_workspace << " bytes";
     }
   }
 
