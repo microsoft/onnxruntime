@@ -158,6 +158,77 @@ TEST(SamplingTest, Gpt2Sampling_CPU) {
 
   ASSERT_TRUE(std::equal(expected_output.cbegin(), expected_output.cend(), result_span.begin(), result_span.end()));
 }
+
+// Regression test for the out-of-bounds access caused by an out-of-range `min_tokens_to_keep` graph attribute.
+// The model is identical to tiny_gpt2_sampling.onnx except that min_tokens_to_keep is set to 1,000,000, which is
+// far larger than vocab_size. On the CPU path this makes the unsigned loop bound `vocab_size - min_tokens_to_keep`
+// in cumulate_and_filter() underflow and walk off the cumulative_probs heap buffer; the CUDA path uses the same
+// attribute in its filter logits kernel. The fix rejects the model at Run() time, so we expect a clean failure
+// (exception mentioning min_tokens_to_keep) instead of memory corruption or a crash.
+static void RunInvalidMinTokensToKeepModelExpectFailure(Ort::SessionOptions& session_options) {
+  std::vector<int32_t> input_ids{
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620,
+      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572,
+      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328};
+
+  std::vector<int32_t> max_length{15};
+  std::vector<int32_t> min_length{1};
+  std::vector<float> repetition_penalty{1.0f};
+
+  const int64_t batch_size = 3;
+  const int64_t sequence_length = 12;
+  std::vector<int64_t> input_ids_shape{batch_size, sequence_length};
+  std::vector<int64_t> parameter_shape{1};
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  auto input_ids_tensor = Ort::Value::CreateTensor(
+      info, input_ids.data(), input_ids.size(), input_ids_shape.data(), input_ids_shape.size());
+  auto max_length_tensor = Ort::Value::CreateTensor(
+      info, max_length.data(), max_length.size(), parameter_shape.data(), parameter_shape.size());
+  auto min_length_tensor = Ort::Value::CreateTensor(
+      info, min_length.data(), min_length.size(), parameter_shape.data(), parameter_shape.size());
+  auto repetition_penalty_tensor = Ort::Value::CreateTensor(
+      info, repetition_penalty.data(), repetition_penalty.size(), parameter_shape.data(), parameter_shape.size());
+
+  std::vector<Ort::Value> ort_inputs;
+  ort_inputs.push_back(std::move(input_ids_tensor));
+  ort_inputs.push_back(std::move(max_length_tensor));
+  ort_inputs.push_back(std::move(min_length_tensor));
+  ort_inputs.push_back(std::move(repetition_penalty_tensor));
+  const char* input_names[] = {"input_ids", "max_length", "min_length", "repetition_penalty"};
+  const char* const output_names[] = {"sequences"};
+
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_sampling_invalid_min_tokens.onnx"),
+                       session_options);
+
+  try {
+    session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(), output_names, 1);
+    FAIL() << "Run() unexpectedly succeeded with an out-of-range min_tokens_to_keep";
+  } catch (const Ort::Exception& ex) {
+    EXPECT_NE(std::string(ex.what()).find("min_tokens_to_keep"), std::string::npos) << ex.what();
+  }
+}
+
+TEST(SamplingTest, InvalidMinTokensToKeep_CPU) {
+  Ort::SessionOptions session_options;
+  RunInvalidMinTokensToKeepModelExpectFailure(session_options);
+}
+
+#if defined(USE_CUDA)
+TEST(SamplingTest, InvalidMinTokensToKeep_GPU) {
+  constexpr int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support current architecture";
+    return;
+  }
+
+  Ort::SessionOptions session_options;
+  OrtCUDAProviderOptionsV2 cuda_options;
+  cuda_options.use_tf32 = false;
+  session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
+  RunInvalidMinTokensToKeepModelExpectFailure(session_options);
+}
+#endif
 #endif
 }  // namespace test
 }  // namespace onnxruntime

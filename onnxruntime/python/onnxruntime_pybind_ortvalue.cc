@@ -205,7 +205,6 @@ void addOrtValueMethods(pybind11::module& m) {
 #ifdef USE_CUDA
           if (device.Vendor() == OrtDevice::VendorIds::NVIDIA) {
             MemCpyFunc cpu_to_device_copy_fn = CpuToCudaMemCpy;
-#if defined(ORT_NO_CUDA_IN_PYBIND)
             if (TryGetProviderInfo_CUDA() != nullptr) {
               if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
                 throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
@@ -217,12 +216,6 @@ void addOrtValueMethods(pybind11::module& m) {
                     "Unsupported GPU device: Cannot find the supported GPU device.");
               }
             }
-#else
-            if (TryGetProviderInfo_CUDA() != nullptr &&
-                !IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-              throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
-            }
-#endif
 
             onnxruntime::python::CopyDataToTensor(
                 py_values,
@@ -467,12 +460,10 @@ void addOrtValueMethods(pybind11::module& m) {
         switch (device.Vendor()) {
 #ifdef USE_CUDA
           case OrtDevice::VendorIds::NVIDIA:
-#if defined(ORT_NO_CUDA_IN_PYBIND)
             if (TryGetProviderInfo_CUDA() == nullptr) {
               return GetPyObjFromTensor(*ml_value, nullptr, nullptr,
                                         /*zero_copy_non_owning=*/true);
             }
-#endif
             return GetPyObjFromTensor(*ml_value, nullptr, GetCudaToHostMemCpyFunction(device),
                                       /*zero_copy_non_owning=*/true);
 #endif

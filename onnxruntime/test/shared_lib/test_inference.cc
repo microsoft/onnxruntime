@@ -748,6 +748,36 @@ TEST(CApiTest, SparseInputModel) {
 #endif  // DISABLE_CONTRIB_OPS
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
+// Test that a custom op compiled against a newer ORT version (higher OrtCustomOp::version)
+// can still be loaded on this ORT runtime. This simulates the forward compatibility
+// scenario where an IHV EP compiled against ORT v(N+1) is loaded into ORT v(N).
+// We test session creation only (which covers schema registration, kernel def building, and
+// CustomOpKernel construction with the capped API version).
+TEST(CApiTest, custom_op_forward_version_compat) {
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs[0];
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
+
+  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
+
+  // Simulate an EP compiled against a newer ORT version by setting version higher than ORT_API_VERSION.
+  // The OrtCustomOp struct's function pointers are still valid for the current version, so this should work.
+  custom_op.version = ORT_API_VERSION + 1;
+
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&custom_op);
+
+  // test_session_creation_only=true: exercises schema registration, kernel def building, and
+  // CustomOpKernel construction (which was previously blocked by the blanket version reject).
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
+                       custom_op_domain, nullptr, /*test_session_creation_only=*/true);
+}
+
 // Memory leak
 #ifndef ABSL_HAVE_ADDRESS_SANITIZER
 TEST(CApiTest, custom_op_handler) {
@@ -2528,7 +2558,7 @@ TEST(CApiTest, basic_cuda_graph) {
   ASSERT_NE(input_data.get(), nullptr);
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT)
-  (void)cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice));
 #elif defined(USE_DML)
   ComPtr<ID3D12Resource> input_resource;
   Ort::ThrowOnError(ort_dml_api->GetD3D12ResourceFromAllocation(allocator, input_data.get(), &input_resource));
@@ -2553,7 +2583,6 @@ TEST(CApiTest, basic_cuda_graph) {
   Ort::IoBinding binding(session);
   binding.BindInput("X", bound_x);
   binding.BindOutput("Y", bound_y);
-
   // Synchronize to make sure the input upload is complete, since it may be issued on a different stream/queue than the EP uses.
   binding.SynchronizeInputs();
 
@@ -2567,7 +2596,7 @@ TEST(CApiTest, basic_cuda_graph) {
   std::array<float, 3 * 2> y_values;
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT)
-  (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost));
 #elif defined(USE_DML)
   ComPtr<ID3D12Resource> output_resource;
   Ort::ThrowOnError(ort_dml_api->GetD3D12ResourceFromAllocation(allocator, output_data.get(), &output_resource));
@@ -2583,7 +2612,7 @@ TEST(CApiTest, basic_cuda_graph) {
   binding.SynchronizeOutputs();
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT)
-  (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost));
 #elif defined(USE_DML)
   DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
 #endif
@@ -2594,7 +2623,7 @@ TEST(CApiTest, basic_cuda_graph) {
   x_values = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT)
-  (void)cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice));
 #elif defined(USE_DML)
   UploadDataToDml(dml_objects, input_resource.Get(), gsl::make_span(reinterpret_cast<const std::byte*>(x_values.data()), sizeof(float) * x_values.size()));
 #endif
@@ -2606,7 +2635,7 @@ TEST(CApiTest, basic_cuda_graph) {
   binding.SynchronizeOutputs();
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT)
-  (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost));
 #elif defined(USE_DML)
   DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
 #endif

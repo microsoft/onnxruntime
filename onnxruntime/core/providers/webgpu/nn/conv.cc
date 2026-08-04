@@ -164,7 +164,8 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
                                   is_channels_last,
                                   activation_.activation_kind_ != ActivationKind::None,
                                   kernel_shape,
-                                  onnxruntime::narrow<uint32_t>(conv_attrs_.group))) {
+                                  onnxruntime::narrow<uint32_t>(conv_attrs_.group),
+                                  kernel->DataType())) {
     return ApplyIm2ColMatMulProgram(context,
                                     is_channels_last,
                                     dilations,
@@ -334,7 +335,8 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
   // kernel directly from context.Input(1), ignoring prepacked weights.
   // Skip prepacking when this path will be used at runtime.
   if (CanApplyIm2ColMatMulProgram(context, is_channels_last, activation_.activation_kind_ != ActivationKind::None,
-                                  kernel_shape, onnxruntime::narrow<uint32_t>(conv_attrs_.group))) {
+                                  kernel_shape, onnxruntime::narrow<uint32_t>(conv_attrs_.group),
+                                  tensor.DataType())) {
     return Status::OK();
   }
 

@@ -157,6 +157,11 @@ struct GroupQueryAttentionData {
   const T* sin_cache = nullptr;
   const T* head_sink = nullptr;
 
+  // Optional additive attention bias, shape (batch_size or 1, num_heads or 1, sequence_length,
+  // total_sequence_length). Broadcast on dims 0/1 is carried by
+  // parameters.broadcast_attn_bias_dim_0/1. Only consumed by the unfused fallback path.
+  const T* attention_bias = nullptr;
+
   // Optional per-head Q/K RMSNorm (QK-Norm) weights, shape (head_size,), shared across heads.
   // Both are non-null together (validated in the op) and trigger the fused normalization before RoPE.
   const T* q_norm_weight = nullptr;
@@ -177,6 +182,21 @@ struct GroupQueryAttentionData {
   // Padded sequence length for each batch. Shape [batch_size].
   // Only used for first prompt: padded_seq_lens[b] = sequence_length
   int* padded_seq_lens = nullptr;
+
+  // Cache-relative sequence lengths, used when parameters.is_windowed_kv_cache is set. Shape [batch_size].
+  // For a full-length (non-windowed) cache these simply alias past_seq_lens / total_seq_lens.
+  //   cache_past_seq_lens[b]  : append offset inside the capacity-C buffer, after eviction. May be
+  //                             negative on a first prompt longer than the capacity, in which case
+  //                             the leading (out-of-window) tokens are skipped by the append kernel.
+  //   cache_total_seq_lens[b] : number of valid cache entries after the append, i.e. min(T, C).
+  //   evict_counts[b]         : number of entries D dropped from the front of the cache this step.
+  int* cache_past_seq_lens = nullptr;
+  int* cache_total_seq_lens = nullptr;
+  int* evict_counts = nullptr;
+
+  // Scratch used by the windowed-cache compaction shift. Sized for one KV cache:
+  // batch_size * kv_num_heads * capacity * head_size elements of the storage type U.
+  void* compaction_scratch = nullptr;
 
   // Flash buffers
   T* softmax_lse = nullptr;

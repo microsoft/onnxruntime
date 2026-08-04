@@ -39,6 +39,13 @@ Status NhwcMaxPool<T8Bits>::Compute(OpKernelContext* context) const {
 
   const size_t spatial_dims = input_rank - 2;
 
+  // The spatial loop below indexes kernel_shape/strides/dilations by dim, so their length must
+  // match the input spatial rank. The PoolAttributes constructor already enforces that strides and
+  // dilations match kernel_shape, so guarding kernel_shape here covers all three.
+  ORT_RETURN_IF_NOT(pool_attrs_.kernel_shape.size() == spatial_dims,
+                    "kernel_shape rank must match the input spatial rank. Got kernel_shape rank: ",
+                    pool_attrs_.kernel_shape.size(), ", input spatial rank: ", spatial_dims);
+
   // Compute the output size and effective padding for this pooling operation.
   TensorShapeVector output_dims({N});
   TensorShapeVector pads = pool_attrs_.pads;

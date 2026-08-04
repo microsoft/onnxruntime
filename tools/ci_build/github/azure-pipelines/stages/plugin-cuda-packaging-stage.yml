@@ -4,6 +4,11 @@ parameters:
   type: boolean
   default: true
 
+- name: build_windows_arm64
+  displayName: 'Build Windows ARM64'
+  type: boolean
+  default: false
+
 - name: build_linux_x64
   displayName: 'Build Linux x64'
   type: boolean
@@ -18,6 +23,11 @@ parameters:
   type: string
   displayName: 'CUDA Version'
   default: '12.8'
+
+- name: arm64_cuda_version
+  type: string
+  displayName: 'Windows ARM64 CUDA Version'
+  default: '13.1'
 
 - name: package_type
   displayName: 'Package Type'
@@ -51,10 +61,15 @@ parameters:
   displayName: 'Linux aarch64 docker base image'
   default: ''
 
-- name: cmake_cuda_archs
+- name: cmake_x64_cuda_archs
   type: string
-  displayName: 'CMAKE_CUDA_ARCHITECTURES'
-  default: '52-real;61-real;75-real;86-real;89-real;90-virtual'
+  displayName: 'CMAKE_CUDA_ARCHITECTURES for x64'
+  default: '61-real;75-real;86-real;89-real;120-real;120-virtual'
+
+- name: cmake_arm64_cuda_archs
+  type: string
+  displayName: 'CMAKE_CUDA_ARCHITECTURES for ARM64'
+  default: '110-real;120-real;121-real;120-virtual'
 
 - name: python_version
   type: string
@@ -110,9 +125,14 @@ stages:
             $metadata = [ordered]@{
               cuda_version = '${{ parameters.cuda_version }}'
               cuda_version_no_dot = '${{ replace(parameters.cuda_version, '.', '') }}'
+              cuda_version_win_x64 = '${{ parameters.cuda_version }}'
+              cuda_version_win_x64_no_dot = '${{ replace(parameters.cuda_version, '.', '') }}'
+              cuda_version_win_arm64 = '${{ parameters.arm64_cuda_version }}'
+              cuda_version_win_arm64_no_dot = '${{ replace(parameters.arm64_cuda_version, '.', '') }}'
               docker_base_image_linux_x64 = '${{ parameters.docker_base_image }}'
               python_artifact_linux_x64 = 'cuda_plugin_python_linux_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}'
               python_artifact_win_x64 = 'cuda_plugin_python_win_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}'
+              python_artifact_win_arm64 = 'cuda_plugin_python_win_arm64_cuda${{ replace(parameters.arm64_cuda_version, '.', '') }}'
               nuget_artifact = 'cuda_plugin_nuget'
             }
 
@@ -125,8 +145,22 @@ stages:
     - ${{ if eq(parameters.build_windows_x64, true) }}:
       - template: plugin-win-cuda-stage.yml
         parameters:
+          arch: 'x64'
           cuda_version: ${{ parameters.cuda_version }}
-          cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
+          cmake_cuda_archs: ${{ parameters.cmake_x64_cuda_archs }}
+          package_version: ${{ parameters.package_type }}
+          version_file: ${{ parameters.version_file }}
+          python_package_name: ${{ parameters.python_package_name }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    # Windows ARM64
+    - ${{ if eq(parameters.build_windows_arm64, true) }}:
+      - template: plugin-win-cuda-stage.yml
+        parameters:
+          arch: 'arm64'
+          cuda_version: ${{ parameters.cuda_version }}
+          arm64_cuda_version: ${{ parameters.arm64_cuda_version }}
+          cmake_cuda_archs: ${{ parameters.cmake_arm64_cuda_archs }}
           package_version: ${{ parameters.package_type }}
           version_file: ${{ parameters.version_file }}
           python_package_name: ${{ parameters.python_package_name }}
@@ -140,7 +174,7 @@ stages:
           arch: 'x64'
           machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
           cuda_version: ${{ parameters.cuda_version }}
-          cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
+          cmake_cuda_archs: ${{ parameters.cmake_x64_cuda_archs }}
           package_version: ${{ parameters.package_type }}
           version_file: ${{ parameters.version_file }}
           python_package_name: ${{ parameters.python_package_name }}
@@ -150,7 +184,7 @@ stages:
           docker_python_exe_path: ${{ parameters.docker_python_exe_path }}
           artifact_name: cuda_plugin_linux_x64
 
-    # Linux aarch64 (CUDA 13.0 only)
+    # Linux aarch64 (CUDA 13.x only)
     - ${{ if eq(parameters.build_linux_aarch64, true) }}:
       - template: plugin-linux-cuda-stage.yml
         parameters:
@@ -158,7 +192,7 @@ stages:
           arch: 'aarch64'
           machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
           cuda_version: ${{ parameters.cuda_version }}
-          cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
+          cmake_cuda_archs: ${{ parameters.cmake_arm64_cuda_archs }}
           package_version: ${{ parameters.package_type }}
           version_file: ${{ parameters.version_file }}
           python_package_name: ${{ parameters.python_package_name }}
@@ -176,23 +210,23 @@ stages:
         DoEsrp: true
         platforms:
           win_x64: ${{ parameters.build_windows_x64 }}
+          win_arm64: ${{ parameters.build_windows_arm64 }}
           linux_x64: ${{ parameters.build_linux_x64 }}
           linux_aarch64: ${{ parameters.build_linux_aarch64 }}
 
     # Create zip packages for Foundry Local consumption.
-    - ${{ if or(eq(parameters.build_windows_x64, true), eq(parameters.build_linux_x64, true)) }}:
+    - ${{ if or(eq(parameters.build_windows_x64, true), eq(parameters.build_windows_arm64, true), eq(parameters.build_linux_x64, true), eq(parameters.build_linux_aarch64, true)) }}:
       - stage: Package_Foundry_Local_CUDA_Zips
         displayName: 'Package Foundry Local CUDA Plugin-EP Zips'
         dependsOn:
           - ${{ if eq(parameters.build_windows_x64, true) }}:
             - Win_plugin_cuda_x64_Build
+          - ${{ if eq(parameters.build_windows_arm64, true) }}:
+            - Win_plugin_cuda_arm64_Build
           - ${{ if eq(parameters.build_linux_x64, true) }}:
             - Linux_plugin_cuda_x64
-          # TODO: win-arm64 and linux-aarch64 are still being developed.
-          # - ${{ if eq(parameters.build_windows_arm64, true) }}:
-          #   - Win_plugin_cuda_arm64_Build
-          # - ${{ if eq(parameters.build_linux_aarch64, true) }}:
-          #   - Linux_plugin_cuda_aarch64
+          - ${{ if eq(parameters.build_linux_aarch64, true) }}:
+            - Linux_plugin_cuda_aarch64
           # NOTE: macOS arm64 (Apple Silicon) does not have CUDA support since
           # Apple devices do not use Nvidia GPUs.
         jobs:
@@ -222,6 +256,13 @@ stages:
                 artifactName: cuda_plugin_win_x64
                 targetPath: $(Build.SourcesDirectory)/cuda-plugin-win-x64
 
+          - ${{ if eq(parameters.build_windows_arm64, true) }}:
+            - task: DownloadPipelineArtifact@2
+              displayName: 'Download cuda_plugin_win_arm64'
+              inputs:
+                artifactName: cuda_plugin_win_arm64
+                targetPath: $(Build.SourcesDirectory)/cuda-plugin-win-arm64
+
           - ${{ if eq(parameters.build_linux_x64, true) }}:
             - task: DownloadPipelineArtifact@2
               displayName: 'Download cuda_plugin_linux_x64'
@@ -229,20 +270,12 @@ stages:
                 artifactName: cuda_plugin_linux_x64
                 targetPath: $(Build.SourcesDirectory)/cuda-plugin-linux-x64
 
-          # TODO: win-arm64 and linux-aarch64 are still being developed.
-          # - ${{ if eq(parameters.build_windows_arm64, true) }}:
-          #   - task: DownloadPipelineArtifact@2
-          #     displayName: 'Download cuda_plugin_win_arm64'
-          #     inputs:
-          #       artifactName: cuda_plugin_win_arm64
-          #       targetPath: $(Build.SourcesDirectory)/cuda-plugin-win-arm64
-
-          # - ${{ if eq(parameters.build_linux_aarch64, true) }}:
-          #   - task: DownloadPipelineArtifact@2
-          #     displayName: 'Download cuda_plugin_linux_aarch64'
-          #     inputs:
-          #       artifactName: cuda_plugin_linux_aarch64
-          #       targetPath: $(Build.SourcesDirectory)/cuda-plugin-linux-aarch64
+          - ${{ if eq(parameters.build_linux_aarch64, true) }}:
+            - task: DownloadPipelineArtifact@2
+              displayName: 'Download cuda_plugin_linux_aarch64'
+              inputs:
+                artifactName: cuda_plugin_linux_aarch64
+                targetPath: $(Build.SourcesDirectory)/cuda-plugin-linux-aarch64
 
           - task: PowerShell@2
             displayName: 'Create version.json and zip packages for each platform'
@@ -261,10 +294,9 @@ stages:
                 # NOTE: macOS arm64 (Apple Silicon) is excluded — no CUDA support since Apple devices do not use Nvidia GPUs.
                 $platforms = @(
                   @{ name = 'win-x64';        dir = '$(Build.SourcesDirectory)/cuda-plugin-win-x64' },
-                  @{ name = 'linux-x64';      dir = '$(Build.SourcesDirectory)/cuda-plugin-linux-x64' }
-                  # TODO: win-arm64 and linux-aarch64 are still being developed.
-                  # @{ name = 'win-arm64';      dir = '$(Build.SourcesDirectory)/cuda-plugin-win-arm64' },
-                  # @{ name = 'linux-aarch64';  dir = '$(Build.SourcesDirectory)/cuda-plugin-linux-aarch64' }
+                  @{ name = 'win-arm64';      dir = '$(Build.SourcesDirectory)/cuda-plugin-win-arm64' },
+                  @{ name = 'linux-x64';      dir = '$(Build.SourcesDirectory)/cuda-plugin-linux-x64' },
+                  @{ name = 'linux-aarch64';  dir = '$(Build.SourcesDirectory)/cuda-plugin-linux-aarch64' }
                 )
 
                 $resolvedVersion = $null

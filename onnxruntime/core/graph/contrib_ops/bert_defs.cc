@@ -447,7 +447,12 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
 void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_key_index, int qk_output_index) {
   // TODO(aciddelgado): propagate output shapes depending if kv-share buffer is on or not
   constexpr int use_max_past_present_buffer = -1;
-  BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, use_max_past_present_buffer, qk_output_index);
+  // With a windowed (sliding_window_cache) KV cache, the bound past/present buffer is the cache
+  // capacity C, which is deliberately smaller than total_sequence_length. present therefore keeps
+  // the past buffer's own sequence dimension instead of growing with the total sequence length.
+  const int64_t sliding_window_cache = getAttribute(ctx, "sliding_window_cache", 0);
+  BaseGroupQueryAttentionTypeAndShapeInference(
+      ctx, past_key_index, sliding_window_cache == 1 ? 1 : use_max_past_present_buffer, qk_output_index);
 }
 
 void SparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_key_index) {
@@ -1231,6 +1236,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "left_window_size for local attention (like Mistral). Default value is -1 meaning unused.",
               AttributeProto::INT,
               static_cast<int64_t>(-1))
+        .Attr("sliding_window_cache",
+              "Set to 1 when the past/present KV buffers are window-sized instead of holding the whole "
+              "sequence. The op then keeps only the min(total_sequence_length, cache_capacity) most recent "
+              "tokens, contiguously, using cache-relative indexing and evicting from the front as needed. "
+              "Requires local_window_size > 0 and a cache capacity of at least local_window_size. "
+              "Multi-token steps may use a temporary staging buffer, so the capacity need not cover the "
+              "entire step. Default value is 0 (full-length cache).",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
         .Attr("do_rotary",
               "Whether to use rotary position embedding. Default value is 0.",
               AttributeProto::INT,
@@ -2466,10 +2480,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             TensorShapeProto output_shape;
             *output_shape.add_dim() = query_shape.dim(0);  // B
             *output_shape.add_dim() = query_shape.dim(1);  // T
-            // H_q * d_v: d_v = value.dim(2) / kv_num_heads, then H_q * d_v
+            // Output hidden = max(H_q, H_kv) * d_v, matching Compute: standard GQA (H_q >= H_kv)
+            // emits one output per query head; inverse GQA (H_q < H_kv) one per KV head.
+            // d_v = value.dim(2) / kv_num_heads.
             if (value_shape.dim(2).has_dim_value()) {
               int64_t d_v = value_shape.dim(2).dim_value() / kv_num_heads;
-              output_shape.add_dim()->set_dim_value(kv_num_heads * d_v);
+              int64_t out_heads = q_num_heads > kv_num_heads ? q_num_heads : kv_num_heads;
+              output_shape.add_dim()->set_dim_value(out_heads * d_v);
             } else {
               output_shape.add_dim();  // unknown
             }
