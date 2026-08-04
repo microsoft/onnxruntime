@@ -396,5 +396,49 @@ TEST(GatherNDOpTest, GatherND_zero_dim_error) {
            &cpu_only_ep);
 }
 
+#ifdef USE_CUDA
+TEST(GatherNDOpTest, GatherND_invalid_index_cuda_error) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA not available";
+  }
+
+  OpTester test("GatherND", 12, kOnnxDomain);
+  test.AddInput<float>("data", {4, 4, 4}, std::vector<float>(64, 0.0f));
+  test.AddInput<int64_t>("indices", {1, 2}, {1048576LL, 0LL});
+  test.AddOutput<float>("output", {1, 4}, std::vector<float>(4, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> cuda_only_ep;
+  cuda_only_ep.push_back(DefaultCudaExecutionProvider());
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "invalid index found, index = 1048576",
+           {},
+           nullptr,
+           &cuda_only_ep);
+}
+
+#ifndef DISABLE_CONTRIB_OPS
+TEST(GatherNDOpTest, GatherND_contrib_int32_invalid_index_cuda_error) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA not available";
+  }
+
+  OpTester test("GatherND", 1, kMSDomain);
+  test.AddInput<float>("data", {4, 4, 4}, std::vector<float>(64, 0.0f));
+  test.AddInput<int32_t>("indices", {1, 2}, {1048576, 0});
+  test.AddOutput<float>("output", {1, 4}, std::vector<float>(4, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> cuda_only_ep;
+  cuda_only_ep.push_back(DefaultCudaExecutionProvider());
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "invalid index found, index = 1048576",
+           {},
+           nullptr,
+           &cuda_only_ep);
+}
+#endif
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime

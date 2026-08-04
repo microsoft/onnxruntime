@@ -5,6 +5,8 @@
 #include "core/providers/cuda/tensor/gather_nd_impl.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
+#include <algorithm>
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -57,6 +59,29 @@ Status GatherNDBase::PrepareCompute(
   const auto num_slices_per_batch = num_slices / num_batches;
 
   const TIndex* const indices_data = indices_tensor->Data<TIndex>();
+  const size_t num_indices = static_cast<size_t>(indices_shape.Size());
+  std::vector<TIndex> indices_data_host(num_indices);
+
+  if (indices_tensor->Location().device.Type() == OrtDevice::CPU) {
+    std::copy_n(indices_data, num_indices, indices_data_host.data());
+  } else {
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(indices_data_host.data(), indices_data, num_indices * sizeof(TIndex),
+                                         cudaMemcpyDefault, cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+  }
+
+  const size_t num_slices_size_t = static_cast<size_t>(num_slices);
+  const size_t num_slice_dims_size_t = static_cast<size_t>(num_slice_dims);
+  for (size_t slice_idx = 0; slice_idx < num_slices_size_t; ++slice_idx) {
+    const size_t slice_base = slice_idx * num_slice_dims_size_t;
+    for (size_t dim_idx = 0; dim_idx < num_slice_dims_size_t; ++dim_idx) {
+      const int64_t index = static_cast<int64_t>(indices_data_host[slice_base + dim_idx]);
+      const auto upper_limit = input_shape[batch_dims + static_cast<int64_t>(dim_idx)];
+      const auto lower_limit = -upper_limit;
+      ORT_RETURN_IF_NOT(index >= lower_limit && index < upper_limit,
+                        "invalid index found, index = ", index);
+    }
+  }
 
   std::vector<int64_t> sizes_from_slice_dims(num_slice_dims);
   {
