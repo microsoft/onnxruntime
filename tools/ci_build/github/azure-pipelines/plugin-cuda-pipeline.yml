@@ -63,6 +63,14 @@ parameters:
   type: boolean
   default: false
 
+# The fpA_intB GEMM/GEMV kernels are the largest single component of the binary after
+# flash attention. They are opt-in at run time (ORT_FPA_INTB_GEMM / ep.cuda.fpa_intb_gemm),
+# but MatMulNBits still uses them automatically when the weights are prepacked.
+- name: enable_fpa_intb_gemm
+  displayName: 'Build fpA_intB GEMM CUDA kernels'
+  type: boolean
+  default: true
+
 - name: cmake_build_type
   type: string
   default: 'Release'
@@ -149,6 +157,7 @@ extends:
             version_file: ${{ variables.epVersionFile }}
             cmake_build_type: ${{ parameters.cmake_build_type }}
             enable_cuda_fatbin_size_compression: ${{ parameters.enable_cuda_fatbin_size_compression }}
+            enable_fpa_intb_gemm: ${{ parameters.enable_fpa_intb_gemm }}
             ${{ if eq(parameters.cuda_version, '12.8') }}:
               python_package_name: 'onnxruntime-ep-cuda12'
               docker_base_image: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'

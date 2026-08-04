@@ -61,6 +61,10 @@ parameters:
   type: boolean
   default: false
 
+- name: enable_fpa_intb_gemm
+  type: boolean
+  default: true
+
 stages:
 - stage: ${{ parameters.stage_name }}
   dependsOn: []
@@ -81,6 +85,16 @@ stages:
         artifactName: ${{ parameters.artifact_name }}
     variables:
       - template: ../templates/common-variables.yml
+      - name: FatbinCompressDefine
+        ${{ if eq(parameters.enable_cuda_fatbin_size_compression, true) }}:
+          value: 'onnxruntime_CUDA_FATBIN_COMPRESS_SIZE=ON'
+        ${{ else }}:
+          value: ''
+      - name: FpaIntBGemmDefine
+        ${{ if eq(parameters.enable_fpa_intb_gemm, true) }}:
+          value: 'onnxruntime_USE_FPA_INTB_GEMM=ON'
+        ${{ else }}:
+          value: 'onnxruntime_USE_FPA_INTB_GEMM=OFF'
     steps:
       - checkout: self
         clean: true
@@ -119,10 +133,7 @@ stages:
         workingDirectory: $(Build.SourcesDirectory)
         displayName: 'Build CUDA Plugin (Python ${{ parameters.python_version }}, ${{ parameters.arch }}, CUDA ${{ parameters.cuda_version }})'
         env:
-          ${{ if eq(parameters.enable_cuda_fatbin_size_compression, true) }}:
-            EXTRA_CMAKE_DEFINES: $(PluginEpVersionDefine) onnxruntime_CUDA_FATBIN_COMPRESS_SIZE=ON
-          ${{ else }}:
-            EXTRA_CMAKE_DEFINES: $(PluginEpVersionDefine)
+          EXTRA_CMAKE_DEFINES: $(PluginEpVersionDefine) $(FatbinCompressDefine) $(FpaIntBGemmDefine)
 
       - script: |
           set -e -x
