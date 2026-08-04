@@ -221,21 +221,36 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* head_sink = context->Input<Tensor>(11);
   const Tensor* k_scale = context->Input<Tensor>(12);
   const Tensor* v_scale = context->Input<Tensor>(13);
+  const Tensor* past_hp_key = context->InputCount() > 16 ? context->Input<Tensor>(16) : nullptr;
+  const Tensor* past_hp_value = context->InputCount() > 17 ? context->Input<Tensor>(17) : nullptr;
 
   // Validate quantization configuration.
+  const bool is_per_group_quant = kv_quant_enabled_ && (k_quant_type_ == KVQuantizationType::PER_GROUP);
   if (kv_quant_enabled_) {
     ORT_RETURN_IF(k_quant_type_ != v_quant_type_,
                   "CPU GroupQueryAttention requires k_quant_type == v_quant_type, got different types");
-    ORT_RETURN_IF(kv_cache_bit_width_ != 4 && kv_cache_bit_width_ != 8,
-                  "kv_cache_bit_width must be 4 or 8 when quantization is enabled, got ", kv_cache_bit_width_);
-    ORT_RETURN_IF(k_scale == nullptr,
-                  "k_scale must be provided when k_quant_type is not NONE");
-    ORT_RETURN_IF(v_scale == nullptr,
-                  "v_scale must be provided when v_quant_type is not NONE");
-    ORT_RETURN_IF(k_scale->DataType() != DataTypeImpl::GetType<float>(),
-                  "k_scale must be float tensor");
-    ORT_RETURN_IF(v_scale->DataType() != DataTypeImpl::GetType<float>(),
-                  "v_scale must be float tensor");
+    if (is_per_group_quant) {
+      ORT_RETURN_IF(kv_cache_bit_width_ != 2,
+                    "PER_GROUP KV quantization currently supports only kv_cache_bit_width == 2, got ", kv_cache_bit_width_);
+    } else {
+      ORT_RETURN_IF(kv_cache_bit_width_ != 4 && kv_cache_bit_width_ != 8,
+                    "kv_cache_bit_width must be 4 or 8 when quantization is enabled, got ", kv_cache_bit_width_);
+    }
+    constexpr bool is_float = std::is_same_v<T, float>;
+    ORT_RETURN_IF(!is_float,
+                  "CPU GroupQueryAttention only supports float Q dtype with quantized KV cache");
+    // PER_GROUP computes scale/zero dynamically at append time and stores them in the cache,
+    // so k_scale / v_scale inputs are not required.
+    if (!is_per_group_quant) {
+      ORT_RETURN_IF(k_scale == nullptr,
+                    "k_scale must be provided when k_quant_type is not NONE");
+      ORT_RETURN_IF(v_scale == nullptr,
+                    "v_scale must be provided when v_quant_type is not NONE");
+      ORT_RETURN_IF(k_scale->DataType() != DataTypeImpl::GetType<float>(),
+                    "k_scale must be float tensor");
+      ORT_RETURN_IF(v_scale->DataType() != DataTypeImpl::GetType<float>(),
+                    "v_scale must be float tensor");
+    }
   } else {
     ORT_RETURN_IF(kv_cache_bit_width_ != 0,
                   "kv_cache_bit_width must be 0 when quantization is disabled, got ", kv_cache_bit_width_);
@@ -251,6 +266,29 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
         ONNXRUNTIME, INVALID_ARGUMENT,
         "GroupQueryAttention (CPU): q_norm_weight / k_norm_weight inputs are not supported. "
         "The per-head Q/K RMS normalization prologue is implemented only on the CUDA and WebGPU EPs.");
+  }
+
+  // For PER_GROUP (OSCAR 2-bit), the cache row stores packed codes plus per-group
+  // scale/zero metadata. Compute the extra metadata bits so CheckPast validates the
+  // packed head dimension correctly. head_size is derived from the query hidden size.
+  int oscar_group_size = 0;
+  int oscar_num_groups = 0;
+  int kv_cache_extra_bits = 0;
+  if (is_per_group_quant) {
+    const auto& q_dims = query->Shape().GetDims();
+    ORT_RETURN_IF(q_dims.size() < 2, "query must have rank >= 2");
+    const int q_hidden = static_cast<int>(q_dims[q_dims.size() - 1]);
+    const bool packed = (key == nullptr);
+    const int denom = packed ? (num_heads_ + 2 * kv_num_heads_) : num_heads_;
+    ORT_RETURN_IF(denom <= 0 || q_hidden % denom != 0, "cannot derive head_size from query hidden size");
+    const int hs = q_hidden / denom;
+    oscar_group_size = (kv_quant_group_size_ > 0) ? kv_quant_group_size_ : hs;
+    ORT_RETURN_IF(hs % 4 != 0, "PER_GROUP 2-bit requires head_size % 4 == 0, got head_size == ", hs);
+    ORT_RETURN_IF(oscar_group_size <= 0 || hs % oscar_group_size != 0,
+                  "kv_quant_group_size must divide head_size; got group_size ", oscar_group_size,
+                  " head_size ", hs);
+    oscar_num_groups = hs / oscar_group_size;
+    kv_cache_extra_bits = oscar_num_groups * 2 * static_cast<int>(sizeof(float)) * 8;
   }
 
   GroupQueryAttentionParameters parameters = {};
@@ -270,7 +308,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                                                 softcap_,
                                                                 kv_cache_bit_width_,
                                                                 /*max_threads_per_block=*/0,
-                                                                /*kv_cache_extra_bits=*/0,
+                                                                kv_cache_extra_bits,
                                                                 sliding_window_cache_,
                                                                 local_window_size_));
 
@@ -283,6 +321,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   parameters.k_quant_type = k_quant_type_;
   parameters.v_quant_type = v_quant_type_;
   parameters.kv_cache_bit_width = kv_cache_bit_width_;
+  parameters.kv_quant_group_size = oscar_group_size;
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
@@ -290,7 +329,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   int head_size = parameters.head_size;
 
   // Validate scale tensor shapes after CheckInputs (which validates query rank).
-  if (kv_quant_enabled_) {
+  // PER_GROUP computes scales dynamically and has no k_scale/v_scale inputs.
+  if (kv_quant_enabled_ && !is_per_group_quant) {
     const bool per_channel = (k_quant_type_ == KVQuantizationType::PER_CHANNEL);
     const int64_t expected_scale_size = per_channel
                                             ? static_cast<int64_t>(kv_num_heads_) * head_size
@@ -353,7 +393,14 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   output_shape[2] = static_cast<int64_t>(q_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
-  const int packed_head_size = (kv_cache_bit_width_ == 4) ? ((head_size + 1) / 2) : head_size;
+  int packed_head_size;
+  if (kv_cache_bit_width_ == 4) {
+    packed_head_size = (head_size + 1) / 2;
+  } else if (kv_cache_bit_width_ == 2) {
+    packed_head_size = head_size / 4 + oscar_num_groups * 2 * static_cast<int>(sizeof(float));
+  } else {
+    packed_head_size = head_size;
+  }
   std::vector<int64_t> present_k_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(kv_num_heads_), static_cast<int64_t>(present_kv_seqlen), static_cast<int64_t>(packed_head_size)});
   std::vector<int64_t> present_v_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(kv_num_heads_), static_cast<int64_t>(present_kv_seqlen), static_cast<int64_t>(packed_head_size)});
   Tensor* present_k = context->Output(1, present_k_shape);
@@ -606,6 +653,39 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     if (kv_quant_enabled_) {
       const T* k_data_q = packed_qkv ? nullptr : k_rotary;
       const T* v_data_q = packed_qkv ? nullptr : V.Get<Tensor>().Data<T>();
+
+      // OSCAR 2-bit per-group asymmetric path (dequant-to-fp32, bypasses MLAS).
+      // Float-only: the runtime is_float guard in ComputeInternal rejects half precision,
+      // and this branch is not instantiated for T = MLFloat16.
+      if constexpr (std::is_same_v<T, float>) {
+        if (is_per_group_quant) {
+          const int hp_window = kv_quant_sink_ + kv_quant_recent_;
+          if (hp_window > 0) {
+            // Mixed precision (Option C): keep the first `sink` and last `recent` tokens in
+            // high-precision FP (separate present_hp outputs); only the middle history is 2-bit.
+            const int hp_present_len = std::min(static_cast<int>(present_kv_seqlen), hp_window);
+            std::vector<int64_t> present_hp_shape({static_cast<int64_t>(batch_size),
+                                                   static_cast<int64_t>(kv_num_heads_),
+                                                   static_cast<int64_t>(hp_present_len),
+                                                   static_cast<int64_t>(head_size)});
+            Tensor* present_hp_k = context->Output(4, present_hp_shape);
+            Tensor* present_hp_v = context->Output(5, present_hp_shape);
+            return ApplyAttentionQuantized2BitMixed(
+                q_rotary, k_data_q, v_data_q, head_sink_data,
+                attention_bias, past_key, past_value, past_hp_key, past_hp_value,
+                output, present_k, present_v, present_hp_k, present_hp_v, output_qk, seqlens_k,
+                oscar_group_size, oscar_num_groups, k_quant_rho_, v_quant_rho_,
+                kv_quant_sink_, kv_quant_recent_, parameters, allocator, context);
+          }
+          return ApplyAttentionQuantized2Bit(
+              q_rotary, k_data_q, v_data_q, head_sink_data,
+              attention_bias, past_key, past_value,
+              output, present_k, present_v, output_qk, seqlens_k,
+              oscar_group_size, oscar_num_groups, k_quant_rho_, v_quant_rho_,
+              parameters, allocator, context);
+        }
+      }
+
       auto mlas_quant_type = ToMlasKVQuantType(k_quant_type_, kv_cache_bit_width_);
 
       // Use flash attention path when:

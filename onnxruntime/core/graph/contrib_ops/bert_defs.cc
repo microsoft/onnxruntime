@@ -252,6 +252,13 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
     }
   }
 
+  // OSCAR mixed-precision: present_hp_key/value (outputs 4,5) are high-precision (same type as query).
+  // Guard on output count so the shared SparseAttention path (fewer outputs) is unaffected.
+  if (ctx.getNumOutputs() >= 6) {
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 4);
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 5);
+  }
+
   int64_t kv_sequence_length = -1;
   if (hasInputShape(ctx, 0)) {
     auto& query_shape = getInputShape(ctx, 0);
@@ -358,16 +365,20 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
       }
 
       if (output_qk_index >= 0) {
-        // An output is considered "supplied" only if it's present AND has a meaningful type definition.
-        // An empty string placeholder for an optional output will not have a tensor type proto.
-        bool did_supply_qk_buffer = false;
-        if (ctx.hasOutput(output_qk_index)) {
-          // The output is considered "supplied" if it is present in the node.
-          // Note: TypeProto might not be fully populated yet during initial inference.
-          did_supply_qk_buffer = true;
-        }
-
         const int64_t qk_output_type = getAttribute(ctx, "qk_output", static_cast<int64_t>(QKOutputType::NO_OUTPUT));
+
+        // Determine whether the optional output_qk buffer is actually in use.
+        // ORT's InferenceContext::getOutputType returns a non-null slot for every declared output
+        // position, so hasOutput() cannot distinguish an empty "" placeholder from a real connection
+        // once output_qk is followed by later optional outputs (e.g. the OSCAR present_hp_* outputs
+        // at indices 4/5). When output_qk is the final output, hasOutput() is reliable; otherwise fall
+        // back to the qk_output attribute, which is set exactly when the buffer is requested.
+        bool did_supply_qk_buffer;
+        if (ctx.getNumOutputs() == static_cast<size_t>(output_qk_index) + 1) {
+          did_supply_qk_buffer = ctx.hasOutput(output_qk_index);
+        } else {
+          did_supply_qk_buffer = (qk_output_type != static_cast<int64_t>(QKOutputType::NO_OUTPUT));
+        }
 
         if (qk_output_type == static_cast<int64_t>(QKOutputType::NO_OUTPUT) && did_supply_qk_buffer) {
           fail_shape_inference("Output QK buffer was provided but qk_output attribute was not configured");
@@ -1210,12 +1221,15 @@ The operator will output `present_key` and `present_value` in same format as the
 
 For 4-bit quantization, the data type is uint8 where each byte contains two 4-bit values. The bit width of quantized KV cache can be set using `kv_cache_bit_width` attribute.
 
+For 2-bit quantization (OSCAR), the data type is uint8 where each byte contains four 2-bit codes, followed by per-group scale and zero-point metadata stored inline in the same row. The `PER_GROUP` quantization mode with the `kv_quant_group_size` attribute selects this asymmetric per-group codec; the scale/zero-point are computed dynamically at append time and stored in the cache, so `k_scale`/`v_scale` inputs are not required.
+
 The shapes of the k_scale, v_scale tensors shall be broadcastable to present_key shape.
 
 **Quantization Modes (`k_quant_type`, `v_quant_type` attributes):**
 - **"NONE"**: No quantization.
 - **"PER_TENSOR"**: A single scale for the entire tensor. Scale example shape: `[1]`.
 - **"PER_CHANNEL"**: A scale for each channel. Scale example shape: `[1, num_heads_k, 1, head_size]`.
+- **"PER_GROUP"**: Per-token, per-group asymmetric (scale + zero-point), used with `kv_cache_bit_width == 2`. Group size is set by `kv_quant_group_size`.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1261,9 +1275,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Output values of QK matrix multiplication before (1) or after (2) softmax normalization. Default value is 0 (don't output).",
               AttributeProto::INT,
               static_cast<int64_t>(QKOutputType::NO_OUTPUT))
-        .Attr("k_quant_type", "Quantization type for K cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL'.", AttributeProto::STRING, std::string("NONE"))
-        .Attr("v_quant_type", "Quantization type for V cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL'.", AttributeProto::STRING, std::string("NONE"))
-        .Attr("kv_cache_bit_width", "Bit width of quantized KV cache. Supported values are 8 and 4.", AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("k_quant_type", "Quantization type for K cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL', 'PER_GROUP'.", AttributeProto::STRING, std::string("NONE"))
+        .Attr("v_quant_type", "Quantization type for V cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL', 'PER_GROUP'.", AttributeProto::STRING, std::string("NONE"))
+        .Attr("kv_cache_bit_width", "Bit width of quantized KV cache. Supported values are 8, 4 and 2 (2 requires PER_GROUP).", AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("kv_quant_group_size", "Group size for PER_GROUP (OSCAR 2-bit) KV quantization. 0 (default) means the whole head is one group.", AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("k_quant_rho", "Magnitude percentile (0,1] used to clip outliers before computing per-group K min/max in PER_GROUP mode. 1.0 (default) disables clipping.", AttributeProto::FLOAT, 1.0f)
+        .Attr("v_quant_rho", "Magnitude percentile (0,1] used to clip outliers before computing per-group V min/max in PER_GROUP mode. 1.0 (default) disables clipping.", AttributeProto::FLOAT, 1.0f)
         .Attr("qk_norm_epsilon",
               "Epsilon used by the per-head RMS norm applied to Q and K when q_norm_weight and k_norm_weight inputs are provided. "
               "Default value is 1e-6.",
@@ -1347,6 +1364,19 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Optional 1D tensor of shape (head_size). See q_norm_weight. Must be provided together with q_norm_weight.",
                "T",
                OpSchema::Optional)
+        .Input(16,
+               "past_hp_key",
+               "OSCAR mixed-precision KV cache: high-precision (unquantized) past keys for the sink+recent window, "
+               "shape (batch_size, kv_num_heads, sink+recent, head_size). Only used when kv_cache_bit_width==2 and the "
+               "gqa.kv_quant.sink / gqa.kv_quant.recent session-config entries are set.",
+               "T",
+               OpSchema::Optional)
+        .Input(17,
+               "past_hp_value",
+               "OSCAR mixed-precision KV cache: high-precision (unquantized) past values for the sink+recent window. "
+               "See past_hp_key.",
+               "T",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
@@ -1368,6 +1398,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(3,
                 "output_qk",
                 "Values of QK matrix multiplication, either before or after softmax normalization",
+                "T",
+                OpSchema::Optional)
+        .Output(4,
+                "present_hp_key",
+                "OSCAR mixed-precision KV cache: high-precision present keys for the sink+recent window. See past_hp_key.",
+                "T",
+                OpSchema::Optional)
+        .Output(5,
+                "present_hp_value",
+                "OSCAR mixed-precision KV cache: high-precision present values for the sink+recent window. See past_hp_key.",
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"}, "Constrain input and output to float tensors.")
