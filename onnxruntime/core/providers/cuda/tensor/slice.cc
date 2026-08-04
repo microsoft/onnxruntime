@@ -102,6 +102,58 @@ static Status SliceImpCore(cudaStream_t stream,
                    output_shape.Size());
 }
 
+// Detect whether a step-1 slice selects a single contiguous block of the input tensor.
+// This is the case when the slice only trims leading dimensions: scanning from the right,
+// every axis is fully included until the first trimmed ("pivot") axis, and every axis to the
+// left of the pivot selects exactly one element. When true, the output is the contiguous
+// sub-region input_ptr + offset_in_elements and can be produced with a single device-to-device
+// memcpy instead of the per-element slice kernel.
+static bool TryComputeContiguousSliceOffset(gsl::span<const int64_t> input_dims,
+                                            gsl::span<const int64_t> output_dims,
+                                            const TArray<int64_t>& starts_buffer,
+                                            const TArray<int64_t>& steps_buffer,
+                                            int64_t& offset_in_elements) {
+  const int32_t rank = static_cast<int32_t>(input_dims.size());
+  if (rank == 0 || static_cast<int32_t>(output_dims.size()) != rank ||
+      starts_buffer.Size() != rank || steps_buffer.Size() != rank) {
+    return false;
+  }
+
+  // Only step-1 slices can be contiguous.
+  for (int32_t i = 0; i < rank; ++i) {
+    if (steps_buffer[i] != 1) {
+      return false;
+    }
+  }
+
+  // Find the first trimmed axis scanning from the right (the pivot).
+  int32_t pivot = -1;
+  for (int32_t i = rank - 1; i >= 0; --i) {
+    if (output_dims[i] != input_dims[i]) {
+      pivot = i;
+      break;
+    }
+  }
+
+  // Every axis to the left of the pivot must select exactly one element, otherwise the
+  // selected region is split into multiple non-adjacent blocks.
+  for (int32_t i = 0; i < pivot; ++i) {
+    if (output_dims[i] != 1) {
+      return false;
+    }
+  }
+
+  // Compute the offset of the first selected element (in elements).
+  int64_t offset = 0;
+  int64_t stride = 1;
+  for (int32_t i = rank - 1; i >= 0; --i) {
+    offset += starts_buffer[i] * stride;
+    stride *= input_dims[i];
+  }
+  offset_in_elements = offset;
+  return true;
+}
+
 namespace SliceCuda {
 
 static Status ComputeSliceStrides(const TensorShape& input_shape, TArray<int64_t>& input_strides,
@@ -223,6 +275,23 @@ Status Slice<dynamic>::CallSliceImp(size_t element_size, size_t dimension_count,
                                     const TensorShape& output_shape) const {
   const auto* input_tensor = ctx->Input<Tensor>(0);
   auto* output_tensor = ctx->Output(0, output_shape);
+
+  // Fast path: when the slice selects a single contiguous block of the input (only leading
+  // dimensions are trimmed and all steps are 1), we can copy the block directly with a single
+  // device-to-device memcpy and skip the per-element slice kernel entirely.
+  int64_t offset_in_elements = 0;
+  if (TryComputeContiguousSliceOffset(input_tensor->Shape().GetDims(), output_shape.GetDims(),
+                                      starts_buffer, steps_buffer, offset_in_elements)) {
+    const int64_t output_size = output_shape.Size();
+    if (output_size > 0) {
+      const char* input_data = static_cast<const char*>(input_tensor->DataRaw()) +
+                               offset_in_elements * static_cast<int64_t>(element_size);
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor->MutableDataRaw(), input_data,
+                                           static_cast<size_t>(output_size) * element_size,
+                                           cudaMemcpyDeviceToDevice, Stream(ctx)));
+    }
+    return Status::OK();
+  }
 
   return SliceImpCore(Stream(ctx),
                       input_tensor->DataRaw(),

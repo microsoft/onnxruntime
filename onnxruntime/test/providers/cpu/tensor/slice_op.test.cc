@@ -265,6 +265,54 @@ TEST(SliceTest, Slice3D) {
                        332.0f, 333.0f});
 }
 
+// Contiguous leading-axis slices exercise the CUDA EP single-memcpy fast path
+// (only leading dimensions are trimmed, all trailing dimensions fully included).
+TEST(SliceTest, Slice3D_ContiguousLeadingAxis) {
+  RunSliceTest<float>({3, 2, 2},
+                      {111.0f, 112.0f,
+                       121.0f, 122.0f,
+
+                       211.0f, 212.0f,
+                       221.0f, 222.0f,
+
+                       311.0f, 312.0f,
+                       321.0f, 322.0f},
+                      {1},
+                      {3},
+                      {0},
+                      {},
+                      {2, 2, 2},
+                      {211.0f, 212.0f,
+                       221.0f, 222.0f,
+
+                       311.0f, 312.0f,
+                       321.0f, 322.0f});
+}
+
+// Selecting a single leading index plus a partial second axis with full trailing
+// dims is still contiguous (input_ptr + offset).
+TEST(SliceTest, Slice3D_ContiguousSingleLeadingIndex) {
+  RunSliceTest<float>({3, 3, 2},
+                      {111.0f, 112.0f,
+                       121.0f, 122.0f,
+                       131.0f, 132.0f,
+
+                       211.0f, 212.0f,
+                       221.0f, 222.0f,
+                       231.0f, 232.0f,
+
+                       311.0f, 312.0f,
+                       321.0f, 322.0f,
+                       331.0f, 332.0f},
+                      {1, 1},
+                      {2, 3},
+                      {0, 1},
+                      {},
+                      {1, 2, 2},
+                      {221.0f, 222.0f,
+                       231.0f, 232.0f});
+}
+
 template <typename T>
 static void TestSlice1DIntData() {
   // static_assert(std::is_integral_v<TInt>);
