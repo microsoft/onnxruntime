@@ -29,6 +29,7 @@ limitations under the License.
 #include <cuda_fp16.h>
 
 #include <cassert>
+#include <vector>
 
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
@@ -63,6 +64,33 @@ using onnxruntime::contrib::cuda::GroupQueryAttentionData;
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+static Status ValidateGqaSeqLensValues(cudaStream_t stream,
+                                       const int32_t* seq_lens,
+                                       int32_t batch_size,
+                                       int32_t max_sequence_length,
+                                       const char* input_name) {
+  if (seq_lens == nullptr) {
+    return Status::OK();
+  }
+
+  std::vector<int32_t> seq_lens_host(static_cast<size_t>(batch_size));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(seq_lens_host.data(),
+                                       seq_lens,
+                                       static_cast<size_t>(batch_size) * sizeof(int32_t),
+                                       cudaMemcpyDefault,
+                                       stream));
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+
+  for (int32_t i = 0; i < batch_size; ++i) {
+    const int32_t value = seq_lens_host[static_cast<size_t>(i)];
+    ORT_RETURN_IF_NOT(value >= 0 && value <= max_sequence_length,
+                      input_name, "[", i, "] has invalid sequence length ", value,
+                      ". Expected range [0, ", max_sequence_length, "].");
+  }
+
+  return Status::OK();
+}
 
 // ============================================================================
 // QKV Preprocessing Helpers
@@ -1506,9 +1534,15 @@ Status EfficientAttention(
   p.causal = true;
   p.scale = scale;
   p.softcap = parameters.softcap;
-  p.seqlen_k_ptr = parameters.is_windowed_kv_cache
-                       ? data.cache_total_seq_lens
-                       : (parameters.is_first_prompt ? data.padded_seq_lens : data.total_seq_lens);
+  const int32_t* seqlen_k_ptr = parameters.is_windowed_kv_cache
+                                    ? data.cache_total_seq_lens
+                                    : (parameters.is_first_prompt ? data.padded_seq_lens : data.total_seq_lens);
+  ORT_RETURN_IF_ERROR(ValidateGqaSeqLensValues(stream,
+                                               seqlen_k_ptr,
+                                               batch_size,
+                                               present_sequence_length,
+                                               "seqlens_k"));
+  p.seqlen_k_ptr = seqlen_k_ptr;
   p.seqstart_q_ptr = nullptr;
   p.seqstart_k_ptr = nullptr;
   p.query = query;

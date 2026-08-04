@@ -588,6 +588,46 @@ TEST(MultiHeadAttentionTest, CacheIndirectionBeamIndexOutOfRange) {
              {}, nullptr, &execution_providers);
 }
 
+TEST(MultiHeadAttentionTest, CudaMask1DKeySeqLenStartRejectsInvalidSeqstartValues) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+  }
+
+  constexpr int64_t batch_size = 1;
+  constexpr int64_t sequence_length = 256;
+  constexpr int64_t hidden_size = 32;
+
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 1);
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
+                         std::vector<float>(static_cast<size_t>(batch_size * sequence_length * hidden_size), 0.1f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, hidden_size},
+                         std::vector<float>(static_cast<size_t>(batch_size * sequence_length * hidden_size), 0.2f));
+  tester.AddInput<float>("value", {batch_size, sequence_length, hidden_size},
+                         std::vector<float>(static_cast<size_t>(batch_size * sequence_length * hidden_size), 0.3f));
+  tester.AddOptionalInputEdge<float>();
+  tester.AddInput<int32_t>("key_padding_mask", {3 * batch_size + 2},
+                           {static_cast<int32_t>(sequence_length), 0, 0x40000000, 0, 0x40000000});
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<int32_t>();
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(static_cast<size_t>(batch_size * sequence_length * hidden_size), 0.0f));
+  tester.AddOptionalOutputEdge<float>();
+  tester.AddOptionalOutputEdge<float>();
+  tester.AddOptionalOutputEdge<float>();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "invalid seqstart_q",
+             {}, nullptr, &execution_providers);
+}
+
 TEST(MultiHeadAttentionTest, OutputQKWithPaddingMaskAndAttentionBias) {
   OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", 1);

@@ -47,6 +47,8 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/transformer_common.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 
+#include <vector>
+
 using namespace onnxruntime::cuda;
 using namespace onnxruntime::contrib::attention_softmax_cuda;
 
@@ -55,6 +57,61 @@ namespace contrib {
 namespace cuda {
 
 constexpr size_t kMemoryAlignment = 256;
+
+static Status ValidateMask1DKeySeqLenStartValues(cudaStream_t stream,
+                                                 const int32_t* mask_index,
+                                                 int32_t batch_size,
+                                                 int32_t sequence_length,
+                                                 int32_t total_sequence_length) {
+  if (mask_index == nullptr) {
+    return Status::OK();
+  }
+
+  const size_t mask_elements = static_cast<size_t>(3) * static_cast<size_t>(batch_size) + 2;
+  std::vector<int32_t> mask_host(mask_elements);
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(mask_host.data(),
+                                       mask_index,
+                                       mask_elements * sizeof(int32_t),
+                                       cudaMemcpyDefault,
+                                       stream));
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+
+  const int64_t max_query_offset = static_cast<int64_t>(batch_size) * sequence_length;
+  const int64_t max_key_offset = static_cast<int64_t>(batch_size) * total_sequence_length;
+
+  const int32_t* seqlen_k = mask_host.data();
+  const int32_t* seqstart_q = seqlen_k + batch_size;
+  const int32_t* seqstart_k = seqstart_q + batch_size + 1;
+
+  for (int32_t i = 0; i < batch_size; ++i) {
+    const int64_t q_start = seqstart_q[i];
+    const int64_t q_next = seqstart_q[i + 1];
+    const int64_t k_start = seqstart_k[i];
+    const int64_t k_next = seqstart_k[i + 1];
+    const int64_t seqlen = seqlen_k[i];
+
+    ORT_RETURN_IF_NOT(seqlen >= 0 && seqlen <= total_sequence_length,
+                      "key_padding_mask has invalid seqlen_k[", i, "] value ", seqlen,
+                      "; expected range [0, ", total_sequence_length, "].");
+
+    ORT_RETURN_IF_NOT(q_start >= 0 && q_next >= q_start && q_next <= max_query_offset,
+                      "key_padding_mask has invalid seqstart_q entries at batch ", i,
+                      ": [", q_start, ", ", q_next,
+                      "] with max allowed cumulative offset ", max_query_offset, ".");
+
+    ORT_RETURN_IF_NOT(k_start >= 0 && k_next >= k_start && k_next <= max_key_offset,
+                      "key_padding_mask has invalid seqstart_k entries at batch ", i,
+                      ": [", k_start, ", ", k_next,
+                      "] with max allowed cumulative offset ", max_key_offset, ".");
+
+    ORT_RETURN_IF_NOT(k_start + seqlen <= max_key_offset,
+                      "key_padding_mask has inconsistent seqstart_k/seqlen_k at batch ", i,
+                      ": k_start (", k_start, ") + seqlen_k (", seqlen,
+                      ") exceeds max cumulative key offset ", max_key_offset, ".");
+  }
+
+  return Status::OK();
+}
 
 static size_t AlignTo(size_t a, size_t b) {
   return CeilDiv(a, b) * b;
@@ -499,6 +556,15 @@ Status EfficientAttention(
   p.causal = parameters.is_unidirectional;
   p.scale = scale;
   p.use_smooth_softmax = false;
+
+  if (data.mask_index != nullptr) {
+    ORT_RETURN_IF_ERROR(ValidateMask1DKeySeqLenStartValues(
+        stream,
+        reinterpret_cast<const int32_t*>(data.mask_index),
+        parameters.batch_size,
+        parameters.sequence_length,
+        parameters.total_sequence_length));
+  }
 
   if (nullptr == data.mask_index) {
     p.seqlen_k_ptr = nullptr;
