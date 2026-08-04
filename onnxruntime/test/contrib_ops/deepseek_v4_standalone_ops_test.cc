@@ -189,6 +189,46 @@ TEST(DeepSeekV4StandaloneOpsTest, HyperHeadCollapsesStreams) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
+TEST(DeepSeekV4StandaloneOpsTest, SinkhornNormalizeStartsWithColumns) {
+  OpTester tester("SinkhornNormalize", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("iterations", 1);
+  tester.AddAttribute<float>("epsilon", 1e-6f);
+  tester.AddInput<float>("X", {1, 2, 2}, {1.0f, 3.0f, 2.0f, 4.0f});
+  tester.AddOutput<float>("Y", {1, 2, 2},
+                          {1.0f / 3.000001f, 3.0f / 7.000001f,
+                           2.0f / 3.000001f, 4.0f / 7.000001f});
+  tester.SetOutputAbsErr("Y", 1e-5f);
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(DeepSeekV4StandaloneOpsTest, HyperConnectionMixFusesAdjacentBoundary) {
+  OpTester tester("HyperConnectionMix", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("sinkhorn_iterations", 1);
+  tester.AddAttribute<float>("epsilon", 1e-6f);
+  tester.AddAttribute<float>("hc_epsilon", 1e-6f);
+  tester.AddAttribute<float>("sinkhorn_epsilon", 1e-6f);
+  tester.AddAttribute<float>("post_alpha", 2.0f);
+  tester.AddInput<float>("x", {1, 1, 1}, {2.0f});
+  tester.AddInput<float>("residual", {1, 1, 2, 1}, {1.0f, 3.0f});
+  tester.AddInput<float>("post_mix", {1, 1, 2}, {1.0f, 2.0f});
+  tester.AddInput<float>("comb_mix", {1, 1, 2, 2}, {1.0f, 0.0f, 0.0f, 1.0f});
+  tester.AddInput<float>("fn", {2, 8}, std::vector<float>(16, 0.0f));
+  tester.AddInput<float>("scale", {3}, {1.0f, 1.0f, 1.0f});
+  tester.AddInput<float>("base", {8}, std::vector<float>(8, 0.0f));
+  tester.AddInput<float>("norm_weight", {1}, {2.0f});
+  tester.AddOutput<float>("residual_out", {1, 1, 2, 1}, {3.0f, 7.0f});
+  tester.AddOutput<float>("post_mix_out", {1, 1, 2}, {1.0f, 1.0f});
+  tester.AddOutput<float>("comb_mix_out", {1, 1, 2, 2}, std::vector<float>(4, 0.5f));
+  tester.AddOutput<float>("layer_input", {1, 1, 1}, {2.0f});
+  tester.SetOutputAbsErr("comb_mix_out", 1e-5f);
+  tester.SetOutputAbsErr("layer_input", 1e-5f);
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
 #ifdef USE_CUDA
 
 static std::vector<MLFloat16> ToHalf(const std::vector<float>& values) {
