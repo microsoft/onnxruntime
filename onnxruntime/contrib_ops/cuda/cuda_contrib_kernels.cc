@@ -121,10 +121,18 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_uint8_t, GroupQueryAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_Float8E4M3FN, GroupQueryAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_Float8E4M3FN, GroupQueryAttention);
 #endif
-class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DeepSeekV4Attention);
-class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, DeepSeekV4Attention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PagedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, PagedAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HeavilyCompressedAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HeavilyCompressedAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CompressedSparseAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, CompressedSparseAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DeepSeekV4Indexer);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, DeepSeekV4Indexer);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CompressedAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, CompressedAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HashRouter);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HashRouter);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DecoderAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DecoderAttention);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, int32_t, DynamicSlice);
@@ -388,10 +396,18 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_Float8E4M3FN, GroupQueryAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_Float8E4M3FN, GroupQueryAttention)>,
 #endif
-      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DeepSeekV4Attention)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, DeepSeekV4Attention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PagedAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, PagedAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HeavilyCompressedAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HeavilyCompressedAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CompressedSparseAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, CompressedSparseAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DeepSeekV4Indexer)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, DeepSeekV4Indexer)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CompressedAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, CompressedAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HashRouter)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HashRouter)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DecoderAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DecoderAttention)>,
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, int32_t, DynamicSlice)>,

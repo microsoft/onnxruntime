@@ -959,18 +959,34 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   if (do_output_derotate_) {
     const int pos_format = data.position_ids != nullptr ? 1 : 2;
     // Output is in BSNH format: (batch, sequence, num_heads * head_size). Apply rotary in-place.
-    ORT_RETURN_IF_ERROR((LaunchRotaryEmbeddingKernel<CudaT>(
-      static_cast<cudaStream_t>(ort_stream.get()->GetHandle()),
-        reinterpret_cast<CudaT*>(output->MutableData<T>()),
-        reinterpret_cast<const CudaT*>(output->Data<T>()),
-        data.position_ids, data.past_seq_lens,
-        data.cos_cache, data.sin_cache,
-        parameters.batch_size, parameters.sequence_length, parameters.num_heads, parameters.head_size,
-        parameters.rotary_dim, RopeMaxPosition(parameters),
-        pos_format, parameters.rotary_interleaved,
-        device_prop.maxThreadsPerBlock,
-        false /* is_input_bnsh_format: output is BSNH */,
-        /*trailing=*/true, /*negate_sin=*/true)));
+    if constexpr (std::is_same_v<CudaT, __nv_bfloat16>) {
+      ORT_RETURN_IF_ERROR((LaunchRotaryEmbeddingKernel<BFloat16>(
+          static_cast<cudaStream_t>(ort_stream.get()->GetHandle()),
+          reinterpret_cast<BFloat16*>(output->MutableData<T>()),
+          reinterpret_cast<const BFloat16*>(output->Data<T>()),
+          data.position_ids, data.past_seq_lens,
+          reinterpret_cast<const BFloat16*>(data.cos_cache),
+          reinterpret_cast<const BFloat16*>(data.sin_cache),
+          parameters.batch_size, parameters.sequence_length, parameters.num_heads, parameters.head_size,
+          parameters.rotary_dim, RopeMaxPosition(parameters),
+          pos_format, parameters.rotary_interleaved,
+          device_prop.maxThreadsPerBlock,
+          false /* is_input_bnsh_format: output is BSNH */,
+          /*trailing=*/true, /*negate_sin=*/true)));
+    } else {
+      ORT_RETURN_IF_ERROR((LaunchRotaryEmbeddingKernel<CudaT>(
+          static_cast<cudaStream_t>(ort_stream.get()->GetHandle()),
+          reinterpret_cast<CudaT*>(output->MutableData<T>()),
+          reinterpret_cast<const CudaT*>(output->Data<T>()),
+          data.position_ids, data.past_seq_lens,
+          data.cos_cache, data.sin_cache,
+          parameters.batch_size, parameters.sequence_length, parameters.num_heads, parameters.head_size,
+          parameters.rotary_dim, RopeMaxPosition(parameters),
+          pos_format, parameters.rotary_interleaved,
+          device_prop.maxThreadsPerBlock,
+          false /* is_input_bnsh_format: output is BSNH */,
+          /*trailing=*/true, /*negate_sin=*/true)));
+    }
   }
 
   if (windowed_present_key != nullptr) {
