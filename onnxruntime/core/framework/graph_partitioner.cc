@@ -415,9 +415,10 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     ORT_RETURN_IF_ERROR(create_graph_viewer(sub_graph_holder, graph_viewer));
 
     if (params.resource_accountant) {
-      ORT_RETURN_IF_ERROR(RefreshMaxShapeInference(graph, *params.resource_accountant));
-    }
-    if (params.resource_accountant) {
+      // The existing result is still valid when the layout transformer made no graph changes.
+      if (modified) {
+        ORT_RETURN_IF_ERROR(RefreshMaxShapeInference(graph, *params.resource_accountant));
+      }
       params.resource_accountant->ResetForNewPass();
     }
     capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup, params.resource_accountant,
@@ -1324,6 +1325,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
         }
       }
       if (resource_accountant != nullptr) {
+        // A preceding EP or function-inlining iteration may have changed the graph.
         ORT_RETURN_IF_ERROR(RefreshMaxShapeInference(graph, *resource_accountant));
       }
       ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(graph, func_mgr, kernel_registry_manager,
