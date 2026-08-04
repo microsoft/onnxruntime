@@ -231,6 +231,8 @@ Status InferMaxShapes(const Graph& graph,
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                          "session.max_shape_override is not supported in a minimal build");
 #else
+  // Serialize into a disposable model so normal shape inference cannot make the
+  // executable graph appear statically shaped to optimizers or runtime validation.
   const GraphViewer source_viewer{graph};
   ONNX_NAMESPACE::ModelProto model_proto;
   model_proto.set_ir_version(graph.GetModel().IrVersion());
@@ -242,6 +244,9 @@ Status InferMaxShapes(const Graph& graph,
 
   GraphViewerToProto(source_viewer, *model_proto.mutable_graph(),
                      true, true, ExecutionOrder::DEFAULT, false);
+
+  // Model-local functions and dynamically generated fused-node schemas are not fully
+  // represented by GraphViewerToProto, but are required to resolve the shadow graph.
   for (const auto& [id, function_template] : graph.GetModel().GetModelLocalFunctionTemplates()) {
     ORT_UNUSED_PARAMETER(id);
     *model_proto.add_functions() = *function_template->onnx_func_proto_;
@@ -291,6 +296,8 @@ Status InferMaxShapes(const Graph& graph,
     graph_inputs.emplace(input->Name(), input);
   }
 
+  // Validate overrides against explicit source inputs and establish one maximum value
+  // for each symbolic dimension shared by multiple inputs.
   InlinedHashMap<std::string, int64_t> symbolic_values;
   for (const auto& [name, override_shape] : input_overrides) {
     const auto input_it = graph_inputs.find(name);
@@ -321,6 +328,7 @@ Status InferMaxShapes(const Graph& graph,
     }
   }
 
+  // Apply direct overrides and propagate known symbolic maxima to the remaining inputs.
   for (const auto& [name, input] : graph_inputs) {
     const auto* declared_shape = input->Shape();
     if (declared_shape == nullptr) continue;
@@ -356,6 +364,8 @@ Status InferMaxShapes(const Graph& graph,
     shadow_input->SetShape(max_shape_proto);
   }
 
+  // Resolve recursively, then associate concrete shadow shapes with their corresponding
+  // source graph identities so partitioning can query main-graph and subgraph nodes.
   ORT_RETURN_IF_ERROR(shadow_graph.Resolve());
   return CaptureGraphShapes(graph, shadow_graph, result);
 #endif
