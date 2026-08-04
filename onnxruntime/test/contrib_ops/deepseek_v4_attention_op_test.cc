@@ -75,13 +75,12 @@ std::vector<std::unique_ptr<IExecutionProvider>> CpuEpOnly() {
 }
 
 #ifdef USE_CUDA
+std::vector<MLFloat16> MakeHalfValues(int count, float value) {
+  return std::vector<MLFloat16>(static_cast<size_t>(count), MLFloat16(value));
+}
+
 // Helper to add inputs as MLFloat16 so the CUDA EP (which registers MLFloat16) accepts them.
 void AddBaseDeepSeekV4InputsHalf(OpTester& tester) {
-  auto make_half = [](int n, float val) {
-    std::vector<MLFloat16> v(n);
-    std::fill(v.begin(), v.end(), MLFloat16(val));
-    return v;
-  };
   constexpr int64_t B  = kBatchSize;
   constexpr int64_t S  = kSeqLen;
   constexpr int64_t H  = kHiddenSize;
@@ -91,23 +90,23 @@ void AddBaseDeepSeekV4InputsHalf(OpTester& tester) {
   constexpr int64_t Ro = kOLoraRank;
   constexpr int64_t Kw = kKVWidth;
 
-  tester.AddInput<MLFloat16>("hidden_states", {B, S, H}, make_half(static_cast<int>(B * S * H), 0.1f));
+  tester.AddInput<MLFloat16>("hidden_states", {B, S, H}, MakeHalfValues(static_cast<int>(B * S * H), 0.1f));
   tester.AddInput<int64_t>("position_ids", {B, S}, {0});
   tester.AddOptionalInputEdge<MLFloat16>();  // attention_bias
-  tester.AddInput<MLFloat16>("past_key",   {B, 1, 1, HS}, make_half(static_cast<int>(B * HS), 0.0f));
-  tester.AddInput<MLFloat16>("past_value", {B, 1, 1, HS}, make_half(static_cast<int>(B * HS), 0.0f));
+  tester.AddInput<MLFloat16>("past_key",   {B, 1, 1, HS}, MakeHalfValues(static_cast<int>(B * HS), 0.0f));
+  tester.AddInput<MLFloat16>("past_value", {B, 1, 1, HS}, MakeHalfValues(static_cast<int>(B * HS), 0.0f));
   tester.AddInput<int32_t>("seqlens_k", {B}, {0});
   tester.AddInput<int32_t>("total_sequence_length", {1}, {1});
-  tester.AddInput<MLFloat16>("cos_cache", {2, HS / 2}, make_half(static_cast<int>(HS), 1.0f));
-  tester.AddInput<MLFloat16>("sin_cache", {2, HS / 2}, make_half(static_cast<int>(HS), 0.0f));
-  tester.AddInput<MLFloat16>("q_a_weight",      {H, Rq},       make_half(static_cast<int>(H * Rq), 0.0f));
-  tester.AddInput<MLFloat16>("q_a_norm_weight", {Rq},          make_half(static_cast<int>(Rq), 1.0f));
-  tester.AddInput<MLFloat16>("q_b_weight",      {Rq, H},       make_half(static_cast<int>(Rq * H), 0.0f));
-  tester.AddInput<MLFloat16>("kv_weight",       {H, Kw},       make_half(static_cast<int>(H * Kw), 0.0f));
-  tester.AddInput<MLFloat16>("kv_norm_weight",  {Kw},          make_half(static_cast<int>(Kw), 1.0f));
-  tester.AddInput<MLFloat16>("o_a_weight",      {H, Go * Ro},  make_half(static_cast<int>(H * Go * Ro), 0.0f));
-  tester.AddInput<MLFloat16>("o_b_weight",      {Go * Ro, H},  make_half(static_cast<int>(Go * Ro * H), 0.0f));
-  tester.AddInput<MLFloat16>("head_sink", {1}, make_half(1, 0.0f));
+  tester.AddInput<MLFloat16>("cos_cache", {2, HS / 2}, MakeHalfValues(static_cast<int>(HS), 1.0f));
+  tester.AddInput<MLFloat16>("sin_cache", {2, HS / 2}, MakeHalfValues(static_cast<int>(HS), 0.0f));
+  tester.AddInput<MLFloat16>("q_a_weight",      {H, Rq},       MakeHalfValues(static_cast<int>(H * Rq), 0.0f));
+  tester.AddInput<MLFloat16>("q_a_norm_weight", {Rq},          MakeHalfValues(static_cast<int>(Rq), 1.0f));
+  tester.AddInput<MLFloat16>("q_b_weight",      {Rq, H},       MakeHalfValues(static_cast<int>(Rq * H), 0.0f));
+  tester.AddInput<MLFloat16>("kv_weight",       {H, Kw},       MakeHalfValues(static_cast<int>(H * Kw), 0.0f));
+  tester.AddInput<MLFloat16>("kv_norm_weight",  {Kw},          MakeHalfValues(static_cast<int>(Kw), 1.0f));
+  tester.AddInput<MLFloat16>("o_a_weight",      {H, Go * Ro},  MakeHalfValues(static_cast<int>(H * Go * Ro), 0.0f));
+  tester.AddInput<MLFloat16>("o_b_weight",      {Go * Ro, H},  MakeHalfValues(static_cast<int>(Go * Ro * H), 0.0f));
+  tester.AddInput<MLFloat16>("head_sink", {1}, MakeHalfValues(1, 0.0f));
 }
 
 void AddBaseDeepSeekV4AttributesHalf(OpTester& tester) {
@@ -264,18 +263,95 @@ TEST(DeepSeekV4AttentionTest, CudaSlidingModeRunsMathPath) {
   AddBaseDeepSeekV4AttributesHalf(tester);
   AddBaseDeepSeekV4InputsHalf(tester);
 
-  auto make_half_zero = [](int n) {
-    std::vector<MLFloat16> v(n);
-    std::fill(v.begin(), v.end(), MLFloat16(0.0f));
-    return v;
-  };
-
   tester.AddOutput<MLFloat16>("output", {kBatchSize, kSeqLen, kHiddenSize},
-                              make_half_zero(static_cast<int>(kBatchSize * kSeqLen * kHiddenSize)));
+                              MakeHalfValues(static_cast<int>(kBatchSize * kSeqLen * kHiddenSize), 0.0f));
   tester.AddOutput<MLFloat16>("present_key",   {kBatchSize, 1, 1, kHeadSize},
-                              make_half_zero(static_cast<int>(kBatchSize * kHeadSize)));
+                              MakeHalfValues(static_cast<int>(kBatchSize * kHeadSize), 0.0f));
   tester.AddOutput<MLFloat16>("present_value", {kBatchSize, 1, 1, kHeadSize},
-                              make_half_zero(static_cast<int>(kBatchSize * kHeadSize)));
+                              MakeHalfValues(static_cast<int>(kBatchSize * kHeadSize), 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> cuda_eps;
+  cuda_eps.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cuda_eps);
+}
+
+TEST(DeepSeekV4AttentionTest, CudaHcaModeUpdatesCompressorState) {
+  OpTester tester("DeepSeekV4Attention", 1, onnxruntime::kMSDomain);
+  AddBaseDeepSeekV4AttributesHalf(tester);
+  tester.AddAttribute<std::string>("attention_mode", "hca");
+  tester.AddAttribute<float>("compress_rate", 1.0f);
+  AddBaseDeepSeekV4InputsHalf(tester);
+
+  tester.AddInput<MLFloat16>("hca_kv_weight", {kHiddenSize, kHeadSize}, MakeHalfValues(16, 0.0f));
+  tester.AddInput<MLFloat16>("hca_gate_weight", {kHiddenSize, kHeadSize}, MakeHalfValues(16, 0.0f));
+  tester.AddInput<MLFloat16>("hca_position_bias", {1, kHeadSize}, MakeHalfValues(4, 0.0f));
+  tester.AddInput<MLFloat16>("hca_kv_norm_weight", {kHeadSize}, MakeHalfValues(4, 1.0f));
+  tester.AddInput<MLFloat16>("past_hca_pending_kv", {kBatchSize, 0, kHeadSize}, {});
+  tester.AddInput<MLFloat16>("past_hca_pending_gate", {kBatchSize, 0, kHeadSize}, {});
+  tester.AddInput<MLFloat16>("past_hca_entries", {kBatchSize, 1, 0, kHeadSize}, {});
+
+  tester.AddOutput<MLFloat16>("output", {1, 1, 4}, MakeHalfValues(4, 0.0f));
+  tester.AddOutput<MLFloat16>("present_key", {1, 1, 1, 4}, MakeHalfValues(4, 0.0f));
+  tester.AddOutput<MLFloat16>("present_value", {1, 1, 1, 4}, MakeHalfValues(4, 0.0f));
+  tester.AddOutput<MLFloat16>("present_hca_pending_kv", {1, 0, 4}, {});
+  tester.AddOutput<MLFloat16>("present_hca_pending_gate", {1, 0, 4}, {});
+  tester.AddOutput<MLFloat16>("present_hca_entries", {1, 1, 1, 4}, MakeHalfValues(4, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> cuda_eps;
+  cuda_eps.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cuda_eps);
+}
+
+TEST(DeepSeekV4AttentionTest, CudaCsaModeUpdatesCompressorState) {
+  OpTester tester("DeepSeekV4Attention", 1, onnxruntime::kMSDomain);
+  AddBaseDeepSeekV4AttributesHalf(tester);
+  tester.AddAttribute<std::string>("attention_mode", "csa");
+  tester.AddAttribute<float>("compress_rate", 1.0f);
+  tester.AddAttribute<int64_t>("index_topk", 1);
+  tester.AddAttribute<int64_t>("index_num_heads", 1);
+  tester.AddAttribute<int64_t>("index_head_dim", kHeadSize);
+  AddBaseDeepSeekV4InputsHalf(tester);
+  for (int index = 17; index < 24; ++index) {
+    tester.AddOptionalInputEdge<MLFloat16>();
+  }
+
+  tester.AddInput<MLFloat16>("csa_kv_weight", {kHiddenSize, 2 * kHeadSize}, MakeHalfValues(32, 0.0f));
+  tester.AddInput<MLFloat16>("csa_gate_weight", {kHiddenSize, 2 * kHeadSize}, MakeHalfValues(32, 0.0f));
+  tester.AddInput<MLFloat16>("csa_position_bias", {1, 2 * kHeadSize}, MakeHalfValues(8, 0.0f));
+  tester.AddInput<MLFloat16>("csa_kv_norm_weight", {kHeadSize}, MakeHalfValues(4, 1.0f));
+  tester.AddInput<MLFloat16>("index_kv_weight", {kHiddenSize, 2 * kHeadSize}, MakeHalfValues(32, 0.0f));
+  tester.AddInput<MLFloat16>("index_gate_weight", {kHiddenSize, 2 * kHeadSize}, MakeHalfValues(32, 0.0f));
+  tester.AddInput<MLFloat16>("index_position_bias", {1, 2 * kHeadSize}, MakeHalfValues(8, 0.0f));
+  tester.AddInput<MLFloat16>("index_kv_norm_weight", {kHeadSize}, MakeHalfValues(4, 1.0f));
+  tester.AddInput<MLFloat16>("index_q_b_weight", {kQLorRank, kHeadSize}, MakeHalfValues(8, 0.0f));
+  tester.AddInput<MLFloat16>("index_weights_proj_weight", {kHiddenSize, 1}, MakeHalfValues(4, 0.0f));
+  tester.AddInput<MLFloat16>("past_csa_pending_kv", {1, 0, 8}, {});
+  tester.AddInput<MLFloat16>("past_csa_pending_gate", {1, 0, 8}, {});
+  tester.AddInput<MLFloat16>("past_csa_entries", {1, 1, 0, 4}, {});
+  tester.AddInput<MLFloat16>("past_csa_overlap_kv", {1, 1, 4}, MakeHalfValues(4, 0.0f));
+  tester.AddInput<MLFloat16>("past_csa_overlap_gate", {1, 1, 4}, MakeHalfValues(4, 0.0f));
+  tester.AddInput<MLFloat16>("past_index_pending_kv", {1, 0, 8}, {});
+  tester.AddInput<MLFloat16>("past_index_pending_gate", {1, 0, 8}, {});
+  tester.AddInput<MLFloat16>("past_index_entries", {1, 1, 0, 4}, {});
+  tester.AddInput<MLFloat16>("past_index_overlap_kv", {1, 1, 4}, MakeHalfValues(4, 0.0f));
+  tester.AddInput<MLFloat16>("past_index_overlap_gate", {1, 1, 4}, MakeHalfValues(4, 0.0f));
+
+  tester.AddOutput<MLFloat16>("output", {1, 1, 4}, MakeHalfValues(4, 0.0f));
+  tester.AddOutput<MLFloat16>("present_key", {1, 1, 1, 4}, MakeHalfValues(4, 0.0f));
+  tester.AddOutput<MLFloat16>("present_value", {1, 1, 1, 4}, MakeHalfValues(4, 0.0f));
+  tester.AddOptionalOutputEdge<MLFloat16>();
+  tester.AddOptionalOutputEdge<MLFloat16>();
+  tester.AddOptionalOutputEdge<MLFloat16>();
+  tester.AddOutput<MLFloat16>("present_csa_pending_kv", {1, 0, 8}, {});
+  tester.AddOutput<MLFloat16>("present_csa_pending_gate", {1, 0, 8}, {});
+  tester.AddOutput<MLFloat16>("present_csa_entries", {1, 1, 1, 4}, MakeHalfValues(4, 0.0f));
+  tester.AddOutput<MLFloat16>("present_csa_overlap_kv", {1, 1, 4}, MakeHalfValues(4, 0.0f));
+  tester.AddOutput<MLFloat16>("present_csa_overlap_gate", {1, 1, 4}, MakeHalfValues(4, 0.0f));
+  tester.AddOutput<MLFloat16>("present_index_pending_kv", {1, 0, 8}, {});
+  tester.AddOutput<MLFloat16>("present_index_pending_gate", {1, 0, 8}, {});
+  tester.AddOutput<MLFloat16>("present_index_entries", {1, 1, 0, 4}, {});
+  tester.AddOutput<MLFloat16>("present_index_overlap_kv", {1, 1, 4}, MakeHalfValues(4, 0.0f));
+  tester.AddOutput<MLFloat16>("present_index_overlap_gate", {1, 1, 4}, MakeHalfValues(4, 0.0f));
 
   std::vector<std::unique_ptr<IExecutionProvider>> cuda_eps;
   cuda_eps.push_back(DefaultCudaExecutionProvider());

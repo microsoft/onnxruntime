@@ -960,7 +960,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     const int pos_format = data.position_ids != nullptr ? 1 : 2;
     // Output is in BSNH format: (batch, sequence, num_heads * head_size). Apply rotary in-place.
     ORT_RETURN_IF_ERROR((LaunchRotaryEmbeddingKernel<CudaT>(
-        ort_stream->GetHandle(),
+      static_cast<cudaStream_t>(ort_stream.get()->GetHandle()),
         reinterpret_cast<CudaT*>(output->MutableData<T>()),
         reinterpret_cast<const CudaT*>(output->Data<T>()),
         data.position_ids, data.past_seq_lens,
