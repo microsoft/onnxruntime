@@ -22,8 +22,10 @@ Abstract:
 
     The kernels share one loop idiom: a whilelt-governed predicate covers the
     vector body and the tail in the same loop, and every constant is
-    broadcast once before the loop. Divisions are computed with the
-    reciprocal-estimate + two Newton-Raphson steps idiom.
+    broadcast once before the loop. Each kernel divides the way the kernel it
+    replaces did, so the results stay bit-identical: Erf and Gelu use the
+    reciprocal-estimate + two Newton-Raphson steps idiom, while Tanh uses the
+    hardware divide.
 
     This file is compiled with SVE and fp16 enabled via its per-file -march
     compile flag (see onnxruntime_mlas.cmake).
