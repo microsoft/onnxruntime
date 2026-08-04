@@ -8,7 +8,11 @@
 #include <sstream>
 
 #include "core/graph/onnx_protobuf.h"
+#if !defined(ORT_USE_ONNX_LIGHT)
 #include "onnx/defs/schema.h"
+#else
+#include "onnx_lib/defs/schema.h"
+#endif
 #include "core/graph/constants.h"
 #include "core/common/common.h"
 #include "core/common/status.h"

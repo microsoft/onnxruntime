@@ -9,7 +9,7 @@
 #include "core/session/onnxruntime_c_api.h"
 
 #ifdef ORT_USE_ONNX_LIGHT
-#include "onnx/onnx_pb.h"
+#include "onnx_lib/common/onnx_pb.h"
 #else
 namespace onnx {
 class TensorProto;

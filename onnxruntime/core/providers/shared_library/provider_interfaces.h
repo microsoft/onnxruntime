@@ -20,7 +20,7 @@
   static void operator delete(void*) = delete;
 
 #ifdef ORT_USE_ONNX_LIGHT
-#include "onnx/onnx_pb.h"
+#include "onnx_lib/common/onnx_pb.h"
 #endif
 
 namespace ONNX_NAMESPACE {

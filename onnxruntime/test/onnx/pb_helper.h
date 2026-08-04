@@ -38,11 +38,10 @@
 #pragma GCC diagnostic ignored "-Wshorten-64-to-32"
 #endif
 #endif
-#include <google/protobuf/io/coded_stream.h>
-#include <google/protobuf/io/zero_copy_stream_impl.h>
-#include <onnx/onnx_pb.h>
-#include <onnx/onnx-data.pb.h>
 #if defined(ORT_USE_ONNX_LIGHT)
+#include <onnx_light/google_protobuf_compat.h>
+#include <onnx_lib/common/onnx_pb.h>
+#include <onnx_lib/onnx-data.pb.h>
 #include <cstdint>
 #include <onnx_light/onnx_proto/tml.h>
 namespace onnxruntime {
@@ -61,6 +60,10 @@ using ONNX_LIGHT_NAMESPACE::proto::VectorMapStringToFloat;
 }  // namespace proto
 }  // namespace onnxruntime
 #else
+#include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/io/zero_copy_stream_impl.h>
+#include <onnx/onnx_pb.h>
+#include <onnx/onnx-data.pb.h>
 #include <google/protobuf/message_lite.h>
 #include "tml.pb.h"
 #endif

@@ -24,8 +24,14 @@
 #include "onnx/defs/data_type_utils.h"
 #endif
 
+#if defined(ORT_USE_ONNX_LIGHT)
+// onnx-light does not use protobuf; proto types come from onnx_lib/common/onnx_pb.h
+// which includes the hand-crafted message definitions in onnx.h.
+#include "onnx_lib/common/onnx_pb.h"
+#else
 #include "onnx/onnx_pb.h"
 #include "onnx/onnx-operators_pb.h"
+#endif
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop

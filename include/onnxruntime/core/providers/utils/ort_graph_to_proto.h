@@ -124,7 +124,11 @@
 #include <functional>
 #include <optional>
 #include "core/session/onnxruntime_cxx_api.h"
+#if defined(ORT_USE_ONNX_LIGHT)
+#include "onnx_lib/common/onnx_pb.h"
+#else
 #include "onnx/onnx_pb.h"
+#endif
 
 namespace OrtEpUtils {
 
