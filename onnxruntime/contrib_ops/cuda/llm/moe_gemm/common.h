@@ -71,4 +71,26 @@ struct ActivationParams {
 // Legacy alias for backward compatibility during transition
 using ActivationParameters = ActivationParams;
 
+// Lets a MoE GEMV block resolve the routing weight of the permuted row it owns, so rows whose
+// softmax weight is exactly 0 can be skipped before any expert weight is streamed. Such rows are
+// common under expert parallelism: the router marks the experts owned by other ranks with a
+// log-domain -inf, so their softmax weight is a hard zero and finalizeMoeRouting multiplies the
+// whole row away. All-null (the default) disables the skip.
+//
+// Index mapping (must match finalizeMoeRoutingKernel):
+//   permuted_row_to_unpermuted_row[p] == slot * num_tokens + token   (k-major)
+//   unpermuted_scales                is [num_tokens, experts_per_token] (token-major)
+// so the scale of permuted row p is unpermuted_scales[token * experts_per_token + slot].
+struct MoeGemvRowSkipParams {
+  const float* unpermuted_scales = nullptr;
+  const int* permuted_row_to_unpermuted_row = nullptr;
+  int num_tokens = 0;
+  int experts_per_token = 0;
+
+  bool enabled() const {
+    return unpermuted_scales != nullptr && permuted_row_to_unpermuted_row != nullptr &&
+           num_tokens > 0 && experts_per_token > 0;
+  }
+};
+
 }  // namespace onnxruntime::llm::kernels::cutlass_kernels

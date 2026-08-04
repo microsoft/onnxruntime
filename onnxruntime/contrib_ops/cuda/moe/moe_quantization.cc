@@ -63,6 +63,16 @@ bool Fp4GemvAutotuneLogEnabled() {
   return onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_AUTOTUNE_LOG", 0) == 1;
 }
 
+// Kill switch for the zero-weight expert skip in the FP4 decode GEMVs. Enabled by default; set
+// ORT_DISABLE_MOE_GEMV_ZERO_SKIP=1 to hand the kernels a null routing-weight pointer, which turns
+// the skip into a no-op and restores the unconditional full-weight streaming.
+bool MoeGemvZeroSkipDisabledByEnv() {
+  // Parsed once via ORT's environment helper (consistent parsing/thread-safety across platforms).
+  static const bool disabled =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_MOE_GEMV_ZERO_SKIP", 0) == 1;
+  return disabled;
+}
+
 const char* QMoEGemvConfigName(onnxruntime::llm::kernels::moe_gemv::MoeGemvConfig config) {
   using onnxruntime::llm::kernels::moe_gemv::MoeGemvConfig;
   if (config == MoeGemvConfig::kCtaN16) {
@@ -1427,6 +1437,20 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
           num_rows, num_experts, static_cast<int>(k_), 0, num_experts, stream);
 
+      // Zero-weight expert skip. Under expert parallelism the router marks the experts owned by
+      // other ranks with a log-domain -inf, so their top-k softmax weight is a hard zero and
+      // finalizeMoeRouting multiplies the whole row away; letting those blocks return early stops
+      // them from streaming megabytes of expert weights. `expert_scales` is the same
+      // [num_rows, k_] token-major array finalizeMoeRouting reads, and `p_r2u` is the same
+      // permuted->unpermuted map, so the kernels reproduce its index math exactly.
+      ck::MoeGemvRowSkipParams row_skip;
+      if (!MoeGemvZeroSkipDisabledByEnv()) {
+        row_skip.unpermuted_scales = expert_scales;
+        row_skip.permuted_row_to_unpermuted_row = p_r2u;
+        row_skip.num_tokens = static_cast<int>(num_rows);
+        row_skip.experts_per_token = static_cast<int>(k_);
+      }
+
       const void* fc1_bias = fc1_experts_bias_optional ? fc1_experts_bias_optional->DataRaw() : nullptr;
       const void* fc2_bias = fc2_experts_bias_optional ? fc2_experts_bias_optional->DataRaw() : nullptr;
 
@@ -1473,7 +1497,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
               static_cast<const T*>(gemv_fp4_fc1_scales_.get()),
               static_cast<const T*>(fc1_bias), static_cast<T*>(p_fc1_buf.get()),
               p_efto, p_exp, num_experts, expanded, inter, hidden, gemv_group_size, sm_, act_params, cfg,
-              fc1_gemv_sm80_layout, stream);
+              fc1_gemv_sm80_layout, row_skip, stream);
         };
         auto launch_fc2 = [&](MoeGemvConfig cfg) {
           gemv::launch_moe_gemv_fp4_symmetric<T>(
@@ -1482,7 +1506,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
               static_cast<const T*>(gemv_fp4_fc2_scales_.get()),
               static_cast<const T*>(fc2_bias), static_cast<T*>(p_fc2_buf.get()),
               p_efto, p_exp, num_experts, expanded, hidden, inter, gemv_group_size, sm_, cfg,
-              fc2_gemv_sm80_layout, stream);
+              fc2_gemv_sm80_layout, row_skip, stream);
         };
 
         if (do_tune) {
