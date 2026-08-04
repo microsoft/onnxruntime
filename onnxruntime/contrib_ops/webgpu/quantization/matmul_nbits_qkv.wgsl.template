@@ -13,6 +13,7 @@
 #param sub_tile_count
 #param tile_size_k_vec
 #param tile_size_k
+#param acc_f32
 #param tile_size
 
 #use .getByOffset .setByOffset
@@ -21,10 +22,18 @@
 var<workgroup> sum_squared_shared : array<f32, workgroup_size_x>;
 #endif
 var<workgroup> tile_A : array<input_a_value_t, a_length_per_tile>;
-// Accumulate in f32 to avoid f16 overflow (max ~65504) when summing long K dot products.
-var<workgroup> q_inter_results : array<array<f32, tile_size_k_vec + 1>, tile_size>;
-var<workgroup> k_inter_results : array<array<f32, tile_size_k_vec + 1>, tile_size>;
-var<workgroup> v_inter_results : array<array<f32, tile_size_k_vec + 1>, tile_size>;
+// Precision of the partial sums accumulated along K, selected by the
+// "preferredMatmulAccumulatorPrecision" provider option. The block-local dot products stay in
+// f32 either way; this only changes the accumulator carried across K, which is what can
+// overflow the f16 max (~65504).
+#if acc_f32
+alias acc_element_t = f32;
+#else
+alias acc_element_t = output_element_t;
+#endif
+var<workgroup> q_inter_results : array<array<acc_element_t, tile_size_k_vec + 1>, tile_size>;
+var<workgroup> k_inter_results : array<array<acc_element_t, tile_size_k_vec + 1>, tile_size>;
+var<workgroup> v_inter_results : array<array<acc_element_t, tile_size_k_vec + 1>, tile_size>;
 
 const default_zero_point = vec4<q_output_element_t>(q_output_element_t(8));
 
@@ -168,7 +177,7 @@ fn process_k_tile(batch: u32, b_global_base: u32, thread_idx: u32, idx: u32, idy
         let q_scale_b = q_output_element_t(q_scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx));
   #endif
       let q_weight = q_b.getByOffset(b_global * uniforms.K_of_b + k_offset);
-      q_inter_results[local_row_offset + idy][idx] += compute_projection_sum(q_weight, q_scale_b, idx);
+      q_inter_results[local_row_offset + idy][idx] += acc_element_t(compute_projection_sum(q_weight, q_scale_b, idx));
     }
     if (b_global < uniforms.Nkv) {
   #if !single_scale_weights
@@ -177,8 +186,8 @@ fn process_k_tile(batch: u32, b_global_base: u32, thread_idx: u32, idx: u32, idy
   #endif
       let k_weight = k_b.getByOffset(b_global * uniforms.K_of_b + k_offset);
       let v_weight = v_b.getByOffset(b_global * uniforms.K_of_b + k_offset);
-      k_inter_results[local_row_offset + idy][idx] += compute_projection_sum(k_weight, k_scale_b, idx);
-      v_inter_results[local_row_offset + idy][idx] += compute_projection_sum(v_weight, v_scale_b, idx);
+      k_inter_results[local_row_offset + idy][idx] += acc_element_t(compute_projection_sum(k_weight, k_scale_b, idx));
+      v_inter_results[local_row_offset + idy][idx] += acc_element_t(compute_projection_sum(v_weight, v_scale_b, idx));
     }
     }
   }
@@ -194,9 +203,9 @@ $MAIN {
 
   if (local_idx < tile_size) {
     for (var b = 0u; b < tile_size_k_vec; b++) {
-      q_inter_results[local_idx][b] = f32(0);
-      k_inter_results[local_idx][b] = f32(0);
-      v_inter_results[local_idx][b] = f32(0);
+      q_inter_results[local_idx][b] = acc_element_t(0);
+      k_inter_results[local_idx][b] = acc_element_t(0);
+      v_inter_results[local_idx][b] = acc_element_t(0);
     }
   }
 
@@ -263,9 +272,9 @@ $MAIN {
 
   if (local_idx < tile_size) {
     let b_global = b_global_base + local_idx;
-    var q_output_value = f32(0);
-    var k_output_value = f32(0);
-    var v_output_value = f32(0);
+    var q_output_value = acc_element_t(0);
+    var k_output_value = acc_element_t(0);
+    var v_output_value = acc_element_t(0);
     for (var b = 0u; b < tile_size_k_vec; b++) {
       q_output_value += q_inter_results[local_idx][b];
       k_output_value += k_inter_results[local_idx][b];

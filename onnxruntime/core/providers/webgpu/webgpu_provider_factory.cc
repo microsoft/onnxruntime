@@ -109,6 +109,17 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
     }
   }
 
+  std::string matmul_accumulator_precision_str;
+  if (config_options.TryGetConfigEntry(kPreferredMatmulAccumulatorPrecision, matmul_accumulator_precision_str)) {
+    if (matmul_accumulator_precision_str == kPreferredMatmulAccumulatorPrecision_F32) {
+      webgpu_ep_config.matmul_accumulator_precision_f32 = true;
+    } else if (matmul_accumulator_precision_str == kPreferredMatmulAccumulatorPrecision_F16) {
+      webgpu_ep_config.matmul_accumulator_precision_f32 = false;
+    } else {
+      ORT_THROW("Invalid preferredMatmulAccumulatorPrecision value: ", matmul_accumulator_precision_str, ". Must be \"f16\" or \"f32\".");
+    }
+  }
+
   // parse force CPU node names
   // The force CPU node names are separated by EOL (\n or \r\n) in the config entry.
   // each line is a node name that will be forced to run on CPU.

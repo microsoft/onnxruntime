@@ -12,6 +12,7 @@
 #param has_skip_output
 #param tile_size_k_vec
 #param tile_size_k
+#param acc_f32
 #param tile_size
 #param has_gate_bias
 #param has_up_bias
@@ -29,9 +30,17 @@
 var<workgroup> sum_squared_shared : array<f32, workgroup_size_x>;
 #endif
 var<workgroup> tile_A : array<input_a_value_t, a_length_per_tile>;
-// Accumulate in f32 to avoid f16 overflow (max ~65504) when summing long K dot products.
-var<workgroup> gate_inter_results : array<array<f32, tile_size_k_vec + 1>, tile_size>;
-var<workgroup> up_inter_results : array<array<f32, tile_size_k_vec + 1>, tile_size>;
+// Precision of the partial sums accumulated along K, selected by the
+// "preferredMatmulAccumulatorPrecision" provider option. The block-local dot products stay in
+// f32 either way; this only changes the accumulator carried across K, which is what can
+// overflow the f16 max (~65504).
+#if acc_f32
+alias acc_element_t = f32;
+#else
+alias acc_element_t = output_element_t;
+#endif
+var<workgroup> gate_inter_results : array<array<acc_element_t, tile_size_k_vec + 1>, tile_size>;
+var<workgroup> up_inter_results : array<array<acc_element_t, tile_size_k_vec + 1>, tile_size>;
 
 const default_zero_point = output_element_t(8);
 
@@ -153,8 +162,8 @@ fn process_k_tile(batch: u32, b_global_base: u32, thread_idx: u32, idx: u32, idy
     let k_offset = kidx / elements_in_value_b + idx;
     if (b_global < uniforms.N && k_offset < uniforms.K_of_b) {
       let sums = compute_gate_up_sums(b_global, kidx, idx, k_offset);
-      gate_inter_results[local_row_offset + idy][idx] += sums[0];
-      up_inter_results[local_row_offset + idy][idx] += sums[1];
+      gate_inter_results[local_row_offset + idy][idx] += acc_element_t(sums[0]);
+      up_inter_results[local_row_offset + idy][idx] += acc_element_t(sums[1]);
     }
   }
   workgroupBarrier();
@@ -169,8 +178,8 @@ $MAIN {
 
   if (local_idx < tile_size) {
     for (var b = 0u; b < tile_size_k_vec; b++) {
-      gate_inter_results[local_idx][b] = f32(0);
-      up_inter_results[local_idx][b] = f32(0);
+      gate_inter_results[local_idx][b] = acc_element_t(0);
+      up_inter_results[local_idx][b] = acc_element_t(0);
     }
   }
   workgroupBarrier();
@@ -240,8 +249,8 @@ $MAIN {
   }
 
   if (local_idx < tile_size) {
-    var gate_output_value = f32(0);
-    var up_output_value = f32(0);
+    var gate_output_value = acc_element_t(0);
+    var up_output_value = acc_element_t(0);
     for (var b = 0u; b < tile_size_k_vec; b++) {
       gate_output_value += gate_inter_results[local_idx][b];
       up_output_value += up_inter_results[local_idx][b];
@@ -250,12 +259,12 @@ $MAIN {
     let output_idx = batch * uniforms.N + b_global;
     if (b_global < uniforms.N) {
 #if has_gate_bias
-      gate_output_value += f32(gate_bias[b_global]);
+      gate_output_value += acc_element_t(gate_bias[b_global]);
 #endif
 #if has_up_bias
-      up_output_value += f32(up_bias[b_global]);
+      up_output_value += acc_element_t(up_bias[b_global]);
 #endif
-      let one = f32(1.0);
+      let one = acc_element_t(1.0);
 #if activation_kind == 0
       // SiLU(x) = x * sigmoid(x). New activations are added with additional
       // `#elif activation_kind == N` blocks (must match MlpActivationKind).

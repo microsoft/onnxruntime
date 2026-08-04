@@ -32,7 +32,8 @@ class MatMulNBitsQkvDecodeProgram final
                               uint32_t k_unroll_tiles,
                               bool has_norm,
                               bool has_skip_input,
-                              bool has_skip_output)
+                              bool has_skip_output,
+                              bool acc_f32)
       : Program{"MatMulNBitsQkvDecode"},
         tile_size_(tile_size),
         single_scale_weights_(single_scale_weights),
@@ -80,6 +81,7 @@ class MatMulNBitsQkvDecodeProgram final
     const uint32_t sub_tile_count = WorkgroupSizeX() / tile_size_k_vec;
 
     return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_qkv.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
                                WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
                                WGSL_TEMPLATE_PARAMETER(component_a, components_a),
                                WGSL_TEMPLATE_PARAMETER(component_b, components_b),
@@ -129,6 +131,7 @@ class MatMulNBitsQkvDecodeProgram final
   bool has_norm_;
   bool has_skip_input_;
   bool has_skip_output_;
+  bool acc_f32_;
 };
 
 }  // namespace
@@ -329,13 +332,15 @@ Status MatMulNBitsQkv::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   }
 
   const uint32_t num_N_tile = CeilDiv(std::max(Nq, Nkv), tile_size);
+  const bool acc_f32 = context.MatmulAccumulatorPrecisionF32();
   MatMulNBitsQkvDecodeProgram program{tile_size,
                                       single_scale_weights,
                                       tile_size_k_vec,
                                       k_unroll_tiles,
                                       decode_has_norm,
                                       decode_has_skip_input,
-                                      decode_has_skip_output};
+                                      decode_has_skip_output,
+                                      acc_f32};
   program.SetWorkgroupSize(workgroup_size);
   program.SetDispatchGroupSize(num_N_tile, 1, batch_count);
   program
@@ -377,6 +382,7 @@ Status MatMulNBitsQkv::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                  decode_has_norm,
                  decode_has_skip_input,
                  decode_has_skip_output,
+                 acc_f32,
                  "decode_qkv_sln");
   if (decode_has_skip_output) {
     program.AddOutput({decode_input_skip_bias_sum,

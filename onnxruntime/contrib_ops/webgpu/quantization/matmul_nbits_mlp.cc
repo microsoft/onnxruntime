@@ -60,7 +60,8 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
                               bool single_scale_weights,
                               uint32_t tile_size_k_vec,
                               uint32_t k_unroll_tiles,
-                              MlpActivationKind activation_kind)
+                              MlpActivationKind activation_kind,
+                              bool acc_f32)
       : Program{"MatMulNBitsMlpDecode"},
         tile_size_(tile_size),
         has_gate_bias_(has_gate_bias),
@@ -110,6 +111,7 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
     // has_skip_output) combinations; only the AddInput/AddOutput wiring upstream changes.
     // The template's own #if directives select the appropriate code paths.
     return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_mlp.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
                                WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
                                WGSL_TEMPLATE_PARAMETER(activation_kind, static_cast<uint32_t>(activation_kind_)),
                                WGSL_TEMPLATE_PARAMETER(component_a, components_a),
@@ -160,6 +162,7 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
   uint32_t tile_size_k_vec_;
   uint32_t k_unroll_tiles_;
   MlpActivationKind activation_kind_;
+  bool acc_f32_;
 };
 
 class MatMulNBitsMlpProgram final : public Program<MatMulNBitsMlpProgram> {
@@ -412,6 +415,7 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
     }
 
     const uint32_t num_N_tile = CeilDiv(N, tile_size);
+    const bool acc_f32 = context.MatmulAccumulatorPrecisionF32();
 
     MatMulNBitsMlpDecodeProgram program{tile_size,
                                         has_gate_bias,
@@ -422,7 +426,8 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                                         single_scale_weights,
                                         tile_size_k_vec,
                                         k_unroll_tiles,
-                                        activation_kind_};
+                                        activation_kind_,
+                                        acc_f32};
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize(num_N_tile, 1, batch_count);
     program.AddInput({decode_a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)});
@@ -457,6 +462,7 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                    tile_size_k_vec,
                    k_unroll_tiles,
                    static_cast<uint32_t>(activation_kind_),
+                   acc_f32,
                    "decode_4bit");
     if (decode_has_skip_output) {
       program.AddOutput({input_skip_bias_sum,

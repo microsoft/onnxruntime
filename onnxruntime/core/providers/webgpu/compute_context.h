@@ -118,6 +118,13 @@ class ComputeContextBase {
   }
 
   //
+  // Get whether MatMulNBits dot products accumulate in f32 rather than in the output element type.
+  //
+  inline bool MatmulAccumulatorPrecisionF32() const {
+    return ep_.MatmulAccumulatorPrecisionF32();
+  }
+
+  //
   // Get the logger.
   //
   inline const logging::Logger& Logger() const {
