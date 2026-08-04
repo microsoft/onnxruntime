@@ -24,6 +24,17 @@ enum class MoeGemvConfig {
   kThreads64,
 };
 
+// Upper bound on expanded rows (tokens * top_k) that still take the FP4 GEMV path. Scoped to FP4:
+// the INT4/INT8 sibling keeps the original limit of 8.
+//
+// 8 only covers single-token decode. A batch of B tokens expands to B * top_k rows, so anything
+// above one token fell back to dequantize + CUTLASS grouped GEMM, which materializes every local
+// expert's weights in 16-bit. Under expert parallelism only ~1/world of those rows are local, so
+// the grid stays sparse and the GEMV keeps winning well past 8 rows.
+//
+// Override with ORT_FP4_GEMV_MAX_ROWS (0 restores the shared limit of 8).
+int64_t Fp4MoeGemvMaxExpandedRows();
+
 // True when the opt-in interleaved MXFP4 GEMV path is enabled (env ORT_FP4_GEMV_INTERLEAVED=1).
 // It combines three changes over the default path: (a) the INT4-style ColumnMajorInterleaved FP4
 // weight layout (kInterleave=4, kStepK=32) for 4x fewer K-trips, (b) dtype-conditional accumulation

@@ -38,6 +38,15 @@ bool Fp4MoeGemvUseInterleaved() {
   return enabled;
 }
 
+// Expanded-row window for the FP4 GEMV (env ORT_FP4_GEMV_MAX_ROWS). See moe_gemv_fp4.h.
+int64_t Fp4MoeGemvMaxExpandedRows() {
+  const static int64_t rows = []() -> int64_t {
+    const int64_t v = onnxruntime::ParseEnvironmentVariableWithDefault<int64_t>("ORT_FP4_GEMV_MAX_ROWS", 64);
+    return v > 0 ? v : kMaxProfiledExpandedRows;
+  }();
+  return rows;
+}
+
 // Override for the interleaved path (env ORT_FP4_GEMV_INTERLEAVED_HALFACC=1). When set, the
 // interleaved GEMV forces 16-bit (AccT=TypeA) accumulation for BOTH fp16 and bf16, overriding the
 // default dtype-conditional Fp4GemvAccT policy (fp16->fp16 accum, bf16->fp32 accum). Forcing
@@ -148,7 +157,7 @@ bool is_moe_gemv_fp4_supported(int sm, int64_t expanded_num_rows, int64_t n, int
   if (k % group_size != 0) {
     return false;
   }
-  if (expanded_num_rows <= 0 || expanded_num_rows > kMaxProfiledExpandedRows) {
+  if (expanded_num_rows <= 0 || expanded_num_rows > Fp4MoeGemvMaxExpandedRows()) {
     return false;
   }
   if (n < kMinProfiledProblemDim || k < kMinProfiledProblemDim) {
