@@ -33,6 +33,12 @@ enum class MoeGemvConfig {
 // compute dispatch query this so the prepacked weights and the kernel always agree.
 bool Fp4MoeGemvUseInterleaved();
 
+// True when the vectorized e2m1 decode fast path is disabled (env ORT_DISABLE_MOE_GEMV_FAST=1),
+// which forces the shipping per-element Fp4I2FConverter decode and the CtaN=4 tiling. The fast
+// path is bit-exact with the path it replaces (same magnitude tables, same 16-bit scale multiply,
+// same ascending-k fp32 accumulation order per output column), so this is only an escape hatch.
+bool Fp4MoeGemvFastDisabled();
+
 // FP4 GEMV shape support for the non-interleaved ColumnMajor layout (kInterleave = 1). Shared by
 // both MXFP4 (group_size == 32) and NVFP4 (group_size == 16). Requires sm >= 80, n divisible by
 // the kernel tile width (kCtaN) selected by `config`, and the profiled small-decode row/dim

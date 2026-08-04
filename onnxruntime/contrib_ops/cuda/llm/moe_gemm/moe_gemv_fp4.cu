@@ -54,6 +54,23 @@ bool Fp4MoeGemvInterleavedHalfAccum() {
 static constexpr int kInterleavedCtaN = 4;
 static constexpr int kInterleavedThreads = 128;
 
+// Tiling for the e2m1 fast inner loop. The vectorized decode cuts the ALU-pipe instruction count
+// per K-step by ~2.4x, which moves the kernel off the ALU throughput roofline and onto occupancy:
+// halving CtaN doubles the number of resident blocks (and drops registers from ~128 to ~66),
+// which is then the larger remaining win. CtaN must stay even (kernel static_assert) and n must
+// be divisible by CtaN*kInterleave -- weaker than the kInterleavedCtaN=4 support predicate, so no
+// shape that reaches here can fail it, but it is asserted at the call site anyway.
+static constexpr int kInterleavedFastCtaN = 2;
+
+// Kill switch (env ORT_DISABLE_MOE_GEMV_FAST=1): forces the shipping per-element e2m1 decode and
+// the kInterleavedCtaN tiling. The fast path is bit-exact with the slow one, so this only exists
+// as an escape hatch.
+bool Fp4MoeGemvFastDisabled() {
+  const static bool disabled =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_MOE_GEMV_FAST", 0) == 1;
+  return disabled;
+}
+
 // --- MXFP4 (e2m1) GEMV: non-interleaved ColumnMajor layout (kInterleave = 1) ---
 // Weights are the QMoERepackFP4ColToRow output ([experts, n, k/2] row-major, two e2m1
 // codes per byte, even-K in the low nibble). Block scales are the
@@ -211,12 +228,22 @@ void launch_moe_gemv_fp4_symmetric(const T* act, const uint8_t* weight, const T*
             const_cast<T*>(act), const_cast<uint8_t*>(weight), const_cast<T*>(scales), const_cast<T*>(bias), out,
             expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, n, k, group_size,
             row_skip, stream);
-      } else {
-        fiv::dispatch_moe_gemv_group_size<DetailsI, kInterleavedCtaN, kInterleavedThreads, T, Fp4GemvAccT<T>>(
-            const_cast<T*>(act), const_cast<uint8_t*>(weight), const_cast<T*>(scales), const_cast<T*>(bias), out,
-            expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, n, k, group_size,
-            row_skip, stream);
+        return;
       }
+      if constexpr (fiv::kMoeGemvFp4FastSupported<DetailsI, Fp4GemvAccT<T>>) {
+        if (!Fp4MoeGemvFastDisabled() && n % (kInterleavedFastCtaN * DetailsI::kInterleave) == 0) {
+          fiv::dispatch_moe_gemv_group_size<DetailsI, kInterleavedFastCtaN, kInterleavedThreads, T,
+                                            Fp4GemvAccT<T>, true>(
+              const_cast<T*>(act), const_cast<uint8_t*>(weight), const_cast<T*>(scales), const_cast<T*>(bias), out,
+              expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, n, k, group_size,
+              row_skip, stream);
+          return;
+        }
+      }
+      fiv::dispatch_moe_gemv_group_size<DetailsI, kInterleavedCtaN, kInterleavedThreads, T, Fp4GemvAccT<T>>(
+          const_cast<T*>(act), const_cast<uint8_t*>(weight), const_cast<T*>(scales), const_cast<T*>(bias), out,
+          expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, n, k, group_size,
+          row_skip, stream);
     };
     if (sm80_pair_interleaved) {
       launch_interleaved(TypeTag<Fp4KernelDetailsSm80Pair<T>>{});
@@ -269,13 +296,24 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
             const_cast<T*>(act), const_cast<uint8_t*>(weight), const_cast<T*>(scales), const_cast<T*>(bias), out,
             expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size, k,
             group_size, activation_params, row_skip, stream);
-      } else {
-        fiv::dispatch_moe_gemv_interleaved_swiglu_group_size<DetailsI, kInterleavedCtaN, kInterleavedThreads, T,
-                                                             Fp4GemvAccT<T>>(
-            const_cast<T*>(act), const_cast<uint8_t*>(weight), const_cast<T*>(scales), const_cast<T*>(bias), out,
-            expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size, k,
-            group_size, activation_params, row_skip, stream);
+        return;
       }
+      if constexpr (fiv::kMoeGemvFp4FastSupported<DetailsI, Fp4GemvAccT<T>>) {
+        if (!Fp4MoeGemvFastDisabled() &&
+            (inter_size * 2) % (kInterleavedFastCtaN * DetailsI::kInterleave) == 0) {
+          fiv::dispatch_moe_gemv_interleaved_swiglu_group_size<DetailsI, kInterleavedFastCtaN, kInterleavedThreads,
+                                                               T, Fp4GemvAccT<T>, true>(
+              const_cast<T*>(act), const_cast<uint8_t*>(weight), const_cast<T*>(scales), const_cast<T*>(bias), out,
+              expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size, k,
+              group_size, activation_params, row_skip, stream);
+          return;
+        }
+      }
+      fiv::dispatch_moe_gemv_interleaved_swiglu_group_size<DetailsI, kInterleavedCtaN, kInterleavedThreads, T,
+                                                           Fp4GemvAccT<T>>(
+          const_cast<T*>(act), const_cast<uint8_t*>(weight), const_cast<T*>(scales), const_cast<T*>(bias), out,
+          expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size, k,
+          group_size, activation_params, row_skip, stream);
     };
     if (sm80_pair_interleaved) {
       launch_interleaved(TypeTag<Fp4KernelDetailsSm80Pair<T>>{});
