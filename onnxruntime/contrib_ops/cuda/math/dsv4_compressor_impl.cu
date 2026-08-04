@@ -9,6 +9,7 @@
 #include <cuda_fp16.h>
 
 #include "contrib_ops/cuda/math/dsv4_common.cuh"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
@@ -19,6 +20,32 @@ namespace {
 constexpr int kThreads = kDSV4CompressorThreads;
 constexpr int kWarps = kThreads / 32;
 constexpr float kNegInf = -1e30f;
+
+// The pooling kernel gives every channel its own thread and a private team of loaders, so its
+// block is shaped (kPoolChannels, loaders) instead of the flat kThreads the other two use.
+constexpr int kPoolChannels = 32;    // channels per block; one warp wide, so smem is conflict-free
+constexpr int kPoolMaxLoaders = 32;  // cap: kPoolChannels * kPoolMaxLoaders == 1024 threads
+constexpr int kPoolMinLoaders = 8;
+constexpr int kPoolReduceUnroll = 8;  // in-flight shared loads per sequential accumulate step
+constexpr size_t kPoolMaxSharedBytes = 48u * 1024u;
+
+// Kill switch for the fast pooling kernel. Set ORT_DISABLE_DSV4_POOL_FAST=1 to fall back to the
+// one-thread-per-channel reference kernel below, which is what the fast path is validated against.
+bool DSV4PoolFastDisabledByEnv() {
+  // Parsed once via ORT's environment helper (consistent parsing/thread-safety across platforms).
+  static const bool disabled =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_DSV4_POOL_FAST", 0) == 1;
+  return disabled;
+}
+
+int DSV4PoolLoaders(int span) {
+  const int want = span < kPoolMinLoaders ? kPoolMinLoaders : span;
+  return want > kPoolMaxLoaders ? kPoolMaxLoaders : want;
+}
+
+size_t DSV4PoolSharedBytes(int span) {
+  return (2u * static_cast<size_t>(span) + 2u) * kPoolChannels * sizeof(float);
+}
 
 // One candidate row's worth of pooling, one thread per channel.
 //
@@ -112,6 +139,168 @@ __global__ void DSV4CompressorPoolKernel(const DSV4CompressorParams p,
     const float w = valid ? (use_past ? past_score[off] : score[off]) + ape[k * p.feat + fo]
                           : kNegInf;
     acc += (use_past ? past_kv[off] : kv[off]) * (expf(w - m) / denom);
+  }
+
+  rows[(static_cast<int64_t>(b) * p.num_rows + j) * p.head_dim + ch] =
+      DSV4Conv<CudaT>::FromFloat(acc);
+}
+
+// The same pooling, but with the window staged through shared memory by a team of loaders.
+//
+// The reference kernel above exposes only `head_dim * J * B` threads, so a decode step runs on a
+// handful of blocks and every one of the three passes pays the full global-load latency `span`
+// times over. Here the block is (kPoolChannels, loaders): the loader team fetches the whole
+// window once into shared memory, and the per-element `expf` and the divide -- which are what the
+// three passes actually spend their time on, the IEEE divide most of all -- are spread over the
+// same team.
+//
+// What stays strictly serial is the arithmetic that is allowed to be: `m`, `denom` and `acc` are
+// still accumulated by one thread in increasing `s`. The graph normalizes every weight and then
+// sums v * w, so the pooling has to do the same in the same order: a fused sum-then-divide rounds
+// differently, and the FP8/FP4 grids downstream turn that into whole-step flips. Hoisting `expf`
+// and the divide out is safe because each result only depends on its own `s`; reassociating the
+// sums would not be.
+template <typename CudaT, int COFF>
+__global__ void DSV4CompressorPoolFastKernel(const DSV4CompressorParams p,
+                                             const float* __restrict__ kv,
+                                             const float* __restrict__ score,
+                                             const float* __restrict__ past_kv,
+                                             const float* __restrict__ past_score,
+                                             const float* __restrict__ ape,
+                                             const int64_t* __restrict__ past_lens,
+                                             CudaT* __restrict__ rows) {
+  extern __shared__ float smem[];
+  const int c = threadIdx.x;
+  const int loader = threadIdx.y;
+  const int loaders = blockDim.y;
+  const int ch = blockIdx.x * kPoolChannels + c;
+  const int j = blockIdx.y;
+  const int b = blockIdx.z;
+
+  const int span = p.span;
+  const int ratio = p.ratio;
+  const int feat = p.feat;
+  const int64_t past = past_lens[b];
+  const int64_t total = past + p.seq_len;
+  const int64_t n_full = span + p.seq_len;
+  const int64_t base = past - span;
+  const int64_t pos0 = (past / ratio + j) * static_cast<int64_t>(ratio);
+  const int64_t past_base = static_cast<int64_t>(b) * span * feat;
+  const int64_t cur_base = (static_cast<int64_t>(b) * p.seq_len - span) * static_cast<int64_t>(feat);
+  const bool live = ch < p.head_dim;
+
+  // [span][kPoolChannels] weights (rewritten in place as exp, then as the normalized weight),
+  // [span][kPoolChannels] values, then one `m` and one `denom` per channel.
+  float* s_w = smem;
+  float* s_v = s_w + static_cast<size_t>(span) * kPoolChannels;
+  float* s_max = s_v + static_cast<size_t>(span) * kPoolChannels;
+  float* s_denom = s_max + kPoolChannels;
+
+  auto stage = [&](int s) {
+    // The overlapping form pools the previous window into the low half of the projection and
+    // the current one into the high half.
+    int fo = ch;
+    int k = s;
+    int64_t pos = pos0 + s;
+    bool ok = true;
+    if (COFF == 2) {
+      if (s < ratio) {
+        pos = pos0 + s - ratio;
+        ok = pos >= 0;
+      } else {
+        k = s - ratio;
+        pos = pos0 + k;
+        fo = p.head_dim + ch;
+      }
+    }
+    const int64_t idx = pos - base;
+    const bool valid = ok && idx >= 0 && idx < n_full && pos < total;
+    int64_t cl = idx < 0 ? 0 : idx;
+    if (cl > n_full - 1) cl = n_full - 1;
+    const bool use_past = cl < span;
+    const int64_t off = use_past ? past_base + cl * feat + fo : cur_base + cl * feat + fo;
+    const size_t slot = static_cast<size_t>(s) * kPoolChannels + c;
+    s_w[slot] = (valid && live)
+                    ? (use_past ? past_score[off] : score[off]) + ape[static_cast<int64_t>(k) * feat + fo]
+                    : kNegInf;
+    s_v[slot] = live ? (use_past ? past_kv[off] : kv[off]) : 0.0f;
+  };
+
+#pragma unroll 4
+  for (int s = loader; s < span; s += loaders) stage(s);
+  __syncthreads();
+
+  if (loader == 0) {
+    float m = -FLT_MAX;
+    int s = 0;
+    for (; s + kPoolReduceUnroll <= span; s += kPoolReduceUnroll) {
+      float w[kPoolReduceUnroll];
+#pragma unroll
+      for (int u = 0; u < kPoolReduceUnroll; ++u)
+        w[u] = s_w[static_cast<size_t>(s + u) * kPoolChannels + c];
+#pragma unroll
+      for (int u = 0; u < kPoolReduceUnroll; ++u) m = fmaxf(m, w[u]);
+    }
+    for (; s < span; ++s) m = fmaxf(m, s_w[static_cast<size_t>(s) * kPoolChannels + c]);
+    s_max[c] = m;
+  }
+  __syncthreads();
+
+  {
+    const float m = s_max[c];
+#pragma unroll 4
+    for (int s = loader; s < span; s += loaders) {
+      const size_t slot = static_cast<size_t>(s) * kPoolChannels + c;
+      s_w[slot] = expf(s_w[slot] - m);
+    }
+  }
+  __syncthreads();
+
+  if (loader == 0) {
+    float denom = 0.0f;
+    int s = 0;
+    for (; s + kPoolReduceUnroll <= span; s += kPoolReduceUnroll) {
+      float e[kPoolReduceUnroll];
+#pragma unroll
+      for (int u = 0; u < kPoolReduceUnroll; ++u)
+        e[u] = s_w[static_cast<size_t>(s + u) * kPoolChannels + c];
+#pragma unroll
+      for (int u = 0; u < kPoolReduceUnroll; ++u) denom += e[u];
+    }
+    for (; s < span; ++s) denom += s_w[static_cast<size_t>(s) * kPoolChannels + c];
+    s_denom[c] = denom;
+  }
+  __syncthreads();
+
+  {
+    const float denom = s_denom[c];
+#pragma unroll 4
+    for (int s = loader; s < span; s += loaders) {
+      const size_t slot = static_cast<size_t>(s) * kPoolChannels + c;
+      s_w[slot] = s_w[slot] / denom;
+    }
+  }
+  __syncthreads();
+
+  if (loader != 0 || !live) return;
+
+  float acc = 0.0f;
+  int s = 0;
+  for (; s + kPoolReduceUnroll <= span; s += kPoolReduceUnroll) {
+    float w[kPoolReduceUnroll];
+    float v[kPoolReduceUnroll];
+#pragma unroll
+    for (int u = 0; u < kPoolReduceUnroll; ++u) {
+      const size_t slot = static_cast<size_t>(s + u) * kPoolChannels + c;
+      w[u] = s_w[slot];
+      v[u] = s_v[slot];
+    }
+#pragma unroll
+    for (int u = 0; u < kPoolReduceUnroll; ++u) acc += v[u] * w[u];
+  }
+  for (; s < span; ++s) {
+    const size_t slot = static_cast<size_t>(s) * kPoolChannels + c;
+    acc += s_v[slot] * s_w[slot];
   }
 
   rows[(static_cast<int64_t>(b) * p.num_rows + j) * p.head_dim + ch] =
@@ -260,10 +449,24 @@ Status LaunchDSV4Compressor(cudaStream_t stream, const DSV4CompressorParams& par
   using CudaT = typename ::onnxruntime::cuda::ToCudaType<T>::MappedType;
   auto* out = reinterpret_cast<CudaT*>(rows);
 
-  const int channel_blocks = (params.head_dim + kThreads - 1) / kThreads;
-  DSV4CompressorPoolKernel<CudaT><<<dim3(channel_blocks, params.num_rows, params.batch), kThreads,
-                                    0, stream>>>(
-      params, kv, score, past_state_kv, past_state_score, ape, past_lens, out);
+  const size_t pool_shared = DSV4PoolSharedBytes(params.span);
+  if (!DSV4PoolFastDisabledByEnv() && pool_shared <= kPoolMaxSharedBytes) {
+    const dim3 grid((params.head_dim + kPoolChannels - 1) / kPoolChannels, params.num_rows,
+                    params.batch);
+    const dim3 block(kPoolChannels, DSV4PoolLoaders(params.span));
+    if (params.coff == 2) {
+      DSV4CompressorPoolFastKernel<CudaT, 2><<<grid, block, pool_shared, stream>>>(
+          params, kv, score, past_state_kv, past_state_score, ape, past_lens, out);
+    } else {
+      DSV4CompressorPoolFastKernel<CudaT, 1><<<grid, block, pool_shared, stream>>>(
+          params, kv, score, past_state_kv, past_state_score, ape, past_lens, out);
+    }
+  } else {
+    const int channel_blocks = (params.head_dim + kThreads - 1) / kThreads;
+    DSV4CompressorPoolKernel<CudaT><<<dim3(channel_blocks, params.num_rows, params.batch), kThreads,
+                                      0, stream>>>(
+        params, kv, score, past_state_kv, past_state_score, ape, past_lens, out);
+  }
 
   const size_t shared = DSV4CompressorFinishSharedFloats(params) * sizeof(float);
   if (shared > 48u * 1024u) {
