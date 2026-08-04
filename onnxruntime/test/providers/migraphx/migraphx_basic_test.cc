@@ -188,6 +188,38 @@ TEST(MIGraphXExecutionProviderTest, canEvalArgument) {
   ASSERT_EQ(canEvalNodeArgument(gv, node2, {1}, input_nodes), true);
 }
 
+TEST(MIGraphXExecutionProviderTest, OutputEdgeWithImplicitInputConsumer) {
+  Model model("migraphx_implicit_input_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& graph_input = graph.GetOrCreateNodeArg("X", &float_tensor);
+  auto& shared_value = graph.GetOrCreateNodeArg("shared", &float_tensor);
+  auto& explicit_output = graph.GetOrCreateNodeArg("explicit_output", &float_tensor);
+  auto& implicit_output = graph.GetOrCreateNodeArg("implicit_output", &float_tensor);
+
+  auto& source = graph.AddNode("source", "Identity", "", {&graph_input}, {&shared_value});
+  graph.AddNode("explicit_consumer", "Identity", "", {&shared_value}, {&explicit_output});
+  auto& implicit_consumer =
+      graph.AddNode("implicit_consumer", "Identity", "", {&graph_input}, {&implicit_output});
+  graph.SetOutputs({&explicit_output, &implicit_output});
+  ASSERT_TRUE(graph.Resolve().IsOK());
+
+  implicit_consumer.MutableImplicitInputDefs().push_back(&shared_value);
+  graph.AddEdge(source.Index(), implicit_consumer.Index(), 0,
+                static_cast<int>(implicit_consumer.InputDefs().size()));
+
+  const auto edge = std::find_if(source.OutputEdgesBegin(), source.OutputEdgesEnd(),
+                                 [&](const Node::EdgeEnd& edge_end) {
+                                   return edge_end.GetNode().Index() == implicit_consumer.Index();
+                                 });
+  ASSERT_NE(edge, source.OutputEdgesEnd());
+  EXPECT_EQ(GetOutputNodeArgForEdge(source, *edge), &shared_value);
+}
+
 #if defined(WIN32)
 static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
   // Access the underlying InferenceSession.
