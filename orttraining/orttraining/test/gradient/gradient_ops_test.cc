@@ -48,7 +48,8 @@ static bool IsErrorWithinTolerance(float error, float tolerance) {
 #define EXPECT_IS_TINY(max_error) EXPECT_IS_TINIER_THAN(max_error, 1.5e-2f)
 
 static void RunReductionTests(const OpDef& op_def, bool axes_as_input = false,
-                              bool check_not_have_shape_inferencing = false) {
+                              bool check_not_have_shape_inferencing = false,
+                              float data_scale = 5.f) {
   std::vector<std::vector<int64_t>> x_shapes = {
       {4, 3, 2},
       {4, 3, 2},
@@ -100,7 +101,7 @@ static void RunReductionTests(const OpDef& op_def, bool axes_as_input = false,
     std::vector<int64_t> axes = axes_vec[i];
     std::vector<std::vector<float>> x_datas;
     RandomValueGenerator random{};
-    x_datas.push_back(random.Gaussian<float>(x_shapes[i], 0.f, 5.f));
+    x_datas.push_back(random.Gaussian<float>(x_shapes[i], 0.f, data_scale));
     std::vector<TensorInfo> input = {x_shape};
     std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
     if (keepdims_ip[i] != -1) attributes.push_back(MakeAttribute("keepdims", keepdims_ip[i]));
@@ -3454,26 +3455,29 @@ TEST(GradientCheckerTest, GlobalMaxPoolGrad) {
 
 TEST(GradientCheckerTest, ReduceMaxGrad) {
   // Attribute axes supports negative values from opset 11.
+  // Use a large data scale (1000) to ensure the maximum is well-separated from other values,
+  // so the finite-difference step (1e-3) does not encounter near-ties that make the numerical
+  // Jacobian unreliable for a non-smooth op like ReduceMax.
   OpDef op_def_11{"ReduceMax", kOnnxDomain, 11};
 
-  RunReductionTests(op_def_11, false, true);
+  RunReductionTests(op_def_11, false, true, 1000.f);
 
   OpDef op_def_12{"ReduceMax", kOnnxDomain, 12};
 
-  RunReductionTests(op_def_12, false, true);
+  RunReductionTests(op_def_12, false, true, 1000.f);
 
   OpDef op_def_13{"ReduceMax", kOnnxDomain, 13};
 
-  RunReductionTests(op_def_13, false, true);
+  RunReductionTests(op_def_13, false, true, 1000.f);
 
   // axes is input from opset 18.
   OpDef op_def_18{"ReduceMax", kOnnxDomain, 18};
 
-  RunReductionTests(op_def_18, true, true);
+  RunReductionTests(op_def_18, true, true, 1000.f);
 
   OpDef op_def_20{"ReduceMax", kOnnxDomain, 20};
 
-  RunReductionTests(op_def_20, true, true);
+  RunReductionTests(op_def_20, true, true, 1000.f);
 }
 
 }  // namespace test
