@@ -44,6 +44,13 @@ list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX "onnxruntime/contrib_ops/cuda/c
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX "onnxruntime/contrib_ops/cuda/aten_ops/.*")
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX "onnxruntime/contrib_ops/cuda/collective/.*")
 
+if (NOT onnxruntime_USE_TRT_FUSED_ATTENTION)
+  # Drop the prebuilt TensorRT fused MHA cubin blobs. cudaDriverWrapper.cc is kept because
+  # sparse attention depends on it.
+  list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX
+    ".*/bert/tensorrt_fused_multihead_attention/.*(\\.cubin\\.cc|_kernel\\.sm[0-9]+\\.cc)$")
+endif()
+
 # Exclude files that include cuda_execution_provider.h (directly or transitively),
 # which conflicts with the adapter shim CUDAExecutionProvider class.
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/cuda_execution_provider\\.cc$")
@@ -122,6 +129,17 @@ onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_plugin
     ${CUDA_PLUGIN_EP_CC_SRCS}
     ${CUDA_PLUGIN_EP_CU_SRCS}
 )
+
+if(WIN32)
+  # Add version information to the packaged plugin DLL.
+  target_sources(onnxruntime_providers_cuda_plugin PRIVATE
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/onnxruntime_providers_cuda.rc")
+  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE
+      FILE_NAME=\"onnxruntime_providers_cuda.dll\")
+elseif(UNIX AND NOT APPLE)
+  # The build output is packaged directly, so do not embed the build machine's CUDA path.
+  set_target_properties(onnxruntime_providers_cuda_plugin PROPERTIES SKIP_BUILD_RPATH TRUE)
+endif()
 
 # Mirror directory structure in the Visual Studio solution tree under "onnxruntime".
 source_group(TREE ${ONNXRUNTIME_ROOT} PREFIX "onnxruntime" FILES ${CUDA_EP_CC_SRCS} ${CUDA_EP_CU_SRCS})
