@@ -10,12 +10,14 @@
 #include "core/common/common.h"
 #include "core/common/string_utils.h"
 #include "core/framework/tensor_shape.h"
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/graph.h"
 #include "core/graph/graph_proto_serializer.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/function_template.h"
 #include "core/graph/model.h"
 #include "core/graph/schema_registry.h"
+#endif
 
 namespace onnxruntime {
 
@@ -25,10 +27,12 @@ class MaxShapeInferenceBuilder {
     result.graph_shapes_.clear();
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   static MaxShapeInferenceResult::ShapeMap& AddGraph(
       MaxShapeInferenceResult& result, const Graph& graph) {
     return result.graph_shapes_[&graph];
   }
+#endif
 };
 
 namespace {
@@ -40,6 +44,7 @@ std::string_view Trim(std::string_view s) {
   return s;
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 Status CaptureGraphShapes(const Graph& source_graph,
                           const Graph& shadow_graph,
                           MaxShapeInferenceResult& result) {
@@ -125,6 +130,7 @@ void CollectGeneratedSchemas(
     }
   }
 }
+#endif
 
 }  // namespace
 
