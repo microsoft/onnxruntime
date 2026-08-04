@@ -168,6 +168,12 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, DSV4QKVNormRope);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DSV4InvRopeGroup);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DSV4InvRopeGroup);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, DSV4InvRopeGroup);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DSV4MoERouter);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DSV4MoERouter);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, DSV4MoERouter);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DSV4SwiGLU);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DSV4SwiGLU);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, DSV4SwiGLU);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, CausalConvWithState);
@@ -457,6 +463,12 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DSV4InvRopeGroup)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DSV4InvRopeGroup)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, DSV4InvRopeGroup)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DSV4MoERouter)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DSV4MoERouter)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, DSV4MoERouter)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DSV4SwiGLU)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DSV4SwiGLU)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, DSV4SwiGLU)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, CausalConvWithState)>,

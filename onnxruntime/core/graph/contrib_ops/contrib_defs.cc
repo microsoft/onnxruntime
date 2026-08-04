@@ -1155,6 +1155,96 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
+    DSV4MoERouter, 1,
+    OpSchema()
+        .SetDoc(
+            "DeepSeek-V4's MoE routing decision, from the gate GEMM's output to the two "
+            "tensors its expert-parallel QMoE call needs.\n"
+            "\n"
+            "The per-expert affinity is `sqrtsoftplus` scoring:\n"
+            "  affinity = Sqrt(Softplus(scores))\n"
+            "The experts are then chosen in one of two ways. With `expert_ids` supplied the "
+            "choice is fixed per token (hash routing, used by the leading layers). Otherwise "
+            "it is `noaux_tc` selection: the top `topk` of `affinity + bias`, with ties going "
+            "to the lower expert index. Either way the weights are the affinities of the "
+            "chosen experts, normalised to sum to one.\n"
+            "\n"
+            "Under expert parallelism a rank holds only `local_expert_count` experts starting "
+            "at `local_expert_start`, and sees only that column block. `router_probs` carries "
+            "the log of the weight for a chosen local expert and a large negative value "
+            "elsewhere, so QMoE's own softmax over the block returns w_e / W_local. "
+            "`weight_scale` is `route_scale * W_local`, which multiplies that factor back out "
+            "of the expert output before the all-reduce; a token with no local expert gets a "
+            "zero scale, which annihilates the degenerate uniform softmax of an all-negative "
+            "row.")
+        .Attr("topk", "Experts activated per token.", AttributeProto::INT,
+              static_cast<int64_t>(1))
+        .Attr("local_expert_start", "First expert held by this rank.", AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("local_expert_count", "Experts held by this rank.", AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("route_scale", "Factor folded into `weight_scale`.", AttributeProto::FLOAT, 1.0f)
+        .Attr("dtype",
+              "Element type of `router_probs`. T appears on no input, so it cannot be "
+              "inferred.",
+              AttributeProto::INT, static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT))
+        .Input(0, "scores", "Gate projection, shape (tokens, num_experts).", "M")
+        .Input(1, "bias", "Selection bias, shape (num_experts). Absent for hash routing.", "M",
+               OpSchema::Optional)
+        .Input(2, "expert_ids",
+               "Experts chosen per token, shape (tokens, topk). Present only for hash routing.",
+               "I", OpSchema::Optional)
+        .Output(0, "router_probs",
+                "Log-domain router row for this rank, shape (tokens, local_expert_count).", "T")
+        .Output(1, "weight_scale",
+                "route_scale times this rank's share of the weight, shape (tokens, 1).", "M")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain the router row to float tensors.")
+        .TypeConstraint("M", {"tensor(float)"},
+                        "Constrain the scores, bias and weight scale to float tensors.")
+        .TypeConstraint("I", {"tensor(int64)"}, "Constrain the expert ids to int64 tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          const int64_t dtype = getAttribute(
+              ctx, "dtype", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+          updateOutputElemType(ctx, 0, static_cast<int32_t>(dtype));
+          updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+          if (!hasInputShape(ctx, 0)) return;
+
+          const auto& in = getInputShape(ctx, 0);
+          if (in.dim_size() != 2) fail_shape_inference("scores must have rank 2.");
+          auto* probs = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          *probs->add_dim() = in.dim(0);
+          probs->add_dim()->set_dim_value(
+              getAttribute(ctx, "local_expert_count", static_cast<int64_t>(0)));
+          auto* scale = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
+          *scale->add_dim() = in.dim(0);
+          scale->add_dim()->set_dim_value(1);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    DSV4SwiGLU, 1,
+    OpSchema()
+        .SetDoc(
+            "The clamped SwiGLU of DeepSeek-V4's shared expert, on a gate/up pair that has "
+            "already been split into two tensors:\n"
+            "  g = Min(gate, limit)\n"
+            "  l = Clip(up, -limit, limit)\n"
+            "  output = g * Sigmoid(g) * l\n"
+            "with the arithmetic done in float regardless of T. A `limit` of zero disables "
+            "both clamps.")
+        .Attr("limit", "Clamp applied to both halves; zero disables it.", AttributeProto::FLOAT,
+              0.0f)
+        .Input(0, "gate", "Gate half of the projection.", "T")
+        .Input(1, "up", "Up half of the projection, same shape as gate.", "T")
+        .Output(0, "output", "Activated tensor, same shape as the inputs.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain the activation type to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (hasInputShape(ctx, 0)) propagateShapeFromInputToOutput(ctx, 0, 0);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
     HyperConnectionMix, 1,
     OpSchema()
         .SetDoc(
