@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "core/common/status.h"
 #include "core/common/float16.h"
@@ -32,6 +33,34 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 using namespace onnxruntime::cuda;
+
+namespace {
+
+Status ValidateGroupIndexRangeForCuda(const Tensor* group_index, int64_t k_blocks, cudaStream_t stream) {
+  if (group_index == nullptr || group_index->Location().device.Type() == OrtDevice::CPU) {
+    return Status::OK();
+  }
+
+  const int32_t* g_idx_data = group_index->Data<int32_t>();
+  const size_t g_idx_size = static_cast<size_t>(group_index->Shape().Size());
+  std::vector<int32_t> g_idx_host(g_idx_size);
+
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(g_idx_host.data(), g_idx_data, g_idx_size * sizeof(int32_t),
+                                       cudaMemcpyDefault, stream));
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+
+  for (size_t i = 0; i < g_idx_size; ++i) {
+    if (g_idx_host[i] < 0 || g_idx_host[i] >= k_blocks) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "group_index value at index ", i, " is ", g_idx_host[i],
+                             ", which is out of valid range [0, ", k_blocks, ")");
+    }
+  }
+
+  return Status::OK();
+}
+
+}  // namespace
 
 #if USE_FPA_INTB_GEMM
 using onnxruntime::llm::kernels::weight_only::GemmPluginProfilerManager;
@@ -601,6 +630,11 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
 
   cudaStream_t stream = this->Stream(ctx);
+
+  if (reorder_idx != nullptr) {
+    const int64_t k_blocks = (K_ + block_size_ - 1) / block_size_;
+    ORT_RETURN_IF_ERROR(ValidateGroupIndexRangeForCuda(reorder_idx, k_blocks, stream));
+  }
 
   typedef typename onnxruntime::cuda::OrtToCudaType<T>::type CudaT;
 

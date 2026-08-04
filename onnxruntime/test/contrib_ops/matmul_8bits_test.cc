@@ -556,6 +556,86 @@ TEST(MatMulNBits, BFloat16_Int8_Gemm_Cuda) {
   TestMatMul8BitsTyped<BFloat16, 32, 1024, 1024, 128>(abs_error, rel_error);
 }
 
+TEST(MatMulNBits, InvalidGIdx_OutOfRange_Cuda) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA not available";
+  }
+
+  constexpr int64_t M = 2, N = 4, K = 64, block_size = 32;
+  constexpr int64_t k_blocks = (K + block_size - 1) / block_size;
+  constexpr int64_t blob_size = block_size * QBits / 8;
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", int64_t{0});
+
+  std::vector<float> a_data(M * K, 1.0f);
+  test.AddInput<float>("A", {M, K}, a_data, false);
+
+  std::vector<uint8_t> b_data(N * k_blocks * blob_size, 0);
+  test.AddInput<uint8_t>("B", {N, k_blocks, blob_size}, b_data, true);
+
+  std::vector<float> scales(N * k_blocks, 1.0f);
+  test.AddInput<float>("scales", {N, k_blocks}, scales, true);
+
+  test.AddOptionalInputEdge<uint8_t>();
+
+  std::vector<int32_t> g_idx(K, 99999);
+  test.AddInput<int32_t>("g_idx", {K}, g_idx, true);
+
+  test.AddOptionalInputEdge<float>();
+
+  std::vector<float> y_data(M * N, 0.0f);
+  test.AddOutput<float>("Y", {M, N}, y_data);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "group_index value", {}, nullptr, &execution_providers);
+}
+
+TEST(MatMulNBits, InvalidGIdx_Negative_Cuda) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA not available";
+  }
+
+  constexpr int64_t M = 2, N = 4, K = 64, block_size = 32;
+  constexpr int64_t k_blocks = (K + block_size - 1) / block_size;
+  constexpr int64_t blob_size = block_size * QBits / 8;
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", int64_t{0});
+
+  std::vector<float> a_data(M * K, 1.0f);
+  test.AddInput<float>("A", {M, K}, a_data, false);
+
+  std::vector<uint8_t> b_data(N * k_blocks * blob_size, 0);
+  test.AddInput<uint8_t>("B", {N, k_blocks, blob_size}, b_data, true);
+
+  std::vector<float> scales(N * k_blocks, 1.0f);
+  test.AddInput<float>("scales", {N, k_blocks}, scales, true);
+
+  test.AddOptionalInputEdge<uint8_t>();
+
+  std::vector<int32_t> g_idx(K, -1);
+  test.AddInput<int32_t>("g_idx", {K}, g_idx, true);
+
+  test.AddOptionalInputEdge<float>();
+
+  std::vector<float> y_data(M * N, 0.0f);
+  test.AddOutput<float>("Y", {M, N}, y_data);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "group_index value", {}, nullptr, &execution_providers);
+}
+
 // Chunked dequant+GEMM path tests for INT8.
 // Force the chunked path with a small chunk size to exercise per-chunk pointer
 // arithmetic (blob, scales, zero_points offsets) and strided cuBLAS output
