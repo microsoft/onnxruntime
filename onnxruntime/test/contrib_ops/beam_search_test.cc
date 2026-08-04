@@ -51,6 +51,7 @@ TEST(BeamSearchParametersTest, SetSubgraphParametersUsesSubgraphSizeWhenAttribut
 
 TEST(BeamSearchParametersTest, SetSubgraphParametersRejectsNegativeWhisperBeginningTimestampTokenId) {
   contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = -1;
   parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
   parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
   parameters.beginning_timestamp_token_id = -1;
@@ -60,6 +61,7 @@ TEST(BeamSearchParametersTest, SetSubgraphParametersRejectsNegativeWhisperBeginn
 
 TEST(BeamSearchParametersTest, SetSubgraphParametersRejectsWhisperBeginningTimestampTokenIdEqualToVocabSize) {
   contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = -1;
   parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
   parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
   parameters.beginning_timestamp_token_id = 128;
@@ -69,9 +71,10 @@ TEST(BeamSearchParametersTest, SetSubgraphParametersRejectsWhisperBeginningTimes
 
 TEST(BeamSearchParametersTest, SetSubgraphParametersAcceptsValidWhisperBeginningTimestampTokenId) {
   contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = -1;
   parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
   parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
-  parameters.beginning_timestamp_token_id = 0;
+  parameters.beginning_timestamp_token_id = 1;
 
   EXPECT_NO_THROW(parameters.SetSubgraphParameters(128, 2, 4, 6));
   EXPECT_EQ(parameters.vocab_size, 128);

@@ -182,7 +182,7 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
                NextTokenScores<T>& next_token_scores) override {
     const int batch_beam_size = next_token_scores.batch_beam_size;
     const int vocab_size = next_token_scores.vocab_size;
-    ORT_ENFORCE(beginning_timestamp_token_id_ >= 0 && beginning_timestamp_token_id_ < vocab_size,
+    ORT_ENFORCE(beginning_timestamp_token_id_ > 0 && beginning_timestamp_token_id_ < vocab_size,
                 "beginning_timestamp_token_id is out of range, it is ", beginning_timestamp_token_id_,
                 ", vocab_size is ", vocab_size);
     for (int i = 0; i < batch_beam_size; i++) {
