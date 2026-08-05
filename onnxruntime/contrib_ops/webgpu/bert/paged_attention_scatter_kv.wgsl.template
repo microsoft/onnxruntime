@@ -40,9 +40,6 @@ $MAIN {
   let kv_head_idx = (global_idx / uniforms.head_size) % uniforms.kv_num_heads;
   let token_idx = global_idx / (uniforms.kv_num_heads * uniforms.head_size);
 
-  // Find seq_idx by linear scan of cumulative_sequence_length[0..batch_size].
-  // batch_size is small (CUDA path caps at 256 for the cumulative-scan kernel;
-  // WebGPU has no equivalent cap yet, but decode workloads run with tiny batches).
   var seq_idx: u32 = 0u;
   for (var i: u32 = 0u; i < uniforms.batch_size; i = i + 1u) {
     let hi = u32(cumulative_sequence_length.getByOffset(i + 1u));

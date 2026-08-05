@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <limits>
 #include <numeric>
 #include <vector>
 
@@ -287,6 +286,18 @@ TEST(WebGpuPagedAttention, EndToEnd_Decode_GQA) {
   c.kv_num_heads = 1;  // GQA broadcast factor = 2
   c.cumulative_seqlens_q = {0, 1};
   c.past_seqlens = {3};
+  c.block_table = {0};
+  RunEndToEndCase(c);
+}
+
+// Empty-token fast path: the output is empty and cache outputs must still
+// preserve the input cache contents in OpTester's non-aliased allocation path.
+TEST(WebGpuPagedAttention, EndToEnd_EmptyTokens_CopyCaches) {
+  EndToEndCase c{};
+  c.batch_size = 1;
+  c.token_count = 0;
+  c.cumulative_seqlens_q = {0, 0};
+  c.past_seqlens = {0};
   c.block_table = {0};
   RunEndToEndCase(c);
 }

@@ -42,9 +42,7 @@ class ScatterKVToPagedCacheProgram final : public Program<ScatterKVToPagedCacheP
       {"batch_size", ProgramUniformVariableDataType::Uint32},
       {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
       {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"kv_hidden_size", ProgramUniformVariableDataType::Uint32},
       {"block_size", ProgramUniformVariableDataType::Uint32},
-      {"max_num_blocks_per_seq", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 };
 
@@ -75,7 +73,6 @@ class PagedAttentionRotaryProgram final : public Program<PagedAttentionRotaryPro
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"token_count", ProgramUniformVariableDataType::Uint32},
       {"batch_size", ProgramUniformVariableDataType::Uint32},
       {"n_heads", ProgramUniformVariableDataType::Uint32},
       {"head_size", ProgramUniformVariableDataType::Uint32},
@@ -144,7 +141,6 @@ class PagedAttentionGatherKVProgram final : public Program<PagedAttentionGatherK
       {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
       {"head_size", ProgramUniformVariableDataType::Uint32},
       {"block_size", ProgramUniformVariableDataType::Uint32},
-      {"max_num_blocks_per_seq", ProgramUniformVariableDataType::Uint32},
       {"max_kv_len", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 };
@@ -169,10 +165,8 @@ class PagedAttentionUnpackQueryProgram final : public Program<PagedAttentionUnpa
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
       {"num_heads", ProgramUniformVariableDataType::Uint32},
       {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"hidden_size", ProgramUniformVariableDataType::Uint32},
       {"max_seqlen_q", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 };
@@ -197,9 +191,21 @@ class PagedAttentionRepackOutputProgram final : public Program<PagedAttentionRep
       {"num_heads", ProgramUniformVariableDataType::Uint32},
       {"head_size", ProgramUniformVariableDataType::Uint32},
       {"hidden_size", ProgramUniformVariableDataType::Uint32},
-      {"max_seqlen_q", ProgramUniformVariableDataType::Uint32},
-      {"token_count", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+};
+
+// Pack the two device-resident metadata tensors into one contiguous buffer so
+// PagedAttention can perform one host readback rather than two. The layout is
+// [cumulative_sequence_length[0..batch_size], past_seqlens[0..batch_size)).
+class PagedAttentionPackMetadataProgram final : public Program<PagedAttentionPackMetadataProgram> {
+ public:
+  PagedAttentionPackMetadataProgram() : Program{"PagedAttentionPackMetadata"} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+    {"batch_size", ProgramUniformVariableDataType::Uint32},
+    {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 };
 
 // Op contract, phased delivery plan, and reuse strategy are documented in

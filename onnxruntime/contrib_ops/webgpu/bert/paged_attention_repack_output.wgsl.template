@@ -9,8 +9,7 @@
 // to packed (token_count, num_heads * head_size). LEFT-aligned convention
 // mirrors the unpack kernel.
 //
-// Batch lookup is a linear scan of cumulative_sequence_length[] (matches the
-// scatter kernel's convention; batch_size is small in practice).
+// Batch lookup is a linear scan of cumulative_sequence_length[].
 
 #use guardAgainstOutOfBoundsWorkgroupSizes
 #use .getByOffset .getByIndices .setByIndices

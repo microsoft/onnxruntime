@@ -39,7 +39,6 @@ $MAIN {
   let n = (global_idx / uniforms.head_size) % uniforms.n_heads;
   let t = global_idx / (uniforms.n_heads * uniforms.head_size);
 
-  // Find seq_idx b by linear scan of cumulative_sequence_length[0..batch_size].
   var b: u32 = 0u;
   for (var i: u32 = 0u; i < uniforms.batch_size; i = i + 1u) {
     let hi = u32(cumulative_sequence_length.getByOffset(i + 1u));

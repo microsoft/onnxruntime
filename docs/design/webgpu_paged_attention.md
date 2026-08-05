@@ -140,15 +140,16 @@ What we add for v1 is a paged-aware skin consisting of the Phase 1b passes
 | New (Phase 1, this PR) | Purpose |
 |---|---|
 | `PagedAttentionGatherKVProgram` | Un-page `key_cache` / `value_cache` through `block_table` into padded contiguous scratch tensors `(B, kv_num_heads, max_kv_len, head_size)`. |
-| `PagedAttentionUnpackQueryProgram` | Expand packed varlen Q from `(token_count, num_heads * head_size)` to padded BSNH `(B, max_seqlen_q, num_heads, head_size)` using `cumulative_sequence_length`. Padding slots hold arbitrary values (their outputs are dropped in the repack). |
+| `PagedAttentionUnpackQueryProgram` | Expand packed varlen Q from `(token_count, num_heads * head_size)` to padded BSNH `(B, max_seqlen_q, num_heads, head_size)` using `cumulative_sequence_length`. Padding slots are zero-filled; their outputs are dropped in the repack. |
 | `PagedAttentionRepackOutputProgram` | Inverse of unpack: gather valid slots of the padded FA output back to `(token_count, hidden_size)`. |
 
-Plus a tiny computation of `seqlen_k[b] = past_seqlens[b] + seqlens_q[b]` to
-drive FA's per-batch causal mask.
+Plus a tiny computation of `seqlen_k[b] = past_seqlens[b] + seqlens_q[b] - 1`
+(FA's last-valid-index convention) to drive FA's per-batch causal mask.
 
-The `past_key`, `present_key`, `past_value`, `present_value` FA parameters are
-all passed `nullptr` — our scatter kernel already updated the paged cache, so
-FA reads its K/V from the gathered scratch and does not touch the cache.
+The scatter kernel updates the paged cache first. FA then receives gathered
+K/V scratch through `past_key` / `past_value` and `nullptr` for the present
+K/V parameters, so it reads the contiguous scratch and does not touch the
+paged cache.
 
 ### 4.3 Cost of the fallback path
 
@@ -158,11 +159,11 @@ allocation of `2 * B * kv_num_heads * max_kv_len * head_size + B *
 max_seqlen_q * hidden_size` bytes. Fusing all of these into a paged-aware FA
 kernel is the Phase 2 optimization — see §5 Phase 2.
 
-### 4.4 Graph capture vs. host-visible values (deferred to Phase 2)
+### 4.4 Host-visible values and graph capture (deferred to Phase 2)
 
-The v1 op is **not** graph-capture safe. `ApplyFlashAttention`'s prologue
-(§4.2) reads `cumulative_seqlens_q` and `past_seqlens` back to the CPU each
-step to build `seqlen_k_cpu` and to compute
+The v1 op performs **one blocking D→H metadata download per node per Run**.
+It packs `cumulative_seqlens_q` and `past_seqlens` into a small GPU buffer,
+then reads it on the CPU to build `seqlen_k_cpu` and compute
 `max_seqlen_q` / `max_kv_len`. Those two scalars drive:
 
 - **Dispatch dims** of `PagedAttentionGatherKVProgram`,
@@ -171,7 +172,12 @@ step to build `seqlen_k_cpu` and to compute
 - **Scratch tensor sizes** for `k_padded`, `v_padded`, `q_padded`, and
   `output_padded`.
 
-Both are captured as literals when a WebGPU graph is recorded, so any
+The download ends the current compute pass, flushes the queue, allocates a
+staging buffer, and waits for the result. It is therefore a v1 latency
+limitation and unsuitable for browser-main-thread decode at many transformer
+layers, not only a graph-capture limitation.
+
+The host-derived values are captured as literals when a WebGPU graph is recorded, so any
 subsequent step that presents different per-batch lengths would replay with
 wrong grids and undersized scratch. This is the exact same class of blocker
 that keeps the CUDA PagedAttention op out of CUDA Graphs — see the
@@ -256,10 +262,10 @@ layout, with GenAI's builder gate flipped to allow `-e webgpu`.
   read of Q/K/V.
 - **Graph-capture support via `attention_metadata` + indirect dispatch.**
   A prerequisite for WebGPU graph capture with PagedAttention. The v1 op
-  reads `cumulative_seqlens_q` and `past_seqlens` back to the host each step
-  to compute `max_seqlen_q` / `max_kv_len` (grid dims + scratch sizes) and to
-  build `seqlen_k_cpu`. That D→H sync + per-step scratch
-  alloc are the two hard blockers for graph capture (see §4 "Graph capture
+  packs `cumulative_seqlens_q` and `past_seqlens` into one small buffer and
+  reads it back to the host each step to compute `max_seqlen_q` / `max_kv_len`
+  (grid dims + scratch sizes) and to build `seqlen_k_cpu`. That D→H sync + per-step scratch
+  alloc are the two hard blockers for graph capture (see §4 "Host-visible values
   vs. host-visible values" — this is analogous to how the CUDA PA op is
   blocked by its `cudaMemcpyAsync` of `cumulative_seqlens_q`). To lift both:
 
@@ -275,11 +281,9 @@ layout, with GenAI's builder gate flipped to allow `-e webgpu`.
        uint32 grid dims into an indirect-dispatch buffer for each Program.
        Per-batch new-Q length is already implicit in `cumulative_seqlens_q`
        (`q_len_b = cum[b+1] − cum[b]`); the shader can read it there or
-       through a small derived buffer. Note that the current v1 op does
-       **not** need per-batch new-Q length in the causal-mask math because
-       `RunUnpackQuery` right-aligns Q so the existing FA formula
-       `past_sequence_length_b = total_kv_b − max_seqlen_q` produces the
-       correct causal window without any new shader input.
+      through a small derived buffer. The current v1 op LEFT-aligns Q and
+      passes `seqlens_q` to FA, which computes
+      `past_sequence_length_b = total_kv_b − q_len_b` for the causal mask.
     3. **Convert every Program's `SetDispatchGroupSize(...)` to
        `SetDispatchGroupSize(indirect_buffer)`** for the four Programs whose
        grids currently come from `max_seqlen_q` / `max_kv_len`:

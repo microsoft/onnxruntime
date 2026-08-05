@@ -74,9 +74,7 @@ static Status RunScatterKVToPagedCache(onnxruntime::webgpu::ComputeContext& cont
   const uint32_t batch_size = static_cast<uint32_t>(parameters.batch_size);
   const uint32_t kv_num_heads = static_cast<uint32_t>(parameters.kv_num_heads);
   const uint32_t head_size = static_cast<uint32_t>(parameters.head_size);
-  const uint32_t kv_hidden_size = static_cast<uint32_t>(parameters.kv_hidden_size);
   const uint32_t block_size = static_cast<uint32_t>(parameters.block_size);
-  const uint32_t max_num_blocks_per_seq = static_cast<uint32_t>(parameters.max_num_blocks_per_seq);
   const uint32_t dispatch_size = token_count * kv_num_heads * head_size;
 
   ScatterKVToPagedCacheProgram program{};
@@ -97,9 +95,7 @@ static Status RunScatterKVToPagedCache(onnxruntime::webgpu::ComputeContext& cont
           {batch_size},
           {kv_num_heads},
           {head_size},
-          {kv_hidden_size},
           {block_size},
-          {max_num_blocks_per_seq},
           {dispatch_size},
       })
       .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
@@ -156,7 +152,6 @@ static Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
           {output, ProgramTensorMetadataDependency::TypeAndRank},
       })
       .AddUniformVariables({
-          {token_count},
           {batch_size},
           {n_heads},
           {head_size},
@@ -253,7 +248,6 @@ static Status RunGatherKV(onnxruntime::webgpu::ComputeContext& context,
   const uint32_t kv_num_heads = static_cast<uint32_t>(parameters.kv_num_heads);
   const uint32_t head_size = static_cast<uint32_t>(parameters.head_size);
   const uint32_t block_size = static_cast<uint32_t>(parameters.block_size);
-  const uint32_t max_num_blocks_per_seq = static_cast<uint32_t>(parameters.max_num_blocks_per_seq);
   const uint32_t dispatch_size = batch_size * kv_num_heads * max_kv_len * head_size;
 
   PagedAttentionGatherKVProgram program{};
@@ -274,7 +268,6 @@ static Status RunGatherKV(onnxruntime::webgpu::ComputeContext& context,
           {kv_num_heads},
           {head_size},
           {block_size},
-          {max_num_blocks_per_seq},
           {max_kv_len},
           {dispatch_size},
       })
@@ -303,10 +296,9 @@ static Status RunUnpackQuery(onnxruntime::webgpu::ComputeContext& context,
                              const Tensor* query,
                              const Tensor* cumulative_seqlens_q,
                              Tensor* q_padded) {
-  const uint32_t batch_size = static_cast<uint32_t>(parameters.batch_size);
   const uint32_t num_heads = static_cast<uint32_t>(parameters.num_heads);
   const uint32_t head_size = static_cast<uint32_t>(parameters.head_size);
-  const uint32_t hidden_size = static_cast<uint32_t>(parameters.hidden_size);
+  const uint32_t batch_size = static_cast<uint32_t>(parameters.batch_size);
   const uint32_t dispatch_size = batch_size * max_seqlen_q * num_heads * head_size;
 
   PagedAttentionUnpackQueryProgram program{};
@@ -319,10 +311,8 @@ static Status RunUnpackQuery(onnxruntime::webgpu::ComputeContext& context,
           {q_padded, ProgramTensorMetadataDependency::TypeAndRank},
       })
       .AddUniformVariables({
-          {batch_size},
           {num_heads},
           {head_size},
-          {hidden_size},
           {max_seqlen_q},
           {dispatch_size},
       })
@@ -341,12 +331,45 @@ Status PagedAttentionRepackOutputProgram::GenerateShaderCode(ShaderHelper& sh) c
                              WGSL_TEMPLATE_VARIABLE(output, output));
 }
 
+              Status PagedAttentionPackMetadataProgram::GenerateShaderCode(ShaderHelper& sh) const {
+                const auto& cumulative_sequence_length =
+                  sh.AddInput("cumulative_sequence_length", ShaderUsage::UseUniform);
+                const auto& past_seqlens = sh.AddInput("past_seqlens", ShaderUsage::UseUniform);
+                const auto& output = sh.AddOutput("output", ShaderUsage::UseUniform);
+                return WGSL_TEMPLATE_APPLY(sh, "bert/paged_attention_pack_metadata.wgsl.template",
+                             WGSL_TEMPLATE_VARIABLE(cumulative_sequence_length, cumulative_sequence_length),
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(past_seqlens, past_seqlens));
+              }
+
+              static Status RunPackMetadata(onnxruntime::webgpu::ComputeContext& context,
+                              uint32_t batch_size,
+                              const Tensor* cumulative_sequence_length,
+                              const Tensor* past_seqlens,
+                              Tensor* output) {
+                const uint32_t dispatch_size = batch_size + 1u;
+                PagedAttentionPackMetadataProgram program{};
+                program
+                  .AddInputs({
+                    {cumulative_sequence_length, ProgramTensorMetadataDependency::TypeAndRank},
+                    {past_seqlens, ProgramTensorMetadataDependency::TypeAndRank},
+                  })
+                  .AddOutputs({
+                    {output, ProgramTensorMetadataDependency::TypeAndRank},
+                  })
+                  .AddUniformVariables({
+                    {batch_size},
+                    {dispatch_size},
+                  })
+                  .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+                return context.RunProgram(program);
+              }
+
 // Inverse of RunUnpackQuery: pull the valid (s < seq_len_b) slots out of the
 // padded BSNH attention output and write them into the packed varlen
 // (token_count, hidden_size) layout PagedAttention's caller expects.
 static Status RunRepackOutput(onnxruntime::webgpu::ComputeContext& context,
                               const PagedAttentionParameters& parameters,
-                              uint32_t max_seqlen_q,
                               const Tensor* padded_output,
                               const Tensor* cumulative_seqlens_q,
                               Tensor* output) {
@@ -371,8 +394,6 @@ static Status RunRepackOutput(onnxruntime::webgpu::ComputeContext& context,
           {num_heads},
           {head_size},
           {hidden_size},
-          {max_seqlen_q},
-          {token_count},
           {dispatch_size},
       })
       .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
@@ -441,6 +462,10 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   if (local_window_size_ != -1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "PagedAttention (WebGPU): local_window_size != -1 is not supported yet.");
+  }
+  if (context.KvCacheQuantizationEnabled()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "PagedAttention (WebGPU): KV cache quantization is not supported yet.");
   }
 
   if (do_rotary_ && (cos_cache == nullptr || sin_cache == nullptr)) {
@@ -563,17 +588,23 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   // into LEFT-aligned padded BSNH, dispatch ApplyFlashAttention, then repack.
   // See docs/design/webgpu_paged_attention.md §4.
   //
-  // Sync the two int32 metadata tensors D→H so we can derive max_seqlen_q,
-  // max_kv_len and the per-batch seqlen_k / seqlens_q values on the host.
+    // Pack the two int32 metadata tensors, then perform one D→H sync to derive
+    // max_seqlen_q, max_kv_len, and the per-batch seqlen_k / seqlens_q values.
   const auto* int32_type = DataTypeImpl::GetType<int32_t>();
   const int64_t batch_size_i64 = static_cast<int64_t>(parameters.batch_size);
+    const int64_t packed_metadata_size = 2 * batch_size_i64 + 1;
 
-  Tensor cum_seqlens_q_cpu = context.CreateCPUTensor(int32_type, TensorShape({batch_size_i64 + 1}));
-  Tensor past_seqlens_cpu = context.CreateCPUTensor(int32_type, TensorShape({batch_size_i64}));
-  ORT_RETURN_IF_ERROR(context.CopyTensor(*cumulative_seqlens_q, cum_seqlens_q_cpu));
-  ORT_RETURN_IF_ERROR(context.CopyTensor(*past_seqlens, past_seqlens_cpu));
-  const int32_t* cum_ptr = cum_seqlens_q_cpu.Data<int32_t>();
-  const int32_t* past_ptr = past_seqlens_cpu.Data<int32_t>();
+    Tensor packed_metadata_gpu = context.CreateGPUTensor(
+      int32_type, TensorShape({packed_metadata_size}));
+    ORT_RETURN_IF_ERROR(RunPackMetadata(context, static_cast<uint32_t>(parameters.batch_size),
+                      cumulative_seqlens_q, past_seqlens,
+                      &packed_metadata_gpu));
+
+    Tensor packed_metadata_cpu = context.CreateCPUTensor(
+      int32_type, TensorShape({packed_metadata_size}));
+    ORT_RETURN_IF_ERROR(context.CopyTensor(packed_metadata_gpu, packed_metadata_cpu));
+    const int32_t* cum_ptr = packed_metadata_cpu.Data<int32_t>();
+    const int32_t* past_ptr = cum_ptr + batch_size_i64 + 1;
 
   // Compute per-batch effective lengths and the tightest max_seqlen_q /
   // max_kv_len bounds. FA's seqlens_k convention is the LAST VALID KV INDEX
@@ -670,6 +701,8 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   gqa_params.qkv_format = Q_K_V_BSNH;
   gqa_params.mask_type = MASK_NONE;
   WebgpuAttentionParameters fa_params(gqa_params);
+  ORT_RETURN_IF_NOT(CanApplyFlashAttention(fa_params, context),
+                    "PagedAttention (WebGPU): input configuration is not supported by FlashAttention.");
 
   ORT_RETURN_IF_ERROR(ApplyFlashAttention(
       &q_padded,
@@ -681,8 +714,8 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
       /*cos_cache=*/nullptr, /*sin_cache=*/nullptr, /*head_sink=*/nullptr,
       /*total_seqlen=*/nullptr, /*seqlens_q=*/&seqlens_q_gpu));
 
-  ORT_RETURN_IF_ERROR(RunRepackOutput(context, parameters, max_seqlen_q,
-                                      &output_padded, cumulative_seqlens_q, output));
+  ORT_RETURN_IF_ERROR(RunRepackOutput(context, parameters, &output_padded,
+                                      cumulative_seqlens_q, output));
 
   return Status::OK();
 }
