@@ -23,6 +23,11 @@ Status Check_Q_K_V(const T* query, const T* key, const T* value, const int num_h
   }
   token_count = static_cast<int>(query_dims[0]);
   q_hidden_size = static_cast<int>(query_dims[1]);
+  if (q_hidden_size % num_heads != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "q_hidden_size must be a multiple of num_heads. Got q_hidden_size % num_heads == ",
+                           q_hidden_size % num_heads);
+  }
   head_size = static_cast<int>(q_hidden_size) / num_heads;
   if (head_size % 8 != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -73,7 +78,18 @@ Status Check_QKV(const T* packed_qkv, const T* value, const int num_heads, const
                            packed_dims.size());
   }
   token_count = static_cast<int>(packed_dims[0]);
-  head_size = static_cast<int>(static_cast<int>(packed_dims[1])) / (num_heads + 2 * kv_num_heads);
+  const int packed_hidden_size = static_cast<int>(packed_dims[1]);
+  if (packed_hidden_size <= 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'query' packed hidden size must be positive.");
+  }
+  const int packed_divisor = num_heads + 2 * kv_num_heads;
+  if (packed_hidden_size % packed_divisor != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'query' packed hidden size must be divisible by (num_heads + 2 * kv_num_heads). Got ",
+                           packed_hidden_size, " and ", packed_divisor, ".");
+  }
+  head_size = packed_hidden_size / packed_divisor;
   if (head_size % 8 != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "head_size must be a multiple of 8. Got head_size % 8 == ",
@@ -106,7 +122,7 @@ Status CheckKVCache(const T* key_cache, const T* value_cache, const int kv_num_h
 
   num_blocks = static_cast<int>(key_cache_dims[0]);
   block_size = static_cast<int>(key_cache_dims[1]);
-  // TODO(aciddelgado): block size multiple of 8
+  // CUDA PagedAttention kernels currently require block_size alignment of 256.
   if (block_size % 256 != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "block_size must be a multiple of 256. Got block_size % 256 == ",
@@ -119,7 +135,7 @@ Status CheckKVCache(const T* key_cache, const T* value_cache, const int kv_num_h
   } else if (value_cache_dims[1] != block_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'value_cache' dimension 1 should be block_size, got ",
-                           value_cache_dims[0]);
+                           value_cache_dims[1]);
   }
 
   if (key_cache_dims[2] != value_cache_dims[2]) {
@@ -166,7 +182,7 @@ Status CheckSequenceLengthTensors(const T* cumulative_sequence_length, const T* 
   batch_size = static_cast<int>(cumulative_seqlen_dim[0]) - 1;
 
   const auto& seqlens_dim = seqlens->Shape().GetDims();
-  if (seqlens_dim.size() != 1 && seqlens_dim[0] != batch_size) {
+  if (seqlens_dim.size() != 1 || seqlens_dim[0] != batch_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "seqlens must be shape (batch_size).");
   }
@@ -206,7 +222,8 @@ Status CheckInputs(const T* query,
                    float softcap,
                    int max_threads_per_block) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "num_heads should be no larger than ", max_threads_per_block);
   }
   if (num_heads % kv_num_heads != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
