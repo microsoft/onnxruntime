@@ -638,6 +638,27 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
     return Status::OK();
   }
 
+  const uint64_t max_storage_buffer_binding_size = context.DeviceLimits().maxStorageBufferBindingSize;
+  const uint64_t kv_padded_bytes = static_cast<uint64_t>(parameters.batch_size) *
+                                   static_cast<uint64_t>(parameters.kv_num_heads) *
+                                   static_cast<uint64_t>(max_kv_len) *
+                                   static_cast<uint64_t>(parameters.head_size) * sizeof(MLFloat16);
+  const uint64_t q_padded_bytes = static_cast<uint64_t>(parameters.batch_size) *
+                                  static_cast<uint64_t>(max_seqlen_q) *
+                                  static_cast<uint64_t>(parameters.hidden_size) * sizeof(MLFloat16);
+  if (kv_padded_bytes > max_storage_buffer_binding_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "PagedAttention (WebGPU): k_padded/v_padded scratch requires ",
+                           kv_padded_bytes, " bytes, exceeding maxStorageBufferBindingSize of ",
+                           max_storage_buffer_binding_size, ".");
+  }
+  if (q_padded_bytes > max_storage_buffer_binding_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "PagedAttention (WebGPU): q_padded/output_padded scratch requires ",
+                           q_padded_bytes, " bytes, exceeding maxStorageBufferBindingSize of ",
+                           max_storage_buffer_binding_size, ".");
+  }
+
   // Fused rotary path. Rotate Q and K into scratch tensors, then scatter the
   // rotated K + untouched V into the paged cache. Metadata validation above
   // must complete before either shader can use device-derived cache positions.
