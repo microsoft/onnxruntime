@@ -38,6 +38,29 @@ In both cases, you will get a JSON file which contains the detailed performance 
   * Type chrome://tracing in the address bar
   * Load the generated JSON file
 
+## Node memory statistics
+
+ONNX Runtime does not expose an `InferenceSession.memory_consumption()` Python API. To estimate per-node runtime
+memory usage, including temporary allocations, write node memory statistics to a CSV file with the
+`session.collect_node_memory_stats_to_file` session config entry:
+
+```python
+import onnxruntime as rt
+
+sess_options = rt.SessionOptions()
+sess_options.enable_mem_pattern = False
+sess_options.add_session_config_entry(
+    "session.collect_node_memory_stats_to_file",
+    "/tmp/ort_node_memory_stats.csv",
+)
+
+session = rt.InferenceSession("model.onnx", sess_options=sess_options, providers=["CUDAExecutionProvider"])
+```
+
+The CSV contains per-node columns for initializer memory, dynamic output sizes, and temporary allocation size. Disable
+memory patterns when collecting these statistics, as memory patterns may allocate larger blocks to avoid fragmentation
+and make constrained-device memory estimates harder to interpret.
+
 ## Execution Provider (EP) Profiling
 
 Starting with ONNX 1.17 support has been added to profile EPs or Neural Processing Unit (NPU)s, if that EP supports profiling in it's SDK
