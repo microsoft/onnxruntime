@@ -83,7 +83,7 @@ Status RMSNorm<T, U, V>::ComputeInternal(OpKernelContext* ctx) const {
   // Using 256 as a conservative upper bound for 4 * warp_size.
   constexpr int MAX_WARP_FACTOR = 256;
   const int MAX_NORM_SIZE = std::numeric_limits<int>::max() - MAX_WARP_FACTOR;
-  
+
   ORT_RETURN_IF(params.num_rows > 0 &&
                     (params.norm_size > MAX_NORM_SIZE ||
                      params.norm_size > std::numeric_limits<int>::max() / params.num_rows),
