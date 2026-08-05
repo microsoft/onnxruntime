@@ -215,14 +215,14 @@ inline Status CheckBlockTableAndPastSeqLensValues(const int32_t* cumulative_sequ
   for (int b = 0; b < batch_size; ++b) {
     const int32_t q_start = cumulative_sequence_length[b];
     const int32_t q_end = cumulative_sequence_length[b + 1];
-    
+
     // Check for non-negative values
     if (q_start < 0 || q_end < 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "cumulative_sequence_length values must be non-negative. Invalid value at index ",
                              (q_start < 0 ? b : b + 1), ": ", (q_start < 0 ? q_start : q_end));
     }
-    
+
     if (q_end < q_start) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "cumulative_sequence_length must be non-decreasing.");
@@ -230,7 +230,7 @@ inline Status CheckBlockTableAndPastSeqLensValues(const int32_t* cumulative_sequ
 
     const int32_t q_len = q_end - q_start;
     const int32_t past_length = past_seqlens[b];
-    
+
     // Validate past_seqlens: must be non-negative
     if (past_length < 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

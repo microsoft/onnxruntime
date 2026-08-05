@@ -158,7 +158,7 @@ TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesAllowsFullCach
   // q_len == 0 (no new tokens) and past_length == max_cache_sequence_length (full cache)
   // This should be allowed because there's no write to cache
   const int32_t cumulative_sequence_length[] = {0, 0};  // q_len = 0
-  const int32_t past_seqlens[] = {256};  // max_cache_sequence_length = 16 * 16 = 256
+  const int32_t past_seqlens[] = {256};                 // max_cache_sequence_length = 16 * 16 = 256
   const int32_t block_table[] = {0};
 
   const auto status = onnxruntime::contrib::paged_attention_helper::CheckBlockTableAndPastSeqLensValues(
@@ -177,7 +177,7 @@ TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesRejectsFullCac
   // q_len > 0 (has new tokens) and past_length == max_cache_sequence_length (full cache)
   // This should be rejected because we need space for new tokens
   const int32_t cumulative_sequence_length[] = {0, 1};  // q_len = 1
-  const int32_t past_seqlens[] = {256};  // max_cache_sequence_length = 16 * 16 = 256
+  const int32_t past_seqlens[] = {256};                 // max_cache_sequence_length = 16 * 16 = 256
   const int32_t block_table[] = {0};
 
   const auto status = onnxruntime::contrib::paged_attention_helper::CheckBlockTableAndPastSeqLensValues(
