@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <cfloat>  // FLT_MAX
+#include <cstdlib>
 #include <cuda_fp16.h>
 #include <type_traits>
 #include "core/providers/cuda/cu_inc/common.cuh"
@@ -1122,14 +1123,31 @@ size_t GetPagedLatentSharedMemoryBytes(const int head_size, const int v_head_siz
 // the same trick XQA calls multi-block mode) trades one extra kernel launch for the missing
 // parallelism. It only pays off when the (token, head) grid is too small to fill the device, and it
 // can never be finer than the tile loop it is subdividing.
+// A split does not have to land on a tile boundary: the tile loop clamps its last iteration with
+// `min(kLatentTile, kv_end - tile_begin)`, so a CTA handed half a tile simply scores half a tile.
+// Sizing the split by the full tile therefore caps DSV4 decode at 8 splits — 512 selected KV
+// positions over a 64-token tile — which is 64 CTAs against 132 SMs, about half a wave. Splitting
+// on a finer boundary buys the missing CTAs at the cost of repeating each CTA's prologue.
+// Override with ORT_PAGED_LATENT_SPLIT_GRAN; the env is read directly because env_var_utils.h
+// cannot be included from a .cu translation unit here.
+int PagedLatentSplitGranularity() {
+  const static int gran = []() -> int {
+    const char* v = std::getenv("ORT_PAGED_LATENT_SPLIT_GRAN");
+    const int parsed = (v != nullptr) ? std::atoi(v) : 0;
+    return parsed > 0 ? parsed : 32;
+  }();
+  return gran;
+}
+
 int ComputePagedLatentSplits(const int token_count, const int num_heads, const int max_kv_len,
                              const int multi_processor_count) {
   const int base_ctas = token_count * num_heads;
   if (base_ctas <= 0 || base_ctas >= 2 * multi_processor_count) {
     return 1;
   }
+  const int gran = PagedLatentSplitGranularity();
   const int by_occupancy = (2 * multi_processor_count + base_ctas - 1) / base_ctas;
-  const int by_length = (max_kv_len + kLatentTile - 1) / kLatentTile;
+  const int by_length = (max_kv_len + gran - 1) / gran;
   return std::max(1, std::min(std::min(by_occupancy, by_length), kLatentMaxSplits));
 }
 
