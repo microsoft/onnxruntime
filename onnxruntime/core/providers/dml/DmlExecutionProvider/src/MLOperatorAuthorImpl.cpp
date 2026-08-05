@@ -1360,7 +1360,10 @@ namespace Windows::AI::MachineLearning::Adapter
         {
             // The return value is only > 0 if ALL characters copied successfully.
             // Write null terminator at the end of copied chars, which may not be at the end of the buffer.
-            outputName[charsCopiedIfSucceeded] = L'\0';
+            // MultiByteToWideChar does not append a null terminator when the source length is given
+            // explicitly, so the converted chars may exactly fill the buffer. Clamp the index to leave
+            // room for the null terminator, truncating the last char in that case.
+            outputName[std::min<uint32_t>(charsCopiedIfSucceeded, bufferSizeInChars - 1)] = L'\0';
             return S_OK;
         }
 
