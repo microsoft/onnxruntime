@@ -72,7 +72,6 @@ Status GatherNDBase::PrepareCompute(
   // then copies back only that value for error reporting.
   if (indices_tensor->Location().device.Type() == OrtDevice::CPU) {
     // For CPU-resident indices, fall back to host-side validation
-    const size_t num_indices = static_cast<size_t>(indices_shape.Size());
     const size_t num_slices_size_t = static_cast<size_t>(num_slices);
     const size_t num_slice_dims_size_t = static_cast<size_t>(num_slice_dims);
     for (size_t slice_idx = 0; slice_idx < num_slices_size_t; ++slice_idx) {
@@ -85,7 +84,7 @@ Status GatherNDBase::PrepareCompute(
                           "invalid index found, index = ", index);
       }
     }
-  } else if (indices_tensor->Location().device.Type() == OrtDevice::CUDA) {
+  } else if (indices_tensor->Location().device.Type() == OrtDevice::GPU) {
     // Use on-device kernel for CUDA tensors to avoid full D2H transfer
     TArray<int64_t> input_dims(input_shape.GetDims());
     int64_t error_index = ValidateIndicesAndReturnFirstInvalidIndex<TIndex>(
