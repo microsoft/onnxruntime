@@ -40,6 +40,15 @@ Status FeatureVectorizer::Compute(OpKernelContext* context) const {
   // assumes all inputs have the same batch size
   int64_t N = X.Shape().NumDimensions() == 1 ? 1 : x_dims[0];
 
+  for (int index = 1; index < input_count; ++index) {
+    const auto* input_tensor_ptr = context->Input<Tensor>(index);
+    ORT_ENFORCE(input_tensor_ptr != nullptr);
+    const auto& input_dims = input_tensor_ptr->Shape().GetDims();
+    const int64_t input_rows = input_dims.size() == 1 ? 1 : input_dims[0];
+    ORT_ENFORCE(input_rows == N, "All inputs to FeatureVectorizer must have the same batch size. ",
+                "Input 0 batch size: ", N, ", input ", index, " batch size: ", input_rows, ".");
+  }
+
   // initialize all the output to 0.f
   Tensor* Y = context->Output(0, {N, total_dimensions_});
   auto Y_data = Y->MutableData<float>();
