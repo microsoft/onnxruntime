@@ -309,7 +309,7 @@ TEST(BeamSearchTest, GptBeamSearchFp16_ScoresOutputTypeAndShape) {
 
     const auto scores_shape = scores_ts.GetShape();
     ASSERT_EQ(scores_shape.size(), static_cast<size_t>(4));
-    ASSERT_EQ(scores_shape[0], max_length[0] - static_cast<int32_t>(input_ids_shape[1]));
+    ASSERT_EQ(scores_shape[0], static_cast<int64_t>(max_length[0]) - input_ids_shape[1]);
     ASSERT_EQ(scores_shape[1], input_ids_shape[0]);
     ASSERT_EQ(scores_shape[2], num_beams[0]);
     ASSERT_GT(scores_shape[3], 0);
