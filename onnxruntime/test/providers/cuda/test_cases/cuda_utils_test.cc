@@ -54,6 +54,13 @@ TEST(CudaUtilsTest, CanUseTransposeHelperRejectsOverflowingElementCount) {
   EXPECT_FALSE(CanUse_cublasTransposeHelper_MLFloat16(100, 25000000));
 }
 
+TEST(CudaUtilsTest, CanUseTransposeHelperRejectsNonPositiveDimensions) {
+  EXPECT_FALSE(CanUse_cublasTransposeHelper_MLFloat16(0, 100));
+  EXPECT_FALSE(CanUse_cublasTransposeHelper_MLFloat16(100, 0));
+  EXPECT_FALSE(CanUse_cublasTransposeHelper_MLFloat16(-1, 100));
+  EXPECT_FALSE(CanUse_cublasTransposeHelper_MLFloat16(100, -1));
+}
+
 TEST(CudaUtilsTest, CanUseTransposeHelperRejectsGridYOverflow) {
   // For TRANS_TILE_DIM=32, m=2097152 yields grid_y=65536, which is out of range.
   EXPECT_FALSE(CanUse_cublasTransposeHelper_MLFloat16(2097152, 1));

@@ -75,12 +75,12 @@ dim3 cublasTransposeHelperDimGrid(int m, int n) {
 
 // cublasTransposeHelper can only be used if it won't overflow the 65536 grid y dimension size
 __host__ bool CanUse_cublasTransposeHelper_MLFloat16(int m, int n) {
-  if (m < 0 || n < 0) {
+  if (m <= 0 || n <= 0) {
     return false;
   }
 
-  // transposeNoOverlap uses row * stride + col addressing in device code.
-  // Keep fallback disabled when total element count would overflow int32 indexing.
+  // transposeNoOverlap uses int64_t row * stride + col addressing in device code.
+  // Keep fallback disabled when total element count would overflow 32-bit launch/indexing assumptions.
   if (static_cast<int64_t>(m) * static_cast<int64_t>(n) > std::numeric_limits<int>::max()) {
     return false;
   }
@@ -90,6 +90,7 @@ __host__ bool CanUse_cublasTransposeHelper_MLFloat16(int m, int n) {
 }
 
 cublasStatus_t cublasTransposeHelper(cudaStream_t stream, cublasHandle_t, cublasOperation_t, cublasOperation_t, int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int) {
+  ORT_ENFORCE(m > 0 && n > 0);
   if (C != A) {
     dim3 dimGrid = cublasTransposeHelperDimGrid(m, n);
     dim3 dimBlock(TRANS_TILE_DIM, BLOCK_ROWS, 1);
