@@ -416,8 +416,20 @@ PagedAttention::PagedAttention(const OpKernelInfo& info) : WebGpuKernel(info) {
   local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
-  scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+  has_explicit_scale_ = info.GetAttr<float>("scale", &scale_).IsOK();
+  if (!has_explicit_scale_) {
+    scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+  }
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
+  qk_norm_epsilon_ = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
+  k_quant_type_ = info.GetAttrOrDefault<std::string>("k_quant_type", "NONE");
+  v_quant_type_ = info.GetAttrOrDefault<std::string>("v_quant_type", "NONE");
+  k_cache_dtype_ = info.GetAttrOrDefault<std::string>("k_cache_dtype", "");
+  v_cache_dtype_ = info.GetAttrOrDefault<std::string>("v_cache_dtype", "");
+  kv_cache_layout_ = info.GetAttrOrDefault<std::string>("kv_cache_layout", "SEPARATE");
+  v_head_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("v_head_size", 0));
+  rotary_offset_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("rotary_offset", 0));
+  use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("use_smooth_softmax", 0) == 1;
 }
 
 Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
@@ -432,8 +444,21 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   const Tensor* block_table = context.Input<Tensor>(7);
   const Tensor* cos_cache = context.Input<Tensor>(8);
   const Tensor* sin_cache = context.Input<Tensor>(9);
+  const Tensor* slot_mapping = context.Input<Tensor>(10);
+  const Tensor* head_sink = context.Input<Tensor>(11);
+  const Tensor* q_norm_weight = context.Input<Tensor>(12);
+  const Tensor* k_norm_weight = context.Input<Tensor>(13);
+  const Tensor* k_scale = context.Input<Tensor>(14);
+  const Tensor* v_scale = context.Input<Tensor>(15);
+  const Tensor* attention_metadata = context.Input<Tensor>(16);
 
   PagedAttentionParameters parameters{};
+  const KVQuantizationType k_quant_type = StringToKVQuantizationType(k_quant_type_);
+  const KVQuantizationType v_quant_type = StringToKVQuantizationType(v_quant_type_);
+  const KVCacheDataType k_cache_dtype = StringToKVCacheDataType(k_cache_dtype_);
+  const KVCacheDataType v_cache_dtype = StringToKVCacheDataType(v_cache_dtype_);
+  const bool is_latent_kv = (kv_cache_layout_ == "LATENT");
+
   // 0 for max_threads_per_block disables the num_heads >= max_threads_per_block guard,
   // which is CUDA-block-size specific and not meaningful for WebGPU dispatch.
   ORT_RETURN_IF_ERROR(paged_attention_helper::CheckInputs(query,
@@ -446,11 +471,28 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                                                           block_table,
                                                           cos_cache,
                                                           sin_cache,
+                                                          slot_mapping,
+                                                          head_sink,
+                                                          q_norm_weight,
+                                                          k_norm_weight,
+                                                          k_scale,
+                                                          v_scale,
+                                                          attention_metadata,
                                                           &parameters,
                                                           num_heads_,
                                                           kv_num_heads_,
                                                           scale_,
                                                           softcap_,
+                                                          qk_norm_epsilon_,
+                                                          k_quant_type,
+                                                          v_quant_type,
+                                                          k_cache_dtype,
+                                                          v_cache_dtype,
+                                                          KVCacheDataType::FLOAT16,
+                                                          is_latent_kv,
+                                                          v_head_size_,
+                                                          rotary_offset_,
+                                                          has_explicit_scale_,
                                                           /*max_threads_per_block*/ 0));
   parameters.local_window_size = local_window_size_;
   parameters.do_rotary = do_rotary_;
@@ -466,9 +508,55 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "PagedAttention (WebGPU): local_window_size != -1 is not supported yet.");
   }
+  if (kv_cache_layout_ != "SEPARATE") {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "PagedAttention (WebGPU): kv_cache_layout='", kv_cache_layout_,
+                           "' is not supported yet.");
+  }
+  if (v_head_size_ != 0 && v_head_size_ != parameters.head_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "PagedAttention (WebGPU): v_head_size != head_size is not supported yet.");
+  }
+  if (rotary_offset_ != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "PagedAttention (WebGPU): rotary_offset != 0 is not supported yet.");
+  }
+  if (use_smooth_softmax_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "PagedAttention (WebGPU): use_smooth_softmax is not supported yet.");
+  }
+  if (k_quant_type_ != "NONE" || v_quant_type_ != "NONE") {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "PagedAttention (WebGPU): quantized KV cache is not supported yet.");
+  }
+  if ((!k_cache_dtype_.empty() && k_cache_dtype_ != "float16") ||
+      (!v_cache_dtype_.empty() && v_cache_dtype_ != "float16")) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "PagedAttention (WebGPU): only float16 KV cache dtype is supported.");
+  }
   if (context.KvCacheQuantizationEnabled()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "PagedAttention (WebGPU): KV cache quantization is not supported yet.");
+  }
+  if (slot_mapping != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "PagedAttention (WebGPU): slot_mapping input is not supported yet.");
+  }
+  if (head_sink != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "PagedAttention (WebGPU): head_sink input is not supported yet.");
+  }
+  if (q_norm_weight != nullptr || k_norm_weight != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "PagedAttention (WebGPU): q_norm_weight/k_norm_weight inputs are not supported yet.");
+  }
+  if (k_scale != nullptr || v_scale != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "PagedAttention (WebGPU): k_scale/v_scale inputs are not supported yet.");
+  }
+  if (attention_metadata != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "PagedAttention (WebGPU): attention_metadata input is not supported yet.");
   }
 
   if (do_rotary_ && (cos_cache == nullptr || sin_cache == nullptr)) {

@@ -24,7 +24,7 @@ tabs, Electron desktop apps, native WebGPU on Windows/macOS via Dawn).
 ### 1.1 Related PRs
 
 - **[microsoft/onnxruntime#29867](https://github.com/microsoft/onnxruntime/pull/29867)** — draft CPU + WebGPU stubs (`Compute()` returns `NOT_IMPLEMENTED`) and helper cleanups.
-- **[microsoft/onnxruntime#29912](https://github.com/microsoft/onnxruntime/pull/29912)** — schema extension: `T_CACHE`/`T_KV_SCALE` type constraints; new optional inputs `slot_mapping`, `head_sink`, `q_norm_weight`, `k_norm_weight`, `k_scale`, `v_scale`, `attention_metadata`; new attributes `k_cache_dtype`, `v_cache_dtype`, `k_quant_type`, `v_quant_type`, `kv_cache_layout` (`SEPARATE`/`LATENT`), `v_head_size`, `rotary_offset`, `qk_norm_epsilon`, `use_smooth_softmax`. Also adds portable split-KV decode + XQA quantized decode kernels on CUDA.
+- **[microsoft/onnxruntime#29912](https://github.com/microsoft/onnxruntime/pull/29912)** (merged) — schema extension: `T_CACHE`/`T_KV_SCALE` type constraints; new optional inputs `slot_mapping`, `head_sink`, `q_norm_weight`, `k_norm_weight`, `k_scale`, `v_scale`, `attention_metadata`; new attributes `k_cache_dtype`, `v_cache_dtype`, `k_quant_type`, `v_quant_type`, `kv_cache_layout` (`SEPARATE`/`LATENT`), `v_head_size`, `rotary_offset`, `qk_norm_epsilon`, `use_smooth_softmax`. Also adds portable split-KV decode + XQA quantized decode kernels on CUDA.
 - **[microsoft/onnxruntime-genai#2330](https://github.com/microsoft/onnxruntime-genai/pull/2330)** — model builder emits `PagedAttention` in place of GQA when `use_paged_attention=true`; scheduler feeds `block_table` / `cumulative_sequence_lengths` / `past_sequence_lengths`. Currently gated to `-e cuda` and fp16/bf16.
 - **[microsoft/onnxruntime-genai#2333](https://github.com/microsoft/onnxruntime-genai/pull/2333)** — follow-up: quantized KV cache in the builder, `attention_metadata` input wiring (index 16), CUDA-graph capture in the continuous-batching engine, block-accounting bug fix.
 
@@ -43,7 +43,7 @@ tabs, Electron desktop apps, native WebGPU on Windows/macOS via Dawn).
 |---|---|
 | `block_size` | Mirror CUDA: `block_size % 256 == 0`. Same model artifact GenAI produces today. Revisit only if a WebGPU adapter proves a smaller page is worth the model-side divergence. |
 | Precision | `MLFloat16` only. Registered as a single typed kernel. |
-| Schema baseline | Build v1 against the **current-on-main** schema (10 inputs / 3 outputs). Adopt PR #29912's expanded surface once it merges. |
+| Schema baseline | Build v1 against the **merged expanded schema** (inputs 0-16). WebGPU v1 implements the pre-existing subset and rejects unsupported new inputs/attrs with explicit `NOT_IMPLEMENTED` errors. |
 | `slot_mapping = -1` | v1 accepts `slot_mapping` when present and uses it as an authoritative override of the derived slot, but leaves the "skip write on negative" branch out. GenAI does not emit `< 0` today. Adding it later is a one-line shader change. |
 | `softcap != 0` | v1 rejects with `ORT_NOT_IMPLEMENTED`. FlashAttention has no softcap today; adding it is a Phase 2 change. |
 | `local_window_size != -1` | v1 rejects with `ORT_NOT_IMPLEMENTED`. Sliding-window attention lands in Phase 2 (port from GQA). |
@@ -53,7 +53,7 @@ tabs, Electron desktop apps, native WebGPU on Windows/macOS via Dawn).
 
 ## 3. Op contract
 
-### 3.1 Current-on-main schema (v1 target)
+### 3.1 Baseline v1 contract used by WebGPU
 
 | # | Name | Kind | Shape | Type | Notes |
 |---|---|---|---|---|---|
@@ -75,7 +75,7 @@ tabs, Electron desktop apps, native WebGPU on Windows/macOS via Dawn).
 (`FLOAT`, opt), `softcap` (`FLOAT`, opt), `local_window_size` (default `-1`),
 `do_rotary` (default `0`), `rotary_interleaved` (default `0`).
 
-### 3.2 Forward-looking additions (#29912, for later phases)
+### 3.2 Expanded merged schema surface (#29912)
 
 Extra optional inputs, indices 10–16: `slot_mapping`, `head_sink`,
 `q_norm_weight`, `k_norm_weight`, `k_scale`, `v_scale`, `attention_metadata`.
@@ -84,8 +84,9 @@ Extra attributes: `k_cache_dtype`, `v_cache_dtype`, `k_quant_type`,
 `rotary_offset`, `qk_norm_epsilon`, `use_smooth_softmax`. New type constraints
 `T_CACHE ∈ {fp16, bf16, int8, fp8e4m3fn}`, `T_KV_SCALE ∈ {fp32}`.
 
-v1 registers only against the current schema. Phase 2+ expands as those inputs
-land.
+v1 is schema-compatible with this merged surface, but only a subset is
+implemented. Unsupported new inputs/attributes are validated and rejected with
+clear `NOT_IMPLEMENTED` errors.
 
 ### 3.3 GenAI runtime contract
 

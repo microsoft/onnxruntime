@@ -228,38 +228,60 @@ def create_paged_attention_graph(
         if (has_k_scale or has_v_scale or config.kv_cache_type != "float16")
         else {}
     )
+    optional_inputs = [
+        "slot_mapping" if config.use_slot_mapping else "",
+        "head_sink" if config.use_head_sink else "",
+        "q_norm_weight" if config.use_qk_norm else "",
+        "k_norm_weight" if config.use_qk_norm else "",
+        "k_scale" if has_k_scale else "",
+        "v_scale" if has_v_scale else "",
+        "attention_metadata" if has_attention_metadata else "",
+    ]
+    last_optional_idx = -1
+    for i, name in enumerate(optional_inputs):
+        if name:
+            last_optional_idx = i
+
+    # Keep the node compact when none of the post-v1 optional inputs are used.
+    # This allows the baseline WebGPU path to run on runtimes that still expose
+    # the older 10-input schema while remaining compatible with the expanded
+    # schema when newer optional inputs are exercised.
+    node_inputs = [
+        "query",
+        "key" if not config.packed else "",
+        "value" if not config.packed else "",
+        "key_cache",
+        "value_cache",
+        "cumulative_sequence_length",
+        "past_seqlens",
+        "block_table",
+        "cos_cache" if config.rotary else "",
+        "sin_cache" if config.rotary else "",
+    ]
+    if last_optional_idx >= 0:
+        node_inputs.extend(optional_inputs[: last_optional_idx + 1])
+
+    node_attrs = {
+        "num_heads": config.num_heads,
+        "kv_num_heads": config.kv_num_heads,
+        "local_window_size": local_window_size,
+        "do_rotary": config.rotary,
+        "rotary_interleaved": config.rotary_interleaved,
+        "softcap": config.softcap,
+        "domain": "com.microsoft",
+    }
+    # Keep baseline graphs compatible with older PagedAttention schema builds.
+    # qk_norm_epsilon is only needed when QK-Norm is exercised.
+    if config.use_qk_norm:
+        node_attrs["qk_norm_epsilon"] = config.qk_norm_epsilon
+
     nodes = [
         helper.make_node(
             "PagedAttention",
-            [
-                "query",
-                "key" if not config.packed else "",
-                "value" if not config.packed else "",
-                "key_cache",
-                "value_cache",
-                "cumulative_sequence_length",
-                "past_seqlens",
-                "block_table",
-                "cos_cache" if config.rotary else "",
-                "sin_cache" if config.rotary else "",
-                "slot_mapping" if config.use_slot_mapping else "",
-                "head_sink" if config.use_head_sink else "",
-                "q_norm_weight" if config.use_qk_norm else "",
-                "k_norm_weight" if config.use_qk_norm else "",
-                "k_scale" if has_k_scale else "",
-                "v_scale" if has_v_scale else "",
-                "attention_metadata" if has_attention_metadata else "",
-            ],
+            node_inputs,
             ["output", "key_cache_out", "value_cache_out"],
             "PagedAttention_0",
-            num_heads=config.num_heads,
-            kv_num_heads=config.kv_num_heads,
-            local_window_size=local_window_size,
-            do_rotary=config.rotary,
-            rotary_interleaved=config.rotary_interleaved,
-            softcap=config.softcap,
-            qk_norm_epsilon=config.qk_norm_epsilon,
-            domain="com.microsoft",
+            **node_attrs,
             **quant_attrs,
         ),
     ]
