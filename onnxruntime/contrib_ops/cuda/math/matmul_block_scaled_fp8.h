@@ -68,12 +68,16 @@ Status LaunchQuantizeDequantizeActivationFp8(void* a_out,
 // FP8 E4M3, weight_scale is [N, ceil(K/block_size)] fp32, bias is an optional [N] vector (may be
 // null). Output y is [M, N] in the activation type. Requires k % 16 == 0 and block_size % 16 == 0.
 // device_prop selects the tensor-core (mma.m16n8k16) variant, which needs SM80+.
+// act_scale is an optional device fp32 scalar; when non-null the kernel applies the W8A8
+// activation quantize/dequantize inline, bit-identically to LaunchQuantizeDequantizeActivationFp8,
+// so no scratch buffer or extra launch is needed.
 // Runs on any architecture with FP8 conversion intrinsics (CUDA >= 11.8).
 Status LaunchMatMulBlockScaledFp8Gemv(void* y,
                                       const void* a,
                                       const void* b_fp8,
                                       const float* weight_scale,
                                       const void* bias,
+                                      const float* act_scale,
                                       int m,
                                       int n,
                                       int k,
