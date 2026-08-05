@@ -71,6 +71,14 @@ Status WhereDummyDq::InsertDummyDQ(Node& node, Graph& graph, bool& modified, con
   const Node* dq_node = parent_node_1 ? parent_node_1 : parent_node_2;
   const int const_idx = parent_node_1 ? 2 : 1;
 
+  // DequantizeLinear's zero-point input (index 2) is optional per the ONNX spec, so a DQ node with
+  // only 2 inputs (x, x_scale) is valid and must be skipped here rather than indexed below.
+  if (dq_node->InputDefs().size() < 3) {
+    LOGS(logger, WARNING) << "WhereDummyDq expects dq branch to have a zero point input. "
+                          << "DQ: " << dq_node->Name();
+    return Status::OK();
+  }
+
   // Guardrail: only insert dummy DQ when the quantized dtype matches the output Q's dtype.
   // If they differ, we cannot safely synthesize quantization parameters.
   const int32_t dt_input = dq_node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();

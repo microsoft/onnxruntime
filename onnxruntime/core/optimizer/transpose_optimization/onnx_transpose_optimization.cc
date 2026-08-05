@@ -2295,6 +2295,14 @@ static bool HandleTile(HandlerArgs& args) {
   if (repeats_const != nullptr) {
     // Case 1: Repeats is constant. Shuffle order.
     const std::vector<int64_t>& repeats = DataInt64(*repeats_const);
+    // 'repeats' is required by the Tile spec to have one entry per dimension of the preceding
+    // Transpose's input, i.e. the same length as 'rank' derived from that Transpose's 'perm'. That
+    // isn't necessarily verified ahead of this point (e.g. shape inference may not have been able to
+    // validate it if the data input's rank wasn't statically known), so re-check it here before using
+    // values from 'perm_inv' (which are all < rank) to index into 'repeats'.
+    if (repeats.size() != rank) {
+      return false;
+    }
     std::vector<int64_t> new_repeats;
     new_repeats.reserve(rank);
     for (int64_t p : args.perm_inv) {
