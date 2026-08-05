@@ -65,7 +65,7 @@ $MAIN {
 #else
   let total_seq_length = uniforms.total_sequence_length;
 #endif
-  let past_seq_length = total_seq_length - uniforms.kv_sequence_length;
+  let past_seq_length = total_seq_length - min(total_seq_length, uniforms.kv_sequence_length);
 
   // Base position offset for rotary embedding cos/sin cache lookup.
   let position_id = past_seq_length;

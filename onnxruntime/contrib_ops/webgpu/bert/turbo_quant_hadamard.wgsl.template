@@ -65,7 +65,7 @@ $MAIN {
 #endif
 
   // uniforms.kv_sequence_length is the sequence length of the new key/values.
-  let past_seq_length = total_seq_length - uniforms.kv_sequence_length;
+  let past_seq_length = total_seq_length - min(total_seq_length, uniforms.kv_sequence_length);
 
   // Prepare indirect dispatch buffer (first workgroup, first thread only).
 #if prepare_indirect_dispatch

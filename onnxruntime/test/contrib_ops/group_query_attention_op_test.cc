@@ -3800,6 +3800,121 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_MultiBatch_NoRotary_UsesP
   RunTurboQuantMultiBatchSwapInvariance(/*do_rotary=*/false);
 }
 
+// Right-padded first prompts can have a per-batch total sequence length smaller than the
+// padded K/V sequence length. Exercise the static-cache path so past_seq_length is used as
+// the destination offset by both TurboQuant copy kernels.
+static void RunTurboQuantRightPaddedPrefill(bool do_rotary) {
+  if (!WebGpuEPWithTurboQuant4()) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  constexpr int batch_size = 2;
+  constexpr int sequence_length = 4;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 128;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int packed_hidden_size = hidden_size + 2 * kv_hidden_size;
+  constexpr int kv_head_dim = (head_size * 4 + 32) / 32;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  if (do_rotary) {
+    tester.AddAttribute<int64_t>("do_rotary", 1);
+  }
+
+  std::mt19937 rng(2026);
+  std::uniform_real_distribution<float> dist(-0.5f, 0.5f);
+  auto make_data = [&](int size) {
+    std::vector<float> data(size);
+    for (float& value : data) {
+      value = dist(rng);
+    }
+    return data;
+  };
+
+  if (do_rotary) {
+    tester.AddInput<float>("query", {batch_size, sequence_length, packed_hidden_size},
+                           make_data(batch_size * sequence_length * packed_hidden_size));
+    tester.AddOptionalInputEdge<float>();  // key
+    tester.AddOptionalInputEdge<float>();  // value
+  } else {
+    tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
+                           make_data(batch_size * sequence_length * hidden_size));
+    tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size},
+                           make_data(batch_size * sequence_length * kv_hidden_size));
+    tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size},
+                           make_data(batch_size * sequence_length * kv_hidden_size));
+  }
+
+  const int cache_size = batch_size * kv_num_heads * sequence_length * kv_head_dim;
+  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, sequence_length, kv_head_dim},
+                         std::vector<float>(cache_size, 0.0f));
+  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, sequence_length, kv_head_dim},
+                         std::vector<float>(cache_size, 0.0f));
+
+  // seqlens_k is total_sequence_length - 1. Batch 0 therefore has only two valid
+  // tokens in the four-token padded prompt, while batch 1 uses the full prompt.
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {1, 3});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {sequence_length}, /*is_initializer=*/true);
+
+  if (do_rotary) {
+    constexpr int max_seq_len = sequence_length + 8;
+    constexpr int half_rotary = head_size / 2;
+    std::vector<float> cos_cache(max_seq_len * half_rotary);
+    std::vector<float> sin_cache(max_seq_len * half_rotary);
+    for (int pos = 0; pos < max_seq_len; ++pos) {
+      for (int dim = 0; dim < half_rotary; ++dim) {
+        const float frequency = 1.0f / std::pow(10000.0f, 2.0f * static_cast<float>(dim) / head_size);
+        cos_cache[pos * half_rotary + dim] = std::cos(static_cast<float>(pos) * frequency);
+        sin_cache[pos * half_rotary + dim] = std::sin(static_cast<float>(pos) * frequency);
+      }
+    }
+    tester.AddInput<float>("cos_cache", {max_seq_len, half_rotary}, cos_cache);
+    tester.AddInput<float>("sin_cache", {max_seq_len, half_rotary}, sin_cache);
+  } else {
+    tester.AddOptionalInputEdge<float>();  // cos_cache
+    tester.AddOptionalInputEdge<float>();  // sin_cache
+  }
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+
+  const int output_size = batch_size * sequence_length * hidden_size;
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(output_size, 0.0f));
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, sequence_length, kv_head_dim},
+                          std::vector<float>(cache_size, 0.0f));
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, sequence_length, kv_head_dim},
+                          std::vector<float>(cache_size, 0.0f));
+  tester.SetOutputTolerance(1e6f);
+  tester.SetCustomOutputVerifier([](const std::vector<OrtValue>&, const std::string&) {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(WebGpuEPWithTurboQuant4());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+  const auto& output = tester.GetFetches()[0].Get<Tensor>();
+  const float* output_data = output.Data<float>();
+  const int output_per_batch = sequence_length * hidden_size;
+  for (int batch = 0; batch < batch_size; ++batch) {
+    const float* batch_begin = output_data + batch * output_per_batch;
+    const bool all_zero = std::all_of(batch_begin, batch_begin + output_per_batch,
+                                      [](float value) { return value == 0.0f; });
+    EXPECT_FALSE(all_zero) << "TurboQuant output is all zero for right-padded batch " << batch;
+  }
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_MultiBatch_RightPadding_NoRotary) {
+  RunTurboQuantRightPaddedPrefill(/*do_rotary=*/false);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_MultiBatch_RightPadding_Rotary) {
+  RunTurboQuantRightPaddedPrefill(/*do_rotary=*/true);
+}
+
 // ---------------------------------------------------------------------------
 // TurboQuant cross-validation tests: compare TQ output vs non-TQ reference.
 // With past_seq_len=0 (no past KV), both versions receive identical Q/K/V.
