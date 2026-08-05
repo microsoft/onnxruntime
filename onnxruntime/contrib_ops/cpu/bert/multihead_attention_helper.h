@@ -402,6 +402,10 @@ Status CheckInputs(const T* query,
   int hidden_size = (query_rank == 3)
                         ? (dmmha_packing ? (static_cast<int>(query_dims[2]) / 3) : static_cast<int>(query_dims[2]))
                         : (num_heads * static_cast<int>(query_dims[4]));
+  if (hidden_size % num_heads != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'query' hidden size shall be a multiple of number of query heads");
+  }
   int head_size = static_cast<int>(hidden_size) / num_heads;
   int kv_sequence_length = sequence_length;
 

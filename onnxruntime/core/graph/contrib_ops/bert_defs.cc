@@ -191,9 +191,31 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
       ONNX_NAMESPACE::TensorShapeProto output_shape;
       *output_shape.add_dim() = query_dims[0];
       *output_shape.add_dim() = query_dims[1];
-      *output_shape.add_dim() = value_dims.size() == 3
-                                    ? (dmmha_packing ? value_dims[2] / 3 : value_dims[2])
-                                    : value_dims[1] * value_dims[3];
+      if (value_dims.size() == 3 && !dmmha_packing &&
+          hasInputShape(ctx, 1) &&
+          getInputShape(ctx, 1).dim_size() == 3 &&
+          query_dims[2].has_dim_value() &&
+          getInputShape(ctx, 1).dim(2).has_dim_value() &&
+          value_dims[2].has_dim_value()) {
+        const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
+        const int64_t query_hidden_size = query_dims[2].dim_value();
+        const int64_t key_hidden_size = getInputShape(ctx, 1).dim(2).dim_value();
+        if (num_heads > 0 && query_hidden_size % num_heads == 0) {
+          const int64_t head_size = query_hidden_size / num_heads;
+          if (head_size > 0 && key_hidden_size % head_size == 0) {
+            const int64_t kv_num_heads = key_hidden_size / head_size;
+            if (kv_num_heads > 0 && value_dims[2].dim_value() % kv_num_heads == 0) {
+              output_shape.add_dim()->set_dim_value(
+                  num_heads * value_dims[2].dim_value() / kv_num_heads);
+            }
+          }
+        }
+      }
+      if (output_shape.dim_size() == 2) {
+        *output_shape.add_dim() = value_dims.size() == 3
+                                      ? (dmmha_packing ? value_dims[2] / 3 : value_dims[2])
+                                      : value_dims[1] * value_dims[3];
+      }
       updateOutputShape(ctx, 0, output_shape);
     } else if (hasInputShape(ctx, 1)) {
       auto& key_shape = getInputShape(ctx, 1);
@@ -1152,14 +1174,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(6,
                "past_key",
-               "past state for key with shape (batch_size, num_heads, past_sequence_length, head_size) "
-               "or (batch_size, num_heads, max_sequence_length, head_size) when buffer sharing is used",
+               "past state for key with shape (batch_size, kv_num_heads, past_sequence_length, head_size) "
+               "or (batch_size, kv_num_heads, max_sequence_length, head_size) when buffer sharing is used",
                "T",
                OpSchema::Optional)
         .Input(7,
                "past_value",
-               "past state for value with shape (batch_size, num_heads, past_sequence_length, head_size) "
-               "or (batch_size, num_heads, max_sequence_length, head_size) when buffer sharing is used",
+               "past state for value with shape (batch_size, kv_num_heads, past_sequence_length, v_head_size) "
+               "or (batch_size, kv_num_heads, max_sequence_length, v_head_size) when buffer sharing is used",
                "T",
                OpSchema::Optional)
         .Input(8,
@@ -1179,14 +1201,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .Output(1,
                 "present_key",
-                "present state for key with shape (batch_size, num_heads, total_sequence_length, head_size) "
-                "or (batch_size, num_heads, max_sequence_length, head_size) when buffer sharing is used",
+                "present state for key with shape (batch_size, kv_num_heads, total_sequence_length, head_size) "
+                "or (batch_size, kv_num_heads, max_sequence_length, head_size) when buffer sharing is used",
                 "T",
                 OpSchema::Optional)
         .Output(2,
                 "present_value",
-                "present state for value with shape (batch_size, num_heads, total_sequence_length, head_size) "
-                "or (batch_size, num_heads, max_sequence_length, head_size) when buffer sharing is used",
+                "present state for value with shape (batch_size, kv_num_heads, total_sequence_length, v_head_size) "
+                "or (batch_size, kv_num_heads, max_sequence_length, v_head_size) when buffer sharing is used",
                 "T",
                 OpSchema::Optional)
         .Output(3,

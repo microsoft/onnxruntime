@@ -158,11 +158,12 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
-  std::vector<int64_t> present_dims{
+  std::vector<int64_t> present_key_dims{
       parameters.batch_size, parameters.num_heads_kv, parameters.max_sequence_length, parameters.head_size};
-  TensorShape present_shape(present_dims);
-  Tensor* present_key = context->Output(1, present_shape);
-  Tensor* present_value = context->Output(2, present_shape);
+  std::vector<int64_t> present_value_dims{
+      parameters.batch_size, parameters.num_heads_kv, parameters.max_sequence_length, parameters.v_head_size};
+  Tensor* present_key = context->Output(1, TensorShape(present_key_dims));
+  Tensor* present_value = context->Output(2, TensorShape(present_value_dims));
 
   std::vector<int64_t> output_qk_dims{
       parameters.batch_size, parameters.num_heads, parameters.sequence_length, parameters.total_sequence_length};
@@ -487,9 +488,6 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
 #endif
 
   if (parameters.num_heads_kv != parameters.num_heads) {
-    ORT_RETURN_IF(bias != nullptr, "Bias is not supported for grouped query MultiHeadAttention");
-    ORT_RETURN_IF(past_key != nullptr || past_value != nullptr || present_key != nullptr || present_value != nullptr,
-                  "KV cache is not supported for grouped query MultiHeadAttention");
     ORT_RETURN_IF(kernel_type == AttentionKernelType::AttentionKernel_Default,
                   "No enabled CUDA attention kernel supports grouped query MultiHeadAttention");
   }

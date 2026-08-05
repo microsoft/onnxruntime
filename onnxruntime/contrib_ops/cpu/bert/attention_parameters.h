@@ -25,8 +25,8 @@ struct AttentionParameters {
   int num_heads_kv = 0;         // number of heads of key or value
   int k_hidden_size = 0;        // input hidden size of key
   int v_input_hidden_size = 0;  // input hidden size of value
-  int num_splits = 0;  // number of splits for splitkv
-  int rotary_dim = 0;  // rotary embedding dimension
+  int num_splits = 0;           // number of splits for splitkv
+  int rotary_dim = 0;           // rotary embedding dimension
   int beam_width = 0;
   bool is_unidirectional = false;
   bool past_present_share_buffer = false;

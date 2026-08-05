@@ -86,6 +86,29 @@ TEST(AttentionOptionalOutputsShapeInferenceTest, MultiHeadAttentionPresentValueO
   });
 }
 
+TEST(AttentionOptionalOutputsShapeInferenceTest, MultiHeadAttentionGroupedQueryOutput) {
+  NodeArg* output = nullptr;
+  BuildResolveAndVerify(
+      [&](ModelTestBuilder& builder) {
+        NodeArg* query = builder.MakeInput<float>(std::vector<int64_t>{2, 3, 32});
+        NodeArg* key = builder.MakeInput<float>(std::vector<int64_t>{2, 5, 16});
+        NodeArg* value = builder.MakeInput<float>(std::vector<int64_t>{2, 5, 12});
+        output = builder.MakeOutput<float>(std::nullopt);
+        Node& node = builder.AddNode("MultiHeadAttention", {query, key, value}, {output}, kMSDomain);
+        node.AddAttribute("num_heads", static_cast<int64_t>(4));
+      },
+      [&](const Graph&) {
+        ASSERT_NE(output, nullptr);
+        const auto* type = output->TypeAsProto();
+        ASSERT_NE(type, nullptr);
+        const auto& shape = type->tensor_type().shape();
+        ASSERT_EQ(shape.dim_size(), 3);
+        EXPECT_EQ(shape.dim(0).dim_value(), 2);
+        EXPECT_EQ(shape.dim(1).dim_value(), 3);
+        EXPECT_EQ(shape.dim(2).dim_value(), 24);
+      });
+}
+
 // DecoderMaskedMultiHeadAttention with present_key kept and present_value omitted.
 // past_key (input 5) and past_value (input 6) are supplied with shapes and past buffer sharing is
 // enabled so the present-output branch is active; with only two outputs declared, inference must not

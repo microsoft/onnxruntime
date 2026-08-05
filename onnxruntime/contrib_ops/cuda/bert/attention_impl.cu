@@ -976,12 +976,12 @@ Status QkvToContext(
   ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block));
 
   if (!parameters.past_present_share_buffer) {
-    ORT_RETURN_IF_ERROR(ConcatPastToPresent<T>(batch_size, num_heads, qk_head_size, v_head_size,
+    ORT_RETURN_IF_ERROR(ConcatPastToPresent<T>(batch_size, parameters.num_heads_kv, qk_head_size, v_head_size,
                                                kv_sequence_length, total_sequence_length,
                                                stream, max_threads_per_block, data));
 
   } else {  // past_present_share_buffer
-    ORT_RETURN_IF_ERROR(PastPresentBufferShare<T>(batch_size, num_heads, qk_head_size, v_head_size,
+    ORT_RETURN_IF_ERROR(PastPresentBufferShare<T>(batch_size, parameters.num_heads_kv, qk_head_size, v_head_size,
                                                   kv_sequence_length, fused_runner,
                                                   parameters, data, stream, max_threads_per_block));
   }
