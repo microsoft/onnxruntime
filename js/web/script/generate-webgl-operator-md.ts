@@ -16,7 +16,7 @@ function checkSupport(type: string, range: [number, number], rules: readonly OpS
   for (let i = range[0]; i <= range[1]; i++) {
     try {
       resolveOperator(node, [{ domain: '', version: i }], rules);
-    } catch (_e) {
+    } catch {
       return false;
     }
   }

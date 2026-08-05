@@ -168,9 +168,12 @@ Status WhisperDecoderSubgraph::CreateInitialFeeds(
   int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
 
   AllocatorPtr buffer_allocator = CPUAllocator::DefaultInstance();
-  size_t total_size = static_cast<size_t>(static_cast<long long>(cur_len) * batch_beam_size * sizeof(int));
-  auto seq_copy = IAllocator::MakeUniquePtr<int>(buffer_allocator, total_size, false, stream);
-  int* seq_copy_ptr = seq_copy.get();
+  // total_size is an element count: it sizes the int32 staging buffer and the copy spans.
+  // sequence_bytes is the byte count for copying a single beam's sequence per iteration.
+  size_t total_size = static_cast<size_t>(cur_len) * static_cast<size_t>(batch_beam_size);
+  size_t sequence_bytes = static_cast<size_t>(cur_len) * sizeof(int32_t);
+  auto seq_copy = IAllocator::MakeUniquePtr<int32_t>(buffer_allocator, total_size, false, stream);
+  int32_t* seq_copy_ptr = seq_copy.get();
 
   if (!use_sequence_as_input_ids_) {
     ORT_RETURN_IF_ERROR(device_copy_int32_func(
@@ -183,10 +186,10 @@ Status WhisperDecoderSubgraph::CreateInitialFeeds(
       gsl::span<const int32_t> sequence = sequences.GetSequence(i);
       const int32_t* sequence_data = sequence.data();
       long long seq_index = (long long)i * cur_len;
-      memcpy(seq_copy_ptr + seq_index, sequence_data, total_size);
+      memcpy(seq_copy_ptr + seq_index, sequence_data, sequence_bytes);
     }
-    gsl::span<int> temp_input(input_ids_data, total_size);
-    gsl::span<int> temp_sequence(seq_copy_ptr, total_size);
+    gsl::span<int32_t> temp_input(input_ids_data, total_size);
+    gsl::span<int32_t> temp_sequence(seq_copy_ptr, total_size);
     ORT_RETURN_IF_ERROR(device_copy_int32_func(
         temp_input,
         temp_sequence,

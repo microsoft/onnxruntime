@@ -1,34 +1,40 @@
 # WebGPU WGSL Templates
 
-This directory contains the infrastructure, scripts, and documentation for the WGSL template system used by the ONNX Runtime WebGPU Execution Provider (EP). The template system enables the generation of optimized WGSL shaders at build time or runtime, with parameterization and reusability across different operators.
+This directory contains the infrastructure and documentation for the WGSL
+template system used by the ONNX Runtime WebGPU Execution Provider (EP). The
+template system generates optimized WGSL shaders at build time, with
+parameterization and reusability across different operators.
 
-For detailed information about the underlying template engine, see [wgsl-template](https://github.com/fs-eire/wgsl-template).
+The template engine is implemented in Python and lives at
+[`tools/python/wgsl_gen.py`](../../../../../tools/python/wgsl_gen.py) (with the
+supporting package at
+[`tools/python/wgsl_template/`](../../../../../tools/python/wgsl_template/)).
+It requires only a Python 3.10+ interpreter.
 
 ## Overview
 
-The WGSL template system provides a flexible framework for generating WebGPU shaders for ONNX Runtime operators. Instead of writing static shader code, developers can create parameterized templates that adapt to different input configurations, data types, and optimization requirements.
+The WGSL template system provides a flexible framework for generating WebGPU
+shaders for ONNX Runtime operators. Instead of writing static shader code,
+developers can create parameterized templates that adapt to different input
+configurations, data types, and optimization requirements.
 
 **Key Benefits:**
 
 - **Code Reusability**: Share common shader patterns across multiple operators
-- **Type Safety**: Template parameters are validated at build time (static mode)
+- **Type Safety**: Template parameters are validated at build time
 - **Performance**: Generated shaders are optimized for specific use cases
 - **Maintainability**: Centralized shader logic with clear parameterization
 
 ## Terms
 
 - **WGSL**: The **W**eb**G**PU **S**hader **L**anguage - the shading language for WebGPU
-- **WGSL Template File**: A file with `.wgsl.template` extension containing WGSL shader code with template syntax and utilities
-- **WGSL-Template**: A JavaScript library developed specifically for generating WGSL code from template files
+- **WGSL Template File**: A file with the `.wgsl.template` extension containing WGSL shader code with template syntax and utilities
 - **Template Parameters**: Configuration objects that control shader generation (data types, dimensions, etc.)
 
 ## How It Works
 
-The system supports two generation modes to balance performance and flexibility:
-
-### Static Generation Mode
-
-Templates are processed at **build time** to generate C++ header files embedded in the WebGPU EP binary.
+Templates are processed at **build time** to generate C++ header files embedded
+in the WebGPU EP binary.
 
 **Advantages:**
 
@@ -37,31 +43,16 @@ Templates are processed at **build time** to generate C++ header files embedded 
 - Type-safe template parameters validated at compile time
 - Optimal for production deployments
 
-**Use Cases:**
-
-- Production builds
-
-### Dynamic Generation Mode
-
-Templates are processed at **runtime** using an embedded JavaScript engine to generate shaders on-demand.
-
-**Advantages:**
-
-- Faster development iteration (no rebuild required)
-- Support for runtime-dependent parameters
-- Easier debugging and experimentation
-- Flexible for research and development
-
-**Use Cases:**
-
-- Development and debugging workflows
-- Research environments with frequently changing parameters
+CMake invokes the Python tool, which walks the `.wgsl.template` files and emits
+`index.h` / `index_impl.h` (plus per-template headers) into the build directory.
+The EP includes these generated headers via [`wgsl_gen.h`](wgsl_gen.h) /
+[`wgsl_gen.cc`](wgsl_gen.cc).
 
 ## Development
 
-This section includes instructions for how to use the template system in the development.
+This section describes how to use the template system during development.
 
-1. Create WGSL template files in `.wgsl.template` extension.
+1. Create WGSL template files with the `.wgsl.template` extension.
 
    - [Reference: Template Syntax](https://github.com/fs-eire/wgsl-template?tab=readme-ov-file#template-syntax)
    - [Reference: Built-in Utilities](https://github.com/fs-eire/wgsl-template?tab=readme-ov-file#Utilities)
@@ -73,48 +64,52 @@ This section includes instructions for how to use the template system in the dev
 
 3. Build.
 
-   - Using static code generator
+   The static code generator is always enabled when WebGPU is built:
 
-     Static code generator is enabled by default:
+   ```sh
+   ./build.sh --use_webgpu
+   ```
 
-     ```sh
-     ./build.sh --use_webgpu
-     ```
+   A rebuild is needed when any C/C++ source file or WGSL template file is updated.
 
-     Rebuild is needed when any C/C++ source file or WGSL template file is updated.
+## Python tool reference
 
-   - Using dynamic code generator
+The build invokes [`tools/python/wgsl_gen.py`](../../../../../tools/python/wgsl_gen.py)
+directly from CMake; you should not normally need to run it by hand. The CLI
+surface is:
 
-     Append `--wgsl_template dynamic` to the ORT build script:
+```
+python tools/python/wgsl_gen.py \
+    -i <source-dir> [-i <source-dir> ...] \
+    --output <out-dir> \
+    --generator {static-cpp|static-cpp-literal} \
+    [-I <include-prefix>] \
+    [--ext .wgsl.template] \
+    [--preserve-code-ref] \
+    [--clean] \
+    [--verbose]
+```
 
-     ```sh
-     ./build.sh --use_webgpu --wgsl_template dynamic
-     ```
+* `static-cpp` (Release): emits short `__str_N` identifiers backed by a `string_table.h` for shader-string deduplication.
+* `static-cpp-literal` (Debug): inlines string literals; easier to read while debugging.
 
-     Rebuild is not needed when only WGSL template files are updated. In this case, you just need to compile the template files. See the next section below.
+### Running the test suite
 
-4. Compile the template files. (for dynamic code generator only)
+The Python tool ships with a unit + fixture test suite. CMake adds
+`wgsl_template_python_tests` to `ctest`, so any standard ORT build with WGSL
+templates enabled will run them:
 
-   When you are using dynamic code generator, you don't need to rebuild ONNX Runtime when you made changes to the WGSL template files.
+```
+ctest -R wgsl_template_python_tests
+```
 
-   > Suppose `<BUILD_DIR>` is the build directory. It's usually something like `<ORT_REPO_ROOT>/build/Linux/Debug` if not explicitly specified.
+You can also run the suite directly from the source tree:
 
-   There are 2 ways to compile the template files:
+```
+python tools/python/wgsl_template/test/run_tests.py
+```
 
-   1. Use a NPM script in the current folder:
-
-      ```sh
-      npm run gen -- -i ../ --preserve-code-ref --verbose --generator dynamic --output <BUILD_DIR>/wgsl_generated/dynamic
-      ```
-
-      This script will generate the file `<BUILD_DIR>/wgsl_generated/dynamic/templates.js` and exit.
-
-   2. Use the same script but in watch mode (recommended):
-
-      Use the same script as above but append `--watch` flag. This will launch a service monitoring the file system change and automatically compile the templates if any change occurred.
-
-      The typical development workflow is:
-      1. Build ORT once with dynamic template mode
-      2. Launch wgsl-gen in watch mode
-      3. Run ORT to debug/validate the shader
-      4. Make changes to the template files, and repeat step (c)
+Tests cover the loader, parser, generator, build orchestrator, and a smoke test
+against the in-tree templates (Pad, Transpose, im2col-matmul). The fixtures live
+under
+[`tools/python/wgsl_template/test/testcases/`](../../../../../tools/python/wgsl_template/test/testcases).

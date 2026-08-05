@@ -20,7 +20,7 @@ class OnnxModelCalibrationDataReader(CalibrationDataReader):
         name2tensors = []
         for data_dir in data_dirs:
             name2tensor = {}
-            data_paths = [os.path.join(data_dir, a) for a in sorted(os.listdir(data_dir))]
+            data_paths = [os.path.join(data_dir, f"input_{input_idx}.pb") for input_idx in range(len(model_inputs))]
             data_ndarrays = [self.read_onnx_pb_data(data_path) for data_path in data_paths]
             for model_input, data_ndarray in zip(model_inputs, data_ndarrays, strict=False):
                 name2tensor[model_input.name] = data_ndarray

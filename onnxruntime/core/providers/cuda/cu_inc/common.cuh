@@ -14,6 +14,7 @@
 #include <cuda_bf16.h>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/providers/cuda/cu_inc/cub.cuh"
 
 namespace onnxruntime {
 namespace cuda {
@@ -345,6 +346,9 @@ __device__ __inline__ double _Pow(double a, double b) { return pow(a, b); }
 template <>
 __device__ __inline__ half _Pow(half a, half b) { return half(powf((float)a, (float)b)); }
 
+template <>
+__device__ __inline__ BFloat16 _Pow(BFloat16 a, BFloat16 b) { return BFloat16(powf((float)a, (float)b)); }
+
 #define ISNAN_HALF(v__) static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&v__) & ~MLFloat16::kSignMask) > MLFloat16::kPositiveInfinityBits
 
 #define ISNAN_BFLOAT16(v__) static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&v__) & ~BFloat16::kSignMask) > BFloat16::kPositiveInfinityBits
@@ -463,6 +467,12 @@ __device__ __inline__ BFloat16 _Exp(BFloat16 a) { return expf(static_cast<float>
 
 template <>
 __device__ __inline__ BFloat16 _Log(BFloat16 a) { return logf(static_cast<float>(a)); }
+
+template <>
+__device__ __inline__ BFloat16 _Cos(BFloat16 a) { return cosf(static_cast<float>(a)); }
+
+template <>
+__device__ __inline__ BFloat16 _Sin(BFloat16 a) { return sinf(static_cast<float>(a)); }
 
 template <>
 __device__ __inline__ BFloat16 _Tanh(BFloat16 a) { return tanhf(static_cast<float>(a)); }
@@ -680,10 +690,8 @@ inline __host__ __device__ INT CeilDiv(INT a, INT2 b)  // ceil(a/b)
 }
 
 struct GridDim {
-  enum : CUDA_LONG {
-    maxThreadsPerBlock = 256,  // max threads per block
-    maxElementsPerThread = 4,  // max element processed per thread
-  };
+  static constexpr CUDA_LONG maxThreadsPerBlock = 256;  // max threads per block
+  static constexpr CUDA_LONG maxElementsPerThread = 4;  // max element processed per thread
 };
 
 // aligned vector generates vectorized load/store on CUDA

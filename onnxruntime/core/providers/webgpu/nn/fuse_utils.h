@@ -1,11 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include <string>
-#include "core/providers/webgpu/webgpu_kernel.h"
+#include <sstream>
+
+#include "core/common/status.h"
 
 #pragma once
 namespace onnxruntime {
+
+class OpKernelInfo;
+
 namespace webgpu {
+
 enum class ActivationKind {
   None,
   Relu,

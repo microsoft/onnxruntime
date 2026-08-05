@@ -3,8 +3,10 @@
 // Licensed under the MIT License.
 
 #include <string.h>
+#include <cstdio>
 #include "core/providers/shared_library/provider_api.h"
 #include "cann_call.h"
+#include "core/providers/cann/cann_utils.h"
 
 namespace onnxruntime {
 
@@ -121,28 +123,32 @@ const char* CannErrString<ge::graphStatus>(ge::graphStatus e) {
 template <typename ERRTYPE, bool THRW>
 bool CannCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg) {
   if (retCode != successCode) {
-    try {
-      char hostname[HOST_NAME_MAX];
-      if (gethostname(hostname, HOST_NAME_MAX) != 0)
-        snprintf(hostname, HOST_NAME_MAX, "%s", "?");
-      int currentCannDevice;
-      (void)aclrtGetDevice(&currentCannDevice);
-      (void)aclGetRecentErrMsg();
-      static char str[1024];
-      snprintf(str, sizeof(str), "%s failure %d: %s ; NPU=%d ; hostname=%s ; expr=%s; %s",
-               libName, static_cast<int>(retCode), CannErrString(retCode), currentCannDevice,
-               hostname,
-               exprString, msg);
-      if (THRW) {
-        ORT_THROW(str);
-      } else {
-        LOGS_DEFAULT(ERROR) << str;
-      }
-    } catch (const std::exception& e) {
-      if (THRW) {
-        ORT_THROW(e.what());
-      } else {
-        LOGS_DEFAULT(ERROR) << e.what();
+    if (retCode == ACL_ERROR_REPEAT_INITIALIZE) {
+      cann::SetRepeatInitFlag(true);
+    } else {
+      try {
+        char hostname[HOST_NAME_MAX];
+        if (gethostname(hostname, HOST_NAME_MAX) != 0)
+          snprintf(hostname, HOST_NAME_MAX, "%s", "?");
+        int currentCannDevice;
+        (void)aclrtGetDevice(&currentCannDevice);
+        (void)aclGetRecentErrMsg();
+        char str[1024];
+        snprintf(str, sizeof(str), "%s failure %d: %s ; NPU=%d ; hostname=%s ; expr=%s; %s",
+                 libName, static_cast<int>(retCode), CannErrString(retCode), currentCannDevice,
+                 hostname,
+                 exprString, msg);
+        if (THRW) {
+          ORT_THROW(str);
+        } else {
+          LOGS_DEFAULT(ERROR) << str;
+        }
+      } catch (const std::exception& e) {
+        if (THRW) {
+          ORT_THROW(e.what());
+        } else {
+          LOGS_DEFAULT(ERROR) << e.what();
+        }
       }
     }
     return false;

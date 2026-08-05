@@ -87,6 +87,34 @@ class EpFactoryInternal : public OrtEpFactory {
     return impl_->ValidateCompiledModelCompatibilityInfo(devices, num_devices, compatibility_info, model_compatibility);
   }
 
+  OrtStatus* CreateExternalResourceImporterForDevice(_In_ const OrtEpDevice* ep_device,
+                                                     _Outptr_result_maybenull_ OrtExternalResourceImporterImpl** importer) noexcept {
+    return impl_->CreateExternalResourceImporterForDevice(ep_device, importer);
+  }
+
+  OrtStatus* GetHardwareDeviceIncompatibilityDetails(_In_ const OrtHardwareDevice* hw,
+                                                     _Inout_ OrtDeviceEpIncompatibilityDetails* details) noexcept {
+    return impl_->GetHardwareDeviceIncompatibilityDetails(hw, details);
+  }
+
+  OrtStatus* InitGraphicsInterop(_In_ const OrtEpDevice* ep_device,
+                                 _In_ const OrtGraphicsInteropConfig* config) noexcept {
+    return impl_->InitGraphicsInterop(ep_device, config);
+  }
+
+  OrtStatus* DeinitGraphicsInterop(_In_ const OrtEpDevice* ep_device) noexcept {
+    return impl_->DeinitGraphicsInterop(ep_device);
+  }
+
+  OrtStatus* SelectBestModelCandidate(_In_ const OrtHardwareDevice* device,
+                                      _In_reads_(num_candidates) const OrtKeyValuePairs* const* candidates,
+                                      _In_ size_t num_candidates,
+                                      _In_opt_ const OrtSessionOptions* session_options,
+                                      _Out_ size_t* selected_index) noexcept {
+    return impl_->SelectBestModelCandidate(device, candidates, num_candidates,
+                                           session_options, selected_index);
+  }
+
   // Function ORT calls to release an EP instance.
   void ReleaseEp(OrtEp* /*ep*/) noexcept {
     // we never create an OrtEp so we should never be trying to release one

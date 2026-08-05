@@ -34,8 +34,6 @@ Example commands:
         python benchmark.py -e torchscript -g -p "fp16"
     Run ONNXRuntime and TorchScript on CPU for all models with quantization:
         python benchmark.py -e torchscript onnxruntime -p "int8" -o
-    Run OnnxRuntime with the ROCM provider and graph optimization script:
-        python benchmark.py -g -m bert-base-cased --provider rocm --optimizer_info by_script --disable_embed_layer_norm
     Run OnnxRuntime with bfloat16 fastmath mode kernels on aarch64 platforms with bfloat16 support:
         python benchmark.py --enable_arm64_bfloat16_fastmath_mlas_gemm
 
@@ -45,6 +43,7 @@ It is recommended to use run_benchmark.sh to launch benchmark.
 import argparse
 import logging
 import os
+import random
 import timeit
 from datetime import datetime
 
@@ -118,7 +117,6 @@ def run_onnxruntime(
         use_gpu
         and ("CUDAExecutionProvider" not in onnxruntime.get_available_providers())
         and ("MIGraphXExecutionProvider" not in onnxruntime.get_available_providers())
-        and ("ROCMExecutionProvider" not in onnxruntime.get_available_providers())
         and ("DmlExecutionProvider" not in onnxruntime.get_available_providers())
     ):
         logger.error(
@@ -434,7 +432,7 @@ def run_with_tf_optimizations(do_eager_mode: bool, use_xla: bool):
             return func(*args, **kwargs)
 
         @wraps(func)
-        @tf.function(experimental_compile=use_xla)
+        @tf.function(jit_compile=use_xla)
         def run_in_graph_mode(*args, **kwargs):
             return func(*args, **kwargs)
 
@@ -503,6 +501,36 @@ def run_tensorflow(
 
         max_input_size = tokenizer.model_max_length
 
+        # Define tf.function-decorated forward functions once per model, outside the
+        # batch_size/sequence_length loops. Passing input_ids as an argument (instead
+        # of closing over it) allows tf.function to cache traced graphs by input shape
+        # rather than retracing on every loop iteration. See issue #14953.
+        @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
+        def encoder_forward(input_ids):
+            return model(input_ids, training=False)  # noqa: B023
+
+        @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
+        def encoder_decoder_forward(input_ids):
+            return model(input_ids, decoder_input_ids=input_ids, training=False)  # noqa: B023
+
+        @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
+        def lxmert_forward(input_ids):
+            feats = tf.random.normal([1, 1, config.visual_feat_dim])  # noqa: B023
+            pos = tf.random.normal([1, 1, config.visual_pos_dim])  # noqa: B023
+            return model(  # noqa: B023
+                input_ids,
+                visual_feats=feats,
+                visual_pos=pos,
+                training=False,
+            )
+
+        if config.is_encoder_decoder:
+            inference = encoder_decoder_forward
+        elif isinstance(config, LxmertConfig):
+            inference = lxmert_forward
+        else:
+            inference = encoder_forward
+
         for batch_size in batch_sizes:
             if batch_size <= 0:
                 continue
@@ -513,42 +541,14 @@ def run_tensorflow(
 
                 logger.info(f"Run Tensorflow on {model_name} with input shape {[batch_size, sequence_length]}")
 
-                import random  # noqa: PLC0415
-
                 rng = random.Random()
                 values = [rng.randint(0, config.vocab_size - 1) for i in range(batch_size * sequence_length)]
                 input_ids = tf.constant(values, shape=(batch_size, sequence_length), dtype=tf.int32)
 
                 try:
-                    # Disable both for better inference perf
-                    @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
-                    def encoder_forward():
-                        return model(input_ids, training=False)  # noqa: B023
+                    inference(input_ids)
 
-                    @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
-                    def encoder_decoder_forward():
-                        return model(input_ids, decoder_input_ids=input_ids, training=False)  # noqa: B023
-
-                    @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
-                    def lxmert_forward():
-                        feats = tf.random.normal([1, 1, config.visual_feat_dim])  # noqa: B023
-                        pos = tf.random.normal([1, 1, config.visual_pos_dim])  # noqa: B023
-                        return model(  # noqa: B023
-                            input_ids,  # noqa: B023
-                            visual_feats=feats,
-                            visual_pos=pos,
-                            training=False,
-                        )
-
-                    inference = encoder_forward
-                    if config.is_encoder_decoder:
-                        inference = encoder_decoder_forward
-                    elif isinstance(config, LxmertConfig):
-                        inference = lxmert_forward
-
-                    inference()
-
-                    runtimes = timeit.repeat(lambda: inference(), repeat=repeat_times, number=1)  # noqa: B023
+                    runtimes = timeit.repeat(lambda: inference(input_ids), repeat=repeat_times, number=1)  # noqa: B023
 
                     result = {
                         "engine": "tensorflow",
@@ -788,7 +788,7 @@ def main():
         logger.error("fp16 is for GPU only")
         return
 
-    if args.precision == Precision.INT8 and args.use_gpu and args.provider not in ["migraphx", "rocm"]:
+    if args.precision == Precision.INT8 and args.use_gpu and args.provider not in ["migraphx"]:
         logger.error("int8 is for CPU only")
         return
 

@@ -20,16 +20,28 @@ Abstract:
 #include <arm_neon.h>
 
 #include <cassert>
+#include <cstring>
 #include <vector>
 #include <numeric>
 
 #include "qnbitgemm.h"
 #include "sqnbitgemm_q8_block.h"
 
+// W2 block-group pack helpers and scalar reference kernel declared in the
+// Avx512-named header are pure C++ (no x86 intrinsics). They serve as the
+// cross-arch layout authority for W2 and are reused on ARM64 for pack-size /
+// pack / layout; compute is provided by the native NEON DotProd kernel in
+// sqnbitgemm_kernel_neon_int8_2bit.cpp.
+#include "sqnbitgemm_kernel_avx512_2bit.h"
+
 #ifdef USE_KLEIDIAI
 #include "kai/kai_common.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0.h"
+#include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32ps1s0nrx4_qsu4c32s1s0_neon.h"
 #include "kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.h"
+#include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qai4c32p_qau4c32s0s1_f32_f32_f32_neon.h"
+#include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s0s1_f32_f32_f32_neon.h"
+#include "kai/ukernels/matmul/pack/kai_lhs_quant_pack_qsi8d32pscalef32_f32_neon.h"
 #include "kai_ukernel_interface.h"
 #endif
 
@@ -38,6 +50,11 @@ namespace sqnbitgemm_neon
 
 namespace
 {
+
+#ifdef USE_KLEIDIAI
+// Maps ORT's unsigned Q4 range [0, 15] to KleidiAI's signed-int4 origin [-8, 7].
+constexpr int32_t kKaiQ4SignedZeroPointOffset = 8;
+#endif
 
 //
 // Quantized B data packing function implementation.
@@ -50,29 +67,76 @@ QNBitGemmPackQuantBDataSize(
     size_t K,
     size_t BlkLen,
     bool HasZeroPoint,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
     if constexpr (BlkBitWidth == 4) {
 #ifndef USE_KLEIDIAI
         MLAS_UNREFERENCED_PARAMETER(HasZeroPoint);
         MLAS_UNREFERENCED_PARAMETER(ComputeType);  // same size regardless of ComputeType
+        MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 #endif
 
 #ifdef USE_KLEIDIAI
-        if (ComputeType == SQNBIT_CompInt8 && UseKleidiAI(K, BlkLen, HasZeroPoint)) {
-            const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel = GetKleidiAIGemmUKernel();
-            const size_t nr = ukernel.get_nr();
-            const size_t kr = ukernel.get_kr();
-            const size_t sr = ukernel.get_sr();
-            return kai_get_rhs_packed_size_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(N, K, nr, kr, sr, BlkLen, kai_dt_bf16);
-        } else
-#endif
-        {
-            const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-            const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-            return PackedQuantBDataSize;
+        if (ComputeType == SQNBIT_CompInt8) {
+            switch (SelectKleidiAIQ4Backend(K, BlkLen, HasZeroPoint, BackendKernelSelectorConfig)) {
+                case KleidiAIQ4Backend::Qai8dxpQsi4c32p: {
+                    const auto& k = GetKleidiAIGemmUKernel();
+                    const auto& ukernel = k.ukernel;
+                    const size_t nr = ukernel.get_nr();
+                    const size_t kr = ukernel.get_kr();
+                    const size_t sr = ukernel.get_sr();
+                    size_t packed_size;
+                    switch (k.rhs_layout) {
+                        case KaiQ4RhsPackLayout::SymmetricNxK:
+                            packed_size = kai_get_rhs_packed_size_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(
+                                N, K, nr, kr, sr, BlkLen, kai_dt_bf16);
+                            break;
+                        case KaiQ4RhsPackLayout::SymmetricNxKInterleavedNrx4:
+                            packed_size =
+                                kai_get_rhs_packed_size_rhs_pack_nxk_qsi4c32ps1s0nrx4_qsu4c32s1s0_neon(
+                                    N, K, nr, kr, sr, BlkLen, kai_dt_bf16);
+                            break;
+                        default:
+                            MLAS_THROW_EX(std::runtime_error,
+                                          "Unexpected RHS layout for symmetric Q4 backend.");
+                    }
+                    if (HasZeroPoint) {
+                        // Align so that BZpCorrection starts at a float-aligned offset
+                        constexpr size_t FloatAlignment = alignof(float);
+                        packed_size = (packed_size + FloatAlignment - 1) & ~(FloatAlignment - 1);
+                        // Additional space for BZpCorrection: N * BlockCountK floats
+                        const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+                        packed_size += N * BlockCountK * sizeof(float);
+                    }
+                    return packed_size;
+                }
+                case KleidiAIQ4Backend::Qsi8d32pQai4c32p: {
+                    // Packed B is shared by GEMM and GEMV, so both kernels must use this RHS layout.
+                    const auto& k = GetKleidiAIQai4GemmUKernel();
+                    const auto& ukernel = k.ukernel;
+                    const size_t nr = ukernel.get_nr();
+                    const size_t kr = ukernel.get_kr();
+                    // Get asymmetric packed size based on which RHS layout is used by the kernel
+                    switch (k.rhs_layout) {
+                        case KaiQ4RhsPackLayout::AsymmetricNxK:
+                            return kai_get_rhs_packed_size_rhs_pack_nxk_qai4c32p_qau4c32s0s1_f32_f32_f32_neon(N, K, nr, kr, BlkLen);
+                        case KaiQ4RhsPackLayout::AsymmetricNxKInterleavedNrx4:
+                            return kai_get_rhs_packed_size_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s0s1_f32_f32_f32_neon(N, K, nr, kr, BlkLen);
+                        default:
+                            MLAS_THROW_EX(std::runtime_error,
+                                          "Unexpected RHS layout for asymmetric Q4 backend.");
+                    }
+                }
+                case KleidiAIQ4Backend::None:
+                    break;
+            }
         }
+#endif
+        const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+        const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+        return PackedQuantBDataSize;
     } else {
         const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
         size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
@@ -107,7 +171,8 @@ SQ4BitGemmPackQuantBData(
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const std::byte* QuantBDataBegin,
     std::byte* PackedQuantBDataBegin,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /*BackendKernelSelectorConfig*/
 )
 {
     constexpr size_t BlkBitWidth = 4;
@@ -179,48 +244,174 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
     const std::byte* QuantBDataBegin,
     const float* QuantBScaleBegin,
     bool HasZeroPoint,
-    const std::byte*,
+    const std::byte* QuantBZPBegin,
     PackedQuantBDataStruct<float, 4>& PackedQuantB,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
 #ifndef USE_KLEIDIAI
     MLAS_UNREFERENCED_PARAMETER(QuantBScaleBegin);
     MLAS_UNREFERENCED_PARAMETER(HasZeroPoint);
+    MLAS_UNREFERENCED_PARAMETER(QuantBZPBegin);
 #endif
     assert(BlkLen >= 16 && BlkLen % 16 == 0);
 
 #ifdef USE_KLEIDIAI
-    if (UseKleidiAI(K, BlkLen, HasZeroPoint)) {
-        const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel = GetKleidiAIGemmUKernel();
+    KleidiAIQ4Backend backend = SelectKleidiAIQ4Backend(K, BlkLen, HasZeroPoint, BackendKernelSelectorConfig);
+    if (backend != KleidiAIQ4Backend::None) {
         std::byte* PackedQuantBDataBegin = PackedQuantB.PackedQuantBData;
-
-        const size_t nr = ukernel.get_nr();
-        const size_t kr = ukernel.get_kr();
-        const size_t sr = ukernel.get_sr();
-
-        kai_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0_params params;
-        params.lhs_zero_point = 1;
-        params.rhs_zero_point = 8;
-        params.scale_dt = kai_dt_bf16;
-
         const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-        const size_t scales_len = N * BlockCountK;
-        std::vector<uint16_t> scales(scales_len);
-        for (size_t i = 0; i < scales_len; i++) {
-            const uint32_t* i32 = reinterpret_cast<const uint32_t*>(&QuantBScaleBegin[i]);
-            scales[i] = *i32 >> 16;
-        }
 
-        kai_run_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(1, N, K, nr, kr, sr, BlkLen,
-                reinterpret_cast<const uint8_t*>(QuantBDataBegin), BlockCountK * BlkLen / 2,
-                nullptr, scales.data(), BlockCountK * sizeof(uint16_t),
-                PackedQuantBDataBegin, 0, &params);
+        // Pack B data with KleidiAI (only when B data is provided)
+        if (QuantBDataBegin != nullptr) {
+            switch (backend) {
+                // Symmetric Q4 block-quantized RHS path
+                case KleidiAIQ4Backend::Qai8dxpQsi4c32p: {
+                    const auto& k = GetKleidiAIGemmUKernel();
+                    const auto& ukernel = k.ukernel;
+
+                    const size_t nr = ukernel.get_nr();
+                    const size_t kr = ukernel.get_kr();
+                    const size_t sr = ukernel.get_sr();
+
+                    assert(QuantBScaleBegin != nullptr);
+                    kai_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0_params params{};
+                    params.lhs_zero_point = 1;
+                    params.rhs_zero_point = kKaiQ4SignedZeroPointOffset;
+                    params.scale_dt = kai_dt_bf16;
+
+                    const size_t scales_len = N * BlockCountK;
+                    std::vector<uint16_t> scales(scales_len);
+                    for (size_t i = 0; i < scales_len; i++) {
+                        uint32_t bits;
+                        static_assert(sizeof(bits) == sizeof(QuantBScaleBegin[i]), "Unexpected float size");
+                        std::memcpy(&bits, &QuantBScaleBegin[i], sizeof(bits));
+                        scales[i] = static_cast<uint16_t>(bits >> 16);
+                    }
+
+                    const auto* rhs = reinterpret_cast<const uint8_t*>(QuantBDataBegin);
+                    const size_t rhs_stride = BlockCountK * BlkLen / 2;
+                    const size_t scale_stride = BlockCountK * sizeof(uint16_t);
+                    switch (k.rhs_layout) {
+                        case KaiQ4RhsPackLayout::SymmetricNxK:
+                            kai_run_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(
+                                1, N, K, nr, kr, sr, BlkLen, rhs, rhs_stride, nullptr, scales.data(), scale_stride,
+                                PackedQuantBDataBegin, 0, &params);
+                            break;
+                        case KaiQ4RhsPackLayout::SymmetricNxKInterleavedNrx4:
+                            kai_run_rhs_pack_nxk_qsi4c32ps1s0nrx4_qsu4c32s1s0_neon(
+                                1, N, K, nr, kr, sr, BlkLen, rhs, rhs_stride, nullptr, scales.data(), scale_stride,
+                                PackedQuantBDataBegin, 0, &params);
+                            break;
+                        default:
+                            MLAS_THROW_EX(std::runtime_error,
+                                          "Unexpected RHS layout for symmetric Q4 backend.");
+                    }
+
+                    break;
+                }
+                // Asymmetric Q4 block-quantized RHS path
+                case KleidiAIQ4Backend::Qsi8d32pQai4c32p: {
+                    // Packed B is shared by GEMM and GEMV, so both kernels must use this RHS layout.
+                    const auto& k = GetKleidiAIQai4GemmUKernel();
+                    const auto& ukernel = k.ukernel;
+
+                    const size_t nr = ukernel.get_nr();
+                    const size_t kr = ukernel.get_kr();
+                    const size_t sr = ukernel.get_sr();
+
+                    assert(QuantBScaleBegin != nullptr);
+                    assert(QuantBZPBegin != nullptr);
+                    kai_rhs_pack_nxk_qai4c32p_params params{};
+                    params.lhs_zero_point = 1;
+                    params.rhs_zero_point = kKaiQ4SignedZeroPointOffset;
+
+                    const size_t zp_stride = MlasDivRoundup(BlockCountK, 2);
+                    const size_t rhs_stride = K / 2;
+                    // Reuse one kernel-width panel to keep scratch memory independent of N.
+                    std::vector<float> zero_offsets(nr * BlockCountK);
+                    std::vector<uint8_t> rhs_for_kai(nr * rhs_stride);
+                    const auto* rhs = reinterpret_cast<const uint8_t*>(QuantBDataBegin);
+
+                    for (size_t panel_start = 0; panel_start < N; panel_start += nr) {
+                        const size_t panel_rows = std::min(nr, N - panel_start);
+
+                        // Getting zero-points for the current scratch buffer panel from provided packed buffer
+                        for (size_t panel_n = 0; panel_n < panel_rows; ++panel_n) {
+                            const size_t n = panel_start + panel_n;
+                            for (size_t blk = 0; blk < BlockCountK; ++blk) {
+                                const uint8_t zp_byte =
+                                    static_cast<uint8_t>(QuantBZPBegin[n * zp_stride + blk / 2]);
+                                const uint8_t zp = (blk & 1) == 0 ? (zp_byte & 0x0F) : (zp_byte >> 4);
+                                const size_t src_idx = n * BlockCountK + blk;
+                                const size_t panel_idx = panel_n * BlockCountK + blk;
+                                // ORT stores asymmetric Q4 as uint4; KAI QAI4 interprets it as signed int4
+                                // offset by rhs_zero_point.
+                                const float kai_zp_offset =
+                                    static_cast<float>(params.rhs_zero_point) - static_cast<float>(zp);
+                                zero_offsets[panel_idx] = kai_zp_offset * QuantBScaleBegin[src_idx];
+                            }
+                        }
+
+                        // Rearrange high/low nibble in the current scratch buffer panel for KAI-expected format
+                        const uint8_t* rhs_panel = rhs + panel_start * rhs_stride;
+                        const size_t rhs_panel_size = panel_rows * rhs_stride;
+                        for (size_t i = 0; i < rhs_panel_size; ++i) {
+                            rhs_for_kai[i] =
+                                static_cast<uint8_t>(
+                                    ((rhs_panel[i] & 0x0F) << 4) | ((rhs_panel[i] & 0xF0) >> 4));
+                        }
+
+                        const float* scales_panel = QuantBScaleBegin + panel_start * BlockCountK;
+
+                        // KAI reads only panel_rows rows, so stale trailing scratch rows are not consulted.
+                        // Pack the current scratch buffer panel using layout based on what the kernel expects
+                        switch (k.rhs_layout) {
+                            case KaiQ4RhsPackLayout::AsymmetricNxK: {
+                                const size_t packed_offset =
+                                    kai_get_rhs_packed_offset_rhs_pack_nxk_qai4c32p_qau4c32s0s1_f32_f32_f32_neon(
+                                        panel_start, K, nr, kr, BlkLen);
+                                kai_run_rhs_pack_nxk_qai4c32p_qau4c32s0s1_f32_f32_f32_neon(
+                                    1, panel_rows, K, nr, kr, sr, BlkLen,
+                                    rhs_for_kai.data(),
+                                    zero_offsets.data(),
+                                    nullptr,
+                                    scales_panel,
+                                    PackedQuantBDataBegin + packed_offset,
+                                    0, &params);
+                                break;
+                            }
+                            case KaiQ4RhsPackLayout::AsymmetricNxKInterleavedNrx4: {
+                                const size_t packed_offset =
+                                    kai_get_rhs_packed_offset_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s0s1_f32_f32_f32_neon(
+                                        panel_start, K, nr, kr, BlkLen);
+                                kai_run_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s0s1_f32_f32_f32_neon(
+                                    1, panel_rows, K, nr, kr, sr, BlkLen,
+                                    rhs_for_kai.data(),
+                                    zero_offsets.data(),
+                                    nullptr,
+                                    scales_panel,
+                                    PackedQuantBDataBegin + packed_offset,
+                                    0, &params);
+                                break;
+                            }
+                            default:
+                                MLAS_THROW_EX(std::runtime_error,
+                                              "Unexpected RHS layout for asymmetric Q4 backend.");
+                        }
+                    }
+                    break;
+                }
+                case KleidiAIQ4Backend::None:
+                    break;
+            }
+        }
     } else
 #endif
     {
         std::byte* PackedQuantBDataBegin = reinterpret_cast<std::byte*>(PackedQuantB.QuantBWorkspace_);
-        SQ4BitGemmPackQuantBData(N, K, BlkLen, ComputeType, QuantBDataBegin, PackedQuantBDataBegin, ThreadPool);
+        SQ4BitGemmPackQuantBData(N, K, BlkLen, ComputeType, QuantBDataBegin, PackedQuantBDataBegin, ThreadPool, BackendKernelSelectorConfig);
     }
 }
 
@@ -347,7 +538,8 @@ SQ8BitGemmPackQuantBDataAndBlkSum(
     bool HasZeroPoint,
     const std::byte* QuantBZPBegin,
     PackedQuantBDataStruct<float, 8>& PackedQuantB,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /* BackendKernelSelectorConfig */
 )
 {
     assert(BlkLen >= 16 && BlkLen % 16 == 0);
@@ -381,7 +573,7 @@ SQ8BitGemmPackQuantBDataAndBlkSum(
         // Pack the blksum (and BlkUnsignedQuantAZeroPointCorrection if applicable)
         if ((QuantBScaleBegin && !HasZeroPoint) || QuantBZPBegin) {
             Q8ComputePackBlkSum(BlkLen, N, K, PackedQuantB.PackedQuantBScale, QuantBZPBegin, PackedQuantB.QuantBBlkSum, PackedQuantB.BlkUnsignedQuantAZeroPointCorrection, ThreadPool);
-        }    
+        }
     }
 }
 
@@ -397,36 +589,61 @@ QNBitGemmPerGemmWorkspaceSize(
     size_t BlkLen,
     bool HasZeroPoint,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
-    size_t BlkBitWidth
+    size_t BlkBitWidth,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
     MLAS_UNREFERENCED_PARAMETER(N);
 #ifndef USE_KLEIDIAI
     MLAS_UNREFERENCED_PARAMETER(HasZeroPoint);
     MLAS_UNREFERENCED_PARAMETER(BlkBitWidth);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 #endif
 
     switch (ComputeType) {
         case SQNBIT_CompInt8: {
             // workspace buffer is used for block quantization of A to int8
 #ifdef USE_KLEIDIAI
-            if (BlkBitWidth == 4 && UseKleidiAI(K, BlkLen, HasZeroPoint)) {
-                const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel =
-                    M == 1? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
+            if (BlkBitWidth == 4) {
+                switch (SelectKleidiAIQ4Backend(K, BlkLen, HasZeroPoint, BackendKernelSelectorConfig)) {
+                    case KleidiAIQ4Backend::Qai8dxpQsi4c32p: {
+                        const auto& k = (M == 1) ? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
+                        const auto& ukernel = k.ukernel;
 
-                const size_t mr = ukernel.get_mr();
-                const size_t kr = ukernel.get_kr();
-                const size_t sr = ukernel.get_sr();
-                return kai_get_lhs_packed_size_lhs_quant_pack_qai8dxp_f32(M, K, mr, kr, sr);
-            } else
-#endif
-            {
-                // workspace buffer is used for block quantization of A to int8
-                const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-                // QuantData + Scale + BlkSum
-                const size_t PerGemmWorkspaceSize = M * BlockCountK * (Q8BlkSize(BlkLen) + sizeof(float));
-                return PerGemmWorkspaceSize;
+                        const size_t mr = ukernel.get_mr();
+                        const size_t kr = ukernel.get_kr();
+                        const size_t sr = ukernel.get_sr();
+                        size_t ws = kai_get_lhs_packed_size_lhs_quant_pack_qai8dxp_f32(M, K, mr, kr, sr);
+                        if (HasZeroPoint) {
+                            // Align so that AFloatBlkSum starts at a float-aligned offset
+                            constexpr size_t FloatAlignment = alignof(float);
+                            ws = (ws + FloatAlignment - 1) & ~(FloatAlignment - 1);
+                            // Additional space for AFloatBlkSum: M * BlockCountK floats
+                            const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+                            ws += M * BlockCountK * sizeof(float);
+                        }
+                        return ws;
+                    }
+                    case KleidiAIQ4Backend::Qsi8d32pQai4c32p: {
+                        const auto& k = (M == 1) ? GetKleidiAIQai4GemvUKernel() : GetKleidiAIQai4GemmUKernel();
+                        const auto& ukernel = k.ukernel;
+
+                        const size_t mr = ukernel.get_mr();
+                        const size_t kr = ukernel.get_kr();
+                        const size_t sr = ukernel.get_sr();
+                        return kai_get_lhs_packed_size_lhs_quant_pack_qsi8d32pscalef32_f32_neon(
+                                M, K, BlkLen, mr, kr, sr);
+                    }
+                    case KleidiAIQ4Backend::None:
+                        break;
+                }
             }
+#endif
+            // workspace buffer is used for block quantization of A to int8
+            const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+            // QuantData + Scale + BlkSum
+            const size_t PerGemmWorkspaceSize = M * BlockCountK * (Q8BlkSize(BlkLen) + sizeof(float));
+            return PerGemmWorkspaceSize;
         }
         default: {
             return 0;
@@ -455,18 +672,59 @@ QNBitGemmPerGemmWorkspaceAlignment(
 }  // namespace
 
 bool
-UseKleidiAI(size_t K, size_t BlkLen, bool HasZp)
+IsKleidiAIQ4ShapeSupported(size_t K, size_t BlkLen, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig)
 {
 #ifdef USE_KLEIDIAI
-    bool has_dotprod = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot();
-    return (BlkLen % 32) == 0 && (K % BlkLen) == 0 && !HasZp && has_dotprod;
+    if (BackendKernelSelectorConfig != nullptr && !BackendKernelSelectorConfig->use_kleidiai) {
+        return false;
+    }
+
+    if (BlkLen == 0) {
+        return false;
+    }
+
+    return (BlkLen % 32) == 0 && (K % BlkLen) == 0;
 #else
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
     MLAS_UNREFERENCED_PARAMETER(K);
     MLAS_UNREFERENCED_PARAMETER(BlkLen);
-    MLAS_UNREFERENCED_PARAMETER(HasZp);
     return false;
 #endif
 }
+
+KleidiAIQ4Backend
+SelectKleidiAIQ4Backend(size_t K, size_t BlkLen, bool HasZp, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig)
+{
+    if (!IsKleidiAIQ4ShapeSupported(K, BlkLen, BackendKernelSelectorConfig)) {
+        return KleidiAIQ4Backend::None;
+    }
+
+    const auto& cpuid = MLAS_CPUIDINFO::GetCPUIDInfo();
+    const bool has_neon_q4 = cpuid.HasArmNeon_I8MM() || cpuid.HasArmNeonDot();
+
+    // If zero-points input present, try asymmetric path
+    if (HasZp && (cpuid.HasArm_SME2() || has_neon_q4)) {
+        return KleidiAIQ4Backend::Qsi8d32pQai4c32p;
+    }
+
+    if (!HasZp && (cpuid.HasArm_SME2() || has_neon_q4)) {
+        return KleidiAIQ4Backend::Qai8dxpQsi4c32p;
+    }
+
+    return KleidiAIQ4Backend::None;
+}
+
+#if defined(MLAS_ENABLE_TEST_HOOKS) && defined(USE_KLEIDIAI)
+const char* GetKleidiAIQ4GemmKernelNameForTesting()
+{
+    return GetKleidiAIGemmUKernel().name;
+}
+
+const char* GetKleidiAIQ4GemvKernelNameForTesting()
+{
+    return GetKleidiAIGemvUKernel().name;
+}
+#endif
 
 template<bool QuantAUnsigned>
 size_t
@@ -573,6 +831,8 @@ GetMlasQNBitGemmDispatchNeon(
             d.SQ4BitGemmKernel_CompInt8 = sqnbitgemm_neon::SQ4BitGemmKernel_CompInt8;
             d.QuantizeARow_CompInt8 = sqnbitgemm_neon::QuantizeARow_CompInt8;
             d.UsePacked_CompInt8 = sqnbitgemm_neon::UsePacked_CompInt8;
+            d.NeedsPackedZpCorrection_CompInt8 = sqnbitgemm_neon::NeedsPackedZpCorrection_CompInt8;
+            d.PackedQ4BitGemmNAlignment_CompInt8 = sqnbitgemm_neon::PackedQ4BitGemmNAlignment_CompInt8;
 
             d.QuantizeARowComputeBlkSum_CompInt8 = sqnbitgemm_neon::QuantizeARowComputeBlkSum_CompInt8<true>;
             d.SQ8BitGemmKernel_BlkSum_CompInt8 = sqnbitgemm_neon::SQ8BitGemmKernel_BlkSum_CompInt8<true>;
@@ -580,6 +840,8 @@ GetMlasQNBitGemmDispatchNeon(
 #ifdef USE_KLEIDIAI
             d.SQ4BitGemmKernel_Packed_CompInt8 = sqnbitgemm_neon::SQ4BitGemmKernel_Packed_CompInt8;
             d.QuantizeA_Packed_CompInt8 = sqnbitgemm_neon::QuantizeA_Packed_CompInt8;
+            d.ComputeAFloatBlkSum = sqnbitgemm_neon::ComputeAFloatBlkSum;
+            d.ApplyBZpCorrection = sqnbitgemm_neon::ApplyBZpCorrection;
 #endif
         }
 
@@ -589,10 +851,53 @@ GetMlasQNBitGemmDispatchNeon(
             d.SQ8BitGemmKernel_BlkSum_CompInt8 = sqnbitgemm_neon::SQ8BitGemmKernel_BlkSum_CompInt8<false>;
         }
 
+        // W2 native CompInt8 path.
+        //
+        // Pack-size, pack-and-blksum, and EffectiveBlockCountK use the
+        // portable AVX-512-namespaced helpers (the file is misleadingly
+        // named -- the TU contains no x86 intrinsics) which serve as the
+        // cross-arch layout authority for W2.
+        //
+        // SQ2BitGemmKernel_BlkSum_CompInt8 is wired to the native NEON
+        // DotProd kernel when FEAT_DotProd is available; the kernel
+        // handles BlkLen ∈ {32, 64, 128} natively via SDOT inner loops.
+        // The 2-bit weights are unpacked to unsigned values in [0, 3] and
+        // fed directly to SDOT; the B zero-point correction is fused into
+        // the accumulator via the ABlockSum × QuantBBlkSum term (where
+        // QuantBBlkSum bakes in -scale × zp per block), so no post-kernel
+        // zero-point correction SGEMM is needed.
+        //
+        // FEAT_I8MM hosts also take this path: FEAT_I8MM always implies
+        // FEAT_DotProd per the ARM spec, and USDOT and SDOT have identical
+        // throughput on every core that implements both -- a separate I8MM
+        // TU using USDOT would be pure duplication. The real I8MM-only
+        // throughput win lives in SMMLA (R2-tile 2×2 matrix-multiply,
+        // 2× the dots/cycle of SDOT), which is future work.
+        //
+        // The Scalar fall-back is defensive: an I8MM-without-DotProd host
+        // is unreachable on conformant ARMv8.2+ hardware.
+        if (InitializeWithDotSupport || InitializeWithI8MMSupport) {
+            d.Q2BitGemmPackQuantBDataSize       = onnxruntime::mlas::sq2bit_avx512::Q2BitGemmPackQuantBDataSize_Avx512;
+            d.SQ2BitGemmPackQuantBDataAndBlkSum = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmPackQuantBDataAndBlkSum_Scalar;
+            d.SQ2BitGemmKernel_BlkSum_CompInt8  = InitializeWithDotSupport
+                ? sqnbitgemm_neon::SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd
+                : onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmKernel_BlkSum_CompInt8_Scalar;
+            d.Q2BitGemmEffectiveBlockCountK     = [](size_t BlockCountK) {
+                return MlasDivRoundup(BlockCountK, kSq2BitAvx512WeightKBlockGroup) * kSq2BitAvx512WeightKBlockGroup;
+            };
+            // W2 NEON DotProd kernel uses vdotq_s32 over A and so requires
+            // SIGNED int8 A. The shared QuantizeARowComputeBlkSum is wired
+            // to the UNSIGNED W8 variant on DotProd-only hosts; route W2
+            // through the signed variant explicitly.
+            d.QuantizeARowComputeBlkSum_CompInt8_W2 = sqnbitgemm_neon::QuantizeARowComputeBlkSum_CompInt8<false>;
+        }
+
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
         d.HQ4BitGemmPackQuantBData = sqnbitgemm_neon::HQ4BitGemmPackQuantBData_CompFp16;
         d.HQ4BitBlkDequantBForHgemm_CompFp16 = sqnbitgemm_neon::HQ4BitBlkDequantBForHgemm_CompFp16;
         d.HQ4BitGemmKernel_CompFp16 = sqnbitgemm_neon::HQ4BitGemmKernel_CompFp16;
+        d.HQ8BitGemmPackQuantBData = sqnbitgemm_neon::HQ8BitGemmPackQuantBData_CompFp16;
+        d.HQ8BitBlkDequantBForHgemm_CompFp16 = sqnbitgemm_neon::HQ8BitBlkDequantBForHgemm_CompFp16;
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED && MLAS_TARGET_ARM64
 
         return d;

@@ -76,6 +76,7 @@ struct Float16Impl {
   static constexpr uint16_t kPositiveQNaNBits = 0x7E00U;
   static constexpr uint16_t kNegativeQNaNBits = 0xFE00U;
   static constexpr uint16_t kMaxValueBits = 0x7BFFU;  // Largest normal number
+  static constexpr uint16_t kMinValueBits = 0xFBFFU;  // Lowest normal number
   static constexpr uint16_t kOneBits = 0x3C00U;
   static constexpr uint16_t kMinusOneBits = 0xBC00U;
 
@@ -363,6 +364,7 @@ struct BFloat16Impl {
   static constexpr uint16_t kPositiveQNaNBits = 0x7FC1U;
   static constexpr uint16_t kNegativeQNaNBits = 0xFFC1U;
   static constexpr uint16_t kMaxValueBits = 0x7F7FU;
+  static constexpr uint16_t kMinValueBits = 0xFF7FU;
   static constexpr uint16_t kRoundToNearest = 0x7FFFU;
   static constexpr uint16_t kOneBits = 0x3F80U;
   static constexpr uint16_t kMinusOneBits = 0xBF80U;

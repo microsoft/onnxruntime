@@ -23,6 +23,8 @@ uname -a
 cd "$BINARY_DIR/onnxruntime-java"
 rm -f *.asc
 rm -f *.sha256
+rm -f *.sha1
+rm -f *.md5
 rm -f *.sha512
 rm -f *.pom
 ls
@@ -31,11 +33,13 @@ mkdir tests
 cd tests
 jar xf ../onnxruntime-java/testing.jar
 rm -f ../onnxruntime-java/testing.jar
+echo "Contents of tests directory ($BINARY_DIR/tests):"
+ls "$BINARY_DIR/tests"
 echo "Java Version"
 java -version
 
 echo "Directories created"
 echo  "Library path:" "$LD_LIBRARY_PATH"
 
-java -DUSE_CUDA=1 -cp "$BINARY_DIR/tests:$BINARY_DIR/onnxruntime-java/*" org.junit.platform.console.ConsoleLauncher --scan-classpath=$BINARY_DIR/tests \
+java -DUSE_CUDA=1 -cp "$BINARY_DIR/tests:$BINARY_DIR/onnxruntime-java/*" org.junit.platform.console.ConsoleLauncher --scan-classpath="$BINARY_DIR/tests" \
             --fail-if-no-tests --disable-banner

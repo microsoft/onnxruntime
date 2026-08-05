@@ -20,19 +20,24 @@ class BinaryElementwiseProgram final : public Program<BinaryElementwiseProgram> 
                            const bool is_rhs_scalar,
                            const bool is_lhs_use_4_components,
                            const bool is_rhs_use_4_components,
-                           const bool vectorize) : Program{kernel_name},
-                                                   expression_{expression},
-                                                   additional_impl_{additional_impl},
-                                                   is_broadcast_{is_broadcast},
-                                                   is_lhs_scalar_{is_lhs_scalar},
-                                                   is_rhs_scalar_{is_rhs_scalar},
-                                                   is_lhs_use_4_components_{is_lhs_use_4_components},
-                                                   is_rhs_use_4_components_{is_rhs_use_4_components},
-                                                   vectorize_{vectorize} {}
+                           const bool vectorize,
+                           const bool is_int64_input = false,
+                           const bool is_int64_output = false) : Program{kernel_name},
+                                                                 expression_{expression},
+                                                                 additional_impl_{additional_impl},
+                                                                 is_broadcast_{is_broadcast},
+                                                                 is_lhs_scalar_{is_lhs_scalar},
+                                                                 is_rhs_scalar_{is_rhs_scalar},
+                                                                 is_lhs_use_4_components_{is_lhs_use_4_components},
+                                                                 is_rhs_use_4_components_{is_rhs_use_4_components},
+                                                                 vectorize_{vectorize},
+                                                                 is_int64_input_{is_int64_input},
+                                                                 is_int64_output_{is_int64_output} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32},
+                                          {"element_count", ProgramUniformVariableDataType::Uint32});
 
  private:
   std::string_view expression_;
@@ -43,6 +48,8 @@ class BinaryElementwiseProgram final : public Program<BinaryElementwiseProgram> 
   bool is_lhs_use_4_components_;
   bool is_rhs_use_4_components_;
   bool vectorize_;
+  bool is_int64_input_;
+  bool is_int64_output_;
 };
 
 class BinaryElementwise : public WebGpuKernel {
@@ -56,6 +63,46 @@ class BinaryElementwise : public WebGpuKernel {
                                                                                                kernel_name_{kernel_name},
                                                                                                expression_{expression},
                                                                                                get_additional_impl_{get_additional_impl} {}
+
+ protected:
+  Status ComputeInternal(ComputeContext& context) const final;
+
+ private:
+  std::string kernel_name_;
+  std::string expression_;
+  const GetAdditionalImplementationFunction get_additional_impl_;
+};
+
+// Factory functions for ops with conditional int64 support (registered via RegisterKernels).
+template <int StartVersion, int EndVersion>
+KernelCreateInfo CreateAddVersionedKernelInfo(bool enable_int64);
+template <int SinceVersion>
+KernelCreateInfo CreateAddKernelInfo(bool enable_int64);
+
+template <int StartVersion, int EndVersion>
+KernelCreateInfo CreateEqualVersionedKernelInfo(bool enable_int64);
+template <int SinceVersion>
+KernelCreateInfo CreateEqualKernelInfo(bool enable_int64);
+
+template <int StartVersion, int EndVersion>
+KernelCreateInfo CreateSubVersionedKernelInfo(bool enable_int64);
+template <int SinceVersion>
+KernelCreateInfo CreateSubKernelInfo(bool enable_int64);
+
+// Variadic element-wise operator (e.g. Max, Min) that accepts 1..N inputs with
+// multidirectional (NumPy-style) broadcasting. The inputs are folded pairwise using the
+// two-input binary element-wise program, reusing its broadcasting and vectorization paths.
+class VariadicElementwise : public WebGpuKernel {
+ public:
+  using GetAdditionalImplementationFunction = std::string (*)(int lhs_element_type, int rhs_element_type);
+
+  VariadicElementwise(const OpKernelInfo& info,
+                      const std::string& kernel_name,
+                      const std::string& expression,
+                      const GetAdditionalImplementationFunction get_additional_impl = nullptr) : WebGpuKernel{info},
+                                                                                                 kernel_name_{kernel_name},
+                                                                                                 expression_{expression},
+                                                                                                 get_additional_impl_{get_additional_impl} {}
 
  protected:
   Status ComputeInternal(ComputeContext& context) const final;

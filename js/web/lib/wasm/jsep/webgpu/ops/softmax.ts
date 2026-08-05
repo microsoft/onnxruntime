@@ -81,7 +81,7 @@ const createSoftmaxProgramInfo = (context: ComputeContext, attributes: SoftmaxAt
   // 6.2.4 in wgsl spec
   const threadMaxDecl =
     tensorTypeToWsglStorageType(transposedInput.dataType) === 'f32'
-      ? `var threadMax = ${valueType}(-3.402823e+38f);`
+      ? `var threadMax = ${valueType}(-3.4028234663852886e+38f);`
       : `var threadMax = ${valueType}(-65504.0h);`;
   const getShaderSource = (shaderHelper: ShaderHelper) => `
       var<workgroup> rowMaxShared : ${valueType};

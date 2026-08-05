@@ -6,6 +6,7 @@
 # It is used to dump machine information for Notebooks
 
 import argparse
+import importlib.metadata
 import json
 import logging
 import platform
@@ -122,10 +123,7 @@ class MachineInfo:
         return result
 
     def get_related_packages(self) -> list[str]:
-        import pkg_resources  # noqa: PLC0415
-
-        installed_packages = pkg_resources.working_set
-        related_packages = [
+        related_packages = {
             "onnxruntime-gpu",
             "onnxruntime",
             "onnx",
@@ -137,8 +135,12 @@ class MachineInfo:
             "flatbuffers",
             "numpy",
             "onnxconverter-common",
-        ]
-        related_packages_list = {i.key: i.version for i in installed_packages if i.key in related_packages}
+        }
+        related_packages_list = {}
+        for dist in importlib.metadata.distributions():
+            if dist.metadata["Name"].lower() in related_packages:
+                related_packages_list[dist.metadata["Name"].lower()] = dist.version
+
         return related_packages_list
 
     def get_onnxruntime_info(self) -> dict:

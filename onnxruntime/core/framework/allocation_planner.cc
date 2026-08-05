@@ -499,8 +499,7 @@ class PlannerImpl {
   /*! \brief Given a tensor-type, return the size of an element of the tensor.
    */
   static size_t GetElementSize(const DataType& tensor_type) {
-    const TypeProto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(tensor_type);
-    MLDataType ml_data_type = DataTypeImpl::TypeFromProto(type_proto);
+    MLDataType ml_data_type = DataTypeImpl::GetDataType(*tensor_type);
     const TensorTypeBase* tensor_type_base = ml_data_type->AsTensorType();
     ORT_ENFORCE(nullptr != tensor_type_base);
     MLDataType elt_type = tensor_type_base->GetElementType();
@@ -914,12 +913,7 @@ class PlannerImpl {
           ProcessDef(index, node_output);
           OrtDevice output_device = exec_provider->GetOrtDeviceByMemType(p_kernel_def->OutputMemoryType(i));
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-          // Downstream nodes of certain providers may require a CPU accessible location override
-          // to make sure the EP does not incur an unnecessary copy.
-          // We only do it for CPU based EPs. We are not likely to encounter
-          // non CPU devices here since they are already taken care of by using MemCpy nodes earlier.
-          // However, we still ignore them.
-          if (output_device.Type() == OrtDevice::CPU) {
+          if (output_device.UsesCpuMemory()) {
             const auto& output_name = node_output->Name();
             const auto consumers = graph_viewer_.GetConsumerNodes(output_name);
             for (const auto* consumer : consumers) {

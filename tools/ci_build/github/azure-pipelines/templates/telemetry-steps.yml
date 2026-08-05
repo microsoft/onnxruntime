@@ -5,6 +5,7 @@ steps:
   # TELEMETRYGUID is a runtime variable that is stored on the pipeline in an old-fashioned way. So it cannot be used in
   # template expressions. We access it through env variables.
   - task: PowerShell@2
+    condition: and(succeeded(), eq(variables['Agent.OS'], 'Windows_NT'))
     displayName: 'Set TelemetryOption variable and optionally create TraceLoggingConfigPrivate.h for WinML Telemetry'
     inputs:
       targetType: filePath

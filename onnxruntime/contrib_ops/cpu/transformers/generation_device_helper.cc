@@ -305,6 +305,10 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   // where input_length equals to parameters_->sequence_length for first subgraph call, and 1 for the remaining calls.
   const TensorShape& logits_shape = logits.Get<Tensor>().Shape();
   ORT_ENFORCE(logits_shape.NumDimensions() == 3);
+  const auto logits_vocab_size = static_cast<int>(logits_shape[2]);
+  ORT_RETURN_IF_NOT(vocab_size > 0 && vocab_size <= logits_vocab_size,
+                    "BeamSearch: vocab_size attribute (", vocab_size,
+                    ") must be positive and not exceed decoder logits width (", logits_vocab_size, ")");
   auto input_length = logits_shape[1];
   auto logits_batch_size = logits_shape[0];
 
@@ -337,6 +341,16 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   // Get scores for candidates of next token: next_token_scores = log_softmax(next_token_logits, dim=-1)
   gsl::span<T>& next_token_scores = beam_state->next_token_scores;
+
+  // TODO(hasesh): Plumb through mlas backend config to SoftmaxCPU
+  // Currently, MLAS uses a dedicated softmax kernel for float type
+  // that does not need the mlas backend config.
+  // The backend config is only needed for the double type softmax kernel
+  // which uses Gemm/Matmul for its implementation.
+  // At the time of writing, there is no backend other than MLAS that implements
+  // double type Gemm/Matmul. Hence, the cost of plumbing through the session option
+  // to enable/disable a backend (like KleidiAI) is not justified.
+  // It is better re-visited when it is relevant for the double type.
   ORT_RETURN_IF_ERROR(
       SoftmaxCPU<T>(
           batch_beam_size,  // rows
@@ -344,7 +358,8 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
           (input_length == 1 && logits_batch_size == batch_beam_size) ? logits_data : next_token_logits.data(),
           next_token_scores.data(),
           true,
-          thread_pool));
+          thread_pool,
+          nullptr));  // mlas_backend_kernel_selector_config
 
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after softmax", next_token_scores.data(), batch_size, num_beams, vocab_size);
@@ -461,6 +476,10 @@ Status GreedySearchProcessLogits(
   // where input_length equals to parameters_->sequence_length for first subgraph call, and 1 for the remaining calls.
   const TensorShape& logits_shape = logits.Get<Tensor>().Shape();
   ORT_ENFORCE(logits_shape.NumDimensions() == 3);
+  const auto logits_vocab_size = static_cast<int>(logits_shape[2]);
+  ORT_RETURN_IF_NOT(vocab_size > 0 && vocab_size <= logits_vocab_size,
+                    "GreedySearch: vocab_size attribute (", vocab_size,
+                    ") must be positive and not exceed decoder logits width (", logits_vocab_size, ")");
   auto input_length = logits_shape[1];
 
   // Get logits for the last token:

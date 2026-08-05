@@ -17,7 +17,9 @@ class DllSafe {
       : value_{value}, deleter_{[](T* value) noexcept {
           std::default_delete<T>()(value);
         }} {}
-
+  explicit DllSafe(T* value, void (*deleter)(T*) noexcept)
+      : value_{value}, deleter_{deleter} {
+  }
   explicit DllSafe(T&& value) : DllSafe(new T(std::move(value))) {}
   explicit DllSafe(const T& value) : DllSafe(new T(value)) {}
 

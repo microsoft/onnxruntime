@@ -96,7 +96,7 @@ void RunGatherGradTestWithRandomData(
 }
 }  // namespace
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 // TODO: Currently this cannot pass CI, due to GPU architecture problem
 TEST(GatherOpTest, Gather_axis0_indices2d_half) {
 #ifdef USE_CUDA
@@ -186,7 +186,7 @@ TEST(GatherGradOpTest, GatherFewDistinctIndices) {
   RunGatherGradTestWithRandomData<float>(0, {2, 32}, {6, 128}, absolute_error);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 namespace {
 void RunGatherGradConsistentOutputTest(
     int64_t axis,

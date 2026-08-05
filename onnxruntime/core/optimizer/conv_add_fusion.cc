@@ -79,7 +79,7 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
     auto new_name = graph.GenerateNodeArgName("ConvAddFusion_B_" + B_input_name);
     new_conv_B_tensor_proto.set_name(new_name);
 
-    NodeArg& new_conv_B_node_arg = graph_utils::AddInitializer(graph, new_conv_B_tensor_proto);
+    NodeArg& new_conv_B_node_arg = graph_utils::AddInitializerWithOrtValue(graph, new_conv_B_tensor_proto);
     graph_utils::ReplaceNodeInput(node, 2, new_conv_B_node_arg);
 
   } else {
@@ -94,7 +94,7 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
     auto new_name = graph.GenerateNodeArgName("ConvAddFusion_Add_B_" + add_B_tensor_proto->name());
     new_conv_B_tensor_proto.set_name(new_name);
 
-    NodeArg& new_add_B_node_arg = graph_utils::AddInitializer(graph, new_conv_B_tensor_proto);
+    NodeArg& new_add_B_node_arg = graph_utils::AddInitializerWithOrtValue(graph, new_conv_B_tensor_proto);
     graph_utils::AddNodeInput(node, 2, new_add_B_node_arg);
   }
 
@@ -107,7 +107,7 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
 }
 
 bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11, 22}) ||
       node.GetOutputEdgesCount() != 1) {
     return false;
   }

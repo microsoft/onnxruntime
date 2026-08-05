@@ -18,9 +18,8 @@
  * limitations under the License.
  */
 
-#include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
-#include <cub/cub.cuh>
+#include "core/providers/cuda/cu_inc/common.cuh"
 
 using namespace onnxruntime::cuda;
 

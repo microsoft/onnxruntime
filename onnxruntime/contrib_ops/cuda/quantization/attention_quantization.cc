@@ -95,6 +95,8 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   //   Output 0 - output            : (batch_size, sequence_length, hidden_size)
   //   Output 1 - present           : (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)
 
+  auto ort_stream = GetOrtStream(context);
+
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
@@ -138,8 +140,8 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   int n = 3 * hidden_size;
   int k = parameters.input_hidden_size;
   size_t num_elements = SafeInt<size_t>(m) * n;
-  auto gemm_buffer = GetScratchBuffer<T>(num_elements * element_size, context->GetComputeStream());
-  auto gemm_buffer_quantized = GetScratchBuffer<int32_t>(num_elements, context->GetComputeStream());
+  auto gemm_buffer = GetScratchBuffer<T>(num_elements * element_size, GetComputeStream(context));
+  auto gemm_buffer_quantized = GetScratchBuffer<int32_t>(num_elements, GetComputeStream(context));
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
@@ -149,7 +151,8 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                weights->Data<int8_t>(), n,
                                gemm_buffer_quantized.get(), n,
                                this,
-                               context->GetComputeStream()));
+                               GetComputeStream(context), Stream(context),
+                               GetCublasHandle(context)));
 
   CudaT dequant_scale;
   CudaT input_scale = *(reinterpret_cast<const CudaT*>(input_scale_tensor->Data<T>()));
@@ -197,7 +200,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                                    use_cudnn_flash_attention,
                                                    true);
 
-  auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
+  auto work_space = GetScratchBuffer<void>(workSpaceSize, GetComputeStream(context));
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
@@ -220,7 +223,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   }
 
   cudnnHandle_t cudnn = GetCudnnHandle(context);
-  return QkvToContext<CudaT>(GetDeviceProp(), cublas, cudnn, context->GetComputeStream(), parameters, data);
+  return QkvToContext<CudaT>(GetDeviceProp(), cublas, cudnn, ort_stream.get(), parameters, data);
 }
 
 }  // namespace cuda

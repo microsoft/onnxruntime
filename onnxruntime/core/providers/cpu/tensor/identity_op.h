@@ -49,21 +49,8 @@ class IdentityOp final : public OpKernel {
       const auto* X = &input_ort_value->Get<Tensor>();
       const TensorShape& shape = X->Shape();
       Tensor* Y = context->Output(0, shape);
-      auto X_type = X->DataType();
 
-      const void* source = X->DataRaw(X_type);
-      void* target = Y->MutableDataRaw(X_type);
-      // If source and target pointers are not equal, we need to copy the data.
-      if (target != source) {
-        if (!X->IsDataTypeString()) {
-          memcpy(target, source, SafeInt<size_t>(shape.Size()) * X_type->Size());
-        } else {
-          // handle std::string
-          const auto* src = X->Data<std::string>();
-          auto* dst = Y->MutableData<std::string>();
-          std::copy(src, src + shape.Size(), dst);
-        }
-      }
+      CopyCpuTensor(X, Y);
 
       if (is_dropout) {
         Tensor* mask = context->Output(1, shape);

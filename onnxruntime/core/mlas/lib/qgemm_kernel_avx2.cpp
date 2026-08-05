@@ -377,7 +377,7 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8U8DispatchAvx2Vnni = {
     MlasGemmQuantCopyPackB<MLAS_GEMM_U8U8_KERNEL_AVX2VNNI>,
     MLAS_GEMM_U8U8_KERNEL_AVX2VNNI::PackedK,
     MLAS_GEMM_U8U8_KERNEL_AVX2VNNI::PackedStrides.K,
-    6  // assembly kernel M stride
+    4  // avoid the legacy >4-row fallback, which assumes non-VNNI packing
 };
 
 // S8S8 AVX-VNNI-INT8 support
@@ -450,7 +450,7 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchAvx2Vnni = {
     MlasGemmQuantCopyPackB<MLAS_GEMM_S8S8_KERNEL_AVX2>,
     MLAS_GEMM_S8S8_KERNEL_AVX2::PackedK,
     MLAS_GEMM_S8S8_KERNEL_AVX2::PackedStrides.K,
-    6  // assembly kernel M stride
+    4  // avoid the legacy >4-row fallback, which assumes non-VNNI packing
 };
 
 // S8U8 AVX-VNNI-INT8 support
@@ -523,5 +523,5 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8U8DispatchAvx2Vnni = {
     MlasGemmQuantCopyPackB<MLAS_GEMM_S8U8_KERNEL_AVX2>,
     MLAS_GEMM_S8U8_KERNEL_AVX2::PackedK,
     MLAS_GEMM_S8U8_KERNEL_AVX2::PackedStrides.K,
-    6  // assembly kernel M stride
+    4  // avoid the legacy >4-row fallback, which assumes non-VNNI packing
 };

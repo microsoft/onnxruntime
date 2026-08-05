@@ -244,10 +244,6 @@ else()
   )
 
   if (onnxruntime_USE_JSEP)
-    # NOTE: "-s ASYNCIFY=1" is required for JSEP to work with WebGPU
-    #       This flag allows async functions to be called from sync functions, in the cost of binary size and
-    #       build time. See https://emscripten.org/docs/porting/asyncify.html for more details.
-
     target_compile_definitions(onnxruntime_webassembly PRIVATE USE_JSEP=1)
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js\""
@@ -275,13 +271,24 @@ else()
   endif()
 
   if (onnxruntime_USE_JSEP OR onnxruntime_USE_WEBGPU OR onnxruntime_USE_WEBNN)
-    # if any of the above is enabled, we need to use the asyncify library
-    target_link_options(onnxruntime_webassembly PRIVATE
-      "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-async.js\""
-      "SHELL:-s ASYNCIFY=1"
-      "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
-    )
-    list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/pre-async.js")
+    if (onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
+      target_link_options(onnxruntime_webassembly PRIVATE
+        "SHELL:-s JSPI=1"
+        "SHELL:-s JSPI_EXPORTS=[OrtAppendExecutionProvider,OrtCreateSession,OrtRun,OrtRunWithBinding,OrtBindInput]"
+      )
+    else()
+      # NOTE: "-s ASYNCIFY=1" is required for JSEP to work with WebGPU
+      #       This flag allows async functions to be called from sync functions, in the cost of binary size and
+      #       build time. See https://emscripten.org/docs/porting/asyncify.html for more details.
+      #
+      # if any of the above is enabled, we need to use the asyncify library
+      target_link_options(onnxruntime_webassembly PRIVATE
+        "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-async.js\""
+        "SHELL:-s ASYNCIFY=1"
+        "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
+      )
+      list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/pre-async.js")
+    endif()
   endif()
 
   if (onnxruntime_EMSCRIPTEN_SETTINGS)
@@ -322,8 +329,12 @@ else()
     endif()
   endif()
 
-  # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
-  target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s DISABLE_EXCEPTION_THROWING=0")
+  if (NOT onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
+    # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
+    target_link_options(onnxruntime_webassembly PRIVATE
+      "SHELL:-s DISABLE_EXCEPTION_THROWING=0"
+    )
+  endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_PROFILING)
     target_link_options(onnxruntime_webassembly PRIVATE --profiling --profiling-funcs)
@@ -379,8 +390,11 @@ else()
   if (onnxruntime_USE_JSEP)
     string(APPEND target_name ".jsep")
   elseif (onnxruntime_USE_WEBGPU OR onnxruntime_USE_WEBNN)
-    string(APPEND target_name ".asyncify")
-    # TODO: support JSPI and add ".jspi" once JSPI build is supported
+    if (onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
+      string(APPEND target_name ".jspi")
+    else()
+      string(APPEND target_name ".asyncify")
+    endif()
   endif()
 
   set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME ${target_name} SUFFIX ".mjs")

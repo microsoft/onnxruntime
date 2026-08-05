@@ -22,7 +22,6 @@
 
 #include <cuda_fp16.h>
 #include <cuda_runtime_api.h>
-#include <cub/cub.cuh>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/diffusion/group_norm_impl.h"
@@ -128,7 +127,6 @@ Status LaunchGroupNormKernel(
     bool use_silu,
     bool broadcast_skip,
     int channels_per_block) {
-  // tuning_ctx only used for ROCm EP.
   ORT_UNUSED_PARAMETER(tuning_ctx);
 
   GroupNormNHWCParams<T> params(output, add_out, input, skip, bias, gamma, beta, reinterpret_cast<float*>(workspace), epsilon,

@@ -9,9 +9,10 @@
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/framework/allocator.h"
 #include "core/platform/threadpool.h"
+#include "core/common/narrow.h"
 
 #include <algorithm>
 #include <vector>
@@ -47,9 +48,9 @@ Status MoE<T>::Compute(OpKernelContext* context) const {
   MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(moe_helper::CheckInputs<Tensor>(
       moe_params, input, router_probs,
-      fc1_experts_weights, fc1_experts_bias, nullptr,
-      fc2_experts_weights, fc2_experts_bias, nullptr,
-      fc3_experts_weights, fc3_experts_bias, nullptr,
+      fc1_experts_weights, fc1_experts_bias, nullptr, nullptr,
+      fc2_experts_weights, fc2_experts_bias, nullptr, nullptr,
+      fc3_experts_weights, fc3_experts_bias, nullptr, nullptr,
       1,
       activation_type_ == ActivationType::SwiGLU));
 
@@ -75,6 +76,10 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
   const int64_t num_tokens = input_shape.Size() / input_shape[input_shape.NumDimensions() - 1];
   const int64_t hidden_size = input_shape[input_shape.NumDimensions() - 1];
   const int64_t num_experts = router_shape[1];
+
+  ORT_RETURN_IF_NOT(k_ <= num_experts,
+                    "MoE attribute 'k' must be <= num_experts; got k=", k_,
+                    ", num_experts=", num_experts);
   const int64_t inter_size = (fc2_shape[1] * fc2_shape[2]) / hidden_size;
   const bool is_swiglu = activation_type_ == ActivationType::SwiGLU;
   const int64_t fc1_output_size = is_swiglu ? (inter_size * 2) : inter_size;
@@ -120,7 +125,7 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
   int num_routing_threads = 1;
   if (tp != nullptr && num_tokens >= 1024) {
     int max_threads = concurrency::ThreadPool::DegreeOfParallelism(tp);
-    num_routing_threads = std::min(static_cast<int>(num_tokens / 512), max_threads);
+    num_routing_threads = std::min(narrow<int>(num_tokens / 512), max_threads);
     num_routing_threads = std::max(1, num_routing_threads);
   }
 
@@ -133,7 +138,7 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
   }
 
   concurrency::ThreadPool::TrySimpleParallelFor(tp, num_routing_threads, [&](std::ptrdiff_t thread_id) {
-    auto work = concurrency::ThreadPool::PartitionWork(static_cast<int>(thread_id), num_routing_threads, static_cast<std::ptrdiff_t>(num_tokens));
+    auto work = concurrency::ThreadPool::PartitionWork(narrow<int>(thread_id), num_routing_threads, static_cast<std::ptrdiff_t>(num_tokens));
     auto& local_expert_token_map = thread_local_expert_token_maps[thread_id];
 
     std::vector<std::pair<float, int64_t>> sorted_logits(static_cast<size_t>(num_experts));
@@ -173,7 +178,7 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
           int64_t route_idx = i * k_ + j;
           float normalized_weight = sorted_logits[static_cast<size_t>(j)].first * inv_top_k_sum;
 
-          route_expert[route_idx] = static_cast<int>(expert_idx);
+          route_expert[route_idx] = narrow<int>(expert_idx);
           route_scale[route_idx] = normalized_weight;
           if (normalized_weight > 0.0f) {
             local_expert_token_map[static_cast<size_t>(expert_idx)].push_back(route_idx);
@@ -185,7 +190,7 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
           int64_t route_idx = i * k_ + j;
           float weight = sorted_logits[static_cast<size_t>(j)].first;
 
-          route_expert[route_idx] = static_cast<int>(expert_idx);
+          route_expert[route_idx] = narrow<int>(expert_idx);
           route_scale[route_idx] = weight;
           if (weight > 0.0f) {
             local_expert_token_map[static_cast<size_t>(expert_idx)].push_back(route_idx);
@@ -319,7 +324,7 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
 
   // Optimized expert processing with thread-local buffer reuse
   concurrency::ThreadPool::TrySimpleParallelFor(tp, num_expert_threads, [&](std::ptrdiff_t thread_id_pd) {
-    int thread_id = static_cast<int>(thread_id_pd);
+    int thread_id = narrow<int>(thread_id_pd);
     auto work = concurrency::ThreadPool::PartitionWork(thread_id, num_expert_threads, static_cast<std::ptrdiff_t>(num_experts));
 
     float* local_output = thread_local_outputs + static_cast<size_t>(thread_id) * output_buffer_size;
@@ -440,6 +445,11 @@ Status MoE<T>::ProcessExpertBatch(const T* input_tokens,
                                   int64_t inter_size,
                                   T* fc1_output_buffer,
                                   T* activation_output_buffer) const {
+  ORT_UNUSED_PARAMETER(token_expert_ids);
+  ORT_UNUSED_PARAMETER(token_weights);
+  ORT_UNUSED_PARAMETER(expert_id);
+  ORT_UNUSED_PARAMETER(fc1_output_buffer);
+  ORT_UNUSED_PARAMETER(activation_output_buffer);
   const bool is_swiglu = activation_type_ == ActivationType::SwiGLU;
   const int64_t fc1_output_size = is_swiglu ? (inter_size * 2) : inter_size;
 
@@ -518,10 +528,10 @@ Status MoE<float>::ComputeGEMM(const float* A, const float* B, float* C,
 
   if (transpose_B) {
     params.ldb = static_cast<size_t>(K);
-    MlasGemm(CblasNoTrans, CblasTrans, static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), params, nullptr);
+    MlasGemm(CblasNoTrans, CblasTrans, static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), params, nullptr, &mlas_backend_kernel_selector_config_);
   } else {
     params.ldb = static_cast<size_t>(N);
-    MlasGemm(CblasNoTrans, CblasNoTrans, static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), params, nullptr);
+    MlasGemm(CblasNoTrans, CblasNoTrans, static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), params, nullptr, &mlas_backend_kernel_selector_config_);
   }
 
   return Status::OK();
@@ -530,7 +540,7 @@ Status MoE<float>::ComputeGEMM(const float* A, const float* B, float* C,
 template <>
 Status MoE<MLFloat16>::ComputeGEMM(const MLFloat16* A, const MLFloat16* B, MLFloat16* C,
                                    int64_t M, int64_t K, int64_t N, bool transpose_B) const {
-  MLAS_HALF_GEMM_DATA_PARAMS params;
+  MLAS_HALF_GEMM_DATA_PARAMS params{};
   params.A = A;
   params.lda = static_cast<size_t>(K);
   params.C = C;
@@ -544,6 +554,7 @@ Status MoE<MLFloat16>::ComputeGEMM(const MLFloat16* A, const MLFloat16* B, MLFlo
   } else {
     params.ldb = static_cast<size_t>(N);
   }
+  params.BackendKernelSelectorConfig = &mlas_backend_kernel_selector_config_;
 
   MlasHalfGemmBatch(static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), 1, &params, nullptr);
   return Status::OK();

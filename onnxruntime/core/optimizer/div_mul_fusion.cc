@@ -41,7 +41,7 @@ bool DivMulFusion::SatisfyCondition(const Graph& graph, const Node& node, const 
 
   int32_t data_type = initializer->data_type();
   Initializer div_A(graph, *initializer, graph.ModelPath());
-  if (div_A.size() > 1) {
+  if (div_A.size() != 1) {
     return false;
   }
   switch (data_type) {

@@ -38,6 +38,7 @@ class CPUIDInfo {
   // ARM
   bool HasArmNeonDot() const { return has_arm_neon_dot_; }
   bool HasArmNeon_I8MM() const { return has_arm_neon_i8mm_; }
+  bool HasArmSve() const { return has_arm_sve_; }
   bool HasArmSVE_I8MM() const { return has_arm_sve_i8mm_; }
   bool HasArmNeon_BF16() const { return has_arm_neon_bf16_; }
   bool HasArm_SME() const { return has_arm_sme_; }
@@ -109,6 +110,7 @@ class CPUIDInfo {
   static void LogEarlyWarning(std::string_view message);
 
   CPUIDInfo();
+  ~CPUIDInfo();
 
   void VendorInfoInit();
 
@@ -133,6 +135,12 @@ class CPUIDInfo {
 #endif
 
 #endif  // defined(CPUIDINFO_ARCH_ARM)
+
+#if defined(CPUIDINFO_ARCH_RISCV64)
+#if defined(__linux__)
+  void RiscvLinuxInit();
+#endif
+#endif  // defined(CPUIDINFO_ARCH_RISCV64)
 
 #if defined(CPUINFO_SUPPORTED)
   bool pytorch_cpuinfo_init_{false};
@@ -160,13 +168,14 @@ class CPUIDInfo {
   bool has_arm_neon_dot_{false};
   bool has_fp16_{false};
   bool has_arm_neon_i8mm_{false};
+  bool has_arm_sve_{false};
   bool has_arm_sve_i8mm_{false};
   bool has_arm_neon_bf16_{false};
   bool has_arm_sme_{false};
   bool has_arm_sme2_{false};
 
   std::string vendor_;
-  uint32_t vendor_id_;
+  uint32_t vendor_id_{0};
 };
 
 }  // namespace onnxruntime

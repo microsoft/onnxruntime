@@ -64,12 +64,12 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   const Tensor* zero_points = ctx->Input<Tensor>(3);
 
   auto data_shape = data->Shape().GetDims();
-  auto data_rank = data->Shape().NumDimensions();
+  int64_t data_rank = data->Shape().NumDimensions();
 
   auto indices_shape = indices->Shape().GetDims();
-  auto indices_rank = indices->Shape().NumDimensions();
+  int64_t indices_rank = static_cast<int64_t>(indices->Shape().NumDimensions());
 
-  ORT_ENFORCE(quantize_axis_ == data_rank - 1);
+  ORT_ENFORCE(quantize_axis_ == static_cast<int64_t>(data_rank) - 1);
 
   TensorShapeVector output_shape;
   output_shape.reserve(data_rank - 1 + indices_rank);
@@ -92,7 +92,7 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   }
 
   // 3) dims after gather_axis
-  for (int64_t i = gather_axis_ + 1; i < data_rank; ++i) {
+  for (int64_t i = gather_axis_ + 1; i < static_cast<int64_t>(data_rank); ++i) {
     output_shape.push_back(data_shape[i]);
     after_gather_dim *= data_shape[i];
   }
@@ -119,9 +119,20 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
     zero_points_ptr = zero_points->Data<T1>();
   }
 
+  // For packed uint8_t with bits < 8,
+  // after_gather_dim has to be adjusted to match
+  // the unpacked output dims for correct kernel indexing
+  int64_t after_gather_dim_unpacked = after_gather_dim;
+  if constexpr (std::is_same_v<T1, uint8_t>) {
+    uint32_t components = 8 / static_cast<int>(bits_);
+    if (components > 1) {
+      after_gather_dim_unpacked *= components;
+    }
+  }
+
   GatherBlockQuantizedParam param;
   param.stream = Stream(ctx);
-  param.after_gather_dim = after_gather_dim;
+  param.after_gather_dim = after_gather_dim_unpacked;
   param.gather_axis_dim = data_shape[gather_axis_];
   param.ind_dim = ind_dim;
   param.bits = bits_;

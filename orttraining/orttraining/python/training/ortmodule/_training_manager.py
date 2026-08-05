@@ -342,8 +342,6 @@ class TrainingManager(GraphExecutionManager):
 
         # Apply registered graph transformers to the optimized model
         device_type = self._device.type
-        if device_type == "cuda" and self.is_rocm_pytorch:
-            device_type = "rocm"
         GraphOptimizerRegistry.optimize_all(
             type(self._flattened_module._original_module).__name__, device_type, self._onnx_models.optimized_model.graph
         )

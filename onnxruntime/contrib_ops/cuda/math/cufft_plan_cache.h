@@ -64,6 +64,9 @@ struct ParamsEqual {
 
 class CuFFTPlanCache {
  public:
+  ~CuFFTPlanCache() {
+    Clear();
+  }
   CufftPlanInfo TryEmplaceValue(FFTState& key) {
     std::lock_guard<std::mutex> lock(mutex);
 
@@ -80,6 +83,18 @@ class CuFFTPlanCache {
   int64_t GetCacheSize() { return map.size(); }
 
   std::mutex mutex;
+
+  void Clear() {
+    std::lock_guard<std::mutex> lk(mutex);
+    for (auto& kv : map) {
+      auto& info = kv.second;
+      if (info.plan != 0) {
+        cufftDestroy(info.plan);
+        info.plan = 0;
+      }
+    }
+    map.clear();
+  }
 
  private:
   CufftPlanInfo CreatePlanInfo(FFTState& key) {

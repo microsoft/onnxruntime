@@ -12,7 +12,7 @@ parameters:
   default: 'RelWithDebInfo'
 
 - name: artifactName
-  displayName: artifactName，like 'onnxruntime-win-x64-1.6.0'
+  displayName: artifactName, like 'onnxruntime-win-x64-1.6.0'
   type: string
   default: ''
 
@@ -29,6 +29,11 @@ parameters:
   displayName: Include TRT EP libraries?
   type: boolean
   default: true
+
+- name: publishArtifactStagingDirectory
+  displayName: Whether to publish the artifact staging directory as an artifact named `artifactNameNoVersionString`.
+  type: boolean
+  default: false
 
 steps:
     - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
@@ -86,8 +91,10 @@ steps:
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnHtpPrepare.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnHtpV68Stub.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnHtpV73Stub.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnHtpV81Stub.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnSaver.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnSystem.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\Qualcomm_LICENSE.pdf $(Build.BinariesDirectory)\${{parameters.artifactName}}
 
           # copy trt ep libraries only when trt ep is enabled
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_tensorrt.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
@@ -97,6 +104,7 @@ steps:
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.pdb $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.lib $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.SourcesDirectory)\include\onnxruntime\core\session\onnxruntime_*.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
+          copy $(Build.SourcesDirectory)\include\onnxruntime\core\session\onnxruntime_*.inc  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
           copy $(Build.SourcesDirectory)\include\onnxruntime\core\framework\provider_options.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
           copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\cpu\cpu_provider_factory.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
           copy $(Build.SourcesDirectory)\orttraining\orttraining\training_api\include\onnxruntime_training*.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
@@ -132,3 +140,9 @@ steps:
         archiveType: 'zip' # Options: zip, 7z, tar, wim
         archiveFile: '$(Build.ArtifactStagingDirectory)\${{parameters.artifactName}}.zip'
         replaceExistingArchive: true
+
+    - ${{ if parameters.publishArtifactStagingDirectory }}:
+      - task: 1ES.PublishPipelineArtifact@1
+        inputs:
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+          artifactName: '${{parameters.artifactNameNoVersionString}}'

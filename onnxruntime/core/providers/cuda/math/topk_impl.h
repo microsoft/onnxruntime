@@ -11,7 +11,7 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-Status TopKImpl(const CudaKernel* kernel, bool use_deterministic_compute, Stream* ort_stream,
+Status TopKImpl(const CudaKernel* kernel, bool use_deterministic_compute, cudaStream_t stream, void* alloc_stream,
                 const T* input_x, T* output_v, int64_t* output_i, const TArray<int64_t>& elem_nums,
                 size_t size, int32_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension);
 

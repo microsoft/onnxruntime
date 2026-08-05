@@ -48,9 +48,9 @@ namespace Dml
             constexpr uint64_t pooledResourceId = 0; // Not a pooled resource
 
             Microsoft::WRL::ComPtr<DmlResourceWrapper> resourceWrapper;
-            wil::MakeOrThrow<DmlCommittedResourceWrapper>(std::move(resource)).As(&resourceWrapper);
+            Dml::SafeMakeOrThrow<DmlCommittedResourceWrapper>(std::move(resource)).As(&resourceWrapper);
 
-            Microsoft::WRL::ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(
+            Microsoft::WRL::ComPtr<AllocationInfo> allocInfo = Dml::SafeMakeOrThrow<AllocationInfo>(
                 nullptr,
                 0,
                 pooledResourceId,

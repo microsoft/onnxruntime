@@ -86,6 +86,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateCumSumOpBuilder("CumSum", op_registrations);
   }
 
+  {  // DepthToSpace
+    CreateDepthToSpaceOpBuilder("DepthToSpace", op_registrations);
+  }
+
   {  // Dropout
     CreateDropoutOpBuilder("Dropout", op_registrations);
   }
@@ -106,6 +110,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Gather
     CreateGatherOpBuilder("Gather", op_registrations);
+  }
+
+  {  // GatherBlockQuantized
+    CreateGatherBlockQuantizedOpBuilder("GatherBlockQuantized", op_registrations);
   }
 
   {  // GatherElements
@@ -150,6 +158,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // LRN
     CreateLRNOpBuilder("LRN", op_registrations);
+  }
+
+  {  // LpNormalization
+    CreateLpNormalizationOpBuilder("LpNormalization", op_registrations);
   }
 
   {  // LSTM

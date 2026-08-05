@@ -14,8 +14,8 @@ using namespace onnxruntime::webgpu;
 
 class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgram> {
  public:
-  MatMulNBitsWideTileProgram(bool has_zero_points, uint32_t tile_m, uint32_t tile_n, uint32_t nbits)
-      : Program{"MatMulNBitsWideTile"}, has_zero_points_{has_zero_points}, tile_m_(tile_m), tile_n_(tile_n), nbits_(nbits) {}
+  MatMulNBitsWideTileProgram(bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect, uint32_t tile_m, uint32_t tile_n, uint32_t nbits)
+      : Program{"MatMulNBitsWideTile"}, has_zero_points_{has_zero_points}, has_bias_{has_bias}, has_weight_idx_{has_weight_idx}, has_weight_idx_indirect_{has_weight_idx_indirect}, tile_m_(tile_m), tile_n_(tile_n), nbits_(nbits) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"Batch", ProgramUniformVariableDataType::Uint32},
@@ -26,10 +26,14 @@ class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgr
                                           {"n_blocks_per_col", ProgramUniformVariableDataType::Uint32},
                                           {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
                                           {"num_N_tile", ProgramUniformVariableDataType::Uint32},
-                                          {"num_M_tile", ProgramUniformVariableDataType::Uint32});
+                                          {"num_M_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"weight_idx", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_zero_points_;
+  bool has_bias_;
+  bool has_weight_idx_;
+  bool has_weight_idx_indirect_;
   uint32_t tile_m_;
   uint32_t tile_n_;
   uint32_t nbits_;
@@ -37,7 +41,8 @@ class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgr
 
 class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
  public:
-  MatMulNBitsProgram(uint32_t tile_size, uint32_t nbits, bool has_zero_points, bool single_scale_weights) : Program{"MatMulNBits"}, tile_size_(tile_size), nbits_(nbits), has_zero_points_(has_zero_points), single_scale_weights_(single_scale_weights) {}
+  MatMulNBitsProgram(uint32_t tile_size, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights, uint32_t tile_size_k_vec = 16, bool broadcast_a_row = false)
+      : Program{"MatMulNBits"}, tile_size_(tile_size), nbits_(nbits), has_zero_points_(has_zero_points), has_bias_(has_bias), has_weight_idx_{has_weight_idx}, has_weight_idx_indirect_{has_weight_idx_indirect}, single_scale_weights_(single_scale_weights), tile_size_k_vec_(tile_size_k_vec), broadcast_a_row_(broadcast_a_row) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"M", ProgramUniformVariableDataType::Uint32},
@@ -49,13 +54,20 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
       {"blocks_per_col", ProgramUniformVariableDataType::Uint32},
       {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
       {"num_N_tile", ProgramUniformVariableDataType::Uint32},
-      {"batch_count", ProgramUniformVariableDataType::Uint32});
+      {"batch_count", ProgramUniformVariableDataType::Uint32},
+      {"weight_idx", ProgramUniformVariableDataType::Uint32},
+      {"dispatch_M", ProgramUniformVariableDataType::Uint32});
 
  private:
   uint32_t tile_size_;
   uint32_t nbits_;
   bool has_zero_points_;
+  bool has_bias_;
+  bool has_weight_idx_;
+  bool has_weight_idx_indirect_;
   bool single_scale_weights_;
+  uint32_t tile_size_k_vec_;
+  bool broadcast_a_row_;
 };
 
 class MatMulNBits final : public WebGpuKernel {
@@ -79,6 +91,12 @@ class MatMulNBits final : public WebGpuKernel {
   int64_t accuracy_level_;
   int64_t bits_;
 };
+
+Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, const Tensor* zero_points, const Tensor* bias,
+                        int64_t K_op, int64_t N_op, int64_t block_size_op, int64_t accuracy_level, int64_t bits_op,
+                        onnxruntime::webgpu::ComputeContext& context, Tensor* y, const uint32_t weight_index = 0,
+                        const Tensor* weight_index_indirect = nullptr,
+                        uint32_t override_M = 0);
 
 }  // namespace webgpu
 }  // namespace contrib

@@ -4,11 +4,13 @@
 #pragma once
 
 #include "boost/mp11.hpp"
+#include <gsl/gsl>
 
 // It is safe to include the below header even if SHARED_PROVIDER macro is enabled
 // as it doesn't include any pb headers.
 #include "core/framework/buffer_deleter.h"
 #include "core/framework/prepacked_weights_container.h"
+#include "core/framework/workspace_requirement.h"
 
 #ifndef SHARED_PROVIDER
 #include <functional>
@@ -26,7 +28,6 @@
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/onnx_protobuf.h"
-#include <gsl/gsl>
 namespace onnxruntime {
 class OpKernelContext;
 }
@@ -105,8 +106,21 @@ class OpKernel {
     return Status::OK();
   }
 
+  // Phase-A memory roadmap (issue microsoft/onnxruntime#29775). Declare Compute()-time scratch
+  // ("workspace") that can be sized statically from shape metadata alone (no live OpKernelContext /
+  // real tensors). Default: declare nothing -> callers MUST fall back to today's dynamic
+  // GetScratchBuffer path. Adding this MUST NOT change behavior for any kernel that does not
+  // override it.
+  [[nodiscard]] virtual Status DeclareWorkspaceRequirements(
+      gsl::span<const TensorShape> /*input_shapes*/,
+      /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const {
+    requirements.clear();  // defensive: never attribute a prior kernel's slots to a no-op kernel
+    return Status::OK();
+  }
+
   // Override this function to use provided pre-packed weight.
   // Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+  //                                 gsl::span<const size_t> prepacked_buffer_sizes,
   //                                 int input_idx,
   //                                 /*out*/ bool& used_shared_buffers) {
   //     used_shared_buffers = true;
@@ -120,10 +134,12 @@ class OpKernel {
   //                            and must use the same order for retrieval in UseSharedPrePackedBuffers(). Though each element
   //                           of this vector is a BufferUniquePtr, the deleter of the BufferUniquePtr is NULL. So actually they
   //                           are raw pointers.
+  // @param prepacked_buffer_sizes: The sizes (in bytes) of each buffer in prepacked_buffers.
   // @param input_idx: The input index of the tensor in this kernel
   // @param used_shared_buffers: Boolean flag set by the kernel implementation indicating
   // that the provided weight has been used by the kernel.
   virtual Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& /*prepacked_buffers*/,
+                                           gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                            int /*input_idx*/,
                                            /*out*/ bool& used_shared_buffers) {
     used_shared_buffers = false;
@@ -188,13 +204,6 @@ namespace js {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace js
-}  // namespace contrib
-
-namespace contrib {
-namespace rocm {
-template <typename T>
-KernelCreateInfo BuildKernelCreateInfo();
-}  // namespace rocm
 }  // namespace contrib
 
 namespace contrib {

@@ -90,7 +90,7 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
   new_conv_W_tensor_proto.set_name(new_W_name);
 
   // Replace initializers of conv node
-  NodeArg& new_conv_W_node_arg = graph_utils::AddInitializer(graph, new_conv_W_tensor_proto);
+  NodeArg& new_conv_W_node_arg = graph_utils::AddInitializerWithOrtValue(graph, new_conv_W_tensor_proto);
   graph_utils::ReplaceNodeInput(conv_node, 1, new_conv_W_node_arg);
 
   if (is_3d) {
@@ -100,7 +100,7 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
     auto new_B_name = graph.GenerateNodeArgName("ConvMulFusion_Mul_B_" + mul_B_tensor_proto->name());
     new_conv_B_tensor_proto.set_name(new_B_name);
 
-    NodeArg& new_conv_B_node_arg = graph_utils::AddInitializer(graph, new_conv_B_tensor_proto);
+    NodeArg& new_conv_B_node_arg = graph_utils::AddInitializerWithOrtValue(graph, new_conv_B_tensor_proto);
     graph_utils::ReplaceNodeInput(conv_node, 2, new_conv_B_node_arg);
   }
 
@@ -113,7 +113,7 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
 }
 
 bool ConvMulFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11, 22}) ||
       node.GetOutputEdgesCount() != 1) {
     return false;
   }

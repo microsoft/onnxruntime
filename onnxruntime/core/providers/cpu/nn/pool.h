@@ -7,6 +7,22 @@
 
 namespace onnxruntime {
 
+namespace concurrency {
+class ThreadPool;
+}
+
+// Core float average-pooling reference loop (defined in pool.cc). Operates on caller-provided
+// NCHW float buffers plus pre-computed output_dims/pads. Shared single source of truth for the
+// float production path and the fp16 fallback (which casts MLFloat16<->float around it). The
+// window end is clamped to input+tail_pad so ceil_mode + count_include_pad divides by the real
+// (non-phantom) window. Accumulation is always in float.
+Status ComputeAveragePoolReferenceCompute(const float* X_data, float* Y_data,
+                                          const TensorShape& x_shape,
+                                          gsl::span<const int64_t> output_dims,
+                                          gsl::span<const int64_t> pads,
+                                          const PoolAttributes& pool_attrs,
+                                          concurrency::ThreadPool* tp);
+
 template <typename T, typename PoolType>
 class Pool : public OpKernel, public PoolBase {
  public:
@@ -34,9 +50,6 @@ class AveragePoolV19 : public OpKernel, public PoolBase {
   }
 
   Status Compute(OpKernelContext* context) const override;
-
- private:
-  int64_t p_;
 };
 
 // For maxpool v8 and beyond

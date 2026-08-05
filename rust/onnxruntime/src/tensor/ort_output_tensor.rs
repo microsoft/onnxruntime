@@ -71,22 +71,41 @@ impl Drop for OrtOutputTensor {
 }
 
 /// An Output tensor with the ptr and the item that will copy from the ptr.
-#[derive(Debug)]
-pub struct WithOutputTensor<'a, T> {
-    #[allow(dead_code)]
+///
+/// The view is materialized on each access via [`view()`](Self::view) to ensure the
+/// borrowed lifetime is tied to `&self`, preventing the view from outliving the
+/// underlying buffer owned by the `OrtOutputTensor`.
+pub struct WithOutputTensor<T> {
     pub(crate) tensor: OrtOutputTensor,
-    item: ArrayView<'a, T, ndarray::IxDyn>,
+    data_ptr: *const T,
+    shape: Vec<usize>,
 }
 
-impl<'a, T> std::ops::Deref for WithOutputTensor<'a, T> {
-    type Target = ArrayView<'a, T, ndarray::IxDyn>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.item
+impl<T> Debug for WithOutputTensor<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WithOutputTensor")
+            .field("tensor", &self.tensor)
+            .field("data_ptr", &self.data_ptr)
+            .field("shape", &self.shape)
+            .finish()
     }
 }
 
-impl<'a, T> TryFrom<OrtOutputTensor> for WithOutputTensor<'a, T>
+// SAFETY: The data pointer is derived from OrtOutputTensor which owns the allocation.
+// Access is only possible through &self (via view()), so Send/Sync follow from T: Send/Sync.
+unsafe impl<T: Send> Send for WithOutputTensor<T> {}
+unsafe impl<T: Sync> Sync for WithOutputTensor<T> {}
+
+impl<T> WithOutputTensor<T> {
+    /// Returns an [`ArrayView`] over the output tensor data.
+    ///
+    /// The returned view borrows `self`, so it cannot outlive the tensor owner.
+    pub fn view(&self) -> ArrayView<'_, T, ndarray::IxDyn> {
+        unsafe { ArrayView::from_shape_ptr(ndarray::IxDyn(&self.shape), self.data_ptr) }
+    }
+}
+
+impl<T> TryFrom<OrtOutputTensor> for WithOutputTensor<T>
 where
     T: TypeToTensorElementDataType,
 {
@@ -110,45 +129,45 @@ where
         status_to_result(status).map_err(OrtError::IsTensor)?;
         assert_ne!(output_array_ptr, std::ptr::null_mut());
 
-        let array_view =
-            unsafe { ArrayView::from_shape_ptr(ndarray::IxDyn(&value.shape), output_array_ptr) };
+        let shape = value.shape.clone();
 
         Ok(WithOutputTensor {
             tensor: value,
-            item: array_view,
+            data_ptr: output_array_ptr,
+            shape,
         })
     }
 }
 
 /// The onnxruntime Run output type.
-pub enum OrtOutput<'a> {
+pub enum OrtOutput {
     /// Tensor of f32s
-    Float(WithOutputTensor<'a, f32>),
+    Float(WithOutputTensor<f32>),
     /// Tensor of f64s
-    Double(WithOutputTensor<'a, f64>),
+    Double(WithOutputTensor<f64>),
     /// Tensor of u8s
-    UInt8(WithOutputTensor<'a, u8>),
+    UInt8(WithOutputTensor<u8>),
     /// Tensor of u16s
-    UInt16(WithOutputTensor<'a, u16>),
+    UInt16(WithOutputTensor<u16>),
     /// Tensor of u32s
-    UInt32(WithOutputTensor<'a, u32>),
+    UInt32(WithOutputTensor<u32>),
     /// Tensor of u64s
-    UInt64(WithOutputTensor<'a, u64>),
+    UInt64(WithOutputTensor<u64>),
     /// Tensor of i8s
-    Int8(WithOutputTensor<'a, i8>),
+    Int8(WithOutputTensor<i8>),
     /// Tensor of i16s
-    Int16(WithOutputTensor<'a, i16>),
+    Int16(WithOutputTensor<i16>),
     /// Tensor of i32s
-    Int32(WithOutputTensor<'a, i32>),
+    Int32(WithOutputTensor<i32>),
     /// Tensor of i64s
-    Int64(WithOutputTensor<'a, i64>),
+    Int64(WithOutputTensor<i64>),
     /// Tensor of Strings
-    String(WithOutputTensor<'a, String>),
+    String(WithOutputTensor<String>),
 }
 
-impl<'a> OrtOutput<'a> {
-    /// Return `WithOutputTensor<'a, f32>` which derefs into an `ArrayView`.
-    pub fn float_array(&self) -> Option<&WithOutputTensor<'a, f32>> {
+impl OrtOutput {
+    /// Return `WithOutputTensor<f32>` which provides a `view()` method for an `ArrayView`.
+    pub fn float_array(&self) -> Option<&WithOutputTensor<f32>> {
         if let Self::Float(item) = self {
             Some(item)
         } else {
@@ -156,8 +175,8 @@ impl<'a> OrtOutput<'a> {
         }
     }
 
-    /// Return `WithOutputTensor<'a, f64>` which derefs into an `ArrayView`.
-    pub fn double_array(&self) -> Option<&WithOutputTensor<'a, f64>> {
+    /// Return `WithOutputTensor<f64>` which provides a `view()` method for an `ArrayView`.
+    pub fn double_array(&self) -> Option<&WithOutputTensor<f64>> {
         if let Self::Double(item) = self {
             Some(item)
         } else {
@@ -165,8 +184,8 @@ impl<'a> OrtOutput<'a> {
         }
     }
 
-    /// Return `WithOutputTensor<'a, u8>` which derefs into an `ArrayView`.
-    pub fn uint8_array(&self) -> Option<&WithOutputTensor<'a, u8>> {
+    /// Return `WithOutputTensor<u8>` which provides a `view()` method for an `ArrayView`.
+    pub fn uint8_array(&self) -> Option<&WithOutputTensor<u8>> {
         if let Self::UInt8(item) = self {
             Some(item)
         } else {
@@ -174,8 +193,8 @@ impl<'a> OrtOutput<'a> {
         }
     }
 
-    /// Return `WithOutputTensor<'a, u16>` which derefs into an `ArrayView`.
-    pub fn uint16_array(&self) -> Option<&WithOutputTensor<'a, u16>> {
+    /// Return `WithOutputTensor<u16>` which provides a `view()` method for an `ArrayView`.
+    pub fn uint16_array(&self) -> Option<&WithOutputTensor<u16>> {
         if let Self::UInt16(item) = self {
             Some(item)
         } else {
@@ -183,8 +202,8 @@ impl<'a> OrtOutput<'a> {
         }
     }
 
-    /// Return `WithOutputTensor<'a, u32>` which derefs into an `ArrayView`.
-    pub fn uint32_array(&self) -> Option<&WithOutputTensor<'a, u32>> {
+    /// Return `WithOutputTensor<u32>` which provides a `view()` method for an `ArrayView`.
+    pub fn uint32_array(&self) -> Option<&WithOutputTensor<u32>> {
         if let Self::UInt32(item) = self {
             Some(item)
         } else {
@@ -192,8 +211,8 @@ impl<'a> OrtOutput<'a> {
         }
     }
 
-    /// Return `WithOutputTensor<'a, u64>` which derefs into an `ArrayView`.
-    pub fn uint64_array(&self) -> Option<&WithOutputTensor<'a, u64>> {
+    /// Return `WithOutputTensor<u64>` which provides a `view()` method for an `ArrayView`.
+    pub fn uint64_array(&self) -> Option<&WithOutputTensor<u64>> {
         if let Self::UInt64(item) = self {
             Some(item)
         } else {
@@ -201,8 +220,8 @@ impl<'a> OrtOutput<'a> {
         }
     }
 
-    /// Return `WithOutputTensor<'a, i8>` which derefs into an `ArrayView`.
-    pub fn int8_array(&self) -> Option<&WithOutputTensor<'a, i8>> {
+    /// Return `WithOutputTensor<i8>` which provides a `view()` method for an `ArrayView`.
+    pub fn int8_array(&self) -> Option<&WithOutputTensor<i8>> {
         if let Self::Int8(item) = self {
             Some(item)
         } else {
@@ -210,8 +229,8 @@ impl<'a> OrtOutput<'a> {
         }
     }
 
-    /// Return `WithOutputTensor<'a, i16>` which derefs into an `ArrayView`.
-    pub fn int16_array(&self) -> Option<&WithOutputTensor<'a, i16>> {
+    /// Return `WithOutputTensor<i16>` which provides a `view()` method for an `ArrayView`.
+    pub fn int16_array(&self) -> Option<&WithOutputTensor<i16>> {
         if let Self::Int16(item) = self {
             Some(item)
         } else {
@@ -219,8 +238,8 @@ impl<'a> OrtOutput<'a> {
         }
     }
 
-    /// Return `WithOutputTensor<'a, i32>` which derefs into an `ArrayView`.
-    pub fn int32_array(&self) -> Option<&WithOutputTensor<'a, i32>> {
+    /// Return `WithOutputTensor<i32>` which provides a `view()` method for an `ArrayView`.
+    pub fn int32_array(&self) -> Option<&WithOutputTensor<i32>> {
         if let Self::Int32(item) = self {
             Some(item)
         } else {
@@ -228,8 +247,8 @@ impl<'a> OrtOutput<'a> {
         }
     }
 
-    /// Return `WithOutputTensor<'a, i64>` which derefs into an `ArrayView`.
-    pub fn int64_array(&self) -> Option<&WithOutputTensor<'a, i64>> {
+    /// Return `WithOutputTensor<i64>` which provides a `view()` method for an `ArrayView`.
+    pub fn int64_array(&self) -> Option<&WithOutputTensor<i64>> {
         if let Self::Int64(item) = self {
             Some(item)
         } else {
@@ -237,8 +256,8 @@ impl<'a> OrtOutput<'a> {
         }
     }
 
-    /// Return `WithOutputTensor<'a, String>` which derefs into an `ArrayView`.
-    pub fn string_array(&self) -> Option<&WithOutputTensor<'a, String>> {
+    /// Return `WithOutputTensor<String>` which provides a `view()` method for an `ArrayView`.
+    pub fn string_array(&self) -> Option<&WithOutputTensor<String>> {
         if let Self::String(item) = self {
             Some(item)
         } else {
@@ -247,10 +266,10 @@ impl<'a> OrtOutput<'a> {
     }
 }
 
-impl<'a> TryFrom<OrtOutputTensor> for OrtOutput<'a> {
+impl TryFrom<OrtOutputTensor> for OrtOutput {
     type Error = OrtError;
 
-    fn try_from(value: OrtOutputTensor) -> Result<OrtOutput<'a>> {
+    fn try_from(value: OrtOutputTensor) -> Result<OrtOutput> {
         unsafe {
             let mut shape_info = std::ptr::null_mut();
 

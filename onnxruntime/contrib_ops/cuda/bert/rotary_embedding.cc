@@ -71,6 +71,7 @@ Status RotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<CudaT*>(output->template MutableData<T>()),
       reinterpret_cast<const CudaT*>(input->template Data<T>()),
       position_ids->Data<int64_t>(),
+      nullptr,  // past_sequence_lengths
       reinterpret_cast<const CudaT*>(cos_cache->template Data<T>()),
       reinterpret_cast<const CudaT*>(sin_cache->template Data<T>()),
       parameters.batch_size,

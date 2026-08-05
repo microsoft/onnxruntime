@@ -66,7 +66,7 @@ bool CheckShape(const Node& reshape_node) {
 }
 
 Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& reshape_node_unit,
-                             const NodeUnit& gemm_node_unit, bool validate) {
+                             const NodeUnit& gemm_node_unit, const logging::Logger& logger, bool validate) {
   assert(reshape_node_unit.OpType() == "Reshape" && gemm_node_unit.OpType() == "Gemm");
   const auto& node_name = utils::GetUniqueName(gemm_node_unit);
   const NodeUnitIODef& input_def = reshape_node_unit.Inputs()[0];
@@ -91,7 +91,7 @@ Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper, const NodeUnit&
   ORT_RETURN_IF_ERROR(utils::GetQnnDataType(false, weight_def.node_arg.TypeAsProto(), data_type));
   const auto& weight_tensor_proto = qnn_model_wrapper.GetConstantTensor(weight_tensor_name);
   ORT_RETURN_IF_ERROR(
-      utils::TwoDimensionTranspose(qnn_model_wrapper, weight_shape, *weight_tensor_proto, unpacked_tensor));
+      utils::TwoDimensionTranspose(qnn_model_wrapper, weight_shape, *weight_tensor_proto, unpacked_tensor, logger, validate));
   QnnTensorWrapper weight_tensor(weight_tensor_name, tensor_type, data_type, QnnQuantParamsWrapper(),
                                  std::move(weight_shape), std::move(unpacked_tensor));
   if (has_bias) {
@@ -169,12 +169,12 @@ ReshapeGemmFusion::ReshapeGemmFusion(const NodeUnit& reshape_node_unit, const No
   node_units_[1] = &gemm_node_unit;
 }
 
-Status ReshapeGemmFusion::IsSupported(QnnModelWrapper& qmw, const logging::Logger& /*logger*/) const {
-  return CreateOrValidateOnQnn(qmw, *node_units_[0], *node_units_[1], true);
+Status ReshapeGemmFusion::IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const {
+  return CreateOrValidateOnQnn(qmw, *node_units_[0], *node_units_[1], logger, true);
 }
 
-Status ReshapeGemmFusion::AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& /*logger*/) const {
-  return CreateOrValidateOnQnn(qmw, *node_units_[0], *node_units_[1], false);
+Status ReshapeGemmFusion::AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const {
+  return CreateOrValidateOnQnn(qmw, *node_units_[0], *node_units_[1], logger, false);
 }
 
 gsl::span<const NodeUnit* const> ReshapeGemmFusion::GetNodeUnits() const {

@@ -3,6 +3,8 @@
 
 #pragma once
 
+#if !defined(DISABLE_STRING_TYPE)
+
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include <memory>
@@ -27,3 +29,5 @@ class TfIdfVectorizer final : public OpKernel {
 };
 
 }  // namespace onnxruntime
+
+#endif  // !defined(DISABLE_STRING_TYPE)

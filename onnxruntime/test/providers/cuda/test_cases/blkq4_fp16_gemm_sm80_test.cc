@@ -17,7 +17,7 @@
 #include <thrust/host_vector.h>
 #include <random>
 
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/mlas/inc/mlas_q4.h"
 
 namespace onnxruntime {

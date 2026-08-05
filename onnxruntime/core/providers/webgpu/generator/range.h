@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/framework/kernel_registry.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
@@ -19,13 +20,20 @@ class Range : public WebGpuKernel {
 class RangeProgram : public Program<RangeProgram> {
  public:
   RangeProgram() : Program{"Range"} {}
+  RangeProgram(int32_t data_type) : Program{"Range"}, data_type_(data_type) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
                                           {"start", ProgramUniformVariableDataType::Uint32},
                                           {"delta", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  int32_t data_type_{0};
 };
+
+// Register Range kernels with conditional int64 support
+void RegisterRangeKernels(KernelRegistry& kernel_registry, bool enable_int64);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

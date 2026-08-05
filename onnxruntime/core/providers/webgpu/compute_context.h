@@ -3,11 +3,13 @@
 
 #pragma once
 
-#include "core/providers/webgpu/webgpu_external_header.h"
-
+#include <memory>
 #include <utility>
 
+#include "core/providers/webgpu/webgpu_external_header.h"
+#include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
+#include "core/providers/webgpu/webgpu_execution_provider.h"
 
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_context.h"
@@ -16,21 +18,53 @@
 namespace onnxruntime {
 
 class Tensor;
-class WebGpuExecutionProvider;
 
 namespace webgpu {
 
 class WebGpuContext;
 class BufferManager;
 
-class ComputeContext {
+//
+// Class ComputeContextBase is designed to provide basic context information
+// for running a compute shader program.
+//
+// An instance of ComputeContextBase does not depend on OpKernelContext, which needs an execution frame to be created.
+//
+class ComputeContextBase {
  public:
-  ComputeContext(OpKernelContext& kernel_context, const WebGpuExecutionProvider& ep);
+  // Nested accessor class to provide controlled access to BufferManager
+  class BufferManagerAccessor {
+    // access to BufferManager is limited to class WebGpuContext.
+    // This ensures no access to BufferManager from other classes, avoiding
+    // potential misuse.
+    friend class WebGpuContext;
 
-  virtual ~ComputeContext() = default;
+   private:
+    static const webgpu::BufferManager& Get(const ComputeContextBase& context);
+  };
+
+  ComputeContextBase(WebGpuContext& webgpu_context,
+                     const WebGpuExecutionProvider& ep,
+                     const OpKernel& op_kernel);
+
+  ~ComputeContextBase() = default;
 
   //
-  // Get various information from the context.
+  // Get the node name.
+  //
+  inline decltype(auto) NodeName() const {
+    return op_kernel_.Node().Name();
+  }
+
+  //
+  // Get the operator type.
+  //
+  inline decltype(auto) OpType() const {
+    return op_kernel_.Node().OpType();
+  }
+
+  //
+  // Get various information from the WebGPU context.
   //
 
   inline const wgpu::AdapterInfo& AdapterInfo() const {
@@ -49,17 +83,82 @@ class ComputeContext {
 #endif
 
   //
-  // Get the kernel context.
+  // Get Split-K configuration.
   //
-  inline OpKernelContext& KernelContext() {
-    return kernel_context_;
+  inline const SplitKConfig& GetSplitKConfig() const {
+    return webgpu_context_.GetSplitKConfig();
+  }
+
+  //
+  // Get whether graph capture is enabled.
+  //
+  inline bool IsGraphCaptureEnabled() const {
+    return ep_.IsGraphCaptureEnabled();
+  }
+
+  //
+  // Get the multi rotary cache concatenation offset (0 = disabled).
+  //
+  inline uint32_t MultiRotaryCacheConcatOffset() const {
+    return ep_.MultiRotaryCacheConcatOffset();
+  }
+
+  //
+  // Get the KV cache quantization bits (0 = disabled, 4 = 4-bit).
+  //
+  inline uint32_t KvCacheQuantizationBits() const {
+    return ep_.KvCacheQuantizationBits();
+  }
+
+  //
+  // Get whether KV cache quantization is enabled.
+  //
+  inline bool KvCacheQuantizationEnabled() const {
+    return ep_.KvCacheQuantizationEnabled();
   }
 
   //
   // Get the logger.
   //
   inline const logging::Logger& Logger() const {
-    return kernel_context_.Logger();
+#if defined(ORT_USE_EP_API_ADAPTERS)
+    return ep_.GetEpLogger();
+#else
+    return *ep_.GetLogger();
+#endif
+  }
+
+  //
+  // Run a compute shader program.
+  //
+  inline Status RunProgram(const ProgramBase& program) {
+    return webgpu_context_.Run(*this, program);
+  }
+
+ protected:
+  WebGpuContext& webgpu_context_;
+  const WebGpuExecutionProvider& ep_;
+  const OpKernel& op_kernel_;
+};
+
+//
+// Class ComputeContext provides all information a `ComputeContextBase` provides, and also
+// access to `OpKernelContext` for input and output tensors.
+//
+class ComputeContext final : public ComputeContextBase {
+ public:
+  ComputeContext(WebGpuContext& webgpu_context,
+                 const WebGpuExecutionProvider& ep,
+                 const OpKernel& op_kernel,
+                 OpKernelContext& kernel_context);
+
+  ~ComputeContext() = default;
+
+  //
+  // Get the kernel context.
+  //
+  inline OpKernelContext& KernelContext() {
+    return kernel_context_;
   }
 
   //
@@ -117,36 +216,28 @@ class ComputeContext {
     ORT_THROW_IF_ERROR(kernel_context_.GetTempSpaceAllocator(&allocator));
     return {data_type, std::forward<TensorShapeType>(shape), allocator};
   }
+
   //
-  // Run a compute shader program.
+  // Copy data from a tensor to another tensor.
   //
-  inline Status RunProgram(const ProgramBase& program) {
-    return webgpu_context_.Run(*this, program);
+  // This method assumes that both tensors have the same data size.
+  //
+  inline Status CopyTensor(const Tensor& src, Tensor& dst) {
+    return op_kernel_.Info().GetDataTransferManager().CopyTensor(src, dst);
   }
 
   //
-  // Get the buffer manager from the GPU allocator.
+  // Fill a GPU tensor with zeros.
   //
-  const webgpu::BufferManager& BufferManager() const;
+  inline void FillZero(Tensor& dst) {
+    webgpu_context_.EndComputePass();
+    auto& command_encoder = webgpu_context_.GetCommandEncoder();
+    WGPUBuffer buffer = reinterpret_cast<WGPUBuffer>(dst.MutableDataRaw());
+    command_encoder.ClearBuffer(buffer, 0, dst.SizeInBytes());
+  }
 
-  //
-  // Push error scope.
-  //
-  // This is useful only when "skip_validation" is not set.
-  //
-  void PushErrorScope();
-
-  //
-  // Pop error scope.
-  //
-  // This is useful only when "skip_validation" is not set.
-  //
-  Status PopErrorScope();
-
- protected:
-  WebGpuContext& webgpu_context_;
+ private:
   OpKernelContext& kernel_context_;
-  const WebGpuExecutionProvider& ep_;
 };
 
 }  // namespace webgpu

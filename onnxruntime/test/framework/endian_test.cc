@@ -1,4 +1,4 @@
-#include "core/framework/endian.h"
+#include "core/common/endian.h"
 #include "core/framework/endian_utils.h"
 #include "core/graph/onnx_protobuf.h"         // For TensorProto
 #include "core/framework/tensorprotoutils.h"  // For ConvertRawDataInTensorProto
@@ -199,7 +199,7 @@ class ConvertRawDataInTensorProtoTest : public ::testing::Test {
                           const std::vector<T>& values) {
     tensor.Clear();
     tensor.set_data_type(data_type);
-    tensor.set_raw_data(values.data(), values.size() * sizeof(T));
+    onnxruntime::utils::SetRawDataInTensorProto(tensor, values.data(), values.size() * sizeof(T));
   }
 
   // Helper to compare float data before and after conversion
@@ -208,15 +208,7 @@ class ConvertRawDataInTensorProtoTest : public ::testing::Test {
     for (int i = 0; i < tensor.float_data_size(); i++) {
       // We swap bytes so the actual value might change if we're converting endianness
       // But a double swap should restore the original value
-      if constexpr (endian::native == endian::little) {
-        EXPECT_EQ(tensor.float_data(i), expected_values[i]);
-      } else {
-        // Just verify the value is different after one swap on big-endian
-        // We can't predict the exact value without manual byte swapping
-        if (expected_values[i] != 0) {  // Skip zero values as they're invariant to byte swapping
-          EXPECT_NE(tensor.float_data(i), expected_values[i]);
-        }
-      }
+      EXPECT_EQ(tensor.float_data(i), expected_values[i]);
     }
   }
 
@@ -225,13 +217,7 @@ class ConvertRawDataInTensorProtoTest : public ::testing::Test {
     ASSERT_EQ(tensor.int32_data_size(), static_cast<int>(expected_values.size()));
     for (int i = 0; i < tensor.int32_data_size(); i++) {
       // Same logic as float comparison
-      if constexpr (endian::native == endian::little) {
-        EXPECT_EQ(tensor.int32_data(i), expected_values[i]);
-      } else {
-        if (expected_values[i] != 0) {
-          EXPECT_NE(tensor.int32_data(i), expected_values[i]);
-        }
-      }
+      EXPECT_EQ(tensor.int32_data(i), expected_values[i]);
     }
   }
 };
@@ -288,6 +274,12 @@ TEST_F(ConvertRawDataInTensorProtoTest, Int16Data) {
   // Convert once
   onnxruntime::utils::ConvertRawDataInTensorProto(tensor);  // Pass by reference, not pointer
 
+  // check that conversion does something
+  ASSERT_EQ(tensor.int32_data_size(), static_cast<int>(original_values.size()));
+  for (int i = 0; i < tensor.int32_data_size(); i++) {
+    EXPECT_NE(tensor.int32_data(i), original_values[i]);
+  }
+
   // Convert back - should restore original values
   onnxruntime::utils::ConvertRawDataInTensorProto(tensor);  // Pass by reference, not pointer
 
@@ -310,6 +302,9 @@ TEST_F(ConvertRawDataInTensorProtoTest, RawFloatData) {
   // Convert once
   onnxruntime::utils::ConvertRawDataInTensorProto(tensor);  // Pass by reference, not pointer
 
+  // check that conversion does something
+  EXPECT_NE(tensor.raw_data(), original_raw_data);
+
   // Convert back - should restore original bytes
   onnxruntime::utils::ConvertRawDataInTensorProto(tensor);  // Pass by reference, not pointer
 
@@ -330,7 +325,16 @@ TEST_F(ConvertRawDataInTensorProtoTest, UInt8NoConversion) {
     original_values.push_back(tensor.int32_data(i));
   }
 
-  // Convert - for 1-byte elements, no conversion should happen
+  // Convert once
+  onnxruntime::utils::ConvertRawDataInTensorProto(tensor);  // Pass by reference, not pointer
+
+  // check that conversion does nothing
+  ASSERT_EQ(tensor.int32_data_size(), static_cast<int>(original_values.size()));
+  for (int i = 0; i < tensor.int32_data_size(); i++) {
+    EXPECT_EQ(tensor.int32_data(i), original_values[i]);
+  }
+
+  // Convert again - this should restore original values
   onnxruntime::utils::ConvertRawDataInTensorProto(tensor);  // Pass by reference, not pointer
 
   // Verify no change occurred
@@ -357,6 +361,12 @@ TEST_F(ConvertRawDataInTensorProtoTest, DoubleConversionAndRestore) {
 
   // Convert once
   onnxruntime::utils::ConvertRawDataInTensorProto(tensor);  // Pass by reference, not pointer
+
+  // check that conversion does something
+  ASSERT_EQ(tensor.double_data_size(), static_cast<int>(original_values.size()));
+  for (int i = 0; i < tensor.double_data_size(); i++) {
+    EXPECT_NE(tensor.double_data(i), original_values[i]);
+  }
 
   // Convert again - this should restore original values
   onnxruntime::utils::ConvertRawDataInTensorProto(tensor);  // Pass by reference, not pointer

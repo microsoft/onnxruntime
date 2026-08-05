@@ -56,10 +56,14 @@ SparseAttention<T>::SparseAttention(const OpKernelInfo& info)
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
   disable_v1_kernel_ = ParseEnvironmentVariableWithDefault<bool>(sparse_attention::kDisableSparseAttentionV1, false);
+  disable_input_validation_ = ParseEnvironmentVariableWithDefault<bool>(
+      sparse_attention::kDisableInputValidation, false);
 }
 
 template <typename T>
 Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
+  auto ort_stream = GetOrtStream(context);
+
   auto& device_prop = GetDeviceProp();
   if constexpr (std::is_same<T, BFloat16>::value) {
     if (device_prop.major < 8) {
@@ -103,6 +107,26 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                            block_col_indices,
                                                            seqlens_k_total,
                                                            total_seq_len));
+
+  // Validate CSR indices and key lengths on device to prevent out-of-bounds access.
+  // This must run before the shared-buffer check so OpTester-based tests can exercise it.
+  cudaStream_t cuda_stream = Stream(context);
+  if (!disable_input_validation_) {
+    auto csr_error_buffer = GetScratchBuffer<int32_t>(1, GetComputeStream(context));
+    ORT_RETURN_IF_ERROR(ValidateCSRIndicesOnDevice(
+        cuda_stream,
+        block_row_indices->Data<int32_t>(),
+        block_col_indices->Data<int32_t>(),
+        seqlens_k_total->Data<int32_t>(),
+        parameters.num_sparse_layout,
+        parameters.stride_row_indices - 1,  // max_blocks
+        parameters.stride_col_indices,      // col_count
+        parameters.batch_size,
+        parameters.sequence_length,
+        parameters.total_sequence_length,
+        csr_error_buffer.get()));
+  }
+
   // Some limitations of CUDA kernels
   // The v1 and v2 kernels have same coverage, so only check one of them to see whether it is supported.
   int sm = device_prop.major * 10 + device_prop.minor;
@@ -135,7 +159,6 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int32_t* total_k_seq_len_pinned = nullptr;
   AutoDestoryCudaEvent new_event;
   cudaEvent_t& isCopyDone = new_event.Get();
-  cudaStream_t cuda_stream = Stream(context);
   if (use_v2_kernel) {
     pinned_buffer = AllocateBufferOnCPUPinned<int32_t>(parameters.batch_size);
 
@@ -219,8 +242,7 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
                           parameters.sequence_length * parameters.head_size;
     rotary_buffer_bytes += sizeof(int64_t) * parameters.batch_size * parameters.sequence_length;
   }
-  onnxruntime::Stream* stream = context->GetComputeStream();
-  auto rotary_buffer = GetScratchBuffer<void>(rotary_buffer_bytes, stream);
+  auto rotary_buffer = GetScratchBuffer<void>(rotary_buffer_bytes, GetComputeStream(context));
   data.rotary_buffer = reinterpret_cast<CudaT*>(rotary_buffer.get());
 
   size_t transposed_q_bytes = 0;
@@ -228,7 +250,7 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
     transposed_q_bytes = parameters.batch_size * parameters.sequence_length *
                          parameters.num_heads * parameters.head_size * sizeof(T);
   }
-  auto transposed_q_buffer = GetScratchBuffer<void>(transposed_q_bytes, stream);
+  auto transposed_q_buffer = GetScratchBuffer<void>(transposed_q_bytes, GetComputeStream(context));
   if (transposed_q_buffer) {
     data.transposed_q_buffer = reinterpret_cast<CudaT*>(transposed_q_buffer.get());
   }
@@ -239,7 +261,7 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
                           (parameters.num_heads + 2 * parameters.kv_num_heads) *
                           parameters.head_size * sizeof(T));
   }
-  auto unpacked_qkv_buffer = GetScratchBuffer<void>(unpacked_qkv_bytes, stream);
+  auto unpacked_qkv_buffer = GetScratchBuffer<void>(unpacked_qkv_bytes, GetComputeStream(context));
   if (unpacked_qkv_buffer) {
     data.unpacked_qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
   }
@@ -303,7 +325,7 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
       }
     }
 
-    v2_kernel_buffer = GetScratchBuffer<int>(v2_kernel_buffer_size, stream);
+    v2_kernel_buffer = GetScratchBuffer<int>(v2_kernel_buffer_size, GetComputeStream(context));
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(v2_kernel_buffer.get(), v2_kernel_inputs_pinned,
                                          sizeof(int32_t) * v2_kernel_buffer_size,
                                          cudaMemcpyHostToDevice, cuda_stream));
@@ -317,7 +339,7 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
     data.active_q_blocks = active_q_blocks;
   }
 
-  return QkvToContext<CudaT>(device_prop, stream, parameters, data);
+  return QkvToContext<CudaT>(device_prop, ort_stream.get(), parameters, data);
 }
 
 }  // namespace cuda

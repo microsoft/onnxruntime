@@ -10,6 +10,11 @@ import onnx
 from bert_model_generator import float_tensor
 from onnx import TensorProto, helper, numpy_helper
 
+# Minimum non-zero value used for the QK attention bias initializer in test models.
+# A zero bias would be eliminated by ORT's basic constant folding (it removes Add(x, 0)
+# as a no-op), breaking the fusion patterns that expect an Add node before Softmax.
+_NON_ZERO_QK_BIAS = 1e-4
+
 
 # Adapted from bert_model_generator.py
 def get_tensor_and_weight(name: str, shape: list[int], random=False, zeros=False):
@@ -526,6 +531,422 @@ def create_conformer_attention(
 
     # Construct graph
     graph = helper.make_graph(nodes, "conformer_self_mha_graph", inputs, outputs, initializers, doc_string="conformer")
+    opsetid = helper.make_opsetid("ai.onnx", min(onnx.defs.onnx_opset_version(), 16))
+    return helper.make_model(graph, opset_imports=(opsetid,))
+
+
+def create_conformer_attention_simple_bias(
+    hidden_size=64,
+    num_heads=4,
+    epsilon=0.000009999999747378752,
+):
+    """
+    Standard conformer attention where the QK add_bias is a plain initializer (no positional
+    embedding computation). The extra_q_nodes match_parent_path will return None for both the
+    conformer-transducer and Nemotron patterns, so fusion proceeds with extra_q_nodes=None.
+
+    This is a regression test to verify that the fix restoring optional extra_q_nodes semantics
+    works correctly: graphs that never had an auxiliary Q branch must still fuse.
+
+    Q path:  MatMul -> Add(bias, matmul_out) -> Reshape -> Transpose([0,2,1,3]) -> Div -> matmul_qk
+    K path:  MatMul -> Add(matmul_out, bias) -> Reshape -> Transpose([0,2,3,1]) -> matmul_qk
+    V path:  MatMul -> Add(matmul_out, bias) -> Reshape -> Transpose([0,2,1,3]) -> matmul_qkv
+    QK:      MatMul -> Add(qk_out, qk_bias_init) -> Softmax -> MatMul
+    Output:  Transpose -> Reshape -> MatMul -> Add(bias, matmul) -> SkipLayerNorm
+    """
+    assert hidden_size % num_heads == 0
+    head_size = hidden_size // num_heads
+
+    inputs = [
+        helper.make_tensor_value_info("input_0", TensorProto.FLOAT, ["batch_size", "seq_len", hidden_size]),
+        helper.make_tensor_value_info("input_1", TensorProto.FLOAT, ["batch_size", "seq_len", hidden_size]),
+    ]
+    outputs = [
+        helper.make_tensor_value_info("output_0", TensorProto.FLOAT, ["batch_size", "seq_len", hidden_size]),
+        helper.make_tensor_value_info("output_1", TensorProto.FLOAT, ["batch_size", "seq_len", hidden_size]),
+    ]
+    nodes = []
+
+    # SkipLayerNorm
+    nodes.append(
+        helper.make_node(
+            "SkipLayerNormalization",
+            ["input_0", "input_1", "ln_weight", "ln_bias"],
+            ["ln_out", "", "", "ln_skip_out"],
+            "skiplayernorm",
+            domain="com.microsoft",
+            epsilon=epsilon,
+        )
+    )
+
+    # Q path: MatMul -> Add(bias[0], matmul[1]) -> Reshape -> Transpose -> Div
+    nodes.extend(
+        [
+            helper.make_node("MatMul", ["ln_out", "q_weight"], ["q_matmul_out"], "q_matmul"),
+            helper.make_node("Add", ["q_bias", "q_matmul_out"], ["q_add_out"], "q_add"),
+            helper.make_node("Reshape", ["q_add_out", "qkv_reshape_shape"], ["q_4d_bsnh"], "q_reshape"),
+            helper.make_node("Transpose", ["q_4d_bsnh"], ["q_4d_bnsh"], "q_transpose", perm=[0, 2, 1, 3]),
+            helper.make_node("Div", ["q_4d_bnsh", "q_scale"], ["q_scaled"], "q_div"),
+        ]
+    )
+
+    # K path: MatMul -> Add(matmul[0], bias[1]) -> Reshape -> Transpose (single, for K^T)
+    nodes.extend(
+        [
+            helper.make_node("MatMul", ["ln_out", "k_weight"], ["k_matmul_out"], "k_matmul"),
+            helper.make_node("Add", ["k_matmul_out", "k_bias"], ["k_add_out"], "k_add"),
+            helper.make_node("Reshape", ["k_add_out", "qkv_reshape_shape"], ["k_4d_bsnh"], "k_reshape"),
+            # perm=[0,2,3,1]: [B,S,H,D] -> [B,H,D,S] giving K^T for attention dot product
+            helper.make_node("Transpose", ["k_4d_bsnh"], ["k_transposed"], "k_transpose", perm=[0, 2, 3, 1]),
+        ]
+    )
+
+    # V path: MatMul -> Add(matmul[0], bias[1]) -> Reshape -> Transpose (BNSH)
+    nodes.extend(
+        [
+            helper.make_node("MatMul", ["ln_out", "v_weight"], ["v_matmul_out"], "v_matmul"),
+            helper.make_node("Add", ["v_matmul_out", "v_bias"], ["v_add_out"], "v_add"),
+            helper.make_node("Reshape", ["v_add_out", "qkv_reshape_shape"], ["v_4d_bsnh"], "v_reshape"),
+            helper.make_node("Transpose", ["v_4d_bsnh"], ["v_4d_bnsh"], "v_transpose", perm=[0, 2, 1, 3]),
+        ]
+    )
+
+    # QK: MatMul -> Add(qk_out, simple_bias_init) -> Softmax -> MatMul
+    # qk_bias is a plain initializer, so extra_q_nodes will be None.
+    nodes.extend(
+        [
+            helper.make_node("MatMul", ["q_scaled", "k_transposed"], ["qk_out"], "matmul_qk"),
+            helper.make_node("Add", ["qk_out", "qk_bias"], ["qk_add_out"], "add_qk"),
+            helper.make_node("Softmax", ["qk_add_out"], ["softmax_out"], "softmax_qk", axis=3),
+            helper.make_node("MatMul", ["softmax_out", "v_4d_bnsh"], ["qkv_bnsh"], "matmul_qkv"),
+        ]
+    )
+
+    # Output: Transpose -> Reshape -> MatMul -> Add -> SkipLayerNorm
+    nodes.extend(
+        [
+            helper.make_node("Transpose", ["qkv_bnsh"], ["qkv_bsnh"], "qkv_transpose", perm=[0, 2, 1, 3]),
+            helper.make_node("Reshape", ["qkv_bsnh", "out_reshape_shape"], ["attn_out"], "out_reshape"),
+            helper.make_node("MatMul", ["attn_out", "out_weight"], ["out_matmul"], "out_matmul"),
+            helper.make_node("Add", ["out_bias", "out_matmul"], ["out_add"], "out_add"),
+            helper.make_node(
+                "SkipLayerNormalization",
+                ["ln_skip_out", "out_add", "ln_weight", "ln_bias"],
+                ["output_0", "", "", "output_1"],
+                "next_skiplayernorm",
+                domain="com.microsoft",
+                epsilon=epsilon,
+            ),
+        ]
+    )
+
+    q_weight, _ = get_tensor_and_weight("q_weight", [hidden_size, hidden_size])
+    k_weight, _ = get_tensor_and_weight("k_weight", [hidden_size, hidden_size])
+    v_weight, _ = get_tensor_and_weight("v_weight", [hidden_size, hidden_size])
+
+    initializers = [
+        float_tensor("ln_weight", [hidden_size]),
+        float_tensor("ln_bias", [hidden_size]),
+        float_tensor("out_weight", [hidden_size, hidden_size]),
+        float_tensor("out_bias", [hidden_size]),
+        q_weight,
+        k_weight,
+        v_weight,
+        numpy_helper.from_array(np.array([1.0] * hidden_size, dtype="float32"), name="q_bias"),
+        numpy_helper.from_array(np.array([1.0] * hidden_size, dtype="float32"), name="k_bias"),
+        numpy_helper.from_array(np.array([1.0] * hidden_size, dtype="float32"), name="v_bias"),
+        # QK bias: a simple non-zero initializer so extra_q_nodes won't match any positional-embed pattern.
+        # Non-zero so ORT's constant folding (which removes Add(x, 0)) doesn't eliminate this node.
+        numpy_helper.from_array(np.array([_NON_ZERO_QK_BIAS], dtype="float32"), name="qk_bias"),
+        numpy_helper.from_array(np.array(1.0 / np.sqrt(head_size), dtype="float32"), name="q_scale"),
+        # Reshape shape [0, 0, num_heads, head_size] for Q/K/V
+        numpy_helper.from_array(np.array([0, 0, num_heads, head_size], dtype="int64"), name="qkv_reshape_shape"),
+        # Reshape shape [0, 0, hidden_size] for output
+        numpy_helper.from_array(np.array([0, 0, hidden_size], dtype="int64"), name="out_reshape_shape"),
+    ]
+
+    graph = helper.make_graph(
+        nodes, "conformer_simple_bias_graph", inputs, outputs, initializers, doc_string="conformer"
+    )
+    opsetid = helper.make_opsetid("ai.onnx", min(onnx.defs.onnx_opset_version(), 16))
+    return helper.make_model(graph, opset_imports=(opsetid,))
+
+
+def create_conformer_attention_no_add_kv(
+    hidden_size=64,
+    num_heads=4,
+    epsilon=0.000009999999747378752,
+):
+    """
+    Nemotron-like conformer attention model with no Add-bias nodes in the K and V paths,
+    and a Q path that begins with Transpose→Add→Reshape→MatMul (no leading Div/Mul).
+    The QKV output path also omits the trailing Add before the SkipLayerNorm.
+
+    This exercises the following new fallback patterns:
+      - QKV output: ["MatMul", "Reshape", "Transpose", "MatMul"] with [1, 0, 0, 0]
+      - Q path:     ["Transpose", "Add", "Reshape", "MatMul"]     with [0, 0, 0, 0]
+      - K path:     ["Transpose", "Reshape", "MatMul"]            with [1, 0, 0]
+      - V path:     ["Transpose", "Reshape", "MatMul"]            with [1, 0, 0]
+    """
+    assert hidden_size % num_heads == 0
+    head_size = hidden_size // num_heads
+
+    inputs = [
+        helper.make_tensor_value_info("input_0", TensorProto.FLOAT, ["batch_size", "seq_len", hidden_size]),
+        helper.make_tensor_value_info("input_1", TensorProto.FLOAT, ["batch_size", "seq_len", hidden_size]),
+    ]
+    outputs = [
+        helper.make_tensor_value_info("output_0", TensorProto.FLOAT, ["batch_size", "seq_len", hidden_size]),
+        helper.make_tensor_value_info("output_1", TensorProto.FLOAT, ["batch_size", "seq_len", hidden_size]),
+    ]
+    nodes = []
+
+    # SkipLayerNorm
+    nodes.append(
+        helper.make_node(
+            "SkipLayerNormalization",
+            ["input_0", "input_1", "ln_weight", "ln_bias"],
+            ["ln_out", "", "", "ln_skip_out"],
+            "skiplayernorm",
+            domain="com.microsoft",
+            epsilon=epsilon,
+        )
+    )
+
+    # Q path: MatMul -> Reshape -> Add(reshape[0], bias[1]) -> Transpose -> matmul_qk
+    # Matches: ["Transpose", "Add", "Reshape", "MatMul"] with [0, 0, 0, 0]
+    nodes.extend(
+        [
+            helper.make_node("MatMul", ["ln_out", "q_weight"], ["q_matmul_out"], "q_matmul"),
+            helper.make_node("Reshape", ["q_matmul_out", "qkv_reshape_shape"], ["q_4d_bsnh"], "q_reshape"),
+            helper.make_node("Add", ["q_4d_bsnh", "q_bias_4d"], ["q_4d_biased"], "q_add"),
+            helper.make_node("Transpose", ["q_4d_biased"], ["q_4d_bnsh"], "q_transpose", perm=[0, 2, 1, 3]),
+        ]
+    )
+
+    # K path: MatMul -> Reshape -> Transpose (no Add)
+    # Matches: ["Transpose", "Reshape", "MatMul"] with [1, 0, 0]
+    nodes.extend(
+        [
+            helper.make_node("MatMul", ["ln_out", "k_weight"], ["k_matmul_out"], "k_matmul"),
+            helper.make_node("Reshape", ["k_matmul_out", "qkv_reshape_shape"], ["k_4d_bsnh"], "k_reshape"),
+            # perm=[0,2,3,1]: [B,S,H,D] -> [B,H,D,S] for K^T
+            helper.make_node("Transpose", ["k_4d_bsnh"], ["k_transposed"], "k_transpose", perm=[0, 2, 3, 1]),
+        ]
+    )
+
+    # V path: MatMul -> Reshape -> Transpose (no Add)
+    # Matches: ["Transpose", "Reshape", "MatMul"] with [1, 0, 0]
+    nodes.extend(
+        [
+            helper.make_node("MatMul", ["ln_out", "v_weight"], ["v_matmul_out"], "v_matmul"),
+            helper.make_node("Reshape", ["v_matmul_out", "qkv_reshape_shape"], ["v_4d_bsnh"], "v_reshape"),
+            helper.make_node("Transpose", ["v_4d_bsnh"], ["v_4d_bnsh"], "v_transpose", perm=[0, 2, 1, 3]),
+        ]
+    )
+
+    # QK: MatMul -> Add(qk_out, bias) -> Softmax -> MatMul
+    nodes.extend(
+        [
+            helper.make_node("MatMul", ["q_4d_bnsh", "k_transposed"], ["qk_out"], "matmul_qk"),
+            helper.make_node("Add", ["qk_out", "qk_bias"], ["qk_add_out"], "add_qk"),
+            helper.make_node("Softmax", ["qk_add_out"], ["softmax_out"], "softmax_qk", axis=3),
+            helper.make_node("MatMul", ["softmax_out", "v_4d_bnsh"], ["qkv_bnsh"], "matmul_qkv"),
+        ]
+    )
+
+    # Output: Transpose -> Reshape -> MatMul (no trailing Add before SkipLayerNorm)
+    # Matches QKV path: ["MatMul", "Reshape", "Transpose", "MatMul"] with [1, 0, 0, 0]
+    nodes.extend(
+        [
+            helper.make_node("Transpose", ["qkv_bnsh"], ["qkv_bsnh"], "qkv_transpose", perm=[0, 2, 1, 3]),
+            helper.make_node("Reshape", ["qkv_bsnh", "out_reshape_shape"], ["attn_out"], "out_reshape"),
+            helper.make_node("MatMul", ["attn_out", "out_weight"], ["out_matmul"], "out_matmul"),
+            helper.make_node(
+                "SkipLayerNormalization",
+                ["ln_skip_out", "out_matmul", "ln_weight", "ln_bias"],
+                ["output_0", "", "", "output_1"],
+                "next_skiplayernorm",
+                domain="com.microsoft",
+                epsilon=epsilon,
+            ),
+        ]
+    )
+
+    q_weight, _ = get_tensor_and_weight("q_weight", [hidden_size, hidden_size])
+    k_weight, _ = get_tensor_and_weight("k_weight", [hidden_size, hidden_size])
+    v_weight, _ = get_tensor_and_weight("v_weight", [hidden_size, hidden_size])
+
+    initializers = [
+        float_tensor("ln_weight", [hidden_size]),
+        float_tensor("ln_bias", [hidden_size]),
+        float_tensor("out_weight", [hidden_size, hidden_size]),
+        q_weight,
+        k_weight,
+        v_weight,
+        # Q bias in 4D shape [1, 1, num_heads, head_size] for broadcasting after Reshape
+        numpy_helper.from_array(np.ones([1, 1, num_heads, head_size], dtype="float32"), name="q_bias_4d"),
+        # Non-zero qk_bias so ORT's constant folding (which removes Add(x, 0)) doesn't eliminate this node.
+        numpy_helper.from_array(np.array([_NON_ZERO_QK_BIAS], dtype="float32"), name="qk_bias"),
+        numpy_helper.from_array(np.array([0, 0, num_heads, head_size], dtype="int64"), name="qkv_reshape_shape"),
+        numpy_helper.from_array(np.array([0, 0, hidden_size], dtype="int64"), name="out_reshape_shape"),
+    ]
+
+    graph = helper.make_graph(nodes, "conformer_no_add_kv_graph", inputs, outputs, initializers, doc_string="conformer")
+    opsetid = helper.make_opsetid("ai.onnx", min(onnx.defs.onnx_opset_version(), 16))
+    return helper.make_model(graph, opset_imports=(opsetid,))
+
+
+def create_conformer_attention_qk_div_masking(
+    hidden_size=64,
+    num_heads=4,
+    epsilon=0.000009999999747378752,
+):
+    """
+    Conformer attention with QK masking using Where→Softmax→Where→Div→Add→MatMul.
+
+    This exercises the new QK path:
+      ["Where", "Softmax", "Where", "Div", "Add", "MatMul"] with [0, 2, 0, 2, 0, 0]
+
+    The graph structure for the masked QK computation is:
+      MatMul(Q,K^T) → Add(qk_bias) → Div(scale) → inner_Where → Softmax → outer_Where → MatMul(V)
+    """
+    assert hidden_size % num_heads == 0
+    head_size = hidden_size // num_heads
+
+    inputs = [
+        helper.make_tensor_value_info("input_0", TensorProto.FLOAT, ["batch_size", "seq_len", hidden_size]),
+        helper.make_tensor_value_info("input_1", TensorProto.FLOAT, ["batch_size", "seq_len", hidden_size]),
+    ]
+    outputs = [
+        helper.make_tensor_value_info("output_0", TensorProto.FLOAT, ["batch_size", "seq_len", hidden_size]),
+        helper.make_tensor_value_info("output_1", TensorProto.FLOAT, ["batch_size", "seq_len", hidden_size]),
+    ]
+    nodes = []
+
+    # SkipLayerNorm
+    nodes.append(
+        helper.make_node(
+            "SkipLayerNormalization",
+            ["input_0", "input_1", "ln_weight", "ln_bias"],
+            ["ln_out", "", "", "ln_skip_out"],
+            "skiplayernorm",
+            domain="com.microsoft",
+            epsilon=epsilon,
+        )
+    )
+
+    # Q path: MatMul -> Add(bias, matmul_out) -> Reshape -> Transpose -> Div
+    # Matches: ["Div", "Transpose", "Reshape", "Add", "MatMul"] with [0, 0, 0, 0, 1]
+    nodes.extend(
+        [
+            helper.make_node("MatMul", ["ln_out", "q_weight"], ["q_matmul_out"], "q_matmul"),
+            helper.make_node("Add", ["q_bias", "q_matmul_out"], ["q_add_out"], "q_add"),
+            helper.make_node("Reshape", ["q_add_out", "qkv_reshape_shape"], ["q_4d_bsnh"], "q_reshape"),
+            helper.make_node("Transpose", ["q_4d_bsnh"], ["q_4d_bnsh"], "q_transpose", perm=[0, 2, 1, 3]),
+            helper.make_node("Div", ["q_4d_bnsh", "q_scale"], ["q_scaled"], "q_div"),
+        ]
+    )
+
+    # K path: MatMul -> Add(matmul_out, bias) -> Reshape -> Transpose
+    # Matches: ["Transpose", "Reshape", "Add", "MatMul"] with [1, 0, 0, 0]
+    nodes.extend(
+        [
+            helper.make_node("MatMul", ["ln_out", "k_weight"], ["k_matmul_out"], "k_matmul"),
+            helper.make_node("Add", ["k_matmul_out", "k_bias"], ["k_add_out"], "k_add"),
+            helper.make_node("Reshape", ["k_add_out", "qkv_reshape_shape"], ["k_4d_bsnh"], "k_reshape"),
+            helper.make_node("Transpose", ["k_4d_bsnh"], ["k_transposed"], "k_transpose", perm=[0, 2, 3, 1]),
+        ]
+    )
+
+    # V path: MatMul -> Add(matmul_out, bias) -> Reshape -> Transpose
+    # Matches: ["Transpose", "Reshape", "Add", "MatMul"] with [1, 0, 0, 0]
+    nodes.extend(
+        [
+            helper.make_node("MatMul", ["ln_out", "v_weight"], ["v_matmul_out"], "v_matmul"),
+            helper.make_node("Add", ["v_matmul_out", "v_bias"], ["v_add_out"], "v_add"),
+            helper.make_node("Reshape", ["v_add_out", "qkv_reshape_shape"], ["v_4d_bsnh"], "v_reshape"),
+            helper.make_node("Transpose", ["v_4d_bsnh"], ["v_4d_bnsh"], "v_transpose", perm=[0, 2, 1, 3]),
+        ]
+    )
+
+    # QK computation with Div masking:
+    #   MatMul(QK) -> Add(qk_bias) -> Div(scale) -> inner_Where -> Softmax -> outer_Where -> MatMul(V)
+    #
+    # Matches: ["Where", "Softmax", "Where", "Div", "Add", "MatMul"] with [0, 2, 0, 2, 0, 0]
+    # where_qk = inner_Where
+    nodes.extend(
+        [
+            helper.make_node("MatMul", ["q_scaled", "k_transposed"], ["qk_out"], "matmul_qk"),
+            helper.make_node("Add", ["qk_out", "qk_bias"], ["qk_add_out"], "add_qk"),
+            helper.make_node("Div", ["qk_add_out", "qk_div_scale"], ["qk_div_out"], "div_qk"),
+            # inner_Where: condition ? qk_div_out : mask_value  → input[0]=cond, [1]=mask, [2]=qk_div_out
+            helper.make_node(
+                "Where",
+                ["mask_condition", "mask_value", "qk_div_out"],
+                ["inner_where_out"],
+                "inner_where",
+            ),
+            helper.make_node("Softmax", ["inner_where_out"], ["softmax_out"], "softmax_qk", axis=3),
+            # outer_Where: condition ? zeros : softmax_out → input[0]=cond, [1]=zeros, [2]=softmax_out
+            helper.make_node(
+                "Where",
+                ["mask_condition", "zeros_val", "softmax_out"],
+                ["outer_where_out"],
+                "outer_where",
+            ),
+            helper.make_node("MatMul", ["outer_where_out", "v_4d_bnsh"], ["qkv_bnsh"], "matmul_qkv"),
+        ]
+    )
+
+    # Output: Transpose -> Reshape -> MatMul -> Add -> SkipLayerNorm
+    nodes.extend(
+        [
+            helper.make_node("Transpose", ["qkv_bnsh"], ["qkv_bsnh"], "qkv_transpose", perm=[0, 2, 1, 3]),
+            helper.make_node("Reshape", ["qkv_bsnh", "out_reshape_shape"], ["attn_out"], "out_reshape"),
+            helper.make_node("MatMul", ["attn_out", "out_weight"], ["out_matmul"], "out_matmul"),
+            helper.make_node("Add", ["out_bias", "out_matmul"], ["out_add"], "out_add"),
+            helper.make_node(
+                "SkipLayerNormalization",
+                ["ln_skip_out", "out_add", "ln_weight", "ln_bias"],
+                ["output_0", "", "", "output_1"],
+                "next_skiplayernorm",
+                domain="com.microsoft",
+                epsilon=epsilon,
+            ),
+        ]
+    )
+
+    q_weight, _ = get_tensor_and_weight("q_weight", [hidden_size, hidden_size])
+    k_weight, _ = get_tensor_and_weight("k_weight", [hidden_size, hidden_size])
+    v_weight, _ = get_tensor_and_weight("v_weight", [hidden_size, hidden_size])
+
+    initializers = [
+        float_tensor("ln_weight", [hidden_size]),
+        float_tensor("ln_bias", [hidden_size]),
+        float_tensor("out_weight", [hidden_size, hidden_size]),
+        float_tensor("out_bias", [hidden_size]),
+        q_weight,
+        k_weight,
+        v_weight,
+        numpy_helper.from_array(np.array([1.0] * hidden_size, dtype="float32"), name="q_bias"),
+        numpy_helper.from_array(np.array([1.0] * hidden_size, dtype="float32"), name="k_bias"),
+        numpy_helper.from_array(np.array([1.0] * hidden_size, dtype="float32"), name="v_bias"),
+        # Non-zero qk_bias so ORT's constant folding (which removes Add(x, 0)) doesn't eliminate this node.
+        numpy_helper.from_array(np.array([_NON_ZERO_QK_BIAS], dtype="float32"), name="qk_bias"),
+        numpy_helper.from_array(np.array(1.0 / np.sqrt(head_size), dtype="float32"), name="q_scale"),
+        numpy_helper.from_array(np.array(float(head_size), dtype="float32"), name="qk_div_scale"),
+        # Boolean mask condition (all True = no masking, for test purposes)
+        helper.make_tensor("mask_condition", TensorProto.BOOL, [1, 1, 1, 1], [True]),
+        numpy_helper.from_array(np.array([-1e9], dtype="float32"), name="mask_value"),
+        numpy_helper.from_array(np.array([0.0], dtype="float32"), name="zeros_val"),
+        numpy_helper.from_array(np.array([0, 0, num_heads, head_size], dtype="int64"), name="qkv_reshape_shape"),
+        numpy_helper.from_array(np.array([0, 0, hidden_size], dtype="int64"), name="out_reshape_shape"),
+    ]
+
+    graph = helper.make_graph(
+        nodes, "conformer_qk_div_masking_graph", inputs, outputs, initializers, doc_string="conformer"
+    )
     opsetid = helper.make_opsetid("ai.onnx", min(onnx.defs.onnx_opset_version(), 16))
     return helper.make_model(graph, opset_imports=(opsetid,))
 

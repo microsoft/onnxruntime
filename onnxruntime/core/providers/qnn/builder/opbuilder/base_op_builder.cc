@@ -76,6 +76,9 @@ Status BaseOpBuilder::ProcessDataTypes(QnnModelWrapper& qnn_model_wrapper,
     return CheckHtpDataTypes(input_qnn_dtypes, output_qnn_dtypes);
   } else if (IsGpuBackend(qnn_model_wrapper.GetQnnBackendType())) {
     return CheckGpuDataTypes(input_qnn_dtypes, output_qnn_dtypes);
+  } else if (IsIrBackend(qnn_model_wrapper.GetQnnBackendType())) {
+    // TODO: CheckIrDataTypes
+    return Status::OK();
   }
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Only support backend: CPU, HTP and GPU");
 }

@@ -3,6 +3,7 @@
 
 #param n_bits
 #param has_zero_points
+#param has_bias
 #param output_type_i32
 
 #if output_type_i32
@@ -19,6 +20,7 @@
   const bit_mask = 0xFFu;
 #elif n_bits == 2
   const default_zero_point = 2;
+  const bit_mask = 0x3u;
 #endif
 
 #if has_zero_points

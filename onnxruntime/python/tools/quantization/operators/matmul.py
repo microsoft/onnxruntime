@@ -2,9 +2,15 @@ import itertools
 import logging
 
 import onnx
-from onnx import onnx_pb as onnx_proto
 
-from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, find_by_name, get_mul_node
+from ..quant_utils import (
+    FLOAT8_TYPES,
+    TENSOR_NAME_QUANT_SUFFIX,
+    QuantizedValue,
+    QuantizedValueType,
+    find_by_name,
+    get_mul_node,
+)
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
@@ -172,17 +178,7 @@ class QLinearMatMul(QOpMatMul):
         qlinear_matmul_inputs.append(output_scale_name)
         qlinear_matmul_inputs.append(output_zp_name)
 
-        domain = (
-            "com.microsoft"
-            if self.quantizer.weight_qType
-            in {
-                onnx_proto.TensorProto.FLOAT8E4M3FN,
-                onnx_proto.TensorProto.FLOAT8E4M3FNUZ,
-                onnx_proto.TensorProto.FLOAT8E5M2,
-                onnx_proto.TensorProto.FLOAT8E5M2FNUZ,
-            }
-            else ""
-        )
+        domain = "com.microsoft" if self.quantizer.weight_qType in FLOAT8_TYPES else ""
         qlinear_matmul_node = onnx.helper.make_node(
             "QLinearMatMul",
             qlinear_matmul_inputs,

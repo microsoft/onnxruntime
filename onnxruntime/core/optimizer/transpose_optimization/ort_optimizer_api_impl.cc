@@ -105,6 +105,14 @@ class ApiNode final : public api::NodeRef {
   int SinceVersion() const override;
   int64_t Id() const override;
 
+  std::string_view GetLayeringAnnotation() const override {
+    return node_.GetLayeringAnnotation();
+  }
+
+  void SetLayeringAnnotation(std::string_view annotation) override {
+    node_.SetLayeringAnnotation(std::string(annotation));
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiNode);
 };
@@ -588,10 +596,10 @@ void ApiGraph::TransposeInitializer(std::string_view name, const std::vector<int
   node_arg.SetShape(new_shape);
 
   graph_.RemoveInitializedTensor(name_str);
-  constexpr const bool use_tensor_buffer_false = false;
+  constexpr const bool use_tensor_buffer_true = true;
   ONNX_NAMESPACE::TensorProto new_tensor_proto = utils::TensorToTensorProto(out_tensor, name_str,
-                                                                            use_tensor_buffer_false);
-  graph_utils::AddInitializer(graph_, new_tensor_proto);
+                                                                            use_tensor_buffer_true);
+  graph_utils::AddInitializerWithOrtValue(graph_, new_tensor_proto, std::move(out_tensor));
 }
 
 void ApiGraph::ReshapeInitializer(std::string_view name, const std::vector<int64_t>& shape) {
@@ -624,7 +632,7 @@ void ApiGraph::ReshapeInitializer(std::string_view name, const std::vector<int64
   }
 
   graph_.RemoveInitializedTensor(name_str);
-  graph_utils::AddInitializer(graph_, new_tensor_proto);
+  graph_utils::AddInitializerWithOrtValue(graph_, new_tensor_proto);
 
   auto* node_arg = graph_.GetNodeArg(name_str);
   TensorShapeProto new_shape;
@@ -763,6 +771,9 @@ std::unique_ptr<api::NodeRef> ApiGraph::CopyNode(const api::NodeRef& source_node
                                 source_node.Outputs().size(), domain, new_node_since_version,
                                 source_node.GetExecutionProviderType());
 
+  const auto& layering_annotation = source_node.GetLayeringAnnotation();
+  node.SetLayeringAnnotation(std::string(layering_annotation));
+
   std::unique_ptr<api::NodeRef> new_node = std::make_unique<ApiNode>(node, graph_);
   new_node->CopyAttributes(source_node);
 
@@ -796,7 +807,7 @@ std::string_view ApiGraph::AddInitializer(api::DataType dtype, const std::vector
   }
   utils::SetRawDataInTensorProto(tensor_proto, data.data(), data.size());
 
-  const auto& node_arg = graph_utils::AddInitializer(graph_, tensor_proto);
+  const auto& node_arg = graph_utils::AddInitializerWithOrtValue(graph_, tensor_proto);
   return node_arg.Name();
 }
 

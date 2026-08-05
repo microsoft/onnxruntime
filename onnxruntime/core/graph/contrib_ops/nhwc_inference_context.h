@@ -83,7 +83,8 @@ class NhwcInferenceContext : public ONNX_NAMESPACE::InferenceContext {
       const int rank = nchw_shape.dim_size();
       // N and C dims are required. Some operators like AveragePool allow 1D input
       if (rank < 3) {
-        fail_shape_inference("Output tensor must have at least 3 dimensions");
+        *nhwc_tp.mutable_tensor_type()->mutable_shape() = nchw_shape;
+        return;
       }
 
       // Convert output shape from N, C, H {, W, ...} to N, H {, W, ...}, C.
@@ -105,8 +106,8 @@ class NhwcInferenceContext : public ONNX_NAMESPACE::InferenceContext {
       const int rank = nhwc_shape.dim_size();
       // N and C dims are required. Some operators like AveragePool allow 1D input.
       if (rank < 3) {
-        fail_shape_inference(
-            "Tensor must have at least 3 dimensions to convert between channels first and channels last.");
+        *nchw_tp.mutable_tensor_type()->mutable_shape() = nhwc_shape;
+        return;
       }
 
       // Convert input shape from {N, H, W, ..., C} to {N, C, H, W, ...}.

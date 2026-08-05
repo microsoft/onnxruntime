@@ -20,11 +20,12 @@
             "--use_coreml",
             "--use_xnnpack",
             "--skip_tests",
-            "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF"
+            "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF",
+            "--use_telemetry"
         ],
         "macosx": [
             "--macos=MacOSX",
-            "--apple_deploy_target=13.4"
+            "--apple_deploy_target=14.0"
         ],
         "iphoneos": [
             "--ios",

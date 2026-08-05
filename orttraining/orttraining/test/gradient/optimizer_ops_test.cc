@@ -254,7 +254,7 @@ TEST(OptimizerTest, AdamWeightDecayMode1WithBiasCorrection) {
   test.Run();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 
 float GetGradientL2Norm(const std::vector<float>& gradient_vector) {
   float gradient_norm = 0.0f;

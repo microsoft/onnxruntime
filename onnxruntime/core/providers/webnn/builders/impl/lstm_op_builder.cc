@@ -259,13 +259,13 @@ bool LstmOpBuilder::HasSupportedOutputsImpl(const Node& node,
   bool has_Y_c = TensorExists(output_defs, 2);
 
   if (has_Y && GetType(*output_defs[0], Y_type, logger)) {
-    return IsDataTypeSupportedByOp(op_type, Y_type, wnn_limits, "outputs", "Y", logger);
+    return IsDataTypeSupportedByOp(op_type, Y_type, wnn_limits, "output2", "Y", logger);
   }
   if (has_Y_h && GetType(*output_defs[1], Y_h_type, logger)) {
-    return IsDataTypeSupportedByOp(op_type, Y_h_type, wnn_limits, "outputs", "Y_h", logger);
+    return IsDataTypeSupportedByOp(op_type, Y_h_type, wnn_limits, "output0", "Y_h", logger);
   }
   if (has_Y_c && GetType(*output_defs[2], Y_c_type, logger)) {
-    return IsDataTypeSupportedByOp(op_type, Y_c_type, wnn_limits, "outputs", "Y_c", logger);
+    return IsDataTypeSupportedByOp(op_type, Y_c_type, wnn_limits, "output1", "Y_c", logger);
   }
 
   return false;

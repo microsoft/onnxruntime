@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
 #include <math_constants.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
 
@@ -36,21 +36,36 @@ __device__ __forceinline__ void AccumulateEightElements8b(
 #if (!defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530)
   // --- Dequantization Setup ---
   half2 scale_h2 = __half2half2(scale);  // Broadcast scale
-  half zp_h = __ushort2half_rn(zp);      // Convert zp to half
-  half2 zp_h2 = __half2half2(zp_h);      // Broadcast zp_h
 
-  // --- Extract 8 uint8_t values ---
-  uint8_t q[8];
-#pragma unroll
-  for (int i = 0; i < 8; ++i) {
-    q[i] = (values_quant >> (i * 8)) & 0xFF;
-  }
+  // Fast uint8 -> half conversion via the "magic half" trick. The half bit pattern
+  // (0x6400 | q) encodes exactly 1024 + q for any q in [0, 255] (exponent 2^10, so the
+  // low 10 mantissa bits are integer-valued and ulp == 1). Byte-permuting the packed
+  // weights against the constant 0x64646464 therefore materializes two halves per PRMT,
+  // replacing 8 u16->half converts plus 4 pack ops with 4 instructions.
+  //
+  // Subtracting the matching biased zero point (0x6400 | zp) == 1024 + zp cancels the
+  // 1024 offset exactly: both operands are exact halves and the result (q - zp) lies in
+  // [-255, 255], which is exactly representable, so this is bit-identical to the
+  // straightforward __ushort2half_rn(q) - __ushort2half_rn(zp) formulation.
+  const uint32_t kMagicBytes = 0x64646464u;
+  const uint32_t lo32 = static_cast<uint32_t>(values_quant);
+  const uint32_t hi32 = static_cast<uint32_t>(values_quant >> 32);
 
-  // --- Dequantize 8 values into 4 half2 vectors: b_vec = (q - zp) * scale ---
-  half2 q_01 = __halves2half2(__ushort2half_rn(q[0]), __ushort2half_rn(q[1]));
-  half2 q_23 = __halves2half2(__ushort2half_rn(q[2]), __ushort2half_rn(q[3]));
-  half2 q_45 = __halves2half2(__ushort2half_rn(q[4]), __ushort2half_rn(q[5]));
-  half2 q_67 = __halves2half2(__ushort2half_rn(q[6]), __ushort2half_rn(q[7]));
+  // Selector nibbles (LSB first) pick result bytes from {x[0..3], y[4..7]}:
+  // 0x4140 -> {q0, 0x64, q1, 0x64}; 0x4342 -> {q2, 0x64, q3, 0x64}.
+  const uint32_t b_01 = __byte_perm(lo32, kMagicBytes, 0x4140);
+  const uint32_t b_23 = __byte_perm(lo32, kMagicBytes, 0x4342);
+  const uint32_t b_45 = __byte_perm(hi32, kMagicBytes, 0x4140);
+  const uint32_t b_67 = __byte_perm(hi32, kMagicBytes, 0x4342);
+
+  const half2 q_01 = bit_cast<half2>(b_01);
+  const half2 q_23 = bit_cast<half2>(b_23);
+  const half2 q_45 = bit_cast<half2>(b_45);
+  const half2 q_67 = bit_cast<half2>(b_67);
+
+  // Biased zero point: 1024 + zp, matching the bias baked into q_* above.
+  const uint16_t zp_biased_bits = static_cast<uint16_t>(0x6400u | static_cast<uint32_t>(zp));
+  const half2 zp_h2 = __half2half2(__ushort_as_half(zp_biased_bits));
 
   half2 diff_01 = __hsub2(q_01, zp_h2);
   half2 diff_23 = __hsub2(q_23, zp_h2);
@@ -174,6 +189,212 @@ __device__ __forceinline__ void AccumulateEightElements8b(
     sums_f[i] = fmaf(a_f[i], b_dequant_f[i], sums_f[i]);
   }
 #endif
+}
+
+// ===== Small-M batched GEMV (8-bit) =====
+// Same idea as the 4-bit batched kernel: each warp computes CtaN columns x CtaM rows. Lanes split K
+// (8 elems/lane/iter via one uint64 weight load); each column's 8 weights are dequantized once per row
+// group, per-row activations are loaded once and reused across CtaN columns, and a single float
+// accumulator per (row, column) keeps register pressure low while the weight is streamed once. The
+// launch bound pins >=3 blocks per SM. Standard [N, blocks, blob] layout, no prepacking; the 8-bit path
+// accumulates in float, so this stays dtype-agnostic (float/half/bf16).
+constexpr int kSmallMMax8 = 5;
+template <class T>
+__host__ __device__ constexpr int SmallMCap8() {
+  return kSmallMMax8;
+}
+
+template <class T>
+__device__ __forceinline__ float ToFloat8b(T v);
+template <>
+__device__ __forceinline__ float ToFloat8b<float>(float v) { return v; }
+template <>
+__device__ __forceinline__ float ToFloat8b<half>(half v) { return __half2float(v); }
+template <>
+__device__ __forceinline__ float ToFloat8b<nv_bfloat16>(nv_bfloat16 v) { return __bfloat162float(v); }
+
+template <class T>
+__device__ __forceinline__ void DequantizeEight8b(uint64_t values_quant, T scale, uint8_t zp, float dq[8]) {
+  float scale_f = ToFloat8b<T>(scale);
+#if (!defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530)
+  // Magic-half decode of the packed uint8 weights. The half bit pattern (0x6400 | q)
+  // encodes exactly 1024 + q for q in [0, 255] (exponent 2^10, so ulp == 1), so two
+  // weights are materialized per __byte_perm. Subtracting half(1024 + zp) cancels the
+  // bias and leaves the exact integer (q - zp) in [-255, 255], which half represents
+  // exactly -- so this is bit-identical to float(q) - float(zp) while replacing
+  // 8 int->float converts and 8 subtracts with 4 permutes and 4 half2 subtracts.
+  const uint32_t kMagicBytes = 0x64646464u;
+  const uint32_t lo32 = static_cast<uint32_t>(values_quant);
+  const uint32_t hi32 = static_cast<uint32_t>(values_quant >> 32);
+  const half2 bias_h2 = __half2half2(
+      __ushort_as_half(static_cast<uint16_t>(0x6400u | static_cast<uint32_t>(zp))));
+
+  uint32_t packed[4];
+  packed[0] = __byte_perm(lo32, kMagicBytes, 0x4140);  // {q0, q1}
+  packed[1] = __byte_perm(lo32, kMagicBytes, 0x4342);  // {q2, q3}
+  packed[2] = __byte_perm(hi32, kMagicBytes, 0x4140);  // {q4, q5}
+  packed[3] = __byte_perm(hi32, kMagicBytes, 0x4342);  // {q6, q7}
+
+#pragma unroll
+  for (int i = 0; i < 4; ++i) {
+    const float2 d = __half22float2(__hsub2(bit_cast<half2>(packed[i]), bias_h2));
+    dq[2 * i] = d.x * scale_f;
+    dq[2 * i + 1] = d.y * scale_f;
+  }
+#else
+  float zp_f = static_cast<float>(zp);
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    uint8_t q = (values_quant >> (i * 8)) & 0xFF;
+    dq[i] = (static_cast<float>(q) - zp_f) * scale_f;
+  }
+#endif
+}
+
+// Load 8 consecutive activations (one lane's iteration tile) into float[8].
+template <class T>
+__device__ __forceinline__ void LoadEightActivations8b(const T* a, float out[8]) {
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    out[j] = ToFloat8b<T>(a[j]);
+  }
+}
+
+template <class T, int block_size, bool has_zero_point, int CtaM, int CtaN>
+__global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock, 3) MatMulFloat8bKernelBatched(
+    T* output,
+    const T* a_data,
+    const uint8_t* b_data_quant,
+    const T* scales_data,
+    const uint8_t* zero_points,
+    int m,
+    int n,
+    int k,
+    int blocks_per_K) {
+  const int lane_id = threadIdx.x;
+  const int warp_id = threadIdx.y;
+  const int col_base = (blockIdx.x * kColsPerThreadBlock + warp_id) * CtaN;
+  const int m_base = blockIdx.y * CtaM;
+  const int valid = m - m_base;
+  constexpr int k_per_iter = kWarpSize * kElementsPerThreadPerIteration;  // 256
+  const int lane_offset = lane_id * kElementsPerThreadPerIteration;       // lane_id * 8
+
+  const T* a_base = a_data + static_cast<size_t>(m_base) * k + lane_offset;
+  const uint8_t* b_ptr[CtaN];
+#pragma unroll
+  for (int c = 0; c < CtaN; ++c) {
+    b_ptr[c] = b_data_quant + static_cast<size_t>(col_base + c) * blocks_per_K * block_size + lane_offset;
+  }
+
+  float acc[CtaM][CtaN];
+#pragma unroll
+  for (int r = 0; r < CtaM; ++r) {
+#pragma unroll
+    for (int c = 0; c < CtaN; ++c) {
+      acc[r][c] = 0.0f;
+    }
+  }
+
+  int k_id = 0;
+  int t_meta_k = lane_offset / block_size;
+  constexpr int kWork = CtaM * CtaN;
+  constexpr int kMainUnroll = (kWork >= 20) ? 1 : (kWork >= 12) ? 2
+                                                                : 4;
+
+#define BATCHED8_BODY(i)                                                                              \
+  do {                                                                                                \
+    float dq[CtaN][8];                                                                                \
+    const int bk = t_meta_k + k_per_iter / block_size * (i);                                          \
+    _Pragma("unroll") for (int c = 0; c < CtaN; ++c) {                                                \
+      uint64_t value = *reinterpret_cast<const uint64_t*>(b_ptr[c] + k_per_iter * (i));               \
+      T scale = scales_data[static_cast<size_t>(col_base + c) * blocks_per_K + bk];                   \
+      uint8_t zp = kDefaultZeroPoint;                                                                 \
+      if constexpr (has_zero_point) {                                                                 \
+        zp = zero_points[static_cast<size_t>(col_base + c) * blocks_per_K + bk];                      \
+      }                                                                                               \
+      DequantizeEight8b<T>(value, scale, zp, dq[c]);                                                  \
+    }                                                                                                 \
+    _Pragma("unroll") for (int r = 0; r < CtaM; ++r) {                                                \
+      if (r < valid) {                                                                                \
+        float av[8];                                                                                  \
+        LoadEightActivations8b<T>(a_base + static_cast<size_t>(r) * k + k_id + (i) * k_per_iter, av); \
+        _Pragma("unroll") for (int c = 0; c < CtaN; ++c) {                                            \
+          float s = 0.0f;                                                                             \
+          _Pragma("unroll") for (int j = 0; j < 8; ++j) {                                             \
+            s = fmaf(av[j], dq[c][j], s);                                                             \
+          }                                                                                           \
+          acc[r][c] += s;                                                                             \
+        }                                                                                             \
+      }                                                                                               \
+    }                                                                                                 \
+  } while (false)
+
+#define BATCHED8_UNROLL(unroll_size)                        \
+  do {                                                      \
+    constexpr int kUnroll = unroll_size;                    \
+    constexpr int kUnrollStep = kUnroll * k_per_iter;       \
+    const int k_unroll_bound = k - k % kUnrollStep;         \
+    for (; k_id < k_unroll_bound; k_id += kUnrollStep) {    \
+      _Pragma("unroll") for (int i = 0; i < kUnroll; ++i) { \
+        BATCHED8_BODY(i);                                   \
+      }                                                     \
+      _Pragma("unroll") for (int c = 0; c < CtaN; ++c) {    \
+        b_ptr[c] += kUnrollStep;                            \
+      }                                                     \
+      t_meta_k += k_per_iter / block_size * kUnroll;        \
+    }                                                       \
+  } while (false)
+
+  BATCHED8_UNROLL(kMainUnroll);
+  BATCHED8_UNROLL(1);
+#undef BATCHED8_UNROLL
+
+  if (lane_offset + k_id < k) {
+    float dq[CtaN][8];
+    const int bk = t_meta_k;
+#pragma unroll
+    for (int c = 0; c < CtaN; ++c) {
+      uint64_t value = *reinterpret_cast<const uint64_t*>(b_ptr[c]);
+      T scale = scales_data[static_cast<size_t>(col_base + c) * blocks_per_K + bk];
+      uint8_t zp = kDefaultZeroPoint;
+      if constexpr (has_zero_point) {
+        zp = zero_points[static_cast<size_t>(col_base + c) * blocks_per_K + bk];
+      }
+      DequantizeEight8b<T>(value, scale, zp, dq[c]);
+    }
+#pragma unroll
+    for (int r = 0; r < CtaM; ++r) {
+      if (r < valid) {
+        float av[8];
+        LoadEightActivations8b<T>(a_base + static_cast<size_t>(r) * k + k_id, av);
+#pragma unroll
+        for (int c = 0; c < CtaN; ++c) {
+          float s = 0.0f;
+#pragma unroll
+          for (int j = 0; j < 8; ++j) {
+            s = fmaf(av[j], dq[c][j], s);
+          }
+          acc[r][c] += s;
+        }
+      }
+    }
+  }
+#undef BATCHED8_BODY
+
+#pragma unroll
+  for (int r = 0; r < CtaM; ++r) {
+    if (r >= valid) continue;
+#pragma unroll
+    for (int c = 0; c < CtaN; ++c) {
+      float sum = acc[r][c];
+      for (int off = kWarpSize / 2; off > 0; off /= 2) {
+        sum += WARP_SHFL_DOWN(sum, off);
+      }
+      if (lane_id == 0) {
+        output[static_cast<size_t>(m_base + r) * n + (col_base + c)] = static_cast<T>(sum);
+      }
+    }
+  }
 }
 
 // --- CUDA Kernel: MatMulFloat8bKernel (Optimized for m=1) ---
@@ -347,17 +568,17 @@ bool TryMatMul8Bits(
     const uint8_t* b_data_quant,  // Input B Quantized [N, K/bs, bs]
     const T* scales_data,         // Scales [N, K/bs]
     const uint8_t* zero_points,   // Zero Points [N, K/bs] (can be nullptr)
-    int m,                        // Rows of A and C (MUST be 1)
+    int m,                        // Rows of A and C (1 single-row, 2..cap batched)
     int n,                        // Columns of B and C
     int k,                        // Columns of A / Rows of B
     int block_size,               // Quantization block size for B
     size_t shared_mem_per_block,  // Available shared memory per block
     cudaStream_t stream) {
   // Constraints Check
-  // m must be 1 (since this kernel is optimized for m=1)
   // N must be a multiple of kColsPerThreadBlock (8) for warps to align with columns.
   // K must be a multiple of kElementsPerThreadPerIteration (8) for full uint64_t reads/processing.
-  if (m != 1 || n % kColsPerThreadBlock != 0 || k % kElementsPerThreadPerIteration != 0) {
+  // m up to the small-M cap is handled (m==1 single-row, 2..cap batched); larger m falls back.
+  if (m < 1 || m > SmallMCap8<T>() || n % kColsPerThreadBlock != 0 || k % kElementsPerThreadPerIteration != 0) {
     return false;
   }
 
@@ -381,7 +602,61 @@ bool TryMatMul8Bits(
   // Calculate K / block_size (no rounding needed due to k % block_size == 0 check)
   int blocks_per_K = k / block_size;
 
-  // --- Shared Memory Calculation ---
+  // 2 <= m <= cap: batched GEMV. CtaM = smallest of {2,4,8} >= m streams the weight once per block row
+  // (m=5 uses CtaM=8 and skips the unused rows); CtaN = 2 columns/warp where N allows (reuses each
+  // activation load across columns). One float accumulator per (row, column) keeps register pressure
+  // low. 8-bit weights are twice the bytes of 4-bit and the GEMV runs on CUDA cores, so it crosses over
+  // to the dequantize + cuBLAS (tensor-core) fallback at a lower M than the 4-bit path; the cap keeps
+  // only the row counts where it is faster on every matrix shape. This path launches with no shared
+  // memory, so it runs before the shared-memory budget gate that only constrains the m==1 kernel below.
+  if (m >= 2) {
+    const int cta_m = (m <= 2) ? 2 : (m <= 4) ? 4
+                                              : 8;
+    const int cta_n = (n % (kColsPerThreadBlock * 2) == 0) ? 2 : 1;
+    dim3 batched_blocks(n / (kColsPerThreadBlock * cta_n), (m + cta_m - 1) / cta_m);
+#define MatMulFloat8bBatchedDispatch(bs, cm, cn)                                              \
+  if (nullptr != zero_points) {                                                               \
+    MatMulFloat8bKernelBatched<T, bs, true, cm, cn><<<batched_blocks, threads, 0, stream>>>(  \
+        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, blocks_per_K);       \
+  } else {                                                                                    \
+    MatMulFloat8bKernelBatched<T, bs, false, cm, cn><<<batched_blocks, threads, 0, stream>>>( \
+        output, a_data, b_data_quant, scales_data, nullptr, m, n, k, blocks_per_K);           \
+  }
+#define MatMulFloat8bBatchedDispatchN(cm, cn) \
+  if (16 == block_size) {                     \
+    MatMulFloat8bBatchedDispatch(16, cm, cn)  \
+  } else if (32 == block_size) {              \
+    MatMulFloat8bBatchedDispatch(32, cm, cn)  \
+  } else if (64 == block_size) {              \
+    MatMulFloat8bBatchedDispatch(64, cm, cn)  \
+  } else if (128 == block_size) {             \
+    MatMulFloat8bBatchedDispatch(128, cm, cn) \
+  } else if (256 == block_size) {             \
+    MatMulFloat8bBatchedDispatch(256, cm, cn) \
+  } else {                                    \
+    return false;                             \
+  }
+#define MatMulFloat8bBatchedDispatchM(cn)         \
+  switch (cta_m) {                                \
+    case 2:                                       \
+      MatMulFloat8bBatchedDispatchN(2, cn) break; \
+    case 4:                                       \
+      MatMulFloat8bBatchedDispatchN(4, cn) break; \
+    default:                                      \
+      MatMulFloat8bBatchedDispatchN(8, cn) break; \
+  }
+    if (cta_n == 2) {
+      MatMulFloat8bBatchedDispatchM(2)
+    } else {
+      MatMulFloat8bBatchedDispatchM(1)
+    }
+#undef MatMulFloat8bBatchedDispatchM
+#undef MatMulFloat8bBatchedDispatchN
+#undef MatMulFloat8bBatchedDispatch
+    return true;
+  }
+
+  // --- Shared Memory Calculation (m == 1) ---
   // Memory for scales + optional zero points for the columns handled by the block
   size_t scale_zp_shared_mem = (sizeof(T) + (zero_points != nullptr ? sizeof(uint8_t) : 0)) *
                                static_cast<size_t>(blocks_per_K) * kColsPerThreadBlock;
@@ -396,7 +671,7 @@ bool TryMatMul8Bits(
     return false;
   }
 
-  // --- Kernel Launch ---
+  // --- Kernel Launch (m == 1) ---
   // Macro to simplify dispatching based on block size and presence of zero_points
 #define MatMulFloat8bKernelM1Dispatch(bs)                                                        \
   if (nullptr != zero_points) {                                                                  \

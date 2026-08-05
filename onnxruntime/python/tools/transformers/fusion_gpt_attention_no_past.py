@@ -61,9 +61,6 @@ class FusionGptAttentionNoPast(Fusion):
         self.node_name_to_graph_name[add_node.name] = self.this_graph_name
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
-        # (TODO) hasesh/tlwu: Investigate what fixes the following logic needs in order
-        # to fuse the Attention sub-graph. With some changes to other fusions, this stopped
-        # working.
         return_indice = []
 
         is_normalize_node_skiplayernorm = normalize_node.op_type == "SkipLayerNormalization"
@@ -187,20 +184,20 @@ class FusionGptAttentionNoPast(Fusion):
             qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Where", "Div", "MatMul"], [0, 0, 1, 0])
             if qk_nodes is not None:
                 (softmax_qk, where_qk, div_qk, matmul_qk) = qk_nodes
-                mask_nodes = self.model.match_parent_path(
+                _, mask_nodes, _ = self.model.match_parent_paths(
                     where_qk,
                     [
-                        "Cast",
-                        "Slice",
-                        "Slice",
-                        "Unsqueeze",
-                        "Sub",
-                        "Squeeze",
-                        "Slice",
-                        "Shape",
-                        "Div",
+                        (
+                            ["Cast", "Slice", "Slice", "Unsqueeze", "Sub", "Squeeze", "Slice", "Shape", "Div"],
+                            [0, 0, 0, 1, 0, 0, 0, 0, 0],
+                        ),
+                        # For transformers >= 4.27, causal mask uses torch.bool instead of torch.uint8.
+                        (
+                            ["Slice", "Slice", "Unsqueeze", "Sub", "Squeeze", "Slice", "Shape", "Div"],
+                            [0, 0, 1, 0, 0, 0, 0, 0],
+                        ),
                     ],
-                    [0, 0, 0, 1, 0, 0, 0, 0, 0],
+                    output_name_to_node,
                 )
                 if mask_nodes is None:
                     logger.debug("fuse_attention: failed to match mask path")

@@ -113,7 +113,6 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndG
 }
 
 common::Status VitisAIExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
-  InlinedVector<const Node*> ep_context_node_ptrs;
   auto get_config_entry = [](const void* state, const char* entry_name) -> vaip_core::DllSafe<std::string> {
     const onnxruntime::RunOptions& run_options = *static_cast<const onnxruntime::RunOptions*>(state);
     auto ret = run_options.GetConfigOptions().GetConfigEntry(std::string(entry_name));
@@ -143,6 +142,24 @@ common::Status VitisAIExecutionProvider::SetEpDynamicOptions(gsl::span<const cha
 
 std::unique_ptr<profiling::EpProfiler> VitisAIExecutionProvider::GetProfiler() {
   return std::make_unique<profiling::VitisaiProfiler>();
+}
+
+std::string VitisAIExecutionProvider::GetCompiledModelCompatibilityInfo(
+    const onnxruntime::GraphViewer& graph_viewer) const {
+  if (!execution_providers_) {
+    return {};
+  }
+  return get_compiled_model_compatibility_info(**execution_providers_, graph_viewer);
+}
+
+common::Status VitisAIExecutionProvider::ValidateCompiledModelCompatibilityInfo(
+    const std::string& compatibility_info,
+    OrtCompiledModelCompatibility& model_compatibility) const {
+  if (!execution_providers_) {
+    model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+    return Status::OK();
+  }
+  return validate_compiled_model_compatibility_info(**execution_providers_, compatibility_info, model_compatibility);
 }
 
 std::vector<AllocatorPtr> VitisAIExecutionProvider::CreatePreferredAllocators() {

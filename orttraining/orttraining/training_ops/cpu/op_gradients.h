@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 #include <cctype>
 
 namespace onnxruntime {
@@ -67,6 +68,7 @@ class SoftmaxGrad final : public OpKernel {
     opset_ = (node.OpType() == "SoftmaxGrad_13" || node.OpType() == "LogSoftmaxGrad_13") ? 13 : 1;
     axis_ = info.GetAttrOrDefault("axis", static_cast<int64_t>(opset_ < 13 ? 1 : -1));
     is_logsoftmaxgrad_ = node.OpType() == "LogSoftmaxGrad_13" || node.OpType() == "LogSoftmaxGrad";
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -76,6 +78,7 @@ class SoftmaxGrad final : public OpKernel {
   int64_t axis_;
   int opset_;  // opset_ of the forward Softmax operator
   bool is_logsoftmaxgrad_;
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 };
 
 template <typename T>

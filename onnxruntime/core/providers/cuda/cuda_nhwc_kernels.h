@@ -8,14 +8,14 @@
 
 namespace onnxruntime::cuda {
 
-onnxruntime::common::Status RegisterCudaNhwcKernels(onnxruntime::KernelRegistry& kernel_registry);
+onnxruntime::common::Status RegisterCudaNhwcKernels(KernelRegistry& kernel_registry);
 
 }  // namespace onnxruntime::cuda
 
 #ifndef DISABLE_CONTRIB_OPS
 namespace onnxruntime::contrib::cuda {
 
-onnxruntime::common::Status RegisterCudaNhwcContribKernels(onnxruntime::KernelRegistry& kernel_registry);
+onnxruntime::common::Status RegisterCudaNhwcContribKernels(KernelRegistry& kernel_registry);
 
 }  // namespace onnxruntime::contrib::cuda
 #endif

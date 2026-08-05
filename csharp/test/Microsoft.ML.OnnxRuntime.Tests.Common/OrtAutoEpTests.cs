@@ -60,6 +60,8 @@ public class OrtAutoEpTests
             Assert.NotNull(metadata);
             var options = ep_device.EpOptions;
             Assert.NotNull(options);
+            var memInfo = ep_device.GetMemoryInfo(OrtDeviceMemoryType.DEFAULT);
+            Assert.NotNull(memInfo);
             ReadHardwareDeviceValues(ep_device.HardwareDevice);
         }
     }
@@ -77,14 +79,17 @@ public class OrtAutoEpTests
 
             // register. shouldn't throw
             ortEnvInstance.RegisterExecutionProviderLibrary(epName, libFullPath);
-
-            // check OrtEpDevice was found
-            var epDevices = ortEnvInstance.GetEpDevices();
-            var found = epDevices.Any(d => string.Equals(epName, d.EpName, StringComparison.OrdinalIgnoreCase));
-            Assert.True(found);
-
-            // unregister
-            ortEnvInstance.UnregisterExecutionProviderLibrary(epName);
+            try
+            {
+                // check OrtEpDevice was found
+                var epDevices = ortEnvInstance.GetEpDevices();
+                var found = epDevices.Any(d => string.Equals(epName, d.EpName, StringComparison.OrdinalIgnoreCase));
+                Assert.True(found);
+            }
+            finally
+            {   // unregister
+                ortEnvInstance.UnregisterExecutionProviderLibrary(epName);
+            }
         }
     }
 

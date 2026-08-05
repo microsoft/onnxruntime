@@ -7,7 +7,7 @@
 #include "gtest/gtest.h"
 
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test_environment.h"

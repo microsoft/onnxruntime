@@ -93,14 +93,14 @@ Tensor::Tensor(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IA
   if (len > 0) {
     p_data = allocator->Alloc(len);
   }
-  Init(elt_type, shape, p_data, allocator, 0L);
+  Init(elt_type, shape, p_data, std::move(allocator), 0L);
 }
 
 Tensor::Tensor(MLDataType elt_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
                ptrdiff_t offset, gsl::span<const int64_t> strides)
     : alloc_info_(deleter->Info()) {
   ORT_ENFORCE(elt_type != nullptr);
-  Init(elt_type, shape, p_data, deleter, offset, strides);
+  Init(elt_type, shape, p_data, std::move(deleter), offset, strides);
 }
 
 void Tensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,

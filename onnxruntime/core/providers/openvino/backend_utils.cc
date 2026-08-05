@@ -20,104 +20,6 @@ using Exception = ov::Exception;
 namespace onnxruntime {
 namespace openvino_ep {
 
-SharedContext::SharedWeights::WeightsFile::WeightsFile(std::filesystem::path filename) : file_(filename, std::ios::in | std::ios::binary) {
-  try {
-    file_.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-    weights_size_ = file_.seekg(0, std::ios::end).tellg();
-  } catch (std::ifstream::failure& e) {
-    ORT_THROW("Error: Failed to open weight file at ", filename.string(), " ", e.what());
-  }
-}
-
-void SharedContext::SharedWeights::WeightsFile::load_weights(size_t file_offset, void* data, size_t size) {
-  ORT_ENFORCE(file_offset < weights_size_ && size <= weights_size_ && (file_offset <= weights_size_ - size), "Error: File offset is out of bounds.");
-  file_.seekg(file_offset);
-  file_.read(reinterpret_cast<char*>(data), size);
-}
-
-std::ostream& operator<<(std::ostream& stream, const SharedContext::SharedWeights::Metadata::Map& metadata) {
-  try {
-    stream << metadata.size();
-
-    // Write each key-value pair
-    // Put elements in separate lines to facilitate reading
-    for (const auto& [key, value] : metadata) {
-      stream << std::endl
-             << key.name;
-      stream << std::endl
-             << value.location;
-      stream << std::endl
-             << value.data_offset;
-      stream << std::endl
-             << value.size;
-      stream << std::endl
-             << value.dimensions.size();
-      for (const auto& dim : value.dimensions) {
-        stream << std::endl
-               << dim;
-      }
-      stream << std::endl
-             << value.element_type;
-    }
-  } catch (const Exception& e) {
-    ORT_THROW("Error: Failed to write map data.", e.what());
-  } catch (...) {
-    ORT_THROW("Error: Failed to write map data.");
-  }
-
-  ORT_ENFORCE(stream.good(), "Error: Failed to write map data.");
-  return stream;
-}
-
-std::istream& operator>>(std::istream& stream, SharedContext::SharedWeights::Metadata::Map& metadata) {
-  size_t map_size{0};
-  try {
-    stream >> map_size;
-
-    while (!stream.eof()) {
-      SharedContext::SharedWeights::Metadata::Key key;
-      SharedContext::SharedWeights::Metadata::Value value;
-      stream >> key.name;
-      stream >> value.location;
-      stream >> value.data_offset;
-      stream >> value.size;
-      size_t num_dimensions;
-      stream >> num_dimensions;
-
-      if (stream.fail()) {
-        ORT_THROW("Error: Failed to read num_dimensions from stream.");
-      }
-
-      constexpr size_t MAX_SAFE_DIMENSIONS = 1024;
-
-      size_t safe_num_dimensions = num_dimensions;
-
-      if (num_dimensions == 0 || safe_num_dimensions > MAX_SAFE_DIMENSIONS) {
-        ORT_THROW("Invalid number of dimensions provided.");
-      }
-      try {
-        value.dimensions.resize(safe_num_dimensions);
-      } catch (const std::bad_alloc&) {
-        ORT_THROW("Error: Memory allocation failed while resizing dimensions.");
-      }
-
-      for (auto& dim : value.dimensions) {
-        stream >> dim;
-      }
-      stream >> value.element_type;
-      metadata.emplace(key, value);
-    }
-  } catch (const Exception& e) {
-    ORT_THROW("Error: Failed to read map data.", e.what());
-  } catch (...) {
-    ORT_THROW("Error: Failed to read map data.");
-  }
-
-  ORT_ENFORCE(metadata.size() == map_size, "Error: Inconsistent map data.");
-
-  return stream;
-}
-
 namespace backend_utils {
 
 bool IsDebugEnabled() {
@@ -126,6 +28,11 @@ bool IsDebugEnabled() {
     return true;
   }
   return false;
+}
+
+std::string GetPerfCountDumpPath() {
+  static std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_PERF_COUNT");
+  return env_name;
 }
 
 bool IsCILogEnabled() {
@@ -189,14 +96,20 @@ GetOutputTensor(Ort::KernelContext& context,
                 std::string output_name,
                 const SubGraphContext::string_index_map_t& output_names,
                 std::shared_ptr<ov::Node> node) {
-  // Find position of '/' in the output_name
-  auto pos = output_name.find("/");
-  // Copy the substring from start to pos
-  output_name = output_name.substr(0, pos);
-
+  // OpenVINO appends a single '/'-separated suffix (e.g. "/sink_port_0") to the
+  // output name. ONNX output names may themselves contain '/', so match the full
+  // name first and only strip the trailing suffix (from the LAST '/') if that
+  // fails. Truncating at the FIRST '/' instead would alias e.g.
+  // "D/x/sink_port_0" onto a different output named "D".
   auto it = output_names.find(output_name);
   if (it == output_names.end()) {
-    ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
+    auto pos = output_name.rfind('/');
+    if (pos != std::string::npos) {
+      it = output_names.find(output_name.substr(0, pos));
+    }
+    if (it == output_names.end()) {
+      ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
+    }
   }
   int index = it->second;
   auto output_shape = ParameterShape::ToOrtShape(node->get_shape());
@@ -281,7 +194,7 @@ void FillOutputsWithConstantData(std::shared_ptr<ov::Node> node, Ort::UnownedVal
       break;
     }
     case ov::element::Type_t::f16: {
-      FillOutputHelper<float>(out_tensor, std::move(node));
+      FillOutputHelper<ov::float16>(out_tensor, std::move(node));
       break;
     }
     default:
@@ -296,6 +209,16 @@ void FillOutputsWithConstantData(std::shared_ptr<ov::Node> node, Ort::UnownedVal
 template <typename T>
 void FillOutputHelper(Ort::UnownedValue& out_tensor, std::shared_ptr<ov::Node> node) {
   auto const_node = std::dynamic_pointer_cast<ov::op::v0::Constant>(node);
+  // Bounds-check in bytes before materializing the data: std::copy below writes
+  // (element count) * sizeof(T) bytes, which must match the output buffer size.
+  // Throw rather than overrun.
+  const size_t bytes_to_write = ov::shape_size(const_node->get_shape()) * sizeof(T);
+  const size_t out_bytes = out_tensor.GetTensorSizeInBytes();
+  if (bytes_to_write != out_bytes) {
+    ORT_THROW(log_tag + "Constant output size (" + std::to_string(bytes_to_write) +
+              " bytes) does not match bound output tensor size (" +
+              std::to_string(out_bytes) + " bytes)");
+  }
   auto res = const_node->cast_vector<T>();
   T* tensor_data = out_tensor.GetTensorMutableData<T>();
   std::copy(res.begin(), res.end(), tensor_data);
@@ -322,12 +245,9 @@ void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
 }
 
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
-                            std::ostream& stream, std::string deviceName) {
-  int64_t totalTime = 0;
+                            std::ostream& stream) {
   // Print performance counts
-  stream << std::endl
-         << "performance counts:" << std::endl
-         << std::endl;
+  stream << "Layer Name,Status,Layer Type,Real Time (us),Exec Type" << std::endl;
 
   for (const auto& it : performanceMap) {
     std::string toPrint(it.node_name);
@@ -337,107 +257,33 @@ void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
       toPrint = it.node_name.substr(0, maxLayerName - 4);
       toPrint += "...";
     }
-    stream << std::setw(maxLayerName) << std::left << toPrint;
+    stream << toPrint << ",";
+
     switch (it.status) {
       case OVProfilingInfo::Status::EXECUTED:
-        stream << std::setw(15) << std::left << "EXECUTED";
+        stream << "EXECUTED"
+               << ",";
         break;
       case OVProfilingInfo::Status::NOT_RUN:
-        stream << std::setw(15) << std::left << "NOT_RUN";
+        stream << "NOT_RUN"
+               << ",";
         break;
       case OVProfilingInfo::Status::OPTIMIZED_OUT:
-        stream << std::setw(15) << std::left << "OPTIMIZED_OUT";
+        stream << "OPTIMIZED_OUT"
+               << ",";
         break;
     }
-    stream << std::setw(30) << std::left << "layerType: " + std::string(it.node_type) + " ";
-    stream << std::setw(20) << std::left << "realTime: " + std::to_string(it.real_time.count());
-    stream << std::setw(20) << std::left << "cpu: " + std::to_string(it.cpu_time.count());
-    stream << " execType: " << it.exec_type << std::endl;
-    if (it.real_time.count() > 0) {
-      totalTime += it.real_time.count();
-    }
-  }
-  stream << std::setw(20) << "Total time: " + std::to_string(totalTime) << " microseconds" << std::endl;
-  std::cout << std::endl;
-  std::cout << "Full device name: " << deviceName << std::endl;
-  std::cout << std::endl;
-}
-
-void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std::string deviceName) {
-  auto performanceMap = request->GetNewObj().get_profiling_info();
-  printPerformanceCounts(performanceMap, stream, std::move(deviceName));
-}
-
-ov::element::Type GetOpenVINOElementType(ONNX_NAMESPACE::TensorProto_DataType dt) {
-  static std::unordered_map<ONNX_NAMESPACE::TensorProto_DataType, ov::element::Type> map{
-      {ONNX_NAMESPACE::TensorProto_DataType_FLOAT, ov::element::f32},
-      {ONNX_NAMESPACE::TensorProto_DataType_UINT8, ov::element::u8},
-      {ONNX_NAMESPACE::TensorProto_DataType_INT8, ov::element::i8},
-      {ONNX_NAMESPACE::TensorProto_DataType_UINT16, ov::element::u16},
-      {ONNX_NAMESPACE::TensorProto_DataType_INT16, ov::element::i16},
-      {ONNX_NAMESPACE::TensorProto_DataType_INT32, ov::element::i32},
-      {ONNX_NAMESPACE::TensorProto_DataType_INT64, ov::element::i64},
-      {ONNX_NAMESPACE::TensorProto_DataType_STRING, ov::element::string},
-      {ONNX_NAMESPACE::TensorProto_DataType_BOOL, ov::element::boolean},
-      {ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, ov::element::f16},
-      {ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, ov::element::f64},
-      {ONNX_NAMESPACE::TensorProto_DataType_UINT32, ov::element::u32},
-      {ONNX_NAMESPACE::TensorProto_DataType_UINT64, ov::element::u64},
-      //{ONNX_NAMESPACE::TensorProto_DataType_COMPLEX64, ov::element::undefined},
-      //{ONNX_NAMESPACE::TensorProto_DataType_COMPLEX128, ov::element::undefined},
-      {ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16, ov::element::bf16},
-      //{ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN, ov::element::undefined},
-      //{ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ, ov::element::undefined},
-      {ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2, ov::element::f8e5m2},
-      //{ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ, ov::element::undefined},
-      {ONNX_NAMESPACE::TensorProto_DataType_UINT4, ov::element::u4},
-      {ONNX_NAMESPACE::TensorProto_DataType_INT4, ov::element::i4},
-  };
-
-  if (auto result = map.find(dt); result != map.end()) {
-    return result->second;
-  } else {
-    throw std::runtime_error("Unsupported ONNX data type: " + std::to_string(dt));
+    stream << std::string(it.node_type) << ",";
+    stream << it.real_time.count() << ",";
+    stream << std::string(it.exec_type) << std::endl;
   }
 }
 
-// Function to handle tensor creation from external data
-void CreateOVTensors(const std::string& device_name,
-                     SharedContext::SharedWeights::Metadata::Map& metadata_map,
-                     SharedContext::SharedWeights::WeightsFile& weights) {
-  for (auto& [key, value] : metadata_map) {
-    if (value.tensor) continue;
-
-    // Get element data type
-    auto onnx_element_type = (ONNX_NAMESPACE::TensorProto_DataType)value.element_type;
-
-    ov::element::Type ov_elementType = GetOpenVINOElementType(onnx_element_type);  // Map to OpenVINO data type
-
-    // Create OpenVINO Tensor
-    if (device_name == "NPU") {
-      // Use remote tensors
-      auto npu_context = OVCore::Get()->core.get_default_context("NPU").as<ov::intel_npu::level_zero::ZeroContext>();
-      auto&& remote_tensor = npu_context.create_l0_host_tensor(ov_elementType, value.dimensions, ov::intel_npu::TensorType::INPUT);
-
-      // Copy data to remote tensor
-      weights.load_weights(value.data_offset, remote_tensor.get(), value.size);
-      value.tensor = std::make_shared<ov::Tensor>(remote_tensor);
-    } else {
-      // Use vanilla tensors
-      value.tensor = std::make_shared<ov::Tensor>(ov_elementType, value.dimensions);
-      weights.load_weights(value.data_offset, value.tensor->data(), value.size);
-    }
-    ORT_ENFORCE(value.tensor->get_byte_size() == value.size, "Unexpected tensor size mismatch");
+void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream) {
+  auto performanceMap = request->GetInfReq().get_profiling_info();
+  if (!performanceMap.empty()) {
+    printPerformanceCounts(performanceMap, stream);
   }
-}
-
-void DestroyOVTensors(SharedContext::SharedWeights::Metadata::Map& metadata_map) {
-  for (auto& [key, value] : metadata_map) {
-    if (value.tensor) {
-      value.tensor.reset();
-    }
-  }
-  metadata_map.clear();
 }
 
 bool IsModelStreamXML(std::istream& model_stream) {

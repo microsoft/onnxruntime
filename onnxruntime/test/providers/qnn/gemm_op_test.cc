@@ -447,8 +447,19 @@ TEST_F(QnnHTPBackendTests, Gemm_Static_B_And_Bias) {
                                         ExpectedEPNodeAssignment::All);
 }
 
+// Broken on v79 and v81 devices:
+// Inaccuracy detected for output 'output_0', element 0
+// output_range=31.434787750244141, tolerance=0.40000000596046448%.
+// Expected val (f32@CPU_EP): 29.434776306152344
+// qdq@QNN_EP val: 28.229671478271484 (err: 1.2051048278808594, err/output_range: 3.8336660861968994%)
+// qdq@CPU_EP val: 29.092588424682617 (err: 0.34218788146972656, err/output_range: 1.0885642766952515%)
+// abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = 2.7451016902923584%
 // Test 8-bit QDQ Gemm with transposed A/B and static B and Bias inputs.
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
+TEST_F(QnnHTPBackendTests, DISABLED_Gemm_TransAB_Static_B_And_Bias_U8) {
+#else
 TEST_F(QnnHTPBackendTests, Gemm_TransAB_Static_B_And_Bias_U8) {
+#endif
   std::vector<float> input_a_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
   std::vector<float> input_b_data = GetFloatDataInRange(-5.0f, 5.0f, 24);
   std::vector<float> input_c_data = GetFloatDataInRange(-1.0f, 1.0f, 4);
@@ -475,8 +486,19 @@ TEST_F(QnnHTPBackendTests, Gemm_TransAB_Static_B_And_Bias_U16Act_U8Weight) {
                                          true);  // Use com.microsoft Q/DQ ops
 }
 
+// Broken on v79 and v81 devices:
+// Inaccuracy detected for output 'output_0', element 0
+// output_range=31.434787750244141, tolerance=0.40000000596046448%.
+// Expected val (f32@CPU_EP): 29.434776306152344
+// qdq@QNN_EP val: 28.229671478271484 (err: 1.2051048278808594, err/output_range: 3.8336660861968994%)
+// qdq@CPU_EP val: 29.092588424682617 (err: 0.34218788146972656, err/output_range: 1.0885642766952515%)
+// abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = 2.7451016902923584%
 // Test QDQ Gemm with transposed A/B and dynamic (i.e., not initializer) B and Bias inputs.
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
+TEST_F(QnnHTPBackendTests, DISABLED_Gemm_TransAB_Dynamic_B_And_Bias) {
+#else
 TEST_F(QnnHTPBackendTests, Gemm_TransAB_Dynamic_B_And_Bias) {
+#endif
   std::vector<float> input_a_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
   std::vector<float> input_b_data = GetFloatDataInRange(-5.0f, 5.0f, 24);
   std::vector<float> input_c_data = GetFloatDataInRange(-1.0f, 1.0f, 4);

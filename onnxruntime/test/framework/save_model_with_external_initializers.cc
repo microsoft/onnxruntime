@@ -9,7 +9,7 @@
 #include "core/graph/model_saving_options.h"
 #include "core/framework/tensorprotoutils.h"
 #include "test/test_environment.h"
-#include "test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
 
 #include "gtest/gtest.h"

@@ -15,7 +15,12 @@ Abstract:
 
 --*/
 
+#define PREFETCH_ADDR(addr) \
+    asm volatile("dcbt 0, %0" ::"r"(addr) : "memory");
+
 #include "SgemmKernelpower.h"
+extern "C" void
+PackAKernelPOWER10(__vector float* D, const float* A, size_t lda, size_t k, size_t RowCount);
 struct MlasSgemmBroadcastAElementsMMA
 {
     template<size_t RowCount, size_t Row>
@@ -28,7 +33,7 @@ struct MlasSgemmBroadcastAElementsMMA
         size_t lda
         )
     {
-        ABroadcast[0][Row] = A [Row * lda];
+        ABroadcast[0] = vec_insert(A[Row * lda], ABroadcast[0], Row);
     }
 };
 
@@ -143,32 +148,28 @@ struct MlasSgemmStoreScalarMMA
     }
 };
 
-template<size_t RowCount>
+template <size_t RowCount>
 MLAS_FORCEINLINE
-size_t
-MlasSgemmMMAProcessCount(
-    const float* A,
-    const float* B,
-    float* C,
-    size_t CountM,
-    size_t CountK,
-    size_t CountN,
-    size_t lda,
-    size_t ldc,
-    MLAS_FLOAT32X4 AlphaBroadcast,
-    bool ZeroMode
+    size_t
+    MlasSgemmMMAProcessCount(
+        __vector float* Pa,
+        const float* B,
+        float* C,
+        size_t CountM,
+        size_t CountK,
+        size_t CountN,
+        size_t ldc,
+        MLAS_FLOAT32X4 AlphaBroadcast,
+        bool ZeroMode
     )
 {
     do {
-
-        const float* a = A;
+        __vector float* pa1 = Pa;
         size_t k = CountK;
 
-        MLAS_FLOAT32X4 Accumulators[2][RowCount] = {{ 0 }};
+        MLAS_FLOAT32X4 Accumulators[2][RowCount] = {{0}};
         MLAS_FLOAT32X4 Result[RowCount];
-        MLAS_FLOAT32X4 AElements[RowCount];
-        MLAS_FLOAT32X4 ABroadcast[RowCount] = { 0 };
-        MLAS_FLOAT32X4 A2Broadcast[RowCount] = { 0 };
+        MLAS_FLOAT32X4 ABroadcast[RowCount] = {0};
         __vector_quad acc[8];
 
         //
@@ -186,30 +187,61 @@ MlasSgemmMMAProcessCount(
         //
         // Compute the output block.
         //
-        while (k >= 4) {
-
-            MlasLoopUnroll<RowCount, MlasFgemmLoadAElements>()(AElements, a, lda);
-            MlasSgemmComputeAElements<RowCount>(AElements, ABroadcast);
+        while (k >= 8) {
             if (CountM == 8) {
-                MlasLoopUnroll<RowCount, MlasFgemmLoadAElements>()(AElements, a + ( lda * 4), lda);
-                MlasSgemmComputeAElements<RowCount>(AElements, A2Broadcast);
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[0], pa1[4], B, CountM);
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[1], pa1[5], B + 16, CountM);
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[2], pa1[6], B + 32, CountM);
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[3], pa1[7], B + 48, CountM);
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[8], pa1[12], B + 64, CountM);
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[9], pa1[13], B + 80, CountM);
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[10], pa1[14], B + 96, CountM);
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[11], pa1[15], B + 112, CountM);
+                B += 128;
+                pa1 += 16;
+                k -= 8;
+            } else {
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[0], ABroadcast[0], B, CountM);
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[1], ABroadcast[1], B + 16, CountM);
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[2], ABroadcast[2], B + 32, CountM);
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[3], ABroadcast[3], B + 48, CountM);
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[4], ABroadcast[0], B + 64, CountM);
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[5], ABroadcast[1], B + 80, CountM);
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[6], ABroadcast[2], B + 96, CountM);
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[7], ABroadcast[3], B + 112, CountM);
+                B += 128;
+                pa1 += 8;
+                k -= 8;
             }
-            MlasSgemmComputeBlockMMA<RowCount>(&acc[0], ABroadcast[0], A2Broadcast[0], B, CountM);
-            MlasSgemmComputeBlockMMA<RowCount>(&acc[0], ABroadcast[1], A2Broadcast[1], B+16, CountM);
-            MlasSgemmComputeBlockMMA<RowCount>(&acc[0], ABroadcast[2], A2Broadcast[2], B+32, CountM);
-            MlasSgemmComputeBlockMMA<RowCount>(&acc[0], ABroadcast[3], A2Broadcast[3], B+48, CountM);
-            B += 16 * 4;
-            a += 4;
-            k -= 4;
         }
 
-        while (k > 0) {
-            MlasLoopUnroll<RowCount, MlasSgemmBroadcastAElementsMMA>()(ABroadcast, a, lda);
-            if (CountM == 8)  {
-                MlasLoopUnroll<RowCount, MlasSgemmBroadcastAElementsMMA>()(A2Broadcast, a + (lda * 4), lda);
+        while (k >= 4) {
+            if (CountM == 8) {
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[0], pa1[4], B, CountM);
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[1], pa1[5], B + 16, CountM);
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[2], pa1[6], B + 32, CountM);
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[3], pa1[7], B + 48, CountM);
+                B += 16 * 4;
+                pa1 += 8;
+                k -= 4;
+            } else {
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[0], ABroadcast[0], B, CountM);
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[1], ABroadcast[1], B + 16, CountM);
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[2], ABroadcast[2], B + 32, CountM);
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[3], ABroadcast[3], B + 48, CountM);
+                B += 16 * 4;
+                pa1 += 4;
+                k -= 4;
             }
-            MlasSgemmComputeBlockMMA<RowCount>(&acc[0], ABroadcast[0], A2Broadcast[0], B, CountM);
-            a += 1;
+        }
+        while (k > 0) {
+            if (CountM == 8) {
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[0], pa1[1], B, CountM);
+                pa1 += 2;
+            } else {
+                MlasSgemmComputeBlockMMA<RowCount>(&acc[0], pa1[0], ABroadcast[0], B, CountM);
+                pa1 += 1;
+            }
             B += 16;
             k -= 1;
         }
@@ -340,6 +372,236 @@ MlasSgemmMMAProcessCount(
     return CountM;
 }
 
+template <size_t RowCount>
+MLAS_FORCEINLINE void
+MlasSgemmPackA(
+    __vector float* D,
+    const float* A,
+    size_t lda,
+    size_t k
+)
+{
+    __vector float a1, a2;
+    const float* a = A;
+    MLAS_FLOAT32X4 AElements[RowCount] = {};
+    MLAS_FLOAT32X4 A2Elements[RowCount] = {};
+    while (k >= 16)
+
+    {
+        PREFETCH_ADDR(a);
+        PREFETCH_ADDR(a + lda);
+        PREFETCH_ADDR(a + 2 * lda);
+        PREFETCH_ADDR(a + 3 * lda);
+        PREFETCH_ADDR(a + 4 * lda);
+        PREFETCH_ADDR(a + 5 * lda);
+        PREFETCH_ADDR(a + 6 * lda);
+        PREFETCH_ADDR(a + 7 * lda);
+        MlasLoopUnroll<4, MlasFgemmLoadAElements>()(AElements, a, lda);
+        a1 = vec_mergee(AElements[0], AElements[1]);
+        a2 = vec_mergee(AElements[2], AElements[3]);
+        D[0] = vec_xxpermdi(a1, a2, 0);
+        D[2] = vec_xxpermdi(a1, a2, 3);
+        a1 = vec_mergeo(AElements[0], AElements[1]);
+        a2 = vec_mergeo(AElements[2], AElements[3]);
+        D[1] = vec_xxpermdi(a1, a2, 0);
+        D[3] = vec_xxpermdi(a1, a2, 3);
+        if (RowCount == 8) {
+            MlasLoopUnroll<4, MlasFgemmLoadAElements>()(AElements, a + 4, lda);
+            a1 = vec_mergee(AElements[0], AElements[1]);
+            a2 = vec_mergee(AElements[2], AElements[3]);
+            D[8] = vec_xxpermdi(a1, a2, 0);
+            D[10] = vec_xxpermdi(a1, a2, 3);
+            a1 = vec_mergeo(AElements[0], AElements[1]);
+            a2 = vec_mergeo(AElements[2], AElements[3]);
+            D[9] = vec_xxpermdi(a1, a2, 0);
+            D[11] = vec_xxpermdi(a1, a2, 3);
+            MlasLoopUnroll<4, MlasFgemmLoadAElements>()(AElements, a + 8, lda);
+            a1 = vec_mergee(AElements[0], AElements[1]);
+            a2 = vec_mergee(AElements[2], AElements[3]);
+            D[16] = vec_xxpermdi(a1, a2, 0);
+            D[18] = vec_xxpermdi(a1, a2, 3);
+            a1 = vec_mergeo(AElements[0], AElements[1]);
+            a2 = vec_mergeo(AElements[2], AElements[3]);
+            D[17] = vec_xxpermdi(a1, a2, 0);
+            D[19] = vec_xxpermdi(a1, a2, 3);
+            MlasLoopUnroll<4, MlasFgemmLoadAElements>()(AElements, a + 12, lda);
+            a1 = vec_mergee(AElements[0], AElements[1]);
+            a2 = vec_mergee(AElements[2], AElements[3]);
+            D[24] = vec_xxpermdi(a1, a2, 0);
+            D[26] = vec_xxpermdi(a1, a2, 3);
+            a1 = vec_mergeo(AElements[0], AElements[1]);
+            a2 = vec_mergeo(AElements[2], AElements[3]);
+            D[25] = vec_xxpermdi(a1, a2, 0);
+            D[27] = vec_xxpermdi(a1, a2, 3);
+            MlasLoopUnroll<4, MlasFgemmLoadAElements>()(A2Elements, a + (lda * 4), lda);
+            a1 = vec_mergee(A2Elements[0], A2Elements[1]);
+            a2 = vec_mergee(A2Elements[2], A2Elements[3]);
+            D[4] = vec_xxpermdi(a1, a2, 0);
+            D[6] = vec_xxpermdi(a1, a2, 3);
+            a1 = vec_mergeo(A2Elements[0], A2Elements[1]);
+            a2 = vec_mergeo(A2Elements[2], A2Elements[3]);
+            D[5] = vec_xxpermdi(a1, a2, 0);
+            D[7] = vec_xxpermdi(a1, a2, 3);
+            MlasLoopUnroll<4, MlasFgemmLoadAElements>()(A2Elements, (a + 4) + (lda * 4), lda);
+            a1 = vec_mergee(A2Elements[0], A2Elements[1]);
+            a2 = vec_mergee(A2Elements[2], A2Elements[3]);
+            D[12] = vec_xxpermdi(a1, a2, 0);
+            D[14] = vec_xxpermdi(a1, a2, 3);
+            a1 = vec_mergeo(A2Elements[0], A2Elements[1]);
+            a2 = vec_mergeo(A2Elements[2], A2Elements[3]);
+            D[13] = vec_xxpermdi(a1, a2, 0);
+            D[15] = vec_xxpermdi(a1, a2, 3);
+            MlasLoopUnroll<4, MlasFgemmLoadAElements>()(A2Elements, (a + 8) + (lda * 4), lda);
+            a1 = vec_mergee(A2Elements[0], A2Elements[1]);
+            a2 = vec_mergee(A2Elements[2], A2Elements[3]);
+            D[20] = vec_xxpermdi(a1, a2, 0);
+            D[22] = vec_xxpermdi(a1, a2, 3);
+            a1 = vec_mergeo(A2Elements[0], A2Elements[1]);
+            a2 = vec_mergeo(A2Elements[2], A2Elements[3]);
+            D[21] = vec_xxpermdi(a1, a2, 0);
+            D[23] = vec_xxpermdi(a1, a2, 3);
+            MlasLoopUnroll<4, MlasFgemmLoadAElements>()(A2Elements, (a + 12) + (lda * 4), lda);
+            a1 = vec_mergee(A2Elements[0], A2Elements[1]);
+            a2 = vec_mergee(A2Elements[2], A2Elements[3]);
+            D[28] = vec_xxpermdi(a1, a2, 0);
+            D[30] = vec_xxpermdi(a1, a2, 3);
+            a1 = vec_mergeo(A2Elements[0], A2Elements[1]);
+            a2 = vec_mergeo(A2Elements[2], A2Elements[3]);
+            D[29] = vec_xxpermdi(a1, a2, 0);
+            D[31] = vec_xxpermdi(a1, a2, 3);
+            D += 32;
+        } else {
+            MlasLoopUnroll<4, MlasFgemmLoadAElements>()(AElements, a + 4, lda);
+            a1 = vec_mergee(AElements[0], AElements[1]);
+            a2 = vec_mergee(AElements[2], AElements[3]);
+            D[4] = vec_xxpermdi(a1, a2, 0);
+            D[6] = vec_xxpermdi(a1, a2, 3);
+            a1 = vec_mergeo(AElements[0], AElements[1]);
+            a2 = vec_mergeo(AElements[2], AElements[3]);
+            D[5] = vec_xxpermdi(a1, a2, 0);
+            D[7] = vec_xxpermdi(a1, a2, 3);
+            MlasLoopUnroll<4, MlasFgemmLoadAElements>()(AElements, a + 8, lda);
+            a1 = vec_mergee(AElements[0], AElements[1]);
+            a2 = vec_mergee(AElements[2], AElements[3]);
+            D[8] = vec_xxpermdi(a1, a2, 0);
+            D[10] = vec_xxpermdi(a1, a2, 3);
+            a1 = vec_mergeo(AElements[0], AElements[1]);
+            a2 = vec_mergeo(AElements[2], AElements[3]);
+            D[9] = vec_xxpermdi(a1, a2, 0);
+            D[11] = vec_xxpermdi(a1, a2, 3);
+            MlasLoopUnroll<4, MlasFgemmLoadAElements>()(AElements, a + 12, lda);
+            a1 = vec_mergee(AElements[0], AElements[1]);
+            a2 = vec_mergee(AElements[2], AElements[3]);
+            D[12] = vec_xxpermdi(a1, a2, 0);
+            D[14] = vec_xxpermdi(a1, a2, 3);
+            a1 = vec_mergeo(AElements[0], AElements[1]);
+            a2 = vec_mergeo(AElements[2], AElements[3]);
+            D[13] = vec_xxpermdi(a1, a2, 0);
+            D[15] = vec_xxpermdi(a1, a2, 3);
+            D += 16;
+        }
+        k -= 16;
+        a += 16;
+    }
+
+    while (k >= 8) {
+        MlasLoopUnroll<4, MlasFgemmLoadAElements>()(AElements, a, lda);
+        a1 = vec_mergee(AElements[0], AElements[1]);
+        a2 = vec_mergee(AElements[2], AElements[3]);
+        D[0] = vec_xxpermdi(a1, a2, 0);
+        D[2] = vec_xxpermdi(a1, a2, 3);
+        a1 = vec_mergeo(AElements[0], AElements[1]);
+        a2 = vec_mergeo(AElements[2], AElements[3]);
+        D[1] = vec_xxpermdi(a1, a2, 0);
+        D[3] = vec_xxpermdi(a1, a2, 3);
+        if (RowCount == 8) {
+            MlasLoopUnroll<4, MlasFgemmLoadAElements>()(AElements, a + 4, lda);
+            a1 = vec_mergee(AElements[0], AElements[1]);
+            a2 = vec_mergee(AElements[2], AElements[3]);
+            D[8] = vec_xxpermdi(a1, a2, 0);
+            D[10] = vec_xxpermdi(a1, a2, 3);
+            a1 = vec_mergeo(AElements[0], AElements[1]);
+            a2 = vec_mergeo(AElements[2], AElements[3]);
+            D[9] = vec_xxpermdi(a1, a2, 0);
+            D[11] = vec_xxpermdi(a1, a2, 3);
+            MlasLoopUnroll<4, MlasFgemmLoadAElements>()(A2Elements, a + (lda * 4), lda);
+            a1 = vec_mergee(A2Elements[0], A2Elements[1]);
+            a2 = vec_mergee(A2Elements[2], A2Elements[3]);
+            D[4] = vec_xxpermdi(a1, a2, 0);
+            D[6] = vec_xxpermdi(a1, a2, 3);
+            a1 = vec_mergeo(A2Elements[0], A2Elements[1]);
+            a2 = vec_mergeo(A2Elements[2], A2Elements[3]);
+            D[5] = vec_xxpermdi(a1, a2, 0);
+            D[7] = vec_xxpermdi(a1, a2, 3);
+            MlasLoopUnroll<4, MlasFgemmLoadAElements>()(A2Elements, (a + 4) + (lda * 4), lda);
+            a1 = vec_mergee(A2Elements[0], A2Elements[1]);
+            a2 = vec_mergee(A2Elements[2], A2Elements[3]);
+            D[12] = vec_xxpermdi(a1, a2, 0);
+            D[14] = vec_xxpermdi(a1, a2, 3);
+            a1 = vec_mergeo(A2Elements[0], A2Elements[1]);
+            a2 = vec_mergeo(A2Elements[2], A2Elements[3]);
+            D[13] = vec_xxpermdi(a1, a2, 0);
+            D[15] = vec_xxpermdi(a1, a2, 3);
+            D += 16;
+        } else {
+            MlasLoopUnroll<4, MlasFgemmLoadAElements>()(AElements, a + 4, lda);
+            a1 = vec_mergee(AElements[0], AElements[1]);
+            a2 = vec_mergee(AElements[2], AElements[3]);
+            D[4] = vec_xxpermdi(a1, a2, 0);
+            D[6] = vec_xxpermdi(a1, a2, 3);
+            a1 = vec_mergeo(AElements[0], AElements[1]);
+            a2 = vec_mergeo(AElements[2], AElements[3]);
+            D[5] = vec_xxpermdi(a1, a2, 0);
+            D[7] = vec_xxpermdi(a1, a2, 3);
+            D += 8;
+        }
+        a += 8;
+        k -= 8;
+    }
+
+    while (k >= 4) {
+        MlasLoopUnroll<4, MlasFgemmLoadAElements>()(AElements, a, lda);
+        a1 = vec_mergee(AElements[0], AElements[1]);
+        a2 = vec_mergee(AElements[2], AElements[3]);
+        D[0] = vec_xxpermdi(a1, a2, 0);
+        D[2] = vec_xxpermdi(a1, a2, 3);
+        a1 = vec_mergeo(AElements[0], AElements[1]);
+        a2 = vec_mergeo(AElements[2], AElements[3]);
+        D[1] = vec_xxpermdi(a1, a2, 0);
+        D[3] = vec_xxpermdi(a1, a2, 3);
+        if (RowCount == 8) {
+            MlasLoopUnroll<4, MlasFgemmLoadAElements>()(A2Elements, a + (lda * 4), lda);
+            a1 = vec_mergee(A2Elements[0], A2Elements[1]);
+            a2 = vec_mergee(A2Elements[2], A2Elements[3]);
+            D[4] = vec_xxpermdi(a1, a2, 0);
+            D[6] = vec_xxpermdi(a1, a2, 3);
+            a1 = vec_mergeo(A2Elements[0], A2Elements[1]);
+            a2 = vec_mergeo(A2Elements[2], A2Elements[3]);
+            D[5] = vec_xxpermdi(a1, a2, 0);
+            D[7] = vec_xxpermdi(a1, a2, 3);
+            D += 8;
+        } else
+            D += 4;
+        a += 4;
+        k -= 4;
+    }
+
+    /* When k is less than 4, copy a single element from each row. */
+    while (k > 0) {
+        MlasLoopUnroll<4, MlasSgemmBroadcastAElementsMMA>()(AElements, a, lda);
+        D[0] = AElements[0];
+        if (RowCount == 8) {
+            MlasLoopUnroll<4, MlasSgemmBroadcastAElementsMMA>()(A2Elements, a + (lda * 4), lda);
+            D[1] = A2Elements[0];
+            D += 2;
+        } else {
+            D += 1;
+        }
+        a += 1;
+        k -= 1;
+    }
+}
+
 size_t
 MLASCALL
 MlasSgemmKernelPOWER10(
@@ -396,17 +658,40 @@ Return Value:
 --*/
 {
     size_t RowsHandled;
+    size_t index = CountK * 2;
+
+    MLAS_FLOAT32X4* PackA =
+        reinterpret_cast<MLAS_FLOAT32X4*>(alloca(sizeof(MLAS_FLOAT32X4) * index));
     MLAS_FLOAT32X4 AlphaBroadcast = MlasBroadcastFloat32x4(alpha);
 
     if (CountM >= 8) {
-        RowsHandled = MlasSgemmMMAProcessCount<4>(A, B, C, 8 ,CountK, CountN, lda, ldc, AlphaBroadcast, ZeroMode);
+#ifdef _AIX
+        MlasSgemmPackA<8>(PackA, A, lda, CountK);
+#else
+        if (CountK >= 16 && !(CountK % 16)) {
+            PackAKernelPOWER10(PackA, A, lda, CountK, 8);
+        } else {
+            MlasSgemmPackA<8>(PackA, A, lda, CountK);
+        }
+#endif
+
+        RowsHandled = MlasSgemmMMAProcessCount<4>(PackA, B, C, 8, CountK, CountN, ldc, AlphaBroadcast, ZeroMode);
     } else if (CountM >= 4) {
-        RowsHandled = MlasSgemmMMAProcessCount<4>(A, B, C, 4, CountK, CountN, lda, ldc, AlphaBroadcast, ZeroMode);
+        memset(PackA + CountK, 0, sizeof(MLAS_FLOAT32X4) * CountK);
+#ifdef _AIX
+        MlasSgemmPackA<4>(PackA, A, lda, CountK);
+#else
+        if (CountK >= 16 && !(CountK % 16)) {
+            PackAKernelPOWER10(PackA, A, lda, CountK, 4);
+        } else {
+            MlasSgemmPackA<4>(PackA, A, lda, CountK);
+        }
+#endif
+        RowsHandled = MlasSgemmMMAProcessCount<4>(PackA, B, C, 4, CountK, CountN, ldc, AlphaBroadcast, ZeroMode);
     } else if (CountM >= 2) {
         RowsHandled = MlasSgemmProcessCount<2>(A, B, C, CountK, CountN, lda, ldc, AlphaBroadcast, ZeroMode);
     } else {
         RowsHandled = MlasSgemmProcessCount<1>(A, B, C, CountK, CountN, lda, ldc, AlphaBroadcast, ZeroMode);
     }
-
     return RowsHandled;
 }

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 
 #include <ctime>
 #include <cstdlib>
@@ -10,23 +10,14 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/util/include/default_providers.h"
-#ifdef USE_ROCM
-#include "core/providers/rocm/shared_inc/rocm_utils.h"
-#else
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
-#endif
 
 namespace onnxruntime {
 namespace contrib {
 namespace test {
 
-#ifdef USE_ROCM
-using onnxruntime::rocm::BitmaskElementType;
-using onnxruntime::rocm::kNumBitsPerBitmaskElement;
-#else
 using onnxruntime::cuda::BitmaskElementType;
 using onnxruntime::cuda::kNumBitsPerBitmaskElement;
-#endif
 
 namespace {
 
@@ -85,8 +76,6 @@ void RunTest(const std::vector<int64_t>& input_dims) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
     execution_providers.push_back(onnxruntime::test::DefaultCudaExecutionProvider());
-#elif USE_ROCM
-    execution_providers.push_back(onnxruntime::test::DefaultRocmExecutionProvider());
 #endif
     test.Run(onnxruntime::test::OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }

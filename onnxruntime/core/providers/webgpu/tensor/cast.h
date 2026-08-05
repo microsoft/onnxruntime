@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "core/framework/kernel_registry.h"
+#include "core/framework/op_kernel.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
@@ -10,14 +12,25 @@ namespace webgpu {
 
 class CastProgram final : public Program<CastProgram> {
  public:
-  CastProgram(int32_t to) : Program{"Cast"}, to_{to} {}
+  CastProgram(int32_t to, bool is_from_int64, bool is_from_float, bool is_from_unsigned, bool is_from_uint8)
+      : Program{"Cast"},
+        to_{to},
+        is_from_int64_{is_from_int64},
+        is_from_float_{is_from_float},
+        is_from_unsigned_{is_from_unsigned},
+        is_from_uint8_{is_from_uint8} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32},
+                                          {"output_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   int32_t to_;
+  bool is_from_int64_;
+  bool is_from_float_;
+  bool is_from_unsigned_;
+  bool is_from_uint8_;
 };
 
 class Cast final : public WebGpuKernel {
@@ -36,6 +49,10 @@ class Cast final : public WebGpuKernel {
  private:
   int32_t to_;
 };
+
+// Create Cast kernel info with appropriate type constraints based on int64 support
+template <int StartVersion, int EndVersion = StartVersion>
+KernelCreateInfo CreateCastKernelInfo(bool enable_int64);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

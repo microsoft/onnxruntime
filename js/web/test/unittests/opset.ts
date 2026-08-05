@@ -39,7 +39,9 @@ function checkConsistency(rules: readonly OpSet.ResolveRule[]) {
         } catch {
           continue;
         }
-        expect(match, `multiple rules overlapped: opType='${type}', domain='', version=${i}`).to.be.false;
+        if (match) {
+          throw new Error(`multiple rules overlapped: opType='${type}', domain='', version=${i}`);
+        }
         match = true;
       }
     }

@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-using sw = SharedContext::SharedWeights;
+class SharedContext;
 
 // Creates a new model without the DQ/Q operators in the src graph as per pre-defined rulesets
 Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
@@ -18,8 +18,7 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
                                        bool enable_ovep_weight_sharing,
                                        bool enable_ovep_qdq_optimizer,
                                        /*out*/ std::unique_ptr<onnxruntime::Model>& model,
-                                       /*out*/ sw& shared_weights);
+                                       /*out*/ SharedContext& shared_context);
 
-bool dumpMetaDataMapToBinary(const sw::Metadata::Map& shared_weights, const std::string& filename);
 }  // namespace openvino_ep
 }  // namespace onnxruntime

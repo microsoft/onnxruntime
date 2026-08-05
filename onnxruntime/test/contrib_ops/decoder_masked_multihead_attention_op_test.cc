@@ -933,5 +933,33 @@ TEST(DecoderMaskedMultiHeadAttentionTest, cpu_self_attn_fp32) {
   TestDecoderMaskedMultiHeadAttention<float>(/* is_cross_attn = */ false, /* use_cuda = */ false);
 }
 
+TEST(DecoderMaskedMultiHeadAttentionTest, cpu_cache_indirection_beam_index_out_of_range) {
+  OpTester tester("DecoderMaskedMultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 1);
+  tester.AddAttribute<int64_t>("past_present_share_buffer", 1);
+
+  tester.AddInput<float>("query", {2, 1, 4}, std::vector<float>(8, 0.1f));
+  tester.AddInput<float>("key", {2, 1, 4}, std::vector<float>(8, 0.2f));
+  tester.AddInput<float>("value", {2, 1, 4}, std::vector<float>(8, 0.3f));
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddInput<float>("past_key", {2, 1, 4, 4}, std::vector<float>(32, 0.4f));
+  tester.AddInput<float>("past_value", {2, 1, 4, 4}, std::vector<float>(32, 0.5f));
+  tester.AddInput<int32_t>("past_sequence_length", {1}, {2});
+  tester.AddInput<int32_t>("beam_width", {1}, {2});
+  tester.AddInput<int32_t>("cache_indirection", {1, 2, 4}, {0, 2, 0, 0, 0, 0, 0, 0});
+  tester.AddOptionalInputEdge<float>();
+
+  tester.AddOutput<float>("output", {2, 1, 4}, std::vector<float>(8, 0.0f));
+  tester.AddOutput<float>("present_key", {2, 1, 4, 4}, std::vector<float>(32, 0.0f));
+  tester.AddOutput<float>("present_value", {2, 1, 4, 4}, std::vector<float>(32, 0.0f));
+  tester.AddOptionalOutputEdge<float>();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "cache_indirection beam index out of range",
+             {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

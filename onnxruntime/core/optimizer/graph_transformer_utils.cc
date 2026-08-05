@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <variant>
 
+#include "core/framework/execution_providers.h"
+
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/matmul_nbits_fusion.h"
 #include "core/optimizer/nhwc_transformer.h"
@@ -17,6 +19,8 @@
 #include "core/platform/threadpool.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
+
+#include "core/optimizer/dq_matmulnbits_fusion.h"
 
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/attention_fusion.h"
@@ -53,6 +57,9 @@
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_activation_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
+#include "core/optimizer/group_query_attention_pre_norm_fusion.h"
+#include "core/optimizer/matmul_nbits_qkv_fusion.h"
+#include "core/optimizer/matmul_nbits_mlp_fusion.h"
 #include "core/optimizer/matmul_bn_fusion.h"
 #include "core/optimizer/matmul_integer_to_float.h"
 #include "core/optimizer/matmul_scale_fusion.h"
@@ -76,10 +83,11 @@
 #include "core/optimizer/quick_gelu_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
-#include "core/optimizer/rocm_blas_alt_impl.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/optimizer/bias_skip_layer_norm_fusion.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
+#include "core/optimizer/slice_concat_to_space_to_depth_fusion.h"
 #include "core/optimizer/transpose_optimizer.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #ifdef ENABLE_TRAINING
@@ -205,7 +213,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     const IExecutionProvider& cpu_execution_provider, /*required by constant folding*/
     const logging::Logger& logger,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable,
-    [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool) {
+    [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool,
+    [[maybe_unused]] const ExecutionProviders* execution_providers) {
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   const bool disable_quant_qdq =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
@@ -253,13 +262,23 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
       transformers.emplace_back(std::make_unique<ConstantSharing>(no_limit_empty_ep_list, excluded_initializers));
       transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>());
-      transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq,
+
+      const bool disable_qdq_constant_folding =
+          session_options.config_options.GetConfigOrDefault(
+              kOrtSessionOptionsDisableQDQConstantFolding, "0") == "1";
+      // When QDQ fusion is enabled (!disable_quant_qdq), DQ nodes are always protected from constant folding
+      // to preserve QDQ node units for downstream fusion optimizers.
+      // When QDQ fusion is disabled (disable_quant_qdq), DQ nodes are normally allowed to be constant folded.
+      // The disable_qdq_constant_folding option only takes effect in this case, allowing EPs to preserve DQ
+      // nodes even when QDQ fusion is disabled.
+      const bool skip_dequantize_linear = !disable_quant_qdq || disable_qdq_constant_folding;
+      transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, skip_dequantize_linear,
                                                                   session_options.config_options));
       transformers.emplace_back(std::make_unique<MatMulAddFusion>());
       transformers.emplace_back(std::make_unique<ReshapeFusion>());
       transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(
           session_options.free_dimension_overrides));
-
+      transformers.emplace_back(std::make_unique<SliceConcatToSpaceToDepthFusion>());
       transformers.emplace_back(std::make_unique<GeluFusion>());
       transformers.emplace_back(std::make_unique<LayerNormFusion>());
 
@@ -275,9 +294,25 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         transformers.emplace_back(std::make_unique<WhereDummyDq>());
       }
 
-      // add __backwardpass attribute to nodes after YieldOp, ROCm-only
-      const InlinedHashSet<std::string_view> rocm_ep = {onnxruntime::kRocmExecutionProvider};
-      transformers.emplace_back(std::make_unique<RocmBlasAltImpl>(rocm_ep));
+#if !defined(DISABLE_CONTRIB_OPS)
+      {
+        const bool enable_dq_matmulnbits_fusion =
+            session_options.config_options.GetConfigOrDefault(
+                kOrtSessionOptionsEnableDQMatMulNBitsFusion, "0") == "1";
+        if (enable_dq_matmulnbits_fusion && !disable_quant_qdq) {
+          const int64_t qdq_matmulnbits_accuracy_level =
+              ParseStringWithClassicLocale<int64_t>(
+                  session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel,
+                                                                    "4"));
+          transformers.emplace_back(std::make_unique<DQMatMulNBitsFusion>(
+              qdq_matmulnbits_accuracy_level));
+        }
+      }
+#else
+      ORT_ENFORCE(session_options.config_options.GetConfigOrDefault(
+                      kOrtSessionOptionsEnableDQMatMulNBitsFusion, "0") != "1",
+                  "DQ->MatMulNBits fusion requires contrib ops but DISABLE_CONTRIB_OPS is defined");
+#endif
 
       // run TransposeOptimizer last as it works in a slightly different way by moving Transpose nodes around.
       // shouldn't affect the end result - just easier to debug any issue if it's last.
@@ -305,33 +340,30 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       const InlinedHashSet<std::string_view> cuda_eps = {onnxruntime::kCudaExecutionProvider};
 
-      const InlinedHashSet<std::string_view> cuda_rocm_eps = {onnxruntime::kCudaExecutionProvider,
-                                                              onnxruntime::kRocmExecutionProvider};
-      const InlinedHashSet<std::string_view> cpu_cuda_rocm_eps = {onnxruntime::kCpuExecutionProvider,
-                                                                  onnxruntime::kCudaExecutionProvider,
-                                                                  onnxruntime::kRocmExecutionProvider};
-      const InlinedHashSet<std::string_view> cpu_cuda_dml_rocm_eps = {onnxruntime::kCpuExecutionProvider,
-                                                                      onnxruntime::kCudaExecutionProvider,
-                                                                      onnxruntime::kRocmExecutionProvider,
-                                                                      onnxruntime::kDmlExecutionProvider};
-      const InlinedHashSet<std::string_view> cpu_acl_cuda_dml_rocm_eps = {onnxruntime::kCpuExecutionProvider,
-                                                                          onnxruntime::kAclExecutionProvider,
-                                                                          onnxruntime::kCudaExecutionProvider,
-                                                                          onnxruntime::kRocmExecutionProvider,
-                                                                          onnxruntime::kDmlExecutionProvider};
-      const InlinedHashSet<std::string_view> cpu_rocm_acl_armnn_js_webgpu_eps = {onnxruntime::kCpuExecutionProvider,
-                                                                                 onnxruntime::kRocmExecutionProvider,
-                                                                                 onnxruntime::kAclExecutionProvider,
-                                                                                 onnxruntime::kArmNNExecutionProvider,
-                                                                                 onnxruntime::kJsExecutionProvider,
-                                                                                 onnxruntime::kWebGpuExecutionProvider};
-      const InlinedHashSet<std::string_view> cpu_cuda_rocm_acl_armnn_js_webgpu_eps = {onnxruntime::kCpuExecutionProvider,
-                                                                                      onnxruntime::kCudaExecutionProvider,
-                                                                                      onnxruntime::kRocmExecutionProvider,
-                                                                                      onnxruntime::kAclExecutionProvider,
-                                                                                      onnxruntime::kArmNNExecutionProvider,
-                                                                                      onnxruntime::kJsExecutionProvider,
-                                                                                      onnxruntime::kWebGpuExecutionProvider};
+      const InlinedHashSet<std::string_view> cpu_cuda_eps = {onnxruntime::kCpuExecutionProvider,
+                                                             onnxruntime::kCudaExecutionProvider};
+      const InlinedHashSet<std::string_view> cpu_cuda_dml_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                 onnxruntime::kCudaExecutionProvider,
+                                                                 onnxruntime::kDmlExecutionProvider};
+      const InlinedHashSet<std::string_view> cpu_acl_cuda_dml_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                     onnxruntime::kAclExecutionProvider,
+                                                                     onnxruntime::kCudaExecutionProvider,
+                                                                     onnxruntime::kDmlExecutionProvider};
+      const InlinedHashSet<std::string_view> cpu_acl_cuda_dml_js_webgpu_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                               onnxruntime::kAclExecutionProvider,
+                                                                               onnxruntime::kCudaExecutionProvider,
+                                                                               onnxruntime::kDmlExecutionProvider,
+                                                                               onnxruntime::kJsExecutionProvider,
+                                                                               onnxruntime::kWebGpuExecutionProvider};
+      const InlinedHashSet<std::string_view> cpu_acl_js_webgpu_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                      onnxruntime::kAclExecutionProvider,
+                                                                      onnxruntime::kJsExecutionProvider,
+                                                                      onnxruntime::kWebGpuExecutionProvider};
+      const InlinedHashSet<std::string_view> cpu_cuda_acl_js_webgpu_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                           onnxruntime::kCudaExecutionProvider,
+                                                                           onnxruntime::kAclExecutionProvider,
+                                                                           onnxruntime::kJsExecutionProvider,
+                                                                           onnxruntime::kWebGpuExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_dml_acl_eps = {onnxruntime::kCpuExecutionProvider,
                                                                 onnxruntime::kDmlExecutionProvider,
                                                                 onnxruntime::kAclExecutionProvider};
@@ -339,6 +371,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
           ParseStringWithClassicLocale<int64_t>(
               session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel,
                                                                 "4"));
+      const int64_t qdq_matmulnbits_block_size =
+          ParseStringWithClassicLocale<int64_t>(
+              session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQMatMulNBitsBlockSize,
+                                                                "0"));
 #ifdef MLAS_TARGET_AMD64_IX86
       const bool avx2_precision_mode =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsAvx2PrecisionMode, "0") == "1" && MlasPlatformU8S8Overflow();
@@ -355,37 +391,39 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed,
                                                                                  SatApplyContextVariant{},
                                                                                  qdq_matmulnbits_accuracy_level,
-                                                                                 intra_op_thread_pool));
+                                                                                 intra_op_thread_pool,
+                                                                                 qdq_matmulnbits_block_size));
       }
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_dml_acl_eps));
       transformers.emplace_back(std::make_unique<DynamicQuantizeMatMulFusion>(cpu_acl_eps));
 
-      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_rocm_acl_armnn_js_webgpu_eps));
+      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_acl_js_webgpu_eps));
 
-      transformers.emplace_back(std::make_unique<GeluFusion>(cpu_acl_cuda_dml_rocm_eps, level));
-      transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_acl_cuda_dml_rocm_eps, level));
-      transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_rocm_eps));
-      transformers.emplace_back(std::make_unique<AttentionFusion>(cpu_acl_cuda_dml_rocm_eps));
-      transformers.emplace_back(std::make_unique<EmbedLayerNormFusion>(cpu_acl_cuda_dml_rocm_eps));
-      transformers.emplace_back(std::make_unique<GatherSliceToSplitFusion>(cpu_cuda_rocm_eps));
-      transformers.emplace_back(std::make_unique<GatherToSliceFusion>(cpu_cuda_rocm_eps));
-      transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_dml_rocm_eps));
-      transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_acl_cuda_dml_rocm_eps));
+      transformers.emplace_back(std::make_unique<GeluFusion>(cpu_acl_cuda_dml_eps, level));
+      transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_acl_cuda_dml_eps, level));
+      transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_eps));
+      transformers.emplace_back(std::make_unique<AttentionFusion>(cpu_acl_cuda_dml_eps));
+      transformers.emplace_back(std::make_unique<EmbedLayerNormFusion>(cpu_acl_cuda_dml_eps));
+      transformers.emplace_back(std::make_unique<GatherSliceToSplitFusion>(cpu_cuda_eps));
+      transformers.emplace_back(std::make_unique<GatherToSliceFusion>(cpu_cuda_eps));
+      transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_dml_eps));
+      transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_acl_cuda_dml_eps));
       transformers.emplace_back(std::make_unique<GroupQueryAttentionFusion>(cuda_eps));
       // Run MatMulAddFusion again after *AttentionFusion transforms with `preserve_attention_pattern = false`,
       // to cleanup the remaining MatMul-Add that were part of the attention pattern but not detected or fused.
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(no_limit_empty_ep_list, false));
-      transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_acl_cuda_dml_rocm_eps));
-      transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_dml_rocm_eps));
-      transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_acl_cuda_dml_rocm_eps));
+      transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
+      transformers.emplace_back(std::make_unique<BiasSkipLayerNormFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
+      transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_dml_eps));
+      transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
 
       // GeluApproximation has side effects which may change results. It needs to be manually enabled,
       // or alternatively the model can be updated offline using a model conversion script
       //   e.g. fusion_gelu_approximation function used by onnxruntime/python/tools/transformers/onnx_model_bert.py
       if (enable_gelu_approximation) {
-        transformers.emplace_back(std::make_unique<GeluApproximation>(cpu_cuda_rocm_eps));
+        transformers.emplace_back(std::make_unique<GeluApproximation>(cpu_cuda_eps));
       }
 
 #ifdef ENABLE_TRITON
@@ -396,15 +434,15 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 #endif  // ENABLE_TRITON
 
-      transformers.emplace_back(std::make_unique<BiasSoftmaxFusion>(cpu_cuda_rocm_eps));
-      transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<BiasSoftmaxFusion>(cpu_cuda_eps));
+      transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_eps));
 #ifdef ENABLE_TRAINING
-      transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_rocm_eps));
-      transformers.emplace_back(std::make_unique<BiasSoftmaxDropoutFusion>(cuda_rocm_eps));
-      transformers.emplace_back(std::make_unique<SceLossGradBiasFusion>(cpu_cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_eps));
+      transformers.emplace_back(std::make_unique<BiasSoftmaxDropoutFusion>(cuda_eps));
+      transformers.emplace_back(std::make_unique<SceLossGradBiasFusion>(cpu_cuda_eps));
 #endif
 
-      transformers.emplace_back(std::make_unique<MatMulScaleFusion>(cpu_acl_cuda_dml_rocm_eps));
+      transformers.emplace_back(std::make_unique<MatMulScaleFusion>(cpu_acl_cuda_dml_eps));
       transformers.emplace_back(std::make_unique<MatMulActivationFusion>(dml_ep));
 
 #ifdef MLAS_TARGET_AMD64_IX86
@@ -413,7 +451,40 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 #endif
 
-      transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_ep));
+      transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_cuda_eps));
+      transformers.emplace_back(std::make_unique<GroupQueryAttentionPreNormFusion>(
+          InlinedHashSet<std::string_view>{onnxruntime::kCudaExecutionProvider,
+                                           onnxruntime::kWebGpuExecutionProvider}));
+      bool has_matmul_nbits_mlp_kernel = false;
+      bool has_matmul_nbits_qkv_kernel = false;
+      if (execution_providers != nullptr) {
+        const auto* webgpu_ep = execution_providers->Get(onnxruntime::kWebGpuExecutionProvider);
+        if (webgpu_ep != nullptr) {
+          auto registry = webgpu_ep->GetKernelRegistry();
+          if (registry) {
+            auto has_webgpu_kernel = [&](std::string_view op_type) {
+              return registry->TryFindKernel(onnxruntime::kWebGpuExecutionProvider,
+                                             op_type,
+                                             kMSDomain,
+                                             1,
+                                             KernelRegistry::TypeConstraintMap{},
+                                             logger,
+                                             nullptr)
+                  .IsOK();
+            };
+            has_matmul_nbits_mlp_kernel = has_webgpu_kernel("MatMulNBitsMlp");
+            has_matmul_nbits_qkv_kernel = has_webgpu_kernel("MatMulNBitsQkv");
+          }
+        }
+      }
+      if (has_matmul_nbits_mlp_kernel) {
+        transformers.emplace_back(std::make_unique<MatMulNBitsMlpFusion>(
+            InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+      }
+      if (has_matmul_nbits_qkv_kernel) {
+        transformers.emplace_back(std::make_unique<MatMulNBitsQkvFusion>(
+            InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+      }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their
@@ -431,7 +502,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       auto cpu_registry = cpu_execution_provider.GetKernelRegistry();
       auto nhwc_transformer = std::make_unique<NhwcTransformer>(std::move(cpu_allocator), std::move(cpu_registry),
-                                                                logger);
+                                                                logger, session_options.config_options);
       if (nhwc_transformer->IsActive()) {
         transformers.emplace_back(std::move(nhwc_transformer));
       }
@@ -496,6 +567,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
           ParseStringWithClassicLocale<int64_t>(
               session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel,
                                                                 "4"));
+      const int64_t qdq_matmulnbits_block_size =
+          ParseStringWithClassicLocale<int64_t>(
+              session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQMatMulNBitsBlockSize,
+                                                                "0"));
       // runtime optimizations only support CPU EP now
       const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
 
@@ -503,7 +578,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
         transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed,
                                                                                  apply_context,
                                                                                  qdq_matmulnbits_accuracy_level,
-                                                                                 intra_op_thread_pool));
+                                                                                 intra_op_thread_pool,
+                                                                                 qdq_matmulnbits_block_size));
       }
 
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_ep, apply_context));
@@ -529,7 +605,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
         AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
         auto cpu_registry = cpu_execution_provider.GetKernelRegistry();
         auto nhwc_transformer = std::make_unique<NhwcTransformer>(std::move(cpu_allocator), std::move(cpu_registry),
-                                                                  logger);
+                                                                  logger, session_options.config_options);
         if (nhwc_transformer->IsActive()) {
           transformers.emplace_back(std::move(nhwc_transformer));
         }

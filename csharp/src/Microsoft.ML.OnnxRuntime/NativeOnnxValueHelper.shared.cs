@@ -373,23 +373,21 @@ namespace Microsoft.ML.OnnxRuntime
                                     IntPtr handle,
                                     Func<IntPtr, IntPtr[], IntPtr[], UIntPtr, IntPtr> updateFunc)
         {
-            var keyStrings = providerOptions.Keys.ToArray();
-            var valStrings = providerOptions.Values.ToArray();
-
             MarshaledStringArray keys = default;
             MarshaledStringArray values = default;
             try
             {
-                keys = new MarshaledStringArray(keyStrings);
-                values = new MarshaledStringArray(valStrings);
+                keys = new MarshaledStringArray(providerOptions.Keys);
+                values = new MarshaledStringArray(providerOptions.Values);
 
-                var nativeKeys = new IntPtr[keyStrings.Length];
+                var nativeKeys = new IntPtr[providerOptions.Count];
                 keys.Fill(nativeKeys);
 
-                var nativeVals = new IntPtr[valStrings.Length];
+                var nativeVals = new IntPtr[providerOptions.Count];
                 values.Fill(nativeVals);
 
-                NativeApiStatus.VerifySuccess(updateFunc(handle, nativeKeys, nativeVals, (UIntPtr)providerOptions.Count));
+                NativeApiStatus.VerifySuccess(updateFunc(handle, nativeKeys, nativeVals,
+                    (UIntPtr)providerOptions.Count));
             }
             finally
             {

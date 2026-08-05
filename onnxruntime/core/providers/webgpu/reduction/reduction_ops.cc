@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/reduction/reduction_ops.h"
+#include <memory>
 #include <sstream>
 #include "core/framework/data_transfer_manager.h"
 #include "core/providers/webgpu/data_transfer.h"
@@ -58,9 +59,48 @@ REGISTER_REDUCE_VERSIONED_KERNEL(ReduceMin, 13, 17);
 REGISTER_REDUCE_VERSIONED_KERNEL_WITH_AXIS_IN_INPUT(ReduceMin, 18, 19);
 REGISTER_REDUCE_KERNEL(ReduceMin, 20);
 
-REGISTER_REDUCE_VERSIONED_KERNEL(ReduceSum, 1, 10);
-REGISTER_REDUCE_VERSIONED_KERNEL(ReduceSum, 11, 12);
-REGISTER_REDUCE_KERNEL(ReduceSum, 13);
+// ReduceSum: versions 1-12 use axes as attribute; version 13+ uses axes as a CPU input tensor.
+// Factory functions allow conditional int64 support on the T type constraint.
+// NOTE: int64 reduction in the WebGPU shader uses i32 (low 32 bits only); values outside
+// the int32 range will produce incorrect results — same limitation as Range.
+template <int StartVersion, int EndVersion>
+KernelCreateInfo CreateReduceSumVersionedKernelInfo(bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<ReduceSum>(info);
+    return Status::OK();
+  };
+  return {KernelDefBuilder()
+              .SetName("ReduceSum")
+              .SetDomain(kOnnxDomain)
+              .SinceVersion(StartVersion, EndVersion)
+              .Provider(kWebGpuExecutionProvider)
+              .TypeConstraint("T", type_constraints)
+              .Build(),
+          kernel_create_fn};
+}
+
+template <int SinceVersion>
+KernelCreateInfo CreateReduceSumKernelInfo(bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<ReduceSum>(info);
+    return Status::OK();
+  };
+  return {KernelDefBuilder()
+              .SetName("ReduceSum")
+              .SetDomain(kOnnxDomain)
+              .SinceVersion(SinceVersion)
+              .Provider(kWebGpuExecutionProvider)
+              .TypeConstraint("T", type_constraints)
+              .InputMemoryType(OrtMemTypeCPUInput, 1)
+              .Build(),
+          kernel_create_fn};
+}
+
+template KernelCreateInfo CreateReduceSumVersionedKernelInfo<1, 10>(bool);
+template KernelCreateInfo CreateReduceSumVersionedKernelInfo<11, 12>(bool);
+template KernelCreateInfo CreateReduceSumKernelInfo<13>(bool);
 
 REGISTER_REDUCE_VERSIONED_KERNEL(ReduceProd, 1, 10);
 REGISTER_REDUCE_VERSIONED_KERNEL(ReduceProd, 11, 12);
@@ -187,7 +227,7 @@ std::unordered_map<ReduceOpType, ReduceOpSpecificCode> reduce_op_naive_code_map 
 };
 
 ReduceOpType StringToReduceOp(std::string name) {
-  ORT_ENFORCE(reduce_op_types.find(name) != reduce_op_types.end(), "Unsupported reduction op type: ", name);
+  ORT_ENFORCE(reduce_op_types.contains(name), "Unsupported reduction op type: ", name);
   return reduce_op_types[name];
 }
 
@@ -372,7 +412,21 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
     return Status::OK();
   }
 
-  bool use_naive_reduction = name_ == "ArgMin" || name_ == "ArgMax" || (reduce_size < 32 && output_size > 1024) || is_input_empty || input_tensor->Shape().NumDimensions() == 0;
+  // Prefer the naive Reduce path when the shared path would pay extra overhead (transposing non-innermost reduce axes).
+  constexpr size_t kReduceNaiveMaxReduceSize = 128;
+  constexpr size_t kReduceNaiveMinOutputSize = 20000;
+  bool are_axes_innermost = true;
+  size_t axes_rank = input_axes.size();
+  for (size_t i = 0; i < input_axes.size() && are_axes_innermost; ++i) {
+    if (input_axes[axes_rank - 1 - i] != rank - 1 - i) {
+      are_axes_innermost = false;
+      break;
+    }
+  }
+  bool use_naive_reduction = name_ == "ArgMin" || name_ == "ArgMax" || (reduce_size < 32 && output_size > 1024) ||
+                             (!are_axes_innermost && reduce_size <= kReduceNaiveMaxReduceSize &&
+                              output_size > kReduceNaiveMinOutputSize) ||
+                             is_input_empty || input_tensor->Shape().NumDimensions() == 0;
 
   if (use_naive_reduction) {
     ReduceNaiveProgram program(name_, reduce_op_type, keepdims_, noop_with_empty_axes_, input_axes, is_input_empty);
@@ -395,14 +449,6 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
 
     return context.RunProgram(program);
   } else {
-    bool are_axes_innermost = true;
-    size_t axes_rank = input_axes.size();
-    for (size_t i = 0; i < input_axes.size() && are_axes_innermost; ++i) {
-      if (input_axes[axes_rank - 1 - i] != rank - 1 - i) {
-        are_axes_innermost = false;
-        break;
-      }
-    }
     Tensor input_transpose;
     if (!are_axes_innermost) {
       InlinedVector<size_t> perm;

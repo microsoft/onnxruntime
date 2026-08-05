@@ -170,7 +170,7 @@ std::unique_ptr<OrtTypeInfo> OrtTypeInfo::FromOrtValue(const OrtValue& value) {
     const Tensor& tensor = value.Get<onnxruntime::Tensor>();
     const auto* tensor_data_type = tensor.DataType();
     if (tensor_data_type != nullptr) {
-      auto type_shape = OrtTensorTypeAndShapeInfo::GetTensorShapeAndType(tensor.Shape(), *tensor_data_type);
+      auto type_shape = OrtTensorTypeAndShapeInfo::GetTensorShapeAndType(&tensor.Shape(), *tensor_data_type);
       return MakePtr(ONNX_TYPE_TENSOR, std::move(type_shape));
     }
     return MakePtr(ONNX_TYPE_TENSOR);
@@ -181,7 +181,7 @@ std::unique_ptr<OrtTypeInfo> OrtTypeInfo::FromOrtValue(const OrtValue& value) {
     const SparseTensor& tensor = value.Get<onnxruntime::SparseTensor>();
     const auto* tensor_data_type = tensor.DataType();
     if (tensor_data_type != nullptr) {
-      auto type_shape = OrtTensorTypeAndShapeInfo::GetTensorShapeAndType(tensor.DenseShape(), *tensor_data_type);
+      auto type_shape = OrtTensorTypeAndShapeInfo::GetTensorShapeAndType(&tensor.DenseShape(), *tensor_data_type);
       return MakePtr(ONNX_TYPE_SPARSETENSOR, std::move(type_shape));
     }
     return MakePtr(ONNX_TYPE_SPARSETENSOR);
@@ -194,8 +194,7 @@ std::unique_ptr<OrtTypeInfo> OrtTypeInfo::FromOrtValue(const OrtValue& value) {
     const auto* tensor_data_type = value.Get<onnxruntime::TensorSeq>().DataType();
     ORT_ENFORCE(tensor_data_type != nullptr, "OrtValue is TensorSequence type but has no element Tensor DataType.");
 
-    TensorShape void_shape = {};
-    auto type_shape = OrtTensorTypeAndShapeInfo::GetTensorShapeAndType(void_shape, *tensor_data_type);
+    auto type_shape = OrtTensorTypeAndShapeInfo::GetTensorShapeAndType(nullptr, *tensor_data_type);
     auto type_info = MakePtr(ONNX_TYPE_TENSOR, std::move(type_shape));
     auto sequence_type_info = std::make_unique<OrtSequenceTypeInfo>(std::move(type_info));
     return MakePtr(std::move(sequence_type_info));
@@ -303,9 +302,9 @@ std::unique_ptr<OrtTypeInfo> OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::Ty
               assert(false);
           }
         }
-        type_shape = OrtTensorTypeAndShapeInfo::GetTensorShapeAndType(std::move(shape_data), &dim_params, input);
+        type_shape = OrtTensorTypeAndShapeInfo::GetTensorShapeAndType(&shape_data, &dim_params, input);
       } else {
-        type_shape = OrtTensorTypeAndShapeInfo::GetTensorShapeAndType(TensorShape(), nullptr, input);
+        type_shape = OrtTensorTypeAndShapeInfo::GetTensorShapeAndType(nullptr, nullptr, input);
       }
 
       result = MakePtr(ten_type, std::move(type_shape));

@@ -21,6 +21,7 @@ struct NvExecutionProviderInfo {
   int device_id{0};
   bool has_user_compute_stream{false};
   void* user_compute_stream{nullptr};
+  void* user_aux_stream_array{nullptr};
   int max_partition_iterations{1000};
   int min_subgraph_size{1};
   size_t max_workspace_size{0};
@@ -45,11 +46,14 @@ struct NvExecutionProviderInfo {
   std::string profile_min_shapes{""};
   std::string profile_max_shapes{""};
   std::string profile_opt_shapes{""};
-  bool cuda_graph_enable{false};
+  bool cuda_graph_enable{true};
   bool multi_profile_enable{false};
   bool dump_ep_context_model{false};
   std::string ep_context_file_path{""};
   int ep_context_embed_mode{0};
+  // Set internally by OrtCompileAPI::CompileModel(). When true, the EP skips GPU
+  // deserialization and execution context creation since the session will not run inference.
+  bool compile_only_mode{false};
   std::string engine_cache_prefix{""};
   std::string op_types_to_exclude{""};
 

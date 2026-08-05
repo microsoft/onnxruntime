@@ -47,6 +47,24 @@ void PackDataForUint8TypeIfNecessary(std::vector<int>& data, std::vector<int64_t
       }
     }
     data_shape.back() = output_columns;
+  } else if (bits == 2) {
+    // For uint8_t with bits=2, pack 4 elements (2 bits each, after adding 2) into a single uint8_t.
+    // Element index 0 occupies the lowest 2 bits; index 3 occupies the highest 2 bits.
+    int64_t output_columns = (input_columns + 3) / 4;
+    packed_data.reserve(total_rows * output_columns);
+    for (int64_t row = 0; row < total_rows; ++row) {
+      for (int64_t col = 0; col < input_columns; col += 4) {
+        int packed = 0;
+        for (int k = 0; k < 4; ++k) {
+          if ((col + k) < input_columns) {
+            int v = (data[row * input_columns + col + k] + 2) & 0x3;
+            packed |= (v << (2 * k));
+          }
+        }
+        packed_data.push_back(packed);
+      }
+    }
+    data_shape.back() = output_columns;
   } else {
     for (auto v : data) {
       packed_data.push_back(v + 128);
@@ -82,7 +100,7 @@ void CheckDataAndShape(const std::vector<T>& data, const std::vector<int64_t>& s
 
   ORT_ENFORCE(static_cast<int64_t>(data.size()) == total_elements, "Data size does not match the shape",
               "Data size: ", data.size(), ", Expected size: ", total_elements,
-              ", Shape: ", VectorToString(shape), " Name:", name, " Type:", typeid(T).name());
+              ", Shape: ", VectorToString(shape), " Name:", name);
 }
 
 // Combinations: types, gather_axis, quantize_axis, block_size, indices, scale shape vs data shape
@@ -144,6 +162,64 @@ void RunGatherBlockQuantized(const std::vector<T1>& data,
   run_test(true);
 }
 
+// WebGPU-specific runner for GatherBlockQuantized. Only supports uint8 data with gather_axis == 0.
+template <typename T2, typename Tind>
+void RunGatherBlockQuantizedWebGpu(const std::vector<uint8_t>& data,
+                                   const std::vector<int64_t>& data_shape,
+                                   const std::vector<Tind>& indices,
+                                   const std::vector<int64_t>& indices_shape,
+                                   const std::vector<T2>& scales,
+                                   const std::vector<int64_t>& scales_shape,
+                                   const std::vector<uint8_t>& zero_points,
+                                   const std::vector<int64_t>& zero_points_shape,
+                                   const int64_t gather_axis,
+                                   const int64_t quantize_axis,
+                                   const int64_t block_size,
+                                   const int64_t bits,
+                                   const std::vector<T2>& output,
+                                   const std::vector<int64_t>& output_shape,
+                                   OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess) {
+#ifdef USE_WEBGPU
+  if (DefaultWebGpuExecutionProvider().get() == nullptr) {
+    return;
+  }
+
+  OpTester test("GatherBlockQuantized", 1, kMSDomain);
+  test.AddAttribute<int64_t>("gather_axis", gather_axis);
+  test.AddAttribute<int64_t>("quantize_axis", quantize_axis);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", bits);
+
+  test.AddInput<uint8_t>("data", data_shape, data);
+  test.AddInput<Tind>("indices", indices_shape, indices);
+  test.AddInput<T2>("scales", scales_shape, scales);
+  if (!zero_points.empty()) {
+    test.AddInput<uint8_t>("zero_points", zero_points_shape, zero_points);
+  }
+  test.AddOutput<T2>("output", output_shape, output);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(expect_result, "", {}, nullptr, &eps);
+#else
+  (void)data;
+  (void)data_shape;
+  (void)indices;
+  (void)indices_shape;
+  (void)scales;
+  (void)scales_shape;
+  (void)zero_points;
+  (void)zero_points_shape;
+  (void)gather_axis;
+  (void)quantize_axis;
+  (void)block_size;
+  (void)bits;
+  (void)output;
+  (void)output_shape;
+  (void)expect_result;
+#endif
+}
+
 template <typename T1, typename T2>
 typename std::enable_if<
     (boost::mp11::mp_contains<TypeList<BFloat16, MLFloat16, float>, T1>::value && std::is_same<T2, float>::value) ||
@@ -161,15 +237,17 @@ ToType(const std::vector<T2>& vec) {
 template <typename T>
 typename std::enable_if<boost::mp11::mp_contains<TypeList<UInt4x2, Int4x2>, T>::value, std::vector<T>>::type
 ToType(const std::vector<int>& vec) {
+  using UnpackedType = typename T::UnpackedType;
+
   // UInt4x2 and Int4x2 uses global packing instead of per-row packing.
   size_t i = 0;
-  constexpr int offset = std::is_same<T, Int4x2>::value ? 0 : 8;
+  constexpr UnpackedType offset = std::is_same<T, Int4x2>::value ? 0 : 8;
   std::vector<T> result;
   for (i = 0; i + 1 < vec.size(); i += 2) {
-    result.push_back(T(vec[i] + offset, vec[i + 1] + offset));
+    result.push_back(T(static_cast<UnpackedType>(vec[i] + offset), static_cast<UnpackedType>(vec[i + 1] + offset)));
   }
   if (i < vec.size()) {
-    result.push_back(T(vec[i] + offset, 0 + offset));
+    result.push_back(T(static_cast<UnpackedType>(vec[i] + offset), static_cast<UnpackedType>(0 + offset)));
   }
   return result;
 }
@@ -569,6 +647,296 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints_8Bits) {
   Test_GatherAxis0_NoZeroPoints<uint8_t, float, int64_t>(8);
   Test_GatherAxis0_NoZeroPoints<uint8_t, MLFloat16, int64_t>(8);
 }
+
+TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints_2Bits_Uint8) {
+  // 2-bit signed values in {-2, -1, 0, 1}. The test infra adds an offset of 2 when packing
+  // and the kernel uses default zero_point = 2^(bits-1) = 2, so the dequantized value matches.
+  // Block size 16 covers the entire last dim with one scale per row.
+  std::vector<int> data = {-2, -1, 0, 1, -2, -1, 0, 1, -2, -1, 0, 1, -2, -1, 0, 1,
+                           1, 0, -1, -2, 1, 0, -1, -2, 1, 0, -1, -2, 1, 0, -1, -2,
+                           0, 1, -2, -1, 0, 1, -2, -1, 0, 1, -2, -1, 0, 1, -2, -1,
+                           -1, -2, 1, 0, -1, -2, 1, 0, -1, -2, 1, 0, -1, -2, 1, 0,
+                           1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                           -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2};
+  std::vector<int64_t> data_shape = {2, 3, 16};
+  std::vector<int> indices = {1};
+  std::vector<int64_t> indices_shape = {1};
+  std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
+  std::vector<int64_t> scales_shape = {2, 3, 1};
+
+  // indices = [1] -> pick outer index 1, so we expect rows 3, 4, 5 of the unpacked data above
+  // (the second {-1,-2,1,0,...}, {1,1,...}, {-2,-2,...} block), each scaled by
+  // scales[3], scales[4], scales[5] = 2.0, 1.0, 2.0.
+  std::vector<float> output = {-2.f, -4.f, 2.f, 0.f, -2.f, -4.f, 2.f, 0.f, -2.f, -4.f, 2.f, 0.f, -2.f, -4.f, 2.f, 0.f,
+                               1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f,
+                               -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f};
+  std::vector<int64_t> output_shape = {1, 3, 16};
+
+  std::vector<int> zero_points = {};
+  RunUnpackedData<uint8_t, float, int32_t>(data, data_shape, indices, indices_shape, scales, scales_shape,
+                                           zero_points, /*gather_axis=*/0, /*quantize_axis=*/2,
+                                           /*block_size=*/16, /*bits=*/2, output, output_shape, true);
+}
+
+TEST(GatherBlockQuantizedOpTest, GatherAxis0WithZeroPoints_2Bits_Uint8_PackedZpNotMultipleOf4) {
+  // Exercises the 2-bit zero-point row-boundary logic: scale_qaxis_dim = 5 is NOT a multiple
+  // of the 2-bit packing factor (4), so each zero_points row occupies (5+3)/4 = 2 bytes and
+  // the within-row qaxis index spans both bytes (lanes 0..3 in byte 0, lane 0 in byte 1).
+  // The kernel must address the packed byte using (scale_row, q_in_row), not a flat scales
+  // offset which would cross row boundaries.
+  //
+  // Logical layout: data {2, 80}, quantize_axis = 1 (last), block_size = 16, bits = 2.
+  // scales {2, 5}; zero_points logical {2, 5} -> packs to {2, 2}.
+  std::vector<int> data(2 * 80, 0);  // all zeros; dequant simplifies to (0 - zp) * scale
+  std::vector<int64_t> data_shape = {2, 80};
+  std::vector<int> indices = {1};
+  std::vector<int64_t> indices_shape = {1};
+  // All scales = 1 so dequant value equals -zp directly.
+  std::vector<float> scales(2 * 5, 1.0f);
+  std::vector<int64_t> scales_shape = {2, 5};
+  // Logical 2-bit zero points in {-2,-1,0,1}; helper packs along last dim (5 -> 2 bytes).
+  // Row 0: [-2, 1, 0, -1, 1] ; Row 1: [1, 0, -1, -2, 0]
+  std::vector<int> zero_points = {-2, 1, 0, -1, 1, 1, 0, -1, -2, 0};
+
+  // indices = [1] -> pick row 1: zp = [1, 0, -1, -2, 0]
+  // dequant per block = (0 - zp) * 1 = [-1, 0, 1, 2, 0]
+  std::vector<float> output;
+  output.reserve(80);
+  for (float v : {-1.f, 0.f, 1.f, 2.f, 0.f}) {
+    output.insert(output.end(), 16, v);
+  }
+  std::vector<int64_t> output_shape = {1, 80};
+
+  RunUnpackedData<uint8_t, float, int32_t>(data, data_shape, indices, indices_shape, scales, scales_shape,
+                                           zero_points, /*gather_axis=*/0, /*quantize_axis=*/1,
+                                           /*block_size=*/16, /*bits=*/2, output, output_shape, true);
+}
+#endif
+
+#ifdef USE_WEBGPU
+TEST(GatherBlockQuantizedOpTest, WebGpu_GatherAxis0NoZeroPoints_2Bits_Uint8) {
+  // Same logical data and expectation as the CPU GatherAxis0NoZeroPoints_2Bits_Uint8 test.
+  // Logical 2-bit values in {-2, -1, 0, 1}, encoded as v+2 in {0..3} and packed 4 per byte
+  // (low-order bits first). 16 logical 2-bit values -> 4 bytes per row.
+  // Pack helper:
+  auto pack4 = [](int v0, int v1, int v2, int v3) -> uint8_t {
+    auto enc = [](int v) { return static_cast<uint8_t>((v + 2) & 0x3); };
+    return static_cast<uint8_t>(enc(v0) | (enc(v1) << 2) | (enc(v2) << 4) | (enc(v3) << 6));
+  };
+
+  // Build packed data: shape {2, 3, 4} (16 logical elements per row -> 4 bytes).
+  std::vector<uint8_t> data;
+  data.reserve(2 * 3 * 4);
+  auto push_row = [&](std::vector<int> row) {
+    ORT_ENFORCE(row.size() == 16);
+    for (size_t i = 0; i < 16; i += 4) {
+      data.push_back(pack4(row[i], row[i + 1], row[i + 2], row[i + 3]));
+    }
+  };
+  push_row({-2, -1, 0, 1, -2, -1, 0, 1, -2, -1, 0, 1, -2, -1, 0, 1});
+  push_row({1, 0, -1, -2, 1, 0, -1, -2, 1, 0, -1, -2, 1, 0, -1, -2});
+  push_row({0, 1, -2, -1, 0, 1, -2, -1, 0, 1, -2, -1, 0, 1, -2, -1});
+  push_row({-1, -2, 1, 0, -1, -2, 1, 0, -1, -2, 1, 0, -1, -2, 1, 0});
+  push_row({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1});
+  push_row({-2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2});
+
+  std::vector<int64_t> data_shape = {2, 3, 4};
+  std::vector<int32_t> indices = {1};
+  std::vector<int64_t> indices_shape = {1};
+  std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
+  std::vector<int64_t> scales_shape = {2, 3, 1};
+
+  std::vector<float> output = {-2.f, -4.f, 2.f, 0.f, -2.f, -4.f, 2.f, 0.f, -2.f, -4.f, 2.f, 0.f, -2.f, -4.f, 2.f, 0.f,
+                               1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f,
+                               -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f};
+  std::vector<int64_t> output_shape = {1, 3, 16};
+
+  std::vector<uint8_t> zero_points = {};
+  std::vector<int64_t> zero_points_shape = {};
+  RunGatherBlockQuantizedWebGpu<float, int32_t>(data, data_shape, indices, indices_shape, scales, scales_shape,
+                                                zero_points, zero_points_shape,
+                                                /*gather_axis=*/0, /*quantize_axis=*/2,
+                                                /*block_size=*/16, /*bits=*/2, output, output_shape);
+}
+
+TEST(GatherBlockQuantizedOpTest, WebGpu_EmptyIndices_8Bits_Uint8) {
+  // An empty indices tensor produces an empty output. The kernel must not dispatch a
+  // (0, 1, 1) workgroup in that case. See issue #28772.
+  std::vector<uint8_t> data(2 * 16, 128);
+  std::vector<int64_t> data_shape = {2, 16};
+  std::vector<int32_t> indices = {};
+  std::vector<int64_t> indices_shape = {0};
+  std::vector<float> scales = {1.0f, 2.0f};
+  std::vector<int64_t> scales_shape = {2, 1};
+
+  std::vector<float> output = {};
+  std::vector<int64_t> output_shape = {0, 16};
+
+  std::vector<uint8_t> zero_points = {};
+  std::vector<int64_t> zero_points_shape = {};
+  RunGatherBlockQuantizedWebGpu<float, int32_t>(data, data_shape, indices, indices_shape, scales, scales_shape,
+                                                zero_points, zero_points_shape,
+                                                /*gather_axis=*/0, /*quantize_axis=*/1,
+                                                /*block_size=*/16, /*bits=*/8, output, output_shape);
+}
+
+TEST(GatherBlockQuantizedOpTest, WebGpu_InvalidIndices_2Bits_Uint8) {
+  auto pack4 = [](int v0, int v1, int v2, int v3) -> uint8_t {
+    auto enc = [](int v) { return static_cast<uint8_t>((v + 2) & 0x3); };
+    return static_cast<uint8_t>(enc(v0) | (enc(v1) << 2) | (enc(v2) << 4) | (enc(v3) << 6));
+  };
+
+  std::vector<uint8_t> data;
+  data.reserve(2 * 3 * 4);
+  auto push_row = [&](std::vector<int> row) {
+    ORT_ENFORCE(row.size() == 16);
+    for (size_t i = 0; i < 16; i += 4) {
+      data.push_back(pack4(row[i], row[i + 1], row[i + 2], row[i + 3]));
+    }
+  };
+  push_row({-2, -1, 0, 1, -2, -1, 0, 1, -2, -1, 0, 1, -2, -1, 0, 1});
+  push_row({1, 0, -1, -2, 1, 0, -1, -2, 1, 0, -1, -2, 1, 0, -1, -2});
+  push_row({0, 1, -2, -1, 0, 1, -2, -1, 0, 1, -2, -1, 0, 1, -2, -1});
+  push_row({-1, -2, 1, 0, -1, -2, 1, 0, -1, -2, 1, 0, -1, -2, 1, 0});
+  push_row({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1});
+  push_row({-2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2});
+
+  std::vector<int64_t> data_shape = {2, 3, 4};
+  std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
+  std::vector<int64_t> scales_shape = {2, 3, 1};
+  std::vector<uint8_t> zero_points = {};
+  std::vector<int64_t> zero_points_shape = {};
+  std::vector<float> output(2 * 3 * 16, 0.0f);
+  std::vector<int64_t> output_shape = {2, 3, 16};
+
+  std::vector<int32_t> indices_i32 = {2, -3};
+  std::vector<int64_t> indices_shape = {2};
+  RunGatherBlockQuantizedWebGpu<float, int32_t>(data, data_shape, indices_i32, indices_shape, scales, scales_shape,
+                                                zero_points, zero_points_shape,
+                                                /*gather_axis=*/0, /*quantize_axis=*/2,
+                                                /*block_size=*/16, /*bits=*/2, output, output_shape);
+
+  std::vector<int64_t> indices_i64 = {2, -3};
+  RunGatherBlockQuantizedWebGpu<float, int64_t>(data, data_shape, indices_i64, indices_shape, scales, scales_shape,
+                                                zero_points, zero_points_shape,
+                                                /*gather_axis=*/0, /*quantize_axis=*/2,
+                                                /*block_size=*/16, /*bits=*/2, output, output_shape);
+}
+
+TEST(GatherBlockQuantizedOpTest, WebGpu_GatherAxis0WithZeroPoints_2Bits_Uint8_PackedZpNotMultipleOf4) {
+  // WebGPU companion to GatherAxis0WithZeroPoints_2Bits_Uint8_PackedZpNotMultipleOf4.
+  // scale_qaxis_dim = 5 (not a multiple of 4); packed zero_points last dim = (5+3)/4 = 2 bytes.
+  // The within-row qaxis index spans both bytes, validating the packed-byte addressing path
+  // (scale_row * zp_packed_qaxis_dim + q_idx/4, shift (q_idx%4)*2) in the WebGPU shader.
+  auto pack4 = [](int v0, int v1, int v2, int v3) -> uint8_t {
+    auto enc = [](int v) { return static_cast<uint8_t>((v + 2) & 0x3); };
+    return static_cast<uint8_t>(enc(v0) | (enc(v1) << 2) | (enc(v2) << 4) | (enc(v3) << 6));
+  };
+
+  // Packed data: each logical row = 80 zeros -> 20 bytes of pack4(0,0,0,0) = 0xAA. data_shape {2, 20}.
+  std::vector<uint8_t> data(2 * 20, pack4(0, 0, 0, 0));
+  std::vector<int64_t> data_shape = {2, 20};
+
+  std::vector<int32_t> indices = {1};
+  std::vector<int64_t> indices_shape = {1};
+  std::vector<float> scales(2 * 5, 1.0f);
+  std::vector<int64_t> scales_shape = {2, 5};
+
+  // Packed zero_points: shape {2, 2} (5 logical -> 2 bytes per row).
+  //   Row 0 logical [-2, 1, 0, -1, 1] -> byte0 = pack4(-2, 1, 0, -1) = 0x6C; byte1 lane0=1, rest dont-care.
+  //   Row 1 logical [ 1, 0,-1,-2, 0] -> byte0 = pack4( 1, 0,-1,-2) = 0x1B; byte1 lane0=0, rest dont-care.
+  std::vector<uint8_t> zero_points = {
+      pack4(-2, 1, 0, -1), pack4(1, -2, -2, -2),
+      pack4(1, 0, -1, -2), pack4(0, -2, -2, -2)};
+  std::vector<int64_t> zero_points_shape = {2, 2};
+
+  // Picking row 1 via indices=[1]: dequant per block = (0 - zp) * 1 = [-1, 0, 1, 2, 0].
+  std::vector<float> output;
+  output.reserve(80);
+  for (float v : {-1.f, 0.f, 1.f, 2.f, 0.f}) {
+    output.insert(output.end(), 16, v);
+  }
+  std::vector<int64_t> output_shape = {1, 80};
+
+  RunGatherBlockQuantizedWebGpu<float, int32_t>(data, data_shape, indices, indices_shape, scales, scales_shape,
+                                                zero_points, zero_points_shape,
+                                                /*gather_axis=*/0, /*quantize_axis=*/1,
+                                                /*block_size=*/16, /*bits=*/2, output, output_shape);
+}
+#endif  // USE_WEBGPU
+
+template <typename T1, typename T2, typename Tind>
+void Test_GatherAxis0_QuantizedAxis1_WithZeroPoints_4Bits() {
+  // This test case specific to shared 4bit token_embedding/lm_head use case on CUDA
+  std::vector<int> data = {-8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7,
+                           0, 1, 2, 3, 4, 5, 6, 7, -8, -7, -6, -5, -4, -3, -2, -1};
+  std::vector<int64_t> data_shape = {2, 16};
+  std::vector<int> indices = {1};
+  std::vector<int64_t> indices_shape = {1};
+  std::vector<float> scales = {2.0f, 1.0f};
+  std::vector<int64_t> scales_shape = {2, 1};
+  // Explicit zero points for each row
+  std::vector<int> zero_points = {-2, 1};
+
+  // With explicit zero points:
+  // Unpacked data (row 1): [0, 1, 2, 3, 4, 5, 6, 7, -8, -7, -6, -5, -4, -3, -2, -1] ---add offset 8--->
+  // Packed (add offset 8): [8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7]
+  // Gathered scales (row 1): scale = 1.0f, zero_point (row 1): packed: [1] ---add offset 8---> unpacked: [9]
+  // Expected (CUDA doesn't subtract zero point): [8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7]
+  std::vector<float> output = {8.f, 9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f, 0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
+  std::vector<int64_t> output_shape = {1, 16};
+
+  constexpr int64_t gather_axis = 0;
+  constexpr int64_t quantize_axis = 1;  // Last axis (required for CUDA)
+  constexpr int64_t block_size = 16;
+  constexpr int64_t bits = 4;
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape, true);
+}
+
+template <typename T1, typename T2, typename Tind>
+void Test_GatherAxis0_QuantizedAxis1_WithZeroPoints_8Bits() {
+  // This test case specific to shared 8bit token_embedding/lm_head use case on CUDA
+  std::vector<int> data = {-128, -127, -126, -125, -124, -123, -122, -121, -120, -119, -118, -117, -116, -115, -114, -113,
+                           0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  std::vector<int64_t> data_shape = {2, 16};
+  std::vector<int> indices = {1};
+  std::vector<int64_t> indices_shape = {1};
+  std::vector<float> scales = {1.0f, 2.0f};
+  std::vector<int64_t> scales_shape = {2, 1};
+  // Explicit zero points
+  std::vector<int> zero_points = {10, -5};
+
+  // With explicit zero points:
+  // Unpacked data (row 1): [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] ---add offset 128--->
+  // Packed (row1): [128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143]
+  // Zero point unpacked: [-5] ---add offset 128---> packed: [123]
+  // Dequantization: [(128-123)*2, (129-123)*2, ..., (143-123)*2] = [10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40]
+  std::vector<float> output = {10.f, 12.f, 14.f, 16.f, 18.f, 20.f, 22.f, 24.f, 26.f, 28.f, 30.f, 32.f, 34.f, 36.f, 38.f, 40.f};
+  std::vector<int64_t> output_shape = {1, 16};
+
+  constexpr int64_t gather_axis = 0;
+  constexpr int64_t quantize_axis = 1;
+  constexpr int64_t block_size = 16;
+  constexpr int64_t bits = 8;
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape, true);
+}
+
+#ifdef USE_CUDA
+TEST(GatherBlockQuantizedOpTest, GatherAxis0_QuantizedAxis1_Uint8_4Bits_WithZeroPoints) {
+  Test_GatherAxis0_QuantizedAxis1_WithZeroPoints_4Bits<uint8_t, float, int32_t>();
+  Test_GatherAxis0_QuantizedAxis1_WithZeroPoints_4Bits<uint8_t, MLFloat16, int32_t>();
+  Test_GatherAxis0_QuantizedAxis1_WithZeroPoints_4Bits<uint8_t, float, int64_t>();
+  Test_GatherAxis0_QuantizedAxis1_WithZeroPoints_4Bits<uint8_t, MLFloat16, int64_t>();
+}
+
+TEST(GatherBlockQuantizedOpTest, GatherAxis0_QuantizedAxis1_Uint8_8Bits_WithZeroPoints) {
+  Test_GatherAxis0_QuantizedAxis1_WithZeroPoints_8Bits<uint8_t, float, int32_t>();
+  Test_GatherAxis0_QuantizedAxis1_WithZeroPoints_8Bits<uint8_t, MLFloat16, int32_t>();
+  Test_GatherAxis0_QuantizedAxis1_WithZeroPoints_8Bits<uint8_t, float, int64_t>();
+  Test_GatherAxis0_QuantizedAxis1_WithZeroPoints_8Bits<uint8_t, MLFloat16, int64_t>();
+}
 #endif
 
 template <typename T1, typename T2, typename Tind>
@@ -660,6 +1028,130 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis2) {
   Test_GatherAxis2_WithZeroPoints<Int4x2, float, int64_t>();
   Test_GatherAxis2_WithZeroPoints<UInt4x2, MLFloat16, int64_t>();
   Test_GatherAxis2_WithZeroPoints<Int4x2, MLFloat16, int64_t>();
+}
+#endif
+
+template <typename T1, typename T2, typename Tind>
+void Test_GatherAxis_WithZeroPoints_NoPading() {
+  std::vector<int> data = {
+      -8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5,
+      -4, -3, -2, -1, -4, -3, -2, -1, -4, -3, -2, -1, -4, -3, -2, -1,
+      0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3,
+      4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7,
+      4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7,
+      -4, -3, -2, -1, -4, -3, -2, -1, -4, -3, -2, -1, -4, -3, -2, -1};
+
+  std::vector<int64_t> data_shape = {2, 3, 16};
+  std::vector<int> indices = {1};
+  std::vector<int64_t> indices_shape = {1};
+  std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
+  std::vector<int64_t> scales_shape = {2, 3, 1};
+  std::vector<int> zero_points = {-1, 1, 0, 0, 1, -1};
+  std::vector<float> output = {
+      8, 10, 12, 14, 8, 10, 12, 14, 8, 10, 12, 14, 8, 10, 12, 14,
+      3, 4, 5, 6, 3, 4, 5, 6, 3, 4, 5, 6, 3, 4, 5, 6,
+      -6, -4, -2, 0, -6, -4, -2, 0, -6, -4, -2, 0, -6, -4, -2, 0};
+  std::vector<int64_t> output_shape = {1, 3, 16};
+
+  constexpr int64_t gather_axis = 0;
+  constexpr int64_t quantize_axis = 2;
+  constexpr int64_t block_size = 16;
+  constexpr int64_t bits = 4;
+
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape, true);
+}
+
+#ifdef USE_CUDA
+TEST(GatherBlockQuantizedOpTest, GatherAxisWithZeroPointsNoPading) {
+  Test_GatherAxis_WithZeroPoints_NoPading<Int4x2, float, int32_t>();
+  Test_GatherAxis_WithZeroPoints_NoPading<Int4x2, MLFloat16, int32_t>();
+  Test_GatherAxis_WithZeroPoints_NoPading<Int4x2, float, int64_t>();
+  Test_GatherAxis_WithZeroPoints_NoPading<Int4x2, MLFloat16, int64_t>();
+  Test_GatherAxis_WithZeroPoints_NoPading<UInt4x2, float, int32_t>();
+  Test_GatherAxis_WithZeroPoints_NoPading<UInt4x2, MLFloat16, int32_t>();
+  Test_GatherAxis_WithZeroPoints_NoPading<UInt4x2, float, int64_t>();
+  Test_GatherAxis_WithZeroPoints_NoPading<UInt4x2, MLFloat16, int64_t>();
+}
+#endif
+
+template <typename T1, typename T2, typename Tind>
+void Test_GatherAxis_NoPading_4bit() {
+  std::vector<int> data = {
+      -8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5,
+      -8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5,
+      0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3,
+      0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3,
+      7, 6, 5, 4, 7, 6, 5, 4, 7, 6, 5, 4, 7, 6, 5, 4,
+      7, 6, 5, 4, 7, 6, 5, 4, 7, 6, 5, 4, 7, 6, 5, 4};
+
+  std::vector<int64_t> data_shape = {2, 3, 16};
+  std::vector<int> indices = {0};
+  std::vector<int64_t> indices_shape = {1};
+  std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
+  std::vector<int64_t> scales_shape = {2, 3, 1};
+  std::vector<int> zero_points = {};
+  std::vector<float> output = {
+      0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3,
+      0, 2, 4, 6, 0, 2, 4, 6, 0, 2, 4, 6, 0, 2, 4, 6,
+      8, 9, 10, 11, 8, 9, 10, 11, 8, 9, 10, 11, 8, 9, 10, 11};
+  std::vector<int64_t> output_shape = {1, 3, 16};
+
+  constexpr int64_t gather_axis = 0;
+  constexpr int64_t quantize_axis = 2;
+  constexpr int64_t block_size = 16;
+  constexpr int64_t bits = 4;
+
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape, true);
+}
+
+#ifdef USE_CUDA
+TEST(GatherBlockQuantizedOpTest, GatherAxisNoPadingUInt8_4Bits) {
+  Test_GatherAxis_NoPading_4bit<uint8_t, float, int32_t>();
+  Test_GatherAxis_NoPading_4bit<uint8_t, MLFloat16, int32_t>();
+  Test_GatherAxis_NoPading_4bit<uint8_t, float, int64_t>();
+  Test_GatherAxis_NoPading_4bit<uint8_t, MLFloat16, int64_t>();
+}
+#endif
+
+template <typename T1, typename T2, typename Tind>
+void Test_GatherAxis_NoPading_8bit() {
+  std::vector<int> data = {
+      127, 126, 125, 124, 123, 122, 121, 120, 119, 118, 117, 116, 115, 114, 113, 112,
+      127, 126, 125, 124, 123, 122, 121, 120, 119, 118, 117, 116, 115, 114, 113, 112,
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+      127, 126, 125, 124, 123, 122, 121, 120, 119, 118, 117, 116, 115, 114, 113, 112,
+      127, 126, 125, 124, 123, 122, 121, 120, 119, 118, 117, 116, 115, 114, 113, 112};
+
+  std::vector<int64_t> data_shape = {2, 3, 16};
+  std::vector<int> indices = {0};
+  std::vector<int64_t> indices_shape = {1};
+  std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
+  std::vector<int64_t> scales_shape = {2, 3, 1};
+  std::vector<int> zero_points = {};
+  std::vector<float> output = {
+      255, 254, 253, 252, 251, 250, 249, 248, 247, 246, 245, 244, 243, 242, 241, 240,
+      510, 508, 506, 504, 502, 500, 498, 496, 494, 492, 490, 488, 486, 484, 482, 480,
+      128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143};
+  std::vector<int64_t> output_shape = {1, 3, 16};
+
+  constexpr int64_t gather_axis = 0;
+  constexpr int64_t quantize_axis = 2;
+  constexpr int64_t block_size = 16;
+  constexpr int64_t bits = 8;
+
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape, true);
+}
+
+#ifdef USE_CUDA
+TEST(GatherBlockQuantizedOpTest, GatherAxisNoPadingUInt8) {
+  Test_GatherAxis_NoPading_8bit<uint8_t, float, int32_t>();
+  Test_GatherAxis_NoPading_8bit<uint8_t, MLFloat16, int32_t>();
+  Test_GatherAxis_NoPading_8bit<uint8_t, float, int64_t>();
+  Test_GatherAxis_NoPading_8bit<uint8_t, MLFloat16, int64_t>();
 }
 #endif
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2025, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -33,6 +33,10 @@ ExecutionMode convertExecutionMode(jint mode);
 OrtSparseFormat convertToOrtSparseFormat(jint format);
 
 jint convertFromOrtSparseFormat(OrtSparseFormat format);
+
+jint convertFromCompiledModelCompatibility(OrtCompiledModelCompatibility compat);
+
+OrtCompiledModelCompatibility convertToCompiledModelCompatibility(jint compat);
 
 jint convertFromONNXDataFormat(ONNXTensorElementDataType type);
 

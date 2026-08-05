@@ -130,7 +130,7 @@ def start_emulator(
     extra_args: typing.Sequence[str] | None = None,
     timeout_minutes: int = 20,
 ) -> subprocess.Popen:
-    if check_emulator_running_using_avd_name(avd_name=avd_name):
+    if check_emulator_running_using_avd_name(sdk_tool_paths=sdk_tool_paths, avd_name=avd_name):
         raise RuntimeError(
             f"An emulator with avd_name{avd_name} is already running. Please close it before starting a new one."
         )
@@ -234,12 +234,12 @@ def start_emulator(
             time.sleep(sleep_interval_seconds)
 
         # Verify if the emulator is now running
-        if not check_emulator_running_using_avd_name(avd_name=avd_name):
+        if not check_emulator_running_using_avd_name(sdk_tool_paths=sdk_tool_paths, avd_name=avd_name):
             raise RuntimeError("Emulator failed to start.")
         return emulator_process
 
 
-def check_emulator_running_using_avd_name(avd_name: str) -> bool:
+def check_emulator_running_using_avd_name(sdk_tool_paths: SdkToolPaths, avd_name: str) -> bool:
     """
     Check if an emulator is running based on the provided AVD name.
     :param avd_name: Name of the Android Virtual Device (AVD) to check.
@@ -247,7 +247,7 @@ def check_emulator_running_using_avd_name(avd_name: str) -> bool:
     """
     try:
         # Step 1: List running devices
-        result = subprocess.check_output(["adb", "devices"], text=True).strip()
+        result = subprocess.check_output([sdk_tool_paths.adb, "devices"], text=True).strip()
         _log.info(f"adb devices output:\n{result}")
         running_emulators = [line.split("\t")[0] for line in result.splitlines()[1:] if "emulator" in line]
 
@@ -259,7 +259,7 @@ def check_emulator_running_using_avd_name(avd_name: str) -> bool:
         for emulator in running_emulators:
             try:
                 avd_info = (
-                    subprocess.check_output(["adb", "-s", emulator, "emu", "avd", "name"], text=True)
+                    subprocess.check_output([sdk_tool_paths.adb, "-s", emulator, "emu", "avd", "name"], text=True)
                     .strip()
                     .split("\n")[0]
                 )

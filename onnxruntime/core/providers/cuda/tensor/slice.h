@@ -23,9 +23,11 @@ Status Impl(cudaStream_t stream,
 template <bool dynamic>
 class Slice : public CudaKernel, public SliceBase {
  public:
-  Slice(const OpKernelInfo& info) : CudaKernel(info), SliceBase(info, dynamic) {}
+  explicit Slice(const OpKernelInfo& info) : CudaKernel(info),
+                                             SliceBase(info, dynamic, CudaProviderTag{}) {}
 
-  Status ComputeInternal(OpKernelContext* ctx) const override;
+  Status
+  ComputeInternal(OpKernelContext* ctx) const override;
 
  private:
   virtual const Tensor* GetSlicedOrUnslicedTensor(OpKernelContext* ctx) const;

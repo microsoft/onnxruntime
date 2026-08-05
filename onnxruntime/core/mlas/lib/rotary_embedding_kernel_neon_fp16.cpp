@@ -150,8 +150,8 @@ RopeKernel_Fp16_Impl<true>(
     if (i + 15 < dim) {
         float16x8_t x0 = MlasLoadFloat16x8(input + i);
         float16x8_t x1 = MlasLoadFloat16x8(input + i + 8);
-        float16x8_t sin_val = MlasLoadFloat16x8(sin + i);
-        float16x8_t cos_val = MlasLoadFloat16x8(cos + i);
+        float16x8_t sin_val = MlasLoadFloat16x8(sin + i / 2);
+        float16x8_t cos_val = MlasLoadFloat16x8(cos + i / 2);
         for (; i + 31 < dim; i += 16) {
             float16x8_t real = vuzp1q_f16(x0, x1);
             float16x8_t imag = vuzp2q_f16(x0, x1);
@@ -163,8 +163,8 @@ RopeKernel_Fp16_Impl<true>(
             MlasStoreFloat16x8(output + i + 8, y1);
             x0 = MlasLoadFloat16x8(input + i + 16);
             x1 = MlasLoadFloat16x8(input + i + 24);
-            sin_val = MlasLoadFloat16x8(sin + i + 16);
-            cos_val = MlasLoadFloat16x8(cos + i + 16);
+            sin_val = MlasLoadFloat16x8(sin + (i + 16) / 2);
+            cos_val = MlasLoadFloat16x8(cos + (i + 16) / 2);
         }
         float16x8_t real = vuzp1q_f16(x0, x1);
         float16x8_t imag = vuzp2q_f16(x0, x1);
@@ -181,8 +181,8 @@ RopeKernel_Fp16_Impl<true>(
         float16x4_t x1 = MlasLoadFloat16x4(input + i + 4);
         float16x4_t real = vuzp1_f16(x0, x1);
         float16x4_t imag = vuzp2_f16(x0, x1);
-        float16x4_t sin_val = MlasLoadFloat16x4(sin + i);
-        float16x4_t cos_val = MlasLoadFloat16x4(cos + i);
+        float16x4_t sin_val = MlasLoadFloat16x4(sin + i / 2);
+        float16x4_t cos_val = MlasLoadFloat16x4(cos + i / 2);
         float16x4_t real_out = vfms_f16(vmul_f16(real, cos_val), imag, sin_val);
         float16x4_t imag_out = vfma_f16(vmul_f16(real, sin_val), imag, cos_val);
         float16x4_t y0 = vzip1_f16(real_out, imag_out);
@@ -201,12 +201,12 @@ RopeKernel_Fp16_Impl<true>(
         imag = MlasLoadLaneFloat16x4<1>(input + i + 3, imag);
         real = MlasLoadLaneFloat16x4<2>(input + i + 4, real);
         imag = MlasLoadLaneFloat16x4<2>(input + i + 5, imag);
-        sin_val = MlasLoadLaneFloat16x4<0>(sin + i, sin_val);
-        sin_val = MlasLoadLaneFloat16x4<1>(sin + i + 1, sin_val);
-        sin_val = MlasLoadLaneFloat16x4<2>(sin + i + 2, sin_val);
-        cos_val = MlasLoadLaneFloat16x4<0>(cos + i, cos_val);
-        cos_val = MlasLoadLaneFloat16x4<1>(cos + i + 1, cos_val);
-        cos_val = MlasLoadLaneFloat16x4<2>(cos + i + 2, cos_val);
+        sin_val = MlasLoadLaneFloat16x4<0>(sin + i / 2, sin_val);
+        sin_val = MlasLoadLaneFloat16x4<1>(sin + i / 2 + 1, sin_val);
+        sin_val = MlasLoadLaneFloat16x4<2>(sin + i / 2 + 2, sin_val);
+        cos_val = MlasLoadLaneFloat16x4<0>(cos + i / 2, cos_val);
+        cos_val = MlasLoadLaneFloat16x4<1>(cos + i / 2 + 1, cos_val);
+        cos_val = MlasLoadLaneFloat16x4<2>(cos + i / 2 + 2, cos_val);
         float16x4_t real_out = vfms_f16(vmul_f16(real, cos_val), imag, sin_val);
         float16x4_t imag_out = vfma_f16(vmul_f16(real, sin_val), imag, cos_val);
         MlasStoreLaneFloat16x4<0>(output + i, real_out);
@@ -224,10 +224,10 @@ RopeKernel_Fp16_Impl<true>(
         imag = MlasLoadLaneFloat16x4<0>(input + i + 1, imag);
         real = MlasLoadLaneFloat16x4<1>(input + i + 2, real);
         imag = MlasLoadLaneFloat16x4<1>(input + i + 3, imag);
-        sin_val = MlasLoadLaneFloat16x4<0>(sin + i, sin_val);
-        sin_val = MlasLoadLaneFloat16x4<1>(sin + i + 1, sin_val);
-        cos_val = MlasLoadLaneFloat16x4<0>(cos + i, cos_val);
-        cos_val = MlasLoadLaneFloat16x4<1>(cos + i + 1, cos_val);
+        sin_val = MlasLoadLaneFloat16x4<0>(sin + i / 2, sin_val);
+        sin_val = MlasLoadLaneFloat16x4<1>(sin + i / 2 + 1, sin_val);
+        cos_val = MlasLoadLaneFloat16x4<0>(cos + i / 2, cos_val);
+        cos_val = MlasLoadLaneFloat16x4<1>(cos + i / 2 + 1, cos_val);
         float16x4_t real_out = vfms_f16(vmul_f16(real, cos_val), imag, sin_val);
         float16x4_t imag_out = vfma_f16(vmul_f16(real, sin_val), imag, cos_val);
         MlasStoreLaneFloat16x4<0>(output + i, real_out);
@@ -241,8 +241,8 @@ RopeKernel_Fp16_Impl<true>(
         float16x4_t cos_val = MlasZeroFloat16x4();
         real = MlasLoadLaneFloat16x4<0>(input + i, real);
         imag = MlasLoadLaneFloat16x4<0>(input + i + 1, imag);
-        sin_val = MlasLoadLaneFloat16x4<0>(sin + i, sin_val);
-        cos_val = MlasLoadLaneFloat16x4<0>(cos + i, cos_val);
+        sin_val = MlasLoadLaneFloat16x4<0>(sin + i / 2, sin_val);
+        cos_val = MlasLoadLaneFloat16x4<0>(cos + i / 2, cos_val);
         float16x4_t real_out = vfms_f16(vmul_f16(real, cos_val), imag, sin_val);
         float16x4_t imag_out = vfma_f16(vmul_f16(real, sin_val), imag, cos_val);
         MlasStoreLaneFloat16x4<0>(output + i, real_out);

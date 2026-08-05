@@ -20,7 +20,7 @@ parameters:
   IsReleaseBuild: false
 stages:
 - stage: ${{ parameters.StageName }}
-  dependsOn: Setup
+  dependsOn: []
   jobs:
   - job: ${{ parameters.StageName }}
     timeoutInMinutes: 200
@@ -33,14 +33,12 @@ stages:
     workspace:
       clean: all
     pool:
-      name: onnxruntime-Win-CPU-2022
+      name: onnxruntime-Win-CPU-VS2022-Latest
     variables:
       buildDirectory: '$(Build.BinariesDirectory)'
       OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
-      BuildDate : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
-      BuildTime : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
       ${{ if eq(parameters.EnableLto, true) }}:
         build_py_lto_flag: --enable_lto
 
@@ -49,21 +47,10 @@ stages:
         clean: true
         submodules: none
 
-      - template: ../../templates/telemetry-steps.yml
 
-      - task: NodeTool@0
-        inputs:
-          versionSpec: '22.x'
-
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: '3.12'
-          addToPath: true
-          architecture: x64
-      - task: PipAuthenticate@1
-        displayName: 'Pip Authenticate'
-        inputs:
-          artifactFeeds: 'Lotus'
+      - template: ../../templates/setup-build-tools.yml
+        parameters:
+          host_cpu_arch: 'x64'
 
       # need to set PROCESSOR_ARCHITECTURE so the x86 SDK is installed correctly
       - task: UseDotNet@2

@@ -31,22 +31,24 @@ parameters:
   - name: CudaVersion
     displayName: CUDA version
     type: string
-    default: '12.2'
+    default: '12.8'
     values:
-      - 12.2
+      - 12.8
+      - 13.0
 
 variables:
   - template: templates/common-variables.yml
   - name: docker_base_image
-    ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250724.1
-    ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250724.1
+    ${{ if eq(parameters.CudaVersion, '13.0') }}:
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1
+    ${{ if eq(parameters.CudaVersion, '12.8') }}:
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1
   - name: linux_trt_version
-    ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: ${{ variables.linux_trt_version_cuda11 }}
-    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+    ${{ if eq(parameters.CudaVersion, '13.0') }}:
+      value: ${{ variables.linux_trt_version_cuda13 }}
+    ${{ if eq(parameters.CudaVersion, '12.8') }}:
       value: ${{ variables.linux_trt_version_cuda12 }}
+
 
 jobs:
 - job: Linux_Build
@@ -65,10 +67,9 @@ jobs:
     clean: true
     submodules: none
 
-  - task: UsePythonVersion@0
-    inputs:
+  - template: templates/setup-feeds-and-python-steps.yml
+    parameters:
       versionSpec: '3.12'
-      addToPath: true
       architecture: 'x64'
 
   - template: templates/get-docker-image-steps.yml
@@ -92,6 +93,11 @@ jobs:
               --volume $(Build.BinariesDirectory):/build \
               --volume /data/models:/build/models:ro \
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+              -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
+              -e PIP_INDEX_URL \
+              --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
+              --volume $HOME/.m2:/home/onnxruntimedev/.m2:ro \
+              --volume $HOME/.gradle:/home/onnxruntimedev/.gradle \
               -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \

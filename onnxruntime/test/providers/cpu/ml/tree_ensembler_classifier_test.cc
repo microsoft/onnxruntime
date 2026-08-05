@@ -367,5 +367,457 @@ TEST(MLOpTest, TreeEnsembleClassifierBinaryProbabilities) {
   test.Run();
 }
 
+// Test that LOGISTIC transform is correctly applied when all leaf weights are non-negative
+// (weights_are_all_positive_ = true). This is a regression test for the case where
+// TreeEnsembleClassifier with post_transform=LOGISTIC would skip the sigmoid transformation
+// for leaf-only trees when all weights are non-negative.
+TEST(MLOpTest, TreeEnsembleClassifierBinaryLogisticAllPositiveWeights) {
+  // Leaf-only tree (single leaf node) with all positive weights.
+  // All inputs hit the same leaf, so output is determined by leaf weight + base_value.
+  std::vector<int64_t> treeids = {0};
+  std::vector<int64_t> nodeids = {0};
+  std::vector<int64_t> featureids = {0};
+  std::vector<float> thresholds = {0.0f};
+  std::vector<std::string> modes = {"LEAF"};
+  std::vector<int64_t> truenodeids = {-1};
+  std::vector<int64_t> falsenodeids = {-1};
+  std::vector<int64_t> missing_tracks = {0};
+  std::vector<float> hitrates = {1.0f};
+
+  std::vector<int64_t> class_treeids = {0};
+  std::vector<int64_t> class_nodeids = {0};
+  std::vector<int64_t> class_ids = {0};
+  // All positive weights -> weights_are_all_positive_ = true
+  std::vector<float> class_weights = {1.0f};
+  std::vector<int64_t> classes = {0, 1};
+
+  // Test 1: aggregate score > 0 (no base_values, score = leaf_weight = 1.0)
+  // Expected: sigmoid is applied, [sigmoid(-1.0), sigmoid(1.0)] = [0.26894142, 0.73105859]
+  {
+    OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
+    test.AddAttribute("nodes_treeids", treeids);
+    test.AddAttribute("nodes_nodeids", nodeids);
+    test.AddAttribute("nodes_featureids", featureids);
+    test.AddAttribute("nodes_values", thresholds);
+    test.AddAttribute("nodes_modes", modes);
+    test.AddAttribute("nodes_truenodeids", truenodeids);
+    test.AddAttribute("nodes_falsenodeids", falsenodeids);
+    test.AddAttribute("nodes_missing_value_tracks_true", missing_tracks);
+    test.AddAttribute("nodes_hitrates", hitrates);
+    test.AddAttribute("class_treeids", class_treeids);
+    test.AddAttribute("class_nodeids", class_nodeids);
+    test.AddAttribute("class_ids", class_ids);
+    test.AddAttribute("class_weights", class_weights);
+    test.AddAttribute("classlabels_int64s", classes);
+    test.AddAttribute("post_transform", "LOGISTIC");
+
+    // 2 identical samples, single feature
+    test.AddInput<float>("X", {2, 1}, {0.5f, 0.5f});
+    test.AddOutput<int64_t>("Y", {2}, {1, 1});
+    // sigmoid(1.0) = 0.73105859f, sigmoid(-1.0) = 0.26894142f
+    test.AddOutput<float>("Z", {2, 2}, {0.26894142f, 0.73105859f, 0.26894142f, 0.73105859f});
+    test.Run();
+  }
+
+  // Test 2: aggregate score < 0 (base_value=-2.0, score = 1.0 + (-2.0) = -1.0)
+  // Expected: sigmoid is applied, [sigmoid(1.0), sigmoid(-1.0)] = [0.73105859, 0.26894142]
+  {
+    OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
+    test.AddAttribute("nodes_treeids", treeids);
+    test.AddAttribute("nodes_nodeids", nodeids);
+    test.AddAttribute("nodes_featureids", featureids);
+    test.AddAttribute("nodes_values", thresholds);
+    test.AddAttribute("nodes_modes", modes);
+    test.AddAttribute("nodes_truenodeids", truenodeids);
+    test.AddAttribute("nodes_falsenodeids", falsenodeids);
+    test.AddAttribute("nodes_missing_value_tracks_true", missing_tracks);
+    test.AddAttribute("nodes_hitrates", hitrates);
+    test.AddAttribute("class_treeids", class_treeids);
+    test.AddAttribute("class_nodeids", class_nodeids);
+    test.AddAttribute("class_ids", class_ids);
+    test.AddAttribute("class_weights", class_weights);
+    test.AddAttribute("classlabels_int64s", classes);
+    test.AddAttribute("base_values", std::vector<float>{-2.0f});
+    test.AddAttribute("post_transform", "LOGISTIC");
+
+    // 2 identical samples, single feature
+    test.AddInput<float>("X", {2, 1}, {0.5f, 0.5f});
+    test.AddOutput<int64_t>("Y", {2}, {0, 0});
+    // sigmoid(-1.0) = 0.26894142f, sigmoid(1.0) = 0.73105859f
+    test.AddOutput<float>("Z", {2, 2}, {0.73105859f, 0.26894142f, 0.73105859f, 0.26894142f});
+    test.Run();
+  }
+}
+
+TEST(MLOpTest, TreeEnsembleClassifierMismatchedClassArrays) {
+  OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
+
+  // Use a minimal valid tree: one root (BRANCH_LEQ) with two leaf children.
+  std::vector<int64_t> lefts = {1, -1, -1};
+  std::vector<int64_t> rights = {2, -1, -1};
+  std::vector<int64_t> treeids = {0, 0, 0};
+  std::vector<int64_t> nodeids = {0, 1, 2};
+  std::vector<int64_t> featureids = {0, -2, -2};
+  std::vector<float> thresholds = {0.5f, -2.f, -2.f};
+  std::vector<std::string> modes = {"BRANCH_LEQ", "LEAF", "LEAF"};
+
+  // Intentionally mismatched: class_nodeids has fewer elements than class_ids.
+  std::vector<int64_t> class_treeids = {0, 0};
+  std::vector<int64_t> class_nodeids = {1};  // only 1 element — mismatch!
+  std::vector<int64_t> class_classids = {0, 1};
+  std::vector<float> class_weights = {1.f, 1.f};
+  std::vector<int64_t> classes = {0, 1};
+
+  test.AddAttribute("nodes_truenodeids", lefts);
+  test.AddAttribute("nodes_falsenodeids", rights);
+  test.AddAttribute("nodes_treeids", treeids);
+  test.AddAttribute("nodes_nodeids", nodeids);
+  test.AddAttribute("nodes_featureids", featureids);
+  test.AddAttribute("nodes_values", thresholds);
+  test.AddAttribute("nodes_modes", modes);
+  test.AddAttribute("class_treeids", class_treeids);
+  test.AddAttribute("class_nodeids", class_nodeids);
+  test.AddAttribute("class_ids", class_classids);
+  test.AddAttribute("class_weights", class_weights);
+  test.AddAttribute("classlabels_int64s", classes);
+
+  std::vector<float> X = {1.f};
+  test.AddInput<float>("X", {1, 1}, X);
+  test.AddOutput<int64_t>("Y", {1}, {0});
+  test.AddOutput<float>("Z", {1, 2}, {0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "target_class_ids and target_class_nodeids must have the same size");
+}
+
+TEST(MLOpTest, TreeEnsembleClassifierMismatchedNodeArrays) {
+  OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
+
+  // nodes_falsenodeids has 3 elements, but nodes_featureids has only 2 — mismatch!
+  std::vector<int64_t> lefts = {1, -1, -1};
+  std::vector<int64_t> rights = {2, -1, -1};
+  std::vector<int64_t> treeids = {0, 0, 0};
+  std::vector<int64_t> nodeids = {0, 1, 2};
+  std::vector<int64_t> featureids = {0, 0};  // only 2 elements — mismatch!
+  std::vector<float> thresholds = {0.5f, -2.f, -2.f};
+  std::vector<std::string> modes = {"BRANCH_LEQ", "LEAF", "LEAF"};
+
+  std::vector<int64_t> class_treeids = {0, 0};
+  std::vector<int64_t> class_nodeids = {1, 2};
+  std::vector<int64_t> class_classids = {0, 1};
+  std::vector<float> class_weights = {1.f, 1.f};
+  std::vector<int64_t> classes = {0, 1};
+
+  test.AddAttribute("nodes_truenodeids", lefts);
+  test.AddAttribute("nodes_falsenodeids", rights);
+  test.AddAttribute("nodes_treeids", treeids);
+  test.AddAttribute("nodes_nodeids", nodeids);
+  test.AddAttribute("nodes_featureids", featureids);
+  test.AddAttribute("nodes_values", thresholds);
+  test.AddAttribute("nodes_modes", modes);
+  test.AddAttribute("class_treeids", class_treeids);
+  test.AddAttribute("class_nodeids", class_nodeids);
+  test.AddAttribute("class_ids", class_classids);
+  test.AddAttribute("class_weights", class_weights);
+  test.AddAttribute("classlabels_int64s", classes);
+
+  std::vector<float> X = {1.f};
+  test.AddInput<float>("X", {1, 1}, X);
+  test.AddOutput<int64_t>("Y", {1}, {0});
+  test.AddOutput<float>("Z", {1, 2}, {0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "nodes_falsenodeids and nodes_featureids must have the same size");
+}
+
+TEST(MLOpTest, TreeEnsembleClassifierBaseValuesTooLargeForBinaryClass) {
+  // For a binary classifier (n_classes <= 2), base_values must have at most 2 elements.
+  OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
+
+  std::vector<int64_t> lefts = {1, 0, 0};
+  std::vector<int64_t> rights = {2, 0, 0};
+  std::vector<int64_t> treeids = {0, 0, 0};
+  std::vector<int64_t> nodeids = {0, 1, 2};
+  std::vector<int64_t> featureids = {0, -2, -2};
+  std::vector<float> thresholds = {0.5f, -2.f, -2.f};
+  std::vector<std::string> modes = {"BRANCH_LEQ", "LEAF", "LEAF"};
+
+  std::vector<int64_t> class_treeids = {0, 0};
+  std::vector<int64_t> class_nodeids = {1, 2};
+  std::vector<int64_t> class_classids = {0, 0};
+  std::vector<float> class_weights = {1.f, 1.f};
+  std::vector<int64_t> classes = {0};
+  // n_targets_or_classes=1 but base_values has 3 elements (must be <= 2)
+  std::vector<float> base_values = {0.f, 0.f, 0.f};
+
+  test.AddAttribute("nodes_truenodeids", lefts);
+  test.AddAttribute("nodes_falsenodeids", rights);
+  test.AddAttribute("nodes_treeids", treeids);
+  test.AddAttribute("nodes_nodeids", nodeids);
+  test.AddAttribute("nodes_featureids", featureids);
+  test.AddAttribute("nodes_values", thresholds);
+  test.AddAttribute("nodes_modes", modes);
+  test.AddAttribute("class_treeids", class_treeids);
+  test.AddAttribute("class_nodeids", class_nodeids);
+  test.AddAttribute("class_ids", class_classids);
+  test.AddAttribute("class_weights", class_weights);
+  test.AddAttribute("classlabels_int64s", classes);
+  test.AddAttribute("base_values", base_values);
+
+  std::vector<float> X = {1.f};
+  test.AddInput<float>("X", {1, 1}, X);
+  test.AddOutput<int64_t>("Y", {1}, {0});
+  test.AddOutput<float>("Z", {1, 1}, {0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "base_values should have 0, 1, or 2 values.");
+}
+
+TEST(MLOpTest, TreeEnsembleClassifierBinaryWith1BaseValue) {
+  // Regression test: n_classes=2 with base_values.size()==1 should be accepted (backward compat).
+  // The aggregator code has explicit handling for this historically-accepted case.
+  OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
+
+  std::vector<int64_t> lefts = {1, 0, 0};
+  std::vector<int64_t> rights = {2, 0, 0};
+  std::vector<int64_t> treeids = {0, 0, 0};
+  std::vector<int64_t> nodeids = {0, 1, 2};
+  std::vector<int64_t> featureids = {0, -2, -2};
+  std::vector<float> thresholds = {0.5f, -2.f, -2.f};
+  std::vector<std::string> modes = {"BRANCH_LEQ", "LEAF", "LEAF"};
+
+  // Both leaves use class 0; weights_classes.size()==1 so binary_case_=true.
+  std::vector<int64_t> class_treeids = {0, 0};
+  std::vector<int64_t> class_nodeids = {1, 2};
+  std::vector<int64_t> class_classids = {0, 0};
+  std::vector<float> class_weights = {1.0f, -1.0f};
+  std::vector<int64_t> classes = {0, 1};
+  // n_targets_or_classes=2 with base_values.size()==1 — historically accepted.
+  std::vector<float> base_values = {0.5f};
+
+  test.AddAttribute("nodes_truenodeids", lefts);
+  test.AddAttribute("nodes_falsenodeids", rights);
+  test.AddAttribute("nodes_treeids", treeids);
+  test.AddAttribute("nodes_nodeids", nodeids);
+  test.AddAttribute("nodes_featureids", featureids);
+  test.AddAttribute("nodes_values", thresholds);
+  test.AddAttribute("nodes_modes", modes);
+  test.AddAttribute("class_treeids", class_treeids);
+  test.AddAttribute("class_nodeids", class_nodeids);
+  test.AddAttribute("class_ids", class_classids);
+  test.AddAttribute("class_weights", class_weights);
+  test.AddAttribute("classlabels_int64s", classes);
+  test.AddAttribute("base_values", base_values);
+
+  // X[0]=0.0 → leaf 1 (weight 1.0); X[1]=1.0 → leaf 2 (weight -1.0)
+  // With base_values=[0.5]: scores become 1.5 and -0.5 respectively.
+  std::vector<float> X = {0.0f, 1.0f};
+  test.AddInput<float>("X", {2, 1}, X);
+  test.AddOutput<int64_t>("Y", {2}, {1, 0});
+  test.AddOutput<float>("Z", {2, 2}, {-1.5f, 1.5f, 0.5f, -0.5f});
+
+  test.Run();
+}
+
+TEST(MLOpTest, TreeEnsembleClassifierBaseValuesWrongSizeMultiClass) {
+  // For a 3-class classifier, base_values must have 0 or 3 elements.
+  OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
+
+  std::vector<int64_t> lefts = {1, 0, 0};
+  std::vector<int64_t> rights = {2, 0, 0};
+  std::vector<int64_t> treeids = {0, 0, 0};
+  std::vector<int64_t> nodeids = {0, 1, 2};
+  std::vector<int64_t> featureids = {0, -2, -2};
+  std::vector<float> thresholds = {0.5f, -2.f, -2.f};
+  std::vector<std::string> modes = {"BRANCH_LEQ", "LEAF", "LEAF"};
+
+  std::vector<int64_t> class_treeids = {0, 0};
+  std::vector<int64_t> class_nodeids = {1, 2};
+  std::vector<int64_t> class_classids = {0, 2};
+  std::vector<float> class_weights = {1.f, 1.f};
+  std::vector<int64_t> classes = {0, 1, 2};
+  // n_targets_or_classes=3 but base_values has 2 elements (must be 0 or 3)
+  std::vector<float> base_values = {0.f, 0.f};
+
+  test.AddAttribute("nodes_truenodeids", lefts);
+  test.AddAttribute("nodes_falsenodeids", rights);
+  test.AddAttribute("nodes_treeids", treeids);
+  test.AddAttribute("nodes_nodeids", nodeids);
+  test.AddAttribute("nodes_featureids", featureids);
+  test.AddAttribute("nodes_values", thresholds);
+  test.AddAttribute("nodes_modes", modes);
+  test.AddAttribute("class_treeids", class_treeids);
+  test.AddAttribute("class_nodeids", class_nodeids);
+  test.AddAttribute("class_ids", class_classids);
+  test.AddAttribute("class_weights", class_weights);
+  test.AddAttribute("classlabels_int64s", classes);
+  test.AddAttribute("base_values", base_values);
+
+  std::vector<float> X = {1.f};
+  test.AddInput<float>("X", {1, 1}, X);
+  test.AddOutput<int64_t>("Y", {1}, {0});
+  test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "base_values should have 0 or 3 values.");
+}
+
+TEST(MLOpTest, TreeEnsembleNegativeFeatureIds) {
+  OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
+
+  std::vector<int64_t> lefts = {1, -1, 3, -1, -1, 1, -1, 3, 4, -1, -1, -1, 1, 2, -1, 4, -1, -1, -1};
+  std::vector<int64_t> rights = {2, -1, 4, -1, -1, 2, -1, 6, 5, -1, -1, -1, 6, 3, -1, 5, -1, -1, -1};
+  std::vector<int64_t> treeids = {0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2};
+  std::vector<int64_t> nodeids = {0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6};
+  std::vector<int64_t> featureids = {-2, -2, 0, -2, -2, 0, -2, 2, 1, -2, -2, -2, 0, 2, -2, 1, -2, -2, -2};
+  std::vector<float> thresholds = {-172.f, -2.f, 2.5f, -2.f, -2.f, 1.5f, -2.f, -62.5f, 213.09999084f, -2.f,
+                                   -2.f, -2.f, 27.5f, -172.f, -2.f, 8.10000038f, -2.f, -2.f, -2.f};
+  std::vector<std::string> modes = {"BRANCH_LEQ", "LEAF", "BRANCH_LEQ", "LEAF", "LEAF", "BRANCH_LEQ",
+                                    "LEAF", "BRANCH_LEQ", "BRANCH_LEQ", "LEAF", "LEAF", "LEAF",
+                                    "BRANCH_LEQ", "BRANCH_LEQ", "LEAF", "BRANCH_LEQ", "LEAF", "LEAF", "LEAF"};
+  // std::vector<int64_t> classes = {0, 1, 2, 3};
+  std::vector<int64_t> class_treeids = {0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2};
+  std::vector<int64_t> class_nodeids = {1, 3, 4, 1, 4, 5, 6, 2, 4, 5, 6};
+  std::vector<int64_t> class_classids = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  std::vector<float> class_weights = {-1.f, 4.f, -1.f, 2.f, -1.f, +1.f, -2.f, 1.f, -1.f, 2.f, -3.f};
+  std::vector<int64_t> classes = {1};
+  std::vector<float> X = {1.f, 0.0f, 0.4f, 3.0f, 44.0f, -3.f, 12.0f, 12.9f, -312.f, 23.0f, 11.3f, -222.f,
+                          23.0f, 11.3f, -222.f, 23.0f, 3311.3f, -222.f, 23.0f, 11.3f, -222.f, 43.0f, 413.3f,
+                          -114.f};
+  std::vector<int64_t> results = {1, 0, 0, 0, 0, 1, 0, 0};
+  std::vector<float> probs = {};
+  std::vector<float> log_probs = {};
+  std::vector<float> scores{5, -1, -1, -1, -1, 1, -1, -3};
+
+  // define the context of the operator call
+  constexpr int N = 8;
+  test.AddAttribute("nodes_truenodeids", lefts);
+  test.AddAttribute("nodes_falsenodeids", rights);
+  test.AddAttribute("nodes_treeids", treeids);
+  test.AddAttribute("nodes_nodeids", nodeids);
+  test.AddAttribute("nodes_featureids", featureids);
+  test.AddAttribute("nodes_values", thresholds);
+  test.AddAttribute("nodes_modes", modes);
+  test.AddAttribute("class_treeids", class_treeids);
+  test.AddAttribute("class_nodeids", class_nodeids);
+  test.AddAttribute("class_ids", class_classids);
+  test.AddAttribute("class_weights", class_weights);
+  test.AddAttribute("classlabels_int64s", classes);
+
+  test.AddInput<float>("X", {N, 3}, X);
+  test.AddOutput<int64_t>("Y", {N}, results);
+  test.AddOutput<float>("Z", {N, 1}, scores);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "nodes_featureids[0]=-2 must be in [0, 2147483647] for non-leaf nodes");
+}
+
+// Regression test for PR #27552 which inadvertently broke binary TreeEnsembleClassifier models
+// with all-positive weights and non-LOGISTIC post_transform (e.g., sklearn RandomForestClassifier).
+// When weights are all non-negative (probability-like values in [0,1]), the threshold for the
+// positive class should be > 0.5 and the complement should be computed as 1-score (not -score).
+// Without the weights_are_all_positive_ flag, scores in (0, 0.5) would produce negative
+// "probabilities" and incorrect labels.
+TEST(MLOpTest, TreeEnsembleClassifierBinaryAllPositiveWeightsNone) {
+  // 3 trees, each with a root branching on feature 0 at threshold 0.5.
+  // Left leaf (feature <= 0.5): weight = 0.2 (low probability for class 1)
+  // Right leaf (feature > 0.5): weight = 0.8 (high probability for class 1)
+  //
+  // For input x=0.0: all 3 trees go left, avg score = 0.2 (< 0.5 → label 0)
+  // For input x=1.0: all 3 trees go right, avg score = 0.8 (> 0.5 → label 1)
+  // For input x=0.0 with 1 tree going right: score = (0.2+0.2+0.8)/3 ≈ 0.4 (< 0.5 → label 0)
+  //
+  // Binary case: classlabels_int64s={0,1}, class_ids all 0, all weights in [0,1].
+  // post_transform = NONE (default).
+
+  // Single tree for simplicity: root → left leaf (weight 0.3) or right leaf (weight 0.8)
+  std::vector<int64_t> treeids = {0, 0, 0};
+  std::vector<int64_t> nodeids = {0, 1, 2};
+  std::vector<int64_t> featureids = {0, -2, -2};
+  std::vector<float> thresholds = {0.5f, -2.f, -2.f};
+  std::vector<std::string> modes = {"BRANCH_LEQ", "LEAF", "LEAF"};
+  std::vector<int64_t> truenodeids = {1, -1, -1};
+  std::vector<int64_t> falsenodeids = {2, -1, -1};
+
+  // Both leaves target class 0 (single-column binary encoding).
+  // All weights are positive — this triggers weights_are_all_positive_=true.
+  std::vector<int64_t> class_treeids = {0, 0};
+  std::vector<int64_t> class_nodeids = {1, 2};
+  std::vector<int64_t> class_classids = {0, 0};
+  std::vector<float> class_weights = {0.3f, 0.8f};
+  std::vector<int64_t> classes = {0, 1};
+
+  // Test 1: score = 0.3 (< 0.5) → label should be 0, probabilities should be [0.7, 0.3]
+  {
+    OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
+    test.AddAttribute("nodes_treeids", treeids);
+    test.AddAttribute("nodes_nodeids", nodeids);
+    test.AddAttribute("nodes_featureids", featureids);
+    test.AddAttribute("nodes_values", thresholds);
+    test.AddAttribute("nodes_modes", modes);
+    test.AddAttribute("nodes_truenodeids", truenodeids);
+    test.AddAttribute("nodes_falsenodeids", falsenodeids);
+    test.AddAttribute("class_treeids", class_treeids);
+    test.AddAttribute("class_nodeids", class_nodeids);
+    test.AddAttribute("class_ids", class_classids);
+    test.AddAttribute("class_weights", class_weights);
+    test.AddAttribute("classlabels_int64s", classes);
+
+    // x=0.0 → goes left (0.0 <= 0.5) → leaf 1, weight = 0.3
+    test.AddInput<float>("X", {1, 1}, {0.0f});
+    test.AddOutput<int64_t>("Y", {1}, {0});
+    // write_additional_scores=1: complement = 1-score → [1-0.3, 0.3] = [0.7, 0.3]
+    test.AddOutput<float>("Z", {1, 2}, {0.7f, 0.3f});
+    test.Run();
+  }
+
+  // Test 2: score = 0.8 (> 0.5) → label should be 1, probabilities should be [0.2, 0.8]
+  {
+    OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
+    test.AddAttribute("nodes_treeids", treeids);
+    test.AddAttribute("nodes_nodeids", nodeids);
+    test.AddAttribute("nodes_featureids", featureids);
+    test.AddAttribute("nodes_values", thresholds);
+    test.AddAttribute("nodes_modes", modes);
+    test.AddAttribute("nodes_truenodeids", truenodeids);
+    test.AddAttribute("nodes_falsenodeids", falsenodeids);
+    test.AddAttribute("class_treeids", class_treeids);
+    test.AddAttribute("class_nodeids", class_nodeids);
+    test.AddAttribute("class_ids", class_classids);
+    test.AddAttribute("class_weights", class_weights);
+    test.AddAttribute("classlabels_int64s", classes);
+
+    // x=1.0 → goes right (1.0 > 0.5) → leaf 2, weight = 0.8
+    test.AddInput<float>("X", {1, 1}, {1.0f});
+    test.AddOutput<int64_t>("Y", {1}, {1});
+    // write_additional_scores=0: complement = 1-score → [1-0.8, 0.8] = [0.2, 0.8]
+    test.AddOutput<float>("Z", {1, 2}, {0.2f, 0.8f});
+    test.Run();
+  }
+
+  // Test 3: score = 0.5 (boundary, <= 0.5) → label should be 0
+  {
+    OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
+    // Use weight = 0.5 for the left leaf to test the boundary
+    std::vector<float> boundary_weights = {0.5f, 0.8f};
+    test.AddAttribute("nodes_treeids", treeids);
+    test.AddAttribute("nodes_nodeids", nodeids);
+    test.AddAttribute("nodes_featureids", featureids);
+    test.AddAttribute("nodes_values", thresholds);
+    test.AddAttribute("nodes_modes", modes);
+    test.AddAttribute("nodes_truenodeids", truenodeids);
+    test.AddAttribute("nodes_falsenodeids", falsenodeids);
+    test.AddAttribute("class_treeids", class_treeids);
+    test.AddAttribute("class_nodeids", class_nodeids);
+    test.AddAttribute("class_ids", class_classids);
+    test.AddAttribute("class_weights", boundary_weights);
+    test.AddAttribute("classlabels_int64s", classes);
+
+    // x=0.0 → leaf 1, weight = 0.5 (not > 0.5, so label = 0)
+    test.AddInput<float>("X", {1, 1}, {0.0f});
+    test.AddOutput<int64_t>("Y", {1}, {0});
+    // write_additional_scores=1: [1-0.5, 0.5] = [0.5, 0.5]
+    test.AddOutput<float>("Z", {1, 2}, {0.5f, 0.5f});
+    test.Run();
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime

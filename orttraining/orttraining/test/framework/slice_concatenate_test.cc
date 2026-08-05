@@ -8,7 +8,7 @@
 #include "gtest/gtest.h"
 #include "orttraining/core/session/tensor_helper.h"
 #include "test/util/include/default_providers.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/test_environment.h"
 
 namespace onnxruntime {

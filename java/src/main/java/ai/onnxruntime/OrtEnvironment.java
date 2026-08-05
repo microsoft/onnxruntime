@@ -489,6 +489,30 @@ public final class OrtEnvironment implements AutoCloseable {
   }
 
   /**
+   * Checks the supplied model info string against the list of {@link OrtEpDevice}s to see if the
+   * model is compatible.
+   *
+   * @param epDevices The EP-Device tuples to use.
+   * @param modelInfo The model info string to check.
+   * @return The model compatibility.
+   * @throws OrtException If the call failed.
+   */
+  public OrtCompiledModelCompatibility getModelCompatibilityForEpDevices(
+      List<OrtEpDevice> epDevices, String modelInfo) throws OrtException {
+    if (epDevices == null || epDevices.isEmpty()) {
+      throw new IllegalArgumentException("Must supply at least one OrtEpDevice");
+    }
+    long[] deviceHandles = new long[epDevices.size()];
+    for (int i = 0; i < epDevices.size(); i++) {
+      deviceHandles[i] = epDevices.get(i).getNativeHandle();
+    }
+
+    int output =
+        getModelCompatibilityForEpDevices(OnnxRuntime.ortApiHandle, deviceHandles, modelInfo);
+    return OrtCompiledModelCompatibility.mapFromInt(output);
+  }
+
+  /**
    * Creates the native object.
    *
    * @param apiHandle The API pointer.
@@ -557,6 +581,18 @@ public final class OrtEnvironment implements AutoCloseable {
   private static native long[] getEpDevices(long apiHandle, long nativeHandle) throws OrtException;
 
   /**
+   * Checks if a model is compatible with the supplied list of EP device handles.
+   *
+   * @param apiHandle The API handle to use.
+   * @param epHandles An array of OrtEpDevice handles.
+   * @param modelInfo The model info string.
+   * @return An int representing the {@link OrtCompiledModelCompatibility} value.
+   * @throws OrtException If the call failed.
+   */
+  private static native int getModelCompatibilityForEpDevices(
+      long apiHandle, long[] epHandles, String modelInfo) throws OrtException;
+
+  /**
    * Closes the OrtEnvironment, frees the handle.
    *
    * @param apiHandle The API pointer.
@@ -579,6 +615,59 @@ public final class OrtEnvironment implements AutoCloseable {
   /** Close is a no-op on OrtEnvironment since ORT 1.11. */
   @Override
   public void close() {}
+
+  /** Enum representing a compiled model's compatibility with a set of {@link OrtEpDevice}s. */
+  public enum OrtCompiledModelCompatibility {
+    /** The EP is not applicable for the model. */
+    EP_NOT_APPLICABLE(0),
+    /** The EP supports the model optimally. */
+    EP_SUPPORTED_OPTIMAL(1),
+    /** The EP supports the model, but the model would perform better if recompiled. */
+    EP_SUPPORTED_PREFER_RECOMPILATION(2),
+    /** The EP does not support the model. */
+    EP_UNSUPPORTED(3);
+
+    private final int value;
+
+    private static final Logger logger =
+        Logger.getLogger(OrtCompiledModelCompatibility.class.getName());
+    private static final OrtCompiledModelCompatibility[] values =
+        new OrtCompiledModelCompatibility[4];
+
+    static {
+      for (OrtCompiledModelCompatibility ot : OrtCompiledModelCompatibility.values()) {
+        values[ot.value] = ot;
+      }
+    }
+
+    OrtCompiledModelCompatibility(int value) {
+      this.value = value;
+    }
+
+    /**
+     * Gets the native value associated with this model compatibility value.
+     *
+     * @return The native value.
+     */
+    public int getValue() {
+      return value;
+    }
+
+    /**
+     * Maps from the C API's int enum to the Java enum.
+     *
+     * @param logLevel The index of the Java enum.
+     * @return The Java enum.
+     */
+    public static OrtCompiledModelCompatibility mapFromInt(int logLevel) {
+      if ((logLevel >= 0) && (logLevel < values.length)) {
+        return values[logLevel];
+      } else {
+        logger.warning("Unknown model compatibility " + logLevel + " setting to EP_UNSUPPORTED");
+        return EP_UNSUPPORTED;
+      }
+    }
+  }
 
   /**
    * Controls the global thread pools in the environment. Only used if the session is constructed

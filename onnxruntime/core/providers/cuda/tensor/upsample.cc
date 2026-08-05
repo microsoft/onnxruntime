@@ -3,8 +3,10 @@
 
 #include "upsample.h"
 
+#include <limits>
 #include <utility>
 
+#include "core/common/safeint.h"
 #include "upsample_impl.h"
 #include "core/providers/cuda/tensor/resize_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -42,13 +44,15 @@ REGISTER_VERSIONED_TYPED_KERNEL(uint8_t, 9, 9);
 
 template <typename T>
 Upsample<T>::Upsample(const OpKernelInfo& info) : UpsampleBase(info), CudaKernel(info) {
-  if (UpsampleBase::antialias_) {
-    // Copy the table on DEVICE
+  // The device pointer cached here is safe in plugin builds: the EP's allocator
+  // (obtained via OpKernelInfo::GetAllocator) outlives all kernel instances because
+  // kernels are destroyed before the EP during session teardown.
+  if (antialias_) {
     const uint8_t* lookup_table = GetLookupTableShared();
     auto alloc = info.GetAllocator(OrtMemTypeDefault);
     shared_lookup_table_ondevice_ = IAllocator::MakeUniquePtr<uint8_t>(std::move(alloc), kLookupTableSize);
-    CUDA_CALL_THROW(cudaMemcpyAsync(shared_lookup_table_ondevice_.get(), lookup_table, kLookupTableSize,
-                                    cudaMemcpyHostToDevice, nullptr));
+    CUDA_CALL_THROW(cudaMemcpy(shared_lookup_table_ondevice_.get(), lookup_table, kLookupTableSize,
+                               cudaMemcpyHostToDevice));
   }
 }
 
@@ -61,7 +65,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
   auto X_dims = X->Shape().GetDims();
   int32_t rank = static_cast<int32_t>(X_dims.size());
 
-  ORT_ENFORCE(static_cast<int32_t>(output_dims.size()) == rank, "Rank of input and output tensor should be same.");
+  ORT_RETURN_IF_NOT(static_cast<int32_t>(output_dims.size()) == rank,
+                    "Rank of input and output tensor should be same.");
   if (rank == 0)
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                   is_resize_ ? "Resize: input tensor cannot be scalar." : "Upsample: input tensor cannot be scalar.");
@@ -81,6 +86,11 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
   }
 
   typedef typename ToCudaType<T>::MappedType CudaT;
+  constexpr int64_t kIntMax = static_cast<int64_t>(std::numeric_limits<int>::max());
+
+  auto is_valid_non_negative_int = [kIntMax](int64_t v) {
+    return v >= 0 && v <= kIntMax;
+  };
 
   // kernel
   TensorPitches input_pitches(X_dims);
@@ -90,7 +100,9 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
   TArray<fast_divmod> output_div_pitches(rank);
 
   for (int32_t i = 0; i < rank; ++i) {
-    output_div_pitches[i] = fast_divmod(gsl::narrow_cast<int>(output_pitches[i]));
+    ORT_RETURN_IF_NOT(output_pitches[i] >= 0 && output_pitches[i] <= kIntMax,
+                      "Resize: output pitch exceeds supported int range for CUDA kernel indexing.");
+    output_div_pitches[i] = fast_divmod(onnxruntime::narrow<int>(output_pitches[i]));
   }
   size_t output_count = Y->Shape().Size();
 
@@ -104,8 +116,10 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
     }
 
     if (antialias_) {
+      const auto* shared_lookup_table_ondevice = shared_lookup_table_ondevice_.get();
+
       TempSpaceAllocateFunc allocate_temp_space = [&](size_t bytes_size) {
-        return GetScratchBuffer<uint8_t>(bytes_size, context->GetComputeStream());
+        return GetScratchBuffer<uint8_t>(bytes_size, GetComputeStream(context));
       };
 
       std::optional<float> extrapolation_value;
@@ -129,6 +143,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
             float height_scale;
             float width_scale;
 
+            bool is_nhwc = false;
+
             if (is_2D) {
               input_height = X_dims[0];
               input_width = X_dims[1];
@@ -140,6 +156,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
               width_scale = scales[1];
             } else {
               if (scales[0] == 1.0f && scales[1] == 1.0f) {
+                // NCHW: batch and channel scales are 1
                 batch_size = X_dims[Channels<LAYOUT_NCHW>::N];
                 num_channels = X_dims[Channels<LAYOUT_NCHW>::C];
                 input_height = X_dims[Channels<LAYOUT_NCHW>::H];
@@ -150,8 +167,23 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 
                 height_scale = scales[2];
                 width_scale = scales[3];
+              } else if (scales[0] == 1.0f && scales[3] == 1.0f) {
+                // NHWC: batch and channel scales are 1
+                is_nhwc = true;
+                batch_size = X_dims[Channels<LAYOUT_NHWC>::N];
+                num_channels = X_dims[Channels<LAYOUT_NHWC>::C];
+                input_height = X_dims[Channels<LAYOUT_NHWC>::H];
+                input_width = X_dims[Channels<LAYOUT_NHWC>::W];
+
+                output_height = output_dims[Channels<LAYOUT_NHWC>::H];
+                output_width = output_dims[Channels<LAYOUT_NHWC>::W];
+
+                height_scale = scales[1];
+                width_scale = scales[2];
               } else {
-                return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Resize", ": NHWC is not supported yet");
+                return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Resize",
+                                       ": 4-D 'Linear' antialias mode requires batch and channel "
+                                       "scales to be 1.0 (NCHW or NHWC layout).");
               }
             }
 
@@ -169,8 +201,9 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 roi,
                                 extrapolation_value,
                                 exclude_outside_,
+                                is_nhwc,
                                 allocate_temp_space,
-                                shared_lookup_table_ondevice_.get(),
+                                shared_lookup_table_ondevice,
                                 reinterpret_cast<const CudaT*>(X->Data<T>()),
                                 reinterpret_cast<CudaT*>(Y->MutableData<T>()),
                                 output_count);
@@ -212,8 +245,9 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 roi,
                                 extrapolation_value,
                                 exclude_outside_,
+                                /*is_nhwc=*/false,
                                 allocate_temp_space,
-                                shared_lookup_table_ondevice_.get(),
+                                shared_lookup_table_ondevice,
                                 reinterpret_cast<const CudaT*>(X->Data<T>()),
                                 reinterpret_cast<CudaT*>(Y->MutableData<T>()),
                                 output_count);
@@ -232,21 +266,45 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
           }
 
           const bool is_2D = X_dims.size() == 2;
-          const bool is_nchw = is_2D ? true : (scales[0] == 1.0f && scales[1] == 1.0f);
 
-          ORT_RETURN_IF_NOT(is_nchw,
-                            "Resize 'Cubic' mode only supports NCWH layout "
-                            " with 2-D or 4-D with leading dims equal to 1");
+          int64_t batch_size = is_2D ? 1 : 0;
+          int64_t num_channels = is_2D ? 1 : 0;
+          int64_t input_height = is_2D ? X_dims[0] : 0;
+          int64_t input_width = is_2D ? X_dims[1] : 0;
+          int64_t output_height = is_2D ? output_dims[0] : 0;
+          int64_t output_width = is_2D ? output_dims[1] : 0;
+          float height_scale = is_2D ? scales[0] : 0.f;
+          float width_scale = is_2D ? scales[1] : 0.f;
+          bool is_nhwc = false;
 
-          const int64_t batch_size = is_2D ? 1 : X_dims[Channels<LAYOUT_NCHW>::N];
-          const int64_t num_channels = is_2D ? 1 : X_dims[Channels<LAYOUT_NCHW>::C];
-          const int64_t input_height = is_2D ? X_dims[0] : X_dims[Channels<LAYOUT_NCHW>::H];
-          const int64_t input_width = is_2D ? X_dims[1] : X_dims[Channels<LAYOUT_NCHW>::W];
-
-          const int64_t output_height = is_2D ? output_dims[0] : output_dims[Channels<LAYOUT_NCHW>::H];
-          const int64_t output_width = is_2D ? output_dims[1] : output_dims[Channels<LAYOUT_NCHW>::W];
-          const float height_scale = is_2D ? scales[0] : scales[2];
-          const float width_scale = is_2D ? scales[1] : scales[3];
+          if (!is_2D) {
+            if (scales[0] == 1.0f && scales[1] == 1.0f) {
+              // NCHW
+              batch_size = X_dims[Channels<LAYOUT_NCHW>::N];
+              num_channels = X_dims[Channels<LAYOUT_NCHW>::C];
+              input_height = X_dims[Channels<LAYOUT_NCHW>::H];
+              input_width = X_dims[Channels<LAYOUT_NCHW>::W];
+              output_height = output_dims[Channels<LAYOUT_NCHW>::H];
+              output_width = output_dims[Channels<LAYOUT_NCHW>::W];
+              height_scale = scales[2];
+              width_scale = scales[3];
+            } else if (scales[0] == 1.0f && scales[3] == 1.0f) {
+              // NHWC
+              is_nhwc = true;
+              batch_size = X_dims[Channels<LAYOUT_NHWC>::N];
+              num_channels = X_dims[Channels<LAYOUT_NHWC>::C];
+              input_height = X_dims[Channels<LAYOUT_NHWC>::H];
+              input_width = X_dims[Channels<LAYOUT_NHWC>::W];
+              output_height = output_dims[Channels<LAYOUT_NHWC>::H];
+              output_width = output_dims[Channels<LAYOUT_NHWC>::W];
+              height_scale = scales[1];
+              width_scale = scales[2];
+            } else {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Resize",
+                                     ": 4-D 'Cubic' antialias mode requires batch and channel "
+                                     "scales to be 1.0 (NCHW or NHWC layout).");
+            }
+          }
 
           ResizeAntiAliasImpl(Stream(context), rank, mode_, coordinate_transform_mode_, cubic_coeff_a_,
                               X_dims, output_dims,
@@ -258,8 +316,9 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                               roi,
                               extrapolation_value,
                               exclude_outside_,
+                              is_nhwc,
                               allocate_temp_space,
-                              shared_lookup_table_ondevice_.get(),
+                              shared_lookup_table_ondevice,
                               reinterpret_cast<const CudaT*>(X->Data<T>()),
                               reinterpret_cast<CudaT*>(Y->MutableData<T>()),
                               output_count);
@@ -268,28 +327,58 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
           return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Resize: unexpected mode");
       }
     } else {
+      for (int32_t i = 0; i < rank; ++i) {
+        ORT_RETURN_IF_NOT(is_valid_non_negative_int(X_dims[i]) && is_valid_non_negative_int(output_dims[i]),
+                          "Resize: dimension exceeds supported int range for CUDA nearest indexing.");
+      }
+
+      if (mode_ == UpsampleMode::NN && rank >= 2) {
+        int64_t output_hw = 0;
+        ORT_RETURN_IF_NOT(SafeMultiply(output_dims[rank - 2], output_dims[rank - 1], output_hw) && output_hw <= kIntMax,
+                          "Resize: output height*width exceeds supported int range for CUDA nearest indexing.");
+      }
+
+      if (mode_ == UpsampleMode::NN && rank >= 3) {
+        const int64_t output_depth = output_dims[rank - 3];
+        const int64_t output_height = output_dims[rank - 2];
+        const int64_t output_width = output_dims[rank - 1];
+        bool dhw_fits_int = false;
+        if (output_depth >= 0 && output_height >= 0 && output_width >= 0) {
+          int64_t output_dh = 0;
+          int64_t output_dhw = 0;
+          dhw_fits_int = SafeMultiply(output_depth, output_height, output_dh) &&
+                         SafeMultiply(output_dh, output_width, output_dhw) &&
+                         output_dhw <= kIntMax;
+        }
+
+        ORT_RETURN_IF_NOT(dhw_fits_int,
+                          "Resize: output depth*height*width exceeds supported int range for CUDA nearest indexing.");
+      }
+
       TArray<int64_t> input_shape(X_dims);
       TArray<int64_t> output_shape(output_dims);
       TArray<float, 10> roi_vals(roi);
       TArray<float> scales_vals(scales);
 
       size_t temp_buffer_size = CalcResizeBufferSize(mode_, output_dims);
-      auto dims_mapping_buffer = GetScratchBuffer<unsigned char>(temp_buffer_size, context->GetComputeStream());
+      auto dims_mapping_buffer = GetScratchBuffer<unsigned char>(temp_buffer_size, GetComputeStream(context));
       void* dims_mapping = reinterpret_cast<void*>(dims_mapping_buffer.get());
-      ResizeImpl(Stream(context), mode_, rank, input_shape, output_shape,
-                 input_strides, output_div_pitches, scales_vals, roi_vals,
-                 reinterpret_cast<const CudaT*>(X->Data<T>()),
-                 reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-                 output_count, use_extrapolation_, ToCudaType<T>::FromFloat(extrapolation_value_),
-                 cubic_coeff_a_, exclude_outside_,
-                 coordinate_transform_mode_, nearest_mode_,
-                 dims_mapping);
+      ORT_RETURN_IF_ERROR(ResizeImpl(Stream(context), mode_, rank, input_shape, output_shape,
+                                     input_strides, output_div_pitches, scales_vals, roi_vals,
+                                     reinterpret_cast<const CudaT*>(X->Data<T>()),
+                                     reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+                                     output_count, use_extrapolation_, ToCudaType<T>::FromFloat(extrapolation_value_),
+                                     cubic_coeff_a_, exclude_outside_,
+                                     coordinate_transform_mode_, nearest_mode_,
+                                     dims_mapping));
     }
   } else {
     TArray<fast_divmod> scales_div(rank);
 
     for (int32_t i = 0; i < rank; ++i) {
-      scales_div[i] = fast_divmod(gsl::narrow_cast<int>(ceil(scales[i])));
+      ORT_RETURN_IF_NOT(ceil(scales[i]) <= static_cast<double>(std::numeric_limits<int>::max()),
+                        "Upsample: scale factor exceeds supported int range for CUDA indexing.");
+      scales_div[i] = fast_divmod(onnxruntime::narrow<int>(ceil(scales[i])));
     }
 
     UpsampleImpl(Stream(context),
@@ -310,7 +399,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 template <typename T>
 Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  ORT_ENFORCE(X != nullptr);
+  ORT_RETURN_IF_NOT(X != nullptr, "Input tensor is null.");
   auto input_dims = X->Shape().GetDims();
 
   TensorShapeVector output_dims(input_dims.size());
@@ -318,7 +407,7 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
   if (!roi_cached_) {
     bool use_default_roi = true;
     if (need_roi_input_) {
-      ORT_ENFORCE(roi_input_idx_ > 0, "Invalid roi input index.");
+      ORT_RETURN_IF_NOT(roi_input_idx_ > 0, "Invalid roi input index.");
       const auto* roi = context->Input<Tensor>(roi_input_idx_);
       if (roi != nullptr) {
         ParseRoiData(roi, roi_array);
@@ -337,11 +426,11 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
-  ComputeROIWithAxes(roi_array, input_dims.size());
+  ORT_RETURN_IF_ERROR(ComputeROIWithAxes(roi_array, input_dims.size()));
 
   InlinedVector<float> scales_array(input_dims.size());
   // opset < 10
-  if (OpKernel::Node().InputDefs().size() == 1) {
+  if (context->InputCount() == 1) {
     // Compute output shape from scales attributes and input dims
     scales_array = scales_;
 
@@ -364,21 +453,27 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
   // Scales and sizes are input to the node
   if (scales != nullptr && scales->Shape().Size() != 0) {
     // use scales input data
-    ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
+    ORT_RETURN_IF_NOT(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
     ORT_RETURN_IF_ERROR(ParseScalesData(scales, scales_array, input_dims.size()));
 
     // Compute output shape from scales and input dims
     ComputeOutputShape(scales_array, input_dims, output_dims);
   } else {
     // When sizes input is available directly populate it into the output_dims array.
-    ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0,
-                "Either scales or sizes MUST be provided as input.");
+    ORT_RETURN_IF_NOT(sizes != nullptr && sizes->Shape().Size() != 0,
+                      "Either scales or sizes MUST be provided as input.");
     ORT_RETURN_IF_ERROR(ParseSizesData(sizes, output_dims, input_dims));
     ORT_RETURN_IF_ERROR(ParseScalesDataAndAdjustOutputSize(output_dims, input_dims, scales_array));
   }
 
   return BaseCompute(context, roi_array, scales_array, output_dims);
 }
+
+template class Upsample<float>;
+template class Upsample<double>;
+template class Upsample<MLFloat16>;
+template class Upsample<int32_t>;
+template class Upsample<uint8_t>;
 
 }  // namespace cuda
 }  // namespace onnxruntime

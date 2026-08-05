@@ -97,10 +97,62 @@ class MlasEltwiseAddTest : public MlasTestBase {
   }
 };
 
+class MlasEltwiseMulTest : public MlasTestBase {
+ private:
+  MatrixGuardBuffer<float> BufferInputLeft;
+  MatrixGuardBuffer<float> BufferInputRight;
+  MatrixGuardBuffer<float> BufferOutput;
+  MatrixGuardBuffer<float> BufferOutputReference;
+
+  void Test(size_t N, float MinimumValue, float MaximumValue, const std::optional<float>& ScalarValue = std::nullopt) {
+    float* InputLeft = BufferInputLeft.GetBuffer(N);
+    float* InputRight = BufferInputRight.GetBuffer(N);
+    float* Output = BufferOutput.GetBuffer(N);
+    float* OutputReference = BufferOutputReference.GetBuffer(N);
+
+    std::default_random_engine generator(static_cast<unsigned>(N));
+    std::uniform_real_distribution<float> distribution(MinimumValue, MaximumValue);
+
+    for (size_t n = 0; n < N; n++) {
+      InputLeft[n] = distribution(generator);
+      InputRight[n] = ScalarValue.value_or(distribution(generator));
+    }
+
+    for (size_t n = 0; n < N; n++) {
+      OutputReference[n] = InputLeft[n] * InputRight[n];
+    }
+
+    MlasEltwiseMul(InputLeft, InputRight, Output, N);
+
+    constexpr float AbsoluteTolerance = 1e-6f;
+    constexpr float RelativeTolerance = 1e-6f;
+
+    for (size_t n = 0; n < N; n++) {
+      float diff = std::fabs(Output[n] - OutputReference[n]);
+      ASSERT_TRUE(diff <= AbsoluteTolerance || diff <= std::fabs(OutputReference[n]) * RelativeTolerance)
+          << " @" << n << " of " << N << ", got: " << Output[n] << ", expecting: " << OutputReference[n];
+    }
+  }
+
+ public:
+  static const char* GetTestSuiteName() {
+    static const std::string suite_name("Eltwise_Mul");
+    return suite_name.c_str();
+  }
+
+  void ExecuteShort(void) override {
+    for (size_t n = 1; n < 128; n++) {
+      Test(n, -10.f, 10.f);
+      Test(n, -10.f, 10.f, -5000.f);
+    }
+  }
+};
+
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   size_t count = 0;
   if (is_short_execute) {
     count += MlasDirectShortExecuteTests<MlasEltwiseAddTest>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasEltwiseMulTest>::RegisterShortExecute();
   }
   return count;
 });

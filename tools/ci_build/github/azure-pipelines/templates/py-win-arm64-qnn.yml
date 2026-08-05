@@ -7,11 +7,11 @@ parameters:
 - name: PYTHON_VERSION
   type: string
   default: '3.11'
-  
+
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.38.0.250901
+  default: 2.42.0.251225
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -32,6 +32,8 @@ jobs:
     name: ${{ parameters.MACHINE_POOL }}
     os: windows
     hostArchitecture: Arm64
+    demands:
+      - Agent.Version -equals 4.264.2
   templateContext:
     sdl:
       codeSignValidation:
@@ -57,18 +59,10 @@ jobs:
     clean: true
     submodules: none
 
-  - template: telemetry-steps.yml
-
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: ${{ parameters.PYTHON_VERSION }}
-      addToPath: true
-      architecture: 'arm64'
-
-  - task: PipAuthenticate@1
-    displayName: 'Pip Authenticate'
-    inputs:
-      artifactFeeds: 'Lotus'
+  - template: setup-build-tools.yml
+    parameters:
+      host_cpu_arch: 'arm64'
+      python_version: ${{ parameters.PYTHON_VERSION }}
 
   - task: PythonScript@0
     inputs:

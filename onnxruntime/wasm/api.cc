@@ -393,10 +393,10 @@ OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t*
     OrtMemoryInfo* memory_info = nullptr;
     switch (data_location) {
       case DATA_LOCATION_GPU_BUFFER:
-        RETURN_NULLPTR_IF_ERROR(CreateMemoryInfo, "WebGPU_Buffer", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
+        RETURN_NULLPTR_IF_ERROR(CreateMemoryInfo, "WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
         break;
       case DATA_LOCATION_ML_TENSOR:
-        RETURN_NULLPTR_IF_ERROR(CreateMemoryInfo, "WebNN_Tensor", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
+        RETURN_NULLPTR_IF_ERROR(CreateMemoryInfo, "WebNN_Ten", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
         break;
       default:
         RETURN_NULLPTR_IF_ERROR(CreateCpuMemoryInfo, OrtDeviceAllocator, OrtMemTypeDefault, &memory_info);
@@ -563,9 +563,9 @@ int EMSCRIPTEN_KEEPALIVE OrtBindOutput(OrtIoBinding* io_binding,
     if (output_location != DATA_LOCATION_GPU_BUFFER && output_location != DATA_LOCATION_ML_TENSOR) {
       RETURN_ERROR_CODE_IF_ERROR(CreateCpuMemoryInfo, OrtDeviceAllocator, OrtMemTypeDefault, &memory_info);
     } else if (output_location == DATA_LOCATION_ML_TENSOR) {
-      RETURN_ERROR_CODE_IF_ERROR(CreateMemoryInfo, "WebNN_Tensor", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
+      RETURN_ERROR_CODE_IF_ERROR(CreateMemoryInfo, "WebNN_Ten", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
     } else {
-      RETURN_ERROR_CODE_IF_ERROR(CreateMemoryInfo, "WebGPU_Buffer", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
+      RETURN_ERROR_CODE_IF_ERROR(CreateMemoryInfo, "WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
     }
     REGISTER_AUTO_RELEASE_HANDLE(MemoryInfo, memory_info);
     return CHECK_STATUS(BindOutputToDevice, io_binding, name, memory_info);

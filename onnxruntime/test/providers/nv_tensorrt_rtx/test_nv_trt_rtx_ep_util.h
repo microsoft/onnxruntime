@@ -124,5 +124,91 @@ Ort::IoBinding generate_io_binding(
     std::map<std::string, std::vector<int64_t>> shape_overwrites = {},
     OrtAllocator* allocator = nullptr);
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+/**
+ * Create a model with TRT_FP8QuantizeLinear -> TRT_FP8DequantizeLinear nodes for per-tensor quantization.
+ *
+ * The model uses opset version 19 for ONNX domain and opset version 1 for TRT domain.
+ *
+ * \param model_name - output model file name
+ * \param graph_name - name of the graph
+ *
+ * input: "X" [4, 64] (FLOAT16)
+ * output: "Y" [4, 64] (FLOAT16)
+ *
+ *                "X" [4x64]
+ *                 (FLOAT16)
+ *                     |
+ *                     |
+ *            TRT_FP8QuantizeLinear (trt domain)
+ *            (+ scale, FLOAT16 initializer)
+ *                     |
+ *                     |
+ *              "X_quantized"
+ *                  [4x64]
+ *              (FLOAT8E4M3FN)
+ *                     |
+ *                     |
+ *          TRT_FP8DequantizeLinear (trt domain)
+ *            (+ scale, FLOAT16 initializer)
+ *                     |
+ *                     |
+ *                   "Y"
+ *                 [4x64]
+ *                (FLOAT16)
+ */
+void CreateFP8CustomOpModel(const PathString& model_name,
+                            const std::string& graph_name);
+#endif  // !defined(DISABLE_FLOAT8_TYPES)
+
+#if !defined(DISABLE_FLOAT4_TYPES) && !defined(DISABLE_FLOAT8_TYPES)
+/**
+ * Create a model with TRT_FP4DynamicQuantize node followed by DequantizeLinear nodes.
+ *
+ * The model uses opset version 23 for ONNX domain and opset version 1 for TRT domain.
+ *
+ * \param model_name - output model file name
+ * \param graph_name - name of the graph
+ *
+ * input: "X" [64, 64] (FLOAT16)
+ * output: "X_dequantized" [64, 64] (FLOAT16)
+ *
+ *                 "X" [64x64]
+ *                  (FLOAT16)
+ *                      |
+ *                      |
+ *              TRT_FP4DynamicQuantize (trt domain)
+ *              (axis=-1, block_size=16, scale_type=17)
+ *              (+ scale, FLOAT16 initializer)
+ *                   /         \
+ *                  /           \
+ *     "X_quantized"             "X_scale"
+ *     [64x64]                   [64x4]
+ *     (FLOAT4E2M1)            (FLOAT8E4M3FN)
+ *          |                        |
+ *          |                        |
+ *          |                  DequantizeLinear #1
+ *          |                  (+ dequant_scale, FLOAT16 initializer)
+ *          |                        |
+ *          |                        |
+ *          |                "X_scale_dequantized"
+ *          |                      [64x4]
+ *          |                     (FLOAT16)
+ *          |                        /
+ *           \                      /
+ *            \                    /
+ *             \                  /
+ *              DequantizeLinear #2
+ *           (axis=-1, block_size=16)
+ *                     |
+ *                     |
+ *              "X_dequantized" [OUTPUT]
+ *                  [64x64]
+ *                 (FLOAT16)
+ */
+void CreateFP4CustomOpModel(const PathString& model_name,
+                            const std::string& graph_name);
+#endif  // !defined(DISABLE_FLOAT4_TYPES) && !defined(DISABLE_FLOAT8_TYPES)
+
 }  // namespace test
 }  // namespace onnxruntime

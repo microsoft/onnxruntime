@@ -14,11 +14,7 @@ namespace onnxruntime {
 namespace cuda {
 
 namespace {
-#ifdef USE_ROCM
-constexpr int kThreadsPerBlock = 256;
-#else
 constexpr int kThreadsPerBlock = GPU_WARP_SIZE * 4;
-#endif
 constexpr int kThreadWorkSize = 4;
 
 // General case to compute the input(for Gather)/output(for Scatter) and indices data offset given the thread ID

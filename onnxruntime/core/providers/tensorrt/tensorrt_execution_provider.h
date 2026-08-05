@@ -16,6 +16,14 @@ typedef void* cudnnStatus_t;
 #include "core/providers/cuda/cuda_graph.h"
 #include "tensorrt_execution_provider_info.h"
 
+// These types used to come from NvOnnxParser.h, but they've been removed.
+#if NV_TENSORRT_MAJOR >= 11
+#include <utility>
+#include <vector>
+using SubGraph_t = std::pair<std::vector<size_t>, bool>;
+using SubGraphCollection_t = std::vector<SubGraph_t>;
+#endif
+
 namespace onnxruntime {
 
 namespace tensorrt_env_vars {
@@ -302,7 +310,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(int graph_annotation_id) const override;
-  Status ReplayGraph(int graph_annotation_id) override;
+  Status ReplayGraph(int graph_annotation_id, bool sync = true) override;
 
   static common::Status RefitEngine(std::string onnx_model_filename,
                                     std::string& onnx_model_folder_path,

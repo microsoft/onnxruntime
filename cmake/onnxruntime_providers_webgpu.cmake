@@ -6,34 +6,139 @@
   endif()
 
   add_compile_definitions(USE_WEBGPU=1)
+
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     add_definitions(-DENABLE_WEBASSEMBLY_THREADS=1)
   endif()
-  if (onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
-    if (onnxruntime_DISABLE_EXCEPTIONS)
-      message(FATAL_ERROR "Dynamic WGSL template generation requires exception handling to be enabled.")
-    endif()
-    if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-      message(FATAL_ERROR "Dynamic WGSL template generation is not supported when targeting WebAssembly.")
-    endif()
-    add_definitions(-DORT_WGSL_TEMPLATE_DYNAMIC=1)
-  elseif (NOT onnxruntime_WGSL_TEMPLATE STREQUAL "static")
-    message(FATAL_ERROR "Unsupported value for onnxruntime_WGSL_TEMPLATE: ${onnxruntime_WGSL_TEMPLATE}. Supported values are 'static' or 'dynamic'.")
-  endif()
+
   file(GLOB_RECURSE onnxruntime_providers_webgpu_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.cc"
   )
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
-    source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_webgpu_contrib_ops_cc_srcs})
     list(APPEND onnxruntime_providers_webgpu_cc_srcs ${onnxruntime_webgpu_contrib_ops_cc_srcs})
   endif()
 
-  source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_providers_webgpu_cc_srcs})
-  onnxruntime_add_static_library(onnxruntime_providers_webgpu ${onnxruntime_providers_webgpu_cc_srcs})
-  target_compile_features(onnxruntime_providers_webgpu PRIVATE cxx_std_20)
-  onnxruntime_add_include_to_target(onnxruntime_providers_webgpu
-    onnxruntime_common onnx onnx_proto flatbuffers::flatbuffers Boost::mp11 safeint_interface)
+  if(NOT onnxruntime_USE_EP_API_ADAPTERS)
+    #
+    # Build WebGPU EP as a static library
+    #
+
+    # For static library build, exclude the 'ep' folder
+    file(GLOB_RECURSE ep_files_to_exclude
+      "${ONNXRUNTIME_ROOT}/core/providers/webgpu/ep/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/webgpu/ep/*.cc"
+    )
+    list(REMOVE_ITEM onnxruntime_providers_webgpu_cc_srcs ${ep_files_to_exclude})
+
+    source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_providers_webgpu_cc_srcs})
+    onnxruntime_add_static_library(onnxruntime_providers_webgpu ${onnxruntime_providers_webgpu_cc_srcs})
+    onnxruntime_add_include_to_target(onnxruntime_providers_webgpu
+      onnxruntime_common onnx onnx_proto flatbuffers::flatbuffers Boost::mp11 safeint_interface)
+  else()
+    #
+    # Build WebGPU EP as a shared library
+    #
+    if(WIN32)
+      # Sets the DLL version info on Windows: https://learn.microsoft.com/en-us/windows/win32/menurc/versioninfo-resource
+      list(APPEND onnxruntime_providers_webgpu_cc_srcs "${ONNXRUNTIME_ROOT}/core/providers/webgpu/ep/versioninfo.rc")
+    endif()
+    source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_providers_webgpu_cc_srcs})
+
+    onnxruntime_add_shared_library_module(onnxruntime_providers_webgpu ${onnxruntime_providers_webgpu_cc_srcs})
+    onnxruntime_add_include_to_target(onnxruntime_providers_webgpu
+        ${REPO_ROOT}/include/onnxruntime/core/session
+        onnxruntime_common
+        onnx
+        onnx_proto
+        flatbuffers::flatbuffers
+        Boost::mp11
+        safeint_interface)
+
+    target_link_libraries(onnxruntime_providers_webgpu PRIVATE
+        onnxruntime_optimizer
+        onnxruntime_providers
+        onnxruntime_lora
+        onnxruntime_framework
+        onnxruntime_graph
+        onnxruntime_util
+        ${ONNXRUNTIME_MLAS_LIBS}
+        onnxruntime_common
+        onnxruntime_flatbuffers
+        ${onnxruntime_EXTERNAL_LIBRARIES}
+    )
+
+    # Add ONNX compiler definitions
+    add_definitions("-DONNX_ML=1")
+    add_definitions("-DONNX_NAMESPACE=onnx")
+    add_definitions("-DONNX_USE_LITE_PROTO=1")
+
+    # Default plugin EP version to ORT_VERSION with "-dev" suffix if not explicitly provided.
+    if(NOT DEFINED onnxruntime_PLUGIN_EP_VERSION)
+      set(onnxruntime_PLUGIN_EP_VERSION "${ORT_VERSION}-dev")
+    endif()
+
+    # Set preprocessor definition for plugin EP version
+    target_compile_definitions(onnxruntime_providers_webgpu PRIVATE
+                               ORT_PLUGIN_EP_VERSION="${onnxruntime_PLUGIN_EP_VERSION}")
+
+    # Bake the minimum compatible ORT version (the single source of truth lives in
+    # plugin-ep-webgpu/MIN_ONNXRUNTIME_VERSION) into the EP DLL so it can be enforced at runtime.
+    # Format is strict "MAJOR.MINOR.PATCH".
+    set(_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION_FILE "${REPO_ROOT}/plugin-ep-webgpu/MIN_ONNXRUNTIME_VERSION")
+    file(STRINGS "${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION_FILE}" _ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION LIMIT_COUNT 1)
+    if(NOT _ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION)
+      message(FATAL_ERROR "WebGPU plugin EP minimum ORT version file is missing or empty: "
+                          "${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION_FILE}")
+    endif()
+    target_compile_definitions(onnxruntime_providers_webgpu PRIVATE
+                               ORT_PLUGIN_EP_MIN_ORT_VERSION="${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION}")
+
+    # Set preprocessor definitions used in onnxruntime_providers_webgpu.rc
+    if(WIN32)
+      set(WEBGPU_DLL_FILE_DESCRIPTION "ONNX Runtime WebGPU Provider")
+
+      target_compile_definitions(onnxruntime_providers_webgpu PRIVATE FILE_DESC=\"${WEBGPU_DLL_FILE_DESCRIPTION}\")
+      target_compile_definitions(onnxruntime_providers_webgpu PRIVATE FILE_NAME=\"onnxruntime_providers_webgpu.dll\")
+    endif()
+
+    # Set linker flags for function(s) exported by EP DLL
+    if(UNIX)
+      if (APPLE)
+        set_property(TARGET onnxruntime_providers_webgpu APPEND_STRING PROPERTY LINK_FLAGS
+                     "-Xlinker -dead_strip")
+      elseif (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+        target_link_options(onnxruntime_providers_webgpu PRIVATE
+                            "LINKER:--version-script=${ONNXRUNTIME_ROOT}/core/providers/webgpu/ep/version_script.lds"
+                            "LINKER:--gc-sections"
+                            "LINKER:-rpath=\$ORIGIN")
+        # TODO: -z noexecstack
+      endif()
+    elseif(WIN32)
+      set_property(TARGET onnxruntime_providers_webgpu APPEND_STRING PROPERTY LINK_FLAGS
+                   "-DEF:${ONNXRUNTIME_ROOT}/core/providers/webgpu/ep/symbols.def")
+    else()
+      message(FATAL_ERROR "onnxruntime_providers_webgpu unknown platform, need to specify shared library exports for it")
+    endif()
+
+    set_target_properties(onnxruntime_providers_webgpu PROPERTIES LINKER_LANGUAGE CXX)
+
+    if (onnxruntime_BUILD_CACHE)
+      message(FATAL_ERROR "WebGPU EP shared library build does not support build cache. Please disable build cache or use static library build.")
+    endif()
+    if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+      message(FATAL_ERROR "WebGPU EP shared library build is not supported on Emscripten. Please use static library build.")
+    endif()
+
+    # Configure precompiled headers for shared library build
+    # PCH ensures ep/adapters.h is included first and improves compilation speed
+    target_precompile_headers(onnxruntime_providers_webgpu PRIVATE
+      "${REPO_ROOT}/include/onnxruntime/ep/adapters.h"
+    )
+  endif()
+
+  set_target_properties(onnxruntime_providers_webgpu PROPERTIES CXX_STANDARD_REQUIRED ON)
+  set_target_properties(onnxruntime_providers_webgpu PROPERTIES FOLDER "ONNXRuntime")
 
   if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     # target "emdawnwebgpu_c" is created by Dawn, including "-fno-exceptions" in its compile options by default.
@@ -47,24 +152,57 @@
       list(REMOVE_ITEM EM_DAWN_WEBGPU_C_COMPILE_OPTIONS "-fno-exceptions")
       set_property(TARGET emdawnwebgpu_c PROPERTY COMPILE_OPTIONS ${EM_DAWN_WEBGPU_C_COMPILE_OPTIONS})
     endif()
+    if (CMAKE_CXX_FLAGS MATCHES "-fwasm-exceptions")
+      get_property(EM_DAWN_WEBGPU_C_COMPILE_OPTIONS TARGET emdawnwebgpu_c PROPERTY COMPILE_OPTIONS)
+      list(REMOVE_ITEM EM_DAWN_WEBGPU_C_COMPILE_OPTIONS "-fno-exceptions")
+      set_property(TARGET emdawnwebgpu_c PROPERTY COMPILE_OPTIONS ${EM_DAWN_WEBGPU_C_COMPILE_OPTIONS})
+    endif()
 
     # target "emdawnwebgpu_cpp" is created by Dawn. When it is linked to onnxruntime_providers_webgpu as "PUBLIC"
     # dependency, a few build/link flags will be set automatically to make sure emscripten can generate correct
     # WebAssembly/JavaScript code for WebGPU support.
     target_link_libraries(onnxruntime_providers_webgpu PUBLIC emdawnwebgpu_cpp)
 
-    # ASYNCIFY is required for WGPUFuture support (ie. async functions in WebGPU API)
-    target_link_options(onnxruntime_providers_webgpu PUBLIC
-      "SHELL:-s ASYNCIFY=1"
-      "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
+    # We need to manually add the Dawn include directories so that generated Emscripten WebGPU
+    # headers (e.g. webgpu_enum_class_bitmasks.h) are found at compile time.
+    #
+    # IMPORTANT: We must add the generated emdawnwebgpu include directory BEFORE the Dawn source
+    # include directory, because ${dawn_SOURCE_DIR}/include/webgpu/webgpu_cpp.h is a stub that
+    # redirects to dawn/webgpu_cpp.h (native Dawn), but we need the generated Emscripten-specific
+    # webgpu_cpp.h.
+    target_include_directories(onnxruntime_providers_webgpu PRIVATE
+        "${dawn_BINARY_DIR}/gen/src/emdawnwebgpu/include"
+        "${dawn_SOURCE_DIR}/include"
     )
+
+    if (onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
+      target_link_options(onnxruntime_providers_webgpu PUBLIC
+        "SHELL:-s JSPI=1"
+      )
+    else()
+      # ASYNCIFY is required for WGPUFuture support (ie. async functions in WebGPU API)
+      target_link_options(onnxruntime_providers_webgpu PUBLIC
+        "SHELL:-s ASYNCIFY=1"
+        "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
+      )
+    endif()
   else()
     onnxruntime_add_include_to_target(onnxruntime_providers_webgpu dawn::dawncpp_headers dawn::dawn_headers)
 
     set(onnxruntime_providers_webgpu_dll_deps)
 
+    # Delay-load user32.dll which is pulled in by the WebGPU EP build.
+    # This allows onnxruntime.dll to load in processes with
+    # MITIGATION_WIN32K_DISABLE (e.g., a sandboxed process under Win32k lockdown).
+    # ORT's device discovery already skips SetupDi calls when Win32k syscalls
+    # are disallowed (Win32kSystemCallsDisallowed() in device_discovery.cc),
+    # so user32.dll is never actually needed in those processes.
+    if (WIN32 AND onnxruntime_ENABLE_DELAY_LOADING_WIN_DLLS)
+      list(APPEND onnxruntime_DELAYLOAD_FLAGS "/DELAYLOAD:user32.dll")
+    endif()
+
     if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
-      target_link_libraries(onnxruntime_providers_webgpu dawn::webgpu_dawn)
+      target_link_libraries(onnxruntime_providers_webgpu PUBLIC dawn::webgpu_dawn)
 
       if (WIN32)
         if (onnxruntime_ENABLE_DELAY_LOADING_WIN_DLLS)
@@ -91,9 +229,9 @@
       list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE:dawn::webgpu_dawn>")
     else()
       if (NOT onnxruntime_USE_EXTERNAL_DAWN)
-        target_link_libraries(onnxruntime_providers_webgpu dawn::dawn_native)
+        target_link_libraries(onnxruntime_providers_webgpu PRIVATE dawn::dawn_native)
       endif()
-      target_link_libraries(onnxruntime_providers_webgpu dawn::dawn_proc)
+      target_link_libraries(onnxruntime_providers_webgpu PRIVATE dawn::dawn_proc)
     endif()
 
     if (WIN32 AND onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
@@ -117,6 +255,17 @@
       endif()
     endif()
 
+    # In the plugin/adapter build (onnxruntime_USE_EP_API_ADAPTERS) the WebGPU EP is its own DLL
+    # (onnxruntime_providers_webgpu.dll) rather than being statically linked into onnxruntime.dll, so the
+    # delay-load flags accumulated above (notably /DELAYLOAD:user32.dll) must be applied to THIS target.
+    # Without it the DLL keeps a static import on user32.dll and fails to load in a Win32k-lockdown sandbox
+    # (e.g. Chromium's WebNN compiler process): 'depends on "USER32.dll" which is missing' (Error 1359).
+    # In the static build these same flags are applied to the onnxruntime target in onnxruntime.cmake.
+    if (WIN32 AND onnxruntime_USE_EP_API_ADAPTERS AND onnxruntime_DELAYLOAD_FLAGS)
+      target_link_options(onnxruntime_providers_webgpu PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
+      target_link_libraries(onnxruntime_providers_webgpu PRIVATE delayimp.lib)
+    endif()
+
     if (onnxruntime_providers_webgpu_dll_deps)
       # Copy dependency DLLs to the output directory
       add_custom_command(
@@ -128,38 +277,23 @@
     endif()
   endif()
 
-  add_dependencies(onnxruntime_providers_webgpu ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  add_dependencies(onnxruntime_providers_webgpu onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
-  if (onnxruntime_WGSL_TEMPLATE)
-    # Define the WGSL templates directory and output directory
-    set(WGSL_TEMPLATES_DIR "${ONNXRUNTIME_ROOT}/core/providers/webgpu/wgsl_templates")
+  if (onnxruntime_USE_WEBGPU)
+    # The Python wgsl-gen tool lives at the repo level under tools/python.
+    set(WGSL_GEN_PYTHON_DIR "${REPO_ROOT}/tools/python")
     set(WGSL_GENERATED_ROOT "${CMAKE_CURRENT_BINARY_DIR}/wgsl_generated")
 
-    # Include the Node.js helper for finding and validating Node.js and NPM
-    include(node_helper.cmake)
+    # The top-level find_package(Python ...) in cmake/CMakeLists.txt is gated
+    # on BUILD_SHARED_LIB OR ENABLE_PYTHON, so Python_EXECUTABLE is not always
+    # set in WebGPU-enabled builds (e.g. the WASM lane). Find Python ourselves
+    # so this branch works in every config.
+    find_package(Python 3.10 COMPONENTS Interpreter REQUIRED)
 
-    # Install npm dependencies
-    add_custom_command(
-      OUTPUT "${WGSL_TEMPLATES_DIR}/node_modules/.install_complete"
-      COMMAND ${NPM_CLI} ci
-      COMMAND ${CMAKE_COMMAND} -E touch "${WGSL_TEMPLATES_DIR}/node_modules/.install_complete"
-      DEPENDS "${WGSL_TEMPLATES_DIR}/package.json" "${WGSL_TEMPLATES_DIR}/package-lock.json"
-      WORKING_DIRECTORY ${WGSL_TEMPLATES_DIR}
-      COMMENT "Installing npm dependencies for WGSL template generation"
-      VERBATIM
-    )
-
-    if (onnxruntime_WGSL_TEMPLATE STREQUAL "static")
-      set(WGSL_GENERATED_DIR "${WGSL_GENERATED_ROOT}/wgsl_template_gen")
-      # set(WGSL_GEN_OUTPUTS "${WGSL_GENERATED_DIR}/index.h" "${WGSL_GENERATED_DIR}/index_impl.h")
-      # Define the output files that will be generated
-      set(WGSL_GENERATED_INDEX_H "${WGSL_GENERATED_DIR}/index.h")
-      set(WGSL_GENERATED_INDEX_IMPL_H "${WGSL_GENERATED_DIR}/index_impl.h")
-    elseif(onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
-      set(WGSL_GENERATED_DIR "${WGSL_GENERATED_ROOT}/dynamic")
-      # set(WGSL_GEN_OUTPUTS "${WGSL_GENERATED_DIR}/templates.js")
-      set(WGSL_GENERATED_TEMPLATES_JS "${WGSL_GENERATED_DIR}/templates.js")
-    endif()
+    set(WGSL_GENERATED_DIR "${WGSL_GENERATED_ROOT}/wgsl_template_gen")
+    # Define the output files that will be generated
+    set(WGSL_GENERATED_INDEX_H "${WGSL_GENERATED_DIR}/index.h")
+    set(WGSL_GENERATED_INDEX_IMPL_H "${WGSL_GENERATED_DIR}/index_impl.h")
 
     # Ensure the output directory exists
     file(MAKE_DIRECTORY ${WGSL_GENERATED_DIR})
@@ -183,47 +317,48 @@
         list(APPEND WGSL_GEN_OPTIONS "-i" "${ONNXRUNTIME_ROOT}/contrib_ops/webgpu")
     endif()
 
-    if (onnxruntime_WGSL_TEMPLATE STREQUAL "static")
-      if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-        list(APPEND WGSL_GEN_OPTIONS "--generator" "static-cpp-literal")
-      else()
-        list(APPEND WGSL_GEN_OPTIONS "--generator" "static-cpp")
-      endif()
-    elseif(onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
-      list(APPEND WGSL_GEN_OPTIONS "--generator" "dynamic")
+    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+      list(APPEND WGSL_GEN_OPTIONS "--generator" "static-cpp-literal")
+    else()
+      list(APPEND WGSL_GEN_OPTIONS "--generator" "static-cpp")
     endif()
 
     # Generate WGSL templates
     add_custom_command(
-      OUTPUT ${WGSL_GENERATED_INDEX_H} ${WGSL_GENERATED_INDEX_IMPL_H} ${WGSL_GENERATED_TEMPLATES_JS}
-      COMMAND ${NPM_CLI} run gen -- ${WGSL_GEN_OPTIONS}
-      DEPENDS "${WGSL_TEMPLATES_DIR}/node_modules/.install_complete" ${WGSL_TEMPLATE_FILES}
-      WORKING_DIRECTORY ${WGSL_TEMPLATES_DIR}
-      COMMENT "Generating WGSL templates from *.wgsl.template files"
+      OUTPUT ${WGSL_GENERATED_INDEX_H} ${WGSL_GENERATED_INDEX_IMPL_H}
+      COMMAND ${Python_EXECUTABLE} "${WGSL_GEN_PYTHON_DIR}/wgsl_gen.py" ${WGSL_GEN_OPTIONS}
+      DEPENDS ${WGSL_TEMPLATE_FILES}
+      WORKING_DIRECTORY ${WGSL_GEN_PYTHON_DIR}
+      COMMENT "Generating WGSL templates from *.wgsl.template files (Python)"
       COMMAND_EXPAND_LISTS
       VERBATIM
     )
 
-    # Create a target to represent the generation step
     add_custom_target(onnxruntime_webgpu_wgsl_generation
-      DEPENDS ${WGSL_GENERATED_INDEX_H} ${WGSL_GENERATED_INDEX_IMPL_H} ${WGSL_GENERATED_TEMPLATES_JS}
+      DEPENDS ${WGSL_GENERATED_INDEX_H} ${WGSL_GENERATED_INDEX_IMPL_H}
       SOURCES ${WGSL_TEMPLATE_FILES}
     )
 
-    if (onnxruntime_WGSL_TEMPLATE STREQUAL "static")
-      # Add the generated directory to include paths
-      target_include_directories(onnxruntime_providers_webgpu PRIVATE ${WGSL_GENERATED_ROOT})
-    elseif(onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
-      target_link_libraries(onnxruntime_providers_webgpu duktape_static)
-      onnxruntime_add_include_to_target(onnxruntime_providers_webgpu duktape_static)
-
-      # Define the path to the generated templates.js file
-      target_compile_definitions(onnxruntime_providers_webgpu PRIVATE
-        "ORT_WGSL_TEMPLATES_JS_PATH=\"${WGSL_GENERATED_TEMPLATES_JS}\"")
-    endif()
+    # Add the generated directory to include paths
+    target_include_directories(onnxruntime_providers_webgpu PRIVATE ${WGSL_GENERATED_ROOT})
 
     # Make sure generation happens before building the provider
     add_dependencies(onnxruntime_providers_webgpu onnxruntime_webgpu_wgsl_generation)
+
+    # Wire the Python wgsl_template test suite into ctest.
+    if (BUILD_TESTING)
+      add_test(
+        NAME wgsl_template_python_tests
+        COMMAND ${Python_EXECUTABLE} "${WGSL_GEN_PYTHON_DIR}/wgsl_template/test/run_tests.py"
+        WORKING_DIRECTORY ${WGSL_GEN_PYTHON_DIR}
+      )
+    endif()
   endif()
 
-  set_target_properties(onnxruntime_providers_webgpu PROPERTIES FOLDER "ONNXRuntime")
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_providers_webgpu EXPORT ${PROJECT_NAME}Targets
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()

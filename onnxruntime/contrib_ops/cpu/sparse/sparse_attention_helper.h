@@ -97,7 +97,7 @@ Status CheckInputs(void* params,
 
     if (key->Shape() != value->Shape()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'query' and 'value' shall have same shape");
+                             "Input 'key' and 'value' shall have same shape");
     }
   } else {
     // packed qkv
@@ -132,6 +132,7 @@ Status CheckInputs(void* params,
   // Check block_row_indices
   const auto& block_row_indices_dim = block_row_indices->Shape().GetDims();
   if (!(block_row_indices_dim.size() == 2 &&
+        block_row_indices_dim[0] > 0 &&
         block_row_indices_dim[1] > 1 &&
         (static_cast<int64_t>(num_heads) % block_row_indices_dim[0] == 0L))) {
     return ORT_MAKE_STATUS(
@@ -197,9 +198,9 @@ Status CheckInputs(void* params,
                            past_key_dims[3]);
   }
 
-  // Check the shape of total_key_sequence_lengths. We do not check the values here.
+  // Check the shape of total_key_sequence_lengths.
   const auto& k_len_dim = total_key_lengths->Shape().GetDims();
-  if (k_len_dim.size() != 1 && k_len_dim[0] != batch_size) {
+  if (k_len_dim.size() != 1 || k_len_dim[0] != batch_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "key_total_sequence_lengths must have shape (batch_size).");
   }

@@ -145,40 +145,113 @@ struct PackedMultiHeadAttentionData {
   bool use_memory_efficient_attention;
 };
 
-template <typename T>
+template <typename T, typename U>
 struct GroupQueryAttentionData {
   // Input Tensors
   const T* query = nullptr;
   const T* key = nullptr;
   const T* value = nullptr;
-  const T* past_key = nullptr;
-  const T* past_value = nullptr;
-  int* seqlens_k = nullptr;
+  const U* past_key = nullptr;
+  const U* past_value = nullptr;
   const T* cos_cache = nullptr;
   const T* sin_cache = nullptr;
   const T* head_sink = nullptr;
+
+  // Optional additive attention bias, shape (batch_size or 1, num_heads or 1, sequence_length,
+  // total_sequence_length). Broadcast on dims 0/1 is carried by
+  // parameters.broadcast_attn_bias_dim_0/1. Only consumed by the unfused fallback path.
+  const T* attention_bias = nullptr;
+
+  // Optional per-head Q/K RMSNorm (QK-Norm) weights, shape (head_size,), shared across heads.
+  // Both are non-null together (validated in the op) and trigger the fused normalization before RoPE.
+  const T* q_norm_weight = nullptr;
+  const T* k_norm_weight = nullptr;
+  float qk_norm_epsilon = 1e-6f;
+
+  const float* k_scale = nullptr;
+  const float* v_scale = nullptr;
+
+  // Total sequence length for each batch. It has shape [batch_size].
+  int* total_seq_lens = nullptr;
+
+  // Past sequence length for each batch (i.e., the offset to append new tokens). Shape [batch_size].
+  // For first prompt: past_seq_lens[b] = 0
+  // For token generation or subsequent prompt: past_seq_lens[b] = total_seq_lens[b] - sequence_length
+  int* past_seq_lens = nullptr;
+
+  // Padded sequence length for each batch. Shape [batch_size].
+  // Only used for first prompt: padded_seq_lens[b] = sequence_length
+  int* padded_seq_lens = nullptr;
+
+  // Cache-relative sequence lengths, used when parameters.is_windowed_kv_cache is set. Shape [batch_size].
+  // For a full-length (non-windowed) cache these simply alias past_seq_lens / total_seq_lens.
+  //   cache_past_seq_lens[b]  : append offset inside the capacity-C buffer, after eviction. May be
+  //                             negative on a first prompt longer than the capacity, in which case
+  //                             the leading (out-of-window) tokens are skipped by the append kernel.
+  //   cache_total_seq_lens[b] : number of valid cache entries after the append, i.e. min(T, C).
+  //   evict_counts[b]         : number of entries D dropped from the front of the cache this step.
+  int* cache_past_seq_lens = nullptr;
+  int* cache_total_seq_lens = nullptr;
+  int* evict_counts = nullptr;
+
+  // Scratch used by the windowed-cache compaction shift. Sized for one KV cache:
+  // batch_size * kv_num_heads * capacity * head_size elements of the storage type U.
+  void* compaction_scratch = nullptr;
 
   // Flash buffers
   T* softmax_lse = nullptr;
   T* softmax_lse_accum = nullptr;
   T* out_accum = nullptr;
-  int* seqlens_k_buff = nullptr;
+
+  // Position IDs from Input
+  const int64_t* position_ids = nullptr;
 
   // Memory Efficient buffers
   T* fmha_buffer = nullptr;
-  T* unpacked_qkv_buffer = nullptr;
-  T* rotary_buffer = nullptr;
+  T* qkv_buffer = nullptr;
+
   T* k = nullptr;
   T* v = nullptr;
 
   // Output Tensors
   T* output = nullptr;
-  T* present_key = nullptr;
-  T* present_value = nullptr;
+  U* present_key = nullptr;
+  U* present_value = nullptr;
 
   // Kernel Flags
   bool use_flash_attention = false;
   bool use_memory_efficient_attention = false;
+  bool use_flash_attention_fast_decode = false;
+  bool use_xqa = false;
+  // cuDNN SDPA (cudnn_frontend) path: preferred on SM>=90 for non-quantized FP16/BF16 GQA.
+  bool use_cudnn_sdpa = false;
+  // GQA-capable unfused fallback (issue #28195): used when Flash/MEA/XQA are all ineligible,
+  // e.g. fp16 head_size > 256 with past_key, or GQA on old GPUs without MEA/Flash support.
+  bool use_unfused = false;
+
+  // XQA buffer
+  void* xqa_buffer = nullptr;
+  size_t xqa_buffer_bytes = 0;
+  // FP32 per-head attention sink consumed by the XQA kernel (nullptr when no head_sink input).
+  // Either points to a PrePack-cached buffer or to scratch that is filled at launch time.
+  float* xqa_head_sink = nullptr;
+  // When true, head_sink was not prepacked (e.g. dynamic/non-initializer input) and the FP16/BF16
+  // head_sink must be converted to xqa_head_sink (FP32 scratch) before launching XQA.
+  bool xqa_head_sink_needs_conversion = false;
+
+  // Unfused fallback buffers (see LaunchUnfusedAttention in unfused_attention.h):
+  //   unfused_q_bnsh : [B, N_q, S_q, H]   (Q transposed from BSNH to BNSH)
+  //   unfused_y_bnsh : [B, N_q, S_q, H_v] (output BNSH, transposed to BSNH before leaving op)
+  //   unfused_workspace: FP32 QK scratch + T softmax scratch (sized by
+  //                      GetUnfusedAttentionWorkspaceSize)
+  T* unfused_q_bnsh = nullptr;
+  T* unfused_y_bnsh = nullptr;
+  void* unfused_workspace = nullptr;
+
+  // cuDNN SDPA path: temp-space allocator and cuDNN handle (stored as void* to avoid pulling the
+  // cuDNN headers into this file; cast to cudnnHandle_t in the .cu runner).
+  AllocatorPtr allocator = nullptr;
+  void* cudnn_handle = nullptr;
 };
 
 template <typename T>
@@ -203,11 +276,27 @@ struct PagedAttentionData {
   // Fused op buffers
   T* workspace_buffer = nullptr;
 
+  // Memory-efficient attention (CUTLASS fMHA) buffers for the unfused fallback path
+  // taken when FlashAttention is unavailable (SM<80 or ORT_DISABLE_FLASH_ATTENTION).
+  T* gathered_key = nullptr;    // [total_kv_tokens, num_heads, head_size], packed varlen (GQA-expanded)
+  T* gathered_value = nullptr;  // [total_kv_tokens, num_heads, head_size], packed varlen (GQA-expanded)
+  T* fmha_buffer = nullptr;     // CUTLASS fMHA output-accumulator workspace
+  // Populated by the caller after a D->H sync on cumulative_seqlens_kv[batch_size].
+  int total_kv_tokens = 0;
+
+  // Actual max of per-batch new-query lengths (cumulative_seqlens_q[i+1] - cumulative_seqlens_q[i]).
+  // Populated by the caller via the same D->H sync so the MEA path's rotary grid and MEA's
+  // grid_x (ceil_div(sequence_length, kQueriesPerBlock)) cover every query token. The previous
+  // heuristic `token_count - batch_size + 1` underestimates when any batch has 0 new tokens,
+  // producing silent per-token dropout in MEA and rotary.
+  int max_query_len = 0;
+
   // Output Tensors
   T* output = nullptr;
 
   // Kernel Flags
   bool use_flash_attention = false;
+  bool use_memory_efficient_attention = false;
 };
 
 }  // namespace cuda

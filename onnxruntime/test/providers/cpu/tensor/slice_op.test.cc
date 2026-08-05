@@ -54,6 +54,7 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
 
   if (onnx_shape_disagreement) {
     excluded_providers.insert(kCoreMLExecutionProvider);
+    excluded_providers.insert(kOpenVINOExecutionProvider);
   }
 
   if (!v10_only) {
@@ -663,6 +664,30 @@ TEST(SliceTest, OptionalAxesInputAloneMissing) {
   testv10.AddInput<int64_t>("steps", {static_cast<int64_t>(steps.size())}, steps);
   testv10.AddOutput<float>("output", output_dims, output_vals);
   testv10.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(SliceTest, InvalidAxesOutOfBounds) {
+  OpTester testv10("Slice", 10);
+  testv10.AddInput<float>("data", {2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
+  testv10.AddInput<int64_t>("starts", {1}, {0});
+  testv10.AddInput<int64_t>("ends", {1}, {1});
+  testv10.AddInput<int64_t>("axes", {1}, {2});
+  testv10.AddOutput<float>("output", {1, 2}, {1.0f, 2.0f});
+  testv10.Run(OpTester::ExpectResult::kExpectFailure,
+              "axis outside of the tensor dimension count",
+              {kTensorrtExecutionProvider, kDmlExecutionProvider});
+}
+
+TEST(SliceTest, InvalidAxesDuplicates) {
+  OpTester testv10("Slice", 10);
+  testv10.AddInput<float>("data", {2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
+  testv10.AddInput<int64_t>("starts", {2}, {0, 0});
+  testv10.AddInput<int64_t>("ends", {2}, {1, 1});
+  testv10.AddInput<int64_t>("axes", {2}, {0, 0});
+  testv10.AddOutput<float>("output", {1, 2}, {1.0f, 2.0f});
+  testv10.Run(OpTester::ExpectResult::kExpectFailure,
+              "'axes' has duplicates",
+              {kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(SliceTest, Slice2D_ReverseSubsetOfNegAxes_1) {

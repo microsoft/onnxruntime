@@ -7,7 +7,6 @@ import argparse
 import logging
 import os
 
-import coloredlogs
 from constants import (
     AttentionInputIDs,
     AttentionOutputIDs,
@@ -358,12 +357,12 @@ def _parse_arguments():
 
 def _setup_logger(verbose):
     if verbose:
-        coloredlogs.install(
-            level="DEBUG",
-            fmt="[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s",
+        logging.basicConfig(
+            format="[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s",
+            level=logging.DEBUG,
         )
     else:
-        coloredlogs.install(fmt="%(funcName)20s: %(message)s")
+        logging.basicConfig(format="%(funcName)20s: %(message)s", level=logging.INFO)
 
 
 def main():

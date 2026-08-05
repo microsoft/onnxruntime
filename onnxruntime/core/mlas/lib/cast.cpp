@@ -1,4 +1,4 @@
-/*++
+/*++ 
 
 Copyright (c) Intel Corporation. All rights reserved.
 
@@ -14,6 +14,7 @@ Abstract:
 
 --*/
 #include "mlasi.h"
+#include "core/common/narrow.h"
 
 void
 MLASCALL
@@ -103,4 +104,53 @@ MlasConvertFloatToHalfBuffer(
         // If the kernel is available, use it to perform the conversion.
         GetMlasPlatform().CastF32ToF16Kernel(Source, reinterpret_cast<unsigned short*>(Destination), Count);
     }
+}
+
+void
+MLASCALL
+MlasConvertFloatToHalfBufferInParallel(
+    const float* Source,
+    MLAS_FP16* Destination,
+    size_t Count,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
+    MLAS_UNREFERENCED_PARAMETER(ThreadPool);
+
+    // If the ThreadPool is not available, use the single-threaded version.
+    MlasConvertFloatToHalfBuffer(Source, Destination, Count);
+#else
+    // Check if the Tensor is long enough to use threads and ThreadPool is available
+    if (!((Count > MLAS_MIN_TENSOR_SIZE_FOR_HALF_TO_FLOAT_CONVERSION_IN_PARALLEL) && ThreadPool)) {
+        MlasConvertFloatToHalfBuffer(Source, Destination, Count);
+    }
+    else {
+
+        // Estimate compute cycles (heuristics similar to Half Float path)
+        size_t num_compute_cycles;
+        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasSSE3()) {
+            num_compute_cycles = Count >> 1;
+        } else if (MLAS_CPUIDINFO::GetCPUIDInfo().HasAVX2()) {
+            num_compute_cycles = Count >> 2;
+        } else {
+            num_compute_cycles = Count * 10;
+        }
+
+        MLAS_THREADPOOL::TryParallelFor(
+            ThreadPool, Count,
+            {
+                static_cast<double>(Count * sizeof(float)),       // bytes to load
+                static_cast<double>(Count * sizeof(MLAS_FP16)),   // bytes to store
+                static_cast<double>(num_compute_cycles),          // compute cost
+            },
+            [Source, Destination](std::ptrdiff_t first_span, std::ptrdiff_t last_span) {
+                MlasConvertFloatToHalfBuffer(
+                    Source + first_span,
+                    Destination + first_span,
+                    static_cast<size_t>(last_span - first_span));
+            }
+        );
+    }
+#endif // BUILD_MLAS_NO_ONNXRUNTIME
 }

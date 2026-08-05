@@ -90,6 +90,13 @@ struct ThreadOptions {
   void* custom_thread_creation_options = nullptr;
   OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
   int dynamic_block_base_ = 0;
+
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+  // Optional callbacks for thread pool work scheduling.
+  // The pointed-to struct must remain valid until the ThreadPool constructor returns
+  // (the constructor copies the callback values).
+  const OrtThreadPoolCallbacksConfig* work_callbacks = nullptr;
+#endif
 };
 
 std::ostream& operator<<(std::ostream& os, const LogicalProcessors&);
@@ -224,6 +231,12 @@ class Env {
       const PathString& path,
       PathString& canonical_path) const = 0;
 
+  /** Like GetCanonicalPath, but the path is not required to exist. Mirrors
+   *  std::filesystem::weakly_canonical. */
+  virtual common::Status GetWeaklyCanonicalPath(
+      const PathString& path,
+      PathString& canonical_path) const = 0;
+
   // This functions is always successful. It can't fail.
   virtual PIDType GetSelfPid() const = 0;
 
@@ -245,9 +258,9 @@ class Env {
 
   // \brief Gets the file path of the onnx runtime code
   //
-  // Used to help load other shared libraries that live in the same folder as the core code, for example
-  // The DNNL provider shared library. Without this path, the module won't be found on windows in all cases.
-  virtual PathString GetRuntimePath() const { return PathString(); }
+  // Used to help load other shared libraries that live in the same folder as the core code.
+  // For example, the DNNL provider shared library.
+  virtual PathString GetRuntimePath() const = 0;
 
   // \brief Get a pointer to a symbol from a dynamic library.
   //

@@ -22,11 +22,6 @@ OrtStatus* ProviderBridgeEpFactory::GetSupportedDevices(EpFactoryInternal& ep_fa
     auto* ep_device = ep_devices[i];
     if (ep_device) {
       ep_device->ep_factory = &ep_factory;
-
-      // Add library path to EP metadata if available
-      if (library_path_.has_value()) {
-        ep_device->ep_metadata.Add(kOrtEpDevice_EpMetadataKey_LibraryPath, library_path_->string());
-      }
     }
   }
 

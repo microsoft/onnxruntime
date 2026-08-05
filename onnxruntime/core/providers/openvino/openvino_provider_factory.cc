@@ -16,6 +16,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "nlohmann/json.hpp"
 #include "core/providers/openvino/openvino_parser_utils.h"
+#include "ov_interface.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -28,11 +29,14 @@ void ParseConfigOptions(ProviderInfo& pi) {
   pi.so_context_embed_mode = pi.config_options->GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "0") == "1";
   pi.so_share_ep_contexts = pi.config_options->GetConfigOrDefault(kOrtSessionOptionShareEpContexts, "0") == "1";
   pi.so_context_file_path = pi.config_options->GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+  pi.so_stop_share_ep_contexts = pi.config_options->GetConfigOrDefault(kOrtSessionOptionStopShareEpContexts, "0") == "1";
 
   if (pi.so_share_ep_contexts) {
-    ov::AnyMap map;
-    map["NPU_COMPILATION_MODE_PARAMS"] = "enable-wd-blockarg-input=true compute-layers-with-higher-precision=Sqrt,Power,ReduceSum";
-    pi.load_config["NPU"] = std::move(map);
+    // Set default NPU compilation params only if user hasn't provided them
+    auto& npu_config = pi.load_config["NPU"];
+    if (npu_config.find("NPU_COMPILATION_MODE_PARAMS") == npu_config.end()) {
+      npu_config["NPU_COMPILATION_MODE_PARAMS"] = "enable-wd-blockarg-input=true compute-layers-with-higher-precision=Sqrt,Power,ReduceSum";
+    }
   }
 }
 
@@ -187,6 +191,36 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
 
 void ParseProviderOptions([[maybe_unused]] ProviderInfo& result, [[maybe_unused]] const ProviderOptions& config_options) {}
 
+static void ParseInnerMap(const nlohmann::json& json_map, ov::AnyMap& inner_map, size_t level = 0) {
+  const size_t max_levels = 8;
+  if (level >= max_levels) {
+    ORT_THROW("ParseInnerMap: load_config can have only up to " + std::to_string(max_levels) +
+              " levels of nested maps. Current level = " + std::to_string(level));
+  }
+
+  if (!json_map.is_object()) {
+    ORT_THROW("ParseInnerMap: Expected an object as input");
+  }
+
+  for (auto& [inner_key, inner_value] : json_map.items()) {
+    if (inner_value.is_string()) {
+      inner_map[inner_key] = ov::Any(inner_value.get<std::string>());
+    } else if (inner_value.is_number_integer()) {
+      inner_map[inner_key] = ov::Any(inner_value.get<int64_t>());
+    } else if (inner_value.is_number_float()) {
+      inner_map[inner_key] = ov::Any(inner_value.get<double>());
+    } else if (inner_value.is_boolean()) {
+      inner_map[inner_key] = ov::Any(inner_value.get<bool>());
+    } else if (inner_value.is_object()) {
+      auto inner_inner_map = ov::AnyMap();
+      ParseInnerMap(inner_value, inner_inner_map, level + 1);
+      inner_map[inner_key] = std::move(inner_inner_map);
+    } else {
+      ORT_THROW("load_config: unsupported JSON value type=" + std::string(inner_value.type_name()) + ", for key=" + inner_key);
+    }
+  }
+}
+
 // Initializes a ProviderInfo struct from a ProviderOptions map and a ConfigOptions map.
 static void ParseProviderInfo(const ProviderOptions& provider_options,
                               const ConfigOptions* config_options,
@@ -266,19 +300,7 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
             ORT_THROW("Invalid JSON structure: Expected an object for device properties.");
           }
 
-          for (auto& [inner_key, inner_value] : value.items()) {
-            if (inner_value.is_string()) {
-              inner_map[inner_key] = inner_value.get<std::string>();
-            } else if (inner_value.is_number_integer()) {
-              inner_map[inner_key] = inner_value.get<int64_t>();
-            } else if (inner_value.is_number_float()) {
-              inner_map[inner_key] = inner_value.get<double>();
-            } else if (inner_value.is_boolean()) {
-              inner_map[inner_key] = inner_value.get<bool>();
-            } else {
-              LOGS_DEFAULT(WARNING) << "Unsupported JSON value type for key: " << inner_key << ". Skipping key.";
-            }
-          }
+          ParseInnerMap(value, inner_map);
           target_map[key] = std::move(inner_map);
         }
       } catch (const nlohmann::json::parse_error& e) {
@@ -352,24 +374,26 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
   }
 
   // Should likely account for meta devices as well, but for now keep the current behavior.
-  bool target_devices_support_dynamic_shapes =
-      pi.device_type.find("GPU") != std::string::npos ||
-      pi.device_type.find("CPU") != std::string::npos ||
-      (pi.device_type.find("NPU") != std::string::npos &&
-       pi.enable_causallm);
-
-  pi.disable_dynamic_shapes = !target_devices_support_dynamic_shapes;
+  // Keep the user setting for CPU/GPU. For NPU, disable dynamic shapes by default and enable them when CausalLM is enabled.
+  const bool is_npu_device = pi.device_type.find("NPU") != std::string::npos;
+  if (is_npu_device) {
+    pi.disable_dynamic_shapes = true;
+    if (pi.enable_causallm) {
+      LOGS_DEFAULT(WARNING) << "Enabling dynamic shapes for NPU because CausalLM is enabled.";
+      pi.disable_dynamic_shapes = false;
+    }
+  }
 }
 
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
-  OpenVINOProviderFactory(ProviderInfo provider_info, std::shared_ptr<SharedContext> shared_context)
-      : provider_info_(std::move(provider_info)), shared_context_(std::move(shared_context)) {}
+  OpenVINOProviderFactory(ProviderInfo provider_info, std::shared_ptr<OVCore> ov_core)
+      : provider_info_(std::move(provider_info)), ov_core_(ov_core) {}
 
   ~OpenVINOProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
     ParseConfigOptions(provider_info_);
-    return std::make_unique<OpenVINOExecutionProvider>(provider_info_, shared_context_);
+    return std::make_unique<OpenVINOExecutionProvider>(provider_info_);
   }
 
   // Called by InferenceSession when registering EPs. Allows creation of an EP instance that is initialized with
@@ -398,11 +422,17 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
       }
     }
 
+    if (provider_options.find("device_type") == provider_options.end()) {
+      // Preserve the device selected during factory creation unless the session-level
+      // OpenVINO provider options explicitly override it.
+      provider_options["device_type"] = provider_info_.device_type;
+    }
+
     ProviderInfo provider_info = provider_info_;
     ParseProviderInfo(provider_options, &config_options, provider_info);
     ParseConfigOptions(provider_info);
 
-    auto ov_ep = std::make_unique<OpenVINOExecutionProvider>(provider_info, shared_context_);
+    auto ov_ep = std::make_unique<OpenVINOExecutionProvider>(provider_info);
     ov_ep->SetLogger(reinterpret_cast<const logging::Logger*>(&session_logger));
     return ov_ep;
   }
@@ -413,14 +443,14 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   std::unique_ptr<IExecutionProvider> CreateProvider_V2(const OrtSessionOptions& /*session_options*/,
                                                         const OrtLogger& session_logger) {
     ProviderInfo provider_info = provider_info_;
-    auto ov_ep = std::make_unique<OpenVINOExecutionProvider>(provider_info, shared_context_);
+    auto ov_ep = std::make_unique<OpenVINOExecutionProvider>(provider_info);
     ov_ep->SetLogger(reinterpret_cast<const logging::Logger*>(&session_logger));
     return ov_ep;
   }
 
  private:
   ProviderInfo provider_info_;
-  std::shared_ptr<SharedContext> shared_context_;
+  std::shared_ptr<OVCore> ov_core_;
 };
 
 struct ProviderInfo_OpenVINO_Impl : ProviderInfo_OpenVINO {
@@ -445,7 +475,7 @@ struct OpenVINO_Provider : Provider {
     ProviderInfo pi;
     ParseProviderInfo(provider_options, config_options, pi);
 
-    return std::make_shared<OpenVINOProviderFactory>(pi, SharedContext::Get());
+    return std::make_shared<OpenVINOProviderFactory>(pi, OVCore::Get());
   }
 
   Status CreateIExecutionProvider(const OrtHardwareDevice* const* /*devices*/,
@@ -548,11 +578,15 @@ struct OpenVINO_Provider : Provider {
     // Parse provider info with the device type
     ProviderInfo pi;
     const auto& config_options = session_options.GetConfigOptions();
-    ParseProviderInfo(provider_options, &config_options, pi);
-    ParseConfigOptions(pi);
+    try {
+      ParseProviderInfo(provider_options, &config_options, pi);
+      ParseConfigOptions(pi);
+    } catch (std::exception& e) {
+      return Status(common::ONNXRUNTIME, ORT_INVALID_ARGUMENT, e.what());
+    }
 
     // Create and return the execution provider
-    auto factory = std::make_unique<OpenVINOProviderFactory>(pi, SharedContext::Get());
+    auto factory = std::make_unique<OpenVINOProviderFactory>(pi, OVCore::Get());
     ep = factory->CreateProvider_V2(session_options, logger);
     return Status::OK();
   }

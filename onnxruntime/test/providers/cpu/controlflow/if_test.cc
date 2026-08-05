@@ -246,14 +246,11 @@ void RunTest(bool condition_value,
     excluded_providers.insert(kTensorrtExecutionProvider);
   }
   if (options.mixed_execution_providers) {
-    // we want the GPU (CUDA/ROCm) provider to be first, and the CPU provider second. all except the If should run on
+    // we want the GPU (CUDA) provider to be first, and the CPU provider second. all except the If should run on
     // GPU given that, which creates the scenario where we need to copy to/from CPU to execute the If node correctly.
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
-#endif
-#ifdef USE_ROCM
-    execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
     execution_providers.push_back(DefaultCpuExecutionProvider());
 
@@ -295,7 +292,7 @@ TEST(If, NoShapeInMainGraph_ShapeInSubgraph_False) {
   RunTest(false, options, false);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 TEST(If, MixedExecutionProviders) {
   RunOptions options{};
   options.mixed_execution_providers = true;
@@ -316,7 +313,7 @@ TEST(If, MixedExecutionProvidersNoShapeInSubgraph) {
   options.include_dim_values_in_subgraph = false;
   RunTest(true, options);
 }
-#endif  // defined(USE_CUDA) || defined(USE_ROCM)
+#endif  // defined(USE_CUDA)
 
 TEST(If, SymbolicShapeInMainGraph_NoShapeInSubgraph_True) {
   RunOptions options;

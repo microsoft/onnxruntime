@@ -24,11 +24,25 @@ namespace cuda {
           .InputMemoryType(OrtMemTypeCPUInput, RNN_Input_Index::sequence_lens), \
       RNN<T>);
 
+#define REGISTER_KERNEL_VERSIONED_TYPED_14(T)                                   \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      RNN,                                                                      \
+      kOnnxDomain,                                                              \
+      14,                                                                       \
+      21,                                                                       \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      (*KernelDefBuilder::Create())                                             \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>())         \
+          .InputMemoryType(OrtMemTypeCPUInput, RNN_Input_Index::sequence_lens), \
+      RNN<T>);
+
 #define REGISTER_KERNEL_TYPED(T)                                                \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       RNN,                                                                      \
       kOnnxDomain,                                                              \
-      14,                                                                       \
+      22,                                                                       \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       (*KernelDefBuilder::Create())                                             \
@@ -40,6 +54,10 @@ namespace cuda {
 REGISTER_KERNEL_VERSIONED_TYPED(float);
 REGISTER_KERNEL_VERSIONED_TYPED(double);
 REGISTER_KERNEL_VERSIONED_TYPED(MLFloat16);
+
+REGISTER_KERNEL_VERSIONED_TYPED_14(float);
+REGISTER_KERNEL_VERSIONED_TYPED_14(double);
+REGISTER_KERNEL_VERSIONED_TYPED_14(MLFloat16);
 
 REGISTER_KERNEL_TYPED(float);
 REGISTER_KERNEL_TYPED(double);

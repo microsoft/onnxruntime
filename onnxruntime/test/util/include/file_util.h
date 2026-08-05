@@ -8,6 +8,11 @@
 
 namespace onnxruntime {
 namespace test {
+
+// Creates a platform-specific shared library file name from a base library name.
+// E.g., "onnxruntime" -> "libonnxruntime.so".
+PathString GetSharedLibraryFileName(const PathString& base_library_name);
+
 void CreateTestFile(FILE*& out, std::basic_string<ORTCHAR_T>& filename_template);
 void CreateTestFile(int& out, std::basic_string<ORTCHAR_T>& filename_template);
 void DeleteFileFromDisk(const ORTCHAR_T* path);

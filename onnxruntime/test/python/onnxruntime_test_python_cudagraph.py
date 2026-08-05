@@ -63,18 +63,47 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
     def test_ort_value_update_in_place(self):
         x0 = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         ortvalue_cpu = onnxrt.OrtValue.ortvalue_from_numpy(x0)
-        np.testing.assert_allclose(x0, ortvalue_cpu.numpy())
+        np.testing.assert_allclose(ortvalue_cpu.numpy(), x0)
 
         x1 = np.array([[10.0, 20.0], [30.0, 40.0], [50.0, 60.0]], dtype=np.float32)
         ortvalue_cpu.update_inplace(x1)
-        np.testing.assert_allclose(x1, ortvalue_cpu.numpy())
+        np.testing.assert_allclose(ortvalue_cpu.numpy(), x1)
 
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
             ortvalue_gpu = onnxrt.OrtValue.ortvalue_from_numpy(x0, "cuda", 0)
-            np.testing.assert_allclose(x0, ortvalue_gpu.numpy())
+            np.testing.assert_allclose(ortvalue_gpu.numpy(), x0)
 
             ortvalue_gpu.update_inplace(x1)
-            np.testing.assert_allclose(x1, ortvalue_gpu.numpy())
+            np.testing.assert_allclose(ortvalue_gpu.numpy(), x1)
+
+    def test_ort_value_update_in_place_from_ortvalue(self):
+        # Test CPU to CPU copy via OrtValue
+        x0 = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        x1 = np.array([[10.0, 20.0], [30.0, 40.0], [50.0, 60.0]], dtype=np.float32)
+
+        ortvalue_dst = onnxrt.OrtValue.ortvalue_from_numpy(x0)
+        ortvalue_src = onnxrt.OrtValue.ortvalue_from_numpy(x1)
+        ortvalue_dst.update_inplace(ortvalue_src)
+        np.testing.assert_allclose(ortvalue_dst.numpy(), x1)
+
+        if "CUDAExecutionProvider" in onnxrt.get_available_providers():
+            # Test GPU to GPU copy via OrtValue
+            ortvalue_gpu_dst = onnxrt.OrtValue.ortvalue_from_numpy(x0, "cuda", 0)
+            ortvalue_gpu_src = onnxrt.OrtValue.ortvalue_from_numpy(x1, "cuda", 0)
+            ortvalue_gpu_dst.update_inplace(ortvalue_gpu_src)
+            np.testing.assert_allclose(ortvalue_gpu_dst.numpy(), x1)
+
+            # Test CPU OrtValue to GPU OrtValue copy
+            ortvalue_gpu_dst2 = onnxrt.OrtValue.ortvalue_from_numpy(x0, "cuda", 0)
+            ortvalue_cpu_src = onnxrt.OrtValue.ortvalue_from_numpy(x1)
+            ortvalue_gpu_dst2.update_inplace(ortvalue_cpu_src)
+            np.testing.assert_allclose(ortvalue_gpu_dst2.numpy(), x1)
+
+            # Test GPU OrtValue to CPU OrtValue copy
+            ortvalue_cpu_dst = onnxrt.OrtValue.ortvalue_from_numpy(x0)
+            ortvalue_gpu_src2 = onnxrt.OrtValue.ortvalue_from_numpy(x1, "cuda", 0)
+            ortvalue_cpu_dst.update_inplace(ortvalue_gpu_src2)
+            np.testing.assert_allclose(ortvalue_cpu_dst.numpy(), x1)
 
     def test_select_ep_to_run_cuda_graph(self):
         if "TensorrtExecutionProvider" in onnxrt.get_available_providers():
@@ -103,13 +132,19 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
         ro = onnxrt.RunOptions()
 
         # One regular run for the necessary memory allocation and cuda graph capturing
+        # Synchronize to make sure the input copy on the default stream is done since the EP isn't using the default stream.
+        io_binding.synchronize_inputs()
         session.run_with_iobinding(io_binding, ro)
+        # Synchronize to make sure the computation on the EP stream is done before reading the output on the default stream.
+        io_binding.synchronize_outputs()
         expected_y = np.array([[5.0], [11.0], [17.0]] * INPUT_SIZE, dtype=np.float32)
-        np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
+        np.testing.assert_allclose(y_ortvalue.numpy(), expected_y, rtol=1e-05, atol=1e-05)
 
         # After capturing, CUDA graph replay happens from this Run onwards
+        io_binding.synchronize_inputs()
         session.run_with_iobinding(io_binding, ro)
-        np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
+        io_binding.synchronize_outputs()
+        np.testing.assert_allclose(y_ortvalue.numpy(), expected_y, rtol=1e-05, atol=1e-05)
 
         # Update input and then replay CUDA graph
         x_ortvalue.update_inplace(
@@ -118,10 +153,12 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
                 dtype=np.float32,
             )
         )
+        io_binding.synchronize_inputs()
         session.run_with_iobinding(io_binding, ro)
+        io_binding.synchronize_outputs()
         np.testing.assert_allclose(
-            np.array([[50.0], [110.0], [170.0]] * INPUT_SIZE, dtype=np.float32),
             y_ortvalue.numpy(),
+            np.array([[50.0], [110.0], [170.0]] * INPUT_SIZE, dtype=np.float32),
             rtol=1e-05,
             atol=1e-05,
         )
@@ -162,7 +199,7 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
             session.run_with_iobinding(io_bindings[i], ro)
             io_bindings[i].synchronize_outputs()
             expected_y = np.array(expected_y_base[: i + 1][:] * INPUT_SIZE, dtype=np.float32)
-            np.testing.assert_allclose(expected_y, y_ortvalues[i].numpy(), rtol=1e-05, atol=1e-05)
+            np.testing.assert_allclose(y_ortvalues[i].numpy(), expected_y, rtol=1e-05, atol=1e-05)
 
         del ro
         ro = onnxrt.RunOptions()
@@ -176,7 +213,7 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
             session.run_with_iobinding(io_bindings[i], ro)
             io_bindings[i].synchronize_outputs()
             expected_y = np.array(expected_y_base_mul_10[: i + 1][:] * INPUT_SIZE, dtype=np.float32)
-            np.testing.assert_allclose(expected_y, y_ortvalues[i].numpy(), rtol=1e-05, atol=1e-05)
+            np.testing.assert_allclose(y_ortvalues[i].numpy(), expected_y, rtol=1e-05, atol=1e-05)
 
     def test_arena_with_cuda_graph(self):
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
@@ -206,15 +243,21 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
 
             # One regular run for the necessary memory allocation and cuda graph capturing
             cuda_graph_helper.update_inputs(inputs)
+            # Synchronize to make sure the input copy on the default stream is done since the EP isn't using the default stream.
+            io_binding.synchronize_inputs()
             session.run_with_iobinding(io_binding)
+            # Synchronize to make sure the computation on the EP stream is done before reading the output on the default stream.
+            io_binding.synchronize_outputs()
             expected_output = cuda_graph_helper.get_output("softmaxout_1")
 
             # After capturing, CUDA graph replay happens from this Run onwards
             cuda_graph_helper.update_inputs(inputs)
+            io_binding.synchronize_inputs()
             session.run_with_iobinding(io_binding)
+            io_binding.synchronize_outputs()
             output = cuda_graph_helper.get_output("softmaxout_1")
 
-            np.testing.assert_allclose(expected_output, output, rtol=1e-02, atol=1e-02)
+            np.testing.assert_allclose(output, expected_output, rtol=1e-02, atol=1e-02)
 
 
 if __name__ == "__main__":

@@ -250,29 +250,6 @@ bool GemmOpBuilder::IsOpSupportedImpl(const GraphViewer&,
       std::vector<int64_t> c_shape;
       if (!GetShape(*input_defs[c_idx], c_shape, logger))
         return false;
-
-      size_t c_dim = c_shape.size();
-
-      if (c_dim > 1) {
-        // TODO: Supports other shape of C.
-        // Currently WebNN implementation in Chromium only supports 1-D C.
-        return false;
-      }
-      if (c_dim == 0) {
-        LOGS(logger, VERBOSE) << "C of Gemm is a scalar";
-      } else {
-        auto c_size = c_shape[c_dim - 1];
-        NodeAttrHelper helper(node);
-        const auto transB = helper.Get("transB", 0);
-        if (c_size != (transB == 0 ? b_shape[1] : b_shape[0])) {
-          LOGS(logger, VERBOSE) << "C of Gemm must be a vector of b_shape["
-                                << (transB == 0 ? "1" : "0") << "]"
-                                << " b_shape: [" << b_shape[0] << ", " << b_shape[1] << "]"
-                                << " c_size: " << c_size;
-
-          return false;
-        }
-      }
     }
   }
 

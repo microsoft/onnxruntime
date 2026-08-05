@@ -8,10 +8,43 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace cuda {
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    ConstantOfShape,
+    kOnnxDomain,
+    9, 20,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 0)
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("T2", DataTypeImpl::AllFixedSizeTensorTypes()),
+    ConstantOfShape);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    ConstantOfShape,
+    kOnnxDomain,
+    21, 22,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 0)
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("T2", DataTypeImpl::AllFixedSizeTensorTypes()),
+    ConstantOfShape);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    ConstantOfShape,
+    kOnnxDomain,
+    23, 24,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 0)
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("T2", DataTypeImpl::AllFixedSizeTensorTypes()),
+    ConstantOfShape);
+
 ONNX_OPERATOR_KERNEL_EX(
     ConstantOfShape,
     kOnnxDomain,
-    9,
+    25,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)

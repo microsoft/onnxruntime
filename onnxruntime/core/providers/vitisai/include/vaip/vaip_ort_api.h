@@ -13,7 +13,7 @@ struct OrtApi;
 
 namespace vaip_core {
 
-#define VAIP_ORT_API_MAJOR (18u)
+#define VAIP_ORT_API_MAJOR (19u)
 #define VAIP_ORT_API_MINOR (0u)
 #define VAIP_ORT_API_PATCH (0u)
 struct OrtApiForVaip {
@@ -257,6 +257,9 @@ struct OrtApiForVaip {
   void (*graph_proto_delete)(GraphProto* p);                      // [107]
   void (*graph_infer_shapes)(ModelProto& m);                      // [108]
   DllSafe<std::string> (*graph_save_string)(const Graph& graph);  // [109]
+  TensorProto* (*tensor_proto_new_bool)(const std::string& name,
+                                        const std::vector<int64_t>& shape,
+                                        const std::vector<uint8_t>& data);  // [110]
 };
 
 #ifndef USE_VITISAI

@@ -58,6 +58,18 @@ Status OrtArenaCfg::FromKeyValuePairs(const OrtKeyValuePairs& kvps, OrtArenaCfg&
     ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.max_mem));
   }
 
+  if (auto it = kvps_entries.find(ConfigKeyNames::UseCudaMemPool); it != kvps_entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.use_cuda_mempool));
+  }
+
+  if (auto it = kvps_entries.find(ConfigKeyNames::CudaMempoolReleaseThreshold); it != kvps_entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.cuda_mempool_release_threshold));
+  }
+
+  if (auto it = kvps_entries.find(ConfigKeyNames::CudaMempoolBytesToKeepOnShrink); it != kvps_entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.cuda_mempool_bytes_to_keep_on_shrink));
+  }
+
   if (!cfg.IsValid()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Invalid arena configuration. Please check the values provided.");
@@ -177,6 +189,11 @@ void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve
 
   return alloc.Alloc(size);
 }
+
+IArena* IArena::SafeArenaCast(IAllocator* allocator) {
+  return allocator ? allocator->AsArena() : nullptr;
+}
+
 }  // namespace onnxruntime
 
 std::ostream& operator<<(std::ostream& out, const OrtMemoryInfo& info) { return (out << info.ToString()); }
@@ -215,9 +232,22 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD, device_id),
         mem_type1);
   } else if (strcmp(name1, onnxruntime::WEBGPU_BUFFER) == 0 ||
-             strcmp(name1, onnxruntime::WEBNN_TENSOR) == 0) {
+             strcmp(name1, onnxruntime::WEBNN_TENSOR) == 0 ||
+             // Accept pre-1.25 names "WebGPU_Buffer"/"WebNN_Tensor" for backward compatibility
+             // with released onnxruntime-genai that still uses the old names.
+             // Normalize to the current (short) constant so downstream name comparisons work.
+             // See: https://github.com/microsoft/onnxruntime/pull/27207
+             strcmp(name1, "WebGPU_Buffer") == 0 ||
+             strcmp(name1, "WebNN_Tensor") == 0) {
+    // Map old long names to current short constants to keep downstream name comparisons consistent.
+    const char* normalized_name = name1;
+    if (strcmp(name1, "WebGPU_Buffer") == 0) {
+      normalized_name = onnxruntime::WEBGPU_BUFFER;
+    } else if (strcmp(name1, "WebNN_Tensor") == 0) {
+      normalized_name = onnxruntime::WEBNN_TENSOR;
+    }
     *out = new OrtMemoryInfo(
-        name1, type,
+        normalized_name, type,
         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, device_id),
         mem_type1);
 

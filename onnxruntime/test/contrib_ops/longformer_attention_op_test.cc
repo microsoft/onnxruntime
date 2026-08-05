@@ -29,7 +29,6 @@ static void RunAttentionTest(
   int min_cuda_architecture = use_float16 ? 530 : 0;
 
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
-  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
   bool enable_cpu = false;
   if (enable_cpu || enable_cuda) {
     OpTester tester("LongformerAttention", 1, onnxruntime::kMSDomain);
@@ -69,9 +68,7 @@ static void RunAttentionTest(
     if (enable_cuda) {
       execution_providers.push_back(DefaultCudaExecutionProvider());
     }
-    if (enable_rocm) {
-      execution_providers.push_back(DefaultRocmExecutionProvider());
-    }
+
     if (enable_cpu) {
       execution_providers.push_back(DefaultCpuExecutionProvider());
     }

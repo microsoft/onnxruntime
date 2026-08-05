@@ -11,7 +11,6 @@
 
 // Core test utilities (most frequently used in tests)
 #include "test/providers/provider_test_utils.h"
-#include "test/providers/checkers.h"
 
 // ONNX and Protocol Buffer headers
 #include "core/graph/onnx_protobuf.h"

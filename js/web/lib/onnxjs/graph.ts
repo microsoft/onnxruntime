@@ -785,7 +785,7 @@ class GraphImpl implements Graph, Graph.Transformer {
                   child.attributes.getFloat('min'),
                   child.attributes.getFloat('max'),
                 ]);
-              } catch (e) {
+              } catch {
                 node.attributes.set('activation_params', 'floats', [MIN_CLIP, MAX_CLIP]);
               }
             } else if (

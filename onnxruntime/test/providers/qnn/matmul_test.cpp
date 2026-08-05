@@ -250,7 +250,19 @@ TEST_F(QnnHTPBackendTests, DISABLED_MatMulOp) {
   // RunMatMulOpTest({3, 3, 3}, {3, 2}, true, false, ExpectedEPNodeAssignment::All, "htp", 18, 1e-2f);
 }
 
+// Broken on v79 and v81 devices with several results outside of acceptable tolerance.
+// Example:
+// Inaccuracy detected for output 'output_0', element 0
+// output_range=0.010000000707805157, tolerance=0.40000000596046448%.
+// Expected val (f32@CPU_EP): 0.010000000707805157
+// qdq@QNN_EP val: 0.0099215693771839142 (err: 7.8431330621242523e-05, err/output_range: 0.78431320190429688%)
+// qdq@CPU_EP val: 0.010000000707805157 (err: 0, err/output_range: 0%)
+// abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = 0.78431320190429688%
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
+TEST_F(QnnHTPBackendTests, DISABLED_MatMulOp_QDQ) {
+#else
 TEST_F(QnnHTPBackendTests, MatMulOp_QDQ) {
+#endif
   // UINT8
   // RunQDQMatMulOpTest(shape_0, shape_1, is_initializer_0, is_initializer_1, expected_ep_assignment, opset,
   // use_contrib_qdq)

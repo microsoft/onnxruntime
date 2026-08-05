@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import warnings
 from pathlib import Path
 
 import onnx
@@ -375,6 +376,12 @@ def parse_arguments():
 
 
 def main():
+    warnings.warn(
+        "This example is deprecated. Use the Olive recipe instead: "
+        "https://github.com/microsoft/olive-recipes/tree/main",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     args = parse_arguments()
 
     device = torch.device("cuda", args.device_id) if torch.cuda.is_available() else torch.device("cpu")

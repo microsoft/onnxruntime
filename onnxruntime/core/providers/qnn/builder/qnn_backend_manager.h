@@ -11,10 +11,12 @@
 #include <dlfcn.h>
 #endif
 
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -24,10 +26,17 @@
 #include "System/QnnSystemInterface.h"
 
 #include "core/providers/qnn/ort_api.h"
+#include "core/providers/qnn/rpcmem_library.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_context_mem_handle_manager.h"
 #include "core/providers/qnn/builder/qnn_def.h"
+#include "core/providers/qnn/builder/qnn_htp_power_config_manager.h"
+#include "core/providers/qnn/builder/qnn_profile_serializer.h"
 #include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
+
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+#include "core/providers/qnn/builder/qnn_file_mapping_interface.h"
+#endif
 
 namespace onnxruntime {
 namespace qnn {
@@ -62,6 +71,13 @@ class QnnSerializerConfig {
   void SetGraphName(std::string graph_name);
 
   /**
+   * Gets the name of the graph being serialized.
+   *
+   * \return graph_name The name of the graph being serialized.
+   */
+  const std::string& GetGraphName() const;
+
+  /**
    * Get any QNN Graph configs required to configure this serializer and perform any
    * preparation, such as creating output directories.
    *
@@ -83,7 +99,6 @@ class QnnSerializerConfig {
 
  protected:
   QnnSerializerConfig(std::string backend_path);
-  const std::string& GetGraphName() const;
 
  private:
   std::string backend_path_;
@@ -109,6 +124,7 @@ struct QnnBackendManagerConfig {
   QnnHtpDevice_Arch_t htp_arch;
   uint32_t soc_model;
   std::vector<OpPackage> op_packages;
+  bool skip_qnn_version_check;
 };
 
 class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager> {
@@ -133,7 +149,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
         device_id_(config.device_id),
         htp_arch_(config.htp_arch),
         soc_model_(config.soc_model),
-        op_packages_(config.op_packages) {
+        op_packages_(config.op_packages),
+        skip_qnn_version_check_(config.skip_qnn_version_check) {
   }
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
@@ -143,6 +160,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   std::unique_ptr<unsigned char[]> GetContextBinaryBuffer(uint64_t& written_buffer_size);
 
   Status LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length,
+                                        const std::string& context_bin_filepath,
                                         std::string node_name,
                                         std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models,
                                         int64_t max_spill_fill_size);
@@ -152,16 +170,24 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context,
                       bool need_load_system_lib, bool share_ep_contexts,
                       bool enable_vtcm_backup_buffer_sharing,
-                      std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map);
+                      bool enable_file_mapped_weights,
+                      std::shared_ptr<qnn::RpcMemLibrary> rpcmem_library,
+                      std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map,
+                      bool enable_htp_extended_udma_mode);
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
 
-  Status SetHtpPowerConfig(uint32_t htp_power_config_client_id,
-                           HtpPerformanceMode htp_performance_mode);
+  Status SetHtpPowerConfigs(uint32_t htp_power_config_client_id,
+                            HtpPerformanceMode htp_performance_mode,
+                            uint32_t rpc_polling_time,
+                            uint32_t rpc_control_latency);
 
-  Status SetRpcPowerConfigs(uint32_t htp_power_config_client_id,
-                            uint32_t rpc_control_latency,
-                            uint32_t rpc_polling_time);
+  Status SetPerThreadHtpPowerConfigs(const std::thread::id& thread_id, bool pre_run);
+
+  Status AddPerThreadHtpPowerConfigMapping(const std::thread::id& thread_id,
+                                           const PerThreadHtpPowerConfigs_t& htp_power_configs);
+
+  void RemovePerThreadHtpPowerConfigMapping(const std::thread::id& thread_id);
 
   const QNN_INTERFACE_VER_TYPE& GetQnnInterface() { return qnn_interface_; }
 
@@ -183,17 +209,20 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // NOTE: This function locks the internal `logger_recursive_mutex_`.
   Status ResetQnnLogLevel(std::optional<logging::Severity> ort_log_level = std::nullopt);
 
-  Status ExtractBackendProfilingInfo();
-  Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id, std::ofstream& outfile,
-                                   bool backendSupportsExtendedEventData, bool tracelogging_provider_ep_enabled);
+  Status ExtractBackendProfilingInfo(qnn::profile::ProfilingInfo& profiling_info);
+
+  Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id, profile::Serializer& profile_writer,
+                                   bool backendSupportsExtendedEventData);
+
   Status ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
-                               std::ofstream& outfile, bool backendSupportsExtendedEventData,
-                               bool tracelogging_provider_ep_enabled);
+                               profile::Serializer& profile_writer, bool backendSupportsExtendedEventData);
 
   Status SetProfilingLevelETW(ProfilingLevel profiling_level_etw_param);
 
   void SetQnnBackendType(uint32_t backend_id);
   QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
+
+  uint32_t GetSocModel() const { return soc_model_; }
 
   const std::string& GetSdkVersion() { return sdk_build_version_; }
 
@@ -225,6 +254,35 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // Resets the context priority to the session default as defined by context_priority_
   Status ResetContextPriority();
 
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
+  bool ProfilingEnabled() { return profiling_enabled_; }
+#endif
+
+  bool FileMappingIsEnabled() {
+    return file_mapped_weights_enabled_;
+  }
+
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+  Qnn_ErrorHandle_t MapDmaData(Qnn_ContextBinaryDataRequest_t request,
+                               Qnn_ContextBinaryDmaDataResponse_t* response,
+                               void* const mapped_base_ptr,
+                               const size_t file_size);
+
+  Qnn_ErrorHandle_t ReleaseDmaData(Qnn_ContextBinaryDmaDataMem_t data_mem, void* mapped_base_ptr);
+#endif
+
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+  typedef struct FileMappingCallbackInfo {
+    void* const mapped_file_ptr;
+    const size_t file_size;
+    QnnBackendManager* const backend_manager;
+
+    FileMappingCallbackInfo(void* ptr, size_t size, QnnBackendManager* manager)
+        : mapped_file_ptr(ptr), file_size(size), backend_manager(manager) {}
+
+  } FileMappingCallbackInfo_t;
+#endif
+
  private:
   Status LoadBackend();
 
@@ -240,16 +298,31 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status ReleaseProfilehandle();
 
-  Status CreateContext(bool enable_htp_weight_sharing);
+  Status CreateContext(bool enable_htp_weight_sharing, bool enable_htp_extended_udma_mode);
+
+  Status GetFileSizeIfValid(const std::string& filepath, size_t& file_size);
+
+  Status ReadContextBinIfValid(const std::string& context_bin_filepath,
+                               std::vector<char>& buffer);
 
   Status CreateContextVtcmBackupBufferSharingEnabled(std::unordered_map<std::string,
                                                                         std::unique_ptr<std::vector<std::string>>>& context_bin_map);
+
+  Status CreateContextFromListAsync(const QnnContext_Config_t** configs,
+                                    std::unordered_map<std::string,
+                                                       std::unique_ptr<std::vector<std::string>>>& context_bin_map);
+
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+  Status CreateContextFromListAsyncWithCallback(const QnnContext_Config_t** configs,
+                                                std::unordered_map<std::string,
+                                                                   std::unique_ptr<std::vector<std::string>>>& context_bin_map);
+#endif
 
   Status ReleaseContext();
 
   // Sets the ORT logger and creates a corresponding QNN logger with the same log level.
   // NOTE: caller must lock the `logger_recursive_mutex_` before calling this function.
-  Status InitializeQnnLog(const logging::Logger& logger);
+  Status InitializeQnnLog();
 
   // Terminate logging in the backend
   // NOTE: This function locks the internal `logger_recursive_mutex_`.
@@ -288,16 +361,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   bool IsDevicePropertySupported();
 
-  template <typename T>
-  std::vector<std::add_pointer_t<std::add_const_t<T>>> ObtainNullTermPtrVector(const std::vector<T>& vec) {
-    std::vector<std::add_pointer_t<std::add_const_t<T>>> ret;
-    for (auto& elem : vec) {
-      ret.push_back(&elem);
-    }
-    ret.push_back(nullptr);
-    return ret;
-  }
-
   std::string GetBackendBuildId() {
     char* backend_build_id{nullptr};
     if (QNN_SUCCESS != qnn_interface_.backendGetBuildId((const char**)&backend_build_id)) {
@@ -307,30 +370,21 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   }
 
   Status ExtractProfilingEventBasic(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
-                                    std::ofstream& outfile, bool tracelogging_provider_ep_enabled);
+                                    profile::Serializer& profile_writer);
+
   Status ExtractProfilingEventExtended(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
-                                       std::ofstream& outfile, bool tracelogging_provider_ep_enabled);
-  static const std::string& GetUnitString(QnnProfile_EventUnit_t unitType);
-  static const std::unordered_map<QnnProfile_EventUnit_t, std::string>& GetUnitStringMap();
-  static const std::string GetEventTypeString(QnnProfile_EventType_t eventType);
-  static const std::string ExtractQnnScalarValue(const Qnn_Scalar_t& scalar);
+                                       profile::Serializer& profile_writer);
+
   const char* QnnProfileErrorToString(QnnProfile_Error_t error);
   std::string QnnErrorHandleToString(Qnn_ErrorHandle_t error);
   QnnLog_Level_t MapOrtSeverityToQNNLogLevel(logging::Severity ort_log_level);
-#ifdef _WIN32
-  void LogQnnProfileEventAsTraceLogging(
-      uint64_t timestamp,
-      const std::string& message,
-      const std::string& qnnScalarValue,
-      const std::string& unit,
-      const std::string& timingSource,
-      const std::string& eventLevel,
-      const char* eventIdentifier);
-#endif
 
   // Adds a new QNN context.
   // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance
   Status AddQnnContextHandle(Qnn_ContextHandle_t context_handle);
+
+  bool GetPerThreadHtpPowerConfigMapping(const std::thread::id& thread_id,
+                                         PerThreadHtpPowerConfigs_t& htp_power_configs);
 
  private:
   // assume Qnn_ContextHandle_t is a pointer and able to be wrapped with std::unique_ptr
@@ -407,7 +461,28 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
     return Status::OK();
   }
 
- private:
+  std::unique_ptr<void, std::function<void(void*)>> GetSystemContextHandle();
+
+  Status GetGraphInfoAndBinVersion(QnnSystemContext_Handle_t sys_ctx_handle,
+                                   void* buffer,
+                                   Qnn_ContextBinarySize_t buffer_length,
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+                                   Qnn_Version_t& blob_version,
+#endif
+                                   uint32_t& graph_count,
+                                   QnnSystemContext_GraphInfo_t** graphs_info);
+
+  // Checks if act_ver is >= min_ver. An act_ver of 0.0.0 is considered invalid.
+  static bool MinVersionMet(const Qnn_Version_t& act_ver, const Qnn_Version_t& min_ver) {
+    if (act_ver.major == 0 && act_ver.minor == 0 && act_ver.patch == 0) {
+      return false;
+    }
+
+    return act_ver.major > min_ver.major ||
+           (act_ver.major == min_ver.major && act_ver.minor > min_ver.minor) ||
+           (act_ver.major == min_ver.major && act_ver.minor == min_ver.minor && act_ver.patch >= min_ver.patch);
+  }
+
   const std::string backend_path_;
   std::recursive_mutex logger_recursive_mutex_;
   const logging::Logger* logger_ = nullptr;
@@ -419,6 +494,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   QnnBackend_Config_t** backend_config_ = nullptr;
   Qnn_LogHandle_t log_handle_ = nullptr;
   Qnn_DeviceHandle_t device_handle_ = nullptr;
+  power::HtpPowerConfigManager htp_power_config_manager_;
 
   // Map of Qnn_ContextHandle_t to QnnContextHandleRecord.
   // The QnnContextHandleRecord has ownership of the Qnn_ContextHandle_t.
@@ -437,11 +513,26 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   ProfilingLevel profiling_level_;
   ProfilingLevel profiling_level_merge_;
   const std::string profiling_file_path_;
+  bool system_lib_loaded_ = false;
+
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
+  bool profiling_enabled_ = false;
+#endif
+
   bool backend_initialized_ = false;
   bool device_created_ = false;
   bool context_created_ = false;
   bool backend_setup_completed_ = false;
   bool vtcm_backup_buffer_sharing_enabled_ = false;
+  bool file_mapped_weights_enabled_ = false;
+
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+  std::unique_ptr<FileMappingInterface> file_mapper_ = nullptr;
+  // Notify params for file mapping must persist throughout lifetime of
+  // QnnBackendManager for release of DMA data callback on destruction
+  std::vector<std::unique_ptr<FileMappingCallbackInfo_t>> file_mapping_notify_params_;
+#endif
+
   // NPU backend requires quantized model
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;
@@ -455,6 +546,13 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   QnnHtpDevice_Arch_t htp_arch_ = QNN_HTP_DEVICE_ARCH_NONE;
   uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;
   const std::vector<OpPackage> op_packages_;
+  bool skip_qnn_version_check_ = false;
+
+  // Mapping of thread id to on-run-start/end power configs
+  std::mutex per_thread_power_configs_mutex_;
+  std::unordered_map<std::thread::id, PerThreadHtpPowerConfigs_t> per_thread_power_configs_;
+
+  std::shared_ptr<qnn::RpcMemLibrary> rpcmem_library_ = nullptr;
 };
 
 }  // namespace qnn

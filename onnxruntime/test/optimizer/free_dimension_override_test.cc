@@ -5,7 +5,7 @@
 #include "core/graph/model.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_mgr.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/test_environment.h"
 #include "gtest/gtest.h"
 #include "core/optimizer/free_dim_override_transformer.h"

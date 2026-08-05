@@ -33,6 +33,7 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/framework/session_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "test/util/include/telemetry_test_environment.h"
 #include "nlohmann/json.hpp"
 
 #ifdef USE_CUDA
@@ -52,11 +53,13 @@ void usage() {
       "\t-M : Disable memory pattern\n"
       "\t-c [runs]: Specifies the number of Session::Run() to invoke simultaneously for each model.\n"
       "\t-r [repeat]: Specifies the number of times to repeat\n"
+      "\t-m [min_tests]: Fail if fewer than this many test cases are collected (0 = no floor, the "
+      "default). Guards against a silently empty/partial/truncated test tree.\n"
       "\t-I [inference_mode]: Use inference mode. Save the inference result and skip the output value comparison.\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'vsinpu'"
-      "'openvino', 'rocm', 'migraphx', 'acl', 'armnn', 'xnnpack', 'webgpu', 'nnapi', 'qnn', 'snpe' or 'coreml'. "
+      "'openvino', 'migraphx', 'acl', 'xnnpack', 'webgpu', 'nnapi', 'qnn', 'snpe' or 'coreml'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
@@ -84,12 +87,14 @@ void usage() {
       "\t    '0', '1', '2', '3', default is '0'.\n"
       "\t    [QNN only] [soc_model]: The SoC Model number. Refer to QNN SDK documentation for specific values. Defaults to '0' (unknown). \n"
       "\t    [QNN only] [htp_arch]: The minimum HTP architecture. The driver will use ops compatible with this architecture. \n"
-      "\t    Options are '0', '68', '69', '73', '75'. Defaults to '0' (none). \n"
+      "\t    Options are '0', '68', '69', '73', '75', '81'. Defaults to '0' (none). \n"
       "\t    [QNN only] [device_id]: The ID of the device to use when setting 'htp_arch'. Defaults to '0' (for single device). \n"
       "\t    [QNN only] [enable_htp_fp16_precision]: Enable the HTP_FP16 precision so that the float32 model will be inferenced with fp16 precision. \n"
       "\t    Otherwise, it will be fp32 precision. Works for float32 model for HTP backend. Defaults to '1' (with FP16 precision.). \n"
       "\t    [QNN only] [offload_graph_io_quantization]: Offload graph input quantization and graph output dequantization to another EP (typically CPU EP). \n"
       "\t    Defaults to '0' (QNN EP handles the graph I/O quantization and dequantization). \n"
+      "\t    [QNN only] [extended_udma]: Enable HTP extended UDMA mode for better performance on supported hardware, options: \n"
+      "\t    '0' (disabled), '1' (enabled). Default: '0'. \n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
       "\t [Example] [For QNN EP] -e qnn -i \"profiling_level|detailed backend_type|cpu\" \n\n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
@@ -227,8 +232,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_snpe = false;
   bool enable_dml = false;
   bool enable_acl = false;
-  bool enable_armnn = false;
-  bool enable_rocm = false;
   bool enable_migraphx = false;
   bool enable_webgpu = false;
   bool enable_xnnpack = false;
@@ -236,6 +239,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   double atol = 1e-5;
   double rtol = 1e-5;
   int device_id = 0;
+  int min_tests = 0;  // -m: fail if fewer than this many test cases are collected (0 = no floor).
   GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
   bool user_graph_optimization_level_set = false;
   bool set_denormal_as_zero = false;
@@ -251,7 +255,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool pause = false;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:IMn:r:e:t:a:xvo:d:C:i:pzfb"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:IMm:n:r:e:t:a:xvo:d:C:i:pzfb"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -286,6 +290,13 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         case 'M':
           enable_mem_pattern = false;
           break;
+        case 'm':
+          min_tests = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
+          if (min_tests < 0) {
+            usage();
+            return -1;
+          }
+          break;
         case 'n':
           // run only some whitelisted tests
           // TODO: parse name str to an array
@@ -317,10 +328,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_dml = true;
           } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
             enable_acl = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("armnn"))) {
-            enable_armnn = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("rocm"))) {
-            enable_rocm = true;
           } else if (!CompareCString(optarg, ORT_TSTR("migraphx"))) {
             enable_migraphx = true;
           } else if (!CompareCString(optarg, ORT_TSTR("webgpu"))) {
@@ -607,7 +614,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             ORT_THROW("Wrong value for htp_graph_finalization_optimization_mode. select from: " + str);
           }
         } else if (key == "htp_arch") {
-          std::unordered_set<std::string> supported_htp_archs = {"0", "68", "69", "73", "75"};
+          std::unordered_set<std::string> supported_htp_archs = {"0", "68", "69", "73", "75", "81"};
           if (supported_htp_archs.find(value) == supported_htp_archs.end()) {
             std::ostringstream str_stream;
             std::copy(supported_htp_archs.begin(), supported_htp_archs.end(),
@@ -615,7 +622,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             std::string str = str_stream.str();
             ORT_THROW("Wrong value for htp_arch. select from: " + str);
           }
-        } else if (key == "enable_htp_fp16_precision" || key == "offload_graph_io_quantization") {
+        } else if (key == "enable_htp_fp16_precision" || key == "offload_graph_io_quantization" || key == "extended_udma") {
           std::unordered_set<std::string> supported_options = {"0", "1"};
           if (supported_options.find(value) == supported_options.end()) {
             std::ostringstream str_stream;
@@ -629,7 +636,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
               "Wrong key type entered. Choose from options: ['backend_type', 'backend_path', "
               "'profiling_level', 'profiling_file_path', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode', "
               "'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'op_packages', 'qnn_context_priority', "
-              "'soc_model', 'htp_arch', 'device_id', 'enable_htp_fp16_precision', 'offload_graph_io_quantization']");
+              "'soc_model', 'htp_arch', 'device_id', 'enable_htp_fp16_precision', 'offload_graph_io_quantization', 'extended_udma']");
         }
 
         qnn_options[key] = value;
@@ -737,25 +744,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ACL(sf, false));
 #else
       fprintf(stderr, "ACL is not supported in this build");
-      return -1;
-#endif
-    }
-    if (enable_armnn) {
-#ifdef USE_ARMNN
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(sf, enable_cpu_mem_arena ? 1 : 0));
-#else
-      fprintf(stderr, "ArmNN is not supported in this build\n");
-      return -1;
-#endif
-    }
-    if (enable_rocm) {
-#ifdef USE_ROCM
-      OrtROCMProviderOptions rocm_options;
-      rocm_options.do_copy_in_default_stream = true;
-      // TODO: Support arena configuration for users of test runner
-      sf.AppendExecutionProvider_ROCM(rocm_options);
-#else
-      fprintf(stderr, "ROCM is not supported in this build");
       return -1;
 #endif
     }
@@ -968,6 +956,22 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
                 owned_tests.push_back(std::move(l));
               });
 
+    // Consumption-point floor (opt-in via -m). LoadTests silently skips non-existent/empty dirs
+    // (TestCase.cc: `if (!exists) continue`), so an empty/partial/truncated test tree would
+    // otherwise run to a green exit with near-zero coverage. This fires for a materialized node
+    // corpus that failed to generate, a truncated artifact copy (from a separate download/copy
+    // stage), a stale stamp masking a partial tree, and the post-#7959 state where the
+    // equivalence oracle has retired and nothing else re-anchors the count.
+    if (min_tests > 0 && tests.size() < static_cast<size_t>(min_tests)) {
+      fprintf(stderr,
+              "FATAL: node test corpus collapsed -- onnx_test_runner collected %zu test case(s) "
+              "from the given data root(s), but -m required at least %d. See onnx-opset-bump-checklist "
+              "gotcha (p): onnx#7959 deletes the on-disk node-test corpus and corpus absence is "
+              "otherwise SILENT-GREEN. A silently empty/partial/truncated test tree would report "
+              "success with near-zero coverage.\n",
+              tests.size(), min_tests);
+      return -1;
+    }
     auto tp = TestEnv::CreateThreadPool(Env::Default());
     TestEnv test_env(env, sf, tp.get(), std::move(tests), stat, inference_mode);
     Status st = test_env.Run(p_models, concurrent_session_runs, repeat_count);
@@ -991,6 +995,7 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
+  onnxruntime::test::SuppressTelemetryForTests();
 #ifdef _WIN32
 #if defined(_DEBUG) && !defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
   int tmpFlag = _CrtSetDbgFlag(_CRTDBG_REPORT_FLAG);

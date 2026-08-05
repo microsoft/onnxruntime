@@ -32,10 +32,9 @@ void TestNhwcConvOp(const NhwcConvOpAndTestAttributes& attributes,
   int min_cuda_architecture = use_float16 ? 530 : 0;
   // NHWC implementation doesn't handle W in NHWC layout if it's not an initializer
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture) && weight_is_initializer;
-  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
   bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get());
 
-  if (enable_cuda || enable_rocm || enable_dml) {
+  if (enable_cuda || enable_dml) {
     OpTester test("NhwcConv", 1, onnxruntime::kMSDomain);
     test.AddAttribute("group", attributes.group);
     test.AddAttribute("kernel_shape", attributes.kernel_shape);
@@ -78,10 +77,6 @@ void TestNhwcConvOp(const NhwcConvOpAndTestAttributes& attributes,
 
     if (enable_cuda) {
       execution_providers.push_back(DefaultCudaExecutionProvider());
-    }
-
-    if (enable_rocm) {
-      execution_providers.push_back(DefaultRocmExecutionProvider());
     }
 
     if (enable_dml) {

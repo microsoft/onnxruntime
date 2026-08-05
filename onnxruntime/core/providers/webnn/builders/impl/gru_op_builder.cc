@@ -237,15 +237,15 @@ bool GruOpBuilder::HasSupportedOutputsImpl(const Node& node,
   bool Y_h_supported = has_Y_h && GetType(*output_defs[1], Y_h_type, logger);
 
   if (Y_supported && !Y_h_supported) {
-    return IsDataTypeSupportedByOp(op_type, Y_type, wnn_limits, "outputs", "Y", logger);
+    return IsDataTypeSupportedByOp(op_type, Y_type, wnn_limits, "output1", "Y", logger);
   } else if (!Y_supported && Y_h_supported) {
-    return IsDataTypeSupportedByOp(op_type, Y_h_type, wnn_limits, "outputs", "Y_h", logger);
+    return IsDataTypeSupportedByOp(op_type, Y_h_type, wnn_limits, "output0", "Y_h", logger);
   } else if (Y_supported && Y_h_supported) {
     if (Y_type != Y_h_type) {
       LOGS(logger, VERBOSE) << "[GRU] Output data types must be the same.";
       return false;
     }
-    return IsDataTypeSupportedByOp(op_type, Y_type, wnn_limits, "outputs", "Y", logger);
+    return IsDataTypeSupportedByOp(op_type, Y_type, wnn_limits, "output1", "Y", logger);
   } else {
     LOGS(logger, VERBOSE) << "[GRU] No output found.";
     return false;

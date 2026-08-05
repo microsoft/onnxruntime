@@ -12,7 +12,7 @@
  * Method:    getName
  * Signature: (JJ)Ljava/lang/String;
  */
-JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtEpDevice_getName
+JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtEpDevice_getEpName
   (JNIEnv * jniEnv, jclass jclazz, jlong apiHandle, jlong nativeHandle) {
   (void) jclazz; // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
@@ -27,7 +27,7 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtEpDevice_getName
  * Method:    getVendor
  * Signature: (JJ)Ljava/lang/String;
  */
-JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtEpDevice_getVendor
+JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtEpDevice_getEpVendor
   (JNIEnv * jniEnv, jclass jclazz, jlong apiHandle, jlong nativeHandle) {
   (void) jclazz; // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
@@ -42,7 +42,7 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtEpDevice_getVendor
  * Method:    getMetadata
  * Signature: (JJ)[[Ljava/lang/String;
  */
-JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtEpDevice_getMetadata
+JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtEpDevice_getEpMetadata
   (JNIEnv * jniEnv, jclass jclazz, jlong apiHandle, jlong nativeHandle) {
   (void) jclazz; // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
@@ -57,7 +57,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtEpDevice_getMetadata
  * Method:    getOptions
  * Signature: (JJ)[[Ljava/lang/String;
  */
-JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtEpDevice_getOptions
+JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtEpDevice_getEpOptions
   (JNIEnv * jniEnv, jclass jclazz, jlong apiHandle, jlong nativeHandle) {
   (void) jclazz; // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;

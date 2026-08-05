@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <memory>
 #include <string>
 #include <sstream>
+#include <cstdint>
 
 #include "core/providers/webgpu/shader_variable.h"
 
@@ -38,7 +40,7 @@ constexpr static const std::string_view STORAGE_TYPE_ARRAY[] = {
     "u32",        // Uint4x8
     "u32",        // Int4x8
 };
-constexpr static const auto STORAGE_TYPE = details::_to_std_array(STORAGE_TYPE_ARRAY);
+constexpr static const auto STORAGE_TYPE = std::to_array(STORAGE_TYPE_ARRAY);
 
 constexpr static const std::string_view VALUE_TYPE_ARRAY[] = {
     "f32",         // Float32
@@ -65,7 +67,7 @@ constexpr static const std::string_view VALUE_TYPE_ARRAY[] = {
     "u32",         // Uint4x8
     "u32",         // Int4x8
 };
-constexpr static const auto VALUE_TYPE = details::_to_std_array(VALUE_TYPE_ARRAY);
+constexpr static const auto VALUE_TYPE = std::to_array(VALUE_TYPE_ARRAY);
 
 constexpr static const std::string_view ELEMENT_TYPE_ARRAY[] = {
     "f32",   // Float32
@@ -92,7 +94,34 @@ constexpr static const std::string_view ELEMENT_TYPE_ARRAY[] = {
     "u32",   // Uint4x8
     "i32",   // Int4x8
 };
-constexpr static const auto ELEMENT_TYPE = details::_to_std_array(ELEMENT_TYPE_ARRAY);
+constexpr static const auto ELEMENT_TYPE = std::to_array(ELEMENT_TYPE_ARRAY);
+
+constexpr static const uint32_t BYTES_ARRAY[] = {
+    4,   // Float32
+    8,   // Float32x2
+    16,  // Float32x4
+    2,   // Float16
+    4,   // Float16x2
+    8,   // Float16x4
+    4,   // Int32
+    8,   // Int32x2
+    16,  // Int32x4
+    4,   // Uint32
+    8,   // Uint32x2
+    16,  // Uint32x4
+    8,   // Int64 (vec2<u32>)
+    8,   // Uint64 (vec2<u32>)
+    4,   // Boolx4 (packed in u32)
+    4,   // Uint8x4 (packed in u32)
+    8,   // Uint8x8 (vec2<u32>)
+    16,  // Uint8x16 (vec4<u32>)
+    4,   // Int8x4 (packed in u32)
+    8,   // Int8x8 (vec2<u32>)
+    16,  // Int8x16 (vec4<u32>)
+    4,   // Uint4x8 (packed in u32)
+    4,   // Int4x8 (packed in u32)
+};
+constexpr static const auto BYTES = std::to_array(BYTES_ARRAY);
 
 inline std::string GetIndicesType(int rank) {
   return rank < 2 ? "u32"
@@ -114,13 +143,15 @@ ShaderIndicesHelper::ShaderIndicesHelper(std::string_view name, ProgramVariableD
       element_type_alias_{name_ + "_element_t"},
       indices_type_alias_{name_ + "_indices_t"} {}
 
-ShaderVariableHelper::ShaderVariableHelper(std::string_view name, ProgramVariableDataType type, ShaderUsage usage, const TensorShape& dims)
-    : ShaderIndicesHelper{name, type, usage, dims} {
+ShaderVariableHelper::ShaderVariableHelper(std::string_view name, ProgramVariableDataType type, ShaderUsage usage, const TensorShape& dims, uint32_t segments, uint64_t maxStorageBufferBindingSize)
+    : ShaderIndicesHelper{name, type, usage, dims},
+      segments_{segments},
+      max_storage_buffer_binding_size_{maxStorageBufferBindingSize} {
   ORT_ENFORCE(type_ != ProgramVariableDataType::InvalidType, "Invalid type for variable ", name_);
   ORT_ENFORCE(num_components_ > 0, "Invalid number of components for variable ", name_);
 }
 
-void ShaderIndicesHelper::Impl(std::ostream& ss) const {
+void ShaderIndicesHelper::Impl(OStringStream& ss) const {
   // Start generating code
 
   const std::string shape = (usage_ & ShaderUsage::UseUniform) ? "uniforms." + name_ + "_shape" : name_ + "_shape";
@@ -219,7 +250,7 @@ void ShaderIndicesHelper::Impl(std::ostream& ss) const {
   }
 }
 
-void ShaderVariableHelper::Impl(std::ostream& ss) const {
+void ShaderVariableHelper::Impl(OStringStream& ss) const {
   ShaderIndicesHelper::Impl(ss);
 
   // Implementation of "fn set_{name}"
@@ -273,18 +304,117 @@ void ShaderVariableHelper::Impl(std::ostream& ss) const {
       SS_APPEND(ss, "}\n");
     }
   }
+  // Implementation of "fn get_{name}_by_offset" for multi-buffer segmented inputs
+  if (usage_ & ShaderUsage::UseGetByOffsetSegments) {
+    // Multi-buffer segmented input accessor.
+    // Compute which physical storage buffer chunk the global linear element offset belongs to.
+    SS_APPEND(ss, "fn get_", name_, "_by_offset(global_offset: u32) -> ", ValueType(), " {\n");
+    SS_APPEND(ss, "  const CHUNK_SIZE_IN_ELEMENTS: u32 = ", max_storage_buffer_binding_size_, "u / ", BYTES[static_cast<int>(type_)], "u;\n");
+    SS_APPEND(ss, "  let buffer_index: u32 = global_offset / CHUNK_SIZE_IN_ELEMENTS;\n");
+    SS_APPEND(ss, "  let local_offset: u32 = global_offset % CHUNK_SIZE_IN_ELEMENTS;\n");
+    const bool is_64bit = type_ == ProgramVariableDataType::Int64 || type_ == ProgramVariableDataType::Uint64;
+    const bool is_boolx4 = type_ == ProgramVariableDataType::Boolx4;
+    // Returns the WGSL return expression for a given buffer name, mirroring GetByOffsetImpl.
+    auto make_get_return_expr = [&](std::string_view buf) -> std::string {
+      SS(expr, 128);
+      if (is_64bit) {
+        expr << ElementType() << "(" << buf << "[local_offset].x)";
+      } else if (is_boolx4) {
+        expr << "vec4<bool>(bool(" << buf << "[local_offset] & 0xFFu), bool(" << buf
+             << "[local_offset] & 0xFF00u), bool(" << buf << "[local_offset] & 0xFF0000u), bool("
+             << buf << "[local_offset] & 0xFF000000u))";
+      } else {
+        expr << buf << "[local_offset]";
+      }
+      return SS_GET(expr);
+    };
+    SS_APPEND(ss, "  switch(buffer_index) {\n");
+    // case 0 (base buffer name_)
+    SS_APPEND(ss, "    case 0u: { return ", make_get_return_expr(name_), "; }\n");
+    for (uint32_t i = 1; i < segments_; ++i) {
+      SS_APPEND(ss, "    case ", i, "u: { return ", make_get_return_expr(name_ + std::to_string(i)), "; }\n");
+    }
+    SS_APPEND(ss, "    default: { return ", make_get_return_expr(name_), "; }\n");
+    SS_APPEND(ss, "  }\n");
+    SS_APPEND(ss, "}\n");
+  }
+  if (usage_ & ShaderUsage::UseGetByOffsetSegmentsStorage) {
+    SS_APPEND(ss, "fn get_", name_, "_by_offset_storage(global_offset: u32) -> ", StorageType(), " {\n");
+    SS_APPEND(ss, "  const CHUNK_SIZE_IN_ELEMENTS: u32 = ", max_storage_buffer_binding_size_, "u / ", BYTES[static_cast<int>(type_)], "u;\n");
+    SS_APPEND(ss, "  let buffer_index: u32 = global_offset / CHUNK_SIZE_IN_ELEMENTS;\n");
+    SS_APPEND(ss, "  let local_offset: u32 = global_offset % CHUNK_SIZE_IN_ELEMENTS;\n");
+    SS_APPEND(ss, "  switch(buffer_index) {\n");
+    SS_APPEND(ss, "    case 0u: { return ", name_, "[local_offset]; }\n");
+    for (uint32_t i = 1; i < segments_; ++i) {
+      SS_APPEND(ss, "    case ", i, "u: { return ", name_, i, "[local_offset]; }\n");
+    }
+    SS_APPEND(ss, "    default: { return ", name_, "[local_offset]; }\n");
+    SS_APPEND(ss, "  }\n");
+    SS_APPEND(ss, "}\n");
+  }
+  // Implementation of "fn set_{name}_by_offset" for multi-buffer segmented variables
+  if (usage_ & ShaderUsage::UseSetByOffsetSegments) {
+    SS_APPEND(ss, "fn set_", name_, "_by_offset(global_offset: u32, value: ", ValueType(), ") {\n");
+    SS_APPEND(ss, "  const CHUNK_SIZE_IN_ELEMENTS: u32 = ", max_storage_buffer_binding_size_, "u / ", BYTES[static_cast<int>(type_)], "u;\n");
+    SS_APPEND(ss, "  let buffer_index: u32 = global_offset / CHUNK_SIZE_IN_ELEMENTS;\n");
+    SS_APPEND(ss, "  let local_offset: u32 = global_offset % CHUNK_SIZE_IN_ELEMENTS;\n");
+    std::string stored_value = "value";
+    if (type_ == ProgramVariableDataType::Int64) {
+      stored_value = "vec2<u32>(u32(value), select(0u, 0xFFFFFFFFu, i32(value) < 0))";
+    } else if (type_ == ProgramVariableDataType::Uint64) {
+      stored_value = "vec2<u32>(u32(value), 0u)";
+    } else if (type_ == ProgramVariableDataType::Boolx4) {
+      stored_value = "dot(vec4<u32>(0x1, 0x100, 0x10000, 0x1000000), vec4<u32>(value))";
+    }
+    SS_APPEND(ss, "  switch(buffer_index) {\n");
+    SS_APPEND(ss, "    case 0u: { ", name_, "[local_offset] = ", stored_value, "; return; }\n");
+    for (uint32_t i = 1; i < segments_; ++i) {
+      SS_APPEND(ss, "    case ", i, "u: { ", name_, i, "[local_offset] = ", stored_value, "; return; }\n");
+    }
+    SS_APPEND(ss, "    default: { ", name_, "[local_offset] = ", stored_value, "; return; }\n");
+    SS_APPEND(ss, "  }\n");
+    SS_APPEND(ss, "}\n");
+  }
+  if (usage_ & ShaderUsage::UseSetByOffsetSegmentsStorage) {
+    SS_APPEND(ss, "fn set_", name_, "_by_offset_storage(global_offset: u32, value: ", StorageType(), ") {\n");
+    SS_APPEND(ss, "  const CHUNK_SIZE_IN_ELEMENTS: u32 = ", max_storage_buffer_binding_size_, "u / ", BYTES[static_cast<int>(type_)], "u;\n");
+    SS_APPEND(ss, "  let buffer_index: u32 = global_offset / CHUNK_SIZE_IN_ELEMENTS;\n");
+    SS_APPEND(ss, "  let local_offset: u32 = global_offset % CHUNK_SIZE_IN_ELEMENTS;\n");
+    SS_APPEND(ss, "  switch(buffer_index) {\n");
+    SS_APPEND(ss, "    case 0u: { ", name_, "[local_offset] = value; return; }\n");
+    for (uint32_t i = 1; i < segments_; ++i) {
+      SS_APPEND(ss, "    case ", i, "u: { ", name_, i, "[local_offset] = value; return; }\n");
+    }
+    SS_APPEND(ss, "    default: { ", name_, "[local_offset] = value; return; }\n");
+    SS_APPEND(ss, "  }\n");
+    SS_APPEND(ss, "}\n");
+  }
 }
 
-std::string ShaderVariableHelper::GetByOffsetImpl(std::string_view offset) const {
+std::string ShaderVariableHelper::GetByOffsetImpl(std::string_view offset, bool use_storage_type) const {
   SS(ss, kStringInitialSizeGetByOffsetImpl);
 
+  if (usage_ & ShaderUsage::UseGetByOffsetSegments) {
+    if (use_storage_type &&
+        (type_ == ProgramVariableDataType::Int64 || type_ == ProgramVariableDataType::Uint64)) {
+      usage_ |= ShaderUsage::UseGetByOffsetSegmentsStorage;
+      ss << "get_" << name_ << "_by_offset_storage(" << offset << ")";
+      return SS_GET(ss);
+    }
+    ss << "get_" << name_ << "_by_offset(" << offset << ")";
+    return SS_GET(ss);
+  }
   switch (type_) {
     case onnxruntime::webgpu::ProgramVariableDataType::InvalidType:
       ORT_THROW("Invalid type");
       break;
     case onnxruntime::webgpu::ProgramVariableDataType::Int64:
     case onnxruntime::webgpu::ProgramVariableDataType::Uint64:
-      ss << ElementType() << "(" << name_ << "[" << offset << "].x)";
+      if (use_storage_type) {
+        ss << name_ << "[" << offset << "]";
+      } else {
+        ss << ElementType() << "(" << name_ << "[" << offset << "].x)";
+      }
       break;
     case onnxruntime::webgpu::ProgramVariableDataType::Boolx4:
       ss << "vec4<bool>(bool("
@@ -294,27 +424,61 @@ std::string ShaderVariableHelper::GetByOffsetImpl(std::string_view offset) const
          << name_ << "[" << offset << "] & 0xFF000000u))";
       break;
     default:
+      // Uint8x4 falls through here intentionally: GetByOffset returns the raw packed u32 storage
+      // word, matching the convention other kernels rely on for byte-packed uint8 tensors (they
+      // unpack sub-byte fields themselves, e.g. via unpack4xU8). Callers that want the 4 unpacked
+      // byte values apply unpack4xU8 at the use site.
       ss << name_ << "[" << offset << "]";
   }
 
   return SS_GET(ss);
 }
 
-std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::string_view value) const {
+std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::string_view value, bool use_storage_type) const {
   SS(ss, kStringInitialSizeSetByOffsetImpl);
+
+  if (usage_ & ShaderUsage::UseSetByOffsetSegments) {
+    if (use_storage_type &&
+        (type_ == ProgramVariableDataType::Int64 || type_ == ProgramVariableDataType::Uint64)) {
+      usage_ |= ShaderUsage::UseSetByOffsetSegmentsStorage;
+      ss << "set_" << name_ << "_by_offset_storage(" << offset << "," << value << ");";
+      return SS_GET(ss);
+    }
+    ss << "set_" << name_ << "_by_offset(" << offset << "," << value << ");";
+    return SS_GET(ss);
+  }
 
   switch (type_) {
     case onnxruntime::webgpu::ProgramVariableDataType::InvalidType:
       ORT_THROW("Invalid type");
       break;
     case onnxruntime::webgpu::ProgramVariableDataType::Int64:
-      ss << name_ << "[" << offset << "]=vec2<u32>(u32(" << value << "), select(0u, 0xFFFFFFFFu, " << value << " < 0));";
+      if (use_storage_type) {
+        // Value is already storage type (vec2<u32>), use directly
+        ss << name_ << "[" << offset << "]=" << value << ";";
+      } else {
+        // Value is i32, sign-extend to int64 (vec2<u32>)
+        ss << name_ << "[" << offset << "]=vec2<u32>(u32(" << value << "), select(0u, 0xFFFFFFFFu, i32(" << value << ") < 0));";
+      }
       break;
     case onnxruntime::webgpu::ProgramVariableDataType::Uint64:
-      ss << name_ << "[" << offset << "]=vec2<u32>(u32(" << value << "), 0u);";
+      if (use_storage_type) {
+        // Value is already storage type (vec2<u32>), use directly
+        ss << name_ << "[" << offset << "]=" << value << ";";
+      } else {
+        // Value is u32, zero-extend to uint64 (vec2<u32>)
+        ss << name_ << "[" << offset << "]=vec2<u32>(u32(" << value << "), 0u);";
+      }
       break;
     case onnxruntime::webgpu::ProgramVariableDataType::Boolx4:
       ss << name_ << "[" << offset << "]=dot(vec4<u32>(0x1, 0x100, 0x10000, 0x1000000), vec4<u32>(" << value << "));";
+      break;
+    case onnxruntime::webgpu::ProgramVariableDataType::Uint8x4:
+      // Pack 4 uint8 elements (supplied as a vec4<u32>, one value per lane) into a single u32
+      // storage word, lane 0 -> low byte. Same byte layout as Boolx4, but mask each lane to a
+      // byte so values > 1 (real uint8, not just 0/1) pack correctly.
+      ss << name_ << "[" << offset << "]=dot(vec4<u32>(0x1u, 0x100u, 0x10000u, 0x1000000u), (vec4<u32>("
+         << value << ") & vec4<u32>(0xFFu)));";
       break;
     default:
       ss << name_ << "[" << offset << "]=" << value << ";";

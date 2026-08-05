@@ -14,6 +14,17 @@
 
 namespace onnxruntime {
 namespace qnn {
+#if QNN_API_VERSION_MAJOR > 2 || \
+    (QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 29))
+#define QNN_SYSTEM_PROFILE_API_ENABLED
+#endif
+
+#if defined(_WIN32) && (defined(__aarch64__) || defined(_M_ARM64))
+#if QNN_API_VERSION_MAJOR > 2 || ((QNN_API_VERSION_MAJOR) == 2 && (QNN_API_VERSION_MINOR >= 32))
+#define QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+#endif
+#endif
+
 // QNN only support subset of POSIX of dlopen/dlsym/dladdr/dlerror/dlclose
 // except the following flags for dlopen, others should be done only
 // when we really need them
@@ -32,7 +43,24 @@ enum class ProfilingLevel : uint8_t {
   OFF = 0,
   BASIC,
   DETAILED,
+  OPTRACE,
   INVALID
+};
+
+enum class ProfilingMethodType : uint8_t {
+  UNKNOWN = 0,
+  EXECUTE,
+  FINALIZE,
+  EXECUTE_ASYNC,
+  CREATE_FROM_BINARY,
+  DEINIT,
+  CONTEXT_CREATE,
+  COMPOSE_GRAPHS,
+  EXECUTE_IPS,
+  GRAPH_COMPONENT,
+  LIB_LOAD,
+  APPLY_BINARY_SECTION,
+  CONTEXT_FINALIZE
 };
 
 // Defines performance modes available for HTP backend.
@@ -48,6 +76,15 @@ enum class HtpPerformanceMode : uint8_t {
   kHtpBalanced,
   kHtpExtremePowerSaver,
 };
+
+typedef struct PerThreadHtpPowerConfigs {
+  std::optional<HtpPerformanceMode> pre_run_perf_mode;
+  std::optional<HtpPerformanceMode> post_run_perf_mode;
+  std::optional<uint32_t> rpc_control_latency;
+  std::optional<uint32_t> rpc_polling_time;
+
+  uint32_t power_config_id = 0;
+} PerThreadHtpPowerConfigs_t;
 
 enum class ContextPriority : uint8_t {
   LOW = 0,
@@ -74,6 +111,8 @@ enum class QnnBackendType : uint8_t {
   SERIALIZER,
 };
 
+bool IsIrBackend(QnnBackendType backend_type);
+
 bool IsCpuBackend(QnnBackendType backend_type);
 
 bool IsNpuBackend(QnnBackendType backend_type);
@@ -89,6 +128,9 @@ constexpr const int kSleepMediumLatency = 1000;
 constexpr const int kSleepHighLatency = 2000;
 constexpr const int kDcvsDisable = 0;
 constexpr const int kDcvsEnable = 1;
+constexpr const uint32_t kDisableRpcPolling = 0;
+constexpr const uint32_t kDisableRpcControlLatency = 0;
+constexpr const uint32_t kMaxRpcPolling = 9999;
 
 struct OnnxTensorInfo {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxTensorInfo);
@@ -215,7 +257,7 @@ class QnnTensorWrapper {
     dimensions_.assign(shape_data, shape_data + shape_rank);
     SetQnnTensorDim(qnn_tensor_, dimensions_);
 
-    SetQnnTensorMemType(qnn_tensor_, QNN_TENSORMEMTYPE_RAW);
+    SetQnnTensorMemType(qnn_tensor_, GetQnnTensorMemType(qnn_tensor));
 
     return Status::OK();
   }

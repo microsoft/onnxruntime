@@ -5,11 +5,17 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/providers/run_options_config_keys.h"
+#include "core/session/inference_session.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/util/include/test_environment.h"
 #include "default_providers.h"
+
+#include <array>
+#include <cmath>
+#include <limits>
+#include <numeric>
 
 #if defined(__aarch64__) && defined(__linux__)
 
@@ -167,6 +173,99 @@ void RunMatMulTest(int32_t opset_version, bool is_a_constant, bool is_b_constant
 template <typename T>
 void RunMatMulTest(int32_t opset_version) {
   RunMatMulTest<T>(opset_version, false, false, false);
+}
+
+TEST(MathOpTest, MatMulFloatTypeFastMathKTailDoesNotReadPaddedA) {
+  constexpr int64_t M = 1;
+  constexpr int64_t N = 8;
+
+  for (const int64_t K : std::array<int64_t, 5>{13, 14, 15, 16, 17}) {
+    SCOPED_TRACE("K=" + std::to_string(K));
+
+    std::vector<float> input0_vals(K);
+    std::iota(input0_vals.begin(), input0_vals.end(), 1.0f);
+
+    std::vector<float> input1_vals(K * N, 1.0f);
+
+    std::vector<float> expected_vals(N, std::accumulate(input0_vals.begin(), input0_vals.end(), 0.0f));
+
+    ONNX_NAMESPACE::ModelProto model;
+    model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    model.add_opset_import()->set_version(7);
+
+    auto* graph = model.mutable_graph();
+    graph->set_name("MatMulKTailGraph");
+
+    auto* input = graph->add_input();
+    input->set_name("A");
+    auto* input_tensor_type = input->mutable_type()->mutable_tensor_type();
+    input_tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    input_tensor_type->mutable_shape()->add_dim()->set_dim_value(M);
+    input_tensor_type->mutable_shape()->add_dim()->set_dim_value(K);
+
+    auto* output = graph->add_output();
+    output->set_name("Y");
+    auto* output_tensor_type = output->mutable_type()->mutable_tensor_type();
+    output_tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    output_tensor_type->mutable_shape()->add_dim()->set_dim_value(M);
+    output_tensor_type->mutable_shape()->add_dim()->set_dim_value(N);
+
+    auto* b_initializer = graph->add_initializer();
+    b_initializer->set_name("B");
+    b_initializer->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    b_initializer->add_dims(K);
+    b_initializer->add_dims(N);
+    for (float value : input1_vals) {
+      b_initializer->add_float_data(value);
+    }
+
+    auto* matmul_node = graph->add_node();
+    matmul_node->set_name("MatMulKTail");
+    matmul_node->set_op_type("MatMul");
+    matmul_node->add_input("A");
+    matmul_node->add_input("B");
+    matmul_node->add_output("Y");
+
+    std::string serialized_model;
+    ASSERT_TRUE(model.SerializeToString(&serialized_model));
+
+    SessionOptions so;
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16, "1"));
+
+    InferenceSession session_object{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCpuExecutionProvider()));
+
+    std::stringstream model_stream(serialized_model);
+    ASSERT_STATUS_OK(session_object.Load(model_stream));
+    ASSERT_STATUS_OK(session_object.Initialize());
+
+    std::vector<float> input0_backing(input0_vals.begin(), input0_vals.end());
+    // Poison a full 4-float NEON load past the logical A row to verify that
+    // SBGemm K-tail handling does not consume overread values.
+    input0_backing.resize(K + 4, std::numeric_limits<float>::quiet_NaN());
+
+    OrtValue input0;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({M, K}), input0_backing.data(),
+                         OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), input0);
+
+    NameMLValMap feeds;
+    feeds.insert(std::make_pair(std::string("A"), input0));
+
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session_object.Run(RunOptions{}, feeds, AsSpan({std::string("Y")}), &fetches));
+    ASSERT_EQ(fetches.size(), 1u);
+    ASSERT_TRUE(fetches[0].IsTensor());
+
+    const auto& output_tensor = fetches[0].Get<Tensor>();
+    ASSERT_EQ(output_tensor.Shape(), TensorShape({M, N}));
+
+    const auto* output_data = output_tensor.Data<float>();
+    for (int64_t i = 0; i < N; ++i) {
+      ASSERT_TRUE(std::isfinite(output_data[i])) << "Output " << i << " should not include padded A tail values.";
+      ASSERT_EQ(output_data[i], expected_vals[i]) << "Output " << i;
+    }
+  }
 }
 
 TEST(MathOpTest, MatMulFloatType_FastMath) {

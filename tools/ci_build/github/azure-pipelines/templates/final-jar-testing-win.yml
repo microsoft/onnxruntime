@@ -11,6 +11,8 @@ stages:
       clean: all
     pool:
       name: ${{ parameters.PoolName }}
+    templateContext:
+      type: validationJob
     variables:
     - name: runCodesignValidationInjection
       value: false
@@ -62,6 +64,8 @@ stages:
           del *.asc
           del *.sha256
           del *.sha512
+          del *.md5
+          del *.sha1
           del *.pom
           cd ..
           mkdir tests

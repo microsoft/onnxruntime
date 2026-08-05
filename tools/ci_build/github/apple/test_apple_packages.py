@@ -206,7 +206,7 @@ def _test_apple_packages(args):
                         "-scheme",
                         "macos_package_test",
                         "-destination",
-                        "platform=macos",
+                        "platform=macOS",
                     ],
                     shell=False,
                     check=True,

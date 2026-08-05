@@ -28,10 +28,54 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Squeeze);
 
 // axes is input instead of attribute
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Squeeze,
+    kOnnxDomain,
+    13, 20,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .InputMemoryType(OrtMemTypeCPUInput, 1),
+    Squeeze);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Squeeze,
+    kOnnxDomain,
+    21, 22,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .InputMemoryType(OrtMemTypeCPUInput, 1),
+    Squeeze);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Squeeze,
+    kOnnxDomain,
+    23, 23,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .InputMemoryType(OrtMemTypeCPUInput, 1),
+    Squeeze);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Squeeze,
+    kOnnxDomain,
+    24, 24,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .InputMemoryType(OrtMemTypeCPUInput, 1),
+    Squeeze);
+
 ONNX_OPERATOR_KERNEL_EX(
     Squeeze,
     kOnnxDomain,
-    13,
+    25,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .Alias(0, 0)
