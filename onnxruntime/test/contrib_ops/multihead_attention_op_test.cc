@@ -681,7 +681,43 @@ TEST(MultiHeadAttentionTest, EmptyKeyValueSequence) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-TEST(MultiHeadAttentionTest, GroupedQueryAttention) {
+TEST(MultiHeadAttentionTest, GroupedQueryAttentionCpu) {
+  constexpr int num_heads = 4;
+  constexpr int kv_num_heads = 2;
+  constexpr int head_size = 2;
+  constexpr int sequence_length = 2;
+
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+
+  tester.AddInput<float>("query", {1, sequence_length, num_heads * head_size},
+                         std::vector<float>(sequence_length * num_heads * head_size, 0.0f));
+  tester.AddInput<float>("key", {1, sequence_length, kv_num_heads * head_size},
+                         std::vector<float>(sequence_length * kv_num_heads * head_size, 0.0f));
+  tester.AddInput<float>("value", {1, sequence_length, kv_num_heads * head_size},
+                         {1.0f, 1.0f, 3.0f, 3.0f, 5.0f, 5.0f, 7.0f, 7.0f});
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<int32_t>();
+
+  tester.AddOutput<float>("output", {1, sequence_length, num_heads * head_size},
+                          {3.0f, 3.0f, 3.0f, 3.0f, 5.0f, 5.0f, 5.0f, 5.0f,
+                           3.0f, 3.0f, 3.0f, 3.0f, 5.0f, 5.0f, 5.0f, 5.0f});
+  tester.AddOutput<float>("present_key", {1, kv_num_heads, sequence_length, head_size},
+                          std::vector<float>(sequence_length * kv_num_heads * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {1, kv_num_heads, sequence_length, head_size},
+                          {1.0f, 1.0f, 5.0f, 5.0f, 3.0f, 3.0f, 7.0f, 7.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MultiHeadAttentionTest, GroupedQueryAttentionCuda) {
   if (!HasCudaEnvironment(800)) {
     return;
   }
