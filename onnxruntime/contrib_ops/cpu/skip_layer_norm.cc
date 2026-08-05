@@ -114,6 +114,9 @@ template <typename T, bool simplified>
 SkipLayerNorm<T, simplified>::SkipLayerNorm(const OpKernelInfo& op_kernel_info)
     : OpKernel(op_kernel_info),
       prepacked_skip_fp32_size_(0),
+      prepacked_gamma_fp32_size_(0),
+      prepacked_beta_fp32_size_(0),
+      prepacked_bias_fp32_size_(0),
       prepacked_skip_fp32_data_(nullptr),
       prepacked_gamma_fp32_data_(nullptr),
       prepacked_beta_fp32_data_(nullptr),
@@ -136,6 +139,32 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   const auto& input_dims = input->Shape().GetDims();
   size_t input_dims_size = input_dims.size();
   int hidden_size = static_cast<int>(input_dims[input_dims_size - 1]);
+  const size_t hidden_size_size = static_cast<size_t>(hidden_size);
+  ORT_RETURN_IF(hidden_size <= 0, "hidden_size must be positive.");
+
+  if (prepacked_skip_fp32_data_) {
+    ORT_RETURN_IF(prepacked_skip_fp32_size_ < hidden_size_size || (prepacked_skip_fp32_size_ % hidden_size_size) != 0,
+                  "Prepacked skip length does not match hidden_size. hidden_size=", hidden_size,
+                  ", prepacked skip length=", prepacked_skip_fp32_size_, ".");
+  }
+
+  if (prepacked_gamma_fp32_data_) {
+    ORT_RETURN_IF(prepacked_gamma_fp32_size_ != hidden_size_size,
+                  "Prepacked gamma length does not match hidden_size. hidden_size=", hidden_size,
+                  ", prepacked gamma length=", prepacked_gamma_fp32_size_, ".");
+  }
+
+  if (prepacked_beta_fp32_data_) {
+    ORT_RETURN_IF(prepacked_beta_fp32_size_ != hidden_size_size,
+                  "Prepacked beta length does not match hidden_size. hidden_size=", hidden_size,
+                  ", prepacked beta length=", prepacked_beta_fp32_size_, ".");
+  }
+
+  if (prepacked_bias_fp32_data_) {
+    ORT_RETURN_IF(prepacked_bias_fp32_size_ != hidden_size_size,
+                  "Prepacked bias length does not match hidden_size. hidden_size=", hidden_size,
+                  ", prepacked bias length=", prepacked_bias_fp32_size_, ".");
+  }
 
   ORT_RETURN_IF_ERROR(skip_layer_norm_helper::CheckPotentiallyPrepackedInputs<Tensor>(input,
                                                                                       skip,
@@ -259,17 +288,21 @@ Status SkipLayerNorm<T, simplified>::PrePack(const Tensor& tensor, int input_idx
     prepacked_skip_fp32_size_ = tensor.Shape().Size();
     ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_skip_fp32_data_, is_packed);
   } else if (input_idx == 2) {  // gamma
+    prepacked_gamma_fp32_size_ = tensor.Shape().Size();
     ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_gamma_fp32_data_, is_packed);
   } else if (input_idx == 3) {
     if constexpr (simplified) {
       // bias
+      prepacked_bias_fp32_size_ = tensor.Shape().Size();
       ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_bias_fp32_data_, is_packed);
     } else {
       // beta
+      prepacked_beta_fp32_size_ = tensor.Shape().Size();
       ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_beta_fp32_data_, is_packed);
     }
   } else if (input_idx == 4) {  // bias
     ORT_ENFORCE(!simplified, "SkipSimplifiedLayerNormalization should only has 4 inputs (input, skip, gamma, and beta). Got 5.");
+    prepacked_bias_fp32_size_ = tensor.Shape().Size();
     ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_bias_fp32_data_, is_packed);
   }
 
