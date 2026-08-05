@@ -166,7 +166,7 @@ Status CheckSequenceLengthTensors(const T* cumulative_sequence_length, const T* 
   batch_size = static_cast<int>(cumulative_seqlen_dim[0]) - 1;
 
   const auto& seqlens_dim = seqlens->Shape().GetDims();
-  if (seqlens_dim.size() != 1 && seqlens_dim[0] != batch_size) {
+  if (seqlens_dim.size() != 1 || seqlens_dim[0] != batch_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "seqlens must be shape (batch_size).");
   }
@@ -183,8 +183,94 @@ Status CheckBlockTable(const T* block_table, const int batch_size, int& max_num_
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "block_table dimension 0 should be batch_size, got ",
                            block_table_dims[0]);
+  } else if (block_table_dims[1] <= 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "block_table dimension 1 should be positive, got ",
+                           block_table_dims[1]);
   }
   max_num_blocks_per_seq = static_cast<int>(block_table_dims[1]);
+  return Status::OK();
+}
+
+inline Status CheckBlockTableAndPastSeqLensValues(const int32_t* cumulative_sequence_length,
+                                                  const int32_t* past_seqlens,
+                                                  const int32_t* block_table,
+                                                  int batch_size,
+                                                  int max_num_blocks_per_seq,
+                                                  int block_size,
+                                                  int num_blocks) {
+  if (batch_size <= 0 || max_num_blocks_per_seq <= 0 || block_size <= 0 || num_blocks <= 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "PagedAttention validation requires positive batch_size/max_num_blocks_per_seq/block_size/num_blocks.");
+  }
+
+  // Validate cumulative_sequence_length array structure
+  if (cumulative_sequence_length[0] != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "cumulative_sequence_length must start with 0, got ",
+                           cumulative_sequence_length[0]);
+  }
+
+  const int64_t max_cache_sequence_length = static_cast<int64_t>(max_num_blocks_per_seq) * block_size;
+  for (int b = 0; b < batch_size; ++b) {
+    const int32_t q_start = cumulative_sequence_length[b];
+    const int32_t q_end = cumulative_sequence_length[b + 1];
+
+    // Check for non-negative values
+    if (q_start < 0 || q_end < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "cumulative_sequence_length values must be non-negative. Invalid value at index ",
+                             (q_start < 0 ? b : b + 1), ": ", (q_start < 0 ? q_start : q_end));
+    }
+
+    if (q_end < q_start) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "cumulative_sequence_length must be non-decreasing.");
+    }
+
+    const int32_t q_len = q_end - q_start;
+    const int32_t past_length = past_seqlens[b];
+
+    // Validate past_seqlens: must be non-negative
+    if (past_length < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "past_seqlens values must be non-negative. Invalid value: ",
+                             past_length);
+    }
+
+    // Validate past_seqlens range: allow full cache only when q_len == 0
+    if (q_len == 0) {
+      // Zero new tokens: past_length can be anywhere in [0, max_cache_sequence_length]
+      if (static_cast<int64_t>(past_length) > max_cache_sequence_length) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "past_seqlens exceeds max_num_blocks_per_seq * block_size for zero-token sequence. Invalid value: ",
+                               past_length);
+      }
+    } else {
+      // Has new tokens: require space for both past and current query
+      if (static_cast<int64_t>(past_length) >= max_cache_sequence_length) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "past_seqlens must be less than max_num_blocks_per_seq * block_size when q_len > 0. Invalid value: ",
+                               past_length);
+      }
+      const int64_t last_position = static_cast<int64_t>(past_length) + q_len - 1;
+      if (last_position >= max_cache_sequence_length) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "past_seqlens + query_length exceeds block_table capacity for a sequence.");
+      }
+    }
+  }
+
+  const int64_t block_table_size = static_cast<int64_t>(batch_size) * max_num_blocks_per_seq;
+  for (int64_t i = 0; i < block_table_size; ++i) {
+    const int32_t block_id = block_table[i];
+    if (block_id < 0 || block_id >= num_blocks) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "block_table values must be in [0, num_blocks). Invalid value: ",
+                             block_id);
+    }
+  }
+
   return Status::OK();
 }
 

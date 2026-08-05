@@ -220,6 +220,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   cudaStream_t cuda_stream = static_cast<cudaStream_t>(ort_stream.get()->GetHandle());
+
   ORT_RETURN_IF_ERROR(LaunchGetCumulativeSeqlensKV(
       cumulative_seqlens_kv_ptr,
       reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>()),
@@ -266,6 +267,32 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                "PagedAttention MEA fallback: total_kv_tokens is negative (", total_kv_tokens, ").");
       }
     }
+
+    // Perform validation on the already-copied cumulative_seqlens_q and other host data
+    // to check for memory safety issues. Reuse the pinned buffer we just synced.
+    const size_t host_block_table_size = static_cast<size_t>(parameters.batch_size) * parameters.max_num_blocks_per_seq;
+    auto host_past_seqlens = this->AllocateBufferOnCPUPinned<int>(parameters.batch_size);
+    auto host_block_table = this->AllocateBufferOnCPUPinned<int>(host_block_table_size);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_past_seqlens.get(),
+                                         reinterpret_cast<const int*>(past_seqlens->Data<int>()),
+                                         sizeof(int) * static_cast<size_t>(parameters.batch_size),
+                                         cudaMemcpyDeviceToHost,
+                                         cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_block_table.get(),
+                                         reinterpret_cast<const int*>(block_table->Data<int>()),
+                                         sizeof(int) * host_block_table_size,
+                                         cudaMemcpyDeviceToHost,
+                                         cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+
+    ORT_RETURN_IF_ERROR(paged_attention_helper::CheckBlockTableAndPastSeqLensValues(
+        cum_q_pinned.get(),
+        host_past_seqlens.get(),
+        host_block_table.get(),
+        parameters.batch_size,
+        parameters.max_num_blocks_per_seq,
+        parameters.block_size,
+        parameters.num_blocks));
   }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
