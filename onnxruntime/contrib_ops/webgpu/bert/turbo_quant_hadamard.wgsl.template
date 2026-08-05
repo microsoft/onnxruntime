@@ -70,10 +70,18 @@ $MAIN {
   // Prepare indirect dispatch buffer (first workgroup, first thread only).
 #if prepare_indirect_dispatch
   if (workgroup_idx == 0u && local_idx == 0u) {
-    let num_total_seq_length_tile = (total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;
+    let global_total_seq_length = u32(total_sequence_length_input[0]);
+    let num_total_seq_length_tile =
+        (global_total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;
     populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);
   }
 #endif
+
+  // Skip slices beyond this batch's logical total sequence length. The host dispatch
+  // uses a uniform copy length, so shorter right-padded batches still receive workgroups.
+  if (seq >= total_seq_length) {
+    return;
+  }
 
   // Compute destination offset in present_key/present_value (u32 packed, always BNSH layout).
 #if past_present_share_buffer
@@ -86,7 +94,8 @@ $MAIN {
   // Handle past tokens: simple u32 word copy (already quantized).
 #if has_past
   if (seq < past_seq_length) {
-    let past_base = ((batch * uniforms.kv_num_heads + head) * past_seq_length + seq) * COMPRESSED_HEAD_U32;
+    let past_base =
+        ((batch * uniforms.kv_num_heads + head) * uniforms.past_input_seq_length + seq) * COMPRESSED_HEAD_U32;
     for (var i = local_idx; i < COMPRESSED_HEAD_U32; i += workgroup_size_x) {
       if (!is_value) {
         present_key.setByOffset(present_base + i, past_key.getByOffset(past_base + i));

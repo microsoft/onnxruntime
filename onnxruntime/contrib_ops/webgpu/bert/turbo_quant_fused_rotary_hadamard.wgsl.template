@@ -78,7 +78,9 @@ $MAIN {
   // Prepare indirect dispatch buffer (first workgroup, first thread only).
 #if prepare_indirect_dispatch
   if (workgroup_idx == 0u && local_idx == 0u) {
-    let num_total_seq_length_tile = (total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;
+    let global_total_seq_length = u32(total_sequence_length_input[0]);
+    let num_total_seq_length_tile =
+        (global_total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;
     populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);
   }
 #endif
@@ -134,6 +136,11 @@ $MAIN {
   // Unflatten kv_slice into (head, seq) — batch already computed above.
   let head = (kv_slice / uniforms.kv_sequence_length) % uniforms.kv_num_heads;
   let seq = kv_slice % uniforms.kv_sequence_length;
+
+  // Skip K/V slices beyond this batch's logical total sequence length.
+  if (seq >= total_seq_length) {
+    return;
+  }
 
   // Compute destination offset in present_key/present_value (u32 packed, BNSH layout).
 #if past_present_share_buffer

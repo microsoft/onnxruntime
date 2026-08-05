@@ -653,7 +653,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                                                            Q, seqlen_k,
                                                                            cos_cache, sin_cache,
                                                                            &query_output, tq_present_key, tq_present_value,
-                                                                           indirect_buffer_ptr, tile_size, num_q_tiles));
+                                                                           indirect_buffer_ptr, tile_size, num_q_tiles,
+                                                                           total_seqlen));
       } else {
         ORT_RETURN_IF_ERROR(RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(context, parameters,
                                                                           Q, seqlen_k,
@@ -668,7 +669,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
       ORT_ENFORCE(K != nullptr && V != nullptr,
                   "TurboQuant requires non-null K/V inputs when kv_sequence_length > 0.");
       ORT_RETURN_IF_ERROR(TurboQuantCopyToQuantizedKVCache(context, parameters, K, tq_past_key, tq_present_key, V, tq_past_value, tq_present_value,
-                                                           tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr, num_q_tiles));
+                                                           tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr, num_q_tiles,
+                                                           total_seqlen));
     } else {
       ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr, num_q_tiles, total_seqlen));
     }
