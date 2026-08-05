@@ -72,10 +72,12 @@ Status WhereDummyDq::InsertDummyDQ(Node& node, Graph& graph, bool& modified, con
   const int const_idx = parent_node_1 ? 2 : 1;
 
   // DequantizeLinear's zero-point input (index 2) is optional per the ONNX spec, so a DQ node with
-  // only 2 inputs (x, x_scale) is valid (e.g. common symmetric-quantization models) and must be
-  // skipped here rather than indexed below. This isn't an error, so log at VERBOSE rather than
-  // WARNING to avoid noisy logs for an otherwise ordinary, spec-conforming model.
-  if (dq_node->InputDefs().size() < 3) {
+  // only 2 inputs (x, x_scale), or a 3rd input given as an empty/missing NodeArg placeholder, is
+  // valid (e.g. common symmetric-quantization models) and must be skipped here rather than indexed
+  // below. This isn't an error, so log at VERBOSE rather than WARNING to avoid noisy logs for an
+  // otherwise ordinary, spec-conforming model.
+  const auto& dq_inputs = dq_node->InputDefs();
+  if (dq_inputs.size() < 3 || !dq_inputs[2]->Exists()) {
     LOGS(logger, VERBOSE) << "WhereDummyDq: skip inserting dummy DQ because the dq branch has no "
                              "zero point input (optional per spec). DQ: "
                           << dq_node->Name();

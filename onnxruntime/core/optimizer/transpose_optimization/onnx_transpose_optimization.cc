@@ -2290,7 +2290,15 @@ static bool HandleTile(HandlerArgs& args) {
   size_t rank = args.perm.size();
   std::vector<int64_t> perm_shape{gsl::narrow_cast<int64_t>(rank)};
 
-  std::string_view repeats_inp = args.node.Inputs()[1];
+  // Tile has 2 required inputs ('input' and 'repeats') per the ONNX spec; this is normally
+  // guaranteed by schema validation during Graph::Resolve, but that validation can be skipped
+  // for some build configurations (e.g. ORT-format models), so check explicitly here too, as
+  // the sibling Gather handler above does for its own required second input.
+  auto tile_inputs = args.node.Inputs();
+  if (tile_inputs.size() < 2) {
+    return false;
+  }
+  std::string_view repeats_inp = tile_inputs[1];
   std::unique_ptr<api::TensorRef> repeats_const = args.ctx.graph.GetConstant(repeats_inp);
   if (repeats_const != nullptr) {
     // Case 1: Repeats is constant. Shuffle order.
