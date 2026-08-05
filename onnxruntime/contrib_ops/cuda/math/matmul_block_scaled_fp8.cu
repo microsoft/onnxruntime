@@ -491,7 +491,7 @@ struct Fp8GemvMma<__nv_bfloat16> {
   }
 };
 
-template <int KSplit, typename AType>
+template <int KSplit, int Stages, typename AType>
 __global__ void MatMulBlockScaledFp8MmaGemvKernel(AType* __restrict__ output,
                                                   const AType* __restrict__ input_a,
                                                   const __nv_fp8_e4m3* __restrict__ input_b,
@@ -525,51 +525,84 @@ __global__ void MatMulBlockScaledFp8MmaGemvKernel(AType* __restrict__ output,
   float accb[4] = {0.f, 0.f, 0.f, 0.f};  // unscaled, within the current K block
   int cur_kb = -1;
 
-  for (int wi = warp; wi < windows; wi += KSplit) {
-    const int k0 = wi << 6;
-    const int kb = k0 / block_size;
-    if (kb != cur_kb) {
-      if (cur_kb >= 0) {
-        const float s_lo = lo_ok ? weight_scale[static_cast<size_t>(col_lo) * k_blocks + cur_kb] : 0.f;
-        const float s_hi = hi_ok ? weight_scale[static_cast<size_t>(col_hi) * k_blocks + cur_kb] : 0.f;
-        acc[0] += accb[0] * s_lo;
-        acc[1] += accb[1] * s_lo;
-        acc[2] += accb[2] * s_hi;
-        acc[3] += accb[3] * s_hi;
-        accb[0] = accb[1] = accb[2] = accb[3] = 0.f;
+  // The K loop is short -- 4 iterations for the 4096-deep projections -- and every
+  // iteration used to open with a dependent global load, so the kernel spent its whole
+  // life serialising that many HBM round trips.  Keeping `Stages` weight fragments in
+  // flight turns them into one.  The stage index has to stay a compile-time constant
+  // or the register arrays spill to local memory, hence the unrolled inner loop.
+  constexpr int kStages = Stages;
+  const size_t b_lo_base = static_cast<size_t>(col_lo) * k + (t << 4);
+  const size_t b_hi_base = static_cast<size_t>(col_hi) * k + (t << 4);
+  const auto load_lo = [&](int wi) {
+    return lo_ok ? *reinterpret_cast<const uint4*>(input_b + b_lo_base + (wi << 6)) : make_uint4(0, 0, 0, 0);
+  };
+  const auto load_hi = [&](int wi) {
+    return hi_ok ? *reinterpret_cast<const uint4*>(input_b + b_hi_base + (wi << 6)) : make_uint4(0, 0, 0, 0);
+  };
+
+  uint4 w_lo_s[kStages], w_hi_s[kStages];
+#pragma unroll
+  for (int s = 0; s < kStages; ++s) {
+    const int wi = warp + s * KSplit;
+    if (wi < windows) {
+      w_lo_s[s] = load_lo(wi);
+      w_hi_s[s] = load_hi(wi);
+    }
+  }
+
+  for (int base = warp; base < windows; base += kStages * KSplit) {
+#pragma unroll
+    for (int s = 0; s < kStages; ++s) {
+      const int wi = base + s * KSplit;
+      if (wi >= windows) {
+        continue;
       }
-      cur_kb = kb;
-    }
+      const uint4 w_lo = w_lo_s[s];
+      const uint4 w_hi = w_hi_s[s];
+      const int next = wi + kStages * KSplit;
+      if (next < windows) {  // issue the refill before the mma so it overlaps
+        w_lo_s[s] = load_lo(next);
+        w_hi_s[s] = load_hi(next);
+      }
 
-    // Activation: 32 contiguous bytes of row g (row >= m reads as zero).
-    uint4 a_raw[2];
-    if (a_ok) {
-      const uint4* ap = reinterpret_cast<const uint4*>(input_a + a_off + k0);
-      a_raw[0] = ap[0];
-      a_raw[1] = ap[1];
-    } else {
-      a_raw[0] = make_uint4(0, 0, 0, 0);
-      a_raw[1] = make_uint4(0, 0, 0, 0);
-    }
-    const uint32_t* av = reinterpret_cast<const uint32_t*>(a_raw);
+      const int k0 = wi << 6;
+      const int kb = k0 / block_size;
+      if (kb != cur_kb) {
+        if (cur_kb >= 0) {
+          const float s_lo = lo_ok ? weight_scale[static_cast<size_t>(col_lo) * k_blocks + cur_kb] : 0.f;
+          const float s_hi = hi_ok ? weight_scale[static_cast<size_t>(col_hi) * k_blocks + cur_kb] : 0.f;
+          acc[0] += accb[0] * s_lo;
+          acc[1] += accb[1] * s_lo;
+          acc[2] += accb[2] * s_hi;
+          acc[3] += accb[3] * s_hi;
+          accb[0] = accb[1] = accb[2] = accb[3] = 0.f;
+        }
+        cur_kb = kb;
+      }
 
-    // Weight: one uint4 per half of the 16-column tile.
-    const uint4 w_lo = lo_ok
-                           ? *reinterpret_cast<const uint4*>(input_b + static_cast<size_t>(col_lo) * k + k0 + (t << 4))
-                           : make_uint4(0, 0, 0, 0);
-    const uint4 w_hi = hi_ok
-                           ? *reinterpret_cast<const uint4*>(input_b + static_cast<size_t>(col_hi) * k + k0 + (t << 4))
-                           : make_uint4(0, 0, 0, 0);
+      // Activation: 32 contiguous bytes of row g (row >= m reads as zero).  It is a
+      // few KB in total and stays in L1, so it is not worth a pipeline stage.
+      uint4 a_raw[2];
+      if (a_ok) {
+        const uint4* ap = reinterpret_cast<const uint4*>(input_a + a_off + k0);
+        a_raw[0] = ap[0];
+        a_raw[1] = ap[1];
+      } else {
+        a_raw[0] = make_uint4(0, 0, 0, 0);
+        a_raw[1] = make_uint4(0, 0, 0, 0);
+      }
+      const uint32_t* av = reinterpret_cast<const uint32_t*>(a_raw);
 
-    uint32_t b_lo[8], b_hi[8];
-    Mma::Cvt16(w_lo, b_lo);
-    Mma::Cvt16(w_hi, b_hi);
+      uint32_t b_lo[8], b_hi[8];
+      Mma::Cvt16(w_lo, b_lo);
+      Mma::Cvt16(w_hi, b_hi);
 
 #pragma unroll
-    for (int j = 0; j < 4; ++j) {
-      const uint32_t ra[4] = {b_lo[2 * j], b_hi[2 * j], b_lo[2 * j + 1], b_hi[2 * j + 1]};
-      const uint32_t rb[2] = {av[2 * j], av[2 * j + 1]};
-      Mma::Mma(accb, ra, rb);
+      for (int j = 0; j < 4; ++j) {
+        const uint32_t ra[4] = {b_lo[2 * j], b_hi[2 * j], b_lo[2 * j + 1], b_hi[2 * j + 1]};
+        const uint32_t rb[2] = {av[2 * j], av[2 * j + 1]};
+        Mma::Mma(accb, ra, rb);
+      }
     }
   }
 
@@ -632,6 +665,21 @@ __global__ void MatMulBlockScaledFp8MmaGemvKernel(AType* __restrict__ output,
 bool Fp8GemvMmaEnabled() {
   static bool const enabled = onnxruntime::ParseEnvironmentVariableWithDefault<bool>("ORT_FP8_GEMV_MMA", true);
   return enabled;
+}
+
+// Prefetch depth of the tensor-core GEMV's K loop.
+//
+// Measured on H200 at the six DeepSeek-V4 decode shapes with a working set large enough
+// to overflow L2 (see dev/deepseek_v4/probe_fp8_gemv.py): depth 1 / 2 / 4 total 2107 /
+// 2098 / 2143 us per decode step, i.e. all within run-to-run noise.  The K loop is not
+// what these shapes are waiting on -- at M == 1 a whole projection is 1-4 MB, less than
+// one HBM latency's worth of in-flight bytes, so the kernel is pinned near its launch
+// latency floor no matter how many fragments it keeps open.  Default to 1 (no extra
+// registers); the deeper pipelines stay reachable for a future autotuner and for shapes
+// with longer K loops than this model has.
+int Fp8GemvStages(int /*trips*/) {
+  static int const stages = onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP8_GEMV_STAGES", 1);
+  return stages;
 }
 
 }  // namespace
@@ -801,24 +849,34 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
       k_split = (windows >= 8) ? 8 : 4;
     }
     const dim3 mma_blocks{static_cast<unsigned int>((n + 15) / 16)};
-    const auto launch_mma = [&]<int KSplit>() {
+    const int stages = Fp8GemvStages((windows + k_split - 1) / k_split);
+    const auto launch_mma = [&]<int KSplit, int Stages>() {
       const dim3 mma_threads{32, KSplit};
       if (is_bf16) {
-        MatMulBlockScaledFp8MmaGemvKernel<KSplit><<<mma_blocks, mma_threads, 0, stream>>>(
+        MatMulBlockScaledFp8MmaGemvKernel<KSplit, Stages><<<mma_blocks, mma_threads, 0, stream>>>(
             reinterpret_cast<__nv_bfloat16*>(y), reinterpret_cast<const __nv_bfloat16*>(a), b,
             weight_scale, reinterpret_cast<const __nv_bfloat16*>(bias), m, n, k, block_size, k_blocks);
       } else {
-        MatMulBlockScaledFp8MmaGemvKernel<KSplit><<<mma_blocks, mma_threads, 0, stream>>>(
+        MatMulBlockScaledFp8MmaGemvKernel<KSplit, Stages><<<mma_blocks, mma_threads, 0, stream>>>(
             reinterpret_cast<half*>(y), reinterpret_cast<const half*>(a), b,
             weight_scale, reinterpret_cast<const half*>(bias), m, n, k, block_size, k_blocks);
       }
     };
+    const auto launch_staged = [&]<int KSplit>() {
+      if (stages >= 4) {
+        launch_mma.template operator()<KSplit, 4>();
+      } else if (stages == 2) {
+        launch_mma.template operator()<KSplit, 2>();
+      } else {
+        launch_mma.template operator()<KSplit, 1>();
+      }
+    };
     if (k_split == 16) {
-      launch_mma.template operator()<16>();
+      launch_staged.template operator()<16>();
     } else if (k_split == 8) {
-      launch_mma.template operator()<8>();
+      launch_staged.template operator()<8>();
     } else {
-      launch_mma.template operator()<4>();
+      launch_staged.template operator()<4>();
     }
     return CUDA_CALL(cudaGetLastError());
   }
