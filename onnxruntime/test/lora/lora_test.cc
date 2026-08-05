@@ -416,6 +416,28 @@ TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_UndefinedDataType) {
   ASSERT_THROW(adapters::utils::CreateOrtValueOverLoraParameter(*param), OnnxRuntimeException);
 }
 
+TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_StringDataType) {
+  // Parameter with STRING data_type must be rejected. STRING is present in the flatbuffer
+  // schema enum but explicitly not supported as a LoRA parameter type. Allowing it would
+  // create a non-owning Tensor over raw file bytes without placement-new, producing fake
+  // std::string objects whose internal pointers are controlled by the file contents.
+  flatbuffers::FlatBufferBuilder fbb;
+
+  // Provide raw_data sized to pass the size check: shape [2] * sizeof(std::string) = 64 bytes.
+  // The guard must reject the type before reaching the size check.
+  std::vector<int64_t> dims = {2};
+  std::vector<uint8_t> raw_data(2 * sizeof(std::string), 0x41);  // 0x41 ('A') fills fake pointers
+
+  auto param_offset = adapters::CreateParameterDirect(
+      fbb, "string_type_param", &dims, adapters::TensorDataType::STRING, &raw_data);
+
+  const auto* param = BuildAdapterAndGetParam(fbb, param_offset);
+  ASSERT_NE(param, nullptr);
+  ASSERT_EQ(param->data_type(), adapters::TensorDataType::STRING);
+
+  ASSERT_THROW(adapters::utils::CreateOrtValueOverLoraParameter(*param), OnnxRuntimeException);
+}
+
 #endif  // ORT_NO_EXCEPTIONS
 
 #ifdef USE_CUDA

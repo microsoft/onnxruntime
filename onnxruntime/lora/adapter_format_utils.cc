@@ -157,8 +157,16 @@ std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter
   LoadStringFromLoraFormat(name, param_name);
 
   const auto data_type = param.data_type();
-  ORT_ENFORCE(data_type != TensorDataType::UNDEFINED,
-              "Lora Param '", name, "': data_type is UNDEFINED");
+  // STRING is enumerated in the flatbuffer schema but explicitly not supported as a LoRA
+  // parameter type (see adapter_schema.fbs: "We do not foresee strings as parameters").
+  // Allowing STRING would create a non-owning Tensor over raw file bytes without running
+  // placement-new, leaving fake std::string objects whose internal pointers are controlled
+  // by the file contents. Any subsequent string copy via CPUDataTransfer would write to
+  // those attacker-supplied addresses.
+  ORT_ENFORCE(data_type != TensorDataType::UNDEFINED &&
+                  data_type != TensorDataType::STRING,
+              "Lora Param '", name, "': data_type '", static_cast<int32_t>(data_type),
+              "' is not supported for LoRA parameters (UNDEFINED and STRING are not valid)");
 
   const auto* dims = param.dims();
   ORT_ENFORCE(dims != nullptr && dims->size() > 0,
