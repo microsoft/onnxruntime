@@ -681,6 +681,73 @@ TEST(MultiHeadAttentionTest, EmptyKeyValueSequence) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+TEST(MultiHeadAttentionTest, GroupedQueryAttention) {
+  if (!HasCudaEnvironment(750)) {
+    return;
+  }
+
+  constexpr int num_heads = 4;
+  constexpr int kv_num_heads = 2;
+  constexpr int head_size = 8;
+  constexpr int sequence_length = 2;
+
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+
+  std::vector<float> query(sequence_length * num_heads * head_size, 0.0f);
+  std::vector<float> key(sequence_length * kv_num_heads * head_size, 0.0f);
+  std::vector<float> value;
+  value.insert(value.end(), kv_num_heads * head_size, 1.0f);
+  std::fill(value.begin() + head_size, value.end(), 3.0f);
+  value.insert(value.end(), kv_num_heads * head_size, 5.0f);
+  std::fill(value.begin() + 3 * head_size, value.end(), 7.0f);
+
+  tester.AddInput<MLFloat16>("query", {1, sequence_length, num_heads * head_size}, ToFloat16(query));
+  tester.AddInput<MLFloat16>("key", {1, sequence_length, kv_num_heads * head_size}, ToFloat16(key));
+  tester.AddInput<MLFloat16>("value", {1, sequence_length, kv_num_heads * head_size}, ToFloat16(value));
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<int32_t>();
+
+  std::vector<float> output;
+  for (int sequence = 0; sequence < sequence_length; ++sequence) {
+    output.insert(output.end(), 2 * head_size, 3.0f);
+    output.insert(output.end(), 2 * head_size, 5.0f);
+  }
+  tester.AddOutput<MLFloat16>("output", {1, sequence_length, num_heads * head_size}, ToFloat16(output),
+                              false, 0.0f, 0.02f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MultiHeadAttentionTest, GroupedQueryAttentionInvalidHeadCount) {
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 4);
+  tester.AddInput<float>("query", {1, 1, 32}, std::vector<float>(32, 0.0f));
+  tester.AddInput<float>("key", {1, 1, 24}, std::vector<float>(24, 0.0f));
+  tester.AddInput<float>("value", {1, 1, 24}, std::vector<float>(24, 0.0f));
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOutput<float>("output", {1, 1, 32}, std::vector<float>(32, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "Number of query heads shall be a multiple of number of key/value heads",
+             {}, nullptr, &execution_providers);
+}
+
 TEST(MultiHeadAttentionTest, CacheIndirectionBeamWidthOneInvalidIndex) {
   OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", 1);

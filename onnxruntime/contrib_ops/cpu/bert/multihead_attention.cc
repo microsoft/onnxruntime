@@ -96,6 +96,10 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                                                                       is_unidirectional_,
                                                                       past_present_share_buffer,
                                                                       kMultiHeadAttention));
+  if (parameters.num_heads_kv != parameters.num_heads) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "Grouped query MultiHeadAttention is not implemented for CPU");
+  }
   DUMP_CPU_STRING_INIT();
   DUMP_CPU_STRING("Batch size = ", parameters.batch_size);
   DUMP_CPU_STRING("Sequence length = ", parameters.sequence_length);

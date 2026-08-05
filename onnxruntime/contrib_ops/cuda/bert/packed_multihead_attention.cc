@@ -167,6 +167,9 @@ Status PackedMultiHeadAttention<T>::CheckInputs(const TensorShape& query_shape,
   parameters.head_size = static_cast<int>(hidden_size) / num_heads;
   parameters.v_head_size = static_cast<int>(v_hidden_size) / num_heads;
   parameters.num_heads = num_heads;
+  parameters.num_heads_kv = num_heads;
+  parameters.k_hidden_size = hidden_size;
+  parameters.v_input_hidden_size = hidden_size;
   parameters.scale = this->GetScale();
   parameters.token_count = static_cast<int32_t>(token_count);
 
