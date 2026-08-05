@@ -18,6 +18,8 @@
 
 #pragma once
 
+#include <functional>
+
 #include "custom_reduce_impl.h"
 
 namespace onnxruntime {
@@ -46,7 +48,12 @@ class IpcMemory {
  public:
   size_t static constexpr FLAGS_SIZE = (MAX_ALL_REDUCE_BLOCKS + 1) * sizeof(uint32_t);
 
-  IpcMemory(int rank, int world_size, std::size_t buffer_size);
+  // Exchanges `bytes` of opaque data from every rank, writing world_size * bytes into `recv` in
+  // rank order. Supplied by the caller so this file does not have to know how the ranks found
+  // each other: MPI_Allgather when ORT was launched by mpirun, ncclAllGather otherwise.
+  using AllGatherFn = std::function<Status(const char* send, char* recv, size_t bytes)>;
+
+  IpcMemory(int rank, int world_size, std::size_t buffer_size, const AllGatherFn& all_gather);
   ~IpcMemory();
 
   const InlinedVector<void*>& GetCommPtrsTensor() const {
@@ -54,7 +61,7 @@ class IpcMemory {
   }
 
  private:
-  Status AllocateIpcMemory();
+  Status AllocateIpcMemory(const AllGatherFn& all_gather);
 
   int rank_;
   int world_size_;
@@ -74,13 +81,13 @@ struct IPCMemoryResourcePack {
   InlinedVector<std::unique_ptr<IpcMemory>> m_ipc_momery_handles;
   InlinedVector<const void*> m_comm_ptrs;
   size_t max_input_size{0};
-  uint32_t counter{0};
 
   static IPCMemoryResourcePack& GetGlobalInstance();
 };
 
 Status
-GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size, IPCMemoryResourcePack& ipc_mem_res_pack);
+GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size, IPCMemoryResourcePack& ipc_mem_res_pack,
+                            const IpcMemory::AllGatherFn& all_gather);
 
 #endif
 

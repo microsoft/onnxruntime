@@ -27,12 +27,12 @@ namespace collective {
 
 using namespace onnxruntime;
 
-IpcMemory::IpcMemory(int rank, int world_size, std::size_t buffer_size)
+IpcMemory::IpcMemory(int rank, int world_size, std::size_t buffer_size, const AllGatherFn& all_gather)
     : rank_(rank), world_size_(world_size), m_comm_ptrs_(world_size), mbuffer_size_(buffer_size) {
-  ORT_ENFORCE(AllocateIpcMemory() == Status::OK());
+  ORT_ENFORCE(AllocateIpcMemory(all_gather) == Status::OK());
 }
 
-Status IpcMemory::AllocateIpcMemory() {
+Status IpcMemory::AllocateIpcMemory(const AllGatherFn& all_gather) {
   void* m_buffer_ptr;
   CUDA_RETURN_IF_ERROR(cudaMalloc(&m_buffer_ptr, mbuffer_size_));
   m_buffer_uptr_ = CudaMemPtrT{m_buffer_ptr, CudaDeleter()};
@@ -45,13 +45,7 @@ Status IpcMemory::AllocateIpcMemory() {
   // Assume no pipeline parallelism.
   InlinedVector<char> serial_handles(CUDA_IPC_HANDLE_SIZE * world_size_, 0);
 
-#ifdef USE_MPI
-  MPI_CHECK(MPI_Allgather(local_handle.reserved, CUDA_IPC_HANDLE_SIZE, MPI_BYTE, serial_handles.data(),
-                          CUDA_IPC_HANDLE_SIZE, MPI_BYTE, MPI_COMM_WORLD));
-#else
-  // TODO: Implement this for NCCL.
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Please compile ORT with USE_MPI.");
-#endif
+  ORT_RETURN_IF_ERROR(all_gather(local_handle.reserved, serial_handles.data(), CUDA_IPC_HANDLE_SIZE));
 
   InlinedVector<cudaIpcMemHandle_t> handles(world_size_);
   for (size_t i = 0; i < handles.size(); ++i) {
@@ -77,7 +71,8 @@ IpcMemory::~IpcMemory() {
 }
 
 Status GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size,
-                                   IPCMemoryResourcePack& ipc_mem_res_pack) {
+                                   IPCMemoryResourcePack& ipc_mem_res_pack,
+                                   const IpcMemory::AllGatherFn& all_gather) {
   if (input_size <= ipc_mem_res_pack.max_input_size) {
     return Status::OK();
   }
@@ -88,11 +83,10 @@ Status GetCustomAllReduceWorkspace(int rank, int world_size, size_t input_size,
   const size_t handles_size{m_ipc_memory_handles.size()};
   constexpr size_t k_num_handles{3};
 
-  m_ipc_memory_handles.emplace_back(std::make_unique<IpcMemory>(rank, world_size, buffer_size));
-  m_ipc_memory_handles.emplace_back(
-      std::make_unique<IpcMemory>(rank, world_size, IpcMemory::FLAGS_SIZE * world_size));
-  m_ipc_memory_handles.emplace_back(
-      std::make_unique<IpcMemory>(rank, world_size, IpcMemory::FLAGS_SIZE * world_size));
+  const std::size_t barrier_size = BarrierBufferSize(static_cast<size_t>(world_size));
+  m_ipc_memory_handles.emplace_back(std::make_unique<IpcMemory>(rank, world_size, buffer_size, all_gather));
+  m_ipc_memory_handles.emplace_back(std::make_unique<IpcMemory>(rank, world_size, barrier_size, all_gather));
+  m_ipc_memory_handles.emplace_back(std::make_unique<IpcMemory>(rank, world_size, barrier_size, all_gather));
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   InlinedVector<const void*>& m_comm_ptrs = ipc_mem_res_pack.m_comm_ptrs;

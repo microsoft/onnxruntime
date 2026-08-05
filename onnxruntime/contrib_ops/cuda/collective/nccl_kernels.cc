@@ -437,31 +437,75 @@ Status FuncCustomAllReduce(
   int rank = nccl->Rank();
   int world_size = nccl->Size();
 
+  const auto fall_back_to_nccl = [&]() -> Status {
+    ncclDataType_t dtype = GetNcclDataType(data_type);
+    NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, nccl->Comm(), stream));
+    return Status::OK();
+  };
+
+  // Escape hatch for the peer-to-peer kernels; NCCL is always a correct answer.
+  const static bool disable_custom =
+      ParseEnvironmentVariableWithDefault<int32_t>("ORT_DISABLE_CUSTOM_ALL_REDUCE", 0) != 0;
+  if (disable_custom) {
+    return fall_back_to_nccl();
+  }
+
   onnxruntime::cuda::collective::AllReduceStrategyType runtime_strategy =
       onnxruntime::cuda::collective::SelectImplementation(input_count, rank, world_size, data_type);
 
   if (runtime_strategy == onnxruntime::cuda::collective::AllReduceStrategyType::NCCL) {
-    ncclDataType_t dtype = GetNcclDataType(data_type);
-    NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, nccl->Comm(), stream));
-
-    return Status::OK();
+    return fall_back_to_nccl();
   }
 
-  onnxruntime::cuda::collective::AllReduceStrategyConfig m_config =
-      onnxruntime::cuda::collective::AllReduceStrategyConfig::USE_MEMCPY;
+  const size_t required_size = static_cast<size_t>(input_count) * data_type->Size();
+  if (required_size > ipc_mem_res_pack.max_input_size) {
+    // Growing the workspace allocates, exchanges IPC handles and synchronizes, none of which can
+    // happen while the stream is capturing. ORT replays a captured graph only after running it
+    // eagerly first, so the workspace is normally already in place by then; if some path reaches
+    // capture without it, NCCL still gives a correct answer.
+    cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+    CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));
+    if (capture_status != cudaStreamCaptureStatusNone) {
+      return fall_back_to_nccl();
+    }
+  }
+
+  // The custom kernels reach into peer memory directly, so every rank has to hand out a CUDA IPC
+  // handle for its workspace. Upstream did that with MPI_Allgather, which is unavailable when the
+  // ranks bootstrapped over the socket path in CreateNcclCommunicator, so allgather the handles
+  // over the NCCL communicator that already exists instead.
+  const auto all_gather = [nccl, world_size, stream](const char* send, char* recv, size_t bytes) -> Status {
+    void* d_send = nullptr;
+    void* d_recv = nullptr;
+    Status status = Status::OK();
+    if (cudaMalloc(&d_send, bytes) == cudaSuccess && cudaMalloc(&d_recv, bytes * world_size) == cudaSuccess) {
+      status = [&]() -> Status {
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(d_send, send, bytes, cudaMemcpyHostToDevice, stream));
+        NCCL_RETURN_IF_ERROR(ncclAllGather(d_send, d_recv, bytes, ncclInt8, nccl->Comm(), stream));
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(recv, d_recv, bytes * world_size, cudaMemcpyDeviceToHost, stream));
+        CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+        return Status::OK();
+      }();
+    } else {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to allocate the IPC handle exchange buffers.");
+    }
+    cudaFree(d_send);
+    cudaFree(d_recv);
+    return status;
+  };
 
   static std::mutex s_mutex;
   std::unique_lock<std::mutex> lock(s_mutex);
   ORT_RETURN_IF_ERROR(onnxruntime::cuda::collective::GetCustomAllReduceWorkspace(rank,
                                                                                  world_size,
-                                                                                 input_count * data_type->Size(),
-                                                                                 ipc_mem_res_pack));
+                                                                                 required_size,
+                                                                                 ipc_mem_res_pack,
+                                                                                 all_gather));
 
   onnxruntime::cuda::collective::AllReduceParams params = onnxruntime::cuda::collective::AllReduceParams::deserialize(
       reinterpret_cast<const int32_t*>(ipc_mem_res_pack.m_comm_ptrs.data()),
       world_size,
-      rank,
-      ++ipc_mem_res_pack.counter);
+      rank);
   lock.unlock();
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
@@ -470,7 +514,9 @@ Status FuncCustomAllReduce(
   params.local_input_buffer_ptr = input_data;
   params.elts_total = input_count;
 
-  onnxruntime::cuda::collective::CustomAllReduce(params, data_type, runtime_strategy, m_config, stream);
+  onnxruntime::cuda::collective::CustomAllReduce(params, data_type, runtime_strategy,
+                                                 static_cast<onnxruntime::cuda::collective::AllReduceStrategyConfig>(0),
+                                                 stream);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   return Status::OK();

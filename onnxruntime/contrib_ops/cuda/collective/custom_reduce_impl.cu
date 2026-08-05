@@ -22,6 +22,7 @@
 #include "custom_reduce_impl.h"
 #include <algorithm>
 #include <cstdint>
+#include <cuda_bf16.h>
 #include <tuple>
 #include <type_traits>
 
@@ -71,6 +72,11 @@ using PackedHalf = union {
   half2 unpacked[4];
 };
 
+using PackedBFloat16 = union {
+  int4 packed;
+  __nv_bfloat162 unpacked[4];
+};
+
 template <typename T>
 struct PackedOn16Bytes {};
 
@@ -84,6 +90,11 @@ struct PackedOn16Bytes<half> {
   using Type = PackedHalf;
 };
 
+template <>
+struct PackedOn16Bytes<__nv_bfloat16> {
+  using Type = PackedBFloat16;
+};
+
 // add two 128b data
 template <typename T>
 inline __device__ int4 add128b(T& a, T& b) {
@@ -93,6 +104,64 @@ inline __device__ int4 add128b(T& a, T& b) {
   c.unpacked[2] = a.unpacked[2] + b.unpacked[2];
   c.unpacked[3] = a.unpacked[3] + b.unpacked[3];
   return c.packed;
+}
+
+// Sum the per-rank packed vectors, always starting from rank 0 so the result does not depend on
+// which rank runs the kernel.
+//
+// bfloat16 carries 8 mantissa bits, so accumulating eight partial sums in bfloat16 rounds after
+// every addition. This all-reduce sits on the residual stream of all 43 layers, and measurably
+// costs MMLU-Pro accuracy at that width, so the bfloat16 case accumulates in fp32 and rounds once.
+template <typename T, int RANKS_PER_NODE, typename PackedStruct>
+inline __device__ int4 reduce_packed(PackedStruct (&vals)[RANKS_PER_NODE], int local_rank) {
+  if constexpr (std::is_same<T, __nv_bfloat16>::value) {
+    float2 acc[4];
+#pragma unroll
+    for (int j = 0; j < 4; ++j) {
+      acc[j] = make_float2(0.f, 0.f);
+    }
+#pragma unroll
+    for (int rank = 0; rank < RANKS_PER_NODE; ++rank) {
+      int const ii = (rank + RANKS_PER_NODE - local_rank) % RANKS_PER_NODE;
+#pragma unroll
+      for (int j = 0; j < 4; ++j) {
+        float2 const v = __bfloat1622float2(vals[ii].unpacked[j]);
+        acc[j].x += v.x;
+        acc[j].y += v.y;
+      }
+    }
+    PackedStruct out;
+#pragma unroll
+    for (int j = 0; j < 4; ++j) {
+      out.unpacked[j] = __float22bfloat162_rn(acc[j]);
+    }
+    return out.packed;
+  } else {
+    PackedStruct sums;
+    sums.packed = {0, 0, 0, 0};
+#pragma unroll
+    for (int rank = 0; rank < RANKS_PER_NODE; ++rank) {
+      int const ii = (rank + RANKS_PER_NODE - local_rank) % RANKS_PER_NODE;
+      sums.packed = add128b(sums, vals[ii]);
+    }
+    return sums.packed;
+  }
+}
+
+// True once `observed` has caught up with `expected`. The flags only ever move forward, so a
+// signed difference is both the "reached or passed" test and wrap-around safe: a peer that has
+// already started the *next* all-reduce, and so has published expected + 1, must not leave this
+// rank spinning for a value that will never appear again.
+__inline__ __device__ bool flag_reached(uint32_t observed, uint32_t expected) {
+  return static_cast<int32_t>(observed - expected) >= 0;
+}
+
+// Each block owns one counter in its own barrier buffer, holding the flag value it last used.
+// See BarrierFlagCounterOffset for why this lives on the device rather than in the kernel
+// arguments. The counters are only ever touched by the owning block on the owning rank, so
+// reading at entry and writing at exit needs no atomics.
+__inline__ __device__ uint32_t* local_flag_counters(AllReduceParams const& params) {
+  return params.peer_barrier_ptrs_in[params.local_rank] + BarrierFlagCounterOffset(params.ranks_per_node);
 }
 
 __inline__ __device__ void multi_gpu_barrier(uint32_t** signals, uint32_t const flag, size_t const local_rank,
@@ -110,7 +179,7 @@ __inline__ __device__ void multi_gpu_barrier(uint32_t** signals, uint32_t const 
     // All blocks check that corresponding block 0 on other GPUs have set the flag
     // No deadlock because block #0 is always the first block started
     uint32_t volatile* my_signals = signals[local_rank];
-    while (my_signals[tidx] != flag) {
+    while (!flag_reached(my_signals[tidx], flag)) {
     }
   }
 
@@ -131,7 +200,7 @@ __inline__ __device__ void block_barrier(uint32_t** signals, uint32_t const flag
 
     // Blocks check that corresponding blocks on other GPUs have also set the flag
     uint32_t* peer_barrier_d = signals[local_rank] + flag_block_offset + tidx;
-    while (ld_flag_acquire(peer_barrier_d) != flag) {
+    while (!flag_reached(ld_flag_acquire(peer_barrier_d), flag)) {
     }
   }
 
@@ -166,6 +235,9 @@ static __global__ void oneShotAllReduceKernel(AllReduceParams params) {
 
   int const bidx = blockIdx.x;
   int const tidx = threadIdx.x;
+
+  uint32_t* const flag_counters = local_flag_counters(params);
+  uint32_t const barrier_flag = flag_counters[bidx] + 1;
 
   // The number of elements packed into one for comms
   static constexpr int PACKED_ELTS = 16 / sizeof(T);
@@ -202,10 +274,10 @@ static __global__ void oneShotAllReduceKernel(AllReduceParams params) {
       }
     }
     // wait for equivalent blocks of other GPUs to have copied data to their shareable buffer
-    block_barrier(params.peer_barrier_ptrs_in, params.barrier_flag, params.local_rank, RANKS_PER_NODE, tidx, bidx);
+    block_barrier(params.peer_barrier_ptrs_in, barrier_flag, params.local_rank, RANKS_PER_NODE, tidx, bidx);
   } else {
     // In the non-copy case, we assume that once the kernel has been started, data is ready to be consumed
-    multi_gpu_barrier(params.peer_barrier_ptrs_in, params.barrier_flag, params.local_rank, RANKS_PER_NODE, tidx,
+    multi_gpu_barrier(params.peer_barrier_ptrs_in, barrier_flag, params.local_rank, RANKS_PER_NODE, tidx,
                       bidx);
   }
 
@@ -225,16 +297,23 @@ static __global__ void oneShotAllReduceKernel(AllReduceParams params) {
 
     // Sum the values from the different ranks.
     PackedStruct sums;
-    sums.packed = {0, 0, 0, 0};
-#pragma unroll
-    for (int rank = 0; rank < RANKS_PER_NODE; ++rank) {
-      // Always reduce from rank 0 to ensure stable reduce order.
-      int ii = (rank + RANKS_PER_NODE - params.local_rank) % RANKS_PER_NODE;
-      sums.packed = add128b(sums, vals[ii]);
-    }
+    sums.packed = reduce_packed<T, RANKS_PER_NODE>(vals, static_cast<int>(params.local_rank));
 
     // Store to the destination buffer.
     *reinterpret_cast<int4*>(&local_output_buffer[iter_offset]) = sums.packed;
+  }
+
+  // Nothing above stops a rank that finishes early from returning, letting the next all-reduce on
+  // its stream overwrite the shared buffer that slower peers are still reading. DSV4 issues 86
+  // back-to-back all-reduces per decode step, so that window is hit often enough to corrupt the
+  // residual stream. Hold every rank here until all of them have finished reading. The exit
+  // barrier uses the "out" buffer, so it cannot be confused with the entry barrier above.
+  block_barrier(params.peer_barrier_ptrs_out, barrier_flag, params.local_rank, RANKS_PER_NODE, tidx, bidx);
+
+  // Publish the flag this block just used, so the next launch picks up from here. Safe without a
+  // barrier: no other block or rank ever reads this slot.
+  if (tidx == 0) {
+    flag_counters[bidx] = barrier_flag;
   }
 }
 
@@ -281,6 +360,9 @@ static __global__ void twoShotAllReduceKernel(AllReduceParams params) {
   int const bidx = blockIdx.x;
   int const tidx = threadIdx.x;
 
+  uint32_t* const flag_counters = local_flag_counters(params);
+  uint32_t const barrier_flag = flag_counters[bidx] + 1;
+
   // The number of elements packed into one for comms
   static constexpr int PACKED_ELTS = 16 / sizeof(T);
   using PackedType = typename PackedOn16Bytes<T>::Type;
@@ -321,10 +403,10 @@ static __global__ void twoShotAllReduceKernel(AllReduceParams params) {
         }
       }
     }
-    block_barrier(params.peer_barrier_ptrs_in, params.barrier_flag, params.local_rank, RANKS_PER_NODE, tidx, bidx);
+    block_barrier(params.peer_barrier_ptrs_in, barrier_flag, params.local_rank, RANKS_PER_NODE, tidx, bidx);
   } else {
     // In the non-copy case, we assume that once the kernel has been started, data is ready to be consumed
-    multi_gpu_barrier(params.peer_barrier_ptrs_in, params.barrier_flag, params.local_rank, RANKS_PER_NODE, tidx,
+    multi_gpu_barrier(params.peer_barrier_ptrs_in, barrier_flag, params.local_rank, RANKS_PER_NODE, tidx,
                       bidx);
   }
 
@@ -346,13 +428,7 @@ static __global__ void twoShotAllReduceKernel(AllReduceParams params) {
 
     // Sum the values from the different ranks.
     PackedType sums;
-    sums.packed = {0, 0, 0, 0};
-#pragma unroll
-    for (int rank = 0; rank < RANKS_PER_NODE; ++rank) {
-      // Always reduce from rank 0 to ensure stable reduce order.
-      int ii = (rank + RANKS_PER_NODE - params.local_rank) % RANKS_PER_NODE;
-      sums.packed = add128b(sums, vals[ii]);
-    }
+    sums.packed = reduce_packed<T, RANKS_PER_NODE>(vals, static_cast<int>(params.local_rank));
 
     // Store to the local buffer.
     if constexpr (PUSH_MODE) {
@@ -362,7 +438,7 @@ static __global__ void twoShotAllReduceKernel(AllReduceParams params) {
     }
   }
 
-  block_barrier(params.peer_barrier_ptrs_out, params.barrier_flag, params.local_rank, RANKS_PER_NODE, tidx, bidx);
+  block_barrier(params.peer_barrier_ptrs_out, barrier_flag, params.local_rank, RANKS_PER_NODE, tidx, bidx);
 
   // Gather all needed elts from other intra-node ranks
   for (size_t local_offset = chunk_start; local_offset < chunk_end; local_offset += blockDim.x * PACKED_ELTS) {
@@ -382,6 +458,16 @@ static __global__ void twoShotAllReduceKernel(AllReduceParams params) {
             *reinterpret_cast<int4*>(&buffers[ii][offset_rank]);
       }
     }
+  }
+
+  // Same exit barrier as in oneShotAllReduceKernel: the gather above reads from peers, so no rank
+  // may return until all of them are done. Both barrier buffers already carry barrier_flag at this
+  // point, so reuse the "in" buffer one step further along.
+  block_barrier(params.peer_barrier_ptrs_in, barrier_flag + 1, params.local_rank, RANKS_PER_NODE, tidx, bidx);
+
+  // See the matching comment in oneShotAllReduceKernel.
+  if (tidx == 0) {
+    flag_counters[bidx] = barrier_flag + 1;
   }
 }
 
@@ -506,7 +592,7 @@ void AllReduceDispatchType(AllReduceParams& param, AllReduceStrategyType strateg
   }
 }
 
-AllReduceParams AllReduceParams::deserialize(const int32_t* buffer, size_t tp_size, size_t tp_rank, uint32_t flag) {
+AllReduceParams AllReduceParams::deserialize(const int32_t* buffer, size_t tp_size, size_t tp_rank) {
   void* const* buffer_ptrs = reinterpret_cast<void* const*>(buffer);
   AllReduceParams params;
 
@@ -519,7 +605,6 @@ AllReduceParams AllReduceParams::deserialize(const int32_t* buffer, size_t tp_si
   for (size_t i = 0; i < tp_size; ++i) {
     params.peer_barrier_ptrs_out[i] = reinterpret_cast<uint32_t*>(buffer_ptrs[2 * tp_size + i]);
   }
-  params.barrier_flag = flag;
   params.ranks_per_node = tp_size;
   params.rank = tp_rank;
   params.local_rank = tp_rank;
@@ -531,10 +616,20 @@ void CustomAllReduce(AllReduceParams& params, onnxruntime::MLDataType data_type,
                      AllReduceStrategyConfig config, cudaStream_t stream) {
   ORT_ENFORCE(ConfigurationSupported(strategy, params.elts_total, params.ranks_per_node, data_type),
               "Custom all-reduce configuration unsupported");
+  // USE_MEMCPY stages the input with cudaMemcpyAsync and then synchronizes with multi_gpu_barrier,
+  // where block 0 publishes a single flag on behalf of every block. That is incompatible with the
+  // per-block device flag counters the barrier now uses, since a block cannot read block 0's
+  // counter without racing block 0's write of it. The in-kernel copy is a wash at these sizes and
+  // saves a launch, so the memcpy variant is simply not offered.
+  ORT_ENFORCE(!(static_cast<std::underlying_type_t<AllReduceStrategyConfig>>(config) &
+                static_cast<std::underlying_type_t<AllReduceStrategyConfig>>(AllReduceStrategyConfig::USE_MEMCPY)),
+              "Custom all-reduce no longer supports USE_MEMCPY");
   if (data_type == onnxruntime::DataTypeImpl::GetType<float>()) {
     AllReduceDispatchType<float>(params, strategy, config, stream);
   } else if (data_type == onnxruntime::DataTypeImpl::GetType<onnxruntime::MLFloat16>()) {
     AllReduceDispatchType<half>(params, strategy, config, stream);
+  } else if (data_type == onnxruntime::DataTypeImpl::GetType<onnxruntime::BFloat16>()) {
+    AllReduceDispatchType<__nv_bfloat16>(params, strategy, config, stream);
   } else {
     ORT_THROW("Unsupported data type for CustomAllReduce");
   }
@@ -549,6 +644,18 @@ size_t GetMaxRequiredWorkspaceSize(int world_size) {
 
 Status SetPeerAccess(int rank, int world_size, bool enable, int& can_access_peer) {
   const int src_node = rank;
+
+  // The peers are identified by device ordinal, which only works when every device is visible to
+  // this process. Launchers that pin one GPU per rank with CUDA_VISIBLE_DEVICES leave a single
+  // ordinal here, so there is nothing to probe: peer access is instead established when the
+  // workspace handles are imported with cudaIpcMemLazyEnablePeerAccess, which reports its own
+  // failure if the devices turn out not to be peer-capable.
+  int device_count = 0;
+  CUDA_RETURN_IF_ERROR(cudaGetDeviceCount(&device_count));
+  if (device_count < world_size) {
+    can_access_peer = 1;
+    return Status::OK();
+  }
 
   for (int dst_node = 0; dst_node < world_size; dst_node++) {
     if (dst_node == src_node) {
@@ -580,7 +687,8 @@ AllReduceStrategyType SelectImplementation(size_t message_size, int rank, int wo
                                            onnxruntime::MLDataType type) {
   AllReduceStrategyType strategy = AllReduceStrategyType::NCCL;
   if (type != onnxruntime::DataTypeImpl::GetType<float>() &&
-      type != onnxruntime::DataTypeImpl::GetType<onnxruntime::MLFloat16>()) {
+      type != onnxruntime::DataTypeImpl::GetType<onnxruntime::MLFloat16>() &&
+      type != onnxruntime::DataTypeImpl::GetType<onnxruntime::BFloat16>()) {
     return strategy;
   }
 
@@ -588,10 +696,15 @@ AllReduceStrategyType SelectImplementation(size_t message_size, int rank, int wo
     return strategy;
   }
 
-  int can_access_peer = 0;
-  ORT_ENFORCE(SetPeerAccess(rank, world_size, true, can_access_peer) == Status::OK());
+  // cudaDeviceCanAccessPeer / cudaDeviceEnablePeerAccess are pure host calls, but this runs on
+  // every eager AllReduce, so keep only the first answer.
+  static const int cached_can_access_peer = [&]() {
+    int can_access = 0;
+    ORT_ENFORCE(SetPeerAccess(rank, world_size, true, can_access) == Status::OK());
+    return can_access;
+  }();
   // If P2P is not enabled, we cannot use the custom allreduce, so default to NCCL.
-  if (!can_access_peer) {
+  if (!cached_can_access_peer) {
     return strategy;
   }
 
