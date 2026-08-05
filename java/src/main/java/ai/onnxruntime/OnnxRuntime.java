@@ -4,19 +4,11 @@
  */
 package ai.onnxruntime;
 
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.EnumSet;
 import java.util.HashSet;
-import java.util.Locale;
-import java.util.Optional;
 import java.util.Set;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -48,62 +40,53 @@ final class OnnxRuntime {
   // The initial release of the ORT training API.
   private static final int ORT_TRAINING_API_VERSION_1 = 1;
 
-  /**
-   * The name of the system property which when set gives the path on disk where the ONNX Runtime
-   * native libraries are stored.
-   */
-  static final String ONNXRUNTIME_NATIVE_PATH = "onnxruntime.native.path";
+  private static final String ONNXRUNTIME_NATIVE_PREFIX = "onnxruntime.native";
+
+  private static final String CLASSPATH_BASE = "/ai/onnxruntime/native";
 
   /** The short name of the ONNX runtime shared library */
-  static final String ONNXRUNTIME_LIBRARY_NAME = "onnxruntime";
+  private static final String ONNXRUNTIME_LIBRARY_NAME = "onnxruntime";
 
   /** The short name of the ONNX runtime JNI shared library */
-  static final String ONNXRUNTIME_JNI_LIBRARY_NAME = "onnxruntime4j_jni";
+  private static final String ONNXRUNTIME_JNI_LIBRARY_NAME = "onnxruntime4j_jni";
 
   /** The short name of the ONNX runtime shared provider library */
-  static final String ONNXRUNTIME_LIBRARY_SHARED_NAME = "onnxruntime_providers_shared";
+  private static final String ONNXRUNTIME_LIBRARY_SHARED_NAME = "onnxruntime_providers_shared";
 
   /** The short name of the ONNX runtime CUDA provider library */
-  static final String ONNXRUNTIME_LIBRARY_CUDA_NAME = "onnxruntime_providers_cuda";
+  private static final String ONNXRUNTIME_LIBRARY_CUDA_NAME = "onnxruntime_providers_cuda";
 
   /** The short name of the ONNX runtime ROCM provider library */
-  static final String ONNXRUNTIME_LIBRARY_ROCM_NAME = "onnxruntime_providers_rocm";
+  private static final String ONNXRUNTIME_LIBRARY_ROCM_NAME = "onnxruntime_providers_rocm";
 
   /** The short name of the ONNX runtime DNNL provider library */
-  static final String ONNXRUNTIME_LIBRARY_DNNL_NAME = "onnxruntime_providers_dnnl";
+  private static final String ONNXRUNTIME_LIBRARY_DNNL_NAME = "onnxruntime_providers_dnnl";
 
   /** The short name of the ONNX runtime OpenVINO provider library */
-  static final String ONNXRUNTIME_LIBRARY_OPENVINO_NAME = "onnxruntime_providers_openvino";
+  private static final String ONNXRUNTIME_LIBRARY_OPENVINO_NAME = "onnxruntime_providers_openvino";
 
   /** The short name of the ONNX runtime TensorRT provider library */
-  static final String ONNXRUNTIME_LIBRARY_TENSORRT_NAME = "onnxruntime_providers_tensorrt";
+  private static final String ONNXRUNTIME_LIBRARY_TENSORRT_NAME = "onnxruntime_providers_tensorrt";
 
   /** The short name of the ONNX runtime QNN provider library */
-  static final String ONNXRUNTIME_LIBRARY_QNN_NAME = "onnxruntime_providers_qnn";
+  private static final String ONNXRUNTIME_LIBRARY_QNN_NAME = "onnxruntime_providers_qnn";
 
   /** The short name of the WebGPU DAWN library */
-  static final String ONNXRUNTIME_LIBRARY_WEBGPU_DAWN_NAME = "webgpu_dawn";
+  private static final String ONNXRUNTIME_LIBRARY_WEBGPU_DAWN_NAME = "webgpu_dawn";
 
   /** The short name of the WebGPU DXC library "dxil.dll" */
-  static final String ONNXRUNTIME_LIBRARY_WEBGPU_DXC_DXIL_NAME = "dxil";
+  private static final String ONNXRUNTIME_LIBRARY_WEBGPU_DXC_DXIL_NAME = "dxil";
 
   /** The short name of the WebGPU DXC library "dxcompiler.dll" */
-  static final String ONNXRUNTIME_LIBRARY_WEBGPU_DXC_DXCOMPILER_NAME = "dxcompiler";
-
-  /** The OS & CPU architecture string */
-  private static final String OS_ARCH_STR = initOsArch();
+  private static final String ONNXRUNTIME_LIBRARY_WEBGPU_DXC_DXCOMPILER_NAME = "dxcompiler";
 
   /** Have the core ONNX Runtime native libraries been loaded */
   private static boolean loaded = false;
 
-  /** The temp directory where native libraries are extracted */
-  private static Path tempDirectory;
-
-  /** The value of the {@link #ONNXRUNTIME_NATIVE_PATH} system property */
-  private static String libraryDirPathProperty;
-
   /** Tracks if the shared providers have been extracted */
   private static final Set<String> extractedSharedProviders = new HashSet<>();
+
+  private static OnnxStager stager;
 
   /** The API handle. */
   static long ortApiHandle;
@@ -125,42 +108,6 @@ final class OnnxRuntime {
 
   private OnnxRuntime() {}
 
-  /* Computes and initializes OS_ARCH_STR (such as linux-x64) */
-  private static String initOsArch() {
-    String detectedOS = null;
-    String os = System.getProperty("os.name", "generic").toLowerCase(Locale.ENGLISH);
-    if (os.contains("mac") || os.contains("darwin")) {
-      detectedOS = "osx";
-    } else if (os.contains("win")) {
-      detectedOS = "win";
-    } else if (os.contains("nux")) {
-      detectedOS = "linux";
-    } else if (isAndroid()) {
-      detectedOS = "android";
-    } else {
-      throw new IllegalStateException("Unsupported os:" + os);
-    }
-    String detectedArch = null;
-    String arch = System.getProperty("os.arch", "generic").toLowerCase(Locale.ENGLISH);
-    if (arch.startsWith("amd64") || arch.startsWith("x86_64")) {
-      detectedArch = "x64";
-    } else if (arch.startsWith("x86")) {
-      // 32-bit x86 is not supported by the Java API
-      detectedArch = "x86";
-    } else if (arch.startsWith("aarch64")) {
-      detectedArch = "aarch64";
-    } else if (arch.startsWith("ppc64")) {
-      detectedArch = "ppc64";
-    } else if (arch.startsWith("loongarch64")) {
-      detectedArch = "loongarch64";
-    } else if (isAndroid()) {
-      detectedArch = arch;
-    } else {
-      throw new IllegalStateException("Unsupported arch:" + arch);
-    }
-    return detectedOS + '-' + detectedArch;
-  }
-
   /**
    * Loads the native C library.
    *
@@ -171,53 +118,29 @@ final class OnnxRuntime {
     if (loaded) {
       return;
     }
-    tempDirectory = isAndroid() ? null : Files.createTempDirectory("onnxruntime-java");
-    try {
-      libraryDirPathProperty = System.getProperty(ONNXRUNTIME_NATIVE_PATH);
-      // Extract and prepare the shared provider library but don't try to load it,
-      // the ONNX Runtime native library will load it
-      extractProviderLibrary(ONNXRUNTIME_LIBRARY_SHARED_NAME);
-
-      // Extract and prepare the Dawn shared libraries (if present) but don't try to load them,
-      // the ONNX Runtime native library will load them
-      extractProviderLibrary(ONNXRUNTIME_LIBRARY_WEBGPU_DAWN_NAME);
-      extractProviderLibrary(ONNXRUNTIME_LIBRARY_WEBGPU_DXC_DXIL_NAME);
-      extractProviderLibrary(ONNXRUNTIME_LIBRARY_WEBGPU_DXC_DXCOMPILER_NAME);
-
-      if (!isAndroid()) {
-        load(ONNXRUNTIME_LIBRARY_NAME);
-      }
-      load(ONNXRUNTIME_JNI_LIBRARY_NAME);
-
-      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_23);
-      if (ortApiHandle == 0L) {
-        throw new IllegalStateException(
-            "There is a mismatch between the ORT class files and the ORT native library, and the native library could not be loaded");
-      }
-      ortTrainingApiHandle = initialiseTrainingAPIBase(ortApiHandle, ORT_API_VERSION_23);
-      ortCompileApiHandle = initialiseCompileAPIBase(ortApiHandle);
-      trainingEnabled = ortTrainingApiHandle != 0L;
-      providers = initialiseProviders(ortApiHandle);
-      version = initialiseVersion();
-      loaded = true;
-    } finally {
-      if (tempDirectory != null) {
-        cleanUp(tempDirectory.toFile());
+    if (isAndroid()) {
+      System.loadLibrary(ONNXRUNTIME_JNI_LIBRARY_NAME);
+    } else {
+      stager = new OnnxStager();
+      stager.stage(ONNXRUNTIME_NATIVE_PREFIX, ONNXRUNTIME_LIBRARY_NAME, CLASSPATH_BASE);
+      stager.stage(ONNXRUNTIME_NATIVE_PREFIX, ONNXRUNTIME_LIBRARY_SHARED_NAME, CLASSPATH_BASE);
+      Path jniLibraryPath =
+          stager.stage(ONNXRUNTIME_NATIVE_PREFIX, ONNXRUNTIME_JNI_LIBRARY_NAME, CLASSPATH_BASE);
+      if (jniLibraryPath != null) {
+        System.load(jniLibraryPath.toString());
       }
     }
-  }
-
-  /**
-   * Marks the file for delete on exit.
-   *
-   * @param file The file to remove.
-   */
-  private static void cleanUp(File file) {
-    if (!file.exists()) {
-      return;
+    ortApiHandle = initialiseAPIBase(ORT_API_VERSION_23);
+    if (ortApiHandle == 0L) {
+      throw new IllegalStateException(
+          "There is a mismatch between the ORT class files and the ORT native library, and the native library could not be loaded");
     }
-    logger.log(Level.FINE, "Deleting " + file + " on exit");
-    file.deleteOnExit();
+    ortTrainingApiHandle = initialiseTrainingAPIBase(ortApiHandle, ORT_API_VERSION_23);
+    ortCompileApiHandle = initialiseCompileAPIBase(ortApiHandle);
+    trainingEnabled = ortTrainingApiHandle != 0L;
+    providers = initialiseProviders(ortApiHandle);
+    version = initialiseVersion();
+    loaded = true;
   }
 
   /**
@@ -230,98 +153,100 @@ final class OnnxRuntime {
   }
 
   /**
-   * Extracts the CUDA provider library from the classpath resources if present, or checks to see if
-   * the CUDA provider library is in the directory specified by {@link #ONNXRUNTIME_NATIVE_PATH}.
+   * Stages the WebGPU provider libraries according to the default staging procedure specified by
+   * {@link ai.onnxruntime}.
    *
-   * @return True if the CUDA provider library is ready for loading, false otherwise.
+   * @return True if the WebGPU provider libraries is ready for loading by the native runtime, false
+   *     otherwise.
    */
-  static boolean extractCUDA() {
-    return extractProviderLibrary(ONNXRUNTIME_LIBRARY_CUDA_NAME);
+  static boolean stageWebGPU() {
+    return stageProviderLibrary(ONNXRUNTIME_LIBRARY_WEBGPU_DAWN_NAME)
+        && stageProviderLibrary(ONNXRUNTIME_LIBRARY_WEBGPU_DXC_DXIL_NAME)
+        && stageProviderLibrary(ONNXRUNTIME_LIBRARY_WEBGPU_DXC_DXCOMPILER_NAME);
   }
 
   /**
-   * Extracts the ROCM provider library from the classpath resources if present, or checks to see if
-   * the ROCM provider library is in the directory specified by {@link #ONNXRUNTIME_NATIVE_PATH}.
+   * Stages the CUDA provider library according to the default staging procedure specified by {@link
+   * ai.onnxruntime}.
    *
-   * @return True if the ROCM provider library is ready for loading, false otherwise.
+   * @return True if the CUDA library libraries is ready for loading by the native runtime, false
+   *     otherwise.
    */
-  static boolean extractROCM() {
-    return extractProviderLibrary(ONNXRUNTIME_LIBRARY_ROCM_NAME);
+  static boolean stageCUDA() {
+    return stageProviderLibrary(ONNXRUNTIME_LIBRARY_CUDA_NAME);
   }
 
   /**
-   * Extracts the DNNL provider library from the classpath resources if present, or checks to see if
-   * the DNNL provider library is in the directory specified by {@link #ONNXRUNTIME_NATIVE_PATH}.
+   * Stages the ROCM provider library according to the default staging procedure specified by {@link
+   * ai.onnxruntime}.
    *
-   * @return True if the DNNL provider library is ready for loading, false otherwise.
+   * @return True if the ROCM library libraries is ready for loading by the native runtime, false
+   *     otherwise.
    */
-  static boolean extractDNNL() {
-    return extractProviderLibrary(ONNXRUNTIME_LIBRARY_DNNL_NAME);
+  static boolean stageROCM() {
+    return stageProviderLibrary(ONNXRUNTIME_LIBRARY_ROCM_NAME);
   }
 
   /**
-   * Extracts the OpenVINO provider library from the classpath resources if present, or checks to
-   * see if the OpenVINO provider library is in the directory specified by {@link
-   * #ONNXRUNTIME_NATIVE_PATH}.
+   * Stages the DNNL provider library according to the default staging procedure specified by {@link
+   * ai.onnxruntime}.
    *
-   * @return True if the OpenVINO provider library is ready for loading, false otherwise.
+   * @return True if the DNNL library libraries is ready for loading by the native runtime, false
+   *     otherwise.
    */
-  static boolean extractOpenVINO() {
-    return extractProviderLibrary(ONNXRUNTIME_LIBRARY_OPENVINO_NAME);
+  static boolean stageDNNL() {
+    return stageProviderLibrary(ONNXRUNTIME_LIBRARY_DNNL_NAME);
   }
 
   /**
-   * Extracts the TensorRT provider library from the classpath resources if present, or checks to
-   * see if the TensorRT provider library is in the directory specified by {@link
-   * #ONNXRUNTIME_NATIVE_PATH}.
+   * Stages the OpenVINO provider library according to the default staging procedure specified by
+   * {@link ai.onnxruntime}.
    *
-   * @return True if the TensorRT provider library is ready for loading, false otherwise.
+   * @return True if the OpenVINO library libraries is ready for loading by the native runtime,
+   *     false otherwise.
    */
-  static boolean extractTensorRT() {
-    return extractProviderLibrary(ONNXRUNTIME_LIBRARY_TENSORRT_NAME);
+  static boolean stageOpenVINO() {
+    return stageProviderLibrary(ONNXRUNTIME_LIBRARY_OPENVINO_NAME);
   }
 
   /**
-   * Extracts the QNN provider library from the classpath resources if present, or checks to see if
-   * the QNN provider library is in the directory specified by {@link #ONNXRUNTIME_NATIVE_PATH}.
+   * Stages the TensorRT provider library according to the default staging procedure specified by
+   * {@link ai.onnxruntime}.
    *
-   * @return True if the QNN provider library is ready for loading, false otherwise.
+   * @return True if the TensorRT library libraries is ready for loading by the native runtime,
+   *     false otherwise.
    */
-  static boolean extractQNN() {
-    return extractProviderLibrary(ONNXRUNTIME_LIBRARY_QNN_NAME);
+  static boolean stageTensorRT() {
+    return stageProviderLibrary(ONNXRUNTIME_LIBRARY_TENSORRT_NAME);
   }
 
   /**
-   * Extracts a shared provider library from the classpath resources if present, or checks to see if
-   * that library is in the directory specified by {@link #ONNXRUNTIME_NATIVE_PATH}.
+   * Stages the QNN provider library according to the default staging procedure specified by {@link
+   * ai.onnxruntime}.
    *
-   * @param libraryName The shared provider library to load.
+   * @return True if the QNN library libraries is ready for loading by the native runtime, false
+   *     otherwise.
+   */
+  static boolean stageQNN() {
+    return stageProviderLibrary(ONNXRUNTIME_LIBRARY_QNN_NAME);
+  }
+
+  /**
+   * Stages the ROCM provider library according to the default staging procedure specified by {@link
+   * ai.onnxruntime}.
+   *
+   * @param libraryName The shared provider library to stage.
    * @return True if the library is ready for loading by ORT's native code, false otherwise.
    */
-  static synchronized boolean extractProviderLibrary(String libraryName) {
+  private static synchronized boolean stageProviderLibrary(String libraryName) {
     // Android does not need to extract provider libraries.
     if (isAndroid()) {
       return false;
     }
-    // Check if we've already extracted or check this provider, and it's ready
-    if (extractedSharedProviders.contains(libraryName)) {
+    try {
+      stager.stage(ONNXRUNTIME_NATIVE_PREFIX, libraryName, CLASSPATH_BASE);
       return true;
-    }
-    // If a native library directory is configured, prefer it and skip extraction when present.
-    if (libraryDirPathProperty != null) {
-      String libraryFileName = mapLibraryName(libraryName);
-      File libraryFile = Paths.get(libraryDirPathProperty, libraryFileName).toFile();
-      if (libraryFile.exists()) {
-        extractedSharedProviders.add(libraryName);
-        return true;
-      }
-    }
-    // Otherwise extract the file from the classpath resources.
-    Optional<File> file = extractFromResources(libraryName);
-    if (file.isPresent()) {
-      extractedSharedProviders.add(libraryName);
-      return true;
-    } else {
+    } catch (IOException e) {
       return false;
     }
   }
@@ -333,141 +258,6 @@ final class OnnxRuntime {
    */
   static boolean isAndroid() {
     return System.getProperty("java.vendor", "generic").equals("The Android Project");
-  }
-
-  /**
-   * Load a shared library by name.
-   *
-   * <p>If the library path is not specified via a system property then it attempts to extract the
-   * library from the classpath before loading it.
-   *
-   * @param library The bare name of the library.
-   * @throws IOException If the file failed to read or write.
-   */
-  private static void load(String library) throws IOException {
-    // On Android, we simply use System.loadLibrary
-    if (isAndroid()) {
-      System.loadLibrary(library);
-      return;
-    }
-
-    // 1) The user may skip loading of this library:
-    String skip = System.getProperty("onnxruntime.native." + library + ".skip");
-    if (Boolean.TRUE.toString().equalsIgnoreCase(skip)) {
-      logger.log(Level.FINE, "Skipping load of native library '" + library + "'");
-      return;
-    }
-
-    // Resolve the platform dependent library name.
-    String libraryFileName = mapLibraryName(library);
-
-    // 2) The user may explicitly specify the path to a directory containing all shared libraries:
-    if (libraryDirPathProperty != null) {
-      logger.log(
-          Level.FINE,
-          "Attempting to load native library '"
-              + library
-              + "' from specified path: "
-              + libraryDirPathProperty);
-      // TODO: Switch this to Path.of when the minimum Java version is 11.
-      File libraryFile = Paths.get(libraryDirPathProperty, libraryFileName).toFile();
-      String libraryFilePath = libraryFile.getAbsolutePath();
-      if (!libraryFile.exists()) {
-        throw new IOException("Native library '" + library + "' not found at " + libraryFilePath);
-      }
-      System.load(libraryFilePath);
-      logger.log(Level.FINE, "Loaded native library '" + library + "' from specified path");
-      return;
-    }
-
-    // 3) The user may explicitly specify the path to their shared library:
-    String libraryPathProperty = System.getProperty("onnxruntime.native." + library + ".path");
-    if (libraryPathProperty != null) {
-      logger.log(
-          Level.FINE,
-          "Attempting to load native library '"
-              + library
-              + "' from specified path: "
-              + libraryPathProperty);
-      File libraryFile = new File(libraryPathProperty);
-      String libraryFilePath = libraryFile.getAbsolutePath();
-      if (!libraryFile.exists()) {
-        throw new IOException("Native library '" + library + "' not found at " + libraryFilePath);
-      }
-      System.load(libraryFilePath);
-      logger.log(Level.FINE, "Loaded native library '" + library + "' from specified path");
-      return;
-    }
-
-    // 4) try loading from resources or library path:
-    Optional<File> extractedPath = extractFromResources(library);
-    if (extractedPath.isPresent()) {
-      // extracted library from resources
-      System.load(extractedPath.get().getAbsolutePath());
-      logger.log(Level.FINE, "Loaded native library '" + library + "' from resource path");
-    } else {
-      // failed to load library from resources, try to load it from the library path
-      logger.log(
-          Level.FINE, "Attempting to load native library '" + library + "' from library path");
-      System.loadLibrary(library);
-      logger.log(Level.FINE, "Loaded native library '" + library + "' from library path");
-    }
-  }
-
-  /**
-   * Extracts the library from the classpath resources. returns optional.empty if it failed to
-   * extract or couldn't be found.
-   *
-   * @param library The library name
-   * @return An optional containing the file if it is successfully extracted, or an empty optional
-   *     if it failed to extract or couldn't be found.
-   */
-  private static Optional<File> extractFromResources(String library) {
-    String libraryFileName = mapLibraryName(library);
-    String resourcePath = "/ai/onnxruntime/native/" + OS_ARCH_STR + '/' + libraryFileName;
-    File tempFile = tempDirectory.resolve(libraryFileName).toFile();
-    try (InputStream is = OnnxRuntime.class.getResourceAsStream(resourcePath)) {
-      if (is == null) {
-        // Not found in classpath resources
-        return Optional.empty();
-      } else {
-        // Found in classpath resources, load via temporary file
-        logger.log(
-            Level.FINE,
-            "Attempting to load native library '"
-                + library
-                + "' from resource path "
-                + resourcePath
-                + " copying to "
-                + tempFile);
-        byte[] buffer = new byte[4096];
-        int readBytes;
-        try (FileOutputStream os = new FileOutputStream(tempFile)) {
-          while ((readBytes = is.read(buffer)) != -1) {
-            os.write(buffer, 0, readBytes);
-          }
-        }
-        logger.log(Level.FINE, "Extracted native library '" + library + "' from resource path");
-        return Optional.of(tempFile);
-      }
-    } catch (IOException e) {
-      logger.log(
-          Level.WARNING, "Failed to extract library '" + library + "' from the resources", e);
-      return Optional.empty();
-    } finally {
-      cleanUp(tempFile);
-    }
-  }
-
-  /**
-   * Maps the library name into a platform dependent library filename. Converts macOS's "jnilib" to
-   * "dylib" but otherwise is the same as {@link System#mapLibraryName(String)}.
-   *
-   * @param library The library name
-   * @return The library filename.
-   */
-  private static String mapLibraryName(String library) {
-    return System.mapLibraryName(library).replace("jnilib", "dylib");
   }
 
   /**
