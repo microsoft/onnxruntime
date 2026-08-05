@@ -311,7 +311,7 @@ Status FlashAttention(
   constexpr bool is_bf16 = false;
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
       device_prop, stream, data.q, data.k, data.v, data.output, reinterpret_cast<void*>(data.softmax_lse),
-      parameters.batch_size, parameters.num_heads, parameters.num_heads, parameters.head_size,
+      parameters.batch_size, parameters.num_heads, parameters.num_heads_kv, parameters.head_size,
       parameters.sequence_length, parameters.total_sequence_length, scale, 0.0, parameters.is_unidirectional, is_bf16,
       false, data.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
       reinterpret_cast<void*>(data.out_accum), data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH));
@@ -366,7 +366,7 @@ Status LeanAttention(
       nullptr,  // block_table
       parameters.batch_size,
       parameters.num_heads,
-      parameters.num_heads,  // num_heads_k
+      parameters.num_heads_kv,
       parameters.head_size,
       parameters.sequence_length,        // seqlen_q
       parameters.total_sequence_length,  // seqlen_k
@@ -435,7 +435,7 @@ Status CudnnFlashAttention(
       mask_sequence_lengths_kv,  // (optional) mask_sequence_lengths_kv
       parameters.batch_size,
       parameters.num_heads,                  // num_heads_q,
-      parameters.num_heads,                  // num_heads_kv,
+      parameters.num_heads_kv,               // num_heads_kv,
       parameters.head_size,                  // head_size_qk
       parameters.v_head_size,                // head_size_v
       parameters.sequence_length,            // sequence_length_q
