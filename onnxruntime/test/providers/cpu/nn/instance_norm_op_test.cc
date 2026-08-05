@@ -6,6 +6,10 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/util/include/default_providers.h"
 
+#if defined(USE_CUDA)
+#include "test/common/cuda_op_test_utils.h"
+#endif
+
 using namespace std;
 namespace onnxruntime {
 namespace test {
