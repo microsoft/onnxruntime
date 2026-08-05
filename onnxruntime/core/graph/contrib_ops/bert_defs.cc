@@ -1816,6 +1816,100 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           propagateShapeFromInputToOutput(ctx, 0, 0);
         }));
 
+constexpr const char* MRotaryEmbedding_ver1_doc = R"DOC(
+MRotaryEmbedding is the fused implementation of Multimodal Rotary Positional Embeddings (M-RoPE) used by the
+Qwen family of vision-language models (Qwen2-VL, Qwen2.5-VL, Qwen3-VL, Qwen3-VL-MoE, Qwen3.5, Qwen3.5-MoE).
+
+Unlike standard RoPE which uses a single 1D position per token, M-RoPE derives three positions per token
+(temporal T, height H, width W), each of which indexes into the same cos/sin cache. The half_rotary_embedding_dim
+axis of the cache is partitioned into 3 contiguous or interleaved sections (specified by `mrope_section`); each
+section is populated using the cos/sin values gathered with the corresponding T/H/W position, and the sections
+are then concatenated (or interleaved) to produce a single per-token cos/sin vector of length
+half_rotary_embedding_dim. The standard RoPE rotation (as in RotaryEmbedding) is then applied using this
+combined vector.
+
+For text-only tokens, T == H == W (all three position streams collapse to the ordinary sequential position),
+so this op is a strict superset of RotaryEmbedding: setting `mrope_section` to a single full-width section
+(or omitting it) reduces this op to standard RoPE.
+
+`mrope_layout` selects how the three sections are combined:
+  - 0 (Sectioned / Chunked): the half_rotary_embedding_dim axis is split into 3 contiguous chunks according to
+    `mrope_section` (i.e. [T]*section[0] + [H]*section[1] + [W]*section[2]). This is used by Qwen2-VL and
+    Qwen2.5-VL.
+  - 1 (Interleaved): the half_rotary_embedding_dim axis is filled starting from T at every position, then H
+    overwrites every 3rd position starting at offset 1 for the first `section[1]*3` positions, and W overwrites
+    every 3rd position starting at offset 2 for the first `section[2]*3` positions. This is used by Qwen3-VL,
+    Qwen3-VL-MoE, Qwen3.5, and Qwen3.5-MoE.
+)DOC";
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MRotaryEmbedding, 1,
+    OpSchema()
+        .SetDoc(MRotaryEmbedding_ver1_doc)
+        .Attr("scale",
+              "Custom scale will be used if specified. Default value is 1.0",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("interleaved",
+              "Indicates whether the input has real and imaginary parts interleaved along the last "
+              "(head_size) axis. Default value is 0 (False), meaning the first half of the rotary "
+              "portion consists of real values and the second half consists of imaginary values.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("rotary_embedding_dim",
+              "Rotary embedding dimension. Default value is 0, meaning the whole head_size is rotated.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("num_heads",
+              "Number of attention heads. Default value is 0. Must use with rotary_embedding_dim",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("is_packed_batching",
+              "ragged batch inputs or not. Default value is 0",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("mrope_section",
+              "3 non-negative integers [section_t, section_h, section_w] describing how the "
+              "half_rotary_embedding_dim axis of the cos/sin cache is divided among the temporal, "
+              "height, and width position streams. section_t + section_h + section_w must equal "
+              "rotary_embedding_dim / 2 (or head_size / 2 when rotary_embedding_dim is 0). Required.",
+              AttributeProto::INTS)
+        .Attr("mrope_layout",
+              "How the 3 sections are combined to form the per-token cos/sin vector: 0 (default) for "
+              "Sectioned/Chunked layout (Qwen2-VL, Qwen2.5-VL) or 1 for Interleaved layout (Qwen3-VL, "
+              "Qwen3-VL-MoE, Qwen3.5, Qwen3.5-MoE).",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Input(0,
+               "input",
+               "3D tensor with shape (batch_size, sequence_length, hidden_size) or 4D with shape "
+               "(batch_size, num_heads, sequence_length, head_size)",
+               "T")
+        .Input(1,
+               "position_ids",
+               "3D tensor with shape (3, batch_size, sequence_length) containing the temporal, height, "
+               "and width position id streams (in that order along dim 0).",
+               "M")
+        .Input(2,
+               "cos_cache",
+               "2D tensor with shape (max_sequence_length, head_size / 2) or "
+               "(max_sequence_length, rotary_embedding_dim / 2)",
+               "T")
+        .Input(3,
+               "sin_cache",
+               "2D tensor with shape (max_sequence_length, head_size / 2) or "
+               "(max_sequence_length, rotary_embedding_dim / 2)",
+               "T")
+        .Output(0,
+                "output",
+                "tensor with same shape as input.",
+                "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
+        .TypeConstraint("M", {"tensor(int64)"}, "Constrain position_ids to integer tensors")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        }));
+
 constexpr const char* GemmaRotaryEmbedding_ver1_doc = R"DOC(
 GemmaRotaryEmbedding is the implementation of below part of rotary positional embeddings (RoPE). It implements below from modeling_gemma.py.
 
