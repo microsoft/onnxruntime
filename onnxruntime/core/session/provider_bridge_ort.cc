@@ -2078,8 +2078,8 @@ static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_p
 static ProviderLibrary s_library_nv(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_nv_tensorrt_rtx") LIBRARY_EXTENSION);
 static ProviderLibrary s_library_migraphx(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_migraphx") LIBRARY_EXTENSION
 #ifndef _WIN32
-                                        ,
-                                        false /* unload - On Linux if we unload the migraphx shared provider we crash */
+                                          ,
+                                          false /* unload - On Linux if we unload the migraphx shared provider we crash */
 #endif
 );
 
