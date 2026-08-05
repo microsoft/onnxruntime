@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "contrib_ops/webgpu/bert/paged_attention.h"
 
 #include "contrib_ops/cpu/bert/attention_parameters.h"
@@ -331,39 +333,39 @@ Status PagedAttentionRepackOutputProgram::GenerateShaderCode(ShaderHelper& sh) c
                              WGSL_TEMPLATE_VARIABLE(output, output));
 }
 
-              Status PagedAttentionPackMetadataProgram::GenerateShaderCode(ShaderHelper& sh) const {
-                const auto& cumulative_sequence_length =
-                  sh.AddInput("cumulative_sequence_length", ShaderUsage::UseUniform);
-                const auto& past_seqlens = sh.AddInput("past_seqlens", ShaderUsage::UseUniform);
-                const auto& output = sh.AddOutput("output", ShaderUsage::UseUniform);
-                return WGSL_TEMPLATE_APPLY(sh, "bert/paged_attention_pack_metadata.wgsl.template",
+Status PagedAttentionPackMetadataProgram::GenerateShaderCode(ShaderHelper& sh) const {
+  const auto& cumulative_sequence_length =
+      sh.AddInput("cumulative_sequence_length", ShaderUsage::UseUniform);
+  const auto& past_seqlens = sh.AddInput("past_seqlens", ShaderUsage::UseUniform);
+  const auto& output = sh.AddOutput("output", ShaderUsage::UseUniform);
+  return WGSL_TEMPLATE_APPLY(sh, "bert/paged_attention_pack_metadata.wgsl.template",
                              WGSL_TEMPLATE_VARIABLE(cumulative_sequence_length, cumulative_sequence_length),
                              WGSL_TEMPLATE_VARIABLE(output, output),
                              WGSL_TEMPLATE_VARIABLE(past_seqlens, past_seqlens));
-              }
+}
 
-              static Status RunPackMetadata(onnxruntime::webgpu::ComputeContext& context,
+static Status RunPackMetadata(onnxruntime::webgpu::ComputeContext& context,
                               uint32_t batch_size,
                               const Tensor* cumulative_sequence_length,
                               const Tensor* past_seqlens,
                               Tensor* output) {
-                const uint32_t dispatch_size = batch_size + 1u;
-                PagedAttentionPackMetadataProgram program{};
-                program
-                  .AddInputs({
-                    {cumulative_sequence_length, ProgramTensorMetadataDependency::TypeAndRank},
-                    {past_seqlens, ProgramTensorMetadataDependency::TypeAndRank},
-                  })
-                  .AddOutputs({
-                    {output, ProgramTensorMetadataDependency::TypeAndRank},
-                  })
-                  .AddUniformVariables({
-                    {batch_size},
-                    {dispatch_size},
-                  })
-                  .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
-                return context.RunProgram(program);
-              }
+  const uint32_t dispatch_size = batch_size + 1u;
+  PagedAttentionPackMetadataProgram program{};
+  program
+      .AddInputs({
+          {cumulative_sequence_length, ProgramTensorMetadataDependency::TypeAndRank},
+          {past_seqlens, ProgramTensorMetadataDependency::TypeAndRank},
+      })
+      .AddOutputs({
+          {output, ProgramTensorMetadataDependency::TypeAndRank},
+      })
+      .AddUniformVariables({
+          {batch_size},
+          {dispatch_size},
+      })
+      .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+  return context.RunProgram(program);
+}
 
 // Inverse of RunUnpackQuery: pull the valid (s < seq_len_b) slots out of the
 // padded BSNH attention output and write them into the packed varlen
@@ -553,9 +555,92 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
     value = &packed_v_tensor;
   }
 
+  // Fallback attention: gather paged K/V into padded BNSH, unpack varlen Q
+  // into LEFT-aligned padded BSNH, dispatch ApplyFlashAttention, then repack.
+  // See docs/design/webgpu_paged_attention.md §4.
+  // Pack the two int32 metadata tensors, then perform one D→H sync to derive
+  // max_seqlen_q, max_kv_len, and the per-batch seqlen_k / seqlens_q values.
+  const auto* int32_type = DataTypeImpl::GetType<int32_t>();
+  const int64_t batch_size_i64 = static_cast<int64_t>(parameters.batch_size);
+  const int64_t packed_metadata_size = 2 * batch_size_i64 + 1;
+
+  Tensor packed_metadata_gpu = context.CreateGPUTensor(
+      int32_type, TensorShape({packed_metadata_size}));
+  ORT_RETURN_IF_ERROR(RunPackMetadata(context, static_cast<uint32_t>(parameters.batch_size),
+                                      cumulative_seqlens_q, past_seqlens,
+                                      &packed_metadata_gpu));
+
+  Tensor packed_metadata_cpu = context.CreateCPUTensor(
+      int32_type, TensorShape({packed_metadata_size}));
+  ORT_RETURN_IF_ERROR(context.CopyTensor(packed_metadata_gpu, packed_metadata_cpu));
+  const int32_t* cum_ptr = packed_metadata_cpu.Data<int32_t>();
+  const int32_t* past_ptr = cum_ptr + batch_size_i64 + 1;
+
+  // Compute per-batch effective lengths and the tightest max_seqlen_q /
+  // max_kv_len bounds. FA's seqlens_k convention is the LAST VALID KV INDEX
+  // (0-based), so entry b is (past + q_len - 1); the shader reads it back as
+  // u32(seqlens_k[b]) + 1u. seqlens_q is the raw per-batch new-Q length.
+  Tensor seqlen_k_cpu = context.CreateCPUTensor(int32_type, TensorShape({batch_size_i64}));
+  int32_t* seqlen_k_ptr = seqlen_k_cpu.MutableData<int32_t>();
+  Tensor seqlens_q_cpu = context.CreateCPUTensor(int32_type, TensorShape({batch_size_i64}));
+  int32_t* seqlens_q_ptr = seqlens_q_cpu.MutableData<int32_t>();
+  int32_t max_seqlen_q_i = 0;
+  int32_t max_kv_len_i = 0;
+  const int64_t cache_capacity = static_cast<int64_t>(parameters.block_size) *
+                                 static_cast<int64_t>(parameters.max_num_blocks_per_seq);
+  if (cum_ptr[0] != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "PagedAttention (WebGPU): cumulative_sequence_length must start at 0.");
+  }
+  for (int b = 0; b < parameters.batch_size; ++b) {
+    const int64_t cum_lo = static_cast<int64_t>(cum_ptr[b]);
+    const int64_t cum_hi = static_cast<int64_t>(cum_ptr[b + 1]);
+    if (cum_hi < cum_lo) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "PagedAttention (WebGPU): cumulative_sequence_length must be non-decreasing.");
+    }
+    const int64_t q_len = cum_hi - cum_lo;
+    const int64_t past_len = static_cast<int64_t>(past_ptr[b]);
+    if (past_len < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "PagedAttention (WebGPU): past_seqlens must be non-negative.");
+    }
+    const int64_t total_kv_len = past_len + q_len;
+    if (total_kv_len > cache_capacity) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "PagedAttention (WebGPU): past_seqlens + query length exceeds the KV cache capacity.");
+    }
+    if (total_kv_len > static_cast<int64_t>(std::numeric_limits<int32_t>::max())) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "PagedAttention (WebGPU): total KV sequence length exceeds int32 range.");
+    }
+    // Keep -1 when total_kv_len is zero: the shader adds 1 after converting
+    // this last-valid-index sentinel to u32, intentionally producing zero.
+    seqlen_k_ptr[b] = static_cast<int32_t>(total_kv_len - 1);
+    seqlens_q_ptr[b] = static_cast<int32_t>(q_len);  // Raw per-batch new-Q length.
+    if (q_len > max_seqlen_q_i) {
+      max_seqlen_q_i = static_cast<int32_t>(q_len);
+    }
+    if (total_kv_len > max_kv_len_i) {
+      max_kv_len_i = static_cast<int32_t>(total_kv_len);
+    }
+  }
+  if (cum_ptr[parameters.batch_size] != parameters.token_count) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "PagedAttention (WebGPU): cumulative_sequence_length must end at token_count.");
+  }
+  const uint32_t max_seqlen_q = static_cast<uint32_t>(max_seqlen_q_i);
+  const uint32_t max_kv_len = static_cast<uint32_t>(max_kv_len_i);
+
+  // Empty-attention fast path.
+  if (max_seqlen_q == 0 || max_kv_len == 0) {
+    context.FillZero(*output);
+    return Status::OK();
+  }
+
   // Fused rotary path. Rotate Q and K into scratch tensors, then scatter the
-  // rotated K + untouched V into the paged cache. When do_rotary_ is false Q
-  // is passed through and K is scattered directly.
+  // rotated K + untouched V into the paged cache. Metadata validation above
+  // must complete before either shader can use device-derived cache positions.
   const Tensor* query_for_fa = query;
   const Tensor* key_for_scatter = key;
   Tensor rotated_query_tensor;
@@ -583,60 +668,6 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   ORT_RETURN_IF_ERROR(RunScatterKVToPagedCache(context, parameters, key_for_scatter, value,
                                                cumulative_seqlens_q, past_seqlens,
                                                block_table, key_cache_out, value_cache_out));
-
-  // Fallback attention: gather paged K/V into padded BNSH, unpack varlen Q
-  // into LEFT-aligned padded BSNH, dispatch ApplyFlashAttention, then repack.
-  // See docs/design/webgpu_paged_attention.md §4.
-  //
-    // Pack the two int32 metadata tensors, then perform one D→H sync to derive
-    // max_seqlen_q, max_kv_len, and the per-batch seqlen_k / seqlens_q values.
-  const auto* int32_type = DataTypeImpl::GetType<int32_t>();
-  const int64_t batch_size_i64 = static_cast<int64_t>(parameters.batch_size);
-    const int64_t packed_metadata_size = 2 * batch_size_i64 + 1;
-
-    Tensor packed_metadata_gpu = context.CreateGPUTensor(
-      int32_type, TensorShape({packed_metadata_size}));
-    ORT_RETURN_IF_ERROR(RunPackMetadata(context, static_cast<uint32_t>(parameters.batch_size),
-                      cumulative_seqlens_q, past_seqlens,
-                      &packed_metadata_gpu));
-
-    Tensor packed_metadata_cpu = context.CreateCPUTensor(
-      int32_type, TensorShape({packed_metadata_size}));
-    ORT_RETURN_IF_ERROR(context.CopyTensor(packed_metadata_gpu, packed_metadata_cpu));
-    const int32_t* cum_ptr = packed_metadata_cpu.Data<int32_t>();
-    const int32_t* past_ptr = cum_ptr + batch_size_i64 + 1;
-
-  // Compute per-batch effective lengths and the tightest max_seqlen_q /
-  // max_kv_len bounds. FA's seqlens_k convention is the LAST VALID KV INDEX
-  // (0-based), so entry b is (past + q_len - 1); the shader reads it back as
-  // u32(seqlens_k[b]) + 1u. seqlens_q is the raw per-batch new-Q length.
-  Tensor seqlen_k_cpu = context.CreateCPUTensor(int32_type, TensorShape({batch_size_i64}));
-  int32_t* seqlen_k_ptr = seqlen_k_cpu.MutableData<int32_t>();
-  Tensor seqlens_q_cpu = context.CreateCPUTensor(int32_type, TensorShape({batch_size_i64}));
-  int32_t* seqlens_q_ptr = seqlens_q_cpu.MutableData<int32_t>();
-  int32_t max_seqlen_q_i = 0;
-  int32_t max_kv_len_i = 0;
-  for (int b = 0; b < parameters.batch_size; ++b) {
-    const int32_t q_len = cum_ptr[b + 1] - cum_ptr[b];
-    const int32_t past_len = past_ptr[b];
-    const int32_t total_kv_len = past_len + q_len;
-    seqlen_k_ptr[b] = total_kv_len - 1;  // FA's "last valid index" convention.
-    seqlens_q_ptr[b] = q_len;            // Raw per-batch new-Q length.
-    if (q_len > max_seqlen_q_i) {
-      max_seqlen_q_i = q_len;
-    }
-    if (total_kv_len > max_kv_len_i) {
-      max_kv_len_i = total_kv_len;
-    }
-  }
-  const uint32_t max_seqlen_q = static_cast<uint32_t>(max_seqlen_q_i);
-  const uint32_t max_kv_len = static_cast<uint32_t>(max_kv_len_i);
-
-  // Empty-attention fast path.
-  if (max_seqlen_q == 0 || max_kv_len == 0) {
-    context.FillZero(*output);
-    return Status::OK();
-  }
 
   const auto* dtype = query->DataType();
 

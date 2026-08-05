@@ -204,8 +204,8 @@ class PagedAttentionPackMetadataProgram final : public Program<PagedAttentionPac
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-    {"batch_size", ProgramUniformVariableDataType::Uint32},
-    {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+      {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 };
 
 // Op contract, phased delivery plan, and reuse strategy are documented in
