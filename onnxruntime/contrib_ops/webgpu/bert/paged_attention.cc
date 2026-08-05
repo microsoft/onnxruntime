@@ -10,6 +10,7 @@
 #include "contrib_ops/webgpu/bert/attention_common.h"
 #include "contrib_ops/webgpu/bert/flash_attention.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
+#include "core/common/logging/logging.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
@@ -516,6 +517,11 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   // the input caches into the freshly allocated output tensors so untouched slots
   // are preserved through the op. Done before the empty-query fast path so the
   // outputs are correctly initialized even when there is no scatter work to do.
+  if (!key_cache_aliased || !value_cache_aliased) {
+    LOGS_DEFAULT(WARNING) << "PagedAttention (WebGPU): cache outputs are not aliased with cache inputs; "
+                             "falling back to a GPU cache copy. Configure IO-binding to alias the cache "
+                             "buffers in production to avoid this per-run copy.";
+  }
   if (!key_cache_aliased) {
     ORT_RETURN_IF_ERROR(context.CopyTensor(*key_cache, *key_cache_out));
   }

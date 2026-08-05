@@ -266,7 +266,7 @@ layout, with GenAI's builder gate flipped to allow `-e webgpu`.
   reads it back to the host each step to compute `max_seqlen_q` / `max_kv_len`
   (grid dims + scratch sizes) and to build `seqlen_k_cpu`. That D→H sync + per-step scratch
   alloc are the two hard blockers for graph capture (see §4 "Host-visible values
-  vs. host-visible values" — this is analogous to how the CUDA PA op is
+  and graph capture" — this is analogous to how the CUDA PA op is
   blocked by its `cudaMemcpyAsync` of `cumulative_seqlens_q`). To lift both:
 
     1. **Consume `attention_metadata: int32[2]` on CPU** (input 16 under
@@ -330,14 +330,15 @@ bucketing) with `wgpuGraph` in place of `cudaGraph`. Prerequisite: Phase 2's
 
 ```
 onnxruntime/contrib_ops/webgpu/bert/
-  paged_attention.h                                     # kernel class decl (Phase 0)
-  paged_attention.cc                                    # kernel class impl + dispatch (Phase 0 stub, filled Phase 1)
-  paged_attention_common.h                              # WebgpuAttentionParameters overload + program uniforms (Phase 1)
-  paged_reshape_and_cache.wgsl.template                 # K/V paged writer (Phase 1)
-  paged_flash_attention_decode.wgsl.template            # paged variant of flash_attention_decode_qkv (Phase 1)
-  paged_flash_attention_decode_reduce.wgsl.template     # paged variant of the reduce (Phase 1)
-  paged_gather_kv.wgsl.template                         # gather-then-flash prefill scratch (Phase 1)
-  paged_flash_attention_prefill.wgsl.template           # fused paged prefill (Phase 2)
+  paged_attention.h                                      # kernel and program declarations
+  paged_attention.cc                                     # host dispatch and validation
+  paged_attention_pack_metadata.wgsl.template            # pack metadata for one D→H readback
+  paged_attention_split_packed_qkv.wgsl.template         # split packed QKV input
+  paged_attention_rotary.wgsl.template                  # rotary embedding for Q or K
+  paged_attention_scatter_kv.wgsl.template               # scatter K/V into paged cache
+  paged_attention_gather_kv.wgsl.template                # gather paged K/V into padded scratch
+  paged_attention_unpack_query.wgsl.template             # unpack packed Q into LEFT-aligned BSNH
+  paged_attention_repack_output.wgsl.template            # repack padded output to packed output
 ```
 
 Shared helper (already exists on CUDA, refactor location in Phase 1):
@@ -352,24 +353,30 @@ onnxruntime/contrib_ops/cpu/bert/paged_attention_helper.h   # provider-neutral s
 
 ```
 ComputeInternal:
-    ValidateInputs (shared helper)
-    if token_count == 0:
-        emit zero-sized output; return OK
-    if is_packed_qkv or do_rotary:
-        RunSplitPackedQKVAndRotary()
-    RunReshapeAndCache()
-    if max_query_len == 1:
-        RunPagedFlashDecodeQKV()
-        RunPagedFlashDecodeReduce()
-    else:
-        RunGatherAndExpandPagedKVCache()   # -> [B, kv_num_heads, max_kv_len, head_size]
-        RunUnpackVarlenQuery()             # -> [B, num_heads, max_q_len, head_size]
-        ApplyFlashAttention(...)
+  ValidateInputs (shared helper)
+  copy non-aliased cache inputs to cache outputs
+  if token_count == 0:
+    return OK
+  if is_packed_qkv:
+    RunSplitPackedQKV()
+  read and validate cumulative_sequence_length / past_seqlens once
+  if max_seqlen_q == 0:
+    fill output with zeros; return OK
+  if do_rotary:
+    RunRotaryEmbedding() for Q and K
+  RunScatterKVToPagedCache()
+  RunGatherKV()          # -> [B, kv_num_heads, max_kv_len, head_size]
+  RunUnpackQuery()       # -> [B, max_seqlen_q, num_heads, head_size]
+  ApplyFlashAttention()  # decode and prefill tiers selected internally
+  RunRepackOutput()      # -> [token_count, hidden_size]
     return OK
 ```
 
-`max_query_len` — v1 derives it from `cumulative_seqlens_q` (D→H sync once
-per node); Phase 2 uses `attention_metadata` when available.
+`max_seqlen_q` and `max_kv_len` are derived from one packed metadata D→H
+readback per node. `ApplyFlashAttention` selects its decode or prefill tier
+internally based on the padded Q sequence length. Phase 2 uses
+`attention_metadata` and GPU-side metadata preparation to remove this host
+readback and make the path graph-capture-safe.
 
 Feature guards (v1 rejects with `NOT_IMPLEMENTED` and a specific message):
 
@@ -385,7 +392,7 @@ Feature guards (v1 rejects with `NOT_IMPLEMENTED` and a specific message):
 | Pitfall | Mitigation |
 |---|---|
 | WGSL has no dynamic 4-D array indexing into storage buffers. | Linearize the cache addressing in the shader: `((block_row * block_size + in_block) * kv_num_heads + head) * head_size + c`. Pass `block_size`, `kv_num_heads`, `head_size`, `max_num_blocks_per_seq` as uniforms. |
-| Storage buffer binding max is adapter-dependent (128 MiB on some). | Paged representation naturally partitions the cache into per-layer bindings; never bind the full pool. |
+| Storage buffer binding max is adapter-dependent (128 MiB on some). | The paged cache is addressed through per-layer bindings, and the gather-then-flash scratch buffers are checked against `maxStorageBufferBindingSize` before allocation. |
 | WebGPU graph capture forbids host-visible reads mid-graph. | Consume `attention_metadata` (Phase 2) instead of D→H syncing `cumulative_seqlens_q`. |
 | Subgroup width varies (16 Intel, 32 NV/AMD, 64 Qualcomm/Apple). | Copy the `is_qualcomm`/`is_nvidia`/`is_apple`/`has_subgroups` cache-hint knobs from `FlashAttentionProgram`. |
 

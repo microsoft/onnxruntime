@@ -384,8 +384,10 @@ def paged_attention_func(
         io_binding.bind_ortvalue_output("key_cache_out", ort_inputs["key_cache"])
         io_binding.bind_ortvalue_output("value_cache_out", ort_inputs["value_cache"])
     else:
-        # Rely on MayInplace to reuse the input buffers so the output reflects
-        # the updated (past + new-token) cache slots.
+        # These cache tensors are graph inputs, so the allocation planner does
+        # not guarantee aliasing. Bind separate outputs to exercise the
+        # WebGPU copy fallback; production IO-binding should alias these
+        # buffers to avoid the extra cache copy.
         io_binding.bind_output("key_cache_out")
         io_binding.bind_output("value_cache_out")
     ort_session.run_with_iobinding(io_binding)
@@ -897,11 +899,6 @@ class TestPagedAttentionMEA(unittest.TestCase):
 # Config matrix is deliberately small (per-op session-create through Dawn is
 # heavier than CUDA). 5e-3 abs/rel tolerance matches CUDA at head_size=128.
 # -----------------------------------------------------------------------------
-def rotary_options_for_webgpu():
-    # Rotary reference uses triton (rotary_flash) which is Linux-only.
-    return [(False, False)] if platform.system() != "Linux" else [(True, False), (True, True), (False, False)]
-
-
 def paged_attention_test_cases_webgpu():
     """Hand-picked config matrix for the WebGPU EP. Kept small because the
     WebGPU EP dispatches per-op through Dawn and each session-create is
@@ -923,7 +920,7 @@ def paged_attention_test_cases_webgpu():
             for n, n2 in num_h:
                 for h in h_sizes:
                     for block_size in block_sizes:
-                        for rotary, rotary_interleaved in rotary_options_for_webgpu():
+                        for rotary, rotary_interleaved in rotary_options_for_current_os():
                             for packed in [False, True]:
                                 # Rotary requires head_size % 16 == 0 (matches CUDA harness).
                                 if rotary and h % 16 > 0:
