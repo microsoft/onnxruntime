@@ -7,7 +7,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.16.3" />
-    <PackageReference Include="Sixlabors.ImageSharp" Version="2.1.9" />
+    <PackageReference Include="Sixlabors.ImageSharp" Version="2.1.10" />
   </ItemGroup>
 
 </Project>
