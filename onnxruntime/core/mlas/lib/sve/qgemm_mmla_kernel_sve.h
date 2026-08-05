@@ -12,7 +12,7 @@ Abstract:
 
     Shared SVE i8mm compute core for the int8 QGEMM kernels. One templated
     routine covers both the signed (S8S8, svmmla_s32) and unsigned-A / signed-B
-    (U8S8, svusmmla_s32) cases; the two MLAS kernel-type wrappers
+    (U8S8, svmmla_u32) cases; the two MLAS kernel-type wrappers
     (qgemm_kernel_smmla_sve.cpp and qgemm_kernel_ummla_sve.cpp) both delegate
     here, so there is a single optimized implementation.
 
@@ -25,18 +25,40 @@ Abstract:
     (ZeroPointB[j] == 1 when the pointer is null / per-tensor). Integer math is
     exact, so the result is bit-identical to the NEON kernels.
 
-    Performance shape (transliterated from aarch64/QgemmS8S8KernelSmmla.S): for an
-    8-row group all 16 accumulators (4 row-pairs x 4 col-pairs) are kept resident
-    so the packed B panel is read ONCE per K-block, and the 2x2 MMLA tiles are
-    deinterleaved to row-major with svuzp1/svuzp2 (no scalar round-trip). Each
-    svmmla consumes one 128-bit segment; loads are predicated to 16 bytes so the
-    kernel is correct at any SVE vector length (uses only the first segment).
+    VECTOR-LENGTH AGNOSTIC. `svmmla` is a segment-wise operation: each 128-bit
+    segment multiplies a 2x8 block of A by a 2x8 block of B into a 2x2 block of
+    C. The packed layouts make this scale for free, with no repacking:
+
+      packed B: [8-col panel][k-block][col-pair][2 cols x 8 k] - col-pair
+                stride 16 B, k-block stride 64 B. So one full-width load puts
+                *consecutive column pairs in consecutive segments*.
+      packed A: the mirror - row-pair stride 16 B, k-block stride 64 B. So one
+                `svld1rq` (LD1RQB) replicates a row-pair quad to *every*
+                segment.
+
+    Combining the two, a single svmmla computes 2 rows x (2 columns per
+    segment): 2 columns at VL=128, 4 at VL=256, 8 at VL=512 - the same
+    instruction count covers proportionally more of C as the vector grows.
+    The uzp1/uzp2 output stage needs no change either: uzp1 over 64-bit
+    granules gathers the even (row r0) halves across *all* segments, so it
+    yields 2x as many contiguous output columns at 2x the vector length.
+
+    Scaling bound: a k-block is 64 bytes and the final panel of a k-slice ends
+    exactly at the end of the packed buffer, so operand loads are capped at 64
+    bytes. The kernel therefore scales fully through VL=512 and stays correct
+    (just without further scaling) at any larger VL. Going beyond would need a
+    cross-segment reduction at the end, since a wider load would span into the
+    next k-block.
+
+    Everything here is base SVE - no SVE2 - because Neoverse V1 (Graviton3),
+    the primary wide-vector target, implements SVE only.
 
 --*/
 
 #pragma once
 
 #include <algorithm>
+#include <cstring>
 #include <arm_sve.h>
 
 //
@@ -63,98 +85,151 @@ MlasQGemmMmlaSve(svint32_t acc, svint8_t a, svint8_t b)
 }
 
 //
-// Build the seed for one 2x2 col-pair tile: [r0c0, r0c1, r1c0, r1c1] with
-// value RowSum[r]*ZeroPointB[c] + ColumnSum[c]. c0 is the pair's first column.
+// Number of 128-bit segments an operand load covers, i.e. how many column
+// pairs one B load feeds. Capped at the 64-byte k-block so a load never runs
+// past the end of the packed buffer (see the scaling bound above).
+//
+static MLAS_FORCEINLINE size_t
+MlasQGemmSveSegments(void)
+{
+    const size_t VectorBytes = svcntb();
+    return (VectorBytes < 64 ? VectorBytes : 64) / 16;
+}
+
+//
+// Address of the packed-B bytes for `col` at k-block `kb`. Columns live in
+// 8-wide panels of PackedCountK*64 bytes; within a panel each k-block is 64
+// bytes holding the 8 columns in order, 8 bytes each.
+//
+static MLAS_FORCEINLINE const int8_t*
+MlasQGemmSveBPtr(const int8_t* PackedB, size_t BGroupStride, size_t kb, size_t col)
+{
+    return PackedB + (col / 8) * BGroupStride + kb * 64 + (col % 8) * 8;
+}
+
+//
+// Column to load packed B from. A pass can span more columns than the caller
+// asked for, and the panels past CountN were never allocated, so accumulators
+// that are entirely out of range reload the last valid aligned column instead.
+// Their results are discarded by the store mask, and the substitute column is
+// a multiple of ColsPerAcc, so the load still sits inside one k-block.
+//
+static MLAS_FORCEINLINE size_t
+MlasQGemmSveSafeCol(size_t col, size_t CountN, size_t ColsPerAcc)
+{
+    return (col < CountN) ? col : (((CountN - 1) / ColsPerAcc) * ColsPerAcc);
+}
+
+//
+// One packed-A row-pair quad (2 rows x 8 k), replicated to every segment so
+// all segments compute the same rows against different columns.
+//
+static MLAS_FORCEINLINE svint8_t
+MlasQGemmSveLoadARowPair(const int8_t* aptr)
+{
+    return svld1rq_s8(svptrue_b8(), aptr);
+}
+
+//
+// Same, for a lone row (Rows == 1): the packed group holds only 8 bytes per
+// k-block, so the quad is [row0 k0..k7, zero] - the zero half lands in the
+// mmla's "row 1" lanes, which are never stored.
+//
+static MLAS_FORCEINLINE svint8_t
+MlasQGemmSveLoadASingleRow(const int8_t* aptr)
+{
+    uint64_t Row;
+    std::memcpy(&Row, aptr, sizeof(Row));
+    return svreinterpret_s8_u64(svzip1_u64(svdup_n_u64(Row), svdup_n_u64(0)));
+}
+
+//
+// RowSum pattern for a row pair: [rs0, rs0, rs1, rs1] replicated to every
+// segment, so it pairs lane-wise with the per-segment [ca, cb, ca, cb] column
+// terms. Hoisted out of the column loop.
 //
 static MLAS_FORCEINLINE svint32_t
-MlasQGemmSeedTileColSve(size_t r0, size_t r1, size_t Rows, size_t c0,
-                        const int32_t* RowSumBuffer, const int32_t* ColumnSumBuffer,
-                        const int32_t* ZeroPointB, svbool_t pgTile)
+MlasQGemmSveRowSumPattern(size_t r0, size_t r1, size_t Rows, const int32_t* RowSumBuffer)
 {
     const int32_t rs0 = RowSumBuffer[r0];
     const int32_t rs1 = (r1 < Rows) ? RowSumBuffer[r1] : 0;
-    const size_t c1 = c0 + 1;
-    const int32_t zpb0 = ZeroPointB ? ZeroPointB[c0] : 1;
-    const int32_t zpb1 = ZeroPointB ? ZeroPointB[c1] : 1;
-    const int32_t cs0 = ColumnSumBuffer[c0];
-    const int32_t cs1 = ColumnSumBuffer[c1];
-    const int32_t init[4] = {
-        rs0 * zpb0 + cs0,
-        rs0 * zpb1 + cs1,
-        rs1 * zpb0 + cs0,
-        rs1 * zpb1 + cs1,
-    };
-    return svld1_s32(pgTile, init);
+    const int32_t Quad[4] = {rs0, rs0, rs1, rs1};
+    return svld1rq_s32(svptrue_b32(), Quad);
 }
 
+//
+// Seed one accumulator: per 128-bit segment [r0ca, r0cb, r1ca, r1cb] holding
+// RowSum[r]*ZeroPointB[c] + ColumnSum[c], where (ca, cb) is that segment's
+// column pair. ColumnSum and ZeroPointB are read contiguously and expanded to
+// the segment pattern with zip1 over 64-bit granules:
+//   [c0,c1,c2,c3,..] -> [c0,c1,c0,c1, c2,c3,c2,c3, ..]
+// The loads are predicated to the columns that actually exist, so this never
+// reads past the caller's buffers.
+//
 static MLAS_FORCEINLINE svint32_t
-MlasQGemmSeedTileSve(size_t r0, size_t r1, size_t Rows, size_t nn, size_t j,
-                     const int32_t* RowSumBuffer, const int32_t* ColumnSumBuffer,
-                     const int32_t* ZeroPointB, svbool_t pgTile)
+MlasQGemmSveSeed(svint32_t RowSumPattern, size_t c0, size_t ColsValid,
+                 const int32_t* ColumnSumBuffer, const int32_t* ZeroPointB)
 {
-    return MlasQGemmSeedTileColSve(r0, r1, Rows, nn + 2 * j,
-                                   RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
+    const svbool_t pgc = svwhilelt_b32_u64(uint64_t(0), uint64_t(ColsValid));
+
+    const svuint64_t cs = svreinterpret_u64_s32(svld1_s32(pgc, ColumnSumBuffer + c0));
+    const svint32_t ColumnTerm = svreinterpret_s32_u64(svzip1_u64(cs, cs));
+
+    svint32_t ZeroPointTerm;
+    if (ZeroPointB != nullptr) {
+        const svuint64_t z = svreinterpret_u64_s32(svld1_s32(pgc, ZeroPointB + c0));
+        ZeroPointTerm = svreinterpret_s32_u64(svzip1_u64(z, z));
+    } else {
+        ZeroPointTerm = svdup_n_s32(1);
+    }
+
+    return svmla_s32_x(svptrue_b32(), ColumnTerm, RowSumPattern, ZeroPointTerm);
 }
 
 //
-// Store one output row's up-to-8 columns. At VL==128 an svint32_t holds 4
-// lanes, so the row is written as two 4-column halves under a length predicate.
-// `lo` holds columns 0..3, `hi` holds columns 4..7.
+// Deinterleave two adjacent accumulators into output rows and store. Each
+// accumulator holds, per segment, the 2x2 tile [r0ca, r0cb, r1ca, r1cb]; uzp1
+// over 64-bit granules gathers every segment's r0 half (and uzp2 the r1 half),
+// producing 2 * (columns per accumulator) contiguous output columns. Stores are
+// masked to the columns that remain, and accumulate into C when !ZeroMode.
 //
 static MLAS_FORCEINLINE void
-MlasQGemmStoreRowSve(int32_t* dst, size_t ColsThis, bool ZeroMode, svint32_t lo, svint32_t hi)
+MlasQGemmSveStoreAccPair(int32_t* C, size_t ldc, size_t r0, size_t r1, size_t Rows,
+                         size_t ColBase, size_t ColsValid, bool ZeroMode,
+                         svint32_t tA, svint32_t tB)
 {
-    {
-        const size_t cols = std::min<size_t>(4, ColsThis);
-        const svbool_t pg = svwhilelt_b32_u64(uint64_t(0), uint64_t(cols));
-        svint32_t v = lo;
-        if (!ZeroMode) {
-            v = svadd_s32_x(pg, v, svld1_s32(pg, dst));
-        }
-        svst1_s32(pg, dst, v);
+    if (ColsValid == 0) {
+        return;
     }
-    if (ColsThis > 4) {
-        const size_t cols = ColsThis - 4;
-        const svbool_t pg = svwhilelt_b32_u64(uint64_t(0), uint64_t(cols));
-        svint32_t v = hi;
-        if (!ZeroMode) {
-            v = svadd_s32_x(pg, v, svld1_s32(pg, dst + 4));
-        }
-        svst1_s32(pg, dst + 4, v);
+
+    const svuint64_t a = svreinterpret_u64_s32(tA);
+    const svuint64_t b = svreinterpret_u64_s32(tB);
+    const svint32_t Row0 = svreinterpret_s32_u64(svuzp1_u64(a, b));
+    const svint32_t Row1 = svreinterpret_s32_u64(svuzp2_u64(a, b));
+
+    const svbool_t pg = svwhilelt_b32_u64(uint64_t(0), uint64_t(ColsValid));
+
+    int32_t* d0 = C + r0 * ldc + ColBase;
+    svint32_t v0 = Row0;
+    if (!ZeroMode) {
+        v0 = svadd_s32_x(pg, v0, svld1_s32(pg, d0));
     }
-}
+    svst1_s32(pg, d0, v0);
 
-//
-// Deinterleave a row-pair's four 2x2 col-pair tiles (t0..t3 for col-pairs 0..3)
-// into row-major and store rows r0 (and r1 when valid). Mirrors the NEON
-// `uzp1/uzp2 .2d` output stage: at VL==128 the 128-bit view is 2x int64, so
-// uzp1(int64) gathers the r0 halves and uzp2 the r1 halves.
-//
-static MLAS_FORCEINLINE void
-MlasQGemmStoreRowPairSve(int32_t* C, size_t ldc, size_t r0, size_t r1, size_t Rows,
-                         size_t nn, size_t ColsThis, bool ZeroMode,
-                         svint32_t t0, svint32_t t1, svint32_t t2, svint32_t t3)
-{
-    const svuint64_t u0 = svreinterpret_u64_s32(t0);
-    const svuint64_t u1 = svreinterpret_u64_s32(t1);
-    const svuint64_t u2 = svreinterpret_u64_s32(t2);
-    const svuint64_t u3 = svreinterpret_u64_s32(t3);
-
-    const svint32_t r0lo = svreinterpret_s32_u64(svuzp1_u64(u0, u1));  // cols 0..3
-    const svint32_t r0hi = svreinterpret_s32_u64(svuzp1_u64(u2, u3));  // cols 4..7
-    const svint32_t r1lo = svreinterpret_s32_u64(svuzp2_u64(u0, u1));
-    const svint32_t r1hi = svreinterpret_s32_u64(svuzp2_u64(u2, u3));
-
-    MlasQGemmStoreRowSve(C + r0 * ldc + nn, ColsThis, ZeroMode, r0lo, r0hi);
     if (r1 < Rows) {
-        MlasQGemmStoreRowSve(C + r1 * ldc + nn, ColsThis, ZeroMode, r1lo, r1hi);
+        int32_t* d1 = C + r1 * ldc + ColBase;
+        svint32_t v1 = Row1;
+        if (!ZeroMode) {
+            v1 = svadd_s32_x(pg, v1, svld1_s32(pg, d1));
+        }
+        svst1_s32(pg, d1, v1);
     }
 }
 
 //
-// Shared int8 QGEMM inner kernel. AUnsigned selects svusmmla (U8S8) vs svmmla
-// (S8S8). Returns the number of rows handled (8/4/2/1), matching the driver's
-// packed-A advance contract.
+// Shared int8 QGEMM inner kernel. AUnsigned selects svmmla_u32 (U8S8) vs
+// svmmla_s32 (S8S8). Returns the number of rows handled (12/8/4/2/1), matching
+// the driver's packed-A advance contract.
 //
 template <bool AUnsigned>
 static MLAS_FORCEINLINE size_t
@@ -179,610 +254,355 @@ MlasQGemmMmlaKernelSve(const uint8_t* A,
 #endif
         (CountM >= 8) ? 8 : (CountM >= 4) ? 4 : (CountM >= 2) ? 2 : 1;
 
-    const svbool_t pg16 = svptrue_pat_b8(SV_VL16);
-    const svbool_t pgTile = svptrue_pat_b32(SV_VL4);
-
     const int8_t* PackedA = reinterpret_cast<const int8_t*>(A);
     const int8_t* PackedB = reinterpret_cast<const int8_t*>(B);
     const size_t BGroupStride = PackedCountK * 64;
 
+    //
+    // Vector-length derived geometry. `Segments` column pairs ride in one
+    // operand load, so one accumulator covers ColsPerAcc columns and an
+    // accumulator pair stores twice that.
+    //
+    const size_t Segments = MlasQGemmSveSegments();
+    const size_t LoadBytes = Segments * 16;
+    const size_t ColsPerAcc = Segments * 2;
+    const svbool_t pgB = svwhilelt_b8_u64(uint64_t(0), uint64_t(LoadBytes));
+
 #if defined(MLAS_SVE_QGEMM_TILE_12X8) && MLAS_SVE_QGEMM_TILE_12X8
     if (Rows == 12) {
         //
-        // EXPERIMENT (taller register blocking): 12x8 tile = 24 resident
-        // accumulators (6 row-pairs x 4 col-pairs), 24 svmmla per K-block
-        // against 10 operand loads (4 B kept live, 6 A streamed) = 2.4
-        // MMLA/load. Each invocation covers 12 output rows, so an M-stripe
-        // takes fewer full sweeps of the packed-B panel than the 8-row tile.
-        //
-        // Packed A for CountM in [12,16) is an 8-group followed by a 4-group:
-        //   row-pairs 0-3: A8 + kb*64 + ip*16        (8-group, 64 B/K-block)
-        //   row-pairs 4-5: A4 + kb*32 + (ip-4)*16    (4-group, 32 B/K-block)
+        // 6 row-pairs x 4 column-groups = 24 accumulators. CopyPackA emitted an
+        // 8-group (64 B per K-block) followed by a 4-group (32 B per K-block).
         //
         const int8_t* A8 = PackedA;
         const int8_t* A4 = PackedA + PackedCountK * 64;
+        const size_t ColsPerPass = 4 * ColsPerAcc;
 
-        size_t g = 0;
-        for (size_t nn = 0; nn < CountN; nn += 8, ++g) {
-            const size_t ColsThis = std::min<size_t>(8, CountN - nn);
-            const int8_t* Bgroup = PackedB + g * BGroupStride;
+        const svint32_t rp0 = MlasQGemmSveRowSumPattern(0, 1, Rows, RowSumBuffer);
+        const svint32_t rp1 = MlasQGemmSveRowSumPattern(2, 3, Rows, RowSumBuffer);
+        const svint32_t rp2 = MlasQGemmSveRowSumPattern(4, 5, Rows, RowSumBuffer);
+        const svint32_t rp3 = MlasQGemmSveRowSumPattern(6, 7, Rows, RowSumBuffer);
+        const svint32_t rp4 = MlasQGemmSveRowSumPattern(8, 9, Rows, RowSumBuffer);
+        const svint32_t rp5 = MlasQGemmSveRowSumPattern(10, 11, Rows, RowSumBuffer);
 
-            svint32_t v00 = MlasQGemmSeedTileSve(0, 1, Rows, nn, 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v01 = MlasQGemmSeedTileSve(0, 1, Rows, nn, 1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v02 = MlasQGemmSeedTileSve(0, 1, Rows, nn, 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v03 = MlasQGemmSeedTileSve(0, 1, Rows, nn, 3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v10 = MlasQGemmSeedTileSve(2, 3, Rows, nn, 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v11 = MlasQGemmSeedTileSve(2, 3, Rows, nn, 1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v12 = MlasQGemmSeedTileSve(2, 3, Rows, nn, 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v13 = MlasQGemmSeedTileSve(2, 3, Rows, nn, 3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v20 = MlasQGemmSeedTileSve(4, 5, Rows, nn, 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v21 = MlasQGemmSeedTileSve(4, 5, Rows, nn, 1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v22 = MlasQGemmSeedTileSve(4, 5, Rows, nn, 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v23 = MlasQGemmSeedTileSve(4, 5, Rows, nn, 3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v30 = MlasQGemmSeedTileSve(6, 7, Rows, nn, 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v31 = MlasQGemmSeedTileSve(6, 7, Rows, nn, 1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v32 = MlasQGemmSeedTileSve(6, 7, Rows, nn, 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v33 = MlasQGemmSeedTileSve(6, 7, Rows, nn, 3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v40 = MlasQGemmSeedTileSve(8, 9, Rows, nn, 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v41 = MlasQGemmSeedTileSve(8, 9, Rows, nn, 1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v42 = MlasQGemmSeedTileSve(8, 9, Rows, nn, 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v43 = MlasQGemmSeedTileSve(8, 9, Rows, nn, 3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v50 = MlasQGemmSeedTileSve(10, 11, Rows, nn, 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v51 = MlasQGemmSeedTileSve(10, 11, Rows, nn, 1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v52 = MlasQGemmSeedTileSve(10, 11, Rows, nn, 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t v53 = MlasQGemmSeedTileSve(10, 11, Rows, nn, 3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
+        for (size_t nn = 0; nn < CountN; nn += ColsPerPass) {
+            const size_t c0 = nn;
+            const size_t c1 = nn + ColsPerAcc;
+            const size_t c2 = nn + 2 * ColsPerAcc;
+            const size_t c3 = nn + 3 * ColsPerAcc;
 
-            //
-            // One K-block: 4 B loads kept live + 6 streamed A row-pair vectors
-            // (each loaded immediately before its 4 uses) feeding the 24
-            // resident accumulators. Expressed as a macro so the K-unroll
-            // variant replicates the exact straight-line pattern the register
-            // allocator already handles without spills.
-            //
-#if defined(MLAS_SVE_QGEMM_PREFETCH_B) && MLAS_SVE_QGEMM_PREFETCH_B
-#define MLAS_QGEMM_12X8_PF(KB) __builtin_prefetch(Bgroup + ((KB) + 1) * 64, 0, 3);
-#else
-#define MLAS_QGEMM_12X8_PF(KB)
-#endif
-#define MLAS_QGEMM_12X8_KBLOCK(KB)                                            \
-            {                                                                 \
-                const size_t kb_ = (KB);                                      \
-                const int8_t* bptr = Bgroup + kb_ * 64;                       \
-                MLAS_QGEMM_12X8_PF(kb_)                                       \
-                const svint8_t b0 = svld1_s8(pg16, bptr + 0);                 \
-                const svint8_t b1 = svld1_s8(pg16, bptr + 16);                \
-                const svint8_t b2 = svld1_s8(pg16, bptr + 32);                \
-                const svint8_t b3 = svld1_s8(pg16, bptr + 48);                \
-                {                                                             \
-                    const svint8_t a = svld1_s8(pg16, A8 + kb_ * 64 + 0);     \
-                    v00 = MlasQGemmMmlaSve<AUnsigned>(v00, a, b0);            \
-                    v01 = MlasQGemmMmlaSve<AUnsigned>(v01, a, b1);            \
-                    v02 = MlasQGemmMmlaSve<AUnsigned>(v02, a, b2);            \
-                    v03 = MlasQGemmMmlaSve<AUnsigned>(v03, a, b3);            \
-                }                                                             \
-                {                                                             \
-                    const svint8_t a = svld1_s8(pg16, A8 + kb_ * 64 + 16);    \
-                    v10 = MlasQGemmMmlaSve<AUnsigned>(v10, a, b0);            \
-                    v11 = MlasQGemmMmlaSve<AUnsigned>(v11, a, b1);            \
-                    v12 = MlasQGemmMmlaSve<AUnsigned>(v12, a, b2);            \
-                    v13 = MlasQGemmMmlaSve<AUnsigned>(v13, a, b3);            \
-                }                                                             \
-                {                                                             \
-                    const svint8_t a = svld1_s8(pg16, A8 + kb_ * 64 + 32);    \
-                    v20 = MlasQGemmMmlaSve<AUnsigned>(v20, a, b0);            \
-                    v21 = MlasQGemmMmlaSve<AUnsigned>(v21, a, b1);            \
-                    v22 = MlasQGemmMmlaSve<AUnsigned>(v22, a, b2);            \
-                    v23 = MlasQGemmMmlaSve<AUnsigned>(v23, a, b3);            \
-                }                                                             \
-                {                                                             \
-                    const svint8_t a = svld1_s8(pg16, A8 + kb_ * 64 + 48);    \
-                    v30 = MlasQGemmMmlaSve<AUnsigned>(v30, a, b0);            \
-                    v31 = MlasQGemmMmlaSve<AUnsigned>(v31, a, b1);            \
-                    v32 = MlasQGemmMmlaSve<AUnsigned>(v32, a, b2);            \
-                    v33 = MlasQGemmMmlaSve<AUnsigned>(v33, a, b3);            \
-                }                                                             \
-                {                                                             \
-                    const svint8_t a = svld1_s8(pg16, A4 + kb_ * 32 + 0);     \
-                    v40 = MlasQGemmMmlaSve<AUnsigned>(v40, a, b0);            \
-                    v41 = MlasQGemmMmlaSve<AUnsigned>(v41, a, b1);            \
-                    v42 = MlasQGemmMmlaSve<AUnsigned>(v42, a, b2);            \
-                    v43 = MlasQGemmMmlaSve<AUnsigned>(v43, a, b3);            \
-                }                                                             \
-                {                                                             \
-                    const svint8_t a = svld1_s8(pg16, A4 + kb_ * 32 + 16);    \
-                    v50 = MlasQGemmMmlaSve<AUnsigned>(v50, a, b0);            \
-                    v51 = MlasQGemmMmlaSve<AUnsigned>(v51, a, b1);            \
-                    v52 = MlasQGemmMmlaSve<AUnsigned>(v52, a, b2);            \
-                    v53 = MlasQGemmMmlaSve<AUnsigned>(v53, a, b3);            \
-                }                                                             \
-            }
+            const size_t v0 = (CountN > c0) ? std::min(ColsPerAcc, CountN - c0) : 0;
+            const size_t v1 = (CountN > c1) ? std::min(ColsPerAcc, CountN - c1) : 0;
+            const size_t v2 = (CountN > c2) ? std::min(ColsPerAcc, CountN - c2) : 0;
+            const size_t v3 = (CountN > c3) ? std::min(ColsPerAcc, CountN - c3) : 0;
 
-#if defined(MLAS_SVE_QGEMM_K_UNROLL2) && MLAS_SVE_QGEMM_K_UNROLL2
-            size_t kb = 0;
-            for (; kb + 2 <= PackedCountK; kb += 2) {
-                MLAS_QGEMM_12X8_KBLOCK(kb)
-                MLAS_QGEMM_12X8_KBLOCK(kb + 1)
-            }
-            if (kb < PackedCountK) {
-                MLAS_QGEMM_12X8_KBLOCK(kb)
-            }
-#else
+            const size_t l0 = MlasQGemmSveSafeCol(c0, CountN, ColsPerAcc);
+            const size_t l1 = MlasQGemmSveSafeCol(c1, CountN, ColsPerAcc);
+            const size_t l2 = MlasQGemmSveSafeCol(c2, CountN, ColsPerAcc);
+            const size_t l3 = MlasQGemmSveSafeCol(c3, CountN, ColsPerAcc);
+
+            svint32_t a00 = MlasQGemmSveSeed(rp0, c0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t a01 = MlasQGemmSveSeed(rp0, c1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t a02 = MlasQGemmSveSeed(rp0, c2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t a03 = MlasQGemmSveSeed(rp0, c3, v3, ColumnSumBuffer, ZeroPointB);
+            svint32_t a10 = MlasQGemmSveSeed(rp1, c0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t a11 = MlasQGemmSveSeed(rp1, c1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t a12 = MlasQGemmSveSeed(rp1, c2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t a13 = MlasQGemmSveSeed(rp1, c3, v3, ColumnSumBuffer, ZeroPointB);
+            svint32_t a20 = MlasQGemmSveSeed(rp2, c0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t a21 = MlasQGemmSveSeed(rp2, c1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t a22 = MlasQGemmSveSeed(rp2, c2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t a23 = MlasQGemmSveSeed(rp2, c3, v3, ColumnSumBuffer, ZeroPointB);
+            svint32_t a30 = MlasQGemmSveSeed(rp3, c0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t a31 = MlasQGemmSveSeed(rp3, c1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t a32 = MlasQGemmSveSeed(rp3, c2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t a33 = MlasQGemmSveSeed(rp3, c3, v3, ColumnSumBuffer, ZeroPointB);
+            svint32_t a40 = MlasQGemmSveSeed(rp4, c0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t a41 = MlasQGemmSveSeed(rp4, c1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t a42 = MlasQGemmSveSeed(rp4, c2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t a43 = MlasQGemmSveSeed(rp4, c3, v3, ColumnSumBuffer, ZeroPointB);
+            svint32_t a50 = MlasQGemmSveSeed(rp5, c0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t a51 = MlasQGemmSveSeed(rp5, c1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t a52 = MlasQGemmSveSeed(rp5, c2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t a53 = MlasQGemmSveSeed(rp5, c3, v3, ColumnSumBuffer, ZeroPointB);
+
+            // Column bases are loop-invariant; only the K-block offset moves.
+            const int8_t* bp0 = MlasQGemmSveBPtr(PackedB, BGroupStride, 0, l0);
+            const int8_t* bp1 = MlasQGemmSveBPtr(PackedB, BGroupStride, 0, l1);
+            const int8_t* bp2 = MlasQGemmSveBPtr(PackedB, BGroupStride, 0, l2);
+            const int8_t* bp3 = MlasQGemmSveBPtr(PackedB, BGroupStride, 0, l3);
+
             for (size_t kb = 0; kb < PackedCountK; ++kb) {
-                MLAS_QGEMM_12X8_KBLOCK(kb)
-            }
-#endif
-#undef MLAS_QGEMM_12X8_KBLOCK
-#undef MLAS_QGEMM_12X8_PF
+                const size_t koff = kb * 64;
+                const svint8_t b0 = svld1_s8(pgB, bp0 + koff);
+                const svint8_t b1 = svld1_s8(pgB, bp1 + koff);
+                const svint8_t b2 = svld1_s8(pgB, bp2 + koff);
+                const svint8_t b3 = svld1_s8(pgB, bp3 + koff);
 
-            MlasQGemmStoreRowPairSve(C, ldc, 0, 1, Rows, nn, ColsThis, ZeroMode, v00, v01, v02, v03);
-            MlasQGemmStoreRowPairSve(C, ldc, 2, 3, Rows, nn, ColsThis, ZeroMode, v10, v11, v12, v13);
-            MlasQGemmStoreRowPairSve(C, ldc, 4, 5, Rows, nn, ColsThis, ZeroMode, v20, v21, v22, v23);
-            MlasQGemmStoreRowPairSve(C, ldc, 6, 7, Rows, nn, ColsThis, ZeroMode, v30, v31, v32, v33);
-            MlasQGemmStoreRowPairSve(C, ldc, 8, 9, Rows, nn, ColsThis, ZeroMode, v40, v41, v42, v43);
-            MlasQGemmStoreRowPairSve(C, ldc, 10, 11, Rows, nn, ColsThis, ZeroMode, v50, v51, v52, v53);
+                const int8_t* a8p = A8 + kb * 64;
+                const int8_t* a4p = A4 + kb * 32;
+
+                const svint8_t q0 = MlasQGemmSveLoadARowPair(a8p + 0);
+                a00 = MlasQGemmMmlaSve<AUnsigned>(a00, q0, b0);
+                a01 = MlasQGemmMmlaSve<AUnsigned>(a01, q0, b1);
+                a02 = MlasQGemmMmlaSve<AUnsigned>(a02, q0, b2);
+                a03 = MlasQGemmMmlaSve<AUnsigned>(a03, q0, b3);
+
+                const svint8_t q1 = MlasQGemmSveLoadARowPair(a8p + 16);
+                a10 = MlasQGemmMmlaSve<AUnsigned>(a10, q1, b0);
+                a11 = MlasQGemmMmlaSve<AUnsigned>(a11, q1, b1);
+                a12 = MlasQGemmMmlaSve<AUnsigned>(a12, q1, b2);
+                a13 = MlasQGemmMmlaSve<AUnsigned>(a13, q1, b3);
+
+                const svint8_t q2 = MlasQGemmSveLoadARowPair(a8p + 32);
+                a20 = MlasQGemmMmlaSve<AUnsigned>(a20, q2, b0);
+                a21 = MlasQGemmMmlaSve<AUnsigned>(a21, q2, b1);
+                a22 = MlasQGemmMmlaSve<AUnsigned>(a22, q2, b2);
+                a23 = MlasQGemmMmlaSve<AUnsigned>(a23, q2, b3);
+
+                const svint8_t q3 = MlasQGemmSveLoadARowPair(a8p + 48);
+                a30 = MlasQGemmMmlaSve<AUnsigned>(a30, q3, b0);
+                a31 = MlasQGemmMmlaSve<AUnsigned>(a31, q3, b1);
+                a32 = MlasQGemmMmlaSve<AUnsigned>(a32, q3, b2);
+                a33 = MlasQGemmMmlaSve<AUnsigned>(a33, q3, b3);
+
+                const svint8_t q4 = MlasQGemmSveLoadARowPair(a4p + 0);
+                a40 = MlasQGemmMmlaSve<AUnsigned>(a40, q4, b0);
+                a41 = MlasQGemmMmlaSve<AUnsigned>(a41, q4, b1);
+                a42 = MlasQGemmMmlaSve<AUnsigned>(a42, q4, b2);
+                a43 = MlasQGemmMmlaSve<AUnsigned>(a43, q4, b3);
+
+                const svint8_t q5 = MlasQGemmSveLoadARowPair(a4p + 16);
+                a50 = MlasQGemmMmlaSve<AUnsigned>(a50, q5, b0);
+                a51 = MlasQGemmMmlaSve<AUnsigned>(a51, q5, b1);
+                a52 = MlasQGemmMmlaSve<AUnsigned>(a52, q5, b2);
+                a53 = MlasQGemmMmlaSve<AUnsigned>(a53, q5, b3);
+            }
+
+            const size_t s0 = v0 + v1;
+            const size_t s1 = v2 + v3;
+
+            MlasQGemmSveStoreAccPair(C, ldc, 0, 1, Rows, c0, s0, ZeroMode, a00, a01);
+            MlasQGemmSveStoreAccPair(C, ldc, 0, 1, Rows, c2, s1, ZeroMode, a02, a03);
+            MlasQGemmSveStoreAccPair(C, ldc, 2, 3, Rows, c0, s0, ZeroMode, a10, a11);
+            MlasQGemmSveStoreAccPair(C, ldc, 2, 3, Rows, c2, s1, ZeroMode, a12, a13);
+            MlasQGemmSveStoreAccPair(C, ldc, 4, 5, Rows, c0, s0, ZeroMode, a20, a21);
+            MlasQGemmSveStoreAccPair(C, ldc, 4, 5, Rows, c2, s1, ZeroMode, a22, a23);
+            MlasQGemmSveStoreAccPair(C, ldc, 6, 7, Rows, c0, s0, ZeroMode, a30, a31);
+            MlasQGemmSveStoreAccPair(C, ldc, 6, 7, Rows, c2, s1, ZeroMode, a32, a33);
+            MlasQGemmSveStoreAccPair(C, ldc, 8, 9, Rows, c0, s0, ZeroMode, a40, a41);
+            MlasQGemmSveStoreAccPair(C, ldc, 8, 9, Rows, c2, s1, ZeroMode, a42, a43);
+            MlasQGemmSveStoreAccPair(C, ldc, 10, 11, Rows, c0, s0, ZeroMode, a50, a51);
+            MlasQGemmSveStoreAccPair(C, ldc, 10, 11, Rows, c2, s1, ZeroMode, a52, a53);
         }
+
         return Rows;
     }
 #endif  // MLAS_SVE_QGEMM_TILE_12X8
 
     if (Rows == 8) {
-        const size_t AStride = 64;  // 4 row-pairs * 16 bytes per K-block
-#if defined(MLAS_SVE_QGEMM_WIDE_TILE) && MLAS_SVE_QGEMM_WIDE_TILE
         //
-        // EXPERIMENT (VL=128 register-blocking ceiling): 8x16 tile = 32 resident
-        // accumulators (4 row-pairs x 8 col-pairs), reading TWO 8-column B groups
-        // per K-block. 32 accumulators + up to 12 operand loads far exceed the 32
-        // physical Z-registers, so this deliberately spills. Columns < 16 fall
-        // back to the 8x8 loop. Purpose: measure spills + throughput vs the 8x8
-        // tile at VL=128 (expected: no speedup).
+        // 4 row-pairs x 6 column-groups = 24 accumulators, so the packed B
+        // panel is read once per K-block and each B load feeds 4 mmla
+        // (2.4 mmla per load counting the A quads). Covers 12 columns per pass
+        // at VL=128, 24 at VL=256, 48 at VL=512.
         //
-        size_t nn = 0;
-        size_t g = 0;
-        for (; nn + 16 <= CountN; nn += 16, g += 2) {
-            const int8_t* Bg0 = PackedB + g * BGroupStride;
-            const int8_t* Bg1 = PackedB + (g + 1) * BGroupStride;
+        const size_t AStride = 64;
+        const size_t ColsPerPass = 6 * ColsPerAcc;
 
-            svint32_t w00 = MlasQGemmSeedTileSve(0, 1, Rows, nn, 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w01 = MlasQGemmSeedTileSve(0, 1, Rows, nn, 1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w02 = MlasQGemmSeedTileSve(0, 1, Rows, nn, 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w03 = MlasQGemmSeedTileSve(0, 1, Rows, nn, 3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w04 = MlasQGemmSeedTileSve(0, 1, Rows, nn, 4, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w05 = MlasQGemmSeedTileSve(0, 1, Rows, nn, 5, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w06 = MlasQGemmSeedTileSve(0, 1, Rows, nn, 6, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w07 = MlasQGemmSeedTileSve(0, 1, Rows, nn, 7, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w10 = MlasQGemmSeedTileSve(2, 3, Rows, nn, 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w11 = MlasQGemmSeedTileSve(2, 3, Rows, nn, 1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w12 = MlasQGemmSeedTileSve(2, 3, Rows, nn, 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w13 = MlasQGemmSeedTileSve(2, 3, Rows, nn, 3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w14 = MlasQGemmSeedTileSve(2, 3, Rows, nn, 4, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w15 = MlasQGemmSeedTileSve(2, 3, Rows, nn, 5, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w16 = MlasQGemmSeedTileSve(2, 3, Rows, nn, 6, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w17 = MlasQGemmSeedTileSve(2, 3, Rows, nn, 7, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w20 = MlasQGemmSeedTileSve(4, 5, Rows, nn, 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w21 = MlasQGemmSeedTileSve(4, 5, Rows, nn, 1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w22 = MlasQGemmSeedTileSve(4, 5, Rows, nn, 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w23 = MlasQGemmSeedTileSve(4, 5, Rows, nn, 3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w24 = MlasQGemmSeedTileSve(4, 5, Rows, nn, 4, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w25 = MlasQGemmSeedTileSve(4, 5, Rows, nn, 5, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w26 = MlasQGemmSeedTileSve(4, 5, Rows, nn, 6, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w27 = MlasQGemmSeedTileSve(4, 5, Rows, nn, 7, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w30 = MlasQGemmSeedTileSve(6, 7, Rows, nn, 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w31 = MlasQGemmSeedTileSve(6, 7, Rows, nn, 1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w32 = MlasQGemmSeedTileSve(6, 7, Rows, nn, 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w33 = MlasQGemmSeedTileSve(6, 7, Rows, nn, 3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w34 = MlasQGemmSeedTileSve(6, 7, Rows, nn, 4, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w35 = MlasQGemmSeedTileSve(6, 7, Rows, nn, 5, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w36 = MlasQGemmSeedTileSve(6, 7, Rows, nn, 6, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w37 = MlasQGemmSeedTileSve(6, 7, Rows, nn, 7, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
+        const svint32_t rp0 = MlasQGemmSveRowSumPattern(0, 1, Rows, RowSumBuffer);
+        const svint32_t rp1 = MlasQGemmSveRowSumPattern(2, 3, Rows, RowSumBuffer);
+        const svint32_t rp2 = MlasQGemmSveRowSumPattern(4, 5, Rows, RowSumBuffer);
+        const svint32_t rp3 = MlasQGemmSveRowSumPattern(6, 7, Rows, RowSumBuffer);
+
+        for (size_t nn = 0; nn < CountN; nn += ColsPerPass) {
+            const size_t c0 = nn;
+            const size_t c1 = nn + ColsPerAcc;
+            const size_t c2 = nn + 2 * ColsPerAcc;
+            const size_t c3 = nn + 3 * ColsPerAcc;
+            const size_t c4 = nn + 4 * ColsPerAcc;
+            const size_t c5 = nn + 5 * ColsPerAcc;
+
+            const size_t v0 = (CountN > c0) ? std::min(ColsPerAcc, CountN - c0) : 0;
+            const size_t v1 = (CountN > c1) ? std::min(ColsPerAcc, CountN - c1) : 0;
+            const size_t v2 = (CountN > c2) ? std::min(ColsPerAcc, CountN - c2) : 0;
+            const size_t v3 = (CountN > c3) ? std::min(ColsPerAcc, CountN - c3) : 0;
+            const size_t v4 = (CountN > c4) ? std::min(ColsPerAcc, CountN - c4) : 0;
+            const size_t v5 = (CountN > c5) ? std::min(ColsPerAcc, CountN - c5) : 0;
+
+            const size_t l0 = MlasQGemmSveSafeCol(c0, CountN, ColsPerAcc);
+            const size_t l1 = MlasQGemmSveSafeCol(c1, CountN, ColsPerAcc);
+            const size_t l2 = MlasQGemmSveSafeCol(c2, CountN, ColsPerAcc);
+            const size_t l3 = MlasQGemmSveSafeCol(c3, CountN, ColsPerAcc);
+            const size_t l4 = MlasQGemmSveSafeCol(c4, CountN, ColsPerAcc);
+            const size_t l5 = MlasQGemmSveSafeCol(c5, CountN, ColsPerAcc);
+
+            svint32_t a00 = MlasQGemmSveSeed(rp0, c0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t a01 = MlasQGemmSveSeed(rp0, c1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t a02 = MlasQGemmSveSeed(rp0, c2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t a03 = MlasQGemmSveSeed(rp0, c3, v3, ColumnSumBuffer, ZeroPointB);
+            svint32_t a04 = MlasQGemmSveSeed(rp0, c4, v4, ColumnSumBuffer, ZeroPointB);
+            svint32_t a05 = MlasQGemmSveSeed(rp0, c5, v5, ColumnSumBuffer, ZeroPointB);
+            svint32_t a10 = MlasQGemmSveSeed(rp1, c0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t a11 = MlasQGemmSveSeed(rp1, c1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t a12 = MlasQGemmSveSeed(rp1, c2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t a13 = MlasQGemmSveSeed(rp1, c3, v3, ColumnSumBuffer, ZeroPointB);
+            svint32_t a14 = MlasQGemmSveSeed(rp1, c4, v4, ColumnSumBuffer, ZeroPointB);
+            svint32_t a15 = MlasQGemmSveSeed(rp1, c5, v5, ColumnSumBuffer, ZeroPointB);
+            svint32_t a20 = MlasQGemmSveSeed(rp2, c0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t a21 = MlasQGemmSveSeed(rp2, c1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t a22 = MlasQGemmSveSeed(rp2, c2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t a23 = MlasQGemmSveSeed(rp2, c3, v3, ColumnSumBuffer, ZeroPointB);
+            svint32_t a24 = MlasQGemmSveSeed(rp2, c4, v4, ColumnSumBuffer, ZeroPointB);
+            svint32_t a25 = MlasQGemmSveSeed(rp2, c5, v5, ColumnSumBuffer, ZeroPointB);
+            svint32_t a30 = MlasQGemmSveSeed(rp3, c0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t a31 = MlasQGemmSveSeed(rp3, c1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t a32 = MlasQGemmSveSeed(rp3, c2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t a33 = MlasQGemmSveSeed(rp3, c3, v3, ColumnSumBuffer, ZeroPointB);
+            svint32_t a34 = MlasQGemmSveSeed(rp3, c4, v4, ColumnSumBuffer, ZeroPointB);
+            svint32_t a35 = MlasQGemmSveSeed(rp3, c5, v5, ColumnSumBuffer, ZeroPointB);
+
+            // Column bases are loop-invariant; only the K-block offset moves.
+            const int8_t* bp0 = MlasQGemmSveBPtr(PackedB, BGroupStride, 0, l0);
+            const int8_t* bp1 = MlasQGemmSveBPtr(PackedB, BGroupStride, 0, l1);
+            const int8_t* bp2 = MlasQGemmSveBPtr(PackedB, BGroupStride, 0, l2);
+            const int8_t* bp3 = MlasQGemmSveBPtr(PackedB, BGroupStride, 0, l3);
+            const int8_t* bp4 = MlasQGemmSveBPtr(PackedB, BGroupStride, 0, l4);
+            const int8_t* bp5 = MlasQGemmSveBPtr(PackedB, BGroupStride, 0, l5);
 
             for (size_t kb = 0; kb < PackedCountK; ++kb) {
-                const int8_t* b0p = Bg0 + kb * 64;
-                const int8_t* b1p = Bg1 + kb * 64;
-                const svint8_t b0 = svld1_s8(pg16, b0p + 0);
-                const svint8_t b1 = svld1_s8(pg16, b0p + 16);
-                const svint8_t b2 = svld1_s8(pg16, b0p + 32);
-                const svint8_t b3 = svld1_s8(pg16, b0p + 48);
-                const svint8_t b4 = svld1_s8(pg16, b1p + 0);
-                const svint8_t b5 = svld1_s8(pg16, b1p + 16);
-                const svint8_t b6 = svld1_s8(pg16, b1p + 32);
-                const svint8_t b7 = svld1_s8(pg16, b1p + 48);
-
+                const size_t koff = kb * 64;
                 const int8_t* aptr = PackedA + kb * AStride;
-                const svint8_t a0 = svld1_s8(pg16, aptr + 0);
-                const svint8_t a1 = svld1_s8(pg16, aptr + 16);
-                const svint8_t a2 = svld1_s8(pg16, aptr + 32);
-                const svint8_t a3 = svld1_s8(pg16, aptr + 48);
 
-                w00 = MlasQGemmMmlaSve<AUnsigned>(w00, a0, b0);
-                w01 = MlasQGemmMmlaSve<AUnsigned>(w01, a0, b1);
-                w02 = MlasQGemmMmlaSve<AUnsigned>(w02, a0, b2);
-                w03 = MlasQGemmMmlaSve<AUnsigned>(w03, a0, b3);
-                w04 = MlasQGemmMmlaSve<AUnsigned>(w04, a0, b4);
-                w05 = MlasQGemmMmlaSve<AUnsigned>(w05, a0, b5);
-                w06 = MlasQGemmMmlaSve<AUnsigned>(w06, a0, b6);
-                w07 = MlasQGemmMmlaSve<AUnsigned>(w07, a0, b7);
-                w10 = MlasQGemmMmlaSve<AUnsigned>(w10, a1, b0);
-                w11 = MlasQGemmMmlaSve<AUnsigned>(w11, a1, b1);
-                w12 = MlasQGemmMmlaSve<AUnsigned>(w12, a1, b2);
-                w13 = MlasQGemmMmlaSve<AUnsigned>(w13, a1, b3);
-                w14 = MlasQGemmMmlaSve<AUnsigned>(w14, a1, b4);
-                w15 = MlasQGemmMmlaSve<AUnsigned>(w15, a1, b5);
-                w16 = MlasQGemmMmlaSve<AUnsigned>(w16, a1, b6);
-                w17 = MlasQGemmMmlaSve<AUnsigned>(w17, a1, b7);
-                w20 = MlasQGemmMmlaSve<AUnsigned>(w20, a2, b0);
-                w21 = MlasQGemmMmlaSve<AUnsigned>(w21, a2, b1);
-                w22 = MlasQGemmMmlaSve<AUnsigned>(w22, a2, b2);
-                w23 = MlasQGemmMmlaSve<AUnsigned>(w23, a2, b3);
-                w24 = MlasQGemmMmlaSve<AUnsigned>(w24, a2, b4);
-                w25 = MlasQGemmMmlaSve<AUnsigned>(w25, a2, b5);
-                w26 = MlasQGemmMmlaSve<AUnsigned>(w26, a2, b6);
-                w27 = MlasQGemmMmlaSve<AUnsigned>(w27, a2, b7);
-                w30 = MlasQGemmMmlaSve<AUnsigned>(w30, a3, b0);
-                w31 = MlasQGemmMmlaSve<AUnsigned>(w31, a3, b1);
-                w32 = MlasQGemmMmlaSve<AUnsigned>(w32, a3, b2);
-                w33 = MlasQGemmMmlaSve<AUnsigned>(w33, a3, b3);
-                w34 = MlasQGemmMmlaSve<AUnsigned>(w34, a3, b4);
-                w35 = MlasQGemmMmlaSve<AUnsigned>(w35, a3, b5);
-                w36 = MlasQGemmMmlaSve<AUnsigned>(w36, a3, b6);
-                w37 = MlasQGemmMmlaSve<AUnsigned>(w37, a3, b7);
+                const svint8_t q0 = MlasQGemmSveLoadARowPair(aptr + 0);
+                const svint8_t q1 = MlasQGemmSveLoadARowPair(aptr + 16);
+                const svint8_t q2 = MlasQGemmSveLoadARowPair(aptr + 32);
+                const svint8_t q3 = MlasQGemmSveLoadARowPair(aptr + 48);
+
+                // Each B group is loaded once and consumed by all four row
+                // pairs immediately, keeping its live range short.
+                const svint8_t b0 = svld1_s8(pgB, bp0 + koff);
+                a00 = MlasQGemmMmlaSve<AUnsigned>(a00, q0, b0);
+                a10 = MlasQGemmMmlaSve<AUnsigned>(a10, q1, b0);
+                a20 = MlasQGemmMmlaSve<AUnsigned>(a20, q2, b0);
+                a30 = MlasQGemmMmlaSve<AUnsigned>(a30, q3, b0);
+
+                const svint8_t b1 = svld1_s8(pgB, bp1 + koff);
+                a01 = MlasQGemmMmlaSve<AUnsigned>(a01, q0, b1);
+                a11 = MlasQGemmMmlaSve<AUnsigned>(a11, q1, b1);
+                a21 = MlasQGemmMmlaSve<AUnsigned>(a21, q2, b1);
+                a31 = MlasQGemmMmlaSve<AUnsigned>(a31, q3, b1);
+
+                const svint8_t b2 = svld1_s8(pgB, bp2 + koff);
+                a02 = MlasQGemmMmlaSve<AUnsigned>(a02, q0, b2);
+                a12 = MlasQGemmMmlaSve<AUnsigned>(a12, q1, b2);
+                a22 = MlasQGemmMmlaSve<AUnsigned>(a22, q2, b2);
+                a32 = MlasQGemmMmlaSve<AUnsigned>(a32, q3, b2);
+
+                const svint8_t b3 = svld1_s8(pgB, bp3 + koff);
+                a03 = MlasQGemmMmlaSve<AUnsigned>(a03, q0, b3);
+                a13 = MlasQGemmMmlaSve<AUnsigned>(a13, q1, b3);
+                a23 = MlasQGemmMmlaSve<AUnsigned>(a23, q2, b3);
+                a33 = MlasQGemmMmlaSve<AUnsigned>(a33, q3, b3);
+
+                const svint8_t b4 = svld1_s8(pgB, bp4 + koff);
+                a04 = MlasQGemmMmlaSve<AUnsigned>(a04, q0, b4);
+                a14 = MlasQGemmMmlaSve<AUnsigned>(a14, q1, b4);
+                a24 = MlasQGemmMmlaSve<AUnsigned>(a24, q2, b4);
+                a34 = MlasQGemmMmlaSve<AUnsigned>(a34, q3, b4);
+
+                const svint8_t b5 = svld1_s8(pgB, bp5 + koff);
+                a05 = MlasQGemmMmlaSve<AUnsigned>(a05, q0, b5);
+                a15 = MlasQGemmMmlaSve<AUnsigned>(a15, q1, b5);
+                a25 = MlasQGemmMmlaSve<AUnsigned>(a25, q2, b5);
+                a35 = MlasQGemmMmlaSve<AUnsigned>(a35, q3, b5);
             }
 
-            // Store 8 rows x 16 cols: each row-pair writes cols nn..nn+7 then nn+8..nn+15.
-            MlasQGemmStoreRowPairSve(C, ldc, 0, 1, Rows, nn, 8, ZeroMode, w00, w01, w02, w03);
-            MlasQGemmStoreRowPairSve(C, ldc, 0, 1, Rows, nn + 8, 8, ZeroMode, w04, w05, w06, w07);
-            MlasQGemmStoreRowPairSve(C, ldc, 2, 3, Rows, nn, 8, ZeroMode, w10, w11, w12, w13);
-            MlasQGemmStoreRowPairSve(C, ldc, 2, 3, Rows, nn + 8, 8, ZeroMode, w14, w15, w16, w17);
-            MlasQGemmStoreRowPairSve(C, ldc, 4, 5, Rows, nn, 8, ZeroMode, w20, w21, w22, w23);
-            MlasQGemmStoreRowPairSve(C, ldc, 4, 5, Rows, nn + 8, 8, ZeroMode, w24, w25, w26, w27);
-            MlasQGemmStoreRowPairSve(C, ldc, 6, 7, Rows, nn, 8, ZeroMode, w30, w31, w32, w33);
-            MlasQGemmStoreRowPairSve(C, ldc, 6, 7, Rows, nn + 8, 8, ZeroMode, w34, w35, w36, w37);
+            const size_t s0 = v0 + v1;
+            const size_t s1 = v2 + v3;
+            const size_t s2 = v4 + v5;
+
+            MlasQGemmSveStoreAccPair(C, ldc, 0, 1, Rows, c0, s0, ZeroMode, a00, a01);
+            MlasQGemmSveStoreAccPair(C, ldc, 0, 1, Rows, c2, s1, ZeroMode, a02, a03);
+            MlasQGemmSveStoreAccPair(C, ldc, 0, 1, Rows, c4, s2, ZeroMode, a04, a05);
+            MlasQGemmSveStoreAccPair(C, ldc, 2, 3, Rows, c0, s0, ZeroMode, a10, a11);
+            MlasQGemmSveStoreAccPair(C, ldc, 2, 3, Rows, c2, s1, ZeroMode, a12, a13);
+            MlasQGemmSveStoreAccPair(C, ldc, 2, 3, Rows, c4, s2, ZeroMode, a14, a15);
+            MlasQGemmSveStoreAccPair(C, ldc, 4, 5, Rows, c0, s0, ZeroMode, a20, a21);
+            MlasQGemmSveStoreAccPair(C, ldc, 4, 5, Rows, c2, s1, ZeroMode, a22, a23);
+            MlasQGemmSveStoreAccPair(C, ldc, 4, 5, Rows, c4, s2, ZeroMode, a24, a25);
+            MlasQGemmSveStoreAccPair(C, ldc, 6, 7, Rows, c0, s0, ZeroMode, a30, a31);
+            MlasQGemmSveStoreAccPair(C, ldc, 6, 7, Rows, c2, s1, ZeroMode, a32, a33);
+            MlasQGemmSveStoreAccPair(C, ldc, 6, 7, Rows, c4, s2, ZeroMode, a34, a35);
         }
-        // Remainder columns (< 16): plain 8x8 col-groups.
-        for (; nn < CountN; nn += 8, ++g) {
-            const size_t ColsThis = std::min<size_t>(8, CountN - nn);
-            const int8_t* Bgroup = PackedB + g * BGroupStride;
 
-            svint32_t acc0 = MlasQGemmSeedTileSve(0, 1, Rows, nn, 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc1 = MlasQGemmSeedTileSve(0, 1, Rows, nn, 1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc2 = MlasQGemmSeedTileSve(0, 1, Rows, nn, 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc3 = MlasQGemmSeedTileSve(0, 1, Rows, nn, 3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc4 = MlasQGemmSeedTileSve(2, 3, Rows, nn, 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc5 = MlasQGemmSeedTileSve(2, 3, Rows, nn, 1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc6 = MlasQGemmSeedTileSve(2, 3, Rows, nn, 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc7 = MlasQGemmSeedTileSve(2, 3, Rows, nn, 3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc8 = MlasQGemmSeedTileSve(4, 5, Rows, nn, 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc9 = MlasQGemmSeedTileSve(4, 5, Rows, nn, 1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc10 = MlasQGemmSeedTileSve(4, 5, Rows, nn, 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc11 = MlasQGemmSeedTileSve(4, 5, Rows, nn, 3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc12 = MlasQGemmSeedTileSve(6, 7, Rows, nn, 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc13 = MlasQGemmSeedTileSve(6, 7, Rows, nn, 1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc14 = MlasQGemmSeedTileSve(6, 7, Rows, nn, 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc15 = MlasQGemmSeedTileSve(6, 7, Rows, nn, 3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-
-            for (size_t kb = 0; kb < PackedCountK; ++kb) {
-                const int8_t* bptr = Bgroup + kb * 64;
-                const svint8_t b0 = svld1_s8(pg16, bptr + 0);
-                const svint8_t b1 = svld1_s8(pg16, bptr + 16);
-                const svint8_t b2 = svld1_s8(pg16, bptr + 32);
-                const svint8_t b3 = svld1_s8(pg16, bptr + 48);
-                const int8_t* aptr = PackedA + kb * AStride;
-                const svint8_t a0 = svld1_s8(pg16, aptr + 0);
-                const svint8_t a1 = svld1_s8(pg16, aptr + 16);
-                const svint8_t a2 = svld1_s8(pg16, aptr + 32);
-                const svint8_t a3 = svld1_s8(pg16, aptr + 48);
-                acc0 = MlasQGemmMmlaSve<AUnsigned>(acc0, a0, b0);
-                acc1 = MlasQGemmMmlaSve<AUnsigned>(acc1, a0, b1);
-                acc2 = MlasQGemmMmlaSve<AUnsigned>(acc2, a0, b2);
-                acc3 = MlasQGemmMmlaSve<AUnsigned>(acc3, a0, b3);
-                acc4 = MlasQGemmMmlaSve<AUnsigned>(acc4, a1, b0);
-                acc5 = MlasQGemmMmlaSve<AUnsigned>(acc5, a1, b1);
-                acc6 = MlasQGemmMmlaSve<AUnsigned>(acc6, a1, b2);
-                acc7 = MlasQGemmMmlaSve<AUnsigned>(acc7, a1, b3);
-                acc8 = MlasQGemmMmlaSve<AUnsigned>(acc8, a2, b0);
-                acc9 = MlasQGemmMmlaSve<AUnsigned>(acc9, a2, b1);
-                acc10 = MlasQGemmMmlaSve<AUnsigned>(acc10, a2, b2);
-                acc11 = MlasQGemmMmlaSve<AUnsigned>(acc11, a2, b3);
-                acc12 = MlasQGemmMmlaSve<AUnsigned>(acc12, a3, b0);
-                acc13 = MlasQGemmMmlaSve<AUnsigned>(acc13, a3, b1);
-                acc14 = MlasQGemmMmlaSve<AUnsigned>(acc14, a3, b2);
-                acc15 = MlasQGemmMmlaSve<AUnsigned>(acc15, a3, b3);
-            }
-
-            MlasQGemmStoreRowPairSve(C, ldc, 0, 1, Rows, nn, ColsThis, ZeroMode, acc0, acc1, acc2, acc3);
-            MlasQGemmStoreRowPairSve(C, ldc, 2, 3, Rows, nn, ColsThis, ZeroMode, acc4, acc5, acc6, acc7);
-            MlasQGemmStoreRowPairSve(C, ldc, 4, 5, Rows, nn, ColsThis, ZeroMode, acc8, acc9, acc10, acc11);
-            MlasQGemmStoreRowPairSve(C, ldc, 6, 7, Rows, nn, ColsThis, ZeroMode, acc12, acc13, acc14, acc15);
-        }
         return Rows;
-#elif defined(MLAS_SVE_QGEMM_TILE_8X12) && MLAS_SVE_QGEMM_TILE_8X12
-        //
-        // EXPERIMENT (intermediate register blocking): 8x12 tile = 24 resident
-        // accumulators (4 row-pairs x 6 col-pairs). Per K-block: 10 operand
-        // loads (4 A + 6 B) feed 24 svmmla = 2.4 MMLA/load, vs 2.0 for the 8x8
-        // tile. 24 accumulators + 4 A + one streamed B leave peak live pressure
-        // at ~29-31 of the 32 Z-registers, unlike the 8x16/32-accumulator
-        // variant which could not fit and was split by the compiler.
-        //
-        // A 12-wide tile spans the 8-column packed-B groups, so each col-pair's
-        // kb-invariant base pointer is computed generically from its column.
-        // The <12-column tail (possibly mid-group) uses the same generic
-        // addressing with out-of-range pairs clamped to the last valid pair
-        // (their lanes are excluded by the store predicates).
-        //
-        const size_t LastPairCol = (CountN - 1) & ~size_t(1);
-        auto PairBase = [&](size_t col) {
-            return PackedB + (col / 8) * BGroupStride + (col % 8) * 8;
-        };
-
-        size_t nn = 0;
-        for (; nn + 12 <= CountN; nn += 12) {
-            const int8_t* bp0 = PairBase(nn + 0);
-            const int8_t* bp1 = PairBase(nn + 2);
-            const int8_t* bp2 = PairBase(nn + 4);
-            const int8_t* bp3 = PairBase(nn + 6);
-            const int8_t* bp4 = PairBase(nn + 8);
-            const int8_t* bp5 = PairBase(nn + 10);
-
-            svint32_t w00 = MlasQGemmSeedTileColSve(0, 1, Rows, nn + 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w01 = MlasQGemmSeedTileColSve(0, 1, Rows, nn + 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w02 = MlasQGemmSeedTileColSve(0, 1, Rows, nn + 4, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w03 = MlasQGemmSeedTileColSve(0, 1, Rows, nn + 6, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w04 = MlasQGemmSeedTileColSve(0, 1, Rows, nn + 8, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w05 = MlasQGemmSeedTileColSve(0, 1, Rows, nn + 10, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w10 = MlasQGemmSeedTileColSve(2, 3, Rows, nn + 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w11 = MlasQGemmSeedTileColSve(2, 3, Rows, nn + 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w12 = MlasQGemmSeedTileColSve(2, 3, Rows, nn + 4, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w13 = MlasQGemmSeedTileColSve(2, 3, Rows, nn + 6, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w14 = MlasQGemmSeedTileColSve(2, 3, Rows, nn + 8, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w15 = MlasQGemmSeedTileColSve(2, 3, Rows, nn + 10, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w20 = MlasQGemmSeedTileColSve(4, 5, Rows, nn + 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w21 = MlasQGemmSeedTileColSve(4, 5, Rows, nn + 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w22 = MlasQGemmSeedTileColSve(4, 5, Rows, nn + 4, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w23 = MlasQGemmSeedTileColSve(4, 5, Rows, nn + 6, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w24 = MlasQGemmSeedTileColSve(4, 5, Rows, nn + 8, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w25 = MlasQGemmSeedTileColSve(4, 5, Rows, nn + 10, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w30 = MlasQGemmSeedTileColSve(6, 7, Rows, nn + 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w31 = MlasQGemmSeedTileColSve(6, 7, Rows, nn + 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w32 = MlasQGemmSeedTileColSve(6, 7, Rows, nn + 4, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w33 = MlasQGemmSeedTileColSve(6, 7, Rows, nn + 6, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w34 = MlasQGemmSeedTileColSve(6, 7, Rows, nn + 8, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t w35 = MlasQGemmSeedTileColSve(6, 7, Rows, nn + 10, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-
-            for (size_t kb = 0; kb < PackedCountK; ++kb) {
-                const int8_t* aptr = PackedA + kb * AStride;
-                const svint8_t a0 = svld1_s8(pg16, aptr + 0);
-                const svint8_t a1 = svld1_s8(pg16, aptr + 16);
-                const svint8_t a2 = svld1_s8(pg16, aptr + 32);
-                const svint8_t a3 = svld1_s8(pg16, aptr + 48);
-
-                // Each B col-pair is loaded immediately before its 4 uses to
-                // keep its live range short (24 accumulators stay resident).
-                {
-                    const svint8_t b = svld1_s8(pg16, bp0 + kb * 64);
-                    w00 = MlasQGemmMmlaSve<AUnsigned>(w00, a0, b);
-                    w10 = MlasQGemmMmlaSve<AUnsigned>(w10, a1, b);
-                    w20 = MlasQGemmMmlaSve<AUnsigned>(w20, a2, b);
-                    w30 = MlasQGemmMmlaSve<AUnsigned>(w30, a3, b);
-                }
-                {
-                    const svint8_t b = svld1_s8(pg16, bp1 + kb * 64);
-                    w01 = MlasQGemmMmlaSve<AUnsigned>(w01, a0, b);
-                    w11 = MlasQGemmMmlaSve<AUnsigned>(w11, a1, b);
-                    w21 = MlasQGemmMmlaSve<AUnsigned>(w21, a2, b);
-                    w31 = MlasQGemmMmlaSve<AUnsigned>(w31, a3, b);
-                }
-                {
-                    const svint8_t b = svld1_s8(pg16, bp2 + kb * 64);
-                    w02 = MlasQGemmMmlaSve<AUnsigned>(w02, a0, b);
-                    w12 = MlasQGemmMmlaSve<AUnsigned>(w12, a1, b);
-                    w22 = MlasQGemmMmlaSve<AUnsigned>(w22, a2, b);
-                    w32 = MlasQGemmMmlaSve<AUnsigned>(w32, a3, b);
-                }
-                {
-                    const svint8_t b = svld1_s8(pg16, bp3 + kb * 64);
-                    w03 = MlasQGemmMmlaSve<AUnsigned>(w03, a0, b);
-                    w13 = MlasQGemmMmlaSve<AUnsigned>(w13, a1, b);
-                    w23 = MlasQGemmMmlaSve<AUnsigned>(w23, a2, b);
-                    w33 = MlasQGemmMmlaSve<AUnsigned>(w33, a3, b);
-                }
-                {
-                    const svint8_t b = svld1_s8(pg16, bp4 + kb * 64);
-                    w04 = MlasQGemmMmlaSve<AUnsigned>(w04, a0, b);
-                    w14 = MlasQGemmMmlaSve<AUnsigned>(w14, a1, b);
-                    w24 = MlasQGemmMmlaSve<AUnsigned>(w24, a2, b);
-                    w34 = MlasQGemmMmlaSve<AUnsigned>(w34, a3, b);
-                }
-                {
-                    const svint8_t b = svld1_s8(pg16, bp5 + kb * 64);
-                    w05 = MlasQGemmMmlaSve<AUnsigned>(w05, a0, b);
-                    w15 = MlasQGemmMmlaSve<AUnsigned>(w15, a1, b);
-                    w25 = MlasQGemmMmlaSve<AUnsigned>(w25, a2, b);
-                    w35 = MlasQGemmMmlaSve<AUnsigned>(w35, a3, b);
-                }
-            }
-
-            // Cols nn..nn+7 from pairs 0-3, cols nn+8..nn+11 from pairs 4-5
-            // (hi vector unused under the 4-column predicate).
-            MlasQGemmStoreRowPairSve(C, ldc, 0, 1, Rows, nn, 8, ZeroMode, w00, w01, w02, w03);
-            MlasQGemmStoreRowPairSve(C, ldc, 0, 1, Rows, nn + 8, 4, ZeroMode, w04, w05, w04, w05);
-            MlasQGemmStoreRowPairSve(C, ldc, 2, 3, Rows, nn, 8, ZeroMode, w10, w11, w12, w13);
-            MlasQGemmStoreRowPairSve(C, ldc, 2, 3, Rows, nn + 8, 4, ZeroMode, w14, w15, w14, w15);
-            MlasQGemmStoreRowPairSve(C, ldc, 4, 5, Rows, nn, 8, ZeroMode, w20, w21, w22, w23);
-            MlasQGemmStoreRowPairSve(C, ldc, 4, 5, Rows, nn + 8, 4, ZeroMode, w24, w25, w24, w25);
-            MlasQGemmStoreRowPairSve(C, ldc, 6, 7, Rows, nn, 8, ZeroMode, w30, w31, w32, w33);
-            MlasQGemmStoreRowPairSve(C, ldc, 6, 7, Rows, nn + 8, 4, ZeroMode, w34, w35, w34, w35);
-        }
-
-        // Tail (< 12 columns, nn possibly mid-group): 8x8-style iterations with
-        // generic pair addressing. Pairs starting at or past CountN are clamped
-        // to the last valid pair; their results are masked off by ColsThis.
-        for (; nn < CountN; nn += 8) {
-            const size_t ColsThis = std::min<size_t>(8, CountN - nn);
-            const size_t c0 = std::min(nn + 0, LastPairCol);
-            const size_t c1 = std::min(nn + 2, LastPairCol);
-            const size_t c2 = std::min(nn + 4, LastPairCol);
-            const size_t c3 = std::min(nn + 6, LastPairCol);
-            const int8_t* bq0 = PairBase(c0);
-            const int8_t* bq1 = PairBase(c1);
-            const int8_t* bq2 = PairBase(c2);
-            const int8_t* bq3 = PairBase(c3);
-
-            svint32_t acc00 = MlasQGemmSeedTileColSve(0, 1, Rows, c0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc01 = MlasQGemmSeedTileColSve(0, 1, Rows, c1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc02 = MlasQGemmSeedTileColSve(0, 1, Rows, c2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc03 = MlasQGemmSeedTileColSve(0, 1, Rows, c3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc10 = MlasQGemmSeedTileColSve(2, 3, Rows, c0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc11 = MlasQGemmSeedTileColSve(2, 3, Rows, c1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc12 = MlasQGemmSeedTileColSve(2, 3, Rows, c2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc13 = MlasQGemmSeedTileColSve(2, 3, Rows, c3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc20 = MlasQGemmSeedTileColSve(4, 5, Rows, c0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc21 = MlasQGemmSeedTileColSve(4, 5, Rows, c1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc22 = MlasQGemmSeedTileColSve(4, 5, Rows, c2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc23 = MlasQGemmSeedTileColSve(4, 5, Rows, c3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc30 = MlasQGemmSeedTileColSve(6, 7, Rows, c0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc31 = MlasQGemmSeedTileColSve(6, 7, Rows, c1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc32 = MlasQGemmSeedTileColSve(6, 7, Rows, c2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc33 = MlasQGemmSeedTileColSve(6, 7, Rows, c3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-
-            for (size_t kb = 0; kb < PackedCountK; ++kb) {
-                const svint8_t b0 = svld1_s8(pg16, bq0 + kb * 64);
-                const svint8_t b1 = svld1_s8(pg16, bq1 + kb * 64);
-                const svint8_t b2 = svld1_s8(pg16, bq2 + kb * 64);
-                const svint8_t b3 = svld1_s8(pg16, bq3 + kb * 64);
-                const int8_t* aptr = PackedA + kb * AStride;
-                const svint8_t a0 = svld1_s8(pg16, aptr + 0);
-                const svint8_t a1 = svld1_s8(pg16, aptr + 16);
-                const svint8_t a2 = svld1_s8(pg16, aptr + 32);
-                const svint8_t a3 = svld1_s8(pg16, aptr + 48);
-                acc00 = MlasQGemmMmlaSve<AUnsigned>(acc00, a0, b0);
-                acc01 = MlasQGemmMmlaSve<AUnsigned>(acc01, a0, b1);
-                acc02 = MlasQGemmMmlaSve<AUnsigned>(acc02, a0, b2);
-                acc03 = MlasQGemmMmlaSve<AUnsigned>(acc03, a0, b3);
-                acc10 = MlasQGemmMmlaSve<AUnsigned>(acc10, a1, b0);
-                acc11 = MlasQGemmMmlaSve<AUnsigned>(acc11, a1, b1);
-                acc12 = MlasQGemmMmlaSve<AUnsigned>(acc12, a1, b2);
-                acc13 = MlasQGemmMmlaSve<AUnsigned>(acc13, a1, b3);
-                acc20 = MlasQGemmMmlaSve<AUnsigned>(acc20, a2, b0);
-                acc21 = MlasQGemmMmlaSve<AUnsigned>(acc21, a2, b1);
-                acc22 = MlasQGemmMmlaSve<AUnsigned>(acc22, a2, b2);
-                acc23 = MlasQGemmMmlaSve<AUnsigned>(acc23, a2, b3);
-                acc30 = MlasQGemmMmlaSve<AUnsigned>(acc30, a3, b0);
-                acc31 = MlasQGemmMmlaSve<AUnsigned>(acc31, a3, b1);
-                acc32 = MlasQGemmMmlaSve<AUnsigned>(acc32, a3, b2);
-                acc33 = MlasQGemmMmlaSve<AUnsigned>(acc33, a3, b3);
-            }
-
-            MlasQGemmStoreRowPairSve(C, ldc, 0, 1, Rows, nn, ColsThis, ZeroMode, acc00, acc01, acc02, acc03);
-            MlasQGemmStoreRowPairSve(C, ldc, 2, 3, Rows, nn, ColsThis, ZeroMode, acc10, acc11, acc12, acc13);
-            MlasQGemmStoreRowPairSve(C, ldc, 4, 5, Rows, nn, ColsThis, ZeroMode, acc20, acc21, acc22, acc23);
-            MlasQGemmStoreRowPairSve(C, ldc, 6, 7, Rows, nn, ColsThis, ZeroMode, acc30, acc31, acc32, acc33);
-        }
-        return Rows;
-#else
-        // Fast path: 16 resident accumulators, packed B read once per K-block.
-        size_t g = 0;
-        for (size_t nn = 0; nn < CountN; nn += 8, ++g) {
-            const size_t ColsThis = std::min<size_t>(8, CountN - nn);
-            const int8_t* Bgroup = PackedB + g * BGroupStride;
-
-            svint32_t acc00 = MlasQGemmSeedTileSve(0, 1, Rows, nn, 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc01 = MlasQGemmSeedTileSve(0, 1, Rows, nn, 1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc02 = MlasQGemmSeedTileSve(0, 1, Rows, nn, 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc03 = MlasQGemmSeedTileSve(0, 1, Rows, nn, 3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc10 = MlasQGemmSeedTileSve(2, 3, Rows, nn, 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc11 = MlasQGemmSeedTileSve(2, 3, Rows, nn, 1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc12 = MlasQGemmSeedTileSve(2, 3, Rows, nn, 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc13 = MlasQGemmSeedTileSve(2, 3, Rows, nn, 3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc20 = MlasQGemmSeedTileSve(4, 5, Rows, nn, 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc21 = MlasQGemmSeedTileSve(4, 5, Rows, nn, 1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc22 = MlasQGemmSeedTileSve(4, 5, Rows, nn, 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc23 = MlasQGemmSeedTileSve(4, 5, Rows, nn, 3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc30 = MlasQGemmSeedTileSve(6, 7, Rows, nn, 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc31 = MlasQGemmSeedTileSve(6, 7, Rows, nn, 1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc32 = MlasQGemmSeedTileSve(6, 7, Rows, nn, 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc33 = MlasQGemmSeedTileSve(6, 7, Rows, nn, 3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-
-            for (size_t kb = 0; kb < PackedCountK; ++kb) {
-                const int8_t* bptr = Bgroup + kb * 64;
-                const svint8_t b0 = svld1_s8(pg16, bptr + 0);
-                const svint8_t b1 = svld1_s8(pg16, bptr + 16);
-                const svint8_t b2 = svld1_s8(pg16, bptr + 32);
-                const svint8_t b3 = svld1_s8(pg16, bptr + 48);
-
-                const int8_t* aptr = PackedA + kb * AStride;
-                const svint8_t a0 = svld1_s8(pg16, aptr + 0);
-                const svint8_t a1 = svld1_s8(pg16, aptr + 16);
-                const svint8_t a2 = svld1_s8(pg16, aptr + 32);
-                const svint8_t a3 = svld1_s8(pg16, aptr + 48);
-
-                acc00 = MlasQGemmMmlaSve<AUnsigned>(acc00, a0, b0);
-                acc01 = MlasQGemmMmlaSve<AUnsigned>(acc01, a0, b1);
-                acc02 = MlasQGemmMmlaSve<AUnsigned>(acc02, a0, b2);
-                acc03 = MlasQGemmMmlaSve<AUnsigned>(acc03, a0, b3);
-                acc10 = MlasQGemmMmlaSve<AUnsigned>(acc10, a1, b0);
-                acc11 = MlasQGemmMmlaSve<AUnsigned>(acc11, a1, b1);
-                acc12 = MlasQGemmMmlaSve<AUnsigned>(acc12, a1, b2);
-                acc13 = MlasQGemmMmlaSve<AUnsigned>(acc13, a1, b3);
-                acc20 = MlasQGemmMmlaSve<AUnsigned>(acc20, a2, b0);
-                acc21 = MlasQGemmMmlaSve<AUnsigned>(acc21, a2, b1);
-                acc22 = MlasQGemmMmlaSve<AUnsigned>(acc22, a2, b2);
-                acc23 = MlasQGemmMmlaSve<AUnsigned>(acc23, a2, b3);
-                acc30 = MlasQGemmMmlaSve<AUnsigned>(acc30, a3, b0);
-                acc31 = MlasQGemmMmlaSve<AUnsigned>(acc31, a3, b1);
-                acc32 = MlasQGemmMmlaSve<AUnsigned>(acc32, a3, b2);
-                acc33 = MlasQGemmMmlaSve<AUnsigned>(acc33, a3, b3);
-            }
-
-            MlasQGemmStoreRowPairSve(C, ldc, 0, 1, Rows, nn, ColsThis, ZeroMode, acc00, acc01, acc02, acc03);
-            MlasQGemmStoreRowPairSve(C, ldc, 2, 3, Rows, nn, ColsThis, ZeroMode, acc10, acc11, acc12, acc13);
-            MlasQGemmStoreRowPairSve(C, ldc, 4, 5, Rows, nn, ColsThis, ZeroMode, acc20, acc21, acc22, acc23);
-            MlasQGemmStoreRowPairSve(C, ldc, 6, 7, Rows, nn, ColsThis, ZeroMode, acc30, acc31, acc32, acc33);
-        }
-        return Rows;
-#endif  // MLAS_SVE_QGEMM_WIDE_TILE
     }
 
     //
-    // Tail path for Rows in {4,2,1}: process one row-pair at a time. B is
-    // re-read per row-pair, but these partial groups are rare (only the final
-    // M-tile) and small, so the simpler form is fine. Output still uses the
-    // vectorized uzp store.
+    // Tail path for Rows in {4,2,1}: process one row-pair at a time against 4
+    // column groups. B is re-read per row-pair, but these partial groups are
+    // rare (only the final M-tile) and small, so the simpler form is fine.
     //
     const size_t RowPairs = (Rows == 1) ? 1 : (Rows / 2);
-    const svbool_t pgA = (Rows == 1) ? svptrue_pat_b8(SV_VL8) : pg16;
     const size_t AStride = (Rows == 1) ? 8 : (RowPairs * 16);
+    const size_t ColsPerPass = 4 * ColsPerAcc;
 
-    size_t g = 0;
-    for (size_t nn = 0; nn < CountN; nn += 8, ++g) {
-        const size_t ColsThis = std::min<size_t>(8, CountN - nn);
-        const int8_t* Bgroup = PackedB + g * BGroupStride;
+    for (size_t nn = 0; nn < CountN; nn += ColsPerPass) {
+        const size_t c0 = nn;
+        const size_t c1 = nn + ColsPerAcc;
+        const size_t c2 = nn + 2 * ColsPerAcc;
+        const size_t c3 = nn + 3 * ColsPerAcc;
+
+        const size_t v0 = (CountN > c0) ? std::min(ColsPerAcc, CountN - c0) : 0;
+        const size_t v1 = (CountN > c1) ? std::min(ColsPerAcc, CountN - c1) : 0;
+        const size_t v2 = (CountN > c2) ? std::min(ColsPerAcc, CountN - c2) : 0;
+        const size_t v3 = (CountN > c3) ? std::min(ColsPerAcc, CountN - c3) : 0;
+
+        const size_t l0 = MlasQGemmSveSafeCol(c0, CountN, ColsPerAcc);
+        const size_t l1 = MlasQGemmSveSafeCol(c1, CountN, ColsPerAcc);
+        const size_t l2 = MlasQGemmSveSafeCol(c2, CountN, ColsPerAcc);
+        const size_t l3 = MlasQGemmSveSafeCol(c3, CountN, ColsPerAcc);
+
+        // Column bases are loop-invariant; only the K-block offset moves.
+        const int8_t* bp0 = MlasQGemmSveBPtr(PackedB, BGroupStride, 0, l0);
+        const int8_t* bp1 = MlasQGemmSveBPtr(PackedB, BGroupStride, 0, l1);
+        const int8_t* bp2 = MlasQGemmSveBPtr(PackedB, BGroupStride, 0, l2);
+        const int8_t* bp3 = MlasQGemmSveBPtr(PackedB, BGroupStride, 0, l3);
 
         for (size_t ip = 0; ip < RowPairs; ++ip) {
             const size_t r0 = 2 * ip;
             const size_t r1 = 2 * ip + 1;
 
-            svint32_t acc0 = MlasQGemmSeedTileSve(r0, r1, Rows, nn, 0, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc1 = MlasQGemmSeedTileSve(r0, r1, Rows, nn, 1, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc2 = MlasQGemmSeedTileSve(r0, r1, Rows, nn, 2, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
-            svint32_t acc3 = MlasQGemmSeedTileSve(r0, r1, Rows, nn, 3, RowSumBuffer, ColumnSumBuffer, ZeroPointB, pgTile);
+            const svint32_t rp = MlasQGemmSveRowSumPattern(r0, r1, Rows, RowSumBuffer);
+
+            svint32_t acc0 = MlasQGemmSveSeed(rp, c0, v0, ColumnSumBuffer, ZeroPointB);
+            svint32_t acc1 = MlasQGemmSveSeed(rp, c1, v1, ColumnSumBuffer, ZeroPointB);
+            svint32_t acc2 = MlasQGemmSveSeed(rp, c2, v2, ColumnSumBuffer, ZeroPointB);
+            svint32_t acc3 = MlasQGemmSveSeed(rp, c3, v3, ColumnSumBuffer, ZeroPointB);
 
             const int8_t* aptr = PackedA + ip * 16;
-            for (size_t kb = 0; kb < PackedCountK; ++kb) {
-                const int8_t* bptr = Bgroup + kb * 64;
-                const svint8_t b0 = svld1_s8(pg16, bptr + 0);
-                const svint8_t b1 = svld1_s8(pg16, bptr + 16);
-                const svint8_t b2 = svld1_s8(pg16, bptr + 32);
-                const svint8_t b3 = svld1_s8(pg16, bptr + 48);
-                const svint8_t a = svld1_s8(pgA, aptr + kb * AStride);
 
-                acc0 = MlasQGemmMmlaSve<AUnsigned>(acc0, a, b0);
-                acc1 = MlasQGemmMmlaSve<AUnsigned>(acc1, a, b1);
-                acc2 = MlasQGemmMmlaSve<AUnsigned>(acc2, a, b2);
-                acc3 = MlasQGemmMmlaSve<AUnsigned>(acc3, a, b3);
+            for (size_t kb = 0; kb < PackedCountK; ++kb) {
+                const size_t koff = kb * 64;
+                const svint8_t q = (Rows == 1)
+                    ? MlasQGemmSveLoadASingleRow(aptr + kb * AStride)
+                    : MlasQGemmSveLoadARowPair(aptr + kb * AStride);
+
+                acc0 = MlasQGemmMmlaSve<AUnsigned>(
+                    acc0, q, svld1_s8(pgB, bp0 + koff));
+                acc1 = MlasQGemmMmlaSve<AUnsigned>(
+                    acc1, q, svld1_s8(pgB, bp1 + koff));
+                acc2 = MlasQGemmMmlaSve<AUnsigned>(
+                    acc2, q, svld1_s8(pgB, bp2 + koff));
+                acc3 = MlasQGemmMmlaSve<AUnsigned>(
+                    acc3, q, svld1_s8(pgB, bp3 + koff));
             }
 
-            MlasQGemmStoreRowPairSve(C, ldc, r0, r1, Rows, nn, ColsThis, ZeroMode, acc0, acc1, acc2, acc3);
+            MlasQGemmSveStoreAccPair(C, ldc, r0, r1, Rows, c0, v0 + v1, ZeroMode, acc0, acc1);
+            MlasQGemmSveStoreAccPair(C, ldc, r0, r1, Rows, c2, v2 + v3, ZeroMode, acc2, acc3);
         }
     }
+
     return Rows;
 }

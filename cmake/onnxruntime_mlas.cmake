@@ -581,7 +581,8 @@ else()
           # production default) or the SVE intrinsics reference TU (the
           # regeneration source for aarch64/qgemm_mmla_sve_asm.S, script
           # sve/gen_sve_asm.py).
-          set(onnxruntime_SVE_QGEMM_ASM ON)
+          option(onnxruntime_SVE_QGEMM_ASM
+                 "Build the portable machine-code SVE QGEMM kernels instead of the intrinsics reference" ON)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/qgemm_kernel_smmla_sve.cpp)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/qgemm_kernel_ummla_sve.cpp)
           set_source_files_properties(${MLAS_SRC_DIR}/sve/qgemm_kernel_smmla_sve.cpp PROPERTIES COMPILE_FLAGS " -DMLAS_SVE_QGEMM_TILE_12X8=1 -DMLAS_SVE_QGEMM_TILE_8X12=1 ")

@@ -42,7 +42,7 @@ LITERAL_LOAD_RE = re.compile(r"^ldr\s+[^,]+,\s+0x[0-9a-f]+\s*$")
 
 
 def run(cmd):
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         sys.exit(f"FAILED: {' '.join(cmd)}\n{result.stderr}")
     return result.stdout
@@ -61,12 +61,17 @@ def check_relocations(obj, symbols):
                 sys.exit(f"reloc in frozen section {section}: {line.strip()}")
 
 
-def extract_functions(obj, symbols):
+def extract_functions(obj, symbols, allow_missing=False):
+    # Parsing is driven by sections (-ffunction-sections puts each frozen
+    # function in its own .text.<name>), NOT by symbol header lines: gcc
+    # emits local labels inside a function (e.g. the .SVLPSPL/.SVLPEND SVE
+    # stack-probe loop), which objdump renders as symbol headers that must
+    # not terminate extraction.
     out = run(["objdump", "-d", obj])
     functions = {}
     current = None
     for line in out.splitlines():
-        m = re.match(r"^[0-9a-f]+ <(\w+)>:$", line)
+        m = re.match(r"^Disassembly of section \.text\.(\S+):$", line)
         if m:
             current = m.group(1) if m.group(1) in symbols else None
             if current:
@@ -75,7 +80,8 @@ def extract_functions(obj, symbols):
         if current is None:
             continue
         if not line.strip():
-            current = None
+            continue
+        if re.match(r"^[0-9a-f]+ <[^>]+>:$", line):
             continue
         m = INSN_RE.match(line)
         if not m:
@@ -88,7 +94,7 @@ def extract_functions(obj, symbols):
             sys.exit(f"literal-pool load in {current}: {disasm}")
         functions[current].append((word, disasm))
     missing = [s for s in symbols if s not in functions]
-    if missing:
+    if missing and not allow_missing:
         sys.exit(f"symbols not found in object: {missing}")
     return functions
 
@@ -114,8 +120,8 @@ Abstract:
 
     GENERATED FILE - DO NOT EDIT BY HAND.
 
-    Generated from the SVE intrinsics translation unit ({src}), which
-    remains the reference implementation and regeneration source (script:
+    Generated from the SVE intrinsics translation unit(s) ({src}), which
+    remain the reference implementation and regeneration source (script:
     sve/gen_sve_asm.py). The functions here export the same extern "C"
     symbols; the build links exactly one of the two implementations. The
     code is fully position-independent (the generator verifies there are no
@@ -149,9 +155,13 @@ def emit(functions, symbols, module, src, out_path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--src", required=True)
+    ap.add_argument(
+        "--src", required=True, action="append", help="intrinsics TU; repeatable, objects are scanned in order"
+    )
     ap.add_argument("--out", required=True)
     ap.add_argument("--march", required=True)
+    ap.add_argument("--opt", default="O3", help="optimization level (O2/O3)")
+    ap.add_argument("--include", action="append", default=[], help="extra -I directory; repeatable")
     ap.add_argument("--define", action="append", default=[])
     ap.add_argument("--symbols", required=True)
     ap.add_argument("--module", required=True)
@@ -159,19 +169,31 @@ def main():
     args = ap.parse_args()
 
     symbols = args.symbols.split(",")
-    src_dir = os.path.dirname(os.path.abspath(args.src))
 
+    functions = {}
     with tempfile.TemporaryDirectory() as tmp:
-        obj = os.path.join(tmp, "frozen.o")
-        cmd = [args.cxx, "-std=c++17", "-O3", f"-march={args.march}",
-               "-fno-stack-protector", "-ffunction-sections",
-               f"-I{src_dir}"]
-        cmd += [f"-D{d}" for d in args.define]
-        cmd += ["-c", "-o", obj, args.src]
-        run(cmd)
-        check_relocations(obj, symbols)
-        functions = extract_functions(obj, symbols)
-        emit(functions, symbols, args.module, os.path.relpath(args.src, os.path.dirname(src_dir)), args.out)
+        for i, src in enumerate(args.src):
+            obj = os.path.join(tmp, f"frozen{i}.o")
+            cmd = [
+                args.cxx,
+                "-std=c++17",
+                f"-{args.opt}",
+                f"-march={args.march}",
+                "-fno-stack-protector",
+                "-ffunction-sections",
+                f"-I{os.path.dirname(os.path.abspath(src))}",
+            ]
+            cmd += [f"-I{d}" for d in args.include]
+            cmd += [f"-D{d}" for d in args.define]
+            cmd += ["-c", "-o", obj, src]
+            run(cmd)
+            wanted = [s for s in symbols if s not in functions]
+            check_relocations(obj, wanted)
+            functions.update(extract_functions(obj, wanted, allow_missing=True))
+    missing = [s for s in symbols if s not in functions]
+    if missing:
+        sys.exit(f"symbols not found in any object: {missing}")
+    emit(functions, symbols, args.module, ", ".join(args.src), args.out)
 
     total = sum(len(v) for v in functions.values())
     print(f"wrote {args.out}: {len(symbols)} functions, {total} instructions")
