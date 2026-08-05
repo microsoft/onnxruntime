@@ -56,7 +56,7 @@ Status GatherNDBase::PrepareCompute(
   slice_size = input_shape.SizeFromDimension(batch_dims + num_slice_dims);
   const auto num_batches = input_shape.SizeToDimension(batch_dims);
   const auto input_batch_stride = input_shape.SizeFromDimension(batch_dims);
-  
+
   // Validate num_batches != 0 and num_slices divisibility to prevent division by zero
   ORT_RETURN_IF_NOT(num_batches != 0,
                     "Batch dimension cannot be zero");
@@ -95,14 +95,14 @@ Status GatherNDBase::PrepareCompute(
         num_slices,
         num_slice_dims,
         indices_data);
-    
+
     if (error_index != -1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "invalid index found, index = ", error_index);
+                             "invalid index found, index = ", error_index);
     }
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                          "Unsupported device type for indices tensor in CUDA GatherND");
+                           "Unsupported device type for indices tensor in CUDA GatherND");
   }
 
   std::vector<int64_t> sizes_from_slice_dims(num_slice_dims);
