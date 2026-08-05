@@ -20,6 +20,15 @@ void ComputeSliceOffsetsImpl(
     const TIndex* const indices_data,                 // num_slices * num_slice_dims elements
     int64_t* const input_slice_offsets_data);         // num_slices elements
 
+template <typename TIndex>
+int64_t ValidateIndicesAndReturnFirstInvalidIndex(
+    cudaStream_t stream,
+    const int64_t batch_dims,
+    const TArray<int64_t> input_dims,
+    const size_t num_slices,
+    const size_t num_slice_dims,
+    const TIndex* const indices_data);  // Returns first invalid index found, or -1 if all valid
+
 template <typename T>
 void GatherNDImpl(
     cudaStream_t stream,

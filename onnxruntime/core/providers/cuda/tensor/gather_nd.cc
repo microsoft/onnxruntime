@@ -66,32 +66,43 @@ Status GatherNDBase::PrepareCompute(
   const auto num_slices_per_batch = num_slices / num_batches;
 
   const TIndex* const indices_data = indices_tensor->Data<TIndex>();
-  const size_t num_indices = static_cast<size_t>(indices_shape.Size());
-  std::vector<TIndex> indices_data_host(num_indices);
 
+  // Use on-device validation kernel to avoid full D2H copy for large indices tensors
+  // This kernel records only the first invalid index into a 1-element device buffer,
+  // then copies back only that value for error reporting.
   if (indices_tensor->Location().device.Type() == OrtDevice::CPU) {
-    std::copy_n(indices_data, num_indices, indices_data_host.data());
+    // For CPU-resident indices, fall back to host-side validation
+    const size_t num_indices = static_cast<size_t>(indices_shape.Size());
+    const size_t num_slices_size_t = static_cast<size_t>(num_slices);
+    const size_t num_slice_dims_size_t = static_cast<size_t>(num_slice_dims);
+    for (size_t slice_idx = 0; slice_idx < num_slices_size_t; ++slice_idx) {
+      const size_t slice_base = slice_idx * num_slice_dims_size_t;
+      for (size_t dim_idx = 0; dim_idx < num_slice_dims_size_t; ++dim_idx) {
+        const int64_t index = static_cast<int64_t>(indices_data[slice_base + dim_idx]);
+        const auto upper_limit = input_shape[batch_dims + static_cast<int64_t>(dim_idx)];
+        const auto lower_limit = -upper_limit;
+        ORT_RETURN_IF_NOT(index >= lower_limit && index < upper_limit,
+                          "invalid index found, index = ", index);
+      }
+    }
   } else if (indices_tensor->Location().device.Type() == OrtDevice::CUDA) {
-    // Validate that indices tensor is GPU-resident for CUDA kernel execution
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(indices_data_host.data(), indices_data, num_indices * sizeof(TIndex),
-                                         cudaMemcpyDeviceToHost, cuda_stream));
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+    // Use on-device kernel for CUDA tensors to avoid full D2H transfer
+    TArray<int64_t> input_dims(input_shape.GetDims());
+    int64_t error_index = ValidateIndicesAndReturnFirstInvalidIndex<TIndex>(
+        cuda_stream,
+        batch_dims,
+        input_dims,
+        num_slices,
+        num_slice_dims,
+        indices_data);
+    
+    if (error_index != -1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                            "invalid index found, index = ", error_index);
+    }
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                           "Unsupported device type for indices tensor in CUDA GatherND");
-  }
-
-  const size_t num_slices_size_t = static_cast<size_t>(num_slices);
-  const size_t num_slice_dims_size_t = static_cast<size_t>(num_slice_dims);
-  for (size_t slice_idx = 0; slice_idx < num_slices_size_t; ++slice_idx) {
-    const size_t slice_base = slice_idx * num_slice_dims_size_t;
-    for (size_t dim_idx = 0; dim_idx < num_slice_dims_size_t; ++dim_idx) {
-      const int64_t index = static_cast<int64_t>(indices_data_host[slice_base + dim_idx]);
-      const auto upper_limit = input_shape[batch_dims + static_cast<int64_t>(dim_idx)];
-      const auto lower_limit = -upper_limit;
-      ORT_RETURN_IF_NOT(index >= lower_limit && index < upper_limit,
-                        "invalid index found, index = ", index);
-    }
   }
 
   std::vector<int64_t> sizes_from_slice_dims(num_slice_dims);
