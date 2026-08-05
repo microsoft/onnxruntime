@@ -41,12 +41,18 @@ Status ValidateGroupIndexRangeForCuda(const Tensor* group_index, int64_t k_block
     return Status::OK();
   }
 
+  if (onnxruntime::llm::common::isCapturing(stream)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "MatMulNBits group_index validation is not supported during CUDA graph capture. ",
+                           "Run a warmup inference outside capture so validation can complete before capture begins.");
+  }
+
   const int32_t* g_idx_data = group_index->Data<int32_t>();
   const size_t g_idx_size = static_cast<size_t>(group_index->Shape().Size());
   std::vector<int32_t> g_idx_host(g_idx_size);
 
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(g_idx_host.data(), g_idx_data, g_idx_size * sizeof(int32_t),
-                                       cudaMemcpyDefault, stream));
+                                       cudaMemcpyDeviceToHost, stream));
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
 
   for (size_t i = 0; i < g_idx_size; ++i) {
