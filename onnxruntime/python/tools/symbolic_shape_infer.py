@@ -825,7 +825,7 @@ class SymbolicShapeInference:
             src_type.sequence_type.elem_type.tensor_type if is_sequence(src_type) else src_type.tensor_type
         )
         if dst_tensor_type.elem_type != src_tensor_type.elem_type:
-            node_id = node.name if node.name else node.op_type
+            node_id = node.name or node.op_type
             raise ValueError(
                 f"For node {node_id}, dst_tensor_type.elem_type != src_tensor_type.elem_type: "
                 f"{onnx.onnx_pb.TensorProto.DataType.Name(dst_tensor_type.elem_type)} vs "
@@ -1436,7 +1436,7 @@ class SymbolicShapeInference:
         assert rank in [1, 2]
         num_samples = self._try_get_value(node, 1)
         di = rank - 1
-        last_dim = num_samples if num_samples else str(self._new_symbolic_dim_from_output(node, 0, di))
+        last_dim = num_samples or str(self._new_symbolic_dim_from_output(node, 0, di))
         output_shape = [*sympy_shape[:-1], last_dim]
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(
@@ -1670,6 +1670,10 @@ class SymbolicShapeInference:
     def _infer_Reshape(self, node):  # noqa: N802
         shape_value = self._try_get_value(node, 1)
         vi = self.known_vi_[node.output[0]]
+        # allowzero (opset 14+) determines whether a 0 in the shape input means
+        # "copy the corresponding input dim" (allowzero=0, the legacy default)
+        # or "literal zero" (allowzero=1). Defaults to 0 when not present.
+        allow_zero = bool(get_attribute(node, "allowzero", 0))
         if shape_value is None:
             shape_shape = self._get_shape(node, 1)
             assert len(shape_shape) == 1
@@ -1693,20 +1697,29 @@ class SymbolicShapeInference:
             for i, d in enumerate(shape_value):
                 if type(d) is sympy.Symbol:
                     new_sympy_shape.append(d)
-                elif d == 0:
+                    non_deferred_size = non_deferred_size * d
+                elif d == 0 and not allow_zero:
                     new_sympy_shape.append(input_sympy_shape[i])
                     non_deferred_size = non_deferred_size * input_sympy_shape[i]
-                else:
+                elif d == -1:
                     new_sympy_shape.append(d)
-                if d == -1:
                     deferred_dim_idx = i
-                elif d != 0:
+                else:
+                    # explicit non-zero dim, or a literal 0 when allow_zero=True
+                    new_sympy_shape.append(d)
                     non_deferred_size = non_deferred_size * d
 
             assert new_sympy_shape.count(-1) < 2
             if -1 in new_sympy_shape:
-                new_dim = total // non_deferred_size
-                new_sympy_shape[deferred_dim_idx] = new_dim
+                # When allow_zero is True a literal 0 contributes 0 to non_deferred_size,
+                # which would make total // non_deferred_size raise ZeroDivisionError.
+                # Per ONNX spec, combining allowzero=1 with -1 is invalid; emit a
+                # symbolic dim rather than crash the inference pass.
+                if non_deferred_size == 0:
+                    new_sympy_shape[deferred_dim_idx] = self._new_symbolic_dim_from_output(node, 0, deferred_dim_idx)
+                else:
+                    new_dim = total // non_deferred_size
+                    new_sympy_shape[deferred_dim_idx] = new_dim
 
             self._update_computed_dims(new_sympy_shape)
             vi.CopyFrom(
