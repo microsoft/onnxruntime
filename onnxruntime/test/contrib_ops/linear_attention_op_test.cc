@@ -1401,8 +1401,8 @@ TEST(ContribOpLinearAttentionTest, RejectsQNumHeadsOverflow) {
   tester.AddOptionalInputEdge<float>();
   tester.AddOptionalInputEdge<float>();
   tester.AddOptionalInputEdge<float>();
-  tester.AddOutput<float>("output", {1, 1, 4}, {0.0f, 0.0f, 0.0f, 0.0f});
-  tester.AddOutput<float>("present_state", {1, 1, 4, 4}, std::vector<float>(16, 0.0f));
+  tester.AddOutput<float>("output", {-1, -1, -1}, {});
+  tester.AddOutput<float>("present_state", {-1, -1, -1, -1}, {});
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(ep));
@@ -1429,8 +1429,8 @@ TEST(ContribOpLinearAttentionTest, RejectsKvNumHeadsOverflow) {
   tester.AddOptionalInputEdge<float>();
   tester.AddOptionalInputEdge<float>();
   tester.AddOptionalInputEdge<float>();
-  tester.AddOutput<float>("output", {1, 1, 4}, {0.0f, 0.0f, 0.0f, 0.0f});
-  tester.AddOutput<float>("present_state", {1, 1, 4, 4}, std::vector<float>(16, 0.0f));
+  tester.AddOutput<float>("output", {-1, -1, -1}, {});
+  tester.AddOutput<float>("present_state", {-1, -1, -1, -1}, {});
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(ep));
