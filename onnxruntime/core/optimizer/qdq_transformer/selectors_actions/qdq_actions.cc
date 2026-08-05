@@ -87,7 +87,13 @@ int64_t GetEffectiveBlockSize(const Node& dq_node, int64_t block_size_for_non_bl
   const auto& dq_attrs = dq_node.GetAttributes();
   const auto bs_iter = dq_attrs.find("block_size");
   if (bs_iter != dq_attrs.end() && bs_iter->second.i() > 0) {
-    return bs_iter->second.i();
+    // Mirror the kMaxBlockSize guard from ComputeEffectiveBlockSize. Without this cap, a
+    // model-supplied block_size >= 2^32 truncates to 0 in the MLAS int32 transpose argument,
+    // causing a divide-by-zero at CreateSession. The selector rejects such models, but guard
+    // here too so any future selector bypass cannot reach MLAS with an unsafe value.
+    constexpr int64_t kMaxBlockSize = 256;
+    const int64_t block_size = bs_iter->second.i();
+    return (block_size <= kMaxBlockSize) ? block_size : kMaxBlockSize;
   }
 
   // Derive K from the weight input shape if available. Shape information may be missing even

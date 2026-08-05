@@ -776,7 +776,10 @@ static bool ValidateDQForMatMulNBits(const Graph& graph, const Node& dq_node) {
     }
 
     auto block_size = block_size_iter->second.i();
-    if (block_size < 16 || ((block_size - 1) & block_size)) {
+    // Must be a power-of-two in [16, 256]. Values beyond 256 would overflow int32 in the
+    // MLAS transpose kernel (static_cast<int>(block_size) == 0 for block_size >= 2^32),
+    // causing a divide-by-zero (SIGFPE) at CreateSession time.
+    if (block_size < 16 || block_size > 256 || ((block_size - 1) & block_size)) {
       return false;
     }
 
