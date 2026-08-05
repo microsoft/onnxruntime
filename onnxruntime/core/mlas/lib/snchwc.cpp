@@ -599,7 +599,9 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
         MlasPartitionWork(Index, WorkBlock->tids, TotalWork, &WorkIndex, &WorkRemaining);
 
-        SeekToWork(WorkIndex);
+        if (WorkRemaining > 0) {
+            SeekToWork(WorkIndex);
+        }
     }
 
     void CompleteWork(size_t WorkThisIteration)
