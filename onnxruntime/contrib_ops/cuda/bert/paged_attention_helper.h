@@ -69,7 +69,8 @@ Status Check_Q_K_V(const T* query, const T* key, const T* value, const int num_h
 // v_head_size channels of the same latent row. See docs/contrib_ops/cuda/paged_attention.md §12.
 template <typename T = Tensor>
 Status Check_Q_K_Latent(const T* query, const T* key, const T* value, const int num_heads, const int kv_num_heads,
-                        int& token_count, int& q_hidden_size, int& kv_hidden_size, int& head_size) {
+                        int& token_count, int& kv_token_count, int& q_hidden_size, int& kv_hidden_size,
+                        int& head_size) {
   if (key == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'key' is required when 'kv_cache_layout' is 'LATENT'.");
@@ -103,10 +104,12 @@ Status Check_Q_K_Latent(const T* query, const T* key, const T* value, const int 
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 2 dimensions, got ",
                            key_dims.size());
   }
-  if (token_count != key_dims[0]) {
+  if (token_count > key_dims[0]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'query' and 'key' shall have same dim 0 (token count)");
+                           "Input 'key' dimension 0 (", key_dims[0], ") must be at least 'query' dimension 0 (",
+                           token_count, "): every query token stores its own latent row.");
   }
+  kv_token_count = static_cast<int>(key_dims[0]);
   kv_hidden_size = static_cast<int>(key_dims[1]);
   if (kv_hidden_size != kv_num_heads * head_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -252,21 +255,21 @@ Status CheckBlockTable(const T* block_table, const int batch_size, int& max_num_
   return Status::OK();
 }
 
-// slot_mapping (input 10) is the scheduler-owned write map: one flat slot index per query token
+// slot_mapping (input 10) is the scheduler-owned write map: one flat slot index per stored KV row
 // into the cache viewed as [num_blocks * block_size, kv_num_heads, head_size], or -1 to skip the
-// K/V store for that token. Element range is not validated on the host: that would require a
+// K/V store for that row. Element range is not validated on the host: that would require a
 // device-to-host copy every step. Out-of-range values are undefined behavior, exactly as for
 // block_table today.
 template <typename T = Tensor>
-Status CheckSlotMapping(const T* slot_mapping, const int token_count) {
+Status CheckSlotMapping(const T* slot_mapping, const int kv_token_count) {
   const auto& dims = slot_mapping->Shape().GetDims();
   if (dims.size() != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'slot_mapping' is expected to have 1 dimension, got ", dims.size());
   }
-  if (dims[0] != token_count) {
+  if (dims[0] != kv_token_count) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'slot_mapping' dimension 0 should be token_count (", token_count,
+                           "Input 'slot_mapping' dimension 0 should be key dimension 0 (", kv_token_count,
                            "), got ", dims[0]);
   }
   return Status::OK();
@@ -282,6 +285,32 @@ Status CheckHeadSink(const T* head_sink, const int num_heads) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "head_sink dimension 0 must be equal to the num heads, got ", dims[0]);
   }
+  return Status::OK();
+}
+
+// Query-aware token sparsity (input 17): one row of logical KV positions per query token, with
+// negative entries used as padding. Element values are not validated on the host -- that would
+// require a device-to-host copy every step, exactly as for 'block_table' and 'slot_mapping'. The
+// kernel skips negative positions, positions beyond the sequence's block-table capacity, and
+// positions whose block is unmapped, so an out-of-range entry drops that position rather than
+// reading out of bounds.
+template <typename T = Tensor>
+Status CheckKVIndices(const T* kv_indices, const int token_count, int& max_selected_kv) {
+  const auto& dims = kv_indices->Shape().GetDims();
+  if (dims.size() != 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'kv_indices' is expected to have 2 dimensions, got ", dims.size());
+  }
+  if (dims[0] != token_count) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'kv_indices' dimension 0 should be token_count (", token_count,
+                           "), got ", dims[0]);
+  }
+  if (dims[1] <= 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'kv_indices' dimension 1 (max_selected_kv) must be positive, got ", dims[1]);
+  }
+  max_selected_kv = static_cast<int>(dims[1]);
   return Status::OK();
 }
 
@@ -402,6 +431,7 @@ Status CheckInputs(const T* query,
                    const T* k_scale,
                    const T* v_scale,
                    const T* attention_metadata,
+                   const T* kv_indices,
                    void* parameters,
                    int num_heads,
                    int kv_num_heads,
@@ -432,19 +462,22 @@ Status CheckInputs(const T* query,
   // because LATENT's "key present, value absent" pattern would otherwise be indistinguishable from
   // an ill-formed SEPARATE node. See docs/contrib_ops/cuda/paged_attention.md §4.6.
   int token_count = 0;
+  int kv_token_count = 0;
   int q_hidden_size = 0;
   int kv_hidden_size = 0;
   int head_size = 0;
   const bool is_packed_qkv = !is_latent_kv && key == nullptr;
   if (is_latent_kv) {
-    ORT_RETURN_IF_ERROR(Check_Q_K_Latent(query, key, value, num_heads, kv_num_heads, token_count, q_hidden_size,
-                                         kv_hidden_size, head_size));
+    ORT_RETURN_IF_ERROR(Check_Q_K_Latent(query, key, value, num_heads, kv_num_heads, token_count, kv_token_count,
+                                         q_hidden_size, kv_hidden_size, head_size));
   } else if (!is_packed_qkv) {
     ORT_RETURN_IF_ERROR(Check_Q_K_V(query, key, value, num_heads, kv_num_heads, token_count, q_hidden_size,
                                     kv_hidden_size, head_size));
+    kv_token_count = token_count;
   } else {
     ORT_RETURN_IF_ERROR(Check_QKV(query, value, num_heads, kv_num_heads, token_count, q_hidden_size, kv_hidden_size,
                                   head_size));
+    kv_token_count = token_count;
   }
 
   // Effective V head size (§12.2). A V width that differs from head_size is only meaningful when V
@@ -485,10 +518,6 @@ Status CheckInputs(const T* query,
     }
     // §12.9: both combinations are well defined mathematically but no MLA model uses them, and an
     // untested silent result is worse than a rejection.
-    if (head_sink != nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'head_sink' is not supported when 'kv_cache_layout' is 'LATENT'.");
-    }
     if (q_norm_weight != nullptr || k_norm_weight != nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Inputs 'q_norm_weight' / 'k_norm_weight' are not supported when 'kv_cache_layout' is "
@@ -502,6 +531,26 @@ Status CheckInputs(const T* query,
                              "Input 'v_scale' and attributes 'v_quant_type' / 'v_cache_dtype' must be unset when "
                              "'kv_cache_layout' is 'LATENT': the value elements are the key elements, so 'k_scale' "
                              "and 'k_cache_dtype' describe both.");
+    }
+    // Surplus KV rows (12.11): rows of 'key' beyond token_count belong to no query token, so a
+    // producer of a secondary KV stream -- DeepSeek-V4-Flash's compressor, say -- can store them in
+    // the same step that attends to them. They are stored and nothing else: they own no output row
+    // and no 'kv_indices' row. Two things they cannot do, because both are derived per query token
+    // from cumulative_sequence_length, which does not describe them:
+    if (kv_token_count > token_count) {
+      if (slot_mapping == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'slot_mapping' is required when 'key' has more rows (", kv_token_count,
+                               ") than 'query' (", token_count,
+                               "): the surplus rows have no sequence position to derive a slot from.");
+      }
+      if (cos_cache != nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "In-kernel rotary is not supported when 'key' has more rows (", kv_token_count,
+                               ") than 'query' (", token_count,
+                               "): the surplus rows have no sequence position to rotate by. Apply rotary in the "
+                               "graph and leave 'cos_cache' / 'sin_cache' absent.");
+      }
     }
   } else if (value_cache == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -521,7 +570,19 @@ Status CheckInputs(const T* query,
   int max_num_blocks_per_seq = 0;
   ORT_RETURN_IF_ERROR(CheckBlockTable(block_table, batch_size, max_num_blocks_per_seq));
   if (slot_mapping != nullptr) {
-    ORT_RETURN_IF_ERROR(CheckSlotMapping(slot_mapping, token_count));
+    ORT_RETURN_IF_ERROR(CheckSlotMapping(slot_mapping, kv_token_count));
+  }
+
+  // Query-aware token sparsity. Only the LATENT backend implements it; every other backend either
+  // is a vendored dense kernel (FlashAttention, CUTLASS fMHA) or assumes a contiguous KV range, so
+  // accepting the input there would silently ignore the selection and return dense attention.
+  int max_selected_kv = 0;
+  if (kv_indices != nullptr) {
+    if (!is_latent_kv) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'kv_indices' is only supported when 'kv_cache_layout' is 'LATENT'.");
+    }
+    ORT_RETURN_IF_ERROR(CheckKVIndices(kv_indices, token_count, max_selected_kv));
   }
 
   // Check attention sink and QK-Norm weights
@@ -585,6 +646,7 @@ Status CheckInputs(const T* query,
     PagedAttentionParameters* output_parameters = reinterpret_cast<PagedAttentionParameters*>(parameters);
     output_parameters->batch_size = batch_size;
     output_parameters->token_count = token_count;
+    output_parameters->kv_token_count = kv_token_count;
     output_parameters->hidden_size = q_hidden_size;
     output_parameters->kv_hidden_size = kv_hidden_size;
     output_parameters->num_heads = num_heads;
@@ -594,6 +656,7 @@ Status CheckInputs(const T* query,
     output_parameters->v_hidden_size = num_heads * v_head_size;
     output_parameters->is_latent_kv = is_latent_kv;
     output_parameters->rotary_offset = rotary_offset;
+    output_parameters->max_selected_kv = max_selected_kv;
     output_parameters->block_size = block_size;
     output_parameters->max_num_blocks_per_seq = max_num_blocks_per_seq;
     output_parameters->num_blocks = num_blocks;
