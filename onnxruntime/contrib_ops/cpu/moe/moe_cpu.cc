@@ -38,6 +38,7 @@ Status MoE<T>::Compute(OpKernelContext* context) const {
   const Tensor* fc2_experts_bias = context->Input<Tensor>(5);
   const Tensor* fc3_experts_weights = context->Input<Tensor>(6);
   const Tensor* fc3_experts_bias = context->Input<Tensor>(7);
+  const Tensor* router_weights = context->Input<Tensor>(8);
 
   // FC3 not supported
   if (fc3_experts_weights != nullptr || fc3_experts_bias != nullptr) {
@@ -56,7 +57,7 @@ Status MoE<T>::Compute(OpKernelContext* context) const {
 
   Tensor* output = context->Output(0, input->Shape());
 
-  return ComputeMoE(context, input, router_probs, fc1_experts_weights, fc1_experts_bias,
+  return ComputeMoE(context, input, router_probs, router_weights, fc1_experts_weights, fc1_experts_bias,
                     fc2_experts_weights, fc2_experts_bias, output);
 }
 
@@ -64,6 +65,7 @@ template <typename T>
 Status MoE<T>::ComputeMoE(const OpKernelContext* context,
                           const Tensor* input,
                           const Tensor* router_probs,
+                          const Tensor* router_weights,
                           const Tensor* fc1_experts_weights,
                           const Tensor* fc1_experts_bias,
                           const Tensor* fc2_experts_weights,
@@ -116,6 +118,26 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
     router_logits_float = reinterpret_cast<const float*>(router_data);
   }
 
+  // Handle optional router_weights for separate selection/aggregation (DeepSeek-style noaux_tc routing).
+  const bool has_router_weights = (router_weights != nullptr);
+  IAllocatorUniquePtr<float> router_weights_float_buffer;
+  const float* router_weights_float = nullptr;
+  if (has_router_weights) {
+    const auto& rw_shape = router_weights->Shape();
+    ORT_RETURN_IF(rw_shape.NumDimensions() != 2 || rw_shape[0] != num_tokens || rw_shape[1] != num_experts,
+                  "Input 'router_weights' is expected to have shape (", num_tokens, ", ", num_experts,
+                  "), got ", rw_shape);
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      router_weights_float_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_tokens * num_experts));
+      router_weights_float = router_weights_float_buffer.get();
+      MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(router_weights->Data<T>()),
+                                   const_cast<float*>(router_weights_float),
+                                   static_cast<size_t>(num_tokens * num_experts));
+    } else {
+      router_weights_float = reinterpret_cast<const float*>(router_weights->Data<T>());
+    }
+  }
+
   auto route_expert_ptr = IAllocator::MakeUniquePtr<int>(allocator, static_cast<size_t>(num_tokens * k_));
   int* route_expert = route_expert_ptr.get();
   auto route_scale_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_tokens * k_));
@@ -147,53 +169,92 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
     for (int64_t i = work.start; i < work.end; ++i) {
       const float* logits = router_logits_float + i * num_experts;
 
-      float max_logit = logits[0];
-      for (int64_t j = 1; j < num_experts; ++j) {
-        max_logit = std::max(max_logit, logits[j]);
-      }
-
-      float sum_exp = 0.0f;
-      for (int64_t j = 0; j < num_experts; ++j) {
-        full_softmax[static_cast<size_t>(j)] = std::exp(logits[j] - max_logit);
-        sum_exp += full_softmax[static_cast<size_t>(j)];
-      }
-
-      const float inv_sum_exp = 1.0f / sum_exp;
-      for (int64_t j = 0; j < num_experts; ++j) {
-        full_softmax[static_cast<size_t>(j)] *= inv_sum_exp;
-        sorted_logits[static_cast<size_t>(j)] = {full_softmax[static_cast<size_t>(j)], j};
-      }
-
-      std::partial_sort(sorted_logits.begin(), sorted_logits.begin() + static_cast<std::ptrdiff_t>(k_), sorted_logits.end(), std::greater<>());
-
-      if (normalize_routing_weights_) {
-        float top_k_sum = 0.0f;
-        for (int64_t j = 0; j < k_; ++j) {
-          top_k_sum += sorted_logits[static_cast<size_t>(j)].first;
+      if (has_router_weights) {
+        // DeepSeek-style noaux_tc routing: select top-k from router_probs, use router_weights for aggregation.
+        for (size_t j = 0; j < static_cast<size_t>(num_experts); ++j) {
+          sorted_logits[j] = {logits[j], static_cast<int64_t>(j)};
         }
-        const float inv_top_k_sum = 1.0f / top_k_sum;
+        std::partial_sort(sorted_logits.begin(), sorted_logits.begin() + static_cast<std::ptrdiff_t>(k_),
+                          sorted_logits.end(), std::greater<>());
 
-        for (int64_t j = 0; j < k_; ++j) {
-          int64_t expert_idx = sorted_logits[static_cast<size_t>(j)].second;
-          int64_t route_idx = i * k_ + j;
-          float normalized_weight = sorted_logits[static_cast<size_t>(j)].first * inv_top_k_sum;
-
-          route_expert[route_idx] = narrow<int>(expert_idx);
-          route_scale[route_idx] = normalized_weight;
-          if (normalized_weight > 0.0f) {
-            local_expert_token_map[static_cast<size_t>(expert_idx)].push_back(route_idx);
+        const float* weights_row = router_weights_float + i * num_experts;
+        if (normalize_routing_weights_) {
+          float weight_sum = 0.0f;
+          for (int64_t j = 0; j < k_; ++j) {
+            weight_sum += weights_row[sorted_logits[static_cast<size_t>(j)].second];
+          }
+          const float inv_weight_sum = (weight_sum == 0.0f) ? 0.0f : (1.0f / weight_sum);
+          for (int64_t j = 0; j < k_; ++j) {
+            int64_t expert_idx = sorted_logits[static_cast<size_t>(j)].second;
+            int64_t route_idx = i * k_ + j;
+            float weight = weights_row[expert_idx] * inv_weight_sum;
+            route_expert[route_idx] = narrow<int>(expert_idx);
+            route_scale[route_idx] = weight;
+            if (weight > 0.0f) {
+              local_expert_token_map[static_cast<size_t>(expert_idx)].push_back(route_idx);
+            }
+          }
+        } else {
+          for (int64_t j = 0; j < k_; ++j) {
+            int64_t expert_idx = sorted_logits[static_cast<size_t>(j)].second;
+            int64_t route_idx = i * k_ + j;
+            float weight = weights_row[expert_idx];
+            route_expert[route_idx] = narrow<int>(expert_idx);
+            route_scale[route_idx] = weight;
+            if (weight > 0.0f) {
+              local_expert_token_map[static_cast<size_t>(expert_idx)].push_back(route_idx);
+            }
           }
         }
       } else {
-        for (int64_t j = 0; j < k_; ++j) {
-          int64_t expert_idx = sorted_logits[static_cast<size_t>(j)].second;
-          int64_t route_idx = i * k_ + j;
-          float weight = sorted_logits[static_cast<size_t>(j)].first;
+        float max_logit = logits[0];
+        for (int64_t j = 1; j < num_experts; ++j) {
+          max_logit = std::max(max_logit, logits[j]);
+        }
 
-          route_expert[route_idx] = narrow<int>(expert_idx);
-          route_scale[route_idx] = weight;
-          if (weight > 0.0f) {
-            local_expert_token_map[static_cast<size_t>(expert_idx)].push_back(route_idx);
+        float sum_exp = 0.0f;
+        for (int64_t j = 0; j < num_experts; ++j) {
+          full_softmax[static_cast<size_t>(j)] = std::exp(logits[j] - max_logit);
+          sum_exp += full_softmax[static_cast<size_t>(j)];
+        }
+
+        const float inv_sum_exp = 1.0f / sum_exp;
+        for (int64_t j = 0; j < num_experts; ++j) {
+          full_softmax[static_cast<size_t>(j)] *= inv_sum_exp;
+          sorted_logits[static_cast<size_t>(j)] = {full_softmax[static_cast<size_t>(j)], j};
+        }
+
+        std::partial_sort(sorted_logits.begin(), sorted_logits.begin() + static_cast<std::ptrdiff_t>(k_), sorted_logits.end(), std::greater<>());
+
+        if (normalize_routing_weights_) {
+          float top_k_sum = 0.0f;
+          for (int64_t j = 0; j < k_; ++j) {
+            top_k_sum += sorted_logits[static_cast<size_t>(j)].first;
+          }
+          const float inv_top_k_sum = 1.0f / top_k_sum;
+
+          for (int64_t j = 0; j < k_; ++j) {
+            int64_t expert_idx = sorted_logits[static_cast<size_t>(j)].second;
+            int64_t route_idx = i * k_ + j;
+            float normalized_weight = sorted_logits[static_cast<size_t>(j)].first * inv_top_k_sum;
+
+            route_expert[route_idx] = narrow<int>(expert_idx);
+            route_scale[route_idx] = normalized_weight;
+            if (normalized_weight > 0.0f) {
+              local_expert_token_map[static_cast<size_t>(expert_idx)].push_back(route_idx);
+            }
+          }
+        } else {
+          for (int64_t j = 0; j < k_; ++j) {
+            int64_t expert_idx = sorted_logits[static_cast<size_t>(j)].second;
+            int64_t route_idx = i * k_ + j;
+            float weight = sorted_logits[static_cast<size_t>(j)].first;
+
+            route_expert[route_idx] = narrow<int>(expert_idx);
+            route_scale[route_idx] = weight;
+            if (weight > 0.0f) {
+              local_expert_token_map[static_cast<size_t>(expert_idx)].push_back(route_idx);
+            }
           }
         }
       }

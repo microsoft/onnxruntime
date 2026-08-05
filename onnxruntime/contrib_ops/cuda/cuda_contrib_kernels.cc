@@ -123,6 +123,22 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_Float8E4M3FN, GroupQueryAttention)
 #endif
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PagedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, PagedAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HeavilyCompressedAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HeavilyCompressedAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CompressedSparseAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, CompressedSparseAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DeepSeekV4Indexer);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, DeepSeekV4Indexer);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CompressedAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, CompressedAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HashRouter);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HashRouter);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, HyperConnection);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HyperConnection);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HyperConnection);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, HyperHead);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HyperHead);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HyperHead);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DecoderAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DecoderAttention);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, int32_t, DynamicSlice);
@@ -147,6 +163,9 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GemmaRotaryEmbedding);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, HyperConnectionMix);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HyperConnectionMix);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HyperConnectionMix);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, CausalConvWithState);
@@ -157,6 +176,7 @@ class CUDA_MS_OP_CLASS_NAME(1, Sampling);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, float, ScaledTanh);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, double, ScaledTanh);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16, ScaledTanh);
+class CUDA_MS_OP_CLASS_NAME(1, SinkhornNormalize);
 class CUDA_MS_OP_CLASS_NAME(1, SkipGroupNorm);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, SkipLayerNormalization);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, SkipLayerNormalization);
@@ -388,6 +408,22 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
 #endif
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, PagedAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, PagedAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HeavilyCompressedAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HeavilyCompressedAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CompressedSparseAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, CompressedSparseAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DeepSeekV4Indexer)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, DeepSeekV4Indexer)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CompressedAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, CompressedAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HashRouter)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HashRouter)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, HyperConnection)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HyperConnection)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HyperConnection)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, HyperHead)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HyperHead)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HyperHead)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DecoderAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DecoderAttention)>,
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, int32_t, DynamicSlice)>,
@@ -412,6 +448,9 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GemmaRotaryEmbedding)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, HyperConnectionMix)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HyperConnectionMix)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HyperConnectionMix)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, CausalConvWithState)>,
@@ -422,6 +461,7 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, float, ScaledTanh)>,
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, double, ScaledTanh)>,
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16, ScaledTanh)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, SinkhornNormalize)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, SkipGroupNorm)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, SkipLayerNormalization)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, SkipLayerNormalization)>,

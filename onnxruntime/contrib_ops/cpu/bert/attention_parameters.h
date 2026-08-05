@@ -119,6 +119,15 @@ struct GroupQueryAttentionParameters : AttentionParameters {
   // Upper bound (exclusive) for absolute RoPE positions: dim 0 of the cos/sin caches.
   // 0 when rotary is not configured.
   int rotary_max_position = 0;
+
+  // When true, apply RoPE to the trailing rotary_dim channels (DeepSeek V4 style).
+  // When false (default), RoPE is applied to the leading rotary_dim channels.
+  bool rotary_trailing = false;
+
+  // When true, apply conjugate de-rotation (cos, -sin) to the trailing rotary_dim channels of the
+  // attention output after attention is computed (DeepSeek V4 output de-rotation).
+  // Requires rotary_trailing == true.
+  bool do_output_derotate = false;
 };
 
 // Parameters deduced from node attributes and inputs/outputs.

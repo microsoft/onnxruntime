@@ -53,6 +53,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc2_experts_bias_optional = context->Input<Tensor>(5);
   const Tensor* fc3_experts_weights_optional = context->Input<Tensor>(6);
   const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(7);
+  const Tensor* router_weights_optional = context->Input<Tensor>(8);
 
   using onnxruntime::llm::kernels::cutlass_kernels::ActivationType;
 
@@ -221,10 +222,13 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   int* expert_indices = reinterpret_cast<int*>(workspace_ptr + ws_size + scales_bytes);
   int* unpermuted_row_to_permuted_row = reinterpret_cast<int*>(workspace_ptr + ws_size + scales_bytes + indices_bytes);
 
-  // Perform Softmax + TopK
+  // Perform routing: TopK selection + weight gathering.
+  // When router_weights is provided (DeepSeek-style noaux_tc routing), use raw TopK on
+  // router_probs for expert selection and gather aggregation weights from router_weights.
+  // Otherwise use the standard Softmax + TopK path.
   bool is_fp16 = input->IsDataType<MLFloat16>();
 
-  if (use_sparse_mixer_) {
+  if (use_sparse_mixer_ && router_weights_optional == nullptr) {
     ORT_ENFORCE(k_ == 2, "Sparse mixer only supports k=2");
     ORT_ENFORCE(moe_params.num_experts == 8 || moe_params.num_experts == 16,
                 "Sparse mixer only supports 8 or 16 experts, got ", moe_params.num_experts);
@@ -246,6 +250,47 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
           unpermuted_row_to_permuted_row,
           static_cast<int>(moe_params.num_rows),
           static_cast<int>(moe_params.num_experts),
+          stream);
+    }
+  } else if (router_weights_optional != nullptr) {
+    // DeepSeek-style noaux_tc routing: raw TopK on router_probs, gather from router_weights.
+    ORT_RETURN_IF(router_weights_optional->Shape().NumDimensions() != 2 ||
+                      router_weights_optional->Shape()[0] != moe_params.num_rows ||
+                      router_weights_optional->Shape()[1] != moe_params.num_experts,
+                  "router_weights must have shape (", moe_params.num_rows, ", ", moe_params.num_experts,
+                  "), got ", router_weights_optional->Shape());
+    if (is_fp16) {
+      LaunchTopKWithRouterWeights(
+          reinterpret_cast<const half*>(router_probs->DataRaw()),
+          reinterpret_cast<const half*>(router_weights_optional->DataRaw()),
+          expert_scales,
+          expert_indices,
+          static_cast<int>(moe_params.num_rows),
+          static_cast<int>(moe_params.num_experts),
+          static_cast<int>(k_),
+          normalize_routing_weights_,
+          stream);
+    } else if (input->IsDataType<BFloat16>()) {
+      LaunchTopKWithRouterWeights(
+          reinterpret_cast<const __nv_bfloat16*>(router_probs->DataRaw()),
+          reinterpret_cast<const __nv_bfloat16*>(router_weights_optional->DataRaw()),
+          expert_scales,
+          expert_indices,
+          static_cast<int>(moe_params.num_rows),
+          static_cast<int>(moe_params.num_experts),
+          static_cast<int>(k_),
+          normalize_routing_weights_,
+          stream);
+    } else {
+      LaunchTopKWithRouterWeights(
+          reinterpret_cast<const float*>(router_probs->DataRaw()),
+          reinterpret_cast<const float*>(router_weights_optional->DataRaw()),
+          expert_scales,
+          expert_indices,
+          static_cast<int>(moe_params.num_rows),
+          static_cast<int>(moe_params.num_experts),
+          static_cast<int>(k_),
+          normalize_routing_weights_,
           stream);
     }
   } else {

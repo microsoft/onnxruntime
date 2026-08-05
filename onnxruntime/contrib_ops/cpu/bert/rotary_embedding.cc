@@ -61,7 +61,7 @@ RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : OpKernel(info) {
 template <typename T>
 Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters parameters, const T* input,
                           const int64_t* position_ids, const T* cos_cache, const T* sin_cache, T* output,
-                          bool interleaved) {
+                          bool interleaved, bool trailing, bool negate_sin) {
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   const int n_heads = parameters.num_heads;
@@ -73,6 +73,10 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   const int max_sequence_length = parameters.max_sequence_length;
   const int rotary_emb_dim = parameters.rotary_embedding_dim;
   const int half_rotary_emb_dim = rotary_emb_dim / 2;
+  // Offset within a head at which the rotary channels begin.
+  // Leading (default): rotate [0, rotary_emb_dim), pass through [rotary_emb_dim, head_size).
+  // Trailing (DeepSeek V4): pass through [0, nope_dim), rotate [nope_dim, head_size).
+  const int nope_dim = trailing ? (head_size - rotary_emb_dim) : 0;
 
   // Validate position_ids values are within cos/sin cache bounds
   if (position_ids_format == 0) {
@@ -140,6 +144,13 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   //   - rotary_emb_dim * 32 for the rotary embedding operations (32 is an approximation of the number of CPU cycles)
   const double cost = static_cast<double>(head_size * sizeof(T) * 2 + rotary_emb_dim * 32);
   ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+    // Per-thread scratch buffer for the negated sin row (only allocated when negate_sin==true).
+    // Using a fixed upper bound avoids variable-length arrays (VLAs) which are non-standard in C++.
+    // half_rotary_emb_dim is always <= head_size / 2, and head_size <= 512 in all known models,
+    // so 512 elements is a safe upper bound without dynamic allocation in the hot loop.
+    constexpr int kMaxHalfRotaryDim = 512;
+    T neg_sin_row[kMaxHalfRotaryDim];
+
     for (std::ptrdiff_t ptr = begin; ptr != end; ++ptr) {
       const int b = static_cast<int>((ptr / n_heads) / sequence_length);
       const int s = static_cast<int>((ptr / n_heads) % sequence_length);
@@ -161,12 +172,30 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
       const T* cos_data = cos_cache + cache_offset;
       const T* sin_data = sin_cache + cache_offset;
 
-      MlasRotaryEmbedOneRow<T>(input_data, sin_data, cos_data, rotary_emb_dim, interleaved, output_data);
+      // For the conjugate de-rotation pass we negate sin (cos stays the same).
+      // Build the negated row inside the per-thread scratch buffer.
+      if (negate_sin) {
+        for (int d = 0; d < half_rotary_emb_dim; ++d) {
+          neg_sin_row[d] = T(-static_cast<float>(sin_data[d]));
+        }
+        sin_data = neg_sin_row;
+      }
 
-      if (rotary_emb_dim < head_size) {
-        std::memcpy(output_data + rotary_emb_dim,
-                    input_data + rotary_emb_dim,
-                    (head_size - rotary_emb_dim) * sizeof(T));
+      if (trailing) {
+        // Pass through the leading nope_dim channels unchanged.
+        if (nope_dim > 0 && input_data != output_data) {
+          std::memcpy(output_data, input_data, static_cast<size_t>(nope_dim) * sizeof(T));
+        }
+        // Apply RoPE to the trailing rotary channels.
+        MlasRotaryEmbedOneRow<T>(input_data + nope_dim, sin_data, cos_data, rotary_emb_dim, interleaved, output_data + nope_dim);
+      } else {
+        MlasRotaryEmbedOneRow<T>(input_data, sin_data, cos_data, rotary_emb_dim, interleaved, output_data);
+
+        if (rotary_emb_dim < head_size) {
+          std::memcpy(output_data + rotary_emb_dim,
+                      input_data + rotary_emb_dim,
+                      (head_size - rotary_emb_dim) * sizeof(T));
+        }
       }
     }
   });
@@ -176,11 +205,11 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
 
 template Status RunRotaryEmbedding<float>(concurrency::ThreadPool* tp, RotaryParameters parameters, const float* input,
                                           const int64_t* position_ids, const float* cos_cache, const float* sin_cache, float* output,
-                                          bool interleaved);
+                                          bool interleaved, bool trailing, bool negate_sin);
 
 template Status RunRotaryEmbedding<MLFloat16>(concurrency::ThreadPool* tp, RotaryParameters parameters, const MLFloat16* input,
                                               const int64_t* position_ids, const MLFloat16* cos_cache, const MLFloat16* sin_cache,
-                                              MLFloat16* output, bool interleaved);
+                                              MLFloat16* output, bool interleaved, bool trailing, bool negate_sin);
 
 template <typename T>
 Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {

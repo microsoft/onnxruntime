@@ -1269,6 +1269,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Default value is 1e-6.",
               AttributeProto::FLOAT,
               1e-6f)
+        .Attr("rotary_trailing",
+              "When 1, apply RoPE to the trailing rotary_embedding_dim channels of each head rather than the leading channels. "
+              "The preceding (head_size - rotary_embedding_dim) channels are passed through unchanged. "
+              "Requires do_rotary=1. Default value is 0.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("do_output_derotate",
+              "When 1, apply conjugate de-rotation (cos, -sin) to the trailing rotary_embedding_dim channels of the attention "
+              "output after attention is computed. Used by DeepSeek V4 where K==V carries RoPE that leaks into the output "
+              "and must be unwound. Requires do_rotary=1 and rotary_trailing=1. Default value is 0.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape"
@@ -1380,6 +1392,350 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           // Otherwise, pass -1 to signal that the optional output is not present and validation should be skipped.
           int qk_output_index = ctx.getNumOutputs() > 3 ? 3 : -1;
           GroupQueryAttentionTypeAndShapeInference(ctx, 3, qk_output_index);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+  HeavilyCompressedAttention, 1,
+    OpSchema()
+        .SetDoc(R"DOC(Heavily Compressed Attention (HCA) state update for DeepSeek V4.
+
+Projects hidden states to per-dimension values and gate logits, combines each non-overlapping
+`compress_rate` token window with a softmax over the window, applies RMS normalization and
+trailing interleaved RoPE, and appends the result to the compressed KV history. Incomplete
+windows are returned as pending state for the next invocation.)DOC")
+        .Attr("compress_rate", "Number of source tokens compressed into one entry.", AttributeProto::INT)
+        .Attr("rotary_dim", "Size of the trailing interleaved rotary slice.", AttributeProto::INT)
+        .Attr("rms_norm_epsilon", "Epsilon used by RMS normalization.", AttributeProto::FLOAT, 1e-6f)
+        .Input(0, "hidden_states", "Input tensor with shape (B, S, D).", "T")
+        .Input(1, "position_ids", "Absolute source-token positions with shape (B, S).", "I")
+        .Input(2, "cos_cache", "RoPE cosine cache with shape (max_position, rotary_dim / 2).", "T")
+        .Input(3, "sin_cache", "RoPE sine cache with the same shape as cos_cache.", "T")
+        .Input(4, "kv_weight", "Value projection weight with shape (D, H).", "T")
+        .Input(5, "gate_weight", "Per-dimension gate projection weight with shape (D, H).", "T")
+        .Input(6, "position_bias", "Gate position bias with shape (compress_rate, H).", "T")
+        .Input(7, "norm_weight", "RMS normalization weight with shape (H).", "T")
+        .Input(8, "past_pending_kv", "Uncompressed value state with shape (B, P, H), P < compress_rate.", "T")
+        .Input(9, "past_pending_gate", "Uncompressed gate state with shape (B, P, H).", "T")
+        .Input(10, "past_entries", "Compressed history with shape (B, 1, E, H).", "T")
+        .Output(0, "compressed_kv", "Updated compressed history with shape (B, 1, E + floor((P + S) / compress_rate), H).", "T")
+        .Output(1, "block_bias", "Causal additive bias with shape (B, 1, S, updated_entries).", "T")
+        .Output(2, "present_pending_kv", "Remaining uncompressed value state with shape (B, (P + S) % compress_rate, H).", "T")
+        .Output(3, "present_pending_gate", "Remaining uncompressed gate state with the same shape as present_pending_kv.", "T")
+        .Output(4, "present_entries", "Updated compressed history; identical in value and shape to compressed_kv.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain activations, weights, state, and outputs to floating-point tensors.")
+        .TypeConstraint("I", {"tensor(int64)"}, "Constrain position ids to int64.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          for (int output = 0; output < 5; ++output) {
+            ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, output);
+          }
+          if (hasInputShape(ctx, 0)) {
+            const auto& hidden_shape = getInputShape(ctx, 0);
+            if (hidden_shape.dim_size() != 3) {
+              fail_shape_inference("hidden_states must have rank 3.");
+            }
+            TensorShapeProto block_bias_shape;
+            *block_bias_shape.add_dim() = hidden_shape.dim(0);
+            block_bias_shape.add_dim()->set_dim_value(1);
+            *block_bias_shape.add_dim() = hidden_shape.dim(1);
+            block_bias_shape.add_dim();
+            updateOutputShape(ctx, 1, block_bias_shape);
+          }
+          if (hasInputShape(ctx, 10)) {
+            const auto& entries_shape = getInputShape(ctx, 10);
+            if (entries_shape.dim_size() != 4) {
+              fail_shape_inference("past_entries must have rank 4.");
+            }
+            TensorShapeProto output_shape(entries_shape);
+            output_shape.mutable_dim(2)->Clear();
+            updateOutputShape(ctx, 0, output_shape);
+            updateOutputShape(ctx, 4, output_shape);
+          }
+          for (int output = 2; output <= 3; ++output) {
+            if (hasInputShape(ctx, output + 6)) {
+              TensorShapeProto pending_shape(getInputShape(ctx, output + 6));
+              if (pending_shape.dim_size() != 3) {
+                fail_shape_inference("pending state must have rank 3.");
+              }
+              pending_shape.mutable_dim(1)->Clear();
+              updateOutputShape(ctx, output, pending_shape);
+            }
+          }
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+  CompressedSparseAttention, 1,
+    OpSchema()
+        .SetDoc(R"DOC(Compressed Sparse Attention (CSA) compressor state update for DeepSeek V4.
+
+Each source token projects to Ca and Cb value/gate series. Entry w combines the previous
+window's Ca series and the current window's Cb series, giving a 2 * compress_rate window with
+compress_rate stride. The op preserves the last Ca window as overlap state, applies RMS
+normalization and trailing interleaved RoPE, and appends completed entries to the history.)DOC")
+        .Attr("compress_rate", "Stride between compressed entries.", AttributeProto::INT)
+        .Attr("rotary_dim", "Size of the trailing interleaved rotary slice.", AttributeProto::INT)
+        .Attr("rms_norm_epsilon", "Epsilon used by RMS normalization.", AttributeProto::FLOAT, 1e-6f)
+        .Input(0, "hidden_states", "Input tensor with shape (B, S, D).", "T")
+        .Input(1, "position_ids", "Absolute source-token positions with shape (B, S).", "I")
+        .Input(2, "cos_cache", "RoPE cosine cache with shape (max_position, rotary_dim / 2).", "T")
+        .Input(3, "sin_cache", "RoPE sine cache with the same shape as cos_cache.", "T")
+        .Input(4, "kv_weight", "Ca/Cb value projection weight with shape (D, 2 * H).", "T")
+        .Input(5, "gate_weight", "Ca/Cb gate projection weight with shape (D, 2 * H).", "T")
+        .Input(6, "position_bias", "Gate position bias with shape (compress_rate, 2 * H).", "T")
+        .Input(7, "norm_weight", "RMS normalization weight with shape (H).", "T")
+        .Input(8, "past_pending_kv", "Uncompressed Ca/Cb value state with shape (B, P, 2 * H).", "T")
+        .Input(9, "past_pending_gate", "Uncompressed Ca/Cb gate state with shape (B, P, 2 * H).", "T")
+        .Input(10, "past_entries", "Compressed history with shape (B, 1, E, H).", "T")
+        .Input(11, "past_overlap_kv", "Previous full window's Ca values with shape (B, compress_rate, H).", "T")
+        .Input(12, "past_overlap_gate", "Previous full window's Ca gates with shape (B, compress_rate, H).", "T")
+        .Output(0, "compressed_kv", "Updated compressed history with shape (B, 1, updated_entries, H).", "T")
+        .Output(1, "present_pending_kv", "Remaining uncompressed Ca/Cb value state.", "T")
+        .Output(2, "present_pending_gate", "Remaining uncompressed Ca/Cb gate state.", "T")
+        .Output(3, "present_entries", "Updated compressed history; identical in value and shape to compressed_kv.", "T")
+        .Output(4, "present_overlap_kv", "Current last full window's Ca value state.", "T")
+        .Output(5, "present_overlap_gate", "Current last full window's Ca gate state.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain activations, weights, state, and outputs to floating-point tensors.")
+        .TypeConstraint("I", {"tensor(int64)"}, "Constrain position ids to int64.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          constexpr int input_for_output[] = {10, 8, 9, 10, 11, 12};
+          for (int output = 0; output < 6; ++output) {
+            ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, output);
+            if (hasInputShape(ctx, input_for_output[output])) {
+              TensorShapeProto shape(getInputShape(ctx, input_for_output[output]));
+              if (output == 0 || output == 3) {
+                shape.mutable_dim(shape.dim_size() == 4 ? 2 : 1)->Clear();
+              } else if (output == 1 || output == 2) {
+                shape.mutable_dim(1)->Clear();
+              }
+              updateOutputShape(ctx, output, shape);
+            }
+          }
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+  DeepSeekV4Indexer, 1,
+    OpSchema()
+        .SetDoc(R"DOC(DeepSeek V4 compressed-entry indexer.
+
+Maintains a narrow overlapping compressed index-key history, scores causally visible entries,
+and returns top-k entry indices for CompressedAttention. Invalid top-k slots are filled with -1.)DOC")
+        .Attr("compress_rate", "Stride between compressed index entries.", AttributeProto::INT)
+        .Attr("num_heads", "Number of index query heads.", AttributeProto::INT)
+        .Attr("head_size", "Dimension of each index query head.", AttributeProto::INT)
+        .Attr("index_topk", "Maximum number of compressed entries selected per query.", AttributeProto::INT)
+        .Attr("rotary_dim", "Size of the trailing interleaved rotary slice.", AttributeProto::INT)
+        .Attr("rms_norm_epsilon", "Epsilon used by RMS normalization.", AttributeProto::FLOAT, 1e-6f)
+        .Input(0, "hidden_states", "Input tensor with shape (B, S, D).", "T")
+        .Input(1, "q_residual", "Low-rank query residual with shape (B, S, R).", "T")
+        .Input(2, "position_ids", "Absolute source-token positions with shape (B, S).", "I")
+        .Input(3, "cos_cache", "RoPE cosine cache with shape (max_position, rotary_dim / 2).", "T")
+        .Input(4, "sin_cache", "RoPE sine cache with the same shape as cos_cache.", "T")
+        .Input(5, "kv_weight", "Ca/Cb index-key projection weight with shape (D, 2 * head_size).", "T")
+        .Input(6, "gate_weight", "Ca/Cb index-gate projection weight with shape (D, 2 * head_size).", "T")
+        .Input(7, "position_bias", "Index-gate position bias with shape (compress_rate, 2 * head_size).", "T")
+        .Input(8, "norm_weight", "Compressed index-key RMS normalization weight with shape (head_size).", "T")
+        .Input(9, "q_weight", "Query projection weight with shape (R, num_heads * head_size).", "T")
+        .Input(10, "score_weight", "Per-query index-head weight projection with shape (D, num_heads).", "T")
+        .Input(11, "past_pending_kv", "Uncompressed Ca/Cb index-key state with shape (B, P, 2 * head_size).", "T")
+        .Input(12, "past_pending_gate", "Uncompressed Ca/Cb index-gate state with shape (B, P, 2 * head_size).", "T")
+        .Input(13, "past_entries", "Compressed index-key history with shape (B, E, head_size).", "T")
+        .Input(14, "past_overlap_kv", "Previous full window's Ca index-key values.", "T")
+        .Input(15, "past_overlap_gate", "Previous full window's Ca index-gate values.", "T")
+        .Output(0, "selected_indices", "Causal top-k indices with shape (B, S, index_topk), padded with -1.", "I")
+        .Output(1, "present_pending_kv", "Updated pending index-key state.", "T")
+        .Output(2, "present_pending_gate", "Updated pending index-gate state.", "T")
+        .Output(3, "present_entries", "Updated compressed index-key history.", "T")
+        .Output(4, "present_overlap_kv", "Updated Ca index-key overlap state.", "T")
+        .Output(5, "present_overlap_gate", "Updated Ca index-gate overlap state.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain activations, weights, state, and outputs to floating-point tensors.")
+        .TypeConstraint("I", {"tensor(int64)"}, "Constrain position ids and selected indices to int64.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 0);
+          for (int output = 1; output < 6; ++output) {
+            ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, output);
+          }
+          if (hasInputShape(ctx, 0)) {
+            const auto& hidden_shape = getInputShape(ctx, 0);
+            if (hidden_shape.dim_size() != 3) {
+              fail_shape_inference("hidden_states must have rank 3.");
+            }
+            TensorShapeProto selected_shape;
+            *selected_shape.add_dim() = hidden_shape.dim(0);
+            *selected_shape.add_dim() = hidden_shape.dim(1);
+            const auto* topk = ctx.getAttribute("index_topk");
+            if (topk != nullptr) {
+              selected_shape.add_dim()->set_dim_value(topk->i());
+            } else {
+              selected_shape.add_dim();
+            }
+            updateOutputShape(ctx, 0, selected_shape);
+          }
+          constexpr int input_for_output[] = {11, 12, 13, 14, 15};
+          for (int output = 1; output < 6; ++output) {
+            if (hasInputShape(ctx, input_for_output[output - 1])) {
+              TensorShapeProto shape(getInputShape(ctx, input_for_output[output - 1]));
+              if (output == 1 || output == 2 || output == 3) {
+                shape.mutable_dim(1)->Clear();
+              }
+              updateOutputShape(ctx, output, shape);
+            }
+          }
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+  CompressedAttention, 1,
+    OpSchema()
+        .SetDoc(R"DOC(Attention over local shared-KV state and optional DeepSeek V4 compressed entries.
+
+The compressed region may be dense (HCA) or restricted per query by selected_indices (CSA).
+Local and compressed logits share one softmax normalization together with a learned per-head
+sink logit. A selected index of -1 is ignored.)DOC")
+        .Attr("scale", "Scale applied to query-key products.", AttributeProto::FLOAT, OPTIONAL_VALUE)
+        .Input(0, "query", "Query tensor with shape (B, N, S, H).", "T")
+        .Input(1, "local_kv", "Shared local key/value tensor with shape (B, 1, L, H).", "T")
+        .Input(2, "compressed_kv", "Compressed shared key/value tensor with shape (B, 1, E, H).", "T", OpSchema::Optional)
+        .Input(3, "attention_bias", "Additive local/compressed attention bias broadcastable to (B, N, S, L + E).", "T", OpSchema::Optional)
+        .Input(4, "selected_indices", "Optional CSA indices with shape (B, S, K); -1 marks an invalid slot.", "I", OpSchema::Optional)
+        .Input(5, "head_sink", "Sink logits as a scalar or tensor with shape (N).", "T")
+        .Output(0, "output", "Per-head attention result with the same shape as query.", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain queries, state, bias, sinks, and output to floating-point tensors.")
+        .TypeConstraint("I", {"tensor(int64)"}, "Constrain selected indices to int64.")
+        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+  HashRouter, 1,
+    OpSchema()
+        .SetDoc(R"DOC(Frozen token-id to expert routing used by DeepSeek V4 hash-MoE layers.
+
+Expert selection is `expert_indices = token_to_expert[input_ids]`. Learned gate logits still
+produce the mixing weights for those selected experts. Selected scores are normalized to sum
+to one per token and multiplied by routed_scaling_factor.)DOC")
+        .Attr("score_function", "Gate score function: 'sigmoid' or 'sqrtsoftplus'.", AttributeProto::STRING,
+              std::string("sigmoid"))
+        .Attr("routed_scaling_factor", "Multiplier applied after selected-score normalization.",
+              AttributeProto::FLOAT, 1.0f)
+        .Attr("epsilon", "Denominator floor used while normalizing selected scores.",
+              AttributeProto::FLOAT, 1e-20f)
+        .Input(0, "hidden_states", "Input tensor with shape (..., D).", "T")
+        .Input(1, "input_ids", "Token ids with shape matching hidden_states without its final dimension.", "I")
+        .Input(2, "gate_weight", "Learned gate weight with shape (E, D).", "T")
+        .Input(3, "token_to_expert", "Frozen lookup table with shape (vocab_size, K).", "I")
+        .Output(0, "logits", "Unactivated gate logits with shape (..., E).", "T")
+        .Output(1, "routing_weights", "Normalized selected-expert weights with shape (..., K).", "T")
+        .Output(2, "expert_indices", "Selected expert ids with shape (..., K).", "I")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain hidden states, gate weights, logits, and routing weights to floating-point tensors.")
+        .TypeConstraint("I", {"tensor(int32)", "tensor(int64)"}, "Constrain token and expert ids to integer tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 1, 2);
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+          const auto& hidden_shape = getInputShape(ctx, 0);
+          if (hidden_shape.dim_size() < 1) {
+            fail_shape_inference("hidden_states must have rank at least 1.");
+          }
+          TensorShapeProto prefix_shape;
+          for (int i = 0; i < hidden_shape.dim_size() - 1; ++i) {
+            *prefix_shape.add_dim() = hidden_shape.dim(i);
+          }
+          TensorShapeProto logits_shape(prefix_shape);
+          if (hasInputShape(ctx, 2) && getInputShape(ctx, 2).dim_size() == 2) {
+            *logits_shape.add_dim() = getInputShape(ctx, 2).dim(0);
+          } else {
+            logits_shape.add_dim();
+          }
+          updateOutputShape(ctx, 0, logits_shape);
+          TensorShapeProto selected_shape(prefix_shape);
+          if (hasInputShape(ctx, 3) && getInputShape(ctx, 3).dim_size() == 2) {
+            *selected_shape.add_dim() = getInputShape(ctx, 3).dim(1);
+          } else {
+            selected_shape.add_dim();
+          }
+          updateOutputShape(ctx, 1, selected_shape);
+          updateOutputShape(ctx, 2, selected_shape);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+  HyperConnection, 1,
+    OpSchema()
+        .SetDoc(R"DOC(DeepSeek V4 manifold-constrained hyper-connection mapping.
+
+The operator applies an FP32 unweighted RMS normalization and learned projection to the
+parallel residual streams, computes the post scale and Sinkhorn-normalized stream mixing
+matrix, and collapses the streams for the following transformer sublayer.)DOC")
+        .Attr("epsilon", "Epsilon used by RMS normalization and Sinkhorn normalization.",
+              AttributeProto::FLOAT, 1e-6f)
+        .Attr("sinkhorn_iterations", "Number of Sinkhorn row/column normalization iterations.",
+              AttributeProto::INT, static_cast<int64_t>(20))
+        .Input(0, "hidden_streams", "Input residual streams with shape (B, S, H, D).", "T")
+        .Input(1, "projection_weight", "FP32 projection weight with shape ((2 + H) * H, H * D).", "F")
+        .Input(2, "projection_bias", "FP32 projection bias with shape ((2 + H) * H).", "F")
+        .Input(3, "projection_scale", "FP32 pre, post, and combination scales with shape (3).", "F")
+        .Output(0, "post", "Sublayer output placement weights with shape (B, S, H).", "T")
+        .Output(1, "comb", "Doubly-stochastic stream mixing matrices with shape (B, S, H, H).", "T")
+        .Output(2, "collapsed", "Collapsed sublayer input with shape (B, S, D).", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain activations and outputs to floating-point tensors.")
+        .TypeConstraint("F", {"tensor(float)"}, "Constrain learned parameters to FP32 tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          for (int output = 0; output < 3; ++output) {
+            ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, output);
+          }
+          if (!hasInputShape(ctx, 0)) return;
+          const auto& hidden_shape = getInputShape(ctx, 0);
+          if (hidden_shape.dim_size() != 4) {
+            fail_shape_inference("hidden_streams must have rank 4.");
+          }
+          TensorShapeProto post_shape;
+          *post_shape.add_dim() = hidden_shape.dim(0);
+          *post_shape.add_dim() = hidden_shape.dim(1);
+          *post_shape.add_dim() = hidden_shape.dim(2);
+          updateOutputShape(ctx, 0, post_shape);
+          TensorShapeProto comb_shape(post_shape);
+          *comb_shape.add_dim() = hidden_shape.dim(2);
+          updateOutputShape(ctx, 1, comb_shape);
+          TensorShapeProto collapsed_shape;
+          *collapsed_shape.add_dim() = hidden_shape.dim(0);
+          *collapsed_shape.add_dim() = hidden_shape.dim(1);
+          *collapsed_shape.add_dim() = hidden_shape.dim(3);
+          updateOutputShape(ctx, 2, collapsed_shape);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+  HyperHead, 1,
+    OpSchema()
+        .SetDoc(R"DOC(DeepSeek V4 final hyper-connection stream collapse.
+
+The operator applies an FP32 unweighted RMS normalization and learned sigmoid mixing weights,
+then reduces the parallel residual streams to the final hidden state.)DOC")
+        .Attr("epsilon", "Epsilon used by RMS normalization and sigmoid mixing.",
+              AttributeProto::FLOAT, 1e-6f)
+        .Input(0, "hidden_streams", "Input residual streams with shape (B, S, H, D).", "T")
+        .Input(1, "projection_weight", "FP32 projection weight with shape (H, H * D).", "F")
+        .Input(2, "projection_bias", "FP32 projection bias with shape (H).", "F")
+        .Input(3, "projection_scale", "FP32 scalar projection scale.", "F")
+        .Output(0, "output", "Collapsed hidden states with shape (B, S, D).", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain activations and output to floating-point tensors.")
+        .TypeConstraint("F", {"tensor(float)"}, "Constrain learned parameters to FP32 tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (!hasInputShape(ctx, 0)) return;
+          const auto& hidden_shape = getInputShape(ctx, 0);
+          if (hidden_shape.dim_size() != 4) {
+            fail_shape_inference("hidden_streams must have rank 4.");
+          }
+          TensorShapeProto output_shape;
+          *output_shape.add_dim() = hidden_shape.dim(0);
+          *output_shape.add_dim() = hidden_shape.dim(1);
+          *output_shape.add_dim() = hidden_shape.dim(3);
+          updateOutputShape(ctx, 0, output_shape);
         }));
 
 constexpr const char* PagedAttention_ver1_doc = R"DOC(

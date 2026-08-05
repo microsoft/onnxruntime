@@ -91,6 +91,10 @@ class GQAAttentionBase {
 
     do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
     rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
+    rotary_trailing_ = info.GetAttrOrDefault<int64_t>("rotary_trailing", 0) == 1;
+    do_output_derotate_ = info.GetAttrOrDefault<int64_t>("do_output_derotate", 0) == 1;
+    ORT_ENFORCE(!do_output_derotate_ || (do_rotary_ && rotary_trailing_),
+                "GroupQueryAttention: do_output_derotate=1 requires do_rotary=1 and rotary_trailing=1.");
 
     use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
 
@@ -114,6 +118,8 @@ class GQAAttentionBase {
   float softcap_;
   bool do_rotary_;  // whether or not to use rotary embeddings
   bool rotary_interleaved_;
+  bool rotary_trailing_;     // apply RoPE to trailing channels (DeepSeek V4 style)
+  bool do_output_derotate_;  // apply conjugate de-rotation to output after attention (DeepSeek V4)
   int local_window_size_;
   int qk_output_;
 

@@ -2493,6 +2493,60 @@ TEST(MoETest, QMoETest_CPU_RouterWeights) {
   run_test(1, expected_output_norm);
 }
 
+TEST(MoETest, MoETest_CUDA_RouterWeightsWithSparseMixerAttr) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep || !HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+  }
+
+  constexpr int64_t num_rows = 2;
+  constexpr int64_t num_experts = 8;
+  constexpr int64_t hidden_size = kMoEMinCudaDim;
+  constexpr int64_t inter_size = kMoEMinCudaDim;
+  constexpr int64_t k = 2;
+
+  std::vector<float> input(static_cast<size_t>(num_rows * hidden_size), 0.0f);
+  const std::vector<float> router_probs = {
+      0.1f, 0.8f, -0.2f, 0.5f, 0.6f, -0.1f, 0.3f, 0.2f,
+      0.9f, 0.2f, 0.7f, -0.3f, 0.1f, 0.4f, 0.8f, 0.5f};
+  const std::vector<float> router_weights = {
+      0.1f, 2.0f, 0.2f, 0.3f, 3.0f, 0.4f, 0.5f, 0.6f,
+      1.5f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.5f, 0.7f};
+
+  std::vector<float> fc1_experts_weights(static_cast<size_t>(num_experts * hidden_size * inter_size), 0.0f);
+  std::vector<float> fc2_experts_weights(static_cast<size_t>(num_experts * inter_size * hidden_size), 0.0f);
+  std::vector<float> fc2_experts_bias;
+  for (int64_t e = 0; e < num_experts; ++e) {
+    fc2_experts_bias.insert(fc2_experts_bias.end(), static_cast<size_t>(hidden_size), static_cast<float>(e + 1));
+  }
+
+  std::vector<float> expected_output;
+  expected_output.insert(expected_output.end(), static_cast<size_t>(hidden_size), 19.0f);  // 2.0 * 2 + 3.0 * 5
+  expected_output.insert(expected_output.end(), static_cast<size_t>(hidden_size), 5.0f);   // 1.5 * 1 + 0.5 * 7
+
+  OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", k);
+  tester.AddAttribute<std::string>("activation_type", "gelu");
+  tester.AddAttribute<int64_t>("normalize_routing_weights", static_cast<int64_t>(0));
+  tester.AddAttribute<int64_t>("use_sparse_mixer", static_cast<int64_t>(1));
+
+  tester.AddInput<float>("input", {num_rows, hidden_size}, input);
+  tester.AddInput<float>("router_probs", {num_rows, num_experts}, router_probs);
+  tester.AddInput<float>("fc1_experts_weights", {num_experts, hidden_size, inter_size}, fc1_experts_weights);
+  tester.AddOptionalInputEdge<float>();  // fc1_experts_bias
+  tester.AddInput<float>("fc2_experts_weights", {num_experts, inter_size, hidden_size}, fc2_experts_weights);
+  tester.AddInput<float>("fc2_experts_bias", {num_experts, hidden_size}, fc2_experts_bias);
+  tester.AddOptionalInputEdge<float>();  // fc3_experts_weights
+  tester.AddOptionalInputEdge<float>();  // fc3_experts_bias
+  tester.AddInput<float>("router_weights", {num_rows, num_experts}, router_weights);
+  tester.AddOutput<float>("output", {num_rows, hidden_size}, expected_output);
+  tester.SetOutputTolerance(1e-4f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 // Test for CPU MoE implementation
 static void RunMoECpuTest(const std::vector<float>& input, const std::vector<float>& router_probs,
                           const std::vector<float>& fc1_experts_weights, const std::vector<float>& fc2_experts_weights,
