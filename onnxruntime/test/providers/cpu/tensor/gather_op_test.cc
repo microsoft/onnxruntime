@@ -86,7 +86,11 @@ TEST(GatherOpTest, Gather_invalid_axis) {
                           {10.0f, 10.1f, 10.2f, 10.3f,
                            11.0f, 11.1f, 11.2f, 11.3f,
                            12.0f, 12.1f, 12.2f, 12.3f});
+#if defined(ORT_USE_ONNX_LIGHT)
+    test.Run(OpTester::ExpectResult::kExpectFailure, "axis=-10 must be in [-rank, rank-1]");
+#else
     test.Run(OpTester::ExpectResult::kExpectFailure, "axis must be in [-r, r-1]");
+#endif
   };
 
   run_test(false);
