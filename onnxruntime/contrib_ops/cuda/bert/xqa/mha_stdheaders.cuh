@@ -599,7 +599,7 @@ struct __tuple_compare<0, __i, __j, _Tp, _Up> {
   }
 
   DEVICE_FUNC static bool __less(_Tp const& __t, _Up const& __u) {
-    return ((get<__i>(__t) < get<__i>(__u)) || !(get<__i>(__u) < get<__i>(__t)) && __tuple_compare<0, __i + 1, __j, _Tp, _Up>::__less(__t, __u));
+    return ((get<__i>(__t) < get<__i>(__u)) || (!(get<__i>(__u) < get<__i>(__t)) && __tuple_compare<0, __i + 1, __j, _Tp, _Up>::__less(__t, __u)));
   }
 };
 

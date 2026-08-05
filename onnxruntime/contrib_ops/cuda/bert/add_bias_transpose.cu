@@ -263,8 +263,8 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
     const int src_k_idx = input_offset_base + NH + head_idx;
     const int src_v_idx = input_offset_base + 2 * NH + head_idx;
 
-    Vec_t q, k, v;
-    Vec_t q_bias, k_bias, v_bias;
+    Vec_t q = Vec_t{}, k = Vec_t{}, v = Vec_t{};
+    Vec_t q_bias = Vec_t{}, k_bias = Vec_t{}, v_bias = Vec_t{};
 
     if (!is_masked) {
       q = *reinterpret_cast<const Vec_t*>(&input[src_q_idx]);

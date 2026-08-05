@@ -153,6 +153,16 @@ if(HAS_DEPRECATED_COPY)
   set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/where_op.cc" PROPERTIES COMPILE_FLAGS -Wno-deprecated-copy)
 endif()
 
+# Workaround for GCC 13 ICE (internal compiler error: Segmentation fault) in
+# layer_norm_impl.cc at -O3 due to a template instantiation bug in GCC 13
+# with std::filesystem and char32_t. Drop to -O2 for this single TU.
+# See: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=111055
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "13")
+  set_source_files_properties(
+    "${ONNXRUNTIME_ROOT}/core/providers/cpu/nn/layer_norm_impl.cc"
+    PROPERTIES COMPILE_FLAGS "-O2")
+endif()
+
 # This is enabled only for Adasum files in training mode.
 # The flags won't be applied globally since some high-precision training and inferencing ops will incur precision loss.
 if (onnxruntime_ENABLE_CPU_FP16_OPS)

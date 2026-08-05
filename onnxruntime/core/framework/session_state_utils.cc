@@ -403,8 +403,17 @@ common::Status SaveInitializedTensors(
       ORT_RETURN_IF_ERROR(planner.GetPreallocatedBuffer(ort_value_index, name, memory_buffer, alloc));
 
       // Check if we already have an OrtValue for this initializer on CPU
-      if (OrtValue ort_value_from_graph;
-          graph.GetOrtValueInitializer(name, ort_value_from_graph)) {
+      OrtValue ort_value_from_graph;
+      const bool have_graph_value = graph.GetOrtValueInitializer(name, ort_value_from_graph) &&
+                                    ort_value_from_graph.IsTensor();
+      if (!have_graph_value && ort_value_from_graph.IsAllocated() && !ort_value_from_graph.IsTensor()) {
+        // ortvalue_initializers_ has an entry but it's not a Tensor - log and fall through
+        // to normal deserialization so we don't crash on Get<Tensor>().
+        LOGS(logger, WARNING) << "Initializer '" << name
+                              << "' has a non-Tensor OrtValue in ortvalue_initializers_; "
+                                 "falling back to deserialization.";
+      }
+      if (have_graph_value) {
         const auto& memory_info = (alloc != nullptr) ? alloc->Info() : memory_buffer->GetAllocInfo();
         const auto& graph_value_device = ort_value_from_graph.Get<Tensor>().Location().device;
         if (memory_info.device == default_cpu_device || graph_value_device == memory_info.device) {
@@ -427,8 +436,13 @@ common::Status SaveInitializedTensors(
                                                         std::move(tensor), ort_value));
         }
       } else {
-        // if in memory we were expecting to find it above.
-        ORT_ENFORCE(!utils::HasExternalDataInMemory(tensor_proto));
+        // No pre-loaded OrtValue (or it was not a Tensor type): deserialize from proto.
+        // Note: if the tensor has external-data-in-memory (from ModelEditor etc.) we
+        // would expect a valid Tensor OrtValue above, but if have_graph_value is false
+        // for that reason it's an error (the ORT_ENFORCE below will catch it).
+        if (!have_graph_value) {
+          ORT_ENFORCE(!ort_value_from_graph.IsAllocated() || !utils::HasExternalDataInMemory(tensor_proto));
+        }
 
         // We need to deserialize the tensor proto into an OrtValue
         // using the preallocated buffer or allocator.

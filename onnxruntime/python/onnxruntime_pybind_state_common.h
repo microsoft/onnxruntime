@@ -126,6 +126,10 @@ struct OrtStatus {
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #include "core/providers/migraphx/migraphx_execution_provider_info.h"
 #endif
+#ifdef USE_ROCM
+#include "core/providers/rocm/rocm_provider_factory.h"
+#include "core/providers/rocm/rocm_execution_provider_info.h"
+#endif
 #if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
 #include "core/providers/openvino/openvino_provider_factory.h"
 // TODO remove deprecated global config
@@ -206,6 +210,23 @@ inline bool UseExternalAllocator() {
 }  // namespace python::migraphx::external
 }  // namespace onnxruntime
 
+#endif
+
+#ifdef USE_ROCM
+namespace onnxruntime {
+ProviderInfo_ROCM* TryGetProviderInfo_ROCM();
+ProviderInfo_ROCM& GetProviderInfo_ROCM();
+namespace python {
+// TODO remove deprecated global config
+extern bool miopen_conv_exhaustive_search;
+// TODO remove deprecated global config
+extern bool do_copy_in_default_stream;
+// TODO remove deprecated global config
+extern onnxruntime::rocm::TunableOpInfo tunable_op;
+extern onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info;
+extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
+}  // namespace python
+}  // namespace onnxruntime
 #endif
 
 #include "core/providers/dnnl/dnnl_provider_factory.h"

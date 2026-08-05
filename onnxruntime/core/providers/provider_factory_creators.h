@@ -38,6 +38,10 @@
 #include "core/providers/migraphx/migraphx_provider_factory_creator.h"
 #endif
 
+#if defined(USE_ROCM)
+#include "core/providers/rocm/rocm_provider_factory_creator.h"
+#endif
+
 #if defined(USE_NNAPI)
 #include "core/providers/nnapi/nnapi_provider_factory_creator.h"
 #endif

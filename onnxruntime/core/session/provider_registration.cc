@@ -339,9 +339,12 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   API_IMPL_END
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
 static OrtStatus* CreateNotEnabledStatus(const std::string& ep) {
   return OrtApis::CreateStatus(ORT_FAIL, (ep + " execution provider is not enabled in this build. ").c_str());
 }
+#pragma GCC diagnostic pop
 
 /**
  * Stubs for the publicly exported static registration functions for EPs that are referenced in the C# bindings
@@ -636,6 +639,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_VitisAI,
 }
 #endif
 
+#ifndef USE_ROCM
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM,
                     _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* provider_options) {
   ORT_UNUSED_PARAMETER(options);
@@ -673,3 +677,4 @@ ORT_API_STATUS_IMPL(OrtApis::GetROCMProviderOptionsAsString,
 ORT_API(void, OrtApis::ReleaseROCMProviderOptions, _Frees_ptr_opt_ OrtROCMProviderOptions* ptr) {
   ORT_UNUSED_PARAMETER(ptr);
 }
+#endif  // !USE_ROCM

@@ -73,6 +73,22 @@ endif()
 add_dependencies(onnxruntime_session ${onnxruntime_EXTERNAL_DEPENDENCIES})
 set_target_properties(onnxruntime_session PROPERTIES FOLDER "ONNXRuntime")
 
+if (onnxruntime_USE_ROCM)
+  target_compile_options(onnxruntime_session PRIVATE -Wno-sign-compare -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1)
+  target_include_directories(onnxruntime_session PRIVATE ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hipcub/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include)
+  # ROCM provider sources are generated, need to add include directory for generated headers
+  target_include_directories(onnxruntime_session PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
+  # Keep ProviderHost vtable in sync with libonnxruntime_providers_rocm.so:
+  # Float4 types are disabled in providers_rocm (no ROCm implementation), so we must also
+  # disable them here so both sides compile provider_interfaces.h with the same virtual
+  # function count. A mismatch causes a segfault on the first vtable call after dlopen.
+  target_compile_definitions(onnxruntime_session PRIVATE DISABLE_FLOAT4_TYPES)
+endif()
+
+if (onnxruntime_USE_NCCL AND onnxruntime_USE_ROCM)
+  add_dependencies(onnxruntime_session generate_hipified_files)
+endif()
+
 
 if (onnxruntime_ENABLE_TRAINING_OPS)
   target_include_directories(onnxruntime_session PRIVATE ${ORTTRAINING_ROOT})

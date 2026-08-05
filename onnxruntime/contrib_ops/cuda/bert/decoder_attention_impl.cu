@@ -5,6 +5,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "contrib_ops/cuda/bert/attention_softmax.h"
+#include "contrib_ops/cuda/bert/attention_impl.h"  // for LaunchTransQkv
 
 using namespace onnxruntime::contrib::attention_softmax_cuda;
 

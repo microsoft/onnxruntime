@@ -344,30 +344,30 @@ Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
 
   if (0 == (head_size & 1)) {
     const int H = head_size / 2;
-    const nv_bfloat162* input2 = reinterpret_cast<const nv_bfloat162*>(input);
-    nv_bfloat162* output2 = reinterpret_cast<nv_bfloat162*>(output);
+    const __nv_bfloat162* input2 = reinterpret_cast<const __nv_bfloat162*>(input);
+    __nv_bfloat162* output2 = reinterpret_cast<__nv_bfloat162*>(output);
 
     if (H * num_heads <= max_threads_per_block) {
       const dim3 block(H, num_heads, 1);
-      TransposeQKV<nv_bfloat162><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2, total_matrix_count);
+      TransposeQKV<__nv_bfloat162><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2, total_matrix_count);
     } else {
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
-      TransposeQKVLarge<nv_bfloat162><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2, total_matrix_count);
+      TransposeQKVLarge<__nv_bfloat162><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2, total_matrix_count);
     }
   } else {
     if (head_size * num_heads <= max_threads_per_block) {
       const dim3 block(head_size, num_heads, 1);
-      TransposeQKV<nv_bfloat16><<<grid, block, 0, stream>>>(
+      TransposeQKV<__nv_bfloat16><<<grid, block, 0, stream>>>(
           head_size, reversed_bs,
-          reinterpret_cast<const nv_bfloat16*>(input),
-          reinterpret_cast<nv_bfloat16*>(output),
+          reinterpret_cast<const __nv_bfloat16*>(input),
+          reinterpret_cast<__nv_bfloat16*>(output),
           total_matrix_count);
     } else {
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
-      TransposeQKVLarge<nv_bfloat16><<<grid, block, 0, stream>>>(
+      TransposeQKVLarge<__nv_bfloat16><<<grid, block, 0, stream>>>(
           head_size, reversed_bs,
-          reinterpret_cast<const nv_bfloat16*>(input),
-          reinterpret_cast<nv_bfloat16*>(output),
+          reinterpret_cast<const __nv_bfloat16*>(input),
+          reinterpret_cast<__nv_bfloat16*>(output),
           total_matrix_count);
     }
   }

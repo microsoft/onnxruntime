@@ -82,6 +82,12 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     target_include_directories(onnxruntime_training_runner PRIVATE ${NCCL_INCLUDE_DIRS})
   endif()
 
+  if (onnxruntime_USE_ROCM)
+    add_definitions(-DUSE_ROCM=1)
+    target_include_directories(onnxruntime_training_runner PUBLIC ${onnxruntime_ROCM_HOME}/include)
+    target_compile_options(onnxruntime_training_runner PUBLIC -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1)
+  endif()
+
 
 
   check_cxx_compiler_flag(-Wno-maybe-uninitialized HAS_NO_MAYBE_UNINITIALIZED)

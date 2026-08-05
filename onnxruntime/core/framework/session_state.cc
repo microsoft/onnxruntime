@@ -1217,6 +1217,7 @@ Status SessionState::CreateSubgraphSessionState() {
 
       if (!ep_type.empty() &&
           ep_type != kCpuExecutionProvider && ep_type != kCudaExecutionProvider &&
+          ep_type != kRocmExecutionProvider &&
           ep_type != kDmlExecutionProvider &&
           ep_type != kJsExecutionProvider && ep_type != kWebGpuExecutionProvider &&
           !is_plugin_ep) {

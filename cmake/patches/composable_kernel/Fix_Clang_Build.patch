@@ -1,0 +1,238 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index c23746e7f..bc326c8b5 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -23,10 +23,10 @@ endif()
+
+ set(version 1.1.0)
+ # Check support for CUDA/HIP in Cmake
+-project(composable_kernel VERSION ${version} LANGUAGES CXX)
++project(composable_kernel VERSION ${version} LANGUAGES CXX HIP)
+ include(CTest)
+
+-find_package(Python3 3.6 COMPONENTS Interpreter REQUIRED)
++find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+ list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+
+@@ -227,27 +227,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+ set(CMAKE_CXX_EXTENSIONS OFF)
+ message("CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
+
+-## OpenMP
+-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+-	# workaround issue hipcc in rocm3.5 cannot find openmp
+-	set(OpenMP_CXX "${CMAKE_CXX_COMPILER}")
+-	set(OpenMP_CXX_FLAGS "-fopenmp=libomp -Wno-unused-command-line-argument")
+-	set(OpenMP_CXX_LIB_NAMES "libomp" "libgomp" "libiomp5")
+-	set(OpenMP_libomp_LIBRARY ${OpenMP_CXX_LIB_NAMES})
+-	set(OpenMP_libgomp_LIBRARY ${OpenMP_CXX_LIB_NAMES})
+-	set(OpenMP_libiomp5_LIBRARY ${OpenMP_CXX_LIB_NAMES})
+-else()
+-	find_package(OpenMP REQUIRED)
+-endif()
+-
+-message("OpenMP_CXX_LIB_NAMES: ${OpenMP_CXX_LIB_NAMES}")
+-message("OpenMP_gomp_LIBRARY: ${OpenMP_gomp_LIBRARY}")
+-message("OpenMP_pthread_LIBRARY: ${OpenMP_pthread_LIBRARY}")
+-message("OpenMP_CXX_FLAGS: ${OpenMP_CXX_FLAGS}")
+-
+-link_libraries(${OpenMP_gomp_LIBRARY})
+-link_libraries(${OpenMP_pthread_LIBRARY})
+-
+ ## HIP
+ find_package(HIP REQUIRED)
+ # Override HIP version in config.h, if necessary.
+@@ -269,12 +248,6 @@ if( DEFINED CK_OVERRIDE_HIP_VERSION_PATCH )
+     message(STATUS "CK_HIP_VERSION_PATCH overridden with ${CK_OVERRIDE_HIP_VERSION_PATCH}")
+ endif()
+ message(STATUS "Build with HIP ${HIP_VERSION}")
+-link_libraries(hip::device)
+-if(CK_hip_VERSION VERSION_GREATER_EQUAL 6.0.23494)
+-    add_compile_definitions(__HIP_PLATFORM_AMD__=1)
+-else()
+-    add_compile_definitions(__HIP_PLATFORM_HCC__=1)
+-endif()
+
+ ## tidy
+ include(EnableCompilerWarnings)
+@@ -541,11 +514,3 @@ rocm_install(FILES
+
+ set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+ set(CPACK_RPM_PACKAGE_LICENSE "MIT")
+-
+-rocm_create_package(
+-    NAME composablekernel
+-    DESCRIPTION "High Performance Composable Kernel for AMD GPUs"
+-    MAINTAINER "MIOpen Kernels Dev Team <dl.MIOpen@amd.com>"
+-    LDCONFIG
+-    HEADER_ONLY
+-)
+diff --git a/example/ck_tile/01_fmha/generate.py b/example/ck_tile/01_fmha/generate.py
+index 51fecd07b..5ed371995 100644
+--- a/example/ck_tile/01_fmha/generate.py
++++ b/example/ck_tile/01_fmha/generate.py
+@@ -566,7 +566,7 @@ def write_blobs(output_dir : Optional[str], kernel_filter : Optional[str], recei
+ def list_blobs(output_file : Optional[str], kernel_filter : Optional[str], receipt, mask_impl) -> None:
+     assert output_file is not None
+     file_path = Path(output_file)
+-    with file_path.open('a') as f:
++    with file_path.open('w') as f:
+         _, kernels = get_blobs(kernel_filter, receipt, mask_impl)
+         for kernel in kernels:
+             f.write(str(file_path.parent / GEN_DIR / kernel.filename) + "\n")
+diff --git a/include/ck/host_utility/hip_check_error.hpp b/include/ck/host_utility/hip_check_error.hpp
+index c0894f1d7..559481fee 100644
+--- a/include/ck/host_utility/hip_check_error.hpp
++++ b/include/ck/host_utility/hip_check_error.hpp
+@@ -6,19 +6,7 @@
+ #include <sstream>
+ #include <hip/hip_runtime.h>
+
+-// To be removed, which really does not tell the location of failed HIP functional call
+-inline void hip_check_error(hipError_t x)
+-{
+-    if(x != hipSuccess)
+-    {
+-        std::ostringstream ss;
+-        ss << "HIP runtime error: " << hipGetErrorString(x) << ". "
+-           << "hip_check_error.hpp"
+-           << ": " << __LINE__ << "in function: " << __func__;
+-        throw std::runtime_error(ss.str());
+-    }
+-}
+-
++#ifndef HIP_CHECK_ERROR
+ #define HIP_CHECK_ERROR(retval_or_funcall)                                 \
+     do                                                                     \
+     {                                                                      \
+@@ -32,3 +20,9 @@ inline void hip_check_error(hipError_t x)
+             throw std::runtime_error(ostr.str());                          \
+         }                                                                  \
+     } while(0)
++#endif
++
++#ifndef hip_check_error
++#define hip_check_error HIP_CHECK_ERROR
++#endif
++
+diff --git a/include/ck_tile/core/utility/transpose_vectors.hpp b/include/ck_tile/core/utility/transpose_vectors.hpp
+index a164c3f94..293ead89a 100644
+--- a/include/ck_tile/core/utility/transpose_vectors.hpp
++++ b/include/ck_tile/core/utility/transpose_vectors.hpp
+@@ -11,6 +11,9 @@
+
+ namespace ck_tile {
+
++template <typename... Ts>
++constexpr bool always_false = false;
++
+ // S: scalar type (or it can be non-scalar type)
+ // NX: # of vector before transpose
+ // NY: # of vector after transpose
+@@ -117,9 +120,11 @@ struct transpose_vectors
+         }
+         else
+         {
+-            static_assert(false, "not implemented");
++            static_assert(always_false<S_, number<NX>, number<NY>>, "not implemented");
+         }
+     }
+ };
+
++
+ } // namespace ck_tile
++
+diff --git a/include/ck_tile/host/hip_check_error.hpp b/include/ck_tile/host/hip_check_error.hpp
+index 3acdb4d87..cc26e184f 100644
+--- a/include/ck_tile/host/hip_check_error.hpp
++++ b/include/ck_tile/host/hip_check_error.hpp
+@@ -8,20 +8,7 @@
+ #include <stdexcept>
+ #include <hip/hip_runtime.h>
+
+-namespace ck_tile {
+-// To be removed, which really does not tell the location of failed HIP functional call
+-CK_TILE_HOST void hip_check_error(hipError_t x)
+-{
+-    if(x != hipSuccess)
+-    {
+-        std::ostringstream ss;
+-        ss << "HIP runtime error: " << hipGetErrorString(x) << ". " << __FILE__ << ": " << __LINE__
+-           << "in function: " << __func__;
+-        throw std::runtime_error(ss.str());
+-    }
+-}
+-} // namespace ck_tile
+-
++#ifndef HIP_CHECK_ERROR
+ #define HIP_CHECK_ERROR(retval_or_funcall)                                         \
+     do                                                                             \
+     {                                                                              \
+@@ -34,3 +21,9 @@ CK_TILE_HOST void hip_check_error(hipError_t x)
+             throw std::runtime_error(ostr.str());                                  \
+         }                                                                          \
+     } while(0)
++#endif
++
++#ifndef hip_check_error
++#define hip_check_error HIP_CHECK_ERROR
++#endif
++
+diff --git a/library/src/tensor_operation_instance/gpu/CMakeLists.txt b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
+index c035e7e56..8c5f36d2e 100644
+--- a/library/src/tensor_operation_instance/gpu/CMakeLists.txt
++++ b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
+@@ -59,8 +59,14 @@ function(add_instance_library INSTANCE_NAME)
+     endforeach()
+     #only continue if there are some source files left on the list
+     if(ARGN)
++        set_source_files_properties(${ARGN} PROPERTIES LANGUAGE HIP)
+         add_library(${INSTANCE_NAME} OBJECT ${ARGN})
++        # Always disable debug symbol and C debug assert due to
++        # - Linker error: ... relocation truncated to fit ..., caused by object files to be linked are too huge.
++        # - https://github.com/ROCmSoftwarePlatform/composable_kernel/issues/622
++        target_compile_options(${INSTANCE_NAME} PRIVATE -g0 -DNDEBUG)
+         target_compile_features(${INSTANCE_NAME} PUBLIC)
++        target_compile_definitions(${INSTANCE_NAME} PRIVATE "__HIP_PLATFORM_AMD__=1" "__HIP_PLATFORM_HCC__=1")
+         set_target_properties(${INSTANCE_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+         clang_tidy_check(${INSTANCE_NAME})
+         set(result 0)
+--- ./include/ck/utility/amd_buffer_addressing.hpp      2024-09-05 10:12:33.343091000 +0800
++++ ./include/ck/utility/amd_buffer_addressing_new.hpp  2024-09-05 10:12:20.276686000 +0800
+@@ -991,7 +991,8 @@
+     asm volatile("s_mov_b32 m0, %0; \n\t"
+                  "buffer_load_dword %1, %2, 0 offen lds;\n\t" ::"s"(lds_ptr_sgpr),
+                  "v"(global_offset_bytes),
+-                 "s"(src_resource));
++                 "s"(src_resource)
++                 : "memory");
+ #else
+     // LDS pointer must be attributed with the LDS address space.
+     __attribute__((address_space(3))) uint32_t* lds_ptr =
+--- ./include/ck_tile/core/arch/amd_buffer_addressing.hpp       2024-09-05 10:18:28.884031000 +0800
++++ ./include/ck_tile/core/arch/amd_buffer_addressing_new.hpp   2024-09-05 10:17:29.434931000 +0800
+@@ -26,7 +26,12 @@
+ CK_TILE_DEVICE int32x4_t make_wave_buffer_resource(const void* ptr, uint32_t size = 0xffffffff)
+ {
+     buffer_resource res{ptr, size, CK_TILE_BUFFER_RESOURCE_3RD_DWORD};
+-    return __builtin_bit_cast(int32x4_t, res);
++    int32x4_t r = __builtin_bit_cast(int32x4_t, res);
++    r.x         = __builtin_amdgcn_readfirstlane(r.x);
++    r.y         = __builtin_amdgcn_readfirstlane(r.y);
++    r.z         = __builtin_amdgcn_readfirstlane(r.z);
++    r.w         = __builtin_amdgcn_readfirstlane(r.w);
++    return r;
+ }
+
+ // TODO: glc/slc/...
+@@ -2016,7 +2021,8 @@
+     asm volatile("s_mov_b32 m0, %0; \n\t"
+                  "buffer_load_dword %1, %2, 0 offen lds;\n\t" ::"s"(lds_ptr_sgpr),
+                  "v"(global_offset_bytes),
+-                 "s"(src_resource));
++                 "s"(src_resource)
++                 : "memory");
+ #else
+     // LDS pointer must be attributed with the LDS address space.
+     __attribute__((address_space(3))) uint32_t* lds_ptr =
