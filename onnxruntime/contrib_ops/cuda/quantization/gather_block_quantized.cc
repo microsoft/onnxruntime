@@ -17,6 +17,10 @@ namespace {
 template <typename Tind>
 Status ValidateIndicesRangeForCuda(const Tensor* indices, int64_t gather_axis_dim, cudaStream_t stream) {
   const size_t indices_size = static_cast<size_t>(indices->Shape().Size());
+  if (indices_size == 0) {
+    return Status::OK();
+  }
+
   std::vector<Tind> indices_host(indices_size);
 
   if (indices->Location().device.Type() == OrtDevice::CPU) {
@@ -26,7 +30,7 @@ Status ValidateIndicesRangeForCuda(const Tensor* indices, int64_t gather_axis_di
     }
   } else {
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(indices_host.data(), indices->Data<Tind>(), indices_size * sizeof(Tind),
-                                         cudaMemcpyDefault, stream));
+                                         cudaMemcpyDeviceToHost, stream));
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
   }
 

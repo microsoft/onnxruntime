@@ -536,12 +536,20 @@ TEST(GatherBlockQuantizedOpTest, InvalidIndices) {
 
 #ifdef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, InvalidIndices_Cuda) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA not available";
+  }
+
   Test_InvalidIndices_WithZeroPoints<UInt4x2, float, int32_t>();
   Test_InvalidIndices_WithZeroPoints<UInt4x2, float, int64_t>();
   Test_InvalidIndices_WithZeroPoints<uint8_t, float, int32_t>();
 }
 
 TEST(GatherBlockQuantizedOpTest, NegativeInvalidIndices_Cuda) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA not available";
+  }
+
   Test_NegativeInvalidIndices_WithZeroPoints<UInt4x2, float, int32_t>();
   Test_NegativeInvalidIndices_WithZeroPoints<UInt4x2, float, int64_t>();
   Test_NegativeInvalidIndices_WithZeroPoints<uint8_t, float, int32_t>();
