@@ -1061,7 +1061,73 @@ TEST(Scan8, NumScanInputsExceedsVariadicInputs) {
   test.AddOutput<float>("scan_output_2", {1, 2, 1}, {0.f, 0.f});
   test.AddOutput<float>("scan_output_3", {1, 2, 1}, {0.f, 0.f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid 'num_scan_inputs' of 10. Value must be between 0 and 3",
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid 'num_scan_inputs' of 10. Value must be between 1 and 3",
+           options.excluded_provider_types);
+}
+
+// The ONNX Scan spec requires one or more scan_input tensors, so 'num_scan_inputs' of 0 (all variadic
+// inputs treated as loop state variables, no scan inputs) must also be rejected.
+TEST(Scan8, NumScanInputsIsZero) {
+  RunOptions options{};
+  options.is_v8 = true;
+
+  Model model("NumScanInputsIsZero_v8", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{"", 8}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  ASSERT_STATUS_OK(CreateSubgraph(graph, options));
+  auto& proto = graph.ToGraphProto();
+
+  ScanOpTester test{8};
+  test.AddAttribute("body", proto);
+  test.AddAttribute<int64_t>("num_scan_inputs", 0);
+  test.AddOptionalInputEdge<int64_t>();  // sequence_lens
+  test.AddShapeToTensorData(options.include_dim_values_in_main_graph);
+
+  test.AddInput<float>("scan_loop_state_in_0", {1, 1}, {0.f});
+  test.AddInput<float>("scan_input_0", {1, 2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("scan_input_1", {1, 2, 2}, {-1.f, -2.f, -3.f, -4.f});
+
+  test.AddOutput<float>("scan_loop_state_out_0", {1, 1}, {1.f});
+  test.AddOutput<float>("scan_output_0", {1, 2, 1}, {0.f, 0.f});
+  test.AddOutput<float>("scan_output_1", {1, 2, 1}, {0.f, 0.f});
+  test.AddOutput<float>("scan_output_2", {1, 2, 1}, {0.f, 0.f});
+  test.AddOutput<float>("scan_output_3", {1, 2, 1}, {0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid 'num_scan_inputs' of 0. Value must be between 1 and 3",
+           options.excluded_provider_types);
+}
+
+// A negative 'num_scan_inputs' is invalid the same way an excessive one is; check it doesn't slip
+// through the lower-bound half of the range check.
+TEST(Scan8, NumScanInputsIsNegative) {
+  RunOptions options{};
+  options.is_v8 = true;
+
+  Model model("NumScanInputsIsNegative_v8", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{"", 8}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  ASSERT_STATUS_OK(CreateSubgraph(graph, options));
+  auto& proto = graph.ToGraphProto();
+
+  ScanOpTester test{8};
+  test.AddAttribute("body", proto);
+  test.AddAttribute<int64_t>("num_scan_inputs", -1);
+  test.AddOptionalInputEdge<int64_t>();  // sequence_lens
+  test.AddShapeToTensorData(options.include_dim_values_in_main_graph);
+
+  test.AddInput<float>("scan_loop_state_in_0", {1, 1}, {0.f});
+  test.AddInput<float>("scan_input_0", {1, 2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("scan_input_1", {1, 2, 2}, {-1.f, -2.f, -3.f, -4.f});
+
+  test.AddOutput<float>("scan_loop_state_out_0", {1, 1}, {1.f});
+  test.AddOutput<float>("scan_output_0", {1, 2, 1}, {0.f, 0.f});
+  test.AddOutput<float>("scan_output_1", {1, 2, 1}, {0.f, 0.f});
+  test.AddOutput<float>("scan_output_2", {1, 2, 1}, {0.f, 0.f});
+  test.AddOutput<float>("scan_output_3", {1, 2, 1}, {0.f, 0.f});
+
+  // A negative attribute value fails narrowing to size_t during ONNX shape inference before the
+  // kernel is even constructed, so the message differs from the other invalid-value tests above.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "narrow: value -1 cannot be represented in target type",
            options.excluded_provider_types);
 }
 
