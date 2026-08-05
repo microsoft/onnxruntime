@@ -874,6 +874,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             "preceded them, so a row whose window straddles the step boundary can still be "
             "pooled:\n"
             "  full_kv = Concat(past_state_kv, kv, axis=1), likewise for the score\n"
+            "`score` may be omitted, in which case the two came out of one GEMM and `kv` is "
+            "`2 * coff * head_dim` wide, holding the value projection in the low half of each "
+            "row and the gate in the high half.\n"
             "Row `j` of sequence `b` covers slot `past_lens[b] / ratio + j`, that is the "
             "`ratio` absolute positions starting at `slot * ratio`. When `coff` is 2 the window "
             "is twice as wide: the preceding `ratio` positions are read from the low half of "
@@ -910,8 +913,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("dtype",
               "Element type of `rows`. T appears on no input, so it cannot be inferred.",
               AttributeProto::INT, static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT))
-        .Input(0, "kv", "Pooled-value projection, shape (batch, seq, coff * head_dim).", "M")
-        .Input(1, "score", "Pooling-gate projection, same shape as kv.", "M")
+        .Input(0, "kv",
+               "Pooled-value projection, shape (batch, seq, coff * head_dim), or both "
+               "projections interleaved, (batch, seq, 2 * coff * head_dim), when score is "
+               "omitted.",
+               "P")
+        .Input(1, "score", "Pooling-gate projection, same shape as kv.", "P", OpSchema::Optional)
         .Input(2, "past_state_kv",
                "Preceding value projections, shape (batch, coff * ratio, coff * head_dim).", "M")
         .Input(3, "past_state_score", "Preceding gate projections, same shape as past_state_kv.",
@@ -933,8 +940,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "M")
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
                         "Constrain the latent row type to float tensors.")
+        .TypeConstraint("P", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain this step's projections to float tensors. They are read once "
+                        "and widened to float, so passing them in the activation type costs "
+                        "nothing but the rounding the producing MatMul already did.")
         .TypeConstraint("M", {"tensor(float)"},
-                        "Constrain the projections and the weights to float tensors.")
+                        "Constrain the rolling state and the weights to float tensors.")
         .TypeConstraint("I", {"tensor(int64)"}, "Constrain the slot bookkeeping to int64 tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           const int64_t ratio = getAttribute(ctx, "ratio", static_cast<int64_t>(4));

@@ -12,17 +12,18 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
-      DSV4Compressor,                                                   \
-      kMSDomain,                                                        \
-      1,                                                                \
-      T,                                                                \
-      kCudaExecutionProvider,                                           \
-      (*KernelDefBuilder::Create())                                     \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("M", DataTypeImpl::GetTensorType<float>())    \
-          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
+#define REGISTER_KERNEL_TYPED(T)                                                        \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                        \
+      DSV4Compressor,                                                                   \
+      kMSDomain,                                                                        \
+      1,                                                                                \
+      T,                                                                                \
+      kCudaExecutionProvider,                                                           \
+      (*KernelDefBuilder::Create())                                                     \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                        \
+          .TypeConstraint("P", BuildKernelDefConstraints<float, MLFloat16, BFloat16>()) \
+          .TypeConstraint("M", DataTypeImpl::GetTensorType<float>())                    \
+          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),                 \
       DSV4Compressor<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -79,12 +80,24 @@ Status DSV4Compressor<T>::ComputeInternal(OpKernelContext* context) const {
   const int64_t span = coff_ * ratio_;
   const int64_t num_rows = (seq_len - 1) / ratio_ + 2;
 
-  if (kv_dims[2] != feat) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kv must be ", feat, " wide, got ",
-                           kv_dims[2]);
+  // With `score` omitted the two projections came out of one GEMM, so kv is twice as wide and
+  // holds them side by side.  Nothing downstream needs them separated: the kernel only ever
+  // indexes a row, and a wider stride is all it takes to keep reading the same values.
+  const bool fused = score == nullptr;
+  const int64_t proj_feat = fused ? 2 * feat : feat;
+  if (kv_dims[2] != proj_feat) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kv must be ", proj_feat,
+                           " wide, got ", kv_dims[2]);
   }
-  if (score->Shape() != kv->Shape()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "score must have the same shape as kv.");
+  if (!fused) {
+    if (score->Shape() != kv->Shape()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "score must have the same shape as kv.");
+    }
+    if (score->DataType() != kv->DataType()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "kv and score must have the same element type.");
+    }
   }
   const TensorShape state_shape({batch, span, feat});
   if (past_state_kv->Shape() != state_shape || past_state_score->Shape() != state_shape) {
@@ -127,27 +140,40 @@ Status DSV4Compressor<T>::ComputeInternal(OpKernelContext* context) const {
   params.rope_head_dim = static_cast<int>(rope_head_dim_);
   params.nope_dim = static_cast<int>(head_dim_ - rope_head_dim_);
   params.feat = static_cast<int>(feat);
+  params.proj_feat = static_cast<int>(proj_feat);
   params.max_seq_len = static_cast<int>(max_seq_len_);
   params.epsilon = epsilon_;
   params.act_quant = act_quant_;
   params.rotate_fp4 = rotate_fp4_;
 
-  return LaunchDSV4Compressor<T>(Stream(context), params,
-                                 kv->Data<float>(),
-                                 score->Data<float>(),
-                                 past_state_kv->Data<float>(),
-                                 past_state_score->Data<float>(),
-                                 ape->Data<float>(),
-                                 norm_weight->Data<float>(),
-                                 cos_table->Data<float>(),
-                                 sin_table->Data<float>(),
-                                 past_lens->Data<int64_t>(),
-                                 rows->MutableData<T>(),
-                                 first_slot->MutableData<int64_t>(),
-                                 last_slot->MutableData<int64_t>(),
-                                 row_count->MutableData<int64_t>(),
-                                 present_state_kv->MutableData<float>(),
-                                 present_state_score->MutableData<float>());
+  // The projections carry no type constraint of their own in the kernel registration, so the
+  // element type is whatever the producing MatMul emitted and has to be picked up here.
+  auto launch = [&](auto proj) {
+    using P = decltype(proj);
+    const P* kv_data = kv->Data<P>();
+    return LaunchDSV4Compressor<T, P>(Stream(context), params,
+                                      kv_data,
+                                      fused ? kv_data + feat : score->Data<P>(),
+                                      past_state_kv->Data<float>(),
+                                      past_state_score->Data<float>(),
+                                      ape->Data<float>(),
+                                      norm_weight->Data<float>(),
+                                      cos_table->Data<float>(),
+                                      sin_table->Data<float>(),
+                                      past_lens->Data<int64_t>(),
+                                      rows->MutableData<T>(),
+                                      first_slot->MutableData<int64_t>(),
+                                      last_slot->MutableData<int64_t>(),
+                                      row_count->MutableData<int64_t>(),
+                                      present_state_kv->MutableData<float>(),
+                                      present_state_score->MutableData<float>());
+  };
+
+  if (kv->IsDataType<float>()) return launch(float{});
+  if (kv->IsDataType<MLFloat16>()) return launch(MLFloat16{});
+  if (kv->IsDataType<BFloat16>()) return launch(BFloat16{});
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                         "kv and score must be float, float16 or bfloat16.");
 }
 
 }  // namespace cuda

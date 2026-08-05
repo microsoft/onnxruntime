@@ -53,10 +53,10 @@ size_t DSV4PoolSharedBytes(int span) {
 // every channel, so the channels never have to talk to each other and the row can be spread
 // over as many blocks as it takes to fill the device -- which matters, because a decode step
 // only produces two rows per sequence.
-template <typename CudaT>
+template <typename CudaT, typename CudaP>
 __global__ void DSV4CompressorPoolKernel(const DSV4CompressorParams p,
-                                         const float* __restrict__ kv,
-                                         const float* __restrict__ score,
+                                         const CudaP* __restrict__ kv,
+                                         const CudaP* __restrict__ score,
                                          const float* __restrict__ past_kv,
                                          const float* __restrict__ past_score,
                                          const float* __restrict__ ape,
@@ -104,7 +104,7 @@ __global__ void DSV4CompressorPoolKernel(const DSV4CompressorParams p,
 
     *use_past = cl < p.span;
     *off = *use_past ? (past_row + cl) * p.feat + fo
-                     : (cur_row + cl - p.span) * p.feat + fo;
+                     : (cur_row + cl - p.span) * p.proj_feat + fo;
     return fo;
   };
 
@@ -114,7 +114,8 @@ __global__ void DSV4CompressorPoolKernel(const DSV4CompressorParams p,
     int k;
     bool valid, use_past;
     const int fo = gather(s, &off, &k, &valid, &use_past);
-    const float w = valid ? (use_past ? past_score[off] : score[off]) + ape[k * p.feat + fo]
+    const float w = valid ? (use_past ? past_score[off] : DSV4Conv<CudaP>::ToFloat(score[off])) +
+                                ape[k * p.feat + fo]
                           : kNegInf;
     m = fmaxf(m, w);
   }
@@ -125,7 +126,8 @@ __global__ void DSV4CompressorPoolKernel(const DSV4CompressorParams p,
     int k;
     bool valid, use_past;
     const int fo = gather(s, &off, &k, &valid, &use_past);
-    const float w = valid ? (use_past ? past_score[off] : score[off]) + ape[k * p.feat + fo]
+    const float w = valid ? (use_past ? past_score[off] : DSV4Conv<CudaP>::ToFloat(score[off])) +
+                                ape[k * p.feat + fo]
                           : kNegInf;
     denom += expf(w - m);
   }
@@ -136,9 +138,10 @@ __global__ void DSV4CompressorPoolKernel(const DSV4CompressorParams p,
     int k;
     bool valid, use_past;
     const int fo = gather(s, &off, &k, &valid, &use_past);
-    const float w = valid ? (use_past ? past_score[off] : score[off]) + ape[k * p.feat + fo]
+    const float w = valid ? (use_past ? past_score[off] : DSV4Conv<CudaP>::ToFloat(score[off])) +
+                                ape[k * p.feat + fo]
                           : kNegInf;
-    acc += (use_past ? past_kv[off] : kv[off]) * (expf(w - m) / denom);
+    acc += (use_past ? past_kv[off] : DSV4Conv<CudaP>::ToFloat(kv[off])) * (expf(w - m) / denom);
   }
 
   rows[(static_cast<int64_t>(b) * p.num_rows + j) * p.head_dim + ch] =
@@ -160,10 +163,10 @@ __global__ void DSV4CompressorPoolKernel(const DSV4CompressorParams p,
 // differently, and the FP8/FP4 grids downstream turn that into whole-step flips. Hoisting `expf`
 // and the divide out is safe because each result only depends on its own `s`; reassociating the
 // sums would not be.
-template <typename CudaT, int COFF>
+template <typename CudaT, typename CudaP, int COFF>
 __global__ void DSV4CompressorPoolFastKernel(const DSV4CompressorParams p,
-                                             const float* __restrict__ kv,
-                                             const float* __restrict__ score,
+                                             const CudaP* __restrict__ kv,
+                                             const CudaP* __restrict__ score,
                                              const float* __restrict__ past_kv,
                                              const float* __restrict__ past_score,
                                              const float* __restrict__ ape,
@@ -180,13 +183,15 @@ __global__ void DSV4CompressorPoolFastKernel(const DSV4CompressorParams p,
   const int span = p.span;
   const int ratio = p.ratio;
   const int feat = p.feat;
+  const int proj_feat = p.proj_feat;
   const int64_t past = past_lens[b];
   const int64_t total = past + p.seq_len;
   const int64_t n_full = span + p.seq_len;
   const int64_t base = past - span;
   const int64_t pos0 = (past / ratio + j) * static_cast<int64_t>(ratio);
   const int64_t past_base = static_cast<int64_t>(b) * span * feat;
-  const int64_t cur_base = (static_cast<int64_t>(b) * p.seq_len - span) * static_cast<int64_t>(feat);
+  const int64_t cur_base = (static_cast<int64_t>(b) * p.seq_len - span) *
+                           static_cast<int64_t>(proj_feat);
   const bool live = ch < p.head_dim;
 
   // [span][kPoolChannels] weights (rewritten in place as exp, then as the normalized weight),
@@ -218,12 +223,13 @@ __global__ void DSV4CompressorPoolFastKernel(const DSV4CompressorParams p,
     int64_t cl = idx < 0 ? 0 : idx;
     if (cl > n_full - 1) cl = n_full - 1;
     const bool use_past = cl < span;
-    const int64_t off = use_past ? past_base + cl * feat + fo : cur_base + cl * feat + fo;
+    const int64_t off = use_past ? past_base + cl * feat + fo : cur_base + cl * proj_feat + fo;
     const size_t slot = static_cast<size_t>(s) * kPoolChannels + c;
     s_w[slot] = (valid && live)
-                    ? (use_past ? past_score[off] : score[off]) + ape[static_cast<int64_t>(k) * feat + fo]
+                    ? (use_past ? past_score[off] : DSV4Conv<CudaP>::ToFloat(score[off])) +
+                          ape[static_cast<int64_t>(k) * feat + fo]
                     : kNegInf;
-    s_v[slot] = live ? (use_past ? past_kv[off] : kv[off]) : 0.0f;
+    s_v[slot] = live ? (use_past ? past_kv[off] : DSV4Conv<CudaP>::ToFloat(kv[off])) : 0.0f;
   };
 
 #pragma unroll 4
@@ -392,9 +398,13 @@ __global__ void DSV4CompressorFinishKernel(const DSV4CompressorParams p,
 }
 
 // Roll the raw projections forward by one step and publish the slot bookkeeping.
+//
+// The state is kept in float whatever the projections arrive as: it is a few hundred KiB that
+// every later step re-reads, and widening it here keeps the pooling above reading one type.
+template <typename CudaP>
 __global__ void DSV4CompressorStateKernel(const DSV4CompressorParams p,
-                                          const float* __restrict__ kv,
-                                          const float* __restrict__ score,
+                                          const CudaP* __restrict__ kv,
+                                          const CudaP* __restrict__ score,
                                           const float* __restrict__ past_kv,
                                           const float* __restrict__ past_score,
                                           const int64_t* __restrict__ past_lens,
@@ -410,21 +420,16 @@ __global__ void DSV4CompressorStateKernel(const DSV4CompressorParams p,
     const int64_t r = i / p.feat;
     const int64_t f = i - r * p.feat;
     const int64_t src = p.seq_len + r;  // the tail `span` rows of past ++ current
-    int64_t off;
-    const float* from_kv;
-    const float* from_sc;
-    if (src < p.span) {
-      off = (static_cast<int64_t>(b) * p.span + src) * p.feat + f;
-      from_kv = past_kv;
-      from_sc = past_score;
-    } else {
-      off = (static_cast<int64_t>(b) * p.seq_len + src - p.span) * p.feat + f;
-      from_kv = kv;
-      from_sc = score;
-    }
     const int64_t dst = (static_cast<int64_t>(b) * p.span + r) * p.feat + f;
-    out_kv[dst] = from_kv[off];
-    out_score[dst] = from_sc[off];
+    if (src < p.span) {
+      const int64_t off = (static_cast<int64_t>(b) * p.span + src) * p.feat + f;
+      out_kv[dst] = past_kv[off];
+      out_score[dst] = past_score[off];
+    } else {
+      const int64_t off = (static_cast<int64_t>(b) * p.seq_len + src - p.span) * p.proj_feat + f;
+      out_kv[dst] = DSV4Conv<CudaP>::ToFloat(kv[off]);
+      out_score[dst] = DSV4Conv<CudaP>::ToFloat(score[off]);
+    }
   }
 
   if (blockIdx.x == 0 && threadIdx.x == 0) {
@@ -437,9 +442,9 @@ __global__ void DSV4CompressorStateKernel(const DSV4CompressorParams p,
 
 }  // namespace
 
-template <typename T>
+template <typename T, typename P>
 Status LaunchDSV4Compressor(cudaStream_t stream, const DSV4CompressorParams& params,
-                            const float* kv, const float* score,
+                            const P* kv, const P* score,
                             const float* past_state_kv, const float* past_state_score,
                             const float* ape, const float* norm_weight,
                             const float* cos_table, const float* sin_table,
@@ -447,7 +452,10 @@ Status LaunchDSV4Compressor(cudaStream_t stream, const DSV4CompressorParams& par
                             T* rows, int64_t* first_slot, int64_t* last_slot, int64_t* row_count,
                             float* present_state_kv, float* present_state_score) {
   using CudaT = typename ::onnxruntime::cuda::ToCudaType<T>::MappedType;
+  using CudaP = typename ::onnxruntime::cuda::ToCudaType<P>::MappedType;
   auto* out = reinterpret_cast<CudaT*>(rows);
+  const auto* proj_kv = reinterpret_cast<const CudaP*>(kv);
+  const auto* proj_score = reinterpret_cast<const CudaP*>(score);
 
   const size_t pool_shared = DSV4PoolSharedBytes(params.span);
   if (!DSV4PoolFastDisabledByEnv() && pool_shared <= kPoolMaxSharedBytes) {
@@ -455,17 +463,17 @@ Status LaunchDSV4Compressor(cudaStream_t stream, const DSV4CompressorParams& par
                     params.batch);
     const dim3 block(kPoolChannels, DSV4PoolLoaders(params.span));
     if (params.coff == 2) {
-      DSV4CompressorPoolFastKernel<CudaT, 2><<<grid, block, pool_shared, stream>>>(
-          params, kv, score, past_state_kv, past_state_score, ape, past_lens, out);
+      DSV4CompressorPoolFastKernel<CudaT, CudaP, 2><<<grid, block, pool_shared, stream>>>(
+          params, proj_kv, proj_score, past_state_kv, past_state_score, ape, past_lens, out);
     } else {
-      DSV4CompressorPoolFastKernel<CudaT, 1><<<grid, block, pool_shared, stream>>>(
-          params, kv, score, past_state_kv, past_state_score, ape, past_lens, out);
+      DSV4CompressorPoolFastKernel<CudaT, CudaP, 1><<<grid, block, pool_shared, stream>>>(
+          params, proj_kv, proj_score, past_state_kv, past_state_score, ape, past_lens, out);
     }
   } else {
     const int channel_blocks = (params.head_dim + kThreads - 1) / kThreads;
-    DSV4CompressorPoolKernel<CudaT><<<dim3(channel_blocks, params.num_rows, params.batch), kThreads,
-                                      0, stream>>>(
-        params, kv, score, past_state_kv, past_state_score, ape, past_lens, out);
+    DSV4CompressorPoolKernel<CudaT, CudaP><<<dim3(channel_blocks, params.num_rows, params.batch),
+                                             kThreads, 0, stream>>>(
+        params, proj_kv, proj_score, past_state_kv, past_state_score, ape, past_lens, out);
   }
 
   const size_t shared = DSV4CompressorFinishSharedFloats(params) * sizeof(float);
@@ -482,23 +490,29 @@ Status LaunchDSV4Compressor(cudaStream_t stream, const DSV4CompressorParams& par
   const int64_t state_elems = static_cast<int64_t>(params.span) * params.feat;
   const int state_blocks = static_cast<int>(std::min<int64_t>(
       1024, (state_elems + kThreads - 1) / kThreads));
-  DSV4CompressorStateKernel<<<dim3(state_blocks, params.batch), kThreads, 0, stream>>>(
-      params, kv, score, past_state_kv, past_state_score, past_lens,
+  DSV4CompressorStateKernel<CudaP><<<dim3(state_blocks, params.batch), kThreads, 0, stream>>>(
+      params, proj_kv, proj_score, past_state_kv, past_state_score, past_lens,
       present_state_kv, present_state_score, first_slot, last_slot, row_count);
 
   return CUDA_CALL(cudaGetLastError());
 }
 
-#define INSTANTIATE(T)                                                                          \
-  template Status LaunchDSV4Compressor<T>(                                                      \
-      cudaStream_t, const DSV4CompressorParams&, const float*, const float*, const float*,      \
-      const float*, const float*, const float*, const float*, const float*, const int64_t*, T*, \
-      int64_t*, int64_t*, int64_t*, float*, float*);
+#define INSTANTIATE(T, P)                                                                   \
+  template Status LaunchDSV4Compressor<T, P>(                                               \
+      cudaStream_t, const DSV4CompressorParams&, const P*, const P*, const float*,          \
+      const float*, const float*, const float*, const float*, const float*, const int64_t*, \
+      T*, int64_t*, int64_t*, int64_t*, float*, float*);
 
-INSTANTIATE(float)
-INSTANTIATE(MLFloat16)
-INSTANTIATE(BFloat16)
+#define INSTANTIATE_ALL_P(T) \
+  INSTANTIATE(T, float)      \
+  INSTANTIATE(T, MLFloat16)  \
+  INSTANTIATE(T, BFloat16)
 
+INSTANTIATE_ALL_P(float)
+INSTANTIATE_ALL_P(MLFloat16)
+INSTANTIATE_ALL_P(BFloat16)
+
+#undef INSTANTIATE_ALL_P
 #undef INSTANTIATE
 
 }  // namespace cuda

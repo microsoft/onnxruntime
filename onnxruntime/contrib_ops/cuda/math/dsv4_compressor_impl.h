@@ -24,6 +24,8 @@ struct DSV4CompressorParams {
   int rope_head_dim;  // rd, the trailing slice that gets rotated
   int nope_dim;       // d - rd
   int feat;           // coff * d, the width of one raw projection row
+  int proj_feat;      // row stride of this step's projections: feat, or 2 * feat when the two
+                      // come from one GEMM and `score` points into the same buffer
   int max_seq_len;    // rows of the cos/sin tables
   float epsilon;
   bool act_quant;   // simulate the FP8 round trip on the un-rotated slice
@@ -39,9 +41,11 @@ inline int DSV4CompressorFinishSharedFloats(const DSV4CompressorParams& p) {
   return p.head_dim + kDSV4CompressorThreads / 32 + p.rope_head_dim + scales + 1;
 }
 
-template <typename T>
+// `T` is the latent row type and `P` this step's projection type; they are independent because
+// the row type comes from the `dtype` attribute while the projections come from a MatMul.
+template <typename T, typename P>
 Status LaunchDSV4Compressor(cudaStream_t stream, const DSV4CompressorParams& params,
-                            const float* kv, const float* score,
+                            const P* kv, const P* score,
                             const float* past_state_kv, const float* past_state_score,
                             const float* ape, const float* norm_weight,
                             const float* cos_table, const float* sin_table,
