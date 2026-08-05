@@ -26,8 +26,14 @@
 // Gemma2). Attention sinks (head_sink) already work and compose with the window in-kernel.
 #define SLIDING_WINDOW 1
 
+#ifdef __NVCC__
 #pragma nv_diag_suppress 177
 #pragma nv_diag_suppress 20012
+#else
+// HIP/clang: suppress uninitialized variable and unused result warnings
+#pragma clang diagnostic ignored "-Wsometimes-uninitialized"
+#pragma clang diagnostic ignored "-Wunused-value"
+#endif
 
 // Include common headers once
 #include "cuda_hint.cuh"

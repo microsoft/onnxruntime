@@ -61,13 +61,19 @@ __device__ inline half2 AddHalf2(const half2 a, const half2 b) {
 }
 
 template <>
-__device__ inline nv_bfloat16 Rsqrt(const nv_bfloat16& x) {
+__device__ inline __nv_bfloat16 Rsqrt(const __nv_bfloat16& x) {
+#ifdef __NVCC__
   return hrsqrt(x);
+#else
+  return __nv_bfloat16(rsqrtf(static_cast<float>(x)));
+#endif
 }
 
-__device__ inline nv_bfloat162 AddHalf2(const nv_bfloat162 a, const nv_bfloat162 b) {
+#ifdef __NVCC__
+__device__ inline __nv_bfloat162 AddHalf2(const __nv_bfloat162 a, const __nv_bfloat162 b) {
   return __hadd2(a, b);
 }
+#endif
 
 struct KeyValuePairSum {
   __device__ inline cub::KeyValuePair<float, float> operator()(const cub::KeyValuePair<float, float>& a,

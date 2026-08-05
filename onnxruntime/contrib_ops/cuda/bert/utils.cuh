@@ -45,6 +45,7 @@ __device__ __forceinline__ Half4 operator+(const Half4& a, const Half4& b) {
   return r;
 }
 
+#ifdef __NVCC__
 struct __align__(8) nv_bfloat164 {
   __nv_bfloat162 x;
   __nv_bfloat162 y;
@@ -56,6 +57,7 @@ __device__ __forceinline__ nv_bfloat164 operator+(const nv_bfloat164& a, const n
   r.y = __hadd2(a.y, b.y);
   return r;
 }
+#endif  // __NVCC__
 
 __device__ __forceinline__ float2 operator+(const float2& a, const float2& b) {
   return make_float2(a.x + b.x, a.y + b.y);
@@ -160,6 +162,7 @@ struct Vec_t<onnxruntime::BFloat16> {
   static constexpr int size = 2;
 };
 
+#ifdef __NVCC__
 template <>
 struct Vec_t<__nv_bfloat162> {
   using Type = uint2;
@@ -171,6 +174,15 @@ struct Vec_t<nv_bfloat164> {
   using Type = uint4;
   static constexpr int size = 8;
 };
+#else
+// HIP: hip_bfloat162 is a 4-byte struct (2 hip_bfloat16 values),
+// vectorizable as uint2 (2 x uint16_t = 4 bytes)
+template <>
+struct Vec_t<hip_bfloat162> {
+  using Type = uint2;
+  static constexpr int size = 4;
+};
+#endif  // __NVCC__
 
 //------------------------------------------------------------
 // Qk_vec
@@ -375,6 +387,7 @@ inline __device__ void zero(T& dst) {
   dst = tmp.raw;
 }
 
+#ifdef __NVCC__
 inline __device__ uint32_t h0_h0(uint16_t a) {
   uint32_t b;
   asm volatile("mov.b32 %0, {%1, %1};"
@@ -382,6 +395,12 @@ inline __device__ uint32_t h0_h0(uint16_t a) {
                : "h"(a));
   return b;
 }
+#else
+// AMD GPU: construct a uint32_t with the 16-bit value in both halves
+inline __device__ uint32_t h0_h0(uint16_t a) {
+  return (static_cast<uint32_t>(a) << 16) | static_cast<uint32_t>(a);
+}
+#endif
 
 //------------------------------------------------------------
 // vec_conversion
@@ -425,6 +444,7 @@ inline __device__ Float8_ add_vec(Float8_ a, Float8_ b) {
   return c;
 }
 
+#ifdef __NVCC__
 inline __device__ float HalfToFloat(uint16_t h) {
   float f;
   asm volatile("cvt.f32.f16 %0, %1;\n"
@@ -440,7 +460,20 @@ inline __device__ float2 Half2ToFloat2(uint32_t v) {
                : "r"(v));
   return make_float2(HalfToFloat(lo), HalfToFloat(hi));
 }
+#else
+inline __device__ float HalfToFloat(uint16_t h) {
+  return __half2float(__ushort_as_half(h));
+}
 
+inline __device__ float2 Half2ToFloat2(uint32_t v) {
+  float2 f;
+  f.x = __half2float(__ushort_as_half(v & 0xFFFF));
+  f.y = __half2float(__ushort_as_half(v >> 16));
+  return f;
+}
+#endif
+
+#ifdef __NVCC__
 inline __device__ uint16_t add_vec(uint16_t a, uint16_t b) {
   uint16_t c;
   asm volatile("add.f16 %0, %1, %2;\n"
@@ -456,6 +489,18 @@ inline __device__ uint32_t add_vec(uint32_t a, uint32_t b) {
                : "r"(a), "r"(b));
   return c;
 }
+#else
+inline __device__ uint16_t add_vec(uint16_t a, uint16_t b) {
+  return __half_as_ushort(__hadd(__ushort_as_half(a), __ushort_as_half(b)));
+}
+
+inline __device__ uint32_t add_vec(uint32_t a, uint32_t b) {
+  __half2_raw ha; ha.x.x = a & 0xFFFF; ha.y.x = a >> 16;
+  __half2_raw hb; hb.x.x = b & 0xFFFF; hb.y.x = b >> 16;
+  __half2_raw r = static_cast<__half2_raw>(__hadd2(__half2(ha), __half2(hb)));
+  return (static_cast<uint32_t>(r.x.x)) | (static_cast<uint32_t>(r.y.x) << 16);
+}
+#endif
 
 inline __device__ uint2 add_vec(uint2 a, uint2 b) {
   uint2 c;
@@ -603,6 +648,7 @@ inline __device__ Float8_ mul(float a, Float8_ b) {
   return c;
 }
 
+#ifdef __NVCC__
 template <>
 inline __device__ uint16_t mul(uint16_t a, uint16_t b) {
   uint16_t c;
@@ -620,6 +666,20 @@ inline __device__ uint32_t mul(uint32_t a, uint32_t b) {
                : "r"(a), "r"(b));
   return c;
 }
+#else
+template <>
+inline __device__ uint16_t mul(uint16_t a, uint16_t b) {
+  return __half_as_ushort(__hmul(__ushort_as_half(a), __ushort_as_half(b)));
+}
+
+template <>
+inline __device__ uint32_t mul(uint32_t a, uint32_t b) {
+  __half2_raw ha; ha.x.x = a & 0xFFFF; ha.y.x = a >> 16;
+  __half2_raw hb; hb.x.x = b & 0xFFFF; hb.y.x = b >> 16;
+  __half2_raw r = static_cast<__half2_raw>(__hmul2(__half2(ha), __half2(hb)));
+  return (static_cast<uint32_t>(r.x.x)) | (static_cast<uint32_t>(r.y.x) << 16);
+}
+#endif
 
 template <>
 inline __device__ uint32_t mul(uint16_t a, uint32_t b) {
@@ -765,6 +825,7 @@ inline __device__ float4 fma(float a, float4 b, float4 c) {
   return d;
 }
 
+#ifdef __NVCC__
 inline __device__ uint32_t fma(uint32_t a, uint32_t b, uint32_t c) {
   uint32_t d;
   asm volatile("fma.rn.f16x2 %0, %1, %2, %3;\n"
@@ -772,6 +833,15 @@ inline __device__ uint32_t fma(uint32_t a, uint32_t b, uint32_t c) {
                : "r"(a), "r"(b), "r"(c));
   return d;
 }
+#else
+inline __device__ uint32_t fma(uint32_t a, uint32_t b, uint32_t c) {
+  __half2_raw ha; ha.x.x = a & 0xFFFF; ha.y.x = a >> 16;
+  __half2_raw hb; hb.x.x = b & 0xFFFF; hb.y.x = b >> 16;
+  __half2_raw hc; hc.x.x = c & 0xFFFF; hc.y.x = c >> 16;
+  __half2_raw r = static_cast<__half2_raw>(__hfma2(__half2(ha), __half2(hb), __half2(hc)));
+  return (static_cast<uint32_t>(r.x.x)) | (static_cast<uint32_t>(r.y.x) << 16);
+}
+#endif
 
 inline __device__ uint2 fma(uint2 a, uint2 b, uint2 c) {
   uint2 d;
@@ -877,19 +947,15 @@ inline __device__ void ConvertFromFloat(float4& dst, float4 src) {
   dst = src;
 }
 
+#ifdef __NVCC__
 inline __device__ uint16_t FloatToHalf(float f) {
   union {
     uint32_t u32;
     uint16_t u16[2];
   } tmp;
-#if 0 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800  // Is it better?
-      float zero = 0.f;
-      asm volatile("cvt.rn.f16x2.f32 %0, %1, %2;\n" : "=r"(tmp.u32) : "f"(zero), "f"(f));
-#else
   asm volatile("cvt.rn.f16.f32 %0, %1;\n"
                : "=h"(tmp.u16[0])
                : "f"(f));
-#endif
   return tmp.u16[0];
 }
 
@@ -898,20 +964,25 @@ inline __device__ uint32_t Float2ToHalf2(float2 f) {
     uint32_t u32;
     uint16_t u16[2];
   } tmp;
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
-  asm volatile("cvt.rn.f16x2.f32 %0, %1, %2;\n"
-               : "=r"(tmp.u32)
-               : "f"(f.y), "f"(f.x));
-#else
   asm volatile("cvt.rn.f16.f32 %0, %1;\n"
                : "=h"(tmp.u16[0])
                : "f"(f.x));
   asm volatile("cvt.rn.f16.f32 %0, %1;\n"
                : "=h"(tmp.u16[1])
                : "f"(f.y));
-#endif
   return tmp.u32;
 }
+#else
+inline __device__ uint16_t FloatToHalf(float f) {
+  return __half_as_ushort(__float2half_rn(f));
+}
+
+inline __device__ uint32_t Float2ToHalf2(float2 f) {
+  uint16_t lo = __half_as_ushort(__float2half_rn(f.x));
+  uint16_t hi = __half_as_ushort(__float2half_rn(f.y));
+  return (static_cast<uint32_t>(hi) << 16) | lo;
+}
+#endif
 
 inline __device__ void ConvertFromFloat(uint16_t& dst, float src) {
   dst = FloatToHalf(src);

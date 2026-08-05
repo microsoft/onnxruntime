@@ -12,7 +12,7 @@ namespace {
 // in the non-plugin build, but the base class cannot be used in plugin builds
 // because it depends on core/framework/op_kernel.h internals. This standalone
 // function reimplements the same axes-parsing and output-shape computation.
-Status PrepareComputeForPlugin(OpKernelContext* ctx, UnsqueezeBase::Prepare& p, const TensorShapeVector& axes_attr) {
+[[maybe_unused]] static Status PrepareComputeForPlugin(OpKernelContext* ctx, UnsqueezeBase::Prepare& p, const TensorShapeVector& axes_attr) {
   const auto* input = ctx->Input<Tensor>(0);
   ORT_ENFORCE(input != nullptr);
   auto& input_tensor = *input;

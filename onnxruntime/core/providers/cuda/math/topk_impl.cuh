@@ -187,7 +187,7 @@ __device__ __forceinline__ bool SamePrefix(const BFloat16* f0, const BFloat16* f
 }
 
 #ifdef __CUDACC__
-__device__ __forceinline__ bool SamePrefix(const nv_bfloat16* f0, const nv_bfloat16* f1, int64_t skip) {
+__device__ __forceinline__ bool SamePrefix(const __nv_bfloat16* f0, const __nv_bfloat16* f1, int64_t skip) {
   return SamePrefix((const int16_t*)f0, (const int16_t*)f1, skip);
 }
 #endif
@@ -214,7 +214,7 @@ __device__ __forceinline__ int32_t Radix(const BFloat16* f, int64_t skip) {
 }
 
 #ifdef __CUDACC__
-__device__ __forceinline__ int32_t Radix(const nv_bfloat16* f, int64_t skip) {
+__device__ __forceinline__ int32_t Radix(const __nv_bfloat16* f, int64_t skip) {
   return Radix((const int16_t*)f, skip);
 }
 #endif
@@ -241,7 +241,7 @@ __device__ __forceinline__ void SetByte(BFloat16* f, int64_t byte) {
 }
 
 #ifdef __CUDACC__
-__device__ __forceinline__ void SetByte(nv_bfloat16* f, int64_t byte) {
+__device__ __forceinline__ void SetByte(__nv_bfloat16* f, int64_t byte) {
   SetByte((int16_t*)f, byte);
 }
 #endif
@@ -460,7 +460,7 @@ Status TopKImpl(const CudaKernel* kernel, bool use_deterministic_compute,
       });
     }
 
-    auto XPT = static_cast<int64_t>(ceil(static_cast<double>(dimension) / GridDim::maxThreadsPerBlock));
+    auto XPT = static_cast<int64_t>(ceil(static_cast<double>(dimension) / static_cast<int>(GridDim::maxThreadsPerBlock)));
     if (BT * 2 >= K || 0 == sorted) {
       RadixTopK<CudaT, BT, 2><<<N, BT, 256 * sizeof(uint32_t), stream>>>(
           input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT,
@@ -494,8 +494,8 @@ Status TopKImpl(const CudaKernel* kernel, bool use_deterministic_compute,
     CUDA_RETURN_IF_ERROR(cub::DeviceRadixSort::SortPairs(nullptr, temp_bytes, input_key_cub, output_key_cub, input_value, output_value, dimension, 0, sizeof(CubT) * 8, stream));
     auto temp_storage_buffer = kernel->GetScratchBuffer<char>(temp_bytes, alloc_stream);
     auto* temp_storage = temp_storage_buffer.get();
-    auto blocks_per_grid_D = (int)(ceil(static_cast<float>(dimension) / BT));
-    auto blocks_per_grid_K = (int)(ceil(static_cast<float>(K) / BT));
+    auto blocks_per_grid_D = (int)(ceil(static_cast<float>(dimension) / static_cast<int>(BT)));
+    auto blocks_per_grid_K = (int)(ceil(static_cast<float>(K) / static_cast<int>(BT)));
     for (int64_t i = 0; i < N; i++) {
       FillInput<CudaT><<<blocks_per_grid_D, BT, 0, stream>>>(input_x_ptr, input_key, input_value, elem_nums, size, axis, K, i, dimension);
       CUDA_RETURN_IF_ERROR(1 == largest ? cub::DeviceRadixSort::SortPairsDescending(temp_storage, temp_bytes, input_key_cub, output_key_cub, input_value, output_value, dimension, 0, sizeof(CubT) * 8, stream)

@@ -65,7 +65,7 @@ struct ProviderHostCPU {
   virtual Status NonMaxSuppressionBase__PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) = 0;
   virtual Status NonMaxSuppressionBase__GetThresholdsFromInputs(const PrepareContext& pc, int64_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold) = 0;
 
-#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE) || defined(USE_ROCM)
 
   // From cpu/tensor/size.h
   virtual Status Size__Compute(const Size* p, OpKernelContext* context) = 0;
@@ -289,7 +289,7 @@ struct ProviderHostCPU {
 
 extern ProviderHostCPU& g_host_cpu;
 
-#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE) || defined(USE_ROCM)
 namespace GatherElements {
 inline Status ValidateInputShapes(const TensorShape& input_data_shape,
                                   const TensorShape& indices_shape,
@@ -307,6 +307,12 @@ inline Status ValidateInputs(const Tensor* depth, const Tensor* values) { return
 inline Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis,
                                  int64_t& prefix_dim_size, int64_t& suffix_dim_size,
                                  TensorShapeVector& output_shape) { return g_host_cpu.PrepareOutputShape(indices, depth_val, axis, prefix_dim_size, suffix_dim_size, output_shape); }
+
+// Aliases for hipified ROCm code (rocm namespace)
+namespace rocm {
+  using ::onnxruntime::ValidateInputs;
+  using ::onnxruntime::PrepareOutputShape;
+}  // namespace rocm
 
 #ifdef ENABLE_TRAINING_OPS
 namespace contrib {
@@ -341,7 +347,7 @@ inline Status ExecuteTritonOpByFuncName(OpKernelContext* p_ctx, const std::strin
 }  // namespace contrib
 #endif  // ENABLE_TRITON
 
-#endif  // USE_CUDA || USE_CUDA_PROVIDER_INTERFACE
+#endif  // USE_CUDA || USE_CUDA_PROVIDER_INTERFACE || USE_ROCM
 #endif
 
 }  // namespace onnxruntime

@@ -146,6 +146,14 @@ option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for W
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 cmake_dependent_option(onnxruntime_USE_MIMALLOC "Override new/delete and arena allocator with mimalloc" OFF "WIN32;NOT onnxruntime_USE_CUDA;NOT onnxruntime_USE_OPENVINO" OFF)
 option(onnxruntime_USE_CANN "Build with CANN support" OFF)
+option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
+option(onnxruntime_ENABLE_ROCM_PROFILING "Enable ROCM kernel profiling" OFF)
+option(onnxruntime_USE_COMPOSABLE_KERNEL "Enable composable kernel for ROCm EP" ON)
+option(onnxruntime_USE_COMPOSABLE_KERNEL_CK_TILE "Enable ck_tile for ROCm EP" OFF)
+option(onnxruntime_USE_ROCBLAS_EXTENSION_API "Enable rocblas tuning for ROCm EP" OFF)
+cmake_dependent_option(onnxruntime_USE_HIPBLASLT "Use hipBLASLt" OFF "onnxruntime_USE_ROCM" OFF)
+option(onnxruntime_USE_TRITON_KERNEL "Enable triton kernel for ROCm EP" OFF)
+set(onnxruntime_ROCM_HOME "/opt/rocm" CACHE PATH "Path to ROCm installation")
 option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternative math library on ARM, WebAssembly and x86." OFF)
 option(onnxruntime_USE_WEBNN "Build with WebNN support. Enable hardware acceleration in web browsers." OFF)
 option(onnxruntime_USE_WEBGPU "Build with WebGPU support. Enable WebGPU via C/C++ interface." OFF)
@@ -243,6 +251,7 @@ option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
 option(onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH "Path to external transformer src dir")
 
 option(onnxruntime_ENABLE_CUDA_PROFILING "Enable CUDA kernel profiling" OFF)
+option(onnxruntime_HIPIFY_PERL "Path to hipify-perl" "")
 
 option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
 
@@ -745,6 +754,146 @@ set(ONNXRUNTIME_PROVIDER_NAMES cpu)
 
 set(ORT_PROVIDER_FLAGS)
 
+if (onnxruntime_USE_ROCM)
+  if (WIN32)
+    message(FATAL_ERROR "ROCM does not support build in Windows!")
+  endif()
+  if (onnxruntime_USE_CUDA)
+    message(FATAL_ERROR "ROCM does not support build with CUDA!")
+  endif()
+
+  # replicate strategy used by pytorch to get ROCM_VERSION
+  if (EXISTS "${onnxruntime_ROCM_HOME}/.info/version")
+    message("\n***** ROCm version from ${onnxruntime_ROCM_HOME}/.info/version ****\n")
+    file(READ "${onnxruntime_ROCM_HOME}/.info/version" ROCM_VERSION_DEV_RAW)
+    string(REGEX MATCH "^([0-9]+)\.([0-9]+)\.([0-9]+)-.*$" ROCM_VERSION_MATCH ${ROCM_VERSION_DEV_RAW})
+  elseif (EXISTS "${onnxruntime_ROCM_HOME}/include/rocm_version.h")
+    message("\n***** ROCm version from ${onnxruntime_ROCM_HOME}/include/rocm_version.h ****\n")
+    file(READ "${onnxruntime_ROCM_HOME}/include/rocm_version.h" ROCM_VERSION_H_RAW)
+    string(REGEX MATCH "\"([0-9]+)\.([0-9]+)\.([0-9]+).*\"" ROCM_VERSION_MATCH ${ROCM_VERSION_H_RAW})
+  elseif (EXISTS "${onnxruntime_ROCM_HOME}/include/rocm-core/rocm_version.h")
+    message("\n***** ROCm version from ${onnxruntime_ROCM_HOME}/include/rocm-core/rocm_version.h ****\n")
+    file(READ "${onnxruntime_ROCM_HOME}/include/rocm-core/rocm_version.h" ROCM_VERSION_H_RAW)
+    string(REGEX MATCH "\"([0-9]+)\.([0-9]+)\.([0-9]+).*\"" ROCM_VERSION_MATCH ${ROCM_VERSION_H_RAW})
+  endif()
+
+  if (ROCM_VERSION_MATCH)
+    set(ROCM_VERSION_DEV_MAJOR ${CMAKE_MATCH_1})
+    set(ROCM_VERSION_DEV_MINOR ${CMAKE_MATCH_2})
+    set(ROCM_VERSION_DEV_PATCH ${CMAKE_MATCH_3})
+    set(ROCM_VERSION_DEV "${ROCM_VERSION_DEV_MAJOR}.${ROCM_VERSION_DEV_MINOR}.${ROCM_VERSION_DEV_PATCH}")
+    math(EXPR ROCM_VERSION_DEV_INT "(${ROCM_VERSION_DEV_MAJOR}*10000) + (${ROCM_VERSION_DEV_MINOR}*100) + ${ROCM_VERSION_DEV_PATCH}")
+    message("ROCM_VERSION_DEV: ${ROCM_VERSION_DEV}")
+    message("ROCM_VERSION_DEV_MAJOR: ${ROCM_VERSION_DEV_MAJOR}")
+    message("ROCM_VERSION_DEV_MINOR: ${ROCM_VERSION_DEV_MINOR}")
+    message("ROCM_VERSION_DEV_PATCH: ${ROCM_VERSION_DEV_PATCH}")
+    message("ROCM_VERSION_DEV_INT:   ${ROCM_VERSION_DEV_INT}")
+  else()
+    message(FATAL_ERROR "Cannot determine ROCm version string")
+  endif()
+
+  if (NOT CMAKE_HIP_COMPILER)
+    set(CMAKE_HIP_COMPILER "${onnxruntime_ROCM_HOME}/llvm/bin/clang++")
+  endif()
+
+  if (NOT CMAKE_HIP_ARCHITECTURES)
+    if (ROCM_VERSION_DEV VERSION_LESS "6.2")
+      message(FATAL_ERROR "CMAKE_HIP_ARCHITECTURES is not set when ROCm version < 6.2")
+    else()
+      set(CMAKE_HIP_ARCHITECTURES "gfx908;gfx90a;gfx1030;gfx1100;gfx1101;gfx940;gfx941;gfx942;gfx1200;gfx1201")
+    endif()
+  endif()
+
+  file(GLOB rocm_cmake_components ${onnxruntime_ROCM_HOME}/lib/cmake/*)
+  list(APPEND CMAKE_PREFIX_PATH ${rocm_cmake_components})
+  set(CMAKE_HIP_COMPILER_FORCED ON)
+
+  enable_language(HIP)
+  if(NOT DEFINED _CMAKE_HIP_DEVICE_RUNTIME_TARGET)
+    message(FATAL_ERROR "HIP Language is not properly configured.")
+  endif()
+  add_compile_options("$<$<COMPILE_LANGUAGE:HIP>:SHELL:-x hip>")
+
+  if (NOT onnxruntime_HIPIFY_PERL)
+    find_path(HIPIFY_PERL_PATH
+      NAMES hipify-perl
+      HINTS
+      ${onnxruntime_ROCM_HOME}/bin
+      ${onnxruntime_ROCM_HOME}/hip/bin)
+    if (HIPIFY_PERL_PATH-NOTFOUND)
+      MESSAGE(FATAL_ERROR "hipify-perl not found")
+    endif()
+    set(onnxruntime_HIPIFY_PERL ${HIPIFY_PERL_PATH}/hipify-perl)
+  endif()
+
+  set(ROCM_INCLUDE_DIRS "${onnxruntime_ROCM_HOME}/include")
+  set(file "${CMAKE_BINARY_DIR}/detect_rocm_version.cc")
+
+  if(EXISTS ${ROCM_INCLUDE_DIRS}/rocm_version.h)
+    file(WRITE ${file} "#include <rocm_version.h>\n")
+  elseif(EXISTS ${ROCM_INCLUDE_DIRS}/rocm-core/rocm_version.h)
+    file(WRITE ${file} "#include <rocm-core/rocm_version.h>\n")
+  else()
+    message(FATAL_ERROR "rocm_version.h couldnt be found")
+  endif()
+
+  file(APPEND ${file}
+    "#include <cstdio>\n"
+    "#ifndef ROCM_VERSION_PATCH\n"
+    "#define ROCM_VERSION_PATCH 0\n"
+    "#endif\n"
+    "#define STRINGIFYHELPER(x) #x\n"
+    "#define STRINGIFY(x) STRINGIFYHELPER(x)\n"
+    "int main() {\n"
+    "  printf(\"%d.%d.%s\", ROCM_VERSION_MAJOR, ROCM_VERSION_MINOR, STRINGIFY(ROCM_VERSION_PATCH));\n"
+    "  return 0;\n"
+    "}\n"
+    )
+
+  try_run(run_result compile_result ${CMAKE_BINARY_DIR} ${file}
+    CMAKE_FLAGS "-DINCLUDE_DIRECTORIES=${ROCM_INCLUDE_DIRS}"
+    RUN_OUTPUT_VARIABLE rocm_version_from_header
+    COMPILE_OUTPUT_VARIABLE output_var
+    )
+  if(NOT compile_result)
+    message(FATAL_ERROR "ROCM: Couldn't determine version from header: " ${output_var})
+  endif()
+  message(STATUS "ROCM: Header version is: " ${rocm_version_from_header})
+  set(ROCM_VERSION_DEV_RAW ${rocm_version_from_header})
+
+  string(REGEX MATCH "^([0-9]+)\.([0-9]+)\.([0-9]+).*$" ROCM_VERSION_DEV_MATCH ${ROCM_VERSION_DEV_RAW})
+  if (ROCM_VERSION_DEV_MATCH)
+    set(ROCM_VERSION_DEV_MAJOR ${CMAKE_MATCH_1})
+    set(ROCM_VERSION_DEV_MINOR ${CMAKE_MATCH_2})
+    set(ROCM_VERSION_DEV_PATCH ${CMAKE_MATCH_3})
+    set(ROCM_VERSION_DEV "${ROCM_VERSION_DEV_MAJOR}.${ROCM_VERSION_DEV_MINOR}.${ROCM_VERSION_DEV_PATCH}")
+    math(EXPR ROCM_VERSION_DEV_INT "(${ROCM_VERSION_DEV_MAJOR}*10000) + (${ROCM_VERSION_DEV_MINOR}*100) + ${ROCM_VERSION_DEV_PATCH}")
+  else()
+    message(FATAL_ERROR "Cannot determine ROCm version string")
+  endif()
+  message("\n***** ROCm version from rocm_version.h ****\n")
+  message("ROCM_VERSION_DEV: ${ROCM_VERSION_DEV}")
+  message("ROCM_VERSION_DEV_MAJOR: ${ROCM_VERSION_DEV_MAJOR}")
+  message("ROCM_VERSION_DEV_MINOR: ${ROCM_VERSION_DEV_MINOR}")
+  message("ROCM_VERSION_DEV_PATCH: ${ROCM_VERSION_DEV_PATCH}")
+  message("ROCM_VERSION_DEV_INT:   ${ROCM_VERSION_DEV_INT}")
+  add_definitions(-DROCM_VERSION=${ROCM_VERSION_DEV_INT})
+
+  if (onnxruntime_USE_COMPOSABLE_KERNEL AND ROCM_VERSION_DEV VERSION_LESS "5.3")
+    message(WARNING "composable kernel is only supported on ROCm >= 5.3")
+    set(onnxruntime_USE_COMPOSABLE_KERNEL OFF)
+    set(onnxruntime_USE_COMPOSABLE_KERNEL_CK_TILE OFF)
+  endif()
+  if (onnxruntime_USE_COMPOSABLE_KERNEL_CK_TILE AND ROCM_VERSION_DEV VERSION_LESS "6.0")
+    message(WARNING "ck_tile can only be enabled on ROCm >= 6.0")
+    set(onnxruntime_USE_COMPOSABLE_KERNEL_CK_TILE OFF)
+  endif()
+  if (onnxruntime_USE_COMPOSABLE_KERNEL_CK_TILE AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+    message(WARNING "ck_tile hits compiler error in Debug build, disable automatically")
+    set(onnxruntime_USE_COMPOSABLE_KERNEL_CK_TILE OFF)
+  endif()
+endif()
+
 if (onnxruntime_USE_CUDA)
   include(cuda_configuration)
   setup_cuda_compiler()
@@ -945,6 +1094,11 @@ endif()
 if (onnxruntime_USE_MIGRAPHX)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_MIGRAPHX=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES migraphx)
+endif()
+
+if (onnxruntime_USE_ROCM)
+    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_ROCM=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES rocm)
 endif()
 
 if (onnxruntime_USE_MIGRAPHX_INTERFACE AND (NOT onnxruntime_USE_MIGRAPHX))
@@ -1560,6 +1714,10 @@ if (onnxruntime_ENABLE_CUDA_PROFILING)
   add_compile_definitions(ENABLE_CUDA_PROFILING)
 endif()
 
+if (onnxruntime_ENABLE_ROCM_PROFILING)
+  add_compile_definitions(ENABLE_ROCM_PROFILING)
+endif()
+
 if (onnxruntime_ENABLE_TRAINING)
   add_compile_definitions(ENABLE_TRAINING_CORE)
   add_compile_definitions(ENABLE_STRIDED_TENSORS)
@@ -1582,7 +1740,7 @@ if (UNIX OR onnxruntime_USE_NCCL)
   if (onnxruntime_USE_NCCL)
     if (onnxruntime_USE_CUDA)
       set(NCCL_LIBNAME "nccl")
-    elseif (onnxruntime_USE_MIGRAPHX)
+    elseif (onnxruntime_USE_ROCM OR onnxruntime_USE_MIGRAPHX)
       set(NCCL_LIBNAME "rccl")
     endif()
     find_path(NCCL_INCLUDE_DIR

@@ -33,14 +33,14 @@ __global__ void ConvertAndCopyQK(const int count, const T* input, T* output) {
   }
 }
 
-__global__ void ConvertAndCopyQK(const int count, const float* input, nv_bfloat16* output) {
+__global__ void ConvertAndCopyQK(const int count, const float* input, __nv_bfloat16* output) {
   int idx = threadIdx.x + blockIdx.x * blockDim.x;
   if (idx < count) {
     output[idx] = __float2bfloat16(input[idx]);
   }
 }
 
-__global__ void ConvertAndCopyQK(const int count, const nv_bfloat16* input, float* output) {
+__global__ void ConvertAndCopyQK(const int count, const __nv_bfloat16* input, float* output) {
   int idx = threadIdx.x + blockIdx.x * blockDim.x;
   if (idx < count) {
     output[idx] = __bfloat162float(input[idx]);

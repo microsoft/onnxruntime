@@ -224,9 +224,12 @@ void TopKLauncherMaxK(
 
   dim3 grid(batch_size * num_beams, voc_parts);
 
+#ifndef __HIP__
+  // hipFuncSetAttribute with carveout hints is not supported on all ROCm targets
   cudaFuncSetAttribute(BeamSearchOnlineTopKStage1Kernel<T, max_k, kThreadBlockSize>,
                        cudaFuncAttributePreferredSharedMemoryCarveout,
                        cudaSharedmemCarveoutMaxL1);
+#endif
 
   BeamSearchOnlineTopKStage1Kernel<T, max_k, kThreadBlockSize>
       <<<grid, kThreadBlockSize, 0, stream>>>(input, K, vocab_size, (vocab_size + voc_parts - 1) / voc_parts, output_values_tmp, output_indices_tmp);

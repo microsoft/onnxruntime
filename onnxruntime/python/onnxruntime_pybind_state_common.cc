@@ -34,6 +34,14 @@ onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
 
+#ifdef USE_ROCM
+// TODO remove deprecated global config
+bool miopen_conv_exhaustive_search = false;
+// TODO remove deprecated global config
+onnxruntime::rocm::TunableOpInfo tunable_op{};
+onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};
+#endif
+
 #ifdef USE_MIGRAPHX
 namespace migraphx::external {
 void* alloc_fn{nullptr};
