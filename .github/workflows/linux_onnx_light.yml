@@ -5,9 +5,8 @@
 # Goals of this job:
 #   * Prove ONNX Runtime can be compiled WITHOUT the `onnx` and `protobuf`
 #     Python packages installed.
-#   * Consume the PREBUILT onnx-light C++ artifact (onnx-light-cpp-*.tar.gz from
-#     the 0.1.5 release) via find_package, i.e. onnx-light itself is NOT compiled
-#     from source during the ORT build.
+#   * Consume the PREBUILT onnx-light C++ artifact via find_package,
+#     i.e. onnx-light itself is NOT compiled from source during the ORT build.
 #
 # The job installs only the minimal build dependencies, asserts that neither
 # `onnx` nor `protobuf` is importable, points CMake at the extracted prebuilt
@@ -45,7 +44,7 @@ permissions:
 
 env:
   # Prebuilt onnx-light C++ release artifact. Pinned by sha256.
-  ONNX_LIGHT_VERSION: "0.1.11"
+  ONNX_LIGHT_VERSION: "0.1.12"
   ONNX_LIGHT_CPP_ASSET: "onnx-light-cpp-linux-x86_64.tar.gz"
   ONNX_LIGHT_CPP_SHA256: "88e10ec54842cb0bb212a6e61cd1f2657f9f022ae285c6f8f2206cb448c2ad97"
 
