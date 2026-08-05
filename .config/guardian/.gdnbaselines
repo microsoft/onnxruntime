@@ -469,6 +469,42 @@
       "createdDate": "2025-07-24 10:13:44Z",
       "expirationDate": "2026-01-10 11:03:50Z",
       "justification": "This error is baselined with an expiration date of 180 days from 2025-07-24 11:03:50Z"
+    },
+    "a56e628ac02a0fcd5be64577a831b69fdc6fe40f52cbd0ad88977a5d1cca93fa": {
+      "signature": "a56e628ac02a0fcd5be64577a831b69fdc6fe40f52cbd0ad88977a5d1cca93fa",
+      "alternativeSignatures": [
+        "8901ff416eec36e34ecb56d9aea2e777d50e9bddc6a27d8df4eb13cd86c039a1",
+        "0dbe5e092a73fc82d49af689e6df50c6904f472512babeb0d3ecf6ca8e5128c9",
+        "1936115a62c6271897436628f244428048da02af5afd3cfd1f091791c9dac1d4"
+      ],
+      "target": "bin/onnxruntime_providers_webgpu.dll",
+      "uriBaseId": "file:///D:/a/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-07-29 10:06:02Z",
+      "expirationDate": "2027-01-15 10:59:29Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-07-29 10:59:29Z"
+    },
+    "79164546cd4d10abf8591e4df96e8904e4a4b4d13ce1caff294b7af6f03a322d": {
+      "signature": "79164546cd4d10abf8591e4df96e8904e4a4b4d13ce1caff294b7af6f03a322d",
+      "alternativeSignatures": [
+        "9f0080814cb239a43e10a1abd3ad6a826892def4b83f743645f8a85179ad4d52",
+        "18afb20e547e17415a77322fa5f7e7951bd9225db14e99396080dee2e3bbee67",
+        "6223e6c83d9db80b297b1bde4ac5e881e2174f4fefcf6747046da6e369eae719"
+      ],
+      "target": "bin/onnxruntime_providers_cuda.dll",
+      "uriBaseId": "file:///D:/a/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-08-05 19:12:57Z",
+      "expirationDate": "2027-01-22 20:19:56Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-08-05 20:19:56Z"
     }
   }
 }
