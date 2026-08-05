@@ -214,7 +214,7 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
       if (output_shape.dim_size() == 2) {
         *output_shape.add_dim() = value_dims.size() == 3
                                       ? (dmmha_packing ? value_dims[2] / 3 : value_dims[2])
-                                      : getAttribute(ctx, "num_heads", 0) * value_dims[3];
+                                      : value_dims[3] * getAttribute(ctx, "num_heads", 0);
       }
       updateOutputShape(ctx, 0, output_shape);
     } else if (hasInputShape(ctx, 1)) {
