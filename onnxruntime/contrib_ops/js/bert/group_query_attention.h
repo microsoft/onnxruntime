@@ -15,6 +15,10 @@ class GroupQueryAttention : public JsKernel, GQAAttentionBase {
  public:
   explicit GroupQueryAttention(const OpKernelInfo& info)
       : JsKernel(info), GQAAttentionBase(info, false) {
+    // The windowed KV cache (cache-relative indexing + shift compaction) is implemented only by the
+    // CUDA kernel. Fail loudly rather than treating the window-sized buffer as a full-length cache.
+    ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("sliding_window_cache", 0) == 0,
+                "GroupQueryAttention (JS): sliding_window_cache=1 is not implemented.");
     JSEP_INIT_KERNEL_ATTRIBUTE(GroupQueryAttention, ({
                                  "numHeads" : $1,
                                  "kvNumHeads" : $2,

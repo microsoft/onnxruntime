@@ -577,7 +577,9 @@
         endif()
       endif()
 
-      if(onnxruntime_cuda_sm120_tma_srcs)
+      # CUDA 13 generates host stubs with 128-byte aligned by-value CUTLASS parameters for these
+      # native SM120 TMA kernels. MSVC rejects those stubs with C2719, so retain the portable path.
+      if(onnxruntime_cuda_sm120_tma_srcs AND (NOT MSVC OR CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0))
         onnxruntime_filter_cuda_archs(_ort_sm120_cuda_architectures MIN_SM 120)
         if(_ort_sm120_cuda_architectures)
           onnxruntime_add_cuda_object_library(
@@ -586,6 +588,10 @@
             CUDA_ARCHITECTURES "${_ort_sm120_cuda_architectures}"
             NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
             SOURCES ${onnxruntime_cuda_sm120_tma_srcs})
+          target_compile_definitions(onnxruntime_providers_cuda PRIVATE ORT_ENABLE_BLOCKQUANT_SM120)
+          if(TARGET onnxruntime_providers_cuda_obj)
+            target_compile_definitions(onnxruntime_providers_cuda_obj PRIVATE ORT_ENABLE_BLOCKQUANT_SM120)
+          endif()
         endif()
       endif()
 

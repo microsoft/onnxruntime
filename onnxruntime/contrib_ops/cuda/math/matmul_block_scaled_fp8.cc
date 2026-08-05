@@ -7,11 +7,20 @@
 
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 
 namespace onnxruntime::contrib::cuda {
 using namespace onnxruntime::cuda;
+
+namespace {
+bool FusedFp8ActivationQdqDisabled() {
+  static const bool disabled =
+      ParseEnvironmentVariableWithDefault<bool>("ORT_DISABLE_FUSED_FP8_ACT_QDQ", false);
+  return disabled;
+}
+}  // namespace
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 ONNX_OPERATOR_KERNEL_EX(
@@ -87,9 +96,16 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
   // Optional W8A8 activation path: statically quantize A to FP8 E4M3 and dequantize back so the
   // GEMM sees the same activation rounding as native W8A8 execution. When a_scale is absent the
   // activation is kept at full FP16/BF16 precision (weight-only W8A16).
+  //
+  // The decode GEMV absorbs this round trip in-register, so the standalone kernel (and its [M, K]
+  // scratch buffer) is only materialized for the cuBLAS path below.
+  constexpr int kGemvMaxM = 8;
+  const bool use_gemv = m_i > 0 && m_i <= kGemvMaxM && (k_i % 16 == 0) && (block_size_ % 16 == 0);
+  const bool fuse_act_qdq = use_gemv && !FusedFp8ActivationQdqDisabled();
+
   const void* a_ptr = a->DataRaw();
   IAllocatorUniquePtr<CudaT> a_dequant;
-  if (a_scale != nullptr) {
+  if (a_scale != nullptr && !fuse_act_qdq) {
     a_dequant = GetScratchBuffer<CudaT>(SafeInt<size_t>(m_i) * SafeInt<size_t>(k_i),
                                         GetComputeStream(context));
     ORT_RETURN_IF_ERROR(LaunchQuantizeDequantizeActivationFp8(
@@ -106,19 +122,20 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
   // Decode fast path: for small M (autoregressive generation) this is a memory-bound GEMV.
   // A fused warp-per-column kernel reads the FP8 weight directly, avoiding both the [N, K]
   // dequant scratch buffer and the cuBLAS GEMM (which is underutilized at M == 1).
-  constexpr int kGemvMaxM = 8;
-  if (m_i > 0 && m_i <= kGemvMaxM && (k_i % 16 == 0) && (block_size_ % 16 == 0)) {
+  if (use_gemv) {
     return LaunchMatMulBlockScaledFp8Gemv(
         Y->MutableDataRaw(),
         a_ptr,
         b->DataRaw(),
         b_scale->Data<float>(),
         bias != nullptr ? bias->DataRaw() : nullptr,
+        (a_scale != nullptr && fuse_act_qdq) ? a_scale->Data<float>() : nullptr,
         m_i,
         n_i,
         k_i,
         SafeInt<int>(block_size_),
         std::is_same<T, BFloat16>::value,
+        GetDeviceProp(),
         Stream(context));
   }
 

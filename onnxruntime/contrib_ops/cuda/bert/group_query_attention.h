@@ -29,6 +29,9 @@ class GroupQueryAttention final : public CudaKernel {
   int num_heads_;     // number of attention heads
   int kv_num_heads_;  // different for k and v for group query attention
   int local_window_size_;
+  // sliding_window_cache attribute: past/present KV buffers are window-sized and the kernel uses
+  // cache-relative indexing with shift compaction. Requires local_window_size_ > 0.
+  bool sliding_window_cache_;
   bool is_unidirectional_;
   bool is_past_bsnh_;
   bool do_rotary_;

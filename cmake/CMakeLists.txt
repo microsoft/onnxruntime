@@ -1198,6 +1198,9 @@ function(onnxruntime_set_compile_flags target_name)
       # Enable warning
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wall>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wall>")
       target_compile_options(${target_name} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wextra>")
+      if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND onnxruntime_target_platform STREQUAL "aarch64")
+        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-psabi>")
+      endif()
       if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CXX_COMPILER_ID STREQUAL "IBMClang")
         #external/protobuf/src/google/protobuf/arena.h:445:18: error: unused parameter 'p'
         target_compile_options(${target_name} PRIVATE "-Wno-unused-parameter")
