@@ -25,6 +25,12 @@ bool HyperConnectionFinishVecDisabled() {
   return disabled;
 }
 
+bool HyperConnectionPartialGroupsEnabled() {
+  static const bool enabled =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_HC_PARTIAL_GROUPS", 0) == 1;
+  return enabled;
+}
+
 #define REGISTER_KERNEL_TYPED(T)                                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
       HyperConnectionMix,                                             \

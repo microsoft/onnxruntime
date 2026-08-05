@@ -54,10 +54,14 @@ __device__ __forceinline__ float WarpReduceSum(float v) {
 
 // Post mix plus the mixing GEMV, over a slice of the hidden dimension.
 //
-// grid is (split, num_tokens). HC is a template parameter so every mixing accumulator is
+// grid is (split, num_tokens, G). HC is a template parameter so every mixing accumulator is
 // indexed at compile time and stays in registers; a runtime bound would spill the 25-wide
 // array to local memory and the fused operator would lose to the subgraph it replaces.
-template <typename CudaT, int HC, int PT>
+//
+// G splits the `hc` streams across blocks, so a block owns HC / G of them; see
+// HyperConnectionPartialGroups(). It is a template parameter for the same reason HC is --
+// the owned count has to be a compile-time trip count to keep `acc` in registers.
+template <typename CudaT, int HC, int PT, int G>
 __global__ __launch_bounds__(PT) void HyperConnectionPartialKernel(
     const CudaT* __restrict__ x,
     const CudaT* __restrict__ residual,
@@ -69,6 +73,7 @@ __global__ __launch_bounds__(PT) void HyperConnectionPartialKernel(
     int dim, int split) {
   constexpr int kMixDim = (2 + HC) * HC;
   constexpr int kPtWarps = PT / 32;
+  constexpr int kOwned = HC / G;
   using C = Conv<CudaT>;
 
   __shared__ float s_pin[HC];
@@ -77,6 +82,7 @@ __global__ __launch_bounds__(PT) void HyperConnectionPartialKernel(
 
   const int part = blockIdx.x;
   const int token = blockIdx.y;
+  const int group = (G > 1) ? static_cast<int>(blockIdx.z) : 0;
   const int tid = threadIdx.x;
   const int lane = tid & 31;
   const int warp = tid >> 5;
@@ -98,22 +104,38 @@ __global__ __launch_bounds__(PT) void HyperConnectionPartialKernel(
 #pragma unroll
     for (int g = 0; g < HC; ++g) rv[g] = C::ToFloat(residual[off_r + static_cast<size_t>(g) * dim + d]);
 
-    float v[HC];
+    // One pass over the owned streams: forming v[h] and consuming it are independent across h,
+    // and at G == 1 this still visits h in order, so `acc` is summed exactly as before.
 #pragma unroll
-    for (int h = 0; h < HC; ++h) {
+    for (int i = 0; i < kOwned; ++i) {
+      const int h = group + i * G;
       float t2 = 0.f;
 #pragma unroll
       for (int g = 0; g < HC; ++g) t2 += s_cin[g * HC + h] * rv[g];
-      v[h] = C::Round(s_pin[h] * xv + t2);
-    }
+      const float vh = C::Round(s_pin[h] * xv + t2);
 
-#pragma unroll
-    for (int h = 0; h < HC; ++h) {
-      residual_out[off_r + static_cast<size_t>(h) * dim + d] = C::FromFloat(v[h]);
-      acc[kMixDim] += v[h] * v[h];
+      residual_out[off_r + static_cast<size_t>(h) * dim + d] = C::FromFloat(vh);
+      acc[kMixDim] += vh * vh;
+
+      // A row of `fn` is kMixDim consecutive floats and rows are kMixDim apart, so whenever
+      // kMixDim is a multiple of 4 every row is 16-byte aligned and the same bytes can be
+      // fetched with a quarter of the instructions. Lanes are kMixDim * 4 bytes apart either
+      // way, so this is purely an instruction-count change; each acc[j] keeps its order.
       const float* frow = fn + static_cast<size_t>(h * dim + d) * kMixDim;
+      if constexpr (kMixDim % 4 == 0) {
+        const float4* frow4 = reinterpret_cast<const float4*>(frow);
 #pragma unroll
-      for (int j = 0; j < kMixDim; ++j) acc[j] += v[h] * frow[j];
+        for (int j = 0; j < kMixDim / 4; ++j) {
+          const float4 f = frow4[j];
+          acc[4 * j + 0] += vh * f.x;
+          acc[4 * j + 1] += vh * f.y;
+          acc[4 * j + 2] += vh * f.z;
+          acc[4 * j + 3] += vh * f.w;
+        }
+      } else {
+#pragma unroll
+        for (int j = 0; j < kMixDim; ++j) acc[j] += vh * frow[j];
+      }
     }
   }
 
@@ -127,7 +149,10 @@ __global__ __launch_bounds__(PT) void HyperConnectionPartialKernel(
     float v = 0.f;
 #pragma unroll
     for (int w = 0; w < kPtWarps; ++w) v += s_red[w * (kMixDim + 1) + tid];
-    partial[(static_cast<size_t>(token) * split + part) * (kMixDim + 1) + tid] = v;
+    // The finish pass walks this buffer as one run of G * split entries per token, so the
+    // group index simply selects which run of `split` this block lands in.
+    const size_t slot = (static_cast<size_t>(token) * G + group) * split + part;
+    partial[slot * (kMixDim + 1) + tid] = v;
   }
 }
 
@@ -517,26 +542,41 @@ Status Launch(cudaStream_t stream, const HyperConnectionMixParams& params, const
   }
 
   const int split = HyperConnectionMixSplit(params.num_tokens, params.dim);
+  const int groups = HyperConnectionPartialGroups(params.num_tokens, HC, params.dim);
 
   // Block width picks how many SMs the pass can occupy; see HyperConnectionPartialThreads().
   const int partial_threads = HyperConnectionPartialThreads(params.num_tokens);
-  const dim3 partial_grid(split, params.num_tokens);
-  if (partial_threads == 32) {
-    HyperConnectionPartialKernel<CudaT, HC, 32><<<partial_grid, 32, 0, stream>>>(
-        x, residual, post_mix, comb_mix, fn, residual_out, workspace, params.dim, split);
-  } else if (partial_threads == 128) {
-    HyperConnectionPartialKernel<CudaT, HC, 128><<<partial_grid, 128, 0, stream>>>(
-        x, residual, post_mix, comb_mix, fn, residual_out, workspace, params.dim, split);
+  const dim3 partial_grid(split, params.num_tokens, groups);
+#define ORT_HC_LAUNCH_PARTIAL(pt, g)                                                      \
+  HyperConnectionPartialKernel<CudaT, HC, pt, g><<<partial_grid, pt, 0, stream>>>(        \
+      x, residual, post_mix, comb_mix, fn, residual_out, workspace, params.dim, split)
+  if (groups == 1) {
+    if (partial_threads == 32) {
+      ORT_HC_LAUNCH_PARTIAL(32, 1);
+    } else if (partial_threads == 128) {
+      ORT_HC_LAUNCH_PARTIAL(128, 1);
+    } else {
+      ORT_HC_LAUNCH_PARTIAL(64, 1);
+    }
   } else {
-    HyperConnectionPartialKernel<CudaT, HC, 64><<<partial_grid, 64, 0, stream>>>(
-        x, residual, post_mix, comb_mix, fn, residual_out, workspace, params.dim, split);
+    if (partial_threads == 32) {
+      ORT_HC_LAUNCH_PARTIAL(32, HC);
+    } else if (partial_threads == 128) {
+      ORT_HC_LAUNCH_PARTIAL(128, HC);
+    } else {
+      ORT_HC_LAUNCH_PARTIAL(64, HC);
+    }
   }
+#undef ORT_HC_LAUNCH_PARTIAL
+
+  // Each group contributed its own run of `split` partials, and they reduce the same way.
+  const int finish_split = split * groups;
 
   if (HyperConnectionFinishFastDisabled()) {
     HyperConnectionFinishKernel<CudaT, HC>
         <<<params.num_tokens, kThreadsPerBlock, shared_bytes, stream>>>(
             residual_out, workspace, scale, base, norm_weight, post_mix_out, comb_mix_out,
-            layer_input, params.dim, split, params.sinkhorn_iterations, params.epsilon,
+            layer_input, params.dim, finish_split, params.sinkhorn_iterations, params.epsilon,
             params.hc_epsilon, params.sinkhorn_epsilon, params.post_alpha);
     return CUDA_CALL(cudaGetLastError());
   }
@@ -552,13 +592,13 @@ Status Launch(cudaStream_t stream, const HyperConnectionMixParams& params, const
     HyperConnectionFinishFastKernel<CudaT, HC, kFastBlock, kFastPrefetch, true>
         <<<params.num_tokens, kFastBlock, shared_bytes, stream>>>(
             residual_out, workspace, scale, base, norm_weight, post_mix_out, comb_mix_out,
-            layer_input, params.dim, split, params.sinkhorn_iterations, params.epsilon,
+            layer_input, params.dim, finish_split, params.sinkhorn_iterations, params.epsilon,
             params.hc_epsilon, params.sinkhorn_epsilon, params.post_alpha);
   } else {
     HyperConnectionFinishFastKernel<CudaT, HC, kFastBlock, kFastPrefetch, false>
         <<<params.num_tokens, kFastBlock, shared_bytes, stream>>>(
             residual_out, workspace, scale, base, norm_weight, post_mix_out, comb_mix_out,
-            layer_input, params.dim, split, params.sinkhorn_iterations, params.epsilon,
+            layer_input, params.dim, finish_split, params.sinkhorn_iterations, params.epsilon,
             params.hc_epsilon, params.sinkhorn_epsilon, params.post_alpha);
   }
 
