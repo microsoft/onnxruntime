@@ -39,11 +39,11 @@
 #endif
 #endif
 #if defined(ORT_USE_ONNX_LIGHT)
-#include <onnx_light/google_protobuf_compat.h>
+#include <onnx_proto/google_protobuf_compat.h>
 #include <onnx_lib/common/onnx_pb.h>
 #include <onnx_lib/onnx-data.pb.h>
 #include <cstdint>
-#include <onnx_light/onnx_proto/tml.h>
+#include <onnx_proto/tml.h>
 namespace onnxruntime {
 namespace proto {
 using ONNX_LIGHT_NAMESPACE::proto::MapInt64ToDouble;

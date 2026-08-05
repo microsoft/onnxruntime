@@ -39,7 +39,7 @@ using ONNX_NAMESPACE::DbgOperatorSetTracker;
 #endif
 
 void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, int index,
-                                       ::google::protobuf::int32 expectedType,
+                                       int32_t expectedType,
                                        QuantParamTensorType expectedScalar, int expectedTensorSize) {
   if (ctx.getNumInputs() > static_cast<size_t>(index)) {
     auto data_type = ctx.getInputType(index);

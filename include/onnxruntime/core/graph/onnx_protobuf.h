@@ -28,6 +28,11 @@
 // onnx-light does not use protobuf; proto types come from onnx_lib/common/onnx_pb.h
 // which includes the hand-crafted message definitions in onnx.h.
 #include "onnx_lib/common/onnx_pb.h"
+// Provide google::protobuf:: compatibility types (RepeatedPtrField, int32, int64, etc.)
+#include "onnx_proto/google_protobuf_compat.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "onnx_lib/defs/schema.h"
+#endif
 #else
 #include "onnx/onnx_pb.h"
 #include "onnx/onnx-operators_pb.h"
