@@ -160,8 +160,11 @@ Status Scan<8>::SetupSubgraphExecutionInfo(const SessionState& session_state,
   ORT_UNUSED_PARAMETER(attribute_name);
 
   const auto& node = Node();
+  // num_scan_inputs_ is read from the model as an int64_t; narrow<int> (rather than static_cast)
+  // ensures an out-of-int-range attribute value fails predictably here instead of silently
+  // wrapping to an in-range value that could bypass Info's own validation.
   info_ = std::make_unique<Scan<8>::Info>(node, subgraph_session_state.GetGraphViewer(),
-                                          static_cast<int>(num_scan_inputs_));
+                                          onnxruntime::narrow<int>(num_scan_inputs_));
 
   auto status = scan::detail::CreateFeedsFetchesManager(node, *info_, session_state, subgraph_session_state,
                                                         /* is_v8 */ true, feeds_fetches_manager_);
