@@ -593,6 +593,8 @@ TEST(MultiHeadAttentionTest, CudaMask1DKeySeqLenStartRejectsInvalidSeqstartValue
     GTEST_SKIP() << "CUDA execution provider not available";
   }
 
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_CUDA_ATTENTION_VALIDATE_SEQ_LENS", "1"}}};
+
   constexpr int64_t batch_size = 1;
   constexpr int64_t sequence_length = 256;
   constexpr int64_t hidden_size = 32;

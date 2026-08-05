@@ -54,6 +54,7 @@ limitations under the License.
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "core/platform/env_var_utils.h"
 
 using namespace onnxruntime::cuda;
 
@@ -74,11 +75,16 @@ static Status ValidateGqaSeqLensValues(cudaStream_t stream,
     return Status::OK();
   }
 
+  constexpr char kValidateSeqLensEnvVar[] = "ORT_CUDA_ATTENTION_VALIDATE_SEQ_LENS";
+  if (!ParseEnvironmentVariableWithDefault<bool>(kValidateSeqLensEnvVar, false)) {
+    return Status::OK();
+  }
+
   std::vector<int32_t> seq_lens_host(static_cast<size_t>(batch_size));
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(seq_lens_host.data(),
                                        seq_lens,
                                        static_cast<size_t>(batch_size) * sizeof(int32_t),
-                                       cudaMemcpyDefault,
+                                       cudaMemcpyDeviceToHost,
                                        stream));
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
 

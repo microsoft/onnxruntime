@@ -57,6 +57,7 @@ namespace contrib {
 namespace cuda {
 
 constexpr size_t kMemoryAlignment = 256;
+constexpr char kValidateSeqLensEnvVar[] = "ORT_CUDA_ATTENTION_VALIDATE_SEQ_LENS";
 
 static Status ValidateMask1DKeySeqLenStartValues(cudaStream_t stream,
                                                  const int32_t* mask_index,
@@ -67,12 +68,16 @@ static Status ValidateMask1DKeySeqLenStartValues(cudaStream_t stream,
     return Status::OK();
   }
 
+  if (!ParseEnvironmentVariableWithDefault<bool>(kValidateSeqLensEnvVar, false)) {
+    return Status::OK();
+  }
+
   const size_t mask_elements = static_cast<size_t>(3) * static_cast<size_t>(batch_size) + 2;
   std::vector<int32_t> mask_host(mask_elements);
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(mask_host.data(),
                                        mask_index,
                                        mask_elements * sizeof(int32_t),
-                                       cudaMemcpyDefault,
+                                       cudaMemcpyDeviceToHost,
                                        stream));
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
 

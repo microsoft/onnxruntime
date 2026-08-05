@@ -62,7 +62,9 @@ static void RunGQASeqlensKTest(
     const std::string& expected_message,
     bool provide_past = false,
     int past_seq_len = 0,
-    const std::optional<std::vector<int64_t>>& seqlens_k_shape = std::nullopt) {
+    const std::optional<std::vector<int64_t>>& seqlens_k_shape = std::nullopt,
+    GqaTargetEp target_ep = GqaTargetEp::kCpu) {
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_CUDA_ATTENTION_VALIDATE_SEQ_LENS", "1"}}};
   constexpr int num_heads = 1;
   constexpr int kv_num_heads = 1;
   constexpr int head_size = 8;
@@ -121,8 +123,13 @@ static void RunGQASeqlensKTest(
     tester.SetOutputTolerance(1e6f);
   }
 
+  auto execution_provider = MakeExecutionProviderForGqaTest(target_ep);
+  if (target_ep == GqaTargetEp::kCuda && !execution_provider) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCpuExecutionProvider());
+  execution_providers.push_back(std::move(execution_provider));
   tester.Run(expect, expected_message, {}, nullptr, &execution_providers);
 }
 
@@ -322,6 +329,22 @@ TEST(GroupQueryAttentionTest, MultiBatchOneBadSeqlensK_OOB) {
       OpTester::ExpectResult::kExpectFailure,
       "seqlens_k[1]");
 }
+
+#ifdef USE_CUDA
+TEST(GroupQueryAttentionTest, CudaOversizedSeqlensK_OOB) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{100},
+      /*total_seq_len=*/1,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectFailure,
+      "seqlens_k[0]",
+      /*provide_past=*/false,
+      /*past_seq_len=*/0,
+      std::nullopt,
+      GqaTargetEp::kCuda);
+}
+#endif
 
 // Boundary: seqlens_k == present_kv_seqlen - 1 is the maximum valid value.
 // First prompt with seq=1, total_seq=1, present=1 → seqlens_k=0 should succeed.
