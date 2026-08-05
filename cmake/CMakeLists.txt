@@ -129,6 +129,8 @@ cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB gemm cuda k
 option(onnxruntime_USE_INT4_KV_CACHE "Build cuda kernels for int4 kv cache" OFF)
 option(onnxruntime_USE_FP8_KV_CACHE "Build cuda kernels for fp8 kv cache" ON)
 option(onnxruntime_QUICK_BUILD "Speed up build by skipping some kernels for faster development" OFF)
+# Raises the minimum driver to the CUDA 12.4 level (Linux >= 550.54.14, Windows >= 551.61); always on for CUDA >= 13.0.
+cmake_dependent_option(onnxruntime_CUDA_FATBIN_COMPRESS_SIZE "Compress CUDA fatbins with -compress-mode=size" OFF "onnxruntime_USE_CUDA" OFF)
 
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
 option(onnxruntime_USE_AVX "Use AVX instructions" OFF)
@@ -1198,6 +1200,9 @@ function(onnxruntime_set_compile_flags target_name)
       # Enable warning
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wall>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wall>")
       target_compile_options(${target_name} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wextra>")
+      if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND onnxruntime_target_platform STREQUAL "aarch64")
+        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-psabi>")
+      endif()
       if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CXX_COMPILER_ID STREQUAL "IBMClang")
         #external/protobuf/src/google/protobuf/arena.h:445:18: error: unused parameter 'p'
         target_compile_options(${target_name} PRIVATE "-Wno-unused-parameter")
@@ -1523,7 +1528,12 @@ if (onnxruntime_USE_CUDA)
     message(FATAL_ERROR "onnxruntime_USE_FP4_QMOE requires CUDA Toolkit version 12.8 or newer")
   endif()
 
-  if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "13.0")
+  if(onnxruntime_CUDA_FATBIN_COMPRESS_SIZE AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "12.8")
+    message(FATAL_ERROR "onnxruntime_CUDA_FATBIN_COMPRESS_SIZE requires CUDA Toolkit version 12.8 or newer")
+  endif()
+
+  if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "13.0" OR onnxruntime_CUDA_FATBIN_COMPRESS_SIZE)
+    message(STATUS "Compressing CUDA fatbins with -compress-mode=size (requires a CUDA 12.4 or newer driver)")
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xfatbin=-compress-all -compress-mode=size")
   else()
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xfatbin=-compress-all")

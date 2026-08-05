@@ -3,7 +3,8 @@
 Packaging sources for the ONNX Runtime WebGPU plugin Execution Provider (EP), distributed as a standalone artifact
 that plugs into an existing ONNX Runtime installation rather than being built into the main `onnxruntime` binary.
 
-For more information about plugin EPs, see the documentation [here](https://onnxruntime.ai/docs/execution-providers/plugin-ep-libraries/).
+For more information about plugin EPs, see the
+[plugin EP libraries documentation](https://onnxruntime.ai/docs/execution-providers/plugin-ep-libraries/).
 
 ## Contents
 
@@ -24,15 +25,20 @@ For more information about plugin EPs, see the documentation [here](https://onnx
 The plugin EP is built as a shared library (`onnxruntime_providers_webgpu.{dll,so,dylib}`) by the main ONNX Runtime
 build (`--use_webgpu shared_lib`). The resulting binaries are then packaged into:
 
-- A Python wheel (`onnxruntime-ep-webgpu`), built from [`python/`](python/).
-- A NuGet package (`Microsoft.ML.OnnxRuntime.EP.WebGpu`), built from [`csharp/`](csharp/).
-- A universal package published to the internal ORT-Nightly feed for Windows (x64 / arm64), Linux x64, and macOS
-  arm64.
+- Per-platform Python wheels for `onnxruntime-ep-webgpu`, built from [`python/`](python/).
+- A multi-platform NuGet package `Microsoft.ML.OnnxRuntime.EP.WebGpu`, built from [`csharp/`](csharp/).
+- Per-platform zip packages for Foundry Local consumption.
 
-Packaging is driven by the `WebGPU Plugin EP Packaging Pipeline`
-([`tools/ci_build/github/azure-pipelines/plugin-webgpu-pipeline.yml`](../tools/ci_build/github/azure-pipelines/plugin-webgpu-pipeline.yml)),
-and post-build smoke tests run in the companion `WebGPU Plugin EP Test Pipeline`
-([`tools/ci_build/github/azure-pipelines/plugin-webgpu-test-pipeline.yml`](../tools/ci_build/github/azure-pipelines/plugin-webgpu-test-pipeline.yml)).
+On Windows, the packages also bundle the DirectX Shader Compiler runtime (`dxil.dll`, `dxcompiler.dll`) from the
+[DXC GitHub releases](https://github.com/microsoft/DirectXShaderCompiler/releases); CI fetches these automatically.
+
+Packaging is driven by the *WebGPU Plugin EP Packaging Pipeline*
+([`plugin-webgpu-pipeline.yml`](../tools/ci_build/github/azure-pipelines/plugin-webgpu-pipeline.yml)),
+and post-build smoke tests run in the companion *WebGPU Plugin EP Test Pipeline*
+([`plugin-webgpu-test-pipeline.yml`](../tools/ci_build/github/azure-pipelines/plugin-webgpu-test-pipeline.yml)).
+
+The packaging pipeline only uploads its outputs as Azure DevOps pipeline artifacts — it does not push to PyPI,
+nuget.org, or the ORT-Nightly feed. Publishing to public feeds is handled by separate release pipelines.
 
 ## Usage
 

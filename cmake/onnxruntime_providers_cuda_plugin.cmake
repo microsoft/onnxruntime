@@ -123,6 +123,17 @@ onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_plugin
     ${CUDA_PLUGIN_EP_CU_SRCS}
 )
 
+if(WIN32)
+  # Add version information to the packaged plugin DLL.
+  target_sources(onnxruntime_providers_cuda_plugin PRIVATE
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/onnxruntime_providers_cuda.rc")
+  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE
+      FILE_NAME=\"onnxruntime_providers_cuda.dll\")
+elseif(UNIX AND NOT APPLE)
+  # The build output is packaged directly, so do not embed the build machine's CUDA path.
+  set_target_properties(onnxruntime_providers_cuda_plugin PROPERTIES SKIP_BUILD_RPATH TRUE)
+endif()
+
 # Mirror directory structure in the Visual Studio solution tree under "onnxruntime".
 source_group(TREE ${ONNXRUNTIME_ROOT} PREFIX "onnxruntime" FILES ${CUDA_EP_CC_SRCS} ${CUDA_EP_CU_SRCS})
 source_group(TREE ${ONNXRUNTIME_ROOT} PREFIX "onnxruntime" FILES ${CUDA_CONTRIB_OPS_CC_SRCS} ${CUDA_CONTRIB_OPS_CU_SRCS})
@@ -324,7 +335,9 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     endif()
   endif()
 
-  if(_cuda_plugin_sm120_tma_srcs)
+  # CUDA 13 generates host stubs with 128-byte aligned by-value CUTLASS parameters for these
+  # native SM120 TMA kernels. MSVC rejects those stubs with C2719, so retain the portable path.
+  if(_cuda_plugin_sm120_tma_srcs AND (NOT MSVC OR CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0))
     onnxruntime_filter_cuda_archs(_plugin_sm120_cuda_architectures MIN_SM 120)
     if(_plugin_sm120_cuda_architectures)
       onnxruntime_add_cuda_plugin_object_library(
@@ -344,6 +357,12 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   if(_cuda_plugin_llm_srcs)
     if(MSVC AND NOT onnxruntime_USE_FP4_QMOE)
       onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75 EXCLUDE_SM120_REAL)
+      # A native-only Windows ARM64 build has no lower architecture left after the
+      # MSVC SM120 exclusion. Emit PTX privately for this object library so its host
+      # launchers and device kernels are still linked into the plugin.
+      if(NOT _plugin_llm_cuda_architectures AND ORT_HAS_SM120_OR_LATER)
+        set(_plugin_llm_cuda_architectures "120-virtual")
+      endif()
     else()
       onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75)
     endif()
