@@ -47,7 +47,7 @@ TEST(OpRegistrationTest, DeepSeekV4StandaloneOps) {
   constexpr ExpectedSchema expected_schemas[] = {
       {"HeavilyCompressedAttention", 11, 5},
       {"CompressedSparseAttention", 13, 6},
-      {"DeepSeekV4Indexer", 16, 6},
+      {"LightningIndexer", 16, 6},
       {"CompressedAttention", 6, 1},
       {"HashRouter", 4, 3},
   };

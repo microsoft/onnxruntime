@@ -127,8 +127,8 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HeavilyCompressedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HeavilyCompressedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CompressedSparseAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, CompressedSparseAttention);
-class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DeepSeekV4Indexer);
-class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, DeepSeekV4Indexer);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LightningIndexer);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, LightningIndexer);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CompressedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, CompressedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HashRouter);
@@ -412,8 +412,8 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HeavilyCompressedAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CompressedSparseAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, CompressedSparseAttention)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DeepSeekV4Indexer)>,
-      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, DeepSeekV4Indexer)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LightningIndexer)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, LightningIndexer)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CompressedAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, CompressedAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HashRouter)>,

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/cuda/bert/deepseek_v4_indexer.h"
+#include "contrib_ops/cuda/bert/lightning_indexer.h"
 
 #include <algorithm>
 #include <cfloat>
@@ -39,7 +39,7 @@ __device__ __forceinline__ half FromFloat<half>(float value) {
 }
 
 template <typename T>
-__global__ void DeepSeekV4IndexerKernel(
+__global__ void LightningIndexerKernel(
     int64_t* selected_indices, T* queries, const T* head_weights, const T* entries,
     const int64_t* position_ids, const T* cos_cache, const T* sin_cache,
     int sequence_length, int num_heads, int head_size, int entry_count, int index_topk,
@@ -111,13 +111,13 @@ __global__ void DeepSeekV4IndexerKernel(
 }
 
 template <typename T>
-Status LaunchDeepSeekV4IndexerKernel(
+Status LaunchLightningIndexerKernel(
     cudaStream_t stream, int64_t* selected_indices, T* queries, const T* head_weights,
     const T* entries, const int64_t* position_ids, const T* cos_cache, const T* sin_cache,
     int batch_size, int sequence_length, int num_heads, int head_size, int entry_count,
     int index_topk, int compress_rate, int rotary_dim, int cos_cache_width,
     int) {
-  DeepSeekV4IndexerKernel<T><<<batch_size * sequence_length, 1, 0, stream>>>(
+  LightningIndexerKernel<T><<<batch_size * sequence_length, 1, 0, stream>>>(
       selected_indices, queries, head_weights, entries, position_ids, cos_cache, sin_cache,
       sequence_length, num_heads, head_size, entry_count, index_topk, compress_rate,
       rotary_dim, cos_cache_width);
@@ -125,7 +125,7 @@ Status LaunchDeepSeekV4IndexerKernel(
 }
 
 
-template Status LaunchDeepSeekV4IndexerKernel<half>(cudaStream_t, int64_t*, half*, const half*, const half*, const int64_t*, const half*, const half*, int, int, int, int, int, int, int, int, int, int); template Status LaunchDeepSeekV4IndexerKernel<BFloat16>(cudaStream_t, int64_t*, BFloat16*, const BFloat16*, const BFloat16*, const int64_t*, const BFloat16*, const BFloat16*, int, int, int, int, int, int, int, int, int, int);
+template Status LaunchLightningIndexerKernel<half>(cudaStream_t, int64_t*, half*, const half*, const half*, const int64_t*, const half*, const half*, int, int, int, int, int, int, int, int, int, int); template Status LaunchLightningIndexerKernel<BFloat16>(cudaStream_t, int64_t*, BFloat16*, const BFloat16*, const BFloat16*, const int64_t*, const BFloat16*, const BFloat16*, int, int, int, int, int, int, int, int, int, int);
 
 }  // namespace cuda
 }  // namespace contrib

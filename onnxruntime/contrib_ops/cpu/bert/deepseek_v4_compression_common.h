@@ -308,7 +308,7 @@ inline std::vector<float> CompressWindows(const std::vector<float>& window_kv,
   return compressed;
 }
 
-struct OverlapCompressorResult {
+struct CompressorResult {
   std::vector<float> pending_kv;
   std::vector<float> pending_gate;
   std::vector<float> entries;
@@ -320,53 +320,55 @@ struct OverlapCompressorResult {
 };
 
 template <typename T>
-Status RunOverlapCompressor(const Tensor& hidden,
-                            const Tensor& position_ids,
-                            const Tensor& cos_cache,
-                            const Tensor& sin_cache,
-                            const Tensor& kv_weight,
-                            const Tensor& gate_weight,
-                            const Tensor& position_bias,
-                            const Tensor& norm_weight,
-                            const Tensor& past_pending_kv,
-                            const Tensor& past_pending_gate,
-                            const Tensor& past_entries,
-                            const Tensor& past_overlap_kv,
-                            const Tensor& past_overlap_gate,
-                            int64_t compress_rate,
-                            int64_t rotary_dim,
-                            float epsilon,
-                            OverlapCompressorResult& result) {
+Status RunCompressor(const Tensor& hidden,
+                     const Tensor& cos_cache,
+                     const Tensor& sin_cache,
+                     const Tensor& kv_weight,
+                     const Tensor& gate_weight,
+                     const Tensor& position_bias,
+                     const Tensor& norm_weight,
+                     const Tensor& past_pending_kv,
+                     const Tensor& past_pending_gate,
+                     const Tensor& past_entries,
+                     const Tensor* past_overlap_kv,
+                     const Tensor* past_overlap_gate,
+                     int64_t compress_rate,
+                     int64_t rotary_dim,
+                     float epsilon,
+                     CompressorResult& result) {
   const auto& hidden_shape = hidden.Shape();
   ORT_RETURN_IF_NOT(hidden_shape.NumDimensions() == 3, "hidden_states must have rank 3.");
   const int64_t batch = hidden_shape[0];
   const int64_t sequence = hidden_shape[1];
   const int64_t hidden_size = hidden_shape[2];
-  ORT_RETURN_IF_NOT(position_ids.Shape() == TensorShape({batch, sequence}),
-                    "position_ids must have shape (B, S).");
   ORT_RETURN_IF_NOT(cos_cache.Shape() == sin_cache.Shape() && cos_cache.Shape().NumDimensions() == 2,
                     "cos_cache and sin_cache must have the same rank-2 shape.");
-  ORT_RETURN_IF_NOT(kv_weight.Shape().NumDimensions() == 2 && kv_weight.Shape()[0] == hidden_size &&
-                        kv_weight.Shape()[1] % 2 == 0,
-                    "kv_weight must have shape (D, 2 * H).");
-  const int64_t head_size = kv_weight.Shape()[1] / 2;
-  const int64_t width = 2 * head_size;
+  const bool is_overlap = past_overlap_kv != nullptr || past_overlap_gate != nullptr;
+  ORT_RETURN_IF_NOT((past_overlap_kv == nullptr) == (past_overlap_gate == nullptr),
+                    "overlap KV and gate states must either both be provided or both be omitted.");
+  ORT_RETURN_IF_NOT(kv_weight.Shape().NumDimensions() == 2 && kv_weight.Shape()[0] == hidden_size,
+                    "kv_weight must have shape (D, H) or (D, 2 * H).");
+  const int64_t width = kv_weight.Shape()[1];
+  ORT_RETURN_IF(is_overlap && width % 2 != 0, "overlap compressor width must be even.");
+  const int64_t head_size = is_overlap ? width / 2 : width;
   ORT_RETURN_IF_NOT(gate_weight.Shape() == kv_weight.Shape(),
                     "gate_weight must have the same shape as kv_weight.");
   ORT_RETURN_IF_NOT(position_bias.Shape() == TensorShape({compress_rate, width}),
-                    "position_bias must have shape (compress_rate, 2 * H).");
+                    "position_bias must have shape (compress_rate, projection width).");
   ORT_RETURN_IF_NOT(norm_weight.Shape() == TensorShape({head_size}),
                     "norm_weight must have shape (H).");
   ORT_RETURN_IF_NOT(rotary_dim <= head_size && cos_cache.Shape()[1] * 2 >= rotary_dim,
                     "rotary dimensions are incompatible with H and the caches.");
   ORT_RETURN_IF_NOT(past_pending_kv.Shape().NumDimensions() == 3 && past_pending_kv.Shape()[0] == batch &&
                         past_pending_kv.Shape()[2] == width && past_pending_gate.Shape() == past_pending_kv.Shape(),
-                    "pending states must have shape (B, P, 2 * H).");
+            "pending states must have shape (B, P, projection width).");
   ORT_RETURN_IF_NOT(past_pending_kv.Shape()[1] < compress_rate,
                     "pending state length must be less than compress_rate.");
-  ORT_RETURN_IF_NOT(past_overlap_kv.Shape() == TensorShape({batch, compress_rate, head_size}) &&
-                        past_overlap_gate.Shape() == past_overlap_kv.Shape(),
-                    "overlap states must have shape (B, compress_rate, H).");
+  if (is_overlap) {
+    ORT_RETURN_IF_NOT(past_overlap_kv->Shape() == TensorShape({batch, compress_rate, head_size}) &&
+                          past_overlap_gate->Shape() == past_overlap_kv->Shape(),
+                      "overlap states must have shape (B, compress_rate, H).");
+  }
 
   EntryState entry_state = ReadEntries(past_entries, batch, head_size);
   const int64_t pending_count = past_pending_kv.Shape()[1];
@@ -411,8 +413,10 @@ Status RunOverlapCompressor(const Tensor& hidden,
                 result.pending_count * width, result.pending_gate.begin() + b * result.pending_count * width);
   }
 
-  result.overlap_kv = ToFloatVector<T>(past_overlap_kv);
-  result.overlap_gate = ToFloatVector<T>(past_overlap_gate);
+  if (is_overlap) {
+    result.overlap_kv = ToFloatVector<T>(*past_overlap_kv);
+    result.overlap_gate = ToFloatVector<T>(*past_overlap_gate);
+  }
   std::vector<float> new_entries;
   if (new_entry_count > 0) {
     std::vector<float> chunks_kv(static_cast<size_t>(batch * usable_count * width));
@@ -430,24 +434,29 @@ Status RunOverlapCompressor(const Tensor& hidden,
       }
     }
 
-    const int64_t slots = 2 * compress_rate;
+    const int64_t slots = is_overlap ? 2 * compress_rate : compress_rate;
     std::vector<float> window_kv(static_cast<size_t>(batch * new_entry_count * slots * head_size));
     std::vector<float> window_gate(window_kv.size());
     for (int64_t b = 0; b < batch; ++b) {
       for (int64_t window = 0; window < new_entry_count; ++window) {
         for (int64_t slot = 0; slot < compress_rate; ++slot) {
           for (int64_t d = 0; d < head_size; ++d) {
-            const size_t ca_dst = static_cast<size_t>(((b * new_entry_count + window) * slots + slot) * head_size + d);
-            const size_t cb_dst = ca_dst + static_cast<size_t>(compress_rate * head_size);
             const size_t current = static_cast<size_t>(((b * new_entry_count + window) * compress_rate + slot) * width + d);
+            const size_t destination = static_cast<size_t>(((b * new_entry_count + window) * slots + slot) * head_size + d);
+            if (!is_overlap) {
+              window_kv[destination] = chunks_kv[current];
+              window_gate[destination] = chunks_gate[current];
+              continue;
+            }
+            const size_t cb_destination = destination + static_cast<size_t>(compress_rate * head_size);
             const size_t current_cb = current + static_cast<size_t>(head_size);
             const size_t previous = window == 0
                                         ? static_cast<size_t>((b * compress_rate + slot) * head_size + d)
                                         : static_cast<size_t>(((b * new_entry_count + window - 1) * compress_rate + slot) * width + d);
-            window_kv[ca_dst] = window == 0 ? result.overlap_kv[previous] : chunks_kv[previous];
-            window_gate[ca_dst] = window == 0 ? result.overlap_gate[previous] : chunks_gate[previous];
-            window_kv[cb_dst] = chunks_kv[current_cb];
-            window_gate[cb_dst] = chunks_gate[current_cb];
+            window_kv[destination] = window == 0 ? result.overlap_kv[previous] : chunks_kv[previous];
+            window_gate[destination] = window == 0 ? result.overlap_gate[previous] : chunks_gate[previous];
+            window_kv[cb_destination] = chunks_kv[current_cb];
+            window_gate[cb_destination] = chunks_gate[current_cb];
           }
         }
       }
@@ -464,11 +473,13 @@ Status RunOverlapCompressor(const Tensor& hidden,
                                      sin_data.data() + position * cache_width);
         std::copy(row.begin(), row.end(), new_entries.begin() + offset);
       }
-      for (int64_t slot = 0; slot < compress_rate; ++slot) {
-        const size_t source = static_cast<size_t>(((b * new_entry_count + new_entry_count - 1) * compress_rate + slot) * width);
-        const size_t destination = static_cast<size_t>((b * compress_rate + slot) * head_size);
-        std::copy_n(chunks_kv.begin() + source, head_size, result.overlap_kv.begin() + destination);
-        std::copy_n(chunks_gate.begin() + source, head_size, result.overlap_gate.begin() + destination);
+      if (is_overlap) {
+        for (int64_t slot = 0; slot < compress_rate; ++slot) {
+          const size_t source = static_cast<size_t>(((b * new_entry_count + new_entry_count - 1) * compress_rate + slot) * width);
+          const size_t destination = static_cast<size_t>((b * compress_rate + slot) * head_size);
+          std::copy_n(chunks_kv.begin() + source, head_size, result.overlap_kv.begin() + destination);
+          std::copy_n(chunks_gate.begin() + source, head_size, result.overlap_gate.begin() + destination);
+        }
       }
     }
   }

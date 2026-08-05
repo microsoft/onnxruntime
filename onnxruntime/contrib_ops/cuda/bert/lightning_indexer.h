@@ -11,7 +11,7 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-Status LaunchDeepSeekV4IndexerKernel(
+Status LaunchLightningIndexerKernel(
     cudaStream_t stream, int64_t* selected_indices, T* queries, const T* head_weights,
     const T* entries, const int64_t* position_ids, const T* cos_cache, const T* sin_cache,
     int batch_size, int sequence_length, int num_heads, int head_size, int entry_count,

@@ -1514,7 +1514,7 @@ normalization and trailing interleaved RoPE, and appends completed entries to th
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-  DeepSeekV4Indexer, 1,
+  LightningIndexer, 1,
     OpSchema()
         .SetDoc(R"DOC(DeepSeek V4 compressed-entry indexer.
 

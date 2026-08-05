@@ -27,12 +27,12 @@ class CompressedSparseAttention final : public OpKernel {
     const int64_t batch = hidden.Shape()[0];
     const int64_t head_size = context->Input<Tensor>(4)->Shape()[1] / 2;
 
-    OverlapCompressorResult result;
-    ORT_RETURN_IF_ERROR(RunOverlapCompressor<T>(
-        hidden, *context->Input<Tensor>(1), *context->Input<Tensor>(2), *context->Input<Tensor>(3),
+    CompressorResult result;
+    ORT_RETURN_IF_ERROR(RunCompressor<T>(
+      hidden, *context->Input<Tensor>(2), *context->Input<Tensor>(3),
         *context->Input<Tensor>(4), *context->Input<Tensor>(5), *context->Input<Tensor>(6),
         *context->Input<Tensor>(7), *context->Input<Tensor>(8), *context->Input<Tensor>(9),
-        *context->Input<Tensor>(10), *context->Input<Tensor>(11), *context->Input<Tensor>(12),
+      *context->Input<Tensor>(10), context->Input<Tensor>(11), context->Input<Tensor>(12),
         compress_rate_, rotary_dim_, rms_norm_epsilon_, result));
 
     const TensorShape entries_shape = EntryOutputShape(batch, result.entry_count, head_size, result.entries_rank4);

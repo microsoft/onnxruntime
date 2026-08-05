@@ -8,26 +8,26 @@ namespace contrib {
 namespace deepseek_v4_attention_impl {
 
 template <typename T>
-class DeepSeekV4Indexer final : public OpKernel {
+class LightningIndexer final : public OpKernel {
  public:
-  explicit DeepSeekV4Indexer(const OpKernelInfo& info) : OpKernel(info) {
+  explicit LightningIndexer(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(info.GetAttr("compress_rate", &compress_rate_).IsOK() && compress_rate_ > 0,
-                "DeepSeekV4Indexer: compress_rate must be greater than zero.");
+                "LightningIndexer: compress_rate must be greater than zero.");
     ORT_ENFORCE(info.GetAttr("num_heads", &num_heads_).IsOK() && num_heads_ > 0,
-                "DeepSeekV4Indexer: num_heads must be greater than zero.");
+                "LightningIndexer: num_heads must be greater than zero.");
     ORT_ENFORCE(info.GetAttr("head_size", &head_size_).IsOK() && head_size_ > 0,
-                "DeepSeekV4Indexer: head_size must be greater than zero.");
+                "LightningIndexer: head_size must be greater than zero.");
     ORT_ENFORCE(info.GetAttr("index_topk", &index_topk_).IsOK() && index_topk_ > 0,
-                "DeepSeekV4Indexer: index_topk must be greater than zero.");
+                "LightningIndexer: index_topk must be greater than zero.");
     ORT_ENFORCE(info.GetAttr("rotary_dim", &rotary_dim_).IsOK() && rotary_dim_ > 0 && rotary_dim_ % 2 == 0,
-                "DeepSeekV4Indexer: rotary_dim must be a positive even value.");
+                "LightningIndexer: rotary_dim must be a positive even value.");
     rms_norm_epsilon_ = info.GetAttrOrDefault<float>("rms_norm_epsilon", 1e-6f);
   }
 
   Status Compute(OpKernelContext* context) const override {
     for (int index = 0; index < 16; ++index) {
       ORT_RETURN_IF_NOT(context->Input<Tensor>(index) != nullptr,
-                        "DeepSeekV4Indexer: all inputs are required.");
+                        "LightningIndexer: all inputs are required.");
     }
     const Tensor& hidden = *context->Input<Tensor>(0);
     const Tensor& q_residual = *context->Input<Tensor>(1);
@@ -49,12 +49,12 @@ class DeepSeekV4Indexer final : public OpKernel {
     ORT_RETURN_IF_NOT(context->Input<Tensor>(13)->Shape().NumDimensions() == 3,
                       "past_entries must have shape (B, E, head_size).");
 
-    OverlapCompressorResult result;
-    ORT_RETURN_IF_ERROR(RunOverlapCompressor<T>(
-        hidden, *context->Input<Tensor>(2), *context->Input<Tensor>(3), *context->Input<Tensor>(4),
+    CompressorResult result;
+    ORT_RETURN_IF_ERROR(RunCompressor<T>(
+      hidden, *context->Input<Tensor>(3), *context->Input<Tensor>(4),
         *context->Input<Tensor>(5), *context->Input<Tensor>(6), *context->Input<Tensor>(7),
         *context->Input<Tensor>(8), *context->Input<Tensor>(11), *context->Input<Tensor>(12),
-        *context->Input<Tensor>(13), *context->Input<Tensor>(14), *context->Input<Tensor>(15),
+      *context->Input<Tensor>(13), context->Input<Tensor>(14), context->Input<Tensor>(15),
         compress_rate_, rotary_dim_, rms_norm_epsilon_, result));
 
     WriteFloatVector<T>(*context->Output(1, TensorShape({batch, result.pending_count, 2 * head_size_})), result.pending_kv);
@@ -135,12 +135,12 @@ class DeepSeekV4Indexer final : public OpKernel {
 
 #define REGISTER_KERNEL(T)                                               \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
-      DeepSeekV4Indexer, kMSDomain, 1, T, kCpuExecutionProvider,                    \
+      LightningIndexer, kMSDomain, 1, T, kCpuExecutionProvider,                    \
       (*KernelDefBuilder::Create())                                     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())       \
           .TypeConstraint("I", {DataTypeImpl::GetTensorType<int32_t>(), \
                                   DataTypeImpl::GetTensorType<int64_t>()}), \
-      deepseek_v4_attention_impl::DeepSeekV4Indexer<T>);
+      deepseek_v4_attention_impl::LightningIndexer<T>);
 
 REGISTER_KERNEL(float)
 REGISTER_KERNEL(MLFloat16)

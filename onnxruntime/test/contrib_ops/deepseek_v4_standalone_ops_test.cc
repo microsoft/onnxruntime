@@ -74,8 +74,8 @@ TEST(DeepSeekV4StandaloneOpsTest, CompressedSparseAttentionPreservesCaCbOverlap)
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-TEST(DeepSeekV4StandaloneOpsTest, DeepSeekV4IndexerSelectsCausalTopKAndPadsWithNegativeOne) {
-  OpTester tester("DeepSeekV4Indexer", 1, onnxruntime::kMSDomain);
+TEST(DeepSeekV4StandaloneOpsTest, LightningIndexerSelectsCausalTopKAndPadsWithNegativeOne) {
+  OpTester tester("LightningIndexer", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("compress_rate", 1);
   tester.AddAttribute<int64_t>("num_heads", 1);
   tester.AddAttribute<int64_t>("head_size", 2);
@@ -373,8 +373,8 @@ TEST(DeepSeekV4StandaloneOpsTest, CudaCompressedSparseAttentionUsesOverlap) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
-TEST(DeepSeekV4StandaloneOpsTest, CudaDeepSeekV4IndexerSelectsAndPads) {
-  OpTester tester("DeepSeekV4Indexer", 1, onnxruntime::kMSDomain);
+TEST(DeepSeekV4StandaloneOpsTest, CudaLightningIndexerSelectsAndPads) {
+  OpTester tester("LightningIndexer", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("compress_rate", 1);
   tester.AddAttribute<int64_t>("num_heads", 1);
   tester.AddAttribute<int64_t>("head_size", 2);

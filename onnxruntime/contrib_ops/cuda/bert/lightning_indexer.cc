@@ -5,7 +5,7 @@
 #include <string>
 
 #include "contrib_ops/cuda/bert/deepseek_v4_compression_common.h"
-#include "contrib_ops/cuda/bert/deepseek_v4_indexer.h"
+#include "contrib_ops/cuda/bert/lightning_indexer.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -13,9 +13,9 @@ namespace cuda {
 namespace {
 
 template <typename T>
-class DeepSeekV4Indexer final : public CudaKernel {
+class LightningIndexer final : public CudaKernel {
  public:
-  explicit DeepSeekV4Indexer(const OpKernelInfo& info) : CudaKernel(info) {
+  explicit LightningIndexer(const OpKernelInfo& info) : CudaKernel(info) {
     ORT_ENFORCE(info.GetAttr("compress_rate", &compress_rate_).IsOK() && compress_rate_ > 0);
     ORT_ENFORCE(info.GetAttr("num_heads", &num_heads_).IsOK() && num_heads_ > 0);
     ORT_ENFORCE(info.GetAttr("head_size", &head_size_).IsOK() && head_size_ > 0);
@@ -52,7 +52,7 @@ class DeepSeekV4Indexer final : public CudaKernel {
                      narrow<int>(batch * sequence), narrow<int>(hidden_size),
                      narrow<int>(num_heads_), head_weights.get()));
     Tensor* selected = context->Output(0, TensorShape({batch, sequence, index_topk_}));
-    return LaunchDeepSeekV4IndexerKernel<CudaT>(
+    return LaunchLightningIndexerKernel<CudaT>(
         Stream(context), selected->MutableData<int64_t>(), queries.get(), head_weights.get(), state.entries,
         context->Input<Tensor>(2)->Data<int64_t>(),
         reinterpret_cast<const CudaT*>(context->Input<Tensor>(3)->Data<T>()),
@@ -74,11 +74,11 @@ class DeepSeekV4Indexer final : public CudaKernel {
 
 #define REGISTER_KERNEL(T)                                               \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
-      DeepSeekV4Indexer, kMSDomain, 1, T, kCudaExecutionProvider,                    \
+      LightningIndexer, kMSDomain, 1, T, kCudaExecutionProvider,                    \
       (*KernelDefBuilder::Create())                                     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())       \
           .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
-      DeepSeekV4Indexer<T>);
+      LightningIndexer<T>);
 
 REGISTER_KERNEL(MLFloat16)
 REGISTER_KERNEL(BFloat16)
