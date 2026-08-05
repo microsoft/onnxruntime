@@ -756,7 +756,8 @@ namespace DmlGraphFusionHelper
             *indexedSubGraph,
             std::move(graphNodePropertyMap));
 
-        auto modelPath = graph.ModelPath();
+        // Owned copy: the closure registered below outlives this frame.
+        std::filesystem::path modelPath = graph.ModelPath();
 
         const gsl::span<const std::string> subGraphInputArgNames = indexedSubGraph->GetMetaDef()->inputs;
         const gsl::span<const std::string> subGraphOutputArgNames = indexedSubGraph->GetMetaDef()->outputs;
@@ -839,7 +840,7 @@ namespace DmlGraphFusionHelper
         // lamda captures for the kernel registration
         auto fused_kernel_func = [
             indexedSubGraph,
-            &modelPath,
+            modelPath,
             nodesInfo = std::move(nodesInfo),
             intermediateNodeArgs = std::move(intermediateNodeArgs),
             subgraphInputs = std::move(subgraphInputs),
