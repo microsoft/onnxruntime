@@ -180,9 +180,13 @@ Status Avx2WeightS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int 
       continue;  // unknown operator, next
     }
 
+#if !defined(ORT_MINIMAL_BUILD)
+    // op_node.Op() can be null for a node whose schema is not yet resolved.
+    const auto* op_schema = op_node.Op();
+#endif
     if (
 #if !defined(ORT_MINIMAL_BUILD)
-        !op_node.Op()->Deprecated() &&
+        op_schema != nullptr && !op_schema->Deprecated() &&
 #endif
         MatchesOpSinceVersion(op_node, it->second.versions) &&
         graph_utils::MatchesOpSetDomain(op_node, it->second.domain)) {
