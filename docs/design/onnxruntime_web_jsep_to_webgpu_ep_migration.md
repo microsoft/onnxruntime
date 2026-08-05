@@ -191,12 +191,18 @@ Phase 0 is the pre-work, in three parts:
    then calls `webgpuInit()` without forwarding it, so `adapter`, `powerPreference` and `forceFallbackAdapter` are
    silently dropped on the native path. Resolution:
    - **`powerPreference`** — forward it to the existing `kPowerPreference` EP option
-     (`ep.webgpuexecutionprovider.powerPreference` in `webgpu_provider_options.h`), which
-     `webgpu_provider_factory.cc` already honors and which is not Emscripten-gated. Set it in
-     `session-options.ts` alongside the other `webgpu` options.
-   - **`adapter` / `forceFallbackAdapter`** — both are already annotated `@deprecated` in `js/common/lib/env.ts`,
-     with `env.webgpu.device` as the documented replacement. Document them as no-ops on the native path rather
-     than wiring them up on the way out.
+     (`ep.webgpuexecutionprovider.powerPreference` in `webgpu_provider_options.h`), set in `session-options.ts`
+     alongside the other `webgpu` options. Note that the two differ when it is *unset*: JSEP passes `undefined`
+     to `requestAdapter()` and lets the browser choose, while `WebGpuContextConfig::power_preference`
+     (`webgpu_context.h`) defaults to `WGPUPowerPreference_HighPerformance`. Left alone, the flip would move
+     users who never expressed a preference onto a discrete GPU, so the wiring needs a behavior-preserving
+     default.
+   - **`adapter` / `forceFallbackAdapter`** — both are `@deprecated` in `js/common/lib/env.ts`, which names
+     `env.webgpu.device` as the replacement. That pointer is wrong: `env.webgpu.device` is output-only — both
+     paths write it after init and neither reads it. Custom devices go through the per-session option instead,
+     `executionProviders: [{ name: 'webgpu', device }]`, which `session-options.ts` already registers via
+     `webgpuRegisterDevice`. Document `adapter` / `forceFallbackAdapter` as no-ops on the native path, and fix
+     the `env.webgpu.device` doc comment.
    - Drop the now-dead `navigator.gpu.requestAdapter()` call on the native path once nothing consumes its result.
 5. **Profiling.** `env.webgpu.profiling.ondata` is a JSEP-only mechanism: a per-dispatch JavaScript callback
    receiving `kernelId` / `kernelType` / `kernelName` / `programName`, timestamps and input/output tensor metadata
@@ -318,7 +324,7 @@ the deletion commit.
 | Default bundle silently narrows its operator/type surface (reduced-size build args) | High if unaddressed | Measure builds A/B/C and resolve before the flip (§7) |
 | int64 behavior change vs. JSEP | Low | None by default (native-off matches JSEP); `enableInt64 = 1` is an opt-in tradeoff |
 | Proxy / IO-binding / WebNN unexercised in the native-WebGPU build in CI | Unknown | Validate before flip (§8) |
-| Global `env.webgpu.*` settings dropped on native | Medium | `powerPreference` wired; `adapter` / `forceFallbackAdapter` documented as no-ops — release gate (§8.4, §9) |
+| Global `env.webgpu.*` settings dropped on native | Medium | `powerPreference` wired with a behavior-preserving default when unset; `adapter` / `forceFallbackAdapter` documented as no-ops, custom devices directed to the per-session `device` option — release gate (§8.4, §9) |
 | `env.webgpu.profiling.ondata` has no native equivalent | Low | Documented as JSEP-only; native profiling wiring is a Phase 2 prerequisite (§8.5, §10.1) |
 | Windows/ADO produces no WebGPU-EP WASM build | Medium | Add a `BuildWebGPU` leg to `win-wasm-ci.yml` before Phase 2 (§8.6) |
 | `post-webnn.js` linkage changes for WebNN once JSEP is removed | Medium | WebNN smoke test on the Phase 2 build, not just a compile check (§10.3) |
