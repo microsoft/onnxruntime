@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cuda_runtime.h>
+#include <cstdlib>
 #include "core/common/status.h"
 
 namespace onnxruntime {
@@ -15,14 +16,38 @@ namespace cuda {
 constexpr int kHyperConnectionMaxMult = 4;
 constexpr int kHyperConnectionMaxMixDim = (2 + kHyperConnectionMaxMult) * kHyperConnectionMaxMult;
 
-// Threads per block in the pass that reads the [hc * dim, mix_dim] mixing matrix.
+// Default threads per block in the pass that reads the [hc * dim, mix_dim] mixing matrix.
 constexpr int kHyperConnectionPartialThreads = 128;
+
+// The split below is capped at `dim / threads`, so the block width and the token count together
+// decide the grid, and the two regimes want opposite things:
+//
+//   * Decode (a handful of tokens) hits that cap, so the grid is `dim / threads` blocks no matter
+//     what. The widest block that still gives one element per thread therefore covers the hidden
+//     dimension with the fewest blocks and measures fastest: 128 threads -> 32 blocks is 0.8%
+//     better end to end at batch 1 than 64, and 1.3% better than 32.
+//   * Prefill has enough tokens to fill the device from the token dimension alone, and there the
+//     25-wide register accumulator is what limits blocks per SM. Halving the block width buys
+//     occupancy: 64 threads is worth 2.5% of prefill throughput and 8 ms of TTFT at 1024 tokens.
+//
+// The crossover is exactly where the cap stops binding, `num_tokens = 2048 * 128 / dim`.
+// ORT_HC_PARTIAL_THREADS (32, 64 or 128) pins one width for both regimes.
+inline int HyperConnectionPartialThreads(int num_tokens) {
+  const static int forced = []() -> int {
+    const char* v = std::getenv("ORT_HC_PARTIAL_THREADS");
+    const int parsed = (v != nullptr) ? std::atoi(v) : 0;
+    return (parsed == 32 || parsed == 64 || parsed == 128) ? parsed : 0;
+  }();
+  if (forced != 0) return forced;
+  return num_tokens < 64 ? kHyperConnectionPartialThreads : 64;
+}
 
 // That read is the only large one in the operator, and decoding runs it with a handful of
 // tokens, so a block per token would leave the device almost idle. Split the hidden dimension
 // across blocks until there is enough work to fill an SM per scheduler.
 inline int HyperConnectionMixSplit(int num_tokens, int dim) {
-  const int max_split = (dim + kHyperConnectionPartialThreads - 1) / kHyperConnectionPartialThreads;
+  const int threads = HyperConnectionPartialThreads(num_tokens);
+  const int max_split = (dim + threads - 1) / threads;
   if (num_tokens <= 0) return 1;
   int split = (2048 + num_tokens - 1) / num_tokens;
   if (split > max_split) split = max_split;

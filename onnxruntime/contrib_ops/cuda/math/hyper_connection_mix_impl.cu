@@ -16,8 +16,6 @@ namespace {
 
 constexpr int kThreadsPerBlock = 256;
 constexpr int kWarps = kThreadsPerBlock / 32;
-constexpr int kPartialThreads = kHyperConnectionPartialThreads;
-constexpr int kPartialWarps = kPartialThreads / 32;
 
 // The unfused graph rounds to the activation type between the post mix and the pre mix, and
 // again between the pre mix and the layer norm. `Round` reproduces those two trips so the
@@ -59,21 +57,23 @@ __device__ __forceinline__ float WarpReduceSum(float v) {
 // grid is (split, num_tokens). HC is a template parameter so every mixing accumulator is
 // indexed at compile time and stays in registers; a runtime bound would spill the 25-wide
 // array to local memory and the fused operator would lose to the subgraph it replaces.
-template <typename CudaT, int HC>
-__global__ void HyperConnectionPartialKernel(const CudaT* __restrict__ x,
-                                             const CudaT* __restrict__ residual,
-                                             const float* __restrict__ post_mix,
-                                             const float* __restrict__ comb_mix,
-                                             const float* __restrict__ fn,
-                                             CudaT* __restrict__ residual_out,
-                                             float* __restrict__ partial,
-                                             int dim, int split) {
+template <typename CudaT, int HC, int PT>
+__global__ __launch_bounds__(PT) void HyperConnectionPartialKernel(
+    const CudaT* __restrict__ x,
+    const CudaT* __restrict__ residual,
+    const float* __restrict__ post_mix,
+    const float* __restrict__ comb_mix,
+    const float* __restrict__ fn,
+    CudaT* __restrict__ residual_out,
+    float* __restrict__ partial,
+    int dim, int split) {
   constexpr int kMixDim = (2 + HC) * HC;
+  constexpr int kPtWarps = PT / 32;
   using C = Conv<CudaT>;
 
   __shared__ float s_pin[HC];
   __shared__ float s_cin[HC * HC];
-  __shared__ float s_red[kPartialWarps * (kMixDim + 1)];
+  __shared__ float s_red[kPtWarps * (kMixDim + 1)];
 
   const int part = blockIdx.x;
   const int token = blockIdx.y;
@@ -92,7 +92,7 @@ __global__ void HyperConnectionPartialKernel(const CudaT* __restrict__ x,
 #pragma unroll
   for (int i = 0; i <= kMixDim; ++i) acc[i] = 0.f;
 
-  for (int d = part * kPartialThreads + tid; d < dim; d += split * kPartialThreads) {
+  for (int d = part * PT + tid; d < dim; d += split * PT) {
     const float xv = C::ToFloat(x[off_x + d]);
     float rv[HC];
 #pragma unroll
@@ -126,7 +126,7 @@ __global__ void HyperConnectionPartialKernel(const CudaT* __restrict__ x,
   if (tid <= kMixDim) {
     float v = 0.f;
 #pragma unroll
-    for (int w = 0; w < kPartialWarps; ++w) v += s_red[w * (kMixDim + 1) + tid];
+    for (int w = 0; w < kPtWarps; ++w) v += s_red[w * (kMixDim + 1) + tid];
     partial[(static_cast<size_t>(token) * split + part) * (kMixDim + 1) + tid] = v;
   }
 }
@@ -441,9 +441,19 @@ Status Launch(cudaStream_t stream, const HyperConnectionMixParams& params, const
 
   const int split = HyperConnectionMixSplit(params.num_tokens, params.dim);
 
-  HyperConnectionPartialKernel<CudaT, HC>
-      <<<dim3(split, params.num_tokens), kPartialThreads, 0, stream>>>(
-          x, residual, post_mix, comb_mix, fn, residual_out, workspace, params.dim, split);
+  // Block width picks how many SMs the pass can occupy; see HyperConnectionPartialThreads().
+  const int partial_threads = HyperConnectionPartialThreads(params.num_tokens);
+  const dim3 partial_grid(split, params.num_tokens);
+  if (partial_threads == 32) {
+    HyperConnectionPartialKernel<CudaT, HC, 32><<<partial_grid, 32, 0, stream>>>(
+        x, residual, post_mix, comb_mix, fn, residual_out, workspace, params.dim, split);
+  } else if (partial_threads == 128) {
+    HyperConnectionPartialKernel<CudaT, HC, 128><<<partial_grid, 128, 0, stream>>>(
+        x, residual, post_mix, comb_mix, fn, residual_out, workspace, params.dim, split);
+  } else {
+    HyperConnectionPartialKernel<CudaT, HC, 64><<<partial_grid, 64, 0, stream>>>(
+        x, residual, post_mix, comb_mix, fn, residual_out, workspace, params.dim, split);
+  }
 
   if (HyperConnectionFinishFastDisabled()) {
     HyperConnectionFinishKernel<CudaT, HC>
