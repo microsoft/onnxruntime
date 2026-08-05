@@ -346,6 +346,47 @@ Providers
 
 .. autofunction:: onnxruntime.get_available_providers
 
+Detecting Execution Provider Fallback
+"""""""""""""""""""""""""""""""""""""
+
+When a requested execution provider is not available at runtime (e.g., missing
+shared libraries, incompatible CUDA version), ORT silently falls back to the
+next available provider. This can cause unexpected performance degradation or
+behavioral differences.
+
+To detect which execution providers actually executed nodes in your session,
+use ``get_provider_graph_assignment_info()``:
+
+.. code-block:: python
+
+	options = onnxruntime.SessionOptions()
+	options.add_session_config_entry("session.record_ep_graph_assignment_info", "1")
+
+	session = onnxruntime.InferenceSession(
+		'model.onnx',
+		sess_options=options,
+		providers=['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider'],
+	)
+
+	for subgraph in session.get_provider_graph_assignment_info():
+		print(f"{subgraph.ep_name}: {len(subgraph.get_nodes())} nodes")
+
+This will show which providers actually received node assignments, allowing you
+to detect if a requested provider was not used. A provider that was requested
+but received zero nodes was not available or could not support any operators in
+the model.
+
+Additionally, setting the session log severity to VERBOSE will print all node
+placements during session initialization:
+
+.. code-block:: python
+
+	options = onnxruntime.SessionOptions()
+	options.log_severity_level = 0  # VERBOSE
+
+ORT also emits a WARNING when nodes are assigned to a non-preferred provider
+(i.e., a provider that was implicitly added rather than explicitly requested).
+
 Build, Version
 ^^^^^^^^^^^^^^
 
