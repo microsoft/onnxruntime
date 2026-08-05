@@ -19,6 +19,12 @@ bool HyperConnectionFinishFastDisabled() {
   return disabled;
 }
 
+bool HyperConnectionFinishVecDisabled() {
+  static const bool disabled =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_HC_FINISH_VEC", 0) == 1;
+  return disabled;
+}
+
 #define REGISTER_KERNEL_TYPED(T)                                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
       HyperConnectionMix,                                             \

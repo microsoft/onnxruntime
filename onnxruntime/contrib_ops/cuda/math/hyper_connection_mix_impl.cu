@@ -267,7 +267,7 @@ __global__ void HyperConnectionFinishKernel(const CudaT* __restrict__ residual_o
 //     threads 0..255 over d = t, t + 256, ... out of s_y, feeding the same eight-warp tree and
 //     the same serial tail. The RMS scale therefore keeps the 256-thread grouping at any block
 //     width, which is what makes the wider block bit-exact.
-template <typename CudaT, int HC, int BLOCK, int PER>
+template <typename CudaT, int HC, int BLOCK, int PER, bool VEC>
 __global__ __launch_bounds__(BLOCK) void HyperConnectionFinishFastKernel(
     const CudaT* __restrict__ residual_out, const float* __restrict__ partial,
     const float* __restrict__ scale, const float* __restrict__ base,
@@ -294,15 +294,45 @@ __global__ __launch_bounds__(BLOCK) void HyperConnectionFinishFastKernel(
   const size_t off_r = static_cast<size_t>(token) * HC * dim;
 
   // Nothing warp 0 is about to compute feeds these addresses, so issue them first.
-  float rv[PER * HC];
+  //
+  // At decode this kernel is one block on one SM, so the only thing between it and its
+  // floor is how many loads it can keep in flight.  Element-wise prefetching covered
+  // PER * kWorkers = 1920 of dim = 4096 and walked the remaining 2176 through a
+  // dependent tail loop -- four more serialised HBM round trips.  A 16-byte slot covers
+  // kVec elements per thread, so two slots clear any dim up to 2 * kVec * kWorkers in one
+  // shot, with every warp issuing full cache-line transactions instead of 2-byte ones.
+  //
+  // VEC is a template parameter, not a flag: as a runtime bool the compiler has to keep
+  // registers live for both prefetch buffers (kSlots * HC uint4 = 32 plus PER * HC floats
+  // = 16), which costs more than the vectorisation saves.
+  constexpr int kVec = 16 / sizeof(CudaT);
+  constexpr int kSlots = 2;
+  const int vdim = dim / kVec;
+
+  uint4 rvec[VEC ? kSlots : 1][HC];
+  float rv[VEC ? 1 : PER * HC];
   if (warp != 0) {
+    if constexpr (VEC) {
 #pragma unroll
-    for (int i = 0; i < PER; ++i) {
-      const int d = wtid + i * kWorkers;
-      if (d < dim) {
+      for (int i = 0; i < kSlots; ++i) {
+        const int v = wtid + i * kWorkers;
+        if (v < vdim) {
 #pragma unroll
-        for (int h = 0; h < HC; ++h) {
-          rv[i * HC + h] = C::ToFloat(residual_out[off_r + static_cast<size_t>(h) * dim + d]);
+          for (int h = 0; h < HC; ++h) {
+            rvec[i][h] = reinterpret_cast<const uint4*>(
+                residual_out + off_r + static_cast<size_t>(h) * dim)[v];
+          }
+        }
+      }
+    } else {
+#pragma unroll
+      for (int i = 0; i < PER; ++i) {
+        const int d = wtid + i * kWorkers;
+        if (d < dim) {
+#pragma unroll
+          for (int h = 0; h < HC; ++h) {
+            rv[i * HC + h] = C::ToFloat(residual_out[off_r + static_cast<size_t>(h) * dim + d]);
+          }
         }
       }
     }
@@ -371,23 +401,58 @@ __global__ __launch_bounds__(BLOCK) void HyperConnectionFinishFastKernel(
 #pragma unroll
     for (int h = 0; h < HC; ++h) pre[h] = s_pre[h];
 
+    if constexpr (VEC) {
 #pragma unroll
-    for (int i = 0; i < PER; ++i) {
-      const int d = wtid + i * kWorkers;
-      if (d < dim) {
+      for (int i = 0; i < kSlots; ++i) {
+        const int v = wtid + i * kWorkers;
+        if (v < vdim) {
+          CudaT e[HC][kVec];
+#pragma unroll
+          for (int h = 0; h < HC; ++h) *reinterpret_cast<uint4*>(e[h]) = rvec[i][h];
+#pragma unroll
+          for (int j = 0; j < kVec; ++j) {
+            float a = 0.f;
+#pragma unroll
+            for (int h = 0; h < HC; ++h) a += pre[h] * C::ToFloat(e[h][j]);
+            s_y[v * kVec + j] = C::Round(a);
+          }
+        }
+      }
+      // Only runs for dim > kSlots * kVec * kWorkers, which no supported hidden size hits.
+      for (int v = wtid + kSlots * kWorkers; v < vdim; v += kWorkers) {
+        CudaT e[HC][kVec];
+#pragma unroll
+        for (int h = 0; h < HC; ++h) {
+          *reinterpret_cast<uint4*>(e[h]) = reinterpret_cast<const uint4*>(
+              residual_out + off_r + static_cast<size_t>(h) * dim)[v];
+        }
+#pragma unroll
+        for (int j = 0; j < kVec; ++j) {
+          float a = 0.f;
+#pragma unroll
+          for (int h = 0; h < HC; ++h) a += pre[h] * C::ToFloat(e[h][j]);
+          s_y[v * kVec + j] = C::Round(a);
+        }
+      }
+    } else {
+#pragma unroll
+      for (int i = 0; i < PER; ++i) {
+        const int d = wtid + i * kWorkers;
+        if (d < dim) {
+          float a = 0.f;
+#pragma unroll
+          for (int h = 0; h < HC; ++h) a += pre[h] * rv[i * HC + h];
+          s_y[d] = C::Round(a);
+        }
+      }
+      for (int d = wtid + PER * kWorkers; d < dim; d += kWorkers) {
         float a = 0.f;
 #pragma unroll
-        for (int h = 0; h < HC; ++h) a += pre[h] * rv[i * HC + h];
+        for (int h = 0; h < HC; ++h) {
+          a += pre[h] * C::ToFloat(residual_out[off_r + static_cast<size_t>(h) * dim + d]);
+        }
         s_y[d] = C::Round(a);
       }
-    }
-    for (int d = wtid + PER * kWorkers; d < dim; d += kWorkers) {
-      float a = 0.f;
-#pragma unroll
-      for (int h = 0; h < HC; ++h) {
-        a += pre[h] * C::ToFloat(residual_out[off_r + static_cast<size_t>(h) * dim + d]);
-      }
-      s_y[d] = C::Round(a);
     }
   }
   __syncthreads();
@@ -412,8 +477,20 @@ __global__ __launch_bounds__(BLOCK) void HyperConnectionFinishFastKernel(
   __syncthreads();
 
   const float inv = s_scalar[0];
-  for (int d = tid; d < dim; d += BLOCK) {
-    layer_input[off_x + d] = C::FromFloat(s_y[d] * inv * norm_weight[d]);
+  if constexpr (VEC) {
+    for (int v = tid; v < vdim; v += BLOCK) {
+      CudaT out[kVec];
+#pragma unroll
+      for (int j = 0; j < kVec; ++j) {
+        const int d = v * kVec + j;
+        out[j] = C::FromFloat(s_y[d] * inv * norm_weight[d]);
+      }
+      reinterpret_cast<uint4*>(layer_input + off_x)[v] = *reinterpret_cast<const uint4*>(out);
+    }
+  } else {
+    for (int d = tid; d < dim; d += BLOCK) {
+      layer_input[off_x + d] = C::FromFloat(s_y[d] * inv * norm_weight[d]);
+    }
   }
 }
 
@@ -470,11 +547,20 @@ Status Launch(cudaStream_t stream, const HyperConnectionMixParams& params, const
   // reason to carry a second instantiation.
   constexpr int kFastBlock = 512;
   constexpr int kFastPrefetch = 4;
-  HyperConnectionFinishFastKernel<CudaT, HC, kFastBlock, kFastPrefetch>
-      <<<params.num_tokens, kFastBlock, shared_bytes, stream>>>(
-          residual_out, workspace, scale, base, norm_weight, post_mix_out, comb_mix_out,
-          layer_input, params.dim, split, params.sinkhorn_iterations, params.epsilon,
-          params.hc_epsilon, params.sinkhorn_epsilon, params.post_alpha);
+  constexpr int kFastVec = 16 / sizeof(CudaT);
+  if (params.dim % kFastVec == 0 && !HyperConnectionFinishVecDisabled()) {
+    HyperConnectionFinishFastKernel<CudaT, HC, kFastBlock, kFastPrefetch, true>
+        <<<params.num_tokens, kFastBlock, shared_bytes, stream>>>(
+            residual_out, workspace, scale, base, norm_weight, post_mix_out, comb_mix_out,
+            layer_input, params.dim, split, params.sinkhorn_iterations, params.epsilon,
+            params.hc_epsilon, params.sinkhorn_epsilon, params.post_alpha);
+  } else {
+    HyperConnectionFinishFastKernel<CudaT, HC, kFastBlock, kFastPrefetch, false>
+        <<<params.num_tokens, kFastBlock, shared_bytes, stream>>>(
+            residual_out, workspace, scale, base, norm_weight, post_mix_out, comb_mix_out,
+            layer_input, params.dim, split, params.sinkhorn_iterations, params.epsilon,
+            params.hc_epsilon, params.sinkhorn_epsilon, params.post_alpha);
+  }
 
   return CUDA_CALL(cudaGetLastError());
 }

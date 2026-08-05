@@ -65,6 +65,7 @@ inline size_t HyperConnectionMixWorkspaceFloats(int num_tokens, int hc, int dim)
 // Set ORT_DISABLE_HC_FINISH_FAST=1 to take the old path. Defined in hyper_connection_mix.cc
 // because the environment helper cannot be included from a .cu translation unit.
 bool HyperConnectionFinishFastDisabled();
+bool HyperConnectionFinishVecDisabled();
 
 struct HyperConnectionMixParams {
   int num_tokens;
