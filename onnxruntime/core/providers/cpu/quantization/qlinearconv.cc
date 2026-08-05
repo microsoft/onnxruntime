@@ -58,6 +58,15 @@ class QLinearConv : public OpKernel {
     return (shape.NumDimensions() == 0 || (shape.NumDimensions() == 1 && (shape[0] == 1 || shape[0] == N)));
   }
 
+  inline static bool IsValidBiasParam(const Tensor* bias, int64_t output_channels) {
+    if (bias == nullptr) {
+      return true;
+    }
+
+    const auto& shape = bias->Shape();
+    return shape.NumDimensions() == 1 && shape[0] == output_channels;
+  }
+
   static void ComputeOffset(OpKernelContext* context,
                             ActType& X_zero_point_value,
                             ActType& Y_zero_point_value) {
@@ -186,6 +195,9 @@ class QLinearConv : public OpKernel {
     if (packed_size != 0) {
       const Tensor* B = nullptr;
       Info().TryGetConstantInput(8, &B);
+      ORT_ENFORCE(IsValidBiasParam(B, static_cast<int64_t>(output_channels)),
+                  "QLinearConv : bias shape invalid. bias must be a 1D tensor of size output_channels (",
+                  output_channels, ")");
       const auto* Bdata = B != nullptr ? B->Data<int32_t>() : nullptr;
 
       column_sums_.resize(output_channels);
@@ -540,6 +552,8 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
   const uint8_t W_zero_point_value = W_zero_point_data[0];
 
   const Tensor* B = context->Input<Tensor>(InputTensors::IN_BIAS);
+  ORT_ENFORCE(IsValidBiasParam(B, M),
+              "QLinearConv : bias shape invalid. bias must be a 1D tensor of size output_channels (", M, ")");
 
   ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X->Shape(), W_shape, channels_last_));
 
