@@ -3455,25 +3455,22 @@ TEST(GradientCheckerTest, GlobalMaxPoolGrad) {
 
 TEST(GradientCheckerTest, ReduceMaxGrad) {
   // Attribute axes supports negative values from opset 11.
-  // Use a large data scale (1000) to ensure the maximum is well-separated from other values,
-  // so the finite-difference step (1e-3) does not encounter near-ties that make the numerical
-  // Jacobian unreliable for a non-smooth op like ReduceMax.
   OpDef op_def_11{"ReduceMax", kOnnxDomain, 11};
 
-  RunReductionTests(op_def_11, false, true, 1000.f);
+  RunReductionTests(op_def_11, false, true);
 
   OpDef op_def_13{"ReduceMax", kOnnxDomain, 13};
 
-  RunReductionTests(op_def_13, false, true, 1000.f);
+  RunReductionTests(op_def_13, false, true);
 
   // axes is input from opset 18.
   OpDef op_def_18{"ReduceMax", kOnnxDomain, 18};
 
-  RunReductionTests(op_def_18, true, true, 1000.f);
+  RunReductionTests(op_def_18, true, true);
 
   OpDef op_def_20{"ReduceMax", kOnnxDomain, 20};
 
-  RunReductionTests(op_def_20, true, true, 1000.f);
+  RunReductionTests(op_def_20, true, true);
 }
 
 }  // namespace test
