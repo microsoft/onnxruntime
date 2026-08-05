@@ -417,6 +417,63 @@ std::string BuildFp16HardSigmoidModelBytes() {
   return bytes;
 }
 
+// Builds a minimal ONNX model with zero graph inputs: two float initializers fed into a single Mul node.
+// Graph: A[3,2 float] * B[3,2 float] -> Y[3,2 float]
+// Used to test EPContext generation for models with no external inputs.
+std::string BuildZeroInputMulModelBytes() {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(18);
+
+  ONNX_NAMESPACE::GraphProto* graph = model.mutable_graph();
+  graph->set_name("zero_input_mul");
+
+  // No graph inputs.
+
+  // Graph output: Y [3, 2] float
+  auto* output = graph->add_output();
+  output->set_name("Y");
+  auto* out_type = output->mutable_type()->mutable_tensor_type();
+  out_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  out_type->mutable_shape()->add_dim()->set_dim_value(3);
+  out_type->mutable_shape()->add_dim()->set_dim_value(2);
+
+  // Initializer A: [3, 2] float, values = {1, 2, 3, 4, 5, 6}
+  auto* init_a = graph->add_initializer();
+  init_a->set_name("A");
+  init_a->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  init_a->add_dims(3);
+  init_a->add_dims(2);
+  for (float v : {1.f, 2.f, 3.f, 4.f, 5.f, 6.f}) {
+    init_a->add_float_data(v);
+  }
+
+  // Initializer B: [3, 2] float, values = {2, 3, 4, 5, 6, 7}
+  auto* init_b = graph->add_initializer();
+  init_b->set_name("B");
+  init_b->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  init_b->add_dims(3);
+  init_b->add_dims(2);
+  for (float v : {2.f, 3.f, 4.f, 5.f, 6.f, 7.f}) {
+    init_b->add_float_data(v);
+  }
+
+  // Mul node: Y = A * B
+  auto* node = graph->add_node();
+  node->set_name("mul_0");
+  node->set_op_type("Mul");
+  node->set_domain("");
+  node->add_input("A");
+  node->add_input("B");
+  node->add_output("Y");
+
+  std::string bytes;
+  EXPECT_TRUE(model.SerializeToString(&bytes)) << "Failed to serialize zero-input Mul ONNX model";
+  return bytes;
+}
+
 }  // namespace
 
 // Creates a session with the example plugin EP and runs a model with a single Mul node.
@@ -1220,6 +1277,58 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_UnicodePath) {
 
     Ort::Session session(*ort_env, input_model.c_str(), session_options);
     ASSERT_TRUE(fs::exists(output_model)) << "EPContext not created at: " << utf8_output_path;
+  }
+}
+
+// Test that a model with zero graph inputs can be compiled into an EPContext model and reloaded.
+// The compiled EPContext node will have 0 inputs, exercising the EPContext schema change
+// that allows min_input=0.
+TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ZeroInputModel) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_zero_input_ctx.onnx");
+  std::filesystem::remove(output_model_file);
+  auto cleanup = gsl::finally([&]() { std::filesystem::remove(output_model_file); });
+
+  // Build a model with 0 graph inputs.
+  const std::string model_bytes = BuildZeroInputMulModelBytes();
+
+  // Compile the model with the example EP.
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetInputModelFromBuffer(model_bytes.data(), model_bytes.size());
+    compile_options.SetOutputModelPath(output_model_file);
+    compile_options.SetEpContextEmbedMode(true);
+
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  }
+
+  // Verify the compiled model has an EPContext node with 0 inputs.
+  ONNX_NAMESPACE::ModelProto compiled_model;
+  ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(output_model_file, compiled_model));
+
+  auto ep_context_nodes = GetEpContextNodes(compiled_model);
+  ASSERT_GE(ep_context_nodes.size(), 1u);
+
+  // The EPContext node replacing the Mul (whose inputs were both initializers) should have 0 inputs.
+  EXPECT_EQ(ep_context_nodes[0]->input_size(), 0)
+      << "EPContext node from a zero-input model should have 0 inputs";
+
+  // Reload the compiled model into a session to verify graph validation passes.
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    ASSERT_NO_THROW(Ort::Session session(*ort_env, output_model_file, session_options))
+        << "Loading a compiled model with a 0-input EPContext node should succeed";
   }
 }
 

@@ -77,7 +77,11 @@ jobs:
       architecture: x64
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
       docker_image_repo: onnxruntimecpubuildpythonx64
-      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --build_nuget --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON'
+      # MATERIALIZE=ON needs no explicit pre-build pip install on this leg: the manylinux cp314
+      # image already ships onnx==1.22.0 + numpy==2.4.2 (the exact gate pins) via its
+      # requirements.txt (install_deps.sh installs it into cp311-cp314). Intentional, not an
+      # omission -- unlike the QNN/android legs which run on bare agents and pip-install the pins.
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --build_nuget --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON --cmake_extra_defines onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON'
       python_path_prefix: 'PATH=/opt/python/cp314-cp314/bin:$PATH' # $ needs escaping in single quotes
       job_identifier: build-linux-x64-release-py314
     secrets:

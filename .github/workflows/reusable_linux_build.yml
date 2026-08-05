@@ -73,6 +73,7 @@ jobs:
       - self-hosted
       - "1ES.Pool=${{ inputs.pool_name }}"
       - "JobId=${{ inputs.job_identifier }}-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+    timeout-minutes: 120
     permissions:
       contents: read
       packages: write
