@@ -374,8 +374,8 @@ inline Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->v_head_size = narrow<int>(v_hidden_size) / num_heads_;
     output_parameters->num_heads = num_heads_;
     output_parameters->num_heads_kv = num_heads_;
-    output_parameters->k_hidden_size = hidden_size;
-    output_parameters->v_input_hidden_size = hidden_size;
+    output_parameters->k_hidden_size = narrow<int>(k_hidden_size);
+    output_parameters->v_input_hidden_size = narrow<int>(v_hidden_size);
     output_parameters->is_unidirectional = is_unidirectional_;
     output_parameters->past_present_share_buffer = (past_present_share_buffer_ != 0 && past != nullptr);
     output_parameters->do_rotary = do_rotary_;
