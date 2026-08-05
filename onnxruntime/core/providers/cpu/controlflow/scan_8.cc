@@ -140,6 +140,13 @@ void Scan<8>::Init(const OpKernelInfo& info) {
 
   ORT_ENFORCE(info.GetAttr<int64_t>("num_scan_inputs", &num_scan_inputs_).IsOK());
 
+  // Validate 'num_scan_inputs' before it is used below to size 'directions', so an out-of-range
+  // attribute value (from an untrusted model) can't reach a narrowing cast or vector allocation
+  // sized from an attacker-controlled count.
+  const int64_t num_variadic_inputs = static_cast<int64_t>(info.GetInputCount()) - 1;  // exclude sequence_lens
+  scan::detail::ValidateNumScanInputs(num_scan_inputs_, num_variadic_inputs,
+                                      static_cast<int64_t>(info.GetOutputCount()));
+
   ReadDirections(info, "directions", input_directions_, onnxruntime::narrow<size_t>(num_scan_inputs_));
 
   device_helpers_.transpose_func = [](const gsl::span<const size_t>&, const Tensor&, Tensor&, Stream*) -> Status {
@@ -160,9 +167,9 @@ Status Scan<8>::SetupSubgraphExecutionInfo(const SessionState& session_state,
   ORT_UNUSED_PARAMETER(attribute_name);
 
   const auto& node = Node();
-  // num_scan_inputs_ is read from the model as an int64_t; narrow<int> (rather than static_cast)
-  // ensures an out-of-int-range attribute value fails predictably here instead of silently
-  // wrapping to an in-range value that could bypass Info's own validation.
+  // 'num_scan_inputs_' was already validated in Init(); narrow<int> (rather than static_cast) is
+  // an inexpensive extra guard so an out-of-int-range value still fails predictably here instead
+  // of silently wrapping, even if that earlier validation is ever bypassed or refactored away.
   info_ = std::make_unique<Scan<8>::Info>(node, subgraph_session_state.GetGraphViewer(),
                                           onnxruntime::narrow<int>(num_scan_inputs_));
 
