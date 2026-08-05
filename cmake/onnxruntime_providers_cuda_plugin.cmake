@@ -357,6 +357,12 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   if(_cuda_plugin_llm_srcs)
     if(MSVC AND NOT onnxruntime_USE_FP4_QMOE)
       onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75 EXCLUDE_SM120_REAL)
+      # A native-only Windows ARM64 build has no lower architecture left after the
+      # MSVC SM120 exclusion. Emit PTX privately for this object library so its host
+      # launchers and device kernels are still linked into the plugin.
+      if(NOT _plugin_llm_cuda_architectures AND ORT_HAS_SM120_OR_LATER)
+        set(_plugin_llm_cuda_architectures "120-virtual")
+      endif()
     else()
       onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75)
     endif()
