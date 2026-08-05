@@ -315,7 +315,8 @@ bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto) {
     // Retrieve the external data info
     for (const auto& entry : ten_proto.external_data()) {
       if (entry.key() == "location") {
-        PathString location = ToWideString(entry.value());
+        const std::string &entry_value = entry.value();
+        PathString location = ToWideString(entry_value);
         return ((location == kTensorProtoLittleEndianMemoryAddressTag) || (location == kTensorProtoNativeEndianMemoryAddressTag));
       }
     }
@@ -354,7 +355,7 @@ Status TensorProtoWithExternalDataToTensorProto(
     std::string* data = reinterpret_cast<std::string*>(external_data_info->GetOffset());
     for (size_t i = 0, lim = narrow<size_t>(tensor_shape.Size()); i < lim; ++i) {
       // set in raw data
-      result.add_string_data(*data);
+      result.add_string_data(*data); /* data is std::string* from ExternalDataInfo::GetOffset() */
       ++data;
     }
   } else {

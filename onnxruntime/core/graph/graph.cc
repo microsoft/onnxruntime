@@ -5385,11 +5385,7 @@ Status Graph::ToGraphProtoWithCustomInitializerHandlingImpl(
 
   std::sort(initializers.begin(), initializers.end(),
             [](const ONNX_NAMESPACE::TensorProto* a, const ONNX_NAMESPACE::TensorProto* b) {
-#if defined(ORT_USE_ONNX_LIGHT)
-              return a->name().value() < b->name().value();
-#else
               return a->name() < b->name();
-#endif
             });
 
   // Call user's handler function for each initializer. We store the initializer externally
