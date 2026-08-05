@@ -100,5 +100,98 @@ TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesAcceptsValidIn
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 }
 
+TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesRejectsNegativeCumulativeSeqLen) {
+  const int32_t cumulative_sequence_length[] = {-1, 2};
+  const int32_t past_seqlens[] = {0};
+  const int32_t block_table[] = {0};
+
+  const auto status = onnxruntime::contrib::paged_attention_helper::CheckBlockTableAndPastSeqLensValues(
+      cumulative_sequence_length,
+      past_seqlens,
+      block_table,
+      1,
+      1,
+      16,
+      4);
+
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("cumulative_sequence_length must start with 0"));
+}
+
+TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesRejectsCumulativeNotStartingAtZero) {
+  const int32_t cumulative_sequence_length[] = {1, 2};
+  const int32_t past_seqlens[] = {0};
+  const int32_t block_table[] = {0};
+
+  const auto status = onnxruntime::contrib::paged_attention_helper::CheckBlockTableAndPastSeqLensValues(
+      cumulative_sequence_length,
+      past_seqlens,
+      block_table,
+      1,
+      1,
+      16,
+      4);
+
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("cumulative_sequence_length must start with 0"));
+}
+
+TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesRejectsNegativePastSeqlens) {
+  const int32_t cumulative_sequence_length[] = {0, 2};
+  const int32_t past_seqlens[] = {-1};
+  const int32_t block_table[] = {0};
+
+  const auto status = onnxruntime::contrib::paged_attention_helper::CheckBlockTableAndPastSeqLensValues(
+      cumulative_sequence_length,
+      past_seqlens,
+      block_table,
+      1,
+      1,
+      16,
+      4);
+
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("past_seqlens values must be non-negative"));
+}
+
+TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesAllowsFullCacheWithZeroTokens) {
+  // q_len == 0 (no new tokens) and past_length == max_cache_sequence_length (full cache)
+  // This should be allowed because there's no write to cache
+  const int32_t cumulative_sequence_length[] = {0, 0};  // q_len = 0
+  const int32_t past_seqlens[] = {256};  // max_cache_sequence_length = 16 * 16 = 256
+  const int32_t block_table[] = {0};
+
+  const auto status = onnxruntime::contrib::paged_attention_helper::CheckBlockTableAndPastSeqLensValues(
+      cumulative_sequence_length,
+      past_seqlens,
+      block_table,
+      1,
+      1,
+      256,
+      1);
+
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+}
+
+TEST(PagedAttentionHelperTest, CheckBlockTableAndPastSeqLensValuesRejectsFullCacheWithNewTokens) {
+  // q_len > 0 (has new tokens) and past_length == max_cache_sequence_length (full cache)
+  // This should be rejected because we need space for new tokens
+  const int32_t cumulative_sequence_length[] = {0, 1};  // q_len = 1
+  const int32_t past_seqlens[] = {256};  // max_cache_sequence_length = 16 * 16 = 256
+  const int32_t block_table[] = {0};
+
+  const auto status = onnxruntime::contrib::paged_attention_helper::CheckBlockTableAndPastSeqLensValues(
+      cumulative_sequence_length,
+      past_seqlens,
+      block_table,
+      1,
+      1,
+      256,
+      1);
+
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("past_seqlens must be less than max_num_blocks_per_seq * block_size when q_len > 0"));
+}
+
 }  // namespace test
 }  // namespace onnxruntime

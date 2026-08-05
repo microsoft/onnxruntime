@@ -204,10 +204,25 @@ inline Status CheckBlockTableAndPastSeqLensValues(const int32_t* cumulative_sequ
                            "PagedAttention validation requires positive batch_size/max_num_blocks_per_seq/block_size/num_blocks.");
   }
 
+  // Validate cumulative_sequence_length array structure
+  if (cumulative_sequence_length[0] != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "cumulative_sequence_length must start with 0, got ",
+                           cumulative_sequence_length[0]);
+  }
+
   const int64_t max_cache_sequence_length = static_cast<int64_t>(max_num_blocks_per_seq) * block_size;
   for (int b = 0; b < batch_size; ++b) {
     const int32_t q_start = cumulative_sequence_length[b];
     const int32_t q_end = cumulative_sequence_length[b + 1];
+    
+    // Check for non-negative values
+    if (q_start < 0 || q_end < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "cumulative_sequence_length values must be non-negative. Invalid value at index ",
+                             (q_start < 0 ? b : b + 1), ": ", (q_start < 0 ? q_start : q_end));
+    }
+    
     if (q_end < q_start) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "cumulative_sequence_length must be non-decreasing.");
@@ -215,13 +230,29 @@ inline Status CheckBlockTableAndPastSeqLensValues(const int32_t* cumulative_sequ
 
     const int32_t q_len = q_end - q_start;
     const int32_t past_length = past_seqlens[b];
-    if (past_length < 0 || static_cast<int64_t>(past_length) >= max_cache_sequence_length) {
+    
+    // Validate past_seqlens: must be non-negative
+    if (past_length < 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "past_seqlens values must be in [0, max_num_blocks_per_seq * block_size). Invalid value: ",
+                             "past_seqlens values must be non-negative. Invalid value: ",
                              past_length);
     }
 
-    if (q_len > 0) {
+    // Validate past_seqlens range: allow full cache only when q_len == 0
+    if (q_len == 0) {
+      // Zero new tokens: past_length can be anywhere in [0, max_cache_sequence_length]
+      if (static_cast<int64_t>(past_length) > max_cache_sequence_length) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "past_seqlens exceeds max_num_blocks_per_seq * block_size for zero-token sequence. Invalid value: ",
+                               past_length);
+      }
+    } else {
+      // Has new tokens: require space for both past and current query
+      if (static_cast<int64_t>(past_length) >= max_cache_sequence_length) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "past_seqlens must be less than max_num_blocks_per_seq * block_size when q_len > 0. Invalid value: ",
+                               past_length);
+      }
       const int64_t last_position = static_cast<int64_t>(past_length) + q_len - 1;
       if (last_position >= max_cache_sequence_length) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
