@@ -15,6 +15,8 @@ For more information about plugin EPs, see the
   of truth shared by all packages built from this directory. The packages do not declare a hard dependency on a
   specific ONNX Runtime package; instead, this version string is injected into each package's README at build/pack
   time, and the native plugin EP code validates compatibility at registration time.
+- [`paths.txt`](paths.txt) — Specifies directories and paths that are related to the WebGPU EP. These paths are used to
+  filter the commits considered when identifying changes between releases, e.g., for generating release notes.
 - [`python/`](python/) — Sources and build script for the `onnxruntime-ep-webgpu` Python wheel. See
   [`python/README.md`](python/README.md) for build and test instructions.
 - [`csharp/`](csharp/) — Sources and packaging script for the `Microsoft.ML.OnnxRuntime.EP.WebGpu` NuGet package. See
