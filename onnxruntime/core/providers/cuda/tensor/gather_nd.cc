@@ -56,6 +56,13 @@ Status GatherNDBase::PrepareCompute(
   slice_size = input_shape.SizeFromDimension(batch_dims + num_slice_dims);
   const auto num_batches = input_shape.SizeToDimension(batch_dims);
   const auto input_batch_stride = input_shape.SizeFromDimension(batch_dims);
+  
+  // Validate num_batches != 0 and num_slices divisibility to prevent division by zero
+  ORT_RETURN_IF_NOT(num_batches != 0,
+                    "Batch dimension cannot be zero");
+  ORT_RETURN_IF_NOT(num_slices % num_batches == 0,
+                    "Number of slices must be divisible by number of batches. ",
+                    "num_slices = ", num_slices, ", num_batches = ", num_batches);
   const auto num_slices_per_batch = num_slices / num_batches;
 
   const TIndex* const indices_data = indices_tensor->Data<TIndex>();
@@ -64,10 +71,14 @@ Status GatherNDBase::PrepareCompute(
 
   if (indices_tensor->Location().device.Type() == OrtDevice::CPU) {
     std::copy_n(indices_data, num_indices, indices_data_host.data());
-  } else {
+  } else if (indices_tensor->Location().device.Type() == OrtDevice::CUDA) {
+    // Validate that indices tensor is GPU-resident for CUDA kernel execution
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(indices_data_host.data(), indices_data, num_indices * sizeof(TIndex),
-                                         cudaMemcpyDefault, cuda_stream));
+                                         cudaMemcpyDeviceToHost, cuda_stream));
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                          "Unsupported device type for indices tensor in CUDA GatherND");
   }
 
   const size_t num_slices_size_t = static_cast<size_t>(num_slices);

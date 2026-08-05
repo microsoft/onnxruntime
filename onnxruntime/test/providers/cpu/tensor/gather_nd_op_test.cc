@@ -418,24 +418,21 @@ TEST(GatherNDOpTest, GatherND_invalid_index_cuda_error) {
 }
 
 #ifndef DISABLE_CONTRIB_OPS
-TEST(GatherNDOpTest, GatherND_contrib_int32_invalid_index_cuda_error) {
-  if (!HasCudaEnvironment(0)) {
-    GTEST_SKIP() << "CUDA not available";
-  }
-
+TEST(GatherNDOpTest, GatherND_contrib_int32_invalid_index_error) {
+  // Test contrib-domain GatherND with invalid indices on CPU (contrib op has no CUDA kernel)
   OpTester test("GatherND", 1, kMSDomain);
   test.AddInput<float>("data", {4, 4, 4}, std::vector<float>(64, 0.0f));
   test.AddInput<int32_t>("indices", {1, 2}, {1048576, 0});
   test.AddOutput<float>("output", {1, 4}, std::vector<float>(4, 0.0f));
 
-  std::vector<std::unique_ptr<IExecutionProvider>> cuda_only_ep;
-  cuda_only_ep.push_back(DefaultCudaExecutionProvider());
+  std::vector<std::unique_ptr<IExecutionProvider>> cpu_only_ep;
+  cpu_only_ep.push_back(DefaultCpuExecutionProvider());
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "invalid index found, index = 1048576",
            {},
            nullptr,
-           &cuda_only_ep);
+           &cpu_only_ep);
 }
 #endif
 #endif
