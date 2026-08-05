@@ -139,7 +139,11 @@ Status JsonConfigParser::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPACE::Mo
         const auto& val = metadata_field.value();
         LOGS(logger_, INFO) << "ORT config json from the model: " << val;
 
+#if defined(ORT_USE_ONNX_LIGHT)
+        parsed_json_ = json::parse(val.value());
+#else
         parsed_json_ = json::parse(val);
+#endif
         // set the flag indicating that the model has the ORT config json.
         is_ort_config_json_available_ = true;
       }
