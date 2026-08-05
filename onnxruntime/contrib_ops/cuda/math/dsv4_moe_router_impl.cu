@@ -19,8 +19,21 @@ constexpr int kThreads = 256;
 constexpr int kWarps = kThreads / 32;
 
 // The graph fills the unselected experts with this, not with -inf, so that a Cast to fp16
-// still lands on a finite value on the way into QMoE.
-constexpr float kNegInf = -1e30f;
+// still lands on a finite value on the way into QMoE. -1e30 does not survive that cast --
+// fp16 saturates just past 65504 -- and an -inf mask is not harmless here: a token whose
+// top-k experts all live on other ranks leaves the whole row masked, and softmax then
+// evaluates -inf - (-inf). Any magnitude far below a real log weight, which is bounded by
+// log(1) = 0 from above and stays within a few tens of zero in practice, masks identically,
+// so fp16 takes one that fits. bf16 keeps the original value and is bit-for-bit unchanged.
+template <typename CudaT>
+struct MaskedLogWeight {
+  static constexpr float kValue = -1e30f;
+};
+
+template <>
+struct MaskedLogWeight<half> {
+  static constexpr float kValue = -1e4f;
+};
 
 // ORT's Softplus keeps the exponent non-positive on both branches; log1p would not match it.
 __device__ __forceinline__ float Softplus(float a) {
@@ -139,7 +152,7 @@ __global__ void DSV4MoERouterKernel(const DSV4MoERouterParams p,
   float local_sum = 0.0f;
   for (int c = tid; c < local_count; c += kThreads) {
     const int expert = p.local_expert_start + c;
-    float log_weight = kNegInf;
+    float log_weight = MaskedLogWeight<CudaT>::kValue;
     float weight = 0.0f;
     for (int j = 0; j < topk; ++j) {
       if (s_index[j] == expert) {
