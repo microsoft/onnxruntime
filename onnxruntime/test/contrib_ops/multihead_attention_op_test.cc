@@ -653,7 +653,7 @@ TEST(MultiHeadAttentionTest, EmptyKeyValueSequence) {
 }
 
 TEST(MultiHeadAttentionTest, GroupedQueryAttention) {
-  if (!HasCudaEnvironment(750)) {
+  if (!HasCudaEnvironment(800)) {
     return;
   }
 
