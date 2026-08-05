@@ -487,6 +487,24 @@
       "createdDate": "2026-07-29 10:06:02Z",
       "expirationDate": "2027-01-15 10:59:29Z",
       "justification": "This error is baselined with an expiration date of 180 days from 2026-07-29 10:59:29Z"
+    },
+    "79164546cd4d10abf8591e4df96e8904e4a4b4d13ce1caff294b7af6f03a322d": {
+      "signature": "79164546cd4d10abf8591e4df96e8904e4a4b4d13ce1caff294b7af6f03a322d",
+      "alternativeSignatures": [
+        "9f0080814cb239a43e10a1abd3ad6a826892def4b83f743645f8a85179ad4d52",
+        "18afb20e547e17415a77322fa5f7e7951bd9225db14e99396080dee2e3bbee67",
+        "6223e6c83d9db80b297b1bde4ac5e881e2174f4fefcf6747046da6e369eae719"
+      ],
+      "target": "bin/onnxruntime_providers_cuda.dll",
+      "uriBaseId": "file:///D:/a/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-08-05 19:12:57Z",
+      "expirationDate": "2027-01-22 20:19:56Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-08-05 20:19:56Z"
     }
   }
 }
