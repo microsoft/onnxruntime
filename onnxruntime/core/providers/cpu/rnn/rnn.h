@@ -30,6 +30,11 @@ class RNN : public OpKernel {
     // TODO: is it optional or not?
     ORT_ENFORCE(info.GetAttr("hidden_size", &hidden_size_).IsOK());
 
+    ORT_ENFORCE(activation_alpha_.size() == static_cast<size_t>(num_directions),
+                "RNN op: activation_alpha must have ", num_directions, " values. Actual:", activation_alpha_.size());
+    ORT_ENFORCE(activation_beta_.size() == static_cast<size_t>(num_directions),
+                "RNN op: activation_beta must have ", num_directions, " values. Actual:", activation_beta_.size());
+
     if (activations_.size() == 2 && num_directions == 1) {
       // ONNX RNN default activations are {"Tanh", "Tanh"}
       // In this case, take the first default activation.

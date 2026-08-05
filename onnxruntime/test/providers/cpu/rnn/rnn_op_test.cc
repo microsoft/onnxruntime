@@ -885,6 +885,57 @@ TEST(RNNTest, RNN_with_invalid_activation_load_failure) {
            {kCudaExecutionProvider, kTensorrtExecutionProvider});
 }
 
+namespace {
+void RunRnnActivationLengthFailureTest(const std::string& attribute_name,
+                                       const std::vector<float>& attribute_values,
+                                       const std::string& expected_error) {
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
+  OpTester test("RNN");
+  int64_t num_directions = 2, input_size = 1, hidden_size = 1, seq_length = 1, batch_size = 1;
+
+  test.AddAttribute("activations", std::vector<std::string>(num_directions, "Tanh"));
+  test.AddAttribute("direction", "bidirectional");
+  test.AddAttribute("hidden_size", hidden_size);
+  test.AddAttribute<std::vector<float>>(attribute_name, attribute_values);
+
+  std::vector<int64_t> X_dims = {seq_length, batch_size, input_size};
+  std::vector<float> X_data{0.F};
+  test.AddInput<float>("X", X_dims, X_data);
+
+  std::vector<int64_t> W_dims = {num_directions, hidden_size, input_size};
+  std::vector<float> W_data({0.F, 0.F});
+  test.AddInput<float>("W", W_dims, W_data);
+
+  std::vector<int64_t> R_dims = {num_directions, hidden_size, hidden_size};
+  std::vector<float> R_data({0.F, 0.F});
+  test.AddInput<float>("R", R_dims, R_data);
+
+  std::vector<int64_t> Y_dims = {seq_length, num_directions, batch_size, hidden_size};
+  std::vector<float> Y_data({0.F, 0.F});
+  test.AddOutput<float>("Y", Y_dims, Y_data);
+
+  std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
+  std::vector<float> Y_h_data({0.F, 0.F});
+  test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, expected_error,
+           {kCudaExecutionProvider, kTensorrtExecutionProvider});
+}
+}  // namespace
+
+TEST(RNNTest, RNN_with_short_activation_alpha_load_failure) {
+  RunRnnActivationLengthFailureTest("activation_alpha", {0.1f},
+                                    "RNN op: activation_alpha must have 2 values. Actual:1");
+}
+
+TEST(RNNTest, RNN_with_short_activation_beta_load_failure) {
+  RunRnnActivationLengthFailureTest("activation_beta", {0.2f},
+                                    "RNN op: activation_beta must have 2 values. Actual:1");
+}
+
 // Test that seq_length == 0 produces zero-filled Y and Y_h without crashing.
 TEST(RNNTest, RNN_seq_length_zero) {
   auto cpu = DefaultCpuExecutionProvider();
