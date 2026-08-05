@@ -35,9 +35,22 @@ Info::Info(const Node& node, const GraphViewer& subgraph_in, int num_scan_inputs
     : subgraph(subgraph_in), num_scan_inputs(num_scan_inputs_in) {
   num_inputs = static_cast<int>(node.InputDefs().size());
   num_variadic_inputs = is_v8 ? num_inputs - 1 : num_inputs;  // allow for sequence_lens input in v8
+
+  // num_scan_inputs comes from the 'num_scan_inputs' attribute and must be validated against the
+  // actual number of variadic inputs before it is used to derive the loop state variable and scan
+  // output counts below, so a value outside that range can't produce a negative count that later
+  // code uses as an index or size without further checks.
+  ORT_ENFORCE(num_scan_inputs >= 0 && num_scan_inputs <= num_variadic_inputs,
+              "Invalid 'num_scan_inputs' of ", num_scan_inputs, ". Value must be between 0 and ",
+              num_variadic_inputs, " (the number of variadic inputs) inclusive.");
+
   num_loop_state_variables = num_variadic_inputs - num_scan_inputs;
 
   num_outputs = static_cast<int>(node.OutputDefs().size());
+  ORT_ENFORCE(num_loop_state_variables <= num_outputs,
+              "Invalid 'num_scan_inputs' of ", num_scan_inputs, ". It implies ", num_loop_state_variables,
+              " loop state variables, but Scan only has ", num_outputs, " outputs.");
+
   num_scan_outputs = num_outputs - num_loop_state_variables;
 
   num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());

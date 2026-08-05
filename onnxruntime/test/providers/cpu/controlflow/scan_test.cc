@@ -1025,6 +1025,82 @@ static void InvalidInput(bool is_v8) {
 
 TEST_8_AND_9(InvalidInput);
 
+#if !defined(ORT_NO_EXCEPTIONS)
+// 'num_scan_inputs' is a required attribute specifying how many of the node's variadic inputs are
+// scan inputs (the rest are loop state variables). A value outside [0, num_variadic_inputs] must be
+// rejected up front, otherwise the derived loop-state-variable count silently goes out of the valid
+// range and later indexing built on top of it would operate on invalid indices.
+//
+// RunTest_v8/v9 hard-code the 'num_scan_inputs' attribute to the valid value of 2, so exercise the
+// invalid-attribute path by building the model directly instead of going through those helpers.
+TEST(Scan8, NumScanInputsExceedsVariadicInputs) {
+  RunOptions options{};
+  options.is_v8 = true;
+
+  Model model("NumScanInputsExceedsVariadicInputs_v8", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{"", 8}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  ASSERT_STATUS_OK(CreateSubgraph(graph, options));
+  auto& proto = graph.ToGraphProto();
+
+  ScanOpTester test{8};
+  test.AddAttribute("body", proto);
+  // The subgraph has 1 loop state variable and 2 scan inputs -> 3 variadic inputs. Requesting 10
+  // scan inputs is invalid regardless of how many inputs the Scan node itself declares.
+  test.AddAttribute<int64_t>("num_scan_inputs", 10);
+  test.AddOptionalInputEdge<int64_t>();  // sequence_lens
+  test.AddShapeToTensorData(options.include_dim_values_in_main_graph);
+
+  test.AddInput<float>("scan_loop_state_in_0", {1, 1}, {0.f});
+  test.AddInput<float>("scan_input_0", {1, 2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("scan_input_1", {1, 2, 2}, {-1.f, -2.f, -3.f, -4.f});
+
+  test.AddOutput<float>("scan_loop_state_out_0", {1, 1}, {1.f});
+  test.AddOutput<float>("scan_output_0", {1, 2, 1}, {0.f, 0.f});
+  test.AddOutput<float>("scan_output_1", {1, 2, 1}, {0.f, 0.f});
+  test.AddOutput<float>("scan_output_2", {1, 2, 1}, {0.f, 0.f});
+  test.AddOutput<float>("scan_output_3", {1, 2, 1}, {0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid 'num_scan_inputs' of 10. Value must be between 0 and 3",
+          options.excluded_provider_types);
+}
+
+TEST(Scan9, NumScanInputsExceedsVariadicInputs) {
+  RunOptions options{};
+  options.is_v8 = false;
+
+  Model model("NumScanInputsExceedsVariadicInputs_v9", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{"", 11}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  ASSERT_STATUS_OK(CreateSubgraph(graph, options));
+  auto& proto = graph.ToGraphProto();
+
+  ScanOpTester test{11};
+  test.AddAttribute("body", proto);
+  // The subgraph has 1 loop state variable and 2 scan inputs -> 3 variadic inputs (no 'sequence_lens'
+  // in opset 9+). Requesting 10 scan inputs is invalid regardless of the Scan node's actual inputs.
+  test.AddAttribute<int64_t>("num_scan_inputs", 10);
+
+  test.AddInput<float>("scan_loop_state_in_0", {1}, {0.f});
+  test.AddInput<float>("scan_input_0", {2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("scan_input_1", {2, 2}, {-1.f, -2.f, -3.f, -4.f});
+
+  test.AddOutput<float>("scan_loop_state_out_0", {1}, {1.f});
+  test.AddOutput<float>("scan_output_0", {2, 1}, {0.f, 0.f});
+  test.AddOutput<float>("scan_output_1", {2, 1}, {0.f, 0.f});
+  test.AddOutput<float>("scan_output_2", {2, 1}, {0.f, 0.f});
+  test.AddOutput<float>("scan_output_3", {2, 1}, {0.f, 0.f});
+
+  // Unlike opset 8, opset 9+ Scan is type/shape-inferred via the standard ONNX inferencing path,
+  // which detects the inconsistent variadic split from the bad 'num_scan_inputs' value and rejects
+  // the model during graph resolution -- before the node's kernel (and its own attribute validation)
+  // is ever constructed. So the failure surfaces as a graph attribute inferencing error here, rather
+  // than the kernel-level message produced by the opset 8 test above.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Graph attribute inferencing failed",
+          options.excluded_provider_types);
+}
+#endif  // !defined(ORT_NO_EXCEPTIONS)
+
 // Test usage of multiple inputs of different types for variadic inputs
 void MixedTypeInputs(bool is_v8) {
   // Construct scan body subgraph with 2 state variables, 2 scan inputs, 2 scan outputs
