@@ -1062,7 +1062,7 @@ TEST(Scan8, NumScanInputsExceedsVariadicInputs) {
   test.AddOutput<float>("scan_output_3", {1, 2, 1}, {0.f, 0.f});
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid 'num_scan_inputs' of 10. Value must be between 0 and 3",
-          options.excluded_provider_types);
+           options.excluded_provider_types);
 }
 
 TEST(Scan9, NumScanInputsExceedsVariadicInputs) {
@@ -1070,12 +1070,12 @@ TEST(Scan9, NumScanInputsExceedsVariadicInputs) {
   options.is_v8 = false;
 
   Model model("NumScanInputsExceedsVariadicInputs_v9", false, ModelMetaData(), PathString(),
-              IOnnxRuntimeOpSchemaRegistryList(), {{"", 11}}, {}, DefaultLoggingManager().DefaultLogger());
+              IOnnxRuntimeOpSchemaRegistryList(), {{"", 9}}, {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   ASSERT_STATUS_OK(CreateSubgraph(graph, options));
   auto& proto = graph.ToGraphProto();
 
-  ScanOpTester test{11};
+  ScanOpTester test{9};
   test.AddAttribute("body", proto);
   // The subgraph has 1 loop state variable and 2 scan inputs -> 3 variadic inputs (no 'sequence_lens'
   // in opset 9+). Requesting 10 scan inputs is invalid regardless of the Scan node's actual inputs.
@@ -1091,13 +1091,16 @@ TEST(Scan9, NumScanInputsExceedsVariadicInputs) {
   test.AddOutput<float>("scan_output_2", {2, 1}, {0.f, 0.f});
   test.AddOutput<float>("scan_output_3", {2, 1}, {0.f, 0.f});
 
-  // Unlike opset 8, opset 9+ Scan is type/shape-inferred via the standard ONNX inferencing path,
-  // which detects the inconsistent variadic split from the bad 'num_scan_inputs' value and rejects
-  // the model during graph resolution -- before the node's kernel (and its own attribute validation)
-  // is ever constructed. So the failure surfaces as a graph attribute inferencing error here, rather
-  // than the kernel-level message produced by the opset 8 test above.
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Graph attribute inferencing failed",
-          options.excluded_provider_types);
+  // Unlike opset 8, opset 9+ Scan is type/shape-inferred via the standard ONNX inferencing path. With
+  // 'num_scan_inputs' wrongly set to 10, the loop-state-variable/scan-input split used to propagate
+  // input types into the body subgraph is wrong too, so the subgraph's own output shape inference ends
+  // up disagreeing with its declared output shape and graph resolution fails before the node's kernel
+  // (and its own attribute validation) is ever constructed. The failure surfaces as a graph attribute
+  // inferencing error wrapping a shape-inference error, rather than the kernel-level message produced
+  // by the opset 8 test above.
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "[ShapeInferenceError] Mismatch between number of inferred and declared dimensions",
+           options.excluded_provider_types);
 }
 #endif  // !defined(ORT_NO_EXCEPTIONS)
 
