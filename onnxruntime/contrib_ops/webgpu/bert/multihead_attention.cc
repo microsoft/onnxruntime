@@ -76,6 +76,10 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
                                                                       past_present_share_buffer,
                                                                       kMultiHeadAttention,
                                                                       context.DeviceLimits().maxComputeInvocationsPerWorkgroup));
+  if (params.num_heads_kv != params.num_heads) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "Grouped query MultiHeadAttention is not implemented for WebGPU");
+  }
   WebgpuAttentionParameters parameters(params);
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(parameters.batch_size_);

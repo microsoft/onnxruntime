@@ -1123,18 +1123,20 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Input(1,
                "key",
-               "Key with shape (batch_size, kv_sequence_length, hidden_size), or packed KV with shape (batch_size, kv_sequence_length, num_heads, 2, head_size), "
-               "or past_key with shape (batch_size, num_heads, kv_sequence_length, head_size)",
+               "Key with shape (batch_size, kv_sequence_length, kv_hidden_size), or packed KV with shape (batch_size, kv_sequence_length, num_heads, 2, head_size), "
+               "or past_key with shape (batch_size, kv_num_heads, kv_sequence_length, head_size). "
+               "For grouped query attention, num_heads shall be a multiple of kv_num_heads",
                "T",
                OpSchema::Optional)
         .Input(2,
                "value",
-               "Value with shape (batch_size, kv_sequence_length, v_hidden_size), or past_value with shape (batch_size, num_heads, kv_sequence_length, head_size)",
+               "Value with shape (batch_size, kv_sequence_length, kv_v_hidden_size), or past_value with shape "
+               "(batch_size, kv_num_heads, kv_sequence_length, v_head_size)",
                "T",
                OpSchema::Optional)
         .Input(3,
                "bias",
-               "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection",
+               "Bias tensor with shape (hidden_size + kv_hidden_size + kv_v_hidden_size) from input projection",
                "T",
                OpSchema::Optional)
         .Input(4,
@@ -1173,7 +1175,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Output(0,
                 "output",
-                "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",
+                "3D output tensor with shape (batch_size, sequence_length, num_heads * v_head_size)",
                 "T")
         .Output(1,
                 "present_key",
