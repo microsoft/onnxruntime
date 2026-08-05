@@ -150,6 +150,9 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   DUMP_STRING("Buffer sharing = ", (parameters.past_present_share_buffer == true));
   DUMP_STRING("QKV format = ", parameters.qkv_format);
 
+  ORT_RETURN_IF(parameters.past_present_share_buffer && parameters.head_size != parameters.v_head_size,
+                "Past/present buffer sharing requires key and value to have the same head size");
+
   int sequence_length = parameters.sequence_length;
 
   TensorShapeVector output_shape(3);

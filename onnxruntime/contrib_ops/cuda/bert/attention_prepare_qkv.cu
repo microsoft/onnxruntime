@@ -27,16 +27,16 @@ void DumpQkv(contrib::AttentionParameters& parameters, AttentionData<T>& data) {
   DUMP_TENSOR_INIT();
   if (data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH) {
     DUMP_TENSOR_D("q(BNSH)", data.q, batch_size, num_heads, sequence_length, qk_head_size);
-    DUMP_TENSOR_D("k(BNSH)", data.k, batch_size, num_heads, kv_sequence_length, qk_head_size);
-    DUMP_TENSOR_D("v(BNSH)", data.v, batch_size, num_heads, kv_sequence_length, v_head_size);
+    DUMP_TENSOR_D("k(BNSH)", data.k, batch_size, num_heads_kv, kv_sequence_length, qk_head_size);
+    DUMP_TENSOR_D("v(BNSH)", data.v, batch_size, num_heads_kv, kv_sequence_length, v_head_size);
   } else if (data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH) {
     DUMP_TENSOR_D("q(BSNH)", data.q, batch_size, sequence_length, num_heads, qk_head_size);
-    DUMP_TENSOR_D("k(BSNH)", data.k, batch_size, kv_sequence_length, num_heads, qk_head_size);
-    DUMP_TENSOR_D("v(BSNH)", data.v, batch_size, kv_sequence_length, num_heads, v_head_size);
+    DUMP_TENSOR_D("k(BSNH)", data.k, batch_size, kv_sequence_length, num_heads_kv, qk_head_size);
+    DUMP_TENSOR_D("v(BSNH)", data.v, batch_size, kv_sequence_length, num_heads_kv, v_head_size);
   } else if (data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH) {
     DUMP_TENSOR_D("q(BSNH)", data.q, batch_size, sequence_length, num_heads, qk_head_size);
-    DUMP_TENSOR_D("k(BNSH)", data.k, batch_size, num_heads, kv_sequence_length, qk_head_size);
-    DUMP_TENSOR_D("v(BNSH)", data.v, batch_size, num_heads, kv_sequence_length, v_head_size);
+    DUMP_TENSOR_D("k(BNSH)", data.k, batch_size, num_heads_kv, kv_sequence_length, qk_head_size);
+    DUMP_TENSOR_D("v(BNSH)", data.v, batch_size, num_heads_kv, kv_sequence_length, v_head_size);
   } else if (data.qkv_format == AttentionQkvFormat::QKV_BSN3H) {
     DUMP_TENSOR_D("q(BSN3H)", data.q, batch_size, sequence_length, num_heads * 3, qk_head_size);
   }
@@ -49,6 +49,7 @@ void DumpInputs(contrib::AttentionParameters& parameters, AttentionData<T>& data
   const int sequence_length = parameters.sequence_length;
   const int kv_sequence_length = parameters.kv_sequence_length;
   const int num_heads = parameters.num_heads;
+  const int num_heads_kv = parameters.num_heads_kv;
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
 
@@ -56,16 +57,16 @@ void DumpInputs(contrib::AttentionParameters& parameters, AttentionData<T>& data
   if (data.gemm_buffer == nullptr) {  // MultiHeadAttention
     if (parameters.qkv_format == AttentionQkvFormat::Q_K_V_BNSH) {
       DUMP_TENSOR_D("Query(BNSH)", data.query, batch_size, num_heads, sequence_length, qk_head_size);
-      DUMP_TENSOR_D("Key(BNSH)", data.key, batch_size, num_heads, kv_sequence_length, qk_head_size);
-      DUMP_TENSOR_D("Value(BNSH)", data.value, batch_size, num_heads, kv_sequence_length, v_head_size);
+      DUMP_TENSOR_D("Key(BNSH)", data.key, batch_size, num_heads_kv, kv_sequence_length, qk_head_size);
+      DUMP_TENSOR_D("Value(BNSH)", data.value, batch_size, num_heads_kv, kv_sequence_length, v_head_size);
     } else if (parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH) {
       DUMP_TENSOR_D("Query(BSNH)", data.query, batch_size, sequence_length, num_heads, qk_head_size);
-      DUMP_TENSOR_D("Key(BSNH)", data.key, batch_size, kv_sequence_length, num_heads, qk_head_size);
-      DUMP_TENSOR_D("Value(BSNH)", data.value, batch_size, kv_sequence_length, num_heads, v_head_size);
+      DUMP_TENSOR_D("Key(BSNH)", data.key, batch_size, kv_sequence_length, num_heads_kv, qk_head_size);
+      DUMP_TENSOR_D("Value(BSNH)", data.value, batch_size, kv_sequence_length, num_heads_kv, v_head_size);
     } else if (parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH) {
       DUMP_TENSOR_D("Query(BSNH)", data.query, batch_size, sequence_length, num_heads, qk_head_size);
-      DUMP_TENSOR_D("Key(BNSH)", data.key, batch_size, num_heads, kv_sequence_length, qk_head_size);
-      DUMP_TENSOR_D("Value(BNSH)", data.value, batch_size, num_heads, kv_sequence_length, v_head_size);
+      DUMP_TENSOR_D("Key(BNSH)", data.key, batch_size, num_heads_kv, kv_sequence_length, qk_head_size);
+      DUMP_TENSOR_D("Value(BNSH)", data.value, batch_size, num_heads_kv, kv_sequence_length, v_head_size);
     } else if (parameters.qkv_format == AttentionQkvFormat::QKV_BSN3H) {
       DUMP_TENSOR_D("Query(BSN3H)", data.query, batch_size, sequence_length, num_heads * 3, qk_head_size);
     } else if (parameters.qkv_format == AttentionQkvFormat::Q_KV_BSNH_BSN2H) {
@@ -264,6 +265,7 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
     const int sequence_length = parameters.sequence_length;
     const int kv_sequence_length = parameters.kv_sequence_length;
     const int num_heads = parameters.num_heads;
+    const int num_heads_kv = parameters.num_heads_kv;
     const int qk_head_size = parameters.head_size;
     const int v_head_size = parameters.v_head_size;
 
