@@ -588,6 +588,35 @@ TEST(MultiHeadAttentionTest, CacheIndirectionBeamIndexOutOfRange) {
              {}, nullptr, &execution_providers);
 }
 
+TEST(MultiHeadAttentionTest, CacheIndirectionBatchBeamNotDivisibleByNumBeams) {
+  // num_beams = 2 does not evenly divide batch_beam_size = 3.
+  // cache_indirection dim 0 is a valid-looking 1 (= 3 / 2 with truncating division),
+  // but the shape is inconsistent with batch_beam_size and must be rejected up front.
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 1);
+
+  tester.AddInput<float>("query", {3, 1, 4}, std::vector<float>(12, 0.1f));
+  tester.AddInput<float>("key", {3, 1, 4}, std::vector<float>(12, 0.2f));
+  tester.AddInput<float>("value", {3, 1, 4}, std::vector<float>(12, 0.3f));
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddInput<float>("past_key", {3, 1, 4, 4}, std::vector<float>(48, 0.4f));
+  tester.AddInput<float>("past_value", {3, 1, 4, 4}, std::vector<float>(48, 0.5f));
+  tester.AddInput<int32_t>("past_sequence_length", {1}, {2});
+  tester.AddInput<int32_t>("cache_indirection", {1, 2, 4}, std::vector<int32_t>(8, 0));
+
+  tester.AddOutput<float>("output", {3, 1, 4}, std::vector<float>(12, 0.0f));
+  tester.AddOutput<float>("present_key", {3, 1, 4, 4}, std::vector<float>(48, 0.0f));
+  tester.AddOutput<float>("present_value", {3, 1, 4, 4}, std::vector<float>(48, 0.0f));
+  tester.AddOptionalOutputEdge<float>();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "must equal batch_beam_size",
+             {}, nullptr, &execution_providers);
+}
+
 TEST(MultiHeadAttentionTest, OutputQKWithPaddingMaskAndAttentionBias) {
   OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", 1);
