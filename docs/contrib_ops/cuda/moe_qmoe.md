@@ -24,6 +24,7 @@ and have been significantly modified for ONNX Runtime — see
   - [9.9 Runtime environment variables](#99-runtime-environment-variables)
   - [9.10 Interleaved GEMV layout + dtype-conditional accumulation](#910-interleaved-gemv-layout--dtype-conditional-accumulation)
   - [9.11 Single-copy SM80 weights (prefill + decode share one buffer)](#911-single-copy-sm80-weights-prefill--decode-share-one-buffer)
+  - [9.12 DeepSeek V4 SM90 DeepGEMM path](#912-deepseek-v4-sm90-deepgemm-path)
 9b. [NVFP4 (W4A16, block-16) Details](#9b-nvfp4-w4a16-block-16-details)
   - [9b.2 Fused GEMV decode (group-16)](#9b2-fused-gemv-decode-group-16)
   - [9b.3 Fast E2M1 → half/bf16 decode](#9b3-fast-e2m1--halfbf16-decode)
@@ -199,6 +200,7 @@ under [onnxruntime/contrib_ops/cuda/llm/moe_gemm/](onnxruntime/contrib_ops/cuda/
 | **Ampere GemmGrouped** | `cutlass::gemm::kernel::GemmGrouped` | INT4/INT8 W*A16, FP8 W8A16 dequant fallback, FP32 | SM75–SM89, plus all mixed-input on SM90/SM120 |
 | **TMA Warp-Specialized (mixed-input)** | `CollectiveBuilderMixedInput` | Same-type FP16×FP16 / BF16×BF16, native MXFP4 W4A16 | SM90 (same-type), SM120 (FP4 W4A16) |
 | **Block-Scaled Tensor Op** | `OpClassBlockScaledTensorOp` | Native FP8×MXFP4 (`wfp4afp8`) | SM100+ (Blackwell) |
+| **DeepSeek V4 DeepGEMM** | DeepGEMM `sm90_bf16_gemm_impl`, `MGroupedMasked` | Opt-in, fixed-shape MXFP4→BF16 small-token path | H200 only (SM90, 132 SMs) |
 
 The MoE GEMV fast path is selected before the Ampere grouped GEMM for integer
 QMoE when all of the following are true:
@@ -231,7 +233,7 @@ switch is cached on first use.
 | INT4/INT8 W*A16 | Ampere GemmGrouped | Ampere GemmGrouped (TMA WS rejects mixed-type INT) | Ampere GemmGrouped | Ampere GemmGrouped |
 | FP16/BF16 (no quant, MoE op) | Ampere GemmGrouped | TMA WS (same-type) | TMA WS / valid Blackwell spec | TMA WS / Ampere fallback |
 | FP8 W8A16 native | dequant fallback | TMA WS | TMA WS | SM89 FP8 kernel redirect |
-| FP4 W4A16 native | dequant fallback | dequant fallback | dequant fallback | TMA WS mixed-input FP4 |
+| FP4 W4A16 native | dequant fallback | dequant fallback; optional fixed-shape DSV4 BF16 DeepGEMM | dequant fallback | TMA WS mixed-input FP4 |
 | NVFP4 W4A16 (group-16) | dequant fallback + fused GEMV decode | dequant fallback + fused GEMV decode | dequant fallback + fused GEMV decode | TMA WS block-scaled FP4×FP4 prefill + fused GEMV decode |
 | WFP4AFP8 native | dequant fallback | dequant fallback | Block-scaled tensor op | Block-scaled tensor op |
 | FP32 | Ampere GemmGrouped (forced) | same | same | same |
@@ -793,6 +795,7 @@ debug switches.
 | `ORT_FP4_GEMV_INTERLEAVED_HALFACC` | `0` | **Override.** When `ORT_FP4_GEMV_INTERLEAVED=1`, forces 16-bit accumulation for *both* fp16 and bf16, overriding the dtype-conditional policy; regresses bf16 accuracy, so it is off by default. |
 | `ORT_DISABLE_MOE_GEMV_FAST` | `0` | **Debug/benchmark opt-out.** Set to `1` to replace the packed BF16 MXFP4 interleaved decoder (`CtaN=2`) with the separately compiled per-element fallback (`CtaN=4`). This preserves the GEMV route and accumulation policy; use `ORT_ENABLE_FP4_GEMV=0` to disable FP4 GEMV entirely. Read once on first use, so A/B runs require separate processes. |
 | `ORT_FP4_SM80_GEMM` | `1` | Routes SM80–SM119 FP4 prefill through the fused-dequant grouped GEMM. Set to `0` to force dense fallback for debugging or comparison. Decode routes through the fused MXFP4 GEMV, reading the *same* pre-packed buffer as prefill. In this regime the raw e2m1 initializers are released after `PrePack`. See [§9.11](#911-single-copy-sm80-weights-prefill--decode-share-one-buffer). |
+| `ORT_DSV4_FP4_DEEPGEMM` | `0` | **Experimental, fixed-shape H200 path.** Set to `1` to pre-dequantize supported DeepSeek V4 MXFP4 expert weights to persistent BF16 buffers and run FC1/FC2 with DeepGEMM masked grouped GEMMs for `num_tokens <= 8`. Unsupported hardware, shapes, dtypes, attributes, or larger calls use the normal FP4 dispatch. See [§9.12](#912-deepseek-v4-sm90-deepgemm-path). |
 | `ORT_ENABLE_FP4_CUTLASS_GEMM` | `0` | Opt-in native SM90 WFP4A16 CUTLASS GEMM (fast prefill). Requires FP16, SM90, and aligned shapes (`hidden`/`inter` divisible by 256). Must be combined with `ORT_ENABLE_FP4_CUTLASS_UNSAFE=1`. |
 | `ORT_ENABLE_FP4_CUTLASS_UNSAFE` | `0` | Confirms use of the experimental native SM90 path. Without it, a request to enable native GEMM logs a warning and falls back to dequant/GEMV. |
 | `ORT_FP4_PREFILL_MIN_TOKENS` | `64` | When native CUTLASS is enabled, the per-node decode threshold. Tokens with `M >= threshold` (prefill) route to native CUTLASS; `M < threshold` (decode) route to the fused GEMV. Both weight/scale layouts are pre-packed so one node serves both regimes. |
@@ -894,6 +897,72 @@ NVFP4 (block 16) always uses the plain `ColToRow` layout. `gpt-oss-20b`
 > device footprint when initializers bypass the BFC arena. Set the session option
 > `session.use_device_allocator_for_initializers = 1`; otherwise the freed bytes are merely
 > recycled inside the arena for later activation/KV allocations.
+
+### 9.12 DeepSeek V4 SM90 DeepGEMM path
+
+**Experimental, opt-in (`ORT_DSV4_FP4_DEEPGEMM=1`, default off).** This is a specialized
+DeepSeek V4 decode/verification path for H200. It is not DeepGEMM's Blackwell FP8×FP4 kernel:
+`PrePack` dequantizes the MXFP4 expert weights once to BF16, and execution uses DeepGEMM's
+SM90 BF16 `MGroupedMasked` GEMM for FC1 and FC2.
+
+The path is enabled only when every construction-time constraint holds:
+
+| Constraint | Required value |
+|------------|----------------|
+| CUDA EP build | bundled or plugin CUDA EP with `HAS_SM90_OR_LATER` |
+| GPU | SM90 with exactly 132 SMs (H200) |
+| QMoE mode | `quant_type="fp4"`, BF16 activation/output, `k=6` |
+| Activation | `activation_type="swiglu"`, `swiglu_fusion=1` (interleaved gate/value) |
+| Local experts | 32 |
+| Hidden / local intermediate | 4096 / 2048 |
+| FC1 packed weight shape | `[32, 4096, 2048]` (`[E, K, 2*inter/2]`) |
+| FC2 packed weight shape | `[32, 2048, 2048]` (`[E, inter, hidden/2]`) |
+
+The FC shapes must be statically available in the ONNX graph. At `PrePack`, FC1/FC2 weights,
+E8M0 block scales, and per-expert global scales must all be present. The expected block-scale
+shapes are `[32, 4096, 128]` for FC1 and `[32, 4096, 64]` for FC2. Once all three inputs for an
+FC are available, `LaunchQMoEDequantizeFp4Weights` creates the persistent BF16 expert-weight
+buffer and releases that path's staged MXFP4 weight and scale copies.
+
+Each invocation has additional runtime gates:
+
+- `1 <= num_tokens <= 8`;
+- no FC1 or FC2 expert bias;
+- the local runner topology is TP=1, EP=1, cluster=1 (model-level TP/EP sharding must happen
+  outside this QMoE node, as in the DeepSeek V4 per-rank graph);
+- no AWQ, activation scale input, group-wise quantization parameters, or weight-only scales
+  are passed to the BF16 runner.
+
+Calls that miss a runtime gate transparently continue through the normal MXFP4 dispatch
+(fused GEMV or grouped-GEMM fallback). Setting the environment variable on unsupported hardware
+or a node that misses the static gate likewise leaves the standard path selected. The variable is
+read when the QMoE kernel is constructed, so set it before creating the ORT session.
+
+The execution sequence is:
+
+1. Pack compact expert-major rows into `[32, 64, 4096]` BF16 and build the per-expert
+   `masked_m` row counts. Every expert has a physical 64-row stride because DeepGEMM's TMA
+   output flattens `[expert, row]` and each stride must end on the `BLOCK_M=64` store boundary.
+2. Run FC1 as `[4096] × [4096,4096]` per expert with a persistent 132-CTA DeepGEMM launch.
+3. Apply the interleaved SwiGLU, including `activation_alpha`, `activation_beta`, and
+   `swiglu_limit`, into `[32,64,2048]` BF16.
+4. Run FC2 as `[2048] × [2048,4096]`, unpack the valid rows, then use ORT's existing final
+   routing kernel to apply router weights and combine experts.
+
+**Memory cost.** The persistent dequantized weights are 1 GiB for FC1 plus 0.5 GiB for FC2,
+or 1.5 GiB per QMoE node/rank at this fixed shape. The temporary packed input/output,
+intermediate, and row-count workspace is approximately 40 MiB per invocation. Standard FP4
+buffers may also remain available because calls outside the DeepGEMM row gate still need the
+normal dispatch. Account for this explicitly before enabling the path across every model layer.
+
+Implementation:
+
+- [deep_gemm_sm90.h](onnxruntime/contrib_ops/cuda/llm/moe_gemm/deep_gemm_sm90.h) — fixed
+  dimensions, row limit, and entry points;
+- [deep_gemm_sm90.cu](onnxruntime/contrib_ops/cuda/llm/moe_gemm/deep_gemm_sm90.cu) — packing,
+  masked grouped GEMMs, SwiGLU, and unpacking;
+- [moe_quantization.cc](onnxruntime/contrib_ops/cuda/moe/moe_quantization.cc) — environment,
+  static/runtime gates, MXFP4→BF16 PrePack conversion, and dispatch.
 
 ---
 

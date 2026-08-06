@@ -151,9 +151,27 @@ bool StaticFp4CutlassShapeSupported(const OpKernelInfo& op_kernel_info, bool is_
 }
 
 bool StaticDsv4DeepGemmShapeSupported(const OpKernelInfo& op_kernel_info) {
-#if defined(BUILD_CUDA_EP_AS_PLUGIN) || !defined(HAS_SM90_OR_LATER)
+#if !defined(HAS_SM90_OR_LATER)
   ORT_UNUSED_PARAMETER(op_kernel_info);
   return false;
+#else
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  if (op_kernel_info.GetInputCount() <= 5) {
+    return false;
+  }
+
+  const auto fc1_shape = op_kernel_info.GetKernelInfo().GetInputTypeInfo(2).GetTensorTypeAndShapeInfo().GetShape();
+  const auto fc2_shape = op_kernel_info.GetKernelInfo().GetInputTypeInfo(5).GetTensorTypeAndShapeInfo().GetShape();
+  if (fc1_shape.size() != 3 || fc2_shape.size() != 3) {
+    return false;
+  }
+
+  const int64_t fc1_e = fc1_shape[0];
+  const int64_t fc1_k = fc1_shape[1];
+  const int64_t fc1_packed_n = fc1_shape[2];
+  const int64_t fc2_e = fc2_shape[0];
+  const int64_t fc2_k = fc2_shape[1];
+  const int64_t fc2_packed_n = fc2_shape[2];
 #else
   const auto& input_defs = op_kernel_info.node().InputDefs();
   if (input_defs.size() <= 5 || input_defs[2] == nullptr || input_defs[5] == nullptr) {
@@ -168,11 +186,15 @@ bool StaticDsv4DeepGemmShapeSupported(const OpKernelInfo& op_kernel_info) {
   int64_t fc2_e = 0;
   int64_t fc2_k = 0;
   int64_t fc2_packed_n = 0;
-  return fc1_shape != nullptr && fc2_shape != nullptr && fc1_shape->dim_size() == 3 && fc2_shape->dim_size() == 3 &&
-         TryGetStaticDim(fc1_shape, 0, fc1_e) && TryGetStaticDim(fc1_shape, 1, fc1_k) &&
-         TryGetStaticDim(fc1_shape, 2, fc1_packed_n) && TryGetStaticDim(fc2_shape, 0, fc2_e) &&
-         TryGetStaticDim(fc2_shape, 1, fc2_k) && TryGetStaticDim(fc2_shape, 2, fc2_packed_n) &&
-         fc1_e == onnxruntime::llm::kernels::deep_gemm_sm90::kNumExperts &&
+  if (fc1_shape == nullptr || fc2_shape == nullptr || fc1_shape->dim_size() != 3 || fc2_shape->dim_size() != 3 ||
+      !TryGetStaticDim(fc1_shape, 0, fc1_e) || !TryGetStaticDim(fc1_shape, 1, fc1_k) ||
+      !TryGetStaticDim(fc1_shape, 2, fc1_packed_n) || !TryGetStaticDim(fc2_shape, 0, fc2_e) ||
+      !TryGetStaticDim(fc2_shape, 1, fc2_k) || !TryGetStaticDim(fc2_shape, 2, fc2_packed_n)) {
+    return false;
+  }
+#endif
+
+  return fc1_e == onnxruntime::llm::kernels::deep_gemm_sm90::kNumExperts &&
          fc1_k == onnxruntime::llm::kernels::deep_gemm_sm90::kHiddenSize &&
          fc1_packed_n * 2 == onnxruntime::llm::kernels::deep_gemm_sm90::kFc1OutputSize &&
          fc2_e == onnxruntime::llm::kernels::deep_gemm_sm90::kNumExperts &&

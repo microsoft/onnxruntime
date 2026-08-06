@@ -116,6 +116,13 @@ onnxruntime_extract_llm_sources(CUDA_PLUGIN_EP_CU_SRCS
   LLM_SOURCES _cuda_plugin_llm_srcs
   LLM_SM90_SOURCES _cuda_plugin_llm_sm90_srcs
 )
+if(UNIX)
+  foreach(_src IN LISTS _cuda_plugin_llm_sm90_srcs)
+    if(_src MATCHES "/moe_gemm/deep_gemm_sm90\\.cu$")
+      set_source_files_properties(${_src} PROPERTIES COMPILE_OPTIONS "-Xcompiler=-Wno-unknown-pragmas")
+    endif()
+  endforeach()
+endif()
 
 # Create shared library target using the ORT helper function for plugins
 onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_plugin
@@ -243,6 +250,10 @@ endif()
 
 include(cudnn_frontend)
 include(cutlass)
+if(ORT_HAS_SM90_OR_LATER AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  include(deep_gemm)
+  target_include_directories(onnxruntime_providers_cuda_plugin PRIVATE ${deep_gemm_SOURCE_DIR}/deep_gemm/include)
+endif()
 
 # TMA compile definitions — mirror config_cuda_provider_shared_module in onnxruntime_providers_cuda.cmake
 if(ORT_HAS_SM90_OR_LATER)
