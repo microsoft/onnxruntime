@@ -46,7 +46,8 @@ class AttentionCPUBase : public AttentionBase {
                         bool past_present_share_buffer = false,
                         int kv_num_heads = 0) const {
     kv_num_heads = kv_num_heads == 0 ? num_heads_ : kv_num_heads;
-    ORT_ENFORCE(num_heads_ % kv_num_heads == 0);
+    ORT_RETURN_IF(num_heads_ % kv_num_heads != 0, "num_heads (", num_heads_,
+                  ") shall be a multiple of kv_num_heads (", kv_num_heads, ")");
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
@@ -290,9 +291,9 @@ class AttentionCPUBase : public AttentionBase {
                              float scale,                              // scale factor
                              const T* attn_bias_data,                  // attention bias
                              gsl::span<const int64_t> attn_bias_dims,  // attention bias shape
-                             bool past_present_share_buffer = false,
-                             int max_sequence_length = 0,
-                             int kv_num_heads = 0) const {
+                             bool past_present_share_buffer,
+                             int max_sequence_length,
+                             int kv_num_heads) const {
     const int total_sequence_length = past_sequence_length + kv_sequence_length;               // T = P + L
     const size_t past_chunk_length = static_cast<size_t>(past_sequence_length) * head_size;    // P x H
     const size_t q_input_chunk_length = static_cast<size_t>(sequence_length) * head_size;      // S x H
@@ -310,11 +311,40 @@ class AttentionCPUBase : public AttentionBase {
 
     DUMP_CPU_TENSOR_INIT();
     DUMP_CPU_TENSOR("Q", Q, batch_size, num_heads_, sequence_length, head_size);
-    DUMP_CPU_TENSOR("K", K, batch_size, num_heads_, total_sequence_length, head_size);
+    DUMP_CPU_TENSOR("K", K, batch_size, kv_num_heads, total_sequence_length, head_size);
     DUMP_CPU_TENSOR("Attn_Bias", attn_bias_data, attn_bias_dims);
 
     const float alpha = scale;
     const ptrdiff_t probs_matrix_size = SafeInt<ptrdiff_t>(sequence_length) * total_sequence_length;
+
+    // Concatenate each KV head into the present buffer exactly once, before any query head in the same
+    // group reads it. Running this over kv_batch_head_count (rather than per query head) keeps grouped
+    // query attention free of duplicate writes to the same present chunk.
+    const bool needs_concat = (present != nullptr) || (present_key != nullptr);
+    auto concat_key = [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+      for (std::ptrdiff_t kv_index = begin; kv_index < end; ++kv_index) {
+        const T* k = K + kv_input_chunk_length * kv_index;
+        if (nullptr != present) {
+          ConcatStateChunk(past, k, present, past_chunk_length, present_chunk_length, kv_index);
+        } else if (past_present_share_buffer) {
+          memcpy(present_key + cache_chunk_length * kv_index + past_chunk_length,
+                 k, kv_input_chunk_length * sizeof(T));
+        } else {
+          ConcatStateChunk(past_key, k, present_key, past_chunk_length, present_chunk_length, kv_index);
+        }
+      }
+    };
+
+    if (needs_concat) {
+      // Pure copy: no compute cycles, and the byte counts depend on whether past is concatenated.
+      TensorOpCost concat_cost;
+      const double concat_bytes =
+          static_cast<double>((past_present_share_buffer ? kv_input_chunk_length : present_chunk_length) * sizeof(T));
+      concat_cost.compute_cycles = 0.0;
+      concat_cost.bytes_loaded = concat_bytes;
+      concat_cost.bytes_stored = concat_bytes;
+      ThreadPool::TryParallelFor(tp, kv_batch_head_count, concat_cost, concat_key);
+    }
 
     // Step 1: attention_probs(B, N, S, T) = alpha * Q(B, N, S, H) x K'(B, N, T, H -> B, N, H, T)
     // The scaled Q*K' is written with a clean (beta=0) store; the additive mask and attention bias
@@ -324,24 +354,6 @@ class AttentionCPUBase : public AttentionBase {
         // Issue all batch*num_heads matmuls as a single batched GEMM so MLAS can parallelize the
         // work across all threads (partitioning both the batch and the M dimension), instead of one
         // single-threaded GEMM per head which caps parallelism at batch*num_heads units.
-        // Concatenate each KV head once before query heads in the same group read it.
-        const bool needs_concat = (present != nullptr) || (present_key != nullptr);
-        auto concat_key = [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-          for (std::ptrdiff_t kv_index = begin; kv_index < end; ++kv_index) {
-            const T* k = K + kv_input_chunk_length * kv_index;
-            if (nullptr != present) {
-              ConcatStateChunk(past, k, present, past_chunk_length, present_chunk_length, kv_index);
-            } else if (nullptr != present_key) {
-              if (past_present_share_buffer) {
-                memcpy(present_key + cache_chunk_length * kv_index + past_chunk_length,
-                       k, kv_input_chunk_length * sizeof(T));
-              } else {
-                ConcatStateChunk(past_key, k, present_key, past_chunk_length, present_chunk_length, kv_index);
-              }
-            }
-          }
-        };
-
         auto prepare_gemm_data = [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
           for (std::ptrdiff_t i = begin; i < end; ++i) {
             if (sequence_length == 0 || total_sequence_length == 0) {
@@ -369,14 +381,6 @@ class AttentionCPUBase : public AttentionBase {
           }
         };
 
-        if (needs_concat) {
-          TensorOpCost prep_cost;
-          const double concat_bytes = static_cast<double>(present_chunk_length * sizeof(T));
-          prep_cost.compute_cycles = 0.0;
-          prep_cost.bytes_loaded = concat_bytes;
-          prep_cost.bytes_stored = concat_bytes;
-          ThreadPool::TryParallelFor(tp, kv_batch_head_count, prep_cost, concat_key);
-        }
         prepare_gemm_data(0, batch_head_count);
 
         if (batch_head_count > 0 && sequence_length > 0 && total_sequence_length > 0) {
@@ -393,29 +397,6 @@ class AttentionCPUBase : public AttentionBase {
         unit_cost.compute_cycles = static_cast<double>(SafeInt<ptrdiff_t>(2) * head_size * probs_matrix_size);
         unit_cost.bytes_loaded = static_cast<double>((sequence_length + total_sequence_length) * head_size * sizeof(T));
         unit_cost.bytes_stored = static_cast<double>(probs_matrix_size * sizeof(T));
-        if (present || present_key) {
-          double bytes_to_copy_key = (past_present_share_buffer ? kv_input_chunk_length : present_chunk_length) *
-                                     static_cast<double>(sizeof(T));
-          unit_cost.bytes_loaded += bytes_to_copy_key;
-          unit_cost.bytes_stored += bytes_to_copy_key;
-        }
-
-        if (present != nullptr || present_key != nullptr) {
-          auto concat_key = [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-            for (std::ptrdiff_t kv_index = begin; kv_index < end; ++kv_index) {
-              const T* k = K + kv_input_chunk_length * kv_index;
-              if (nullptr != present) {
-                ConcatStateChunk(past, k, present, past_chunk_length, present_chunk_length, kv_index);
-              } else if (past_present_share_buffer) {
-                memcpy(present_key + cache_chunk_length * kv_index + past_chunk_length,
-                       k, kv_input_chunk_length * sizeof(T));
-              } else {
-                ConcatStateChunk(past_key, k, present_key, past_chunk_length, present_chunk_length, kv_index);
-              }
-            }
-          };
-          ThreadPool::TryParallelFor(tp, kv_batch_head_count, unit_cost, concat_key);
-        }
 
         ThreadPool::TryParallelFor(tp, batch_head_count, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
           for (std::ptrdiff_t i = begin; i != end; ++i) {
@@ -526,9 +507,9 @@ class AttentionCPUBase : public AttentionBase {
                                T* present,                // present state
                                T* present_value,          // present value only (if not using present state)
                                ThreadPool* tp,
-                               bool past_present_share_buffer = false,
-                               int max_sequence_length = 0,
-                               int kv_num_heads = 0) const {
+                               bool past_present_share_buffer,
+                               int max_sequence_length,
+                               int kv_num_heads) const {
     const int total_sequence_length = past_sequence_length + kv_sequence_length;                   // T = P + L
     const ptrdiff_t past_chunk_length = SafeInt<ptrdiff_t>(past_sequence_length) * v_head_size;    // P x H_v
     const ptrdiff_t q_input_chunk_length = SafeInt<ptrdiff_t>(sequence_length) * v_head_size;      // S x H_v
@@ -544,12 +525,13 @@ class AttentionCPUBase : public AttentionBase {
       return batch_index * kv_num_heads + query_head_index / query_heads_per_kv_head;
     };
 
-    // Move the pointer of past and present to start of v values.
+    // Move the pointer of past and present to start of v values. The packed past/present layout is
+    // (2, B, N_kv, T, H_v), so the K half to skip is sized by the KV head count.
     if (nullptr != past) {
-      past += SafeInt<ptrdiff_t>(batch_size) * num_heads_ * past_sequence_length * v_head_size;
+      past += SafeInt<ptrdiff_t>(batch_size) * kv_num_heads * past_sequence_length * v_head_size;
     }
     if (nullptr != present) {
-      present += SafeInt<ptrdiff_t>(batch_size) * num_heads_ * total_sequence_length * v_head_size;
+      present += SafeInt<ptrdiff_t>(batch_size) * kv_num_heads * total_sequence_length * v_head_size;
     }
 
     const ptrdiff_t batch_head_count = SafeInt<ptrdiff_t>(batch_size) * num_heads_;
@@ -568,8 +550,6 @@ class AttentionCPUBase : public AttentionBase {
     if (present || present_value) {
       double bytes_to_copy_value = (past_present_share_buffer ? kv_input_chunk_length : present_chunk_length) *
                                    static_cast<double>(sizeof(T));
-      unit_cost.bytes_loaded += bytes_to_copy_value;
-      unit_cost.bytes_stored += bytes_to_copy_value;
 
       auto concat_value = [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
         for (std::ptrdiff_t kv_index = begin; kv_index < end; ++kv_index) {
@@ -584,7 +564,16 @@ class AttentionCPUBase : public AttentionBase {
           }
         }
       };
-      ThreadPool::TryParallelFor(tp, kv_batch_head_count, unit_cost, concat_value);
+
+      // The concat is a pure copy, so cost it without the GEMM's compute cycles.
+      TensorOpCost concat_cost;
+      concat_cost.compute_cycles = 0.0;
+      concat_cost.bytes_loaded = bytes_to_copy_value;
+      concat_cost.bytes_stored = bytes_to_copy_value;
+      ThreadPool::TryParallelFor(tp, kv_batch_head_count, concat_cost, concat_value);
+
+      unit_cost.bytes_loaded += bytes_to_copy_value;
+      unit_cost.bytes_stored += bytes_to_copy_value;
     }
 
     const size_t bytes_to_copy_trans = SafeInt<size_t>(v_head_size) * sizeof(T);
