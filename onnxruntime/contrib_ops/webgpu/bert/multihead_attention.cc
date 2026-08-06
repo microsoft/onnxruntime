@@ -80,7 +80,7 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
                                                                       kMultiHeadAttention,
                                                                       context.DeviceLimits().maxComputeInvocationsPerWorkgroup,
                                                                       kv_num_heads_));
-  if (params.num_heads_kv != params.num_heads) {
+  if (params.kv_num_heads != params.num_heads) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "Grouped query MultiHeadAttention is not implemented for WebGPU");
   }

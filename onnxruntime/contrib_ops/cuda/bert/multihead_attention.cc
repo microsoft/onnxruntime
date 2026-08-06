@@ -151,7 +151,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   DUMP_STRING("Hidden size = ", parameters.hidden_size);
   DUMP_STRING("Head size = ", parameters.head_size);
   DUMP_STRING("Num heads = ", parameters.num_heads);
-  DUMP_STRING("KV num heads = ", parameters.num_heads_kv);
+  DUMP_STRING("KV num heads = ", parameters.kv_num_heads);
   DUMP_STRING("Buffer sharing = ", (parameters.past_present_share_buffer == true));
   DUMP_STRING("QKV format = ", parameters.qkv_format);
 
@@ -167,9 +167,9 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   Tensor* output = context->Output(0, output_shape);
 
   std::vector<int64_t> present_key_dims{
-      parameters.batch_size, parameters.num_heads_kv, parameters.max_sequence_length, parameters.head_size};
+      parameters.batch_size, parameters.kv_num_heads, parameters.max_sequence_length, parameters.head_size};
   std::vector<int64_t> present_value_dims{
-      parameters.batch_size, parameters.num_heads_kv, parameters.max_sequence_length, parameters.v_head_size};
+      parameters.batch_size, parameters.kv_num_heads, parameters.max_sequence_length, parameters.v_head_size};
   Tensor* present_key = context->Output(1, TensorShape(present_key_dims));
   Tensor* present_value = context->Output(2, TensorShape(present_value_dims));
 
@@ -231,7 +231,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
                                              parameters.head_size == parameters.v_head_size &&
                                              (parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING || parameters.mask_type == AttentionMaskType::MASK_NONE) &&
                                              nullptr != past_sequence_length && nullptr != cache_indirection &&
-                                             parameters.num_heads_kv == parameters.num_heads &&
+                                             parameters.kv_num_heads == parameters.num_heads &&
                                              has_decoder_masked_multihead_attention(sm, parameters.head_size);
   }
   DUMP_STRING("Use DMMHA = ", (use_decoder_masked_multihead_attention == true));
@@ -283,7 +283,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
                             onnxruntime::lean::is_supported(device_prop,
                                                             parameters.head_size,
                                                             parameters.num_heads,
-                                                            parameters.num_heads_kv);
+                                                            parameters.kv_num_heads);
 
   size_t sync_flag_bytes = 0;
   DUMP_STRING("Use lean attn = ", (use_lean_attention == true));
@@ -297,7 +297,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
         parameters.sequence_length,
         parameters.total_sequence_length,
         parameters.num_heads,  // q heads
-        parameters.num_heads_kv,
+        parameters.kv_num_heads,
         parameters.head_size,
         device_prop.multiProcessorCount,
         parameters.is_unidirectional);
@@ -337,7 +337,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
                               onnxruntime::cudnn_sdpa::is_stable() &&
                               onnxruntime::cudnn_sdpa::is_supported(device_prop,
                                                                     parameters.num_heads,              // num_heads_q
-                                                                    parameters.num_heads_kv,           // num_heads_kv
+                                                                    parameters.kv_num_heads,           // kv_num_heads
                                                                     parameters.head_size,              // head_size_qk
                                                                     parameters.v_head_size,            // head_size_v
                                                                     parameters.sequence_length,        // seq_len_q
@@ -358,7 +358,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
                              onnxruntime::flash::is_supported<T>(device_prop,
                                                                  parameters.head_size,
                                                                  parameters.num_heads,
-                                                                 parameters.num_heads_kv);
+                                                                 parameters.kv_num_heads);
   // When input is packed QKV format, TensorRT kernel might be faster than flash attention when sequence length <= 512.
   DUMP_STRING("Use flash attn = ", (use_flash_attention == true));
   if (use_flash_attention && parameters.qkv_format == AttentionQkvFormat::QKV_BS3NH &&
@@ -416,7 +416,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
       nullptr == output_qk &&
       (parameters.qkv_format == Q_K_V_BSNH || (parameters.qkv_format == Q_KV_BSNH_BSN2H && bias == nullptr)) &&
       parameters.hidden_size == parameters.GetOutputHiddenSize() &&
-      parameters.num_heads_kv == parameters.num_heads &&
+      parameters.kv_num_heads == parameters.num_heads &&
       has_fused_cross_attention_kernel(sm, parameters.head_size, parameters.kv_sequence_length);
 
   DUMP_STRING("Use fused cross attn = ", (use_fused_cross_attention == true));
@@ -445,7 +445,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
       nullptr == present_key && nullptr == output_qk &&
       is_mask_none_or_1d_k_len &&
       parameters.hidden_size == parameters.GetOutputHiddenSize() &&
-      parameters.num_heads_kv == parameters.num_heads &&
+      parameters.kv_num_heads == parameters.num_heads &&
       parameters.sequence_length == parameters.kv_sequence_length &&  // self attention only for fused runner
       FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,
                                         enable_trt_flash_attention_);
@@ -483,7 +483,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
       (attention_bias == nullptr || parameters.sequence_length % (4 * sizeof(T)) == 0) &&
       (nullptr == key_padding_mask || parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) &&
       nullptr == past_sequence_length && nullptr == cache_indirection && nullptr == output_qk &&
-      parameters.num_heads_kv == parameters.num_heads &&
+      parameters.kv_num_heads == parameters.num_heads &&
       has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value,
                                      std::is_same<T, BFloat16>::value,
                                      parameters.head_size, parameters.v_head_size);
@@ -557,7 +557,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
                                                      use_memory_efficient_attention,
                                                      use_cudnn_sdpa,
                                                      no_qkv_workspace,
-                                                     static_cast<size_t>(parameters.num_heads_kv));
+                                                     static_cast<size_t>(parameters.kv_num_heads));
   auto work_space = GetScratchBuffer<void>(workspace_bytes, GetComputeStream(context));
 
   data.has_qkv_workspace = !no_qkv_workspace;

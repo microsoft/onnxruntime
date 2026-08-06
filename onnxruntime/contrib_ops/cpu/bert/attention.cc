@@ -344,7 +344,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                         parameters.head_size, parameters.v_head_size, parameters.GetOutputHiddenSize(),
                         attention_bias, context,
                         0 /* past_sequence_length */, false /* past_present_share_buffer */,
-                        parameters.num_heads_kv);
+                        parameters.kv_num_heads);
 }
 }  // namespace contrib
 }  // namespace onnxruntime

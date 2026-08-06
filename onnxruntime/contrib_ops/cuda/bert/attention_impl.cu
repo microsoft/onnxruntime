@@ -119,13 +119,14 @@ size_t GetAttentionWorkspaceSize(
     bool use_memory_efficient_attention,
     bool use_cudnn_flash_attention,
     bool no_qkv_workspace,
-    size_t num_heads_kv) {
-  const size_t kv_num_heads = num_heads_kv == 0 ? num_heads : num_heads_kv;
+    size_t kv_num_heads) {
+  const size_t effective_kv_num_heads = kv_num_heads == 0 ? num_heads : kv_num_heads;
 
   // Note that q, k and v might need alignment for fused attention kernels.
   const size_t qkv_size =
       element_size * batch_size *
-      (num_heads * sequence_length * qk_head_size + kv_num_heads * kv_sequence_length * (qk_head_size + v_head_size));
+      (num_heads * sequence_length * qk_head_size +
+       effective_kv_num_heads * kv_sequence_length * (qk_head_size + v_head_size));
   const size_t qkv_bytes = no_qkv_workspace ? 0 : qkv_size;
 
 #if USE_FLASH_ATTENTION
@@ -315,7 +316,7 @@ Status FlashAttention(
   constexpr bool is_bf16 = false;
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
       device_prop, stream, data.q, data.k, data.v, data.output, reinterpret_cast<void*>(data.softmax_lse),
-      parameters.batch_size, parameters.num_heads, parameters.num_heads_kv, parameters.head_size,
+      parameters.batch_size, parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
       parameters.sequence_length, parameters.total_sequence_length, scale, 0.0, parameters.is_unidirectional, is_bf16,
       false, data.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
       reinterpret_cast<void*>(data.out_accum), data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH));
@@ -370,7 +371,7 @@ Status LeanAttention(
       nullptr,  // block_table
       parameters.batch_size,
       parameters.num_heads,
-      parameters.num_heads_kv,
+      parameters.kv_num_heads,
       parameters.head_size,
       parameters.sequence_length,        // seqlen_q
       parameters.total_sequence_length,  // seqlen_k
@@ -439,7 +440,7 @@ Status CudnnFlashAttention(
       mask_sequence_lengths_kv,  // (optional) mask_sequence_lengths_kv
       parameters.batch_size,
       parameters.num_heads,                  // num_heads_q,
-      parameters.num_heads_kv,               // num_heads_kv,
+      parameters.kv_num_heads,               // kv_num_heads,
       parameters.head_size,                  // head_size_qk
       parameters.v_head_size,                // head_size_v
       parameters.sequence_length,            // sequence_length_q
@@ -681,10 +682,10 @@ Status UnfusedAttention(
   const int sequence_length = parameters.sequence_length;
   const int total_sequence_length = parameters.total_sequence_length;
   const int num_heads = parameters.num_heads;
-  const int num_heads_kv = parameters.num_heads_kv;
+  const int kv_num_heads = parameters.kv_num_heads;
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
-  const int query_heads_per_kv_head = num_heads / num_heads_kv;
+  const int query_heads_per_kv_head = num_heads / kv_num_heads;
 
   const int* mask_index = data.mask_index;
   gsl::span<const int64_t>& mask_index_dims = data.mask_index_dims;
@@ -709,8 +710,8 @@ Status UnfusedAttention(
 
   DUMP_TENSOR_INIT();
   DUMP_TENSOR_D("q", data.q, batch_size, num_heads, sequence_length, qk_head_size);
-  DUMP_TENSOR_D("k", data.k, batch_size, num_heads_kv, total_sequence_length, qk_head_size);
-  DUMP_TENSOR_D("v", data.v, batch_size, num_heads_kv, total_sequence_length, v_head_size);
+  DUMP_TENSOR_D("k", data.k, batch_size, kv_num_heads, total_sequence_length, qk_head_size);
+  DUMP_TENSOR_D("v", data.v, batch_size, kv_num_heads, total_sequence_length, v_head_size);
   DUMP_TENSOR_D("mask_index", mask_index, mask_index_dims);
 
   // Query heads sharing a KV head are contiguous in q and in the scratch buffer, so folding the group
@@ -722,7 +723,7 @@ Status UnfusedAttention(
       data.q, qk_head_size, static_cast<int64_t>(query_heads_per_kv_head) * sequence_length * qk_head_size,
       &zero, data.scratch, total_sequence_length,
       static_cast<int64_t>(query_heads_per_kv_head) * sequence_length * total_sequence_length,
-      batch_size * num_heads_kv,
+      batch_size * kv_num_heads,
       device_prop, parameters.use_tf32));
 
   DUMP_TENSOR_D("QK", data.scratch, batch_size, num_heads, sequence_length, total_sequence_length);
@@ -786,7 +787,7 @@ Status UnfusedAttention(
       static_cast<int64_t>(query_heads_per_kv_head) * sequence_length * total_sequence_length,
       &zero, temp_output, v_head_size,
       static_cast<int64_t>(query_heads_per_kv_head) * sequence_length * v_head_size,
-      batch_size * num_heads_kv, device_prop, parameters.use_tf32));
+      batch_size * kv_num_heads, device_prop, parameters.use_tf32));
 
   if (!parameters.is_output_bnsh) {
     // Temp_output is BxNxSxH_v, transpose to output BxSxNxH_v
@@ -988,12 +989,12 @@ Status QkvToContext(
   ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block));
 
   if (!parameters.past_present_share_buffer) {
-    ORT_RETURN_IF_ERROR(ConcatPastToPresent<T>(batch_size, parameters.num_heads_kv, qk_head_size, v_head_size,
+    ORT_RETURN_IF_ERROR(ConcatPastToPresent<T>(batch_size, parameters.kv_num_heads, qk_head_size, v_head_size,
                                                kv_sequence_length, total_sequence_length,
                                                stream, max_threads_per_block, data));
 
   } else {  // past_present_share_buffer
-    ORT_RETURN_IF_ERROR(PastPresentBufferShare<T>(batch_size, parameters.num_heads_kv, qk_head_size, v_head_size,
+    ORT_RETURN_IF_ERROR(PastPresentBufferShare<T>(batch_size, parameters.kv_num_heads, qk_head_size, v_head_size,
                                                   kv_sequence_length, fused_runner,
                                                   parameters, data, stream, max_threads_per_block));
   }
