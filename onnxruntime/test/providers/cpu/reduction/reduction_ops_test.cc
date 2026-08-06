@@ -3618,6 +3618,30 @@ TEST(ReductionOpTest, ArgMax_float_first_index_random) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
+// 300 is wider than the CUDA block-reduction width (256) and not a multiple of it, so the
+// strided per-thread loop leaves a remainder, and several rows exercise the grid mapping.
+TEST(ReductionOpTest, ArgMax_float_long_axis_multiple_rows) {
+  OpTester test("ArgMax", 12);
+  test.AddAttribute("axis", static_cast<int64_t>(-1));
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddAttribute("select_last_index", static_cast<int64_t>(0));
+
+  constexpr int64_t rows = 4;
+  constexpr int64_t cols = 300;
+  std::vector<float> data(rows * cols, 1.0f);
+
+  data[0 * cols + 0] = 9.0f;         // maximum at the first element
+  data[1 * cols + cols - 1] = 9.0f;  // maximum in the remainder of the strided loop
+  data[2 * cols + 5] = 9.0f;         // duplicate maxima must resolve to the lower index
+  data[2 * cols + 250] = 9.0f;
+  // Row 3 stays constant, so every element ties and index 0 must win.
+
+  test.AddInput<float>("data", {rows, cols}, data);
+  test.AddOutput<int64_t>("reduced", {rows}, {0, 299, 5, 0});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
 TEST(ReductionOpTest, ArgMax_int32_neg_axis) {
   OpTester test("ArgMax");
   test.AddAttribute("axis", (int64_t)(-2));
@@ -3914,6 +3938,29 @@ TEST(ReductionOpTest, ArgMin_int32_select_last) {
                            0, 0});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// Mirror of ArgMax_float_long_axis_multiple_rows for the minimum, covering the same
+// block-reduction path and lowest-index tie-break.
+TEST(ReductionOpTest, ArgMin_float_long_axis_multiple_rows) {
+  OpTester test("ArgMin", 12);
+  test.AddAttribute("axis", static_cast<int64_t>(-1));
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddAttribute("select_last_index", static_cast<int64_t>(0));
+
+  constexpr int64_t rows = 4;
+  constexpr int64_t cols = 300;
+  std::vector<float> data(rows * cols, 1.0f);
+
+  data[0 * cols + 0] = -9.0f;
+  data[1 * cols + cols - 1] = -9.0f;
+  data[2 * cols + 5] = -9.0f;
+  data[2 * cols + 250] = -9.0f;
+
+  test.AddInput<float>("data", {rows, cols}, data);
+  test.AddOutput<int64_t>("reduced", {rows}, {0, 299, 5, 0});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ReductionOpTest, ArgMin_int32_neg_axis) {
