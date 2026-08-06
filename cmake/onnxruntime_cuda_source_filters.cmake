@@ -80,11 +80,13 @@ function(onnxruntime_extract_sm_specific_cuda_sources CU_SRC_LIST)
     list(REMOVE_ITEM _list ${_matmul_block_scaled_fp4_sm120_srcs})
   endif()
 
-  # Extract SM90 TMA WS generated files
+  # Extract SM90 TMA WS generated files, plus the vendored FlashMLA kernels. FlashMLA needs
+  # sm_90a specifically (wgmma + the Hopper TMA paths), which is what this bucket compiles at.
   set(_sm90_srcs)
   if(ORT_HAS_SM90_OR_LATER)
     foreach(_src IN LISTS _list)
-      if(_src MATCHES "moe_gemm_tma_ws_sm90_.*\\.generated\\.cu$")
+      if(_src MATCHES "moe_gemm_tma_ws_sm90_.*\\.generated\\.cu$" OR
+         _src MATCHES "/bert/flash_mla/.*\\.cu$")
         list(APPEND _sm90_srcs "${_src}")
       endif()
     endforeach()

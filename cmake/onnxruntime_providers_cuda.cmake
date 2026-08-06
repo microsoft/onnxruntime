@@ -86,6 +86,15 @@
     endforeach()
   endif()
 
+  # The vendored FlashMLA sources are third-party and are kept byte-identical to upstream so the
+  # next refresh stays a straight copy, so silence warnings per-source instead of editing them.
+  # ORT builds with -Werror all-warnings, which this would otherwise turn into hard errors.
+  foreach(_src IN LISTS onnxruntime_cuda_sm90_tma_srcs)
+    if(_src MATCHES "/bert/flash_mla/.*\\.cu$")
+      set_source_files_properties(${_src} PROPERTIES COMPILE_OPTIONS "-w")
+    endif()
+  endforeach()
+
   # disable contrib ops conditionally
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS AND NOT onnxruntime_CUDA_MINIMAL)
     if (NOT onnxruntime_ENABLE_ATEN)
@@ -585,6 +594,12 @@
             CUDA_ARCHITECTURES "90a-real"
             NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
             SOURCES ${_ort_sm90_all_srcs})
+          # FlashMLA lives in this library, so its call site is only compilable when the library
+          # exists. Everything that references flash_mla.h must be guarded on this.
+          target_compile_definitions(onnxruntime_providers_cuda PRIVATE ORT_ENABLE_FLASH_MLA)
+          if(TARGET onnxruntime_providers_cuda_obj)
+            target_compile_definitions(onnxruntime_providers_cuda_obj PRIVATE ORT_ENABLE_FLASH_MLA)
+          endif()
         endif()
       endif()
 
