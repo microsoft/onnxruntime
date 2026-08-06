@@ -617,7 +617,7 @@ Status SessionState::PrepackConstantInitializedTensors(
                     }
 
                     if (!prepacked_weights_container_->WriteWeight(prepacked_weights_container_key,
-                                                                    std::move(weights_to_be_filled_in))) {
+                                                                   std::move(weights_to_be_filled_in))) {
                       return ORT_MAKE_STATUS(
                           ONNXRUNTIME, FAIL,
                           "Unable to write the provided PrePackedWeights instance into the container");
