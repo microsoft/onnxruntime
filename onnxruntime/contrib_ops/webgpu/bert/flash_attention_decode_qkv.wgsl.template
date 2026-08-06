@@ -298,7 +298,7 @@ $MAIN {
     }
     workgroupBarrier();
 
-    if (local_idx < tile_size_k_vec) {
+    if (local_idx < tile_size_k_vec && k + local_idx < v_head_size_vec) {
       for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
         for (var i = 0u; i < sub_tile_count; i++) {
           tile_output[m][k + local_idx] += qkv_values[m][i][local_idx];
@@ -326,7 +326,7 @@ $MAIN {
     }
     workgroupBarrier();
 
-    if (local_idx < tile_size_k_vec) {
+    if (local_idx < tile_size_k_vec && k + local_idx < v_head_size_vec) {
       for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
         for (var i = 0u; i < sub_tile_count; i++) {
           tile_output[m][k + local_idx] += qkv_values[m][i][local_idx];

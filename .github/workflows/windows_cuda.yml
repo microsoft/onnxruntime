@@ -24,6 +24,7 @@ jobs:
         "1ES.Pool=onnxruntime-github-vs2022-latest",
         "JobId=windows-cuda-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
+    timeout-minutes: 210
     steps:
       - uses: actions/checkout@v6
         with:
@@ -37,6 +38,11 @@ jobs:
 
       - name: Locate vcvarsall and Setup Env
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Install Visual Studio Spectre-mitigated libs
+        uses: ./.github/actions/install-vs-spectre-libs
         with:
           architecture: x64
 
@@ -188,6 +194,11 @@ jobs:
 
       - name: Locate vcvarsall and Setup Env
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Install Visual Studio Spectre-mitigated libs
+        uses: ./.github/actions/install-vs-spectre-libs
         with:
           architecture: x64
 

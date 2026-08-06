@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -151,10 +152,12 @@ void LinearAttentionGQAReference(
   int kv_per_k_head = kv_num_heads / n_k_heads;
   bool inverse_gqa = q_num_heads < kv_num_heads;
   int heads_per_group = inverse_gqa ? 0 : q_num_heads / kv_num_heads;
+  // Output head count = max(q,kv): standard GQA emits one output per Q head (q_num_heads),
+  // inverse GQA one per KV head. Matches the op's output_hidden = max(q,kv)*d_v.
+  int out_heads = std::max(q_num_heads, kv_num_heads);
 
   final_state.resize(batch_size * kv_num_heads * head_dim_k * head_dim_v, 0.0f);
-  // Output always indexed by kv_num_heads (matches schema: output_dim == V_dim)
-  output.resize(batch_size * kv_num_heads * seq_length * head_dim_v, 0.0f);
+  output.resize(batch_size * out_heads * seq_length * head_dim_v, 0.0f);
 
   if (initial_state != nullptr) {
     final_state = *initial_state;
@@ -229,8 +232,8 @@ void LinearAttentionGQAReference(
               for (int k = 0; k < head_dim_k; k++) {
                 sum += final_state[state_offset(k, v_idx)] * query[q_base + k];
               }
-              // For standard, output head == q head; since q==kv per schema, also == kv_h index
-              int out_idx = ((b * kv_num_heads + (kv_h * heads_per_group + g)) * seq_length + t) * head_dim_v + v_idx;
+              // Standard GQA: output head == q head, indexed with out_heads (= q_num_heads) stride.
+              int out_idx = ((b * out_heads + q_h) * seq_length + t) * head_dim_v + v_idx;
               output[out_idx] = scale * sum;
             }
           }
@@ -243,7 +246,7 @@ void LinearAttentionGQAReference(
             for (int k = 0; k < head_dim_k; k++) {
               sum += final_state[state_offset(k, v_idx)] * query[q_base + k];
             }
-            int out_idx = ((b * kv_num_heads + kv_h) * seq_length + t) * head_dim_v + v_idx;
+            int out_idx = ((b * out_heads + kv_h) * seq_length + t) * head_dim_v + v_idx;
             output[out_idx] = scale * sum;
           }
         }
@@ -424,12 +427,14 @@ void RunLinearAttentionGQATest(
   int bht_kv = batch_size * kv_num_heads * seq_length;
   bool decay_broadcast_dk = (decay != nullptr && static_cast<int>(decay->size()) == bht_kv);
 
+  // Output head count = max(q,kv), matching the op's output_hidden = max(q,kv)*d_v.
+  int out_heads = std::max(q_num_heads, kv_num_heads);
+
   // Pack to 3D — each tensor uses its own head count
   auto query_3d = PackBHTD_to_BTHD(query, batch_size, q_num_heads, seq_length, head_dim_k);
   auto key_3d = PackBHTD_to_BTHD(key, batch_size, n_k_heads, seq_length, head_dim_k);
   auto value_3d = PackBHTD_to_BTHD(value, batch_size, kv_num_heads, seq_length, head_dim_v);
-  // Output always indexed by kv_num_heads (matches schema)
-  auto output_3d = PackBHTD_to_BTHD(expected_output_4d, batch_size, kv_num_heads, seq_length, head_dim_v);
+  auto output_3d = PackBHTD_to_BTHD(expected_output_4d, batch_size, out_heads, seq_length, head_dim_v);
 
   OpTester tester("LinearAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<std::string>("update_rule", update_rule);
@@ -466,7 +471,7 @@ void RunLinearAttentionGQATest(
     tester.AddOptionalInputEdge<float>();
   }
 
-  tester.AddOutput<float>("output", {batch_size, seq_length, kv_num_heads * head_dim_v},
+  tester.AddOutput<float>("output", {batch_size, seq_length, out_heads * head_dim_v},
                           output_3d, false, 0.005f, 0.005f);
   tester.AddOutput<float>("present_state", {batch_size, kv_num_heads, head_dim_k, head_dim_v},
                           expected_state, false, 0.005f, 0.005f);
@@ -1196,6 +1201,186 @@ TEST(ContribOpLinearAttentionTest, GatedDeltaRule_InverseGQA_LargerDims) {
                             query, key, value,
                             &initial_state, &decay, &beta);
 }
+
+// ---------------------------------------------------------------------------
+// Multi-chunk sequences: T > chunk_size (default 64) so the chunk-parallel
+// prefill path crosses chunk boundaries and must carry state across chunks.
+// These validate the cross-chunk state accumulation for every update rule.
+// (With the per-token paths they are just longer sequences.)
+// ---------------------------------------------------------------------------
+
+TEST(ContribOpLinearAttentionTest, LinearRule_MultiChunk) {
+  const int B = 1, H = 2, T = 200, dk = 32, dv = 64;
+  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+
+  std::vector<float> query(B * H * T * dk);
+  std::vector<float> key(B * H * T * dk);
+  std::vector<float> value(B * H * T * dv);
+
+  for (int i = 0; i < B * H * T * dk; i++) {
+    query[i] = 0.1f * std::sin(static_cast<float>(i) * 0.013f);
+    key[i] = 0.1f * std::cos(static_cast<float>(i) * 0.017f);
+  }
+  for (int i = 0; i < B * H * T * dv; i++) {
+    value[i] = 0.1f * std::sin(static_cast<float>(i) * 0.023f + 0.5f);
+  }
+
+  RunLinearAttentionTest("linear", B, H, T, dk, dv, scale,
+                         query, key, value,
+                         nullptr, nullptr, nullptr);
+}
+
+TEST(ContribOpLinearAttentionTest, GatedRule_MultiChunk_PerDimDecay) {
+  const int B = 1, H = 2, T = 150, dk = 32, dv = 64;
+  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+
+  std::vector<float> query(B * H * T * dk);
+  std::vector<float> key(B * H * T * dk);
+  std::vector<float> value(B * H * T * dv);
+  std::vector<float> decay(B * H * T * dk);
+
+  for (int i = 0; i < B * H * T * dk; i++) {
+    query[i] = 0.1f * std::sin(static_cast<float>(i) * 0.013f);
+    key[i] = 0.1f * std::cos(static_cast<float>(i) * 0.017f);
+    decay[i] = -0.05f - 0.05f * std::abs(std::sin(static_cast<float>(i) * 0.07f));
+  }
+  for (int i = 0; i < B * H * T * dv; i++) {
+    value[i] = 0.1f * std::sin(static_cast<float>(i) * 0.023f + 0.5f);
+  }
+
+  std::vector<float> initial_state(B * H * dk * dv, 0.01f);
+
+  RunLinearAttentionTest("gated", B, H, T, dk, dv, scale,
+                         query, key, value,
+                         &initial_state, &decay, nullptr);
+}
+
+TEST(ContribOpLinearAttentionTest, DeltaRule_MultiChunk) {
+  const int B = 2, H = 2, T = 130, dk = 32, dv = 64;
+  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+
+  std::vector<float> query(B * H * T * dk);
+  std::vector<float> key(B * H * T * dk);
+  std::vector<float> value(B * H * T * dv);
+  std::vector<float> beta(B * H * T);
+
+  for (int i = 0; i < B * H * T * dk; i++) {
+    query[i] = 0.1f * std::sin(static_cast<float>(i) * 0.013f);
+    key[i] = 0.1f * std::cos(static_cast<float>(i) * 0.017f);
+  }
+  for (int i = 0; i < B * H * T * dv; i++) {
+    value[i] = 0.1f * std::sin(static_cast<float>(i) * 0.023f + 0.5f);
+  }
+  for (int i = 0; i < B * H * T; i++) {
+    beta[i] = 0.5f + 0.3f * std::sin(static_cast<float>(i) * 0.031f);
+  }
+
+  RunLinearAttentionTest("delta", B, H, T, dk, dv, scale,
+                         query, key, value,
+                         nullptr, nullptr, &beta);
+}
+
+// Full gated_delta across chunk boundaries at Qwen3.5-like dims with broadcast (per-head) decay.
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_MultiChunk_Qwen35Like) {
+  const int B = 1, H = 2, T = 192, dk = 128, dv = 128;
+  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+
+  std::vector<float> query(B * H * T * dk);
+  std::vector<float> key(B * H * T * dk);
+  std::vector<float> value(B * H * T * dv);
+  std::vector<float> decay(B * H * T);  // broadcast (per-head) decay
+  std::vector<float> beta(B * H * T);
+
+  for (int i = 0; i < B * H * T * dk; i++) {
+    query[i] = 0.05f * std::sin(static_cast<float>(i) * 0.0013f);
+    key[i] = 0.05f * std::cos(static_cast<float>(i) * 0.0017f);
+  }
+  for (int i = 0; i < B * H * T * dv; i++) {
+    value[i] = 0.05f * std::sin(static_cast<float>(i) * 0.0023f + 0.5f);
+  }
+  for (int i = 0; i < B * H * T; i++) {
+    decay[i] = -0.1f - 0.05f * std::abs(std::sin(static_cast<float>(i) * 0.03f));
+    beta[i] = 0.5f + 0.3f * std::sin(static_cast<float>(i) * 0.031f);
+  }
+
+  std::vector<float> initial_state(B * H * dk * dv, 0.01f);
+
+  RunLinearAttentionTest("gated_delta", B, H, T, dk, dv, scale,
+                         query, key, value,
+                         &initial_state, &decay, &beta);
+}
+
+// gated_delta across chunk boundaries with per-key-dim decay (stresses the per-dim
+// cumulative-decay path plus the UT solve over multiple chunks).
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_MultiChunk_PerDimDecay) {
+  const int B = 1, H = 3, T = 175, dk = 64, dv = 64;
+  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+
+  std::vector<float> query(B * H * T * dk);
+  std::vector<float> key(B * H * T * dk);
+  std::vector<float> value(B * H * T * dv);
+  std::vector<float> decay(B * H * T * dk);
+  std::vector<float> beta(B * H * T);
+
+  for (int i = 0; i < B * H * T * dk; i++) {
+    query[i] = 0.08f * std::sin(static_cast<float>(i) * 0.011f);
+    key[i] = 0.08f * std::cos(static_cast<float>(i) * 0.019f);
+    decay[i] = -0.04f - 0.04f * std::abs(std::sin(static_cast<float>(i) * 0.05f));
+  }
+  for (int i = 0; i < B * H * T * dv; i++) {
+    value[i] = 0.08f * std::sin(static_cast<float>(i) * 0.017f + 0.3f);
+  }
+  for (int i = 0; i < B * H * T; i++) {
+    beta[i] = 0.4f + 0.4f * std::sin(static_cast<float>(i) * 0.023f);
+  }
+
+  std::vector<float> initial_state(B * H * dk * dv, 0.005f);
+
+  RunLinearAttentionTest("gated_delta", B, H, T, dk, dv, scale,
+                         query, key, value,
+                         &initial_state, &decay, &beta);
+}
+
+// ---------------------------------------------------------------------------
+// Standard GQA (q_num_heads > kv_num_heads, so n_out = q/kv > 1) across several head ratios,
+// update rules, and dims (d_k % 16 == 0, d_v % 32 == 0). These exercise the per-query-head
+// output: output_hidden = max(q_num_heads, kv_num_heads) * d_v.
+// ---------------------------------------------------------------------------
+namespace {
+void RunStandardGQA(const std::string& rule, int q_H, int kv_H, int dk, int dv) {
+  const int B = 2, n_k = kv_H, T = 10;
+  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+  const bool has_decay = (rule == "gated" || rule == "gated_delta");
+  const bool has_beta = (rule == "delta" || rule == "gated_delta");
+
+  std::vector<float> query(B * q_H * T * dk);
+  std::vector<float> key(B * n_k * T * dk);
+  std::vector<float> value(B * kv_H * T * dv);
+  std::vector<float> decay(B * kv_H * T);  // broadcast (per-head)
+  std::vector<float> beta(B * kv_H * T);
+
+  for (int i = 0; i < B * q_H * T * dk; i++) query[i] = 0.1f * std::sin(static_cast<float>(i) * 0.013f);
+  for (int i = 0; i < B * n_k * T * dk; i++) key[i] = 0.1f * std::cos(static_cast<float>(i) * 0.017f);
+  for (int i = 0; i < B * kv_H * T * dv; i++) value[i] = 0.1f * std::sin(static_cast<float>(i) * 0.023f + 0.5f);
+  for (int i = 0; i < B * kv_H * T; i++) {
+    decay[i] = -0.1f - 0.05f * std::abs(std::sin(static_cast<float>(i) * 0.3f));
+    beta[i] = 0.5f + 0.3f * std::sin(static_cast<float>(i) * 0.31f);
+  }
+  std::vector<float> initial_state(B * kv_H * dk * dv, 0.01f);
+
+  RunLinearAttentionGQATest(rule, B, q_H, kv_H, n_k, T, dk, dv, scale,
+                            query, key, value, &initial_state,
+                            has_decay ? &decay : nullptr, has_beta ? &beta : nullptr);
+}
+}  // namespace
+
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N2) { RunStandardGQA("gated_delta", 4, 2, 32, 64); }
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N4) { RunStandardGQA("gated_delta", 8, 2, 32, 64); }
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N8) { RunStandardGQA("gated_delta", 16, 2, 32, 64); }
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N16) { RunStandardGQA("gated_delta", 16, 1, 32, 64); }
+// no-retrieval / no-beta branch (linear) and the larger dk=dv=128 shape
+TEST(ContribOpLinearAttentionTest, LinearRule_StandardGQA_N4) { RunStandardGQA("linear", 8, 2, 32, 64); }
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N4_Dim128) { RunStandardGQA("gated_delta", 8, 2, 128, 128); }
 
 }  // namespace test
 }  // namespace onnxruntime

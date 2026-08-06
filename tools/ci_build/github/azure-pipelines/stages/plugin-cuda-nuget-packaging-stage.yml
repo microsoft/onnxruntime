@@ -17,6 +17,7 @@ parameters:
   type: object
   default:
     win_x64: false
+    win_arm64: false
     linux_x64: false
     linux_aarch64: false
 
@@ -26,6 +27,8 @@ stages:
   dependsOn:
   - ${{ if eq(parameters.platforms.win_x64, true) }}:
     - Win_plugin_cuda_x64_Build
+  - ${{ if eq(parameters.platforms.win_arm64, true) }}:
+    - Win_plugin_cuda_arm64_Build
   - ${{ if eq(parameters.platforms.linux_x64, true) }}:
     - Linux_plugin_cuda_x64
   - ${{ if eq(parameters.platforms.linux_aarch64, true) }}:
@@ -81,6 +84,13 @@ stages:
           artifactName: cuda_plugin_win_x64
           targetPath: '$(Build.BinariesDirectory)\artifacts\win_x64'
 
+    - ${{ if eq(parameters.platforms.win_arm64, true) }}:
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download win-arm64 artifacts'
+        inputs:
+          artifactName: cuda_plugin_win_arm64
+          targetPath: '$(Build.BinariesDirectory)\artifacts\win_arm64'
+
     - ${{ if eq(parameters.platforms.linux_x64, true) }}:
       - task: DownloadPipelineArtifact@2
         displayName: 'Download linux-x64 artifacts'
@@ -111,6 +121,7 @@ stages:
           # time and resolve to a boolean value 'True' or 'False'. Compare case-insensitively.
           platforms_enabled = {
               "win_x64":        "${{ parameters.platforms.win_x64 }}".lower() == "true",
+              "win_arm64":      "${{ parameters.platforms.win_arm64 }}".lower() == "true",
               "linux_x64":      "${{ parameters.platforms.linux_x64 }}".lower() == "true",
               "linux_aarch64":  "${{ parameters.platforms.linux_aarch64 }}".lower() == "true",
           }

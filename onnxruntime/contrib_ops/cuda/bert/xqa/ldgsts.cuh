@@ -27,7 +27,7 @@ namespace ldgsts {
 // @fixme: prefetch makes it slower on sm_86. Try on other platforms.
 template <uint32_t size>
 __device__ inline void copyAsync(
-    void* dst, void const* src, uint32_t srcSize = size)  // srcSize == 0 means filling with zeros.
+    void* dst, const void* src, uint32_t srcSize = size)  // srcSize == 0 means filling with zeros.
 {
   static_assert(size == 4 || size == 8 || size == 16);
   if constexpr (size == 16) {

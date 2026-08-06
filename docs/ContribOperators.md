@@ -52,6 +52,8 @@ Do not modify directly.*
   * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
   * <a href="#com.microsoft.LinearAttention">com.microsoft.LinearAttention</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
+  * <a href="#com.microsoft.MatMulBlockQuantizedFp4Weight">com.microsoft.MatMulBlockQuantizedFp4Weight</a>
+  * <a href="#com.microsoft.MatMulBlockQuantizedFp8Weight">com.microsoft.MatMulBlockQuantizedFp8Weight</a>
   * <a href="#com.microsoft.MatMulBnb4">com.microsoft.MatMulBnb4</a>
   * <a href="#com.microsoft.MatMulFpQ4">com.microsoft.MatMulFpQ4</a>
   * <a href="#com.microsoft.MatMulInteger16">com.microsoft.MatMulInteger16</a>
@@ -1675,7 +1677,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>(Optional) the source used to generate the engine/context cache file. Ort EP or native SDK tool chain</dd>
 </dl>
 
-#### Inputs (1 - &#8734;)
+#### Inputs (0 - &#8734;)
 
 <dl>
 <dt><tt>inputs</tt> (variadic, heterogeneous) : T</dt>
@@ -2635,6 +2637,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
+<dt><tt>sliding_window_cache</tt> : int</dt>
+<dd>Set to 1 when the past/present KV buffers are window-sized instead of holding the whole sequence. The op then keeps only the min(total_sequence_length, cache_capacity) most recent tokens, contiguously, using cache-relative indexing and evicting from the front as needed. Requires local_window_size > 0 and a cache capacity of at least local_window_size. Multi-token steps may use a temporary staging buffer, so the capacity need not cover the entire step. Default value is 0 (full-length cache).</dd>
 <dt><tt>smooth_softmax</tt> : int</dt>
 <dd>Use a smooth factor in softmax.</dd>
 <dt><tt>softcap</tt> : float</dt>
@@ -2909,6 +2913,129 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.MatMulBlockQuantizedFp4Weight"></a><a name="com.microsoft.matmulblockquantizedfp4weight">**com.microsoft.MatMulBlockQuantizedFp4Weight**</a>
+
+  Weight-only NVFP4 (E2M1) matrix multiplication.
+  
+  The weight tensor B is stored as packed NVFP4: two E2M1 values per byte (low nibble first).
+  The dequantized weight value is `e2m1(B) * weight_scale_2 * e4m3(weight_scale[n, k / block_size])`,
+  where `weight_scale` holds one E4M3 scale per `block_size` (default 16) consecutive K values and
+  `weight_scale_2` is a single global fp32 scale. The weight is dequantized to the activation type
+  (FP16/BF16) and multiplied with the FP16/BF16 activation. This path is architecture independent and
+  runs on Hopper (SM90) as well as Blackwell.
+  
+  The output columns `N` and the contraction dimension `K` are derived from the weight shape:
+  `N = B.shape[0]` and `K = 2 * B.shape[1]`. `K` must therefore be even.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>block_size</tt> : int</dt>
+<dd>Number of consecutive K values that share one E4M3 weight scale. Default 16.</dd>
+</dl>
+
+#### Inputs (4 - 6)
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>Row-major FP16/BF16 activation of shape [..., K].</dd>
+<dt><tt>B</tt> : T1</dt>
+<dd>Packed NVFP4 weight of shape [N, K/2] stored as uint8 (two E2M1 values per byte, low nibble first).</dd>
+<dt><tt>weight_scale</tt> : T2</dt>
+<dd>Per-block E4M3 weight scales of shape [N, ceil(K / block_size)] stored as raw uint8 bytes.</dd>
+<dt><tt>weight_scale_2</tt> : T3</dt>
+<dd>Global fp32 weight scale (scalar).</dd>
+<dt><tt>input_scale</tt> (optional) : T3</dt>
+<dd>Optional global fp32 activation scale (scalar). Accepted for parity with quantized checkpoints; it is a no-op on the weight-only FP16/BF16 path and is reserved for the native NVFP4 path on Blackwell.</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>Optional bias of shape [N].</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output of shape [..., N] in the activation type.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain activation, bias and output to FP16 or BF16.</dd>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Constrain packed NVFP4 weight to uint8.</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Constrain E4M3 weight scales to uint8.</dd>
+<dt><tt>T3</tt> : tensor(float)</dt>
+<dd>Constrain scalar scales to FP32.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulBlockQuantizedFp8Weight"></a><a name="com.microsoft.matmulblockquantizedfp8weight">**com.microsoft.MatMulBlockQuantizedFp8Weight**</a>
+
+  Weight-only block-scaled FP8 (E4M3) matrix multiplication.
+  
+  The weight tensor B is FP8 E4M3 of shape [N, K] with one FP32 scale per `block_size` consecutive
+  K values (`b_scale` of shape [N, ceil(K / block_size)]). The dequantized weight value is
+  `fp8_e4m3(B[n, k]) * b_scale[n, k / block_size]`. The weight is dequantized to the activation
+  type (FP16/BF16) and multiplied with the FP16/BF16 activation A. This path is architecture
+  independent and runs on any CUDA architecture (SM80+).
+  
+  When the optional `a_scale` (a single fp32 scalar) is provided, the activation A is statically
+  quantized to FP8 E4M3 and dequantized back (`a_deq = fp8_e4m3(A / a_scale) * a_scale`) before the
+  matmul, realizing W8A8 activation numerics. When `a_scale` is omitted the activation is kept at
+  full FP16/BF16 precision (weight-only W8A16).
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>block_size</tt> : int</dt>
+<dd>Number of consecutive K values that share one weight scale. Default 128.</dd>
+</dl>
+
+#### Inputs (3 - 5)
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>Row-major FP16/BF16 activation of shape [..., K].</dd>
+<dt><tt>B</tt> : T1</dt>
+<dd>Row-major FP8 E4M3 weight of shape [N, K].</dd>
+<dt><tt>b_scale</tt> : T2</dt>
+<dd>Per-block FP32 weight scales of shape [N, ceil(K / block_size)].</dd>
+<dt><tt>a_scale</tt> (optional) : T2</dt>
+<dd>Optional global fp32 activation scale (scalar). When present, A is statically quantized to FP8 E4M3 with this scale and dequantized back before the matmul (W8A8 numerics); when absent, A stays in full FP16/BF16 precision.</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>Optional bias of shape [N].</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output of shape [..., N] in the activation type.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain activation, bias and output to FP16 or BF16.</dd>
+<dt><tt>T1</tt> : tensor(float8e4m3fn)</dt>
+<dd>Constrain weight to FP8 E4M3.</dd>
+<dt><tt>T2</tt> : tensor(float)</dt>
+<dd>Constrain scales to FP32.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.MatMulBnb4"></a><a name="com.microsoft.matmulbnb4">**com.microsoft.MatMulBnb4**</a>
 
   MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4 data type (https://arxiv.org/pdf/2305.14314.pdf). It does Matrix Multiplication like MatMul (https://github.com/onnx/onnx/blob/main/docs/Operators.md#matmul) with differences:
@@ -3159,7 +3286,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>block_size</tt> : int (required)</dt>
 <dd>Size of each quantization block along the K (input feature) dimension. Must be a power of two and ≥ 16 (e.g., 16, 32, 64, 128).</dd>
 <dt><tt>weight_prepacked</tt> : int</dt>
-<dd>If set, input B is already prepacked into an EP-specific layout and the EP skips runtime weight prepacking. 0 (default): not prepacked. 1: prepacked in the CUDA SM80 fpA_intB layout. 2: reserved for a future SM90 layout (currently rejected at kernel construction).</dd>
+<dd>If set, input B is already prepacked into an EP-specific layout and the EP skips runtime weight prepacking. 0 (default): not prepacked. 1: prepacked in the CUDA SM80 fpA_intB layout. 2: prepacked in the CUDA SM90 (Hopper) fpA_intB layout, consumed by the native SM90 kernel (requires a compute capability 9.0 device and block_size in {64, 128}).</dd>
 </dl>
 
 #### Inputs (3 - 6)
@@ -4107,21 +4234,37 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>do_rotary</tt> : int</dt>
 <dd>Whether to use rotary position embedding. Default value is 0.</dd>
+<dt><tt>k_cache_dtype</tt> : string</dt>
+<dd>Logical element type stored in 'key_cache', named after the ONNX element type it denotes: '' (the default) means the cache tensor's own element type is also the logical type. 'float16', 'bfloat16', 'int8' and 'float8e4m3fn' name that same type explicitly and must agree with the tensor. 'int4' and 'float4e2m1' name sub-byte types packed two per byte into a uint8 cache, where the last cache dimension holds (head_size + 1) / 2 bytes and logical element 2*i occupies the low-order bits of byte i. Every value is a signed, zero-symmetric type: quantization uses a scale with no zero point, so unsigned logical types are not expressible.</dd>
+<dt><tt>k_quant_type</tt> : string</dt>
+<dd>Quantization granularity of the key cache: 'NONE', 'PER_TENSOR' or 'PER_CHANNEL'. Must be non-'NONE' exactly when 'key_cache' has a quantized element type, and then 'k_scale' is required. Default value is 'NONE'.</dd>
+<dt><tt>kv_cache_layout</tt> : string</dt>
+<dd>Physical layout of the KV cache: 'SEPARATE' or 'LATENT'. 'SEPARATE' (the default) uses distinct 'key_cache' and 'value_cache' tensors. 'LATENT' selects absorbed Multi-head Latent Attention: there is a single cache, 'value' and 'value_cache' must be absent, 'kv_num_heads' must be 1, and V for every head is the leading 'v_head_size' channels of the same 'key_cache' row that supplies K. Default value is 'SEPARATE'.</dd>
 <dt><tt>kv_num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for k and v</dd>
 <dt><tt>local_window_size</tt> : int</dt>
 <dd>left_window_size for local attention (like Mistral). Default value is -1 meaning unused.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for q</dd>
+<dt><tt>qk_norm_epsilon</tt> : float</dt>
+<dd>Epsilon used by the Q/K RMSNorm when 'q_norm_weight' and 'k_norm_weight' are provided. Default value is 1e-6.</dd>
 <dt><tt>rotary_interleaved</tt> : int</dt>
 <dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
+<dt><tt>rotary_offset</tt> : int</dt>
+<dd>First channel within head_size covered by rotary embedding, so RoPE is applied to [rotary_offset, rotary_offset + rotary_dim) and channels outside that range are copied through. Must be a multiple of 8. MLA sets this to kv_lora_rank so that RoPE only touches the positional suffix of the latent row. Default value is 0.</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 <dt><tt>softcap</tt> : float</dt>
 <dd>Softcap value for attention weights. Default value is 0.</dd>
+<dt><tt>v_cache_dtype</tt> : string</dt>
+<dd>Logical element type stored in 'value_cache', with the same values and packing rule as 'k_cache_dtype'. Default value is '' (use the cache tensor's element type).</dd>
+<dt><tt>v_head_size</tt> : int</dt>
+<dd>Width of the value head, which may be narrower than head_size. Only valid when 'kv_cache_layout' is 'LATENT' (DeepSeek-V3 uses head_size=576 and v_head_size=512). When v_head_size differs from head_size the 'scale' attribute is required, because the 1/sqrt(head_size) default no longer matches the pre-absorption head width. Default value is 0, meaning the same as head_size.</dd>
+<dt><tt>v_quant_type</tt> : string</dt>
+<dd>Quantization granularity of the value cache: 'NONE', 'PER_TENSOR' or 'PER_CHANNEL'. Must be non-'NONE' exactly when 'value_cache' has a quantized element type, and then 'v_scale' is required. Default value is 'NONE'.</dd>
 </dl>
 
-#### Inputs (8 - 10)
+#### Inputs (8 - 17)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -4129,11 +4272,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>key</tt> (optional) : T</dt>
 <dd>Key with shape (num_tokens, kv_hidden_size) </dd>
 <dt><tt>value</tt> (optional) : T</dt>
-<dd>Value with shape (num_tokens, kv_hidden_size)</dd>
-<dt><tt>key_cache</tt> : T</dt>
-<dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op.</dd>
-<dt><tt>value_cache</tt> : T</dt>
-<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op. This should be the same shape as key_cache.</dd>
+<dd>Value with shape (num_tokens, kv_hidden_size). Must be absent when 'kv_cache_layout' is 'LATENT'.</dd>
+<dt><tt>key_cache</tt> : T_CACHE</dt>
+<dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op. When 'kv_cache_layout' is 'LATENT' this is the only cache, and V is read from its leading v_head_size channels.</dd>
+<dt><tt>value_cache</tt> (optional) : T_CACHE</dt>
+<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op. This should be the same shape as key_cache. Must be absent when 'kv_cache_layout' is 'LATENT'.</dd>
 <dt><tt>cumulative_sequence_length</tt> : S</dt>
 <dd>A tensor with shape (batch_size + 1). It specifies the cumulative sequence lengths between the packed entries in Q/K/V.</dd>
 <dt><tt>past_seqlens</tt> : S</dt>
@@ -4144,17 +4287,31 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>2D tensor with shape (max total seqlen, head_size / 2).</dd>
 <dt><tt>sin_cache</tt> (optional) : T</dt>
 <dd>2D tensor with shape (max total seqlen, head_size / 2).</dd>
+<dt><tt>slot_mapping</tt> (optional) : S</dt>
+<dd>1D tensor with shape (num_tokens). For each query token, the flat slot index (block_id * block_size + offset_in_block) at which its key/value is written into the KV cache. A value of -1 skips the cache write for that token, which lets a scheduler suppress stores for prefix-cache hits or rejected speculative tokens. When absent, slots are derived from 'past_seqlens', 'cumulative_sequence_length' and 'block_table' as before. 'block_table' is still required, because it defines the read path.</dd>
+<dt><tt>head_sink</tt> (optional) : T</dt>
+<dd>1D tensor with shape (num_heads). Each head has a learnable sink logit that participates in the softmax denominator but contributes no value, so attention can 'do nothing'.</dd>
+<dt><tt>q_norm_weight</tt> (optional) : T</dt>
+<dd>1D tensor with shape (head_size). RMSNorm gain applied to each query head before rotary embedding. Must be provided together with 'k_norm_weight'.</dd>
+<dt><tt>k_norm_weight</tt> (optional) : T</dt>
+<dd>1D tensor with shape (head_size). RMSNorm gain applied to each key head before rotary embedding and before the key is written to the KV cache. Must be provided together with 'q_norm_weight'.</dd>
+<dt><tt>k_scale</tt> (optional) : T_KV_SCALE</dt>
+<dd>Dequantization scale of the key cache. Shape is (1) when 'k_quant_type' is 'PER_TENSOR' and (kv_num_heads, 1, head_size) when it is 'PER_CHANNEL'. Quantization is symmetric (no zero point).</dd>
+<dt><tt>v_scale</tt> (optional) : T_KV_SCALE</dt>
+<dd>Dequantization scale of the value cache. Shape is (1) when 'v_quant_type' is 'PER_TENSOR' and (kv_num_heads, 1, head_size) when it is 'PER_CHANNEL'. Quantization is symmetric (no zero point).</dd>
+<dt><tt>attention_metadata</tt> (optional) : S</dt>
+<dd>1D tensor with shape (2) holding [max_query_len_bound, max_kv_len_bound] in CPU memory. max_query_len_bound is an upper bound on the number of new tokens any one sequence contributes; max_kv_len_bound is an upper bound on past_seqlens[i] + query_len[i]. Both are replay-wide upper bounds, never exact per-step values: they must hold for every step this node -- or a CUDA Graph capturing it -- will serve, and 0 means 'unknown'. They may only select the backend and size launch dimensions and workspaces; they never enter a mask comparison, so over-estimating only costs empty work. The op can otherwise obtain these only by copying 'cumulative_sequence_length' and 'past_seqlens' back from the device and synchronizing the stream on every call, which stalls the pipeline once per node per step and makes the op impossible to capture into a CUDA Graph. Schedulers already track these bounds on the host, so supplying them is normally free. When absent, the op falls back to the device readback. The values are trusted: an under-sized bound violates the contract and may omit attention work.</dd>
 </dl>
 
 #### Outputs (1 - 3)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>3D output tensor with shape (num_tokens, hidden_size)</dd>
-<dt><tt>key_cache_out</tt> (optional) : T</dt>
+<dd>2D output tensor with shape (num_tokens, num_heads * v_head_size), which is (num_tokens, hidden_size) unless 'kv_cache_layout' is 'LATENT' with a narrower v_head_size.</dd>
+<dt><tt>key_cache_out</tt> (optional) : T_CACHE</dt>
 <dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always the same tensor as key_cache.</dd>
-<dt><tt>value_cache_out</tt> (optional) : T</dt>
-<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always the same tensor as value_cache.</dd>
+<dt><tt>value_cache_out</tt> (optional) : T_CACHE</dt>
+<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always the same tensor as value_cache. Must be absent when 'kv_cache_layout' is 'LATENT'.</dd>
 </dl>
 
 #### Type Constraints
@@ -4162,6 +4319,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output to float tensors.</dd>
+<dt><tt>T_CACHE</tt> : tensor(float16), tensor(bfloat16), tensor(int8), tensor(float8e4m3fn)</dt>
+<dd>Constrain the KV cache to float or quantized tensors.</dd>
+<dt><tt>T_KV_SCALE</tt> : tensor(float)</dt>
+<dd>Constrain KV cache scales to float tensors.</dd>
 <dt><tt>S</tt> : tensor(int32)</dt>
 <dd>Constrain Positional inputs to int tensor.</dd>
 </dl>
@@ -4935,7 +5096,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>activation_type</tt> : string</dt>
 <dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu</dd>
 <dt><tt>block_size</tt> : int</dt>
-<dd>Size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). If provided, both hidden_size and inter_size must be divisible by the block size. Otherwise, there is no blocking and a whole column shares one scaling factor. </dd>
+<dd>Size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). Both hidden_size and inter_size must be divisible by the block size. The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. For integer quantization ('int'), omitting block_size means there is no blocking and a whole column shares one scaling factor. </dd>
 <dt><tt>expert_weight_bits</tt> : int</dt>
 <dd>Number of bits used in quantized weights. Supported values are 2, 4, and 8. Default is 4 bits</dd>
 <dt><tt>k</tt> : int</dt>
@@ -4943,7 +5104,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>normalize_routing_weights</tt> : int</dt>
 <dd>Whether to normalize routing weights</dd>
 <dt><tt>quant_type</tt> : string</dt>
-<dd>Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, or 'wfp4afp8' for MXFP4 weight with FP8 activation. When quant_type is 'fp4', weights are stored in MXFP4 format (2 values per byte), fc*_scales inputs contain MXFP4 block scales, and fc*_global_scale inputs must be provided.</dd>
+<dd>Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, 'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, or 'wfp4afp8' for MXFP4 weight with FP8 activation. When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. 'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales with block_size 16.</dd>
 <dt><tt>swiglu_fusion</tt> : int</dt>
 <dd>0: not fused, 1: fused and interleaved. 2: fused and not interleaved.</dd>
 <dt><tt>swiglu_limit</tt> : float</dt>
@@ -4964,13 +5125,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>fc1_experts_weights</tt> : T1</dt>
 <dd>3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / pack_size), The fusion_size is 2 for fused swiglu, or 1 otherwise. The pack_size is 8 / expert_weight_bits.</dd>
 <dt><tt>fc1_scales</tt> (optional) : T2</dt>
-<dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, fusion_size * inter_size), or a 3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, fusion_size * inter_size, hidden_size / 32). Not used for quant_type='fp8'.</dd>
+<dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, fusion_size * inter_size), or a 3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, fusion_size * inter_size, hidden_size / 32). For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape (num_experts, fusion_size * inter_size, hidden_size / 16). Not used for quant_type='fp8'.</dd>
 <dt><tt>fc1_experts_bias</tt> (optional) : T</dt>
 <dd>2D optional tensor with shape (num_experts, fusion_size * inter_size)</dd>
 <dt><tt>fc2_experts_weights</tt> : T1</dt>
 <dd>3D tensor with shape (num_experts, hidden_size, inter_size / pack_size)</dd>
 <dt><tt>fc2_scales</tt> (optional) : T2</dt>
-<dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, hidden_size), or a 3D tensor with shape (num_experts, hidden_size, inter_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, hidden_size, inter_size / 32). Not used for quant_type='fp8'.</dd>
+<dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, hidden_size), or a 3D tensor with shape (num_experts, hidden_size, inter_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, hidden_size, inter_size / 32). For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape (num_experts, hidden_size, inter_size / 16). Not used for quant_type='fp8'.</dd>
 <dt><tt>fc2_experts_bias</tt> (optional) : T</dt>
 <dd>2D optional tensor with shape (num_experts, hidden_size)</dd>
 <dt><tt>fc3_experts_weights</tt> (optional) : T1</dt>
@@ -4988,9 +5149,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>router_weights</tt> (optional) : T</dt>
 <dd>2D optional tensor with shape (num_tokens, num_experts). When provided, router_probs is used only for Top-K expert selection, and router_weights is used for aggregating expert outputs (the values at the selected expert indices are gathered and used as mixing weights). This enables DeepSeek-style noaux_tc routing where different tensors are used for selection and aggregation. When not provided, router_probs is used for both selection and aggregation (backward compatible).</dd>
 <dt><tt>fc1_global_scale</tt> (optional) : T4</dt>
-<dd>1D optional tensor with shape (num_experts,). Per-expert global weight scale for FC1. Required when quant_type is 'fp4', 'fp8', or 'wfp4afp8'.</dd>
+<dd>1D optional tensor with shape (num_experts,). Per-expert global weight scale for FC1. Required when quant_type is 'fp4', 'nvfp4', 'fp8', or 'wfp4afp8'.</dd>
 <dt><tt>fc2_global_scale</tt> (optional) : T4</dt>
-<dd>1D optional tensor with shape (num_experts,). Per-expert global weight scale for FC2. Required when quant_type is 'fp4', 'fp8', or 'wfp4afp8'.</dd>
+<dd>1D optional tensor with shape (num_experts,). Per-expert global weight scale for FC2. Required when quant_type is 'fp4', 'nvfp4', 'fp8', or 'wfp4afp8'.</dd>
 <dt><tt>fc1_act_scale</tt> (optional) : T4</dt>
 <dd>1D optional tensor with shape (1,) or (num_experts,). Activation scale for FC1 FP8 activation modes.</dd>
 <dt><tt>fc2_act_scale</tt> (optional) : T4</dt>
@@ -5015,8 +5176,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T1</tt> : tensor(uint8), tensor(float8e4m3fn)</dt>
 <dd>Constrain quantized weight types. Integer and FP4 weights use uint8. FP8 weights use float8e4m3fn.</dd>
-<dt><tt>T2</tt> : tensor(float), tensor(float16), tensor(bfloat16), tensor(float8e8m0)</dt>
-<dd>Constrain scale types. Float tensors are used for integer quantization scales. Float8e8m0 tensors are used for MXFP block scales.</dd>
+<dt><tt>T2</tt> : tensor(float), tensor(float16), tensor(bfloat16), tensor(float8e8m0), tensor(float8e4m3fn)</dt>
+<dd>Constrain scale types. Float tensors are used for integer quantization scales. Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.</dd>
 <dt><tt>T4</tt> : tensor(float)</dt>
 <dd>Constrain FP4 global scale type to float32 tensors.</dd>
 </dl>

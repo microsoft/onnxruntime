@@ -7,12 +7,14 @@
 #include <optional>
 #include <random>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/scoped_env_vars.h"
 #ifdef USE_WEBGPU
 #include "core/graph/model.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
@@ -1795,6 +1797,8 @@ struct QuantGQAConfig {
   int head_size;
   std::string quant_type;  // "PER_TENSOR" or "PER_CHANNEL"
   int bit_width;           // 4 or 8
+  bool use_fp16 = false;
+  bool disable_flash = false;
 };
 
 void RunQuantizedGQAPromptTest(const QuantGQAConfig& cfg) {
@@ -1827,9 +1831,23 @@ void RunQuantizedGQAPromptTest(const QuantGQAConfig& cfg) {
   tester.AddAttribute<std::string>("v_quant_type", cfg.quant_type);
   tester.AddAttribute<int64_t>("kv_cache_bit_width", static_cast<int64_t>(cfg.bit_width));
 
-  tester.AddInput<float>("query", {cfg.batch_size, cfg.seq_len, hidden_size}, query_data);
-  tester.AddInput<float>("key", {cfg.batch_size, cfg.seq_len, kv_hidden_size}, key_data);
-  tester.AddInput<float>("value", {cfg.batch_size, cfg.seq_len, kv_hidden_size}, value_data);
+  if (cfg.use_fp16) {
+    auto to_fp16 = [](const std::vector<float>& data) {
+      std::vector<MLFloat16> result;
+      result.reserve(data.size());
+      for (float value : data) {
+        result.emplace_back(value);
+      }
+      return result;
+    };
+    tester.AddInput<MLFloat16>("query", {cfg.batch_size, cfg.seq_len, hidden_size}, to_fp16(query_data));
+    tester.AddInput<MLFloat16>("key", {cfg.batch_size, cfg.seq_len, kv_hidden_size}, to_fp16(key_data));
+    tester.AddInput<MLFloat16>("value", {cfg.batch_size, cfg.seq_len, kv_hidden_size}, to_fp16(value_data));
+  } else {
+    tester.AddInput<float>("query", {cfg.batch_size, cfg.seq_len, hidden_size}, query_data);
+    tester.AddInput<float>("key", {cfg.batch_size, cfg.seq_len, kv_hidden_size}, key_data);
+    tester.AddInput<float>("value", {cfg.batch_size, cfg.seq_len, kv_hidden_size}, value_data);
+  }
 
   // Past cache: zero-filled buffer (prompt phase, share_buffer mode).
   // Must be provided so the type constraint T_CACHE can be resolved.
@@ -1856,11 +1874,21 @@ void RunQuantizedGQAPromptTest(const QuantGQAConfig& cfg) {
   tester.AddInput<int32_t>("seqlens_k", {cfg.batch_size}, seqlens_k_data);
   tester.AddInput<int32_t>("total_sequence_length", {1}, {static_cast<int32_t>(cfg.seq_len)});
 
-  tester.AddOptionalInputEdge<float>();    // cos_cache
-  tester.AddOptionalInputEdge<float>();    // sin_cache
+  if (cfg.use_fp16) {
+    tester.AddOptionalInputEdge<MLFloat16>();  // cos_cache
+    tester.AddOptionalInputEdge<MLFloat16>();  // sin_cache
+  } else {
+    tester.AddOptionalInputEdge<float>();  // cos_cache
+    tester.AddOptionalInputEdge<float>();  // sin_cache
+  }
   tester.AddOptionalInputEdge<int64_t>();  // position_ids
-  tester.AddOptionalInputEdge<float>();    // attention_bias
-  tester.AddOptionalInputEdge<float>();    // head_sink
+  if (cfg.use_fp16) {
+    tester.AddOptionalInputEdge<MLFloat16>();  // attention_bias
+    tester.AddOptionalInputEdge<MLFloat16>();  // head_sink
+  } else {
+    tester.AddOptionalInputEdge<float>();  // attention_bias
+    tester.AddOptionalInputEdge<float>();  // head_sink
+  }
 
   // Scale inputs: one scale per (kv_head, d) channel for PER_CHANNEL; one scalar for PER_TENSOR.
   const int scale_size = (cfg.quant_type == "PER_CHANNEL")
@@ -1908,8 +1936,13 @@ void RunQuantizedGQAPromptTest(const QuantGQAConfig& cfg) {
 
   // Outputs - we use loose tolerance and verify non-zero
   const int output_size = cfg.batch_size * cfg.seq_len * hidden_size;
-  tester.AddOutput<float>("output", {cfg.batch_size, cfg.seq_len, hidden_size},
-                          std::vector<float>(output_size, 0.0f));
+  if (cfg.use_fp16) {
+    tester.AddOutput<MLFloat16>("output", {cfg.batch_size, cfg.seq_len, hidden_size},
+                                std::vector<MLFloat16>(output_size, MLFloat16(0.0f)));
+  } else {
+    tester.AddOutput<float>("output", {cfg.batch_size, cfg.seq_len, hidden_size},
+                            std::vector<float>(output_size, 0.0f));
+  }
 
   const int present_size = cfg.batch_size * cfg.kv_num_heads * cfg.seq_len * packed_head_size;
 
@@ -1932,7 +1965,18 @@ void RunQuantizedGQAPromptTest(const QuantGQAConfig& cfg) {
   tester.SetCustomOutputVerifier([&](const std::vector<OrtValue>& fetches,
                                      const std::string& /*provider_type*/) {
     ASSERT_GE(fetches.size(), size_t{1});
-    const float* out_data = fetches[0].Get<Tensor>().Data<float>();
+    const float* out_data = nullptr;
+    std::vector<float> fp16_output;
+    if (cfg.use_fp16) {
+      const MLFloat16* output_fp16 = fetches[0].Get<Tensor>().Data<MLFloat16>();
+      fp16_output.reserve(output_size);
+      for (int i = 0; i < output_size; ++i) {
+        fp16_output.push_back(static_cast<float>(output_fp16[i]));
+      }
+      out_data = fp16_output.data();
+    } else {
+      out_data = fetches[0].Get<Tensor>().Data<float>();
+    }
 
     // Verify output is non-zero and no NaN
     bool all_zero = true;
@@ -2046,6 +2090,81 @@ void RunQuantizedGQAPromptTest(const QuantGQAConfig& cfg) {
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
+  if (cfg.disable_flash) {
+    ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_GQA_DISABLE_FLASH_ATTENTION", "1"}}};
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  } else {
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+void RunQuantizedGQAFp16DecodeTest(int bit_width) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int cache_length = 2;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  const int packed_head_size = bit_width == 4 ? head_size / 2 : head_size;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+  tester.AddAttribute<std::string>("k_quant_type", "PER_TENSOR");
+  tester.AddAttribute<std::string>("v_quant_type", "PER_TENSOR");
+  tester.AddAttribute<int64_t>("kv_cache_bit_width", bit_width);
+
+  tester.AddInput<MLFloat16>("query", {batch_size, sequence_length, hidden_size},
+                             std::vector<MLFloat16>(hidden_size, MLFloat16(0.0f)));
+  tester.AddInput<MLFloat16>("key", {batch_size, sequence_length, kv_hidden_size},
+                             std::vector<MLFloat16>(kv_hidden_size, MLFloat16(0.0f)));
+  tester.AddInput<MLFloat16>("value", {batch_size, sequence_length, kv_hidden_size},
+                             std::vector<MLFloat16>(kv_hidden_size, MLFloat16(0.3f)));
+
+  if (bit_width == 4) {
+    tester.AddInput<uint8_t>("past_key", {batch_size, kv_num_heads, cache_length, packed_head_size},
+                             std::vector<uint8_t>(cache_length * packed_head_size, 0x88));
+    tester.AddInput<uint8_t>("past_value", {batch_size, kv_num_heads, cache_length, packed_head_size},
+                             {0xAA, 0xAA, 0xAA, 0xAA, 0x88, 0x88, 0x88, 0x88});
+  } else {
+    tester.AddInput<int8_t>("past_key", {batch_size, kv_num_heads, cache_length, packed_head_size},
+                            std::vector<int8_t>(cache_length * packed_head_size, 0));
+    std::vector<int8_t> past_value(cache_length * packed_head_size, 0);
+    std::fill_n(past_value.begin(), head_size, 10);
+    tester.AddInput<int8_t>("past_value", {batch_size, kv_num_heads, cache_length, packed_head_size}, past_value);
+  }
+
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {cache_length - 1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {cache_length});
+  tester.AddOptionalInputEdge<MLFloat16>();  // cos_cache
+  tester.AddOptionalInputEdge<MLFloat16>();  // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();    // position_ids
+  tester.AddOptionalInputEdge<MLFloat16>();  // attention_bias
+  tester.AddOptionalInputEdge<MLFloat16>();  // head_sink
+  const float scale = bit_width == 4 ? 0.05f : 0.01f;
+  tester.AddInput<float>("k_scale", {1}, {scale});
+  tester.AddInput<float>("v_scale", {1}, {scale});
+
+  tester.AddOutput<MLFloat16>("output", {batch_size, sequence_length, hidden_size},
+                              std::vector<MLFloat16>(hidden_size, MLFloat16(0.2f)));
+  if (bit_width == 4) {
+    tester.AddOutput<uint8_t>("present_key", {batch_size, kv_num_heads, cache_length, packed_head_size},
+                              std::vector<uint8_t>(cache_length * packed_head_size, 0x88));
+    tester.AddOutput<uint8_t>("present_value", {batch_size, kv_num_heads, cache_length, packed_head_size},
+                              {0xAA, 0xAA, 0xAA, 0xAA, 0xEE, 0xEE, 0xEE, 0xEE});
+  } else {
+    tester.AddOutput<int8_t>("present_key", {batch_size, kv_num_heads, cache_length, packed_head_size},
+                             std::vector<int8_t>(cache_length * packed_head_size, 0));
+    std::vector<int8_t> present_value(cache_length * packed_head_size, 30);
+    std::fill_n(present_value.begin(), head_size, 10);
+    tester.AddOutput<int8_t>("present_value", {batch_size, kv_num_heads, cache_length, packed_head_size},
+                             present_value);
+  }
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
@@ -2093,57 +2212,48 @@ TEST(GroupQueryAttentionTest, QuantizedKV_INT4_GQARatio4_Prompt) {
                              /*head_size=*/16, /*quant_type=*/"PER_TENSOR", /*bit_width=*/4});
 }
 
-// Error: MLFloat16 Q with quantized KV should fail at model construction or runtime.
-TEST(GroupQueryAttentionTest, QuantizedKV_RejectMLFloat16) {
-  constexpr int batch_size = 1;
-  constexpr int seq_len = 4;
-  constexpr int num_heads = 2;
-  constexpr int kv_num_heads = 1;
-  constexpr int head_size = 8;
-  constexpr int hidden_size = num_heads * head_size;
-  constexpr int kv_hidden_size = kv_num_heads * head_size;
+TEST(GroupQueryAttentionTest, QuantizedKV_FP16_INT8_Prompt) {
+  RunQuantizedGQAPromptTest({/*batch_size=*/1, /*seq_len=*/4, /*num_heads=*/2, /*kv_num_heads=*/1,
+                             /*head_size=*/8, /*quant_type=*/"PER_TENSOR", /*bit_width=*/8,
+                             /*use_fp16=*/true});
+}
 
-  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
-  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
-  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
-  tester.AddAttribute<std::string>("k_quant_type", "PER_TENSOR");
-  tester.AddAttribute<std::string>("v_quant_type", "PER_TENSOR");
-  tester.AddAttribute<int64_t>("kv_cache_bit_width", 8);
+TEST(GroupQueryAttentionTest, QuantizedKV_FP16_INT4_Prompt) {
+  RunQuantizedGQAPromptTest({/*batch_size=*/1, /*seq_len=*/4, /*num_heads=*/2, /*kv_num_heads=*/1,
+                             /*head_size=*/8, /*quant_type=*/"PER_TENSOR", /*bit_width=*/4,
+                             /*use_fp16=*/true});
+}
 
-  std::vector<MLFloat16> query_data(batch_size * seq_len * hidden_size, MLFloat16(0.1f));
-  tester.AddInput<MLFloat16>("query", {batch_size, seq_len, hidden_size}, query_data);
-  std::vector<MLFloat16> key_data(batch_size * seq_len * kv_hidden_size, MLFloat16(0.1f));
-  tester.AddInput<MLFloat16>("key", {batch_size, seq_len, kv_hidden_size}, key_data);
-  std::vector<MLFloat16> value_data(batch_size * seq_len * kv_hidden_size, MLFloat16(0.1f));
-  tester.AddInput<MLFloat16>("value", {batch_size, seq_len, kv_hidden_size}, value_data);
+TEST(GroupQueryAttentionTest, QuantizedKV_FP16_INT8_PerChannel_Prompt) {
+  RunQuantizedGQAPromptTest({/*batch_size=*/1, /*seq_len=*/4, /*num_heads=*/2, /*kv_num_heads=*/1,
+                             /*head_size=*/8, /*quant_type=*/"PER_CHANNEL", /*bit_width=*/8,
+                             /*use_fp16=*/true});
+}
 
-  // Past with matching T_CACHE type (int8)
-  tester.AddInput<int8_t>("past_key", {batch_size, kv_num_heads, seq_len, head_size},
-                          std::vector<int8_t>(batch_size * kv_num_heads * seq_len * head_size, 0));
-  tester.AddInput<int8_t>("past_value", {batch_size, kv_num_heads, seq_len, head_size},
-                          std::vector<int8_t>(batch_size * kv_num_heads * seq_len * head_size, 0));
-  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {seq_len - 1});
-  tester.AddInput<int32_t>("total_sequence_length", {1}, {seq_len});
-  tester.AddOptionalInputEdge<MLFloat16>();  // cos_cache
-  tester.AddOptionalInputEdge<MLFloat16>();  // sin_cache
-  tester.AddOptionalInputEdge<int64_t>();    // position_ids
-  tester.AddOptionalInputEdge<MLFloat16>();  // attention_bias
-  tester.AddOptionalInputEdge<MLFloat16>();  // head_sink
-  tester.AddInput<float>("k_scale", {1}, {0.01f});
-  tester.AddInput<float>("v_scale", {1}, {0.01f});
+TEST(GroupQueryAttentionTest, QuantizedKV_FP16_INT4_PerChannel_Prompt) {
+  RunQuantizedGQAPromptTest({/*batch_size=*/1, /*seq_len=*/4, /*num_heads=*/2, /*kv_num_heads=*/1,
+                             /*head_size=*/8, /*quant_type=*/"PER_CHANNEL", /*bit_width=*/4,
+                             /*use_fp16=*/true});
+}
 
-  tester.AddOutput<MLFloat16>("output", {batch_size, seq_len, hidden_size},
-                              std::vector<MLFloat16>(batch_size * seq_len * hidden_size, MLFloat16(0.0f)));
-  tester.AddOutput<int8_t>("present_key", {batch_size, kv_num_heads, seq_len, head_size},
-                           std::vector<int8_t>(batch_size * kv_num_heads * seq_len * head_size, 0));
-  tester.AddOutput<int8_t>("present_value", {batch_size, kv_num_heads, seq_len, head_size},
-                           std::vector<int8_t>(batch_size * kv_num_heads * seq_len * head_size, 0));
+TEST(GroupQueryAttentionTest, QuantizedKV_FP16_INT8_NaivePrompt) {
+  RunQuantizedGQAPromptTest({/*batch_size=*/1, /*seq_len=*/4, /*num_heads=*/2, /*kv_num_heads=*/1,
+                             /*head_size=*/8, /*quant_type=*/"PER_TENSOR", /*bit_width=*/8,
+                             /*use_fp16=*/true, /*disable_flash=*/true});
+}
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCpuExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectFailure,
-             "only supports float Q dtype",
-             {}, nullptr, &execution_providers);
+TEST(GroupQueryAttentionTest, QuantizedKV_FP16_INT4_NaivePrompt) {
+  RunQuantizedGQAPromptTest({/*batch_size=*/1, /*seq_len=*/4, /*num_heads=*/2, /*kv_num_heads=*/1,
+                             /*head_size=*/8, /*quant_type=*/"PER_TENSOR", /*bit_width=*/4,
+                             /*use_fp16=*/true, /*disable_flash=*/true});
+}
+
+TEST(GroupQueryAttentionTest, QuantizedKV_FP16_INT8_Decode) {
+  RunQuantizedGQAFp16DecodeTest(8);
+}
+
+TEST(GroupQueryAttentionTest, QuantizedKV_FP16_INT4_Decode) {
+  RunQuantizedGQAFp16DecodeTest(4);
 }
 
 // Error: Missing k_scale with quantized KV cache
@@ -2594,6 +2704,136 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_SlidingWindow) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultWebGpuExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// ---------------------------------------------------------------------------
+// attention_bias parity (CUDA vs CPU).
+//
+// The CUDA GQA kernel routes attention_bias-carrying nodes to the unfused
+// fallback; the CPU EP implements attention_bias directly, so it is the
+// reference. This runs the SAME prompt case on CUDA (fp16, the only float type
+// the CUDA kernel registers) and on CPU (fp32) and compares the outputs,
+// covering the three bias shapes that drive broadcast_attn_bias_dim_0/1:
+//   [batch, 1,    S, S]  -> dim0=false, dim1=true  (the default)
+//   [1,     1,    S, S]  -> dim0=true              (batch broadcast)
+//   [batch, heads, S, S] -> dim1=false             (per-head)
+// These run on real GPU in PR CI (C++ ctest), unlike the Python parity tests
+// which need a CUDA-enabled torch the PR agents don't have.
+// ---------------------------------------------------------------------------
+template <typename T>
+static std::vector<float> RunGQAPromptWithBias(
+    int batch_size, int seq_len, int num_heads, int kv_num_heads, int head_size,
+    int bias_dim0, int bias_dim1,
+    const std::vector<float>& query_data,
+    const std::vector<float>& key_data,
+    const std::vector<float>& value_data,
+    const std::vector<float>& bias_data,
+    GqaTargetEp target_ep) {
+  const int hidden_size = num_heads * head_size;
+  const int kv_hidden_size = kv_num_heads * head_size;
+  const int total_seq_len = seq_len;  // prompt: no past
+
+  auto cvt = [](const std::vector<float>& v) {
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      return ToFloat16(v);
+    } else {
+      return v;
+    }
+  };
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<T>("query", {batch_size, seq_len, hidden_size}, cvt(query_data));
+  tester.AddInput<T>("key", {batch_size, seq_len, kv_hidden_size}, cvt(key_data));
+  tester.AddInput<T>("value", {batch_size, seq_len, kv_hidden_size}, cvt(value_data));
+
+  tester.AddOptionalInputEdge<T>();  // past_key
+  tester.AddOptionalInputEdge<T>();  // past_value
+  std::vector<int32_t> seqlens_k(batch_size, total_seq_len - 1);
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, seqlens_k);
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_seq_len}, /*is_initializer=*/true);
+
+  tester.AddOptionalInputEdge<T>();        // cos_cache
+  tester.AddOptionalInputEdge<T>();        // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddInput<T>("attention_bias", {bias_dim0, bias_dim1, seq_len, total_seq_len}, cvt(bias_data));
+
+  const int output_size = batch_size * seq_len * hidden_size;
+  tester.AddOutput<T>("output", {batch_size, seq_len, hidden_size}, std::vector<T>(output_size, T(0.0f)));
+  const int present_size = batch_size * kv_num_heads * total_seq_len * head_size;
+  tester.AddOutput<T>("present_key", {batch_size, kv_num_heads, total_seq_len, head_size},
+                      std::vector<T>(present_size, T(0.0f)));
+  tester.AddOutput<T>("present_value", {batch_size, kv_num_heads, total_seq_len, head_size},
+                      std::vector<T>(present_size, T(0.0f)));
+
+  tester.SetOutputTolerance(1e6f);  // outputs are compared explicitly by the caller
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(MakeExecutionProviderForGqaTest(target_ep));
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+  auto fetches = tester.GetFetches();
+  const T* out = fetches[0].Get<Tensor>().Data<T>();
+  std::vector<float> result(output_size);
+  for (int i = 0; i < output_size; ++i) {
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      result[i] = out[i].ToFloat();
+    } else {
+      result[i] = out[i];
+    }
+  }
+  return result;
+}
+
+TEST(GroupQueryAttentionTest, CudaAttentionBiasParityVsCpu) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
+  constexpr int batch_size = 2;
+  constexpr int seq_len = 3;
+  constexpr int num_heads = 4;
+  constexpr int kv_num_heads = 2;
+  constexpr int head_size = 8;
+  const int hidden_size = num_heads * head_size;
+  const int kv_hidden_size = kv_num_heads * head_size;
+
+  std::vector<float> query(batch_size * seq_len * hidden_size);
+  std::vector<float> key(batch_size * seq_len * kv_hidden_size);
+  std::vector<float> value(batch_size * seq_len * kv_hidden_size);
+  for (size_t i = 0; i < query.size(); ++i) query[i] = 0.1f * static_cast<float>(i % 7 + 1);
+  for (size_t i = 0; i < key.size(); ++i) key[i] = 0.2f * static_cast<float>(i % 5 + 1);
+  for (size_t i = 0; i < value.size(); ++i) value[i] = 0.3f * static_cast<float>(i % 3 + 1);
+
+  struct BiasShape {
+    int dim0;
+    int dim1;
+    const char* label;
+  };
+  const std::vector<BiasShape> shapes = {
+      {batch_size, 1, "batch_head_broadcast"},  // dim0=false, dim1=true (default)
+      {1, 1, "batch_broadcast"},                // dim0=true
+      {batch_size, num_heads, "per_head"},      // dim1=false
+  };
+
+  for (const auto& shape : shapes) {
+    std::vector<float> bias(static_cast<size_t>(shape.dim0) * shape.dim1 * seq_len * seq_len);
+    for (size_t i = 0; i < bias.size(); ++i) {
+      bias[i] = 0.5f * std::sin(0.7f * static_cast<float>(i));
+    }
+
+    auto cuda_output = RunGQAPromptWithBias<MLFloat16>(
+        batch_size, seq_len, num_heads, kv_num_heads, head_size, shape.dim0, shape.dim1,
+        query, key, value, bias, GqaTargetEp::kCuda);
+    auto cpu_output = RunGQAPromptWithBias<float>(
+        batch_size, seq_len, num_heads, kv_num_heads, head_size, shape.dim0, shape.dim1,
+        query, key, value, bias, GqaTargetEp::kCpu);
+
+    ExpectOutputsMatch(cuda_output, cpu_output, 0.02f, shape.label);
+  }
 }
 
 #ifdef USE_WEBGPU

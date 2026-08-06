@@ -79,6 +79,8 @@ Status SplitImpl::Compute(OpKernelContext* context) const {
     auto nDims = static_cast<size_t>(split_tensor->Shape()[0]);
     const auto* data = split_tensor->Data<int64_t>();
     split_sizes.assign(data, data + nDims);
+    ORT_RETURN_IF(std::any_of(split_sizes.cbegin(), split_sizes.cend(), [](int64_t v) { return v < 0; }),
+                  "Invalid value in 'split' input. All values must be >= 0.");
   } else {
     split_sizes.assign(split_sizes_.begin(), split_sizes_.end());
   }

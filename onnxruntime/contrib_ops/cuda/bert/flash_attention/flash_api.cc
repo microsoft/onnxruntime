@@ -294,13 +294,12 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                bool kv_bsnh,
                int local_window_size,
                void* cache_batch_idx,
-               void* leftpad_k) {
+               void* leftpad_k,
+               void* head_sink) {
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = round_multiple(head_size, 32);
   const int seqlen_q_rounded = round_multiple(seqlen_q, 128);
   const int seqlen_k_rounded = round_multiple(seqlen_k, 128);
-
-  constexpr void* head_sink = nullptr;
 
   Flash_fwd_params params;
   set_params_fprop(params,
