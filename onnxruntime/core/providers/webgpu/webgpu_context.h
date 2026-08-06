@@ -96,11 +96,6 @@ struct PendingPipelineBuild {
 // A command with both fields empty is therefore valid only in state 3 before deferred pipeline
 // resolution. DispatchCommand() requires compute_pipeline to be set.
 struct CapturedCommandInfo {
-  CapturedCommandInfo() = default;
-  CapturedCommandInfo(CapturedCommandInfo&&) = default;
-  CapturedCommandInfo& operator=(CapturedCommandInfo&&) = default;
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(CapturedCommandInfo);
-
   std::string program_key;
   std::optional<PendingPipelineBuild> pending_build;
   std::optional<wgpu::ComputePipeline> compute_pipeline;
