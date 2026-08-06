@@ -33,6 +33,27 @@ __host__ __device__ constexpr int fp4_fast_layout_map(int i) {
   return i % kGroupA + (i % kOffsetA) / kGroupA * kGroupW + i / kOffsetA * kGroupA;
 }
 
+// Decodes and accumulates one packed weight word at a time.
+//
+// decode_word writes registers 4w..4w+3, and those hold exactly the physical elements 8w..8w+7
+// (reg_of(p) = (p/8)*4 + slot_of(p%8)/2). So a word's decoded values can be consumed before the
+// next word is decoded, and only 4 of the 16 decoded registers are ever live. Decoding all four
+// words up front instead costs 12 extra live registers, which at 128 threads is the difference
+// between 6 and 7 blocks per SM -- and this kernel is occupancy-limited by registers, not by
+// shared memory or warp slots.
+//
+// This was expected to be a pure reordering, but it also removes work: ncu counts 4.9% fewer
+// instructions for fc1 and 24.1% fewer for fc2. Holding all 16 decoded registers live across the
+// dot product left ptxas short enough of registers that it was emitting real register-to-register
+// copies to keep them alive, and those are gone now. Measured per launch (H200, s_q=6):
+// fc1 80 -> 71 regs, 33.3% -> 38.3% occupancy, 9.3% fewer cycles; fc2 76 -> 63 regs,
+// 33.4% -> 42.6% occupancy, 28.5% fewer cycles. Local ld/st stays at exactly zero, which is what
+// separates this from capping registers with __launch_bounds__: that bought the same occupancy
+// but paid ~300 MB per launch in spills and came out even.
+//
+// Numerics: the K terms are now summed word-major rather than kk-major. Floating-point addition is
+// not associative so the result is close but not bit-identical to the previous order; it is the
+// same 32 products summed in a permuted order, with no change in intermediate precision.
 template <typename Details, typename TypeA>
 __device__ __forceinline__ void fp4_fast_accumulate(float& acc, const uint8_t* quantized, TypeA scale,
                                                     const float* act_f) {
@@ -41,29 +62,32 @@ __device__ __forceinline__ void fp4_fast_accumulate(float& acc, const uint8_t* q
   using Math = MathWrapper<typename Details::TypeDetailsA>;
   using Type2 = typename Math::Type2;
 
-  uint32_t packed[kStepK / 2];
   const uint32_t* words = reinterpret_cast<const uint32_t*>(quantized);
-#pragma unroll
-  for (int w = 0; w < kStepK / 8; ++w) {
-    fp4_fast::decode_word<TypeA>(words[w], packed + w * 4);
-  }
-
   const Type2 scale2 = Math::to_vec2(scale);
   const Type2 zero = Math::to_vec2(static_cast<TypeA>(0.f));
-#pragma unroll
-  for (int j = 0; j < kStepK / 2; ++j) {
-    Type2 value = Math::fma2(reinterpret_cast<Type2&>(packed[j]), scale2, zero);
-    packed[j] = reinterpret_cast<uint32_t&>(value);
-  }
 
   float sum = acc;
 #pragma unroll
-  for (int kk = 0; kk < kStepK; ++kk) {
-    const int physical = fp4_fast_layout_map<Details>(kk);
-    const uint32_t value = packed[fp4_fast::reg_of(physical, kPair)];
-    const float weight = fp4_fast::half_of(physical, kPair) ? fp4_fast::hi_to_float<TypeA>(value)
-                                                            : fp4_fast::lo_to_float<TypeA>(value);
-    sum += weight * act_f[kk];
+  for (int w = 0; w < kStepK / 8; ++w) {
+    uint32_t packed[4];
+    fp4_fast::decode_word<TypeA>(words[w], packed);
+#pragma unroll
+    for (int j = 0; j < 4; ++j) {
+      Type2 value = Math::fma2(reinterpret_cast<Type2&>(packed[j]), scale2, zero);
+      packed[j] = reinterpret_cast<uint32_t&>(value);
+    }
+    // Both loop counters are unrolled constants, so the guard and the register index below fold
+    // away: each kk survives in exactly one w iteration.
+#pragma unroll
+    for (int kk = 0; kk < kStepK; ++kk) {
+      const int physical = fp4_fast_layout_map<Details>(kk);
+      if (physical / 8 == w) {
+        const uint32_t value = packed[fp4_fast::reg_of(physical, kPair) - w * 4];
+        const float weight = fp4_fast::half_of(physical, kPair) ? fp4_fast::hi_to_float<TypeA>(value)
+                                                                : fp4_fast::lo_to_float<TypeA>(value);
+        sum += weight * act_f[kk];
+      }
+    }
   }
   acc = sum;
 }
