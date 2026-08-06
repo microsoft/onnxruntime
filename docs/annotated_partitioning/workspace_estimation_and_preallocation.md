@@ -245,8 +245,35 @@ separate preallocated workspace buffer per device is an acceptable first impleme
 
 ## Profiling Improvements Needed for Preallocation
 
-The current `total_temp_allocations` field is sufficient as a conservative budgeting signal,
-but it is not sufficient to produce an efficient workspace layout.
+The current `total_temp_allocations` field is neither a complete CUDA workspace measurement
+nor sufficient to produce an efficient workspace layout.
+
+### Current CUDA allocation-path coverage
+
+When node-memory profiling is enabled, `OpKernelContextInternal` wraps the allocator returned
+by `OpKernelContext::GetTempSpaceAllocator()` with an `AccountingAllocator`. CUDA kernels that
+request temporary memory through that context method are measured. Examples include
+DeformConv, Softmax, Einsum, Reshape, and Expand.
+
+Many CUDA kernels instead allocate scratch memory through `CudaKernel::GetScratchBuffer()`.
+The in-tree implementation obtains its allocator from
+`OpKernelInfo::GetAllocator(OrtMemTypeDefault)` and does not call
+`OpKernelContext::GetTempSpaceAllocator()`. Those allocations therefore bypass the
+per-kernel `AccountingAllocator` used by `NodeStatsRecorder`. Examples include portions of
+RNN, reduction, NonZero, Compress, and GatherND.
+
+Consequently, a recorded `total_temp_allocations` value may undercount actual CUDA workspace.
+It must not be treated as a conservative upper bound or as proof that a kernel requires no
+workspace. Profile compatibility metadata cannot correct missing instrumentation; the
+allocation paths themselves must be routed through a common accounting interface or
+instrumented separately.
+
+This also affects the proposed source-selection policy: until profiling coverage is complete,
+a profile value should not replace a conservative Level-1 estimate merely because it is
+smaller. Using the maximum of compatible profiling and estimation values remains the safer
+policy.
+
+### Additional data required
 
 Preallocation-oriented profiling should capture:
 
@@ -264,7 +291,8 @@ being persisted. Persisting raw pointer values is neither required nor desirable
 
 The current cumulative allocation value may exceed the true peak when a kernel allocates,
 frees, and reallocates temporary buffers sequentially. Using it for preallocation is safe in
-that case but may waste memory.
+that specific case but may waste memory. Conversely, bypassed allocation paths can make the
+recorded value lower than the true peak.
 
 ## Runtime Validation
 
@@ -353,4 +381,3 @@ individual execution provider's `GetCapability` implementation.
 | TBD | Apply the 1.5x fallback only to nodes without a better workspace source | Proposed |
 | TBD | Use Level-2 declarations for allocation and post-assignment verification | Proposed |
 | TBD | Plan workspace according to execution overlap rather than summing all nodes | Proposed |
-
