@@ -34,18 +34,21 @@ Status FeatureVectorizer::Compute(OpKernelContext* context) const {
 
   const auto* tensor_pointer = context->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
-  const Tensor& X = *tensor_pointer;
-  const auto& x_dims = X.Shape().GetDims();
+  const auto get_input_batch_size = [](const Tensor& input_tensor, int index) -> int64_t {
+    const auto& input_dims = input_tensor.Shape().GetDims();
+    ORT_ENFORCE(!input_dims.empty(), "FeatureVectorizer input ", index, " must have at least 1 dimension.");
+    return input_dims.size() == 1 ? 1 : input_dims[0];
+  };
 
-  // assumes all inputs have the same batch size
-  int64_t N = X.Shape().NumDimensions() == 1 ? 1 : x_dims[0];
+  const Tensor& X = *tensor_pointer;
+  // all inputs must have the same batch size
+  int64_t N = get_input_batch_size(X, 0);
 
   for (int index = 1; index < input_count; ++index) {
     const auto* input_tensor_ptr = context->Input<Tensor>(index);
     ORT_ENFORCE(input_tensor_ptr != nullptr);
-    const auto& input_dims = input_tensor_ptr->Shape().GetDims();
-    const int64_t input_rows = input_dims.size() == 1 ? 1 : input_dims[0];
-    ORT_ENFORCE(input_rows == N, "All inputs to FeatureVectorizer must have the same batch size. ",
+    const int64_t input_rows = get_input_batch_size(*input_tensor_ptr, index);
+    ORT_ENFORCE(input_rows == N, "All inputs to FeatureVectorizer must have the same batch size.",
                 "Input 0 batch size: ", N, ", input ", index, " batch size: ", input_rows, ".");
   }
 
