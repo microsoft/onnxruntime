@@ -790,6 +790,20 @@ Return Value:
 #endif
     }
 
+#if defined(MLAS_USE_SVE)
+    //
+    // Prefer the SVE i8mm (svmmla) signed int8 GEMM kernel when the processor
+    // supports SVE with the I8MM extension. It consumes the same packed panels
+    // as the NEON smmla kernel (identical RowSum/ColumnSum zero-point layout),
+    // so the signed-activation contract established below is preserved. The
+    // compute kernels are portable machine code, so this is not OS-gated.
+    //
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSVE_I8MM()) {
+        this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchSmmlaSve;
+        this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUmmlaSve;
+    }
+#endif
+
     this->ArmNeonIsQuantActivationsUnsigned = HasI8MMInstructions ? false : true;
     this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions, HasI8MMInstructions);
 

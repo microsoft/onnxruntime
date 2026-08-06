@@ -171,6 +171,24 @@ function(setup_mlas_source_for_windows)
 	  if (onnxruntime_USE_KLEIDIAI)
         setup_kleidiai()
       endif()
+
+      if (onnxruntime_USE_SVE)
+        # SVE i8mm QGEMM: plain C++ driver TUs plus portable machine-code
+        # compute kernels. kai_asm_macros.h resolves to armasm64 directives
+        # (AREA/PROC/DCD) during the cl.exe preprocessing step applied to
+        # mlas_platform_preprocess_srcs below, so no SVE toolchain support
+        # is required.
+        target_sources(onnxruntime_mlas PRIVATE
+          ${MLAS_SRC_DIR}/sve/qgemm_mmla_sve.h
+          ${MLAS_SRC_DIR}/sve/qgemm_kernel_smmla_sve.cpp
+          ${MLAS_SRC_DIR}/sve/qgemm_kernel_ummla_sve.cpp
+        )
+        set_source_files_properties(${MLAS_SRC_DIR}/sve/qgemm_kernel_smmla_sve.cpp PROPERTIES COMPILE_FLAGS " -DMLAS_SVE_QGEMM_TILE_12X8=1 -DMLAS_SVE_QGEMM_TILE_8X12=1 ")
+        set_source_files_properties(${MLAS_SRC_DIR}/sve/qgemm_kernel_ummla_sve.cpp PROPERTIES COMPILE_FLAGS " -DMLAS_SVE_QGEMM_TILE_12X8=1 -DMLAS_SVE_QGEMM_TILE_8X12=1 ")
+        list(APPEND mlas_platform_preprocess_srcs ${MLAS_SRC_DIR}/aarch64/qgemm_mmla_sve_asm.S)
+        list(APPEND mlas_private_compile_definitions MLAS_USE_SVE)
+        set(mlas_private_compile_definitions ${mlas_private_compile_definitions} PARENT_SCOPE)
+      endif()
     else()
       target_sources(onnxruntime_mlas PRIVATE
         ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
@@ -562,6 +580,24 @@ else()
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlas_sve_fp16.h)
           set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
+          # SVE i8mm QGEMM: the driver/pack/dispatch TUs are plain C++ (no
+          # SVE compiler support required); the svmmla compute kernels come
+          # from either the generated KleidiAI-style machine code (portable,
+          # production default) or the SVE intrinsics reference TU (the
+          # regeneration source for aarch64/qgemm_mmla_sve_asm.S, script
+          # sve/gen_sve_asm.py).
+          option(onnxruntime_SVE_QGEMM_ASM
+                 "Build the portable machine-code SVE QGEMM kernels instead of the intrinsics reference" ON)
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/qgemm_kernel_smmla_sve.cpp)
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/qgemm_kernel_ummla_sve.cpp)
+          set_source_files_properties(${MLAS_SRC_DIR}/sve/qgemm_kernel_smmla_sve.cpp PROPERTIES COMPILE_FLAGS " -DMLAS_SVE_QGEMM_TILE_12X8=1 -DMLAS_SVE_QGEMM_TILE_8X12=1 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/sve/qgemm_kernel_ummla_sve.cpp PROPERTIES COMPILE_FLAGS " -DMLAS_SVE_QGEMM_TILE_12X8=1 -DMLAS_SVE_QGEMM_TILE_8X12=1 ")
+          if (onnxruntime_SVE_QGEMM_ASM)
+            list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/aarch64/qgemm_mmla_sve_asm.S)
+          else()
+            list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/qgemm_mmla_sve_impl.cpp)
+            set_source_files_properties(${MLAS_SRC_DIR}/sve/qgemm_mmla_sve_impl.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+i8mm -fno-stack-protector -DMLAS_SVE_QGEMM_TILE_12X8=1 -DMLAS_SVE_QGEMM_TILE_8X12=1 ")
+          endif()
           list(APPEND mlas_private_compile_definitions MLAS_USE_SVE)
         endif()
 
