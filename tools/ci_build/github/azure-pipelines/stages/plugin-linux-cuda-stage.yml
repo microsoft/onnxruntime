@@ -228,5 +228,6 @@ stages:
             -i onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}pluginbuild${{ parameters.arch }} \
             -p ${{ parameters.docker_python_exe_path }} \
             -v "$(PluginPythonPackageVersion)" \
-            -n "${{ parameters.python_package_name }}"
+            -n "${{ parameters.python_package_name }}" \
+            -c "$(PluginBuildCommit)"
         displayName: 'Build Python wheel'

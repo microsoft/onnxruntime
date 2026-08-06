@@ -5,15 +5,17 @@ DOCKER_IMAGE="onnxruntimecuda128pluginbuildx64"
 PYTHON_EXE="/opt/python/cp312-cp312/bin/python3.12"
 VERSION=""
 PACKAGE_NAME=""
+BUILD_COMMIT=""
 
-while getopts "i:p:v:n:" parameter_Option
+while getopts "i:p:v:n:c:" parameter_Option
 do case "${parameter_Option}"
 in
 i) DOCKER_IMAGE=${OPTARG};;
 p) PYTHON_EXE=${OPTARG};;
 v) VERSION=${OPTARG};;
 n) PACKAGE_NAME=${OPTARG};;
-*) echo "Usage: $0 -i <docker_image> -p <python_exe_path> -v <version> -n <package_name>"
+c) BUILD_COMMIT=${OPTARG};;
+*) echo "Usage: $0 -i <docker_image> -p <python_exe_path> -v <version> -n <package_name> -c <build_commit>"
    exit 1;;
 esac
 done
@@ -28,6 +30,11 @@ if [ -z "$PACKAGE_NAME" ]; then
   exit 1
 fi
 
+if [ -z "$BUILD_COMMIT" ]; then
+  echo "ERROR: Build commit is required. Use -c <build_commit>"
+  exit 1
+fi
+
 PYTHON_BIN_DIR=$(dirname "${PYTHON_EXE}")
 
 docker run --rm \
@@ -37,6 +44,7 @@ docker run --rm \
     --env PIP_INDEX_URL \
     --env "ORT_CUDA_PLUGIN_EP_VERSION=${VERSION}" \
     --env "ORT_CUDA_PLUGIN_EP_PACKAGE_NAME=${PACKAGE_NAME}" \
+    --env "ORT_CUDA_PLUGIN_EP_BUILD_COMMIT=${BUILD_COMMIT}" \
     "$DOCKER_IMAGE" \
     /bin/bash -c '
       set -e -x
@@ -46,5 +54,6 @@ docker run --rm \
         --binary_dir /build/plugin_artifacts/bin \
         --version "$ORT_CUDA_PLUGIN_EP_VERSION" \
         --package_name "$ORT_CUDA_PLUGIN_EP_PACKAGE_NAME" \
+        --build_commit "$ORT_CUDA_PLUGIN_EP_BUILD_COMMIT" \
         --output_dir /staging/python
     '

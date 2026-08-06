@@ -17,7 +17,17 @@ python build_wheel.py \
   --binary_dir <path-to-built-binaries> \
   --version <PEP-440-version> \
   --package_name <onnxruntime-ep-cuda12-or-onnxruntime-ep-cuda13> \
+  --build_commit <git-commit> \
   --output_dir <output-directory>
 ```
 
 The script combines pre-built CUDA plugin EP binaries with the package source to produce a platform-specific wheel.
+
+The commit is omitted from the PEP 440 package version, even for development builds. Retrieve it with
+`get_build_commit()`:
+
+```python
+import onnxruntime_ep_cuda
+
+print(onnxruntime_ep_cuda.get_build_commit())
+```

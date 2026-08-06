@@ -17,6 +17,7 @@ import sys
 import tempfile
 import traceback
 from contextlib import suppress
+from importlib import metadata
 from pathlib import Path
 
 # On Windows, Python 3.8+ no longer searches PATH when loading DLLs. Add each
@@ -76,13 +77,18 @@ def print_environment_info():
             print(f"  ENV {var}={os.environ[var]}")
 
 
-def test_import_and_library_path():
-    """Test that the package imports and the library path is valid."""
+def test_import_and_accessors():
+    """Test that the package imports and that the accessors work."""
     import onnxruntime_ep_cuda as cuda_ep  # noqa: PLC0415
 
     debug_print(f"  Package location: {cuda_ep.__file__}")
     pkg_dir = Path(cuda_ep.__file__).parent
     debug_print(f"  Package directory contents: {sorted(p.name for p in pkg_dir.iterdir())}")
+
+    package_names = metadata.packages_distributions().get("onnxruntime_ep_cuda", [])
+    assert len(package_names) == 1, f"Expected one CUDA plugin distribution, found: {package_names}"
+    print(f"Package version: {metadata.version(package_names[0])}")
+    print(f"Build commit: {cuda_ep.get_build_commit()}")
 
     lib_path = cuda_ep.get_library_path()
     assert Path(lib_path).is_file(), f"Library path does not exist: {lib_path}"
@@ -165,8 +171,8 @@ def main():
         print("\n--- Environment ---")
         print_environment_info()
 
-    print("\n--- Test 1: Import and library path ---")
-    test_import_and_library_path()
+    print("\n--- Test 1: Import and accessors ---")
+    test_import_and_accessors()
 
     print("\n--- Test 2: Registration and inference ---")
     test_registration_and_inference()

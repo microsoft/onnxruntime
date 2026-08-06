@@ -5,6 +5,7 @@ import argparse
 import platform
 import re
 import shutil
+import string
 import subprocess
 import sys
 import tempfile
@@ -41,7 +42,16 @@ AUDITWHEEL_EXCLUDE = [
 ]
 
 
-def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str, package_name: str) -> None:
+def validate_build_commit(build_commit: str) -> None:
+    """Validate that build_commit is a non-empty hexadecimal Git object ID."""
+    if not build_commit or not all(character in string.hexdigits for character in build_commit):
+        raise ValueError("Build commit must be a non-empty hexadecimal Git object ID")
+
+
+def prepare_staging_dir(
+    staging_dir: Path, binary_dir: Path, version: str, package_name: str, build_commit: str
+) -> None:
+    validate_build_commit(build_commit)
     staging_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(SCRIPT_DIR / "setup.py", staging_dir / "setup.py")
     shutil.copytree(SCRIPT_DIR / "onnxruntime_ep_cuda", staging_dir / "onnxruntime_ep_cuda")
@@ -74,6 +84,12 @@ def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str, packa
         SCRIPT_DIR / "pyproject.toml.in",
         staging_dir / "pyproject.toml",
         {"package_name": package_name, "version": version},
+    )
+
+    gen_file_from_template(
+        package_dir / "_build_info.py",
+        package_dir / "_build_info.py",
+        {"build_commit": build_commit},
     )
 
 
@@ -136,6 +152,7 @@ def main() -> None:
     parser.add_argument("--binary_dir", required=True, type=Path, help="Directory containing built plugin EP binaries")
     parser.add_argument("--version", required=True, help="Package version string (PEP 440 format)")
     parser.add_argument("--package_name", required=True, help="Python distribution name to write into pyproject.toml")
+    parser.add_argument("--build_commit", required=True, help="Git commit used to build the plugin binaries")
     parser.add_argument("--output_dir", required=True, type=Path, help="Directory to place the built wheel")
     args = parser.parse_args()
 
@@ -149,7 +166,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="ort_cuda_wheel_") as tmp:
         staging_dir = Path(tmp) / "package"
         wheel_dir = Path(tmp) / "wheels"
-        prepare_staging_dir(staging_dir, args.binary_dir, args.version, args.package_name)
+        prepare_staging_dir(staging_dir, args.binary_dir, args.version, args.package_name, args.build_commit)
         build_wheel(staging_dir, wheel_dir)
         auditwheel_repair(wheel_dir, wheel_name_prefix)
         collect_wheels(wheel_dir, args.output_dir, wheel_name_prefix)
