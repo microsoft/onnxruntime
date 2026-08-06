@@ -69,7 +69,7 @@ MHARunner* TrtFusedAttention<T>::GetFusedRunner(const cudaDeviceProp& device_pro
 
   bool use_fused_runner = !disable_fused_runner_ &&
                           !has_attention_bias &&
-                          parameters.hidden_size == parameters.v_hidden_size;
+                          parameters.hidden_size == parameters.GetOutputHiddenSize();
 
   if (!use_fused_runner) {
     return fused_runner;
@@ -156,10 +156,10 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
   parameters.sequence_length = problem.sequence_length;
   parameters.input_hidden_size = problem.input_hidden_size;
   parameters.hidden_size = problem.hidden_size;
-  parameters.v_hidden_size = problem.v_hidden_size;
   parameters.head_size = problem.qk_head_size;
   parameters.v_head_size = problem.v_head_size;
   parameters.num_heads = problem.num_heads;
+  parameters.num_heads_kv = problem.num_heads;
   parameters.scale = this->GetScale();
   parameters.token_count = problem.token_count;
 
@@ -187,7 +187,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                   parameters,
                                   problem));
 
-  TensorShapeVector output_shape{parameters.token_count, parameters.v_hidden_size};
+  TensorShapeVector output_shape{parameters.token_count, parameters.GetOutputHiddenSize()};
   Tensor* output = context->Output(0, output_shape);
 
   if (output->Shape().Size() == 0) {

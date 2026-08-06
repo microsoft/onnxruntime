@@ -506,7 +506,6 @@ Status CheckInputs(const T* query,
     output_parameters->max_sequence_length = past_present_share_buffer ? max_sequence_length : total_sequence_length;
     output_parameters->input_hidden_size = 0;
     output_parameters->hidden_size = hidden_size;
-    output_parameters->v_hidden_size = v_hidden_size;
     output_parameters->head_size = hidden_size / num_heads;
     output_parameters->v_head_size = v_head_size;
     output_parameters->num_heads = num_heads;

@@ -369,7 +369,6 @@ inline Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->max_sequence_length = narrow<int>(max_sequence_length);
     output_parameters->input_hidden_size = narrow<int>(input_hidden_size);
     output_parameters->hidden_size = narrow<int>(q_hidden_size);
-    output_parameters->v_hidden_size = narrow<int>(v_hidden_size);
     output_parameters->head_size = narrow<int>(q_hidden_size) / num_heads_;
     output_parameters->v_head_size = narrow<int>(v_hidden_size) / num_heads_;
     output_parameters->num_heads = num_heads_;

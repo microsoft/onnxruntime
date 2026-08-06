@@ -273,7 +273,7 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
       assert(qk_head_size == v_head_size);
       assert(data.attention_bias == nullptr);
       assert(data.mask_index == nullptr);
-      assert(parameters.hidden_size == parameters.v_hidden_size);
+      assert(parameters.hidden_size == parameters.GetOutputHiddenSize());
 
       // For fused cross attention, besides adding bias, K and V needed to be packed:
       //   Key (BxSxNxH), Value (BxSxNxH) => Q (BxSxNxH), K (BxSxNx2xH)

@@ -19,7 +19,6 @@ struct AttentionParameters {
   int input_hidden_size = 0;      // first dimension of weights for input projection
   int hidden_size = 0;            // hidden size of Q (num_heads * head_size)
   int head_size = 0;              // hidden size per head of Q or K
-  int v_hidden_size = 0;          // attention output hidden size (num_heads * v_head_size)
   int v_head_size = 0;            // hidden size per head of V
   int num_heads = 0;              // number of heads of query
   int num_heads_kv = 0;           // number of heads of key or value. Always set by CheckInputs.
@@ -41,7 +40,7 @@ struct AttentionParameters {
   AttentionQkvFormat qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
 
   // Hidden size of each input and of the attention output. In grouped query attention, K and V have
-  // fewer heads than Q, so their hidden sizes differ from hidden_size and v_hidden_size.
+  // fewer heads than Q, so their hidden sizes are smaller than the query and output hidden sizes.
   int GetQueryHiddenSize() const { return num_heads * head_size; }
   int GetKeyHiddenSize() const { return num_heads_kv * head_size; }
   int GetValueHiddenSize() const { return num_heads_kv * v_head_size; }
