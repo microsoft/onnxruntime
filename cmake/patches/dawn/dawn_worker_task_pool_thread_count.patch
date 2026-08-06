@@ -1,0 +1,30 @@
+diff --git a/include/dawn/platform/DawnPlatform.h b/include/dawn/platform/DawnPlatform.h
+--- a/include/dawn/platform/DawnPlatform.h
++++ b/include/dawn/platform/DawnPlatform.h
+@@ -157,6 +157,9 @@ class DAWN_PLATFORM_EXPORT Platform {
+     // Hook for querying if a Finch feature is enabled.
+     virtual bool IsFeatureEnabled(Features feature);
+ 
++  protected:
++    std::unique_ptr<WorkerTaskPool> CreateDefaultWorkerTaskPool(uint32_t maxThreadCount);
++
+   private:
+     Platform(const Platform&) = delete;
+     Platform& operator=(const Platform&) = delete;
+diff --git a/src/dawn/platform/DawnPlatform.cpp b/src/dawn/platform/DawnPlatform.cpp
+--- a/src/dawn/platform/DawnPlatform.cpp
++++ b/src/dawn/platform/DawnPlatform.cpp
+@@ -88,7 +88,12 @@ dawn::platform::CachingInterface* Platform::GetCachingInterface() {
+ }
+ 
+ std::unique_ptr<dawn::platform::WorkerTaskPool> Platform::CreateWorkerTaskPool() {
+-    return std::make_unique<AsyncWorkerThreadPool>();
++    return CreateDefaultWorkerTaskPool(AsyncWorkerThreadPool::kDefaultThreadCount);
++}
++
++std::unique_ptr<dawn::platform::WorkerTaskPool> Platform::CreateDefaultWorkerTaskPool(
++    uint32_t maxThreadCount) {
++    return std::make_unique<AsyncWorkerThreadPool>(maxThreadCount);
+ }
+ 
+ bool Platform::IsFeatureEnabled(Features feature) {
