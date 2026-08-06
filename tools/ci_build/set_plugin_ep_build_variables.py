@@ -46,6 +46,19 @@ def main():
     print(f"Original version: {original_ver}")
     print(f"Package version type: {package_version}")
 
+    try:
+        commit_sha = (
+            subprocess.check_output(
+                ["git", "rev-parse", "--short=8", "HEAD"],
+                cwd=src_root,
+            )
+            .decode("utf-8")
+            .strip()
+        )
+    except Exception as e:
+        print(f"##vso[task.logissue type=error]Failed to get git commit: {e}")
+        sys.exit(1)
+
     if package_version == "release":
         version_string = original_ver
         python_version = original_ver
@@ -58,14 +71,6 @@ def main():
 
     elif package_version == "dev":
         try:
-            commit_sha = (
-                subprocess.check_output(
-                    ["git", "rev-parse", "--short=8", "HEAD"],
-                    cwd=src_root,
-                )
-                .decode("utf-8")
-                .strip()
-            )
             date_str = (
                 subprocess.check_output(
                     ["git", "show", "-s", "--format=%cd", "--date=format:%Y%m%d", "HEAD"],
@@ -75,7 +80,7 @@ def main():
                 .strip()
             )
         except Exception as e:
-            print(f"##vso[task.logissue type=error]Failed to get git info: {e}")
+            print(f"##vso[task.logissue type=error]Failed to get git commit date: {e}")
             sys.exit(1)
         version_string = f"{original_ver}-dev.{date_str}+{commit_sha}"
         python_version = f"{original_ver}.dev{date_str}"
@@ -104,6 +109,7 @@ def main():
     print(f"##vso[task.setvariable variable=PluginPackageVersion]{version_string}")
     print(f"##vso[task.setvariable variable=PluginPythonPackageVersion]{python_version}")
     print(f"##vso[task.setvariable variable=PluginEpVersionDefine]onnxruntime_PLUGIN_EP_VERSION={version_string}")
+    print(f"##vso[task.setvariable variable=PluginBuildCommit]{commit_sha}")
 
 
 if __name__ == "__main__":

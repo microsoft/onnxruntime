@@ -9,12 +9,13 @@ Combines pre-built plugin EP binaries with the Python package source to produce
 a platform-specific wheel.
 
 Usage:
-    python build_wheel.py --binary_dir <path> --version <ver> --output_dir <path>
+    python build_wheel.py --binary_dir <path> --version <ver> --build_commit <sha> --output_dir <path>
 """
 
 import argparse
 import platform
 import shutil
+import string
 import subprocess
 import sys
 import tempfile
@@ -48,8 +49,15 @@ AUDITWHEEL_EXCLUDE = [
 ]
 
 
-def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str):
+def validate_build_commit(build_commit: str) -> None:
+    """Validate that build_commit is a non-empty hexadecimal Git object ID."""
+    if not build_commit or not all(character in string.hexdigits for character in build_commit):
+        raise ValueError("Build commit must be a non-empty hexadecimal Git object ID")
+
+
+def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str, build_commit: str):
     """Copy the package source tree into staging_dir, copy binaries, and stamp the version."""
+    validate_build_commit(build_commit)
     staging_dir.mkdir(parents=True, exist_ok=True)
 
     # Copy only the files needed to build the wheel
@@ -95,6 +103,12 @@ def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str):
         SCRIPT_DIR / "pyproject.toml.in",
         staging_dir / "pyproject.toml",
         {"version": version},
+    )
+
+    gen_file_from_template(
+        package_dir / "_build_info.py",
+        package_dir / "_build_info.py",
+        {"build_commit": build_commit},
     )
 
 
@@ -166,6 +180,7 @@ def main():
         "--binary_dir", required=True, type=Path, help="Directory containing the built plugin EP binaries"
     )
     parser.add_argument("--version", required=True, help="Package version string (PEP 440 format)")
+    parser.add_argument("--build_commit", required=True, help="Git commit used to build the plugin binaries")
     parser.add_argument("--output_dir", required=True, type=Path, help="Directory to place the built wheel")
     args = parser.parse_args()
 
@@ -176,7 +191,7 @@ def main():
         staging_dir = Path(tmp) / "package"
         wheel_dir = Path(tmp) / "wheels"
 
-        prepare_staging_dir(staging_dir, args.binary_dir, args.version)
+        prepare_staging_dir(staging_dir, args.binary_dir, args.version, args.build_commit)
         build_wheel(staging_dir, wheel_dir)
         auditwheel_repair(wheel_dir)
         collect_wheels(wheel_dir, args.output_dir)

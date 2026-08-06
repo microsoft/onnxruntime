@@ -23,13 +23,21 @@ The wheel is platform-specific. Each platform's wheel is built from binaries pro
 [bundled wheel readme](onnxruntime_ep_webgpu/README.md#supported-platforms) for the list of supported platforms.
 
 ```bash
-python build_wheel.py --binary_dir <path-to-built-binaries> --version <PEP-440-version> --output_dir <output-directory>
+python build_wheel.py \
+	--binary_dir <path-to-built-binaries> \
+	--version <PEP-440-version> \
+	--build_commit <git-commit> \
+	--output_dir <output-directory>
 ```
 
 Example:
 
 ```bash
-python build_wheel.py --binary_dir ./build/Release --version 0.1.0.devYYYYMMDD --output_dir ./dist
+python build_wheel.py \
+	--binary_dir ./build/Release \
+	--version 0.1.0.devYYYYMMDD \
+	--build_commit "$(git rev-parse --short=8 HEAD)" \
+	--output_dir ./dist
 ```
 
 The script combines the pre-built plugin EP binaries with the package source to produce a platform-specific wheel.
@@ -47,8 +55,7 @@ python test/test_webgpu_plugin_ep.py
 ```
 
 `onnx` and `numpy` are required only by the smoke test, not by the `onnxruntime-ep-webgpu` wheel itself. The wheel's
-only runtime dependency is a compatible `onnxruntime` (see
-[`../MIN_ONNXRUNTIME_VERSION`](../MIN_ONNXRUNTIME_VERSION)).
+only runtime dependency is a compatible `onnxruntime` (see [`../MIN_ONNXRUNTIME_VERSION`](../MIN_ONNXRUNTIME_VERSION)).
 
 The test validates import, EP registration, device discovery, and inference (requires WebGPU-capable hardware for the
 inference portion). Set the environment variable `ORT_TEST_VERBOSE=1` to print additional diagnostic information
@@ -59,3 +66,12 @@ inference portion). Set the environment variable `ORT_TEST_VERBOSE=1` to print a
 The package version is derived from [`../VERSION_NUMBER`](../VERSION_NUMBER) by the packaging pipeline (see
 [`set-plugin-ep-build-variables-step.yml`](../../tools/ci_build/github/azure-pipelines/templates/set-plugin-ep-build-variables-step.yml)),
 which produces a PEP 440 version string.
+
+The commit is omitted from the PEP 440 package version, even for development builds. Retrieve it with
+`get_build_commit()`:
+
+```python
+import onnxruntime_ep_webgpu
+
+print(onnxruntime_ep_webgpu.get_build_commit())
+```

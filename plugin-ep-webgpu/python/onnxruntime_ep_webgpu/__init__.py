@@ -11,13 +11,21 @@ from __future__ import annotations
 
 import pathlib
 
+from ._build_info import BUILD_COMMIT
+
 __all__ = [
+    "get_build_commit",
     "get_ep_name",
     "get_ep_names",
     "get_library_path",
 ]
 
 _module_dir = pathlib.Path(__file__).parent
+
+
+def get_build_commit() -> str:
+    """Return the Git commit used to build this package."""
+    return BUILD_COMMIT
 
 
 def get_library_path() -> str:

@@ -20,6 +20,7 @@ import platform
 import sys
 import tempfile
 import traceback
+from importlib import metadata
 from pathlib import Path
 
 import numpy as np
@@ -69,13 +70,16 @@ def print_environment_info():
             print(f"  ENV {var}={os.environ[var]}")
 
 
-def test_import_and_library_path():
-    """Test that the package imports and the library path is valid."""
+def test_import_and_accessors():
+    """Test that the package imports and that the accessors work."""
     import onnxruntime_ep_webgpu as webgpu_ep  # noqa: PLC0415  # `import` should be at the top-level of a file.
 
     debug_print(f"  Package location: {webgpu_ep.__file__}")
     pkg_dir = Path(webgpu_ep.__file__).parent
     debug_print(f"  Package directory contents: {sorted(p.name for p in pkg_dir.iterdir())}")
+
+    print(f"Package version: {metadata.version('onnxruntime-ep-webgpu')}")
+    print(f"Build commit: {webgpu_ep.get_build_commit()}")
 
     lib_path = webgpu_ep.get_library_path()
     assert Path(lib_path).is_file(), f"Library path does not exist: {lib_path}"
@@ -158,8 +162,8 @@ def main():
         print("\n--- Environment ---")
         print_environment_info()
 
-    print("\n--- Test 1: Import and library path ---")
-    test_import_and_library_path()
+    print("\n--- Test 1: Import and accessors ---")
+    test_import_and_accessors()
 
     print("\n--- Test 2: Registration and inference ---")
     test_registration_and_inference()

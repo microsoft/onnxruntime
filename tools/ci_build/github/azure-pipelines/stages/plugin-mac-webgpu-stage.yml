@@ -161,5 +161,6 @@ stages:
         python3 "$(Build.SourcesDirectory)/plugin-ep-webgpu/python/build_wheel.py" \
           --binary_dir "$(Build.BinariesDirectory)/plugin_artifacts/bin" \
           --version "$(PluginPythonPackageVersion)" \
+          --build_commit "$(PluginBuildCommit)" \
           --output_dir "$(Build.ArtifactStagingDirectory)/python"
       displayName: 'Build Python wheel'
