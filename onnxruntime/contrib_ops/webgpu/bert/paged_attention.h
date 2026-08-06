@@ -223,16 +223,16 @@ class PagedAttention final : public WebGpuKernel {
   bool rotary_interleaved_;
   float scale_;
   float softcap_;
-    float qk_norm_epsilon_;
-    std::string k_quant_type_;
-    std::string v_quant_type_;
-    std::string k_cache_dtype_;
-    std::string v_cache_dtype_;
-    std::string kv_cache_layout_;
-    int v_head_size_;
-    int rotary_offset_;
-    bool use_smooth_softmax_;
-    bool has_explicit_scale_;
+  float qk_norm_epsilon_;
+  std::string k_quant_type_;
+  std::string v_quant_type_;
+  std::string k_cache_dtype_;
+  std::string v_cache_dtype_;
+  std::string kv_cache_layout_;
+  int v_head_size_;
+  int rotary_offset_;
+  bool use_smooth_softmax_;
+  bool has_explicit_scale_;
 };
 
 }  // namespace webgpu
