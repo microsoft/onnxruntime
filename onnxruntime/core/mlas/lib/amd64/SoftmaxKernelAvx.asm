@@ -17,11 +17,9 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
-        .list
 
-        EXTERN  MlasMinimumF32Value:NEAR
+        EXTERN  MlasMinimumF32Value:PROC
 
 ;++
 ;
@@ -123,9 +121,9 @@ ExitKernel:
 
         vbroadcastss ymm4,DWORD PTR [r8]        ; broadcast scale value
         cmp     rdx,32
-        jb      ProcessRemainingCountBy8
+        jb      ProcessRemainingCountBy8_2
 
-ProcessRemainingCountBy32:
+ProcessRemainingCountBy32_2:
         vmulps  ymm0,ymm4,YMMWORD PTR [rcx]
         vmulps  ymm1,ymm4,YMMWORD PTR [rcx+8*4]
         sub     rdx,32
@@ -137,29 +135,29 @@ ProcessRemainingCountBy32:
         vmovups YMMWORD PTR [rcx+24*4],ymm3
         add     rcx,32*4                        ; advance output by 32 elements
         cmp     rdx,32
-        jae     ProcessRemainingCountBy32
+        jae     ProcessRemainingCountBy32_2
 
-ProcessRemainingCountBy8:
+ProcessRemainingCountBy8_2:
         cmp     rdx,8
-        jb      ProcessRemainingCountLessThan8
+        jb      ProcessRemainingCountLessThan8_2
         vmulps  ymm0,ymm4,YMMWORD PTR [rcx]
         sub     rdx,8
         vmovups YMMWORD PTR [rcx],ymm0
         add     rcx,8*4                         ; advance output by 8 elements
-        jmp     ProcessRemainingCountBy8
+        jmp     ProcessRemainingCountBy8_2
 
-ProcessRemainingCountLessThan8:
+ProcessRemainingCountLessThan8_2:
         test    rdx,rdx
-        jz      ExitKernel
+        jz      ExitKernel_2
 
-ProcessRemainingCountBy1:
+ProcessRemainingCountBy1_2:
         vmulss  xmm0,xmm4,DWORD PTR [rcx]
         vmovss  DWORD PTR [rcx],xmm0
         add     rcx,4                           ; advance output by 1 element
         dec     edx
-        jnz     ProcessRemainingCountBy1
+        jnz     ProcessRemainingCountBy1_2
 
-ExitKernel:
+ExitKernel_2:
         vzeroupper
         ret
 
@@ -194,9 +192,9 @@ ExitKernel:
         vbroadcastss ymm4,DWORD PTR [r9]        ; broadcast negative minimum value
         vbroadcastss ymm5,DWORD PTR [r9+4]      ; broadcast log(SumExp)
         cmp     r8,32
-        jb      ProcessRemainingCountBy8
+        jb      ProcessRemainingCountBy8_3
 
-ProcessRemainingCountBy32:
+ProcessRemainingCountBy32_3:
         vaddps  ymm0,ymm4,YMMWORD PTR [rcx]
         vaddps  ymm1,ymm4,YMMWORD PTR [rcx+8*4]
         sub     r8,32
@@ -213,33 +211,33 @@ ProcessRemainingCountBy32:
         vmovups YMMWORD PTR [rdx+24*4],ymm3
         add     rdx,32*4                        ; advance output by 32 elements
         cmp     r8,32
-        jae     ProcessRemainingCountBy32
+        jae     ProcessRemainingCountBy32_3
 
-ProcessRemainingCountBy8:
+ProcessRemainingCountBy8_3:
         cmp     r8,8
-        jb      ProcessRemainingCountLessThan8
+        jb      ProcessRemainingCountLessThan8_3
         vaddps  ymm0,ymm4,YMMWORD PTR [rcx]
         add     rcx,8*4                         ; advance input by 8 elements
         vsubps  ymm0,ymm0,ymm5                  ; do as two steps for numeric stability
         sub     r8,8
         vmovups YMMWORD PTR [rdx],ymm0
         add     rdx,8*4                         ; advance output by 8 elements
-        jmp     ProcessRemainingCountBy8
+        jmp     ProcessRemainingCountBy8_3
 
-ProcessRemainingCountLessThan8:
+ProcessRemainingCountLessThan8_3:
         test    r8,r8
-        jz      ExitKernel
+        jz      ExitKernel_3
 
-ProcessRemainingCountBy1:
+ProcessRemainingCountBy1_3:
         vaddss  xmm0,xmm4,DWORD PTR [rcx]
         add     rcx,4                           ; advance input by 1 element
         vsubss  xmm0,xmm0,xmm5
         vmovss  DWORD PTR [rdx],xmm0
         add     rdx,4                           ; advance output by 1 element
         dec     r8d
-        jnz     ProcessRemainingCountBy1
+        jnz     ProcessRemainingCountBy1_3
 
-ExitKernel:
+ExitKernel_3:
         vzeroupper
         ret
 

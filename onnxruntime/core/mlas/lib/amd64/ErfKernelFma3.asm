@@ -17,12 +17,10 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
-        .list
 
-        EXTERN  MlasMaskMoveAvx:NEAR
-        EXTERN  MlasErfConstants:NEAR
+        EXTERN  MlasMaskMoveAvx:PROC
+        EXTERN  MlasErfConstants:PROC
 
 ;
 ; Structure layout for the erf constants block.
@@ -72,18 +70,18 @@ ErfConstants ENDS
 
 ErfKernelFrame STRUCT
 
-        ErfBuffer0 OWORD 8 DUP(?)
-        ErfBuffer1 OWORD 8 DUP(?)
-        SavedXmm6 OWORD ?
-        SavedXmm7 OWORD ?
-        SavedXmm8 OWORD ?
-        SavedXmm9 OWORD ?
-        SavedXmm10 OWORD ?
-        SavedXmm11 OWORD ?
-        SavedXmm12 OWORD ?
-        SavedXmm13 OWORD ?
-        SavedXmm14 OWORD ?
-        SavedXmm15 OWORD ?
+        ErfBuffer0 QWORD 16 DUP (?)
+        ErfBuffer1 QWORD 16 DUP (?)
+        SavedXmm6 QWORD 2 DUP (?)
+        SavedXmm7 QWORD 2 DUP (?)
+        SavedXmm8 QWORD 2 DUP (?)
+        SavedXmm9 QWORD 2 DUP (?)
+        SavedXmm10 QWORD 2 DUP (?)
+        SavedXmm11 QWORD 2 DUP (?)
+        SavedXmm12 QWORD 2 DUP (?)
+        SavedXmm13 QWORD 2 DUP (?)
+        SavedXmm14 QWORD 2 DUP (?)
+        SavedXmm15 QWORD 2 DUP (?)
         Padding0 QWORD ?
         Padding1 QWORD ?
         CountN QWORD ?
@@ -548,16 +546,16 @@ LBiggerNumbersRemaining:
 
 LErfBatchExp:
         vzeroupper
-        movaps  xmm6,ErfKernelFrame.SavedXmm6[rsp]
-        movaps  xmm7,ErfKernelFrame.SavedXmm7[rsp]
-        movaps  xmm8,ErfKernelFrame.SavedXmm8[rsp]
-        movaps  xmm9,ErfKernelFrame.SavedXmm9[rsp]
-        movaps  xmm10,ErfKernelFrame.SavedXmm10[rsp]
-        movaps  xmm11,ErfKernelFrame.SavedXmm11[rsp]
-        movaps  xmm12,ErfKernelFrame.SavedXmm12[rsp]
-        movaps  xmm13,ErfKernelFrame.SavedXmm13[rsp]
-        movaps  xmm14,ErfKernelFrame.SavedXmm14[rsp]
-        movaps  xmm15,ErfKernelFrame.SavedXmm15[rsp]
+        movaps  xmm6,XMMWORD PTR ErfKernelFrame.SavedXmm6[rsp]
+        movaps  xmm7,XMMWORD PTR ErfKernelFrame.SavedXmm7[rsp]
+        movaps  xmm8,XMMWORD PTR ErfKernelFrame.SavedXmm8[rsp]
+        movaps  xmm9,XMMWORD PTR ErfKernelFrame.SavedXmm9[rsp]
+        movaps  xmm10,XMMWORD PTR ErfKernelFrame.SavedXmm10[rsp]
+        movaps  xmm11,XMMWORD PTR ErfKernelFrame.SavedXmm11[rsp]
+        movaps  xmm12,XMMWORD PTR ErfKernelFrame.SavedXmm12[rsp]
+        movaps  xmm13,XMMWORD PTR ErfKernelFrame.SavedXmm13[rsp]
+        movaps  xmm14,XMMWORD PTR ErfKernelFrame.SavedXmm14[rsp]
+        movaps  xmm15,XMMWORD PTR ErfKernelFrame.SavedXmm15[rsp]
         add     rsp,(ErfKernelFrame.ReturnAddress)
 
         BEGIN_EPILOGUE

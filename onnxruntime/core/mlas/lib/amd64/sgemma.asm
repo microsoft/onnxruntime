@@ -15,9 +15,7 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
-        .list
 
 ;++
 ;

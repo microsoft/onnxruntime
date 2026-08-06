@@ -16,13 +16,11 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
 INCLUDE TransKernelCommon.inc
-        .list
 
-        EXTERN  MlasMaskMoveTableAvx:NEAR
-        EXTERN  MlasExpConstants:NEAR
+        EXTERN  MlasMaskMoveTableAvx:PROC
+        EXTERN  MlasExpConstants:PROC
 
 ;++
 ;
@@ -142,16 +140,16 @@ ProcessRemainingCount:
 
 ExitKernel:
         vzeroupper
-        movaps  xmm6,TransKernelFrame.SavedXmm6[rsp]
-        movaps  xmm7,TransKernelFrame.SavedXmm7[rsp]
-        movaps  xmm8,TransKernelFrame.SavedXmm8[rsp]
-        movaps  xmm9,TransKernelFrame.SavedXmm9[rsp]
-        movaps  xmm10,TransKernelFrame.SavedXmm10[rsp]
-        movaps  xmm11,TransKernelFrame.SavedXmm11[rsp]
-        movaps  xmm12,TransKernelFrame.SavedXmm12[rsp]
-        movaps  xmm13,TransKernelFrame.SavedXmm13[rsp]
-        movaps  xmm14,TransKernelFrame.SavedXmm14[rsp]
-        movaps  xmm15,TransKernelFrame.SavedXmm15[rsp]
+        movaps  xmm6,XMMWORD PTR TransKernelFrame.SavedXmm6[rsp]
+        movaps  xmm7,XMMWORD PTR TransKernelFrame.SavedXmm7[rsp]
+        movaps  xmm8,XMMWORD PTR TransKernelFrame.SavedXmm8[rsp]
+        movaps  xmm9,XMMWORD PTR TransKernelFrame.SavedXmm9[rsp]
+        movaps  xmm10,XMMWORD PTR TransKernelFrame.SavedXmm10[rsp]
+        movaps  xmm11,XMMWORD PTR TransKernelFrame.SavedXmm11[rsp]
+        movaps  xmm12,XMMWORD PTR TransKernelFrame.SavedXmm12[rsp]
+        movaps  xmm13,XMMWORD PTR TransKernelFrame.SavedXmm13[rsp]
+        movaps  xmm14,XMMWORD PTR TransKernelFrame.SavedXmm14[rsp]
+        movaps  xmm15,XMMWORD PTR TransKernelFrame.SavedXmm15[rsp]
         add     rsp,(TransKernelFrame.ReturnAddress)
 
         BEGIN_EPILOGUE
@@ -207,9 +205,9 @@ ExitKernel:
         vbroadcastss ymm9,DWORD PTR [r9]        ; broadcast negative maximum value
         vxorps  xmm10,xmm10,xmm10               ; clear exp() accumulator
         sub     r8,24
-        jb      ProcessRemainingCount
+        jb      ProcessRemainingCount_2
 
-ComputeExpBy24Loop:
+ComputeExpBy24Loop_2:
         vbroadcastss ymm11,ExpConstants.LowerRangeSumExp[rax]
         vbroadcastss ymm2,ExpConstants.Log2Reciprocal[rax]
         vaddps  ymm0,ymm9,YMMWORD PTR [rcx]     ; bias by negative maximum value
@@ -276,35 +274,35 @@ ComputeExpBy24Loop:
         add     rcx,24*4                        ; advance input by 24 elements
         vaddps  ymm10,ymm10,ymm7
         test    rdx,rdx
-        jz      SkipStoreResultsBy24
+        jz      SkipStoreResultsBy24_2
         vmovups YMMWORD PTR [rdx],ymm1
         vmovups YMMWORD PTR [rdx+32],ymm4
         vmovups YMMWORD PTR [rdx+64],ymm7
         add     rdx,24*4                        ; advance output by 24 elements
 
-SkipStoreResultsBy24:
+SkipStoreResultsBy24_2:
         sub     r8,24
-        jae     ComputeExpBy24Loop
+        jae     ComputeExpBy24Loop_2
 
-ProcessRemainingCount:
+ProcessRemainingCount_2:
         add     r8,24                           ; correct for over-subtract above
-        jz      ReduceAccumulator
+        jz      ReduceAccumulator_2
         vbroadcastss ymm11,ExpConstants.LowerRangeSumExp[rax]
 
-ComputeExpBy8Loop:
+ComputeExpBy8Loop_2:
         cmp     r8,8                            ; remaining count < 8?
-        jb      LoadPartialVector
+        jb      LoadPartialVector_2
         vmovups ymm0,YMMWORD PTR [rcx]
-        jmp     ProcessSingleVector
+        jmp     ProcessSingleVector_2
 
-LoadPartialVector:
+LoadPartialVector_2:
         lea     r10,MlasMaskMoveTableAvx+8*4
         neg     r8                              ; carry flag unchanged
         vmovups ymm3,YMMWORD PTR [r10+r8*4]
         vmaskmovps ymm0,ymm3,YMMWORD PTR [rcx]
         vandps  ymm9,ymm9,ymm3                  ; mask unused maximum value to 0.0
 
-ProcessSingleVector:
+ProcessSingleVector_2:
         vbroadcastss ymm2,ExpConstants.Log2Reciprocal[rax]
         vaddps  ymm0,ymm9,ymm0                  ; bias by negative maximum value
         vbroadcastss ymm15,ExpConstants.RoundingBias[rax]
@@ -331,43 +329,43 @@ ProcessSingleVector:
         vfmadd213ps ymm1,ymm0,ymm15             ; p = p * x + poly_5
         vfmadd213ps ymm1,ymm0,ymm15             ; p = p * x + poly_6
         vmulps  ymm1,ymm1,ymm2
-        jb      StorePartialVector              ; remaining count < 8?
+        jb      StorePartialVector_2              ; remaining count < 8?
         vaddps  ymm10,ymm10,ymm1                ; accumulate exp() results
         test    rdx,rdx                         ; store exp() results?
-        jz      SkipStoreResultsBy8
+        jz      SkipStoreResultsBy8_2
         vmovups YMMWORD PTR [rdx],ymm1
         add     rdx,8*4                         ; advance output by 8 elements
 
-SkipStoreResultsBy8:
+SkipStoreResultsBy8_2:
         add     rcx,8*4                         ; advance input by 8 elements
         sub     r8,8
-        jnz     ComputeExpBy8Loop
-        jmp     ReduceAccumulator
+        jnz     ComputeExpBy8Loop_2
+        jmp     ReduceAccumulator_2
 
-StorePartialVector:
+StorePartialVector_2:
         vandps  ymm1,ymm1,ymm3                  ; mask unused exp() results to 0.0
         vaddps  ymm10,ymm10,ymm1                ; accumulate exp() results
         test    rdx,rdx                         ; store exp() results?
-        jz      ReduceAccumulator
+        jz      ReduceAccumulator_2
         vmaskmovps YMMWORD PTR [rdx],ymm3,ymm1
 
-ReduceAccumulator:
+ReduceAccumulator_2:
         vhaddps ymm10,ymm10,ymm10
         vhaddps ymm10,ymm10,ymm10
         vextractf128 xmm0,ymm10,1
         vaddss  xmm0,xmm0,xmm10
 
         vzeroupper
-        movaps  xmm6,TransKernelFrame.SavedXmm6[rsp]
-        movaps  xmm7,TransKernelFrame.SavedXmm7[rsp]
-        movaps  xmm8,TransKernelFrame.SavedXmm8[rsp]
-        movaps  xmm9,TransKernelFrame.SavedXmm9[rsp]
-        movaps  xmm10,TransKernelFrame.SavedXmm10[rsp]
-        movaps  xmm11,TransKernelFrame.SavedXmm11[rsp]
-        movaps  xmm12,TransKernelFrame.SavedXmm12[rsp]
-        movaps  xmm13,TransKernelFrame.SavedXmm13[rsp]
-        movaps  xmm14,TransKernelFrame.SavedXmm14[rsp]
-        movaps  xmm15,TransKernelFrame.SavedXmm15[rsp]
+        movaps  xmm6,XMMWORD PTR TransKernelFrame.SavedXmm6[rsp]
+        movaps  xmm7,XMMWORD PTR TransKernelFrame.SavedXmm7[rsp]
+        movaps  xmm8,XMMWORD PTR TransKernelFrame.SavedXmm8[rsp]
+        movaps  xmm9,XMMWORD PTR TransKernelFrame.SavedXmm9[rsp]
+        movaps  xmm10,XMMWORD PTR TransKernelFrame.SavedXmm10[rsp]
+        movaps  xmm11,XMMWORD PTR TransKernelFrame.SavedXmm11[rsp]
+        movaps  xmm12,XMMWORD PTR TransKernelFrame.SavedXmm12[rsp]
+        movaps  xmm13,XMMWORD PTR TransKernelFrame.SavedXmm13[rsp]
+        movaps  xmm14,XMMWORD PTR TransKernelFrame.SavedXmm14[rsp]
+        movaps  xmm15,XMMWORD PTR TransKernelFrame.SavedXmm15[rsp]
         add     rsp,(TransKernelFrame.ReturnAddress)
 
         BEGIN_EPILOGUE

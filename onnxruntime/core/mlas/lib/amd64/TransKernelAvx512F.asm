@@ -16,13 +16,11 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
 INCLUDE TransKernelCommon.inc
-        .list
 
-        EXTERN  MlasExpConstants:NEAR
-        EXTERN  MlasOpmask16BitTableAvx512:NEAR
+        EXTERN  MlasExpConstants:PROC
+        EXTERN  MlasOpmask16BitTableAvx512:PROC
 
 ;++
 ;
@@ -153,9 +151,9 @@ ExitKernel:
         vbroadcastss zmm19,DWORD PTR [r9]       ; broadcast negative maximum value
         vpxord  zmm20,zmm20,zmm20               ; clear exp() accumulator
         sub     r8,48
-        jb      ProcessRemainingCount
+        jb      ProcessRemainingCount_2
 
-ComputeExpBy48Loop:
+ComputeExpBy48Loop_2:
         vaddps  zmm0,zmm19,ZMMWORD PTR [rcx]    ; bias by negative maximum value
         vaddps  zmm3,zmm19,ZMMWORD PTR [rcx+64]
         vaddps  zmm16,zmm19,ZMMWORD PTR [rcx+128]
@@ -206,29 +204,29 @@ ComputeExpBy48Loop:
         vaddps  zmm20,zmm20,zmm17
         add     rcx,48*4                        ; advance input by 48 elements
         test    rdx,rdx
-        jz      SkipStoreResultsBy48
+        jz      SkipStoreResultsBy48_2
         vmovups ZMMWORD PTR [rdx],zmm1
         vmovups ZMMWORD PTR [rdx+64],zmm4
         vmovups ZMMWORD PTR [rdx+128],zmm17
         add     rdx,48*4                        ; advance output by 48 elements
 
-SkipStoreResultsBy48:
+SkipStoreResultsBy48_2:
         sub     r8,48
-        jae     ComputeExpBy48Loop
+        jae     ComputeExpBy48Loop_2
 
-ProcessRemainingCount:
+ProcessRemainingCount_2:
         add     r8,48                           ; correct for over-subtract above
-        jz      ReduceAccumulator
+        jz      ReduceAccumulator_2
         mov     eax,-1
         kmovw   k1,eax                          ; update mask to access all elements
 
-ComputeExpBy16Loop:
+ComputeExpBy16Loop_2:
         cmp     r8,16
-        jae     ProcessSingleVector
+        jae     ProcessSingleVector_2
         lea     r10,MlasOpmask16BitTableAvx512
         kmovw   k1,WORD PTR [r10+r8*2]
 
-ProcessSingleVector:
+ProcessSingleVector_2:
         vaddps  zmm0{k1}{z},zmm19,ZMMWORD PTR [rcx]
                                                 ; bias by negative maximum value
         vmaxps  zmm0,zmm21,zmm0                 ; clamp lower bound
@@ -248,15 +246,15 @@ ProcessSingleVector:
         vaddps  zmm20{k1},zmm20,zmm1            ; accumulate exp() results
         add     rcx,16*4                        ; advance input by 16 elements
         test    rdx,rdx
-        jz      SkipStoreResultsBy16
+        jz      SkipStoreResultsBy16_2
         vmovups ZMMWORD PTR [rdx]{k1},zmm1
         add     rdx,16*4                        ; advance output by 16 elements
 
-SkipStoreResultsBy16:
+SkipStoreResultsBy16_2:
         sub     r8,16
-        ja      ComputeExpBy16Loop
+        ja      ComputeExpBy16Loop_2
 
-ReduceAccumulator:
+ReduceAccumulator_2:
         vextractf64x4 ymm0,zmm20,1
         vaddps  zmm0,zmm0,zmm20
         vhaddps ymm0,ymm0,ymm0

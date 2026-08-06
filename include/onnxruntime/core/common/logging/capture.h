@@ -44,7 +44,13 @@ class Capture {
 #ifdef _MSC_VER
 // add SAL annotation for printf format string. requires Code Analysis to run to validate usage.
 #define msvc_printf_check _Printf_format_string_
-#define __attribute__(x)  // Disable for MSVC. Supported by GCC and CLang.
+#if !defined(__clang__)
+// Disable __attribute__ only for real MSVC (cl.exe). clang-cl defines _MSC_VER but
+// supports __attribute__, and its own intrinsic headers (e.g. mmintrin.h reached via
+// <intrin.h>) rely on __attribute__((__vector_size__)); poisoning it here would strip
+// those vector typedefs and break the headers.
+#define __attribute__(x)  // Supported by GCC and Clang (including clang-cl).
+#endif
 #else
 #define msvc_printf_check
 #endif
