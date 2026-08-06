@@ -302,7 +302,7 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
 
     auto& output_arg = graph.GetOrCreateNodeArg(
       "output", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {token_count, hidden_size}));
-    auto& key_cache_out_arg = graph.GetOrCreateNodeArg(
+  auto& key_cache_out_arg = graph.GetOrCreateNodeArg(
       "key_cache_out", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
                                        {num_blocks, block_size, kv_num_heads, head_size}));
   auto& value_cache_out_arg = graph.GetOrCreateNodeArg(
