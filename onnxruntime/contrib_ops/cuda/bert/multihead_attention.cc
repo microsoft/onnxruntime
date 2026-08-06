@@ -163,7 +163,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(parameters.batch_size);
   output_shape[1] = static_cast<int64_t>(sequence_length);
-  output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
+  output_shape[2] = static_cast<int64_t>(parameters.GetOutputHiddenSize());
   Tensor* output = context->Output(0, output_shape);
 
   std::vector<int64_t> present_key_dims{
@@ -415,7 +415,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
       nullptr == present_key &&
       nullptr == output_qk &&
       (parameters.qkv_format == Q_K_V_BSNH || (parameters.qkv_format == Q_KV_BSNH_BSN2H && bias == nullptr)) &&
-      parameters.hidden_size == parameters.v_hidden_size &&
+      parameters.hidden_size == parameters.GetOutputHiddenSize() &&
       parameters.num_heads_kv == parameters.num_heads &&
       has_fused_cross_attention_kernel(sm, parameters.head_size, parameters.kv_sequence_length);
 
@@ -444,7 +444,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
       nullptr == past_key && nullptr == past_sequence_length && nullptr == cache_indirection &&
       nullptr == present_key && nullptr == output_qk &&
       is_mask_none_or_1d_k_len &&
-      parameters.hidden_size == parameters.v_hidden_size &&
+      parameters.hidden_size == parameters.GetOutputHiddenSize() &&
       parameters.num_heads_kv == parameters.num_heads &&
       parameters.sequence_length == parameters.kv_sequence_length &&  // self attention only for fused runner
       FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,

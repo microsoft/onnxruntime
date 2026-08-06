@@ -143,7 +143,7 @@ Status DecoderMaskedMultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* 
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(batch_size);
   output_shape[1] = static_cast<int64_t>(sequence_length);
-  output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
+  output_shape[2] = static_cast<int64_t>(parameters.GetOutputHiddenSize());
   Tensor* output = context->Output(0, output_shape);
 
   std::vector<int64_t> present_dims{parameters.batch_size, parameters.num_heads, parameters.max_sequence_length, parameters.head_size};
