@@ -353,10 +353,10 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
 
   if (seq_length == 0) {
     if (has_Y_h) {
-      context.FillZero(*Y_h);
+      ORT_RETURN_IF_ERROR(context.FillZero(*Y_h));
     }
     if (has_Y_c) {
-      context.FillZero(*Y_c);
+      ORT_RETURN_IF_ERROR(context.FillZero(*Y_c));
     }
     return Status::OK();
   }
@@ -415,12 +415,12 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
     if (initial_h != nullptr) {
       ORT_RETURN_IF_ERROR(copy_from_state(initial_h, &H_a, dir));
     } else {
-      context.FillZero(H_a);
+      ORT_RETURN_IF_ERROR(context.FillZero(H_a));
     }
     if (initial_c != nullptr) {
       ORT_RETURN_IF_ERROR(copy_from_state(initial_c, &C_a, dir));
     } else {
-      context.FillZero(C_a);
+      ORT_RETURN_IF_ERROR(context.FillZero(C_a));
     }
 
     // Per-timestep loop

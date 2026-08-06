@@ -28,6 +28,7 @@ class Tensor;
 namespace webgpu {
 class WebGpuContext;
 class ComputeContextBase;
+class ComputeContext;
 class ProgramBase;
 
 // PendingKernelInfo stores profiling information for a kernel execution
@@ -371,6 +372,7 @@ class WebGpuContext final {
   Status WaitForDeferredPipelineBuilds();
 
   friend class BufferManager;
+  friend class ComputeContext;
   friend class WebGpuContextFactory;
 
   std::once_flag init_flag_;
