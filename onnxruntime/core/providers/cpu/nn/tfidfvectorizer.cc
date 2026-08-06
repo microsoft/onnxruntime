@@ -11,6 +11,7 @@
 #include "core/platform/threadpool.h"
 
 #include <functional>
+#include <limits>
 #include <string_view>
 
 namespace onnxruntime {
@@ -69,9 +70,11 @@ struct NgramPart<std::string> {
 };
 
 // Returns next ngram_id
+// ngram_indexes_size bounds the ids handed out here to the size of the ngram_indexes attribute, since an
+// assigned id is later used as a 1-based index into ngram_indexes_ (and, transitively, weights_).
 template <class K, class ForwardIter, class Map>
 inline size_t PopulateGrams(ForwardIter first, size_t ngrams, size_t ngram_size, size_t ngram_id,
-                            Map& c) {
+                            size_t ngram_indexes_size, Map& c) {
   for (; ngrams > 0; --ngrams) {
     size_t n = 1;
     Map* m = &c;
@@ -80,6 +83,8 @@ inline size_t PopulateGrams(ForwardIter first, size_t ngrams, size_t ngram_size,
       ++first;
       if (n == ngram_size) {
         ORT_ENFORCE(p.first->second->id_ == 0, "Duplicate ngram detected, size: ", ngram_size, " id: ", ngram_id);
+        ORT_ENFORCE(ngram_id <= ngram_indexes_size,
+                    "ngram id ", ngram_id, " is out of bounds for ngram_indexes of size ", ngram_indexes_size);
         p.first->second->id_ = ngram_id;
         ++ngram_id;
         break;
@@ -134,6 +139,9 @@ struct TfIdfVectorizer::Impl {
   // Contains output indexes
   // represents ngram_indexes output
   gsl::span<const int64_t> ngram_indexes_;
+  // Optional per-n-gram weights, indexed by 0-based n-gram POOL position (ngram_id - 1), i.e. the
+  // n-gram's position within the pool_* attribute -- NOT by its output coordinate (ngram_indexes_[pos]).
+  // The two only coincide when ngram_indexes_ happens to be the identity permutation.
   gsl::span<const float> weights_;
 
   // This map contains references to pool_string_ entries
@@ -200,8 +208,12 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
     ORT_ENFORCE(std::all_of(impl_->ngram_indexes_.begin(), impl_->ngram_indexes_.end(),
                             [](int64_t i) { return i >= 0; }),
                 "Negative ngram_indexes values are not allowed");
-    // Set output size to max output index + 1;
+    // Set output size to max output index + 1. The output shape is stored as int64_t (TensorShapeVector),
+    // so the incremented value must still fit in int64_t to avoid producing a negative/invalid dimension.
     auto greatest_hit = std::max_element(impl_->ngram_indexes_.begin(), impl_->ngram_indexes_.end());
+    ORT_ENFORCE(*greatest_hit < std::numeric_limits<int64_t>::max(),
+                "ngram_indexes contains a value that is too large to represent an output dimension: ",
+                std::to_string(*greatest_hit));
     impl_->output_size_ = SafeInt<size_t>(*greatest_hit) + 1;
   }
 
@@ -243,9 +255,11 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
       // Skip loading into hash_set ngrams that are not in the range of [min_gram_length-max_gram_length]
       if (ngram_size >= min_gram_length && ngram_size <= max_gram_length) {
         if (pool_strings.empty()) {
-          ngram_id = PopulateGrams<int64_t>(pool_int64s.begin() + start_idx, ngrams, ngram_size, ngram_id, impl_->int64_map_);
+          ngram_id = PopulateGrams<int64_t>(pool_int64s.begin() + start_idx, ngrams, ngram_size, ngram_id,
+                                            impl_->ngram_indexes_.size(), impl_->int64_map_);
         } else {
-          ngram_id = PopulateGrams<std::string>(pool_strings.begin() + start_idx, ngrams, ngram_size, ngram_id, impl_->str_map_);
+          ngram_id = PopulateGrams<std::string>(pool_strings.begin() + start_idx, ngrams, ngram_size, ngram_id,
+                                                impl_->ngram_indexes_.size(), impl_->str_map_);
         }
       } else {
         ngram_id += ngrams;
@@ -259,17 +273,20 @@ TfIdfVectorizer::~TfIdfVectorizer() = default;
 
 void TfIdfVectorizer::ComputeImpl(const void* x_data_raw, size_t elem_size, ptrdiff_t row_num, size_t row_size,
                                   bool is_input_string, gsl::span<float> output_data,
-                                  std::function<void(size_t, gsl::span<float>&)>& fn_weight) const {
+                                  std::function<void(size_t, size_t, gsl::span<float>&)>& fn_weight) const {
   const void* const row_begin = AdvanceElementPtr(x_data_raw, row_num * row_size, elem_size);
   const void* const row_end = AdvanceElementPtr(row_begin, row_size, elem_size);
 
   const auto& impl = *impl_;
   const auto max_gram_length = impl.max_gram_length_;
-  const auto max_skip_distance = impl.max_skip_count_ + 1;  // Convert to distance
+  // A skip distance at or beyond the row size can never yield an n-gram of length >= 2 (unigrams do not
+  // use skip distance at all), so clamp to row_size to bound the loop below and avoid overflow when
+  // max_skip_count_ is an attacker-controlled, very large attribute value.
+  const auto max_skip_distance = std::min<int64_t>(impl.max_skip_count_, static_cast<int64_t>(row_size)) + 1;
   auto start_ngram_size = impl.min_gram_length_;
   size_t output_idx;
 
-  for (auto skip_distance = 1; skip_distance <= max_skip_distance; ++skip_distance) {
+  for (int64_t skip_distance = 1; skip_distance <= max_skip_distance; ++skip_distance) {
     auto ngram_start = row_begin;
     auto const ngram_row_end = row_end;
 
@@ -295,7 +312,8 @@ void TfIdfVectorizer::ComputeImpl(const void* x_data_raw, size_t elem_size, ptrd
           }
           if (ngram_size >= start_ngram_size && hit->second->id_ != 0) {
             output_idx = impl.OutputIdToIncrement(hit->second->id_);
-            fn_weight(output_idx, output_data);
+            // hit->second->id_ is 1-based; see the pool-position/output-coordinate comment on weights_.
+            fn_weight(hit->second->id_ - 1, output_idx, output_data);
           }
           str_map = &hit->second->leafs_;
         }
@@ -313,7 +331,8 @@ void TfIdfVectorizer::ComputeImpl(const void* x_data_raw, size_t elem_size, ptrd
           }
           if (ngram_size >= start_ngram_size && hit->second->id_ != 0) {
             output_idx = impl.OutputIdToIncrement(hit->second->id_);
-            fn_weight(output_idx, output_data);
+            // See the corresponding comment in the string branch above.
+            fn_weight(hit->second->id_ - 1, output_idx, output_data);
           }
           int_map = &hit->second->leafs_;
         }
@@ -391,24 +410,27 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
   int32_t num_batches = std::min<int32_t>(concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()) * 2, num_rows);
 
   const auto& w = impl.weights_;
-  std::function<void(size_t, gsl::span<float>&)> fn_weight;
+  // fn_weight receives (pool_position, output_idx, out): pool_position is the 0-based position of the
+  // matched n-gram in the pool (bounds weights_, per its size == ngram_indexes_.size() invariant), and
+  // output_idx is the n-gram's coordinate in the output tensor (bounds out).
+  std::function<void(size_t, size_t, gsl::span<float>&)> fn_weight;
 
   switch (impl.weighting_criteria_) {
     case kTF:
-      fn_weight = [](size_t i, gsl::span<float>& out) { out[i] += 1.0f; };
+      fn_weight = [](size_t /*pool_position*/, size_t output_idx, gsl::span<float>& out) { out[output_idx] += 1.0f; };
       break;
     case kIDF:
       if (!w.empty()) {
-        fn_weight = [&w](size_t i, gsl::span<float>& out) { out[i] = w[i]; };
+        fn_weight = [&w](size_t pool_position, size_t output_idx, gsl::span<float>& out) { out[output_idx] = w[pool_position]; };
       } else {
-        fn_weight = [](size_t i, gsl::span<float>& out) { out[i] = 1.0f; };
+        fn_weight = [](size_t /*pool_position*/, size_t output_idx, gsl::span<float>& out) { out[output_idx] = 1.0f; };
       }
       break;
     case kTFIDF:
       if (!w.empty()) {
-        fn_weight = [&w](size_t i, gsl::span<float>& out) { out[i] += w[i]; };
+        fn_weight = [&w](size_t pool_position, size_t output_idx, gsl::span<float>& out) { out[output_idx] += w[pool_position]; };
       } else {
-        fn_weight = [](size_t i, gsl::span<float>& out) { out[i] += 1.0f; };
+        fn_weight = [](size_t /*pool_position*/, size_t output_idx, gsl::span<float>& out) { out[output_idx] += 1.0f; };
       }
       break;
     case kNone:  // fall-through
