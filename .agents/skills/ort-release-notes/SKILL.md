@@ -22,7 +22,7 @@ Use this skill when you need to:
 
 Collect these inputs from the user or infer from context:
 
-1. `preset`: release profile name (for example, `ort`, `webgpu-plugin-ep`)
+1. `preset`: release profile name (for example, `ort`, `webgpu-plugin-ep`, `cuda-plugin-ep`)
 2. `base_ref`: previous release tag
 3. `target_ref`: release commit/tag/branch tip
 
@@ -50,6 +50,11 @@ Example presets:
 
 1. `ort` (full ONNX Runtime)
 2. `webgpu-plugin-ep` (scoped WebGPU Plugin EP)
+3. `cuda-plugin-ep` (scoped CUDA Plugin EP)
+
+### CUDA Plugin EP Scope
+
+The `cuda-plugin-ep` preset uses the pathspecs in `plugin-ep-cuda/paths.txt` to scope release-note changes.
 
 ## Workflow
 
@@ -75,6 +80,9 @@ Example presets:
 5. Read `resolved_output_dir/detail.csv` as the primary source for PR numbers, titles, authors, target commits, and cherry-pick mapping.
    - Use `resolved_output_dir/logs.txt` for contributor summary context and base/target verification.
    - Use `git log` only as a fallback sanity check when artifacts are present but incomplete or suspect.
+    - Check PRs with unexpectedly large author lists for rebased history that imported unrelated commits. Replace those
+       authors with the actual PR author or authors before building contributor acknowledgments; do not credit authors
+       solely because they authored an unrelated imported commit. For example, PR #28299, the rebased history contains unrelated commits and co-author metadata.
 6. Build highlight categories.
    - Full ORT example categories: performance, model/operator support, execution providers, API/languages,
      reliability/security, build/packaging/tooling, docs/dev workflow.
