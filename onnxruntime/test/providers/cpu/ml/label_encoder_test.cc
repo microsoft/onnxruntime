@@ -871,7 +871,14 @@ TEST(LabelEncoder, RejectsInMemoryExternalDataInKeysTensorOpset4) {
 
   // Error originates from the ONNX checker (checker::check_node) during Graph::Resolve().
   // There is no way to disable this check.
+#if defined(ORT_USE_ONNX_LIGHT)
+  // onnx-light's checker rejects the location earlier (and with a different message) than the
+  // protobuf-generated ONNX checker because it additionally requires external data locations to
+  // be a plain filename with no directory component.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "must be a filename with no folder");
+#else
   test.Run(OpTester::ExpectResult::kExpectFailure, "is not regular file");
+#endif
 }
 
 #endif  // !defined(ORT_NO_EXCEPTIONS)

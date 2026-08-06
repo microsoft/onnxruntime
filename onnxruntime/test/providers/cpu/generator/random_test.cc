@@ -178,11 +178,7 @@ TEST(Random, InvalidDType) {
     test.AddAttribute("shape", dims);
 
     test.AddOutput<double>("Y", dims, expected_output);
-#if defined(ORT_USE_ONNX_LIGHT)
-    test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid tensor data type 999.");
-#else
     test.Run(OpTester::ExpectResult::kExpectFailure, "Node (node1) Op (RandomNormal) [TypeInferenceError] Attribute dtype does not specify a valid type in .");
-#endif
   }
 
   {
@@ -198,11 +194,7 @@ TEST(Random, InvalidDType) {
     test.AddAttribute("shape", dims);
 
     test.AddOutput<double>("Y", dims, expected_output);
-#if defined(ORT_USE_ONNX_LIGHT)
-    test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid tensor data type 999.");
-#else
     test.Run(OpTester::ExpectResult::kExpectFailure, "Node (node1) Op (RandomUniform) [TypeInferenceError] Attribute dtype does not specify a valid type in .");
-#endif
   }
 
   {
@@ -218,11 +210,7 @@ TEST(Random, InvalidDType) {
 
     test.AddInput<int32_t>("X", dims, input);
     test.AddOutput<double>("Y", dims, expected_output);
-#if defined(ORT_USE_ONNX_LIGHT)
-    test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid tensor data type 999.");
-#else
     test.Run(OpTester::ExpectResult::kExpectFailure, "Node (node1) Op (RandomNormalLike) [TypeInferenceError] Attribute dtype does not specify a valid type in .");
-#endif
   }
 
   {
@@ -238,11 +226,7 @@ TEST(Random, InvalidDType) {
 
     test.AddInput<int32_t>("X", dims, input);
     test.AddOutput<double>("Y", dims, expected_output);
-#if defined(ORT_USE_ONNX_LIGHT)
-    test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid tensor data type 999.");
-#else
     test.Run(OpTester::ExpectResult::kExpectFailure, "Node (node1) Op (RandomUniformLike) [TypeInferenceError] Attribute dtype does not specify a valid type in .");
-#endif
   }
 }
 
