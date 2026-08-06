@@ -168,6 +168,9 @@ PackQuantB(
     const size_t SubBlkDataSize = SubBlkLen / 2;
     const size_t SubBlkBytePairCount = SubBlkLen / 4;
     const size_t SubBlkCountK = MlasDivRoundup(BlockCountK * BlkLen, SubBlkLen);
+    if (N == 0 || SubBlkCountK == 0) {
+        return;
+    }
     
     // OPTIMIZATION: Coarser-grained parallelization for PackQuantB too
     const size_t ChunkSubBlks = std::min(MLAS_PACK_BLKS_PER_CHUNK, SubBlkCountK);
@@ -278,6 +281,9 @@ Q8PackQuantB(
     const size_t SubBlkSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, SubBlkLen);
     const size_t SubBlkCountK = MlasDivRoundup(StrideN, SubBlkLen);
     const size_t RemainderBlockCountK = BlockCountK % (SubBlkLen > BlkLen ? SubBlkLen / BlkLen : 1);
+    if (N == 0 || SubBlkCountK == 0) {
+        return;
+    }
     
     // OPTIMIZATION: Coarser-grained parallelization for Q8PackQuantB too
     const size_t ChunkSubBlks = std::min(MLAS_PACK_BLKS_PER_CHUNK, SubBlkCountK);
@@ -338,8 +344,13 @@ ComputePackBlkSum(
   MLAS_THREADPOOL* ThreadPool,
   const size_t BlockCountK)
 {
-    // OPTIMIZATION: Avoid unnecessary copy - read directly from source
-    // Pre-compute invariants to avoid redundant calculations in loop
+    if (N == 0 || BlockCountK == 0) {
+        return;
+    }
+
+    std::vector<float> QuantBScaleBeginCopy(N * BlockCountK);
+    std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, QuantBScaleBeginCopy.begin());
+
     const size_t ZPCountK = QuantBZPBegin ? MlasDivRoundup(BlockCountK, 2) : 0;
     const int blks_per_sub = (BlkLen < SubBlkLen) ? (int)(SubBlkLen / BlkLen) : 0;
     
@@ -360,8 +371,7 @@ ComputePackBlkSum(
         
         // Process all K blocks in this chunk
         for (size_t k_blk = k_blk_start; k_blk < k_blk_end; ++k_blk) {
-            // READ scales directly, avoiding copy
-            const float QuantBScale = QuantBScaleBegin[n * BlockCountK + k_blk];
+            const float QuantBScale = QuantBScaleBeginCopy[n * BlockCountK + k_blk];
             
             uint8_t zp = 8;
             if (QuantBZPBegin) {
@@ -401,8 +411,13 @@ Q8ComputePackBlkSum(
   MLAS_THREADPOOL* ThreadPool,
   const size_t BlockCountK)
 {
-    // OPTIMIZATION: Avoid unnecessary copy - read directly from source
-    // Pre-compute invariants to avoid redundant calculations in loop
+    if (N == 0 || BlockCountK == 0) {
+        return;
+    }
+
+    std::vector<float> QuantBScaleBeginCopy(N * BlockCountK);
+    std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, QuantBScaleBeginCopy.begin());
+
     const int blks_per_sub = (BlkLen < SubBlkLen) ? (int)(SubBlkLen / BlkLen) : 0;
     const size_t sub_blk_count_k = (blks_per_sub > 0) ? MlasDivRoundup(BlockCountK, blks_per_sub) : 0;
     const size_t remainder_blk = (blks_per_sub > 0) ? (BlockCountK % blks_per_sub) : 0;
@@ -426,8 +441,7 @@ Q8ComputePackBlkSum(
         
         // Process all K blocks in this chunk
         for (size_t k_blk = k_blk_start; k_blk < k_blk_end; ++k_blk) {
-            // READ scales directly, avoiding copy
-            const float QuantBScale = QuantBScaleBegin[n * BlockCountK + k_blk];
+            const float QuantBScale = QuantBScaleBeginCopy[n * BlockCountK + k_blk];
             uint8_t zp = 128;
             if (QuantBZPBegin) {
                 const std::byte* QuantBZP = QuantBZPBegin + n * BlockCountK + k_blk;
