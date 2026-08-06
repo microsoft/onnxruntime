@@ -42,6 +42,7 @@ class TurboQuantHadamardProgram final : public Program<TurboQuantHadamardProgram
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32},
                                           {"compressed_head_size_u32", ProgramUniformVariableDataType::Uint32},
+                                          {"copy_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"num_heads", ProgramUniformVariableDataType::Uint32},

@@ -136,6 +136,7 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
                  prepare_indirect_dispatch, use_seqlen_k, head_size_log2, components, compressed_head_size_u32)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.batch_size_)},
                             {static_cast<uint32_t>(compressed_head_size_u32)},
+                            {static_cast<uint32_t>(copy_sequence_length)},
                             {static_cast<uint32_t>(kv_num_heads)},
                             {static_cast<uint32_t>(parameters.kv_sequence_length_)},
                             {static_cast<uint32_t>(parameters.num_heads_)},

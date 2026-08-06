@@ -44,28 +44,21 @@ $MAIN {
   let kv_slice = select(workgroup_idx, workgroup_idx - uniforms.num_slices_per_kv, is_value);
   if (kv_slice >= uniforms.num_slices_per_kv) { return; }
 
-  // Unflatten kv_slice into (batch, head, seq). The slice layout is allocated on the
-  // host using the UNIFORM copy sequence length (same for every batch), so batch/head/seq
-  // must be computed from that uniform value — NOT from the per-batch seqlen_k — otherwise
-  // the unflatten would disagree with the host dispatch layout.
-#if past_present_share_buffer
-  let copy_seq_length = uniforms.kv_sequence_length;
-#else
-  let copy_seq_length = uniforms.total_sequence_length;
-#endif
+  // Must match the batch-wide copy length used to build the host dispatch layout.
+  let copy_seq_length = uniforms.copy_sequence_length;
   let batch = kv_slice / (uniforms.kv_num_heads * copy_seq_length);
   let head = (kv_slice / copy_seq_length) % uniforms.kv_num_heads;
   let seq = kv_slice % copy_seq_length;
 
-  // Compute total_seq_length per batch (right-padded batches may have different seqlens).
+  // Compute the logical total sequence length for this batch.
 #if use_seqlen_k
-  let total_seq_length = u32(seqlen_k[batch]) + 1u;
+  let per_batch_total_seq_length = u32(seqlen_k[batch]) + 1u;
 #else
-  let total_seq_length = uniforms.total_sequence_length;
+  let per_batch_total_seq_length = uniforms.total_sequence_length;
 #endif
 
   // uniforms.kv_sequence_length is the sequence length of the new key/values.
-  let past_seq_length = total_seq_length - min(total_seq_length, uniforms.kv_sequence_length);
+  let past_seq_length = per_batch_total_seq_length - min(per_batch_total_seq_length, uniforms.kv_sequence_length);
 
   // Prepare indirect dispatch buffer (first workgroup, first thread only).
 #if prepare_indirect_dispatch
@@ -79,7 +72,7 @@ $MAIN {
 
   // Skip slices beyond this batch's logical total sequence length. The host dispatch
   // uses a uniform copy length, so shorter right-padded batches still receive workgroups.
-  if (seq >= total_seq_length) {
+  if (seq >= per_batch_total_seq_length) {
     return;
   }
 
