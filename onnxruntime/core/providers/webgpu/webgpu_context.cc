@@ -1,13 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <memory>
+#include <algorithm>
 #include <cmath>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
+#include <vector>
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
+// Dawn's DawnPlatform.h has unused parameters in its inline CachingInterface default methods,
+// which trips ORT's -Werror=unused-parameter under GCC.
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
 #if !defined(__wasm__)
@@ -15,6 +22,7 @@
 #include "dawn/dawn_proc.h"
 #endif
 #if !defined(USE_EXTERNAL_DAWN)
+#include "dawn/platform/DawnPlatform.h"
 #include "dawn/native/DawnNative.h"
 #endif
 #endif
@@ -38,6 +46,33 @@
 
 namespace onnxruntime {
 namespace webgpu {
+
+#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
+namespace {
+
+// Scale the pipeline-compilation worker pool with the CPU, following ORT's convention of sizing
+// thread pools from the core count. Uses half the logical processors (approximating physical
+// cores) with a floor of 2, which also covers hardware_concurrency() reporting 0.
+uint32_t GetDawnWorkerThreadCount() {
+  return std::max(2u, std::thread::hardware_concurrency() / 2u);
+}
+
+class DawnPlatform final : public dawn::platform::Platform {
+ public:
+  std::unique_ptr<dawn::platform::WorkerTaskPool> CreateWorkerTaskPool() override {
+    return CreateDefaultWorkerTaskPool(GetDawnWorkerThreadCount());
+  }
+};
+
+DawnPlatform& GetDawnPlatform() {
+  // The Dawn instance retains this non-owning pointer. Keep it alive for the process lifetime to
+  // avoid static destruction order issues with Dawn's instance teardown.
+  static DawnPlatform* platform = new DawnPlatform();
+  return *platform;
+}
+
+}  // namespace
+#endif  // !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
 
 void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, &config]() {
@@ -1165,6 +1200,11 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     wgpu::InstanceDescriptor instance_desc{};
     instance_desc.requiredFeatures = required_instance_features;
     instance_desc.requiredFeatureCount = sizeof(required_instance_features) / sizeof(required_instance_features[0]);
+#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
+    dawn::native::DawnInstanceDescriptor dawn_instance_desc{};
+    dawn_instance_desc.platform = &GetDawnPlatform();
+    instance_desc.nextInChain = &dawn_instance_desc;
+#endif
     default_instance_ = wgpu::CreateInstance(&instance_desc).MoveToCHandle();
 
     ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");
