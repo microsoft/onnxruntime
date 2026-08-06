@@ -1576,6 +1576,31 @@ TEST(QLinearConvTest, Conv2D_U8U8_InvalidBiasSize) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "bias shape invalid", {}, nullptr, &execution_providers);
 }
 
+TEST(QLinearConvTest, Conv2D_U8S8_RuntimeBiasPreservedWhenSymmetricWeights) {
+  OpTester test("QLinearConv", 10);
+
+  test.AddInput<uint8_t>("x", {1, 1, 1, 1}, {10});
+  test.AddInput<float>("x_scale", {}, {1.0f}, true);
+  test.AddInput<uint8_t>("x_zero_point", {}, {0}, true);
+
+  test.AddInput<int8_t>("w", {1, 1, 1, 1}, {2}, true);
+  test.AddInput<float>("w_scale", {}, {1.0f}, true);
+  test.AddInput<int8_t>("w_zero_point", {}, {0}, true);
+
+  test.AddInput<float>("y_scale", {}, {1.0f}, true);
+  test.AddInput<uint8_t>("y_zero_point", {}, {0}, true);
+
+  // Keep bias as a runtime input (non-initializer) so the symmetric prepack
+  // path must be skipped and bias is applied during Compute.
+  test.AddInput<int32_t>("b", {1}, {5});
+
+  test.AddOutput<uint8_t>("y", {1, 1, 1, 1}, {25});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 // Tests per-channel weight zero points with different values (the fix for the reported bug).
 TEST(QLinearConvTest, Conv2D_U8U8_PerChannelZeroPoints) {
   // TODO: Unskip when fixed #41968513

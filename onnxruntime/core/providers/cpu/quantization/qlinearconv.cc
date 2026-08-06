@@ -194,7 +194,14 @@ class QLinearConv : public OpKernel {
     size_t packed_size = MlasConvSymPackWSize(group_count, group_input_channels, group_output_channels, kernel_size, std::is_signed<ActType>::value);
     if (packed_size != 0) {
       const Tensor* B = nullptr;
-      Info().TryGetConstantInput(8, &B);
+      const auto& input_defs = Info().node().InputDefs();
+      const bool has_bias_input = input_defs.size() > static_cast<size_t>(InputTensors::IN_BIAS) &&
+                                  input_defs[InputTensors::IN_BIAS]->Exists();
+      if (has_bias_input && !Info().TryGetConstantInput(InputTensors::IN_BIAS, &B)) {
+        // The symmetric prepack path bakes bias into column_sums_; runtime bias
+        // must use the non-prepacked execution path so values are not dropped.
+        return false;
+      }
       ORT_ENFORCE(IsValidBiasParam(B, static_cast<int64_t>(output_channels)),
                   "QLinearConv : bias shape invalid. bias must be a 1D tensor of size output_channels (",
                   output_channels, ")");
