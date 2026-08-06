@@ -218,7 +218,8 @@ __device__ __forceinline__ T warp_reduce_sum(T& val) {
 
 template <typename Details, int CtaM, int CtaN, int Threads, bool EnableBias, bool ApplyAlphaInAdvance,
           typename AccT = typename MathWrapper<typename Details::TypeDetailsA>::Type>
-__device__ __forceinline__ void epilogue(void* out, int stride, void* tile_acc, void* bias, float alpha) {
+__device__ __forceinline__ void epilogue(void* out, int stride, void* tile_acc, void* bias, float alpha,
+                                         int active_rows = CtaM, uint32_t zero_rows = 0) {
   using Type = typename MathWrapper<typename Details::TypeDetailsA>::Type;
   static constexpr int Interleave = Details::kInterleave;
   static constexpr int ThreadsPerInterleavedTile = Details::kThreadsPerInterleavedTile;
@@ -243,7 +244,14 @@ __device__ __forceinline__ void epilogue(void* out, int stride, void* tile_acc, 
 #pragma unroll
   for (int ii = tid; ii < CtaM * CtaN * Interleave; ii += Threads) {
     int m = ii / (CtaN * Interleave), n = ii % (CtaN * Interleave);
+    if (m >= active_rows) {
+      continue;
+    }
     float val = 0.f, v_bias = 0.f;
+    if ((zero_rows & (1u << m)) != 0) {
+      reinterpret_cast<Type*>(out)[m * stride + n] = static_cast<Type>(0.f);
+      continue;
+    }
     if constexpr (EnableBias) {
       v_bias = static_cast<float>(reinterpret_cast<Type*>(bias)[n]);
     }

@@ -80,6 +80,37 @@ bool Fp4MoeGemvFastDisabled() {
   return disabled;
 }
 
+bool Fp4MoeGemvLogExpertOverlap() {
+  const static bool enabled =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_MOE_LOG_EXPERT_OVERLAP", 0) == 1;
+  return enabled;
+}
+
+__global__ void LogFp4MoeExpertOverlap(const int64_t* expert_first_token_offset, int num_experts,
+                                       int64_t expanded_num_rows, int64_t n, int64_t k,
+                                       cutlass_kernels::MoeGemvRowSkipParams row_skip) {
+  if (blockIdx.x != 0 || threadIdx.x != 0) {
+    return;
+  }
+
+  int64_t active_assignments = 0;
+  int distinct_experts = 0;
+  int64_t max_rows_per_expert = 0;
+  for (int expert = 0; expert < num_experts; ++expert) {
+    int64_t active_rows = 0;
+    for (int64_t row = expert_first_token_offset[expert]; row < expert_first_token_offset[expert + 1]; ++row) {
+      active_rows += !fiv::moe_gemv_row_is_zero_weight(row_skip, static_cast<int>(row));
+    }
+    active_assignments += active_rows;
+    distinct_experts += active_rows > 0;
+    max_rows_per_expert = max(max_rows_per_expert, active_rows);
+  }
+  printf("ORT_FP4_MOE_EXPERT_OVERLAP expanded=%lld active=%lld distinct=%d reusable=%lld max_rows=%lld n=%lld k=%lld\n",
+         static_cast<long long>(expanded_num_rows), static_cast<long long>(active_assignments), distinct_experts,
+         static_cast<long long>(active_assignments - distinct_experts), static_cast<long long>(max_rows_per_expert),
+         static_cast<long long>(n), static_cast<long long>(k));
+}
+
 // --- MXFP4 (e2m1) GEMV: non-interleaved ColumnMajor layout (kInterleave = 1) ---
 // Weights are the QMoERepackFP4ColToRow output ([experts, n, k/2] row-major, two e2m1
 // codes per byte, even-K in the low nibble). Block scales are the
@@ -289,6 +320,10 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
     cutlass_kernels::ActivationParams activation_params, MoeGemvConfig config, bool sm80_pair_interleaved,
     cutlass_kernels::MoeGemvRowSkipParams row_skip, cudaStream_t stream) {
   ORT_UNUSED_PARAMETER(sm);
+  if (Fp4MoeGemvLogExpertOverlap()) {
+    LogFp4MoeExpertOverlap<<<1, 1, 0, stream>>>(expert_first_token_offset, num_experts, expanded_num_rows,
+                                               inter_size * 2, k, row_skip);
+  }
   // Interleaved path: ColumnMajorInterleaved layout + dtype-conditional accumulation + smaller
   // CtaN, fusing SwiGLU. Taken either via the opt-in env knob or because the caller pre-packed a
   // single SM80-grouped-GEMM buffer (sm80_pair_interleaved). SwiGLU fusion is orthogonal to the

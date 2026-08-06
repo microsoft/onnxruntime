@@ -6,6 +6,7 @@
 #include <cfloat>
 
 #include "contrib_ops/cuda/math/dsv4_common.cuh"
+#include "core/platform/env_var_utils.h"
 
 using namespace onnxruntime::cuda;
 
@@ -69,7 +70,8 @@ __global__ void DSV4MoERouterKernel(const DSV4MoERouterParams p,
                                     const float* __restrict__ bias,
                                     const int64_t* __restrict__ expert_ids,
                                     CudaT* __restrict__ router_probs,
-                                    float* __restrict__ weight_scale) {
+                                    float* __restrict__ weight_scale,
+                                    bool log_routed_experts) {
   extern __shared__ float smem[];
   const int num_experts = p.num_experts;
   const int topk = p.topk;
@@ -131,6 +133,11 @@ __global__ void DSV4MoERouterKernel(const DSV4MoERouterParams p,
     }
   }
 
+  if (log_routed_experts && tid == 0 && topk == 6) {
+    printf("ORT_DSV4_ROUTED_EXPERTS tokens=%d token=%d ids=%d,%d,%d,%d,%d,%d\n",
+           p.num_tokens, token, s_index[0], s_index[1], s_index[2], s_index[3], s_index[4], s_index[5]);
+  }
+
   if (warp == 0) {
     const float weight = lane < topk ? s_orig[s_index[lane]] : 0.0f;
     const float total = WarpTreeSum(weight);
@@ -182,10 +189,12 @@ Status LaunchDSV4MoERouter(cudaStream_t stream, const DSV4MoERouterParams& p, co
                            const float* bias, const int64_t* expert_ids, T* router_probs,
                            float* weight_scale) {
   typedef typename ToCudaType<T>::MappedType CudaT;
+    const static bool log_routed_experts =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DSV4_LOG_ROUTED_EXPERTS", 0) == 1;
   const size_t shared = (2 * static_cast<size_t>(p.num_experts) + p.topk + kWarps) * sizeof(float) +
                         (static_cast<size_t>(p.topk) + kWarps) * sizeof(int);
   DSV4MoERouterKernel<CudaT><<<p.num_tokens, kThreads, shared, stream>>>(
-      p, scores, bias, expert_ids, reinterpret_cast<CudaT*>(router_probs), weight_scale);
+      p, scores, bias, expert_ids, reinterpret_cast<CudaT*>(router_probs), weight_scale, log_routed_experts);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
   return Status::OK();
 }
