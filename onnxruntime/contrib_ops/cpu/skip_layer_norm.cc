@@ -138,13 +138,14 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
 
   const auto& input_dims = input->Shape().GetDims();
   size_t input_dims_size = input_dims.size();
-  int hidden_size = static_cast<int>(input_dims[input_dims_size - 1]);
-  const size_t hidden_size_size = static_cast<size_t>(hidden_size);
-  ORT_RETURN_IF(hidden_size <= 0, "hidden_size must be positive.");
+  const int64_t hidden_size_i64 = input_dims[input_dims_size - 1];
+  ORT_RETURN_IF(hidden_size_i64 <= 0, "hidden_size must be positive.");
+  const int hidden_size = static_cast<int>(hidden_size_i64);
+  const size_t hidden_size_size = static_cast<size_t>(hidden_size_i64);
 
   if (prepacked_skip_fp32_data_) {
-    ORT_RETURN_IF(prepacked_skip_fp32_size_ < hidden_size_size || (prepacked_skip_fp32_size_ % hidden_size_size) != 0,
-                  "Prepacked skip length does not match hidden_size. hidden_size=", hidden_size,
+    ORT_RETURN_IF(prepacked_skip_fp32_size_ < hidden_size_i64 || (prepacked_skip_fp32_size_ % hidden_size_i64) != 0,
+                  "Prepacked skip length does not match hidden_size. hidden_size=", hidden_size_i64,
                   ", prepacked skip length=", prepacked_skip_fp32_size_, ".");
   }
 
