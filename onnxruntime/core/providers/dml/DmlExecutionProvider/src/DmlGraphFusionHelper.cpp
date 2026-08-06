@@ -694,7 +694,7 @@ namespace DmlGraphFusionHelper
             initializeResourceRefs,
             nullptr);
 
-        // lamda captures for the kernel registration
+        // lambda captures for the kernel registration
         Windows::AI::MachineLearning::Adapter::EdgeShapes outputShapes;
         ORT_THROW_HR_IF(E_UNEXPECTED, !TryGetStaticOutputShapes(fusedNode, outputShapes));
         bool resuableCommandList = graphDesc.reuseCommandList;
@@ -837,7 +837,7 @@ namespace DmlGraphFusionHelper
             kvp.second.first = &ownedInitializers.back();
         }
 
-        // lamda captures for the kernel registration
+        // lambda captures for the kernel registration
         auto fused_kernel_func = [
             indexedSubGraph,
             modelPath,
