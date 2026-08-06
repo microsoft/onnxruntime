@@ -192,23 +192,12 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
       *output_shape.add_dim() = query_dims[0];
       *output_shape.add_dim() = query_dims[1];
       if (value_dims.size() == 3 && !dmmha_packing &&
-          hasInputShape(ctx, 1) &&
-          getInputShape(ctx, 1).dim_size() == 3 &&
-          query_dims[2].has_dim_value() &&
-          getInputShape(ctx, 1).dim(2).has_dim_value() &&
           value_dims[2].has_dim_value()) {
         const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
-        const int64_t query_hidden_size = query_dims[2].dim_value();
-        const int64_t key_hidden_size = getInputShape(ctx, 1).dim(2).dim_value();
-        if (num_heads > 0 && query_hidden_size % num_heads == 0) {
-          const int64_t head_size = query_hidden_size / num_heads;
-          if (head_size > 0 && key_hidden_size % head_size == 0) {
-            const int64_t kv_num_heads = key_hidden_size / head_size;
-            if (kv_num_heads > 0 && value_dims[2].dim_value() % kv_num_heads == 0) {
-              output_shape.add_dim()->set_dim_value(
-                  num_heads * value_dims[2].dim_value() / kv_num_heads);
-            }
-          }
+        const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", num_heads);
+        if (num_heads > 0 && kv_num_heads > 0 && value_dims[2].dim_value() % kv_num_heads == 0) {
+          output_shape.add_dim()->set_dim_value(
+              num_heads * value_dims[2].dim_value() / kv_num_heads);
         }
       }
       if (output_shape.dim_size() == 2) {
@@ -1129,6 +1118,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(MultiHeadAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+        .Attr("kv_num_heads",
+              "Number of attention heads for key and value. Defaults to num_heads when not specified. "
+              "For grouped query attention, num_heads shall be a multiple of kv_num_heads",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
         .Attr("mask_filter_value", "The value to be filled in the attention mask. Default value is -10000.0f",
               AttributeProto::FLOAT, OPTIONAL_VALUE)
         .Attr("scale",
@@ -1145,14 +1139,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Input(1,
                "key",
-               "Key with shape (batch_size, kv_sequence_length, kv_hidden_size), or packed KV with shape (batch_size, kv_sequence_length, num_heads, 2, head_size), "
+               "Key with shape (batch_size, kv_sequence_length, kv_num_heads * head_size), or packed KV with shape (batch_size, kv_sequence_length, num_heads, 2, head_size), "
                "or past_key with shape (batch_size, kv_num_heads, kv_sequence_length, head_size). "
-               "For grouped query attention, num_heads shall be a multiple of kv_num_heads",
+               "Grouped query attention requires separate key and value inputs",
                "T",
                OpSchema::Optional)
         .Input(2,
                "value",
-               "Value with shape (batch_size, kv_sequence_length, kv_v_hidden_size), or past_value with shape "
+               "Value with shape (batch_size, kv_sequence_length, kv_num_heads * v_head_size), or past_value with shape "
                "(batch_size, kv_num_heads, kv_sequence_length, v_head_size)",
                "T",
                OpSchema::Optional)

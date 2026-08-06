@@ -42,6 +42,10 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info) : OpKernel(i
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int>(num_heads);
 
+  const int64_t kv_num_heads = info.GetAttrOrDefault<int64_t>("kv_num_heads", num_heads);
+  ORT_ENFORCE(kv_num_heads > 0, "kv_num_heads must be a positive integer");
+  kv_num_heads_ = static_cast<int>(kv_num_heads);
+
   mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
   is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
 
@@ -95,6 +99,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                                                                       scale_,
                                                                       is_unidirectional_,
                                                                       past_present_share_buffer,
+                                                                      kv_num_heads_,
                                                                       kMultiHeadAttention));
   if (parameters.num_heads_kv != parameters.num_heads && cache_indirection != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
@@ -132,7 +137,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
 
   constexpr int q_bias_offset = 0;
   const int k_bias_offset = qk_hidden_size;
-  const int v_bias_offset = qk_hidden_size + parameters.k_hidden_size;
+  const int v_bias_offset = qk_hidden_size + parameters.GetKeyHiddenSize();
 
   // If optional outputs aren't needed, present_key, present_value, and output_qk will be null
   std::vector<int64_t> present_key_shape({static_cast<int64_t>(batch_size),

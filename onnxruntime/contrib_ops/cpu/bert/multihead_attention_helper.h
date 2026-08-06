@@ -88,14 +88,9 @@ Status Check_Q_K_V(const T* query, const T* key, const T* value, int num_heads, 
 
   if (key_dims.size() == 3) {
     kv_hidden_size = static_cast<int>(key_dims[2]);
-    if (head_size == 0 || kv_hidden_size % head_size != 0) {
+    if (kv_hidden_size != kv_num_heads * head_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'key' hidden size shall be a multiple of query head size");
-    }
-    kv_num_heads = kv_hidden_size / head_size;
-    if (kv_num_heads <= 0 || num_heads % kv_num_heads != 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Number of query heads shall be a multiple of number of key/value heads");
+                             "Input 'key' hidden size shall be kv_num_heads * query head size");
     }
 
     if (key_dims[1] != value_dims[1]) {
@@ -114,15 +109,11 @@ Status Check_Q_K_V(const T* query, const T* key, const T* value, int num_heads, 
     v_hidden_size = v_head_size * num_heads;
   } else {  // key_dims.size() == 4
     if (value->Shape() != key->Shape() ||
+        static_cast<int>(key_dims[1]) != kv_num_heads ||
         static_cast<int>(key_dims[3]) != head_size) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
           "Input 'key' and 'value' shall have same shape (batch_size, kv_num_heads, kv_sequence_length, head_size)");
-    }
-    kv_num_heads = static_cast<int>(key_dims[1]);
-    if (kv_num_heads <= 0 || num_heads % kv_num_heads != 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Number of query heads shall be a multiple of number of key/value heads");
     }
 
     qkv_format = AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH;
@@ -315,6 +306,7 @@ Status CheckInputs(const T* query,
                    float scale,
                    bool is_unidirectional,
                    bool past_present_share_buffer,
+                   int kv_num_heads_attribute,
                    AttentionType operator_type) {
   // ---------------------------------------------------------------
   // Notations:
@@ -323,7 +315,8 @@ Status CheckInputs(const T* query,
   //    H: head_size of Q and K.
   //    H_v: head_size of V.
   //    D: hidden_size of Q and K, where D = N * H
-  //    D_v: hidden_size of V, where D_v = N * H_v
+  //    D_v: attention output hidden size, where D_v = N * H_v
+  //    D_kv_v: input hidden size of V, where D_kv_v = N_kv * H_v
   //    S: q_sequence_length
   //    P: past_sequence_length of kv cache
   //    L: kv_sequence_length
@@ -409,7 +402,11 @@ Status CheckInputs(const T* query,
   int head_size = static_cast<int>(hidden_size) / num_heads;
   int kv_sequence_length = sequence_length;
 
-  int kv_num_heads = num_heads;
+  int kv_num_heads = kv_num_heads_attribute > 0 ? kv_num_heads_attribute : num_heads;
+  if (num_heads % kv_num_heads != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Number of query heads shall be a multiple of number of key/value heads");
+  }
   int kv_hidden_size = hidden_size;
   int kv_v_hidden_size = hidden_size;
   int v_hidden_size = hidden_size;
@@ -427,6 +424,13 @@ Status CheckInputs(const T* query,
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'value' shall absent when 'key' is absent");
+  }
+
+  if (kv_num_heads != num_heads &&
+      qkv_format != AttentionQkvFormat::Q_K_V_BSNH &&
+      qkv_format != AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Grouped query MultiHeadAttention requires separate key and value inputs");
   }
 
   int past_sequence_length = 0;
@@ -507,8 +511,6 @@ Status CheckInputs(const T* query,
     output_parameters->v_head_size = v_head_size;
     output_parameters->num_heads = num_heads;
     output_parameters->num_heads_kv = kv_num_heads;
-    output_parameters->k_hidden_size = kv_hidden_size;
-    output_parameters->v_input_hidden_size = kv_v_hidden_size;
     output_parameters->is_unidirectional = is_unidirectional;
     output_parameters->past_present_share_buffer = past_present_share_buffer;
     output_parameters->mask_filter_value = mask_filter_value;
@@ -540,15 +542,39 @@ Status CheckInputs(const T* query,
                    float scale,
                    bool is_unidirectional,
                    bool past_present_share_buffer,
+                   AttentionType operator_type) {
+  return CheckInputs(query, key, value, bias, key_padding_mask, attention_bias, past_key, past_value, cache_indirection,
+                     past_seq_len, parameters, num_heads, mask_filter_value, scale, is_unidirectional,
+                     past_present_share_buffer, 0, operator_type);
+}
+
+template <typename T>
+Status CheckInputs(const T* query,
+                   const T* key,
+                   const T* value,
+                   const T* bias,
+                   const T* key_padding_mask,
+                   const T* attention_bias,
+                   const T* past_key,
+                   const T* past_value,
+                   const T* cache_indirection,
+                   const T* past_seq_len,
+                   void* parameters,
+                   int num_heads,
+                   float mask_filter_value,
+                   float scale,
+                   bool is_unidirectional,
+                   bool past_present_share_buffer,
                    AttentionType operator_type,
-                   int max_threads_per_block) {
+                   int max_threads_per_block,
+                   int kv_num_heads_attribute = 0) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
   return CheckInputs(query, key, value, bias, key_padding_mask, attention_bias, past_key, past_value, cache_indirection,
                      past_seq_len, parameters, num_heads, mask_filter_value, scale, is_unidirectional,
-                     past_present_share_buffer, operator_type);
+                     past_present_share_buffer, kv_num_heads_attribute, operator_type);
 }
 
 }  // namespace multihead_attention_helper

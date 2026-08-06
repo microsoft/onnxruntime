@@ -96,6 +96,7 @@ TEST(AttentionOptionalOutputsShapeInferenceTest, MultiHeadAttentionGroupedQueryO
         output = builder.MakeOutput<float>(std::nullopt);
         Node& node = builder.AddNode("MultiHeadAttention", {query, key, value}, {output}, kMSDomain);
         node.AddAttribute("num_heads", static_cast<int64_t>(4));
+        node.AddAttribute("kv_num_heads", static_cast<int64_t>(2));
       },
       [&](const Graph&) {
         ASSERT_NE(output, nullptr);
