@@ -112,10 +112,6 @@ export const createNaiveMatmulProgramInfo = (
     ];
     appendActivationUniforms(activationAttributes, uniforms);
 
-    // Accumulate in f32 to prevent fp16 overflow in long dot products (issue #26732).
-    // Explicit f32 casts on each operand are required: Dawn/D3D12 re-demotes
-    // temporaries to f16 when 'enable f16;' is active.
-    const accType = components === 1 ? 'f32' : `vec${components}<f32>`;
     const calcResult = (): string => {
       let calcStr = `var a_data: ${a.type.value};`;
       for (let i = 0; i < aComponents; i++) {
@@ -127,7 +123,7 @@ export const createNaiveMatmulProgramInfo = (
 
         for (let j = 0; j < aComponents; j++) {
           calcStr += `
-            values[${i}] = fma(${accType}(a_data${aComponents === 1 ? '' : `[${j}]`}), ${accType}(b_data${j}), values[${i}]);\n`;
+            values[${i}] = fma(${b.type.value}(a_data${aComponents === 1 ? '' : `[${j}]`}), b_data${j}, values[${i}]);\n`;
         }
       }
       return calcStr;
@@ -159,13 +155,12 @@ export const createNaiveMatmulProgramInfo = (
     ${b.indicesSet('b_indices', b.rank - 2, 0)}
     ${b.indicesSet('b_indices', b.rank - 1, 0)}
     let b_offset = ${b.indicesToOffset('b_indices')};
-    var values: array<${accType}, ${outputNumber}>;
+    var values: array<${output.type.value}, ${outputNumber}>;
     for (var k: u32 = 0u; k < uniforms.K; k = k + ${aComponents}) {
       ${calcResult()}
     }
     for (var i = 0u; i < ${outputNumber}u; i++) {
-      // Downcast to the output type only at the final write.
-      var value = ${output.type.value}(values[i]);
+      var value = values[i];
       ${processBias}
       ${applyActivation}
       let cur_indices = ${output.type.indices}(batch, row + i, col);
