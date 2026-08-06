@@ -5,6 +5,7 @@
 #include "test/providers/provider_test_utils.h"
 
 #include <stdint.h>
+#include <limits>
 #include <random>
 
 namespace onnxruntime {
@@ -685,6 +686,119 @@ TEST(TfIdfVectorizerTest, String_TFIDFWeights_onlyBigrams_Skip5_2rows) {
 
   test.AddOutput<float>("Y", {2, 7}, {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f,  // No bi-grams in the first row
                                       0.f, 0.f, 0.f, 0.f, 2.f, 3.f, 2.f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+// The following two tests guard against a class of index-confusion issue: the ngram_indexes attribute
+// maps each n-gram's position in the pool to its coordinate in the output tensor, and is not
+// necessarily a monotonic or identity mapping. weights must remain indexed by pool position (per the
+// ONNX spec: "the i-th element in weights is the weight of the i-th n-gram in pool"), not by the
+// output coordinate that the same n-gram happens to be assigned. All prior tests above use an
+// identity ngram_indexes ({0, 1, 2, ...}), under which pool position and output coordinate coincide
+// and therefore cannot detect this class of bug.
+TEST(TfIdfVectorizerTest, Int32_IDFWeights_NonIdentityNgramIndexes) {
+  OpTester test("TfIdfVectorizer", opset_ver);
+  // Two unigrams "10" (pool position 0) and "20" (pool position 1). ngram_indexes swaps their output
+  // coordinates relative to their pool position, so a pool-position/output-coordinate mix-up in the
+  // weight lookup would swap the two weights in the output.
+  InitTestAttr(test, "IDF", 1, 1, 0,
+               {0},
+               {1, 0},        // ngram_indexes: pool position 0 -> output coord 1, position 1 -> output coord 0
+               {5.0f, 7.0f},  // weights: indexed by pool position, not by output coordinate
+               {10, 20},
+               {});
+
+  std::vector<int64_t> dims{2};
+  std::vector<int32_t> input = {10, 20};
+  test.AddInput<int32_t>("T", dims, input);
+
+  std::vector<int64_t> out_dims{2};
+  // "10" (pool position 0, weight 5.0) lands at output coordinate 1; "20" (pool position 1, weight
+  // 7.0) lands at output coordinate 0.
+  std::vector<float> output = {7.0f, 5.0f};
+  test.AddOutput<float>("Y", out_dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+#if !defined(ORT_NO_EXCEPTIONS)
+// Test that a pool containing more n-grams (within the accepted gram-length range) than entries in
+// ngram_indexes is rejected at construction time, rather than assigning ids that later index out of
+// bounds of ngram_indexes/weights during Compute. ORT_ENFORCE throws in this constructor; in
+// no-exceptions builds this would abort, so this test is skipped there.
+TEST(TfIdfVectorizerTest, Int32_PoolLargerThanNgramIndexes_Fail) {
+  OpTester test("TfIdfVectorizer", opset_ver);
+  // Three distinct unigrams are present in the pool, but ngram_indexes only has one entry.
+  InitTestAttr(test, "TF", 1, 1, 0,
+               {0},
+               {0},  // ngram_indexes: only 1 entry, but the pool below yields 3 distinct unigram ids
+               {},
+               {10, 20, 30},
+               {});
+
+  std::vector<int64_t> dims{3};
+  std::vector<int32_t> input = {10, 20, 30};
+  test.AddInput<int32_t>("T", dims, input);
+
+  std::vector<int64_t> out_dims{1};
+  std::vector<float> output = {0.0f};
+  test.AddOutput<float>("Y", out_dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "is out of bounds for ngram_indexes");
+}
+
+// ngram_indexes values must fit as an output tensor dimension (int64_t) once incremented by one to
+// derive output_size_; a value of INT64_MAX would silently produce an invalid dimension, so it must be
+// rejected before use. In this configuration, ONNX's own shape inference already flags the resulting
+// dimension mismatch during graph resolution (before the kernel is even constructed), but the
+// constructor-level guard added to this kernel provides a second, independent line of defense in case
+// shape inference is bypassed or produces no conflicting declared shape to compare against.
+TEST(TfIdfVectorizerTest, Int32_NgramIndexesTooLarge_Fail) {
+  OpTester test("TfIdfVectorizer", opset_ver);
+  InitTestAttr(test, "TF", 1, 1, 0,
+               {0},
+               {std::numeric_limits<int64_t>::max()},
+               {},
+               {10},
+               {});
+
+  std::vector<int64_t> dims{1};
+  std::vector<int32_t> input = {10};
+  test.AddInput<int32_t>("T", dims, input);
+
+  std::vector<int64_t> out_dims{1};
+  std::vector<float> output = {0.0f};
+  test.AddOutput<float>("Y", out_dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure);
+}
+#endif  // !defined(ORT_NO_EXCEPTIONS)
+
+// max_skip_count is only meaningfully bounded above by the input row size: any larger value can never
+// produce an n-gram of length >= 2, so the kernel must clamp its internal loop bound to the row size
+// instead of iterating up to the (attacker-controlled) attribute value directly. This test uses a
+// max_skip_count far larger than the row so this completes quickly and produces the same result as an
+// equivalent, much smaller max_skip_count.
+TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_HugeMaxSkipCount) {
+  OpTester test("TfIdfVectorizer", opset_ver);
+  InitTestAttr(test, "TF", 2, 2, std::numeric_limits<int64_t>::max() - 1,
+               {0, 4},
+               {0, 1, 2, 3, 4, 5, 6},  // 7 output indexes
+               {},
+               {2, 3, 5, 4,         // 1-grams
+                5, 6, 7, 8, 6, 7},  // bi-grams
+               {});
+
+  std::vector<int64_t> dims{12};
+  std::vector<int32_t> input = {1, 1, 3, 3, 3, 7, 8, 6, 7, 5, 6, 8};
+  test.AddInput<int32_t>("T", dims, input);
+
+  std::vector<int64_t> out_dims{7};
+  // Same expected result as Int32_TF_onlyBigrams_Skip5 above, since a skip distance beyond the row
+  // size can never match another bigram.
+  std::vector<float> output = {0, 0, 0, 0, 1, 3, 1};
+  test.AddOutput<float>("Y", out_dims, output);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
