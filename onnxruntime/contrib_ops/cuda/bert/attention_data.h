@@ -325,6 +325,12 @@ struct PagedAttentionData {
   float* decode_partial_sum = nullptr;
   int num_splits = 1;
 
+  // FlashMLA scratch (tile-scheduler metadata, per-sequence split counts, LSE and split
+  // accumulators). Non-null only when the LATENT backend is running on FlashMLA, which is decided
+  // once by TryBuildFlashMlaLatentConfig and must be decided the same way here and at the launch
+  // site. The layout is private to the launcher, so this stays untyped.
+  void* flash_mla_workspace = nullptr;
+
   // Paged XQA decode workspaces. Only allocated when the XQA decode backend is selected
   // (quantized cache, one new token per sequence -- see use_xqa_decode).
   //   xqa_workspace   : XQA semaphores + multi-block scratch (GetXQAScratchSize bytes).

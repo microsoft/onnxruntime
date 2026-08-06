@@ -58,6 +58,20 @@ int ComputeFlashMlaNumSmParts(int seqlen_q, int num_heads, int kv_num_heads, int
 // the softmax LSE, the split accumulators, and the per-sequence total KV lengths.
 size_t GetFlashMlaLatentWorkspaceBytes(const FlashMlaLatentConfig& config);
 
+// Single source of truth for "does this step run on FlashMLA, and with what config". The workspace
+// is allocated in paged_attention.cc but the kernel is launched from paged_attention_impl.cu; if
+// those two sites decided independently they could disagree, and the failure mode would be a
+// kernel writing into a buffer that was never allocated. Both call this instead.
+//
+// Returns false (leaving *config untouched) when the env switch is off or any precondition fails.
+// Every argument is a host-side shape or attribute, so the answer is replay-invariant and safe to
+// bake into a captured CUDA graph.
+bool TryBuildFlashMlaLatentConfig(int batch_size, int token_count, int num_heads, int kv_num_heads,
+                                  int head_size, int v_head_size, int block_size, int max_num_blocks_per_seq,
+                                  float scale, float softcap, int local_window_size, bool has_head_sink,
+                                  bool has_kv_indices, bool is_bf16, bool cache_is_unquantized, int sm_major,
+                                  int multi_processor_count, FlashMlaLatentConfig* config);
+
 // `workspace` must be at least GetFlashMlaLatentWorkspaceBytes(config) and 256-byte aligned.
 // `past_seqlens` is the KV length at the start of the step; the launcher forms the total length
 // itself. `key_cache` is used for both K and V -- the value is the leading v_head_size channels of

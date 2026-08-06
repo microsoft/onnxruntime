@@ -13,6 +13,7 @@
 #include "contrib_ops/cuda/bert/paged_attention.h"
 #include "contrib_ops/cuda/bert/paged_attention_helper.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
+#include "contrib_ops/cuda/bert/flash_mla_latent.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/xqa/xqa_paged_loader.h"
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
@@ -635,6 +636,32 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     decode_partial_sum_buffer = GetScratchBuffer<void>(sizeof(float) * rows, GetComputeStream(context));
   }
 
+  // FlashMLA scratch. Allocated here rather than inside the launcher because it has to come from
+  // the same arena as every other per-step buffer, and because its size must be fixed before a
+  // CUDA graph capture. The decision and the size both come from TryBuildFlashMlaLatentConfig, so
+  // the launch site cannot conclude that FlashMLA runs when nothing was allocated for it. The
+  // split-KV buffers above stay allocated as well: they cost little and they are what the fallback
+  // uses when the switch is off.
+  IAllocatorUniquePtr<void> flash_mla_workspace_buffer;
+  if (use_latent_attention) {
+    // Resolved exactly as QkvToContext resolves it, so the config built here is the config the
+    // launch site rebuilds.
+    const float attn_scale = parameters.scale == 0.0f
+                                 ? 1.f / std::sqrt(static_cast<float>(parameters.head_size))
+                                 : parameters.scale;
+    FlashMlaLatentConfig flash_mla_config;
+    if (TryBuildFlashMlaLatentConfig(
+            parameters.batch_size, parameters.token_count, parameters.num_heads, parameters.kv_num_heads,
+            parameters.head_size, parameters.v_head_size, parameters.block_size,
+            parameters.max_num_blocks_per_seq, attn_scale, parameters.softcap, parameters.local_window_size,
+            head_sink != nullptr, kv_indices != nullptr, std::is_same<CudaT, BFloat16>::value,
+            std::is_same<CudaT, CudaTCache>::value, device_prop.major, device_prop.multiProcessorCount,
+            &flash_mla_config)) {
+      flash_mla_workspace_buffer = GetScratchBuffer<void>(
+          GetFlashMlaLatentWorkspaceBytes(flash_mla_config), GetComputeStream(context));
+    }
+  }
+
   // XQA scratch: semaphores + the multi-block (Flash Decoding) partials, plus the expanded page
   // table, the optional pre-scaled Q copy and the fp32 attention sinks.
   IAllocatorUniquePtr<void> xqa_workspace_buffer;
@@ -739,6 +766,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     data.decode_partial_max = reinterpret_cast<float*>(decode_partial_max_buffer.get());
     data.decode_partial_sum = reinterpret_cast<float*>(decode_partial_sum_buffer.get());
     data.num_splits = num_splits;
+  }
+  if (flash_mla_workspace_buffer != nullptr) {
+    data.flash_mla_workspace = flash_mla_workspace_buffer.get();
   }
   if (use_xqa_decode) {
     data.xqa_workspace = xqa_workspace_buffer.get();

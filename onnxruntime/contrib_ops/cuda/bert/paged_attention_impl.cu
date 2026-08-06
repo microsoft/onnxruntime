@@ -12,6 +12,7 @@
 #include "contrib_ops/cuda/bert/attention_softmax.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
+#include "contrib_ops/cuda/bert/flash_mla_latent.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
 #include "contrib_ops/cuda/bert/xqa/xqa_paged_loader.h"
@@ -1610,6 +1611,33 @@ Status LatentAttention(
   T* query = nullptr;
   ORT_RETURN_IF_ERROR((PrepareQueryAndCache<T, TCACHE>(stream, parameters, data,
                                                        device_prop.maxThreadsPerBlock, &query)));
+
+  // FlashMLA solves this exact shape with wgmma + TMA instead of the split-KV loop below. Opt-in
+  // via ORT_USE_FLASH_MLA. The config is rebuilt with the same inputs paged_attention.cc used to
+  // size the workspace, so agreement is structural rather than a convention; the extra null check
+  // on the workspace makes a disagreement fall back instead of writing into nothing.
+  {
+    FlashMlaLatentConfig flash_mla_config;
+    if (data.flash_mla_workspace != nullptr &&
+        TryBuildFlashMlaLatentConfig(
+            parameters.batch_size, parameters.token_count, parameters.num_heads, parameters.kv_num_heads,
+            parameters.head_size, parameters.v_head_size, parameters.block_size,
+            parameters.max_num_blocks_per_seq, scale, parameters.softcap, parameters.local_window_size,
+            data.head_sink != nullptr, data.kv_indices != nullptr, std::is_same<T, BFloat16>::value,
+            std::is_same<T, TCACHE>::value, device_prop.major, device_prop.multiProcessorCount,
+            &flash_mla_config)) {
+      // TCACHE == T on this path (the gate requires an unquantized cache), but the compiler still
+      // instantiates it for quantized caches, hence the cast.
+      ORT_RETURN_IF_ERROR((LaunchFlashMlaLatentAttention<T>(
+          query, reinterpret_cast<const T*>(data.key_cache), data.past_seqlens, data.block_table,
+          data.output, data.flash_mla_workspace, flash_mla_config, stream)));
+
+      DUMP_TENSOR_INIT();
+      DUMP_TENSOR("latent (MLA) paged attention output [FlashMLA]", data.output, parameters.token_count,
+                  parameters.num_heads, parameters.v_head_size);
+      return Status::OK();
+    }
+  }
 
   // V shares the physical elements of K, so it must be dequantized with the scale those elements
   // were stored with: k_scale, not v_scale (which validation requires to be absent in LATENT).

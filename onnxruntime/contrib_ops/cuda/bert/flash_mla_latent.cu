@@ -4,6 +4,10 @@
 #include "contrib_ops/cuda/bert/flash_mla_latent.h"
 
 #include <algorithm>
+#include <cstdlib>
+#include <type_traits>
+#include <cstdio>
+#include <mutex>
 
 #include "core/providers/cuda/cuda_common.h"
 
@@ -139,6 +143,67 @@ size_t GetFlashMlaLatentWorkspaceBytes(const FlashMlaLatentConfig& config) {
   return ComputeWorkspaceLayout(config).total;
 }
 
+// Off by default: this is a second implementation of a path that already works, so it stays opt-in
+// until it has been measured on the real model. Read once -- a per-call getenv would show up in a
+// kernel-launch-bound decode step, and a value that changed mid-session could desynchronize the
+// allocation site from the dispatch site.
+static bool FlashMlaEnabled() {
+  const static bool enabled = []() -> bool {
+    const char* v = std::getenv("ORT_USE_FLASH_MLA");
+    return v != nullptr && std::atoi(v) != 0;
+  }();
+  return enabled;
+}
+
+bool TryBuildFlashMlaLatentConfig(int batch_size, int token_count, int num_heads, int kv_num_heads,
+                                  int head_size, int v_head_size, int block_size, int max_num_blocks_per_seq,
+                                  float scale, float softcap, int local_window_size, bool has_head_sink,
+                                  bool has_kv_indices, bool is_bf16, bool cache_is_unquantized, int sm_major,
+                                  int multi_processor_count, FlashMlaLatentConfig* config) {
+  if (!FlashMlaEnabled() || batch_size <= 0 || token_count <= 0) {
+    return false;
+  }
+  // Uniform query length is a hard requirement, and token_count/batch_size is the only place it can
+  // be checked without a device read. A ragged batch divides evenly only by coincidence, and the
+  // rest of the gate would not catch it.
+  if (token_count % batch_size != 0) {
+    return false;
+  }
+
+  FlashMlaLatentConfig candidate;
+  candidate.batch_size = batch_size;
+  candidate.num_heads = num_heads;
+  candidate.kv_num_heads = kv_num_heads;
+  candidate.head_size = head_size;
+  candidate.v_head_size = v_head_size;
+  candidate.block_size = block_size;
+  candidate.max_num_blocks_per_seq = max_num_blocks_per_seq;
+  candidate.seqlen_q = token_count / batch_size;
+  candidate.scale = scale;
+
+  if (!FlashMlaLatentSupported(candidate, is_bf16, cache_is_unquantized, has_head_sink, has_kv_indices,
+                               softcap, local_window_size, sm_major)) {
+    // A silent rejection is indistinguishable from the kernel simply not helping, so report the
+    // shape once when the user has explicitly asked for FlashMLA.
+    static std::once_flag once;
+    std::call_once(once, [&]() {
+      fprintf(stderr,
+              "[FlashMLA] rejected: b=%d seqlen_q=%d h=%d h_kv=%d d=%d d_v=%d page=%d bf16=%d "
+              "cache_unquant=%d head_sink=%d kv_indices=%d softcap=%g window=%d sm=%d\n",
+              batch_size, candidate.seqlen_q, num_heads, kv_num_heads, head_size, v_head_size, block_size,
+              static_cast<int>(is_bf16), static_cast<int>(cache_is_unquantized),
+              static_cast<int>(has_head_sink), static_cast<int>(has_kv_indices), softcap, local_window_size,
+              sm_major);
+    });
+    return false;
+  }
+
+  candidate.num_sm_parts =
+      ComputeFlashMlaNumSmParts(candidate.seqlen_q, num_heads, kv_num_heads, multi_processor_count);
+  *config = candidate;
+  return true;
+}
+
 template <typename T>
 Status LaunchFlashMlaLatentAttention(const T* query, const T* key_cache, const int* past_seqlens,
                                      const int* block_table, T* output, void* workspace,
@@ -154,7 +219,21 @@ Status LaunchFlashMlaLatentAttention(const T* query, const T* key_cache, const i
   ORT_UNUSED_PARAMETER(stream);
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "FlashMLA was not compiled into this build.");
 #else
-  static_assert(sizeof(T) == 2, "FlashMLA is instantiated for bf16 only.");
+  // Only the bf16 unit was imported, so a half instantiation must never reach the kernel. The
+  // runtime gate already rejects it, but PagedAttention is instantiated for fp16 as well and that
+  // instantiation still has to link, so the rejection is repeated here where it cannot be bypassed.
+  if constexpr (!std::is_same<T, onnxruntime::BFloat16>::value) {
+    ORT_UNUSED_PARAMETER(query);
+    ORT_UNUSED_PARAMETER(key_cache);
+    ORT_UNUSED_PARAMETER(past_seqlens);
+    ORT_UNUSED_PARAMETER(block_table);
+    ORT_UNUSED_PARAMETER(output);
+    ORT_UNUSED_PARAMETER(workspace);
+    ORT_UNUSED_PARAMETER(config);
+    ORT_UNUSED_PARAMETER(stream);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "FlashMLA is compiled for bf16 only.");
+  } else {
+    static_assert(sizeof(T) == 2, "FlashMLA is instantiated for bf16 only.");
 
   const WorkspaceLayout w = ComputeWorkspaceLayout(config);
   auto* base = reinterpret_cast<uint8_t*>(workspace);
@@ -228,6 +307,7 @@ Status LaunchFlashMlaLatentAttention(const T* query, const T* key_cache, const i
 
   run_mha_fwd_splitkv_mla<cutlass::bfloat16_t, cutlass::bfloat16_t, kFlashMlaHeadSize>(p, stream);
   return CUDA_CALL(cudaGetLastError());
+  }
 #endif
 }
 
@@ -235,6 +315,11 @@ template Status LaunchFlashMlaLatentAttention<onnxruntime::BFloat16>(
     const onnxruntime::BFloat16* query, const onnxruntime::BFloat16* key_cache, const int* past_seqlens,
     const int* block_table, onnxruntime::BFloat16* output, void* workspace, const FlashMlaLatentConfig& config,
     cudaStream_t stream);
+
+// Never runs (the gate rejects fp16) but PagedAttention's fp16 instantiation references it.
+template Status LaunchFlashMlaLatentAttention<half>(
+    const half* query, const half* key_cache, const int* past_seqlens, const int* block_table, half* output,
+    void* workspace, const FlashMlaLatentConfig& config, cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib
