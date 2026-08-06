@@ -135,7 +135,7 @@ def test_registration_and_inference():
             print("SKIP: No WebGPU EP devices available — skipping inference test")
             return
 
-        # Use the first WebGPU EP device.
+        # WebGPU selects the GPU independently, so any non-virtual WebGPU EP device is sufficient here.
         webgpu_ep_device = webgpu_ep_devices[0]
 
         # Create session with WebGPU EP
