@@ -34,9 +34,11 @@ std::string pass_as_string(T&& v) {
 
 // Include template implementations
 
-#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // d8d68023c1442e7366ed4a28cb4dd402ba4a6da8629fa4b926f4042b7ba6d70c
+#include "wgsl_template_gen/generated/math/subgroup_matrix_gemm_8x16x16.h"  // 0832c4684b2e16b53e10231658da9148f11580987bc26411bf2fc26eec3a88d0
+#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_8x16x16.h"  // 38b22f53c7c9b252c9a144f86e1ee64a347d2e154f861957de6634ef9dc1fdac
+#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // db1b7415ba818f62f661ecf6de9736a3c75daa9be6e3b1bd24455f75d39cdd33
 #include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // 35487692058e08b027768dcb1ab30ef93772da9a4a664702c34351a74d2568dc
-#include "wgsl_template_gen/generated/tensor/pad.h"  // 3b9bc9a6a50b8642d1220b2354b8e88f516f664ed9b4bbe8b5d9e7fe4f4b97b0
+#include "wgsl_template_gen/generated/tensor/pad.h"  // 43a2d8f5014de2ce571c703d842f2457d7c1762575254bc42ccee437a181cd3f
 
 #pragma pop_macro("MainFunctionStart")
 #pragma pop_macro("MainFunctionEnd")
