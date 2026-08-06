@@ -30,10 +30,23 @@ class RNN : public OpKernel {
     // TODO: is it optional or not?
     ORT_ENFORCE(info.GetAttr("hidden_size", &hidden_size_).IsOK());
 
+    if (num_directions == 1) {
+      // ONNX RNN defaults may be provided as 2 entries for unidirectional models.
+      if (activation_alpha_.size() == 2) {
+        activation_alpha_.resize(1);
+      }
+      if (activation_beta_.size() == 2) {
+        activation_beta_.resize(1);
+      }
+    }
+
+    const auto value_or_values = [](size_t count) { return count == 1 ? "value" : "values"; };
     ORT_ENFORCE(activation_alpha_.size() == static_cast<size_t>(num_directions),
-                "RNN op: activation_alpha must have ", num_directions, " values. Actual:", activation_alpha_.size());
+                "RNN op: activation_alpha must have ", num_directions, " ", value_or_values(static_cast<size_t>(num_directions)),
+                ". Actual: ", activation_alpha_.size(), " ", value_or_values(activation_alpha_.size()));
     ORT_ENFORCE(activation_beta_.size() == static_cast<size_t>(num_directions),
-                "RNN op: activation_beta must have ", num_directions, " values. Actual:", activation_beta_.size());
+                "RNN op: activation_beta must have ", num_directions, " ", value_or_values(static_cast<size_t>(num_directions)),
+                ". Actual: ", activation_beta_.size(), " ", value_or_values(activation_beta_.size()));
 
     if (activations_.size() == 2 && num_directions == 1) {
       // ONNX RNN default activations are {"Tanh", "Tanh"}
