@@ -66,6 +66,9 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_util_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_activation_kernels.cuh"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_utils.cuh"
+#if defined(HAS_SM90_OR_LATER)
+#include "contrib_ops/cuda/llm/moe_gemm/deep_gemm_sm90.h"
+#endif
 
 #include <curand_kernel.h>
 #include <curand_philox4x32_x.h>
@@ -2209,6 +2212,18 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
 
   size_t smoothed_act_size = use_awq ? std::max(permuted_elems, interbuf_elems) * sizeof(T) * 2
                                      : 0;  // Extra workspace required by AWQ for smoothing activations
+  size_t dsv4_deep_gemm_workspace_size = 0;
+#if defined(HAS_SM90_OR_LATER)
+  if constexpr (std::is_same_v<T, __nv_bfloat16> && std::is_same_v<WeightType, __nv_bfloat16> &&
+                std::is_same_v<OutputType, __nv_bfloat16> && std::is_same_v<InputType, __nv_bfloat16>) {
+    if (use_dsv4_deep_gemm_ && num_rows > 0 && num_rows <= deep_gemm_sm90::kMaxTokensPerExpert &&
+        hidden_size == deep_gemm_sm90::kHiddenSize && inter_size == deep_gemm_sm90::kInterSize &&
+        num_experts_per_node == deep_gemm_sm90::kNumExperts && experts_per_token == 6 &&
+        activation_type == ActivationType::Swiglu && !use_awq) {
+      dsv4_deep_gemm_workspace_size = deep_gemm_sm90::GetWorkspaceSize();
+    }
+  }
+#endif
 
   size_t map_offset = 0;
   std::map<std::string, std::pair<size_t, size_t>> out_map;
@@ -2239,6 +2254,7 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
   ADD_NAME(tma_ws_gemm2_workspace, tma_ws_size);
   ADD(gemm_workspace);
   ADD(smoothed_act);
+  ADD(dsv4_deep_gemm_workspace);
 
   return out_map;
 
@@ -2338,6 +2354,7 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
   if (use_awq) {
     smoothed_act_ = getWsPtr(int8_t{}, "smoothed_act");
   }
+  dsv4_deep_gemm_workspace_ = getWsPtr(int8_t{}, "dsv4_deep_gemm_workspace");
 }
 template <class T, class WeightType, class OutputType, class InputType, class ScaleBiasType, class Enable>
 const T* CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>::applyPrequantScale(
@@ -2927,6 +2944,37 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
                                                      : static_cast<const T*>(gemm1_input_expand);
 
     sync_check_cuda_error(stream);
+
+#if defined(HAS_SM90_OR_LATER)
+    if constexpr (std::is_same_v<T, __nv_bfloat16> && std::is_same_v<WeightType, __nv_bfloat16> &&
+                  std::is_same_v<OutputType, __nv_bfloat16> && std::is_same_v<InputType, __nv_bfloat16>) {
+      const bool use_dsv4_deep_gemm =
+          use_dsv4_deep_gemm_ && dsv4_deep_gemm_workspace_ != nullptr && num_rows > 0 &&
+          num_rows <= deep_gemm_sm90::kMaxTokensPerExpert &&
+          hidden_size == deep_gemm_sm90::kHiddenSize && inter_size == deep_gemm_sm90::kInterSize &&
+          num_experts_per_node == deep_gemm_sm90::kNumExperts && experts_per_token == 6 &&
+          fc1_activation_type == ActivationType::Swiglu && activation_params.swiglu_fusion == 1 &&
+          fc1_expert_biases == nullptr && fc2_expert_biases == nullptr && !use_awq && input_sf == nullptr &&
+          parallelism_config.tp_size == 1 && parallelism_config.ep_size == 1 &&
+          parallelism_config.cluster_size == 1 && quant_params.groupwise.group_size <= 0 &&
+          quant_params.wo.fc1_weight_scales == nullptr && quant_params.wo.fc2_weight_scales == nullptr;
+      if (use_dsv4_deep_gemm) {
+        deep_gemm_sm90::Run(
+            reinterpret_cast<const __nv_bfloat16*>(permuted_data_), expert_first_token_offset_,
+            reinterpret_cast<const __nv_bfloat16*>(fc1_expert_weights),
+            reinterpret_cast<const __nv_bfloat16*>(fc2_expert_weights),
+            reinterpret_cast<__nv_bfloat16*>(fc2_result_), activation_params.alpha,
+            activation_params.beta, activation_params.limit, dsv4_deep_gemm_workspace_, stream);
+        finalizeMoeRoutingKernelLauncher<OutputType, T, ScaleBiasType>(
+            static_cast<const T*>(fc2_result_), final_output, nullptr, token_topk_unpermuted_scales,
+            unpermuted_row_to_permuted_row, permuted_row_to_unpermuted_row_, token_selected_experts,
+            expert_first_token_offset_, num_rows, hidden_size, experts_per_token, num_experts_per_node,
+            parallelism_config, /*enable_alltoall=*/false, stream);
+        sync_check_cuda_error(stream);
+        return;
+      }
+    }
+#endif
 
     auto [gemm1_tma_ws_input, gemm2_tma_ws_input] = setupTmaWarpSpecializedInputs(num_rows, expanded_num_rows,
                                                                                   fc1_activation_type, use_ampere_activation_fusion, hidden_size, inter_size, num_experts_per_node, input_activations_void, input_sf,

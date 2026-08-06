@@ -289,6 +289,7 @@ class CutlassMoeFCRunnerInterface {
   // pushes it in here, so inference-time config selection does not depend on the live environment.
   // Default no-op for runners that do not implement the SM80 FP4 path.
   virtual void setUseSm80Fp4(bool /*use_sm80_fp4*/) {}
+  virtual void setUseDsv4DeepGemm(bool /*use_dsv4_deep_gemm*/) {}
 
   virtual void runMoe(const void* input_activations, const void* input_sf, const int* token_selected_experts,
                       const float* token_final_scales, const void* fc1_expert_weights, const void* fc1_expert_biases,
@@ -439,6 +440,10 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
       gemm1_config_ = tactics[0];
       gemm2_config_ = tactics[0];
     }
+  }
+
+  void setUseDsv4DeepGemm(bool use_dsv4_deep_gemm) override {
+    use_dsv4_deep_gemm_ = use_dsv4_deep_gemm;
   }
 
   static std::vector<cutlass_extensions::CutlassGemmConfig> getTactics(int sm) {
@@ -610,6 +615,7 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
 
   std::optional<cutlass_extensions::CutlassGemmConfig> gemm1_config_;
   std::optional<cutlass_extensions::CutlassGemmConfig> gemm2_config_;
+  bool use_dsv4_deep_gemm_ = false;
 
   // Pointers
   int* permuted_row_to_unpermuted_row_{};
@@ -632,6 +638,7 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
   const float** alpha_scale_ptr_array_fc2_ = nullptr;
   float* moe_gemv_splitk_partials_{};
   void* smoothed_act_{};
+  void* dsv4_deep_gemm_workspace_{};
 
   TmaWarpSpecializedGroupedGemmInput tma_ws_grouped_gemm1_input_;
   TmaWarpSpecializedGroupedGemmInput tma_ws_grouped_gemm2_input_;
