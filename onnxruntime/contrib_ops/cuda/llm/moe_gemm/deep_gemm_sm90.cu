@@ -19,15 +19,15 @@ constexpr int kBlockM = 64;
 static_assert(kPaddedTokensPerExpert % kBlockM == 0);
 
 using Fc1Kernel = decltype(&deep_gemm::sm90_bf16_gemm_impl<
-    cute::UMMA::Major::K, cute::UMMA::Major::K,
-    0, kFc1OutputSize, kHiddenSize, kNumExperts,
-    kBlockM, 256, 64, 128, 128, 128, 4, 128, 128, 2, false,
-    kNumSms, deep_gemm::GemmType::MGroupedMasked, false, cutlass::bfloat16_t>);
+                           cute::UMMA::Major::K, cute::UMMA::Major::K,
+                           0, kFc1OutputSize, kHiddenSize, kNumExperts,
+                           kBlockM, 256, 64, 128, 128, 128, 4, 128, 128, 2, false,
+                           kNumSms, deep_gemm::GemmType::MGroupedMasked, false, cutlass::bfloat16_t>);
 using Fc2Kernel = decltype(&deep_gemm::sm90_bf16_gemm_impl<
-    cute::UMMA::Major::K, cute::UMMA::Major::K,
-    0, kHiddenSize, kInterSize, kNumExperts,
-    kBlockM, 256, 64, 128, 128, 128, 4, 128, 128, 2, false,
-    kNumSms, deep_gemm::GemmType::MGroupedMasked, false, cutlass::bfloat16_t>);
+                           cute::UMMA::Major::K, cute::UMMA::Major::K,
+                           0, kHiddenSize, kInterSize, kNumExperts,
+                           kBlockM, 256, 64, 128, 128, 128, 4, 128, 128, 2, false,
+                           kNumSms, deep_gemm::GemmType::MGroupedMasked, false, cutlass::bfloat16_t>);
 
 template <int K>
 __global__ void PackInputKernel(const __nv_bfloat16* input, const int64_t* offsets,
@@ -137,7 +137,7 @@ void PackInput(const __nv_bfloat16* compact_input, const int64_t* offsets,
 }
 
 void ApplyInterleavedSwiGLU(const __nv_bfloat16* input, __nv_bfloat16* output,
-                           float alpha, float beta, float limit, cudaStream_t stream) {
+                            float alpha, float beta, float limit, cudaStream_t stream) {
   const int total = kNumExperts * kPaddedTokensPerExpert * kInterSize;
   InterleavedSwiGLUKernel<<<(total + kThreads - 1) / kThreads, kThreads, 0, stream>>>(
       input, output, alpha, beta, limit);
