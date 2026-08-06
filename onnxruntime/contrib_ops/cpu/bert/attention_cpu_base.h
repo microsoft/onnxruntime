@@ -42,11 +42,11 @@ class AttentionCPUBase : public AttentionBase {
                         int v_hidden_size,         // hidden size of V (D_v)
                         const Tensor* attn_bias,   // additive bias applied on scaled QK.
                         OpKernelContext* context,
-                        int past_sequence_length = 0,  // sequence length of past state
-                        bool past_present_share_buffer = false,
-                        int kv_num_heads = 0) const {
-    kv_num_heads = kv_num_heads == 0 ? num_heads_ : kv_num_heads;
-    ORT_RETURN_IF(num_heads_ % kv_num_heads != 0, "num_heads (", num_heads_,
+                        int past_sequence_length,  // sequence length of past state
+                        bool past_present_share_buffer,
+                        int kv_num_heads) const {  // number of heads of K or V (N_kv)
+    // kv_num_heads is set by CheckInputs, so it shall never be 0 here.
+    ORT_RETURN_IF(kv_num_heads <= 0 || num_heads_ % kv_num_heads != 0, "num_heads (", num_heads_,
                   ") shall be a multiple of kv_num_heads (", kv_num_heads, ")");
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
