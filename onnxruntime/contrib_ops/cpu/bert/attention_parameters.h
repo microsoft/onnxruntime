@@ -17,7 +17,7 @@ struct AttentionParameters {
   int total_sequence_length = 0;  // total sequence length of K or V
   int max_sequence_length = 0;    // max sequence length from 4D mask
   int input_hidden_size = 0;      // first dimension of weights for input projection
-  int hidden_size = 0;            // hidden size of Q or K
+  int hidden_size = 0;            // hidden size of Q (num_heads * head_size)
   int head_size = 0;              // hidden size per head of Q or K
   int v_hidden_size = 0;          // attention output hidden size (num_heads * v_head_size)
   int v_head_size = 0;            // hidden size per head of V
@@ -40,7 +40,12 @@ struct AttentionParameters {
   AttentionMaskType mask_type = AttentionMaskType::MASK_NONE;
   AttentionQkvFormat qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
 
+  // Hidden size of each input and of the attention output. In grouped query attention, K and V have
+  // fewer heads than Q, so their hidden sizes differ from hidden_size and v_hidden_size.
+  int GetQueryHiddenSize() const { return num_heads * head_size; }
   int GetKeyHiddenSize() const { return num_heads_kv * head_size; }
+  int GetValueHiddenSize() const { return num_heads_kv * v_head_size; }
+  int GetOutputHiddenSize() const { return num_heads * v_head_size; }
 };
 
 // Parameters deduced from node attributes and inputs/outputs.
