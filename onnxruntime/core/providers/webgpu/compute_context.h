@@ -229,13 +229,12 @@ class ComputeContext final : public ComputeContextBase {
   //
   // Fill a GPU tensor with zeros.
   //
-  inline Status FillZero(Tensor& dst) {
-    ORT_RETURN_IF_ERROR(webgpu_context_.EncodeDeferredDispatches());
+  inline void FillZero(Tensor& dst) {
+    ORT_THROW_IF_ERROR(webgpu_context_.EncodeDeferredDispatches());
     webgpu_context_.EndComputePass();
     auto& command_encoder = webgpu_context_.GetCommandEncoder();
     WGPUBuffer buffer = reinterpret_cast<WGPUBuffer>(dst.MutableDataRaw());
     command_encoder.ClearBuffer(buffer, 0, dst.SizeInBytes());
-    return Status::OK();
   }
 
  private:
