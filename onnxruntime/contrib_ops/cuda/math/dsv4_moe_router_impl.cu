@@ -189,7 +189,7 @@ Status LaunchDSV4MoERouter(cudaStream_t stream, const DSV4MoERouterParams& p, co
                            const float* bias, const int64_t* expert_ids, T* router_probs,
                            float* weight_scale) {
   typedef typename ToCudaType<T>::MappedType CudaT;
-    const static bool log_routed_experts =
+  const static bool log_routed_experts =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DSV4_LOG_ROUTED_EXPERTS", 0) == 1;
   const size_t shared = (2 * static_cast<size_t>(p.num_experts) + p.topk + kWarps) * sizeof(float) +
                         (static_cast<size_t>(p.topk) + kWarps) * sizeof(int);

@@ -353,7 +353,7 @@ void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
   ORT_UNUSED_PARAMETER(sm);
   if (Fp4MoeGemvLogExpertOverlap()) {
     LogFp4MoeExpertOverlap<<<1, 1, 0, stream>>>(expert_first_token_offset, num_experts, expanded_num_rows,
-                                               inter_size * 2, k, row_skip);
+                                                inter_size * 2, k, row_skip);
   }
   // Interleaved path: ColumnMajorInterleaved layout + dtype-conditional accumulation + smaller
   // CtaN, fusing SwiGLU. Taken either via the opt-in env knob or because the caller pre-packed a

@@ -889,8 +889,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // m_moe_runner is itself the dense A16 runner) we use m_moe_runner.
   onnxruntime::llm::kernels::cutlass_kernels::CutlassMoeFCRunnerInterface* active_runner =
       use_dsv4_deep_gemm && m_fp4_dense_fallback_runner_ != nullptr
-        ? m_fp4_dense_fallback_runner_.get()
-        : ((fp4_native_available && !route_native_fp4) ? m_fp4_dense_fallback_runner_.get() : m_moe_runner.get());
+          ? m_fp4_dense_fallback_runner_.get()
+          : ((fp4_native_available && !route_native_fp4) ? m_fp4_dense_fallback_runner_.get() : m_moe_runner.get());
 
   // Profile and capture the best tactics under the profiler mutex, then release the mutex so
   // that scratch allocation, weight dequantization, scale prepping, softmax, and other
