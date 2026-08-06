@@ -1395,15 +1395,14 @@ TEST(ContribOpLinearAttentionTest, RejectsQNumHeadsOverflow) {
   tester.AddAttribute<int64_t>("q_num_heads", 4294967296LL);
   tester.AddAttribute<int64_t>("kv_num_heads", 1);
 
-  tester.AddInput<float>("query", {1, 1, 4}, {0.0f, 0.0f, 0.0f, 0.0f});
-  tester.AddInput<float>("key", {1, 1, 4}, {0.0f, 0.0f, 0.0f, 0.0f});
-  tester.AddInput<float>("value", {1, 1, 4}, {0.0f, 0.0f, 0.0f, 0.0f});
+  tester.AddInput<float>("query", {1, 1, 0}, {});
+  tester.AddInput<float>("key", {1, 1, 0}, {});
+  tester.AddInput<float>("value", {1, 1, 0}, {});
   tester.AddOptionalInputEdge<float>();
   tester.AddOptionalInputEdge<float>();
   tester.AddOptionalInputEdge<float>();
-  tester.AddOutput<float>("output", {1, 1, 4}, {0.0f, 0.0f, 0.0f, 0.0f});
-  tester.AddOutput<float>("present_state", {1, 1, 4, 4},
-                          std::vector<float>(16, 0.0f));
+  tester.AddOutput<float>("output", {1, 1, 0}, {});
+  tester.AddOutput<float>("present_state", {1, 1, 0, 0}, {});
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(ep));
@@ -1424,15 +1423,14 @@ TEST(ContribOpLinearAttentionTest, RejectsKvNumHeadsOverflow) {
   tester.AddAttribute<int64_t>("q_num_heads", 1);
   tester.AddAttribute<int64_t>("kv_num_heads", 4294967296LL);
 
-  tester.AddInput<float>("query", {1, 1, 4}, {0.0f, 0.0f, 0.0f, 0.0f});
-  tester.AddInput<float>("key", {1, 1, 4}, {0.0f, 0.0f, 0.0f, 0.0f});
-  tester.AddInput<float>("value", {1, 1, 4}, {0.0f, 0.0f, 0.0f, 0.0f});
+  tester.AddInput<float>("query", {1, 1, 0}, {});
+  tester.AddInput<float>("key", {1, 1, 0}, {});
+  tester.AddInput<float>("value", {1, 1, 0}, {});
   tester.AddOptionalInputEdge<float>();
   tester.AddOptionalInputEdge<float>();
   tester.AddOptionalInputEdge<float>();
-  tester.AddOutput<float>("output", {1, 1, 4}, {0.0f, 0.0f, 0.0f, 0.0f});
-  tester.AddOutput<float>("present_state", {1, 1, 4, 4},
-                          std::vector<float>(16, 0.0f));
+  tester.AddOutput<float>("output", {1, 1, 0}, {});
+  tester.AddOutput<float>("present_state", {1, 1, 0, 0}, {});
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(ep));
