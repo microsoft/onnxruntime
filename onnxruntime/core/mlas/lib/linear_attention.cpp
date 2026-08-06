@@ -23,6 +23,7 @@ Abstract:
 #include "linear_attention.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 
 //
@@ -377,6 +378,27 @@ MlasLinearAttention(
     MLAS_THREADPOOL* ThreadPool
 )
 {
+    //
+    // Preconditions, documented on MlasLinearAttentionArgs. Like the other MLAS
+    // attention entry points this trusts its caller in release builds - the CPU
+    // EP validates and reports a Status - but the invariants are asserted here
+    // so a mis-filled args struct fails loudly in a debug build rather than
+    // dividing by zero or dereferencing null deep inside a kernel.
+    //
+    assert(args->k_num_heads > 0);
+    assert(args->q_num_heads > 0 && args->kv_num_heads > 0);
+    assert(args->kv_num_heads % args->k_num_heads == 0);
+    assert(args->q_num_heads >= args->kv_num_heads
+               ? args->q_num_heads % args->kv_num_heads == 0
+               : args->kv_num_heads % args->q_num_heads == 0);
+    assert(args->k_head_size > 0 && args->v_head_size > 0);
+    assert((args->rule != MlasLinearAttentionRuleGated &&
+            args->rule != MlasLinearAttentionRuleGatedDelta) ||
+           (args->decay != nullptr && args->decay_layout != MlasLinearAttentionDecayNone));
+    assert((args->rule != MlasLinearAttentionRuleDelta &&
+            args->rule != MlasLinearAttentionRuleGatedDelta) ||
+           (args->beta != nullptr && args->beta_layout != MlasLinearAttentionBetaNone));
+
     if (args->sequence_length <= 0 || MlasLinearAttentionTaskCount(args) <= 0) {
         return;
     }

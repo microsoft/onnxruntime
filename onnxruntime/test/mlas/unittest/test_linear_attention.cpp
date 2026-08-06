@@ -277,7 +277,14 @@ class MlasLinearAttentionTest : public MlasTestBase {
     //     eligible; the rest exercise the fallback to the portable kernel,
     //     including {272,32} which fails only the d_k <= 256 bound.
     static const int kShapes[][2] = {
-        {8, 8}, {16, 16}, {32, 64}, {24, 40}, {64, 64}, {48, 96}, {128, 128}, {272, 32},
+        {8, 8},
+        {16, 16},
+        {32, 64},
+        {24, 40},
+        {64, 64},
+        {48, 96},
+        {128, 128},
+        {272, 32},
     };
     static const MLAS_LINEAR_ATTENTION_RULE kRules[] = {
         MlasLinearAttentionRuleLinear,

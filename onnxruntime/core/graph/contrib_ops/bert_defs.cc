@@ -2445,9 +2445,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Output(0,
                 "output",
+                // Kept free of angle brackets: gen_contrib_doc.py interpolates this
+                // description straight into an HTML <dd> element without escaping.
                 "Attention output with 3D packed shape (B, T, max(H_q, H_kv) * d_v). "
-                "Standard GQA (H_q >= H_kv) emits one output per query head; "
-                "inverse GQA (H_q < H_kv) emits one per KV head.",
+                "Standard GQA emits one output per query head; inverse GQA, where "
+                "H_kv exceeds H_q, emits one per KV head.",
                 "T")
         .Output(1,
                 "present_state",

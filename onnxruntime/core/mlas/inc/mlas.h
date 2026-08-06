@@ -2534,6 +2534,16 @@ struct MlasLinearAttentionArgs {
     //
     // Problem shape.
     //
+    //
+    // Preconditions the caller is responsible for, in the manner of the other
+    // MLAS attention entry points: these are assumed, not validated. The CPU EP
+    // enforces them and reports a Status (see contrib_ops/cpu/bert/linear_attention.cc).
+    //
+    //   k_num_heads  >= 1, and kv_num_heads % k_num_heads == 0
+    //   q_num_heads  >= 1, kv_num_heads >= 1, and whichever of q_num_heads /
+    //                kv_num_heads is larger must be a multiple of the smaller
+    //   k_head_size  >= 1, v_head_size >= 1
+    //
     int batch_size;        // B
     int sequence_length;   // T
     int q_num_heads;       // H_q
@@ -2567,6 +2577,8 @@ struct MlasLinearAttentionArgs {
     const float* query;    // [B, T, H_q  * d_k]
     const float* key;      // [B, T, H_k  * d_k]
     const float* value;    // [B, T, H_kv * d_v]
+    // Must be non-null whenever the rule carries the corresponding term, i.e.
+    // decay for Gated / GatedDelta and beta for Delta / GatedDelta.
     const float* decay;    // nullptr, or [B, T, H_kv] / [B, T, H_kv * d_k] per decay_layout
     const float* beta;     // nullptr, or [B, T, H_kv] / [B, T, 1]          per beta_layout
 

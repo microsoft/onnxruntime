@@ -14,6 +14,7 @@
 #include "benchmark/benchmark.h"
 #include "bench_util.h"
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <vector>
@@ -76,10 +77,10 @@ struct LinearAttentionProblem {
     const double group = (q_num_heads >= kv_num_heads)
                              ? static_cast<double>(q_num_heads) / kv_num_heads
                              : 1.0;
-    double per_token = 2.0 * sd;          // rank-1 state update
-    per_token += 2.0 * sd * group;        // query readout
-    if (HasDecay()) per_token += sd;      // decay
-    if (HasBeta()) per_token += 2.0 * sd; // retrieval
+    double per_token = 2.0 * sd;           // rank-1 state update
+    per_token += 2.0 * sd * group;         // query readout
+    if (HasDecay()) per_token += sd;       // decay
+    if (HasBeta()) per_token += 2.0 * sd;  // retrieval
     return per_token * batch_size * seq_len * kv_num_heads;
   }
 };
@@ -180,7 +181,7 @@ void LinearAttentionArgs(benchmark::internal::Benchmark* b) {
     for (int t : {1, 128, 1024, 4096}) {
       b->Args({1, t, 16, 16, 16, 128, 128, rule});
     }
-    b->Args({1, 1024, 32, 8, 8, 128, 128, rule});   // standard GQA, 4 q heads per kv head
+    b->Args({1, 1024, 32, 8, 8, 128, 128, rule});    // standard GQA, 4 q heads per kv head
     b->Args({1, 1024, 16, 32, 16, 128, 128, rule});  // inverse GQA (Qwen3.5 9B style)
     b->Args({8, 512, 16, 16, 16, 128, 128, rule});   // batched prefill: multi-thread partition
     b->Args({1, 4096, 1, 1, 1, 128, 128, rule});     // B*Hkv == 1: inline fast path

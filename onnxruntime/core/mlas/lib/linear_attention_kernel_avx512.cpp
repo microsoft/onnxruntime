@@ -82,8 +82,13 @@ FusedTokenN1Avx512(
     bool needs_retrieval
 )
 {
-    float wkv_buf[MlasLinearAttentionAvx512MaxKHeadSize];
-    float wqv_buf[MlasLinearAttentionAvx512MaxKHeadSize];
+    //
+    // Staging for the decay-weighted vectors. Without decay the kernel reads q0
+    // and kt directly, so the buffers are never written and are sized away.
+    //
+    constexpr size_t StageK = HAS_DECAY ? MlasLinearAttentionAvx512MaxKHeadSize : 1;
+    float wkv_buf[StageK];
+    float wqv_buf[StageK];
 
     const float* __restrict wqv = q0;
     const float* __restrict wkv = kt;
@@ -211,7 +216,11 @@ FusedTokenGQAAvx512(
     constexpr size_t MaxK = MlasLinearAttentionAvx512MaxKHeadSize;
     constexpr size_t PW = NLANE * 16;  // panel width in floats
 
-    float wkv_buf[MaxK];
+    //
+    // Staging for the decay-weighted vectors, sized away without decay: the
+    // kernel then reads the query rows and kt directly and copies nothing.
+    //
+    float wkv_buf[HAS_DECAY ? MaxK : 1];
     float wqv_buf[HAS_DECAY ? NOUT * MaxK : 1];
 
     //
