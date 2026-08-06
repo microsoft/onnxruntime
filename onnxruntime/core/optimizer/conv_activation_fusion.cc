@@ -98,6 +98,16 @@ class ConvActivationSelector : public NodeSelector {
       return false;
     };
 
+    // QuickGeluFusion collapses `x * sigmoid(alpha * x)` into a kMSDomain QuickGelu node.
+    // With alpha == 1 that is SiLU/Swish, which follows nearly every Conv in the YOLO model
+    // family. Only the WebGPU EP has a fused-Conv kernel that understands QuickGelu, and only
+    // through the NHWC Conv: a kOnnxDomain Conv fuses into kMSDomain::FusedConv, for which
+    // WebGPU registers no kernel.
+    auto is_supported_webgpu_ep_activation = [&node](const Node& activation_node) {
+      return node.Domain() == kMSInternalNHWCDomain &&
+             graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "QuickGelu", {1}, kMSDomain);
+    };
+
     if (!ConvFusionDataTypeCheck(node)) {
       return std::nullopt;
     }
@@ -106,7 +116,9 @@ class ConvActivationSelector : public NodeSelector {
     if (node_ep == kCudaExecutionProvider) {
       return std::nullopt;
     } else if (node_ep.empty() || node_ep == kCpuExecutionProvider || node_ep == kJsExecutionProvider || node_ep == kWebGpuExecutionProvider) {
-      if (!is_supported_non_cuda_ep_activation(*next_node) &&
+      const bool webgpu_activation =
+          node_ep == kWebGpuExecutionProvider && is_supported_webgpu_ep_activation(*next_node);
+      if (!webgpu_activation && !is_supported_non_cuda_ep_activation(*next_node) &&
           !graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "HardSigmoid", {6, 22})) {
         return std::nullopt;
       }
@@ -184,6 +196,9 @@ class FuseConvActivationAction : public ReplaceWithNew {
       float beta = (beta_attr == nullptr ? 0.5f : beta_attr->f());
       activation_params.push_back(alpha);
       activation_params.push_back(beta);
+    } else if (activation_op_type == "QuickGelu") {
+      auto* alpha_attr = graph_utils::GetNodeAttribute(*activation, "alpha");
+      activation_params.push_back(alpha_attr == nullptr ? 1.0f : alpha_attr->f());
     }
 
     if (!activation_params.empty()) {

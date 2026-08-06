@@ -3494,6 +3494,107 @@ TEST_F(GraphTransformationTests, FuseConvActivationPreservingAttributes) {
   check_ints_attr("pads", AsSpan<int64_t>({1, 1, 1, 1}));
   check_ints_attr("kernel_shape", AsSpan<int64_t>({3, 3}));
 }
+
+// Builds `Conv -> QuickGelu`, the shape a YOLO-family SiLU takes once QuickGeluFusion has
+// collapsed `x * sigmoid(x)`. Only the WebGPU EP has a fused-Conv kernel that understands
+// QuickGelu, and only via the NHWC Conv.
+static void BuildConvQuickGeluGraph(ModelTestBuilder& builder, const std::string& conv_domain,
+                                    const std::string& ep, float alpha) {
+  auto* input = builder.MakeInput<float>({1, 5, 5, 2}, -1.0f, 1.0f);
+  auto* weight = builder.MakeInitializer<float>({3, 2, 3, 3}, -1.0f, 1.0f);
+  auto* conv_out = builder.MakeIntermediate();
+  auto* output = builder.MakeOutput();
+
+  Node& conv = builder.AddNode("Conv", {input, weight}, {conv_out}, conv_domain);
+  conv.SetExecutionProviderType(ep);
+
+  Node& quick_gelu = builder.AddNode("QuickGelu", {conv_out}, {output}, kMSDomain);
+  quick_gelu.AddAttribute("alpha", alpha);
+  quick_gelu.SetExecutionProviderType(ep);
+}
+
+static Status ExpectQuickGeluPresent(Graph& graph) {
+  int quick_gelu_count = 0;
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "QuickGelu" && node.Domain() == kMSDomain) {
+      ++quick_gelu_count;
+    }
+  }
+  ORT_RETURN_IF_NOT(quick_gelu_count == 1, "expected exactly one QuickGelu node, got ",
+                    quick_gelu_count);
+  return Status::OK();
+}
+
+// TestGraphTransformer() builds its Model in memory with an explicit opset map. The internal
+// NHWC domain is auto-imported only when a model is loaded from a proto (see model.cc), so
+// build the model here to declare the domain the layout transformer would have introduced.
+static Status RunConvActivationFusion(const std::function<void(ModelTestBuilder&)>& build_test_case,
+                                      const logging::Logger& logger,
+                                      const std::function<Status(Graph&)>& post_graph_checker) {
+  constexpr int kOpsetVersion = 13;
+  const std::unordered_map<std::string, int> domain_to_version{
+      {kOnnxDomain, kOpsetVersion}, {kMSDomain, 1}, {kMSInternalNHWCDomain, kOpsetVersion}};
+
+  Model model("ConvQuickGeluFusionTest", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+  build_test_case(builder);
+  builder.SetGraphOutputs();
+  ORT_RETURN_IF_ERROR(graph.Resolve());
+  ORT_RETURN_IF_ERROR(ExpectQuickGeluPresent(graph));
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ORT_RETURN_IF_ERROR(graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(),
+                                                        TransformerLevel::Level2));
+  ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, logger));
+
+  return post_graph_checker(graph);
+}
+
+TEST_F(GraphTransformationTests, FuseNhwcConvQuickGeluForWebGpuEp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildConvQuickGeluGraph(builder, kMSInternalNHWCDomain, kWebGpuExecutionProvider, 1.0f);
+  };
+
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    ORT_RETURN_IF_NOT(graph.NumberOfNodes() == 1, "expected QuickGelu to be folded into Conv, got ",
+                      graph.NumberOfNodes(), " nodes");
+    const Node& fused = *graph.Nodes().begin();
+    ORT_RETURN_IF_NOT(fused.OpType() == "Conv" && fused.Domain() == kMSInternalNHWCDomain,
+                      "expected an NHWC Conv, got ", fused.Domain(), ".", fused.OpType());
+
+    const auto* activation = graph_utils::GetNodeAttribute(fused, "activation");
+    ORT_RETURN_IF_NOT(activation != nullptr && activation->s() == "QuickGelu",
+                      "fused Conv is missing the QuickGelu activation attribute");
+
+    const auto* params = graph_utils::GetNodeAttribute(fused, "activation_params");
+    ORT_RETURN_IF_NOT(params != nullptr && params->floats_size() == 1 && params->floats(0) == 1.0f,
+                      "fused Conv should carry the QuickGelu alpha as its only activation param");
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, post_graph_checker));
+}
+
+// The CPU EP's FusedConv cannot evaluate QuickGelu, so the pattern must be left alone there.
+TEST_F(GraphTransformationTests, NoFuseNhwcConvQuickGeluForCpuEp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildConvQuickGeluGraph(builder, kMSInternalNHWCDomain, kCpuExecutionProvider, 1.0f);
+  };
+
+  ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, ExpectQuickGeluPresent));
+}
+
+// An ONNX-domain Conv would fuse into kMSDomain::FusedConv, which the WebGPU EP registers no
+// kernel for, so the NCHW path must not be fused either.
+TEST_F(GraphTransformationTests, NoFuseOnnxDomainConvQuickGeluForWebGpuEp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildConvQuickGeluGraph(builder, kOnnxDomain, kWebGpuExecutionProvider, 1.0f);
+  };
+
+  ASSERT_STATUS_OK(RunConvActivationFusion(build_test_case, *logger_, ExpectQuickGeluPresent));
+}
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
 TEST_F(GraphTransformationTests, FuseConvMulNoBias) {

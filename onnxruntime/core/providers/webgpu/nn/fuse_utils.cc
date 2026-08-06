@@ -30,6 +30,9 @@ Status GetFusedActivationAttr(const OpKernelInfo& info, Activation& activation) 
       } else if (activation_type == "HardSigmoid") {
         activation.activation_kind_ = ActivationKind::HardSigmoid;
         activation_params_count = 2;
+      } else if (activation_type == "QuickGelu") {
+        activation.activation_kind_ = ActivationKind::QuickGelu;
+        activation_params_count = 1;
       } else {
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "unimplemented activation: " + activation_type);
       }
@@ -75,6 +78,10 @@ std::string GetActivationSnippet(const Activation& activation, std::string value
              " * value, value, value >= " + value_type_cast(0.0) + ");";
     case ActivationKind::Tanh:
       return "value = tanh(value);";
+    case ActivationKind::QuickGelu:
+      // QuickGelu(x, alpha) = x * sigmoid(alpha * x). alpha == 1 makes this SiLU/Swish.
+      return "value = value * (" + value_type_cast(1.0) + " / (" + value_type_cast(1.0) + " + exp(-(" +
+             base_type_cast(activation.activation_params_.QuickGelu.alpha_) + " * value))));";
     default:
       return "";
   }

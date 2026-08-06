@@ -54,7 +54,33 @@ bool IsDeviceSupported(const ComputeContextBase& context) {
   return false;
 }
 
+// The im2col-matmul shader applies the activation inline in its epilogue, but it only
+// supports kinds that need no runtime parameters. Parameterized kinds (Clip, LeakyRelu,
+// HardSigmoid, or a QuickGelu with a non-unit alpha) would need extra uniforms, so those
+// keep using the general conv path instead.
+bool IsActivationSupported(const Activation& activation) {
+  switch (activation.activation_kind_) {
+    case ActivationKind::None:
+    case ActivationKind::Relu:
+    case ActivationKind::Sigmoid:
+    case ActivationKind::Tanh:
+      return true;
+    case ActivationKind::QuickGelu:
+      return activation.activation_params_.QuickGelu.alpha_ == 1.0f;
+    default:
+      return false;
+  }
+}
+
 }  // namespace
+
+// im2col_matmul.wgsl.template selects the activation with integer literals because template
+// parameters are plain ints. Keep those literals and this enum in sync.
+static_assert(static_cast<int>(ActivationKind::None) == 0, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::Relu) == 1, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::Sigmoid) == 2, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::Tanh) == 6, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::QuickGelu) == 7, "im2col_matmul.wgsl.template mirrors ActivationKind");
 
 Status Im2ColMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& src = shader.AddInput("src", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -69,6 +95,7 @@ Status Im2ColMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   ORT_ENFORCE(vec_size_ == 1 || vec_size_ == 2 || vec_size_ == 4, "vec_size must be 1, 2 or 4.");
 
   return WGSL_TEMPLATE_APPLY(shader, "nn/im2col_matmul.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(activation_kind, static_cast<uint32_t>(activation_kind_)),
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
                              WGSL_TEMPLATE_PARAMETER(tile_m, tile_m_),
                              WGSL_TEMPLATE_PARAMETER(tile_n, tile_n_),
@@ -81,6 +108,7 @@ Status Im2ColMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
 Status ApplyIm2ColMatMulProgram(ComputeContext& context,
                                 bool is_channels_last,
+                                const Activation& activation,
                                 const std::vector<uint32_t>& dilations,
                                 const std::vector<uint32_t>& pads,
                                 const std::vector<uint32_t>& strides,
@@ -125,7 +153,7 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   // If the status of this condition is uncertain, the feature must be disabled.
   const bool use_subgroup = false;
   const uint32_t vec_size = channel_input % 4 == 0 ? 4 : (channel_input % 2 == 0 ? 2 : 1);
-  Im2ColMatMulProgram im2col_mm_program{has_bias, tile_m, tile_n, vec_size, use_subgroup};
+  Im2ColMatMulProgram im2col_mm_program{has_bias, tile_m, tile_n, vec_size, use_subgroup, activation.activation_kind_};
   im2col_mm_program.SetWorkgroupSize(workgroup_size);
 
   const uint32_t M_tiles = CeilDiv(im2col_m, tile_m);
@@ -161,14 +189,15 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
                                          {dilations},
                                          {pads},
                                          {strides}});
-  im2col_mm_program.CacheHint(has_bias, tile_m, tile_n, vec_size, use_subgroup);
+  im2col_mm_program.CacheHint(has_bias, tile_m, tile_n, vec_size, use_subgroup,
+                              static_cast<uint32_t>(activation.activation_kind_));
 
   return context.RunProgram(im2col_mm_program);
 }
 
 bool CanApplyIm2ColMatMulProgram(ComputeContextBase& context,
                                  const bool is_channels_last,
-                                 const bool is_fused,
+                                 const Activation& activation,
                                  const TensorShape weight_shape,
                                  const uint32_t group,
                                  const MLDataType data_type) {
@@ -183,9 +212,12 @@ bool CanApplyIm2ColMatMulProgram(ComputeContextBase& context,
   }
 
   // TODO: Support !is_channels_last
-  // TODO: Support fuse
   // TODO: Support group conv
-  if (!is_channels_last || is_fused || group != 1) {
+  if (!is_channels_last || group != 1) {
+    return false;
+  }
+
+  if (!IsActivationSupported(activation)) {
     return false;
   }
 

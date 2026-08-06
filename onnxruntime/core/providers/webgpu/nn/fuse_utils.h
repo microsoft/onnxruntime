@@ -14,6 +14,9 @@ class OpKernelInfo;
 
 namespace webgpu {
 
+// The numeric values are mirrored as integer literals by the `activation_kind` parameter of
+// nn/im2col_matmul.wgsl.template, so append new kinds rather than reordering existing ones.
+// im2col_matmul.cc static_asserts the values that template depends on.
 enum class ActivationKind {
   None,
   Relu,
@@ -21,7 +24,8 @@ enum class ActivationKind {
   Clip,
   HardSigmoid,
   LeakyRelu,
-  Tanh
+  Tanh,
+  QuickGelu
 };
 
 using Activation = struct Activation {
@@ -48,6 +52,9 @@ using Activation = struct Activation {
       float alpha_;
       float beta_;
     } HardSigmoid;
+    struct {
+      float alpha_;
+    } QuickGelu;
     float values_[2];
   };
   ActivationParameters activation_params_ = {};
