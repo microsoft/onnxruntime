@@ -92,7 +92,7 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
   int head_size = parameters.head_size;
   int v_head_size = parameters.v_head_size;
   int hidden_size = parameters.hidden_size;
-  int v_hidden_size = parameters.v_hidden_size;
+  int v_hidden_size = parameters.GetOutputHiddenSize();
 
   // This kernel is for decoding only (i.e.) sequence length has to be 1
   if (sequence_length != 1) {

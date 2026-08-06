@@ -126,12 +126,12 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   const int total_sequence_length = parameters.total_sequence_length;
   int qk_head_size = parameters.head_size;
   int v_head_size = parameters.v_head_size;
-  int v_hidden_size = parameters.v_hidden_size;
+  int v_hidden_size = parameters.GetOutputHiddenSize();
 
   std::vector<int64_t> output_shape(3);
   output_shape[0] = static_cast<int64_t>(batch_size);
   output_shape[1] = static_cast<int64_t>(q_sequence_length);
-  output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
+  output_shape[2] = static_cast<int64_t>(v_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
   constexpr int q_bias_offset = 0;
