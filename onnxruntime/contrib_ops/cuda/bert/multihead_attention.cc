@@ -556,7 +556,8 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
                                                      use_fused_cross_attention,
                                                      use_memory_efficient_attention,
                                                      use_cudnn_sdpa,
-                                                     no_qkv_workspace);
+                                                     no_qkv_workspace,
+                                                     static_cast<size_t>(parameters.num_heads_kv));
   auto work_space = GetScratchBuffer<void>(workspace_bytes, GetComputeStream(context));
 
   data.has_qkv_workspace = !no_qkv_workspace;
