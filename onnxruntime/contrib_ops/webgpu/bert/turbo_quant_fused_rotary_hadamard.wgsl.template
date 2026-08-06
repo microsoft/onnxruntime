@@ -59,18 +59,22 @@ $MAIN {
     batch = kv_slice / (uniforms.kv_num_heads * uniforms.kv_sequence_length);
   }
 
-  // Compute total_seq_length (per batch if using seqlen_k).
+  // Compute the logical total sequence length for this batch.
 #if use_seqlen_k
-  let total_seq_length = u32(seqlen_k[batch]) + 1u;
+  let per_batch_total_seq_length = u32(seqlen_k[batch]) + 1u;
 #else
-  let total_seq_length = uniforms.total_sequence_length;
+  let per_batch_total_seq_length = uniforms.total_sequence_length;
 #endif
-  let past_seq_length = total_seq_length - min(total_seq_length, uniforms.kv_sequence_length);
+  let past_seq_length = per_batch_total_seq_length - min(per_batch_total_seq_length, uniforms.kv_sequence_length);
 
   // Base position offset for rotary embedding cos/sin cache lookup.
-  let position_id = past_seq_length;
+#if prepare_indirect_dispatch
+  let global_total_seq_length = u32(total_sequence_length_input[0]);
+#else
+  let global_total_seq_length = uniforms.total_sequence_length;
+#endif
 #if use_multi_rotary_cache_concat
-  let base_position = select(0u, multi_rotary_cache_concat_offset, total_seq_length > multi_rotary_cache_concat_offset);
+  let base_position = select(0u, multi_rotary_cache_concat_offset, global_total_seq_length > multi_rotary_cache_concat_offset);
 #else
   let base_position = 0u;
 #endif
@@ -78,7 +82,6 @@ $MAIN {
   // Prepare indirect dispatch buffer (first workgroup, first thread only).
 #if prepare_indirect_dispatch
   if (workgroup_idx == 0u && local_idx == 0u) {
-    let global_total_seq_length = u32(total_sequence_length_input[0]);
     let num_total_seq_length_tile =
         (global_total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;
     populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);
@@ -138,7 +141,7 @@ $MAIN {
   let seq = kv_slice % uniforms.kv_sequence_length;
 
   // Skip K/V slices beyond this batch's logical total sequence length.
-  if (seq >= total_seq_length) {
+  if (seq >= per_batch_total_seq_length) {
     return;
   }
 

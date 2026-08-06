@@ -895,6 +895,7 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
       {static_cast<uint32_t>(dispatch_size)},
       {static_cast<uint32_t>(params.batch_size_)},
       {num_q_tiles},
+      {static_cast<uint32_t>(params.total_sequence_length_)},
   });
 
   program.SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);

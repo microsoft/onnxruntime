@@ -37,7 +37,8 @@ class SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram final : public Program<S
       {"tile_size", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32},
       {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"num_q_tiles", ProgramUniformVariableDataType::Uint32});
+      {"num_q_tiles", ProgramUniformVariableDataType::Uint32},
+      {"total_sequence_length", ProgramUniformVariableDataType::Uint32});
 
  private:
   const bool interleaved_;

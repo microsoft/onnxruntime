@@ -3346,33 +3346,49 @@ TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefillNonFlashAttention_W
 
 #ifdef USE_WEBGPU
 // ---------------------------------------------------------------------------
-// TurboQuant KV cache quantization tests.
-// Tests exercise the TQ4 code paths in GroupQueryAttention + FlashAttention.
+// WebGPU graph-capture and TurboQuant KV cache quantization tests.
+// Tests exercise static-cache preprocessing and the TQ4 code paths in
+// GroupQueryAttention + FlashAttention.
 // The helpers below reference webgpu::options::* constants, which are only
 // available when USE_WEBGPU is defined; guard the whole section so non-WebGPU
 // test builds (CPU/CUDA) still compile the rest of this file.
 // ---------------------------------------------------------------------------
 
-// Helper: creates a WebGPU EP with TurboQuant 4-bit enabled.
-static std::unique_ptr<IExecutionProvider> WebGpuEPWithTurboQuant4(bool enable_graph_capture = false) {
+static std::unique_ptr<IExecutionProvider> WebGpuEPForGqaOptions(bool enable_graph_capture,
+                                                                 bool enable_turbo_quant,
+                                                                 uint32_t multi_rotary_cache_concat_offset = 0) {
   ConfigOptions config_options{};
   ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kStorageBufferCacheMode,
                                                    webgpu::options::kBufferCacheMode_Disabled));
-  ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kKvCacheQuantizationBits,
-                                                   webgpu::options::kKvCacheQuantizationBits_4Bit));
+  if (enable_turbo_quant) {
+    ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kKvCacheQuantizationBits,
+                                                     webgpu::options::kKvCacheQuantizationBits_4Bit));
+  }
   if (enable_graph_capture) {
     ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kEnableGraphCapture,
                                                      webgpu::options::kEnableGraphCapture_ON));
   }
+  if (multi_rotary_cache_concat_offset > 0) {
+    ORT_THROW_IF_ERROR(config_options.AddConfigEntry(
+        webgpu::options::kMultiRotaryCacheConcatOffset,
+        std::to_string(multi_rotary_cache_concat_offset).c_str()));
+  }
   return WebGpuExecutionProviderWithOptions(config_options);
 }
 
+// Helper: creates a WebGPU EP with TurboQuant 4-bit enabled.
+static std::unique_ptr<IExecutionProvider> WebGpuEPWithTurboQuant4(bool enable_graph_capture = false) {
+  return WebGpuEPForGqaOptions(enable_graph_capture, /*enable_turbo_quant=*/true);
+}
+
 // Graph capture requires the indirect-dispatch dimensions to be prepared on the GPU.
-// Verify that TurboQuant uses the batch-wide total_sequence_length input instead of
-// deriving the dispatch width from batch 0's (possibly shorter) seqlens_k value. The
+// Verify that static-cache preprocessing uses the batch-wide total_sequence_length input
+// instead of deriving the dispatch width from batch 0's (possibly shorter) seqlens_k value. The
 // four-token input also makes batch 0's logical total shorter than kv_sequence_length,
 // covering the right-padding underflow clamp with true static-cache aliasing.
-static void RunTurboQuantIndirectDispatchGraphCapture(bool do_rotary) {
+static void RunIndirectDispatchGraphCapture(bool do_rotary,
+                                            bool enable_turbo_quant,
+                                            bool enable_multi_rotary_cache) {
   constexpr int batch_size = 2;
   constexpr int sequence_length = 4;
   constexpr int short_total_sequence_length = 2;
@@ -3384,6 +3400,8 @@ static void RunTurboQuantIndirectDispatchGraphCapture(bool do_rotary) {
   constexpr int kv_hidden_size = kv_num_heads * head_size;
   constexpr int packed_hidden_size = hidden_size + 2 * kv_hidden_size;
   constexpr int compressed_head_size = head_size / 8 + 1;
+  constexpr uint32_t multi_rotary_cache_concat_offset = 4;
+  const int cache_head_size = enable_turbo_quant ? compressed_head_size : head_size;
 
   std::unique_ptr<onnxruntime::Model> model;
   {
@@ -3437,7 +3455,10 @@ static void RunTurboQuantIndirectDispatchGraphCapture(bool do_rotary) {
 
   SessionOptions session_options;
   InferenceSession session{session_options, GetEnvironment()};
-  auto webgpu_ep = WebGpuEPWithTurboQuant4(/*enable_graph_capture=*/true);
+  auto webgpu_ep = WebGpuEPForGqaOptions(
+      /*enable_graph_capture=*/true,
+      enable_turbo_quant,
+      enable_multi_rotary_cache ? multi_rotary_cache_concat_offset : 0);
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -3472,9 +3493,9 @@ static void RunTurboQuantIndirectDispatchGraphCapture(bool do_rotary) {
   auto query_data = make_data(batch_size * sequence_length * query_width, 0.01f, 31);
   auto key_data = make_data(batch_size * sequence_length * kv_hidden_size, 0.02f, 29);
   auto value_data = make_data(batch_size * sequence_length * kv_hidden_size, 0.03f, 23);
-  auto past_key_data = make_data(batch_size * kv_num_heads * cache_sequence_length * compressed_head_size,
+  auto past_key_data = make_data(batch_size * kv_num_heads * cache_sequence_length * cache_head_size,
                                  0.001f, 19);
-  auto past_value_data = make_data(batch_size * kv_num_heads * cache_sequence_length * compressed_head_size,
+  auto past_value_data = make_data(batch_size * kv_num_heads * cache_sequence_length * cache_head_size,
                                    0.002f, 17);
   auto query_data_swapped = swap_batches(query_data);
   auto key_data_swapped = swap_batches(key_data);
@@ -3483,8 +3504,18 @@ static void RunTurboQuantIndirectDispatchGraphCapture(bool do_rotary) {
   auto past_value_data_swapped = swap_batches(past_value_data);
 
   constexpr int half_rotary_dim = head_size / 2;
-  auto cos_cache_data = make_data((cache_sequence_length + 1) * half_rotary_dim, 0.001f, 37);
-  auto sin_cache_data = make_data((cache_sequence_length + 1) * half_rotary_dim, 0.001f, 41);
+  const int large_rotary_cache_length = cache_sequence_length + 1;
+  auto cos_cache_data = make_data(large_rotary_cache_length * half_rotary_dim, 0.001f, 37);
+  auto sin_cache_data = make_data(large_rotary_cache_length * half_rotary_dim, 0.001f, 41);
+  int rotary_cache_length = large_rotary_cache_length;
+  if (enable_multi_rotary_cache) {
+    const size_t small_cache_size = multi_rotary_cache_concat_offset * half_rotary_dim;
+    cos_cache_data.insert(cos_cache_data.begin(), small_cache_size,
+                          std::numeric_limits<float>::quiet_NaN());
+    sin_cache_data.insert(sin_cache_data.begin(), small_cache_size,
+                          std::numeric_limits<float>::quiet_NaN());
+    rotary_cache_length += multi_rotary_cache_concat_offset;
+  }
 
   auto make_gpu_value = [&](const void* data, MLDataType data_type, const TensorShape& shape) {
     Tensor gpu_tensor(data_type, shape, gpu_allocator);
@@ -3503,10 +3534,10 @@ static void RunTurboQuantIndirectDispatchGraphCapture(bool do_rotary) {
 
   const TensorShape query_shape{batch_size, sequence_length, query_width};
   const TensorShape kv_shape{batch_size, sequence_length, kv_hidden_size};
-  const TensorShape cache_shape{batch_size, kv_num_heads, cache_sequence_length, compressed_head_size};
+  const TensorShape cache_shape{batch_size, kv_num_heads, cache_sequence_length, cache_head_size};
   const TensorShape seqlens_shape{batch_size};
   const TensorShape total_sequence_length_shape{1};
-  const TensorShape rotary_cache_shape{cache_sequence_length + 1, half_rotary_dim};
+  const TensorShape rotary_cache_shape{rotary_cache_length, half_rotary_dim};
   auto query_value = make_gpu_value(query_data.data(), DataTypeImpl::GetType<float>(), query_shape);
   auto key_value = make_gpu_value(key_data.data(), DataTypeImpl::GetType<float>(), kv_shape);
   auto value_value = make_gpu_value(value_data.data(), DataTypeImpl::GetType<float>(), kv_shape);
@@ -3542,8 +3573,7 @@ static void RunTurboQuantIndirectDispatchGraphCapture(bool do_rotary) {
     ORT_THROW_IF_ERROR(io_binding->BindInput("sin_cache", sin_cache_value));
   }
   ORT_THROW_IF_ERROR(io_binding->BindOutput("output", output_value));
-  // Alias past and present buffers so the packed rotary case reaches
-  // turbo_quant_fused_rotary_hadamard under graph capture.
+  // Alias past and present buffers so packed rotary uses the static-cache fused path.
   ORT_THROW_IF_ERROR(io_binding->BindOutput("present_key", past_key_value));
   ORT_THROW_IF_ERROR(io_binding->BindOutput("present_value", past_value_value));
   ORT_THROW_IF_ERROR(io_binding->SynchronizeInputs());
@@ -3566,23 +3596,26 @@ static void RunTurboQuantIndirectDispatchGraphCapture(bool do_rotary) {
   ORT_THROW_IF_ERROR(session.Run(run_options, *io_binding));
   auto first_output = read_output();
 
-  // Batch 0 has only two logical tokens in a four-token input. Static-cache slots
-  // for its two padded tokens must retain their original contents.
+  // Batch 0 has only two logical tokens in a four-token input. TurboQuant static-cache
+  // slots for its two padded tokens must retain their original contents. The standard
+  // path currently writes padding slots, which is unrelated to cache-bank selection.
   auto expect_padding_unchanged = [&](const std::vector<uint8_t>& actual,
                                       const std::vector<float>& initial,
                                       const char* cache_name) {
     ASSERT_EQ(actual.size(), initial.size() * sizeof(float));
-    constexpr size_t bytes_per_token = kv_num_heads * compressed_head_size * sizeof(float);
-    constexpr size_t padding_offset = short_total_sequence_length * bytes_per_token;
-    constexpr size_t padding_size = (sequence_length - short_total_sequence_length) * bytes_per_token;
+    const size_t bytes_per_token = kv_num_heads * cache_head_size * sizeof(float);
+    const size_t padding_offset = short_total_sequence_length * bytes_per_token;
+    const size_t padding_size = (sequence_length - short_total_sequence_length) * bytes_per_token;
     const auto* initial_bytes = reinterpret_cast<const uint8_t*>(initial.data());
     EXPECT_TRUE(std::equal(actual.begin() + padding_offset,
                            actual.begin() + padding_offset + padding_size,
                            initial_bytes + padding_offset))
         << cache_name << " padded static-cache slots were overwritten";
   };
-  expect_padding_unchanged(read_gpu_bytes(past_key_value), past_key_data, "key");
-  expect_padding_unchanged(read_gpu_bytes(past_value_value), past_value_data, "value");
+  if (enable_turbo_quant) {
+    expect_padding_unchanged(read_gpu_bytes(past_key_value), past_key_data, "key");
+    expect_padding_unchanged(read_gpu_bytes(past_value_value), past_value_data, "value");
+  }
 
   update_gpu_value(query_value, query_data_swapped.data(), DataTypeImpl::GetType<float>(), query_shape);
   if (!do_rotary) {
@@ -3597,6 +3630,12 @@ static void RunTurboQuantIndirectDispatchGraphCapture(bool do_rotary) {
   auto second_output = read_output();
 
   ASSERT_EQ(first_output.size(), second_output.size());
+  EXPECT_TRUE(std::all_of(first_output.begin(), first_output.end(),
+                          [](float value) { return std::isfinite(value); }))
+      << "first graph-capture output contains a non-finite value";
+  EXPECT_TRUE(std::all_of(second_output.begin(), second_output.end(),
+                          [](float value) { return std::isfinite(value); }))
+      << "second graph-capture output contains a non-finite value";
   constexpr size_t output_elements_per_batch = sequence_length * hidden_size;
   for (int second_batch = 0; second_batch < batch_size; ++second_batch) {
     const int first_batch = batch_size - 1 - second_batch;
@@ -3609,11 +3648,104 @@ static void RunTurboQuantIndirectDispatchGraphCapture(bool do_rotary) {
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_IndirectDispatch_UsesGlobalLength_NoRotary) {
-  RunTurboQuantIndirectDispatchGraphCapture(/*do_rotary=*/false);
+  RunIndirectDispatchGraphCapture(/*do_rotary=*/false,
+                                  /*enable_turbo_quant=*/true,
+                                  /*enable_multi_rotary_cache=*/false);
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_IndirectDispatch_UsesGlobalLength_Rotary) {
-  RunTurboQuantIndirectDispatchGraphCapture(/*do_rotary=*/true);
+  RunIndirectDispatchGraphCapture(/*do_rotary=*/true,
+                                  /*enable_turbo_quant=*/true,
+                                  /*enable_multi_rotary_cache=*/false);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_IndirectDispatch_MultiRotaryCache_UsesGlobalLength) {
+  RunIndirectDispatchGraphCapture(/*do_rotary=*/true,
+                                  /*enable_turbo_quant=*/false,
+                                  /*enable_multi_rotary_cache=*/true);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_IndirectDispatch_MultiRotaryCache_UsesGlobalLength) {
+  RunIndirectDispatchGraphCapture(/*do_rotary=*/true,
+                                  /*enable_turbo_quant=*/true,
+                                  /*enable_multi_rotary_cache=*/true);
+}
+
+// The non-static packed-QKV path uses split_packed_qkv_with_rotary_embedding.
+// A batch-wide total above the concat offset must select the long RoPE cache for
+// every batch, including batches whose individual total remains below the offset.
+TEST(GroupQueryAttentionTest, WebGPU_MultiRotaryCache_UsesGlobalLength_NonStaticCache) {
+  constexpr int batch_size = 2;
+  constexpr int sequence_length = 1;
+  constexpr int past_sequence_length = 4;
+  constexpr int total_sequence_length = past_sequence_length + sequence_length;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 16;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int packed_hidden_size = hidden_size + 2 * kv_hidden_size;
+  constexpr int half_rotary_dim = head_size / 2;
+  constexpr uint32_t multi_rotary_cache_concat_offset = 4;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddAttribute<int64_t>("do_rotary", 1);
+
+  std::vector<float> packed_qkv(batch_size * sequence_length * packed_hidden_size);
+  for (size_t i = 0; i < packed_qkv.size(); ++i) {
+    packed_qkv[i] = 0.01f * static_cast<float>(i % 17 + 1);
+  }
+  tester.AddInput<float>("query", {batch_size, sequence_length, packed_hidden_size}, packed_qkv);
+  tester.AddOptionalInputEdge<float>();  // key
+  tester.AddOptionalInputEdge<float>();  // value
+
+  const int past_cache_size = batch_size * kv_num_heads * past_sequence_length * head_size;
+  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, past_sequence_length, head_size},
+                         std::vector<float>(past_cache_size, 0.05f));
+  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, past_sequence_length, head_size},
+                         std::vector<float>(past_cache_size, 0.07f));
+
+  // Per-batch totals are {3, 5}; only the batch-global total crosses offset 4.
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {2, 4});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
+
+  const int large_cache_length = total_sequence_length;
+  const size_t small_cache_size = multi_rotary_cache_concat_offset * half_rotary_dim;
+  std::vector<float> cos_cache(small_cache_size, std::numeric_limits<float>::quiet_NaN());
+  std::vector<float> sin_cache(small_cache_size, std::numeric_limits<float>::quiet_NaN());
+  cos_cache.insert(cos_cache.end(), large_cache_length * half_rotary_dim, 1.0f);
+  sin_cache.insert(sin_cache.end(), large_cache_length * half_rotary_dim, 0.0f);
+  tester.AddInput<float>("cos_cache", {multi_rotary_cache_concat_offset + large_cache_length, half_rotary_dim},
+                         cos_cache);
+  tester.AddInput<float>("sin_cache", {multi_rotary_cache_concat_offset + large_cache_length, half_rotary_dim},
+                         sin_cache);
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+  const int present_cache_size = batch_size * kv_num_heads * total_sequence_length * head_size;
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                          std::vector<float>(present_cache_size, 0.0f));
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                          std::vector<float>(present_cache_size, 0.0f));
+  tester.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches, const std::string&) {
+    const auto& output = fetches[0].Get<Tensor>();
+    const float* output_data = output.Data<float>();
+    EXPECT_TRUE(std::all_of(output_data, output_data + output.Shape().Size(),
+                            [](float value) { return std::isfinite(value); }))
+        << "multi-RoPE output contains a non-finite value";
+  });
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(WebGpuEPForGqaOptions(
+      /*enable_graph_capture=*/false,
+      /*enable_turbo_quant=*/false,
+      multi_rotary_cache_concat_offset));
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 // Helper to run a GQA op with TurboQuant enabled and separate Q/K/V with rotary.
