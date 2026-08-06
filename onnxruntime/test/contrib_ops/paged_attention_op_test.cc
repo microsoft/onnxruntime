@@ -277,30 +277,30 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
     return type;
   };
 
-    auto& query_arg = graph.GetOrCreateNodeArg("query", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-                                      {token_count, hidden_size}));
-    auto& key_arg = graph.GetOrCreateNodeArg("key", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-                                    {token_count, hidden_size}));
-    auto& value_arg = graph.GetOrCreateNodeArg("value", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-                                      {token_count, hidden_size}));
-    auto& key_cache_arg = graph.GetOrCreateNodeArg(
+  auto& query_arg = graph.GetOrCreateNodeArg("query", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                                                                      {token_count, hidden_size}));
+  auto& key_arg = graph.GetOrCreateNodeArg("key", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                                                                  {token_count, hidden_size}));
+  auto& value_arg = graph.GetOrCreateNodeArg("value", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                                                                      {token_count, hidden_size}));
+  auto& key_cache_arg = graph.GetOrCreateNodeArg(
       "key_cache", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-                    {num_blocks, block_size, kv_num_heads, head_size}));
-    auto& value_cache_arg = graph.GetOrCreateNodeArg(
+                                   {num_blocks, block_size, kv_num_heads, head_size}));
+  auto& value_cache_arg = graph.GetOrCreateNodeArg(
       "value_cache", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-                      {num_blocks, block_size, kv_num_heads, head_size}));
-    auto& cumulative_sequence_length_arg = graph.GetOrCreateNodeArg(
+                                     {num_blocks, block_size, kv_num_heads, head_size}));
+  auto& cumulative_sequence_length_arg = graph.GetOrCreateNodeArg(
       "cumulative_sequence_length", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_INT32, {batch_size + 1}));
-    auto& past_seqlens_arg = graph.GetOrCreateNodeArg(
+  auto& past_seqlens_arg = graph.GetOrCreateNodeArg(
       "past_seqlens", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_INT32, {batch_size}));
-    auto& block_table_arg = graph.GetOrCreateNodeArg(
+  auto& block_table_arg = graph.GetOrCreateNodeArg(
       "block_table", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_INT32, {batch_size, 1}));
-    auto& empty_optional_arg = graph.GetOrCreateNodeArg("", nullptr);
+  auto& empty_optional_arg = graph.GetOrCreateNodeArg("", nullptr);
   std::vector<NodeArg*> input_defs = {&query_arg, &key_arg, &value_arg, &key_cache_arg, &value_cache_arg,
                                       &cumulative_sequence_length_arg, &past_seqlens_arg, &block_table_arg,
-                                        &empty_optional_arg, &empty_optional_arg};
+                                      &empty_optional_arg, &empty_optional_arg};
 
-    auto& output_arg = graph.GetOrCreateNodeArg(
+  auto& output_arg = graph.GetOrCreateNodeArg(
       "output", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {token_count, hidden_size}));
   auto& key_cache_out_arg = graph.GetOrCreateNodeArg(
       "key_cache_out", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
