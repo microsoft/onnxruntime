@@ -19,14 +19,12 @@ struct AttentionParameters {
   int input_hidden_size = 0;      // first dimension of weights for input projection
   int hidden_size = 0;            // hidden size of Q or K
   int head_size = 0;              // hidden size per head of Q or K
-  int v_hidden_size = 0;          // hidden size of V
+  int v_hidden_size = 0;          // attention output hidden size (num_heads * v_head_size)
   int v_head_size = 0;            // hidden size per head of V
-  int num_heads = 0;
-  int num_heads_kv = 0;         // number of heads of key or value
-  int k_hidden_size = 0;        // input hidden size of key
-  int v_input_hidden_size = 0;  // input hidden size of value
-  int num_splits = 0;           // number of splits for splitkv
-  int rotary_dim = 0;           // rotary embedding dimension
+  int num_heads = 0;              // number of heads of query
+  int num_heads_kv = 0;           // number of heads of key or value
+  int num_splits = 0;             // number of splits for splitkv
+  int rotary_dim = 0;             // rotary embedding dimension
   int beam_width = 0;
   bool is_unidirectional = false;
   bool past_present_share_buffer = false;
@@ -41,6 +39,8 @@ struct AttentionParameters {
   bool is_output_bnsh = false;  // whether the output format is BNSH
   AttentionMaskType mask_type = AttentionMaskType::MASK_NONE;
   AttentionQkvFormat qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
+
+  int GetKeyHiddenSize() const { return num_heads_kv * head_size; }
 };
 
 // Parameters deduced from node attributes and inputs/outputs.

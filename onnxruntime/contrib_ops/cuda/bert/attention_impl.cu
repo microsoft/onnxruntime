@@ -677,9 +677,11 @@ Status UnfusedAttention(
   const int sequence_length = parameters.sequence_length;
   const int total_sequence_length = parameters.total_sequence_length;
   const int num_heads = parameters.num_heads;
+  const int num_heads_kv = parameters.num_heads_kv;
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
   const int batches = batch_size * num_heads;
+  const int query_heads_per_kv_head = num_heads / num_heads_kv;
 
   const int* mask_index = data.mask_index;
   gsl::span<const int64_t>& mask_index_dims = data.mask_index_dims;
@@ -704,17 +706,32 @@ Status UnfusedAttention(
 
   DUMP_TENSOR_INIT();
   DUMP_TENSOR_D("q", data.q, batch_size, num_heads, sequence_length, qk_head_size);
-  DUMP_TENSOR_D("k", data.k, batch_size, num_heads, total_sequence_length, qk_head_size);
-  DUMP_TENSOR_D("v", data.v, batch_size, num_heads, total_sequence_length, v_head_size);
+  DUMP_TENSOR_D("k", data.k, batch_size, num_heads_kv, total_sequence_length, qk_head_size);
+  DUMP_TENSOR_D("v", data.v, batch_size, num_heads_kv, total_sequence_length, v_head_size);
   DUMP_TENSOR_D("mask_index", mask_index, mask_index_dims);
 
-  CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
-      cublas, CUBLAS_OP_T, CUBLAS_OP_N,
-      total_sequence_length, sequence_length, qk_head_size,
-      &alpha, data.k, qk_head_size, present_size_per_batch_k,
-      data.q, qk_head_size, sequence_length * qk_head_size,
-      &zero, data.scratch, total_sequence_length, sequence_length * total_sequence_length, batches,
-      device_prop, parameters.use_tf32));
+  if (num_heads == num_heads_kv) {
+    CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
+        cublas, CUBLAS_OP_T, CUBLAS_OP_N,
+        total_sequence_length, sequence_length, qk_head_size,
+        &alpha, data.k, qk_head_size, present_size_per_batch_k,
+        data.q, qk_head_size, sequence_length * qk_head_size,
+        &zero, data.scratch, total_sequence_length, sequence_length * total_sequence_length, batches,
+        device_prop, parameters.use_tf32));
+  } else {
+    for (int kv_batch_head = 0; kv_batch_head < batch_size * num_heads_kv; ++kv_batch_head) {
+      const int query_head_offset = kv_batch_head * query_heads_per_kv_head;
+      CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
+          cublas, CUBLAS_OP_T, CUBLAS_OP_N,
+          total_sequence_length, sequence_length, qk_head_size,
+          &alpha, data.k + kv_batch_head * present_size_per_batch_k, qk_head_size, 0,
+          data.q + query_head_offset * sequence_length * qk_head_size,
+          qk_head_size, sequence_length * qk_head_size,
+          &zero, data.scratch + query_head_offset * sequence_length * total_sequence_length,
+          total_sequence_length, sequence_length * total_sequence_length, query_heads_per_kv_head,
+          device_prop, parameters.use_tf32));
+    }
+  }
 
   DUMP_TENSOR_D("QK", data.scratch, batch_size, num_heads, sequence_length, total_sequence_length);
 
@@ -769,12 +786,27 @@ Status UnfusedAttention(
   // compute R*V (as V*R), and store in output or temp workspace depending on whether transpose is needed
   // For 4D input (BNSH), write directly to output. For 3D input (BSNH), write to temp then transpose.
   T* temp_output = parameters.is_output_bnsh ? data.output : data.q;
-  CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
-      cublas, CUBLAS_OP_N, CUBLAS_OP_N,
-      v_head_size, sequence_length, total_sequence_length,
-      &one, data.v, v_head_size, present_size_per_batch_v,
-      scratch2, total_sequence_length, sequence_length * total_sequence_length,
-      &zero, temp_output, v_head_size, sequence_length * v_head_size, batches, device_prop, parameters.use_tf32));
+  if (num_heads == num_heads_kv) {
+    CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
+        cublas, CUBLAS_OP_N, CUBLAS_OP_N,
+        v_head_size, sequence_length, total_sequence_length,
+        &one, data.v, v_head_size, present_size_per_batch_v,
+        scratch2, total_sequence_length, sequence_length * total_sequence_length,
+        &zero, temp_output, v_head_size, sequence_length * v_head_size, batches, device_prop, parameters.use_tf32));
+  } else {
+    for (int kv_batch_head = 0; kv_batch_head < batch_size * num_heads_kv; ++kv_batch_head) {
+      const int query_head_offset = kv_batch_head * query_heads_per_kv_head;
+      CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
+          cublas, CUBLAS_OP_N, CUBLAS_OP_N,
+          v_head_size, sequence_length, total_sequence_length,
+          &one, data.v + kv_batch_head * present_size_per_batch_v, v_head_size, 0,
+          scratch2 + query_head_offset * sequence_length * total_sequence_length,
+          total_sequence_length, sequence_length * total_sequence_length,
+          &zero, temp_output + query_head_offset * sequence_length * v_head_size,
+          v_head_size, sequence_length * v_head_size, query_heads_per_kv_head,
+          device_prop, parameters.use_tf32));
+    }
+  }
 
   if (!parameters.is_output_bnsh) {
     // Temp_output is BxNxSxH_v, transpose to output BxSxNxH_v

@@ -28,7 +28,10 @@ ONNX_OPERATOR_KERNEL_EX(
     MultiHeadAttention);
 
 MultiHeadAttention::MultiHeadAttention(const OpKernelInfo& info)
-    : WebGpuKernel(info), AttentionBase(info, false) {
+    : WebGpuKernel(info),
+      AttentionBase(info, false),
+      kv_num_heads_(narrow<int>(info.GetAttrOrDefault<int64_t>("kv_num_heads", num_heads_))) {
+  ORT_ENFORCE(kv_num_heads_ > 0, "kv_num_heads must be a positive integer");
   // Unidirectional attention is now supported for both flash attention and normal attention paths
 }
 
@@ -75,7 +78,8 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
                                                                       is_unidirectional_,
                                                                       past_present_share_buffer,
                                                                       kMultiHeadAttention,
-                                                                      context.DeviceLimits().maxComputeInvocationsPerWorkgroup));
+                                                                      context.DeviceLimits().maxComputeInvocationsPerWorkgroup,
+                                                                      kv_num_heads_));
   if (params.num_heads_kv != params.num_heads) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "Grouped query MultiHeadAttention is not implemented for WebGPU");
