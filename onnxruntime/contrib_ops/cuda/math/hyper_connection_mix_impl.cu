@@ -547,8 +547,8 @@ Status Launch(cudaStream_t stream, const HyperConnectionMixParams& params, const
   // Block width picks how many SMs the pass can occupy; see HyperConnectionPartialThreads().
   const int partial_threads = HyperConnectionPartialThreads(params.num_tokens);
   const dim3 partial_grid(split, params.num_tokens, groups);
-#define ORT_HC_LAUNCH_PARTIAL(pt, g)                                                      \
-  HyperConnectionPartialKernel<CudaT, HC, pt, g><<<partial_grid, pt, 0, stream>>>(        \
+#define ORT_HC_LAUNCH_PARTIAL(pt, g)                                               \
+  HyperConnectionPartialKernel<CudaT, HC, pt, g><<<partial_grid, pt, 0, stream>>>( \
       x, residual, post_mix, comb_mix, fn, residual_out, workspace, params.dim, split)
   if (groups == 1) {
     if (partial_threads == 32) {
