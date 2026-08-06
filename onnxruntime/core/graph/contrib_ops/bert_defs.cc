@@ -188,22 +188,25 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
         sequence_length = value_dims[1].dim_value();
       }
 
+      const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
+      const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", num_heads);
+      const bool is_grouped_query = num_heads > 0 && kv_num_heads > 0 && num_heads != kv_num_heads;
+
       ONNX_NAMESPACE::TensorShapeProto output_shape;
       *output_shape.add_dim() = query_dims[0];
       *output_shape.add_dim() = query_dims[1];
-      if (value_dims.size() == 3 && !dmmha_packing &&
-          value_dims[2].has_dim_value()) {
-        const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
-        const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", num_heads);
-        if (num_heads > 0 && kv_num_heads > 0 && value_dims[2].dim_value() % kv_num_heads == 0) {
-          output_shape.add_dim()->set_dim_value(
-              num_heads * value_dims[2].dim_value() / kv_num_heads);
-        }
-      }
-      if (output_shape.dim_size() == 2) {
-        *output_shape.add_dim() = value_dims.size() == 3
-                                      ? (dmmha_packing ? value_dims[2] / 3 : value_dims[2])
-                                      : value_dims[3] * getAttribute(ctx, "num_heads", 0);
+      if (value_dims.size() == 4) {  // value is (batch_size, kv_num_heads, kv_sequence_length, v_head_size)
+        *output_shape.add_dim() = value_dims[3] * num_heads;
+      } else if (dmmha_packing) {
+        *output_shape.add_dim() = value_dims[2] / 3;
+      } else if (!is_grouped_query) {
+        *output_shape.add_dim() = value_dims[2];
+      } else if (value_dims[2].has_dim_value() && value_dims[2].dim_value() % kv_num_heads == 0) {
+        output_shape.add_dim()->set_dim_value(num_heads * value_dims[2].dim_value() / kv_num_heads);
+      } else {
+        // Grouped query attention scales the value hidden size by num_heads / kv_num_heads, which cannot be
+        // expressed symbolically. Leave the dimension unknown rather than asserting the smaller input size.
+        output_shape.add_dim();
       }
       updateOutputShape(ctx, 0, output_shape);
     } else if (hasInputShape(ctx, 1)) {
@@ -236,9 +239,24 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
             *present_shape.add_dim() = dim;
           }
           present_shape.mutable_dim(2)->set_dim_value(total_sequence_length);
-
           updateOutputShape(ctx, 1, present_shape);
-          updateOutputShape(ctx, 2, present_shape);
+
+          // present_value follows past_value since its head size may differ from past_key's.
+          const auto past_value_index = static_cast<size_t>(past_key_index) + 1;
+          if (hasInputShape(ctx, past_value_index)) {
+            auto& past_value_dims = getInputShape(ctx, past_value_index).dim();
+            if (past_value_dims.size() != 4) {
+              fail_shape_inference("The past_value input shall be 4 dimensions");
+            }
+            ONNX_NAMESPACE::TensorShapeProto present_value_shape;
+            for (auto& dim : past_value_dims) {
+              *present_value_shape.add_dim() = dim;
+            }
+            present_value_shape.mutable_dim(2)->set_dim_value(total_sequence_length);
+            updateOutputShape(ctx, 2, present_value_shape);
+          } else {
+            updateOutputShape(ctx, 2, present_shape);
+          }
         }
       }
     }

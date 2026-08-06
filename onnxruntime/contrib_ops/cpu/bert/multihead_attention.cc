@@ -157,7 +157,8 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   Tensor* output_qk = context->Output(3, output_qk_shape);
 
   bool use_decoder_masked_multihead_attention = false;
-  if (cache_indirection != nullptr && parameters.num_heads_kv == parameters.num_heads) {
+  if (cache_indirection != nullptr) {
+    // Grouped query attention with cache indirection is rejected above, so num_heads_kv == num_heads here.
     bool use_dmmha_self_attention = parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH &&
                                     parameters.past_present_share_buffer &&
                                     parameters.past_sequence_length > 0;
