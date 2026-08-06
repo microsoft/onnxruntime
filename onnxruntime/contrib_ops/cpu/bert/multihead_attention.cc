@@ -126,7 +126,6 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   const int total_sequence_length = parameters.total_sequence_length;
   int qk_head_size = parameters.head_size;
   int v_head_size = parameters.v_head_size;
-  int qk_hidden_size = parameters.hidden_size;
   int v_hidden_size = parameters.v_hidden_size;
 
   std::vector<int64_t> output_shape(3);
@@ -136,8 +135,8 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   Tensor* output = context->Output(0, output_shape);
 
   constexpr int q_bias_offset = 0;
-  const int k_bias_offset = qk_hidden_size;
-  const int v_bias_offset = qk_hidden_size + parameters.GetKeyHiddenSize();
+  const int k_bias_offset = parameters.GetQueryHiddenSize();
+  const int v_bias_offset = k_bias_offset + parameters.GetKeyHiddenSize();
 
   // If optional outputs aren't needed, present_key, present_value, and output_qk will be null
   std::vector<int64_t> present_key_shape({static_cast<int64_t>(batch_size),
