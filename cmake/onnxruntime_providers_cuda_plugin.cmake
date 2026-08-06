@@ -44,6 +44,13 @@ list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX "onnxruntime/contrib_ops/cuda/c
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX "onnxruntime/contrib_ops/cuda/aten_ops/.*")
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX "onnxruntime/contrib_ops/cuda/collective/.*")
 
+if (NOT onnxruntime_USE_TRT_FUSED_ATTENTION)
+  # Drop the prebuilt TensorRT fused MHA cubin blobs. cudaDriverWrapper.cc is kept because
+  # sparse attention depends on it.
+  list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX
+    ".*/bert/tensorrt_fused_multihead_attention/.*(\\.cubin\\.cc|_kernel\\.sm[0-9]+\\.cc)$")
+endif()
+
 # Exclude files that include cuda_execution_provider.h (directly or transitively),
 # which conflicts with the adapter shim CUDAExecutionProvider class.
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/cuda_execution_provider\\.cc$")

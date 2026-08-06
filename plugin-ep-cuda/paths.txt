@@ -1,0 +1,4 @@
+:(top)onnxruntime/core/providers/cuda/plugin
+:(top)plugin-ep-cuda
+:(top)cmake/onnxruntime_providers_cuda_plugin.cmake
+:(top)tools/ci_build/github/azure-pipelines/plugin-cuda-pipeline.yml
