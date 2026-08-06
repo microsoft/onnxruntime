@@ -700,6 +700,21 @@ INSTANTIATE_REDUCE_SUM_ND(int64_t);
 #undef INSTANTIATE_REDUCE_SUM_ND
 
 namespace detail {
+// ArgMax/ArgMin keep the first occurrence of the extremum: the CUDA op rejects
+// select_last_index == 1, so ties resolve to the lower index.
+template <typename TIn, bool IsArgMax>
+__device__ __forceinline__ bool arg_is_better(TIn candidate, int64_t candidate_index,
+                                              TIn best, int64_t best_index) {
+  if constexpr (IsArgMax) {
+    if (candidate > best) return true;
+    if (best > candidate) return false;
+  } else {
+    if (candidate < best) return true;
+    if (best < candidate) return false;
+  }
+  return candidate_index < best_index;
+}
+
 template <typename TIn, bool IsArgMax>
 __global__ void arg_min_max_last_axis_kernel(const TIn* input, int64_t* output, int m, int n) {
   const int row = blockIdx.x * blockDim.x + threadIdx.x;
@@ -725,6 +740,48 @@ __global__ void arg_min_max_last_axis_kernel(const TIn* input, int64_t* output, 
 
   output[row] = best_index;
 }
+
+// One block per row. Threads stride the reduction axis so the loads coalesce, then the
+// per-thread candidates are combined in shared memory. Every thread seeds with element 0,
+// which is always a valid candidate and never wins over a strictly better one, so rows
+// shorter than the block are handled without a separate guard.
+template <typename TIn, bool IsArgMax, int BlockSize>
+__global__ void arg_min_max_last_axis_block_kernel(const TIn* input, int64_t* output, int n) {
+  __shared__ TIn shared_value[BlockSize];
+  __shared__ int64_t shared_index[BlockSize];
+
+  const int64_t row_offset = static_cast<int64_t>(blockIdx.x) * n;
+  const int tid = threadIdx.x;
+
+  TIn best_value = input[row_offset];
+  int64_t best_index = 0;
+  for (int i = tid; i < n; i += BlockSize) {
+    const TIn value = input[row_offset + i];
+    if (arg_is_better<TIn, IsArgMax>(value, i, best_value, best_index)) {
+      best_value = value;
+      best_index = i;
+    }
+  }
+
+  shared_value[tid] = best_value;
+  shared_index[tid] = best_index;
+  __syncthreads();
+
+  for (int stride = BlockSize / 2; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      if (arg_is_better<TIn, IsArgMax>(shared_value[tid + stride], shared_index[tid + stride],
+                                       shared_value[tid], shared_index[tid])) {
+        shared_value[tid] = shared_value[tid + stride];
+        shared_index[tid] = shared_index[tid + stride];
+      }
+    }
+    __syncthreads();
+  }
+
+  if (tid == 0) {
+    output[blockIdx.x] = shared_index[0];
+  }
+}
 }  // namespace detail
 
 template <typename TIn, bool IsArgMax>
@@ -732,6 +789,14 @@ Status arg_min_max_last_axis(cudaStream_t stream, const TIn* input, int64_t* out
   // The kernel reads input[row_offset] unconditionally, so a non-empty reduction axis is required.
   if (m == 0 || n <= 0) return Status::OK();
   constexpr int block_size = 256;
+  // The thread-per-row kernel walks the reduction axis with a single thread, which serializes a
+  // long axis (e.g. a vocabulary-sized ArgMax) behind one lane. Once the axis is at least a full
+  // block wide, reducing it across the block is both parallel and coalesced.
+  if (n >= block_size) {
+    detail::arg_min_max_last_axis_block_kernel<TIn, IsArgMax, block_size>
+        <<<m, block_size, 0, stream>>>(input, output, n);
+    return CUDA_CALL(cudaGetLastError());
+  }
   const int grid_size = (m + block_size - 1) / block_size;
   detail::arg_min_max_last_axis_kernel<TIn, IsArgMax><<<grid_size, block_size, 0, stream>>>(input, output, m, n);
   return CUDA_CALL(cudaGetLastError());
