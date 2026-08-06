@@ -647,7 +647,22 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints_8Bits) {
   Test_GatherAxis0_NoZeroPoints<uint8_t, float, int64_t>(8);
   Test_GatherAxis0_NoZeroPoints<uint8_t, MLFloat16, int64_t>(8);
 }
+#endif
 
+#ifdef USE_CUDA
+TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints_4Bits_Cuda) {
+  const std::vector<uint8_t> data(32, 0xAA);
+  const std::vector<float> scales = {0.5f, 0.25f};
+  std::vector<float> output(32, 1.0f);
+  output.insert(output.end(), 32, 0.5f);
+
+  RunGatherBlockQuantized<uint8_t, float, int64_t>(
+      data, {2, 16}, {0, 1}, {2}, scales, {2, 1}, {}, {},
+      0, 1, 32, 4, output, {2, 32});
+}
+#endif
+
+#ifndef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints_2Bits_Uint8) {
   // 2-bit signed values in {-2, -1, 0, 1}. The test infra adds an offset of 2 when packing
   // and the kernel uses default zero_point = 2^(bits-1) = 2, so the dequantized value matches.
