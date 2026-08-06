@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 # pylint: disable=C0114,C0115,C0116,W0212
 import unittest
+from unittest.mock import patch
 
 import onnxruntime
 
@@ -43,6 +44,15 @@ class TestGetNvidiaDllPaths(unittest.TestCase):
         self.assertIn(("nvidia", "cu13", "bin", "x86_64", "cublas64_13.dll"), paths)
         self.assertIn(("nvidia", "cu13", "bin", "x86_64", "cufft64_12.dll"), paths)
         self.assertIn(("nvidia", "cu13", "bin", "x86_64", "cudart64_13.dll"), paths)
+
+    @patch("platform.machine", return_value="ARM64")
+    @patch("sysconfig.get_platform", return_value="win-amd64")
+    def test_cuda13_windows_uses_process_architecture(self, get_platform, machine):
+        paths = self._paths(is_windows=True, build_cuda_version="13.2", cudnn=False)
+        self.assertIn(("nvidia", "cu13", "bin", "x86_64", "cudart64_13.dll"), paths)
+        self.assertNotIn(("nvidia", "cu13", "bin", "arm64", "cudart64_13.dll"), paths)
+        get_platform.assert_called_once()
+        machine.assert_not_called()
 
     def test_cuda13_windows_arch_override(self):
         paths = self._paths(is_windows=True, build_cuda_version="13.2", cudnn=False, arch="arm64")
