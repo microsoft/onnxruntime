@@ -25,6 +25,20 @@ inline constexpr bool kMoeGemvFp4FastSupported =
     IsFp4Weight<typename Details::TypeDetailsW>::value && std::is_same_v<AccT, float> &&
     Details::kInterleave > 1 && Details::kStepK == 32 && Details::kAccessNumW == 1;
 
+// Minimum blocks per SM requested from the register allocator for the decode GEMVs.
+//
+// These kernels are compute bound, not bandwidth bound: on H200 at the DSV4 verify shape ncu
+// reports SM throughput ~70% against DRAM ~10-27%, so time tracks issued instructions and the
+// number of warps available to issue them. Occupancy is limited purely by registers --
+// Block Limit Registers = 6 against Block Limit Warps = 16 and Block Limit Shared Mem = 14 --
+// which at 128 threads is ~80 registers/thread and only 37.5% theoretical occupancy.
+//
+// Asking for 8 blocks caps the allocator at 64 registers/thread and lifts theoretical occupancy
+// to 50%. That is a genuine trade: below the natural register demand the allocator starts
+// spilling, and act_f[StepK] alone is 32 registers. Whether the extra warps outweigh the spills
+// is a measurement, so this is a named knob rather than a magic number. 0 disables the cap.
+constexpr int kMoeGemvMinBlocksPerSm = 7;
+
 template <typename Details>
 __host__ __device__ constexpr int fp4_fast_layout_map(int i) {
   constexpr int kGroupA = Details::LayoutDetails::kElementGroupSizeA;
@@ -152,11 +166,12 @@ __device__ __forceinline__ bool moe_gemv_row_is_zero_weight(const Params& row_sk
 
 template <typename Details, int CtaN, int Threads, int GroupSize, bool EnableBias,
           typename TypeA = typename Details::TypeDetailsA::Type, typename AccT = TypeA, bool Fast = false>
-__global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
-                                const int64_t* expert_first_token_offset, const int* permuted_row_to_expert,
-                                int num_experts,
-                                int64_t weight_expert_stride, int64_t scale_expert_stride, int n, int k,
-                                cutlass_kernels::MoeGemvRowSkipParams row_skip) {
+__global__ __launch_bounds__(Threads, kMoeGemvMinBlocksPerSm) void moe_gemv_kernel(
+    TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
+    const int64_t* expert_first_token_offset, const int* permuted_row_to_expert,
+    int num_experts,
+    int64_t weight_expert_stride, int64_t scale_expert_stride, int n, int k,
+    cutlass_kernels::MoeGemvRowSkipParams row_skip) {
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
   using AccessTypeA = typename Details::AccessTypeA;
   using AccessTypeW = typename Details::AccessTypeW;
@@ -341,7 +356,7 @@ __device__ __forceinline__ void swiglu_epilogue(void* out, void* tile_acc, void*
 
 template <typename Details, int CtaN, int Threads, int GroupSize, bool EnableBias,
           typename TypeA = typename Details::TypeDetailsA::Type, typename AccT = TypeA, bool Fast = false>
-__global__ void moe_gemv_interleaved_swiglu_kernel(
+__global__ __launch_bounds__(Threads, kMoeGemvMinBlocksPerSm) void moe_gemv_interleaved_swiglu_kernel(
     TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
     int64_t weight_expert_stride, int64_t scale_expert_stride, int inter_size, int k,
