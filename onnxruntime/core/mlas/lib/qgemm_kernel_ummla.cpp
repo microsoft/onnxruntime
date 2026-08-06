@@ -17,9 +17,12 @@ Abstract:
 
 #include "mlasi.h"
 #include "qgemm.h"
+#ifdef MLAS_USE_SVE
+#include "sve/mlasi_sve.h"
+#endif
 
 //
-// Define the prototypes of the NEON UMMLA routines written in assembly.
+// Define the prototypes of the SVE routines and NEON UMMLA routines written in assembly.
 //
 
 extern "C" {
@@ -63,6 +66,29 @@ struct MLAS_GEMM_U8X8_KERNEL_UMMLA {
 constexpr size_t MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedK;
 constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_UMMLA::Strides;
 constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedStrides;
+
+size_t MLASCALL MlasSveQgemmU8X8KernelUmmlaZero(const MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedAType* A,
+                                const MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedBType* B,
+                                int32_t* C,
+                                size_t PackedCountK,
+                                size_t CountM,
+                                size_t CountN,
+                                size_t ldc,
+                                const int32_t* RowSumBuffer,
+                                const int32_t* ColumnSumBuffer,
+                                const int32_t* ZeroPointB
+                              );
+size_t MLASCALL MlasSveQgemmU8X8KernelUmmlaAdd(const MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedAType* A,
+                                const MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedBType* B,
+                                int32_t* C,
+                                size_t PackedCountK,
+                                size_t CountM,
+                                size_t CountN,
+                                size_t ldc,
+                                const int32_t* RowSumBuffer,
+                                const int32_t* ColumnSumBuffer,
+                                const int32_t* ZeroPointB
+                              );
 
 template <>
 MLAS_FORCEINLINE int32_t
@@ -948,11 +974,27 @@ MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_UMMLA>(const MLAS_GEMM_U8X8_KERNEL_UMM
     size_t RowsHandled;
 
     if (ZeroMode) {
-        RowsHandled = MlasGemmU8X8KernelUmmlaZero(A, B, C, PackedCountK, CountM, CountN, ldc,
-                                                  RowSumBuffer, ColumnSumBuffer, ZeroPointB);
+    #if defined(MLAS_USE_SVE)
+        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSVE_I8MM()) {
+            RowsHandled = MlasSveQgemmU8X8KernelUmmlaZero(A, B, C, PackedCountK, CountM, CountN, ldc,
+                                                        RowSumBuffer, ColumnSumBuffer, ZeroPointB);
+        } else
+    #endif
+        {
+            RowsHandled = MlasGemmU8X8KernelUmmlaZero(A, B, C, PackedCountK, CountM, CountN, ldc,
+                                                    RowSumBuffer, ColumnSumBuffer, ZeroPointB);
+        }
     } else {
-        RowsHandled = MlasGemmU8X8KernelUmmlaAdd(A, B, C, PackedCountK, CountM, CountN, ldc,
-                                                 RowSumBuffer, ColumnSumBuffer, ZeroPointB);
+    #if defined(MLAS_USE_SVE)
+        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSVE_I8MM()) {
+            RowsHandled = MlasSveQgemmU8X8KernelUmmlaAdd(A, B, C, PackedCountK, CountM, CountN, ldc,
+                                                        RowSumBuffer, ColumnSumBuffer, ZeroPointB);
+        } else
+    #endif
+        {
+            RowsHandled = MlasGemmU8X8KernelUmmlaAdd(A, B, C, PackedCountK, CountM, CountN, ldc,
+                                                    RowSumBuffer, ColumnSumBuffer, ZeroPointB);
+        }
     }
 
     return RowsHandled;
