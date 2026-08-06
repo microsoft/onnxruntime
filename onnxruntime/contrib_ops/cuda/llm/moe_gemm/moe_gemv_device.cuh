@@ -92,55 +92,6 @@ __device__ __forceinline__ void fp4_fast_accumulate(float& acc, const uint8_t* q
   acc = sum;
 }
 
-// CtaM-row form of the above: one decode of each packed word feeds CtaM independent activation
-// rows. This is the whole point of CtaM > 1 for this kernel -- decode is ~56 of the ~120
-// instructions per word and it is row-independent, so the per-row marginal cost is only the dot.
-template <typename Details, int CtaM, typename TypeA>
-__device__ __forceinline__ void fp4_fast_accumulate_rows(float* acc, const uint8_t* quantized, TypeA scale,
-                                                         const float act_f[CtaM][Details::kStepK]) {
-  static constexpr int kStepK = Details::kStepK;
-  static constexpr bool kPair = Details::kUseInterleavedConverter;
-  using Math = MathWrapper<typename Details::TypeDetailsA>;
-  using Type2 = typename Math::Type2;
-
-  const uint32_t* words = reinterpret_cast<const uint32_t*>(quantized);
-  const Type2 scale2 = Math::to_vec2(scale);
-  const Type2 zero = Math::to_vec2(static_cast<TypeA>(0.f));
-
-  float sum[CtaM];
-#pragma unroll
-  for (int m = 0; m < CtaM; ++m) {
-    sum[m] = acc[m];
-  }
-#pragma unroll
-  for (int w = 0; w < kStepK / 8; ++w) {
-    uint32_t packed[4];
-    fp4_fast::decode_word<TypeA>(words[w], packed);
-#pragma unroll
-    for (int j = 0; j < 4; ++j) {
-      Type2 value = Math::fma2(reinterpret_cast<Type2&>(packed[j]), scale2, zero);
-      packed[j] = reinterpret_cast<uint32_t&>(value);
-    }
-#pragma unroll
-    for (int kk = 0; kk < kStepK; ++kk) {
-      const int physical = fp4_fast_layout_map<Details>(kk);
-      if (physical / 8 == w) {
-        const uint32_t value = packed[fp4_fast::reg_of(physical, kPair) - w * 4];
-        const float weight = fp4_fast::half_of(physical, kPair) ? fp4_fast::hi_to_float<TypeA>(value)
-                                                                : fp4_fast::lo_to_float<TypeA>(value);
-#pragma unroll
-        for (int m = 0; m < CtaM; ++m) {
-          sum[m] += weight * act_f[m][kk];
-        }
-      }
-    }
-  }
-#pragma unroll
-  for (int m = 0; m < CtaM; ++m) {
-    acc[m] = sum[m];
-  }
-}
-
 // Accumulator element of the K-paired inner loop, see accumulate_column_tile below. 16-bit
 // accumulation keeps the two k lanes of the vec2 apart until the epilogue; fp32 accumulation
 // reduces each pair to one float right away.
@@ -223,13 +174,8 @@ __device__ __forceinline__ bool moe_gemv_row_is_zero_weight(const Params& row_sk
   return row_skip.unpermuted_scales[token * row_skip.experts_per_token + slot] == 0.0f;
 }
 
-// CtaM is the number of permuted rows one block owns. It is a template parameter rather than a
-// constant because the caller must guarantee all CtaM rows share an expert (rows are sorted by
-// expert, but a naive rows-per-block split still straddles boundaries), so CtaM > 1 needs a
-// launcher that builds an expert-aligned tile map.
 template <typename Details, int CtaN, int Threads, int GroupSize, bool EnableBias,
-          typename TypeA = typename Details::TypeDetailsA::Type, typename AccT = TypeA, bool Fast = false,
-          int CtaM = 1>
+          typename TypeA = typename Details::TypeDetailsA::Type, typename AccT = TypeA, bool Fast = false>
 __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
                                 const int64_t* expert_first_token_offset, const int* permuted_row_to_expert,
                                 int num_experts,
@@ -240,6 +186,7 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
   using AccessTypeW = typename Details::AccessTypeW;
 
   static constexpr bool Mandatory = true;
+  static constexpr int CtaM = 1;
   static constexpr int StepK = Details::kStepK;
   static constexpr int CtaK = StepK * Threads;
   static_assert(CtaN % 2 == 0);
@@ -247,26 +194,14 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
     static_assert((CtaK / Details::kInterleave) % GroupSize == 0);
   }
 
-  const int row = blockIdx.x * CtaM;
+  const int row = blockIdx.x;
 
   // Zero-weight expert skip: write the zeros the epilogue would have written over this block's
-  // output slice and bail out before touching any expert weight/scale bytes. With CtaM > 1 the
-  // rows are only skipped wholesale when every row in the tile is zero-weight; a partially zero
-  // tile still has to run, and its dead rows are zeroed in the accumulator before the epilogue.
-  bool row_zero[CtaM];
-  bool all_zero = true;
-#pragma unroll
-  for (int m = 0; m < CtaM; ++m) {
-    row_zero[m] = moe_gemv_row_is_zero_weight(row_skip, row + m);
-    all_zero &= row_zero[m];
-  }
-  if (all_zero) {
+  // output slice and bail out before touching any expert weight/scale bytes.
+  if (moe_gemv_row_is_zero_weight(row_skip, row)) {
     TypeA* zero_out = out + row * n + static_cast<int>(blockIdx.y) * CtaN * Details::kInterleave;
     for (int ii = static_cast<int>(threadIdx.x); ii < CtaN * Details::kInterleave; ii += Threads) {
-#pragma unroll
-      for (int m = 0; m < CtaM; ++m) {
-        zero_out[m * n + ii] = static_cast<TypeA>(0.f);
-      }
+      zero_out[ii] = static_cast<TypeA>(0.f);
     }
     return;
   }
@@ -321,11 +256,11 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
   using TileAccT = TileAccType<Details, AccT>;
   using Math = MathWrapper<typename Details::TypeDetailsA>;
 
-  TileAccT tile_k_acc[CtaM * CtaN];
+  TileAccT tile_k_acc[CtaN];
   if constexpr (std::is_same_v<TileAccT, float>) {
-    fill<CtaM * CtaN>(tile_k_acc, 0.f);
+    fill<CtaN>(tile_k_acc, 0.f);
   } else {
-    fill<CtaM * CtaN>(tile_k_acc, Math::to_vec2(static_cast<typename Math::Type>(0.f)));
+    fill<CtaN>(tile_k_acc, Math::to_vec2(static_cast<typename Math::Type>(0.f)));
   }
 
   // load_scales() writes through a ScalesAccessT::TVec* (float4 when vectorized), and the
@@ -337,38 +272,23 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
   }
 
   for (int idx_k = tid * StepK, iter = 0; idx_k < interleaved_k; idx_k += CtaK, ++iter) {
-    alignas(alignof(AccessTypeA)) TypeA tile_a[CtaM][StepK];
+    alignas(alignof(AccessTypeA)) TypeA tile_a[StepK];
     if constexpr (GroupSize != 0) {
       load_scales<ScalesAccessT, CtaN>(scales_iterator, vec_scale, iter);
     }
-#pragma unroll
-    for (int m = 0; m < CtaM; ++m) {
-      act_iterator.load(tile_a[m], iter, m);
-    }
+    act_iterator.load(tile_a, iter, 0);
     if constexpr (Fast) {
       static_assert(kMoeGemvFp4FastSupported<Details, AccT>);
       alignas(alignof(AccessTypeW)) uint8_t tile_w_quantized[StepK / Details::kElemsPerByteW];
-      float act_f[CtaM][StepK];
+      float act_f[StepK];
 #pragma unroll
-      for (int m = 0; m < CtaM; ++m) {
-#pragma unroll
-        for (int kk = 0; kk < StepK; ++kk) {
-          act_f[m][kk] = static_cast<float>(tile_a[m][kk]);
-        }
+      for (int kk = 0; kk < StepK; ++kk) {
+        act_f[kk] = static_cast<float>(tile_a[kk]);
       }
 #pragma unroll
       for (int i = 0; i < CtaN; ++i) {
         weight_iterator.load(tile_w_quantized, iter, i);
-        float acc_i[CtaM];
-#pragma unroll
-        for (int m = 0; m < CtaM; ++m) {
-          acc_i[m] = tile_k_acc[m * CtaN + i];
-        }
-        fp4_fast_accumulate_rows<Details, CtaM>(acc_i, tile_w_quantized, vec_scale[i], act_f);
-#pragma unroll
-        for (int m = 0; m < CtaM; ++m) {
-          tile_k_acc[m * CtaN + i] = acc_i[m];
-        }
+        fp4_fast_accumulate<Details>(tile_k_acc[i], tile_w_quantized, vec_scale[i], act_f);
       }
     } else {
       // Keep all fallback weight loads in flight before conversion to hide memory latency.
@@ -381,25 +301,13 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
       for (int i = 0; i < CtaN; ++i) {
         alignas(alignof(uint32_t)) TypeA tile_w[StepK];
         Converter::template convert<StepK>(tile_w_quantized + i * Details::kAccessNumW, tile_w);
-#pragma unroll
-        for (int m = 0; m < CtaM; ++m) {
-          accumulate_column_tile<Details, StepK>(tile_k_acc[m * CtaN + i], tile_w, tile_a[m], vec_scale[i]);
-        }
+        accumulate_column_tile<Details, StepK>(tile_k_acc[i], tile_w, tile_a, vec_scale[i]);
       }
     }
   }
 
   AccT tile_acc[CtaM * CtaN];
-  collapse_tile_acc<Details, CtaM * CtaN>(tile_acc, tile_k_acc);
-#pragma unroll
-  for (int m = 0; m < CtaM; ++m) {
-    if (row_zero[m]) {
-#pragma unroll
-      for (int i = 0; i < CtaN; ++i) {
-        tile_acc[m * CtaN + i] = static_cast<AccT>(0.f);
-      }
-    }
-  }
+  collapse_tile_acc<Details, CtaN>(tile_acc, tile_k_acc);
   epilogue<Details, CtaM, CtaN, Threads, EnableBias, false, AccT>(out, n, tile_acc, bias, 1.0f);
 #endif
 }
