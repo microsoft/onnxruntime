@@ -52,6 +52,7 @@ TEST(FeatureVectorizer, RejectMismatchedBatchSizes) {
 
   test.AddInput<int32_t>("X0", std::vector<int64_t>{1, 1}, {1});
   test.AddInput<int32_t>("X1", std::vector<int64_t>{2, 1}, {2, 3});
+  test.AddOutput<float>("Y", std::vector<int64_t>{1, 2}, {0.f, 0.f});
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "All inputs to FeatureVectorizer must have the same batch size.");
@@ -64,6 +65,7 @@ TEST(FeatureVectorizer, RejectScalarInput) {
 
   test.AddInput<int32_t>("X0", std::vector<int64_t>{1}, {1});
   test.AddInput<int32_t>("X1", std::vector<int64_t>{}, {2});
+  test.AddOutput<float>("Y", std::vector<int64_t>{1, 2}, {0.f, 0.f});
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "FeatureVectorizer input 1 must have at least 1 dimension.");
