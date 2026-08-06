@@ -37,6 +37,24 @@ def debug_print(*args, **kwargs):
         print(*args, **kwargs)
 
 
+def debug_print_ep_devices(ep_devices):
+    """Print the EP and hardware properties for each discovered device."""
+    if not VERBOSE:
+        return
+
+    for index, ep_device in enumerate(ep_devices):
+        device = ep_device.device
+        debug_print(f"  EP device [{index}]:")
+        debug_print(f"    EP: name={ep_device.ep_name!r}, vendor={ep_device.ep_vendor!r}")
+        debug_print(f"    EP metadata: {ep_device.ep_metadata!r}")
+        debug_print(f"    EP options: {ep_device.ep_options!r}")
+        debug_print(
+            f"    Hardware: type={device.type!r}, vendor_id={device.vendor_id}, "
+            f"vendor={device.vendor!r}, device_id={device.device_id}"
+        )
+        debug_print(f"    Hardware metadata: {device.metadata!r}")
+
+
 def create_mul_model(output_dir: Path) -> Path:
     """Create a simple Mul model in `output_dir` and return the path to the saved .onnx file."""
     x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2, 3])
@@ -107,7 +125,7 @@ def test_registration_and_inference():
     try:
         # Discover devices
         all_devices = ort.get_ep_devices()
-        debug_print(f"  All devices: {[(d.ep_name, getattr(d, 'device_id', 'N/A')) for d in all_devices]}")
+        debug_print_ep_devices(all_devices)
         webgpu_devices = [d for d in all_devices if d.ep_name == ep_name]
         print(f"Found {len(webgpu_devices)} WebGPU device(s)")
 
