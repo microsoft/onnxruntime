@@ -444,11 +444,10 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
 void RunEndToEndCaseOnAvailableProviders(const EndToEndCase& c) {
   bool ran = false;
 
-  // CUDA PagedAttention requires key_cache/value_cache outputs to alias the
-  // corresponding input buffers. OpTester allocates distinct output buffers,
-  // so this harness cannot satisfy the CUDA aliasing contract.
-  // Keep the tests shared here and run them on WebGPU, where non-aliased
-  // output buffers are explicitly supported by the kernel fallback path.
+  if (auto cuda_ep = DefaultCudaExecutionProvider()) {
+    RunEndToEndCase(c, std::move(cuda_ep));
+    ran = true;
+  }
 
   if (auto webgpu_ep = DefaultWebGpuExecutionProvider()) {
     RunEndToEndCase(c, std::move(webgpu_ep));
