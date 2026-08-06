@@ -335,7 +335,10 @@ Status RunCompressor(const Tensor& hidden,
                      int64_t compress_rate,
                      int64_t rotary_dim,
                      float epsilon,
-                     CompressorResult& result) {
+                     CompressorResult& result,
+                     int64_t entry_capacity = 0,
+                     const Tensor* position_ids = nullptr) {
+  const bool fixed_mode = entry_capacity > 0;
   const auto& hidden_shape = hidden.Shape();
   ORT_RETURN_IF_NOT(hidden_shape.NumDimensions() == 3, "hidden_states must have rank 3.");
   const int64_t batch = hidden_shape[0];
@@ -362,8 +365,13 @@ Status RunCompressor(const Tensor& hidden,
   ORT_RETURN_IF_NOT(past_pending_kv.Shape().NumDimensions() == 3 && past_pending_kv.Shape()[0] == batch &&
                         past_pending_kv.Shape()[2] == width && past_pending_gate.Shape() == past_pending_kv.Shape(),
             "pending states must have shape (B, P, projection width).");
-  ORT_RETURN_IF_NOT(past_pending_kv.Shape()[1] < compress_rate,
-                    "pending state length must be less than compress_rate.");
+  if (fixed_mode) {
+    ORT_RETURN_IF_NOT(past_pending_kv.Shape()[1] == compress_rate - 1,
+                      "fixed-mode pending state must have capacity compress_rate - 1.");
+  } else {
+    ORT_RETURN_IF_NOT(past_pending_kv.Shape()[1] < compress_rate,
+                      "pending state length must be less than compress_rate.");
+  }
   if (is_overlap) {
     ORT_RETURN_IF_NOT(past_overlap_kv->Shape() == TensorShape({batch, compress_rate, head_size}) &&
                           past_overlap_gate->Shape() == past_overlap_kv->Shape(),
@@ -371,15 +379,30 @@ Status RunCompressor(const Tensor& hidden,
   }
 
   EntryState entry_state = ReadEntries(past_entries, batch, head_size);
-  const int64_t pending_count = past_pending_kv.Shape()[1];
+  // In fixed mode derive logical counts from position_ids[b,0].
+  int64_t pending_count;
+  int64_t old_entry_count_derived;
+  if (fixed_mode) {
+    ORT_RETURN_IF_NOT(position_ids != nullptr, "position_ids required for fixed mode.");
+    const int64_t start_pos = position_ids->Data<int64_t>()[0];
+    pending_count = start_pos % compress_rate;
+    old_entry_count_derived = start_pos / compress_rate;
+  } else {
+    pending_count = past_pending_kv.Shape()[1];
+    old_entry_count_derived = entry_state.entries;
+  }
   const int64_t total_count = pending_count + sequence;
   const int64_t usable_count = total_count / compress_rate * compress_rate;
   const int64_t new_entry_count = usable_count / compress_rate;
   result.pending_count = total_count - usable_count;
-  result.entry_count = entry_state.entries + new_entry_count;
+  result.entry_count = fixed_mode ? entry_capacity : (old_entry_count_derived + new_entry_count);
   result.entries_rank4 = entry_state.rank4;
-  ORT_RETURN_IF(new_entry_count > 0 && (result.entry_count - 1) * compress_rate >= cos_cache.Shape()[0],
+  ORT_RETURN_IF(new_entry_count > 0 && (old_entry_count_derived + new_entry_count - 1) * compress_rate >= cos_cache.Shape()[0],
                 "compressed entry position is outside the RoPE cache.");
+  if (fixed_mode) {
+    ORT_RETURN_IF(old_entry_count_derived + new_entry_count > entry_capacity,
+                  "fixed entry_capacity exceeded.");
+  }
 
   const auto hidden_data = ToFloatVector<T>(hidden);
   const auto kv_weight_data = ToFloatVector<T>(kv_weight);
@@ -393,9 +416,10 @@ Status RunCompressor(const Tensor& hidden,
 
   auto combine = [&](const Tensor& pending, const std::vector<float>& current) {
     const auto pending_data = ToFloatVector<T>(pending);
+    const int64_t pending_capacity = pending.Shape()[1];
     std::vector<float> combined(static_cast<size_t>(batch * total_count * width));
     for (int64_t b = 0; b < batch; ++b) {
-      std::copy_n(pending_data.begin() + b * pending_count * width, pending_count * width,
+      std::copy_n(pending_data.begin() + b * pending_capacity * width, pending_count * width,
                   combined.begin() + b * total_count * width);
       std::copy_n(current.begin() + b * sequence * width, sequence * width,
                   combined.begin() + (b * total_count + pending_count) * width);
@@ -466,7 +490,7 @@ Status RunCompressor(const Tensor& hidden,
     const int64_t cache_width = cos_cache.Shape()[1];
     for (int64_t b = 0; b < batch; ++b) {
       for (int64_t entry = 0; entry < new_entry_count; ++entry) {
-        const int64_t position = (entry_state.entries + entry) * compress_rate;
+        const int64_t position = (old_entry_count_derived + entry) * compress_rate;
         const size_t offset = static_cast<size_t>((b * new_entry_count + entry) * head_size);
         std::vector<float> row(new_entries.begin() + offset, new_entries.begin() + offset + head_size);
         ApplyInterleavedTrailingRope(row, head_size, rotary_dim, cos_data.data() + position * cache_width,
@@ -484,8 +508,26 @@ Status RunCompressor(const Tensor& hidden,
     }
   }
 
-  result.entries = ReadEntryData(ToFloatVector<T>(past_entries), entry_state, batch, head_size);
-  AppendEntries(result.entries, entry_state.entries, new_entries, new_entry_count, batch, head_size);
+  if (fixed_mode) {
+    // Fixed mode: result.entries has capacity layout [batch * entry_capacity * head_size].
+    result.entries.assign(static_cast<size_t>(batch * entry_capacity * head_size), 0.0f);
+    const auto old_flat = ToFloatVector<T>(past_entries);
+    for (int64_t b = 0; b < batch; ++b) {
+      const size_t src_start = static_cast<size_t>(b * entry_state.entries * head_size);
+      const size_t dst_start = static_cast<size_t>(b * entry_capacity * head_size);
+      std::copy_n(old_flat.begin() + src_start, static_cast<size_t>(old_entry_count_derived * head_size),
+                  result.entries.begin() + dst_start);
+      for (int64_t e = 0; e < new_entry_count; ++e) {
+        const size_t new_src = static_cast<size_t>((b * new_entry_count + e) * head_size);
+        const size_t new_dst = dst_start + static_cast<size_t>((old_entry_count_derived + e) * head_size);
+        std::copy_n(new_entries.begin() + new_src, static_cast<size_t>(head_size),
+                    result.entries.begin() + new_dst);
+      }
+    }
+  } else {
+    result.entries = ReadEntryData(ToFloatVector<T>(past_entries), entry_state, batch, head_size);
+    AppendEntries(result.entries, entry_state.entries, new_entries, new_entry_count, batch, head_size);
+  }
   return Status::OK();
 }
 

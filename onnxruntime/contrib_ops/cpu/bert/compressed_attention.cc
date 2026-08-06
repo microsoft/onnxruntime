@@ -21,6 +21,8 @@ class CompressedAttention final : public OpKernel {
     const Tensor* attention_bias = context->Input<Tensor>(3);
     const Tensor* selected_indices = context->Input<Tensor>(4);
     const Tensor* head_sink = context->Input<Tensor>(5);
+    const Tensor* past_local_kv = context->InputCount() > 6 ? context->Input<Tensor>(6) : nullptr;
+    const Tensor* position_ids = context->InputCount() > 7 ? context->Input<Tensor>(7) : nullptr;
     ORT_RETURN_IF_NOT(query && local_kv && head_sink, "query, local_kv, and head_sink are required.");
     const auto& query_shape = query->Shape();
     ORT_RETURN_IF_NOT(query_shape.NumDimensions() == 4, "query must have shape (B, N, S, H).");
@@ -31,7 +33,18 @@ class CompressedAttention final : public OpKernel {
     ORT_RETURN_IF_NOT(local_kv->Shape().NumDimensions() == 4 && local_kv->Shape()[0] == batch &&
                           local_kv->Shape()[1] == 1 && local_kv->Shape()[3] == head_size,
                       "local_kv must have shape (B, 1, L, H).");
-    const int64_t local_count = local_kv->Shape()[2];
+    const bool fixed_cache = past_local_kv != nullptr;
+    ORT_RETURN_IF_NOT(fixed_cache == (position_ids != nullptr),
+                      "past_local_kv and position_ids must be provided together.");
+    const int64_t local_count = fixed_cache ? past_local_kv->Shape()[2] : local_kv->Shape()[2];
+    if (fixed_cache) {
+      ORT_RETURN_IF_NOT(local_kv->Shape()[2] == sequence &&
+                            past_local_kv->Shape().NumDimensions() == 4 &&
+                            past_local_kv->Shape()[0] == batch && past_local_kv->Shape()[1] == 1 &&
+                            past_local_kv->Shape()[3] == head_size && local_count > 0 &&
+                            position_ids->Shape() == TensorShape({batch, sequence}),
+                        "fixed local cache inputs have incompatible shapes.");
+    }
     int64_t compressed_count = 0;
     if (compressed_kv) {
       ORT_RETURN_IF_NOT(compressed_kv->Shape().NumDimensions() == 4 && compressed_kv->Shape()[0] == batch &&
@@ -50,7 +63,10 @@ class CompressedAttention final : public OpKernel {
     if (attention_bias) {
       ORT_RETURN_IF_NOT(attention_bias->Shape().NumDimensions() == 4,
                         "attention_bias must have rank 4.");
-      const int64_t expected[] = {batch, num_heads, sequence, local_count + compressed_count};
+      const int64_t expected_keys = fixed_cache && attention_bias->Shape()[3] == compressed_count
+                    ? compressed_count
+                    : local_count + compressed_count;
+      const int64_t expected[] = {batch, num_heads, sequence, expected_keys};
       for (int dimension = 0; dimension < 4; ++dimension) {
         ORT_RETURN_IF_NOT(attention_bias->Shape()[dimension] == 1 || attention_bias->Shape()[dimension] == expected[dimension],
                           "attention_bias is not broadcastable to (B, N, S, L + E).");
@@ -59,11 +75,13 @@ class CompressedAttention final : public OpKernel {
 
     const auto query_data = ToFloatVector<T>(*query);
     const auto local_data = ToFloatVector<T>(*local_kv);
+    const auto past_local_data = fixed_cache ? ToFloatVector<T>(*past_local_kv) : std::vector<float>{};
     const auto compressed_data = compressed_kv ? ToFloatVector<T>(*compressed_kv) : std::vector<float>{};
     const auto bias_data = attention_bias ? ToFloatVector<T>(*attention_bias) : std::vector<float>{};
     const auto sink_data = ToFloatVector<T>(*head_sink);
     const int64_t selected_count = selected_indices ? selected_indices->Shape()[2] : compressed_count;
     const int64_t* selected_data = selected_indices ? selected_indices->Data<int64_t>() : nullptr;
+    const int64_t* positions = fixed_cache ? position_ids->Data<int64_t>() : nullptr;
     const float scale = has_scale_ ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size));
     std::vector<float> output(query_data.size(), 0.0f);
     auto read_bias = [&](int64_t b, int64_t n, int64_t s, int64_t key) {
@@ -92,17 +110,47 @@ class CompressedAttention final : public OpKernel {
               compressed_indices.push_back(entry);
             }
           }
-          const int64_t key_count = local_count + static_cast<int64_t>(compressed_indices.size());
+          const int64_t absolute_position = fixed_cache ? positions[b * sequence + s] : 0;
+          if (fixed_cache) {
+            ORT_RETURN_IF(absolute_position < 0 ||
+                              (s > 0 && absolute_position != positions[b * sequence + s - 1] + 1),
+                          "fixed local cache position_ids must be non-negative and contiguous.");
+          }
+          const int64_t step_start = fixed_cache ? positions[b * sequence] : 0;
+          const int64_t first_local_position = fixed_cache
+                                                   ? std::max<int64_t>(0, absolute_position - local_count + 1)
+                                                   : 0;
+          const int64_t visible_local_count = fixed_cache
+                                                  ? absolute_position - first_local_position + 1
+                                                  : local_count;
+          const int64_t key_count = visible_local_count + static_cast<int64_t>(compressed_indices.size());
           std::vector<float> logits(static_cast<size_t>(key_count));
           const size_t query_offset = static_cast<size_t>(((b * num_heads + n) * sequence + s) * head_size);
           float max_logit = sink_data[static_cast<size_t>(sink_count == 1 ? 0 : n)];
-          for (int64_t key = 0; key < local_count; ++key) {
-            float dot = 0.0f;
-            const size_t key_offset = static_cast<size_t>((b * local_count + key) * head_size);
-            for (int64_t d = 0; d < head_size; ++d) {
-              dot += query_data[query_offset + d] * local_data[key_offset + d];
+          auto local_offset = [&](int64_t key) {
+            if (!fixed_cache) {
+              return static_cast<size_t>((b * local_count + key) * head_size);
             }
-            logits[static_cast<size_t>(key)] = dot * scale + read_bias(b, n, s, key);
+            const int64_t key_position = first_local_position + key;
+            const int64_t cache_index = key_position >= step_start
+                                            ? key_position - step_start
+                                            : key_position % local_count;
+            return static_cast<size_t>((b * (key_position >= step_start ? sequence : local_count) + cache_index) * head_size);
+          };
+          auto local_source = [&](int64_t key) -> const std::vector<float>& {
+            return fixed_cache && first_local_position + key < step_start ? past_local_data : local_data;
+          };
+          for (int64_t key = 0; key < visible_local_count; ++key) {
+            float dot = 0.0f;
+            const size_t key_offset = local_offset(key);
+            const auto& source = local_source(key);
+            for (int64_t d = 0; d < head_size; ++d) {
+              dot += query_data[query_offset + d] * source[key_offset + d];
+            }
+            logits[static_cast<size_t>(key)] = dot * scale +
+                (fixed_cache && attention_bias && attention_bias->Shape()[3] == compressed_count
+                     ? 0.0f
+                     : read_bias(b, n, s, key));
             max_logit = std::max(max_logit, logits[static_cast<size_t>(key)]);
           }
           for (size_t index = 0; index < compressed_indices.size(); ++index) {
@@ -112,8 +160,11 @@ class CompressedAttention final : public OpKernel {
             for (int64_t d = 0; d < head_size; ++d) {
               dot += query_data[query_offset + d] * compressed_data[key_offset + d];
             }
-            const size_t logit_index = static_cast<size_t>(local_count) + index;
-            logits[logit_index] = dot * scale + read_bias(b, n, s, local_count + entry);
+            const size_t logit_index = static_cast<size_t>(visible_local_count) + index;
+            const int64_t bias_key = fixed_cache && attention_bias && attention_bias->Shape()[3] == compressed_count
+                                         ? entry
+                                         : local_count + entry;
+            logits[logit_index] = dot * scale + read_bias(b, n, s, bias_key);
             max_logit = std::max(max_logit, logits[logit_index]);
           }
           float denominator = std::exp(sink_data[static_cast<size_t>(sink_count == 1 ? 0 : n)] - max_logit);
@@ -121,21 +172,33 @@ class CompressedAttention final : public OpKernel {
             logit = std::exp(logit - max_logit);
             denominator += logit;
           }
-          for (int64_t key = 0; key < local_count; ++key) {
-            const size_t value_offset = static_cast<size_t>((b * local_count + key) * head_size);
+          for (int64_t key = 0; key < visible_local_count; ++key) {
+            const size_t value_offset = local_offset(key);
+            const auto& source = local_source(key);
             for (int64_t d = 0; d < head_size; ++d) {
-              output[query_offset + d] += logits[static_cast<size_t>(key)] / denominator * local_data[value_offset + d];
+              output[query_offset + d] += logits[static_cast<size_t>(key)] / denominator * source[value_offset + d];
             }
           }
           for (size_t index = 0; index < compressed_indices.size(); ++index) {
             const size_t value_offset = static_cast<size_t>((b * compressed_count + compressed_indices[index]) * head_size);
             for (int64_t d = 0; d < head_size; ++d) {
-              output[query_offset + d] += logits[static_cast<size_t>(local_count) + index] / denominator *
+              output[query_offset + d] += logits[static_cast<size_t>(visible_local_count) + index] / denominator *
                                                   compressed_data[value_offset + d];
             }
           }
         }
       }
+    }
+    if (fixed_cache) {
+      std::vector<float> present_data = past_local_data;
+      for (int64_t b = 0; b < batch; ++b) {
+        for (int64_t s = 0; s < sequence; ++s) {
+          const int64_t cache_index = positions[b * sequence + s] % local_count;
+          std::copy_n(local_data.begin() + (b * sequence + s) * head_size, head_size,
+                      present_data.begin() + (b * local_count + cache_index) * head_size);
+        }
+      }
+      WriteFloatVector<T>(*context->Output(1, past_local_kv->Shape()), present_data);
     }
     WriteFloatVector<T>(*context->Output(0, query_shape), output);
     return Status::OK();
@@ -154,7 +217,8 @@ class CompressedAttention final : public OpKernel {
       (*KernelDefBuilder::Create())                                     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())       \
           .TypeConstraint("I", {DataTypeImpl::GetTensorType<int32_t>(), \
-                                  DataTypeImpl::GetTensorType<int64_t>()}), \
+                                  DataTypeImpl::GetTensorType<int64_t>()}) \
+          .MayInplace(6, 1),                                            \
       deepseek_v4_attention_impl::CompressedAttention<T>);
 
 REGISTER_KERNEL(float)

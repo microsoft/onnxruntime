@@ -25,6 +25,8 @@ class CompressedAttention final : public CudaKernel {
     const Tensor* bias = context->Input<Tensor>(3);
     const Tensor* selected = context->Input<Tensor>(4);
     const Tensor* sink = context->Input<Tensor>(5);
+    const Tensor* past_local = context->InputCount() > 6 ? context->Input<Tensor>(6) : nullptr;
+    const Tensor* position_ids = context->InputCount() > 7 ? context->Input<Tensor>(7) : nullptr;
     ORT_RETURN_IF_NOT(query && local && sink && query->Shape().NumDimensions() == 4,
                       "query, local_kv, and head_sink are required.");
     const int64_t batch = query->Shape()[0];
@@ -34,7 +36,17 @@ class CompressedAttention final : public CudaKernel {
     ORT_RETURN_IF_NOT(local->Shape().NumDimensions() == 4 && local->Shape()[0] == batch &&
                           local->Shape()[1] == 1 && local->Shape()[3] == head_size,
                       "local_kv shape mismatch.");
-    const int64_t local_count = local->Shape()[2];
+    const bool fixed_cache = past_local != nullptr;
+    ORT_RETURN_IF_NOT(fixed_cache == (position_ids != nullptr),
+                      "past_local_kv and position_ids must be provided together.");
+    const int64_t local_count = fixed_cache ? past_local->Shape()[2] : local->Shape()[2];
+    if (fixed_cache) {
+      ORT_RETURN_IF_NOT(local->Shape()[2] == sequence && past_local->Shape().NumDimensions() == 4 &&
+                            past_local->Shape()[0] == batch && past_local->Shape()[1] == 1 &&
+                            past_local->Shape()[3] == head_size && local_count > 0 &&
+                            position_ids->Shape() == TensorShape({batch, sequence}),
+                        "fixed local cache inputs have incompatible shapes.");
+    }
     const int64_t compressed_count = compressed ? compressed->Shape()[2] : 0;
     if (compressed) ORT_RETURN_IF_NOT(compressed->Shape() == TensorShape({batch, 1, compressed_count, head_size}),
                                       "compressed_kv shape mismatch.");
@@ -48,7 +60,10 @@ class CompressedAttention final : public CudaKernel {
     int64_t bias_dims[4] = {1, 1, 1, 1};
     if (bias) {
       ORT_RETURN_IF_NOT(bias->Shape().NumDimensions() == 4, "attention_bias must have rank 4.");
-      const int64_t expected[4] = {batch, heads, sequence, local_count + compressed_count};
+      const int64_t expected_keys = fixed_cache && bias->Shape()[3] == compressed_count
+                    ? compressed_count
+                    : local_count + compressed_count;
+      const int64_t expected[4] = {batch, heads, sequence, expected_keys};
       for (int dim = 0; dim < 4; ++dim) {
         bias_dims[dim] = bias->Shape()[dim];
         ORT_RETURN_IF_NOT(bias_dims[dim] == 1 || bias_dims[dim] == expected[dim],
@@ -57,17 +72,26 @@ class CompressedAttention final : public CudaKernel {
     }
     using CudaT = typename ToCudaType<T>::MappedType;
     Tensor* output = context->Output(0, query->Shape());
+    Tensor* present_local = fixed_cache ? context->Output(1, past_local->Shape()) : nullptr;
+    if (fixed_cache && present_local->DataRaw() != past_local->DataRaw()) {
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_local->MutableData<T>(), past_local->Data<T>(),
+                         static_cast<size_t>(past_local->Shape().Size()) * sizeof(T),
+                         cudaMemcpyDeviceToDevice, Stream(context)));
+    }
     const float scale = has_scale_ ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size));
     return LaunchCompressedAttentionKernel<CudaT>(
-        Stream(context), reinterpret_cast<CudaT*>(output->MutableData<T>()),
+      Stream(context), reinterpret_cast<CudaT*>(output->MutableData<T>()),
+      fixed_cache ? reinterpret_cast<CudaT*>(present_local->MutableData<T>()) : nullptr,
         reinterpret_cast<const CudaT*>(query->Data<T>()), reinterpret_cast<const CudaT*>(local->Data<T>()),
+      fixed_cache ? reinterpret_cast<const CudaT*>(past_local->Data<T>()) : nullptr,
+      fixed_cache ? position_ids->Data<int64_t>() : nullptr,
         compressed ? reinterpret_cast<const CudaT*>(compressed->Data<T>()) : nullptr,
         bias ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,
         selected ? selected->Data<int64_t>() : nullptr, reinterpret_cast<const CudaT*>(sink->Data<T>()),
         narrow<int>(batch), narrow<int>(heads), narrow<int>(sequence), narrow<int>(head_size),
         narrow<int>(local_count), narrow<int>(compressed_count), narrow<int>(selected_count),
         narrow<int>(sink_count), bias_dims[0], bias_dims[1], bias_dims[2], bias_dims[3], scale,
-        GetDeviceProp().maxThreadsPerBlock);
+        fixed_cache, GetDeviceProp().maxThreadsPerBlock);
   }
  private:
   bool has_scale_{};
@@ -81,7 +105,8 @@ class CompressedAttention final : public CudaKernel {
       CompressedAttention, kMSDomain, 1, T, kCudaExecutionProvider,                    \
       (*KernelDefBuilder::Create())                                     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())       \
-          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
+          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()) \
+          .MayInplace(6, 1),                                            \
       CompressedAttention<T>);
 
 REGISTER_KERNEL(MLFloat16)

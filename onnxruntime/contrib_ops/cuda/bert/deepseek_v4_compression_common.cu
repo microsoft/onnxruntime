@@ -50,9 +50,10 @@ __device__ __forceinline__ half FromFloat<half>(float value) {
 template <typename T>
 __device__ __forceinline__ T ReadCombinedToken(const T* pending, const T* current,
                                                 int batch, int token, int dim,
-                                                int pending_tokens, int sequence_length, int width) {
+                                                int pending_tokens, int pending_capacity,
+                                                int sequence_length, int width) {
   if (token < pending_tokens) {
-    return pending[(batch * pending_tokens + token) * width + dim];
+    return pending[(batch * pending_capacity + token) * width + dim];
   }
   return current[(batch * sequence_length + token - pending_tokens) * width + dim];
 }
@@ -61,19 +62,32 @@ template <typename T>
 __global__ void WriteCompressorPendingKernel(
     T* pending_kv_out, T* pending_gate_out, const T* current_kv, const T* current_gate,
     const T* past_pending_kv, const T* past_pending_gate, int sequence_length,
-    int batch_size, int past_pending_tokens, int usable_tokens, int pending_tokens, int width) {
+    int batch_size, int past_pending_tokens, int pending_capacity, int usable_tokens,
+    int pending_tokens, int width, const int64_t* position_ids, int compress_rate,
+    bool fixed_mode) {
   const int index = blockIdx.x * blockDim.x + threadIdx.x;
-  const int count = batch_size * pending_tokens * width;
+  const int output_capacity = fixed_mode ? pending_capacity : pending_tokens;
+  const int count = batch_size * output_capacity * width;
   if (index >= count) return;
   const int dim = index % width;
   const int row = index / width;
-  const int token = row % pending_tokens;
-  const int batch = row / pending_tokens;
+  const int token = row % output_capacity;
+  const int batch = row / output_capacity;
+  if (fixed_mode) {
+    past_pending_tokens = static_cast<int>(position_ids[batch * sequence_length] % compress_rate);
+    usable_tokens = (past_pending_tokens + sequence_length) / compress_rate * compress_rate;
+    pending_tokens = past_pending_tokens + sequence_length - usable_tokens;
+    if (token >= pending_tokens) {
+      pending_kv_out[index] = FromFloat<T>(0.0f);
+      pending_gate_out[index] = FromFloat<T>(0.0f);
+      return;
+    }
+  }
   const int source_token = usable_tokens + token;
   pending_kv_out[index] = ReadCombinedToken(past_pending_kv, current_kv, batch, source_token, dim,
-                                             past_pending_tokens, sequence_length, width);
+                                             past_pending_tokens, pending_capacity, sequence_length, width);
   pending_gate_out[index] = ReadCombinedToken(past_pending_gate, current_gate, batch, source_token, dim,
-                                               past_pending_tokens, sequence_length, width);
+                                               past_pending_tokens, pending_capacity, sequence_length, width);
 }
 
 template <typename T>
@@ -84,9 +98,19 @@ __global__ void DeepSeekV4CompressorKernel(
     const T* norm_weight, const T* cos_cache, const T* sin_cache, int sequence_length,
     int past_pending_tokens, int old_entry_count, int new_entry_count, int width,
     int head_size, int compress_rate, int rotary_dim, int cos_cache_width,
-    float epsilon, bool is_overlap) {
+    int entry_capacity, const int64_t* position_ids, float epsilon, bool is_overlap,
+    bool fixed_mode) {
   const int batch = blockIdx.x / new_entry_count;
   const int window = blockIdx.x % new_entry_count;
+  const int pending_capacity = fixed_mode ? compress_rate - 1 : past_pending_tokens;
+  if (fixed_mode) {
+    const int64_t start_position = position_ids[batch * sequence_length];
+    past_pending_tokens = static_cast<int>(start_position % compress_rate);
+    old_entry_count = static_cast<int>(start_position / compress_rate);
+    const int batch_new_entry_count = (past_pending_tokens + sequence_length) / compress_rate;
+    if (window >= batch_new_entry_count || old_entry_count + window >= entry_capacity) return;
+    new_entry_count = batch_new_entry_count;
+  }
   const int tid = threadIdx.x;
   const int slots = is_overlap ? 2 * compress_rate : compress_rate;
   extern __shared__ float scratch[];
@@ -101,7 +125,7 @@ __global__ void DeepSeekV4CompressorKernel(
       if (!is_overlap) {
         const int token = window * compress_rate + slot;
         logit = ToFloat(ReadCombinedToken(past_pending_gate, current_gate, batch, token, dim,
-                                           past_pending_tokens, sequence_length, width));
+                                           past_pending_tokens, pending_capacity, sequence_length, width));
         logit += ToFloat(position_bias[slot * width + dim]);
       } else if (slot < compress_rate && window == 0) {
         logit = ToFloat(past_overlap_gate[(batch * compress_rate + slot) * head_size + dim]);
@@ -110,7 +134,7 @@ __global__ void DeepSeekV4CompressorKernel(
                                                : window * compress_rate + slot - compress_rate;
         const int source_dim = (slot < compress_rate ? 0 : head_size) + dim;
         logit = ToFloat(ReadCombinedToken(past_pending_gate, current_gate, batch, token, source_dim,
-                                           past_pending_tokens, sequence_length, width));
+                                           past_pending_tokens, pending_capacity, sequence_length, width));
         logit += ToFloat(position_bias[(token % compress_rate) * width + source_dim]);
       }
       max_logit = fmaxf(max_logit, logit);
@@ -124,9 +148,9 @@ __global__ void DeepSeekV4CompressorKernel(
       if (!is_overlap) {
         const int token = window * compress_rate + slot;
         value = ToFloat(ReadCombinedToken(past_pending_kv, current_kv, batch, token, dim,
-                                           past_pending_tokens, sequence_length, width));
+                                           past_pending_tokens, pending_capacity, sequence_length, width));
         logit = ToFloat(ReadCombinedToken(past_pending_gate, current_gate, batch, token, dim,
-                                           past_pending_tokens, sequence_length, width));
+                                           past_pending_tokens, pending_capacity, sequence_length, width));
         logit += ToFloat(position_bias[slot * width + dim]);
       } else if (slot < compress_rate && window == 0) {
         value = ToFloat(past_overlap_kv[(batch * compress_rate + slot) * head_size + dim]);
@@ -136,9 +160,9 @@ __global__ void DeepSeekV4CompressorKernel(
                                                : window * compress_rate + slot - compress_rate;
         const int source_dim = (slot < compress_rate ? 0 : head_size) + dim;
         value = ToFloat(ReadCombinedToken(past_pending_kv, current_kv, batch, token, source_dim,
-                                           past_pending_tokens, sequence_length, width));
+                                           past_pending_tokens, pending_capacity, sequence_length, width));
         logit = ToFloat(ReadCombinedToken(past_pending_gate, current_gate, batch, token, source_dim,
-                                           past_pending_tokens, sequence_length, width));
+                                           past_pending_tokens, pending_capacity, sequence_length, width));
         logit += ToFloat(position_bias[(token % compress_rate) * width + source_dim]);
       }
       const float weight = expf(logit - max_logit);
@@ -158,7 +182,7 @@ __global__ void DeepSeekV4CompressorKernel(
 
   const float inv_rms = rsqrtf(reduction[0] / static_cast<float>(head_size) + epsilon);
   T* output_entry = entries +
-      (batch * (old_entry_count + new_entry_count) + old_entry_count + window) * head_size;
+      (batch * entry_capacity + old_entry_count + window) * head_size;
   for (int dim = tid; dim < head_size; dim += blockDim.x) {
     output_entry[dim] = FromFloat<T>(row[dim] * inv_rms * ToFloat(norm_weight[dim]));
   }
@@ -183,10 +207,10 @@ __global__ void DeepSeekV4CompressorKernel(
         const int output_index = (batch * compress_rate + slot) * head_size + dim;
         overlap_kv_out[output_index] = ReadCombinedToken(
             past_pending_kv, current_kv, batch, token, dim,
-            past_pending_tokens, sequence_length, width);
+            past_pending_tokens, pending_capacity, sequence_length, width);
         const float gate = ToFloat(ReadCombinedToken(
             past_pending_gate, current_gate, batch, token, dim,
-            past_pending_tokens, sequence_length, width));
+            past_pending_tokens, pending_capacity, sequence_length, width));
         overlap_gate_out[output_index] = FromFloat<T>(gate + ToFloat(position_bias[slot * width + dim]));
       }
     }
@@ -199,20 +223,23 @@ Status LaunchDeepSeekV4CompressorKernel(
     T* overlap_kv_out, T* overlap_gate_out, const T* current_kv, const T* current_gate,
     const T* past_pending_kv, const T* past_pending_gate, const T* past_overlap_kv,
     const T* past_overlap_gate, const T* position_bias, const T* norm_weight,
-    const T* cos_cache, const T* sin_cache, int batch_size, int sequence_length,
+    const T* cos_cache, const T* sin_cache, const int64_t* position_ids,
+    int batch_size, int sequence_length,
     int pending_token_count, int old_entry_count, int new_entry_count, int width,
-    int head_size, int compress_rate, int rotary_dim, int cos_cache_width,
-    float epsilon, bool is_overlap, int max_threads_per_block) {
+    int head_size, int compress_rate, int rotary_dim, int cos_cache_width, int entry_capacity,
+    float epsilon, bool is_overlap, bool fixed_mode, int max_threads_per_block) {
   const int total_tokens = pending_token_count + sequence_length;
   const int usable_tokens = new_entry_count * compress_rate;
   const int output_pending_tokens = total_tokens - usable_tokens;
-  if (output_pending_tokens > 0) {
-    const int count = batch_size * output_pending_tokens * width;
+  if (fixed_mode || output_pending_tokens > 0) {
+    const int pending_capacity = fixed_mode ? compress_rate - 1 : pending_token_count;
+    const int output_capacity = fixed_mode ? pending_capacity : output_pending_tokens;
+    const int count = batch_size * output_capacity * width;
     const int block = std::min(max_threads_per_block, 256);
     WriteCompressorPendingKernel<T><<<(count + block - 1) / block, block, 0, stream>>>(
         pending_kv_out, pending_gate_out, current_kv, current_gate, past_pending_kv,
-      past_pending_gate, sequence_length, batch_size, pending_token_count, usable_tokens,
-        output_pending_tokens, width);
+        past_pending_gate, sequence_length, batch_size, pending_token_count, pending_capacity,
+        usable_tokens, output_pending_tokens, width, position_ids, compress_rate, fixed_mode);
   }
   if (new_entry_count > 0) {
     const int block = ChooseBlockSize(head_size, max_threads_per_block);
@@ -222,14 +249,14 @@ Status LaunchDeepSeekV4CompressorKernel(
         past_pending_gate, past_overlap_kv, past_overlap_gate, position_bias, norm_weight,
         cos_cache, sin_cache, sequence_length, pending_token_count, old_entry_count,
         new_entry_count, width, head_size, compress_rate, rotary_dim, cos_cache_width,
-        epsilon, is_overlap);
+        entry_capacity, position_ids, epsilon, is_overlap, fixed_mode);
   }
   return CUDA_CALL(cudaGetLastError());
 }
 
 
-template Status LaunchDeepSeekV4CompressorKernel<half>(cudaStream_t, half*, half*, half*, half*, half*, const half*, const half*, const half*, const half*, const half*, const half*, const half*, const half*, const half*, const half*, int, int, int, int, int, int, int, int, int, int, float, bool, int);
-template Status LaunchDeepSeekV4CompressorKernel<BFloat16>(cudaStream_t, BFloat16*, BFloat16*, BFloat16*, BFloat16*, BFloat16*, const BFloat16*, const BFloat16*, const BFloat16*, const BFloat16*, const BFloat16*, const BFloat16*, const BFloat16*, const BFloat16*, const BFloat16*, const BFloat16*, int, int, int, int, int, int, int, int, int, int, float, bool, int);
+template Status LaunchDeepSeekV4CompressorKernel<half>(cudaStream_t, half*, half*, half*, half*, half*, const half*, const half*, const half*, const half*, const half*, const half*, const half*, const half*, const half*, const half*, const int64_t*, int, int, int, int, int, int, int, int, int, int, int, float, bool, bool, int);
+template Status LaunchDeepSeekV4CompressorKernel<BFloat16>(cudaStream_t, BFloat16*, BFloat16*, BFloat16*, BFloat16*, BFloat16*, const BFloat16*, const BFloat16*, const BFloat16*, const BFloat16*, const BFloat16*, const BFloat16*, const BFloat16*, const BFloat16*, const BFloat16*, const BFloat16*, const int64_t*, int, int, int, int, int, int, int, int, int, int, int, float, bool, bool, int);
 
 }  // namespace cuda
 }  // namespace contrib

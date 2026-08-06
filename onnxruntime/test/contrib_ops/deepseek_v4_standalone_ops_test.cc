@@ -40,6 +40,48 @@ TEST(DeepSeekV4StandaloneOpsTest, HeavilyCompressedAttentionUpdatesState) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+TEST(DeepSeekV4StandaloneOpsTest, HeavilyCompressedAttentionUsesFixedCapacityState) {
+  OpTester tester("HeavilyCompressedAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("compress_rate", 4);
+  tester.AddAttribute<int64_t>("rotary_dim", 2);
+  tester.AddAttribute<int64_t>("entry_capacity", 2);
+  tester.AddAttribute<float>("rms_norm_epsilon", 1e-6f);
+  tester.AddInput<float>("hidden_states", {2, 3, 2}, std::vector<float>(12, 0.0f));
+  tester.AddInput<int64_t>("position_ids", {2, 3}, {1, 2, 3, 1, 2, 3});
+  tester.AddInput<float>("cos_cache", {8, 1}, std::vector<float>(8, 1.0f));
+  tester.AddInput<float>("sin_cache", {8, 1}, std::vector<float>(8, 0.0f));
+  tester.AddInput<float>("kv_weight", {2, 2}, {1.0f, 0.0f, 0.0f, 1.0f});
+  tester.AddInput<float>("gate_weight", {2, 2}, std::vector<float>(4, 0.0f));
+  tester.AddInput<float>("position_bias", {4, 2}, std::vector<float>(8, 0.0f));
+  tester.AddInput<float>("norm_weight", {2}, {1.0f, 1.0f});
+  tester.AddInput<float>("past_pending_kv", {2, 3, 2},
+                         {1.0f, 0.0f, 100.0f, 100.0f, 100.0f, 100.0f,
+                          0.0f, 2.0f, 200.0f, 200.0f, 200.0f, 200.0f});
+  tester.AddInput<float>("past_pending_gate", {2, 3, 2}, std::vector<float>(12, 0.0f));
+  tester.AddInput<float>("past_entries", {2, 1, 2, 2}, std::vector<float>(8, 0.0f));
+
+  const float normalized = 1.0f / std::sqrt(0.5f + 1e-6f);
+  const std::vector<float> entries = {
+      normalized, 0.0f, 0.0f, 0.0f,
+      0.0f, normalized, 0.0f, 0.0f};
+  const float negative_infinity = -std::numeric_limits<float>::infinity();
+  tester.AddOutput<float>("compressed_kv", {2, 1, 2, 2}, entries);
+  tester.AddOutput<float>("block_bias", {2, 1, 3, 2},
+                          {negative_infinity, negative_infinity,
+                           negative_infinity, negative_infinity,
+                           0.0f, negative_infinity,
+                           negative_infinity, negative_infinity,
+                           negative_infinity, negative_infinity,
+                           0.0f, negative_infinity});
+  tester.AddOutput<float>("present_pending_kv", {2, 3, 2}, std::vector<float>(12, 0.0f));
+  tester.AddOutput<float>("present_pending_gate", {2, 3, 2}, std::vector<float>(12, 0.0f));
+  tester.AddOutput<float>("present_entries", {2, 1, 2, 2}, entries);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(DeepSeekV4StandaloneOpsTest, CompressedSparseAttentionPreservesCaCbOverlap) {
   OpTester tester("CompressedSparseAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("compress_rate", 1);
@@ -128,6 +170,23 @@ TEST(DeepSeekV4StandaloneOpsTest, CompressedAttentionUsesOneSinkInclusiveSoftmax
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(DeepSeekV4StandaloneOpsTest, CompressedAttentionUpdatesFixedLocalRingCache) {
+  OpTester tester("CompressedAttention", 1, onnxruntime::kMSDomain);
+  tester.AddInput<float>("query", {1, 1, 1, 1}, {0.0f});
+  tester.AddInput<float>("local_kv", {1, 1, 1, 1}, {3.0f});
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int64_t>();
+  tester.AddInput<float>("head_sink", {}, {-std::numeric_limits<float>::infinity()});
+  tester.AddInput<float>("past_local_kv", {1, 1, 2, 1}, {1.0f, 2.0f});
+  tester.AddInput<int64_t>("position_ids", {1, 1}, {2});
+  tester.AddOutput<float>("output", {1, 1, 1, 1}, {2.5f});
+  tester.AddOutput<float>("present_local_kv", {1, 1, 2, 1}, {3.0f, 2.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
 TEST(DeepSeekV4StandaloneOpsTest, HashRouterGathersNormalizesAndScales) {
@@ -339,6 +398,47 @@ TEST(DeepSeekV4StandaloneOpsTest, CudaHeavilyCompressedAttentionCompressesAndMas
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
+TEST(DeepSeekV4StandaloneOpsTest, CudaHeavilyCompressedAttentionUsesFixedCapacityState) {
+  OpTester tester("HeavilyCompressedAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("compress_rate", 4);
+  tester.AddAttribute<int64_t>("rotary_dim", 2);
+  tester.AddAttribute<int64_t>("entry_capacity", 2);
+  tester.AddInput<MLFloat16>("hidden_states", {2, 3, 2}, ToHalf(std::vector<float>(12, 0.0f)));
+  tester.AddInput<int64_t>("position_ids", {2, 3}, {1, 2, 3, 1, 2, 3});
+  tester.AddInput<MLFloat16>("cos_cache", {8, 1}, ToHalf(std::vector<float>(8, 1.0f)));
+  tester.AddInput<MLFloat16>("sin_cache", {8, 1}, ToHalf(std::vector<float>(8, 0.0f)));
+  tester.AddInput<MLFloat16>("kv_weight", {2, 2}, ToHalf({1.0f, 0.0f, 0.0f, 1.0f}));
+  tester.AddInput<MLFloat16>("gate_weight", {2, 2}, ToHalf(std::vector<float>(4, 0.0f)));
+  tester.AddInput<MLFloat16>("position_bias", {4, 2}, ToHalf(std::vector<float>(8, 0.0f)));
+  tester.AddInput<MLFloat16>("norm_weight", {2}, ToHalf({1.0f, 1.0f}));
+  tester.AddInput<MLFloat16>("past_pending_kv", {2, 3, 2},
+                             ToHalf({1.0f, 0.0f, 100.0f, 100.0f, 100.0f, 100.0f,
+                                     0.0f, 2.0f, 200.0f, 200.0f, 200.0f, 200.0f}));
+  tester.AddInput<MLFloat16>("past_pending_gate", {2, 3, 2}, ToHalf(std::vector<float>(12, 0.0f)));
+  tester.AddInput<MLFloat16>("past_entries", {2, 1, 2, 2}, ToHalf(std::vector<float>(8, 0.0f)));
+
+  const float normalized = 1.0f / std::sqrt(0.5f + 1e-6f);
+  const auto entries = ToHalf({normalized, 0.0f, 0.0f, 0.0f,
+                               0.0f, normalized, 0.0f, 0.0f});
+  const float negative_infinity = -std::numeric_limits<float>::infinity();
+  tester.AddOutput<MLFloat16>("compressed_kv", {2, 1, 2, 2}, entries);
+  tester.AddOutput<MLFloat16>("block_bias", {2, 1, 3, 2},
+                              ToHalf({negative_infinity, negative_infinity,
+                                      negative_infinity, negative_infinity,
+                                      0.0f, negative_infinity,
+                                      negative_infinity, negative_infinity,
+                                      negative_infinity, negative_infinity,
+                                      0.0f, negative_infinity}));
+  tester.AddOutput<MLFloat16>("present_pending_kv", {2, 3, 2}, ToHalf(std::vector<float>(12, 0.0f)));
+  tester.AddOutput<MLFloat16>("present_pending_gate", {2, 3, 2}, ToHalf(std::vector<float>(12, 0.0f)));
+  tester.AddOutput<MLFloat16>("present_entries", {2, 1, 2, 2}, entries);
+  tester.SetOutputAbsErr("compressed_kv", 0.02f);
+  tester.SetOutputAbsErr("present_entries", 0.02f);
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
 TEST(DeepSeekV4StandaloneOpsTest, CudaCompressedSparseAttentionUsesOverlap) {
   OpTester tester("CompressedSparseAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("compress_rate", 1);
@@ -422,6 +522,42 @@ TEST(DeepSeekV4StandaloneOpsTest, CudaCompressedAttentionSelectsWithSharedSinkSo
   tester.AddInput<int64_t>("selected_indices", {1, 1, 2}, {1, -1});
   tester.AddInput<MLFloat16>("head_sink", {}, ToHalf({0.0f}));
   tester.AddOutput<MLFloat16>("output", {1, 1, 1, 2}, ToHalf({1.0f, 0.5f}));
+  tester.SetOutputAbsErr("output", 0.01f);
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(DeepSeekV4StandaloneOpsTest, CudaCompressedAttentionUpdatesFixedLocalRingCache) {
+  OpTester tester("CompressedAttention", 1, onnxruntime::kMSDomain);
+  tester.AddInput<MLFloat16>("query", {1, 1, 1, 1}, ToHalf({0.0f}));
+  tester.AddInput<MLFloat16>("local_kv", {1, 1, 1, 1}, ToHalf({3.0f}));
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<int64_t>();
+  tester.AddInput<MLFloat16>("head_sink", {}, ToHalf({-std::numeric_limits<float>::infinity()}));
+  tester.AddInput<MLFloat16>("past_local_kv", {1, 1, 2, 1}, ToHalf({1.0f, 2.0f}));
+  tester.AddInput<int64_t>("position_ids", {1, 1}, {2});
+  tester.AddOutput<MLFloat16>("output", {1, 1, 1, 1}, ToHalf({2.5f}));
+  tester.AddOutput<MLFloat16>("present_local_kv", {1, 1, 2, 1}, ToHalf({3.0f, 2.0f}));
+  tester.SetOutputAbsErr("output", 0.01f);
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(DeepSeekV4StandaloneOpsTest, CudaCompressedAttentionLongPrefillKeepsLatestLocalTokens) {
+  OpTester tester("CompressedAttention", 1, onnxruntime::kMSDomain);
+  tester.AddInput<MLFloat16>("query", {1, 1, 3, 1}, ToHalf({0.0f, 0.0f, 0.0f}));
+  tester.AddInput<MLFloat16>("local_kv", {1, 1, 3, 1}, ToHalf({1.0f, 2.0f, 3.0f}));
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<int64_t>();
+  tester.AddInput<MLFloat16>("head_sink", {}, ToHalf({-std::numeric_limits<float>::infinity()}));
+  tester.AddInput<MLFloat16>("past_local_kv", {1, 1, 2, 1}, ToHalf({0.0f, 0.0f}));
+  tester.AddInput<int64_t>("position_ids", {1, 3}, {0, 1, 2});
+  tester.AddOutput<MLFloat16>("output", {1, 1, 3, 1}, ToHalf({1.0f, 1.5f, 2.5f}));
+  tester.AddOutput<MLFloat16>("present_local_kv", {1, 1, 2, 1}, ToHalf({3.0f, 2.0f}));
   tester.SetOutputAbsErr("output", 0.01f);
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCudaExecutionProvider());

@@ -19,6 +19,7 @@ class CompressedSparseAttention final : public CudaKernel {
     ORT_ENFORCE(info.GetAttr("compress_rate", &compress_rate_).IsOK() && compress_rate_ > 0);
     ORT_ENFORCE(info.GetAttr("rotary_dim", &rotary_dim_).IsOK() && rotary_dim_ > 0 && rotary_dim_ % 2 == 0);
     epsilon_ = info.GetAttrOrDefault<float>("rms_norm_epsilon", 1e-6f);
+    entry_capacity_ = info.GetAttrOrDefault<int64_t>("entry_capacity", 0);
   }
   Status ComputeInternal(OpKernelContext* context) const override {
     for (int index = 0; index < 13; ++index) ORT_RETURN_IF_NOT(context->Input<Tensor>(index), "all CSA inputs are required.");
@@ -28,16 +29,18 @@ class CompressedSparseAttention final : public CudaKernel {
         *context->Input<Tensor>(4), *context->Input<Tensor>(5), *context->Input<Tensor>(6),
         *context->Input<Tensor>(7), *context->Input<Tensor>(8), *context->Input<Tensor>(9),
         *context->Input<Tensor>(10), context->Input<Tensor>(11), context->Input<Tensor>(12),
-        compress_rate_, rotary_dim_, epsilon_, 0, 1, 2, 4, 5, state));
-    Tensor* present_entries = context->Output(3, context->Output<Tensor>(0)->Shape());
-    return CUDA_CALL(cudaMemcpyAsync(present_entries->MutableData<T>(), state.entries,
-                                     static_cast<size_t>(present_entries->Shape().Size()) * sizeof(T),
+        compress_rate_, rotary_dim_, epsilon_, 3, 1, 2, 4, 5, state,
+        entry_capacity_, context->Input<Tensor>(1)));
+      Tensor* compressed_entries = context->Output(0, context->Output<Tensor>(3)->Shape());
+      return CUDA_CALL(cudaMemcpyAsync(compressed_entries->MutableData<T>(), state.entries,
+                       static_cast<size_t>(compressed_entries->Shape().Size()) * sizeof(T),
                                      cudaMemcpyDeviceToDevice, Stream(context)));
   }
  private:
   int64_t compress_rate_{};
   int64_t rotary_dim_{};
   float epsilon_{};
+  int64_t entry_capacity_{};
 };
 
 }  // namespace
@@ -47,7 +50,12 @@ class CompressedSparseAttention final : public CudaKernel {
       CompressedSparseAttention, kMSDomain, 1, T, kCudaExecutionProvider,                    \
       (*KernelDefBuilder::Create())                                     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())       \
-          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
+            .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()) \
+            .MayInplace(8, 1)                                             \
+            .MayInplace(9, 2)                                             \
+            .MayInplace(10, 3)                                            \
+            .MayInplace(11, 4)                                            \
+            .MayInplace(12, 5),                                           \
       CompressedSparseAttention<T>);
 
 REGISTER_KERNEL(MLFloat16)

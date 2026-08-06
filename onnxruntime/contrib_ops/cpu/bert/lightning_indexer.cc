@@ -22,6 +22,7 @@ class LightningIndexer final : public OpKernel {
     ORT_ENFORCE(info.GetAttr("rotary_dim", &rotary_dim_).IsOK() && rotary_dim_ > 0 && rotary_dim_ % 2 == 0,
                 "LightningIndexer: rotary_dim must be a positive even value.");
     rms_norm_epsilon_ = info.GetAttrOrDefault<float>("rms_norm_epsilon", 1e-6f);
+    entry_capacity_ = info.GetAttrOrDefault<int64_t>("entry_capacity", 0);
   }
 
   Status Compute(OpKernelContext* context) const override {
@@ -55,12 +56,35 @@ class LightningIndexer final : public OpKernel {
         *context->Input<Tensor>(5), *context->Input<Tensor>(6), *context->Input<Tensor>(7),
         *context->Input<Tensor>(8), *context->Input<Tensor>(11), *context->Input<Tensor>(12),
       *context->Input<Tensor>(13), context->Input<Tensor>(14), context->Input<Tensor>(15),
-        compress_rate_, rotary_dim_, rms_norm_epsilon_, result));
+        compress_rate_, rotary_dim_, rms_norm_epsilon_, result,
+        entry_capacity_, context->Input<Tensor>(2)));
 
-    WriteFloatVector<T>(*context->Output(1, TensorShape({batch, result.pending_count, 2 * head_size_})), result.pending_kv);
-    WriteFloatVector<T>(*context->Output(2, TensorShape({batch, result.pending_count, 2 * head_size_})), result.pending_gate);
-    const TensorShape entries_shape = EntryOutputShape(batch, result.entry_count, head_size_, result.entries_rank4);
-    const auto entries = WriteEntryData(result.entries, batch, result.entry_count, head_size_, result.entries_rank4);
+    const bool fixed_mode = entry_capacity_ > 0;
+    const Tensor& past_pending = *context->Input<Tensor>(11);
+    const TensorShape pending_shape = fixed_mode
+                                          ? past_pending.Shape()
+                                          : TensorShape({batch, result.pending_count, 2 * head_size_});
+    std::vector<float> pending_kv = result.pending_kv;
+    std::vector<float> pending_gate = result.pending_gate;
+    if (fixed_mode) {
+      pending_kv.assign(static_cast<size_t>(past_pending.Shape().Size()), 0.0f);
+      pending_gate.assign(pending_kv.size(), 0.0f);
+      for (int64_t b = 0; b < batch; ++b) {
+        const size_t source = static_cast<size_t>(b * result.pending_count * 2 * head_size_);
+        const size_t destination = static_cast<size_t>(b * (compress_rate_ - 1) * 2 * head_size_);
+        std::copy_n(result.pending_kv.begin() + source, result.pending_count * 2 * head_size_,
+                    pending_kv.begin() + destination);
+        std::copy_n(result.pending_gate.begin() + source, result.pending_count * 2 * head_size_,
+                    pending_gate.begin() + destination);
+      }
+    }
+    WriteFloatVector<T>(*context->Output(1, pending_shape), pending_kv);
+    WriteFloatVector<T>(*context->Output(2, pending_shape), pending_gate);
+    const TensorShape entries_shape = fixed_mode
+                                          ? context->Input<Tensor>(13)->Shape()
+                                          : EntryOutputShape(batch, result.entry_count, head_size_, result.entries_rank4);
+    const auto entries = WriteEntryData(result.entries, batch, result.entry_count,
+                                        head_size_, result.entries_rank4);
     WriteFloatVector<T>(*context->Output(3, entries_shape), entries);
     WriteFloatVector<T>(*context->Output(4, TensorShape({batch, compress_rate_, head_size_})), result.overlap_kv);
     WriteFloatVector<T>(*context->Output(5, TensorShape({batch, compress_rate_, head_size_})), result.overlap_gate);
@@ -129,6 +153,7 @@ class LightningIndexer final : public OpKernel {
   int64_t index_topk_{};
   int64_t rotary_dim_{};
   float rms_norm_epsilon_{};
+  int64_t entry_capacity_{};
 };
 
 }  // namespace deepseek_v4_attention_impl
@@ -139,7 +164,12 @@ class LightningIndexer final : public OpKernel {
       (*KernelDefBuilder::Create())                                     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())       \
           .TypeConstraint("I", {DataTypeImpl::GetTensorType<int32_t>(), \
-                                  DataTypeImpl::GetTensorType<int64_t>()}), \
+                                  DataTypeImpl::GetTensorType<int64_t>()}) \
+          .MayInplace(11, 1)                                            \
+          .MayInplace(12, 2)                                            \
+          .MayInplace(13, 3)                                            \
+          .MayInplace(14, 4)                                            \
+          .MayInplace(15, 5),                                           \
       deepseek_v4_attention_impl::LightningIndexer<T>);
 
 REGISTER_KERNEL(float)

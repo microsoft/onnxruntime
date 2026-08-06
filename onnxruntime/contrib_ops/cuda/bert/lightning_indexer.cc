@@ -22,6 +22,7 @@ class LightningIndexer final : public CudaKernel {
     ORT_ENFORCE(info.GetAttr("index_topk", &index_topk_).IsOK() && index_topk_ > 0);
     ORT_ENFORCE(info.GetAttr("rotary_dim", &rotary_dim_).IsOK() && rotary_dim_ > 0 && rotary_dim_ % 2 == 0);
     epsilon_ = info.GetAttrOrDefault<float>("rms_norm_epsilon", 1e-6f);
+    entry_capacity_ = info.GetAttrOrDefault<int64_t>("entry_capacity", 0);
   }
   Status ComputeInternal(OpKernelContext* context) const override {
     for (int index = 0; index < 16; ++index) ORT_RETURN_IF_NOT(context->Input<Tensor>(index), "all indexer inputs are required.");
@@ -41,7 +42,8 @@ class LightningIndexer final : public CudaKernel {
         *context->Input<Tensor>(5), *context->Input<Tensor>(6), *context->Input<Tensor>(7),
         *context->Input<Tensor>(8), *context->Input<Tensor>(11), *context->Input<Tensor>(12),
         *context->Input<Tensor>(13), context->Input<Tensor>(14), context->Input<Tensor>(15),
-        compress_rate_, rotary_dim_, epsilon_, 3, 1, 2, 4, 5, state));
+        compress_rate_, rotary_dim_, epsilon_, 3, 1, 2, 4, 5, state,
+        entry_capacity_, context->Input<Tensor>(2)));
     using CudaT = typename ToCudaType<T>::MappedType;
     auto queries = GetScratchBuffer<CudaT>(static_cast<size_t>(batch * sequence * num_heads_ * head_size_), Stream(context));
     auto head_weights = GetScratchBuffer<CudaT>(static_cast<size_t>(batch * sequence * num_heads_), Stream(context));
@@ -68,6 +70,7 @@ class LightningIndexer final : public CudaKernel {
   int64_t index_topk_{};
   int64_t rotary_dim_{};
   float epsilon_{};
+  int64_t entry_capacity_{};
 };
 
 }  // namespace
@@ -77,7 +80,12 @@ class LightningIndexer final : public CudaKernel {
       LightningIndexer, kMSDomain, 1, T, kCudaExecutionProvider,                    \
       (*KernelDefBuilder::Create())                                     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())       \
-          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
+            .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()) \
+            .MayInplace(11, 1)                                            \
+            .MayInplace(12, 2)                                            \
+            .MayInplace(13, 3)                                            \
+            .MayInplace(14, 4)                                            \
+            .MayInplace(15, 5),                                           \
       LightningIndexer<T>);
 
 REGISTER_KERNEL(MLFloat16)
