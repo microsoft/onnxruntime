@@ -829,6 +829,9 @@ TEST(MatMulNBits, Float32_Large) {
 // precision, and Intel's D3D12 compiler promotes unrolled f16 `acc +=` chains to f32 on its own. On
 // such a configuration this test can pass even with an f16 accumulator. It is a regression guard for
 // the backends that round strictly (Vulkan, and the looped code shapes), not a universal detector.
+//
+// The EP is built with preferredMatmulAccumulatorPrecision = "f32" because that is the setting under
+// test; the shipped default is "f16" and would legitimately produce +Inf here.
 TEST(MatMulNBits, Float16_LargeK_AccumulatorOverflow) {
   constexpr int64_t M = 1;  // M < 4 keeps the dispatch on matmul_nbits.wgsl.template rather than wide-tile.
   constexpr int64_t N = 8;
@@ -876,8 +879,13 @@ TEST(MatMulNBits, Float16_LargeK_AccumulatorOverflow) {
   // The f32 accumulator path is exact here, so the tolerance only has to exclude Inf/NaN.
   test.SetOutputAbsErr("Y", 0.05f);
 
+  ConfigOptions config_options{};
+  ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kPreferredMatmulAccumulatorPrecision,
+                                            webgpu::options::kPreferredMatmulAccumulatorPrecision_F32)
+                  .IsOK());
+
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  execution_providers.push_back(WebGpuExecutionProviderWithOptions(config_options));
   test.ConfigEps(std::move(execution_providers));
   test.RunWithConfig();
 }
