@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 //
-// End-to-end correctness tests for the WebGPU PagedAttention kernel.
-// Each test runs the full gather → unpack → ApplyFlashAttention → repack
-// pipeline and compares against a CPU scaled-dot-product-attention reference.
+// Operator-level correctness tests for PagedAttention. Each test compares the
+// provider output and updated caches against a CPU scaled-dot-product-attention
+// reference, and runs against each provider available in the build.
 
 #include <algorithm>
 #include <cmath>
@@ -71,12 +71,7 @@ void CausalSoftmax(std::vector<float>& scores, int q_pos) {
   }
 }
 
-void RunEndToEndCase(const EndToEndCase& c) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (!webgpu_ep) {
-    GTEST_SKIP() << "WebGPU execution provider is not available.";
-  }
-
+void RunEndToEndCase(const EndToEndCase& c, std::unique_ptr<IExecutionProvider> execution_provider) {
   ASSERT_EQ(c.cumulative_seqlens_q.size(), static_cast<size_t>(c.batch_size + 1));
   ASSERT_EQ(c.past_seqlens.size(), static_cast<size_t>(c.batch_size));
   ASSERT_EQ(c.block_table.size(), static_cast<size_t>(c.batch_size * c.max_num_blocks_per_seq));
@@ -111,7 +106,7 @@ void RunEndToEndCase(const EndToEndCase& c) {
 
   // ----- CPU reference.
   // 1) Apply scatter to a copy of the initial cache. This gives us the K/V
-  //    that the WebGPU pipeline will see for each batch.
+  //    that the PagedAttention kernel will see for each batch.
   std::vector<float> expected_key_cache_f = key_cache_f;
   std::vector<float> expected_value_cache_f = value_cache_f;
   for (int t = 0; t < c.token_count; ++t) {
@@ -234,38 +229,56 @@ void RunEndToEndCase(const EndToEndCase& c) {
   test.SetOutputAbsErr("key_cache_out", 1e-3f);
   test.SetOutputAbsErr("value_cache_out", 1e-3f);
 
-  test.ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+  test.ConfigEp(std::move(execution_provider)).RunWithConfig();
+}
+
+void RunEndToEndCaseOnAvailableProviders(const EndToEndCase& c) {
+  bool ran = false;
+
+  if (auto cuda_ep = DefaultCudaExecutionProvider()) {
+    RunEndToEndCase(c, std::move(cuda_ep));
+    ran = true;
+  }
+
+  if (auto webgpu_ep = DefaultWebGpuExecutionProvider()) {
+    RunEndToEndCase(c, std::move(webgpu_ep));
+    ran = true;
+  }
+
+  if (!ran) {
+    GTEST_SKIP() << "No PagedAttention execution provider is available.";
+  }
 }
 
 }  // namespace
 
 // Decode tier: single batch, single new Q token, non-zero past. The FA
 // tier selector uses `sequence_length_ < 32` → split-reduce path.
-TEST(WebGpuPagedAttention, EndToEnd_Decode_SingleBatch_WithPast) {
+TEST(PagedAttention, EndToEnd_Decode_SingleBatch_WithPast) {
   EndToEndCase c{};
   c.batch_size = 1;
   c.token_count = 1;
   c.cumulative_seqlens_q = {0, 1};
   c.past_seqlens = {4};  // total_kv_len = 5
   c.block_table = {0};
-  RunEndToEndCase(c);
+  RunEndToEndCaseOnAvailableProviders(c);
 }
 
 // Prefill tier: single batch, multiple new Q tokens, zero past. Exercises
 // causal masking across new tokens.
-TEST(WebGpuPagedAttention, EndToEnd_Prefill_SingleBatch_NoPast) {
+TEST(PagedAttention, EndToEnd_Prefill_SingleBatch_NoPast) {
   EndToEndCase c{};
   c.batch_size = 1;
   c.token_count = 4;
   c.cumulative_seqlens_q = {0, 4};
   c.past_seqlens = {0};
   c.block_table = {0};
-  RunEndToEndCase(c);
+  RunEndToEndCaseOnAvailableProviders(c);
 }
 
 // Multi-batch decode with differing past lengths — exercises variable-length
 // packing across batches.
-TEST(WebGpuPagedAttention, EndToEnd_Decode_MultiBatch_VariablePast) {
+TEST(PagedAttention, EndToEnd_Decode_MultiBatch_VariablePast) {
   EndToEndCase c{};
   c.batch_size = 2;
   c.token_count = 2;  // one new Q per batch
@@ -273,12 +286,12 @@ TEST(WebGpuPagedAttention, EndToEnd_Decode_MultiBatch_VariablePast) {
   c.cumulative_seqlens_q = {0, 1, 2};
   c.past_seqlens = {3, 6};  // total_kv_len = 4 and 7 respectively
   c.block_table = {0, 2};   // seq 0 → block 0, seq 1 → block 2
-  RunEndToEndCase(c);
+  RunEndToEndCaseOnAvailableProviders(c);
 }
 
 // GQA (num_heads > kv_num_heads): broadcasts each KV head across gqa_factor
 // query heads. Verifies the head-index mapping matches FA's convention.
-TEST(WebGpuPagedAttention, EndToEnd_Decode_GQA) {
+TEST(PagedAttention, EndToEnd_Decode_GQA) {
   EndToEndCase c{};
   c.batch_size = 1;
   c.token_count = 1;
@@ -287,24 +300,24 @@ TEST(WebGpuPagedAttention, EndToEnd_Decode_GQA) {
   c.cumulative_seqlens_q = {0, 1};
   c.past_seqlens = {3};
   c.block_table = {0};
-  RunEndToEndCase(c);
+  RunEndToEndCaseOnAvailableProviders(c);
 }
 
 // Empty-token fast path: the output is empty and cache outputs must still
 // preserve the input cache contents in OpTester's non-aliased allocation path.
-TEST(WebGpuPagedAttention, EndToEnd_EmptyTokens_CopyCaches) {
+TEST(PagedAttention, EndToEnd_EmptyTokens_CopyCaches) {
   EndToEndCase c{};
   c.batch_size = 1;
   c.token_count = 0;
   c.cumulative_seqlens_q = {0, 0};
   c.past_seqlens = {0};
   c.block_table = {0};
-  RunEndToEndCase(c);
+  RunEndToEndCaseOnAvailableProviders(c);
 }
 
 // Mixed variable-length prefill (seq 0: 3 tokens, seq 1: 2 tokens) with
 // non-zero past on both — the most realistic paged-attention scenario.
-TEST(WebGpuPagedAttention, EndToEnd_MixedPrefillDecode_MultiBatch_VariablePast) {
+TEST(PagedAttention, EndToEnd_MixedPrefillDecode_MultiBatch_VariablePast) {
   EndToEndCase c{};
   c.batch_size = 2;
   c.token_count = 5;
@@ -314,7 +327,7 @@ TEST(WebGpuPagedAttention, EndToEnd_MixedPrefillDecode_MultiBatch_VariablePast) 
   c.cumulative_seqlens_q = {0, 3, 5};
   c.past_seqlens = {2, 4};
   c.block_table = {0, 2};
-  RunEndToEndCase(c);
+  RunEndToEndCaseOnAvailableProviders(c);
 }
 
 }  // namespace test
