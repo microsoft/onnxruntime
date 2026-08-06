@@ -1517,13 +1517,19 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
       using MoeGemvConfig = gemv::MoeGemvConfig;
 
-      // Choose the fc1 (SwiGLU) and fc2 GEMV tiling configs. CtaN/Threads are pure tiling
-      // knobs (numerically bit-exact), so the only goal is picking the fastest. Reuse a
-      // cached per-shape result when available; otherwise profile on a non-captured (warmup)
-      // call and freeze the choice for CUDA-graph replay. During capture (or when autotune is
-      // off) fall back to the default tiling.
-      MoeGemvConfig fc1_config = MoeGemvConfig::kDefault;
-      MoeGemvConfig fc2_config = MoeGemvConfig::kDefault;
+      // Choose the fc1 (SwiGLU) and fc2 GEMV tiling configs. Every config computes the same
+      // dot products with the same accumulation dtype, so the only goal is picking the
+      // fastest; Threads does set the K partition, so the low bits of the output can move
+      // between configs (see MoeGemvConfig). Reuse a cached per-shape result when available;
+      // otherwise start from the shape-derived analytic default and, when autotune is on,
+      // profile on a non-captured (warmup) call and freeze the choice for CUDA-graph replay.
+      // During capture (or when autotune is off, which is the shipping default) the analytic
+      // default is what actually runs.
+      const int multi_processor_count = GetDeviceProp().multiProcessorCount;
+      MoeGemvConfig fc1_config =
+          gemv::Fp4MoeGemvDefaultConfig(expanded, fc1_n, hidden, multi_processor_count);
+      MoeGemvConfig fc2_config =
+          gemv::Fp4MoeGemvDefaultConfig(expanded, hidden, inter, multi_processor_count);
 
       const int64_t row_bucket =
           onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler::bucketM(expanded);
