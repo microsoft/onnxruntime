@@ -17,6 +17,11 @@ constexpr int kClusterSize = 2;
 constexpr int kBlockM = 64;
 // TMA flattens [expert, row], so each expert stride must end on a store-tile boundary.
 static_assert(kPaddedTokensPerExpert % kBlockM == 0);
+// The pack and SwiGLU kernels bound their loops by the per-expert row count, so a count past the
+// padded stride would spill into the next expert's slot.
+static_assert(kMaxTokensPerExpert <= kPaddedTokensPerExpert);
+// InterleavedSwiGLUKernel loads each gate/linear pair as one __nv_bfloat162.
+static_assert(kFc1OutputSize % 2 == 0);
 
 using Fc1Kernel = decltype(&deep_gemm::sm90_bf16_gemm_impl<
                            cute::UMMA::Major::K, cute::UMMA::Major::K,
@@ -29,38 +34,47 @@ using Fc2Kernel = decltype(&deep_gemm::sm90_bf16_gemm_impl<
                            kBlockM, 256, 64, 128, 128, 128, 4, 128, 128, 2, false,
                            kNumSms, deep_gemm::GemmType::MGroupedMasked, false, cutlass::bfloat16_t>);
 
+// Rows [count, kPaddedTokensPerExpert) are left stale rather than zero-filled: the GEMMs are
+// row-independent and UnpackOutputKernel copies back only the first `count` rows.
 template <int K>
 __global__ void PackInputKernel(const __nv_bfloat16* input, const int64_t* offsets,
                                 __nv_bfloat16* output, int* masked_m) {
   const int expert = blockIdx.y;
-  const int count = static_cast<int>(offsets[expert + 1] - offsets[expert]);
+  const int64_t first = offsets[expert];
+  const int count = static_cast<int>(offsets[expert + 1] - first);
   if (blockIdx.x == 0 && threadIdx.x == 0) {
     masked_m[expert] = count;
   }
   for (int index = blockIdx.x * blockDim.x + threadIdx.x;
-       index < kPaddedTokensPerExpert * K; index += blockDim.x * gridDim.x) {
+       index < count * K; index += blockDim.x * gridDim.x) {
     const int row = index / K;
     const int col = index % K;
-    output[(expert * kPaddedTokensPerExpert + row) * K + col] =
-        row < count ? input[(offsets[expert] + row) * K + col] : __float2bfloat16(0.0f);
+    output[(expert * kPaddedTokensPerExpert + row) * K + col] = input[(first + row) * K + col];
   }
 }
 
 __global__ void InterleavedSwiGLUKernel(const __nv_bfloat16* input, __nv_bfloat16* output,
-                                        float alpha, float beta, float limit) {
-  const int index = blockIdx.x * blockDim.x + threadIdx.x;
-  const int total = kNumExperts * kPaddedTokensPerExpert * kInterSize;
-  if (index >= total) return;
-  const int row = index / kInterSize;
-  const int col = index % kInterSize;
-  float gate = __bfloat162float(input[row * kFc1OutputSize + 2 * col]);
-  float linear = __bfloat162float(input[row * kFc1OutputSize + 2 * col + 1]);
-  if (isfinite(limit)) {
-    gate = fminf(gate, limit);
-    linear = fminf(fmaxf(linear, -limit), limit);
+                                        const int* masked_m, float alpha, float beta, float limit) {
+  const int expert = blockIdx.y;
+  const int total = masked_m[expert] * kInterSize;
+  const int row_base = expert * kPaddedTokensPerExpert;
+  for (int index = blockIdx.x * blockDim.x + threadIdx.x;
+       index < total; index += blockDim.x * gridDim.x) {
+    const int row = row_base + index / kInterSize;
+    const int col = index % kInterSize;
+    // gate and linear are adjacent in the interleaved FC1 output, so they load as one 4-byte pair.
+    const __nv_bfloat162 pair =
+        *reinterpret_cast<const __nv_bfloat162*>(input + row * kFc1OutputSize + 2 * col);
+    float gate = __bfloat162float(pair.x);
+    float linear = __bfloat162float(pair.y);
+    if (isfinite(limit)) {
+      gate = fminf(gate, limit);
+      linear = fminf(fmaxf(linear, -limit), limit);
+    }
+    linear += beta;
+    output[row * kInterSize + col] =
+        __float2bfloat16(gate * (1.0f / (1.0f + expf(-alpha * gate))) * linear);
   }
-  linear += beta;
-  output[index] = __float2bfloat16(gate * (1.0f / (1.0f + expf(-alpha * gate))) * linear);
 }
 
 template <int N>
@@ -136,11 +150,10 @@ void PackInput(const __nv_bfloat16* compact_input, const int64_t* offsets,
       compact_input, offsets, packed_input, masked_m);
 }
 
-void ApplyInterleavedSwiGLU(const __nv_bfloat16* input, __nv_bfloat16* output,
+void ApplyInterleavedSwiGLU(const __nv_bfloat16* input, __nv_bfloat16* output, const int* masked_m,
                             float alpha, float beta, float limit, cudaStream_t stream) {
-  const int total = kNumExperts * kPaddedTokensPerExpert * kInterSize;
-  InterleavedSwiGLUKernel<<<(total + kThreads - 1) / kThreads, kThreads, 0, stream>>>(
-      input, output, alpha, beta, limit);
+  InterleavedSwiGLUKernel<<<dim3(32, kNumExperts), kThreads, 0, stream>>>(
+      input, output, masked_m, alpha, beta, limit);
 }
 
 void UnpackOutput(const __nv_bfloat16* input, const int64_t* offsets,
@@ -182,7 +195,7 @@ void Run(const __nv_bfloat16* compact_input, const int64_t* offsets,
 
   PackInput(compact_input, offsets, packed_io, masked_m, stream);
   LaunchFc1(packed_io, fc1_weights, fc1_output, masked_m, stream);
-  ApplyInterleavedSwiGLU(fc1_output, fc2_input, alpha, beta, limit, stream);
+  ApplyInterleavedSwiGLU(fc1_output, fc2_input, masked_m, alpha, beta, limit, stream);
   LaunchFc2(fc2_input, fc2_weights, packed_io, masked_m, stream);
   UnpackOutput(packed_io, offsets, compact_output, stream);
 }

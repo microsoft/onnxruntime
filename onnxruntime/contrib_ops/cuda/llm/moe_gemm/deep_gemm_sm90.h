@@ -27,7 +27,8 @@ void PackInput(const __nv_bfloat16* compact_input, const int64_t* expert_first_t
 // Apply DSV4's interleaved SwiGLU ordering to [G, 64, 4096] FC1 output and
 // produce [G, 64, 2048] FC2 input.
 void ApplyInterleavedSwiGLU(const __nv_bfloat16* fc1_output, __nv_bfloat16* fc2_input,
-                            float alpha, float beta, float limit, cudaStream_t stream);
+                            const int* masked_m, float alpha, float beta, float limit,
+                            cudaStream_t stream);
 
 // Unpack [G, 64, 4096] output to the compact expert-major row layout consumed
 // by ORT's existing finalize routing kernel.
