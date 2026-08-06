@@ -1323,17 +1323,12 @@ Status DequantizeFlashAttentionFallback(
   // (max_length sized) capacity on every decode step is pure memory traffic.
   bool is_bsnh = (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
 
-  ORT_RETURN_IF_ERROR((LaunchDequantizeKV<T, U, float>(
-      stream, k_dequant, reinterpret_cast<const U*>(data.present_key), data.k_scale,
-      nullptr, parameters.batch_size, parameters.kv_num_heads, parameters.seqlen_present_kv_cache,
-      parameters.head_size, parameters.kv_cache_bit_width, parameters.k_quant_type, is_bsnh,
-      data.total_seq_lens)));
-
-  ORT_RETURN_IF_ERROR((LaunchDequantizeKV<T, U, float>(
-      stream, v_dequant, reinterpret_cast<const U*>(data.present_value), data.v_scale,
-      nullptr, parameters.batch_size, parameters.kv_num_heads, parameters.seqlen_present_kv_cache,
-      parameters.head_size, parameters.kv_cache_bit_width, parameters.v_quant_type, is_bsnh,
-      data.total_seq_lens)));
+  ORT_RETURN_IF_ERROR((LaunchDequantizeKVPair<T, U, float>(
+      stream, k_dequant, v_dequant,
+      reinterpret_cast<const U*>(data.present_key), reinterpret_cast<const U*>(data.present_value),
+      data.k_scale, data.v_scale, parameters.batch_size, parameters.kv_num_heads,
+      parameters.seqlen_present_kv_cache, parameters.head_size, parameters.kv_cache_bit_width,
+      parameters.k_quant_type, parameters.v_quant_type, is_bsnh, data.total_seq_lens)));
 
   // Step 3: Run Flash Attention on dequantized k/v
   bool is_causal = parameters.is_unidirectional;
