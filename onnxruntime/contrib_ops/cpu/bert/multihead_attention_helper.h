@@ -509,7 +509,7 @@ Status CheckInputs(const T* query,
     output_parameters->head_size = hidden_size / num_heads;
     output_parameters->v_head_size = v_head_size;
     output_parameters->num_heads = num_heads;
-    output_parameters->num_heads_kv = kv_num_heads;
+    output_parameters->kv_num_heads = kv_num_heads;
     output_parameters->is_unidirectional = is_unidirectional;
     output_parameters->past_present_share_buffer = past_present_share_buffer;
     output_parameters->mask_filter_value = mask_filter_value;

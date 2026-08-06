@@ -208,7 +208,7 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
                           batch_size, 1 /* sequence_length */, parameters.kv_sequence_length,
                           head_size, v_head_size, v_hidden_size, attention_bias, context,
                           0 /* past_sequence_length */, false /* past_present_share_buffer */,
-                          parameters.num_heads_kv);
+                          parameters.kv_num_heads);
   }
 
   OrtValue K, V;
@@ -226,7 +226,7 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
                           batch_size, 1 /* sequence_length */, parameters.kv_sequence_length,
                           head_size, v_head_size, v_hidden_size, attention_bias, context,
                           parameters.past_sequence_length, true /* past_present_share_buffer */,
-                          parameters.num_heads_kv);
+                          parameters.kv_num_heads);
   }
 
   // Self-attention, has_beams

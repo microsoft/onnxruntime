@@ -21,7 +21,7 @@ struct AttentionParameters {
   int head_size = 0;              // hidden size per head of Q or K
   int v_head_size = 0;            // hidden size per head of V
   int num_heads = 0;              // number of heads of query
-  int num_heads_kv = 0;           // number of heads of key or value. Always set by CheckInputs.
+  int kv_num_heads = 0;           // number of heads of key or value. Always set by CheckInputs.
   int num_splits = 0;             // number of splits for splitkv
   int rotary_dim = 0;             // rotary embedding dimension
   int beam_width = 0;
@@ -42,8 +42,8 @@ struct AttentionParameters {
   // Hidden size of each input and of the attention output. In grouped query attention, K and V have
   // fewer heads than Q, so their hidden sizes are smaller than the query and output hidden sizes.
   int GetQueryHiddenSize() const { return num_heads * head_size; }
-  int GetKeyHiddenSize() const { return num_heads_kv * head_size; }
-  int GetValueHiddenSize() const { return num_heads_kv * v_head_size; }
+  int GetKeyHiddenSize() const { return kv_num_heads * head_size; }
+  int GetValueHiddenSize() const { return kv_num_heads * v_head_size; }
   int GetOutputHiddenSize() const { return num_heads * v_head_size; }
 };
 
@@ -91,7 +91,6 @@ struct DecoderMaskedMultiHeadAttentionParameters : AttentionParameters {
 
 // Parameters deduced from node attributes and inputs/outputs.
 struct GroupQueryAttentionParameters : AttentionParameters {
-  int kv_num_heads;             // number of heads of key or value
   int kv_hidden_size;           // hidden size of key or value
   int seqlen_past_kv_cache;     // sequence length of past kv tensor
   int seqlen_present_kv_cache;  // sequence length of present kv tensor
@@ -130,7 +129,6 @@ struct GroupQueryAttentionParameters : AttentionParameters {
 
 // Parameters deduced from node attributes and inputs/outputs.
 struct PagedAttentionParameters : AttentionParameters {
-  int kv_num_heads;            // number of heads of key or value
   int kv_hidden_size;          // hidden size of key or value
   int token_count;             // number of tokens in packed query
   int block_size;              // block size for kv cache
@@ -168,7 +166,6 @@ struct PagedAttentionParameters : AttentionParameters {
 // Parameters for sparse attention.
 struct SparseAttentionParameters : AttentionParameters {
   int kv_hidden_size;              // hidden size of key or value
-  int kv_num_heads;                // number of heads of key or value
   bool do_rotary;                  // whether to use rotary embedding
   bool rotary_interleaved;         // whether to use interleaved rotary embedding
   int sparse_block_size;           // block size for sparse attention

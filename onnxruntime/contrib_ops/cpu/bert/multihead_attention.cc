@@ -101,7 +101,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                                                                       past_present_share_buffer,
                                                                       kv_num_heads_,
                                                                       kMultiHeadAttention));
-  if (parameters.num_heads_kv != parameters.num_heads && cache_indirection != nullptr) {
+  if (parameters.kv_num_heads != parameters.num_heads && cache_indirection != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "Grouped query MultiHeadAttention with cache indirection is not implemented for CPU");
   }
@@ -115,7 +115,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   DUMP_CPU_STRING("Hidden size = ", parameters.hidden_size);
   DUMP_CPU_STRING("Head size = ", parameters.head_size);
   DUMP_CPU_STRING("Num heads = ", parameters.num_heads);
-  DUMP_CPU_STRING("KV num heads = ", parameters.num_heads_kv);
+  DUMP_CPU_STRING("KV num heads = ", parameters.kv_num_heads);
   DUMP_CPU_STRING("Buffer sharing = ", (parameters.past_present_share_buffer == true));
   DUMP_CPU_STRING("QKV format = ", parameters.qkv_format);
   DUMP_CPU_STRING("Beam width = ", parameters.beam_width);
@@ -140,11 +140,11 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
 
   // If optional outputs aren't needed, present_key, present_value, and output_qk will be null
   std::vector<int64_t> present_key_shape({static_cast<int64_t>(batch_size),
-                                          static_cast<int64_t>(parameters.num_heads_kv),
+                                          static_cast<int64_t>(parameters.kv_num_heads),
                                           static_cast<int64_t>(parameters.max_sequence_length),
                                           static_cast<int64_t>(qk_head_size)});
   std::vector<int64_t> present_value_shape({static_cast<int64_t>(batch_size),
-                                            static_cast<int64_t>(parameters.num_heads_kv),
+                                            static_cast<int64_t>(parameters.kv_num_heads),
                                             static_cast<int64_t>(parameters.max_sequence_length),
                                             static_cast<int64_t>(v_head_size)});
   std::vector<int64_t> output_qk_shape({static_cast<int64_t>(batch_size),
@@ -157,7 +157,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
 
   bool use_decoder_masked_multihead_attention = false;
   if (cache_indirection != nullptr) {
-    // Grouped query attention with cache indirection is rejected above, so num_heads_kv == num_heads here.
+    // Grouped query attention with cache indirection is rejected above, so kv_num_heads == num_heads here.
     bool use_dmmha_self_attention = parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH &&
                                     parameters.past_present_share_buffer &&
                                     parameters.past_sequence_length > 0;
@@ -198,16 +198,16 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                           batch_size, q_sequence_length, kv_sequence_length,
                           qk_head_size, v_head_size, v_hidden_size, attn_bias, context,
                           parameters.past_sequence_length, parameters.past_present_share_buffer,
-                          parameters.num_heads_kv);
+                          parameters.kv_num_heads);
   }
 
   OrtValue K;
   OrtValue V;
   ORT_RETURN_IF_ERROR(MaybeTransposeToBNSHAndAddBias<T>(
-      context, allocator, batch_size, parameters.num_heads_kv, kv_sequence_length, qk_head_size,
+      context, allocator, batch_size, parameters.kv_num_heads, kv_sequence_length, qk_head_size,
       key, bias, k_bias_offset, K));
   ORT_RETURN_IF_ERROR(MaybeTransposeToBNSHAndAddBias<T>(
-      context, allocator, batch_size, parameters.num_heads_kv, kv_sequence_length, v_head_size,
+      context, allocator, batch_size, parameters.kv_num_heads, kv_sequence_length, v_head_size,
       value, bias, v_bias_offset, V));
 
   if (std::is_same_v<T, float> &&
@@ -225,7 +225,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
       present_key == nullptr &&
       present_value == nullptr &&
       output_qk == nullptr &&
-      parameters.num_heads_kv == parameters.num_heads &&
+      parameters.kv_num_heads == parameters.num_heads &&
       l2_cache_size_ > 0) {
     MlasFlashAttentionThreadedArgs args;
     args.batch_size = batch_size;
@@ -319,7 +319,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                         output, present_key, present_value, output_qk,
                         batch_size, q_sequence_length, kv_sequence_length,
                         qk_head_size, v_head_size, v_hidden_size, attn_bias, context,
-                        0, false, parameters.num_heads_kv);
+                        0, false, parameters.kv_num_heads);
 }
 }  // namespace contrib
 }  // namespace onnxruntime
