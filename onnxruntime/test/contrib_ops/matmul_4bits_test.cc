@@ -88,6 +88,11 @@ struct TestOptions {
 
   bool disable_cpu_ep_fallback{false};
 
+  // When set, runs the session with session.prepack.enable_parallel = "1", i.e. with
+  // SessionState::PrepackConstantInitializedTensors fanning kernel->PrePack() calls out across the
+  // intra-op thread pool. Numeric output must be identical to the sequential (default) path.
+  bool enable_parallel_prepack{false};
+
   bool has_zero_point{false};
   bool zp_is_4bit{true};
   bool zero_points_are_initializers{true};
@@ -300,10 +305,15 @@ void RunTest(const TestOptions& opts,
     test.ConfigEps(std::move(explicit_eps));
   }
 
-  if (opts.disable_cpu_ep_fallback) {
+  if (opts.disable_cpu_ep_fallback || opts.enable_parallel_prepack) {
     SessionOptions session_options;
     session_options.use_per_session_threads = false;
-    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    if (opts.disable_cpu_ep_fallback) {
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    }
+    if (opts.enable_parallel_prepack) {
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableParallelPrepack, "1"));
+    }
     test.Config(session_options);
   }
 
@@ -737,6 +747,30 @@ TEST(MatMulNBits, SharedPrepackedWeights_NotSharedWithoutOptIn) {
   RunTest<MLFloat16>(MakeSharingTestOptions(32, 256, /*block_size*/ 32, /*accuracy_level*/ 0,
                                             /*has_zero_point*/ false, /*has_bias*/ false,
                                             PrepackSharingMode::kNoSharing));
+}
+
+// Covers session.prepack.enable_parallel (SessionState::PrepackConstantInitializedTensors running
+// kernel->PrePack() across the intra-op thread pool instead of sequentially). Numeric output must
+// match the values produced by the default sequential path for a representative int4 (4-bit) model,
+// with and without a zero-point input and a bias input.
+TEST(MatMulNBits, ParallelPrepack) {
+  for (bool has_zero_point : {false, true}) {
+    for (bool has_bias : {false, true}) {
+      TestOptions opts{};
+      opts.M = 8;
+      opts.N = 256;
+      opts.K = 512;
+      opts.block_size = 32;
+      opts.accuracy_level = 0;
+      opts.has_zero_point = has_zero_point;
+      opts.zp_is_4bit = true;
+      opts.has_bias = has_bias;
+      opts.output_abs_error = 0.05f;
+      opts.output_rel_error = 0.02f;
+      opts.enable_parallel_prepack = true;
+      RunTest<float>(opts);
+    }
+  }
 }
 
 #endif  // !ENABLE_TRAINING
