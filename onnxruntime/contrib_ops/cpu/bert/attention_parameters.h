@@ -156,8 +156,8 @@ struct PagedAttentionParameters : AttentionParameters {
   KVQuantizationType v_quant_type = KVQuantizationType::NONE;
   // Multi-head Latent Attention (kv_cache_layout == "LATENT"). There is a single physical cache:
   // V of every head is the leading v_head_size channels of the same key_cache row, so 'value' and
-  // 'value_cache' are absent. The inherited v_head_size / v_hidden_size hold the effective V width
-  // and the output width; in SEPARATE mode they equal head_size / hidden_size.
+  // 'value_cache' are absent. The inherited v_head_size holds the effective per-head V width;
+  // GetOutputHiddenSize() gives the output width. In SEPARATE mode they match head_size / hidden_size.
   bool is_latent_kv = false;
   // First channel within head_size covered by rotary embedding. RoPE covers
   // [rotary_offset, rotary_offset + rotary_dim); channels outside are copied through. Default 0
