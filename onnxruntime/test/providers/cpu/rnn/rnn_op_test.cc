@@ -892,6 +892,10 @@ void RunRnnActivationLengthFailureTest(const std::string& attribute_name,
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
   }
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) {
+    GTEST_SKIP() << "CPU EP not available in this build.";
+  }
 
   OpTester test("RNN");
   int64_t num_directions = 2, input_size = 1, hidden_size = 1, seq_length = 1, batch_size = 1;
@@ -921,8 +925,9 @@ void RunRnnActivationLengthFailureTest(const std::string& attribute_name,
   std::vector<float> Y_h_data({0.F, 0.F});
   test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, expected_error,
-           {kCudaExecutionProvider, kTensorrtExecutionProvider});
+  test.Config(OpTester::ExpectResult::kExpectFailure, expected_error)
+      .ConfigEp(std::move(cpu))
+      .RunWithConfig();
 }
 }  // namespace
 
