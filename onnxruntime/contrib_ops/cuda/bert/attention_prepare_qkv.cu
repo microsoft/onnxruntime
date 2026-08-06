@@ -299,7 +299,7 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
           LaunchAddBias(stream, max_threads_per_block, batch_size, kv_sequence_length,
                         num_heads_kv, qk_head_size, data.bias + parameters.hidden_size, data.key, data.k);
           LaunchAddBias(stream, max_threads_per_block, batch_size, kv_sequence_length,
-                        num_heads_kv, v_head_size, data.bias + parameters.hidden_size + parameters.k_hidden_size,
+                        num_heads_kv, v_head_size, data.bias + parameters.hidden_size + parameters.GetKeyHiddenSize(),
                         data.value, data.v);
         }
       } else {
@@ -336,15 +336,16 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
       // Key (BxLxNxH) => K (BxNxLxH)
       LaunchAddBiasTranspose<T>(
           stream, 1, format, max_threads_per_block,
-          batch_size, kv_sequence_length, num_heads, qk_head_size,
-          data.key, nullptr == data.bias ? nullptr : data.bias + num_heads * qk_head_size, data.k,
+          batch_size, kv_sequence_length, num_heads_kv, qk_head_size,
+          data.key, nullptr == data.bias ? nullptr : data.bias + parameters.hidden_size, data.k,
           true, -1);
 
       // Value (BxLxNxH_v) => K (BxNxLxH_v)
       LaunchAddBiasTranspose<T>(
           stream, 1, format, max_threads_per_block,
-          batch_size, kv_sequence_length, num_heads, v_head_size,
-          data.value, nullptr == data.bias ? nullptr : data.bias + 2 * num_heads * qk_head_size, data.v,
+          batch_size, kv_sequence_length, num_heads_kv, v_head_size,
+          data.value,
+          nullptr == data.bias ? nullptr : data.bias + parameters.hidden_size + parameters.GetKeyHiddenSize(), data.v,
           true, -1);
 
       data.qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
@@ -501,7 +502,7 @@ Status PrepareQkv_MHA_WithPast_Bias(contrib::AttentionParameters& parameters,
     LaunchAddBiasTranspose<T>(
         stream, 1, format, max_threads_per_block,
         batch_size, kv_sequence_length, num_heads_kv, v_head_size,
-        data.value, data.bias + parameters.hidden_size + parameters.k_hidden_size, data.v, true, -1);
+        data.value, data.bias + parameters.hidden_size + parameters.GetKeyHiddenSize(), data.v, true, -1);
 
     data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH;
   } else if (data.use_decoder_masked_multihead_attention) {
@@ -526,14 +527,14 @@ Status PrepareQkv_MHA_WithPast_Bias(contrib::AttentionParameters& parameters,
 
     // Key (BxLxNxH) => K (BxNxLxH)
     LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
-                              batch_size, kv_sequence_length, num_heads, qk_head_size,
-                              data.key, data.bias + num_heads * qk_head_size, data.k,
+                              batch_size, kv_sequence_length, num_heads_kv, qk_head_size,
+                              data.key, data.bias + parameters.hidden_size, data.k,
                               true, -1);
 
     // Value (BxLxNxH_v) => V (BxNxLxH_v)
     LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
-                              batch_size, kv_sequence_length, num_heads, v_head_size,
-                              data.value, data.bias + 2 * num_heads * qk_head_size, data.v,
+                              batch_size, kv_sequence_length, num_heads_kv, v_head_size,
+                              data.value, data.bias + parameters.hidden_size + parameters.GetKeyHiddenSize(), data.v,
                               true, -1);
 
     data.qkv_format = AttentionQkvFormat::Q_K_V_BNSH;

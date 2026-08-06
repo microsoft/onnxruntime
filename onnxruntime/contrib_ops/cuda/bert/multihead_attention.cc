@@ -53,6 +53,10 @@ MultiHeadAttention<T, QK>::MultiHeadAttention(const OpKernelInfo& info)
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int>(num_heads);
 
+  const int64_t kv_num_heads = info.GetAttrOrDefault<int64_t>("kv_num_heads", num_heads);
+  ORT_ENFORCE(kv_num_heads > 0, "kv_num_heads must be a positive integer");
+  kv_num_heads_ = static_cast<int>(kv_num_heads);
+
   mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
 
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
@@ -135,7 +139,8 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
                                                                       is_unidirectional_,
                                                                       past_present_share_buffer,
                                                                       kMultiHeadAttention,
-                                                                      device_prop.maxThreadsPerBlock));
+                                                                      device_prop.maxThreadsPerBlock,
+                                                                      kv_num_heads_));
   DUMP_STRING_INIT();
   DUMP_STRING("Batch size = ", parameters.batch_size);
   DUMP_STRING("Sequence length = ", parameters.sequence_length);
@@ -489,11 +494,6 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
 #else
   constexpr bool use_memory_efficient_attention = false;
 #endif
-
-  if (parameters.num_heads_kv != parameters.num_heads) {
-    ORT_RETURN_IF(kernel_type == AttentionKernelType::AttentionKernel_Default,
-                  "No enabled CUDA attention kernel supports grouped query MultiHeadAttention");
-  }
 
   if (kernel_type == AttentionKernelType::AttentionKernel_Default) {
     kernel_type = AttentionKernelType::AttentionKernel_Unfused;
