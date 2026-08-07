@@ -16,10 +16,13 @@ using namespace onnxruntime::webgpu;
 
 class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPackedQKVWithRotaryEmbeddingProgram> {
  public:
-  SplitPackedQKVWithRotaryEmbeddingProgram(bool interleaved, uint32_t multi_rotary_cache_concat_offset)
+  SplitPackedQKVWithRotaryEmbeddingProgram(bool interleaved,
+                                           uint32_t multi_rotary_cache_concat_offset,
+                                           bool use_total_sequence_length_input)
       : Program{"SplitPackedQKVWithRotaryEmbedding"},
         interleaved_{interleaved},
-        multi_rotary_cache_concat_offset_{multi_rotary_cache_concat_offset} {}
+        multi_rotary_cache_concat_offset_{multi_rotary_cache_concat_offset},
+        use_total_sequence_length_input_{use_total_sequence_length_input} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -31,11 +34,13 @@ class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPacke
       {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
       {"head_size", ProgramUniformVariableDataType::Uint32},
       {"half_rotary_dim", ProgramUniformVariableDataType::Uint32},
+      {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   const bool interleaved_;
   const uint32_t multi_rotary_cache_concat_offset_;
+  const bool use_total_sequence_length_input_;
 };
 
 class GroupQueryAttention final : public WebGpuKernel {
