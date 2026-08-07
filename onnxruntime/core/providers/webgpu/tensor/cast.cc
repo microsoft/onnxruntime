@@ -199,8 +199,7 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
   return Status::OK();
 }
 
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateCastKernelInfo(bool enable_int64) {
+KernelCreateInfo CreateCastKernelInfo(int start_version, int end_version, bool enable_int64) {
   // Casting to int64 is always supported. Casting *from* int64 (int64 in T1/input) stays guarded by enable_int64.
   std::vector<MLDataType> t1_constraints = GetOpTypeConstraints(/*enable_int64=*/enable_int64, /*enable_bool=*/true);
   // T1 (input): plus uint8, so casts *from* a uint8 tensor (to int32/float/bool/etc.) run on the
@@ -218,12 +217,12 @@ KernelCreateInfo CreateCastKernelInfo(bool enable_int64) {
     return Status::OK();
   };
 
-  if constexpr (StartVersion == EndVersion) {
+  if (start_version == end_version) {
     return {
         KernelDefBuilder()
             .SetName("Cast")
             .SetDomain(kOnnxDomain)
-            .SinceVersion(StartVersion)
+            .SinceVersion(start_version)
             .Provider(kWebGpuExecutionProvider)
             .TypeConstraint("T1", t1_constraints)
             .TypeConstraint("T2", t2_constraints)
@@ -234,7 +233,7 @@ KernelCreateInfo CreateCastKernelInfo(bool enable_int64) {
         KernelDefBuilder()
             .SetName("Cast")
             .SetDomain(kOnnxDomain)
-            .SinceVersion(StartVersion, EndVersion)
+            .SinceVersion(start_version, end_version)
             .Provider(kWebGpuExecutionProvider)
             .TypeConstraint("T1", t1_constraints)
             .TypeConstraint("T2", t2_constraints)
@@ -242,15 +241,6 @@ KernelCreateInfo CreateCastKernelInfo(bool enable_int64) {
         kernel_create_fn};
   }
 }
-
-// Explicit template instantiations
-template KernelCreateInfo CreateCastKernelInfo<6, 8>(bool);
-template KernelCreateInfo CreateCastKernelInfo<9, 12>(bool);
-template KernelCreateInfo CreateCastKernelInfo<13, 18>(bool);
-template KernelCreateInfo CreateCastKernelInfo<19, 20>(bool);
-template KernelCreateInfo CreateCastKernelInfo<21, 22>(bool);
-template KernelCreateInfo CreateCastKernelInfo<23, 23>(bool);
-template KernelCreateInfo CreateCastKernelInfo<24>(bool);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

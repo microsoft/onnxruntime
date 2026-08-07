@@ -74,20 +74,14 @@ class BinaryElementwise : public WebGpuKernel {
 };
 
 // Factory functions for ops with conditional int64 support (registered via RegisterKernels).
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateAddVersionedKernelInfo(bool enable_int64);
-template <int SinceVersion>
-KernelCreateInfo CreateAddKernelInfo(bool enable_int64);
+KernelCreateInfo CreateAddVersionedKernelInfo(int start_version, int end_version, bool enable_int64);
+KernelCreateInfo CreateAddKernelInfo(int since_version, bool enable_int64);
 
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateEqualVersionedKernelInfo(bool enable_int64);
-template <int SinceVersion>
-KernelCreateInfo CreateEqualKernelInfo(bool enable_int64);
+KernelCreateInfo CreateEqualVersionedKernelInfo(int start_version, int end_version, bool enable_int64);
+KernelCreateInfo CreateEqualKernelInfo(int since_version, bool enable_int64);
 
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateSubVersionedKernelInfo(bool enable_int64);
-template <int SinceVersion>
-KernelCreateInfo CreateSubKernelInfo(bool enable_int64);
+KernelCreateInfo CreateSubVersionedKernelInfo(int start_version, int end_version, bool enable_int64);
+KernelCreateInfo CreateSubKernelInfo(int since_version, bool enable_int64);
 
 // Variadic element-wise operator (e.g. Max, Min) that accepts 1..N inputs with
 // multidirectional (NumPy-style) broadcasting. The inputs are folded pairwise using the
