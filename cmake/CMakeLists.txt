@@ -571,6 +571,11 @@ if(onnxruntime_USE_SVE)
       message(WARNING "onnxruntime_USE_SVE was set but compiler does not support SVE. It will be disabled.")
       set(onnxruntime_USE_SVE OFF)
     endif()
+  elseif(WIN32 AND onnxruntime_target_platform STREQUAL "ARM64")
+    # The SVE elementwise kernels ship as portable machine-code assembly
+    # (hex-encoded instruction words assembled by armasm64), so no compiler
+    # SVE support is needed; the kernels are runtime-gated on HasArmSve().
+    message(STATUS "SVE enabled via portable machine-code kernels.")
   else()
     message(WARNING "onnxruntime_USE_SVE was set but it is not supported on this platform. It will be disabled.")
     set(onnxruntime_USE_SVE OFF)
