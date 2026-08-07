@@ -3,18 +3,131 @@
 
 #include <algorithm>
 #include <fstream>
+#include <iomanip>
 #include <memory>
+#include <sstream>
+#include <string_view>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/platform/env_var.h"
 
 #include "core/providers/webgpu/program_manager.h"
+#include "core/providers/webgpu/program_manager_helpers.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_context.h"
 
 namespace onnxruntime {
 namespace webgpu {
+
+namespace detail {
+
+// Returns the 1-based `line_num`-th line of `code` (without trailing CR/LF), or an empty view
+// if the line does not exist.
+static std::string_view GetSourceLine(std::string_view code, uint64_t line_num) {
+  if (line_num == 0) {
+    return {};
+  }
+  size_t start = 0;
+  uint64_t remaining = line_num;
+  while (remaining > 1) {
+    size_t next = code.find('\n', start);
+    if (next == std::string_view::npos) {
+      return {};
+    }
+    start = next + 1;
+    --remaining;
+  }
+  size_t end = code.find('\n', start);
+  if (end == std::string_view::npos) {
+    end = code.size();
+  }
+  while (end > start && code[end - 1] == '\r') {
+    --end;
+  }
+  return code.substr(start, end - start);
+}
+
+std::string FormatShaderCompilationInfo(std::string_view code, const wgpu::CompilationInfo* info) {
+  if (info == nullptr || info->messageCount == 0) {
+    return {};
+  }
+
+  std::ostringstream oss;
+  for (size_t i = 0; i < info->messageCount; ++i) {
+    const auto& msg = info->messages[i];
+    const char* type_str = "info";
+    switch (msg.type) {
+      case wgpu::CompilationMessageType::Error:
+        type_str = "error";
+        break;
+      case wgpu::CompilationMessageType::Warning:
+        type_str = "warning";
+        break;
+      case wgpu::CompilationMessageType::Info:
+        type_str = "info";
+        break;
+    }
+    oss << "  " << type_str << " at line " << msg.lineNum << ":" << msg.linePos << ": "
+        << std::string_view{msg.message} << "\n";
+
+    auto src_line = GetSourceLine(code, msg.lineNum);
+    if (!src_line.empty()) {
+      oss << "    | " << src_line << "\n";
+      oss << "    | ";
+      // linePos is 1-based; clamp to line length.
+      size_t col = (msg.linePos > 0) ? static_cast<size_t>(msg.linePos - 1) : 0;
+      col = std::min(col, src_line.size());
+      for (size_t c = 0; c < col; ++c) {
+        oss << (src_line[c] == '\t' ? '\t' : ' ');
+      }
+      size_t caret_len = (msg.length > 0) ? static_cast<size_t>(msg.length) : 1;
+      if (col < src_line.size()) {
+        caret_len = std::min(caret_len, src_line.size() - col);
+      } else {
+        // Column is at/past end of the source line (e.g. an EOL-anchored diagnostic).
+        // Emit just a single caret so we don't draw '^~~~' past the end of the text.
+        caret_len = 1;
+      }
+      if (caret_len == 0) {
+        caret_len = 1;
+      }
+      oss << '^';
+      for (size_t c = 1; c < caret_len; ++c) {
+        oss << '~';
+      }
+      oss << "\n";
+    }
+  }
+  return oss.str();
+}
+
+std::string AnnotateShaderWithLineNumbers(std::string_view code) {
+  std::ostringstream oss;
+  uint64_t line_num = 1;
+  size_t start = 0;
+  while (start < code.size()) {
+    size_t end = code.find('\n', start);
+    size_t print_end = (end == std::string_view::npos) ? code.size() : end;
+    while (print_end > start && code[print_end - 1] == '\r') {
+      --print_end;
+    }
+    oss << std::setw(5) << line_num << " | " << code.substr(start, print_end - start) << "\n";
+    if (end == std::string_view::npos) {
+      return oss.str();
+    }
+    start = end + 1;
+    ++line_num;
+  }
+  // Empty input still renders a single "line 1" entry, so that an empty shader is not silently
+  // formatted as an empty string.
+  if (line_num == 1) {
+    oss << std::setw(5) << 1 << " | \n";
+  }
+  return oss.str();
+}
+
+}  // namespace detail
 
 ProgramArtifact::ProgramArtifact(const ProgramBase& program, wgpu::ComputePipeline&& compute_pipeline, std::vector<int>&& shape_uniform_ranks)
     : name{program.Name()},
@@ -235,6 +348,40 @@ Status ProgramManager::Build(const ProgramBase& program,
                 }
               },
               &create_pipeline_context)));
+
+  if (!create_pipeline_context.status.IsOK()) {
+    // Retrieve structured shader compilation diagnostics so we can report line numbers and the
+    // offending source lines. This is invaluable when a generated WGSL shader fails to compile.
+    std::string formatted_compilation_info;
+    auto info_status = webgpu_context_.Wait(shader_module.GetCompilationInfo(
+        wgpu::CallbackMode::WaitAnyOnly,
+        // Note: Don't throw from a Dawn callback. `code` and `formatted_compilation_info` live
+        // until Wait() returns, so capturing by reference is safe.
+        [&code, &formatted_compilation_info](wgpu::CompilationInfoRequestStatus status,
+                                             wgpu::CompilationInfo const* info) noexcept {
+          if (status == wgpu::CompilationInfoRequestStatus::Success) {
+            formatted_compilation_info = detail::FormatShaderCompilationInfo(code, info);
+          }
+        }));
+
+    std::ostringstream oss;
+    oss << create_pipeline_context.status.ErrorMessage()
+        << "\n  program: \"" << program.Name() << "\""
+        << "\n  key:     \"" << program_key << "\"";
+    if (!info_status.IsOK()) {
+      oss << "\n  (failed to retrieve shader compilation info: " << info_status.ErrorMessage() << ")";
+    }
+    if (!formatted_compilation_info.empty()) {
+      oss << "\nShader compilation messages:\n"
+          << formatted_compilation_info;
+    }
+    // Always include the annotated WGSL source so the developer can locate the offending line,
+    // even when structured compilation info is unavailable or empty (Dawn may report a failure
+    // via the pipeline callback while returning no CompilationMessages).
+    oss << "\nAnnotated WGSL source:\n"
+        << detail::AnnotateShaderWithLineNumbers(code);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, oss.str());
+  }
 
   return create_pipeline_context.status;
 }
