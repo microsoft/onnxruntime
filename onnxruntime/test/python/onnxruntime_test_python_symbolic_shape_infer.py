@@ -644,8 +644,12 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
 
-    def _make_group_query_attention_model(self, with_output_qk):
-        """Build a single-node GroupQueryAttention graph, optionally with the 'output_qk' output."""
+    def _make_group_query_attention_model(self, with_output_qk, total_sequence_length_value=None):
+        """Build a single-node GroupQueryAttention graph, optionally with the 'output_qk' output.
+
+        'total_sequence_length' is a graph input by default, which is how it appears at run time. Pass
+        total_sequence_length_value to make it a constant initializer instead.
+        """
         num_heads = 4
         kv_num_heads = 2
         head_size = 8
@@ -680,12 +684,21 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             helper.make_tensor_value_info("past_key", TensorProto.FLOAT, ["b", kv_num_heads, 32, head_size]),
             helper.make_tensor_value_info("past_value", TensorProto.FLOAT, ["b", kv_num_heads, 32, head_size]),
             helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, ["b"]),
-            helper.make_tensor_value_info("total_sequence_length", TensorProto.INT32, []),
         ]
+
+        initializers = []
+        if total_sequence_length_value is None:
+            graph_inputs.append(helper.make_tensor_value_info("total_sequence_length", TensorProto.INT32, []))
+        else:
+            initializers.append(
+                helper.make_tensor("total_sequence_length", TensorProto.INT32, [], [total_sequence_length_value])
+            )
 
         graph_outputs = [helper.make_tensor_value_info(name, TensorProto.UNDEFINED, None) for name in outputs]
 
-        graph = helper.make_graph(nodes, "GroupQueryAttention_Test", graph_inputs, graph_outputs)
+        graph = helper.make_graph(
+            nodes, "GroupQueryAttention_Test", graph_inputs, graph_outputs, initializer=initializers
+        )
         return graph, helper.make_model(graph)
 
     def test_group_query_attention_output_qk(self):
@@ -695,6 +708,42 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         falls back to the past_key cache length, which is what present_key/present_value already use.
         """
         graph, model = self._make_group_query_attention_model(with_output_qk=True)
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+
+        expected_shapes = [
+            helper.make_tensor_value_info("output", TensorProto.FLOAT, ["b", "s", 32]),
+            helper.make_tensor_value_info("present_key", TensorProto.FLOAT, ["b", 2, 32, 8]),
+            helper.make_tensor_value_info("present_value", TensorProto.FLOAT, ["b", 2, 32, 8]),
+            helper.make_tensor_value_info("output_qk", TensorProto.FLOAT, ["b", 4, "s", 32]),
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def test_group_query_attention_output_qk_constant_total_sequence_length(self):
+        """
+        Test that a constant 'total_sequence_length' is used verbatim as the last dimension of 'output_qk'
+        rather than the past_key cache length.
+        """
+        graph, model = self._make_group_query_attention_model(with_output_qk=True, total_sequence_length_value=48)
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+
+        expected_shapes = [
+            helper.make_tensor_value_info("output", TensorProto.FLOAT, ["b", "s", 32]),
+            helper.make_tensor_value_info("present_key", TensorProto.FLOAT, ["b", 2, 32, 8]),
+            helper.make_tensor_value_info("present_value", TensorProto.FLOAT, ["b", 2, 32, 8]),
+            helper.make_tensor_value_info("output_qk", TensorProto.FLOAT, ["b", 4, "s", 48]),
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def test_group_query_attention_output_qk_zero_total_sequence_length(self):
+        """
+        Test that a constant 'total_sequence_length' of 0 does not become a zero-length dimension.
+
+        BaseGroupQueryAttentionTypeAndShapeInference in bert_defs.cc defaults total_sequence_length_value to 0
+        when the input carries no data and gates the output_qk shape on 'total_sequence_length_value > 0', so 0
+        means "not provided" there. This falls back to the past_key cache length the same way an unknown value
+        does.
+        """
+        graph, model = self._make_group_query_attention_model(with_output_qk=True, total_sequence_length_value=0)
         inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
 
         expected_shapes = [

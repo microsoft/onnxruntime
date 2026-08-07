@@ -2601,10 +2601,15 @@ class SymbolicShapeInference:
         # total_sequence_length is a scalar input at index 6. It is normally a run-time value, so fall back
         # to the cache length carried by past_key when that is available, and to a fresh symbolic dimension
         # otherwise. past_key is the same source the present_key/present_value shapes above are taken from.
+        #
+        # Only a positive constant is usable. bert_defs.cc defaults total_sequence_length_value to 0 when the
+        # input carries no data and then gates the output_qk shape on `total_sequence_length_value > 0`, so a
+        # literal 0 there means "not provided" rather than a zero-length dimension. Treat it the same way
+        # instead of writing an empty dimension into the graph.
         total_sequence_length = self._try_get_value(node, 6)
         if total_sequence_length is not None:
             total_sequence_length = as_scalar(total_sequence_length)
-        if is_literal(total_sequence_length):
+        if is_literal(total_sequence_length) and int(total_sequence_length) > 0:
             total_sequence_length = int(total_sequence_length)
         elif past_shape is not None and len(past_shape) == 4:
             total_sequence_length = past_shape[2]
