@@ -27,6 +27,7 @@ steps:
         'cuda_version_win_arm64_no_dot',
         'docker_base_image_linux_x64',
         'python_artifact_linux_x64',
+        'python_artifact_linux_aarch64',
         'python_artifact_win_x64',
         'python_artifact_win_arm64',
         'nuget_artifact',
@@ -55,6 +56,7 @@ steps:
       Write-Host "##vso[task.setvariable variable=CudaVersionWinArm64NoDot]$($metadata.cuda_version_win_arm64_no_dot)"
       Write-Host "##vso[task.setvariable variable=CudaDockerBaseImage]$($metadata.docker_base_image_linux_x64)"
       Write-Host "##vso[task.setvariable variable=CudaPluginPythonLinuxArtifactName]$($metadata.python_artifact_linux_x64)"
+      Write-Host "##vso[task.setvariable variable=CudaPluginPythonLinuxAarch64ArtifactName]$($metadata.python_artifact_linux_aarch64)"
       Write-Host "##vso[task.setvariable variable=CudaPluginPythonWinArtifactName]$($metadata.python_artifact_win_x64)"
       Write-Host "##vso[task.setvariable variable=CudaPluginPythonWinX64ArtifactName]$($metadata.python_artifact_win_x64)"
       Write-Host "##vso[task.setvariable variable=CudaPluginPythonWinArm64ArtifactName]$($metadata.python_artifact_win_arm64)"
