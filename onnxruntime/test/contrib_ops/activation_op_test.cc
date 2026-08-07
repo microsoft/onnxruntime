@@ -152,5 +152,50 @@ TEST_F(ActivationOpTest, QuickGelu) {
   }
 }
 
+TEST_F(ActivationOpTest, QuickGelu_fp16) {
+  // Use enough elements to cross the 4096-element chunk boundary used by the
+  // QuickGelu<MLFloat16>::Compute() specialization. 8205 = 2 * 4096 + 13 exercises
+  // the multi-task path as well as a final partial (tail) chunk.
+  constexpr int64_t element_count = 2 * 4096 + 13;
+  std::vector<float> input_values;
+  input_values.reserve(element_count);
+  // Seed with corner values, then fill the remainder with a varied ramp.
+  const std::vector<float> seed_values{-1.0f, 0.0f, 1.0f, 2.5f, -2.5f, 5.0f, -5.0f, 0.3f};
+  input_values.insert(input_values.end(), seed_values.begin(), seed_values.end());
+  for (int64_t i = static_cast<int64_t>(seed_values.size()); i < element_count; ++i) {
+    // Range roughly [-6, 6] to cover both saturation tails and the linear region.
+    input_values.push_back(static_cast<float>(((i % 121) - 60)) * 0.1f);
+  }
+  std::vector<int64_t> dims{static_cast<int64_t>(input_values.size())};
+
+  auto quick_gelu = [](float x, float alpha) {
+    auto tmp = x * alpha;
+    auto y = 1.f / (1.f + std::exp(-std::abs(tmp)));  // safe sigmoid
+    y = tmp >= 0 ? y : 1 - y;
+    return x * y;
+  };
+
+  for (float alpha : {1.702f, 1.0f, -1.702f}) {
+    std::vector<MLFloat16> input_fp16;
+    std::vector<MLFloat16> output_fp16;
+    input_fp16.reserve(input_values.size());
+    output_fp16.reserve(input_values.size());
+    for (float x : input_values) {
+      input_fp16.push_back(MLFloat16(x));
+      output_fp16.push_back(MLFloat16(quick_gelu(x, alpha)));
+    }
+
+    OpTester test("QuickGelu", 1, kMSDomain);
+    test.AddAttribute("alpha", alpha);
+    test.AddInput<MLFloat16>("X", dims, input_fp16);
+    test.AddOutput<MLFloat16>("Y", dims, output_fp16);
+    // Relax tolerance because the reference is computed in fp32.
+    test.SetOutputTolerance(0.005f);
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime
