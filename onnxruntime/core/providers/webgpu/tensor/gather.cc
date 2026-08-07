@@ -67,15 +67,13 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
       }
       shader.MainFunctionBody() << "  }\n";
     }
+    shader.MainFunctionBody() << "  " << output.SetByOffset("global_idx", "value");
   } else {
     shader.MainFunctionBody() << "  var idx : input_indices_value_t;\n"
                               << "  var output_indices : output_indices_indices_t;\n"
                               << "  var indices_indices : input_indices_indices_t;\n"
-                              << "  var data_indices : data_indices_indices_t;\n";
-    if (!is_int64_) {
-      shader.MainFunctionBody() << "  var value : output_value_t;\n";
-    }
-    shader.MainFunctionBody() << "  var data_offset : u32;\n";
+                              << "  var data_indices : data_indices_indices_t;\n"
+                              << "  var data_offset : u32;\n";
     shader.MainFunctionBody() << "  output_indices = " << output_indices.OffsetToIndices("global_idx") << ";\n";
 
     for (int i = 0; i < indices.Rank(); i++) {
@@ -98,17 +96,11 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
 
     shader.MainFunctionBody() << "  data_offset = " << data_indices.IndicesToOffset("data_indices") << ";\n";
-    if (is_int64_) {
-      // int64 is stored as vec2<u32>. Copy the raw storage bits so the full 64-bit value is
-      // preserved; the value-type accessors would truncate it to i32.
-      shader.MainFunctionBody() << "  " << output.SetByOffset("global_idx", data.GetByOffset("data_offset", /*use_storage_type=*/true), /*use_storage_type=*/true);
-    } else {
-      shader.MainFunctionBody() << "  value = " << data.GetByOffset("data_offset") << ";\n";
-    }
-  }
-
-  if (!is_int64_) {
-    shader.MainFunctionBody() << "  " << output.SetByOffset("global_idx", "value");
+    // use_storage_type is only honored for Int64/Uint64 by GetByOffset/SetByOffset; for every
+    // other type it is ignored, so passing is_int64_ directly is equivalent to the plain
+    // value-type access when is_int64_ is false. For int64 it copies the raw vec2<u32> storage
+    // bits so the full 64-bit value is preserved instead of being truncated to i32.
+    shader.MainFunctionBody() << "  " << output.SetByOffset("global_idx", data.GetByOffset("data_offset", is_int64_), is_int64_);
   }
 
   return Status::OK();
