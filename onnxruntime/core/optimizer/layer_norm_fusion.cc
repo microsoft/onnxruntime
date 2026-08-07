@@ -61,6 +61,14 @@ static bool CheckAxesOnReduceMean(std::vector<int64_t>& axes_values, int64_t ran
   return true;
 }
 
+// The fused ops broadcast the reduced result back over the reduced axes, so the sub-graph is only
+// equivalent to a layer norm when ReduceMean keeps the reduced dims.
+static bool KeepDimsOnReduceMean(const Node& reduce_mean_node) {
+  const onnxruntime::NodeAttributes& attributes = reduce_mean_node.GetAttributes();
+  auto it = attributes.find("keepdims");
+  return it == attributes.end() || it->second.i() != 0;
+}
+
 static std::vector<int64_t> GetAxesFromReduceMeanNode(Node& reduce_mean_node, const Graph& graph) {
   const onnxruntime::NodeAttributes& attributes = reduce_mean_node.GetAttributes();
   std::vector<int64_t> axes_values;
@@ -263,6 +271,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         !graph_utils::IsSupportedProvider(reduce_mean_node, GetCompatibleExecutionProviders()) ||
         (reduce_mean_node.GetOutputEdgesCount() != 1 && reduce_mean_node.GetOutputEdgesCount() != 2) ||
         graph.NodeProducesGraphOutput(reduce_mean_node) ||
+        !KeepDimsOnReduceMean(reduce_mean_node) ||
         !IsSupportedDataType(reduce_mean_node, 1)) {
       continue;
     }
@@ -426,6 +435,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean2_node, "ReduceMean", {1, 11, 13, 18}) ||
         reduce_mean2_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, reduce_mean2_node, 1) ||
+        !KeepDimsOnReduceMean(reduce_mean2_node) ||
         !IsSupportedDataType(reduce_mean2_node, 1) ||
         reduce_mean2_node.GetInputEdgesCount() == 0) {
       continue;
@@ -667,8 +677,8 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     Node& reduce_mean_node = *graph.GetNode(p_reduce_mean->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_node, "ReduceMean", {1, 11, 13, 18}) ||
         reduce_mean_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
-        !optimizer_utils::CheckOutputEdges(graph, reduce_mean_node, 1) || !IsSupportedDataType(reduce_mean_node, 1) ||
-        reduce_mean_node.GetInputEdgesCount() == 0) {
+        !optimizer_utils::CheckOutputEdges(graph, reduce_mean_node, 1) || !KeepDimsOnReduceMean(reduce_mean_node) ||
+        !IsSupportedDataType(reduce_mean_node, 1) || reduce_mean_node.GetInputEdgesCount() == 0) {
       continue;
     }
     nodes_to_remove.push_back(reduce_mean_node);
