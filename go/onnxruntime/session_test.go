@@ -448,7 +448,7 @@ func TestRunClosedTensor(t *testing.T) {
 }
 
 // addModelInputs returns fresh inputs for add_f32.onnx and a cleanup func.
-func addModelInputs(t *testing.T) (map[string]*Tensor, func()) {
+func addModelInputs(t testing.TB) (map[string]*Tensor, func()) {
 	t.Helper()
 
 	a, err := CreateTensor[float32]([]int64{2, 3}, []float32{1, 2, 3, 4, 5, 6})
@@ -849,5 +849,29 @@ func TestNilSessionClose(t *testing.T) {
 	var session *Session
 	if err := session.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func BenchmarkSessionRun(b *testing.B) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer sess.Close()
+
+	inputs, cleanup := addModelInputs(b)
+	defer cleanup()
+	outputNames := []string{"C"}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		outputs, err := sess.Run(context.Background(), inputs, outputNames)
+		if err != nil {
+			b.Fatal(err)
+		}
+		for _, output := range outputs {
+			_ = output.Close()
+		}
 	}
 }

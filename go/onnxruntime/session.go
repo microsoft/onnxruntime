@@ -182,8 +182,8 @@ func (s *Session) runInner(ctx context.Context, inputs map[string]*Tensor, outpu
 		if err := rejectNUL(name, "run input name"); err != nil {
 			return nil, err
 		}
-		if err := tensor.checkUsable(fmt.Sprintf("run: input %q", name)); err != nil {
-			return nil, err
+		if tensor == nil || tensor.closed || tensor.value == nil {
+			return nil, fmt.Errorf("ort: run: input %q: tensor is nil or closed", name)
 		}
 		if cached, ok := s.nameCache[name]; ok {
 			cInputNames[i] = cached

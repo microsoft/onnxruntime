@@ -34,7 +34,10 @@ func NewSessionOptions() (*SessionOptions, error) {
 // SetIntraOpNumThreads sets the number of threads used within individual ops.
 // 0 means use the default.
 func (o *SessionOptions) SetIntraOpNumThreads(n int) error {
-	if n < math.MinInt32 || n > math.MaxInt32 {
+	if n < 0 {
+		return fmt.Errorf("ort: set intra op threads: thread count must be non-negative, got %d", n)
+	}
+	if n > math.MaxInt32 {
 		return fmt.Errorf("ort: set intra op threads: %d does not fit in C int", n)
 	}
 	if err := o.lockUsable("set intra op threads"); err != nil {
@@ -47,7 +50,10 @@ func (o *SessionOptions) SetIntraOpNumThreads(n int) error {
 // SetInterOpNumThreads sets the number of threads used to run independent ops in parallel.
 // 0 means use the default.
 func (o *SessionOptions) SetInterOpNumThreads(n int) error {
-	if n < math.MinInt32 || n > math.MaxInt32 {
+	if n < 0 {
+		return fmt.Errorf("ort: set inter op threads: thread count must be non-negative, got %d", n)
+	}
+	if n > math.MaxInt32 {
 		return fmt.Errorf("ort: set inter op threads: %d does not fit in C int", n)
 	}
 	if err := o.lockUsable("set inter op threads"); err != nil {

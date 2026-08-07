@@ -1,6 +1,7 @@
 package onnxruntime
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"sync"
@@ -479,6 +480,41 @@ func TestSessionOptionsRejectThreadCountOutsideCInt(t *testing.T) {
 	}
 	if err := opts.SetInterOpNumThreads(int(int64(math.MinInt32) - 1)); err == nil {
 		t.Fatal("expected error for overflowing inter-op thread count")
+	}
+}
+
+func TestSessionOptionsThreadCountBoundaries(t *testing.T) {
+	opts, err := NewSessionOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opts.Close()
+
+	setters := []struct {
+		name string
+		set  func(int) error
+	}{
+		{"intra-op", opts.SetIntraOpNumThreads},
+		{"inter-op", opts.SetInterOpNumThreads},
+	}
+	values := []struct {
+		n       int
+		wantErr bool
+	}{
+		{-1, true},
+		{0, false},
+		{1, false},
+	}
+
+	for _, setter := range setters {
+		for _, value := range values {
+			t.Run(fmt.Sprintf("%s/%d", setter.name, value.n), func(t *testing.T) {
+				err := setter.set(value.n)
+				if (err != nil) != value.wantErr {
+					t.Fatalf("set thread count %d: error = %v, want error = %v", value.n, err, value.wantErr)
+				}
+			})
+		}
 	}
 }
 
