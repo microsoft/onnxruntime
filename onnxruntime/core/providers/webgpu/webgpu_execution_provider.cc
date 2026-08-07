@@ -177,12 +177,8 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO_VERSIONED(7, 12, Div),
     KERNEL_CREATE_INFO_VERSIONED(13, 13, Div),
     KERNEL_CREATE_INFO(14, Div),
-    KERNEL_CREATE_INFO_VERSIONED(8, 11, Max),
-    KERNEL_CREATE_INFO_VERSIONED(12, 12, Max),
-    KERNEL_CREATE_INFO(13, Max),
-    KERNEL_CREATE_INFO_VERSIONED(8, 11, Min),
-    KERNEL_CREATE_INFO_VERSIONED(12, 12, Min),
-    KERNEL_CREATE_INFO(13, Min),
+    // Max: registered via RegisterKernels with conditional int64 support
+    // Min: registered via RegisterKernels with conditional int64 support
     KERNEL_CREATE_INFO_VERSIONED(7, 11, Pow),
     KERNEL_CREATE_INFO_VERSIONED(12, 12, Pow),
     KERNEL_CREATE_INFO_VERSIONED(13, 14, Pow),
@@ -534,6 +530,16 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateSubVersionedKernelInfo<7, 12>(enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateSubVersionedKernelInfo<13, 13>(enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateSubKernelInfo<14>(enable_int64)));
+
+  // Register Max kernels with conditional int64 support
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateMaxVersionedKernelInfo(8, 11, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateMaxVersionedKernelInfo(12, 12, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateMaxKernelInfo(13, enable_int64)));
+
+  // Register Min kernels with conditional int64 support
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateMinVersionedKernelInfo(8, 11, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateMinVersionedKernelInfo(12, 12, enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateMinKernelInfo(13, enable_int64)));
 
   // Register Where kernels with conditional int64 support
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateWhereVersionedKernelInfo<9, 15>(enable_int64)));

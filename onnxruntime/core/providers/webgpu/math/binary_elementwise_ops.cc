@@ -562,14 +562,74 @@ static std::string GetMinImpl(int lhs_element_type, int /* rhs_element_type */) 
 }
 
 WEBGPU_VARIADIC_IMPL(Max, "max_v(vec4<input_a_element_t>(a), vec4<input_b_element_t>(b))", GetMaxImpl)
-WEBGPU_BINARY_VERSIONED_KERNEL(Max, 8, 11, Max, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_VERSIONED_KERNEL(Max, 12, 12, Max, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_KERNEL(Max, 13, Max, WebGpuSupportedNumberTypes())
-
 WEBGPU_VARIADIC_IMPL(Min, "min_v(vec4<input_a_element_t>(a), vec4<input_b_element_t>(b))", GetMinImpl)
-WEBGPU_BINARY_VERSIONED_KERNEL(Min, 8, 11, Min, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_VERSIONED_KERNEL(Min, 12, 12, Min, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_KERNEL(Min, 13, Min, WebGpuSupportedNumberTypes())
+
+// NOTE: int64 min/max in the WebGPU shader compares the low 32 bits only (i32 element type).
+// Values outside the int32 range [-2^31, 2^31-1] will produce incorrect results.
+// This matches the same limitation documented in Add/Sub and is acceptable for token-position workloads.
+KernelCreateInfo CreateMaxVersionedKernelInfo(int start_version, int end_version, bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Max>(info);
+    return Status::OK();
+  };
+  return {KernelDefBuilder()
+              .SetName("Max")
+              .SetDomain(kOnnxDomain)
+              .SinceVersion(start_version, end_version)
+              .Provider(kWebGpuExecutionProvider)
+              .TypeConstraint("T", type_constraints)
+              .Build(),
+          kernel_create_fn};
+}
+
+KernelCreateInfo CreateMaxKernelInfo(int since_version, bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Max>(info);
+    return Status::OK();
+  };
+  return {KernelDefBuilder()
+              .SetName("Max")
+              .SetDomain(kOnnxDomain)
+              .SinceVersion(since_version)
+              .Provider(kWebGpuExecutionProvider)
+              .TypeConstraint("T", type_constraints)
+              .Build(),
+          kernel_create_fn};
+}
+
+KernelCreateInfo CreateMinVersionedKernelInfo(int start_version, int end_version, bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Min>(info);
+    return Status::OK();
+  };
+  return {KernelDefBuilder()
+              .SetName("Min")
+              .SetDomain(kOnnxDomain)
+              .SinceVersion(start_version, end_version)
+              .Provider(kWebGpuExecutionProvider)
+              .TypeConstraint("T", type_constraints)
+              .Build(),
+          kernel_create_fn};
+}
+
+KernelCreateInfo CreateMinKernelInfo(int since_version, bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Min>(info);
+    return Status::OK();
+  };
+  return {KernelDefBuilder()
+              .SetName("Min")
+              .SetDomain(kOnnxDomain)
+              .SinceVersion(since_version)
+              .Provider(kWebGpuExecutionProvider)
+              .TypeConstraint("T", type_constraints)
+              .Build(),
+          kernel_create_fn};
+}
 
 std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
   SS(s, 1024);

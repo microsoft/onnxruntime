@@ -89,6 +89,12 @@ KernelCreateInfo CreateSubVersionedKernelInfo(bool enable_int64);
 template <int SinceVersion>
 KernelCreateInfo CreateSubKernelInfo(bool enable_int64);
 
+KernelCreateInfo CreateMaxVersionedKernelInfo(int start_version, int end_version, bool enable_int64);
+KernelCreateInfo CreateMaxKernelInfo(int since_version, bool enable_int64);
+
+KernelCreateInfo CreateMinVersionedKernelInfo(int start_version, int end_version, bool enable_int64);
+KernelCreateInfo CreateMinKernelInfo(int since_version, bool enable_int64);
+
 // Variadic element-wise operator (e.g. Max, Min) that accepts 1..N inputs with
 // multidirectional (NumPy-style) broadcasting. The inputs are folded pairwise using the
 // two-input binary element-wise program, reusing its broadcasting and vectorization paths.
