@@ -579,6 +579,7 @@ Status CudnnFlashAttention(
 template <typename T>
 Status EfficientAttention(
     const cudaDeviceProp& device_prop,
+    Stream* ort_stream,
     cudaStream_t stream,
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data,
@@ -615,7 +616,7 @@ Status EfficientAttention(
         parameters.total_sequence_length));
 
     const size_t mask_elements = static_cast<size_t>(3) * static_cast<size_t>(parameters.batch_size) + 2;
-    sanitized_mask = IAllocator::MakeUniquePtr<int32_t>(data.allocator, mask_elements, false, stream);
+    sanitized_mask = IAllocator::MakeUniquePtr<int32_t>(data.allocator, mask_elements, false, ort_stream);
     SanitizeMask1DKeySeqLenStartValues<<<1, 1, 0, stream>>>(
         reinterpret_cast<const int32_t*>(data.mask_index),
         sanitized_mask.get(),
@@ -1148,7 +1149,7 @@ Status QkvToContext(
 #if USE_MEMORY_EFFICIENT_ATTENTION
   if (data.use_memory_efficient_attention) {
     DUMP_STRING("EfficientAttention");
-    return EfficientAttention<T>(device_prop, stream, parameters, data, scale);
+    return EfficientAttention<T>(device_prop, ort_stream, stream, parameters, data, scale);
   }
 #endif
 
