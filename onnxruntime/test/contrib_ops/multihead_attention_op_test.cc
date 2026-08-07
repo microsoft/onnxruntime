@@ -627,6 +627,9 @@ TEST(MultiHeadAttentionTest, CudaMask1DKeySeqLenStartRejectsInvalidSeqstartValue
   execution_providers.push_back(DefaultCudaExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectFailure,
              "invalid seqstart_q",
+             {}, nullptr, &execution_providers);
+}
+
 TEST(MultiHeadAttentionTest, CacheIndirectionBatchBeamNotDivisibleByNumBeams) {
   // num_beams = 2 does not evenly divide batch_beam_size = 3.
   // cache_indirection dim 0 is a valid-looking 1 (= 3 / 2 with truncating division),
