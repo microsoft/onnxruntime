@@ -1377,6 +1377,21 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "See past_hp_key.",
                "T",
                OpSchema::Optional)
+        .Input(18,
+               "oscar_rotation_k",
+               "OSCAR spectral rotation for keys, shape (kv_num_heads, head_size, head_size). When provided (with "
+               "kv_cache_bit_width==2 and the gqa.kv_quant.sink / gqa.kv_quant.recent session-config entries set), "
+               "the kernel rotates post-RoPE query and key rows by this per-kv-head orthogonal matrix before 2-bit "
+               "quantization so the history quantizes with much lower error. QK scores are invariant to this shared "
+               "rotation. Provided as a constant initializer.",
+               "T",
+               OpSchema::Optional)
+        .Input(19,
+               "oscar_rotation_v",
+               "OSCAR spectral rotation for values, shape (kv_num_heads, head_size, head_size). Rotates value rows "
+               "before 2-bit quantization; the attention output is un-rotated by its transpose. See oscar_rotation_k.",
+               "T",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, hidden_size)",

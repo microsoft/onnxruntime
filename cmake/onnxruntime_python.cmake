@@ -253,6 +253,10 @@ add_dependencies(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_depende
 
 if (MSVC)
   target_link_options(onnxruntime_pybind11_state PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
+  if(onnxruntime_DELAYLOAD_FLAGS)
+    # delayimp.lib provides __delayLoadHelper2, required whenever /DELAYLOAD flags are applied.
+    target_link_libraries(onnxruntime_pybind11_state PRIVATE delayimp.lib)
+  endif()
   # if MSVC, pybind11 undefines _DEBUG in pybind11/detail/common.h, which causes the pragma in pyconfig.h
   # from the python installation to require the release version of the lib
   # e.g. from a python 3.10 install:

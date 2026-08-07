@@ -223,6 +223,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* v_scale = context->Input<Tensor>(13);
   const Tensor* past_hp_key = context->InputCount() > 16 ? context->Input<Tensor>(16) : nullptr;
   const Tensor* past_hp_value = context->InputCount() > 17 ? context->Input<Tensor>(17) : nullptr;
+  const Tensor* oscar_rotation_k = context->InputCount() > 18 ? context->Input<Tensor>(18) : nullptr;
+  const Tensor* oscar_rotation_v = context->InputCount() > 19 ? context->Input<Tensor>(19) : nullptr;
 
   // Validate quantization configuration.
   const bool is_per_group_quant = kv_quant_enabled_ && (k_quant_type_ == KVQuantizationType::PER_GROUP);
@@ -660,6 +662,9 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       if constexpr (std::is_same_v<T, float>) {
         if (is_per_group_quant) {
           const int hp_window = kv_quant_sink_ + kv_quant_recent_;
+          // OSCAR spectral rotations (optional): per-kv-head [kv_num_heads, head_size, head_size].
+          const float* oscar_r_k_data = oscar_rotation_k != nullptr ? oscar_rotation_k->Data<float>() : nullptr;
+          const float* oscar_r_v_data = oscar_rotation_v != nullptr ? oscar_rotation_v->Data<float>() : nullptr;
           if (hp_window > 0) {
             // Mixed precision (Option C): keep the first `sink` and last `recent` tokens in
             // high-precision FP (separate present_hp outputs); only the middle history is 2-bit.
@@ -675,7 +680,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                 attention_bias, past_key, past_value, past_hp_key, past_hp_value,
                 output, present_k, present_v, present_hp_k, present_hp_v, output_qk, seqlens_k,
                 oscar_group_size, oscar_num_groups, k_quant_rho_, v_quant_rho_,
-                kv_quant_sink_, kv_quant_recent_, parameters, allocator, context);
+                kv_quant_sink_, kv_quant_recent_, oscar_r_k_data, oscar_r_v_data,
+                parameters, allocator, context);
           }
           return ApplyAttentionQuantized2Bit(
               q_rotary, k_data_q, v_data_q, head_sink_data,

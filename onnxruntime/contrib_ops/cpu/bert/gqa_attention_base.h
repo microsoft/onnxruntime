@@ -1075,7 +1075,7 @@ class GQAAttentionBase {
   // OSCAR mixed precision: the first `sink` and last `recent` tokens stay high-precision FP;
   // the middle history is 2-bit. FP values are pulled from past_hp (previous step) or newvals
   // (tokens added this step). History rows already quantized last step are copied verbatim;
-  // tokens demoted out of the recent window this step are quantized now.
+  // tokens demoted out of the recent window this step are optionally rotated, then quantized.
   void BuildMixedHeadCache(
       const float* past_hp,      // [n_hp_past * head_size] or nullptr
       const uint8_t* past_hist,  // [n_hist_past * packed_row_bytes] or nullptr
@@ -1086,7 +1086,9 @@ class GQAAttentionBase {
       int T, int T_past,
       int sink, int recent,
       int head_size, int group_size, int num_groups, float rho,
-      size_t packed_row_bytes) const {
+      size_t packed_row_bytes,
+      const float* history_rotation = nullptr,
+      float* rotation_scratch = nullptr) const {
     const int n_sink = std::min(sink, T);
     const int n_recent = std::min(recent, T - n_sink);
     const int recent_start = T - n_recent;  // abs pos of first recent token
@@ -1121,7 +1123,13 @@ class GQAAttentionBase {
           std::memcpy(dst, past_hist + static_cast<size_t>(r - n_sink_past) * packed_row_bytes,
                       packed_row_bytes);
         } else {
-          Oscar2BitQuantizeRow(fp(r), dst, head_size, group_size, num_groups, rho);
+          const float* source = fp(r);
+          if (history_rotation != nullptr) {
+            ORT_ENFORCE(rotation_scratch != nullptr, "rotation scratch is required for OSCAR history rotation");
+            OscarRotateRows(source, history_rotation, rotation_scratch, 1, head_size, /*transpose_r=*/false);
+            source = rotation_scratch;
+          }
+          Oscar2BitQuantizeRow(source, dst, head_size, group_size, num_groups, rho);
         }
         Oscar2BitDequantizeRow(dst, deq + static_cast<size_t>(r) * head_size,
                                head_size, group_size, num_groups);
@@ -1129,9 +1137,23 @@ class GQAAttentionBase {
     }
   }
 
+  // Row-major rotation: C[rows, head_size] = A[rows, head_size] @ R[head_size, head_size];
+  // if transpose_r, C = A @ R^T. Used for OSCAR history rotation, rotated-history QK scores,
+  // and value-history un-rotation. No-op when rows <= 0.
+  void OscarRotateRows(const float* A, const float* R, float* C,
+                       int rows, int head_size, bool transpose_r) const {
+    if (rows <= 0) return;
+    math::GemmEx<float, ThreadPool>(
+        CblasNoTrans, transpose_r ? CblasTrans : CblasNoTrans,
+        rows, head_size, head_size, 1.0f, A, head_size, R, head_size, 0.0f,
+        C, head_size, nullptr, &mlas_backend_kernel_selector_config_);
+  }
+
   // Mixed-precision variant of ApplyAttentionQuantized2Bit (OSCAR Option C, split tensors):
   // sink+recent tokens are stored high-precision in present_hp_{key,value}; the middle history
-  // is 2-bit in present_{key,value}. Attention runs over the reassembled full FP cache.
+  // is 2-bit in present_{key,value}. With R_K/R_V, only history is stored rotated: history
+  // scores use q @ R_K, history values are un-rotated after the shared softmax, while the
+  // high-precision sink/recent window remains in the original basis (canonical OSCAR strategy c).
   Status ApplyAttentionQuantized2BitMixed(
       const float* Q,                // Q data [B, N, S, H] BNSH
       const float* K,                // K data [B, N_kv, L, H] or nullptr for packed_qkv
@@ -1155,6 +1177,8 @@ class GQAAttentionBase {
       float v_rho,
       int sink,
       int recent,
+      const float* R_K,  // OSCAR key rotation [kv_num_heads, head_size, head_size] or nullptr
+      const float* R_V,  // OSCAR value rotation [kv_num_heads, head_size, head_size] or nullptr
       GroupQueryAttentionParameters& parameters,
       AllocatorPtr allocator,
       OpKernelContext* context) const {
@@ -1246,6 +1270,20 @@ class GQAAttentionBase {
         BufferUniquePtr kdeq_buffer(kdeq_alloc, BufferDeleter(allocator));
         float* k_deq = static_cast<float*>(kdeq_alloc);
 
+        // OSCAR keeps sink/recent in the original basis and rotates only the INT2 history.
+        const bool rotate = (R_K != nullptr);
+        BufferUniquePtr qrot_buffer, krot_buffer;
+        float* q_rot = nullptr;
+        float* k_rot = nullptr;
+        if (rotate) {
+          auto qrot_alloc = allocator->Alloc(SafeInt<size_t>(sequence_length) * head_size * sizeof(float));
+          qrot_buffer = BufferUniquePtr(qrot_alloc, BufferDeleter(allocator));
+          q_rot = static_cast<float*>(qrot_alloc);
+          auto krot_alloc = allocator->Alloc(SafeInt<size_t>(head_size) * sizeof(float));
+          krot_buffer = BufferUniquePtr(krot_alloc, BufferDeleter(allocator));
+          k_rot = static_cast<float*>(krot_alloc);
+        }
+
         for (std::ptrdiff_t i = begin; i != end; ++i) {
           const size_t batch_index = i / num_heads_;
           const size_t head_index = i % num_heads_;
@@ -1284,10 +1322,13 @@ class GQAAttentionBase {
           float* present_hp_head = present_hp_key_data + static_cast<size_t>(kv_head_flat) * hp_present_chunk;
           uint8_t* present_hist_head = present_key_data + static_cast<size_t>(kv_head_flat) * present_buff_chunk_bytes;
 
+          const float* R_K_head = rotate
+                                      ? R_K + static_cast<size_t>(kv_head_within_batch) * head_size * head_size
+                                      : nullptr;
           BuildMixedHeadCache(past_hp_head, past_hist_head, k_new,
                               present_hp_head, present_hist_head, k_deq,
                               Ti, T_past, sink, recent, head_size, group_size, num_groups,
-                              k_rho, packed_row_bytes);
+                              k_rho, packed_row_bytes, R_K_head, k_rot);
 
           const float* q;
           if (packed_qkv) {
@@ -1295,14 +1336,44 @@ class GQAAttentionBase {
           } else {
             q = Q + q_input_chunk_length * i;
           }
+          const int n_sink = std::min(sink, Ti);
+          const int n_recent = std::min(recent, Ti - n_sink);
+          const int history_start = n_sink;
+          const int history_len = Ti - n_sink - n_recent;
+          const int recent_start = Ti - n_recent;
+          if (rotate && history_len > 0) {
+            OscarRotateRows(q, R_K_head, q_rot, sequence_length, head_size, /*transpose_r=*/false);
+          }
 
           const ptrdiff_t probs_offset = SafeInt<ptrdiff_t>(i) * sequence_length * seqlen_present_kv_cache;
           float* probs = attention_probs + probs_offset;
 
-          math::GemmEx<float, ThreadPool>(
-              CblasNoTrans, CblasTrans, sequence_length, static_cast<int>(total_seqlen), head_size,
-              alpha, q, head_size, k_deq, head_size, 0.0f,
-              probs, seqlen_present_kv_cache, nullptr, &mlas_backend_kernel_selector_config_);
+          if (!rotate) {
+            math::GemmEx<float, ThreadPool>(
+                CblasNoTrans, CblasTrans, sequence_length, static_cast<int>(total_seqlen), head_size,
+                alpha, q, head_size, k_deq, head_size, 0.0f,
+                probs, seqlen_present_kv_cache, nullptr, &mlas_backend_kernel_selector_config_);
+          } else {
+            // One softmax spans three contiguous blocks, each scored in its stored basis.
+            if (n_sink > 0) {
+              math::GemmEx<float, ThreadPool>(
+                  CblasNoTrans, CblasTrans, sequence_length, n_sink, head_size,
+                  alpha, q, head_size, k_deq, head_size, 0.0f,
+                  probs, seqlen_present_kv_cache, nullptr, &mlas_backend_kernel_selector_config_);
+            }
+            if (history_len > 0) {
+              math::GemmEx<float, ThreadPool>(
+                  CblasNoTrans, CblasTrans, sequence_length, history_len, head_size,
+                  alpha, q_rot, head_size, k_deq + static_cast<size_t>(history_start) * head_size, head_size, 0.0f,
+                  probs + history_start, seqlen_present_kv_cache, nullptr, &mlas_backend_kernel_selector_config_);
+            }
+            if (n_recent > 0) {
+              math::GemmEx<float, ThreadPool>(
+                  CblasNoTrans, CblasTrans, sequence_length, n_recent, head_size,
+                  alpha, q, head_size, k_deq + static_cast<size_t>(recent_start) * head_size, head_size, 0.0f,
+                  probs + recent_start, seqlen_present_kv_cache, nullptr, &mlas_backend_kernel_selector_config_);
+            }
+          }
 
           float* output_qk_thread = nullptr;
           if (output_qk_buffer != nullptr) {
@@ -1403,6 +1474,20 @@ class GQAAttentionBase {
         BufferUniquePtr vdeq_buffer(vdeq_alloc, BufferDeleter(allocator));
         float* v_deq = static_cast<float*>(vdeq_alloc);
 
+        // OSCAR keeps sink/recent in the original basis and rotates only the INT2 history.
+        const bool rotate = (R_V != nullptr);
+        BufferUniquePtr vrot_buffer, outrot_buffer;
+        float* v_rot = nullptr;
+        float* out_rot = nullptr;
+        if (rotate) {
+          auto vrot_alloc = allocator->Alloc(SafeInt<size_t>(head_size) * sizeof(float));
+          vrot_buffer = BufferUniquePtr(vrot_alloc, BufferDeleter(allocator));
+          v_rot = static_cast<float*>(vrot_alloc);
+          auto outrot_alloc = allocator->Alloc(SafeInt<size_t>(sequence_length) * head_size * sizeof(float));
+          outrot_buffer = BufferUniquePtr(outrot_alloc, BufferDeleter(allocator));
+          out_rot = static_cast<float*>(outrot_alloc);
+        }
+
         for (std::ptrdiff_t i = begin; i != end; ++i) {
           const size_t batch_index = i / num_heads_;
           const size_t head_index = i % num_heads_;
@@ -1430,19 +1515,60 @@ class GQAAttentionBase {
           float* present_hp_head = present_hp_value_data + static_cast<size_t>(kv_head_flat) * hp_present_chunk;
           uint8_t* present_hist_head = present_value_data + static_cast<size_t>(kv_head_flat) * present_buff_chunk_bytes;
 
+          const float* R_V_head = rotate
+                                      ? R_V + static_cast<size_t>(kv_head_within_batch) * head_size * head_size
+                                      : nullptr;
           BuildMixedHeadCache(past_hp_head, past_hist_head, v_new,
                               present_hp_head, present_hist_head, v_deq,
                               Ti, T_past, sink, recent, head_size, group_size, num_groups,
-                              v_rho, packed_row_bytes);
+                              v_rho, packed_row_bytes, R_V_head, v_rot);
 
           ptrdiff_t probs_offset = SafeInt<ptrdiff_t>(sequence_length) * seqlen_present_kv_cache * i;
           float* output_current = output_data +
                                   (batch_index * sequence_length * num_heads_ + head_index) * head_size;
 
-          math::GemmEx<float, ThreadPool>(
-              CblasNoTrans, CblasNoTrans, sequence_length, head_size, static_cast<int>(total_seqlen),
-              1.0f, attention_probs + probs_offset, seqlen_present_kv_cache, v_deq, head_size,
-              0.0f, output_current, hidden_size, nullptr, &mlas_backend_kernel_selector_config_);
+          if (!rotate) {
+            math::GemmEx<float, ThreadPool>(
+                CblasNoTrans, CblasNoTrans, sequence_length, head_size, static_cast<int>(total_seqlen),
+                1.0f, attention_probs + probs_offset, seqlen_present_kv_cache, v_deq, head_size,
+                0.0f, output_current, hidden_size, nullptr, &mlas_backend_kernel_selector_config_);
+          } else {
+            const int n_sink = std::min(sink, Ti);
+            const int n_recent = std::min(recent, Ti - n_sink);
+            const int history_start = n_sink;
+            const int history_len = Ti - n_sink - n_recent;
+            const int recent_start = Ti - n_recent;
+            bool wrote_output = false;
+
+            if (history_len > 0) {
+              math::GemmEx<float, ThreadPool>(
+                  CblasNoTrans, CblasNoTrans, sequence_length, head_size, history_len,
+                  1.0f, attention_probs + probs_offset + history_start, seqlen_present_kv_cache,
+                  v_deq + static_cast<size_t>(history_start) * head_size, head_size,
+                  0.0f, out_rot, head_size, nullptr, &mlas_backend_kernel_selector_config_);
+              math::GemmEx<float, ThreadPool>(
+                  CblasNoTrans, CblasTrans, sequence_length, head_size, head_size,
+                  1.0f, out_rot, head_size, R_V_head, head_size,
+                  0.0f, output_current, hidden_size, nullptr, &mlas_backend_kernel_selector_config_);
+              wrote_output = true;
+            }
+            if (n_sink > 0) {
+              math::GemmEx<float, ThreadPool>(
+                  CblasNoTrans, CblasNoTrans, sequence_length, head_size, n_sink,
+                  1.0f, attention_probs + probs_offset, seqlen_present_kv_cache, v_deq, head_size,
+                  wrote_output ? 1.0f : 0.0f, output_current, hidden_size, nullptr,
+                  &mlas_backend_kernel_selector_config_);
+              wrote_output = true;
+            }
+            if (n_recent > 0) {
+              math::GemmEx<float, ThreadPool>(
+                  CblasNoTrans, CblasNoTrans, sequence_length, head_size, n_recent,
+                  1.0f, attention_probs + probs_offset + recent_start, seqlen_present_kv_cache,
+                  v_deq + static_cast<size_t>(recent_start) * head_size, head_size,
+                  wrote_output ? 1.0f : 0.0f, output_current, hidden_size, nullptr,
+                  &mlas_backend_kernel_selector_config_);
+            }
+          }
         }
       });
     }
