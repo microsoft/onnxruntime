@@ -341,10 +341,8 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   const OrtMemoryInfo* selected_device_memory_info = nullptr;
   for (const auto& allocator : device_allocators) {
     const auto& mem_info = allocator->Info();
-    if (mem_info.alloc_type == OrtAllocatorType::OrtDeviceAllocator &&
-        mem_info.device.Type() == OrtDevice::GPU) {
+    if (mem_info.device.Type() == OrtDevice::GPU && mem_info.mem_type == OrtMemTypeDefault) {
       selected_device_memory_info = &mem_info;
-      break;
     }
   }
   ASSERT_NE(selected_device_memory_info, nullptr);
