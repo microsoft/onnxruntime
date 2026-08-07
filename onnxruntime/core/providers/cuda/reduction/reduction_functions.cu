@@ -793,6 +793,15 @@ Status arg_min_max_last_axis(cudaStream_t stream, const TIn* input, int64_t* out
   // long axis (e.g. a vocabulary-sized ArgMax) behind one lane. Once the axis is at least a full
   // block wide, reducing it across the block is both parallel and coalesced.
   if (n >= block_size) {
+    // One block per row, so a small m leaves most of the GPU idle -- a vocabulary ArgMax during
+    // decode has m in the single digits against >100 SMs. Splitting the axis across blocks would
+    // need a second pass and a scratch buffer; widening the block costs nothing and buys the
+    // memory-level parallelism back on the SMs that are resident.
+    if (m <= 32 && n >= 8 * 1024) {
+      detail::arg_min_max_last_axis_block_kernel<TIn, IsArgMax, 1024>
+          <<<m, 1024, 0, stream>>>(input, output, n);
+      return CUDA_CALL(cudaGetLastError());
+    }
     detail::arg_min_max_last_axis_block_kernel<TIn, IsArgMax, block_size>
         <<<m, block_size, 0, stream>>>(input, output, n);
     return CUDA_CALL(cudaGetLastError());
