@@ -18,7 +18,6 @@ from onnxruntime.capi._pybind_state import OrtDevice as C_OrtDevice
 from onnxruntime.capi._pybind_state import OrtValue as C_OrtValue
 from onnxruntime.capi._pybind_state import OrtValueVector, SessionIOBinding
 
-
 # Highest ai.onnx opset that has been *released* by the installed onnx package.
 # Avoid onnx.defs.onnx_opset_version(), which returns the in-development next opset
 # (ORT's loader rejects un-released opsets unless ALLOW_RELEASED_ONNX_OPSET_ONLY=0).

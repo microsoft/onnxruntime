@@ -9,10 +9,10 @@ import uuid
 from pathlib import Path
 
 import numpy as np
-import onnxruntime.capi._pybind_state as C
 from ml_dtypes import float8_e4m3fn
 
 import onnxruntime
+import onnxruntime.capi._pybind_state as C
 from onnxruntime._onnx_shim import onnx
 from onnxruntime._onnx_shim.onnx import TensorProto
 from onnxruntime._onnx_shim.onnx.helper import np_dtype_to_tensor_dtype

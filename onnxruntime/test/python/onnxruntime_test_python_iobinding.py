@@ -14,7 +14,6 @@ from onnxruntime.capi._pybind_state import OrtDevice as C_OrtDevice  # pylint: d
 from onnxruntime.capi._pybind_state import OrtValue as C_OrtValue
 from onnxruntime.capi._pybind_state import OrtValueVector, SessionIOBinding
 
-
 test_params = [
     ("cuda", "CUDAExecutionProvider", C_OrtDevice.cuda),
     ("dml", "DmlExecutionProvider", C_OrtDevice.dml),

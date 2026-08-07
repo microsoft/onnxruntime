@@ -11,7 +11,6 @@ from importlib.util import find_spec
 from pathlib import Path
 
 import numpy as np
-
 from op_test_utils import (
     StridedDataReader,
     check_model_correctness,

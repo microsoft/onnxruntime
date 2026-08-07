@@ -12,7 +12,6 @@ from onnxruntime._onnx_shim.onnx import load
 from onnxruntime.backend.backend import OnnxRuntimeBackend as ort_backend
 
 
-
 def check_list_of_map_to_float(testcase, expected_rows, actual_rows):
     """Validate two list<map<key, float>> instances match closely enough."""
 

@@ -20,7 +20,6 @@ from onnxruntime._onnx_shim.onnx.defs import onnx_opset_version
 from onnxruntime._onnx_shim.onnx.helper import make_graph, make_model, make_node, make_opsetid, make_tensor_value_info
 from onnxruntime._onnx_shim.onnx.numpy_helper import from_array
 
-
 available_providers = list(get_available_providers())
 
 
