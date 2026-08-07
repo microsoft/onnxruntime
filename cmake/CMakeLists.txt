@@ -123,12 +123,18 @@ option(onnxruntime_USE_VSINPU "Build with VSINPU support" OFF)
 cmake_dependent_option(onnxruntime_USE_FLASH_ATTENTION "Build flash attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_LEAN_ATTENTION "Build lean attention kernel for scaled dot product attention" OFF)
 cmake_dependent_option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
+# The TensorRT fused MHA kernels are prebuilt cubins for sm70-sm89 that mainly benefit BERT-style
+# encoder models. Turning this OFF drops ~14MB of embedded cubin data; attention falls back to
+# flash / memory efficient / cuDNN / unfused kernels.
+cmake_dependent_option(onnxruntime_USE_TRT_FUSED_ATTENTION "Build TensorRT fused multi-head attention cubin kernels" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_FP4_QMOE "Build CUDA QMoE FP4 kernels" OFF)
 option(onnxruntime_USE_FP8_QMOE "Build CUDA QMoE FP8 kernels" OFF)
 cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB gemm cuda kernels" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_INT4_KV_CACHE "Build cuda kernels for int4 kv cache" OFF)
 option(onnxruntime_USE_FP8_KV_CACHE "Build cuda kernels for fp8 kv cache" ON)
 option(onnxruntime_QUICK_BUILD "Speed up build by skipping some kernels for faster development" OFF)
+# Raises the minimum driver to the CUDA 12.4 level (Linux >= 550.54.14, Windows >= 551.61); always on for CUDA >= 13.0.
+cmake_dependent_option(onnxruntime_CUDA_FATBIN_COMPRESS_SIZE "Compress CUDA fatbins with -compress-mode=size" OFF "onnxruntime_USE_CUDA" OFF)
 
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
 option(onnxruntime_USE_AVX "Use AVX instructions" OFF)
@@ -788,6 +794,7 @@ else()
   set(onnxruntime_USE_FLASH_ATTENTION OFF)
   set(onnxruntime_USE_LEAN_ATTENTION OFF)
   set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
+  set(onnxruntime_USE_TRT_FUSED_ATTENTION OFF)
 endif()
 
 if (onnxruntime_USE_CUDA)
@@ -807,6 +814,11 @@ if (onnxruntime_USE_CUDA)
     if (onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION)
       message( STATUS "Enable memory efficient attention for CUDA EP")
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_MEMORY_EFFICIENT_ATTENTION=1)
+    endif()
+
+    if (onnxruntime_USE_TRT_FUSED_ATTENTION)
+      message( STATUS "Enable TensorRT fused multi-head attention for CUDA EP")
+      list(APPEND ORT_PROVIDER_FLAGS -DUSE_TRT_FUSED_ATTENTION=1)
     endif()
 
     if (onnxruntime_USE_FPA_INTB_GEMM)
@@ -1526,7 +1538,12 @@ if (onnxruntime_USE_CUDA)
     message(FATAL_ERROR "onnxruntime_USE_FP4_QMOE requires CUDA Toolkit version 12.8 or newer")
   endif()
 
-  if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "13.0")
+  if(onnxruntime_CUDA_FATBIN_COMPRESS_SIZE AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "12.8")
+    message(FATAL_ERROR "onnxruntime_CUDA_FATBIN_COMPRESS_SIZE requires CUDA Toolkit version 12.8 or newer")
+  endif()
+
+  if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "13.0" OR onnxruntime_CUDA_FATBIN_COMPRESS_SIZE)
+    message(STATUS "Compressing CUDA fatbins with -compress-mode=size (requires a CUDA 12.4 or newer driver)")
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xfatbin=-compress-all -compress-mode=size")
   else()
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xfatbin=-compress-all")
