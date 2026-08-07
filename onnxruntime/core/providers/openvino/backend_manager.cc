@@ -19,6 +19,7 @@
 #include "core/providers/openvino/contexts.h"
 #include "core/providers/openvino/ibackend.h"
 #include "core/providers/openvino/ov_interface.h"
+#include "core/providers/openvino/ov_protobuf_utils.h"
 #include "core/providers/openvino/ov_versions/capability.h"
 #include "core/providers/openvino/qdq_transformations/qdq_stripping.h"
 #include "core/providers/openvino/exceptions.h"
@@ -40,6 +41,22 @@ ov::CompiledModel BackendManager::GetOVCompiledModel() {
 
 static bool ShouldExportEpContext(const SessionContext& session_context, const SubGraphContext& subgraph_context) {
   return session_context.so_context_enable && (subgraph_context.is_ep_ctx_ovir_encapsulated || !subgraph_context.is_ep_ctx_graph);
+}
+
+static TensorRankMap GetResizeInputRanks(const onnxruntime::GraphViewer& subgraph) {
+  TensorRankMap tensor_ranks;
+  for (const auto& node : subgraph.Nodes()) {
+    if (node.OpType() != "Resize" || node.SinceVersion() < 18 || node.InputDefs().empty()) {
+      continue;
+    }
+
+    const auto* input = node.InputDefs()[0];
+    if (input != nullptr && input->Shape() != nullptr) {
+      tensor_ranks[input->Name()] = input->Shape()->dim_size();
+    }
+  }
+
+  return tensor_ranks;
 }
 
 BackendManager::BackendManager(SessionContext& session_context,
@@ -459,6 +476,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
 
   [[maybe_unused]] bool enable_ovep_qdq_optimizer = session_context_.enable_qdq_optimizer && IsQDQGraph(subgraph);
   [[maybe_unused]] std::optional<bool> enable_compiler_qdq_optimization = queryOVProperty("NPU_QDQ_OPTIMIZATION", session_context_.device_type);
+  const auto resize_input_ranks = GetResizeInputRanks(subgraph);
 #if (((OPENVINO_VERSION_MAJOR == 2025) && (OPENVINO_VERSION_MINOR > 0)) || (OPENVINO_VERSION_MAJOR > 2025))
   if (session_context_.device_type.find("NPU") != std::string::npos && session_context_.enable_qdq_optimizer) {
     if (enable_compiler_qdq_optimization.has_value() && enable_compiler_qdq_optimization.value()) {
@@ -482,6 +500,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, session_context_.so_share_ep_contexts, enable_ovep_qdq_optimizer, model, shared_context_);
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    normalize_negative_resize_axes(model_proto.get(), resize_input_ranks);
     print_model_proto_duration();
     DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node, subgraph, logger, /*initializer_data_in_proto*/ true);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
@@ -496,6 +515,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     Status status = qdq_scales_fix::Transform(subgraph, logger, model);
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    normalize_negative_resize_axes(model_proto.get(), resize_input_ranks);
     print_model_proto_duration();
     DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node, subgraph, logger, /*initializer_data_in_proto*/ true);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
@@ -537,6 +557,8 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     subgraph.ToProto(*model_proto->mutable_graph(), /*include_initializers*/ true,
                      /*include_outer_scope_args*/ true, /*execution_order*/ 0, /*include_initializer_data*/ include_initializer_data_in_proto);
+
+    normalize_negative_resize_axes(model_proto.get(), resize_input_ranks);
 
     print_model_proto_duration();
 
