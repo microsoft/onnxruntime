@@ -240,13 +240,19 @@ jobs:
       - name: Smoke test - run inference with onnx-light-built onnxruntime
         run: |
           set -e -x
-          python - <<'PY'
+          # Run from /tmp so Python does not pick up the local onnxruntime/ source
+          # directory before the installed wheel (which would cause ImportError on
+          # onnxruntime.capi because the source tree has no compiled .so).
+          export model_path="${GITHUB_WORKSPACE}/onnxruntime/test/testdata/mul_1.onnx"
+          cd /tmp
+          python - <<PY
           import numpy as np
           import onnxruntime as ort
 
           # Prove that an onnxruntime built against onnx-light (no onnx, no protobuf)
           # can load a real .onnx model and run inference. mul_1.onnx computes Y = X * X.
-          model = "onnxruntime/test/testdata/mul_1.onnx"
+          import os
+          model = os.environ["model_path"]
           sess = ort.InferenceSession(model, providers=["CPUExecutionProvider"])
           iname = sess.get_inputs()[0].name
           oname = sess.get_outputs()[0].name
