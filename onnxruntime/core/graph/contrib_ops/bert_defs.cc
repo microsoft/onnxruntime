@@ -2621,7 +2621,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Output(0,
                 "output",
-                "Attention output with 3D packed shape (B, T, H_q * d_v).",
+                // Kept free of angle brackets: gen_contrib_doc.py interpolates this
+                // description straight into an HTML <dd> element without escaping.
+                "Attention output with 3D packed shape (B, T, max(H_q, H_kv) * d_v). "
+                "Standard GQA emits one output per query head; inverse GQA, where "
+                "H_kv exceeds H_q, emits one per KV head.",
                 "T")
         .Output(1,
                 "present_state",
@@ -2643,7 +2647,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           int64_t q_num_heads = (q_num_heads_attr && q_num_heads_attr->has_i()) ? q_num_heads_attr->i() : 0;
           int64_t kv_num_heads = (kv_num_heads_attr && kv_num_heads_attr->has_i()) ? kv_num_heads_attr->i() : 0;
 
-          // Output 0: (B, T, H_q * d_v) — 3D packed
+          // Output 0: (B, T, max(H_q, H_kv) * d_v) — 3D packed
           if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2) && q_num_heads > 0 && kv_num_heads > 0) {
             auto& query_shape = getInputShape(ctx, 0);
             auto& value_shape = getInputShape(ctx, 2);
