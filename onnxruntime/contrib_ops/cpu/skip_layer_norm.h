@@ -22,6 +22,9 @@ class SkipLayerNorm final : public OpKernel {
  private:
   float epsilon_;
   int64_t prepacked_skip_fp32_size_;
+  int64_t prepacked_gamma_fp32_size_;
+  int64_t prepacked_beta_fp32_size_;
+  int64_t prepacked_bias_fp32_size_;
   IAllocatorUniquePtr<float> prepacked_skip_fp32_data_;
   IAllocatorUniquePtr<float> prepacked_gamma_fp32_data_;
   IAllocatorUniquePtr<float> prepacked_beta_fp32_data_;
