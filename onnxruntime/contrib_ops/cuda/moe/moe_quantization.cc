@@ -313,6 +313,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       // ORT_FP4_SM80_GEMM constructor-plumbed decision below).
       enable_fp4_gemv_autotune_ = Fp4GemvAutotuneEnabled();
       enable_fp4_gemv_autotune_log_ = Fp4GemvAutotuneLogEnabled();
+      fp4_gemv_skip_expand_ = !Fp4GemvSkipExpandDisabled();
 #else
       use_fp4_dequant_fallback_ = true;
 #endif
@@ -355,6 +356,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       }
       enable_fp4_gemv_autotune_ = Fp4GemvAutotuneEnabled();
       enable_fp4_gemv_autotune_log_ = Fp4GemvAutotuneLogEnabled();
+      fp4_gemv_skip_expand_ = !Fp4GemvSkipExpandDisabled();
 #endif
     } else if (quant_type_ == "wfp4afp8") {
       ORT_ENFORCE(expert_weight_bits_ == 4, "WFP4AFP8 (W4A8) quantization requires expert_weight_bits=4");
@@ -1471,7 +1473,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
       auto run_fused = [&](auto* t_ptr) {
         using T = std::remove_pointer_t<decltype(t_ptr)>;
-        const bool skip_expand = !Fp4GemvSkipExpandDisabled();
+        const bool skip_expand = fp4_gemv_skip_expand_;
         if (!skip_expand) {
           ck::expandInputRowsKernelLauncher<T, T>(
               static_cast<const T*>(input->DataRaw()), static_cast<T*>(p_act_buf.get()),
@@ -1527,7 +1529,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
             return elapsed_ms;
           };
 
-          // fc1 reads p_act_buf (populated by the expand above).
+          // fc1 reads the original input through p_r2u when skip-expand is enabled; otherwise
+          // it reads p_act_buf populated by the expand above.
           const bool log_tune = enable_fp4_gemv_autotune_log_;
           float best_fc1 = std::numeric_limits<float>::max();
           for (MoeGemvConfig cfg : kCandidates) {
