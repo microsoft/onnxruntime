@@ -1,6 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "core/common/inlined_containers.h"
 #include "core/framework/max_shape_inference.h"
