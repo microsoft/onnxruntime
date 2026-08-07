@@ -15,8 +15,7 @@ Abstract:
     transposes 4x4 tiles with SSE2, requiring four transposes per 16-wide block;
     these routines transpose full 16x16 tiles in one pass.
 
-    The transposes are pure data-movement and are bit-exact with the scalar/SSE2
-    reference (validated with a standalone oracle test): for a tile,
+    The transposes are pure data-movement: for a tile,
     Output[p*DstStride + c] = Input[c*SrcStride + p].
 
 --*/
@@ -130,10 +129,9 @@ MlasReorderOutputNchwBlock16Avx512F(
 {
     size_t p = 0;
     for (; p + 16 <= OutputSize; p += 16) {
-        // Tile: Input row c = channel c across 16 spatial? No -- here source rows
-        // are spatial (stride 16) and we want dest rows = channels (stride
-        // OutputSize). Transpose with SrcStride=16, DstStride=OutputSize maps
-        // Output[c*OutputSize + p] = Input[p*16 + c].
+        // Source rows are spatial positions (stride 16 channels); dest rows are
+        // channels (stride OutputSize). Transpose with SrcStride=16,
+        // DstStride=OutputSize maps Output[c*OutputSize + p] = Input[p*16 + c].
         MlasReorderTranspose16x16Avx512F(S + p * 16, D + p, 16, OutputSize);
     }
     for (; p < OutputSize; p++) {
