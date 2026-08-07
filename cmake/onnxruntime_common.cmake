@@ -155,6 +155,12 @@ if(WIN32)
   # /NODEFAULTLIB), and non-desktop partitions (UWP/WindowsStore) neither use nor ship it.
   if(NOT GDK_PLATFORM AND NOT CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
     target_link_libraries(onnxruntime_common PRIVATE shell32)
+    # shell32.dll statically imports user32.dll, which is unavailable under Win32k lockdown. Delay-load
+    # shell32.dll so the load-time dependency on user32.dll is deferred until the call is actually made,
+    # letting onnxruntime.dll load in lockdown processes.
+    if(onnxruntime_ENABLE_DELAY_LOADING_WIN_DLLS)
+      list(APPEND onnxruntime_DELAYLOAD_FLAGS "/DELAYLOAD:shell32.dll")
+    endif()
   endif()
 endif()
 

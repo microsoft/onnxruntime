@@ -192,14 +192,14 @@ struct genericMoeGemmKernelLauncher {
       }
       int occupancy = std::min(2, GemmGrouped::maximum_active_blocks());
       ORT_ENFORCE(occupancy > 0, "GPU lacks the shared memory resources to run GroupedGEMM kernel");
-      int const threadblock_count = sm_count_ * occupancy;
+      const int threadblock_count = sm_count_ * occupancy;
 
-      int const gemm_group_size = QuantOp == cutlass::WeightOnlyQuantOp::UNDEFINED ? inputs.k : inputs.groupwise_quant_group_size;
+      const int gemm_group_size = QuantOp == cutlass::WeightOnlyQuantOp::UNDEFINED ? inputs.k : inputs.groupwise_quant_group_size;
       typename GemmGrouped::Arguments args(inputs.num_experts, threadblock_count, gemm_group_size, epilogue_op,
-                                           reinterpret_cast<ElementType const*>(inputs.A), reinterpret_cast<CutlassWeightType const*>(inputs.B),
-                                           reinterpret_cast<CutlassGemmOutputType const*>(inputs.scales),
-                                           reinterpret_cast<CutlassGemmOutputType const*>(inputs.zeros),
-                                           reinterpret_cast<CutlassGemmOutputType const*>(inputs.biases), inputs.bias_is_broadcast,
+                                           reinterpret_cast<const ElementType*>(inputs.A), reinterpret_cast<const CutlassWeightType*>(inputs.B),
+                                           reinterpret_cast<const CutlassGemmOutputType*>(inputs.scales),
+                                           reinterpret_cast<const CutlassGemmOutputType*>(inputs.zeros),
+                                           reinterpret_cast<const CutlassGemmOutputType*>(inputs.biases), inputs.bias_is_broadcast,
                                            reinterpret_cast<CutlassGemmOutputType*>(inputs.C), inputs.total_tokens_including_expert, inputs.n,
                                            inputs.k);
 #if ORT_DEBUG_MOE
@@ -313,8 +313,8 @@ struct genericMoeGemmKernelLauncher {
 #endif
         sm80_generic_fused_moe_gemm_kernelLauncher<ElementType, CutlassWeightType, ThreadblockShape::kM,
                                                    ThreadblockShape::kN, ThreadblockShape::kK, Stages, EpilogueTag>(
-            reinterpret_cast<ElementType const*>(inputs.A), reinterpret_cast<CutlassWeightType const*>(inputs.B),
-            reinterpret_cast<ElementType const*>(inputs.biases), inputs.bias_is_broadcast,
+            reinterpret_cast<const ElementType*>(inputs.A), reinterpret_cast<const CutlassWeightType*>(inputs.B),
+            reinterpret_cast<const ElementType*>(inputs.biases), inputs.bias_is_broadcast,
             reinterpret_cast<ElementType*>(inputs.C), inputs.total_tokens_including_expert, inputs.num_rows,
             inputs.n, inputs.k, inputs.num_experts, sm_count_, inputs.stream, inputs.occupancy);
 #ifdef ORT_QUICK_BUILD
@@ -633,9 +633,9 @@ MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::getAmpereConfigs(int sm
   static constexpr auto weight_only_flag = std::is_same<T, WeightType>::value ? CutlassGemmConfig::NONE : CutlassGemmConfig::WEIGHT_ONLY;
   static constexpr auto simt_only_flag = std::is_same<T, float>::value ? CutlassGemmConfig::SIMT_ONLY : CutlassGemmConfig::NONE;
   static constexpr auto fp8_only_flag = use_fp8 ? CutlassGemmConfig::FP8_ONLY : CutlassGemmConfig::NONE;
-  int const max_split_k = 1;
-  int const grouped_gemm_flag = CutlassGemmConfig::GROUPED_GEMM;
-  int const enable_hopper = CutlassGemmConfig::NONE;
+  const int max_split_k = 1;
+  const int grouped_gemm_flag = CutlassGemmConfig::GROUPED_GEMM;
+  const int enable_hopper = CutlassGemmConfig::NONE;
 
   auto config_type_param = static_cast<CutlassGemmConfig::CandidateConfigTypeParam>(
       weight_only_flag | simt_only_flag | grouped_gemm_flag | enable_hopper | fp8_only_flag);
@@ -662,11 +662,11 @@ MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::getTmaWarpSpecializedCo
   using onnxruntime::llm::cutlass_extensions::CutlassGemmConfig;
   static constexpr auto weight_only_flag = std::is_same<T, WeightType>::value ? CutlassGemmConfig::NONE : CutlassGemmConfig::WEIGHT_ONLY;
   static constexpr auto simt_only_flag = std::is_same<T, float>::value ? CutlassGemmConfig::SIMT_ONLY : CutlassGemmConfig::NONE;
-  int const max_split_k = 1;
-  int const grouped_gemm_flag = CutlassGemmConfig::GROUPED_GEMM;
-  int const config_sm = use_wfp4a16 && sm >= 120 ? 90 : sm;
-  int const enable_blackwell = config_sm >= 100 ? CutlassGemmConfig::BLACKWELL : CutlassGemmConfig::NONE;
-  int const enable_hopper = config_sm == 90 ? CutlassGemmConfig::HOPPER : CutlassGemmConfig::NONE;
+  const int max_split_k = 1;
+  const int grouped_gemm_flag = CutlassGemmConfig::GROUPED_GEMM;
+  const int config_sm = use_wfp4a16 && sm >= 120 ? 90 : sm;
+  const int enable_blackwell = config_sm >= 100 ? CutlassGemmConfig::BLACKWELL : CutlassGemmConfig::NONE;
+  const int enable_hopper = config_sm == 90 ? CutlassGemmConfig::HOPPER : CutlassGemmConfig::NONE;
   static constexpr auto fp8_only_flag = use_fp8 ? CutlassGemmConfig::FP8_ONLY : CutlassGemmConfig::NONE;
   static constexpr auto fp4_only_flag = (use_fp4 || use_wfp4afp8) ? CutlassGemmConfig::FP4_ONLY : CutlassGemmConfig::NONE;
   auto config_type_param = static_cast<CutlassGemmConfig::CandidateConfigTypeParam>(weight_only_flag | simt_only_flag | grouped_gemm_flag | enable_blackwell | enable_hopper | fp8_only_flag | fp4_only_flag);
@@ -720,7 +720,7 @@ bool MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::isTmaWarpSpecializ
 template <typename T, typename WeightType, typename OutputType, typename ScaleBiasType>
 bool MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::supportsTmaWarpSpecialized() const {
   ORT_LLM_LOG_ENTRY();
-  int const config_sm = use_wfp4a16 && sm_ >= 120 ? 90 : sm_;
+  const int config_sm = use_wfp4a16 && sm_ >= 120 ? 90 : sm_;
   if (!isTmaWarpSpecializedGroupedGemmCompiledForSm(config_sm)) {
     return false;
   }
@@ -1006,7 +1006,7 @@ size_t MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::calcMaxWorkspace
           num_experts, conf, multi_processor_count_, fpX_block_scaling_type);                                                  \
       max_size = std::max(max_size, size);                                                                                     \
       has_config = true;                                                                                                       \
-    } catch (::onnxruntime::OnnxRuntimeException const& e) {                                                                   \
+    } catch (const ::onnxruntime::OnnxRuntimeException& e) {                                                                   \
       ORT_LLM_LOG_DEBUG(onnxruntime::MakeString("Unsupported config skipped when calculating MOE workspace size ", e.what())); \
     }                                                                                                                          \
   } while (0)

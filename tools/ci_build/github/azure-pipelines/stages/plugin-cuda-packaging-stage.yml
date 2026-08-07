@@ -51,6 +51,16 @@ parameters:
    - RelWithDebInfo
    - MinSizeRel
 
+- name: enable_cuda_fatbin_size_compression
+  type: boolean
+  displayName: 'Compress CUDA fatbins with -compress-mode=size'
+  default: false
+
+- name: enable_fpa_intb_gemm
+  type: boolean
+  displayName: 'Build fpA_intB GEMM CUDA kernels'
+  default: true
+
 - name: docker_base_image
   type: string
   displayName: 'Linux x86_64 docker base image'
@@ -61,15 +71,25 @@ parameters:
   displayName: 'Linux aarch64 docker base image'
   default: ''
 
-- name: cmake_x64_cuda_archs
+- name: cmake_windows_x64_cuda_archs
   type: string
-  displayName: 'CMAKE_CUDA_ARCHITECTURES for x64'
-  default: '61-real;75-real;86-real;89-real;120-real;120-virtual'
+  displayName: 'CMAKE_CUDA_ARCHITECTURES for Windows x64'
+  default: '61-real;75-real;86-real;89-real;120-real'
 
-- name: cmake_arm64_cuda_archs
+- name: cmake_windows_arm64_cuda_archs
   type: string
-  displayName: 'CMAKE_CUDA_ARCHITECTURES for ARM64'
-  default: '110-real;120-real;121-real;120-virtual'
+  displayName: 'CMAKE_CUDA_ARCHITECTURES for Windows ARM64'
+  default: '120-real;121-real'
+
+- name: cmake_linux_x64_cuda_archs
+  type: string
+  displayName: 'CMAKE_CUDA_ARCHITECTURES for Linux x64'
+  default: '75-real;80-real;86-real;89-real;90-real;120-real'
+
+- name: cmake_linux_aarch64_cuda_archs
+  type: string
+  displayName: 'CMAKE_CUDA_ARCHITECTURES for Linux aarch64'
+  default: '89-real;90-real;100-real;103-real;120-real;121-real'
 
 - name: python_version
   type: string
@@ -147,11 +167,13 @@ stages:
         parameters:
           arch: 'x64'
           cuda_version: ${{ parameters.cuda_version }}
-          cmake_cuda_archs: ${{ parameters.cmake_x64_cuda_archs }}
+          cmake_cuda_archs: ${{ parameters.cmake_windows_x64_cuda_archs }}
           package_version: ${{ parameters.package_type }}
           version_file: ${{ parameters.version_file }}
           python_package_name: ${{ parameters.python_package_name }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
+          enable_cuda_fatbin_size_compression: ${{ parameters.enable_cuda_fatbin_size_compression }}
+          enable_fpa_intb_gemm: ${{ parameters.enable_fpa_intb_gemm }}
 
     # Windows ARM64
     - ${{ if eq(parameters.build_windows_arm64, true) }}:
@@ -160,11 +182,13 @@ stages:
           arch: 'arm64'
           cuda_version: ${{ parameters.cuda_version }}
           arm64_cuda_version: ${{ parameters.arm64_cuda_version }}
-          cmake_cuda_archs: ${{ parameters.cmake_arm64_cuda_archs }}
+          cmake_cuda_archs: ${{ parameters.cmake_windows_arm64_cuda_archs }}
           package_version: ${{ parameters.package_type }}
           version_file: ${{ parameters.version_file }}
           python_package_name: ${{ parameters.python_package_name }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
+          enable_cuda_fatbin_size_compression: ${{ parameters.enable_cuda_fatbin_size_compression }}
+          enable_fpa_intb_gemm: ${{ parameters.enable_fpa_intb_gemm }}
 
     # Linux x64
     - ${{ if eq(parameters.build_linux_x64, true) }}:
@@ -174,7 +198,7 @@ stages:
           arch: 'x64'
           machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
           cuda_version: ${{ parameters.cuda_version }}
-          cmake_cuda_archs: ${{ parameters.cmake_x64_cuda_archs }}
+          cmake_cuda_archs: ${{ parameters.cmake_linux_x64_cuda_archs }}
           package_version: ${{ parameters.package_type }}
           version_file: ${{ parameters.version_file }}
           python_package_name: ${{ parameters.python_package_name }}
@@ -183,6 +207,8 @@ stages:
           python_version: ${{ parameters.python_version }}
           docker_python_exe_path: ${{ parameters.docker_python_exe_path }}
           artifact_name: cuda_plugin_linux_x64
+          enable_cuda_fatbin_size_compression: ${{ parameters.enable_cuda_fatbin_size_compression }}
+          enable_fpa_intb_gemm: ${{ parameters.enable_fpa_intb_gemm }}
 
     # Linux aarch64 (CUDA 13.x only)
     - ${{ if eq(parameters.build_linux_aarch64, true) }}:
@@ -192,7 +218,7 @@ stages:
           arch: 'aarch64'
           machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
           cuda_version: ${{ parameters.cuda_version }}
-          cmake_cuda_archs: ${{ parameters.cmake_arm64_cuda_archs }}
+          cmake_cuda_archs: ${{ parameters.cmake_linux_aarch64_cuda_archs }}
           package_version: ${{ parameters.package_type }}
           version_file: ${{ parameters.version_file }}
           python_package_name: ${{ parameters.python_package_name }}
@@ -201,6 +227,8 @@ stages:
           python_version: ${{ parameters.python_version }}
           docker_python_exe_path: ${{ parameters.docker_python_exe_path }}
           artifact_name: cuda_plugin_linux_aarch64
+          enable_cuda_fatbin_size_compression: ${{ parameters.enable_cuda_fatbin_size_compression }}
+          enable_fpa_intb_gemm: ${{ parameters.enable_fpa_intb_gemm }}
 
     # NuGet packaging (runs after all platform builds)
     - template: plugin-cuda-nuget-packaging-stage.yml

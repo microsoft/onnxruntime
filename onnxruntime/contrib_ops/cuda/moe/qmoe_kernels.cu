@@ -20,37 +20,15 @@ int Compute1DGridSize(int num_elements, int block_size) {
   return (num_elements + block_size - 1) / block_size;
 }
 
-constexpr float kTopKNormalizeEpsilon = 1e-6f;
+constexpr float kTopKNormalizeEpsilon = onnxruntime::cuda::topk::kTopKNormalizeEpsilon;
 
-__device__ __forceinline__ float SoftmaxScale(float logit, float max_val, float inv_sum) {
-  return (inv_sum > 0.0f) ? expf(logit - max_val) * inv_sum : 0.0f;
-}
-
-__device__ __forceinline__ float SafeInvSum(float sum) {
-  return (sum > 0.0f) ? (1.0f / sum) : 0.0f;
-}
-
-__device__ __forceinline__ float TopKNormalizeDenom(bool normalize_scales, float scale_sum) {
-  return (normalize_scales && scale_sum > kTopKNormalizeEpsilon) ? scale_sum : 1.0f;
-}
-
-__device__ __forceinline__ float WarpReduceMax(float value) {
-  constexpr int kWarpSize = onnxruntime::cuda::topk::kWarpSize;
-#pragma unroll
-  for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
-    value = fmaxf(value, __shfl_xor_sync(0xFFFFFFFF, value, offset));
-  }
-  return value;
-}
-
-__device__ __forceinline__ float WarpReduceSum(float value) {
-  constexpr int kWarpSize = onnxruntime::cuda::topk::kWarpSize;
-#pragma unroll
-  for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
-    value += __shfl_xor_sync(0xFFFFFFFF, value, offset);
-  }
-  return value;
-}
+// Shared with the fused routing prologue in the LLM MoE runner (moe_kernels.cu); see
+// core/providers/cuda/cu_inc/topk_warp_sort.cuh for why these live in a header.
+using onnxruntime::cuda::topk::SafeInvSum;
+using onnxruntime::cuda::topk::SoftmaxScale;
+using onnxruntime::cuda::topk::TopKNormalizeDenom;
+using onnxruntime::cuda::topk::WarpReduceMax;
+using onnxruntime::cuda::topk::WarpReduceSum;
 
 template <typename BlockReduce>
 __device__ __forceinline__ float BlockReduceMax(float value, typename BlockReduce::TempStorage& temp_storage) {
@@ -278,6 +256,75 @@ __global__ void SoftmaxTopKWarpBitonicKernel(const T* logits, float* topk_scales
   }
 }
 
+// Warp-per-row softmax + top-k for expert counts in (64, kWarpSize * kItemsPerLane].
+// Lane `l` owns experts l, l + 32, l + 64, ... (strided so the logit loads stay
+// coalesced), and the whole row - softmax reduction and top-k selection alike - is
+// resolved with warp shuffles in registers: no shared memory, no __syncthreads and
+// no block-wide merge sort.
+//
+// This exists because the MoE decode shapes have very few rows, so the grid is a
+// handful of blocks and the kernel is bound by its dependency chain rather than by
+// throughput. SoftmaxTopKMergeKernel fully sorts all `num_experts` logits through
+// cub::BlockMergeSort, whose per-round MergePath searches and barriers dominate that
+// chain, while the top-k butterfly here costs a fixed ~5 shuffle rounds. Requires
+// k <= kItemsPerLane; tie-breaking matches SoftmaxTopKMergeKernel via the same
+// packed stable sort key.
+template <typename T, int kItemsPerLane, int kRowsPerBlock>
+__global__ void SoftmaxTopKWarpTopKKernel(const T* logits, float* topk_scales, int* topk_indices,
+                                          int num_rows, int num_experts, int k, bool normalize_scales) {
+  constexpr int kWarpSize = onnxruntime::cuda::topk::kWarpSize;
+  const int row = blockIdx.x * kRowsPerBlock + static_cast<int>(threadIdx.y);
+  if (row >= num_rows) return;
+
+  const int lane = threadIdx.x;
+  const T* row_logits = logits + static_cast<size_t>(row) * num_experts;
+
+  // Padding lanes carry (-inf, INT_MAX) so that valid -inf expert scores sort ahead.
+  uint64_t keys[kItemsPerLane];
+  float local_max = onnxruntime::cuda::topk::kNegativeInfinity;
+#pragma unroll
+  for (int j = 0; j < kItemsPerLane; ++j) {
+    const int idx = j * kWarpSize + lane;
+    const float logit = (idx < num_experts) ? static_cast<float>(row_logits[idx])
+                                            : onnxruntime::cuda::topk::kNegativeInfinity;
+    keys[j] = onnxruntime::cuda::topk::PackStableSortKey(logit, (idx < num_experts) ? idx : INT_MAX);
+    local_max = fmaxf(local_max, logit);
+  }
+
+  // Softmax denominator over all experts (needed when normalize_scales is false;
+  // when true it cancels in the top-k normalization but is still correct).
+  const float max_val = WarpReduceMax(local_max);
+  float local_sum = 0.0f;
+#pragma unroll
+  for (int j = 0; j < kItemsPerLane; ++j) {
+    if (j * kWarpSize + lane < num_experts) {
+      local_sum += expf(onnxruntime::cuda::topk::UnpackStableSortScore(keys[j]) - max_val);
+    }
+  }
+  const float inv_sum = SafeInvSum(WarpReduceSum(local_sum));
+
+  // Every lane ends up holding the row's top kItemsPerLane keys, sorted descending.
+  onnxruntime::cuda::topk::WarpBitonicTopN<kItemsPerLane>(keys);
+
+  float probs[kItemsPerLane];
+  float scale_sum = 0.0f;
+#pragma unroll
+  for (int j = 0; j < kItemsPerLane; ++j) {
+    probs[j] = SoftmaxScale(onnxruntime::cuda::topk::UnpackStableSortScore(keys[j]), max_val, inv_sum);
+    if (j < k) scale_sum += probs[j];
+  }
+  const float denom = TopKNormalizeDenom(normalize_scales, scale_sum);
+
+  // The results are replicated across the warp, so lane j simply writes rank j.
+#pragma unroll
+  for (int j = 0; j < kItemsPerLane; ++j) {
+    if (lane == j && j < k) {
+      topk_scales[static_cast<size_t>(row) * k + j] = normalize_scales ? (probs[j] / denom) : probs[j];
+      topk_indices[static_cast<size_t>(row) * k + j] = onnxruntime::cuda::topk::UnpackStableSortIndex(keys[j]);
+    }
+  }
+}
+
 // Warp CUB merge sort softmax + top-k for num_experts <= kBufferSize (64). One
 // warp (32 threads) per block sorts a row's logits held in shared memory. This
 // is the genai-recommended path for sort sizes in (32, 64]. Tie-breaking
@@ -365,6 +412,22 @@ void DispatchSoftmaxTopK(const T* logits, float* topk_scales, int* topk_indices,
       // merge sort), the genai-recommended path for sort sizes in (32, 64].
       SoftmaxTopKWarpMergeKernel<T, 64><<<grid, onnxruntime::cuda::topk::kWarpSize, 0, stream>>>(
           logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales);
+      return;
+    } else if (num_experts <= 256 && k <= 8) {
+      // Warp-per-row register top-k. Pick the smallest per-lane capacity that both
+      // covers num_experts across the warp and can hold the requested k.
+      constexpr int kRowsPerBlock = 4;
+      const dim3 warp_block(static_cast<unsigned>(onnxruntime::cuda::topk::kWarpSize), kRowsPerBlock);
+      const dim3 warp_grid(static_cast<unsigned>((num_rows + kRowsPerBlock - 1) / kRowsPerBlock));
+      const int items_per_lane =
+          std::max(k, (num_experts + onnxruntime::cuda::topk::kWarpSize - 1) / onnxruntime::cuda::topk::kWarpSize);
+      if (items_per_lane <= 4) {
+        SoftmaxTopKWarpTopKKernel<T, 4, kRowsPerBlock><<<warp_grid, warp_block, 0, stream>>>(
+            logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales);
+      } else {
+        SoftmaxTopKWarpTopKKernel<T, 8, kRowsPerBlock><<<warp_grid, warp_block, 0, stream>>>(
+            logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales);
+      }
       return;
     } else if (num_experts <= 128) {
       SoftmaxTopKMergeKernel<T, 128, 1><<<grid, 128, 0, stream>>>(
@@ -938,14 +1001,137 @@ void LaunchQMoEBlockScaleInterleave(
       input, output, batch_size, rows, cols, rows_padded, cols_padded);
 }
 
+// E2M1 has only 8 magnitudes (0, 0.5, 1, 1.5, 2, 3, 4, 6), so the obvious implementation is a
+// table lookup -- but a runtime-indexed local table compiles to a constant-bank load that the
+// hardware replays once per distinct address in a warp, and neighbouring weights rarely share a
+// code. Assembling the float bits directly keeps it branch-free and in registers:
+//   e != 0: value = 2^(e-1) * (1 + m/2)  -> biased exponent 126 + e, mantissa MSB m
+//   e == 0: value = m ? 0.5 : 0          -> biased exponent 126 with zero mantissa, or all zero
 __device__ __forceinline__ float DecodeFp4E2M1(uint8_t code) {
-  constexpr float kValues[8] = {0.0f, 0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f};
-  float value = kValues[code & 0x7];
-  return (code & 0x8) ? -value : value;
+  const uint32_t e = (code >> 1) & 0x3u;
+  const uint32_t m = code & 0x1u;
+  const uint32_t sign = static_cast<uint32_t>(code & 0x8u) << 28;
+  const uint32_t normal = ((126u + e) << 23) | (m << 22);
+  const uint32_t subnormal = m ? (126u << 23) : 0u;
+  return __uint_as_float(sign | (e ? normal : subnormal));
 }
 
 __device__ __forceinline__ float DecodeUE8M0(uint8_t code) {
   return code == 0 ? 0.0f : exp2f(static_cast<int>(code) - 127);
+}
+
+__device__ __forceinline__ float DecodeFloat8E4M3FN(uint8_t code) {
+  // ONNX float8e4m3fn has no infinities. The only NaN payloads are 0x7F/0xFF;
+  // finite values, including the max finite code 0x7E, use the normal E4M3 formula.
+  const int sign = code & 0x80;
+  const int exponent = (code >> 3) & 0x0F;
+  const int mantissa = code & 0x07;
+
+  if ((code & 0x7F) == 0) {
+    return sign ? -0.0f : 0.0f;
+  }
+  if (exponent == 0x0F && mantissa == 0x07) {
+    return __int_as_float(0x7fffffff);
+  }
+
+  float value = 0.0f;
+  if (exponent == 0) {
+    value = ldexpf(static_cast<float>(mantissa), -9);
+  } else {
+    value = ldexpf(1.0f + static_cast<float>(mantissa) * 0.125f, exponent - 7);
+  }
+  return sign ? -value : value;
+}
+
+// Tile shape for QMoEDequantizeFp4WeightsVecKernel. kTileN = 64 rows is exactly 32 packed bytes,
+// so a block consumes every sector of the packed weights it touches; kTileK / kVecK = 8 threads
+// per row make each store 128 contiguous bytes. Block is (8, 64) = 512 threads.
+constexpr int kQMoEDequantizeFp4VecK = 8;
+constexpr int kQMoEDequantizeFp4TileN = 64;
+constexpr int kQMoEDequantizeFp4TileK = 64;
+
+// Coalescing-optimized FP4 / NVFP4 weight dequantization.
+//
+// The scalar kernels below map one thread to one output element with the k index varying
+// fastest. The packed weights are stored [E, K, N/2] (n-packed) while the output is [E, N, K],
+// so that mapping makes consecutive lanes read packed bytes ``packed_n`` apart -- a separate
+// 32-byte sector per lane for half a byte of payload, plus a 64-bit div/mod per element. On the
+// 40-layer NVFP4 MoE prefill it ran at ~5% of HBM peak (3.8 ms per launch, 307 ms per forward).
+//
+// This kernel tiles the output: a block covers ``kTileN`` consecutive rows x ``kTileK``
+// consecutive k, with threadIdx.x selecting the k group and threadIdx.y the row. Each thread
+// emits ``kVecK`` = 8 values (one 16-byte uint4).
+//
+// The mapping matters more than the vector width. Nsight Compute on an earlier revision that gave
+// each thread 16 (then 32) consecutive k of a *single* row reported ~95% of ``Max Bandwidth`` at
+// only ~26% DRAM throughput: the kernel was bound by memory *requests*, not by DRAM. With one row
+// per lane a warp's 32 stores land ``k * sizeof(T)`` bytes apart, so every lane needs its own
+// 32-byte sector and widening the per-lane store leaves requests-per-byte unchanged (measured: no
+// improvement from 16 -> 32 values per thread).
+//
+// Here threadIdx.x spans kTileK / kVecK = 8 lanes of the same row, so each group of 8 lanes issues
+// one 128-byte contiguous store and a warp covers 4 rows in 4 requests instead of 32. The packed
+// reads stay efficient because kTileN = 64 rows is exactly 32 packed bytes, so the block consumes
+// every sector it touches:
+//   * stores: 128 contiguous bytes per 8 lanes, 100% of each sector used;
+//   * reads: one 32-byte sector per (expert, k) fully consumed by the block's 64 rows;
+//   * the block-scale byte and the per-expert global scale are read once per kVecK values;
+//   * the index decomposition is pure grid arithmetic, so there is no integer division.
+//
+// ``kE4M3Scale`` selects the NVFP4 scale codec (Float8E4M3FN, block 16) over the MXFP4 one
+// (Float8E8M0, block 32); ``kBlockSize`` is the matching scale block size. kVecK divides both, so
+// each thread's values always share one block scale.
+template <typename T, int kBlockSize, bool kE4M3Scale>
+__global__ void QMoEDequantizeFp4WeightsVecKernel(
+    const uint8_t* __restrict__ packed_weights,
+    const uint8_t* __restrict__ block_scales,
+    const float* __restrict__ global_scales,
+    T* __restrict__ output,
+    int n,
+    int k) {
+  constexpr int kVecK = kQMoEDequantizeFp4VecK;
+  const int row = static_cast<int>(blockIdx.x) * kQMoEDequantizeFp4TileN + static_cast<int>(threadIdx.y);
+  if (row >= n) {
+    return;
+  }
+  const int k_base = static_cast<int>(blockIdx.y) * kQMoEDequantizeFp4TileK +
+                     static_cast<int>(threadIdx.x) * kVecK;
+  const int expert = static_cast<int>(blockIdx.z);
+
+  const int packed_n = n >> 1;
+  const int shift = (row & 1) ? 4 : 0;
+  const int64_t weight_base = (static_cast<int64_t>(expert) * k + k_base) * packed_n + (row >> 1);
+
+  const int scale_k = k / kBlockSize;
+  const uint8_t scale_code = block_scales[(static_cast<int64_t>(expert) * n + row) * scale_k + k_base / kBlockSize];
+  const float scale = (kE4M3Scale ? DecodeFloat8E4M3FN(scale_code) : DecodeUE8M0(scale_code)) * global_scales[expert];
+
+  // uint4 storage keeps the staging buffer 16-byte aligned for the vector store below.
+  uint4 staged[kVecK * sizeof(T) / sizeof(uint4)];
+  T* values = reinterpret_cast<T*>(staged);
+#pragma unroll
+  for (int j = 0; j < kVecK; ++j) {
+    const uint8_t packed = packed_weights[weight_base + static_cast<int64_t>(j) * packed_n];
+    values[j] = static_cast<T>(DecodeFp4E2M1(static_cast<uint8_t>((packed >> shift) & 0x0F)) * scale);
+  }
+
+  uint4* dst = reinterpret_cast<uint4*>(output + (static_cast<int64_t>(expert) * n + row) * k + k_base);
+#pragma unroll
+  for (int v = 0; v < static_cast<int>(kVecK * sizeof(T) / sizeof(uint4)); ++v) {
+    dst[v] = staged[v];
+  }
+}
+
+// The vectorized kernel needs an even n (nibble packing), a k that is a whole number of tiles, and
+// a scale block that is a multiple of the per-thread vector so every thread's values share one
+// block scale. The expert and k-tile counts also have to fit gridDim.z / gridDim.y (65535). Every
+// shape produced by the QMoE quantizers satisfies this; the scalar kernels stay as the fallback
+// for anything else.
+template <int kBlockSize>
+inline bool QMoEDequantizeFp4VecApplies(int num_experts, int n, int k) {
+  return (n % 2) == 0 && (k % kQMoEDequantizeFp4TileK) == 0 && (k % kBlockSize) == 0 &&
+         (kBlockSize % kQMoEDequantizeFp4VecK) == 0 &&
+         (k / kQMoEDequantizeFp4TileK) <= 65535 && num_experts <= 65535;
 }
 
 template <typename T>
@@ -989,11 +1175,21 @@ void LaunchQMoEDequantizeFp4WeightsImpl(
     int n,
     int k,
     cudaStream_t stream) {
-  int64_t total = static_cast<int64_t>(num_experts) * n * k;
   constexpr int block = 256;
+  if (QMoEDequantizeFp4VecApplies<32>(num_experts, n, k)) {
+    const dim3 tile_block(kQMoEDequantizeFp4TileK / kQMoEDequantizeFp4VecK, kQMoEDequantizeFp4TileN);
+    const dim3 tile_grid((n + kQMoEDequantizeFp4TileN - 1) / kQMoEDequantizeFp4TileN,
+                         k / kQMoEDequantizeFp4TileK, num_experts);
+    QMoEDequantizeFp4WeightsVecKernel<T, 32, false><<<tile_grid, tile_block, 0, stream>>>(
+        packed_weights, block_scales, global_scales, output, n, k);
+    CUDA_CALL_THROW(cudaGetLastError());
+    return;
+  }
+  int64_t total = static_cast<int64_t>(num_experts) * n * k;
   int grid = onnxruntime::narrow<int>((total + block - 1) / block);
   QMoEDequantizeFp4WeightsKernel<<<grid, block, 0, stream>>>(
       packed_weights, block_scales, global_scales, output, num_experts, n, k);
+  CUDA_CALL_THROW(cudaGetLastError());
 }
 
 void LaunchQMoEDequantizeFp4Weights(
@@ -1137,29 +1333,6 @@ void LaunchQMoEPackFp4ScalesForTmaWs(
   CUDA_CALL_THROW(cudaGetLastError());
 }
 
-__device__ __forceinline__ float DecodeFloat8E4M3FN(uint8_t code) {
-  // ONNX float8e4m3fn has no infinities. The only NaN payloads are 0x7F/0xFF;
-  // finite values, including the max finite code 0x7E, use the normal E4M3 formula.
-  const int sign = code & 0x80;
-  const int exponent = (code >> 3) & 0x0F;
-  const int mantissa = code & 0x07;
-
-  if ((code & 0x7F) == 0) {
-    return sign ? -0.0f : 0.0f;
-  }
-  if (exponent == 0x0F && mantissa == 0x07) {
-    return __int_as_float(0x7fffffff);
-  }
-
-  float value = 0.0f;
-  if (exponent == 0) {
-    value = ldexpf(static_cast<float>(mantissa), -9);
-  } else {
-    value = ldexpf(1.0f + static_cast<float>(mantissa) * 0.125f, exponent - 7);
-  }
-  return sign ? -value : value;
-}
-
 template <typename T>
 __global__ void QMoEDequantizeFp8WeightsKernel(
     const uint8_t* weights,
@@ -1266,8 +1439,17 @@ void LaunchQMoEDequantizeNvfp4WeightsImpl(
     int n,
     int k,
     cudaStream_t stream) {
-  int64_t total = static_cast<int64_t>(num_experts) * n * k;
   constexpr int block = 256;
+  if (QMoEDequantizeFp4VecApplies<16>(num_experts, n, k)) {
+    const dim3 tile_block(kQMoEDequantizeFp4TileK / kQMoEDequantizeFp4VecK, kQMoEDequantizeFp4TileN);
+    const dim3 tile_grid((n + kQMoEDequantizeFp4TileN - 1) / kQMoEDequantizeFp4TileN,
+                         k / kQMoEDequantizeFp4TileK, num_experts);
+    QMoEDequantizeFp4WeightsVecKernel<T, 16, true><<<tile_grid, tile_block, 0, stream>>>(
+        packed_weights, block_scales, global_scales, output, n, k);
+    CUDA_CALL_THROW(cudaGetLastError());
+    return;
+  }
+  int64_t total = static_cast<int64_t>(num_experts) * n * k;
   int grid = onnxruntime::narrow<int>((total + block - 1) / block);
   QMoEDequantizeNvfp4WeightsKernel<<<grid, block, 0, stream>>>(
       packed_weights, block_scales, global_scales, output, num_experts, n, k);

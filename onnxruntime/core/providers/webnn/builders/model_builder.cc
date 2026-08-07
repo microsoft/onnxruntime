@@ -9,7 +9,9 @@
 #include "helper.h"
 #include "op_builder_factory.h"
 
+#include "core/framework/external_data_loader.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/platform/env.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 
@@ -99,31 +101,34 @@ Status ModelBuilder::RegisterConstant(const onnx::TensorProto& tensor, emscripte
   emscripten::val wnn_builder = GetBuilder();
   const auto data_type = tensor.data_type();
 
-  // A flag to indicate if we should convert int64 constant to int32.
-  const bool should_convert_int64_to_int32 = !IsInt64Supported() &&
-                                             data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64;
-
-  if (utils::HasExternalData(tensor) && !utils::HasExternalDataInMemory(tensor)) {
-    // Create WebNN Constant from external data.
-    std::basic_string<ORTCHAR_T> external_file_path;
-    onnxruntime::FileOffsetType data_offset;
-    SafeInt<size_t> tensor_byte_size;
-    ORT_RETURN_IF_ERROR(utils::GetExternalDataInfo(
-        tensor, graph_viewer_.ModelPath(), external_file_path, data_offset, tensor_byte_size));
-
-    auto webnnRegisterMLConstant = emscripten::val::module_property("webnnRegisterMLConstant");
-    operand = webnnRegisterMLConstant(emscripten::val(external_file_path),
-                                      static_cast<int32_t>(data_offset),
-                                      static_cast<int32_t>(tensor_byte_size),
-                                      wnn_builder,
-                                      desc,
-                                      should_convert_int64_to_int32);
-  } else {
+  {
     std::byte* tensor_ptr = nullptr;
     std::vector<uint8_t> unpacked_tensor;
     emscripten::val view = emscripten::val::undefined();
 
-    if (tensor.has_raw_data()) {
+    if (utils::HasExternalData(tensor) && !utils::HasExternalDataInMemory(tensor)) {
+      // The initializer's data lives on disk (an external data file). Stream just this
+      // initializer's byte range into a scratch buffer via the shared WebAssembly external data
+      // loader, then build the WebNN constant from it below - identical to the in-memory path.
+      // In JSPI builds the loader reads the range from a Blob on demand and releases it right after
+      // this copy, so the whole file is never materialized in the JS heap; other builds fall back to
+      // reading from the fully-materialized file. Using the shared loader also lifts the old
+      // int32 offset/size limit (it takes a double offset and SafeInt<size_t> length).
+      std::basic_string<ORTCHAR_T> external_file_path;
+      onnxruntime::FileOffsetType data_offset;
+      SafeInt<size_t> tensor_byte_size;
+      ORT_RETURN_IF_ERROR(utils::GetExternalDataInfo(
+          tensor, graph_viewer_.ModelPath(), external_file_path, data_offset, tensor_byte_size));
+
+      unpacked_tensor.resize(static_cast<size_t>(tensor_byte_size));
+      ORT_RETURN_IF_ERROR(LoadWebAssemblyExternalData(Env::Default(),
+                                                      external_file_path,
+                                                      data_offset,
+                                                      tensor_byte_size,
+                                                      ExternalDataLoadType::CPU,
+                                                      unpacked_tensor.data()));
+      tensor_ptr = reinterpret_cast<std::byte*>(unpacked_tensor.data());
+    } else if (tensor.has_raw_data()) {
       tensor_ptr = reinterpret_cast<std::byte*>(const_cast<char*>(tensor.raw_data().c_str()));
     } else {
       ORT_RETURN_IF_NOT(UnpackInitializerData(tensor, unpacked_tensor, graph_viewer_, logger),
@@ -181,7 +186,7 @@ Status ModelBuilder::RegisterConstant(const onnx::TensorProto& tensor, emscripte
 
     // If int64 is not supported, convert int64 to int32.
     std::vector<int32_t> int32_data;
-    if (should_convert_int64_to_int32) {
+    if (!IsInt64Supported() && data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
       try {
         int32_data = GetNarrowedIntFromInt64<int32_t>(
             gsl::span<const int64_t>(reinterpret_cast<int64_t*>(tensor_ptr), num_elements));

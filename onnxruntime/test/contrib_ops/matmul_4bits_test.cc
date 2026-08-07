@@ -4,6 +4,7 @@
 #ifndef ORT_MINIMAL_BUILD
 
 #include <optional>
+#include <sstream>
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -11,6 +12,7 @@
 #include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 #include "core/framework/tensor.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/mlas/inc/mlas_qnbit.h"
 #include "core/mlas/inc/mlas_q4.h"
 #include "core/mlas/inc/mlas.h"
@@ -1752,6 +1754,181 @@ TEST(MatMulNBits, PrePack_LegacyFlattenedShapes_Accepted) {
   execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {}, nullptr, &execution_providers);
+}
+
+// Regression test for https://github.com/microsoft/onnxruntime/issues/31137
+// MatMulNBits inside an If subgraph where B and scales are parent-graph initializers.
+// On ARM64 with accuracy_level=4 (KleidiAI path) this triggered a segfault during
+// session initialization because TryGetConstantInput could not find parent-scope
+// constants when building the kernel's OpKernelInfo.
+TEST(MatMulNBits, SubgraphParentScopeInitializers) {
+#if !defined(MLAS_TARGET_ARM64)
+  GTEST_SKIP() << "This test targets the Arm64 KleidiAI path.";
+#else
+  if (!MlasQNBitGemmScalesPacked(64, QBits, 32, SQNBIT_CompInt8, true, nullptr)) {
+    GTEST_SKIP() << "KleidiAI Q4 packed-scales path is not active.";
+  }
+#endif
+
+  constexpr int64_t M = 4, K = 64, N = 64, BLK = 32, BITS = 4;
+  constexpr int64_t nblk = K / BLK;
+  constexpr int64_t blob = BLK * BITS / 8;
+
+  // Generate quantized B and scales.
+  std::vector<float> b_f(static_cast<size_t>(N * K), 0.1f);
+  std::vector<uint8_t> b_quant(static_cast<size_t>(N * nblk * blob));
+  std::vector<float> scales(static_cast<size_t>(N * nblk));
+  QuantizeDequantize(b_f, b_quant, scales, nullptr,
+                     static_cast<int32_t>(N), static_cast<int32_t>(K), static_cast<int32_t>(BLK));
+
+  // Build the If-branch subgraph containing a MatMulNBits node.
+  // The branch consumes A, Bq, Bs from outer scope and outputs Y.
+  auto build_branch = [&](const std::string& branch_name) -> ONNX_NAMESPACE::GraphProto {
+    ONNX_NAMESPACE::GraphProto g;
+    g.set_name(branch_name);
+
+    auto* out_vi = g.add_output();
+    out_vi->set_name("Y");
+    auto* out_type = out_vi->mutable_type()->mutable_tensor_type();
+    out_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto* out_shape = out_type->mutable_shape();
+    out_shape->add_dim()->set_dim_value(M);
+    out_shape->add_dim()->set_dim_value(N);
+
+    auto* node = g.add_node();
+    node->set_op_type("MatMulNBits");
+    node->set_domain("com.microsoft");
+    node->set_name(branch_name + "_mmn");
+    node->add_input("A");
+    node->add_input("Bq");
+    node->add_input("Bs");
+    node->add_output("Y");
+
+    auto add_int_attr = [&](const std::string& attr_name, int64_t val) {
+      auto* attr = node->add_attribute();
+      attr->set_name(attr_name);
+      attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+      attr->set_i(val);
+    };
+    add_int_attr("K", K);
+    add_int_attr("N", N);
+    add_int_attr("bits", BITS);
+    add_int_attr("block_size", BLK);
+    // accuracy_level=4 triggers the KleidiAI / high-accuracy prepack path on ARM64
+    // that asserts scales != nullptr; this is the crashing case in the bug report.
+    add_int_attr("accuracy_level", 4);
+
+    return g;
+  };
+
+  // Build the parent model: cond + A as inputs, Bq + Bs as parent-graph initializers,
+  // an If node that dispatches to MatMulNBits in both branches.
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(9);
+
+  auto* opset_default = model.add_opset_import();
+  opset_default->set_version(17);
+  auto* opset_ms = model.add_opset_import();
+  opset_ms->set_domain("com.microsoft");
+  opset_ms->set_version(1);
+
+  auto* graph = model.mutable_graph();
+  graph->set_name("main");
+
+  // Graph inputs.
+  {
+    auto* cond_vi = graph->add_input();
+    cond_vi->set_name("cond");
+    cond_vi->mutable_type()->mutable_tensor_type()->set_elem_type(
+        ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+
+    auto* a_vi = graph->add_input();
+    a_vi->set_name("A");
+    auto* a_type = a_vi->mutable_type()->mutable_tensor_type();
+    a_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto* a_shape = a_type->mutable_shape();
+    a_shape->add_dim()->set_dim_value(M);
+    a_shape->add_dim()->set_dim_value(K);
+  }
+
+  // Parent-graph initializers (Bq and Bs live here, NOT inside the subgraph).
+  {
+    auto* bq_init = graph->add_initializer();
+    bq_init->set_name("Bq");
+    bq_init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+    bq_init->add_dims(N);
+    bq_init->add_dims(nblk);
+    bq_init->add_dims(blob);
+    bq_init->set_raw_data(b_quant.data(), b_quant.size() * sizeof(uint8_t));
+
+    auto* bs_init = graph->add_initializer();
+    bs_init->set_name("Bs");
+    bs_init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    bs_init->add_dims(N * nblk);
+    bs_init->set_raw_data(scales.data(), scales.size() * sizeof(float));
+  }
+
+  // Graph output.
+  {
+    auto* out_vi = graph->add_output();
+    out_vi->set_name("Yout");
+    auto* out_type = out_vi->mutable_type()->mutable_tensor_type();
+    out_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto* out_shape = out_type->mutable_shape();
+    out_shape->add_dim()->set_dim_value(M);
+    out_shape->add_dim()->set_dim_value(N);
+  }
+
+  // If node referencing Bq/Bs from parent scope inside both branches.
+  {
+    auto* if_node = graph->add_node();
+    if_node->set_op_type("If");
+    if_node->set_name("if0");
+    if_node->add_input("cond");
+    if_node->add_output("Yout");
+
+    auto* then_attr = if_node->add_attribute();
+    then_attr->set_name("then_branch");
+    then_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+    *then_attr->mutable_g() = build_branch("then");
+
+    auto* else_attr = if_node->add_attribute();
+    else_attr->set_name("else_branch");
+    else_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+    *else_attr->mutable_g() = build_branch("else");
+  }
+
+  std::string model_str;
+  ASSERT_TRUE(model.SerializeToString(&model_str));
+
+  // Session initialization must not crash/segfault.
+  SessionOptions so;
+  so.session_logid = "MatMulNBitsSubgraphTest";
+  InferenceSession session{so, GetEnvironment()};
+  std::istringstream model_stream(model_str);
+  ASSERT_STATUS_OK(session.Load(model_stream));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  // Run inference and verify output shape is correct.
+  std::vector<float> a_vals(static_cast<size_t>(M * K), 1.0f);
+  OrtValue a_val;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                       {M, K}, a_vals, &a_val);
+
+  OrtValue cond_val;
+  CreateMLValue<bool>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                      {}, {true}, &cond_val);
+
+  NameMLValMap feeds = {{"A", a_val}, {"cond", cond_val}};
+  std::vector<std::string> output_names = {"Yout"};
+  std::vector<OrtValue> fetches;
+  RunOptions run_options;
+  ASSERT_STATUS_OK(session.Run(run_options, feeds, output_names, &fetches));
+
+  ASSERT_EQ(fetches.size(), 1u);
+  const auto& result = fetches[0].Get<Tensor>();
+  EXPECT_EQ(result.Shape()[0], M);
+  EXPECT_EQ(result.Shape()[1], N);
 }
 
 }  // namespace test
