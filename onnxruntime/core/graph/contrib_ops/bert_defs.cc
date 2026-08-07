@@ -2469,6 +2469,19 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Spatial dimensionality: 1, 2, or 3. Default is 1.",
               AttributeProto::INT,
               static_cast<int64_t>(1))
+        .Attr("state_window",
+              "Number of trailing per-position carry states held by past_state and present_state. "
+              "When 0 (default) the state tensors have no window axis and hold only the state after "
+              "the last position, i.e. the backward-compatible (batch_size, channels, k_1 - 1). "
+              "When W > 0 both gain a LEADING axis of extent W, right-aligned: slot j is the state "
+              "after position (seq_len - W + j), so slot W-1 is always the state after the last "
+              "position (identical to the W = 0 tensor) and is the slot past_state is read from. "
+              "The window axis leads the batch axis so that each slot is one contiguous "
+              "(batch_size, channels, k_1 - 1) block. Slots below max(0, W - seq_len) are not "
+              "written. A window lets a speculative decoder roll the state back to an accepted "
+              "prefix without replaying the forward.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
         .Input(0,
                "input",
                "Input tensor with shape (batch_size, channels, ...). Channels-first layout. "
@@ -2486,8 +2499,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(3,
                "past_state",
-               "Carry state from previous step. For ndim=1: (batch_size, channels, k_1 - 1). "
-               "If not provided, padding is zero.",
+               "Carry state from previous step. For ndim=1: (batch_size, channels, k_1 - 1), or "
+               "(W, batch_size, channels, k_1 - 1) when state_window = W > 0, in which case only "
+               "slot W-1 is read. If not provided, padding is zero.",
                "T",
                OpSchema::Optional)
         .Output(0,
@@ -2496,8 +2510,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .Output(1,
                 "present_state",
-                "Updated carry state. For ndim=1: (batch_size, channels, k_1 - 1). "
-                "Contains the last (k-1) values from the virtual input along the causal axis.",
+                "Updated carry state. For ndim=1: (batch_size, channels, k_1 - 1), or "
+                "(W, batch_size, channels, k_1 - 1) when state_window = W > 0. Slot W-1 contains "
+                "the last (k-1) values from the virtual input along the causal axis; slot j contains "
+                "the same for the prefix ending at position (seq_len - W + j).",
                 "T")
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
@@ -2523,7 +2539,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               fail_shape_inference("CausalConvWithState: weight must have rank >= 2");
             }
             int64_t ndim = getAttribute(ctx, "ndim", 1);
+            // state_window = W > 0 prepends a window axis, holding the carry state after each of
+            // the last W positions (slot W-1 == the W = 0 tensor). The window axis leads the batch
+            // axis so a slot is one contiguous (batch_size, channels, ...) block. W = 0 keeps the
+            // legacy (batch_size, channels, ...) shape for backward compatibility.
+            const int64_t window = getAttribute(ctx, "state_window", 0);
             TensorShapeProto state_shape;
+            if (window > 0) {
+              state_shape.add_dim()->set_dim_value(window);
+            }
             *state_shape.add_dim() = input_shape.dim(0);  // batch_size
             *state_shape.add_dim() = input_shape.dim(1);  // channels
             // Copy non-causal spatial dims from input (dims 2 .. 2+ndim-2)
@@ -2584,6 +2608,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Tuning hint; does not affect output correctness.",
               AttributeProto::INT,
               static_cast<int64_t>(64))
+        .Attr("state_window",
+              "Number of trailing per-token recurrent states held by past_state and present_state. "
+              "When 0 (default) the state tensors are 4D and hold only the state after the last "
+              "token, i.e. the backward-compatible (B, H_kv, d_k, d_v). When W > 0 both are 5D with "
+              "a LEADING axis of extent W, right-aligned: slot j is the state after token "
+              "(T - W + j), so slot W-1 is always the state after the last token (identical to the "
+              "W = 0 tensor) and is the slot past_state is read from. The window axis leads the "
+              "batch axis so that each slot is one contiguous (B, H_kv, d_k, d_v) block. Slots "
+              "below max(0, W - T) are not written. A window lets a speculative decoder roll the "
+              "state back to an accepted prefix without replaying the forward.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
         .Input(0,
                "query",
                "Query vectors with 3D packed shape (B, T, H_q * d_k). "
@@ -2600,8 +2636,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Input(3,
                "past_state",
-               "Recurrent state from previous step with shape (B, H_kv, d_k, d_v). "
-               "Always 4D. If not provided, defaults to zeros.",
+               "Recurrent state from previous step with shape (B, H_kv, d_k, d_v), or "
+               "(W, B, H_kv, d_k, d_v) when state_window = W > 0, in which case only slot W-1 is "
+               "read. If not provided, defaults to zeros.",
                "S",
                OpSchema::Optional)
         .Input(4,
@@ -2625,7 +2662,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .Output(1,
                 "present_state",
-                "Updated recurrent state with shape (B, H_kv, d_k, d_v). Always 4D.",
+                "Updated recurrent state with shape (B, H_kv, d_k, d_v), or (W, B, H_kv, d_k, d_v) "
+                "when state_window = W > 0. Slot W-1 is the state after the last token; slot j is "
+                "the state after token (T - W + j).",
                 "S")
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
@@ -2669,7 +2708,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             updateOutputShape(ctx, 0, output_shape);
           }
 
-          // Output 1: present_state shape (B, H_kv, d_k, d_v) — 4D
+          // Output 1: present_state shape (B, H_kv, d_k, d_v) — 4D, or (W, B, H_kv, d_k, d_v) — 5D
+          // when state_window = W > 0. W = 0 keeps the legacy 4D shape for backward compatibility.
           if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2) && q_num_heads > 0 && kv_num_heads > 0) {
             auto& query_shape = getInputShape(ctx, 0);
             auto& value_shape = getInputShape(ctx, 2);
@@ -2677,7 +2717,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               // Already validated in Output 0 block above; skip if shapes are invalid.
               return;
             }
+            const int64_t window = getAttribute(ctx, "state_window", 0);
             TensorShapeProto state_shape;
+            if (window > 0) {
+              state_shape.add_dim()->set_dim_value(window);  // W
+            }
             *state_shape.add_dim() = query_shape.dim(0);         // B
             state_shape.add_dim()->set_dim_value(kv_num_heads);  // H_kv
             // d_k = query.dim(2) / q_num_heads
@@ -2696,6 +2740,122 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           } else if (hasInputShape(ctx, 3)) {
             propagateShapeFromInputToOutput(ctx, 3, 1);
           }
+        }));
+
+constexpr const char* LinearAttentionGate_ver1_doc = R"DOC(
+Fuses the gate projections that feed LinearAttention's gated-delta recurrence:
+
+  decay = decay_scale * Softplus(a + dt_bias)
+  beta  = Sigmoid(b)                            (only when b is provided)
+
+Reference implementations compute the decay in float32 because exp(decay) inside the
+recurrence exponentially amplifies any precision loss. Exporters therefore emit
+Cast -> Add -> Softplus -> Mul -> Cast, which is five kernel launches on a tensor with
+only num_heads elements per token. This operator keeps the intermediates in float32
+registers so a single launch replaces the whole chain.
+
+dt_bias and decay_scale are float32 per-head vectors of length H. decay_scale is the
+already-negated -exp(A_log) factor.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    LinearAttentionGate, 1,
+    OpSchema()
+        .SetDoc(LinearAttentionGate_ver1_doc)
+        .Input(0,
+               "a",
+               "Decay gate projection with shape (B, T, H).",
+               "T")
+        .Input(1,
+               "dt_bias",
+               "Per-head float32 bias added to a, with shape (H).",
+               "TF")
+        .Input(2,
+               "decay_scale",
+               "Per-head float32 multiplier applied to Softplus(a + dt_bias), with shape (H). "
+               "For gated DeltaNet this is -exp(A_log).",
+               "TF")
+        .Input(3,
+               "b",
+               "Update-rate projection with shape (B, T, H). Required when the beta output is requested.",
+               "T",
+               OpSchema::Optional)
+        .Output(0,
+                "decay",
+                "decay_scale * Softplus(a + dt_bias) with shape (B, T, H).",
+                "T")
+        .Output(1,
+                "beta",
+                "Sigmoid(b) with shape (B, T, H).",
+                "T",
+                OpSchema::Optional)
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain gate input and output types to float tensors.")
+        .TypeConstraint("TF",
+                        {"tensor(float)"},
+                        "Constrain the per-head parameters to float32.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+          if (ctx.getNumOutputs() > 1) {
+            if (ctx.getNumInputs() < 4 || ctx.getInputType(3) == nullptr) {
+              fail_shape_inference("The b input is required when the beta output is requested.");
+            }
+            propagateElemTypeFromInputToOutput(ctx, 0, 1);
+            if (hasInputShape(ctx, 3)) {
+              propagateShapeFromInputToOutput(ctx, 3, 1);
+            } else {
+              propagateShapeFromInputToOutput(ctx, 0, 1);
+            }
+          }
+        }));
+
+constexpr const char* GatedRMSNorm_ver1_doc = R"DOC(
+Gated RMS normalization as used by Mamba2 / gated DeltaNet attention outputs:
+
+  Y = X * rsqrt(mean(X^2) + epsilon) * scale * SiLU(gate)
+
+The mean of squares is taken over the trailing `C` elements of each row, where `C` is the
+length of `scale`; the input's last dimension must be a multiple of `C`, which lets a
+per-head norm run on a packed (B, T, H * C) tensor without any surrounding Reshape.
+All arithmetic including SiLU is done in float32 regardless of the tensor type, matching
+the reference implementation, so this replaces the exported
+SimplifiedLayerNormalization -> Cast -> Sigmoid -> Mul -> Cast -> Mul -> Cast chain with a
+single launch.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    GatedRMSNorm, 1,
+    OpSchema()
+        .SetDoc(GatedRMSNorm_ver1_doc)
+        .Attr("epsilon",
+              "Epsilon added to the mean of squares before the reciprocal square root.",
+              AttributeProto::FLOAT,
+              1e-5f)
+        .Input(0,
+               "X",
+               "Input tensor with shape (..., H * C). Normalization is applied over each "
+               "contiguous group of C elements.",
+               "T")
+        .Input(1,
+               "scale",
+               "Normalization weight with shape (C).",
+               "T")
+        .Input(2,
+               "gate",
+               "Gate tensor with the same shape as X.",
+               "T")
+        .Output(0,
+                "Y",
+                "Output tensor with the same shape as X.",
+                "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
         }));
 
 }  // namespace contrib

@@ -38,6 +38,17 @@ KV_CACHE_TENSOR_PROTO = {
 KV_CACHE_QMAX = {"int8": 127.0, "fp8": 448.0}
 
 
+# EP -> (torch_device_when_cuda_available, ort_iobinding_device).
+# The torch device is where reference tensors live. WebGPU has no torch backend,
+# so we still allocate reference tensors on CUDA when it's available (faster and
+# matches CUDA fp16 semantics), else on CPU. The ORT device is the device string
+# passed to OrtValue / IO-binding.
+_EP_TO_ORT_DEVICE = {
+    "CUDAExecutionProvider": "cuda",
+    "WebGpuExecutionProvider": "webgpu",
+}
+
+
 class Config:
     batch_size = 0
     sequence_length = 0
@@ -83,6 +94,7 @@ class Config:
         rotary_interleaved,
         packed,
         softcap,
+        ep="CUDAExecutionProvider",
     ):
         self.batch_size = batch_size
         self.sequence_length = sequence_length
@@ -96,6 +108,29 @@ class Config:
         self.rotary_interleaved = rotary_interleaved
         self.packed = packed
         self.softcap = softcap
+        self.ep = ep
+
+    @property
+    def torch_device(self) -> str:
+        """Device string for torch tensor allocation (inputs + reference).
+
+        For CUDA EP: always "cuda" (must match the EP device).
+        For other EPs (e.g., WebGPU): prefer CUDA if torch has it (faster,
+        matches CUDA fp16 semantics); otherwise CPU. The reference math never
+        touches the ORT session, so torch device does not need to equal the EP
+        device.
+        """
+        if self.ep == "CUDAExecutionProvider":
+            return "cuda"
+        return "cuda" if torch.cuda.is_available() else "cpu"
+
+    @property
+    def ort_device(self) -> str:
+        """Device string for OrtValue / IO-binding (must match the EP device)."""
+        try:
+            return _EP_TO_ORT_DEVICE[self.ep]
+        except KeyError as exc:
+            raise ValueError(f"Unknown EP for PagedAttention parity tests: {self.ep!r}") from exc
 
     def __repr__(self):
         short_ep = self.ep[: -len("ExecutionProvider")].lower()
@@ -193,38 +228,60 @@ def create_paged_attention_graph(
         if (has_k_scale or has_v_scale or config.kv_cache_type != "float16")
         else {}
     )
+    optional_inputs = [
+        "slot_mapping" if config.use_slot_mapping else "",
+        "head_sink" if config.use_head_sink else "",
+        "q_norm_weight" if config.use_qk_norm else "",
+        "k_norm_weight" if config.use_qk_norm else "",
+        "k_scale" if has_k_scale else "",
+        "v_scale" if has_v_scale else "",
+        "attention_metadata" if has_attention_metadata else "",
+    ]
+    last_optional_idx = -1
+    for i, name in enumerate(optional_inputs):
+        if name:
+            last_optional_idx = i
+
+    # Keep the node compact when none of the post-v1 optional inputs are used.
+    # This allows the baseline WebGPU path to run on runtimes that still expose
+    # the older 10-input schema while remaining compatible with the expanded
+    # schema when newer optional inputs are exercised.
+    node_inputs = [
+        "query",
+        "key" if not config.packed else "",
+        "value" if not config.packed else "",
+        "key_cache",
+        "value_cache",
+        "cumulative_sequence_length",
+        "past_seqlens",
+        "block_table",
+        "cos_cache" if config.rotary else "",
+        "sin_cache" if config.rotary else "",
+    ]
+    if last_optional_idx >= 0:
+        node_inputs.extend(optional_inputs[: last_optional_idx + 1])
+
+    node_attrs = {
+        "num_heads": config.num_heads,
+        "kv_num_heads": config.kv_num_heads,
+        "local_window_size": local_window_size,
+        "do_rotary": config.rotary,
+        "rotary_interleaved": config.rotary_interleaved,
+        "softcap": config.softcap,
+        "domain": "com.microsoft",
+    }
+    # Keep baseline graphs compatible with older PagedAttention schema builds.
+    # qk_norm_epsilon is only needed when QK-Norm is exercised.
+    if config.use_qk_norm:
+        node_attrs["qk_norm_epsilon"] = config.qk_norm_epsilon
+
     nodes = [
         helper.make_node(
             "PagedAttention",
-            [
-                "query",
-                "key" if not config.packed else "",
-                "value" if not config.packed else "",
-                "key_cache",
-                "value_cache",
-                "cumulative_sequence_length",
-                "past_seqlens",
-                "block_table",
-                "cos_cache" if config.rotary else "",
-                "sin_cache" if config.rotary else "",
-                "slot_mapping" if config.use_slot_mapping else "",
-                "head_sink" if config.use_head_sink else "",
-                "q_norm_weight" if config.use_qk_norm else "",
-                "k_norm_weight" if config.use_qk_norm else "",
-                "k_scale" if has_k_scale else "",
-                "v_scale" if has_v_scale else "",
-                "attention_metadata" if has_attention_metadata else "",
-            ],
+            node_inputs,
             ["output", "key_cache_out", "value_cache_out"],
             "PagedAttention_0",
-            num_heads=config.num_heads,
-            kv_num_heads=config.kv_num_heads,
-            local_window_size=local_window_size,
-            do_rotary=config.rotary,
-            rotary_interleaved=config.rotary_interleaved,
-            softcap=config.softcap,
-            qk_norm_epsilon=config.qk_norm_epsilon,
-            domain="com.microsoft",
+            **node_attrs,
             **quant_attrs,
         ),
     ]
@@ -375,7 +432,17 @@ def create_paged_attention_graph(
         graph_output,
     )
 
-    model = helper.make_model(graph)
+    # Pin ai.onnx to opset 22. helper.make_model() otherwise stamps the
+    # installed onnx package's newest opset, which may exceed the runtime's
+    # kMaxSupportedOpset (e.g. onnx 1.22 stamps opset 27 while ORT tops out
+    # at 26 today) and causes InferenceSession creation to fail.
+    model = helper.make_model(
+        graph,
+        opset_imports=[
+            helper.make_opsetid("", 22),
+            helper.make_opsetid("com.microsoft", 1),
+        ],
+    )
     return model.SerializeToString()
 
 
@@ -423,6 +490,9 @@ def paged_attention_func(
         "past_seqlens": past_seqlens.detach().cpu().numpy(),
         "block_table": block_table.detach().cpu().numpy(),
     }
+    key_cache_np = key_cache.detach().cpu().numpy()
+    value_cache_np = value_cache.detach().cpu().numpy()
+
     if getattr(config, "use_attention_metadata", False):
         override = getattr(config, "attention_metadata_override", None)
         if override is not None:
@@ -434,9 +504,15 @@ def paged_attention_func(
             # The exact per-step maxima are valid upper bounds for a single Run, which is what these
             # tests do. A real scheduler would pass looser, replay-wide bounds instead.
             ort_inputs["attention_metadata"] = numpy.array([query_lens.max(), kv_lens.max()], dtype=numpy.int32)
-    if not quantized:
-        ort_inputs["key_cache"] = OrtValue.ortvalue_from_numpy(key_cache.detach().cpu().numpy(), "cuda", 0)
-        ort_inputs["value_cache"] = OrtValue.ortvalue_from_numpy(value_cache.detach().cpu().numpy(), "cuda", 0)
+
+    # CUDA pre-allocates the K/V cache on-device so the same OrtValue can be
+    # bound as both input (key_cache) and output (key_cache_out), giving an
+    # in-place update we can read back at the end. WebGPU cannot construct
+    # device-side OrtValues from numpy without a session-registered shared
+    # allocator, so we bind cache tensors from CPU for WebGPU.
+    if config.ep == "CUDAExecutionProvider" and not quantized:
+        ort_inputs["key_cache"] = OrtValue.ortvalue_from_numpy(key_cache_np, config.ort_device, 0)
+        ort_inputs["value_cache"] = OrtValue.ortvalue_from_numpy(value_cache_np, config.ort_device, 0)
     sess_options = SessionOptions()
     if sdpa_kernel != 0 and config.ep == "CUDAExecutionProvider":
         providers = [(config.ep, {"sdpa_kernel": str(sdpa_kernel)})]
@@ -468,48 +544,75 @@ def paged_attention_func(
     if "attention_metadata" in ort_inputs:
         io_binding.bind_cpu_input("attention_metadata", ort_inputs["attention_metadata"])
     io_binding.bind_cpu_input("query", ort_inputs["query"])
-    if quantized:
-        # A quantized cache has no numpy dtype, so bind the torch device buffers directly.
-        cache_proto_type = KV_CACHE_TENSOR_PROTO[config.kv_cache_type]
-        key_cache = key_cache.contiguous()
-        value_cache = value_cache.contiguous()
-        io_binding.bind_input("key_cache", "cuda", 0, cache_proto_type, tuple(key_cache.shape), key_cache.data_ptr())
-        io_binding.bind_input(
-            "value_cache", "cuda", 0, cache_proto_type, tuple(value_cache.shape), value_cache.data_ptr()
-        )
+    if config.ep == "CUDAExecutionProvider":
+        if quantized:
+            # A quantized cache has no numpy dtype, so bind the torch device buffers directly.
+            cache_proto_type = KV_CACHE_TENSOR_PROTO[config.kv_cache_type]
+            key_cache = key_cache.contiguous()
+            value_cache = value_cache.contiguous()
+            io_binding.bind_input(
+                "key_cache", "cuda", 0, cache_proto_type, tuple(key_cache.shape), key_cache.data_ptr()
+            )
+            io_binding.bind_input(
+                "value_cache", "cuda", 0, cache_proto_type, tuple(value_cache.shape), value_cache.data_ptr()
+            )
+        else:
+            io_binding.bind_input(
+                "key_cache",
+                config.ort_device,
+                0,
+                numpy.float16,
+                ort_inputs["key_cache"].shape(),
+                ort_inputs["key_cache"].data_ptr(),
+            )
+            io_binding.bind_input(
+                "value_cache",
+                config.ort_device,
+                0,
+                numpy.float16,
+                ort_inputs["value_cache"].shape(),
+                ort_inputs["value_cache"].data_ptr(),
+            )
     else:
-        io_binding.bind_input(
-            "key_cache", "cuda", 0, numpy.float16, ort_inputs["key_cache"].shape(), ort_inputs["key_cache"].data_ptr()
-        )
-        io_binding.bind_input(
-            "value_cache",
-            "cuda",
-            0,
-            numpy.float16,
-            ort_inputs["value_cache"].shape(),
-            ort_inputs["value_cache"].data_ptr(),
-        )
+        io_binding.bind_cpu_input("key_cache", key_cache_np)
+        io_binding.bind_cpu_input("value_cache", value_cache_np)
     io_binding.bind_cpu_input("cumulative_sequence_length", ort_inputs["cumulative_sequence_length"])
     io_binding.bind_cpu_input("past_seqlens", ort_inputs["past_seqlens"])
     io_binding.bind_cpu_input("block_table", ort_inputs["block_table"])
     io_binding.bind_output("output")
-    if quantized:
-        # Each cache output must alias its input, which is what the op requires anyway.
-        io_binding.bind_output(
-            "key_cache_out", "cuda", 0, cache_proto_type, tuple(key_cache.shape), key_cache.data_ptr()
-        )
-        io_binding.bind_output(
-            "value_cache_out", "cuda", 0, cache_proto_type, tuple(value_cache.shape), value_cache.data_ptr()
-        )
+    if config.ep == "CUDAExecutionProvider":
+        if quantized:
+            # Each cache output must alias its input, which is what the op requires anyway.
+            io_binding.bind_output(
+                "key_cache_out", "cuda", 0, cache_proto_type, tuple(key_cache.shape), key_cache.data_ptr()
+            )
+            io_binding.bind_output(
+                "value_cache_out", "cuda", 0, cache_proto_type, tuple(value_cache.shape), value_cache.data_ptr()
+            )
+        else:
+            io_binding.bind_ortvalue_output("key_cache_out", ort_inputs["key_cache"])
+            io_binding.bind_ortvalue_output("value_cache_out", ort_inputs["value_cache"])
     else:
-        io_binding.bind_ortvalue_output("key_cache_out", ort_inputs["key_cache"])
-        io_binding.bind_ortvalue_output("value_cache_out", ort_inputs["value_cache"])
+        # These cache tensors are graph inputs, so the allocation planner does
+        # not guarantee aliasing. Bind separate outputs to exercise the
+        # WebGPU copy fallback; production IO-binding should alias these
+        # buffers to avoid the extra cache copy.
+        io_binding.bind_output("key_cache_out")
+        io_binding.bind_output("value_cache_out")
     ort_session.run_with_iobinding(io_binding)
     if quantized:
         output = torch.tensor(numpy.array(io_binding.copy_outputs_to_cpu()[0]))
         return output, key_cache, value_cache
     output, key_cache_out, value_cache_out = io_binding.copy_outputs_to_cpu()
     output = torch.tensor(numpy.array(output))
+
+    # WebGPU EP has an ownership/destruction race that segfaults during Python
+    # interpreter shutdown GC if sessions are left to be reclaimed implicitly.
+    # Release the binding and session explicitly here so each parity test
+    # completes with a clean process state.
+    del io_binding
+    del ort_session
+
     return output, key_cache_out, value_cache_out
 
 
@@ -653,19 +756,19 @@ def unpad_qkv(config: Config, q, k, v, cum_seqlens):
         token_count,
         config.num_heads * config.head_size,
         dtype=torch.float16,
-        device="cuda",
+        device=config.torch_device,
     )
     k_unpad = torch.zeros(
         token_count,
         config.kv_num_heads * config.head_size,
         dtype=torch.float16,
-        device="cuda",
+        device=config.torch_device,
     )
     v_unpad = torch.zeros(
         token_count,
         config.kv_num_heads * config.head_size,
         dtype=torch.float16,
-        device="cuda",
+        device=config.torch_device,
     )
     for i in range(config.batch_size):
         new_seqlen = cum_seqlens[i + 1] - cum_seqlens[i]
@@ -741,7 +844,7 @@ def parity_check_paged_attention(
         config.sequence_length,
         config.num_heads,
         config.head_size,
-        device="cuda",
+        device=config.torch_device,
         dtype=torch.float16,
         requires_grad=False,
     )
@@ -750,7 +853,7 @@ def parity_check_paged_attention(
         config.sequence_length,
         config.kv_num_heads,
         config.head_size,
-        device="cuda",
+        device=config.torch_device,
         dtype=torch.float16,
         requires_grad=False,
     )
@@ -759,7 +862,7 @@ def parity_check_paged_attention(
         config.sequence_length,
         config.kv_num_heads,
         config.head_size,
-        device="cuda",
+        device=config.torch_device,
         dtype=torch.float16,
         requires_grad=False,
     )
@@ -770,10 +873,10 @@ def parity_check_paged_attention(
         config.total_sequence_length - config.sequence_length + 1,  # one above highest integer to be drawn
         (config.batch_size,),
         dtype=torch.int32,
-        device="cuda",
+        device=config.torch_device,
     )
     if new_seqlens_override is not None:
-        new_seqlens = new_seqlens_override.to(dtype=torch.int32, device="cuda")
+        new_seqlens = new_seqlens_override.to(dtype=torch.int32, device=config.torch_device)
         assert new_seqlens.shape == (config.batch_size,)
         assert int(new_seqlens.min().item()) >= 0
         assert int(new_seqlens.max().item()) <= config.sequence_length
@@ -783,17 +886,19 @@ def parity_check_paged_attention(
             config.sequence_length + 1,
             (config.batch_size,),
             dtype=torch.int32,
-            device="cuda",
+            device=config.torch_device,
         )
     cum_seqlens = torch.cat(
-        (torch.tensor([0], dtype=torch.int32, device="cuda"), torch.cumsum(new_seqlens, dim=0))
+        (torch.tensor([0], dtype=torch.int32, device=config.torch_device), torch.cumsum(new_seqlens, dim=0))
     ).type(torch.int32)
     total_seqlens = past_seqlens + new_seqlens
 
     q_unpad, k_unpad, v_unpad = unpad_qkv(config, q, k_new, v_new, cum_seqlens)
 
     # Generate kv cache and associated block-based data structures
-    k_cache, v_cache, block_table, k_cache_paged, v_cache_paged = generate_block_kvcache(config, "cuda", torch.float16)
+    k_cache, v_cache, block_table, k_cache_paged, v_cache_paged = generate_block_kvcache(
+        config, config.torch_device, torch.float16
+    )
 
     # Optional per-head attention sink.
     head_sink = None
@@ -833,7 +938,7 @@ def parity_check_paged_attention(
     if config.rotary:
         rotary_fraction = 1.0
         rotary_dim = math.floor(int(rotary_fraction * config.head_size) / 16) * 16
-        angle = torch.rand(config.total_sequence_length, rotary_dim // 2, device="cuda") * 2 * math.pi
+        angle = torch.rand(config.total_sequence_length, rotary_dim // 2, device=config.torch_device) * 2 * math.pi
         cos = torch.cos(angle).to(dtype=torch.float16)
         sin = torch.sin(angle).to(dtype=torch.float16)
         q_ro = rotary_embedding(q, cos, sin, seqlen_offsets=past_seqlens, interleaved=config.rotary_interleaved)
@@ -866,7 +971,7 @@ def parity_check_paged_attention(
     # Update reference kv cache
     k_cache_ref = k_cache.clone()
     v_cache_ref = v_cache.clone()
-    total_range = rearrange(torch.arange(config.total_sequence_length, device="cuda"), "s -> 1 s")
+    total_range = rearrange(torch.arange(config.total_sequence_length, device=config.torch_device), "s -> 1 s")
     past_seqlens_expanded = rearrange(past_seqlens, "b -> b 1")
     update_mask = torch.logical_and(
         past_seqlens_expanded <= total_range, total_range < past_seqlens_expanded + config.sequence_length
@@ -879,7 +984,7 @@ def parity_check_paged_attention(
     # Create padding masks for reference implementation
     total_seqlens_expanded = rearrange(total_seqlens, "b -> b 1")
     key_padding_mask = total_range < total_seqlens_expanded
-    query_range = rearrange(torch.arange(config.sequence_length, device="cuda"), "s -> 1 s")
+    query_range = rearrange(torch.arange(config.sequence_length, device=config.torch_device), "s -> 1 s")
     new_seqlens_expanded = rearrange(new_seqlens, "b -> b 1")
     query_padding_mask = query_range < new_seqlens_expanded
 
@@ -1001,6 +1106,24 @@ def has_memory_efficient_attention():
         return False
     major, minor = torch.cuda.get_device_capability()
     return (major * 10 + minor) >= 53
+
+
+def has_webgpu_ep() -> bool:
+    return "WebGpuExecutionProvider" in get_available_providers()
+
+
+def _webgpu_supports_config(config: Config) -> bool:
+    """Feature guard for the WebGPU PagedAttention op.
+
+    The WebGPU kernel is fp16-only and does not yet implement softcap or
+    sliding-window local attention. Rotary (interleaved and non-interleaved),
+    packed QKV, and GQA are supported.
+    """
+    if config.softcap != 0.0:
+        return False
+    if config.local:
+        return False
+    return True
 
 
 # Bit value matching AttentionBackend::EFFICIENT_ATTENTION in
@@ -1300,6 +1423,73 @@ class TestPagedAttentionFeatures(unittest.TestCase):
         # cumulative_seqlens_kv used to be produced by independent 256-thread cub::BlockScan blocks,
         # so any batch beyond 256 sequences got silently wrong KV offsets.
         config = self._config(batch_size=300, sequence_length=4, total_sequence_length=64)
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+
+# -----------------------------------------------------------------------------
+# WebGPU EP parity tests
+#
+# Reuses the CUDA parity harness (parity_check_paged_attention, attention_ref,
+# unpad_qkv, generate_block_kvcache) with Config.ep = "WebGpuExecutionProvider".
+# Config matrix is deliberately small (per-op session-create through Dawn is
+# heavier than CUDA). 5e-3 abs/rel tolerance matches CUDA at head_size=128.
+# -----------------------------------------------------------------------------
+def paged_attention_test_cases_webgpu():
+    """Hand-picked config matrix for the WebGPU EP. Kept small because the
+    WebGPU EP dispatches per-op through Dawn and each session-create is
+    heavier than under CUDA.
+    """
+    batches = [1, 2]
+    seqs = [
+        (1, 32),  # decode, short past
+        (4, 32),  # short prefill, short past
+        (16, 64),  # medium prefill
+        (1, 64),  # decode, medium past
+    ]
+    num_h = [(8, 8), (8, 4)]  # MHA + GQA
+    h_sizes = [128]  # WebGPU FA requires head_size % 4 == 0
+    block_sizes = [256]
+
+    for b in batches:
+        for s, s2 in seqs:
+            for n, n2 in num_h:
+                for h in h_sizes:
+                    for block_size in block_sizes:
+                        for rotary, rotary_interleaved in rotary_options_for_current_os():
+                            for packed in [False, True]:
+                                # Rotary requires head_size % 16 == 0 (matches CUDA harness).
+                                if rotary and h % 16 > 0:
+                                    continue
+
+                                config = Config(
+                                    b,
+                                    s,
+                                    s2,
+                                    n,
+                                    n2,
+                                    h,
+                                    block_size,
+                                    False,  # local - not supported on WebGPU
+                                    rotary,
+                                    rotary_interleaved,
+                                    packed,
+                                    0.0,  # softcap - not supported on WebGPU
+                                    ep="WebGpuExecutionProvider",
+                                )
+                                if _webgpu_supports_config(config):
+                                    yield (str(config), config)
+
+
+@unittest.skipIf(not has_webgpu_ep(), reason="WebGpuExecutionProvider is not available.")
+class TestPagedAttentionWebGpu(unittest.TestCase):
+    """Parity tests against the WebGPU PagedAttention kernel.
+
+    Runs the same PyTorch reference (attention_ref) as the CUDA classes over a
+    smaller config matrix filtered to the features WebGPU supports.
+    """
+
+    @parameterized.expand(paged_attention_test_cases_webgpu())
+    def test_paged_attention_webgpu(self, _, config):
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
 
 
