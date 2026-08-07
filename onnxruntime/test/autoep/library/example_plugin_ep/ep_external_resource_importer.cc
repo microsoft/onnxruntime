@@ -36,7 +36,8 @@ bool ORT_API_CALL ExampleExternalResourceImporter::CanImportMemoryImpl(
     _In_ OrtExternalMemoryHandleType handle_type) noexcept {
   // The example EP supports both D3D12 resource and heap handle types for testing
   return handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE ||
-         handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP;
+         handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP ||
+         handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION;
 }
 
 /*static*/

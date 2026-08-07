@@ -1052,18 +1052,23 @@ typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options
  */
 typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status);
 
-/** \brief External memory handle type for importing GPU resources.
+/** \brief External memory handle type for importing GPU/NPU resources.
  *
  * \todo Add Linux DMA-BUF file descriptor for embedded GPU memory sharing
  *
  * \since Version 1.24.
  */
 typedef enum OrtExternalMemoryHandleType {
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE = 0,      /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(resource) */
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP = 1,          /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(heap) */
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_WIN32 = 2,     /**< Shared HANDLE from vkGetMemoryWin32HandleKHR, non-dedicated allocation */
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_OPAQUE_FD = 3, /**< File descriptor from vkGetMemoryOpaqueFdKHR, non-dedicated allocation */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE = 0,   /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(resource) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP = 1,       /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(heap) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_MEMORY_WIN32 = 2,     /**< Shared HANDLE from vkGetMemoryWin32HandleKHR or clGetMemObjectInfo with CL_EXTERNAL_MEMORY_HANDLE_OPAQUE_WIN32_KHR, non-dedicated allocation */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_MEMORY_OPAQUE_FD = 3, /**< File descriptor from vkGetMemoryOpaqueFdKHR or clGetMemObjectInfo with CL_EXTERNAL_MEMORY_HANDLE_OPAQUE_FD_KHR, non-dedicated allocation */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION = 4,  /**< Equivalent to VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT or CL_MEM_USE_HOST_PTR */
 } OrtExternalMemoryHandleType;
+
+// Previous enum values added for backwards compatibility
+#define ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_WIN32 ORT_EXTERNAL_MEMORY_HANDLE_TYPE_MEMORY_WIN32
+#define ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_OPAQUE_FD ORT_EXTERNAL_MEMORY_HANDLE_TYPE_MEMORY_OPAQUE_FD
 
 /** \brief Descriptor for importing external memory.
  *
