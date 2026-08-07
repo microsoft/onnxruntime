@@ -49,12 +49,10 @@ Status WebGpuKernel::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr /
 
   Status s = PrePackInternal(context, tensor, input_idx, ep_.PrepackAllocator(), is_packed);
 
-  // PrePack has no OnRunEnd hook, so finish its deferred pipeline builds and submit any encoded
-  // GPU work before returning and allowing ORT to release the original initializer tensor.
-  Status flush_status = webgpu_context_.Flush(webgpu_context_.InitializerBufferManager());
-
-  if (s.IsOK()) {
-    s = flush_status;
+  if (s.IsOK() && is_packed) {
+    // PrePack has no OnRunEnd hook, so finish its deferred pipeline builds and submit any encoded
+    // GPU work before returning and allowing ORT to release the original initializer tensor.
+    s = webgpu_context_.Flush(webgpu_context_.InitializerBufferManager());
   }
 
   if (webgpu_context_.ValidationMode() >= ValidationMode::Full) {

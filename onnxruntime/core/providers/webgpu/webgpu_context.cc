@@ -256,6 +256,9 @@ Status WebGpuContext::WaitForDeferredPipelineBuilds() {
     }
 
     const ProgramArtifact* artifact = program_mgr_->Get(dispatch.program_key);
+    // Another thread may populate the cache after this dispatch starts its own build. In that case,
+    // the cached pipeline can be reused, but the pending build must still be waited on before its
+    // callback context is released.
     if (artifact != nullptr && !dispatch.pending_build) {
       dispatch.compute_pipeline = artifact->compute_pipeline;
       continue;
@@ -264,11 +267,15 @@ Status WebGpuContext::WaitForDeferredPipelineBuilds() {
     if (!dispatch.pending_build) {
       result = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                "No cached or pending pipeline for deferred dispatch: ", dispatch.program_key);
+      // Do not return early. Later dispatches may own pending callback contexts that must remain
+      // alive until their builds complete. The caller will discard all dispatches without encoding
+      // them after this function finishes draining the window.
       continue;
     }
 
-    // A pending callback owns references into this build, so it must complete before the build can
-    // be discarded even if another dispatch has populated the cache in the meantime.
+    // With WaitAnyOnly, dropping the future does not cancel its callback; Dawn retains the callback
+    // context and may invoke it when the instance shuts down. Wait before discarding the context,
+    // even if another dispatch has populated the cache in the meantime.
     auto& build = *dispatch.pending_build;
     Status wait_status = Wait(build.future);
     if (!wait_status.IsOK()) {
