@@ -2,7 +2,7 @@ vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
-    REPO bmehta001/cpp_client_telemetry
+    REPO microsoft/cpp_client_telemetry
     REF 0b7b0cfb63ecc9dcdecad61e60f26957fdb01f61
     SHA512 9ba79b10a5e68f8fa5d3692b22750bc5c0cec12c6d2920bfd63ce193a26b8433923e7dbba2baeb4fd863dd64ed2fba683b0480641f88697302907385bb61f958
     HEAD_REF main
