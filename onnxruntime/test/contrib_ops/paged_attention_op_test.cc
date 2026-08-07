@@ -338,9 +338,17 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(execution_provider)));
   auto device_allocators = execution_provider_ptr->CreatePreferredAllocators();
   ASSERT_FALSE(device_allocators.empty());
-  const size_t device_allocator_index = provider_type == kWebGpuExecutionProvider ? 1 : 0;
-  ASSERT_LT(device_allocator_index, device_allocators.size());
-  const OrtMemoryInfo device_memory_info = device_allocators[device_allocator_index]->Info();
+  const OrtMemoryInfo* selected_device_memory_info = nullptr;
+  for (const auto& allocator : device_allocators) {
+    const auto& mem_info = allocator->Info();
+    if (mem_info.alloc_type == OrtAllocatorType::OrtDeviceAllocator &&
+        mem_info.device.Type() == OrtDevice::GPU) {
+      selected_device_memory_info = &mem_info;
+      break;
+    }
+  }
+  ASSERT_NE(selected_device_memory_info, nullptr);
+  const OrtMemoryInfo device_memory_info = *selected_device_memory_info;
   ASSERT_STATUS_OK(session.Load(model_stream));
   ASSERT_STATUS_OK(session.Initialize());
   auto device_alloc = session.GetAllocator(device_memory_info);
