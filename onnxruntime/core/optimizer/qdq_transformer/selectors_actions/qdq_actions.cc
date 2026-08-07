@@ -87,7 +87,15 @@ int64_t GetEffectiveBlockSize(const Node& dq_node, int64_t block_size_for_non_bl
   const auto& dq_attrs = dq_node.GetAttributes();
   const auto bs_iter = dq_attrs.find("block_size");
   if (bs_iter != dq_attrs.end() && bs_iter->second.i() > 0) {
-    return bs_iter->second.i();
+    // Blockwise DQ feeding MatMulNBits must use a power-of-two block_size in [16, 256].
+    // Keep this contract explicit here as a fail-fast defense if selector logic changes.
+    constexpr int64_t kMinBlockSize = 16;
+    constexpr int64_t kMaxBlockSize = 256;
+    const int64_t block_size = bs_iter->second.i();
+    ORT_ENFORCE(block_size >= kMinBlockSize && block_size <= kMaxBlockSize && ((block_size - 1) & block_size) == 0,
+                "DQ block_size must be a power-of-two in [", kMinBlockSize, ", ", kMaxBlockSize,
+                "] for MatMulNBits fusion. Got: ", block_size);
+    return block_size;
   }
 
   // Derive K from the weight input shape if available. Shape information may be missing even

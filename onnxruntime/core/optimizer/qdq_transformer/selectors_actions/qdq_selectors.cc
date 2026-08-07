@@ -776,7 +776,9 @@ static bool ValidateDQForMatMulNBits(const Graph& graph, const Node& dq_node) {
     }
 
     auto block_size = block_size_iter->second.i();
-    if (block_size < 16 || ((block_size - 1) & block_size)) {
+    // Must be a power-of-two in [16, 256], which is the supported blockwise range for
+    // this MatMulNBits fusion path.
+    if (block_size < 16 || block_size > 256 || ((block_size - 1) & block_size)) {
       return false;
     }
 
