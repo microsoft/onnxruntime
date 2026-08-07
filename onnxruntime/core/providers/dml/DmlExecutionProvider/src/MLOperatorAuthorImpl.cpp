@@ -1598,36 +1598,14 @@ namespace Windows::AI::MachineLearning::Adapter
             return;
         }
 
-        // GetSizeInBytesFromTensorProto sizes every element type ToMLTensorDataType accepts except the
-        // complex ones, which it reports as NOT_IMPLEMENTED. Size those here so the bounds check stays
-        // total over the set of types this EP admits.
-        size_t complexElementByteSize = 0;
-        switch (tensorProto.data_type())
-        {
-        case onnx::TensorProto_DataType_COMPLEX64:  complexElementByteSize = 8; break;
-        case onnx::TensorProto_DataType_COMPLEX128: complexElementByteSize = 16; break;
-        default: break;
-        }
-
+        // A failure here means the declared shape is not representable, the byte count overflows, or the
+        // element type has no fixed width. The only types ToMLTensorDataType accepts that this helper
+        // cannot size are COMPLEX64/COMPLEX128, and no DML operator registers those (they exist in
+        // OperatorRegistration.cpp's SupportedTensorDataTypes only as unused enum values, and DmlCommon
+        // maps both to DML_TENSOR_DATA_TYPE_UNKNOWN). Rejecting the proto is therefore the correct
+        // outcome for every type that can actually reach this point.
         size_t requiredByteSize = 0;
-        if (complexElementByteSize != 0)
-        {
-            SafeInt<size_t> elementCount = 1;
-            for (int64_t dimension : tensorProto.dims())
-            {
-                ORT_THROW_HR_IF(E_INVALIDARG, dimension < 0);
-                elementCount *= static_cast<size_t>(dimension);
-            }
-
-            requiredByteSize = elementCount * complexElementByteSize;
-        }
-        else
-        {
-            // A failure here means the declared shape is not representable, the byte count overflows, or
-            // the element type has no fixed width. ToMLTensorDataType rejects every remaining unsized
-            // type, so treat the proto as malformed rather than skipping the bounds check for it.
-            THROW_IF_NOT_OK(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(tensorProto, &requiredByteSize));
-        }
+        THROW_IF_NOT_OK(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(tensorProto, &requiredByteSize));
 
         if (bufferByteSize < requiredByteSize)
         {
@@ -1636,8 +1614,8 @@ namespace Windows::AI::MachineLearning::Adapter
                 "Tensor '%hs' carries fewer bytes of data than its shape requires. "
                 "Shape requires %llu bytes, but only %llu bytes are present.",
                 tensorProto.name().c_str(),
-                static_cast<unsigned long long>(requiredByteSize),
-                static_cast<unsigned long long>(bufferByteSize));
+                static_cast<uint64_t>(requiredByteSize),
+                static_cast<uint64_t>(bufferByteSize));
         }
     }
 

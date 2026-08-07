@@ -30,7 +30,7 @@ std::string MakeInt64RawData(const std::vector<int64_t>& values, size_t truncate
   raw.reserve(values.size() * sizeof(int64_t));
   for (int64_t value : values) {
     for (size_t byteIndex = 0; byteIndex < sizeof(int64_t); ++byteIndex) {
-      raw.push_back(static_cast<char>((static_cast<uint64_t>(value) >> (8 * byteIndex)) & 0xFF));
+      raw.push_back(static_cast<char>(static_cast<uint64_t>(value) >> (8 * byteIndex)));
     }
   }
 
