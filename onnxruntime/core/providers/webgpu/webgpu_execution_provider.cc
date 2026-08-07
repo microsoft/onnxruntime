@@ -169,35 +169,9 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO(22, Softplus),
 
     // // binary - math
-    // Add: registered via RegisterKernels with conditional int64 support
-    // Sub: registered via RegisterKernels with conditional int64 support
-    KERNEL_CREATE_INFO_VERSIONED(7, 12, Mul),
-    KERNEL_CREATE_INFO_VERSIONED(13, 13, Mul),
-    KERNEL_CREATE_INFO(14, Mul),
-    KERNEL_CREATE_INFO_VERSIONED(7, 12, Div),
-    KERNEL_CREATE_INFO_VERSIONED(13, 13, Div),
-    KERNEL_CREATE_INFO(14, Div),
-    // Max: registered via RegisterKernels with conditional int64 support
-    // Min: registered via RegisterKernels with conditional int64 support
-    KERNEL_CREATE_INFO_VERSIONED(7, 11, Pow),
-    KERNEL_CREATE_INFO_VERSIONED(12, 12, Pow),
-    KERNEL_CREATE_INFO_VERSIONED(13, 14, Pow),
-    KERNEL_CREATE_INFO(15, Pow),
-    KERNEL_CREATE_INFO_VERSIONED(7, 8, PRelu),
-    KERNEL_CREATE_INFO_VERSIONED(9, 15, PRelu),
-    KERNEL_CREATE_INFO(16, PRelu),
-    // Equal: registered via RegisterKernels with conditional int64 support
-    KERNEL_CREATE_INFO_VERSIONED(7, 8, Greater),
-    KERNEL_CREATE_INFO_VERSIONED(9, 12, Greater),
-    KERNEL_CREATE_INFO(13, Greater),
-    KERNEL_CREATE_INFO_VERSIONED(12, 15, GreaterOrEqual),
-    KERNEL_CREATE_INFO(16, GreaterOrEqual),
-    KERNEL_CREATE_INFO_VERSIONED(7, 8, Less),
-    KERNEL_CREATE_INFO_VERSIONED(9, 12, Less),
-    KERNEL_CREATE_INFO(13, Less),
-    KERNEL_CREATE_INFO_VERSIONED(12, 15, LessOrEqual),
-    KERNEL_CREATE_INFO(16, LessOrEqual),
-    KERNEL_CREATE_INFO(7, And),
+    // All binary elementwise ops (Add, Sub, Mul, Div, Max, Min, Equal, Greater, Less,
+    // GreaterOrEqual, LessOrEqual, Pow, PRelu, And) are registered via RegisterKernels
+    // through RegisterBinaryElementwiseKernels, with conditional int64 support.
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 12, Shape)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 14, Shape)>,
@@ -500,10 +474,9 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandVersionedKernelInfo<8, 12>(enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandKernelInfo<13>(enable_int64)));
 
-  // Register Add kernels with conditional int64 support
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateAddVersionedKernelInfo<7, 12>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateAddVersionedKernelInfo<13, 13>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateAddKernelInfo<14>(enable_int64)));
+  // Register all binary elementwise kernels (Add, Sub, Mul, Div, Max, Min, Equal, Greater,
+  // Less, GreaterOrEqual, LessOrEqual, Pow, PRelu, And) with conditional int64 support.
+  RegisterBinaryElementwiseKernels(*kernel_registry, enable_int64);
 
   // Register Reshape kernels with conditional int64 support
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReshapeVersionedKernelInfo<5, 12>(enable_int64)));
@@ -519,27 +492,6 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateConcatVersionedKernelInfo<4, 10>(enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateConcatVersionedKernelInfo<11, 12>(enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateConcatKernelInfo<13>(enable_int64)));
-
-  // Register Equal kernels with conditional int64 support
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateEqualVersionedKernelInfo<7, 10>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateEqualVersionedKernelInfo<11, 12>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateEqualVersionedKernelInfo<13, 18>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateEqualKernelInfo<19>(enable_int64)));
-
-  // Register Sub kernels with conditional int64 support
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateSubVersionedKernelInfo<7, 12>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateSubVersionedKernelInfo<13, 13>(enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateSubKernelInfo<14>(enable_int64)));
-
-  // Register Max kernels with conditional int64 support
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateMaxVersionedKernelInfo(8, 11, enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateMaxVersionedKernelInfo(12, 12, enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateMaxKernelInfo(13, enable_int64)));
-
-  // Register Min kernels with conditional int64 support
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateMinVersionedKernelInfo(8, 11, enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateMinVersionedKernelInfo(12, 12, enable_int64)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateMinKernelInfo(13, enable_int64)));
 
   // Register Where kernels with conditional int64 support
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateWhereVersionedKernelInfo<9, 15>(enable_int64)));

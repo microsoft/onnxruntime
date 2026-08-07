@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/framework/kernel_registry.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/program.h"
@@ -73,27 +74,10 @@ class BinaryElementwise : public WebGpuKernel {
   const GetAdditionalImplementationFunction get_additional_impl_;
 };
 
-// Factory functions for ops with conditional int64 support (registered via RegisterKernels).
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateAddVersionedKernelInfo(bool enable_int64);
-template <int SinceVersion>
-KernelCreateInfo CreateAddKernelInfo(bool enable_int64);
-
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateEqualVersionedKernelInfo(bool enable_int64);
-template <int SinceVersion>
-KernelCreateInfo CreateEqualKernelInfo(bool enable_int64);
-
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateSubVersionedKernelInfo(bool enable_int64);
-template <int SinceVersion>
-KernelCreateInfo CreateSubKernelInfo(bool enable_int64);
-
-KernelCreateInfo CreateMaxVersionedKernelInfo(int start_version, int end_version, bool enable_int64);
-KernelCreateInfo CreateMaxKernelInfo(int since_version, bool enable_int64);
-
-KernelCreateInfo CreateMinVersionedKernelInfo(int start_version, int end_version, bool enable_int64);
-KernelCreateInfo CreateMinKernelInfo(int since_version, bool enable_int64);
+// Registers every binary elementwise op (Add, Sub, Mul, Div, Max, Min, Equal, Greater, Less,
+// GreaterOrEqual, LessOrEqual, Pow, PRelu, And) through a single path. int64 support (behind the
+// enableInt64 provider option) is enabled for the ops whose i32 shader semantics are meaningful.
+void RegisterBinaryElementwiseKernels(KernelRegistry& kernel_registry, bool enable_int64);
 
 // Variadic element-wise operator (e.g. Max, Min) that accepts 1..N inputs with
 // multidirectional (NumPy-style) broadcasting. The inputs are folded pairwise using the
