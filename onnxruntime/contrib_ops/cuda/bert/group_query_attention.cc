@@ -101,7 +101,7 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
   is_past_bsnh_ = false;
-  is_unidirectional_ = true;
+  is_unidirectional_ = info.GetAttrOrDefault<int64_t>("causal", 1) == 1;
   const int64_t local_window_size_attr = info.GetAttrOrDefault<int64_t>("local_window_size", -1);
   // Validate before narrowing to int so an out-of-range attribute cannot wrap to a valid-looking
   // small window (e.g. 2^32 + 128) and silently run a different window than the model specifies.
@@ -518,6 +518,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // XQA is enabled when enable_xqa_=true; ineligible shapes/group sizes fall back via data.use_xqa below.
   // The XQA kernel has no attention_bias input.
   if (enable_xqa_ &&
+      parameters.is_unidirectional &&
       !has_attention_bias &&
       (device_prop.major >= 8) &&
       !parameters.is_first_prompt &&
@@ -649,9 +650,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   }
 
   // === cuDNN SDPA eligibility (preferred on SM>=90, Hopper/Blackwell) ===
-  // Constrained to the well-supported causal path: non-quantized FP16/BF16 KV cache, no softcap,
-  // no smooth-softmax / head sink, and no sliding window. Rotary and packed QKV are handled by
-  // PrepareQKV before the kernel runs; cuDNN handles grouped-query attention natively.
+  // Constrained to non-quantized FP16/BF16 KV cache, no softcap, no smooth-softmax / head sink,
+  // and no sliding window. Rotary and packed QKV are handled by PrepareQKV before the kernel runs;
+  // cuDNN handles grouped-query attention natively.
   bool use_cudnn_sdpa = !data.use_xqa &&
                         !has_attention_bias &&  // GQA's cuDNN path is bottom-right causal, which cuDNN doesn't compose with a bias
                         !is_inputs_quantized &&
@@ -671,7 +672,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                               parameters.head_size,
                                                               parameters.sequence_length,          // seq_len_q
                                                               parameters.seqlen_present_kv_cache,  // seq_len_kv (capacity)
-                                                              /*is_causal=*/true);
+                                                              parameters.is_unidirectional);
   data.use_cudnn_sdpa = use_cudnn_sdpa;
 
 #if USE_FLASH_ATTENTION

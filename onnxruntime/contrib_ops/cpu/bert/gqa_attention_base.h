@@ -93,6 +93,7 @@ class GQAAttentionBase {
     rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
 
     use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
+    causal_ = info.GetAttrOrDefault<int64_t>("causal", 1) == 1;
 
     local_window_size_ = has_local ? static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1)) : -1;
 
@@ -118,6 +119,7 @@ class GQAAttentionBase {
   int qk_output_;
 
   bool use_smooth_softmax_;
+  bool causal_;
 
   KVQuantizationType k_quant_type_;
   KVQuantizationType v_quant_type_;
@@ -446,7 +448,8 @@ class GQAAttentionBase {
             // the region filled by the QK GEMM. For right-padded batched prompts, padding
             // positions have seq_causal_length > total_seqlen; without this cap the softmax
             // would read uninitialized memory and produce NaN.
-            const size_t effective_causal_length = std::min(seq_causal_length, total_seqlen);
+            const size_t effective_causal_length =
+                causal_ ? std::min(seq_causal_length, total_seqlen) : total_seqlen;
 
             const bool apply_local = local_window_size_ >= 0 &&
                                      effective_causal_length > static_cast<size_t>(local_window_size_);
@@ -1474,7 +1477,8 @@ class GQAAttentionBase {
           // The GEMM only fills columns [0, total_seqlen); beyond that the buffer is uninitialized.
           // Cap the effective causal length so the softmax window stays within the filled region,
           // preventing NaN from uninitialized memory propagating into the output.
-          const size_t effective_causal_length = std::min(seq_causal_length, total_seqlen);
+          const size_t effective_causal_length =
+              causal_ ? std::min(seq_causal_length, total_seqlen) : total_seqlen;
 
           const bool should_apply_local_window = local_window_size_ >= 0 &&
                                                  effective_causal_length > static_cast<size_t>(local_window_size_);

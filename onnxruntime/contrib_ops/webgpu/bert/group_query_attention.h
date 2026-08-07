@@ -64,6 +64,10 @@ class GroupQueryAttention final : public WebGpuKernel {
 
     local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
 
+    if (info.GetAttrOrDefault<int64_t>("causal", 1) == 0) {
+      ORT_NOT_IMPLEMENTED("GroupQueryAttention (WebGPU): causal=0 is not implemented.");
+    }
+
     // The windowed KV cache (cache-relative indexing + shift compaction) is implemented only by the
     // CUDA kernel. Fail loudly rather than treating the window-sized buffer as a full-length cache.
     ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("sliding_window_cache", 0) == 0,
