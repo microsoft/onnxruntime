@@ -48,12 +48,12 @@
     "onnx",
     {
       "name": "protobuf",
-      "version>=": "3.21.12"
+      "version>=": "6.33.6"
     },
     {
       "name": "protobuf",
       "host": true,
-      "version>=": "3.21.12"
+      "version>=": "6.33.6"
     },
     "pybind11",
     "re2",
@@ -122,7 +122,7 @@
     },
     {
       "name": "protobuf",
-      "version": "3.21.12#4"
+      "version": "6.33.6#0"
     },
     {
       "name": "flatbuffers",
