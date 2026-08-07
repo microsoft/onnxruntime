@@ -29,13 +29,13 @@ import numpy
 import torch
 import torch.nn.functional as F
 from cuda_plugin_ep_helper import resolve_cuda_plugin_ep
-from onnxruntime._onnx_shim.onnx import helper
-from onnxruntime.capi import _pybind_state as _pybind
-from onnxruntime.quantization import CudaQuantizer
 from parameterized import parameterized
 from torch import nn
 
 import onnxruntime
+from onnxruntime._onnx_shim.onnx import helper
+from onnxruntime.capi import _pybind_state as _pybind
+from onnxruntime.quantization import CudaQuantizer
 
 try:
     import nvtx
