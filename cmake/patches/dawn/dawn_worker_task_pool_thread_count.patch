@@ -1,9 +1,9 @@
 diff --git a/include/dawn/platform/DawnPlatform.h b/include/dawn/platform/DawnPlatform.h
 --- a/include/dawn/platform/DawnPlatform.h
 +++ b/include/dawn/platform/DawnPlatform.h
-@@ -157,6 +157,9 @@ class DAWN_PLATFORM_EXPORT Platform {
-     // Hook for querying if a Finch feature is enabled.
-     virtual bool IsFeatureEnabled(Features feature);
+@@ -204,6 +204,9 @@ class DAWN_PLATFORM_EXPORT Platform {
+     // stuck.
+     virtual void ReportProgress();
  
 +  protected:
 +    std::unique_ptr<WorkerTaskPool> CreateDefaultWorkerTaskPool(uint32_t maxThreadCount);
@@ -14,17 +14,15 @@ diff --git a/include/dawn/platform/DawnPlatform.h b/include/dawn/platform/DawnPl
 diff --git a/src/dawn/platform/DawnPlatform.cpp b/src/dawn/platform/DawnPlatform.cpp
 --- a/src/dawn/platform/DawnPlatform.cpp
 +++ b/src/dawn/platform/DawnPlatform.cpp
-@@ -88,7 +88,12 @@ dawn::platform::CachingInterface* Platform::GetCachingInterface() {
+@@ -91,6 +91,11 @@ std::unique_ptr<dawn::platform::WorkerTaskPool> Platform::CreateWorkerTaskPool() {
+     return std::make_unique<AsyncWorkerThreadPool>();
  }
  
- std::unique_ptr<dawn::platform::WorkerTaskPool> Platform::CreateWorkerTaskPool() {
--    return std::make_unique<AsyncWorkerThreadPool>();
-+    return CreateDefaultWorkerTaskPool(AsyncWorkerThreadPool::kDefaultThreadCount);
-+}
-+
 +std::unique_ptr<dawn::platform::WorkerTaskPool> Platform::CreateDefaultWorkerTaskPool(
 +    uint32_t maxThreadCount) {
 +    return std::make_unique<AsyncWorkerThreadPool>(maxThreadCount);
- }
- 
- bool Platform::IsFeatureEnabled(Features feature) {
++}
++
+ std::unique_ptr<dawn::platform::JobHandle> WorkerTaskPool::PostWorkerJob(PostWorkerJobCallback cb,
+                                                                         void* userdata) {
+     DAWN_UNREACHABLE();
