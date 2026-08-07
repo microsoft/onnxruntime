@@ -1422,6 +1422,8 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
     LOGS(logger_, WARNING)
         << "session.max_shape_override is not supported in a minimal build and will be ignored.";
 #else
+    // Partitioning results cannot be reused here because the final graph contains the
+    // completed set of EP fusions and transformations.
     MaxShapeOverrideMap input_overrides;
     ORT_RETURN_IF_ERROR(ParseMaxShapeOverride(max_shape_config, input_overrides));
     ORT_RETURN_IF_ERROR(InferMaxShapes(graph_, input_overrides, max_shape_inference_result));

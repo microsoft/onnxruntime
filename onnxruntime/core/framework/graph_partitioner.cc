@@ -1326,6 +1326,9 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
       }
       if (resource_accountant != nullptr) {
         // A preceding EP or function-inlining iteration may have changed the graph.
+        // Results cannot be shared across those mutations because fused/generated NodeArgs
+        // and subgraph identities may differ. The second GetCapability pass reuses this
+        // result unless its layout transformation reports a modification.
         ORT_RETURN_IF_ERROR(RefreshMaxShapeInference(graph, *resource_accountant));
       }
       ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(graph, func_mgr, kernel_registry_manager,

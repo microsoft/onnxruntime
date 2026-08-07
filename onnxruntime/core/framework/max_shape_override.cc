@@ -45,6 +45,52 @@ std::string_view Trim(std::string_view s) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
+using GraphInputMap = InlinedHashMap<std::string, const NodeArg*>;
+using SymbolicDimensionMap = InlinedHashMap<std::string, int64_t>;
+
+Status ValidateMaxShapeOverrides(const Graph& graph,
+                                 const MaxShapeOverrideMap& input_overrides,
+                                 GraphInputMap& graph_inputs,
+                                 SymbolicDimensionMap& symbolic_values) {
+  graph_inputs.clear();
+  graph_inputs.reserve(graph.GetInputs().size());
+  for (const NodeArg* input : graph.GetInputs()) {
+    graph_inputs.emplace(input->Name(), input);
+  }
+
+  symbolic_values.clear();
+  for (const auto& [name, override_shape] : input_overrides) {
+    const auto input_it = graph_inputs.find(name);
+    ORT_RETURN_IF(input_it == graph_inputs.end(),
+                  "max_shape_override: '", name, "' is not a graph input");
+
+    const NodeArg& input = *input_it->second;
+    const auto* declared_shape = input.Shape();
+    ORT_RETURN_IF(declared_shape == nullptr,
+                  "max_shape_override: graph input '", name, "' has no declared rank");
+    ORT_RETURN_IF(static_cast<size_t>(declared_shape->dim_size()) != override_shape.NumDimensions(),
+                  "max_shape_override: rank mismatch for graph input '", name, "': model rank ",
+                  declared_shape->dim_size(), ", override rank ", override_shape.NumDimensions());
+
+    for (int dim_index = 0; dim_index < declared_shape->dim_size(); ++dim_index) {
+      const auto& declared_dim = declared_shape->dim(dim_index);
+      const int64_t override_dim = override_shape[static_cast<size_t>(dim_index)];
+      ORT_RETURN_IF(declared_dim.has_dim_value() && declared_dim.dim_value() != override_dim,
+                    "max_shape_override: dimension ", dim_index, " for graph input '", name,
+                    "' is static (", declared_dim.dim_value(), ") but override specifies ", override_dim);
+
+      if (declared_dim.has_dim_param() && !declared_dim.dim_param().empty()) {
+        const auto [symbol_it, inserted] = symbolic_values.emplace(declared_dim.dim_param(), override_dim);
+        ORT_RETURN_IF(!inserted && symbol_it->second != override_dim,
+                      "max_shape_override: symbolic dimension '", declared_dim.dim_param(),
+                      "' has inconsistent values ", symbol_it->second, " and ", override_dim);
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
 std::string GetSubgraphNodeKey(const Node& node) {
   if (!node.Name().empty()) {
     return "name:" + node.Name();
@@ -267,6 +313,11 @@ Status InferMaxShapes(const Graph& graph,
   ORT_UNUSED_PARAMETER(graph);
   return Status::OK();
 #else
+  // Reject invalid overrides before serializing and resolving a disposable model.
+  GraphInputMap graph_inputs;
+  SymbolicDimensionMap symbolic_values;
+  ORT_RETURN_IF_ERROR(ValidateMaxShapeOverrides(graph, input_overrides, graph_inputs, symbolic_values));
+
   // Serialize into a disposable model so normal shape inference cannot make the
   // executable graph appear statically shaped to optimizers or runtime validation.
   const GraphViewer source_viewer{graph};
@@ -323,44 +374,6 @@ Status InferMaxShapes(const Graph& graph,
       ORT_RETURN_IF_ERROR(shadow_graph.AddInitializedOrtValue(*initializer, ort_value));
     } else {
       shadow_graph.AddInitializedTensor(*initializer);
-    }
-  }
-
-  InlinedHashMap<std::string, const NodeArg*> graph_inputs;
-  graph_inputs.reserve(graph.GetInputs().size());
-  for (const NodeArg* input : graph.GetInputs()) {
-    graph_inputs.emplace(input->Name(), input);
-  }
-
-  // Validate overrides against explicit source inputs and establish one maximum value
-  // for each symbolic dimension shared by multiple inputs.
-  InlinedHashMap<std::string, int64_t> symbolic_values;
-  for (const auto& [name, override_shape] : input_overrides) {
-    const auto input_it = graph_inputs.find(name);
-    ORT_RETURN_IF(input_it == graph_inputs.end(),
-                  "max_shape_override: '", name, "' is not a graph input");
-
-    const NodeArg& input = *input_it->second;
-    const auto* declared_shape = input.Shape();
-    ORT_RETURN_IF(declared_shape == nullptr,
-                  "max_shape_override: graph input '", name, "' has no declared rank");
-    ORT_RETURN_IF(static_cast<size_t>(declared_shape->dim_size()) != override_shape.NumDimensions(),
-                  "max_shape_override: rank mismatch for graph input '", name, "': model rank ",
-                  declared_shape->dim_size(), ", override rank ", override_shape.NumDimensions());
-
-    for (int dim_index = 0; dim_index < declared_shape->dim_size(); ++dim_index) {
-      const auto& declared_dim = declared_shape->dim(dim_index);
-      const int64_t override_dim = override_shape[static_cast<size_t>(dim_index)];
-      ORT_RETURN_IF(declared_dim.has_dim_value() && declared_dim.dim_value() != override_dim,
-                    "max_shape_override: dimension ", dim_index, " for graph input '", name,
-                    "' is static (", declared_dim.dim_value(), ") but override specifies ", override_dim);
-
-      if (declared_dim.has_dim_param() && !declared_dim.dim_param().empty()) {
-        const auto [symbol_it, inserted] = symbolic_values.emplace(declared_dim.dim_param(), override_dim);
-        ORT_RETURN_IF(!inserted && symbol_it->second != override_dim,
-                      "max_shape_override: symbolic dimension '", declared_dim.dim_param(),
-                      "' has inconsistent values ", symbol_it->second, " and ", override_dim);
-      }
     }
   }
 
