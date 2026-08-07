@@ -8,8 +8,13 @@
 #include <netinet/tcp.h>
 #include <netdb.h>
 #include <cstdint>
+#include <iostream>
+#include <limits>
 #include <memory>
+#include <mutex>
+#include <set>
 #include <string>
+#include <utility>
 
 #include "nccl_kernels.h"
 #include "mpi_include.h"
@@ -437,7 +442,27 @@ Status FuncCustomAllReduce(
   int rank = nccl->Rank();
   int world_size = nccl->Size();
 
-  const auto fall_back_to_nccl = [&]() -> Status {
+  // Which algorithm a given all-reduce ends up on is decided by four independent
+  // conditions, and a model that runs two sessions (a target and a drafter) can very
+  // easily end up reducing the same tensor two different ways -- which is bit-different,
+  // not wrong, but is enough to wreck speculative acceptance. Report the choice once per
+  // distinct (byte count, outcome) so the two sessions can be compared.
+  const static bool trace_ar =
+      ParseEnvironmentVariableWithDefault<int32_t>("ORT_ALLREDUCE_TRACE", 0) != 0;
+  const auto note = [rank, world_size, input_count, data_type](const char* outcome) {
+    if (!trace_ar) return;
+    static std::mutex s_note_mutex;
+    static std::set<std::pair<size_t, std::string>> s_seen;
+    const size_t bytes = static_cast<size_t>(input_count) * data_type->Size();
+    std::lock_guard<std::mutex> guard(s_note_mutex);
+    if (s_seen.emplace(bytes, outcome).second) {
+      std::cerr << "[ar-trace] rank " << rank << "/" << world_size << " bytes " << bytes
+                << " -> " << outcome << std::endl;
+    }
+  };
+
+  const auto fall_back_to_nccl = [&](const char* why) -> Status {
+    note(why);
     ncclDataType_t dtype = GetNcclDataType(data_type);
     NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, nccl->Comm(), stream));
     return Status::OK();
@@ -447,17 +472,41 @@ Status FuncCustomAllReduce(
   const static bool disable_custom =
       ParseEnvironmentVariableWithDefault<int32_t>("ORT_DISABLE_CUSTOM_ALL_REDUCE", 0) != 0;
   if (disable_custom) {
-    return fall_back_to_nccl();
+    return fall_back_to_nccl("nccl (disabled by env)");
   }
 
   onnxruntime::cuda::collective::AllReduceStrategyType runtime_strategy =
       onnxruntime::cuda::collective::SelectImplementation(input_count, rank, world_size, data_type);
 
   if (runtime_strategy == onnxruntime::cuda::collective::AllReduceStrategyType::NCCL) {
-    return fall_back_to_nccl();
+    return fall_back_to_nccl("nccl (selected by size)");
   }
 
   const size_t required_size = static_cast<size_t>(input_count) * data_type->Size();
+
+  // The custom kernels sum the ranks in a different order than NCCL's ring, so they are
+  // bit-different -- not wrong; a world=8 parity probe passes for every shape. But on a
+  // speculative model that difference is not free, and it is not uniform: measured on
+  // DeepSeek-V4-Flash at world 8, routing *decode* (ONESHOT, tens of KiB) through the
+  // custom kernel costs -7.3% step time with no acceptance change and no answer changes
+  // at all, while additionally routing *prefill* (TWOSHOT, megabytes) through it costs
+  // 21.7% of speculative acceptance -- enough to lose more throughput than the kernel
+  // wins. Quality barely moves either way, so an accuracy gate will not catch this;
+  // acceptance has to be measured over many prompts to see it.
+  //
+  // These bounds select which message sizes may use the custom path, which is what makes
+  // that separation expressible (and is how the prefill/decode split was found in the
+  // first place -- the two sessions reduce different token counts, so they are
+  // distinguishable by byte count). Bytes outside [min, max] fall back to NCCL.
+  const static size_t custom_min_bytes =
+      ParseEnvironmentVariableWithDefault<size_t>("ORT_CUSTOM_AR_MIN_BYTES", 0);
+  const static size_t custom_max_bytes =
+      ParseEnvironmentVariableWithDefault<size_t>("ORT_CUSTOM_AR_MAX_BYTES",
+                                                  std::numeric_limits<size_t>::max());
+  if (required_size < custom_min_bytes || required_size > custom_max_bytes) {
+    return fall_back_to_nccl("nccl (outside ORT_CUSTOM_AR_{MIN,MAX}_BYTES)");
+  }
+
   if (required_size > ipc_mem_res_pack.max_input_size) {
     // Growing the workspace allocates, exchanges IPC handles and synchronizes, none of which can
     // happen while the stream is capturing. ORT replays a captured graph only after running it
@@ -466,7 +515,7 @@ Status FuncCustomAllReduce(
     cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
     CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));
     if (capture_status != cudaStreamCaptureStatusNone) {
-      return fall_back_to_nccl();
+      return fall_back_to_nccl("nccl (workspace too small while capturing)");
     }
   }
 
@@ -513,6 +562,10 @@ Status FuncCustomAllReduce(
   params.local_output_buffer_ptr = output_data;
   params.local_input_buffer_ptr = input_data;
   params.elts_total = input_count;
+
+  note(runtime_strategy == onnxruntime::cuda::collective::AllReduceStrategyType::ONESHOT
+           ? "custom ONESHOT"
+           : "custom TWOSHOT");
 
   onnxruntime::cuda::collective::CustomAllReduce(params, data_type, runtime_strategy,
                                                  static_cast<onnxruntime::cuda::collective::AllReduceStrategyConfig>(0),
