@@ -28,6 +28,7 @@
 #include "contrib_ops/cuda/bert/linear_attention_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -107,7 +108,8 @@ __global__ void LinearAttentionRecurrentKernel(
     const T* __restrict__ query,    // [B, T, H_q * d_k]
     const T* __restrict__ key,      // [B, T, n_k * d_k]
     const T* __restrict__ value,    // [B, T, H_kv * d_v]
-    T* __restrict__ state,          // [B, H_kv, d_k, d_v] — in-place updated
+    const T* past_state,            // [W, B, H_kv, d_k, d_v] -- may alias present_state
+    T* present_state,               // [W, B, H_kv, d_k, d_v]
     const T* __restrict__ decay,    // [B, T, H_kv] or [B, T, H_kv*d_k] or nullptr
     const T* __restrict__ beta_in,  // [B, T, H_kv] or [B, T, 1] or nullptr
     T* __restrict__ output,         // [B, T, max(H_q, H_kv) * d_v]
@@ -123,7 +125,9 @@ __global__ void LinearAttentionRecurrentKernel(
     bool decay_per_key_dim,
     bool needs_beta,
     bool beta_per_head,
-    bool needs_retrieval) {
+    bool needs_retrieval,
+    int batch_size,
+    int state_window) {  // W: axis-0 extent of past_state / present_state (>= 1)
   const int b = blockIdx.x;
   const int h_kv = blockIdx.y;
   const int tid = threadIdx.x;
@@ -131,8 +135,14 @@ __global__ void LinearAttentionRecurrentKernel(
   const int kv_per_k = kv_num_heads / n_k_heads;
   const int h_k = h_kv / kv_per_k;
 
-  // Global state pointer for this (batch, head): [d_k, d_v]
-  T* S_global = state + ((int64_t)b * kv_num_heads + h_kv) * d_k * d_v;
+  // Global state pointers for this (batch, head): [d_k, d_v] within window slot W-1, the state
+  // after the last token. They may alias exactly. Window-major layout means one slot spans the
+  // whole batch, so slot W-1 is a single contiguous [B, H_kv, d_k, d_v] block.
+  const int64_t slot_stride = (int64_t)kv_num_heads * d_k * d_v;
+  const int64_t state_offset = ((int64_t)(state_window - 1) * batch_size + b) * slot_stride +
+                               (int64_t)h_kv * d_k * d_v;
+  const T* S_past = past_state + state_offset;
+  T* S_present = present_state + state_offset;
 
   // Shared memory layout
   extern __shared__ float smem[];
@@ -142,7 +152,7 @@ __global__ void LinearAttentionRecurrentKernel(
 
   // Load state from global memory (type T) into shared memory (fp32)
   for (int idx = tid; idx < d_k * d_v; idx += num_threads) {
-    S_smem[idx] = to_float(S_global[idx]);
+    S_smem[idx] = to_float(S_past[idx]);
   }
   __syncthreads();
 
@@ -276,6 +286,19 @@ __global__ void LinearAttentionRecurrentKernel(
     }
     __syncthreads();
 
+    // Emit the recurrent state AFTER processing token t into the right-aligned window slot
+    // t + W - seq_len (negative => this position falls outside the window and is dropped).
+    // The last token's slot is always W-1 and is written by the (vectorized) epilogue below.
+    // Layout [W, B, H_kv, d_k, d_v] row-major; element (i, j) at base_t + i*d_v + j.
+    const int state_slot = t + state_window - seq_len;
+    if (state_slot >= 0 && t + 1 < seq_len) {
+      const int64_t base_t = ((int64_t)state_slot * batch_size + b) * slot_stride +
+                             (int64_t)h_kv * d_k * d_v;
+      for (int idx = tid; idx < d_k * d_v; idx += num_threads) {
+        present_state[base_t + idx] = from_float<T>(S_smem[idx]);
+      }
+    }
+
     // Step 4: Query readout — output = S^T @ q_t (standard GQA or inverse GQA)
     if (q_num_heads >= kv_num_heads) {
       int heads_per_group = q_num_heads / kv_num_heads;
@@ -323,7 +346,7 @@ __global__ void LinearAttentionRecurrentKernel(
 
   // Write back state from shared memory (fp32) to global memory (type T)
   for (int idx = tid; idx < d_k * d_v; idx += num_threads) {
-    S_global[idx] = from_float<T>(S_smem[idx]);
+    S_present[idx] = from_float<T>(S_smem[idx]);
   }
 }
 
@@ -338,7 +361,8 @@ __global__ void LinearAttentionRecurrentKernelFixedShape(
     const T* __restrict__ query,
     const T* __restrict__ key,
     const T* __restrict__ value,
-    T* __restrict__ state,
+    const T* past_state,
+    T* present_state,
     const T* __restrict__ decay,
     const T* __restrict__ beta_in,
     T* __restrict__ output,
@@ -352,7 +376,9 @@ __global__ void LinearAttentionRecurrentKernelFixedShape(
     bool decay_per_key_dim,
     bool needs_beta,
     bool beta_per_head,
-    bool needs_retrieval) {
+    bool needs_retrieval,
+    int batch_size,
+    int state_window) {  // W: axis-0 extent of past_state / present_state (>= 1)
   static_assert(DV % 4 == 0 && DK % 4 == 0, "DK and DV must be multiples of 4 for float4 optimization");
   constexpr int DV4 = DV / 4;
 
@@ -362,7 +388,13 @@ __global__ void LinearAttentionRecurrentKernelFixedShape(
   const int kv_per_k = kv_num_heads / n_k_heads;
   const int h_k = h_kv / kv_per_k;
 
-  T* S_global = state + ((int64_t)b * kv_num_heads + h_kv) * DK * DV;
+  // Window slot W-1 holds the state after the last token; that is what past_state is read from
+  // and what the epilogue writes. Window-major, so a slot spans the whole batch.
+  const int64_t slot_stride = (int64_t)kv_num_heads * DK * DV;
+  const int64_t state_offset = ((int64_t)(state_window - 1) * batch_size + b) * slot_stride +
+                               (int64_t)h_kv * DK * DV;
+  const T* S_past = past_state + state_offset;
+  T* S_present = present_state + state_offset;
 
   // Shared memory layout:
   //   S_smem[DK * DV]             — recurrent state matrix (fp32)
@@ -376,7 +408,7 @@ __global__ void LinearAttentionRecurrentKernelFixedShape(
   // Load state from global memory (type T) into shared memory (fp32) — vectorized
   if constexpr (sizeof(T) == 2 && DV % 2 == 0) {
     // half/bf16: load 2 elements at a time via uint32
-    const uint32_t* S_global_u32 = reinterpret_cast<const uint32_t*>(S_global);
+    const uint32_t* S_global_u32 = reinterpret_cast<const uint32_t*>(S_past);
     int half_pairs = (DK * DV) / 2;
     for (int idx = tid; idx < half_pairs; idx += blockDim.x) {
       uint32_t packed = S_global_u32[idx];
@@ -388,7 +420,7 @@ __global__ void LinearAttentionRecurrentKernelFixedShape(
     }
   } else {
     for (int idx = tid; idx < DK * DV; idx += blockDim.x) {
-      S_smem[idx] = to_float(S_global[idx]);
+      S_smem[idx] = to_float(S_past[idx]);
     }
   }
   __syncthreads();
@@ -605,6 +637,19 @@ __global__ void LinearAttentionRecurrentKernelFixedShape(
     }
     __syncthreads();
 
+    // Emit the recurrent state AFTER processing token t into the right-aligned window slot
+    // t + W - seq_len (negative => outside the window, dropped). The last token's slot is always
+    // W-1 and is written by the vectorized epilogue below.
+    // Layout [W, B, H_kv, DK, DV] row-major; element (i, j) at base_t + i*DV + j.
+    const int state_slot = t + state_window - seq_len;
+    if (state_slot >= 0 && t + 1 < seq_len) {
+      const int64_t base_t = ((int64_t)state_slot * batch_size + b) * slot_stride +
+                             (int64_t)h_kv * DK * DV;
+      for (int idx = tid; idx < DK * DV; idx += blockDim.x) {
+        present_state[base_t + idx] = from_float<T>(S_smem[idx]);
+      }
+    }
+
     // ==================================================================
     // Step 4: Query readout (column dot products — not float4-vectorizable)
     // ==================================================================
@@ -652,7 +697,7 @@ __global__ void LinearAttentionRecurrentKernelFixedShape(
 
   // Write back state from shared memory (fp32) to global memory (type T) — vectorized
   if constexpr (sizeof(T) == 2 && DV % 2 == 0) {
-    uint32_t* S_global_u32 = reinterpret_cast<uint32_t*>(S_global);
+    uint32_t* S_global_u32 = reinterpret_cast<uint32_t*>(S_present);
     int half_pairs = (DK * DV) / 2;
     for (int idx = tid; idx < half_pairs; idx += blockDim.x) {
       T lo = from_float<T>(S_smem[idx * 2]);
@@ -663,7 +708,7 @@ __global__ void LinearAttentionRecurrentKernelFixedShape(
       S_global_u32[idx] = packed;
     }
   } else if constexpr (sizeof(T) == 4 && DV % 4 == 0) {
-    float4* S_global_f4 = reinterpret_cast<float4*>(S_global);
+    float4* S_global_f4 = reinterpret_cast<float4*>(S_present);
     int quads = (DK * DV) / 4;
     for (int idx = tid; idx < quads; idx += blockDim.x) {
       float4 v;
@@ -675,7 +720,7 @@ __global__ void LinearAttentionRecurrentKernelFixedShape(
     }
   } else {
     for (int idx = tid; idx < DK * DV; idx += blockDim.x) {
-      S_global[idx] = from_float<T>(S_smem[idx]);
+      S_present[idx] = from_float<T>(S_smem[idx]);
     }
   }
 }
@@ -709,7 +754,8 @@ __global__ void LinearAttentionDecodeKernel(
     const T* __restrict__ query,
     const T* __restrict__ key,
     const T* __restrict__ value,
-    T* __restrict__ state,
+    const T* past_state,
+    T* present_state,
     const T* __restrict__ decay,
     const T* __restrict__ beta_in,
     T* __restrict__ output,
@@ -724,7 +770,9 @@ __global__ void LinearAttentionDecodeKernel(
     bool decay_per_key_dim,
     bool needs_beta,
     bool beta_per_head,
-    bool needs_retrieval) {
+    bool needs_retrieval,
+    int batch_size,
+    int state_window) {  // W: axis-0 extent of past_state / present_state (>= 1)
   static_assert(DK % 32 == 0, "DK must be a multiple of warp size (32)");
   constexpr int ROWS = DK / 32;
 
@@ -740,11 +788,16 @@ __global__ void LinearAttentionDecodeKernel(
   const int h_k = h_kv / kv_per_k;
 
   // State column S[:, col] sharded into registers: lane holds rows {r*32 + lane}.
-  T* S_col = state + ((int64_t)b * kv_num_heads + h_kv) * DK * d_v + col;
+  // Window slot W-1 holds the state after the last token; window-major, so a slot spans the batch.
+  const int64_t slot_stride = (int64_t)kv_num_heads * DK * d_v;
+  const int64_t state_offset = ((int64_t)(state_window - 1) * batch_size + b) * slot_stride +
+                               (int64_t)h_kv * DK * d_v + col;
+  const T* S_past_col = past_state + state_offset;
+  T* S_present_col = present_state + state_offset;
   float s_shard[ROWS];
 #pragma unroll
   for (int r = 0; r < ROWS; ++r) {
-    s_shard[r] = to_float(S_col[(int64_t)(r * 32 + lane) * d_v]);
+    s_shard[r] = to_float(S_past_col[(int64_t)(r * 32 + lane) * d_v]);
   }
 
   const int k_hidden = n_k_heads * DK;
@@ -802,6 +855,20 @@ __global__ void LinearAttentionDecodeKernel(
       s_shard[r] += k_reg[r] * delta_col;
     }
 
+    // Emit the recurrent state AFTER processing token t into the right-aligned window slot
+    // t + W - seq_len (negative => outside the window, dropped). The last token's slot is always
+    // W-1 and is written by the epilogue below. This lane owns rows {r*32 + lane} of column
+    // `col`. Layout [W, B, H_kv, DK, d_v] row-major; element (row, col) at base_t + row*d_v + col.
+    const int state_slot = t + state_window - seq_len;
+    if (state_slot >= 0 && t + 1 < seq_len) {
+      const int64_t base_t = ((int64_t)state_slot * batch_size + b) * slot_stride +
+                             (int64_t)h_kv * DK * d_v;
+#pragma unroll
+      for (int r = 0; r < ROWS; ++r) {
+        present_state[base_t + (int64_t)(r * 32 + lane) * d_v + col] = from_float<T>(s_shard[r]);
+      }
+    }
+
     // Readout: output = scale * sum_i S[i][col] * q[i].
     const int head_count = GetLinearAttentionReadoutHeadCount(q_num_heads, kv_num_heads);
     for (int group_index = 0; group_index < head_count; ++group_index) {
@@ -823,7 +890,7 @@ __global__ void LinearAttentionDecodeKernel(
   // Write the updated state column back (row-major layout, strided).
 #pragma unroll
   for (int r = 0; r < ROWS; ++r) {
-    S_col[(int64_t)(r * 32 + lane) * d_v] = from_float<T>(s_shard[r]);
+    S_present_col[(int64_t)(r * 32 + lane) * d_v] = from_float<T>(s_shard[r]);
   }
 }
 
@@ -857,7 +924,8 @@ __global__ void LinearAttentionDecodeColKernel(
     const T* __restrict__ query,
     const T* __restrict__ key,
     const T* __restrict__ value,
-    T* __restrict__ state,
+    const T* past_state,
+    T* present_state,
     const T* __restrict__ decay,
     const T* __restrict__ beta_in,
     T* __restrict__ output,
@@ -872,7 +940,10 @@ __global__ void LinearAttentionDecodeColKernel(
     bool decay_per_key_dim,
     bool needs_beta,
     bool beta_per_head,
-    bool needs_retrieval) {
+    bool needs_retrieval,
+    bool force_sequential_state_roundtrip,
+    int batch_size,
+    int state_window) {  // W: axis-0 extent of past_state / present_state (>= 1)
   const int b = blockIdx.x;
   const int h_kv = blockIdx.y;
   const int tid = threadIdx.x;
@@ -883,12 +954,17 @@ __global__ void LinearAttentionDecodeColKernel(
   const int kv_per_k = kv_num_heads / n_k_heads;
   const int h_k = h_kv / kv_per_k;
 
-  // This thread owns column `col`: S[i][col] lives at i*d_v + col (row-major).
-  T* S_head = state + ((int64_t)b * kv_num_heads + h_kv) * DK * d_v + col;
+  // This thread owns column `col`: S[i][col] lives at i*d_v + col (row-major) within window
+  // slot W-1, the state after the last token. Window-major, so a slot spans the whole batch.
+  const int64_t slot_stride = (int64_t)kv_num_heads * DK * d_v;
+  const int64_t state_offset = ((int64_t)(state_window - 1) * batch_size + b) * slot_stride +
+                               (int64_t)h_kv * DK * d_v + col;
+  const T* S_past_head = past_state + state_offset;
+  T* S_present_head = present_state + state_offset;
   float s_col[DK];
 #pragma unroll
   for (int i = 0; i < DK; ++i) {
-    s_col[i] = to_float(S_head[(int64_t)i * d_v]);
+    s_col[i] = to_float(S_past_head[(int64_t)i * d_v]);
   }
 
   // Per-token broadcasts shared across all columns of this (b, h_kv).
@@ -952,6 +1028,20 @@ __global__ void LinearAttentionDecodeColKernel(
       s_col[i] += k_sh[i] * delta_col;
     }
 
+    // Emit the recurrent state AFTER processing token t into the right-aligned window slot
+    // t + W - seq_len (negative => outside the window, dropped). The last token's slot is always
+    // W-1 and is written by the coalesced epilogue below. This thread owns column `col`.
+    // Layout [W, B, H_kv, DK, d_v] row-major; element (i, col) at base_t + i*d_v + col.
+    const int state_slot = t + state_window - seq_len;
+    if (state_slot >= 0 && t + 1 < seq_len) {
+      const int64_t base_t = ((int64_t)state_slot * batch_size + b) * slot_stride +
+                             (int64_t)h_kv * DK * d_v;
+#pragma unroll
+      for (int i = 0; i < DK; ++i) {
+        present_state[base_t + (int64_t)i * d_v + col] = from_float<T>(s_col[i]);
+      }
+    }
+
     // Readout: output = scale * sum_i S[i][col] * q[i].
     const int head_count = GetLinearAttentionReadoutHeadCount(q_num_heads, kv_num_heads);
     for (int group_index = 0; group_index < head_count; ++group_index) {
@@ -969,13 +1059,19 @@ __global__ void LinearAttentionDecodeColKernel(
       }
       output[bt * output_hidden + readout_heads.output_head * d_v + col] = from_float<T>(scale * acc);
     }
+    if (force_sequential_state_roundtrip && t + 1 < seq_len) {
+#pragma unroll
+      for (int i = 0; i < DK; ++i) {
+        s_col[i] = to_float(from_float<T>(s_col[i]));
+      }
+    }
     __syncthreads();  // before next token overwrites k_sh/g_sh
   }
 
   // Store the updated column back (coalesced).
 #pragma unroll
   for (int i = 0; i < DK; ++i) {
-    S_head[(int64_t)i * d_v] = from_float<T>(s_col[i]);
+    S_present_head[(int64_t)i * d_v] = from_float<T>(s_col[i]);
   }
 }
 
@@ -990,6 +1086,7 @@ Status LaunchLinearAttentionKernel(
     const T* decay,
     const T* beta,
     T* output,
+    const T* past_state,
     T* present_state,
     int batch_size,
     int seq_len,
@@ -1004,7 +1101,8 @@ Status LaunchLinearAttentionKernel(
     bool needs_beta,
     bool beta_per_head,
     bool needs_retrieval,
-    int max_threads_per_block) {
+    int max_threads_per_block,
+    int state_window) {
   // Grid: one block per (batch, kv_head)
   const dim3 grid(batch_size, kv_num_heads, 1);
 
@@ -1028,6 +1126,8 @@ Status LaunchLinearAttentionKernel(
     // to the v1 warp-per-column kernel (which handles any d_v). DK=256 also
     // uses v1 to avoid the high per-thread register footprint of s_col[256].
     if (d_k <= 128 && d_v % kColsPerBlock == 0) {
+      const bool force_sequential_state_roundtrip =
+          ParseEnvironmentVariableWithDefault<bool>("ORT_LINEAR_ATTENTION_FORCE_SEQUENTIAL_STATE_ROUNDTRIP", false);
       const dim3 decode_grid(batch_size, kv_num_heads,
                              (d_v + kColsPerBlock - 1) / kColsPerBlock);
       const dim3 decode_block(kColsPerBlock, 1, 1);
@@ -1035,9 +1135,10 @@ Status LaunchLinearAttentionKernel(
       auto launch_col = [&](auto dk_tag) -> Status {
         constexpr int DK = decltype(dk_tag)::value;
         LinearAttentionDecodeColKernel<T, DK><<<decode_grid, decode_block, 0, stream>>>(
-            query, key, value, present_state, decay, beta, output,
+            query, key, value, past_state, present_state, decay, beta, output,
             seq_len, q_num_heads, kv_num_heads, n_k_heads, d_v, output_hidden, scale,
-            needs_decay, decay_per_key_dim, needs_beta, beta_per_head, needs_retrieval);
+            needs_decay, decay_per_key_dim, needs_beta, beta_per_head, needs_retrieval,
+            force_sequential_state_roundtrip, batch_size, state_window);
         return CUDA_CALL(cudaGetLastError());
       };
 
@@ -1055,9 +1156,9 @@ Status LaunchLinearAttentionKernel(
     auto launch_decode = [&](auto dk_tag) -> Status {
       constexpr int DK = decltype(dk_tag)::value;
       LinearAttentionDecodeKernel<T, DK><<<decode_grid, decode_block, 0, stream>>>(
-          query, key, value, present_state, decay, beta, output,
+          query, key, value, past_state, present_state, decay, beta, output,
           seq_len, q_num_heads, kv_num_heads, n_k_heads, d_v, output_hidden, scale,
-          needs_decay, decay_per_key_dim, needs_beta, beta_per_head, needs_retrieval);
+          needs_decay, decay_per_key_dim, needs_beta, beta_per_head, needs_retrieval, batch_size, state_window);
       return CUDA_CALL(cudaGetLastError());
     };
 
@@ -1089,9 +1190,9 @@ Status LaunchLinearAttentionKernel(
     }
 
     LinearAttentionRecurrentKernelFixedShape<T, DK, DV><<<grid, fixed_block, fixed_smem_size, stream>>>(
-        query, key, value, present_state, decay, beta, output,
+        query, key, value, past_state, present_state, decay, beta, output,
         seq_len, q_num_heads, kv_num_heads, n_k_heads, output_hidden, scale,
-        needs_decay, decay_per_key_dim, needs_beta, beta_per_head, needs_retrieval);
+        needs_decay, decay_per_key_dim, needs_beta, beta_per_head, needs_retrieval, batch_size, state_window);
 
     return CUDA_CALL(cudaGetLastError());
   };
@@ -1136,9 +1237,9 @@ Status LaunchLinearAttentionKernel(
   }
 
   LinearAttentionRecurrentKernel<T><<<grid, block, smem_size, stream>>>(
-      query, key, value, present_state, decay, beta, output,
+      query, key, value, past_state, present_state, decay, beta, output,
       seq_len, q_num_heads, kv_num_heads, n_k_heads, d_k, d_v, output_hidden, scale,
-      needs_decay, decay_per_key_dim, needs_beta, beta_per_head, needs_retrieval);
+      needs_decay, decay_per_key_dim, needs_beta, beta_per_head, needs_retrieval, batch_size, state_window);
 
   return CUDA_CALL(cudaGetLastError());
 }
@@ -1146,19 +1247,19 @@ Status LaunchLinearAttentionKernel(
 // Explicit instantiations
 template Status LaunchLinearAttentionKernel<float>(
     cudaStream_t, const float*, const float*, const float*,
-    const float*, const float*, float*, float*,
-    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int);
+    const float*, const float*, float*, const float*, float*,
+    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int);
 
 template Status LaunchLinearAttentionKernel<half>(
     cudaStream_t, const half*, const half*, const half*,
-    const half*, const half*, half*, half*,
-    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int);
+    const half*, const half*, half*, const half*, half*,
+    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int);
 
 #if __CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__)
 template Status LaunchLinearAttentionKernel<__nv_bfloat16>(
     cudaStream_t, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*,
-    const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, __nv_bfloat16*,
-    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int);
+    const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
+    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int);
 #endif
 
 }  // namespace cuda

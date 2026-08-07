@@ -123,6 +123,10 @@ option(onnxruntime_USE_VSINPU "Build with VSINPU support" OFF)
 cmake_dependent_option(onnxruntime_USE_FLASH_ATTENTION "Build flash attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_LEAN_ATTENTION "Build lean attention kernel for scaled dot product attention" OFF)
 cmake_dependent_option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
+# The TensorRT fused MHA kernels are prebuilt cubins for sm70-sm89 that mainly benefit BERT-style
+# encoder models. Turning this OFF drops ~14MB of embedded cubin data; attention falls back to
+# flash / memory efficient / cuDNN / unfused kernels.
+cmake_dependent_option(onnxruntime_USE_TRT_FUSED_ATTENTION "Build TensorRT fused multi-head attention cubin kernels" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_FP4_QMOE "Build CUDA QMoE FP4 kernels" OFF)
 option(onnxruntime_USE_FP8_QMOE "Build CUDA QMoE FP8 kernels" OFF)
 cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB gemm cuda kernels" ON "onnxruntime_USE_CUDA" OFF)
@@ -790,6 +794,7 @@ else()
   set(onnxruntime_USE_FLASH_ATTENTION OFF)
   set(onnxruntime_USE_LEAN_ATTENTION OFF)
   set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
+  set(onnxruntime_USE_TRT_FUSED_ATTENTION OFF)
 endif()
 
 if (onnxruntime_USE_CUDA)
@@ -809,6 +814,11 @@ if (onnxruntime_USE_CUDA)
     if (onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION)
       message( STATUS "Enable memory efficient attention for CUDA EP")
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_MEMORY_EFFICIENT_ATTENTION=1)
+    endif()
+
+    if (onnxruntime_USE_TRT_FUSED_ATTENTION)
+      message( STATUS "Enable TensorRT fused multi-head attention for CUDA EP")
+      list(APPEND ORT_PROVIDER_FLAGS -DUSE_TRT_FUSED_ATTENTION=1)
     endif()
 
     if (onnxruntime_USE_FPA_INTB_GEMM)

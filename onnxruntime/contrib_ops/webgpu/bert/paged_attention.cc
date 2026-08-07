@@ -34,6 +34,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>())
+        .TypeConstraint("T_CACHE", DataTypeImpl::GetTensorType<MLFloat16>())
+        .TypeConstraint("T_KV_SCALE", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("S", DataTypeImpl::GetTensorType<int32_t>())
         .MayInplace(3, 1)
         .MayInplace(4, 2),
@@ -442,15 +444,15 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   const Tensor* cumulative_seqlens_q = context.Input<Tensor>(5);
   const Tensor* past_seqlens = context.Input<Tensor>(6);
   const Tensor* block_table = context.Input<Tensor>(7);
-  const Tensor* cos_cache = context.Input<Tensor>(8);
-  const Tensor* sin_cache = context.Input<Tensor>(9);
-  const Tensor* slot_mapping = context.Input<Tensor>(10);
-  const Tensor* head_sink = context.Input<Tensor>(11);
-  const Tensor* q_norm_weight = context.Input<Tensor>(12);
-  const Tensor* k_norm_weight = context.Input<Tensor>(13);
-  const Tensor* k_scale = context.Input<Tensor>(14);
-  const Tensor* v_scale = context.Input<Tensor>(15);
-  const Tensor* attention_metadata = context.Input<Tensor>(16);
+  const Tensor* cos_cache = context.InputCount() > 8 ? context.Input<Tensor>(8) : nullptr;
+  const Tensor* sin_cache = context.InputCount() > 9 ? context.Input<Tensor>(9) : nullptr;
+  const Tensor* slot_mapping = context.InputCount() > 10 ? context.Input<Tensor>(10) : nullptr;
+  const Tensor* head_sink = context.InputCount() > 11 ? context.Input<Tensor>(11) : nullptr;
+  const Tensor* q_norm_weight = context.InputCount() > 12 ? context.Input<Tensor>(12) : nullptr;
+  const Tensor* k_norm_weight = context.InputCount() > 13 ? context.Input<Tensor>(13) : nullptr;
+  const Tensor* k_scale = context.InputCount() > 14 ? context.Input<Tensor>(14) : nullptr;
+  const Tensor* v_scale = context.InputCount() > 15 ? context.Input<Tensor>(15) : nullptr;
+  const Tensor* attention_metadata = context.InputCount() > 16 ? context.Input<Tensor>(16) : nullptr;
 
   PagedAttentionParameters parameters{};
   const KVQuantizationType k_quant_type = StringToKVQuantizationType(k_quant_type_);
@@ -569,11 +571,9 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                                  static_cast<int64_t>(parameters.hidden_size)};
   Tensor* output = context.Output(0, output_shape);
 
-  // Outputs 1 and 2 (key_cache_out, value_cache_out) are optional and per the
-  // schema alias inputs 3 and 4 in the fast path. In production GenAI wires
-  // this via IO-binding — the same OrtValue is bound to input 3 and output 1
-  // (and 4/2) so key_cache->DataRaw() == key_cache_out->MutableDataRaw() and
-  // the scatter writes land directly in the caller's cache buffers.
+  // Outputs 1 and 2 (key_cache_out, value_cache_out) are optional in the
+  // schema. If both are omitted, update the input caches in place, matching
+  // CUDA. Otherwise both must be supplied.
   //
   // MayInplace(3, 1) and MayInplace(4, 2) on the kernel def let the ORT
   // allocation planner reuse the input buffers as output buffers when it can.
@@ -589,14 +589,14 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                                 static_cast<int64_t>(parameters.block_size),
                                 static_cast<int64_t>(parameters.kv_num_heads),
                                 static_cast<int64_t>(parameters.head_size)};
-  Tensor* key_cache_out = context.Output(1, cache_shape);
-  Tensor* value_cache_out = context.Output(2, cache_shape);
-  // The schema marks these outputs Optional, but the scatter kernel needs a
-  // destination buffer; require both to be bound.
-  ORT_RETURN_IF(key_cache_out == nullptr || value_cache_out == nullptr,
-                "PagedAttention (WebGPU): key_cache_out and value_cache_out outputs "
-                "are required by this kernel (schema marks them Optional, but the "
-                "WebGPU implementation needs them as scatter destinations).");
+  Tensor* key_cache_out = context.OutputCount() > 1 ? context.Output(1, cache_shape) : nullptr;
+  Tensor* value_cache_out = context.OutputCount() > 2 ? context.Output(2, cache_shape) : nullptr;
+  ORT_RETURN_IF((key_cache_out == nullptr) != (value_cache_out == nullptr),
+                "PagedAttention (WebGPU): key_cache_out and value_cache_out must be both present or both absent.");
+  if (key_cache_out == nullptr) {
+    key_cache_out = const_cast<Tensor*>(key_cache);
+    value_cache_out = const_cast<Tensor*>(value_cache);
+  }
 
   const bool key_cache_aliased = (key_cache->DataRaw() == key_cache_out->MutableDataRaw());
   const bool value_cache_aliased = (value_cache->DataRaw() == value_cache_out->MutableDataRaw());
@@ -725,6 +725,20 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   }
   const uint32_t max_seqlen_q = static_cast<uint32_t>(max_seqlen_q_i);
   const uint32_t max_kv_len = static_cast<uint32_t>(max_kv_len_i);
+
+  if (do_rotary_) {
+    const int64_t required_cache_length = static_cast<int64_t>(max_kv_len);
+    if (cos_cache->Shape()[0] < required_cache_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "PagedAttention (WebGPU): cos_cache dimension 0 must be at least max KV length ",
+                             required_cache_length, ".");
+    }
+    if (sin_cache->Shape()[0] < required_cache_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "PagedAttention (WebGPU): sin_cache dimension 0 must be at least max KV length ",
+                             required_cache_length, ".");
+    }
+  }
 
   // Empty-attention fast path.
   if (max_seqlen_q == 0 || max_kv_len == 0) {

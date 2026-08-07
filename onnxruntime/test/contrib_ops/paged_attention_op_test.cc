@@ -244,7 +244,8 @@ void RunEndToEndCase(const EndToEndCase& c, std::unique_ptr<IExecutionProvider> 
 
 void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
                       const char* provider_type,
-                      bool alias_cache_outputs) {
+                      bool alias_cache_outputs,
+                      bool omit_cache_outputs = false) {
   constexpr int batch_size = 1;
   constexpr int token_count = 1;
   constexpr int num_heads = 1;
@@ -308,7 +309,11 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   auto& value_cache_out_arg = graph.GetOrCreateNodeArg(
       "value_cache_out", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
                                          {num_blocks, block_size, kv_num_heads, head_size}));
-  std::vector<NodeArg*> output_defs = {&output_arg, &key_cache_out_arg, &value_cache_out_arg};
+  std::vector<NodeArg*> output_defs = {&output_arg};
+  if (!omit_cache_outputs) {
+    output_defs.push_back(&key_cache_out_arg);
+    output_defs.push_back(&value_cache_out_arg);
+  }
 
   NodeAttributes attrs = {
       {"num_heads", utils::MakeAttribute("num_heads", int64_t{num_heads})},
@@ -391,12 +396,33 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   ASSERT_STATUS_OK(io_binding->BindInput("past_seqlens", past_seqlens_value));
   ASSERT_STATUS_OK(io_binding->BindInput("block_table", block_table_value));
   ASSERT_STATUS_OK(io_binding->BindOutput("output", output_value));
-  ASSERT_STATUS_OK(io_binding->BindOutput("key_cache_out", alias_cache_outputs ? key_cache_value : key_cache_out_value));
-  ASSERT_STATUS_OK(io_binding->BindOutput("value_cache_out", alias_cache_outputs ? value_cache_value : value_cache_out_value));
+  if (!omit_cache_outputs) {
+    ASSERT_STATUS_OK(io_binding->BindOutput("key_cache_out", alias_cache_outputs ? key_cache_value : key_cache_out_value));
+    ASSERT_STATUS_OK(io_binding->BindOutput("value_cache_out", alias_cache_outputs ? value_cache_value : value_cache_out_value));
+  }
 
   RunOptions run_options;
   ASSERT_STATUS_OK(session.Run(run_options, *io_binding));
+
+  Tensor cpu_output(DataTypeImpl::GetType<MLFloat16>(), TensorShape({token_count, hidden_size}), cpu_alloc);
+  ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(output_value.Get<Tensor>(), cpu_output));
+  EXPECT_NE(cpu_output.Data<MLFloat16>()[0].ToFloat(), 0.0f);
+
   const auto& outputs = io_binding->GetOutputs();
+  if (omit_cache_outputs) {
+    Tensor cpu_key_cache(DataTypeImpl::GetType<MLFloat16>(),
+                         TensorShape({num_blocks, block_size, kv_num_heads, head_size}), cpu_alloc);
+    Tensor cpu_value_cache(DataTypeImpl::GetType<MLFloat16>(),
+                           TensorShape({num_blocks, block_size, kv_num_heads, head_size}), cpu_alloc);
+    ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(key_cache_value.Get<Tensor>(), cpu_key_cache));
+    ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(value_cache_value.Get<Tensor>(), cpu_value_cache));
+    const size_t cache_update_offset = static_cast<size_t>(past_seqlen * head_size);
+    EXPECT_NEAR(cpu_key_cache.Data<MLFloat16>()[cache_update_offset].ToFloat(), 0.03f, 1e-3f);
+    EXPECT_NEAR(cpu_value_cache.Data<MLFloat16>()[cache_update_offset].ToFloat(), 0.04f, 1e-3f);
+    ASSERT_EQ(outputs.size(), 1u);
+    return;
+  }
+
   ASSERT_EQ(outputs.size(), 3u);
   if (alias_cache_outputs) {
     EXPECT_EQ(outputs[1].Get<Tensor>().Data<MLFloat16>(), key_cache_value.Get<Tensor>().Data<MLFloat16>());
@@ -447,6 +473,58 @@ TEST(PagedAttention, WebGpu_NonAliasedCache_IOBinding) {
     GTEST_SKIP() << "WebGPU EP not available.";
   }
   RunIoBindingCase(DefaultWebGpuExecutionProvider(), kWebGpuExecutionProvider, false);
+}
+
+TEST(PagedAttention, WebGpu_OmittedCacheOutputs_IOBinding) {
+  if (DefaultWebGpuExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available.";
+  }
+  RunIoBindingCase(DefaultWebGpuExecutionProvider(), kWebGpuExecutionProvider, false, true);
+}
+
+TEST(PagedAttention, WebGpu_RejectsShortRotaryCache) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available.";
+  }
+
+  constexpr int token_count = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 16;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int block_size = 256;
+  constexpr int past_seqlen = 4;
+  constexpr int rotary_cache_length = 4;
+  constexpr int cache_elems = block_size * kv_num_heads * head_size;
+
+  OpTester test("PagedAttention", 1, kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", num_heads);
+  test.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  test.AddAttribute<int64_t>("do_rotary", 1);
+  test.AddInput<MLFloat16>("query", {token_count, hidden_size}, std::vector<MLFloat16>(hidden_size, MLFloat16(0.02f)));
+  test.AddInput<MLFloat16>("key", {token_count, hidden_size}, std::vector<MLFloat16>(hidden_size, MLFloat16(0.03f)));
+  test.AddInput<MLFloat16>("value", {token_count, hidden_size}, std::vector<MLFloat16>(hidden_size, MLFloat16(0.04f)));
+  test.AddInput<MLFloat16>("key_cache", {1, block_size, kv_num_heads, head_size},
+                           std::vector<MLFloat16>(cache_elems, MLFloat16(0.01f)));
+  test.AddInput<MLFloat16>("value_cache", {1, block_size, kv_num_heads, head_size},
+                           std::vector<MLFloat16>(cache_elems, MLFloat16(0.02f)));
+  test.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, token_count});
+  test.AddInput<int32_t>("past_seqlens", {1}, {past_seqlen});
+  test.AddInput<int32_t>("block_table", {1, 1}, {0});
+  test.AddInput<MLFloat16>("cos_cache", {rotary_cache_length, head_size / 2},
+                           std::vector<MLFloat16>(rotary_cache_length * head_size / 2, MLFloat16(1.0f)));
+  test.AddInput<MLFloat16>("sin_cache", {rotary_cache_length, head_size / 2},
+                           std::vector<MLFloat16>(rotary_cache_length * head_size / 2, MLFloat16(0.0f)));
+  test.AddOutput<MLFloat16>("output", {token_count, hidden_size}, std::vector<MLFloat16>(hidden_size));
+  test.AddOutput<MLFloat16>("key_cache_out", {1, block_size, kv_num_heads, head_size},
+                            std::vector<MLFloat16>(cache_elems));
+  test.AddOutput<MLFloat16>("value_cache_out", {1, block_size, kv_num_heads, head_size},
+                            std::vector<MLFloat16>(cache_elems));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "cos_cache dimension 0", {}, nullptr, &execution_providers);
 }
 
 // Decode tier: single batch, single new Q token, non-zero past. The FA
