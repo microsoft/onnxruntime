@@ -4,9 +4,10 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
+#include <iosfwd>
 #include <string>
 #include <vector>
-#include <iosfwd>
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -296,10 +297,14 @@ class ProgramBase {
   ProgramBase& AddInput(ProgramInput&& input);
   // add multiple program inputs
   ProgramBase& AddInputs(std::initializer_list<ProgramInput> inputs);
+  // reserve storage for program inputs
+  ProgramBase& ReserveInputCapacity(size_t capacity);
   // add a program output
   ProgramBase& AddOutput(ProgramOutput&& output);
   // add multiple program outputs
   ProgramBase& AddOutputs(std::initializer_list<ProgramOutput> outputs);
+  // reserve storage for program outputs
+  ProgramBase& ReserveOutputCapacity(size_t capacity);
   // add a program variable for indices
   template <typename... Args>
   ProgramBase& AddIndices(Args&&... args) {
@@ -334,6 +339,8 @@ class ProgramBase {
   // the specified uniform variables should match the uniform definition in the class,
   // specified by macro WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES.
   ProgramBase& AddUniformVariables(std::initializer_list<ProgramUniformVariableValue> variables);
+  // reserve storage for uniform variables
+  ProgramBase& ReserveUniformVariableCapacity(size_t capacity);
 
   // set the overridable constants
   //

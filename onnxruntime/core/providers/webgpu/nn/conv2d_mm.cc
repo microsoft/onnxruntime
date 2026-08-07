@@ -208,6 +208,9 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   TensorShape reduced_input_shape = ReduceShapeByComponents(input_output_shapes[0], input_components);
   TensorShape reduced_weight_shape = ReduceShapeByComponents(input_output_shapes[1], components);
   TensorShape reduced_output_shape = ReduceShapeByComponents(input_output_shapes[has_bias ? 3 : 2], components);
+  program.ReserveInputCapacity(has_bias ? 3 : 2)
+      .ReserveOutputCapacity(1)
+      .ReserveUniformVariableCapacity(9);
   program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, reduced_input_shape, input_components}, {weight, ProgramTensorMetadataDependency::TypeAndRank, reduced_weight_shape, components}});
   if (has_bias) {
     TensorShape reduced_bias_shape = ReduceShapeByComponents(input_output_shapes[2], components);
