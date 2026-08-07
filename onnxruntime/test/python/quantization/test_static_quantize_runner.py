@@ -12,9 +12,9 @@ import unittest
 from unittest import mock
 
 import numpy as np
-from onnxruntime.quantization import static_quantize_runner
 
 from onnxruntime._onnx_shim import onnx
+from onnxruntime.quantization import static_quantize_runner
 
 
 class StaticQuantizeRunnerTestBase:

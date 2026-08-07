@@ -11,11 +11,11 @@ import tempfile
 import unittest
 
 import numpy as np
+
+from onnxruntime._onnx_shim import onnx
 from onnxruntime.quantization import CalibrationDataReader, QuantFormat, QuantType, quantize_static
 from onnxruntime.quantization.execution_providers.qnn import get_qnn_qdq_config
 from onnxruntime.quantization.quant_utils import compute_scale_zp, get_opset_version, get_qmin_qmax_for_qType
-
-from onnxruntime._onnx_shim import onnx
 
 
 class DummyDataReader(CalibrationDataReader):

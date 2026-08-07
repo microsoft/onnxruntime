@@ -13,11 +13,11 @@ import tempfile
 import unittest
 
 import numpy as np
-from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
-from onnxruntime.quantization.quant_utils import compute_scale_zp_blocked, quantize_onnx_initializer
 from op_test_utils import TestDataFeeds
 
 from onnxruntime._onnx_shim import onnx
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
+from onnxruntime.quantization.quant_utils import compute_scale_zp_blocked, quantize_onnx_initializer
 
 
 def _make_matmul_model(opset: int) -> onnx.ModelProto:

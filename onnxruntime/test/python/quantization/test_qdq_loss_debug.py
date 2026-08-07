@@ -11,6 +11,9 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+
+import onnxruntime
+from onnxruntime._onnx_shim import onnx
 from onnxruntime._onnx_shim.onnx import TensorProto, helper
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 from onnxruntime.quantization.calibrate import CalibrationDataReader
@@ -24,9 +27,6 @@ from onnxruntime.quantization.qdq_loss_debug import (
     modify_model_output_intermediate_tensors,
 )
 from op_test_utils import generate_random_initializer
-
-import onnxruntime
-from onnxruntime._onnx_shim import onnx
 
 
 def construct_test_model1(test_model_path: str, activations_as_outputs=False):

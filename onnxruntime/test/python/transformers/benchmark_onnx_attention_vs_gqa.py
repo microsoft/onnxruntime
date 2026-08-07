@@ -59,10 +59,10 @@ import tempfile
 
 import torch
 from gqa_test_helper import GroupQueryAttentionConfig, create_gqa_ort_session
-from onnxruntime._onnx_shim.onnx import TensorProto, helper
-from onnxruntime.transformers.io_binding_helper import CudaSession
 
 import onnxruntime
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
+from onnxruntime.transformers.io_binding_helper import CudaSession
 
 TIMER = "cuda-event per iteration, 256 MiB L2 flush between iterations, warmup=20, rep=100, mean"
 

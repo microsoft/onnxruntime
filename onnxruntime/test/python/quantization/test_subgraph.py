@@ -9,9 +9,8 @@ import tempfile
 import unittest
 import urllib.request
 
-from onnxruntime.quantization import quantize_dynamic
-
 from onnxruntime._onnx_shim import onnx
+from onnxruntime.quantization import quantize_dynamic
 
 
 class TestDynamicQuantizationSubgraph(unittest.TestCase):

@@ -132,10 +132,10 @@ class TestQuantIssues(unittest.TestCase):
         """
         try:
             import numpy as np  # noqa: PLC0415
-            from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper  # noqa: PLC0415
-            from onnxruntime.quantization import QuantType, quantize_dynamic  # noqa: PLC0415
 
             from onnxruntime._onnx_shim import onnx  # noqa: PLC0415
+            from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper  # noqa: PLC0415
+            from onnxruntime.quantization import QuantType, quantize_dynamic  # noqa: PLC0415
         except ImportError as exc:
             raise unittest.SkipTest(f"Required import missing: {exc}") from exc
 

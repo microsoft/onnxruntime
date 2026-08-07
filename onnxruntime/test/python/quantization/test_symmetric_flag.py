@@ -10,11 +10,11 @@ import tempfile
 import unittest
 
 import numpy as np
-from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
-from onnxruntime.quantization.quant_utils import snap_zero_point_to_uint8
 
 from onnxruntime import quantization
 from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
+from onnxruntime.quantization.quant_utils import snap_zero_point_to_uint8
 
 
 class TestSymmetricFlag(unittest.TestCase):

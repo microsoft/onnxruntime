@@ -11,6 +11,8 @@ from pathlib import Path
 
 import numpy
 from ml_dtypes import int4, uint4
+
+from onnxruntime._onnx_shim import onnx
 from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
 from onnxruntime.quantization.quant_utils import (
     QuantType,
@@ -22,8 +24,6 @@ from onnxruntime.quantization.quant_utils import (
     quantize_data,
     update_opset_version,
 )
-
-from onnxruntime._onnx_shim import onnx
 
 
 class TestQuantUtil(unittest.TestCase):

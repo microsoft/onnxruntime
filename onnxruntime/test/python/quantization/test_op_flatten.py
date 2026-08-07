@@ -8,7 +8,6 @@
 import unittest
 
 import numpy as np
-from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 from op_test_utils import (
     TestDataFeeds,
     check_model_correctness,
@@ -18,6 +17,7 @@ from op_test_utils import (
 )
 
 from onnxruntime._onnx_shim import onnx
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 
 
 class TestOpFlatten(unittest.TestCase):

@@ -30,13 +30,13 @@ from enum import IntEnum
 
 import torch
 import torch.utils.benchmark as benchmark
-from onnxruntime.transformers.io_binding_helper import CudaSession
 from packaging.version import Version
 from torch.nn.attention import SDPBackend, sdpa_kernel
 from torch.nn.functional import scaled_dot_product_attention
 
 from onnxruntime import InferenceSession, SessionOptions, get_available_providers
 from onnxruntime._onnx_shim.onnx import TensorProto, helper
+from onnxruntime.transformers.io_binding_helper import CudaSession
 
 
 class InputFormats:

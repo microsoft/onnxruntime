@@ -11,10 +11,10 @@ import tempfile
 import unittest
 
 import numpy as np
-from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 from op_test_utils import TestDataFeeds, check_op_type_count
 
 from onnxruntime._onnx_shim import onnx
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 
 
 class TestQDQGatherElements(unittest.TestCase):

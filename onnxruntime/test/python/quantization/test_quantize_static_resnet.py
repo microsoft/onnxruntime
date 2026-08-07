@@ -10,14 +10,14 @@ import unittest
 
 import numpy as np
 from numpy.testing import assert_allclose
-from onnxruntime._onnx_shim.onnx.numpy_helper import to_array
-from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
-from onnxruntime.quantization.calibrate import CalibrationDataReader, CalibrationMethod
 from resnet_code import create_model
 
 from onnxruntime import InferenceSession
 from onnxruntime import __version__ as ort_version
 from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx.numpy_helper import to_array
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
+from onnxruntime.quantization.calibrate import CalibrationDataReader, CalibrationMethod
 
 
 class FakeResnetCalibrationDataReader(CalibrationDataReader):

@@ -11,10 +11,10 @@ import unittest
 import numpy as np
 import parameterized
 import torch
-from onnxruntime.tools import pytorch_export_contrib_ops
 
 import onnxruntime
 from onnxruntime._onnx_shim import onnx
+from onnxruntime.tools import pytorch_export_contrib_ops
 
 
 def _torch_version_lower_than(version: str):

@@ -11,6 +11,7 @@ from importlib.util import find_spec
 from pathlib import Path
 
 import numpy as np
+
 from onnxruntime._onnx_shim.onnx import TensorProto, helper
 from onnxruntime.quantization import QuantType, StaticQuantConfig, quantize, quantize_static
 from op_test_utils import (

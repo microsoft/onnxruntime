@@ -7,8 +7,6 @@
 import unittest
 
 import numpy as np
-from onnxruntime._onnx_shim.onnx import TensorProto, helper, save
-from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 from op_test_utils import (
     check_model_correctness,
     check_op_type_count,
@@ -17,6 +15,8 @@ from op_test_utils import (
 )
 
 from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, save
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 
 
 class TestONNXModel(unittest.TestCase):
