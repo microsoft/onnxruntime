@@ -24,6 +24,13 @@ parameters:
   displayName: 'CUDA Version'
   default: '12.8'
 
+# CUDA major version (e.g. '12' or '13'). Used in NuGet package ids and archive file names so
+# that CUDA 12 and CUDA 13 outputs, which share the same VERSION_NUMBER, do not collide.
+- name: cuda_major
+  type: string
+  displayName: 'CUDA major version'
+  default: '12'
+
 - name: arm64_cuda_version
   type: string
   displayName: 'Windows ARM64 CUDA Version'
@@ -151,9 +158,14 @@ stages:
               cuda_version_win_arm64_no_dot = '${{ replace(parameters.arm64_cuda_version, '.', '') }}'
               docker_base_image_linux_x64 = '${{ parameters.docker_base_image }}'
               python_artifact_linux_x64 = 'cuda_plugin_python_linux_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}'
+              python_artifact_linux_aarch64 = 'cuda_plugin_python_linux_aarch64_cuda${{ replace(parameters.cuda_version, '.', '') }}'
               python_artifact_win_x64 = 'cuda_plugin_python_win_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}'
               python_artifact_win_arm64 = 'cuda_plugin_python_win_arm64_cuda${{ replace(parameters.arm64_cuda_version, '.', '') }}'
               nuget_artifact = 'cuda_plugin_nuget'
+              nuget_package_id_win_x64 = 'Microsoft.ML.OnnxRuntime.EP.Cuda${{ parameters.cuda_major }}.win-x64'
+              nuget_package_id_win_arm64 = 'Microsoft.ML.OnnxRuntime.EP.Cuda${{ parameters.cuda_major }}.win-arm64'
+              nuget_package_id_linux_x64 = 'Microsoft.ML.OnnxRuntime.EP.Cuda${{ parameters.cuda_major }}.linux-x64'
+              nuget_package_id_linux_arm64 = 'Microsoft.ML.OnnxRuntime.EP.Cuda${{ parameters.cuda_major }}.linux-arm64'
             }
 
             $metadata | ConvertTo-Json | Set-Content -Path $metadataPath -Encoding UTF8
@@ -235,6 +247,7 @@ stages:
       parameters:
         package_version: ${{ parameters.package_type }}
         version_file: ${{ parameters.version_file }}
+        cuda_major: ${{ parameters.cuda_major }}
         DoEsrp: true
         platforms:
           win_x64: ${{ parameters.build_windows_x64 }}
@@ -268,6 +281,11 @@ stages:
             - output: pipelineArtifact
               targetPath: $(Build.ArtifactStagingDirectory)/cuda-deps-package
               artifactName: foundry-local-cuda-plugin-ep-zips
+            # Linux release assets are published as .tar.gz in addition to the .zip above.
+            - ${{ if or(eq(parameters.build_linux_x64, true), eq(parameters.build_linux_aarch64, true)) }}:
+              - output: pipelineArtifact
+                targetPath: $(Build.ArtifactStagingDirectory)/cuda-deps-package-targz
+                artifactName: cuda_ep_cuda${{ parameters.cuda_major }}_linux_gz
           steps:
           # The 1ES TSA SDL task expects .config/tsaoptions.json in the source directory.
           # Use a sparse checkout to pull only the .config directory (avoids full repo clone).
@@ -306,17 +324,21 @@ stages:
                 targetPath: $(Build.SourcesDirectory)/cuda-plugin-linux-aarch64
 
           - task: PowerShell@2
-            displayName: 'Create version.json and zip packages for each platform'
+            displayName: 'Create version.json and archives for each platform'
             inputs:
               targetType: inline
               script: |
                 $outputDir = '$(Build.ArtifactStagingDirectory)/cuda-deps-package'
                 New-Item -ItemType Directory -Path $outputDir -Force
 
-                # CUDA major version (e.g. '12' or '13'). Embedded into zip filenames so that
+                # Linux archives are additionally published as .tar.gz for GitHub release assets.
+                $tarOutputDir = '$(Build.ArtifactStagingDirectory)/cuda-deps-package-targz'
+                New-Item -ItemType Directory -Path $tarOutputDir -Force
+
+                # CUDA major version (e.g. '12' or '13'). Embedded into archive filenames so that
                 # CUDA 12 and CUDA 13 packages (which share the same VERSION_NUMBER) do not
                 # collide when published to a shared location downstream.
-                $cudaMajor = '${{ parameters.cuda_version }}'.Split('.')[0]
+                $cudaMajor = '${{ parameters.cuda_major }}'
 
                 # Add new platforms here as they are implemented.
                 # NOTE: macOS arm64 (Apple Silicon) is excluded — no CUDA support since Apple devices do not use Nvidia GPUs.
@@ -390,6 +412,17 @@ stages:
                   } else {
                     throw "No files found to zip for $platformName in $binDir"
                   }
+
+                  if ($platformName.StartsWith('linux')) {
+                    # Same flat contents as the .zip, produced with the bsdtar shipped in Windows.
+                    $tarPath = Join-Path $tarOutputDir "cuda_ep_cuda${cudaMajor}_${filenameVersion}_${platformName}.tar.gz"
+                    $tarArgs = @('-czf', $tarPath, '-C', $binDir) + @($filesToZip | ForEach-Object { $_.Name })
+                    & tar @tarArgs
+                    if ($LASTEXITCODE -ne 0) {
+                      throw "tar failed for $platformName with exit code $LASTEXITCODE"
+                    }
+                    Write-Host "Created tar.gz: $tarPath ($((Get-Item $tarPath).Length) bytes)"
+                  }
                   Write-Host ""
                 }
 
@@ -404,3 +437,8 @@ stages:
                 New-Item -ItemType Directory -Path $versionOutputDir -Force
                 New-Item -ItemType File -Path (Join-Path $versionOutputDir $resolvedVersion) -Force | Out-Null
                 Write-Host "Created version marker: $versionOutputDir/$resolvedVersion"
+
+                $tarVersionOutputDir = Join-Path $tarOutputDir "version"
+                New-Item -ItemType Directory -Path $tarVersionOutputDir -Force
+                New-Item -ItemType File -Path (Join-Path $tarVersionOutputDir $resolvedVersion) -Force | Out-Null
+                Write-Host "Created version marker: $tarVersionOutputDir/$resolvedVersion"
