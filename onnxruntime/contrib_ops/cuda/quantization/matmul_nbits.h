@@ -239,10 +239,10 @@ class MatMulNBits final : public CudaKernel {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
-#if USE_FPA_INTB_GEMM
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
+#if USE_FPA_INTB_GEMM
 #ifndef BUILD_CUDA_EP_AS_PLUGIN
   // Level 2 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): instance-level workspace
   // estimate, callable after CreateKernels(). Uses the same constructed runner state that
@@ -288,6 +288,7 @@ class MatMulNBits final : public CudaKernel {
   bool column_wise_quant_blk_{true};
 
   bool has_g_idx_{false};
+  bool is_group_index_validated_{false};
   bool has_bias_{false};
   bool has_zero_points_{false};
   bool is_zero_points_scale_same_type_{false};
