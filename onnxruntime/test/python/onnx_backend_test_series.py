@@ -25,9 +25,8 @@ import re
 import sys
 import unittest
 
-from onnxruntime._onnx_shim.onnx import defs
-
 import onnxruntime as ort
+from onnxruntime._onnx_shim.onnx import defs
 
 try:
     from onnxruntime._onnx_shim.onnx.backend import collect_test_case, make_test_class

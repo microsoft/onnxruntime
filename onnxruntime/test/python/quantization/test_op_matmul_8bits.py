@@ -10,11 +10,11 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-from onnxruntime.quantization import quant_utils
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
 from onnxruntime import get_available_providers
 from onnxruntime._onnx_shim import onnx
+from onnxruntime.quantization import quant_utils
 
 
 @unittest.skipIf(

@@ -23,7 +23,6 @@ from dataclasses import dataclass
 
 import torch
 from einops import rearrange, repeat
-from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 from onnxruntime import (
     InferenceSession,
@@ -31,6 +30,7 @@ from onnxruntime import (
     get_available_providers,
     get_build_info,
 )
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 # Set seed for reproducibility
 torch.manual_seed(0)

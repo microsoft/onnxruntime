@@ -17,12 +17,12 @@ from pathlib import Path
 import numpy
 import pytest
 import torch
-from onnxruntime._onnx_shim.onnx import helper
 from parity_utilities import compare_outputs, create_ort_session, find_transformers_source, parse_arguments
 from torch import nn
 from transformers.modeling_utils import Conv1D
 
 from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import helper
 
 if find_transformers_source():
     from onnx_model import OnnxModel

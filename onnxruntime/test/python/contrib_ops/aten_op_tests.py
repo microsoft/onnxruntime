@@ -7,12 +7,12 @@ import unittest
 
 import numpy as np
 import torch
-from onnxruntime._onnx_shim.onnx import TensorProto, helper
 from ort_torch_ext import init_aten_op_executor
 from torch.onnx import export
 
 import onnxruntime as ort
 from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 
 class OrtOpTests(unittest.TestCase):

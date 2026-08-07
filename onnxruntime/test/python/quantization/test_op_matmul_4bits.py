@@ -12,11 +12,11 @@ from pathlib import Path
 from typing import ClassVar
 
 import numpy as np
-from onnxruntime._onnx_shim.onnx import TensorProto, helper
-from onnxruntime.quantization import quant_utils
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
 from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
+from onnxruntime.quantization import quant_utils
 
 
 class TestOpMatMul4Bits(unittest.TestCase):
