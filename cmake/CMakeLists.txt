@@ -1155,7 +1155,12 @@ function(onnxruntime_set_compile_flags target_name)
       # onnx-light headers trigger -Wreorder and -Wsign-compare warnings.
       # Some ORT code has narrowing conversions (size_t -> int64_t) that only
       # surface when onnx-light field types differ from protobuf. Suppress them.
-      target_compile_options(${target_name} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder;-Wno-sign-compare;-Wno-narrowing;-Wno-switch>")
+      # onnx-light's optional-field wrapper types (e.g. TensorShapeProto::Dimension's
+      # OptionalString) also trigger GCC's -Wmaybe-uninitialized false positive on some
+      # GCC versions (e.g. 13.x) when a local instance is default-constructed and
+      # conditionally populated before use; the existing "GCC < 13" workaround below
+      # doesn't cover this, so suppress it here too.
+      target_compile_options(${target_name} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder;-Wno-sign-compare;-Wno-narrowing;-Wno-switch;-Wno-maybe-uninitialized>")
     endif()
     if (onnxruntime_USE_CUDA)
       # Suppress a "conversion_function_not_usable" warning in gsl/span
