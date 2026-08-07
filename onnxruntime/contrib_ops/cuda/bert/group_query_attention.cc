@@ -654,7 +654,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // and no sliding window. Rotary and packed QKV are handled by PrepareQKV before the kernel runs;
   // cuDNN handles grouped-query attention natively.
   bool use_cudnn_sdpa = !data.use_xqa &&
-                        !has_attention_bias &&  // GQA's cuDNN path is bottom-right causal, which cuDNN doesn't compose with a bias
+                        !has_attention_bias &&  // GQA's cuDNN path does not compose its mask with a bias
                         !is_inputs_quantized &&
                         std::is_same<T, U>::value &&
                         parameters.softcap == 0.0f &&
