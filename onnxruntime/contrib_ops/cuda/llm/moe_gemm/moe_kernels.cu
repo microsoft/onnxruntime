@@ -2950,6 +2950,7 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
                   std::is_same_v<OutputType, __nv_bfloat16> && std::is_same_v<InputType, __nv_bfloat16>) {
       const bool use_dsv4_deep_gemm =
           use_dsv4_deep_gemm_ && dsv4_deep_gemm_workspace_ != nullptr && num_rows > 0 &&
+          dsv4_deep_gemm_fc1_weight_scales_ != nullptr && dsv4_deep_gemm_fc2_weight_scales_ != nullptr &&
           num_rows <= deep_gemm_sm90::kMaxTokensPerExpert &&
           hidden_size == deep_gemm_sm90::kHiddenSize && inter_size == deep_gemm_sm90::kInterSize &&
           num_experts_per_node == deep_gemm_sm90::kNumExperts && experts_per_token == 6 &&
@@ -2959,10 +2960,11 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
           parallelism_config.cluster_size == 1 && quant_params.groupwise.group_size <= 0 &&
           quant_params.wo.fc1_weight_scales == nullptr && quant_params.wo.fc2_weight_scales == nullptr;
       if (use_dsv4_deep_gemm) {
+        // WeightType stays bf16 at the ORT level; the prepacked DSV4 buffers are e4m3 bytes.
         deep_gemm_sm90::Run(
             reinterpret_cast<const __nv_bfloat16*>(permuted_data_), expert_first_token_offset_,
-            reinterpret_cast<const __nv_bfloat16*>(fc1_expert_weights),
-            reinterpret_cast<const __nv_bfloat16*>(fc2_expert_weights),
+            reinterpret_cast<const __nv_fp8_e4m3*>(fc1_expert_weights), dsv4_deep_gemm_fc1_weight_scales_,
+            reinterpret_cast<const __nv_fp8_e4m3*>(fc2_expert_weights), dsv4_deep_gemm_fc2_weight_scales_,
             reinterpret_cast<__nv_bfloat16*>(fc2_result_), activation_params.alpha,
             activation_params.beta, activation_params.limit, dsv4_deep_gemm_workspace_, stream);
         finalizeMoeRoutingKernelLauncher<OutputType, T, ScaleBiasType>(

@@ -898,7 +898,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       moe_params.inter_size == onnxruntime::llm::kernels::deep_gemm_sm90::kInterSize &&
       is_fused_swiglu && swiglu_fusion == 1 && !use_awq && fc1_experts_bias_optional == nullptr &&
       fc2_experts_bias_optional == nullptr && dsv4_deep_gemm_fc1_weights_ != nullptr &&
-      dsv4_deep_gemm_fc2_weights_ != nullptr;
+      dsv4_deep_gemm_fc2_weights_ != nullptr && dsv4_deep_gemm_fc1_weight_scales_ != nullptr &&
+      dsv4_deep_gemm_fc2_weight_scales_ != nullptr;
 #else
   constexpr bool use_dsv4_deep_gemm = false;
 #endif
@@ -1966,6 +1967,11 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         reinterpret_cast<char*>(output->MutableDataRaw()) + output_byte_offset;
 
     std::lock_guard<std::mutex> profiler_lock(mGemmProfilerMutex);
+    if (use_dsv4_deep_gemm) {
+      active_runner->setDsv4DeepGemmWeightScales(
+          static_cast<const float*>(dsv4_deep_gemm_fc1_weight_scales_.get()),
+          static_cast<const float*>(dsv4_deep_gemm_fc2_weight_scales_.get()));
+    }
     active_runner->setTactic(tile_config->config1, tile_config->config2);
     active_runner->runMoe(
         tile_input,
@@ -2735,23 +2741,40 @@ void QMoE::TryBuildDsv4DeepGemmWeights(int fc, cudaStream_t stream, AllocatorPtr
       fc == 1 ? dsv4_deep_gemm_fc1_staged_block_scales_ : dsv4_deep_gemm_fc2_staged_block_scales_;
   IAllocatorUniquePtr<void>& global_scale = fc == 1 ? packed_fc1_global_scale_ : packed_fc2_global_scale_;
   IAllocatorUniquePtr<void>& output = fc == 1 ? dsv4_deep_gemm_fc1_weights_ : dsv4_deep_gemm_fc2_weights_;
+  IAllocatorUniquePtr<void>& output_scales =
+      fc == 1 ? dsv4_deep_gemm_fc1_weight_scales_ : dsv4_deep_gemm_fc2_weight_scales_;
   if (output != nullptr || staged_weights == nullptr || staged_block_scales == nullptr || global_scale == nullptr) {
     return;
   }
 
   constexpr int num_experts = onnxruntime::llm::kernels::deep_gemm_sm90::kNumExperts;
-  constexpr int n = onnxruntime::llm::kernels::deep_gemm_sm90::kHiddenSize;
+  const int n = fc == 1 ? onnxruntime::llm::kernels::deep_gemm_sm90::kFc1OutputSize
+                        : onnxruntime::llm::kernels::deep_gemm_sm90::kHiddenSize;
   const int k = fc == 1 ? onnxruntime::llm::kernels::deep_gemm_sm90::kHiddenSize
                         : onnxruntime::llm::kernels::deep_gemm_sm90::kInterSize;
-  const size_t bytes = SafeInt<size_t>(num_experts) * SafeInt<size_t>(n) * SafeInt<size_t>(k) *
-                       sizeof(__nv_bfloat16);
-  output = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
-  LaunchQMoEDequantizeFp4Weights(
+  const size_t weight_bytes = SafeInt<size_t>(num_experts) * SafeInt<size_t>(n) * SafeInt<size_t>(k);
+  const size_t scale_bytes =
+      onnxruntime::llm::kernels::deep_gemm_sm90::WeightScaleCount(num_experts, n, k) * sizeof(float);
+  output = IAllocator::MakeUniquePtr<void>(alloc, weight_bytes, true);
+  output_scales = IAllocator::MakeUniquePtr<void>(alloc, scale_bytes, true);
+
+  // The conversion is bit-exact only while every block's MXFP4 group exponents fit in e4m3's
+  // range; the kernel verifies that per element and raises this flag otherwise.
+  auto inexact_flag = IAllocator::MakeUniquePtr<void>(alloc, sizeof(int), true);
+  CUDA_CALL_THROW(cudaMemsetAsync(inexact_flag.get(), 0, sizeof(int), stream));
+  LaunchQMoEQuantizeFp4WeightsToFp8(
       static_cast<const uint8_t*>(staged_weights.get()),
       static_cast<const uint8_t*>(staged_block_scales.get()),
-      static_cast<const float*>(global_scale.get()), static_cast<__nv_bfloat16*>(output.get()),
+      static_cast<const float*>(global_scale.get()), static_cast<uint8_t*>(output.get()),
+      static_cast<float*>(output_scales.get()), static_cast<int*>(inexact_flag.get()),
       num_experts, n, k, stream);
+  int inexact = 0;
+  CUDA_CALL_THROW(cudaMemcpyAsync(&inexact, inexact_flag.get(), sizeof(int), cudaMemcpyDeviceToHost, stream));
   CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+  ORT_ENFORCE(inexact == 0,
+              "QMoE DSV4 DeepGEMM: MXFP4 fc", fc,
+              " weights do not convert losslessly to FP8 e4m3 (a [128 N, 128 K] block spans more "
+              "exponents than e4m3 can hold). Set ORT_DSV4_FP4_DEEPGEMM=0.");
   staged_weights.reset();
   staged_block_scales.reset();
 #else

@@ -223,6 +223,9 @@ class QMoE final : public CudaKernel, public MoEBase {
   IAllocatorUniquePtr<void> dsv4_deep_gemm_fc2_staged_block_scales_;
   IAllocatorUniquePtr<void> dsv4_deep_gemm_fc1_weights_;
   IAllocatorUniquePtr<void> dsv4_deep_gemm_fc2_weights_;
+  // fp32 per-[128 N, 128 K] block scales for the e4m3 weights above, [E, N/128, K/128].
+  IAllocatorUniquePtr<void> dsv4_deep_gemm_fc1_weight_scales_;
+  IAllocatorUniquePtr<void> dsv4_deep_gemm_fc2_weight_scales_;
   // Block-scale dimensions captured at PrePack time so TryBuildGemvFp4Scales can size and
   // launch the combine kernel once the global scale also arrives. [E, n, k_blocks].
   int64_t gemv_fp4_fc1_scale_e_ = 0;
