@@ -141,7 +141,6 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   const int64_t hidden_size_i64 = input_dims[input_dims_size - 1];
   ORT_RETURN_IF(hidden_size_i64 <= 0, "hidden_size must be positive.");
   const int hidden_size = static_cast<int>(hidden_size_i64);
-  const size_t hidden_size_size = static_cast<size_t>(hidden_size_i64);
 
   if (prepacked_skip_fp32_data_) {
     ORT_RETURN_IF(prepacked_skip_fp32_size_ < hidden_size_i64 || (prepacked_skip_fp32_size_ % hidden_size_i64) != 0,
@@ -150,19 +149,19 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   }
 
   if (prepacked_gamma_fp32_data_) {
-    ORT_RETURN_IF(prepacked_gamma_fp32_size_ != hidden_size_size,
+    ORT_RETURN_IF(prepacked_gamma_fp32_size_ != hidden_size_i64,
                   "Prepacked gamma length does not match hidden_size. hidden_size=", hidden_size,
                   ", prepacked gamma length=", prepacked_gamma_fp32_size_, ".");
   }
 
   if (prepacked_beta_fp32_data_) {
-    ORT_RETURN_IF(prepacked_beta_fp32_size_ != hidden_size_size,
+    ORT_RETURN_IF(prepacked_beta_fp32_size_ != hidden_size_i64,
                   "Prepacked beta length does not match hidden_size. hidden_size=", hidden_size,
                   ", prepacked beta length=", prepacked_beta_fp32_size_, ".");
   }
 
   if (prepacked_bias_fp32_data_) {
-    ORT_RETURN_IF(prepacked_bias_fp32_size_ != hidden_size_size,
+    ORT_RETURN_IF(prepacked_bias_fp32_size_ != hidden_size_i64,
                   "Prepacked bias length does not match hidden_size. hidden_size=", hidden_size,
                   ", prepacked bias length=", prepacked_bias_fp32_size_, ".");
   }
