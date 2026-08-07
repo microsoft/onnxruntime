@@ -42,6 +42,21 @@ parameters:
   type: boolean
   default: true
 
+- name: test_windows_arm64_nuget
+  displayName: 'Test Windows ARM64 NuGet package'
+  type: boolean
+  default: true
+
+- name: test_linux_x64_nuget
+  displayName: 'Test Linux x64 NuGet package'
+  type: boolean
+  default: true
+
+- name: test_linux_arm64_nuget
+  displayName: 'Test Linux ARM64 NuGet package'
+  type: boolean
+  default: true
+
 extends:
   # The pipeline extends the 1ES PT which will inject SDL and compliance
   # tasks. Uses "Official" to stay consistent with the companion
@@ -84,3 +99,41 @@ extends:
       # Linux x64
       - ${{ if eq(parameters.test_linux_x64, true) }}:
         - template: stages/plugin-linux-cuda-test-stage.yml
+
+      # RID-specific NuGet package asset tests. ARM64 packaging is optional, so
+      # those stages skip cleanly when the selected packaging run omitted it.
+      - ${{ if eq(parameters.test_windows_arm64_nuget, true) }}:
+        - template: stages/plugin-cuda-nuget-rid-test-stage.yml
+          parameters:
+            stage_name: Win_plugin_cuda_arm64_NuGet_Test
+            display_name: 'Windows ARM64 CUDA plugin NuGet test'
+            machine_pool: onnxruntime-qnn-windows-vs-2022-arm64
+            os: windows
+            arch: arm64
+            rid: win-arm64
+            package_id: $(CudaPluginNuGetPackageIdWinArm64)
+            package_expected: $(CudaPluginBuiltWindowsArm64)
+
+      - ${{ if eq(parameters.test_linux_x64_nuget, true) }}:
+        - template: stages/plugin-cuda-nuget-rid-test-stage.yml
+          parameters:
+            stage_name: Linux_plugin_cuda_x64_NuGet_Test
+            display_name: 'Linux x64 CUDA plugin NuGet test'
+            machine_pool: onnxruntime-Ubuntu2404-AMD-CPU
+            os: linux
+            arch: x64
+            rid: linux-x64
+            package_id: $(CudaPluginNuGetPackageIdLinuxX64)
+            package_expected: $(CudaPluginBuiltLinuxX64)
+
+      - ${{ if eq(parameters.test_linux_arm64_nuget, true) }}:
+        - template: stages/plugin-cuda-nuget-rid-test-stage.yml
+          parameters:
+            stage_name: Linux_plugin_cuda_arm64_NuGet_Test
+            display_name: 'Linux ARM64 CUDA plugin NuGet test'
+            machine_pool: onnxruntime-linux-ARM64-CPU-2019
+            os: linux
+            arch: arm64
+            rid: linux-arm64
+            package_id: $(CudaPluginNuGetPackageIdLinuxArm64)
+            package_expected: $(CudaPluginBuiltLinuxArm64)
