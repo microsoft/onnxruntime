@@ -195,7 +195,11 @@ jobs:
           # The gtest unit-test binary links the protobuf-free tml replacement and
           # exercises the onnx-light compat surface. Run it directly (build.py's
           # test phase would pull in Python packages we deliberately exclude).
-          test_bin="build/Release/Release/onnxruntime_test_all"
+          # It must be run from its own build output directory: it loads test
+          # models via paths relative to cwd (e.g. testdata/transform/fusion/*.onnx),
+          # and that testdata directory is only copied next to the binary.
+          cd build/Release/Release
+          test_bin="./onnxruntime_test_all"
           test -x "$test_bin"
           "$test_bin"
 
