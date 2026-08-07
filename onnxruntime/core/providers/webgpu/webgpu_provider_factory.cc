@@ -354,9 +354,10 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
     Release = ReleaseImpl;          // OrtDataTransferImpl::Release callback
   }
 
-  static bool CanCopyImpl(const OrtDataTransferImpl* this_ptr,
-                          const OrtMemoryDevice* src_memory_device,
-                          const OrtMemoryDevice* dst_memory_device) noexcept {
+  static bool ORT_API_CALL CanCopyImpl(
+      const OrtDataTransferImpl* this_ptr,
+      const OrtMemoryDevice* src_memory_device,
+      const OrtMemoryDevice* dst_memory_device) noexcept {
     const auto& impl = *static_cast<const WebGpuDataTransferImpl*>(this_ptr);
     OrtMemoryInfoDeviceType src_type = impl.ep_api.MemoryDevice_GetDeviceType(src_memory_device);
     OrtMemoryInfoDeviceType dst_type = impl.ep_api.MemoryDevice_GetDeviceType(dst_memory_device);
@@ -398,11 +399,12 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
            (src_type == OrtMemoryInfoDeviceType_CPU && dst_type == OrtMemoryInfoDeviceType_GPU);
   }
 
-  static OrtStatus* CopyTensorsImpl(OrtDataTransferImpl* this_ptr,
-                                    const OrtValue** src_tensors,
-                                    OrtValue** dst_tensors,
-                                    OrtSyncStream** /*streams*/,
-                                    size_t num_tensors) noexcept {
+  static OrtStatus* ORT_API_CALL CopyTensorsImpl(
+      OrtDataTransferImpl* this_ptr,
+      const OrtValue** src_tensors,
+      OrtValue** dst_tensors,
+      OrtSyncStream** /*streams*/,
+      size_t num_tensors) noexcept {
     auto& impl = *static_cast<WebGpuDataTransferImpl*>(this_ptr);
 
     if (num_tensors == 0) {
@@ -461,7 +463,8 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
     return nullptr;
   }
 
-  static void ReleaseImpl(OrtDataTransferImpl* this_ptr) noexcept {
+  static void ORT_API_CALL ReleaseImpl(
+      OrtDataTransferImpl* this_ptr) noexcept {
     auto* p_impl = static_cast<WebGpuDataTransferImpl*>(this_ptr);
     int context_id = p_impl->context_id_;
     bool data_transfer_initialized = false;

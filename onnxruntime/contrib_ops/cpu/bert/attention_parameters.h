@@ -135,6 +135,26 @@ struct PagedAttentionParameters : AttentionParameters {
   int local_window_size;       // The window size includes new token. It only includes tokens on the left side.
   bool rotary_interleaved;
   float softcap;
+  // Internal attention-sink path, enabled when head_sink (input 11) is provided.
+  bool use_smooth_softmax = false;
+  // Per-head Q/K RMSNorm (QK-Norm) prologue applied before RoPE (inputs 12/13).
+  bool use_qk_norm = false;
+  float qk_norm_epsilon = 1e-6f;
+  // Quantized paged KV cache. Scales are inputs 14/15 and are always FP32, as in
+  // GroupQueryAttention. The storage element type is carried by the kernel's TCACHE specialization;
+  // the k_cache_dtype / v_cache_dtype attributes only override it for sub-byte formats packed into
+  // uint8, which no backend supports yet.
+  KVQuantizationType k_quant_type = KVQuantizationType::NONE;
+  KVQuantizationType v_quant_type = KVQuantizationType::NONE;
+  // Multi-head Latent Attention (kv_cache_layout == "LATENT"). There is a single physical cache:
+  // V of every head is the leading v_head_size channels of the same key_cache row, so 'value' and
+  // 'value_cache' are absent. The inherited v_head_size / v_hidden_size hold the effective V width
+  // and the output width; in SEPARATE mode they equal head_size / hidden_size.
+  bool is_latent_kv = false;
+  // First channel within head_size covered by rotary embedding. RoPE covers
+  // [rotary_offset, rotary_offset + rotary_dim); channels outside are copied through. Default 0
+  // reproduces the original prefix-RoPE behavior. MLA uses rotary_offset == kv_lora_rank.
+  int rotary_offset = 0;
 };
 
 // Parameters for sparse attention.

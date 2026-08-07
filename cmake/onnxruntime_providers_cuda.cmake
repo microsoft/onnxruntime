@@ -67,6 +67,14 @@
 
   include(onnxruntime_cuda_source_filters.cmake)
   onnxruntime_filter_cuda_cu_sources(onnxruntime_cuda_contrib_ops_cu_srcs)
+
+  if (NOT onnxruntime_USE_TRT_FUSED_ATTENTION)
+    # Drop the prebuilt TensorRT fused MHA cubin blobs. cudaDriverWrapper is kept because
+    # sparse attention depends on it.
+    list(FILTER onnxruntime_cuda_contrib_ops_cc_srcs EXCLUDE REGEX
+      ".*/bert/tensorrt_fused_multihead_attention/.*(\\.cubin\\.cc|_kernel\\.sm[0-9]+\\.cc)$")
+  endif()
+
   onnxruntime_extract_sm_specific_cuda_sources(onnxruntime_cuda_contrib_ops_cu_srcs
     SM90_SOURCES onnxruntime_cuda_sm90_tma_srcs
     SM120_SOURCES onnxruntime_cuda_sm120_tma_srcs
@@ -577,7 +585,9 @@
         endif()
       endif()
 
-      if(onnxruntime_cuda_sm120_tma_srcs)
+      # CUDA 13 generates host stubs with 128-byte aligned by-value CUTLASS parameters for these
+      # native SM120 TMA kernels. MSVC rejects those stubs with C2719, so retain the portable path.
+      if(onnxruntime_cuda_sm120_tma_srcs AND (NOT MSVC OR CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0))
         onnxruntime_filter_cuda_archs(_ort_sm120_cuda_architectures MIN_SM 120)
         if(_ort_sm120_cuda_architectures)
           onnxruntime_add_cuda_object_library(
