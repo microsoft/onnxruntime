@@ -2591,7 +2591,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Group Query Self/Cross Attention with KV Cache Quantization Support.
   
-  This operator implements causal grouped-query attention with past state (KV cache) support.
+  This operator implements grouped-query attention with past state (KV cache) support.
   It also supports optional float8, int8 or int4 quantization for the KV cache to reduce memory footprint.
   
   **Cache Format:**
@@ -2617,6 +2617,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>causal</tt> : int</dt>
+<dd>Whether to apply a causal mask. Default value is 1. Set to 0 for bidirectional attention.</dd>
 <dt><tt>do_rotary</tt> : int</dt>
 <dd>Whether to use rotary position embedding. Default value is 0.</dd>
 <dt><tt>k_quant_type</tt> : string</dt>
