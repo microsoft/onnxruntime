@@ -1,9 +1,10 @@
 import unittest
 
-import onnx
 import pytest
 import torch
 from parity_utilities import find_transformers_source
+
+from onnxruntime._onnx_shim import onnx
 
 if find_transformers_source():
     from benchmark_helper import ConfigModifier, OptimizerInfo, Precision

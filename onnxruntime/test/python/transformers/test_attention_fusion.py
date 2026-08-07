@@ -9,15 +9,16 @@ import tempfile
 import unittest
 
 import numpy as np
-import onnx
 from bart_model_generator import create_bart_attention_sdpa
 from bert_model_generator import create_bert_attention, create_bert_attention_pre_ln, create_tf2onnx_attention_3d
 from dit_model_generator import create_dit_attention, create_dit_attention_no_k_transpose
 from gpt2_model_generator import create_gpt2_attention, create_gpt2_attention_no_past
 from model_loader import get_test_data_path
-from onnx import numpy_helper
+from onnxruntime._onnx_shim.onnx import numpy_helper
 from parity_utilities import find_transformers_source
 from qwen3_model_generator import create_qwen3_decoder_layer
+
+from onnxruntime._onnx_shim import onnx
 
 if find_transformers_source():
     from fusion_options import FusionOptions

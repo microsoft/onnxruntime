@@ -6,7 +6,7 @@
 import unittest
 
 import numpy as np
-from onnx import TensorProto, helper
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 import onnxruntime
 

@@ -15,7 +15,7 @@ Qwen3 is a decoder-only architecture with:
 """
 
 import numpy as np
-from onnx import TensorProto, helper
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 
 def _float_tensor(name, shape, random=False):

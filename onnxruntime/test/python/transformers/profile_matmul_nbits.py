@@ -32,7 +32,7 @@ from contextlib import nullcontext
 
 import numpy as np
 import torch
-from onnx import TensorProto, helper
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 import onnxruntime
 

@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from copy import deepcopy
 
 import numpy as np
-from onnx import ModelProto, NodeProto, TensorProto, ValueInfoProto, checker, helper
+from onnxruntime._onnx_shim.onnx import ModelProto, NodeProto, TensorProto, ValueInfoProto, checker, helper
 
 import onnxruntime as ort
 

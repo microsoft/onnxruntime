@@ -7,10 +7,11 @@
 import math
 
 import numpy
-import onnx
 from bert_model_generator import float_tensor, reverse_if
-from onnx import TensorProto, helper
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 from packaging import version
+
+from onnxruntime._onnx_shim import onnx
 
 
 def create_gpt2_attention(hidden_size=64, num_heads=4, max_seq_len=32, switch_add_inputs=False):

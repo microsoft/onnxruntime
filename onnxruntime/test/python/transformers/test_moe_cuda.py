@@ -20,13 +20,13 @@ import numpy
 import torch
 import torch.nn.functional as F
 from cuda_plugin_ep_helper import get_cuda_provider_name
-from onnx import TensorProto, helper
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
+from onnxruntime.quantization import CudaQuantizer
 from parameterized import parameterized
 from torch import nn
 
 import onnxruntime
 from onnxruntime import InferenceSession, SessionOptions
-from onnxruntime.quantization import CudaQuantizer
 
 # Reduces number of tests to run for faster pipeline checks
 pipeline_mode = os.getenv("PIPELINE_MODE", "1") == "1"

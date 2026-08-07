@@ -8,10 +8,10 @@
 import unittest
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper, numpy_helper
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
 
 from onnxruntime import quantization
+from onnxruntime._onnx_shim import onnx
 
 
 class TestMinimumRealRangeOption(unittest.TestCase):

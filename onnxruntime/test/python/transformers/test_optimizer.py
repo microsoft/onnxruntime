@@ -11,7 +11,7 @@
 import unittest
 
 from model_loader import get_fusion_test_model, get_test_data_path
-from onnx import TensorProto, load_model
+from onnxruntime._onnx_shim.onnx import TensorProto, load_model
 from parity_utilities import find_transformers_source
 
 if find_transformers_source():

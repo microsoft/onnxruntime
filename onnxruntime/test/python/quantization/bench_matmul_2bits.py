@@ -22,7 +22,7 @@ import argparse
 import time
 
 import numpy as np
-from onnx import TensorProto, helper, numpy_helper
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
 
 import onnxruntime as ort
 

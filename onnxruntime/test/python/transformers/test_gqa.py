@@ -36,7 +36,7 @@ from gqa_test_helper import (
     dequantize_tensor,
     quantize_tensor_with_scale,
 )
-from onnx import TensorProto, helper
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 from packaging import version
 from parameterized import parameterized
 

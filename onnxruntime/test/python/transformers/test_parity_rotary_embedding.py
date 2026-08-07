@@ -24,7 +24,7 @@ from copy import deepcopy
 import numpy as np
 import torch
 import torch.nn as nn
-from onnx import TensorProto, helper
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 import onnxruntime as ort
 

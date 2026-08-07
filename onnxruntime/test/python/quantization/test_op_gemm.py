@@ -9,10 +9,10 @@ import unittest
 import warnings
 
 import numpy as np
-import onnx
 from numpy.testing import assert_allclose
-from onnx import TensorProto, helper
-from onnx.reference import ReferenceEvaluator
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
+from onnxruntime._onnx_shim.onnx.reference import ReferenceEvaluator
+from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, quantize_dynamic, quantize_static
 from op_test_utils import (
     QGemm,
     TestDataFeeds,
@@ -23,7 +23,7 @@ from op_test_utils import (
 )
 
 from onnxruntime import InferenceSession
-from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, quantize_dynamic, quantize_static
+from onnxruntime._onnx_shim import onnx
 
 
 class TestOpGemm(unittest.TestCase):

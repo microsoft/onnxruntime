@@ -7,12 +7,12 @@
 import unittest
 
 import numpy as np
-import onnx
-import onnx.helper as oh
-import onnx.numpy_helper as onh
-
+from onnxruntime._onnx_shim.onnx import helper as oh
+from onnxruntime._onnx_shim.onnx import numpy_helper as onh
 from onnxruntime.quantization.onnx_quantizer import ONNXQuantizer
 from onnxruntime.quantization.quant_utils import QuantizationMode, QuantType
+
+from onnxruntime._onnx_shim import onnx
 
 
 class TestQuantizerShapeInference(unittest.TestCase):

@@ -11,7 +11,7 @@ import tempfile
 import unittest
 
 import numpy as np
-import onnx
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 from op_test_utils import (
     TestDataFeeds,
     check_model_correctness,
@@ -19,7 +19,7 @@ from op_test_utils import (
     get_tensor_consumers_and_producers,
 )
 
-from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
+from onnxruntime._onnx_shim import onnx
 
 
 class TestQDQSlice(unittest.TestCase):

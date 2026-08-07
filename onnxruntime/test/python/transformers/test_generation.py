@@ -9,12 +9,12 @@ import os
 import shutil
 import unittest
 
-import onnx
 import pytest
 import torch
 from parity_utilities import find_transformers_source
 
 from onnxruntime import get_available_providers
+from onnxruntime._onnx_shim import onnx
 
 if find_transformers_source() and find_transformers_source(["models", "t5"]):
     from benchmark_helper import Precision

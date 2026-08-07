@@ -11,11 +11,11 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-import onnx
-
-import onnxruntime
 from onnxruntime.quantization.execution_providers.qnn import qnn_preprocess_model
 from onnxruntime.quantization.quant_utils import model_has_external_data, ms_domain
+
+import onnxruntime
+from onnxruntime._onnx_shim import onnx
 
 
 class TestQnnPreprocessModel(unittest.TestCase):

@@ -5,9 +5,8 @@
 import unittest
 
 import numpy
-from onnx import ModelProto, TensorProto, helper
-from onnx.external_data_helper import set_external_data
-
+from onnxruntime._onnx_shim.onnx import ModelProto, TensorProto, helper
+from onnxruntime._onnx_shim.onnx.external_data_helper import set_external_data
 from onnxruntime.transformers.onnx_utils import extract_raw_data_from_model, has_external_data
 
 

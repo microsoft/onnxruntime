@@ -9,13 +9,19 @@ Implements ONNX's backend API.
 import os
 import unittest
 
-import packaging.version
-
 from onnxruntime import InferenceSession, SessionOptions, get_available_providers, get_device
-from onnxruntime._onnx_shim.onnx import ModelProto, helper, version  # noqa: F401
-from onnxruntime._onnx_shim.onnx.backend.base import Backend
+from onnxruntime._onnx_shim.onnx import ModelProto  # noqa: F401
 from onnxruntime._onnx_shim.onnx.checker import check_model
 from onnxruntime.backend.backend_rep import OnnxRuntimeBackendRep
+
+# onnx-light does not ship an ``onnx.backend.base`` submodule (``onnx.backend`` is a flat
+# module there, not a package), so ``Backend`` is only available with upstream ``onnx``. Fall
+# back to a plain ``object`` base in that case: every method ``Backend`` defines is overridden
+# below anyway, so it contributes nothing beyond an (optional) documentation/typing contract.
+try:
+    from onnxruntime._onnx_shim.onnx.backend.base import Backend
+except ImportError:
+    Backend = object
 
 # Allowlist of SessionOptions attributes that are safe to set via the backend API.
 # Dangerous attributes intentionally excluded:
@@ -72,35 +78,31 @@ class OnnxRuntimeBackend(Backend):
     def is_opset_supported(cls, model):
         """
         Return whether the opset for the model is supported by the backend.
-        When By default only released onnx opsets are allowed by the backend
-        To test new opsets env variable ALLOW_RELEASED_ONNX_OPSET_ONLY should be set to 0
+        By default only released onnx opsets are allowed by the backend.
+        To test new opsets env variable ALLOW_RELEASED_ONNX_OPSET_ONLY should be set to 0.
+
+        ONNX Runtime itself is the source of truth for which opsets are officially released
+        (see ``ValidateOpsetForDomain`` in onnxruntime/core/graph/model_load_utils.h): rather
+        than duplicating that knowledge here via a table like ``onnx.helper.OP_SET_ID_VERSION_MAP``
+        (unavailable in onnx-light, and prone to going stale, as the previous hard-coded
+        ``opset.version > 12`` fallback below demonstrated), this creates a throwaway
+        ``InferenceSession`` and inspects the "under development" error ONNX Runtime itself
+        raises for opsets it does not yet guarantee support for.
 
         :param model: Model whose opsets needed to be verified.
         :return: boolean and error message if opset is not supported.
         """
         if cls.allowReleasedOpsetsOnly:
-            for opset in model.opset_import:
-                domain = opset.domain if opset.domain else "ai.onnx"
-                try:
-                    key = (domain, opset.version)
-                    if key not in helper.OP_SET_ID_VERSION_MAP:
-                        error_message = (
-                            "Skipping this test as only released onnx opsets are supported."
-                            "To run this test set env variable ALLOW_RELEASED_ONNX_OPSET_ONLY to 0."
-                            f" Got Domain '{domain}' version '{opset.version}'."
-                        )
-                        return False, error_message
-                except AttributeError:
-                    # for some CI pipelines accessing helper.OP_SET_ID_VERSION_MAP
-                    # is generating attribute error. TODO investigate the pipelines to
-                    # fix this error. Falling back to a simple version check when this error is encountered
-                    if (domain == "ai.onnx" and opset.version > 12) or (domain == "ai.ommx.ml" and opset.version > 2):
-                        error_message = (
-                            "Skipping this test as only released onnx opsets are supported."
-                            "To run this test set env variable ALLOW_RELEASED_ONNX_OPSET_ONLY to 0."
-                            f" Got Domain '{domain}' version '{opset.version}'."
-                        )
-                        return False, error_message
+            try:
+                InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+            except Exception as exc:
+                if "is under development and support for this is limited" in str(exc):
+                    error_message = (
+                        "Skipping this test as only released onnx opsets are supported."
+                        "To run this test set env variable ALLOW_RELEASED_ONNX_OPSET_ONLY to 0."
+                        f" {exc}"
+                    )
+                    return False, error_message
         return True, ""
 
     @classmethod
@@ -157,22 +159,11 @@ class OnnxRuntimeBackend(Backend):
             return cls.prepare(inf, device, **kwargs)
         else:
             # type: ModelProto
-            # check_model serializes the model anyways, so serialize the model once here
-            # and reuse it below in the cls.prepare call to avoid an additional serialization
-            # only works with onnx >= 1.10.0 hence the version check
-            onnx_version = packaging.version.parse(version.version) or packaging.version.Version("0")
-            onnx_supports_serialized_model_check = onnx_version.release >= (1, 10, 0)
-            bin_or_model = model.SerializeToString() if onnx_supports_serialized_model_check else model
-            check_model(bin_or_model)
+            check_model(model)
             opset_supported, error_message = cls.is_opset_supported(model)
             if not opset_supported:
                 raise unittest.SkipTest(error_message)
-            # Now bin might be serialized, if it's not we need to serialize it otherwise we'll have
-            # an infinite recursive call
-            bin = bin_or_model
-            if not isinstance(bin, (str, bytes)):
-                bin = bin.SerializeToString()
-            return cls.prepare(bin, device, **kwargs)
+            return cls.prepare(model.SerializeToString(), device, **kwargs)
 
     @classmethod
     def run_model(cls, model, inputs, device=None, **kwargs):

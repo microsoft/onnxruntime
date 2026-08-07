@@ -7,7 +7,15 @@ Implements ONNX's backend API.
 """
 
 from onnxruntime import RunOptions
-from onnxruntime._onnx_shim.onnx.backend.base import BackendRep
+
+# onnx-light does not ship an ``onnx.backend.base`` submodule (``onnx.backend`` is a flat
+# module there, not a package), so ``BackendRep`` is only available with upstream ``onnx``.
+# Fall back to a plain ``object`` base in that case: ``run()`` is fully overridden below anyway,
+# so it contributes nothing beyond an (optional) documentation/typing contract.
+try:
+    from onnxruntime._onnx_shim.onnx.backend.base import BackendRep
+except ImportError:
+    BackendRep = object
 
 # Allowlist of RunOptions attributes that are safe to set via the backend API.
 # 'terminate' excluded: setting it True would deny the current inference call.

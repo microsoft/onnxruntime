@@ -8,14 +8,14 @@
 import unittest
 
 import numpy as np
-import onnx
 from numpy.testing import assert_almost_equal
-from onnx import TensorProto, helper
-from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
-
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail
 from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, quantize_dynamic, quantize_static
 from onnxruntime.quantization.calibrate import entropy
+from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
+
+from onnxruntime._onnx_shim import onnx
 
 
 def skip_if_new_opset_exception_raised(func):

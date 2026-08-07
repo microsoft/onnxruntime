@@ -12,12 +12,12 @@ import unittest
 
 import torch
 from benchmark_mha import InputFormats
-from onnx import TensorProto, helper
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
+from onnxruntime.transformers.io_binding_helper import CudaSession
 from test_gqa_cpu import smooth_softmax_ref
 from torch import Tensor
 
 from onnxruntime import InferenceSession, SessionOptions, get_available_providers
-from onnxruntime.transformers.io_binding_helper import CudaSession
 
 try:
     from gqa_test_helper import (

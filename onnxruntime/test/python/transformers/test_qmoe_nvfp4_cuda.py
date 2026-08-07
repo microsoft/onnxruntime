@@ -27,13 +27,13 @@ import numpy
 import torch
 import torch.nn.functional as F
 from cuda_plugin_ep_helper import resolve_cuda_plugin_ep
-from onnx import helper
+from onnxruntime._onnx_shim.onnx import helper
 from parameterized import parameterized
 
 import onnxruntime
 
 try:
-    from onnx import TensorProto
+    from onnxruntime._onnx_shim.onnx import TensorProto
 
     has_onnx = True
 except ImportError:

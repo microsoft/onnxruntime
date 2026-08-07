@@ -20,7 +20,7 @@ import torch
 from bert_padding import pad_input, unpad_input
 from einops import rearrange, repeat
 from env_var_helper import scoped_env_var
-from onnx import TensorProto, helper
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 from onnxruntime import InferenceSession, OrtValue, SessionOptions
 

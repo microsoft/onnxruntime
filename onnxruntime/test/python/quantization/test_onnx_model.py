@@ -10,11 +10,11 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper, numpy_helper
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
+from onnxruntime.quantization.onnx_model import ONNXModel
 from op_test_utils import check_op_type_order
 
-from onnxruntime.quantization.onnx_model import ONNXModel
+from onnxruntime._onnx_shim import onnx
 
 
 def generate_input_initializer(tensor_shape, tensor_dtype, input_name):

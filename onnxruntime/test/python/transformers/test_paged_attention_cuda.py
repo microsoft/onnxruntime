@@ -17,7 +17,7 @@ import unittest
 import numpy
 import torch
 from einops import rearrange, repeat
-from onnx import TensorProto, helper
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 from packaging import version
 from parameterized import parameterized
 

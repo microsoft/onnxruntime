@@ -3,15 +3,12 @@
 # Licensed under the MIT License.
 import argparse
 import os
-import warnings
 from datetime import date
 
 import numpy as np
-import onnx
-from onnx import AttributeProto, GraphProto, TensorProto, helper, numpy_helper, utils  # noqa: F401
 
-# Suppress protobuf deprecation warnings from onnx internals (label() -> is_required()/is_repeated())
-warnings.filterwarnings("ignore", message="label\\(\\) is deprecated", category=DeprecationWarning)
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
 
 
 def parse_arguments():
@@ -36,7 +33,10 @@ def write_tensor(f, c, input_name=None):
 
 def infer_shapes(model_def):
     onnx.checker.check_model(model_def)
-    onnx.helper.strip_doc_string(model_def)
+    # NOTE: onnx.helper.strip_doc_string() isn't available on onnx-light and
+    # is buggy on upstream onnx with the upb protobuf backend (relies on the
+    # deprecated FieldDescriptor.label attribute). Clearing doc_string is
+    # purely cosmetic here, so just drop the call instead.
     final_model = onnx.shape_inference.infer_shapes(model_def)
     onnx.checker.check_model(final_model)
     return final_model

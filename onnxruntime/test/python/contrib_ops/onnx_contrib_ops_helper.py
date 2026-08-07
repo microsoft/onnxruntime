@@ -7,8 +7,9 @@ import os
 import shutil
 import subprocess
 
-import onnx
-from onnx import numpy_helper
+from onnxruntime._onnx_shim.onnx import numpy_helper
+
+from onnxruntime._onnx_shim import onnx
 
 TOP_DIR = os.path.realpath(os.path.dirname(__file__))
 DATA_DIR = os.path.join(TOP_DIR, "..", "testdata/")

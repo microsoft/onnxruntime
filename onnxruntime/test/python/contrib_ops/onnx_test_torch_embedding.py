@@ -6,8 +6,9 @@
 import unittest
 
 import numpy as np
-import onnx
 from onnx_contrib_ops_helper import expect
+
+from onnxruntime._onnx_shim import onnx
 
 
 def torch_embedding_reference_implementation(weight, indices, padding_idx=None, scale=False):

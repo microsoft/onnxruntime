@@ -22,7 +22,7 @@ import tempfile
 import time
 
 import numpy as np
-from onnx import TensorProto, helper, save_model
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, save_model
 
 import onnxruntime as ort
 

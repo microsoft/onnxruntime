@@ -5,7 +5,7 @@ import unittest
 
 import numpy as np
 import torch
-from onnx import TensorProto, checker, helper
+from onnxruntime._onnx_shim.onnx import TensorProto, checker, helper
 
 import onnxruntime
 

@@ -5,11 +5,11 @@ import os
 import unittest
 
 import numpy as np
-import onnx
 from helper import get_name
-from onnx import TensorProto, helper
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 import onnxruntime as onnxrt
+from onnxruntime._onnx_shim import onnx
 
 
 class TestInferenceSessionWithCtxNode(unittest.TestCase):

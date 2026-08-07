@@ -7,9 +7,10 @@
 import os
 import unittest
 
-import onnx
 import torch
 from parity_utilities import find_transformers_source
+
+from onnxruntime._onnx_shim import onnx
 
 if find_transformers_source():
     from fusion_options import FusionOptions

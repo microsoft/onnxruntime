@@ -13,11 +13,11 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper, numpy_helper
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
-from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
+from onnxruntime._onnx_shim import onnx
 
 
 class TestOpSoftmax(unittest.TestCase):

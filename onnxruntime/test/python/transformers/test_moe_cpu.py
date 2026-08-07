@@ -21,7 +21,7 @@ import numpy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from onnx import TensorProto, helper
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 from parameterized import parameterized
 
 from onnxruntime import InferenceSession, SessionOptions

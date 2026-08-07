@@ -11,7 +11,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from cuda_plugin_ep_helper import CUDA_PLUGIN_EP_NAME, ensure_cuda_plugin_ep_registered, should_test_with_cuda_plugin_ep
-from onnx import OperatorSetIdProto, TensorProto, helper, save
+from onnxruntime._onnx_shim.onnx import OperatorSetIdProto, TensorProto, helper, save
 
 import onnxruntime as onnxrt
 

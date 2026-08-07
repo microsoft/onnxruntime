@@ -9,25 +9,37 @@ import uuid
 from pathlib import Path
 
 import numpy as np
-import onnx
-from ml_dtypes import float8_e4m3fn
-from onnx import TensorProto
-from onnx.helper import np_dtype_to_tensor_dtype
-from onnx.reference import ReferenceEvaluator
-from onnx.reference import ops as onnx_ops
-from onnx.reference.op_run import OpRun
-
-import onnxruntime
 import onnxruntime.capi._pybind_state as C
+from ml_dtypes import float8_e4m3fn
+from onnxruntime._onnx_shim.onnx import TensorProto
+from onnxruntime._onnx_shim.onnx.helper import np_dtype_to_tensor_dtype
+from onnxruntime._onnx_shim.onnx.reference import ReferenceEvaluator
 from onnxruntime.quantization import CalibrationDataReader
 
-onnx_recent_enough = hasattr(OpRun, "infer_name")
+import onnxruntime
+from onnxruntime._onnx_shim import onnx
+
+try:
+    from onnxruntime._onnx_shim.onnx.reference import ops as onnx_ops
+    from onnxruntime._onnx_shim.onnx.reference.op_run import OpRun
+
+    onnx_recent_enough = hasattr(OpRun, "infer_name")
+except ImportError:
+    # onnx-light's reference evaluator does not expose the per-op reference
+    # implementations (onnx.reference.ops) used by the float8 sign-mismatch
+    # diagnostic and the QGemm/QLinearMatMul custom reference ops below;
+    # those code paths are simply skipped (guarded by onnx_recent_enough) in
+    # that case. OpRun falls back to plain object so QOpRun can still be
+    # defined (its subclasses are never instantiated when unsupported).
+    onnx_ops = None
+    OpRun = object
+    onnx_recent_enough = False
 
 if onnx_recent_enough:
     # Test with ReferenceEvaluator requires PR https://github.com/onnx/onnx/pull/5408/.
     # https://github.com/onnx/onnx/pull/5408
     try:
-        from onnx.reference.op_run import to_array_extended
+        from onnxruntime._onnx_shim.onnx.reference.op_run import to_array_extended
 
     except ImportError:
         to_array_extended = None
@@ -421,7 +433,7 @@ def check_sign_f8_quantization(model_path_origin, model_path_to_check):
         except AssertionError as e:
             scale_value = onnx.numpy_helper.to_array(names_f8[scale[0]])
             err_msg = f"Sign are different for {name!r}, scale={scale_value}."
-            if to_array_extended is not None:
+            if to_array_extended is not None and onnx_ops is not None:
                 values = onnx.numpy_helper.to_array(names[name]).flatten()
                 f8_values = to_array_extended(init)
                 zero = onnx_ops.op_cast.Cast_19.eval(np.array(0), to=init.data_type)
