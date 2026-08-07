@@ -47,6 +47,8 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/transformer_common.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 
+#include <vector>
+
 using namespace onnxruntime::cuda;
 using namespace onnxruntime::contrib::attention_softmax_cuda;
 
@@ -55,6 +57,109 @@ namespace contrib {
 namespace cuda {
 
 constexpr size_t kMemoryAlignment = 256;
+constexpr char kValidateSeqLensEnvVar[] = "ORT_CUDA_ATTENTION_VALIDATE_SEQ_LENS";
+
+__global__ void SanitizeMask1DKeySeqLenStartValues(const int32_t* input,
+                                                   int32_t* output,
+                                                   int32_t batch_size,
+                                                   int32_t sequence_length,
+                                                   int32_t total_sequence_length) {
+  if (blockIdx.x != 0 || threadIdx.x != 0) {
+    return;
+  }
+
+  const int32_t* input_seqlen_k = input;
+  const int32_t* input_seqstart_q = input_seqlen_k + batch_size;
+  const int32_t* input_seqstart_k = input_seqstart_q + batch_size + 1;
+  int32_t* output_seqlen_k = output;
+  int32_t* output_seqstart_q = output_seqlen_k + batch_size;
+  int32_t* output_seqstart_k = output_seqstart_q + batch_size + 1;
+
+  const int64_t max_query_offset = static_cast<int64_t>(batch_size) * sequence_length;
+  const int64_t max_key_offset = static_cast<int64_t>(batch_size) * total_sequence_length;
+
+  int64_t previous_q = 0;
+  int64_t previous_k = 0;
+  for (int32_t i = 0; i <= batch_size; ++i) {
+    int64_t q = static_cast<int64_t>(input_seqstart_q[i]);
+    q = q < previous_q ? previous_q : q;
+    q = q > max_query_offset ? max_query_offset : q;
+    int64_t k = static_cast<int64_t>(input_seqstart_k[i]);
+    k = k < previous_k ? previous_k : k;
+    k = k > max_key_offset ? max_key_offset : k;
+    output_seqstart_q[i] = static_cast<int32_t>(q);
+    output_seqstart_k[i] = static_cast<int32_t>(k);
+    previous_q = q;
+    previous_k = k;
+  }
+
+  for (int32_t i = 0; i < batch_size; ++i) {
+    const int64_t max_seqlen = max_key_offset - output_seqstart_k[i];
+    int64_t seqlen = static_cast<int64_t>(input_seqlen_k[i]);
+    seqlen = seqlen < 0 ? 0 : seqlen;
+    seqlen = seqlen > max_seqlen ? max_seqlen : seqlen;
+    output_seqlen_k[i] = static_cast<int32_t>(seqlen);
+  }
+}
+
+static Status ValidateMask1DKeySeqLenStartValues(cudaStream_t stream,
+                                                 const int32_t* mask_index,
+                                                 int32_t batch_size,
+                                                 int32_t sequence_length,
+                                                 int32_t total_sequence_length) {
+  if (mask_index == nullptr) {
+    return Status::OK();
+  }
+
+  if (!ParseEnvironmentVariableWithDefault<bool>(kValidateSeqLensEnvVar, false)) {
+    return Status::OK();
+  }
+
+  const size_t mask_elements = static_cast<size_t>(3) * static_cast<size_t>(batch_size) + 2;
+  std::vector<int32_t> mask_host(mask_elements);
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(mask_host.data(),
+                                       mask_index,
+                                       mask_elements * sizeof(int32_t),
+                                       cudaMemcpyDeviceToHost,
+                                       stream));
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+
+  const int64_t max_query_offset = static_cast<int64_t>(batch_size) * sequence_length;
+  const int64_t max_key_offset = static_cast<int64_t>(batch_size) * total_sequence_length;
+
+  const int32_t* seqlen_k = mask_host.data();
+  const int32_t* seqstart_q = seqlen_k + batch_size;
+  const int32_t* seqstart_k = seqstart_q + batch_size + 1;
+
+  for (int32_t i = 0; i < batch_size; ++i) {
+    const int64_t q_start = seqstart_q[i];
+    const int64_t q_next = seqstart_q[i + 1];
+    const int64_t k_start = seqstart_k[i];
+    const int64_t k_next = seqstart_k[i + 1];
+    const int64_t seqlen = seqlen_k[i];
+
+    ORT_RETURN_IF_NOT(seqlen >= 0 && seqlen <= total_sequence_length,
+                      "key_padding_mask has invalid seqlen_k[", i, "] value ", seqlen,
+                      "; expected range [0, ", total_sequence_length, "].");
+
+    ORT_RETURN_IF_NOT(q_start >= 0 && q_next >= q_start && q_next <= max_query_offset,
+                      "key_padding_mask has invalid seqstart_q entries at batch ", i,
+                      ": [", q_start, ", ", q_next,
+                      "] with max allowed cumulative offset ", max_query_offset, ".");
+
+    ORT_RETURN_IF_NOT(k_start >= 0 && k_next >= k_start && k_next <= max_key_offset,
+                      "key_padding_mask has invalid seqstart_k entries at batch ", i,
+                      ": [", k_start, ", ", k_next,
+                      "] with max allowed cumulative offset ", max_key_offset, ".");
+
+    ORT_RETURN_IF_NOT(k_start + seqlen <= max_key_offset,
+                      "key_padding_mask has inconsistent seqstart_k/seqlen_k at batch ", i,
+                      ": k_start (", k_start, ") + seqlen_k (", seqlen,
+                      ") exceeds max cumulative key offset ", max_key_offset, ".");
+  }
+
+  return Status::OK();
+}
 
 static size_t AlignTo(size_t a, size_t b) {
   return CeilDiv(a, b) * b;
@@ -474,6 +579,7 @@ Status CudnnFlashAttention(
 template <typename T>
 Status EfficientAttention(
     const cudaDeviceProp& device_prop,
+    Stream* ort_stream,
     cudaStream_t stream,
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data,
@@ -500,12 +606,32 @@ Status EfficientAttention(
   p.scale = scale;
   p.use_smooth_softmax = false;
 
+  IAllocatorUniquePtr<int32_t> sanitized_mask;
+  if (data.mask_index != nullptr) {
+    ORT_RETURN_IF_ERROR(ValidateMask1DKeySeqLenStartValues(
+        stream,
+        reinterpret_cast<const int32_t*>(data.mask_index),
+        parameters.batch_size,
+        parameters.sequence_length,
+        parameters.total_sequence_length));
+
+    const size_t mask_elements = static_cast<size_t>(3) * static_cast<size_t>(parameters.batch_size) + 2;
+    sanitized_mask = IAllocator::MakeUniquePtr<int32_t>(data.allocator, mask_elements, false, ort_stream);
+    SanitizeMask1DKeySeqLenStartValues<<<1, 1, 0, stream>>>(
+        reinterpret_cast<const int32_t*>(data.mask_index),
+        sanitized_mask.get(),
+        parameters.batch_size,
+        parameters.sequence_length,
+        parameters.total_sequence_length);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  }
+
   if (nullptr == data.mask_index) {
     p.seqlen_k_ptr = nullptr;
     p.seqstart_q_ptr = nullptr;
     p.seqstart_k_ptr = nullptr;
   } else {
-    p.seqlen_k_ptr = reinterpret_cast<const int32_t*>(data.mask_index);
+    p.seqlen_k_ptr = sanitized_mask.get();
     p.seqstart_q_ptr = p.seqlen_k_ptr + parameters.batch_size;
     p.seqstart_k_ptr = p.seqlen_k_ptr + 2 * parameters.batch_size + 1;
   }
@@ -1023,7 +1149,7 @@ Status QkvToContext(
 #if USE_MEMORY_EFFICIENT_ATTENTION
   if (data.use_memory_efficient_attention) {
     DUMP_STRING("EfficientAttention");
-    return EfficientAttention<T>(device_prop, stream, parameters, data, scale);
+    return EfficientAttention<T>(device_prop, ort_stream, stream, parameters, data, scale);
   }
 #endif
 
