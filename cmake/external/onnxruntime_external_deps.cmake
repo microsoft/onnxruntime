@@ -948,83 +948,36 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     # Android always uses this path, including vcpkg-based AAR builds. The vcpkg port selects
     # HttpClient_Curl on Android, while the platform identity and transport used by the AAR require
     # HttpClient_Android and its Java bridge.
-    # The 1DS SDK reads these generic option() names from its own CMakeLists. Nothing else in ORT's
-    # build reads them, so set them and leave them (no save/restore). Turn off the SDK's tests and the
-    # optional modules whose source may be absent from the release archive; ORT uses the C++ API directly.
-    set(BUILD_UNIT_TESTS OFF CACHE BOOL "Disable 1DS SDK unit tests" FORCE)
-    set(BUILD_FUNC_TESTS OFF CACHE BOOL "Disable 1DS SDK functional tests" FORCE)
-    set(BUILD_PRIVACYGUARD OFF CACHE BOOL "Disable 1DS privacy guard module" FORCE)
-    set(BUILD_SANITIZER OFF CACHE BOOL "Disable 1DS sanitizer module" FORCE)
-    set(BUILD_OBJC_WRAPPER OFF CACHE BOOL "Disable 1DS ObjC wrapper" FORCE)
-    set(BUILD_SWIFT_WRAPPER OFF CACHE BOOL "Disable 1DS Swift wrapper" FORCE)
+    # Use cpp_client_telemetry's canonical MATSDK_* options. The PR #1511
+    # embedding surface keeps SDK policy and dependency selection local to 1DS.
+    set(MATSDK_BUILD_HEADERS ON CACHE BOOL "Build 1DS SDK headers" FORCE)
+    set(MATSDK_BUILD_LIBRARY ON CACHE BOOL "Build 1DS SDK library" FORCE)
+    set(MATSDK_BUILD_TEST_TOOL OFF CACHE BOOL "Disable 1DS SDK test tool" FORCE)
+    set(MATSDK_BUILD_UNIT_TESTS OFF CACHE BOOL "Disable 1DS SDK unit tests" FORCE)
+    set(MATSDK_BUILD_FUNC_TESTS OFF CACHE BOOL "Disable 1DS SDK functional tests" FORCE)
+    set(MATSDK_BUILD_PRIVACYGUARD OFF CACHE BOOL "Disable 1DS privacy guard module" FORCE)
+    set(MATSDK_BUILD_SANITIZER OFF CACHE BOOL "Disable 1DS sanitizer module" FORCE)
+    set(MATSDK_BUILD_OBJC_WRAPPER OFF CACHE BOOL "Disable 1DS ObjC wrapper" FORCE)
+    set(MATSDK_BUILD_SWIFT_WRAPPER OFF CACHE BOOL "Disable 1DS Swift wrapper" FORCE)
+    set(MATSDK_BUILD_JNI_WRAPPER OFF CACHE BOOL "Disable 1DS JNI wrapper" FORCE)
+    set(MATSDK_BUILD_PACKAGE OFF CACHE BOOL "Disable 1DS package generation" FORCE)
+    # ORT supplies CURL::libcurl on Linux through its pinned static mbedTLS
+    # transport. On Apple/Android the SDK selects the native transport.
+    set(MATSDK_CURL_PROVIDER SYSTEM CACHE STRING "Use ORT's selected 1DS curl target" FORCE)
+    set(MATSDK_CURL_TLS_BACKEND MBEDTLS CACHE STRING "Use mbedTLS for 1DS curl" FORCE)
+    set(MATSDK_SQLITE_PROVIDER VENDORED CACHE STRING "Use bundled 1DS SQLite" FORCE)
+    set(MATSDK_ZLIB_PROVIDER VENDORED CACHE STRING "Use bundled 1DS zlib" FORCE)
     # BUILD_SHARED_LIBS is a global that ORT's own targets read after this block, and the SDK selects
     # mat's library type from it (lib/CMakeLists.txt). Save it, force static for the SDK, restore below.
     set(BUILD_SHARED_LIBS_SAVED "${BUILD_SHARED_LIBS}")
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build 1DS SDK as static library" FORCE)
 
-    # The 1DS SDK CMakeLists.txt expects specific variables on Apple platforms.
-    # For iOS: We set BUILD_IOS=YES so the 1DS SDK skips its CURL dependency
-    # (iOS uses NSURLSession instead). We disable FORCE_RESET_OSX_DEPLOYMENT_TARGET
-    # and provide IOS_DEPLOYMENT_TARGET to prevent the SDK from clearing cmake's
-    # deployment target or adding empty -miphoneos-version-min flags.
-    # The SDK's internal xcodebuild call may fail (license issues), but cmake's
-    # toolchain already provides the correct sysroot via CMAKE_OSX_SYSROOT.
-    set(_ort_mac_arch_inferred OFF)
-    if(APPLE)
-      if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-        set(BUILD_IOS YES CACHE BOOL "Tell 1DS SDK this is an iOS build" FORCE)
-        set(FORCE_RESET_OSX_DEPLOYMENT_TARGET NO CACHE BOOL "Don't let 1DS SDK clear deployment target" FORCE)
-        if(NOT DEFINED IOS_DEPLOYMENT_TARGET)
-          set(IOS_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}" CACHE STRING "iOS deployment target for 1DS SDK" FORCE)
-        endif()
-        if(NOT DEFINED IOS_ARCH)
-          set(IOS_ARCH "${CMAKE_OSX_ARCHITECTURES}" CACHE STRING "iOS architecture for 1DS SDK" FORCE)
-          if(NOT IOS_ARCH)
-            set(IOS_ARCH "arm64" CACHE STRING "iOS architecture for 1DS SDK" FORCE)
-          endif()
-        endif()
-        if(NOT DEFINED IOS_PLAT)
-          string(TOLOWER "${CMAKE_OSX_SYSROOT}" IOS_SYSROOT_LOWER)
-          if(IOS_SYSROOT_LOWER MATCHES "iphonesimulator")
-            set(IOS_PLAT "iphonesimulator" CACHE STRING "iOS platform for 1DS SDK" FORCE)
-          else()
-            set(IOS_PLAT "iphoneos" CACHE STRING "iOS platform for 1DS SDK" FORCE)
-          endif()
-        endif()
-      else()
-        if(NOT MAC_ARCH)
-          if(CMAKE_OSX_ARCHITECTURES)
-            list(LENGTH CMAKE_OSX_ARCHITECTURES _ort_macos_arch_count)
-            if(_ort_macos_arch_count EQUAL 1)
-              set(MAC_ARCH "${CMAKE_OSX_ARCHITECTURES}")
-              set(_ort_mac_arch_inferred ON)
-            endif()
-            unset(_ort_macos_arch_count)
-          elseif(CMAKE_SYSTEM_PROCESSOR)
-            set(MAC_ARCH "${CMAKE_SYSTEM_PROCESSOR}")
-            set(_ort_mac_arch_inferred ON)
-          endif()
-        endif()
-      endif()
-    endif()
+    # Android uses the Java transport; all other source builds use the SDK's
+    # canonical Apple/system or fetched mbedTLS transport selection.
+    set(MATSDK_ANDROID_HTTP_CLIENT JAVA CACHE STRING "Use the 1DS Java HTTP bridge on Android" FORCE)
 
-    # The FetchContent fallback relies on ORT's patch for correct Apple/static behavior
-    # (source-root include fix, Apple mobile legacy dependency handling, and portable
-    # Apple static packaging). Require the patch tool instead of silently producing a
-    # broken or non-relocatable package when it is unavailable.
-    if(NOT Patch_FOUND)
-      message(FATAL_ERROR
-        "onnxruntime_USE_TELEMETRY requires the patch tool to build cpp_client_telemetry. Install 'patch'.")
-    endif()
-    set(ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND
-      ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/cpp_client_telemetry/cpp_client_telemetry.patch)
-    # Keep the FetchContent fallback self-contained. The SDK's vendored sqlite3/zlib targets avoid
-    # host packages and are exportable with static ORT packages.
-    set(MATSDK_BUNDLE_VENDORED_DEPS ON)
-
-    # Android vcpkg builds intentionally use this fallback because the vcpkg port selects the curl
-    # transport instead of the Java bridge. Force the SDK's self-contained mode and restore the
-    # caller's cache entry after configuration.
+    # Android vcpkg builds intentionally use this fallback. Force the SDK's
+    # self-contained mode and restore the caller's cache entry after configuration.
     get_property(_ort_matsdk_vcpkg_was_set CACHE MATSDK_USE_VCPKG_DEPS PROPERTY TYPE SET)
     if(_ort_matsdk_vcpkg_was_set)
       get_property(_ort_matsdk_vcpkg_type CACHE MATSDK_USE_VCPKG_DEPS PROPERTY TYPE)
@@ -1037,14 +990,9 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
       cpp_client_telemetry
       URL ${DEP_URL_cpp_client_telemetry}
       URL_HASH SHA1=${DEP_SHA1_cpp_client_telemetry}
-      PATCH_COMMAND ${ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND}
       EXCLUDE_FROM_ALL
     )
     onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
-    if(_ort_mac_arch_inferred)
-      unset(MAC_ARCH)
-    endif()
-    unset(_ort_mac_arch_inferred)
     unset(MATSDK_USE_VCPKG_DEPS)
     if(_ort_matsdk_vcpkg_was_set)
       if(_ort_matsdk_vcpkg_type STREQUAL "UNINITIALIZED")
@@ -1094,23 +1042,6 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     endif()
 
     if(TARGET mat)
-      # cpp_client_telemetry's CMakeLists.txt uses include_directories(${CMAKE_SOURCE_DIR}) to find
-      # its bundled nlohmann/, sqlite/, and zlib/ headers. When built via FetchContent, CMAKE_SOURCE_DIR
-      # points to ORT's root instead. Fix by adding the actual source dir as an include path.
-      target_include_directories(mat PRIVATE ${cpp_client_telemetry_SOURCE_DIR})
-      # The SDK's bundled sqlite3_bundled/zlib_bundled targets (built for Android, iOS, and non-Apple
-      # static packages via MATSDK_BUNDLE_VENDORED_DEPS) expose their vendored header dirs as PUBLIC
-      # includes with build-tree paths, which mat picks up to compile. install(EXPORT) rejects a
-      # build/source-tree include path on an exported target, so scope them to the build only.
-      foreach(_ort_bundled_dep sqlite3_bundled zlib_bundled)
-        if(TARGET ${_ort_bundled_dep})
-          get_target_property(_ort_bundled_inc ${_ort_bundled_dep} INTERFACE_INCLUDE_DIRECTORIES)
-          if(_ort_bundled_inc)
-            set_target_properties(${_ort_bundled_dep} PROPERTIES
-              INTERFACE_INCLUDE_DIRECTORIES "$<BUILD_INTERFACE:${_ort_bundled_inc}>")
-          endif()
-        endif()
-      endforeach()
       if(TARGET sqlite3_bundled)
         # 1DS uses sqlite only for its narrow offline-event store. Keep the previous vcpkg
         # size reductions and extension-loading hardening on the bundled replacement.
