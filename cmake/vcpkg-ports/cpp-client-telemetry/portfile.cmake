@@ -3,9 +3,11 @@ vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO microsoft/cpp_client_telemetry
-    REF 0b7b0cfb63ecc9dcdecad61e60f26957fdb01f61
-    SHA512 9ba79b10a5e68f8fa5d3692b22750bc5c0cec12c6d2920bfd63ce193a26b8433923e7dbba2baeb4fd863dd64ed2fba683b0480641f88697302907385bb61f958
+    REF v3.10.173.1
+    SHA512 e55bc35274236f57757660073c4dccccab3462342c8566212f1df4bf8824295a2bb3d3d79a11f3950e7c9252641827e9dd3d7c28c421dea3bdaee277e4f2ce32
     HEAD_REF main
+    PATCHES
+        "${CMAKE_CURRENT_LIST_DIR}/../../patches/cpp_client_telemetry/cpp_client_telemetry.patch"
 )
 
 set(MATSDK_BUILD_APPLE_HTTP OFF)

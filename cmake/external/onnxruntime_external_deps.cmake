@@ -986,10 +986,18 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     endif()
     set(MATSDK_USE_VCPKG_DEPS OFF)
     set(MATSDK_USE_VCPKG_DEPS OFF CACHE BOOL "Use self-contained 1DS dependencies" FORCE)
+    if(NOT Patch_FOUND)
+      message(FATAL_ERROR
+              "onnxruntime_USE_TELEMETRY with the FetchContent cpp_client_telemetry fallback requires the patch tool.")
+    endif()
+    set(ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND
+        ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 <
+        ${PROJECT_SOURCE_DIR}/patches/cpp_client_telemetry/cpp_client_telemetry.patch)
     onnxruntime_fetchcontent_declare(
       cpp_client_telemetry
       URL ${DEP_URL_cpp_client_telemetry}
       URL_HASH SHA1=${DEP_SHA1_cpp_client_telemetry}
+      PATCH_COMMAND ${ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND}
       EXCLUDE_FROM_ALL
     )
     onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
