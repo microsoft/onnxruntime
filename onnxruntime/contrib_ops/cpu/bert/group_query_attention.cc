@@ -239,8 +239,10 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                     "kv_cache_bit_width must be 4 or 8 when quantization is enabled, got ", kv_cache_bit_width_);
     }
     constexpr bool is_float = std::is_same_v<T, float>;
-    ORT_RETURN_IF(!is_float,
-                  "CPU GroupQueryAttention only supports float Q dtype with quantized KV cache");
+    // The OSCAR PER_GROUP (2-bit) path bridges half<->float at the kernel boundary, so it
+    // accepts MLFloat16 Q/KV. The INT8/INT4 MLAS quant paths remain float-only.
+    ORT_RETURN_IF(!is_float && !is_per_group_quant,
+                  "CPU GroupQueryAttention only supports float Q dtype with INT8/INT4 quantized KV cache");
     // PER_GROUP computes scale/zero dynamically at append time and stores them in the cache,
     // so k_scale / v_scale inputs are not required.
     if (!is_per_group_quant) {
@@ -290,7 +292,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                   "kv_quant_group_size must divide head_size; got group_size ", oscar_group_size,
                   " head_size ", hs);
     oscar_num_groups = hs / oscar_group_size;
-    kv_cache_extra_bits = oscar_num_groups * 2 * static_cast<int>(sizeof(float)) * 8;
+    const int meta_bytes = kv_quant_meta_fp16_ ? static_cast<int>(sizeof(uint16_t)) : static_cast<int>(sizeof(float));
+    kv_cache_extra_bits = oscar_num_groups * 2 * meta_bytes * 8;
   }
 
   GroupQueryAttentionParameters parameters = {};
@@ -399,7 +402,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   if (kv_cache_bit_width_ == 4) {
     packed_head_size = (head_size + 1) / 2;
   } else if (kv_cache_bit_width_ == 2) {
-    packed_head_size = head_size / 4 + oscar_num_groups * 2 * static_cast<int>(sizeof(float));
+    const int meta_bytes = kv_quant_meta_fp16_ ? static_cast<int>(sizeof(uint16_t)) : static_cast<int>(sizeof(float));
+    packed_head_size = head_size / 4 + oscar_num_groups * 2 * meta_bytes;
   } else {
     packed_head_size = head_size;
   }
@@ -657,39 +661,146 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       const T* v_data_q = packed_qkv ? nullptr : V.Get<Tensor>().Data<T>();
 
       // OSCAR 2-bit per-group asymmetric path (dequant-to-fp32, bypasses MLAS).
-      // Float-only: the runtime is_float guard in ComputeInternal rejects half precision,
-      // and this branch is not instantiated for T = MLFloat16.
-      if constexpr (std::is_same_v<T, float>) {
-        if (is_per_group_quant) {
-          const int hp_window = kv_quant_sink_ + kv_quant_recent_;
-          // OSCAR spectral rotations (optional): per-kv-head [kv_num_heads, head_size, head_size].
-          const float* oscar_r_k_data = oscar_rotation_k != nullptr ? oscar_rotation_k->Data<float>() : nullptr;
-          const float* oscar_r_v_data = oscar_rotation_v != nullptr ? oscar_rotation_v->Data<float>() : nullptr;
-          if (hp_window > 0) {
-            // Mixed precision (Option C): keep the first `sink` and last `recent` tokens in
-            // high-precision FP (separate present_hp outputs); only the middle history is 2-bit.
-            const int hp_present_len = std::min(static_cast<int>(present_kv_seqlen), hp_window);
-            std::vector<int64_t> present_hp_shape({static_cast<int64_t>(batch_size),
-                                                   static_cast<int64_t>(kv_num_heads_),
-                                                   static_cast<int64_t>(hp_present_len),
-                                                   static_cast<int64_t>(head_size)});
-            Tensor* present_hp_k = context->Output(4, present_hp_shape);
-            Tensor* present_hp_v = context->Output(5, present_hp_shape);
-            return ApplyAttentionQuantized2BitMixed(
-                q_rotary, k_data_q, v_data_q, head_sink_data,
+      // The float kernels below stay float internally; for T = MLFloat16 we bridge Q/KV
+      // (and the mixed hp window) half<->float at this boundary, keeping the codec untouched.
+      if (is_per_group_quant) {
+        if constexpr (!std::is_same_v<T, float>) {
+          ORT_RETURN_IF(attention_bias != nullptr,
+                        "GQA CPU: attention_bias is not supported with the fp16 2-bit KV cache path");
+          ORT_RETURN_IF(output_qk != nullptr,
+                        "GQA CPU: qk_output is not supported with the fp16 2-bit KV cache path");
+        }
+
+        const int hp_window = kv_quant_sink_ + kv_quant_recent_;
+        // OSCAR spectral rotations (optional): per-kv-head [kv_num_heads, head_size, head_size].
+        const float* oscar_r_k_data = oscar_rotation_k != nullptr ? oscar_rotation_k->Data<float>() : nullptr;
+        const float* oscar_r_v_data = oscar_rotation_v != nullptr ? oscar_rotation_v->Data<float>() : nullptr;
+
+        // Half -> float for a raw Q/K/V/head_sink buffer (identity when T == float).
+        auto bridge_in = [&](const T* src, size_t count, BufferUniquePtr& owner) -> const float* {
+          if (src == nullptr) {
+            return nullptr;
+          }
+          if constexpr (std::is_same_v<T, float>) {
+            (void)owner;
+            (void)count;
+            return src;
+          } else {
+            float* dst = static_cast<float*>(allocator->Alloc((count ? count : 1) * sizeof(float)));
+            owner = BufferUniquePtr(dst, BufferDeleter(allocator));
+            for (size_t z = 0; z < count; ++z) {
+              dst[z] = src[z].ToFloat();
+            }
+            return dst;
+          }
+        };
+
+        const size_t q_count = static_cast<size_t>(batch_size) *
+                               (packed_qkv ? (num_heads_ + 2 * kv_num_heads_) : num_heads_) *
+                               static_cast<size_t>(sequence_length) * static_cast<size_t>(head_size);
+        const size_t kv_count = packed_qkv ? 0
+                                           : static_cast<size_t>(batch_size) * kv_num_heads_ *
+                                                 static_cast<size_t>(kv_sequence_length) *
+                                                 static_cast<size_t>(head_size);
+
+        BufferUniquePtr q_owner, k_owner, v_owner, hs_owner;
+        const float* q_f = bridge_in(q_rotary, q_count, q_owner);
+        const float* k_f = bridge_in(k_data_q, kv_count, k_owner);
+        const float* v_f = bridge_in(v_data_q, kv_count, v_owner);
+        const float* head_sink_f = bridge_in(head_sink_data, static_cast<size_t>(num_heads_), hs_owner);
+
+        // The float kernels write a float output; convert back to T afterwards when T != float.
+        OrtValue out_f_value;
+        Tensor* out_f = output;
+        if constexpr (!std::is_same_v<T, float>) {
+          Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), output->Shape(), allocator, out_f_value);
+          out_f = out_f_value.GetMutable<Tensor>();
+        }
+        auto finalize_output = [&]() {
+          if constexpr (!std::is_same_v<T, float>) {
+            const float* src = out_f->Data<float>();
+            T* dst = output->MutableData<T>();
+            const size_t n = static_cast<size_t>(output->Shape().Size());
+            for (size_t z = 0; z < n; ++z) {
+              dst[z] = T(src[z]);
+            }
+          }
+        };
+
+        if (hp_window > 0) {
+          // Mixed precision (Option C): keep the first `sink` and last `recent` tokens in
+          // high-precision FP (separate present_hp outputs); only the middle history is 2-bit.
+          const int hp_present_len = std::min(static_cast<int>(present_kv_seqlen), hp_window);
+          std::vector<int64_t> present_hp_shape({static_cast<int64_t>(batch_size),
+                                                 static_cast<int64_t>(kv_num_heads_),
+                                                 static_cast<int64_t>(hp_present_len),
+                                                 static_cast<int64_t>(head_size)});
+          Tensor* present_hp_k = context->Output(4, present_hp_shape);
+          Tensor* present_hp_v = context->Output(5, present_hp_shape);
+
+          if constexpr (std::is_same_v<T, float>) {
+            ORT_RETURN_IF_ERROR(ApplyAttentionQuantized2BitMixed(
+                q_f, k_f, v_f, head_sink_f,
                 attention_bias, past_key, past_value, past_hp_key, past_hp_value,
-                output, present_k, present_v, present_hp_k, present_hp_v, output_qk, seqlens_k,
+                out_f, present_k, present_v, present_hp_k, present_hp_v, output_qk, seqlens_k,
                 oscar_group_size, oscar_num_groups, k_quant_rho_, v_quant_rho_,
                 kv_quant_sink_, kv_quant_recent_, oscar_r_k_data, oscar_r_v_data,
-                parameters, allocator, context);
+                parameters, allocator, context));
+          } else {
+            // Bridge the half hp window: past_hp inputs half -> float, present_hp float -> half.
+            auto half_tensor_to_float = [&](const Tensor* src, OrtValue& holder) -> const Tensor* {
+              Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), src->Shape(), allocator, holder);
+              Tensor* dstT = holder.GetMutable<Tensor>();
+              const MLFloat16* s = src->Data<MLFloat16>();
+              float* d = dstT->MutableData<float>();
+              const size_t n = static_cast<size_t>(src->Shape().Size());
+              for (size_t z = 0; z < n; ++z) {
+                d[z] = s[z].ToFloat();
+              }
+              return dstT;
+            };
+
+            OrtValue past_hp_k_holder, past_hp_v_holder, present_hp_k_holder, present_hp_v_holder;
+            const Tensor* past_hp_k_f = past_hp_key != nullptr ? half_tensor_to_float(past_hp_key, past_hp_k_holder) : nullptr;
+            const Tensor* past_hp_v_f = past_hp_value != nullptr ? half_tensor_to_float(past_hp_value, past_hp_v_holder) : nullptr;
+            Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), present_hp_k->Shape(), allocator, present_hp_k_holder);
+            Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), present_hp_v->Shape(), allocator, present_hp_v_holder);
+            Tensor* present_hp_k_f = present_hp_k_holder.GetMutable<Tensor>();
+            Tensor* present_hp_v_f = present_hp_v_holder.GetMutable<Tensor>();
+
+            ORT_RETURN_IF_ERROR(ApplyAttentionQuantized2BitMixed(
+                q_f, k_f, v_f, head_sink_f,
+                nullptr, past_key, past_value, past_hp_k_f, past_hp_v_f,
+                out_f, present_k, present_v, present_hp_k_f, present_hp_v_f, nullptr, seqlens_k,
+                oscar_group_size, oscar_num_groups, k_quant_rho_, v_quant_rho_,
+                kv_quant_sink_, kv_quant_recent_, oscar_r_k_data, oscar_r_v_data,
+                parameters, allocator, context));
+
+            // present_hp float -> half.
+            for (int which = 0; which < 2; ++which) {
+              const Tensor* src = which == 0 ? present_hp_k_f : present_hp_v_f;
+              Tensor* dstT = which == 0 ? present_hp_k : present_hp_v;
+              const float* s = src->Data<float>();
+              MLFloat16* d = dstT->MutableData<MLFloat16>();
+              const size_t n = static_cast<size_t>(src->Shape().Size());
+              for (size_t z = 0; z < n; ++z) {
+                d[z] = MLFloat16(s[z]);
+              }
+            }
           }
-          return ApplyAttentionQuantized2Bit(
-              q_rotary, k_data_q, v_data_q, head_sink_data,
-              attention_bias, past_key, past_value,
-              output, present_k, present_v, output_qk, seqlens_k,
-              oscar_group_size, oscar_num_groups, k_quant_rho_, v_quant_rho_,
-              parameters, allocator, context);
+          finalize_output();
+          return Status::OK();
         }
+
+        // Non-mixed OSCAR path.
+        ORT_RETURN_IF_ERROR(ApplyAttentionQuantized2Bit(
+            q_f, k_f, v_f, head_sink_f,
+            std::is_same_v<T, float> ? attention_bias : nullptr, past_key, past_value,
+            out_f, present_k, present_v, std::is_same_v<T, float> ? output_qk : nullptr, seqlens_k,
+            oscar_group_size, oscar_num_groups, k_quant_rho_, v_quant_rho_,
+            parameters, allocator, context));
+        finalize_output();
+        return Status::OK();
       }
 
       auto mlas_quant_type = ToMlasKVQuantType(k_quant_type_, kv_cache_bit_width_);

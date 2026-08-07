@@ -79,14 +79,18 @@ inline const uint8_t* ConcatQuantStateChunkGQA(
 
 // ---- OSCAR 2-bit per-group asymmetric INT2 codec (CPU, dequant-to-fp32) ----
 // Row storage layout (one KV row = head_size channels), matching oscar/quant.py:
-//   [ head_size/4 packed code bytes | num_groups float scales | num_groups float zeros ]
+//   [ head_size/4 packed code bytes | num_groups scales | num_groups zeros ]
+// Scales/zeros are fp32 by default, or fp16 when meta_fp16 is set (smaller cache row).
 // Codes are 0..q_max (q_max = 3, 4 levels), packed 4-per-byte as c0|c1<<2|c2<<4|c3<<6.
 // Per group g: scale = (gmax - gmin)/q_max, zero = gmin, computed after an optional
 // magnitude-percentile clip (rho). Dequant: x = code * scale + zero.
 constexpr int kOscar2BitQMax = 3;
 
-inline size_t Oscar2BitPackedRowBytes(int head_size, int num_groups) {
-  return static_cast<size_t>(head_size) / 4 + static_cast<size_t>(num_groups) * 2 * sizeof(float);
+// Per-group scale/zero metadata is stored either as fp32 (default) or fp16 (meta_fp16),
+// trading a little precision for a smaller cache row (48B -> 40B at head_size=128, 2 groups).
+inline size_t Oscar2BitPackedRowBytes(int head_size, int num_groups, bool meta_fp16) {
+  const size_t meta_elem = meta_fp16 ? sizeof(uint16_t) : sizeof(float);
+  return static_cast<size_t>(head_size) / 4 + static_cast<size_t>(num_groups) * 2 * meta_elem;
 }
 
 // torch.quantile(|x|, rho) with linear interpolation over a group of length n.
@@ -107,7 +111,7 @@ inline float Oscar2BitPercentileAbs(const float* x, int n, float rho) {
 
 // Quantize one FP32 row of head_size channels into the packed 2-bit row at dst.
 inline void Oscar2BitQuantizeRow(const float* src, uint8_t* dst, int head_size,
-                                 int group_size, int num_groups, float rho) {
+                                 int group_size, int num_groups, float rho, bool meta_fp16) {
   const int packed_bytes = head_size / 4;
   std::vector<uint8_t> codes(static_cast<size_t>(head_size), 0);
   std::vector<float> scales(static_cast<size_t>(num_groups));
@@ -155,23 +159,51 @@ inline void Oscar2BitQuantizeRow(const float* src, uint8_t* dst, int head_size,
     dst[j] = static_cast<uint8_t>(codes[b] | (codes[b + 1] << 2) |
                                   (codes[b + 2] << 4) | (codes[b + 3] << 6));
   }
-  // Store metadata via memcpy to avoid alignment assumptions.
-  std::memcpy(dst + packed_bytes, scales.data(), static_cast<size_t>(num_groups) * sizeof(float));
-  std::memcpy(dst + packed_bytes + static_cast<size_t>(num_groups) * sizeof(float),
-              zeros.data(), static_cast<size_t>(num_groups) * sizeof(float));
+  // Store metadata via memcpy to avoid alignment assumptions. fp16 halves the metadata bytes.
+  if (meta_fp16) {
+    std::vector<uint16_t> scales16(static_cast<size_t>(num_groups));
+    std::vector<uint16_t> zeros16(static_cast<size_t>(num_groups));
+    for (int g = 0; g < num_groups; ++g) {
+      scales16[static_cast<size_t>(g)] = MLFloat16(scales[g]).val;
+      zeros16[static_cast<size_t>(g)] = MLFloat16(zeros[g]).val;
+    }
+    const size_t block = static_cast<size_t>(num_groups) * sizeof(uint16_t);
+    std::memcpy(dst + packed_bytes, scales16.data(), block);
+    std::memcpy(dst + packed_bytes + block, zeros16.data(), block);
+  } else {
+    const size_t block = static_cast<size_t>(num_groups) * sizeof(float);
+    std::memcpy(dst + packed_bytes, scales.data(), block);
+    std::memcpy(dst + packed_bytes + block, zeros.data(), block);
+  }
 }
 
 // Dequantize one packed 2-bit row at src into head_size FP32 channels at dst.
 inline void Oscar2BitDequantizeRow(const uint8_t* src, float* dst, int head_size,
-                                   int group_size, int num_groups) {
+                                   int group_size, int num_groups, bool meta_fp16) {
   const int packed_bytes = head_size / 4;
   constexpr int kMaxGroups = 512;
   float scales[kMaxGroups];
   float zeros[kMaxGroups];
   const int ng = std::min(num_groups, kMaxGroups);
-  std::memcpy(scales, src + packed_bytes, static_cast<size_t>(ng) * sizeof(float));
-  std::memcpy(zeros, src + packed_bytes + static_cast<size_t>(num_groups) * sizeof(float),
-              static_cast<size_t>(ng) * sizeof(float));
+  if (meta_fp16) {
+    const uint8_t* sptr = src + packed_bytes;
+    const uint8_t* zptr = sptr + static_cast<size_t>(num_groups) * sizeof(uint16_t);
+    for (int g = 0; g < ng; ++g) {
+      uint16_t sbits, zbits;
+      std::memcpy(&sbits, sptr + static_cast<size_t>(g) * sizeof(uint16_t), sizeof(uint16_t));
+      std::memcpy(&zbits, zptr + static_cast<size_t>(g) * sizeof(uint16_t), sizeof(uint16_t));
+      MLFloat16 sh;
+      sh.val = sbits;
+      MLFloat16 zh;
+      zh.val = zbits;
+      scales[g] = sh.ToFloat();
+      zeros[g] = zh.ToFloat();
+    }
+  } else {
+    std::memcpy(scales, src + packed_bytes, static_cast<size_t>(ng) * sizeof(float));
+    std::memcpy(zeros, src + packed_bytes + static_cast<size_t>(num_groups) * sizeof(float),
+                static_cast<size_t>(ng) * sizeof(float));
+  }
   for (int i = 0; i < head_size; ++i) {
     const int g = i / group_size;
     const uint8_t byte = src[i / 4];
@@ -194,6 +226,7 @@ inline const uint8_t* ConcatQuant2BitStateChunkGQA(
     int group_size,
     int num_groups,
     float rho,
+    bool meta_fp16,
     bool past_present_share_buffer,
     std::ptrdiff_t kv_head_idx) {
   uint8_t* start = present + kv_head_idx * present_buff_chunk_bytes;
@@ -205,10 +238,10 @@ inline const uint8_t* ConcatQuant2BitStateChunkGQA(
   }
   p += past_chunk_bytes;
 
-  const size_t row_bytes = Oscar2BitPackedRowBytes(head_size, num_groups);
+  const size_t row_bytes = Oscar2BitPackedRowBytes(head_size, num_groups, meta_fp16);
   for (size_t r = 0; r < new_rows; ++r) {
     Oscar2BitQuantizeRow(new_chunk + r * head_size, p + r * row_bytes,
-                         head_size, group_size, num_groups, rho);
+                         head_size, group_size, num_groups, rho, meta_fp16);
   }
 
   return start;
@@ -245,6 +278,7 @@ class GQAAttentionBase {
     kv_quant_group_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("kv_quant_group_size", 0));
     k_quant_rho_ = info.GetAttrOrDefault<float>("k_quant_rho", 1.0f);
     v_quant_rho_ = info.GetAttrOrDefault<float>("v_quant_rho", 1.0f);
+    kv_quant_meta_fp16_ = info.GetAttrOrDefault<int64_t>("kv_quant_metadata_fp16", 0) == 1;
     kv_quant_enabled_ = (k_quant_type_ != KVQuantizationType::NONE);
 
     // OSCAR mixed-precision windows: keep the first `sink` and last `recent` tokens in high
@@ -277,6 +311,7 @@ class GQAAttentionBase {
   int kv_quant_group_size_;  // group size for PER_GROUP (OSCAR 2-bit) quant; 0 means whole head
   float k_quant_rho_;        // percentile clip for K in PER_GROUP mode (1.0 = no clip)
   float v_quant_rho_;        // percentile clip for V in PER_GROUP mode (1.0 = no clip)
+  bool kv_quant_meta_fp16_ = false;  // OSCAR: store per-group scale/zero as fp16 (else fp32)
   bool kv_quant_enabled_;
   int kv_quant_sink_ = 0;    // OSCAR: leading tokens kept in high precision (session config)
   int kv_quant_recent_ = 0;  // OSCAR: trailing tokens kept in high precision (session config)
@@ -774,7 +809,7 @@ class GQAAttentionBase {
     const bool packed_qkv = parameters.is_packed_qkv;
 
     auto* tp = context->GetOperatorThreadPool();
-    const size_t packed_row_bytes = Oscar2BitPackedRowBytes(head_size, num_groups);
+    const size_t packed_row_bytes = Oscar2BitPackedRowBytes(head_size, num_groups, kv_quant_meta_fp16_);
 
     int seqlen_past_kv_cache = 0;
     if (past_key != nullptr && past_value != nullptr) {
@@ -890,12 +925,12 @@ class GQAAttentionBase {
               past_key_data, k_new, present_key_data,
               present_buff_chunk_bytes, past_buff_chunk_bytes,
               past_chunk_bytes, kv_sequence_length, head_size, group_size, num_groups,
-              k_rho, past_present_share_buffer, kv_head_flat);
+              k_rho, kv_quant_meta_fp16_, past_present_share_buffer, kv_head_flat);
 
           // Dequantize the full present K cache for this head to FP32.
           for (size_t r = 0; r < total_seqlen; ++r) {
             Oscar2BitDequantizeRow(k_quantized + r * packed_row_bytes,
-                                   k_deq + r * head_size, head_size, group_size, num_groups);
+                                   k_deq + r * head_size, head_size, group_size, num_groups, kv_quant_meta_fp16_);
           }
 
           const float* q;
@@ -1047,11 +1082,11 @@ class GQAAttentionBase {
               past_value_data, v_new, present_value_data,
               present_buff_chunk_bytes, past_buff_chunk_bytes,
               past_chunk_bytes, kv_sequence_length, head_size, group_size, num_groups,
-              v_rho, past_present_share_buffer, kv_head_flat);
+              v_rho, kv_quant_meta_fp16_, past_present_share_buffer, kv_head_flat);
 
           for (size_t r = 0; r < total_seqlen; ++r) {
             Oscar2BitDequantizeRow(v_quantized + r * packed_row_bytes,
-                                   v_deq + r * head_size, head_size, group_size, num_groups);
+                                   v_deq + r * head_size, head_size, group_size, num_groups, kv_quant_meta_fp16_);
           }
 
           ptrdiff_t probs_offset =
@@ -1129,10 +1164,10 @@ class GQAAttentionBase {
             OscarRotateRows(source, history_rotation, rotation_scratch, 1, head_size, /*transpose_r=*/false);
             source = rotation_scratch;
           }
-          Oscar2BitQuantizeRow(source, dst, head_size, group_size, num_groups, rho);
+          Oscar2BitQuantizeRow(source, dst, head_size, group_size, num_groups, rho, kv_quant_meta_fp16_);
         }
         Oscar2BitDequantizeRow(dst, deq + static_cast<size_t>(r) * head_size,
-                               head_size, group_size, num_groups);
+                               head_size, group_size, num_groups, kv_quant_meta_fp16_);
       }
     }
   }
@@ -1192,7 +1227,7 @@ class GQAAttentionBase {
     const bool packed_qkv = parameters.is_packed_qkv;
 
     auto* tp = context->GetOperatorThreadPool();
-    const size_t packed_row_bytes = Oscar2BitPackedRowBytes(head_size, num_groups);
+    const size_t packed_row_bytes = Oscar2BitPackedRowBytes(head_size, num_groups, kv_quant_meta_fp16_);
 
     ORT_RETURN_IF(present_key == nullptr || present_value == nullptr ||
                       present_hp_key == nullptr || present_hp_value == nullptr,

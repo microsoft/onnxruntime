@@ -1281,6 +1281,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("kv_quant_group_size", "Group size for PER_GROUP (OSCAR 2-bit) KV quantization. 0 (default) means the whole head is one group.", AttributeProto::INT, OPTIONAL_VALUE)
         .Attr("k_quant_rho", "Magnitude percentile (0,1] used to clip outliers before computing per-group K min/max in PER_GROUP mode. 1.0 (default) disables clipping.", AttributeProto::FLOAT, 1.0f)
         .Attr("v_quant_rho", "Magnitude percentile (0,1] used to clip outliers before computing per-group V min/max in PER_GROUP mode. 1.0 (default) disables clipping.", AttributeProto::FLOAT, 1.0f)
+        .Attr("kv_quant_metadata_fp16",
+              "PER_GROUP (OSCAR 2-bit) only: store the per-group scale/zero metadata as fp16 (1) instead of fp32 (0, default)."
+              "fp16 shrinks the packed history row from head_size/4 + num_groups*8 to head_size/4 + num_groups*4 bytes.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
         .Attr("qk_norm_epsilon",
               "Epsilon used by the per-head RMS norm applied to Q and K when q_norm_weight and k_norm_weight inputs are provided. "
               "Default value is 1e-6.",
