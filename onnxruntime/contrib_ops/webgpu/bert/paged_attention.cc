@@ -807,8 +807,8 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   Tensor seqlens_q_gpu = context.CreateGPUTensor(int32_type, TensorShape({batch_size_i64}));
   ORT_RETURN_IF_ERROR(context.CopyTensor(seqlens_q_cpu, seqlens_q_gpu));
 
-    Tensor k_padded;
-    Tensor v_padded;
+  Tensor k_padded;
+  Tensor v_padded;
   Tensor q_padded = context.CreateGPUTensor(
       dtype, TensorShape({batch_size_i64,
                           static_cast<int64_t>(max_seqlen_q),
