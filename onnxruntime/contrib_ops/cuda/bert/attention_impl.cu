@@ -59,6 +59,49 @@ namespace cuda {
 constexpr size_t kMemoryAlignment = 256;
 constexpr char kValidateSeqLensEnvVar[] = "ORT_CUDA_ATTENTION_VALIDATE_SEQ_LENS";
 
+__global__ void SanitizeMask1DKeySeqLenStartValues(const int32_t* input,
+                                                   int32_t* output,
+                                                   int32_t batch_size,
+                                                   int32_t sequence_length,
+                                                   int32_t total_sequence_length) {
+  if (blockIdx.x != 0 || threadIdx.x != 0) {
+    return;
+  }
+
+  const int32_t* input_seqlen_k = input;
+  const int32_t* input_seqstart_q = input_seqlen_k + batch_size;
+  const int32_t* input_seqstart_k = input_seqstart_q + batch_size + 1;
+  int32_t* output_seqlen_k = output;
+  int32_t* output_seqstart_q = output_seqlen_k + batch_size;
+  int32_t* output_seqstart_k = output_seqstart_q + batch_size + 1;
+
+  const int64_t max_query_offset = static_cast<int64_t>(batch_size) * sequence_length;
+  const int64_t max_key_offset = static_cast<int64_t>(batch_size) * total_sequence_length;
+
+  int64_t previous_q = 0;
+  int64_t previous_k = 0;
+  for (int32_t i = 0; i <= batch_size; ++i) {
+    int64_t q = static_cast<int64_t>(input_seqstart_q[i]);
+    q = q < previous_q ? previous_q : q;
+    q = q > max_query_offset ? max_query_offset : q;
+    int64_t k = static_cast<int64_t>(input_seqstart_k[i]);
+    k = k < previous_k ? previous_k : k;
+    k = k > max_key_offset ? max_key_offset : k;
+    output_seqstart_q[i] = static_cast<int32_t>(q);
+    output_seqstart_k[i] = static_cast<int32_t>(k);
+    previous_q = q;
+    previous_k = k;
+  }
+
+  for (int32_t i = 0; i < batch_size; ++i) {
+    const int64_t max_seqlen = max_key_offset - output_seqstart_k[i];
+    int64_t seqlen = static_cast<int64_t>(input_seqlen_k[i]);
+    seqlen = seqlen < 0 ? 0 : seqlen;
+    seqlen = seqlen > max_seqlen ? max_seqlen : seqlen;
+    output_seqlen_k[i] = static_cast<int32_t>(seqlen);
+  }
+}
+
 static Status ValidateMask1DKeySeqLenStartValues(cudaStream_t stream,
                                                  const int32_t* mask_index,
                                                  int32_t batch_size,
@@ -66,49 +109,6 @@ static Status ValidateMask1DKeySeqLenStartValues(cudaStream_t stream,
                                                  int32_t total_sequence_length) {
   if (mask_index == nullptr) {
     return Status::OK();
-  }
-
-  __global__ void SanitizeMask1DKeySeqLenStartValues(const int32_t* input,
-                                                     int32_t* output,
-                                                     int32_t batch_size,
-                                                     int32_t sequence_length,
-                                                     int32_t total_sequence_length) {
-    if (blockIdx.x != 0 || threadIdx.x != 0) {
-      return;
-    }
-
-    const int32_t* input_seqlen_k = input;
-    const int32_t* input_seqstart_q = input_seqlen_k + batch_size;
-    const int32_t* input_seqstart_k = input_seqstart_q + batch_size + 1;
-    int32_t* output_seqlen_k = output;
-    int32_t* output_seqstart_q = output_seqlen_k + batch_size;
-    int32_t* output_seqstart_k = output_seqstart_q + batch_size + 1;
-
-    const int64_t max_query_offset = static_cast<int64_t>(batch_size) * sequence_length;
-    const int64_t max_key_offset = static_cast<int64_t>(batch_size) * total_sequence_length;
-
-    int64_t previous_q = 0;
-    int64_t previous_k = 0;
-    for (int32_t i = 0; i <= batch_size; ++i) {
-      int64_t q = static_cast<int64_t>(input_seqstart_q[i]);
-      q = q < previous_q ? previous_q : q;
-      q = q > max_query_offset ? max_query_offset : q;
-      int64_t k = static_cast<int64_t>(input_seqstart_k[i]);
-      k = k < previous_k ? previous_k : k;
-      k = k > max_key_offset ? max_key_offset : k;
-      output_seqstart_q[i] = static_cast<int32_t>(q);
-      output_seqstart_k[i] = static_cast<int32_t>(k);
-      previous_q = q;
-      previous_k = k;
-    }
-
-    for (int32_t i = 0; i < batch_size; ++i) {
-      const int64_t max_seqlen = max_key_offset - output_seqstart_k[i];
-      int64_t seqlen = static_cast<int64_t>(input_seqlen_k[i]);
-      seqlen = seqlen < 0 ? 0 : seqlen;
-      seqlen = seqlen > max_seqlen ? max_seqlen : seqlen;
-      output_seqlen_k[i] = static_cast<int32_t>(seqlen);
-    }
   }
 
   if (!ParseEnvironmentVariableWithDefault<bool>(kValidateSeqLensEnvVar, false)) {
