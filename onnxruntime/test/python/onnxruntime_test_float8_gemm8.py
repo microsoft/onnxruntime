@@ -12,13 +12,14 @@ import warnings
 import numpy as np
 import parameterized
 from numpy.testing import assert_allclose
+
+from onnxruntime import InferenceSession, get_available_providers
 from onnxruntime._onnx_shim.onnx import TensorProto
 from onnxruntime._onnx_shim.onnx.checker import check_model
 from onnxruntime._onnx_shim.onnx.defs import onnx_opset_version
 from onnxruntime._onnx_shim.onnx.helper import make_graph, make_model, make_node, make_opsetid, make_tensor_value_info
 from onnxruntime._onnx_shim.onnx.numpy_helper import from_array
 
-from onnxruntime import InferenceSession, get_available_providers
 
 available_providers = list(get_available_providers())
 

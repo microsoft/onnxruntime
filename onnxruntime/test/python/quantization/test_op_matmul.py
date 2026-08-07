@@ -17,6 +17,7 @@ from onnxruntime.capi.onnxruntime_pybind11_state import Fail
 from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, quantize_dynamic, quantize_static
 from onnxruntime.quantization.calibrate import entropy
 
+
 def skip_if_new_opset_exception_raised(func):
     def wrapper(*args, **kwargs):
         try:

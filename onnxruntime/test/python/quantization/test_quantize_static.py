@@ -12,8 +12,6 @@ from pathlib import Path
 
 import numpy as np
 
-from onnxruntime._onnx_shim.onnx import TensorProto, helper
-from onnxruntime.quantization import QuantType, StaticQuantConfig, quantize, quantize_static
 from op_test_utils import (
     StridedDataReader,
     check_model_correctness,
@@ -24,6 +22,8 @@ from op_test_utils import (
 
 import onnxruntime as ort
 from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
+from onnxruntime.quantization import QuantType, StaticQuantConfig, quantize, quantize_static
 
 
 def construct_test_model(test_model_path, channel_size):

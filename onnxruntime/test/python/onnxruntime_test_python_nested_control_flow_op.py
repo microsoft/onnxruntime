@@ -6,9 +6,9 @@ from collections.abc import Sequence
 from copy import deepcopy
 
 import numpy as np
-from onnxruntime._onnx_shim.onnx import ModelProto, NodeProto, TensorProto, ValueInfoProto, checker, helper
 
 import onnxruntime as ort
+from onnxruntime._onnx_shim.onnx import ModelProto, NodeProto, TensorProto, ValueInfoProto, checker, helper
 
 
 def make_vi_like(vi: ValueInfoProto, name: str) -> ValueInfoProto:

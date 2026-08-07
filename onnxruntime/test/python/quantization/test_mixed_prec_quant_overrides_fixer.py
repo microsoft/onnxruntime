@@ -7,13 +7,12 @@
 
 import unittest
 
+from onnxruntime._onnx_shim import onnx
 from onnxruntime.quantization import QuantType
 from onnxruntime.quantization.execution_providers.qnn.mixed_precision_overrides_utils import (
     MixedPrecisionTensorQuantOverridesFixer,
 )
 from onnxruntime.quantization.tensor_quant_overrides import TensorQuantOverridesHelper
-
-from onnxruntime._onnx_shim import onnx
 
 
 class TestMixedPrecisionQuantOverridesFixer(unittest.TestCase):

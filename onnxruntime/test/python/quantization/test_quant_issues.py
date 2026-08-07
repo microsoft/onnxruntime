@@ -40,6 +40,7 @@ class TestQuantIssues(unittest.TestCase):
             raise unittest.SkipTest("unable to find {onnx_path!r}")
 
         import numpy as np  # noqa: PLC0415
+
         import onnxruntime.quantization as oq  # noqa: PLC0415
 
         class Mock:
@@ -76,6 +77,7 @@ class TestQuantIssues(unittest.TestCase):
         # because the referenced external-data file no longer existed.
         # PR #23322 fixed this by deep-copying the proto before saving.
         import numpy as np  # noqa: PLC0415
+
         import onnxruntime.quantization as oq  # noqa: PLC0415
         from onnxruntime._onnx_shim.onnx import TensorProto  # noqa: PLC0415
         from onnxruntime._onnx_shim.onnx import helper as oh  # noqa: PLC0415

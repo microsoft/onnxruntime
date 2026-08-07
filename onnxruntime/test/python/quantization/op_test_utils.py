@@ -11,13 +11,13 @@ from pathlib import Path
 import numpy as np
 import onnxruntime.capi._pybind_state as C
 from ml_dtypes import float8_e4m3fn
+
+import onnxruntime
+from onnxruntime._onnx_shim import onnx
 from onnxruntime._onnx_shim.onnx import TensorProto
 from onnxruntime._onnx_shim.onnx.helper import np_dtype_to_tensor_dtype
 from onnxruntime._onnx_shim.onnx.reference import ReferenceEvaluator
 from onnxruntime.quantization import CalibrationDataReader
-
-import onnxruntime
-from onnxruntime._onnx_shim import onnx
 
 try:
     from onnxruntime._onnx_shim.onnx.reference import ops as onnx_ops

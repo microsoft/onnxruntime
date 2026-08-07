@@ -8,8 +8,6 @@
 import unittest
 
 import numpy as np
-from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
-from onnxruntime.quantization import DynamicQuantConfig, QuantType, quantize, quantize_dynamic
 from op_test_utils import (
     TestDataFeeds,  # noqa: F401
     check_model_correctness,
@@ -19,6 +17,8 @@ from op_test_utils import (
 )
 
 from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
+from onnxruntime.quantization import DynamicQuantConfig, QuantType, quantize, quantize_dynamic
 
 
 def generate_input_initializer(tensor_shape, tensor_dtype, input_name):

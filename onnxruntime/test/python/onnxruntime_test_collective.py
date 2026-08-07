@@ -4,10 +4,10 @@ import unittest
 
 import numpy as np
 from mpi4py import MPI
-from onnxruntime._onnx_shim.onnx import TensorProto, helper
 from parameterized import parameterized
 
 import onnxruntime as ort
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 
 class ORTBertPretrainTest(unittest.TestCase):

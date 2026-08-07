@@ -7,12 +7,13 @@ import unittest
 import numpy as np
 from helper import get_name
 from numpy.testing import assert_almost_equal
+
+import onnxruntime as onnxrt
 from onnxruntime._onnx_shim.onnx import TensorProto, helper
 from onnxruntime.capi._pybind_state import OrtDevice as C_OrtDevice  # pylint: disable=E0611
 from onnxruntime.capi._pybind_state import OrtValue as C_OrtValue
 from onnxruntime.capi._pybind_state import OrtValueVector, SessionIOBinding
 
-import onnxruntime as onnxrt
 
 test_params = [
     ("cuda", "CUDAExecutionProvider", C_OrtDevice.cuda),

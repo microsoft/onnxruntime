@@ -10,10 +10,10 @@ from collections.abc import Sequence
 
 from autoep_helper import AutoEpTestCase
 from helper import get_name, get_shared_library_filename_for_platform
-from onnxruntime.capi.onnxruntime_pybind11_state import Fail, ModelRequiresCompilation
 
 import onnxruntime as onnxrt
 from onnxruntime._onnx_shim import onnx
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail, ModelRequiresCompilation
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204

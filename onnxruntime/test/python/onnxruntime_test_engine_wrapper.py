@@ -6,10 +6,10 @@ import unittest
 
 import numpy as np
 from helper import get_name
-from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 import onnxruntime as onnxrt
 from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 
 class TestInferenceSessionWithCtxNode(unittest.TestCase):

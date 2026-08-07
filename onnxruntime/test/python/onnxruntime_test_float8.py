@@ -11,6 +11,8 @@ import numpy as np
 import packaging.version as pv
 import parameterized
 from numpy.testing import assert_allclose
+
+import onnxruntime
 from onnxruntime._onnx_shim.onnx import TensorProto
 from onnxruntime._onnx_shim.onnx import __version__ as onnx_version
 from onnxruntime._onnx_shim.onnx.checker import check_model
@@ -23,8 +25,6 @@ from onnxruntime._onnx_shim.onnx.helper import (
     make_tensor_value_info,
 )
 from onnxruntime._onnx_shim.onnx.reference import ReferenceEvaluator
-
-import onnxruntime
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info[:2] >= (3, 8):

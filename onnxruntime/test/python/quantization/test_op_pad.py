@@ -12,8 +12,6 @@ import tempfile
 import unittest
 
 import numpy as np
-from onnxruntime._onnx_shim.onnx import TensorProto, helper
-from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 from op_test_utils import (
     TestDataFeeds,
     check_model_correctness,
@@ -23,6 +21,8 @@ from op_test_utils import (
 )
 
 from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
 
 class TestOpQuatizerPad(unittest.TestCase):

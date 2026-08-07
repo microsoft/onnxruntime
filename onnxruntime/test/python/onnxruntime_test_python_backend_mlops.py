@@ -4,12 +4,13 @@
 import unittest
 
 import numpy as np
-import onnxruntime.backend as backend
 from helper import get_name
+
+import onnxruntime.backend as backend
+from onnxruntime import datasets
 from onnxruntime._onnx_shim.onnx import load
 from onnxruntime.backend.backend import OnnxRuntimeBackend as ort_backend
 
-from onnxruntime import datasets
 
 
 def check_list_of_map_to_float(testcase, expected_rows, actual_rows):

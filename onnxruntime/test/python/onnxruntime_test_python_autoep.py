@@ -11,10 +11,10 @@ from collections.abc import Sequence
 import numpy as np
 from autoep_helper import AutoEpTestCase
 from helper import get_name
-from onnxruntime.capi.onnxruntime_pybind11_state import Fail
 
 import onnxruntime as onnxrt
 from onnxruntime._onnx_shim import onnx
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
