@@ -8,7 +8,7 @@ FROM $BASEIMAGE
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 
-RUN dnf install -y perl-IPC-Cmd && dnf clean all
+RUN dnf install -y perl-core && dnf clean all
 
 RUN python3 -m pip install flatbuffers
 

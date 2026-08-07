@@ -5,7 +5,7 @@
 ARG BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14_dotnet:20251017.1
 FROM $BASEIMAGE
 
-RUN dnf install -y perl-IPC-Cmd && dnf clean all
+RUN dnf install -y perl-core && dnf clean all
 
 ARG TRT_VERSION
 
