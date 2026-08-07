@@ -1360,17 +1360,12 @@ Status DequantizeFlashAttentionFallback(
   // (max_length sized) capacity on every decode step is pure memory traffic.
   bool is_bsnh = (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
 
-  ORT_RETURN_IF_ERROR((LaunchDequantizeKV<T, U, float>(
-      stream, k_dequant, reinterpret_cast<const U*>(data.present_key), data.k_scale,
-      nullptr, parameters.batch_size, parameters.kv_num_heads, parameters.seqlen_present_kv_cache,
-      parameters.head_size, parameters.kv_cache_bit_width, parameters.k_quant_type, is_bsnh,
-      data.total_seq_lens)));
-
-  ORT_RETURN_IF_ERROR((LaunchDequantizeKV<T, U, float>(
-      stream, v_dequant, reinterpret_cast<const U*>(data.present_value), data.v_scale,
-      nullptr, parameters.batch_size, parameters.kv_num_heads, parameters.seqlen_present_kv_cache,
-      parameters.head_size, parameters.kv_cache_bit_width, parameters.v_quant_type, is_bsnh,
-      data.total_seq_lens)));
+  ORT_RETURN_IF_ERROR((LaunchDequantizeKVPair<T, U, float>(
+      stream, k_dequant, v_dequant,
+      reinterpret_cast<const U*>(data.present_key), reinterpret_cast<const U*>(data.present_value),
+      data.k_scale, data.v_scale, parameters.batch_size, parameters.kv_num_heads,
+      parameters.seqlen_present_kv_cache, parameters.head_size, parameters.kv_cache_bit_width,
+      parameters.k_quant_type, parameters.v_quant_type, is_bsnh, data.total_seq_lens)));
 
   // Step 3: Run Flash Attention on dequantized k/v
   bool is_causal = parameters.is_unidirectional;
@@ -1462,7 +1457,12 @@ Status FlashAttentionAndQuantizeKV(
       reinterpret_cast<void*>(data.softmax_lse_accum),
       reinterpret_cast<void*>(data.out_accum),
       true,  // kv_bsnh = true (BSNH)
-      local_window_size));
+      local_window_size,
+      /*cache_batch_idx*/ nullptr, /*leftpad_k*/ nullptr,
+      // head_sink must be forwarded here as well. This is the only prompt path taken when the KV
+      // cache is quantized, so dropping it silently disables attention sinks for the whole prompt
+      // while the unquantized prompt path (FlashAttention) keeps them.
+      reinterpret_cast<void*>(const_cast<T*>(data.head_sink))));
 
   if (parameters.k_quant_type != KVQuantizationType::NONE) {
     ORT_RETURN_IF_ERROR((LaunchQuantizeKV<T, U, float>(
