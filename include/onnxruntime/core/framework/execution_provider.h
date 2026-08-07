@@ -71,6 +71,12 @@ enum class DataLayout {
   Default = NCHW,
 };
 
+// Segregated optional-capability mix-in interfaces. See execution_provider_capabilities.h.
+class IGraphCaptureCapability;
+class ITuningCapability;
+class IDataLayoutCapability;
+class ICompileCapability;
+
 class IExecutionProvider {
  protected:
   IExecutionProvider(const std::string& type)
@@ -277,6 +283,10 @@ class IExecutionProvider {
   /**
      Indicate whether graph capture/replay (for example, CUDA graph capture) is
      enabled for the provider.
+
+     See also IGraphCaptureCapability / GetGraphCaptureCapability() in
+     execution_provider_capabilities.h, the segregated mix-in that groups this and
+     the other graph-capture methods below.
    */
   virtual bool IsGraphCaptureEnabled() const { return false; }
 
@@ -361,6 +371,9 @@ class IExecutionProvider {
 
            Do NOT cache the GraphViewer in FusedNodeAndGraph.filtered_graph in any of the NodeComputeInfo functions
            as it is only valid for the duration of the call to Compile.
+
+           See also ICompileCapability / GetCompileCapability() in
+           execution_provider_capabilities.h, the segregated mix-in that groups the compilation methods.
   */
   virtual common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                  std::vector<NodeComputeInfo>& node_compute_funcs);
@@ -402,6 +415,13 @@ class IExecutionProvider {
     return {};
   }
 
+  /**
+     Return the data layout preferred by this EP.
+
+     See also IDataLayoutCapability / GetDataLayoutCapability() in
+     execution_provider_capabilities.h, the segregated mix-in that groups
+     GetPreferredLayout() and ShouldConvertDataLayoutForOp().
+   */
   virtual DataLayout GetPreferredLayout() const {
     // EPs which prefer a different layout should override to return their preferred layout.
     return DataLayout::Default;
@@ -428,6 +448,9 @@ class IExecutionProvider {
 
   /**
    * Return the tuning context which holds all TunableOp state.
+   *
+   * See also ITuningCapability / GetTuningCapability() in
+   * execution_provider_capabilities.h, the segregated mix-in.
    */
   virtual ITuningContext* GetTuningContext() const {
     return nullptr;
@@ -466,6 +489,36 @@ class IExecutionProvider {
   virtual const OrtEp* GetOrtEp() const {
     return nullptr;
   }
+
+  // --- Segregated optional-capability query hooks (Interface Segregation) ---
+  // Each hook returns a pointer to a narrow capability mix-in (defined in
+  // execution_provider_capabilities.h) when this EP supports the corresponding
+  // optional capability, or nullptr otherwise. They let callers depend only on
+  // the capability they need instead of the full IExecutionProvider surface.
+  // The legacy per-capability virtuals above are retained for compatibility;
+  // EPs and callers can migrate to these hooks incrementally.
+
+  /** Return this EP's graph-capture/replay capability, or nullptr if unsupported.
+      Non-const because the capability exposes mutating operations (graph replay/release). */
+  virtual IGraphCaptureCapability* GetGraphCaptureCapability() noexcept { return nullptr; }
+
+  /** Return this EP's TunableOp tuning capability, or nullptr if unsupported.
+      Const and returning a const pointer, mirroring the legacy GetTuningContext()
+      const: ITuningCapability exposes only the read-only GetTuningContext() const,
+      so acquiring it is a const query that stays callable on a const
+      IExecutionProvider&. Tuning state is still recorded through the returned
+      ITuningContext, not by mutating the EP. */
+  virtual const ITuningCapability* GetTuningCapability() const noexcept { return nullptr; }
+
+  /** Return this EP's data-layout preference capability, or nullptr if unsupported.
+      Const and returning a const pointer: data-layout preference is a read-only
+      query, so it must not permit mutating the EP through a const reference. */
+  virtual const IDataLayoutCapability* GetDataLayoutCapability() const noexcept { return nullptr; }
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  /** Return this EP's subgraph-compilation capability, or nullptr if unsupported. */
+  virtual ICompileCapability* GetCompileCapability() noexcept { return nullptr; }
+#endif
 
  private:
   const std::string type_;
