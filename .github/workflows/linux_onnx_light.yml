@@ -44,9 +44,9 @@ permissions:
 
 env:
   # Prebuilt onnx-light C++ release artifact. Pinned by sha256.
-  ONNX_LIGHT_VERSION: "0.1.12"
+  ONNX_LIGHT_VERSION: "0.1.13"
   ONNX_LIGHT_CPP_ASSET: "onnx-light-cpp-linux-x86_64.tar.gz"
-  ONNX_LIGHT_CPP_SHA256: "88e10ec54842cb0bb212a6e61cd1f2657f9f022ae285c6f8f2206cb448c2ad97"
+  ONNX_LIGHT_CPP_SHA256: "2f036dee77aa23a4e0e20316089095abf63a8277550baf6e03d38ed486c1e5dc"
 
 jobs:
   build-linux-onnx-light:
