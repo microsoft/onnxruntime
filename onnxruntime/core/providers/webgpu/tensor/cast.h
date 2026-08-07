@@ -51,8 +51,8 @@ class Cast final : public WebGpuKernel {
 };
 
 // Create Cast kernel info with appropriate type constraints based on int64 support.
-// Passing start_version == end_version registers an open-ended kernel (SinceVersion(start_version)),
-// matching the "latest opset" registration; otherwise a bounded [start_version, end_version] range.
+// start_version == end_version registers an open-ended kernel (SinceVersion(start_version));
+// otherwise a bounded [start_version, end_version] range.
 KernelCreateInfo CreateCastKernelInfo(int start_version, int end_version, bool enable_int64);
 
 }  // namespace webgpu
