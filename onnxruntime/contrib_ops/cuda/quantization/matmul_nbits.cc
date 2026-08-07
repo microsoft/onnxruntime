@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "core/common/status.h"
 #include "core/common/float16.h"
@@ -32,6 +33,75 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 using namespace onnxruntime::cuda;
+
+namespace {
+
+Status ValidateGroupIndexRange(const Tensor* group_index, int64_t k_blocks, cudaStream_t stream) {
+  if (group_index == nullptr) {
+    return Status::OK();
+  }
+
+  const size_t g_idx_size = static_cast<size_t>(group_index->Shape().Size());
+  const int32_t* g_idx_data = group_index->Data<int32_t>();
+  std::vector<int32_t> g_idx_host;
+  if (group_index->Location().device.Type() != OrtDevice::CPU) {
+    g_idx_host.resize(g_idx_size);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(g_idx_host.data(), g_idx_data, g_idx_size * sizeof(int32_t),
+                                         cudaMemcpyDeviceToHost, stream));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+    g_idx_data = g_idx_host.data();
+  }
+
+  for (size_t i = 0; i < g_idx_size; ++i) {
+    if (g_idx_data[i] < 0 || g_idx_data[i] >= k_blocks) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "group_index value at index ", i, " is ", g_idx_data[i],
+                             ", which is out of valid range [0, ", k_blocks, ")");
+    }
+  }
+
+  return Status::OK();
+}
+
+}  // namespace
+
+template <typename T>
+Status MatMulNBits<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                               /*out*/ bool& is_packed,
+                               /*out*/ PrePackedWeights* /*prepacked_weights*/) {
+  is_packed = false;
+  constexpr int kInputIndexGroupIndex = 4;
+  if (input_idx == kInputIndexGroupIndex) {
+    const int64_t k_blocks = (K_ + block_size_ - 1) / block_size_;
+    ORT_RETURN_IF_ERROR(ValidateGroupIndexRange(&tensor, k_blocks, cudaStreamLegacy));
+    is_group_index_validated_ = true;
+    return Status::OK();
+  }
+
+#if USE_FPA_INTB_GEMM
+  if constexpr (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) {
+    if (has_fpA_intB_gemm_) {
+      cudaStream_t stream = cudaStreamLegacy;
+      if (input_idx == MatMulNBits_Input_B) {
+        ORT_RETURN_IF_ERROR(PrePack_B(tensor, alloc, stream, is_packed));
+        is_prepacked_weight_ = is_packed;
+      } else if (input_idx == MatMulNBits_Input_Scale) {
+        ORT_RETURN_IF_ERROR(PrePack_Scale(tensor, alloc, stream));
+        is_prepacked_scale_ = true;
+        is_packed = true;
+      } else if (input_idx == MatMulNBits_Input_ZeroPoint && has_zero_points_) {
+        ORT_RETURN_IF_ERROR(PrePack_ZeroPoint(tensor, alloc, stream));
+        is_prepacked_zero_point_ = true;
+        is_packed = true;
+      }
+    }
+  }
+#else
+  ORT_UNUSED_PARAMETER(alloc);
+#endif
+
+  return Status::OK();
+}
 
 #if USE_FPA_INTB_GEMM
 using onnxruntime::llm::kernels::weight_only::GemmPluginProfilerManager;
@@ -323,34 +393,6 @@ void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int
 }
 
 template <typename T>
-Status MatMulNBits<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                               /*out*/ bool& is_packed,
-                               /*out*/ PrePackedWeights* /*prepacked_weights*/) {
-  is_packed = false;
-  if constexpr (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) {
-    if (has_fpA_intB_gemm_) {
-      cudaStream_t stream = cudaStreamLegacy;  // Use default stream for prepacking.
-      if (input_idx == MatMulNBits_Input_B) {
-        ORT_RETURN_IF_ERROR(PrePack_B(tensor, alloc, stream, is_packed));
-        is_prepacked_weight_ = is_packed;
-      } else if (input_idx == MatMulNBits_Input_Scale) {
-        ORT_RETURN_IF_ERROR(PrePack_Scale(tensor, alloc, stream));
-        is_prepacked_scale_ = true;
-        is_packed = true;
-      } else if (input_idx == MatMulNBits_Input_ZeroPoint) {
-        if (has_zero_points_) {
-          ORT_RETURN_IF_ERROR(PrePack_ZeroPoint(tensor, alloc, stream));
-          is_prepacked_zero_point_ = true;
-          is_packed = true;
-        }
-      }
-    }
-  }
-
-  return Status::OK();
-}
-
-template <typename T>
 Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
                                  [[maybe_unused]] AllocatorPtr alloc,
                                  [[maybe_unused]] cudaStream_t stream,
@@ -599,6 +641,12 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   // Bail out early if the output is going to be empty
   if (Y->Shape().Size() == 0)
     return Status::OK();
+
+  if (reorder_idx != nullptr) {
+    ORT_RETURN_IF_NOT(is_group_index_validated_,
+                      "MatMulNBits group_index must be a constant initializer so CUDA can validate it once ",
+                      "before graph capture and avoid a device-to-host synchronization on every inference.");
+  }
 
   cudaStream_t stream = this->Stream(ctx);
 
