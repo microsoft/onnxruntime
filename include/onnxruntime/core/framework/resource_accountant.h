@@ -27,6 +27,21 @@ struct Node;
 // for different EPs
 using ResourceCount = std::variant<size_t>;
 
+enum class WorkspaceEstimateSource {
+  kNone,
+  kFallback,
+  kProfile,
+  kEstimator,
+  kProfileAndEstimator,
+};
+
+struct WorkspaceEstimateSourceCounts {
+  size_t fallback = 0;
+  size_t profile = 0;
+  size_t estimator = 0;
+  size_t profile_and_estimator = 0;
+};
+
 // Type-erased arithmetic for ResourceCount values.
 // Implementations use std::visit so the compiler enforces exhaustive handling
 // of all variant members — adding a new type to ResourceCount will produce
@@ -60,9 +75,9 @@ class IResourceAccountant {
   virtual void RemoveConsumedAmount(const ResourceCount& amount) = 0;
   virtual ResourceCount ComputeResourceCount(const Node& node) = 0;
 
-  // Replaces the fallback workspace portion of a previously computed node cost
-  // with an EP/kernel-specific Level-1 estimate. The returned cost should be used
-  // for the capability's budget decision and stored node cost.
+  // Combines an EP/kernel-specific Level-1 estimate with a previously computed
+  // node cost. The estimator replaces fallback workspace or is maximized with
+  // profiled workspace. The returned cost is used for the capability's budget.
   virtual ResourceCount UpdateResourceCountWithWorkspaceEstimate(
       size_t /*node_index*/, const ResourceCount& resource_count, size_t /*workspace_bytes*/) {
     return resource_count;
@@ -99,9 +114,14 @@ class IResourceAccountant {
   // Used when layout transformation defers committing first-pass capabilities.
   virtual size_t GetPendingWorkspaceEstimate(size_t /*node_index*/) const { return 0; }
 
+  virtual WorkspaceEstimateSource GetPendingWorkspaceEstimateSource(size_t /*node_index*/) const {
+    return WorkspaceEstimateSource::kNone;
+  }
+
   // Commits a workspace estimate whose original pending state is no longer available.
   // Used for nodes that survive a layout-transformation second pass.
-  virtual void AddCommittedWorkspaceEstimate(size_t /*workspace_bytes*/) {}
+  virtual void AddCommittedWorkspaceEstimate(
+      size_t /*workspace_bytes*/, WorkspaceEstimateSource /*source*/) {}
 
   static std::string MakeUniqueNodeName(const Node& node);
 
@@ -125,6 +145,9 @@ class IResourceAccountant {
 
   /// Returns workspace for nodes that were accepted and committed by partitioning.
   virtual size_t GetCommittedWorkspaceEstimate() const { return 0; }
+
+  /// Returns accepted-node counts grouped by the workspace source used for budgeting.
+  virtual WorkspaceEstimateSourceCounts GetWorkspaceEstimateSourceCounts() const { return {}; }
 
  protected:
   // Override to discard per-pass state for capabilities that were only probed.

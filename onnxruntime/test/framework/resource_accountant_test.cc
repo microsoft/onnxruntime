@@ -177,11 +177,15 @@ TEST(ResourceAccountantTest, WorkspaceEstimateCommittedOnlyForAcceptedNodes) {
   const auto uncommitted_cost = accountant->ComputeResourceCount(*h.node_a);
   ORT_UNUSED_PARAMETER(uncommitted_cost);
   EXPECT_EQ(accountant->GetPendingWorkspaceEstimate(h.node_a->Index()), size_t{1000});
+  EXPECT_EQ(accountant->GetPendingWorkspaceEstimateSource(h.node_a->Index()),
+            WorkspaceEstimateSource::kFallback);
   EXPECT_EQ(accountant->GetCommittedWorkspaceEstimate(), size_t{0});
 
   // Discarding the pass removes estimates for rejected or superseded capabilities.
   accountant->ResetForNewPass();
   EXPECT_EQ(accountant->GetPendingWorkspaceEstimate(h.node_a->Index()), size_t{0});
+  EXPECT_EQ(accountant->GetPendingWorkspaceEstimateSource(h.node_a->Index()),
+            WorkspaceEstimateSource::kNone);
   EXPECT_EQ(accountant->GetCommittedWorkspaceEstimate(), size_t{0});
 
   IndexedSubGraph sub_graph;
@@ -191,6 +195,7 @@ TEST(ResourceAccountantTest, WorkspaceEstimateCommittedOnlyForAcceptedNodes) {
   sub_graph.AccountForNode(0);
 
   EXPECT_EQ(accountant->GetCommittedWorkspaceEstimate(), size_t{1000});
+  EXPECT_EQ(accountant->GetWorkspaceEstimateSourceCounts().fallback, size_t{1});
   EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), size_t{3000});
 }
 
@@ -209,6 +214,8 @@ TEST(ResourceAccountantTest, Level1WorkspaceEstimateReplacesFallbackEstimate) {
       h.node_a->Index(), resource_count, /*workspace_bytes=*/250);
   EXPECT_EQ(GetSizeT(resource_count), size_t{2250});
   EXPECT_EQ(accountant->GetPendingWorkspaceEstimate(h.node_a->Index()), size_t{250});
+  EXPECT_EQ(accountant->GetPendingWorkspaceEstimateSource(h.node_a->Index()),
+            WorkspaceEstimateSource::kEstimator);
 
   IndexedSubGraph sub_graph;
   sub_graph.nodes.push_back(h.node_a->Index());
@@ -217,6 +224,7 @@ TEST(ResourceAccountantTest, Level1WorkspaceEstimateReplacesFallbackEstimate) {
   sub_graph.AccountForNode(0);
 
   EXPECT_EQ(accountant->GetCommittedWorkspaceEstimate(), size_t{250});
+  EXPECT_EQ(accountant->GetWorkspaceEstimateSourceCounts().estimator, size_t{1});
   EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), size_t{2250});
 }
 
@@ -424,9 +432,21 @@ TEST(RealAccountantTest, StatsPath_ComputesCostFromStatsFile) {
 
   auto cost_a = accountant->ComputeResourceCount(*h.node_a);
   EXPECT_EQ(std::get<size_t>(cost_a), size_t{1000});
+  EXPECT_EQ(accountant->GetPendingWorkspaceEstimateSource(h.node_a->Index()),
+            WorkspaceEstimateSource::kProfile);
 
   auto cost_b = accountant->ComputeResourceCount(*h.node_b);
   EXPECT_EQ(std::get<size_t>(cost_b), size_t{200});
+
+  IndexedSubGraph sub_graph;
+  sub_graph.nodes.push_back(h.node_a->Index());
+  sub_graph.nodes.push_back(h.node_b->Index());
+  sub_graph.SetAccountant(accountant);
+  sub_graph.AppendNodeCost(cost_a);
+  sub_graph.AppendNodeCost(cost_b);
+  sub_graph.AccountForAllNodes();
+  EXPECT_EQ(accountant->GetCommittedWorkspaceEstimate(), size_t{400});
+  EXPECT_EQ(accountant->GetWorkspaceEstimateSourceCounts().profile, size_t{2});
 
   // Threshold should be 500 KB = 512000 bytes
   auto threshold = accountant->GetThreshold();
@@ -434,8 +454,68 @@ TEST(RealAccountantTest, StatsPath_ComputesCostFromStatsFile) {
   EXPECT_EQ(std::get<size_t>(*threshold), size_t{500 * 1024});
 }
 
-// Stats-based path returns 0 for unknown nodes.
-TEST(RealAccountantTest, StatsPath_UnknownNodeReturnsZero) {
+TEST(RealAccountantTest, StatsPath_Level1EstimateUsesMaximumWorkspace) {
+  SharedWeightGraph h;
+  ASSERT_NO_FATAL_FAILURE(SharedWeightGraph::Create(h));
+
+  std::error_code ec;
+  auto stats_dir = std::filesystem::temp_directory_path(ec);
+  ASSERT_FALSE(ec) << ec.message();
+  std::ostringstream fname;
+  fname << "test_resource_accountant_combined_stats_" << ORT_TEST_PID << ".csv";
+  auto stats_path = stats_dir / fname.str();
+  ScopedFileRemover stats_cleanup{stats_path};
+
+  const std::string name_a = IResourceAccountant::MakeUniqueNodeName(*h.node_a);
+  const std::string name_b = IResourceAccountant::MakeUniqueNodeName(*h.node_b);
+  {
+    std::ofstream ofs(stats_path);
+    ASSERT_TRUE(ofs.is_open());
+    ofs << "#name,input_sizes,initializers_sizes,total_dynamic_sizes,total_temp_allocations\n";
+    ofs << name_a << ",100,200,300,400\n";
+    ofs << name_b << ",50,0,50,100\n";
+  }
+
+  ConfigOptions config;
+  std::string setting = "500," + stats_path.filename().string();
+  ASSERT_STATUS_OK(config.AddConfigEntry(
+      kOrtSessionOptionsResourceCudaPartitioningSettings, setting.c_str()));
+
+  std::optional<ResourceAccountantMap> acc_map;
+  ASSERT_STATUS_OK(CreateAccountants(config, stats_dir / "dummy_model.onnx", acc_map));
+  auto* accountant = acc_map->at(kCudaExecutionProvider).get();
+
+  auto cost_a = accountant->ComputeResourceCount(*h.node_a);
+  cost_a = accountant->UpdateResourceCountWithWorkspaceEstimate(
+      h.node_a->Index(), cost_a, /*workspace_bytes=*/250);
+  EXPECT_EQ(GetSizeT(cost_a), size_t{1000});
+  EXPECT_EQ(accountant->GetPendingWorkspaceEstimate(h.node_a->Index()), size_t{400});
+  EXPECT_EQ(accountant->GetPendingWorkspaceEstimateSource(h.node_a->Index()),
+            WorkspaceEstimateSource::kProfileAndEstimator);
+
+  auto cost_b = accountant->ComputeResourceCount(*h.node_b);
+  cost_b = accountant->UpdateResourceCountWithWorkspaceEstimate(
+      h.node_b->Index(), cost_b, /*workspace_bytes=*/800);
+  EXPECT_EQ(GetSizeT(cost_b), size_t{900});
+  EXPECT_EQ(accountant->GetPendingWorkspaceEstimate(h.node_b->Index()), size_t{800});
+  EXPECT_EQ(accountant->GetPendingWorkspaceEstimateSource(h.node_b->Index()),
+            WorkspaceEstimateSource::kProfileAndEstimator);
+
+  IndexedSubGraph sub_graph;
+  sub_graph.nodes.push_back(h.node_a->Index());
+  sub_graph.nodes.push_back(h.node_b->Index());
+  sub_graph.SetAccountant(accountant);
+  sub_graph.AppendNodeCost(cost_a);
+  sub_graph.AppendNodeCost(cost_b);
+  sub_graph.AccountForAllNodes();
+
+  EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), size_t{1900});
+  EXPECT_EQ(accountant->GetCommittedWorkspaceEstimate(), size_t{1200});
+  EXPECT_EQ(accountant->GetWorkspaceEstimateSourceCounts().profile_and_estimator, size_t{2});
+}
+
+// A stats file may have incomplete coverage. Unknown nodes use the ad-hoc fallback.
+TEST(RealAccountantTest, StatsPath_UnknownNodeUsesFallback) {
   SharedWeightGraph h;
   ASSERT_NO_FATAL_FAILURE(SharedWeightGraph::Create(h));
 
@@ -464,7 +544,10 @@ TEST(RealAccountantTest, StatsPath_UnknownNodeReturnsZero) {
   auto* accountant = acc_map->at(kCudaExecutionProvider).get();
 
   auto cost = accountant->ComputeResourceCount(*h.node_a);
-  EXPECT_EQ(std::get<size_t>(cost), size_t{0});
+  EXPECT_EQ(std::get<size_t>(cost), size_t{3000});
+  EXPECT_EQ(accountant->GetPendingWorkspaceEstimate(h.node_a->Index()), size_t{1000});
+  EXPECT_EQ(accountant->GetPendingWorkspaceEstimateSource(h.node_a->Index()),
+            WorkspaceEstimateSource::kFallback);
 }
 
 // Factory with no limit and no stats file creates accountant with no threshold.

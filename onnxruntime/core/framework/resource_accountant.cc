@@ -61,88 +61,89 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
       if (hit != node_stats_->end()) {
         const auto& stats = hit->second;
         pending_workspace_by_node_.insert_or_assign(node.Index(), stats.total_temp_allocations);
+        pending_workspace_source_by_node_.insert_or_assign(node.Index(), WorkspaceEstimateSource::kProfile);
         return stats.input_sizes + stats.initializers_sizes +
                stats.total_dynamic_sizes + stats.total_temp_allocations;
       }
-      return static_cast<size_t>(0U);
-    } else {
-      const auto* graph = node.GetContainingGraph();
-      if (!graph) return static_cast<size_t>(0);
-      const auto& max_shapes = GetMaxShapeInferenceResult();
+    }
 
-      SafeInt<size_t> total_size = 0;
-      for (const auto* input_def : node.InputDefs()) {
-        if (!input_def->Exists()) continue;
+    const auto* graph = node.GetContainingGraph();
+    if (!graph) return static_cast<size_t>(0);
+    const auto& max_shapes = GetMaxShapeInferenceResult();
 
-        const auto& name = input_def->Name();
-        constexpr bool check_outer_scope = true;
-        const auto* tensor_proto = graph->GetInitializer(name, check_outer_scope);
+    SafeInt<size_t> total_size = 0;
+    for (const auto* input_def : node.InputDefs()) {
+      if (!input_def->Exists()) continue;
 
-        if (tensor_proto) {
-          // Skip if already committed from a previous partitioning iteration
-          if (committed_weights_.count(name) > 0) {
-            continue;
-          }
+      const auto& name = input_def->Name();
+      constexpr bool check_outer_scope = true;
+      const auto* tensor_proto = graph->GetInitializer(name, check_outer_scope);
 
-          // Skip if already pending from another node in this GetCapability pass
-          if (pending_weights_.count(name) > 0) {
-            continue;
-          }
-
-          size_t size = 0;
-          auto status = utils::GetSizeInBytesFromTensorProto<0>(*tensor_proto, &size);
-
-          if (status.IsOK()) {
-            total_size += size;
-            pending_weights_.insert(name);
-            pending_weights_by_node_[node.Index()].insert(name);
-          }
+      if (tensor_proto) {
+        // Skip if already committed from a previous partitioning iteration
+        if (committed_weights_.count(name) > 0) {
+          continue;
         }
-      }
 
-      // Account for intermediate output tensors when shape info is available.
-      // When max-shape inference is available, use it to resolve dynamic outputs.
-      // Otherwise, GetSizeInBytesFromTensorTypeProto will only succeed when all dims
-      // are known (static shape).
-      SafeInt<size_t> output_size = 0;
-      const auto* graph_for_shapes = node.GetContainingGraph();
-      for (const auto* output_def : node.OutputDefs()) {
-        if (!output_def->Exists() || !output_def->HasTensorOrScalarShape()) continue;
-        const auto* type_proto = output_def->TypeAsProto();
-        if (!type_proto || !utils::HasTensorType(*type_proto)) continue;
+        // Skip if already pending from another node in this GetCapability pass
+        if (pending_weights_.count(name) > 0) {
+          continue;
+        }
 
         size_t size = 0;
-        // Try max-shape inference first for dynamic outputs
-        if (graph_for_shapes != nullptr && !max_shapes.Empty()) {
-          if (const TensorShape* max_shape =
-                  max_shapes.GetShape(graph_for_shapes, output_def->Name())) {
-            const auto& tensor_type = type_proto->tensor_type();
-            if (tensor_type.has_elem_type()) {
-              const SafeInt<size_t> inferred_size =
-                  SafeInt<size_t>(max_shape->Size()) *
-                  utils::GetElementSizeOfTensor(
-                      static_cast<ONNX_NAMESPACE::TensorProto_DataType>(tensor_type.elem_type()));
-              size = inferred_size;
-            }
+        auto status = utils::GetSizeInBytesFromTensorProto<0>(*tensor_proto, &size);
+
+        if (status.IsOK()) {
+          total_size += size;
+          pending_weights_.insert(name);
+          pending_weights_by_node_[node.Index()].insert(name);
+        }
+      }
+    }
+
+    // Account for intermediate output tensors when shape info is available.
+    // When max-shape inference is available, use it to resolve dynamic outputs.
+    // Otherwise, GetSizeInBytesFromTensorTypeProto will only succeed when all dims
+    // are known (static shape).
+    SafeInt<size_t> output_size = 0;
+    const auto* graph_for_shapes = node.GetContainingGraph();
+    for (const auto* output_def : node.OutputDefs()) {
+      if (!output_def->Exists() || !output_def->HasTensorOrScalarShape()) continue;
+      const auto* type_proto = output_def->TypeAsProto();
+      if (!type_proto || !utils::HasTensorType(*type_proto)) continue;
+
+      size_t size = 0;
+      // Try max-shape inference first for dynamic outputs
+      if (graph_for_shapes != nullptr && !max_shapes.Empty()) {
+        if (const TensorShape* max_shape =
+                max_shapes.GetShape(graph_for_shapes, output_def->Name())) {
+          const auto& tensor_type = type_proto->tensor_type();
+          if (tensor_type.has_elem_type()) {
+            const SafeInt<size_t> inferred_size =
+                SafeInt<size_t>(max_shape->Size()) *
+                utils::GetElementSizeOfTensor(
+                    static_cast<ONNX_NAMESPACE::TensorProto_DataType>(tensor_type.elem_type()));
+            size = inferred_size;
           }
         }
-        // Fall back to static shape
-        if (size == 0) {
-          utils::GetSizeInBytesFromTensorTypeProto<0>(type_proto->tensor_type(), &size).IsOK();
-        }
-        output_size += size;
       }
-
-      // Apply the existing safety multiplier for workspace/temp allocations we can't see.
-      // Max-shape inference makes tensor sizes concrete but does not, by itself, make
-      // kernel workspace requirements known.
-      constexpr size_t kAdHocSafetyMultiplierPercent = 150;
-      SafeInt<size_t> estimated = total_size + output_size;
-      size_t node_cost = static_cast<size_t>(estimated * kAdHocSafetyMultiplierPercent / 100);
-      const size_t workspace_estimate = node_cost - static_cast<size_t>(estimated);
-      pending_workspace_by_node_.insert_or_assign(node.Index(), workspace_estimate);
-      return node_cost;
+      // Fall back to static shape
+      if (size == 0) {
+        utils::GetSizeInBytesFromTensorTypeProto<0>(type_proto->tensor_type(), &size).IsOK();
+      }
+      output_size += size;
     }
+
+    // Apply the existing safety multiplier for workspace/temp allocations we can't see.
+    // Max-shape inference makes tensor sizes concrete but does not, by itself, make
+    // kernel workspace requirements known.
+    constexpr size_t kAdHocSafetyMultiplierPercent = 150;
+    SafeInt<size_t> estimated = total_size + output_size;
+    size_t node_cost = static_cast<size_t>(estimated * kAdHocSafetyMultiplierPercent / 100);
+    const size_t workspace_estimate = node_cost - static_cast<size_t>(estimated);
+    pending_workspace_by_node_.insert_or_assign(node.Index(), workspace_estimate);
+    pending_workspace_source_by_node_.insert_or_assign(node.Index(), WorkspaceEstimateSource::kFallback);
+    return node_cost;
   }
 
   ResourceCount UpdateResourceCountWithWorkspaceEstimate(
@@ -152,17 +153,26 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
     }
 
     const size_t current_cost = std::get<size_t>(resource_count);
-    const size_t fallback_workspace = GetPendingWorkspaceEstimate(node_index);
-    ORT_ENFORCE(current_cost >= fallback_workspace);
-    pending_workspace_by_node_.insert_or_assign(node_index, workspace_bytes);
+    const size_t current_workspace = GetPendingWorkspaceEstimate(node_index);
+    const auto current_source = GetPendingWorkspaceEstimateSource(node_index);
+    ORT_ENFORCE(current_cost >= current_workspace);
+
+    const bool has_profile = current_source == WorkspaceEstimateSource::kProfile ||
+                             current_source == WorkspaceEstimateSource::kProfileAndEstimator;
+    const size_t selected_workspace = has_profile ? std::max(current_workspace, workspace_bytes) : workspace_bytes;
+    pending_workspace_by_node_.insert_or_assign(node_index, selected_workspace);
+    pending_workspace_source_by_node_.insert_or_assign(
+        node_index,
+        has_profile ? WorkspaceEstimateSource::kProfileAndEstimator : WorkspaceEstimateSource::kEstimator);
     return static_cast<size_t>(
-        SafeInt<size_t>(current_cost - fallback_workspace) + workspace_bytes);
+        SafeInt<size_t>(current_cost - current_workspace) + selected_workspace);
   }
 
   void ResetPendingResourcesImpl() override {
     pending_weights_.clear();
     pending_weights_by_node_.clear();
     pending_workspace_by_node_.clear();
+    pending_workspace_source_by_node_.clear();
   }
 
   void CommitResourcesForNode(NodeIndex node_index) override {
@@ -177,8 +187,9 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
 
     auto workspace_it = pending_workspace_by_node_.find(node_index);
     if (workspace_it != pending_workspace_by_node_.end()) {
-      committed_workspace_estimate_ += workspace_it->second;
+      CommitWorkspaceEstimate(workspace_it->second, GetPendingWorkspaceEstimateSource(node_index));
       pending_workspace_by_node_.erase(workspace_it);
+      pending_workspace_source_by_node_.erase(node_index);
     }
   }
 
@@ -187,8 +198,18 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
     return it == pending_workspace_by_node_.end() ? 0 : it->second;
   }
 
-  void AddCommittedWorkspaceEstimate(size_t workspace_bytes) override {
-    committed_workspace_estimate_ += workspace_bytes;
+  WorkspaceEstimateSource GetPendingWorkspaceEstimateSource(NodeIndex node_index) const override {
+    auto it = pending_workspace_source_by_node_.find(node_index);
+    return it == pending_workspace_source_by_node_.end() ? WorkspaceEstimateSource::kNone : it->second;
+  }
+
+  void AddCommittedWorkspaceEstimate(
+      size_t workspace_bytes, WorkspaceEstimateSource source) override {
+    CommitWorkspaceEstimate(workspace_bytes, source);
+  }
+
+  WorkspaceEstimateSourceCounts GetWorkspaceEstimateSourceCounts() const override {
+    return workspace_source_counts_;
   }
 
   size_t GetCommittedWorkspaceEstimate() const override {
@@ -196,6 +217,26 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
   }
 
  private:
+  void CommitWorkspaceEstimate(size_t workspace_bytes, WorkspaceEstimateSource source) {
+    committed_workspace_estimate_ += workspace_bytes;
+    switch (source) {
+      case WorkspaceEstimateSource::kFallback:
+        ++workspace_source_counts_.fallback;
+        break;
+      case WorkspaceEstimateSource::kProfile:
+        ++workspace_source_counts_.profile;
+        break;
+      case WorkspaceEstimateSource::kEstimator:
+        ++workspace_source_counts_.estimator;
+        break;
+      case WorkspaceEstimateSource::kProfileAndEstimator:
+        ++workspace_source_counts_.profile_and_estimator;
+        break;
+      case WorkspaceEstimateSource::kNone:
+        break;
+    }
+  }
+
   size_t consumed_amount_ = 0;
   std::optional<InlinedHashMap<std::string, NodeAllocationStats>> node_stats_;
   // Weights committed from previous partitioning iterations.
@@ -206,7 +247,9 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
   // Same pending weights keyed by node index, used by CommitResourcesForNode.
   InlinedHashMap<NodeIndex, InlinedHashSet<std::string>> pending_weights_by_node_;
   InlinedHashMap<NodeIndex, size_t> pending_workspace_by_node_;
+  InlinedHashMap<NodeIndex, WorkspaceEstimateSource> pending_workspace_source_by_node_;
   size_t committed_workspace_estimate_ = 0;
+  WorkspaceEstimateSourceCounts workspace_source_counts_;
 };
 
 struct NodeStatsRecorder::Impl {

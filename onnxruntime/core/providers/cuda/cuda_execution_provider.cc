@@ -3526,7 +3526,6 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // These are usually shape related computation subgraphs
   // Following logic can be extended for other EPs
   auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes, logger);
-  size_t total_workspace_estimate = 0;
   for (auto& node_index : candidates) {
     if (cpu_nodes.count(node_index) > 0)
       continue;
@@ -3587,17 +3586,6 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         break;
       }
     }
-  }
-
-  // Log summary of estimated memory usage for the app to see.
-  if (resource_accountant != nullptr) {
-    LOGS(logger, INFO) << "CUDA_EP GetCapability summary: "
-                       << result.size() << " nodes assigned to CUDA, "
-                       << "weight+activation memory: " << static_cast<size_t>(consumed_memory) << " bytes, "
-                       << "estimated workspace (Level-1): " << total_workspace_estimate << " bytes, "
-                       << "total estimated GPU memory: "
-                       << (static_cast<size_t>(consumed_memory) + total_workspace_estimate) << " bytes "
-                       << "(threshold: " << memory_threshold << " bytes)";
   }
 
   /*
