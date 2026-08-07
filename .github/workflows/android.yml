@@ -79,8 +79,10 @@ jobs:
       run: |
         set -e -x
         BINARY_SIZE_THRESHOLD_ARGS=""
-        echo "Binary size threshold in bytes: 1451008"
-        BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes 1451008"
+        # Preserve main's 10 KiB allowance for configurable default thread pools
+        # and this PR's 33 KiB allowance for atomic wait/notify and cancellation.
+        echo "Binary size threshold in bytes: 1484800"
+        BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes 1484800"
 
         # Ensure ANDROID_NDK_HOME is available and get its real path
         if [ -z "$ANDROID_NDK_HOME" ]; then
