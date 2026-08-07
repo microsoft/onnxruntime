@@ -23,6 +23,9 @@ class LinearAttention final : public OpKernel {
   std::string update_rule_;
   float scale_;
   int chunk_size_;
+  // Always 0 on CPU (a state window is CUDA-only), but kept so the shared shape helper in
+  // linear_attention_helper.h is driven the same way on every EP.
+  int state_window_;
 };
 
 }  // namespace contrib

@@ -481,8 +481,71 @@ void RunLinearAttentionGQATest(
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+#ifdef USE_CUDA
+void RunCudaLinearAttentionShapeFailure(
+    const std::vector<int64_t>& query_dims,
+    const std::vector<int64_t>& key_dims,
+    const std::vector<int64_t>& value_dims,
+    const std::vector<int64_t>& output_dims,
+    const std::vector<int64_t>& state_dims,
+    const std::string& expected_error,
+    const std::vector<int64_t>& decay_dims = {}) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+    return;
+  }
+
+  auto element_count = [](const std::vector<int64_t>& dims) {
+    size_t count = 1;
+    for (int64_t dim : dims) {
+      count *= static_cast<size_t>(dim);
+    }
+    return count;
+  };
+
+  OpTester tester("LinearAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", "linear");
+  tester.AddAttribute<int64_t>("q_num_heads", 2);
+  tester.AddAttribute<int64_t>("kv_num_heads", 2);
+  tester.AddInput<float>("query", query_dims, std::vector<float>(element_count(query_dims), 0.1f));
+  tester.AddInput<float>("key", key_dims, std::vector<float>(element_count(key_dims), 0.1f));
+  tester.AddInput<float>("value", value_dims, std::vector<float>(element_count(value_dims), 0.1f));
+  tester.AddOptionalInputEdge<float>();
+  if (decay_dims.empty()) {
+    tester.AddOptionalInputEdge<float>();
+  } else {
+    tester.AddInput<float>("decay", decay_dims, std::vector<float>(element_count(decay_dims), 0.1f));
+  }
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOutput<float>("output", output_dims, std::vector<float>(element_count(output_dims), 0.0f));
+  tester.AddOutput<float>("present_state", state_dims, std::vector<float>(element_count(state_dims), 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, expected_error, {}, nullptr, &execution_providers);
+}
+#endif
+
 }  // namespace
 // ===========================================================================
+#ifdef USE_CUDA
+TEST(ContribOpLinearAttentionTest, CudaRejectsNonDivisibleQueryHidden) {
+  RunCudaLinearAttentionShapeFailure({1, 1, 3}, {1, 1, 4}, {1, 1, 4},
+                                     {1, 1, 4}, {1, 2, 1, 2}, "query last dim");
+}
+
+TEST(ContribOpLinearAttentionTest, CudaRejectsNonDivisibleValueHidden) {
+  RunCudaLinearAttentionShapeFailure({1, 1, 4}, {1, 1, 4}, {1, 1, 3},
+                                     {1, 1, 2}, {1, 2, 2, 1}, "value last dim");
+}
+
+TEST(ContribOpLinearAttentionTest, CudaRejectsInvalidDecayRank) {
+  RunCudaLinearAttentionShapeFailure({1, 1, 4}, {1, 1, 4}, {1, 1, 4},
+                                     {1, 1, 4}, {1, 2, 2, 2}, "decay must be rank 3", {1, 2});
+}
+#endif
+
 TEST(ContribOpLinearAttentionTest, LinearRule_SingleToken) {
   const int B = 1, H = 1, T = 1, dk = 4, dv = 4;
   float scale = 1.0f / std::sqrt(static_cast<float>(dk));
@@ -1202,21 +1265,13 @@ TEST(ContribOpLinearAttentionTest, GatedDeltaRule_InverseGQA_LargerDims) {
                             &initial_state, &decay, &beta);
 }
 
-// ---------------------------------------------------------------------------
-// Multi-chunk sequences: T > chunk_size (default 64) so the chunk-parallel
-// prefill path crosses chunk boundaries and must carry state across chunks.
-// These validate the cross-chunk state accumulation for every update rule.
-// (With the per-token paths they are just longer sequences.)
-// ---------------------------------------------------------------------------
-
 TEST(ContribOpLinearAttentionTest, LinearRule_MultiChunk) {
   const int B = 1, H = 2, T = 200, dk = 32, dv = 64;
-  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+  const float scale = 1.0f / std::sqrt(static_cast<float>(dk));
 
   std::vector<float> query(B * H * T * dk);
   std::vector<float> key(B * H * T * dk);
   std::vector<float> value(B * H * T * dv);
-
   for (int i = 0; i < B * H * T * dk; i++) {
     query[i] = 0.1f * std::sin(static_cast<float>(i) * 0.013f);
     key[i] = 0.1f * std::cos(static_cast<float>(i) * 0.017f);
@@ -1226,19 +1281,17 @@ TEST(ContribOpLinearAttentionTest, LinearRule_MultiChunk) {
   }
 
   RunLinearAttentionTest("linear", B, H, T, dk, dv, scale,
-                         query, key, value,
-                         nullptr, nullptr, nullptr);
+                         query, key, value, nullptr, nullptr, nullptr);
 }
 
 TEST(ContribOpLinearAttentionTest, GatedRule_MultiChunk_PerDimDecay) {
   const int B = 1, H = 2, T = 150, dk = 32, dv = 64;
-  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+  const float scale = 1.0f / std::sqrt(static_cast<float>(dk));
 
   std::vector<float> query(B * H * T * dk);
   std::vector<float> key(B * H * T * dk);
   std::vector<float> value(B * H * T * dv);
   std::vector<float> decay(B * H * T * dk);
-
   for (int i = 0; i < B * H * T * dk; i++) {
     query[i] = 0.1f * std::sin(static_cast<float>(i) * 0.013f);
     key[i] = 0.1f * std::cos(static_cast<float>(i) * 0.017f);
@@ -1249,21 +1302,18 @@ TEST(ContribOpLinearAttentionTest, GatedRule_MultiChunk_PerDimDecay) {
   }
 
   std::vector<float> initial_state(B * H * dk * dv, 0.01f);
-
   RunLinearAttentionTest("gated", B, H, T, dk, dv, scale,
-                         query, key, value,
-                         &initial_state, &decay, nullptr);
+                         query, key, value, &initial_state, &decay, nullptr);
 }
 
 TEST(ContribOpLinearAttentionTest, DeltaRule_MultiChunk) {
   const int B = 2, H = 2, T = 130, dk = 32, dv = 64;
-  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+  const float scale = 1.0f / std::sqrt(static_cast<float>(dk));
 
   std::vector<float> query(B * H * T * dk);
   std::vector<float> key(B * H * T * dk);
   std::vector<float> value(B * H * T * dv);
   std::vector<float> beta(B * H * T);
-
   for (int i = 0; i < B * H * T * dk; i++) {
     query[i] = 0.1f * std::sin(static_cast<float>(i) * 0.013f);
     key[i] = 0.1f * std::cos(static_cast<float>(i) * 0.017f);
@@ -1276,21 +1326,18 @@ TEST(ContribOpLinearAttentionTest, DeltaRule_MultiChunk) {
   }
 
   RunLinearAttentionTest("delta", B, H, T, dk, dv, scale,
-                         query, key, value,
-                         nullptr, nullptr, &beta);
+                         query, key, value, nullptr, nullptr, &beta);
 }
 
-// Full gated_delta across chunk boundaries at Qwen3.5-like dims with broadcast (per-head) decay.
 TEST(ContribOpLinearAttentionTest, GatedDeltaRule_MultiChunk_Qwen35Like) {
   const int B = 1, H = 2, T = 192, dk = 128, dv = 128;
-  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+  const float scale = 1.0f / std::sqrt(static_cast<float>(dk));
 
   std::vector<float> query(B * H * T * dk);
   std::vector<float> key(B * H * T * dk);
   std::vector<float> value(B * H * T * dv);
-  std::vector<float> decay(B * H * T);  // broadcast (per-head) decay
+  std::vector<float> decay(B * H * T);
   std::vector<float> beta(B * H * T);
-
   for (int i = 0; i < B * H * T * dk; i++) {
     query[i] = 0.05f * std::sin(static_cast<float>(i) * 0.0013f);
     key[i] = 0.05f * std::cos(static_cast<float>(i) * 0.0017f);
@@ -1304,24 +1351,19 @@ TEST(ContribOpLinearAttentionTest, GatedDeltaRule_MultiChunk_Qwen35Like) {
   }
 
   std::vector<float> initial_state(B * H * dk * dv, 0.01f);
-
   RunLinearAttentionTest("gated_delta", B, H, T, dk, dv, scale,
-                         query, key, value,
-                         &initial_state, &decay, &beta);
+                         query, key, value, &initial_state, &decay, &beta);
 }
 
-// gated_delta across chunk boundaries with per-key-dim decay (stresses the per-dim
-// cumulative-decay path plus the UT solve over multiple chunks).
 TEST(ContribOpLinearAttentionTest, GatedDeltaRule_MultiChunk_PerDimDecay) {
   const int B = 1, H = 3, T = 175, dk = 64, dv = 64;
-  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+  const float scale = 1.0f / std::sqrt(static_cast<float>(dk));
 
   std::vector<float> query(B * H * T * dk);
   std::vector<float> key(B * H * T * dk);
   std::vector<float> value(B * H * T * dv);
   std::vector<float> decay(B * H * T * dk);
   std::vector<float> beta(B * H * T);
-
   for (int i = 0; i < B * H * T * dk; i++) {
     query[i] = 0.08f * std::sin(static_cast<float>(i) * 0.011f);
     key[i] = 0.08f * std::cos(static_cast<float>(i) * 0.019f);
@@ -1335,33 +1377,30 @@ TEST(ContribOpLinearAttentionTest, GatedDeltaRule_MultiChunk_PerDimDecay) {
   }
 
   std::vector<float> initial_state(B * H * dk * dv, 0.005f);
-
   RunLinearAttentionTest("gated_delta", B, H, T, dk, dv, scale,
-                         query, key, value,
-                         &initial_state, &decay, &beta);
+                         query, key, value, &initial_state, &decay, &beta);
 }
 
-// ---------------------------------------------------------------------------
-// Standard GQA (q_num_heads > kv_num_heads, so n_out = q/kv > 1) across several head ratios,
-// update rules, and dims (d_k % 16 == 0, d_v % 32 == 0). These exercise the per-query-head
-// output: output_hidden = max(q_num_heads, kv_num_heads) * d_v.
-// ---------------------------------------------------------------------------
-namespace {
-void RunStandardGQA(const std::string& rule, int q_H, int kv_H, int dk, int dv) {
+static void RunStandardGQA(const std::string& rule, int q_H, int kv_H, int dk, int dv) {
   const int B = 2, n_k = kv_H, T = 10;
-  float scale = 1.0f / std::sqrt(static_cast<float>(dk));
-  const bool has_decay = (rule == "gated" || rule == "gated_delta");
-  const bool has_beta = (rule == "delta" || rule == "gated_delta");
+  const float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+  const bool has_decay = rule == "gated" || rule == "gated_delta";
+  const bool has_beta = rule == "delta" || rule == "gated_delta";
 
   std::vector<float> query(B * q_H * T * dk);
   std::vector<float> key(B * n_k * T * dk);
   std::vector<float> value(B * kv_H * T * dv);
-  std::vector<float> decay(B * kv_H * T);  // broadcast (per-head)
+  std::vector<float> decay(B * kv_H * T);
   std::vector<float> beta(B * kv_H * T);
-
-  for (int i = 0; i < B * q_H * T * dk; i++) query[i] = 0.1f * std::sin(static_cast<float>(i) * 0.013f);
-  for (int i = 0; i < B * n_k * T * dk; i++) key[i] = 0.1f * std::cos(static_cast<float>(i) * 0.017f);
-  for (int i = 0; i < B * kv_H * T * dv; i++) value[i] = 0.1f * std::sin(static_cast<float>(i) * 0.023f + 0.5f);
+  for (int i = 0; i < B * q_H * T * dk; i++) {
+    query[i] = 0.1f * std::sin(static_cast<float>(i) * 0.013f);
+  }
+  for (int i = 0; i < B * n_k * T * dk; i++) {
+    key[i] = 0.1f * std::cos(static_cast<float>(i) * 0.017f);
+  }
+  for (int i = 0; i < B * kv_H * T * dv; i++) {
+    value[i] = 0.1f * std::sin(static_cast<float>(i) * 0.023f + 0.5f);
+  }
   for (int i = 0; i < B * kv_H * T; i++) {
     decay[i] = -0.1f - 0.05f * std::abs(std::sin(static_cast<float>(i) * 0.3f));
     beta[i] = 0.5f + 0.3f * std::sin(static_cast<float>(i) * 0.31f);
@@ -1370,17 +1409,190 @@ void RunStandardGQA(const std::string& rule, int q_H, int kv_H, int dk, int dv) 
 
   RunLinearAttentionGQATest(rule, B, q_H, kv_H, n_k, T, dk, dv, scale,
                             query, key, value, &initial_state,
-                            has_decay ? &decay : nullptr, has_beta ? &beta : nullptr);
+                            has_decay ? &decay : nullptr,
+                            has_beta ? &beta : nullptr);
 }
-}  // namespace
 
-TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N2) { RunStandardGQA("gated_delta", 4, 2, 32, 64); }
-TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N4) { RunStandardGQA("gated_delta", 8, 2, 32, 64); }
-TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N8) { RunStandardGQA("gated_delta", 16, 2, 32, 64); }
-TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N16) { RunStandardGQA("gated_delta", 16, 1, 32, 64); }
-// no-retrieval / no-beta branch (linear) and the larger dk=dv=128 shape
-TEST(ContribOpLinearAttentionTest, LinearRule_StandardGQA_N4) { RunStandardGQA("linear", 8, 2, 32, 64); }
-TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N4_Dim128) { RunStandardGQA("gated_delta", 8, 2, 128, 128); }
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N2) {
+  RunStandardGQA("gated_delta", 4, 2, 32, 64);
+}
 
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N4) {
+  RunStandardGQA("gated_delta", 8, 2, 32, 64);
+}
+
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N8) {
+  RunStandardGQA("gated_delta", 16, 2, 32, 64);
+}
+
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N16) {
+  RunStandardGQA("gated_delta", 16, 1, 32, 64);
+}
+
+TEST(ContribOpLinearAttentionTest, LinearRule_StandardGQA_N4) {
+  RunStandardGQA("linear", 8, 2, 32, 64);
+}
+
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StandardGQA_N4_Dim128) {
+  RunStandardGQA("gated_delta", 8, 2, 128, 128);
+}
+
+// state_window: past_state / present_state hold the last W per-token states, right-aligned, so
+// slot j is the state after token (T - W + j) and slot W-1 is the state after the last token (the
+// tensor the unwindowed op produces). past_state is read from slot W-1. Earlier positions are
+// never written -- that is the point of the window (it bounds the arena for long prompts).
+#ifdef USE_CUDA
+// The state_window attribute is only implemented by the CUDA kernel. The four CUDA kernel families
+// (generic recurrent, fixed-shape recurrent, warp-per-column decode, column-per-thread decode) each
+// compute the window slot offsets themselves, so every family gets its own shape below. W > T is
+// only exercised without a past_state, because that is the only case in which the slots below
+// W - T are defined (zeroed rather than left alone).
+static void RunLinearAttentionStateWindowTest(int B, int q_H, int kv_H, int n_k, int T, int dk, int dv, int W,
+                                              bool with_past_state = true) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+    return;
+  }
+
+  const float scale = 1.0f / std::sqrt(static_cast<float>(dk));
+
+  std::vector<float> query(B * q_H * T * dk);
+  std::vector<float> key(B * n_k * T * dk);
+  std::vector<float> value(B * kv_H * T * dv);
+  std::vector<float> decay(B * kv_H * T);
+  std::vector<float> beta(B * kv_H * T);
+  for (size_t i = 0; i < query.size(); i++) query[i] = 0.5f * std::sin(static_cast<float>(i) * 0.13f);
+  for (size_t i = 0; i < key.size(); i++) key[i] = 0.5f * std::cos(static_cast<float>(i) * 0.17f);
+  for (size_t i = 0; i < value.size(); i++) value[i] = 0.5f * std::sin(static_cast<float>(i) * 0.23f + 0.5f);
+  for (size_t i = 0; i < decay.size(); i++) {
+    decay[i] = -0.1f - 0.05f * std::abs(std::sin(static_cast<float>(i) * 0.3f));
+    beta[i] = 0.5f + 0.3f * std::sin(static_cast<float>(i) * 0.31f);
+  }
+  std::vector<float> initial_state(static_cast<size_t>(B) * kv_H * dk * dv, 0.0f);
+  if (with_past_state) {
+    for (size_t i = 0; i < initial_state.size(); i++) {
+      initial_state[i] = 0.1f * std::cos(static_cast<float>(i) * 0.07f);
+    }
+  }
+  const std::vector<float>* past = with_past_state ? &initial_state : nullptr;
+
+  // Slice a (B, H, T, D) tensor down to its first `prefix` tokens.
+  auto slice_prefix = [](const std::vector<float>& src, int seq, int dim, int prefix) {
+    std::vector<float> dst(src.size() / seq * prefix);
+    const int bh = static_cast<int>(src.size()) / (seq * dim);
+    for (int i = 0; i < bh; i++) {
+      for (int t = 0; t < prefix; t++) {
+        for (int d = 0; d < dim; d++) {
+          dst[(i * prefix + t) * dim + d] = src[(i * seq + t) * dim + d];
+        }
+      }
+    }
+    return dst;
+  };
+
+  std::vector<float> expected_output_4d, expected_state;
+  LinearAttentionGQAReference("gated_delta", B, q_H, kv_H, n_k, T, dk, dv, scale,
+                              query, key, value, past, &decay, &beta,
+                              expected_output_4d, expected_state);
+
+  // Slot j = the recurrent state after running the first (T - W + j + 1) tokens; slots for
+  // non-positive prefixes are never computed by the kernel and stay zero. The window axis leads
+  // the batch axis, so a slot is exactly one contiguous (B, H_kv, d_k, d_v) reference block.
+  const size_t slot_elems = static_cast<size_t>(kv_H) * dk * dv;
+  const size_t batch_slot_elems = static_cast<size_t>(B) * slot_elems;
+  std::vector<float> expected_state_window(static_cast<size_t>(W) * batch_slot_elems, 0.0f);
+  for (int j = 0; j < W; j++) {
+    const int prefix = T - W + j + 1;
+    if (prefix <= 0) continue;
+    std::vector<float> prefix_state;
+    if (prefix == T) {
+      prefix_state = expected_state;
+    } else {
+      const std::vector<float> decay_prefix = slice_prefix(decay, T, 1, prefix);
+      const std::vector<float> beta_prefix = slice_prefix(beta, T, 1, prefix);
+      std::vector<float> prefix_output;
+      LinearAttentionGQAReference("gated_delta", B, q_H, kv_H, n_k, prefix, dk, dv, scale,
+                                  slice_prefix(query, T, dk, prefix),
+                                  slice_prefix(key, T, dk, prefix),
+                                  slice_prefix(value, T, dv, prefix),
+                                  past, &decay_prefix, &beta_prefix,
+                                  prefix_output, prefix_state);
+    }
+    std::copy_n(prefix_state.begin(), batch_slot_elems,
+                expected_state_window.begin() + static_cast<size_t>(j) * batch_slot_elems);
+  }
+
+  OpTester tester("LinearAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", "gated_delta");
+  tester.AddAttribute<float>("scale", scale);
+  tester.AddAttribute<int64_t>("q_num_heads", static_cast<int64_t>(q_H));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_H));
+  tester.AddAttribute<int64_t>("state_window", static_cast<int64_t>(W));
+
+  tester.AddInput<float>("query", {B, T, q_H * dk}, PackBHTD_to_BTHD(query, B, q_H, T, dk));
+  tester.AddInput<float>("key", {B, T, n_k * dk}, PackBHTD_to_BTHD(key, B, n_k, T, dk));
+  tester.AddInput<float>("value", {B, T, kv_H * dv}, PackBHTD_to_BTHD(value, B, kv_H, T, dv));
+  if (with_past_state) {
+    // past_state is windowed too, and only slot W-1 is read. Poison the earlier slots to prove it.
+    std::vector<float> past_state_window(static_cast<size_t>(W) * batch_slot_elems, -1e4f);
+    std::copy_n(initial_state.begin(), batch_slot_elems,
+                past_state_window.begin() + static_cast<size_t>(W - 1) * batch_slot_elems);
+    tester.AddInput<float>("past_state", {W, B, kv_H, dk, dv}, past_state_window);
+  } else {
+    tester.AddOptionalInputEdge<float>();
+  }
+  tester.AddInput<float>("decay", {B, T, kv_H}, TransposeBHT_to_BTH(decay, B, kv_H, T));
+  tester.AddInput<float>("beta", {B, T, kv_H}, TransposeBHT_to_BTH(beta, B, kv_H, T));
+
+  tester.AddOutput<float>("output", {B, T, kv_H * dv},
+                          PackBHTD_to_BTHD(expected_output_4d, B, kv_H, T, dv),
+                          false, 0.005f, 0.005f);
+  tester.AddOutput<float>("present_state", {W, B, kv_H, dk, dv}, expected_state_window,
+                          false, 0.005f, 0.005f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// d_k = 4 is not a decode fast-path shape, so this lands on the generic recurrent kernel.
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow) {
+  RunLinearAttentionStateWindowTest(/*B=*/1, /*q_H=*/2, /*kv_H=*/2, /*n_k=*/2, /*T=*/5,
+                                    /*dk=*/4, /*dv=*/4, /*W=*/3);
+}
+
+// B > 1 exercises the batch stride of the window axis on the generic recurrent kernel.
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow_MultiBatch) {
+  RunLinearAttentionStateWindowTest(/*B=*/2, /*q_H=*/2, /*kv_H=*/2, /*n_k=*/2, /*T=*/5,
+                                    /*dk=*/4, /*dv=*/4, /*W=*/3);
+}
+
+// T <= 16 with d_k = 128 and d_v % 32 == 0 selects the column-per-thread decode kernel.
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow_DecodeColKernel) {
+  RunLinearAttentionStateWindowTest(/*B=*/2, /*q_H=*/2, /*kv_H=*/2, /*n_k=*/1, /*T=*/4,
+                                    /*dk=*/128, /*dv=*/128, /*W=*/3);
+}
+
+// d_k = 256 falls back to the warp-per-column decode kernel.
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow_DecodeWarpKernel) {
+  RunLinearAttentionStateWindowTest(/*B=*/1, /*q_H=*/2, /*kv_H=*/2, /*n_k=*/1, /*T=*/4,
+                                    /*dk=*/256, /*dv=*/64, /*W=*/3);
+}
+
+// T > 16 with a (d_k, d_v) fast-path pair selects the compile-time specialized recurrent kernel,
+// whose final state write is a vectorized epilogue into slot W-1.
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow_FixedShapeKernel) {
+  RunLinearAttentionStateWindowTest(/*B=*/2, /*q_H=*/2, /*kv_H=*/2, /*n_k=*/1, /*T=*/24,
+                                    /*dk=*/128, /*dv=*/128, /*W=*/4);
+}
+
+// W > T is the shape genai actually runs during MTP decode: the leading W - T slots belong to
+// positions before this call and are left alone (zeroed here because there is no past_state).
+TEST(ContribOpLinearAttentionTest, GatedDeltaRule_StateWindow_WiderThanSequence) {
+  RunLinearAttentionStateWindowTest(/*B=*/2, /*q_H=*/2, /*kv_H=*/2, /*n_k=*/1, /*T=*/2,
+                                    /*dk=*/128, /*dv=*/128, /*W=*/5, /*with_past_state=*/false);
+}
+#endif  // USE_CUDA
 }  // namespace test
 }  // namespace onnxruntime
