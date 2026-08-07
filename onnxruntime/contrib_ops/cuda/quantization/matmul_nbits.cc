@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "core/common/status.h"
 #include "core/common/float16.h"
@@ -35,13 +36,21 @@ using namespace onnxruntime::cuda;
 
 namespace {
 
-Status ValidateGroupIndexRange(const Tensor* group_index, int64_t k_blocks) {
+Status ValidateGroupIndexRange(const Tensor* group_index, int64_t k_blocks, cudaStream_t stream) {
   if (group_index == nullptr) {
     return Status::OK();
   }
 
-  const int32_t* g_idx_data = group_index->Data<int32_t>();
   const size_t g_idx_size = static_cast<size_t>(group_index->Shape().Size());
+  const int32_t* g_idx_data = group_index->Data<int32_t>();
+  std::vector<int32_t> g_idx_host;
+  if (group_index->Location().device.Type() != OrtDevice::CPU) {
+    g_idx_host.resize(g_idx_size);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(g_idx_host.data(), g_idx_data, g_idx_size * sizeof(int32_t),
+                                         cudaMemcpyDeviceToHost, stream));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+    g_idx_data = g_idx_host.data();
+  }
 
   for (size_t i = 0; i < g_idx_size; ++i) {
     if (g_idx_data[i] < 0 || g_idx_data[i] >= k_blocks) {
@@ -64,7 +73,7 @@ Status MatMulNBits<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr
   constexpr int kInputIndexGroupIndex = 4;
   if (input_idx == kInputIndexGroupIndex) {
     const int64_t k_blocks = (K_ + block_size_ - 1) / block_size_;
-    ORT_RETURN_IF_ERROR(ValidateGroupIndexRange(&tensor, k_blocks));
+    ORT_RETURN_IF_ERROR(ValidateGroupIndexRange(&tensor, k_blocks, cudaStreamLegacy));
     is_group_index_validated_ = true;
     return Status::OK();
   }
