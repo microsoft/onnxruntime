@@ -5,10 +5,46 @@
 #include "contrib_ops/cuda/quantization/gather_block_quantized.h"
 #include "contrib_ops/cuda/quantization/gather_block_quantized.cuh"
 
+#include <vector>
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 using namespace onnxruntime::cuda;
+
+namespace {
+
+template <typename Tind>
+Status ValidateIndicesRangeForCuda(const Tensor* indices, int64_t gather_axis_dim, cudaStream_t stream) {
+  const size_t indices_size = static_cast<size_t>(indices->Shape().Size());
+  if (indices_size == 0) {
+    return Status::OK();
+  }
+
+  std::vector<Tind> indices_host(indices_size);
+
+  if (indices->Location().device.Type() == OrtDevice::CPU) {
+    const Tind* indices_ptr = indices->Data<Tind>();
+    for (size_t i = 0; i < indices_size; ++i) {
+      indices_host[i] = indices_ptr[i];
+    }
+  } else {
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(indices_host.data(), indices->Data<Tind>(), indices_size * sizeof(Tind),
+                                         cudaMemcpyDeviceToHost, stream));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+  }
+
+  for (size_t i = 0; i < indices_size; ++i) {
+    const int64_t indices_val = static_cast<int64_t>(indices_host[i]);
+    ORT_RETURN_IF_NOT(indices_val >= -gather_axis_dim && indices_val < gather_axis_dim,
+                      "indices element out of data bounds, idx=", indices_val,
+                      " must be within the inclusive range [", -gather_axis_dim, ",", gather_axis_dim - 1, "]");
+  }
+
+  return Status::OK();
+}
+
+}  // namespace
 
 #define REGISTER_GATHERBLOCKQUANTIZED(T1, T2, Tind)                     \
   ONNX_OPERATOR_THREE_TYPED_KERNEL_EX(                                  \
@@ -139,6 +175,8 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   param.block_size = block_size_;
   param.gather_axis = gather_axis_;
   param.N = N;
+
+  ORT_RETURN_IF_ERROR(ValidateIndicesRangeForCuda<Tind>(indices, param.gather_axis_dim, param.stream));
 
   const auto dequantized_type = scales->GetElementType();
   if (dequantized_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {

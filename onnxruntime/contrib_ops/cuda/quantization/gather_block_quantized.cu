@@ -53,6 +53,9 @@ __global__ void GatherBlockQuantizedKernel(
   int64_t idx_after = out_idx % after_gather_dim;
   int64_t idx = (out_idx % (after_gather_dim * ind_dim)) / after_gather_dim;
   int64_t idx_at_g = indices[idx];
+  if (idx_at_g < 0) {
+    idx_at_g += gather_axis_dim;
+  }
   int64_t in_idx = idx_before * gather_axis_dim * after_gather_dim + idx_at_g * after_gather_dim + idx_after;
 
   int64_t block_id = in_idx / block_size;

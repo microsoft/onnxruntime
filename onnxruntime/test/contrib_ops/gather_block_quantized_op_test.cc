@@ -499,11 +499,60 @@ void Test_InvalidIndices_WithZeroPoints() {
                                 gather_axis, quantize_axis, block_size, bits, output, output_shape, false, true);
 }
 
+template <typename T1, typename T2, typename Tind>
+void Test_NegativeInvalidIndices_WithZeroPoints() {
+  std::vector<int> data = {-8, -7, -6, -5,
+                           -4, -3, -2, -1,
+                           0, 1, 2, 3,
+                           4, 5, 6, 7,
+                           4, 5, 6, 7,
+                           -4, -3, -2, -1};
+  std::vector<int64_t> data_shape = {2, 3, 4};
+  std::vector<int> indices = {-3};
+  std::vector<int64_t> indices_shape = {1};
+  std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
+  std::vector<int64_t> scales_shape = {2, 3, 1};
+  std::vector<int> zero_points = {-1, 1, 0, 0, 1, -1};
+  std::vector<float> output = {8.f, 10.f, 12.f, 14.f,
+                               3.f, 4.f, 5.f, 6.f,
+                               -6.f, -4.f, -2.f, 0.f};
+  std::vector<int64_t> output_shape = {1, 3, 4};
+
+  constexpr int64_t gather_axis = 0;
+  constexpr int64_t quantize_axis = 2;
+  constexpr int64_t block_size = 16;
+  constexpr int64_t bits = 4;
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape, false, true);
+}
+
 #ifndef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, InvalidIndices) {
   Test_InvalidIndices_WithZeroPoints<UInt4x2, float, int32_t>();
   Test_InvalidIndices_WithZeroPoints<Int4x2, float, int32_t>();
   Test_InvalidIndices_WithZeroPoints<uint8_t, float, int32_t>();
+}
+#endif
+
+#ifdef USE_CUDA
+TEST(GatherBlockQuantizedOpTest, InvalidIndices_Cuda) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA not available";
+  }
+
+  Test_InvalidIndices_WithZeroPoints<UInt4x2, float, int32_t>();
+  Test_InvalidIndices_WithZeroPoints<UInt4x2, float, int64_t>();
+  Test_InvalidIndices_WithZeroPoints<uint8_t, float, int32_t>();
+}
+
+TEST(GatherBlockQuantizedOpTest, NegativeInvalidIndices_Cuda) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA not available";
+  }
+
+  Test_NegativeInvalidIndices_WithZeroPoints<UInt4x2, float, int32_t>();
+  Test_NegativeInvalidIndices_WithZeroPoints<UInt4x2, float, int64_t>();
+  Test_NegativeInvalidIndices_WithZeroPoints<uint8_t, float, int32_t>();
 }
 #endif
 
