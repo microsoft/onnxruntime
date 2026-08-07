@@ -10,6 +10,57 @@
 // Reduces scheduling overhead from millions of tiny iterations
 constexpr size_t MLAS_PACK_BLKS_PER_CHUNK = 64;
 
+// Minimum chunk size (in blocks/subblocks) below which we won't further split
+// work, so we don't reintroduce the "millions of tiny iterations" scheduling
+// overhead that MLAS_PACK_BLKS_PER_CHUNK was introduced to avoid.
+constexpr size_t MLAS_PACK_MIN_BLKS_PER_CHUNK = 32;
+
+// Below this N, rebalancing was measured to backfire: with so few independent
+// "n" columns, forcing ChunkCount up to approach MaxThreads creates many tiny
+// tasks whose thread-pool dispatch overhead dominates the (small) amount of
+// real work, making packing *slower* than the fixed MLAS_PACK_BLKS_PER_CHUNK
+// chunking (see PR discussion; measured up to ~9x slower for N=1 at 96
+// threads). We therefore only rebalance for N at or above this threshold,
+// which covers the reviewer's motivating narrow-N-but-not-trivial case (e.g.
+// per-head/group projections) while leaving smaller N and the already-tuned
+// large-N path untouched.
+constexpr size_t MLAS_PACK_REBALANCE_MIN_N = 32;
+
+// Picks a chunk size (in units of blocks or subblocks, depending on caller) for
+// the packing/scale-reorder parallelization in this file.
+//
+// MLAS_PACK_BLKS_PER_CHUNK works well when N is large enough to saturate the
+// thread pool on its own (Iterations = N * ChunkCount), which is the case this
+// chunking was tuned for. But for narrow N, a fixed 64-wide chunk can leave
+// Iterations well below the number of available threads, idling most cores
+// regardless of how large TotalUnits is.
+//
+// To avoid touching the (already tuned/benchmarked) large-N behavior, we only
+// rebalance the chunk size when the fixed-size chunking would clearly
+// underutilize the thread pool, i.e. when N * ChunkCount < MaxThreads, and
+// only for N >= MLAS_PACK_REBALANCE_MIN_N (see comment above). In that case we
+// shrink the chunk so that N * ChunkCount approaches MaxThreads, down to a
+// floor of MLAS_PACK_MIN_BLKS_PER_CHUNK units per chunk.
+inline size_t
+MlasQNBitPackChunkSize(size_t TotalUnits, size_t N, MLAS_THREADPOOL* ThreadPool)
+{
+    size_t ChunkUnits = std::min(MLAS_PACK_BLKS_PER_CHUNK, TotalUnits);
+    if (ChunkUnits == 0) {
+        return ChunkUnits;
+    }
+
+    const size_t ChunkCount = MlasDivRoundup(TotalUnits, ChunkUnits);
+    const ptrdiff_t MaxThreads = MlasGetMaximumThreadCount(ThreadPool);
+
+    if (MaxThreads > 1 && N >= MLAS_PACK_REBALANCE_MIN_N &&
+        N * ChunkCount < static_cast<size_t>(MaxThreads)) {
+        const size_t DesiredChunks = std::max<size_t>(1, MlasDivRoundup(static_cast<size_t>(MaxThreads), N));
+        ChunkUnits = std::max(MLAS_PACK_MIN_BLKS_PER_CHUNK, MlasDivRoundup(TotalUnits, DesiredChunks));
+    }
+
+    return ChunkUnits;
+}
+
 template <int BlkBitWidth>
 static size_t
 QNBitGemmPackQuantBDataSize(
@@ -173,7 +224,7 @@ PackQuantB(
     }
     
     // OPTIMIZATION: Coarser-grained parallelization for PackQuantB too
-    const size_t ChunkSubBlks = std::min(MLAS_PACK_BLKS_PER_CHUNK, SubBlkCountK);
+    const size_t ChunkSubBlks = MlasQNBitPackChunkSize(SubBlkCountK, N, ThreadPool);
     const size_t ChunkCount = MlasDivRoundup(SubBlkCountK, ChunkSubBlks);
     const size_t Iterations = N * ChunkCount;  // Reduced from N * SubBlkCountK
 
@@ -286,7 +337,7 @@ Q8PackQuantB(
     }
     
     // OPTIMIZATION: Coarser-grained parallelization for Q8PackQuantB too
-    const size_t ChunkSubBlks = std::min(MLAS_PACK_BLKS_PER_CHUNK, SubBlkCountK);
+    const size_t ChunkSubBlks = MlasQNBitPackChunkSize(SubBlkCountK, N, ThreadPool);
     const size_t ChunkCount = MlasDivRoundup(SubBlkCountK, ChunkSubBlks);
     const size_t Iterations = N * ChunkCount;  // Reduced from N * SubBlkCountK
 
@@ -355,7 +406,7 @@ ComputePackBlkSum(
     const int blks_per_sub = (BlkLen < SubBlkLen) ? (int)(SubBlkLen / BlkLen) : 0;
     
     // Coarser-grained parallelization: process chunks of K blocks together
-    const size_t ChunkBlks = std::min(MLAS_PACK_BLKS_PER_CHUNK, BlockCountK);
+    const size_t ChunkBlks = MlasQNBitPackChunkSize(BlockCountK, N, ThreadPool);
     const size_t ChunkCount = MlasDivRoundup(BlockCountK, ChunkBlks);
     const size_t TotalIterations = N * ChunkCount;
     
@@ -423,7 +474,7 @@ Q8ComputePackBlkSum(
     const size_t remainder_blk = (blks_per_sub > 0) ? (BlockCountK % blks_per_sub) : 0;
 
     // Coarser-grained parallelization: process chunks of K blocks together
-    const size_t ChunkBlks = std::min(MLAS_PACK_BLKS_PER_CHUNK, BlockCountK);
+    const size_t ChunkBlks = MlasQNBitPackChunkSize(BlockCountK, N, ThreadPool);
     const size_t ChunkCount = MlasDivRoundup(BlockCountK, ChunkBlks);
     const size_t TotalIterations = N * ChunkCount;
     
