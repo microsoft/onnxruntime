@@ -120,11 +120,16 @@ endif()
 if (onnxruntime_REDUCED_OPS_BUILD)
   substitute_op_reduction_srcs(onnxruntime_providers_src)
 endif()
-if (onnxruntime_BUILD_SHARED_LIB)
+if (onnxruntime_BUILD_SHARED_LIB AND NOT onnxruntime_BUILD_APPLE_FRAMEWORK)
   # With onnxruntime_ENABLE_LTO the objects carry whole-program IR, which pushes this archive past
   # the 4 GiB limit of the COFF archive format on Windows (LNK1248), and lib.exe has no option to
-  # raise it. Shared-library builds only need the objects for the final link, so skip the archive.
-  # Static builds keep it: install(TARGETS onnxruntime_providers EXPORT ...) below requires one.
+  # raise it. A plain shared-library build only needs the objects for the final link, so skip the
+  # archive there.
+  #
+  # The archive is still required in two cases:
+  #   - static builds, for install(TARGETS onnxruntime_providers EXPORT ...) further down this file
+  #   - Apple framework builds, whose static-framework prelink step in onnxruntime.cmake only
+  #     extracts objects from targets whose TYPE is STATIC_LIBRARY
   onnxruntime_add_object_library(onnxruntime_providers ${onnxruntime_providers_src})
 else()
   onnxruntime_add_static_library(onnxruntime_providers ${onnxruntime_providers_src})
