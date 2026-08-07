@@ -68,6 +68,49 @@ static Status ValidateMask1DKeySeqLenStartValues(cudaStream_t stream,
     return Status::OK();
   }
 
+  __global__ void SanitizeMask1DKeySeqLenStartValues(const int32_t* input,
+                                                     int32_t* output,
+                                                     int32_t batch_size,
+                                                     int32_t sequence_length,
+                                                     int32_t total_sequence_length) {
+    if (blockIdx.x != 0 || threadIdx.x != 0) {
+      return;
+    }
+
+    const int32_t* input_seqlen_k = input;
+    const int32_t* input_seqstart_q = input_seqlen_k + batch_size;
+    const int32_t* input_seqstart_k = input_seqstart_q + batch_size + 1;
+    int32_t* output_seqlen_k = output;
+    int32_t* output_seqstart_q = output_seqlen_k + batch_size;
+    int32_t* output_seqstart_k = output_seqstart_q + batch_size + 1;
+
+    const int64_t max_query_offset = static_cast<int64_t>(batch_size) * sequence_length;
+    const int64_t max_key_offset = static_cast<int64_t>(batch_size) * total_sequence_length;
+
+    int64_t previous_q = 0;
+    int64_t previous_k = 0;
+    for (int32_t i = 0; i <= batch_size; ++i) {
+      int64_t q = static_cast<int64_t>(input_seqstart_q[i]);
+      q = q < previous_q ? previous_q : q;
+      q = q > max_query_offset ? max_query_offset : q;
+      int64_t k = static_cast<int64_t>(input_seqstart_k[i]);
+      k = k < previous_k ? previous_k : k;
+      k = k > max_key_offset ? max_key_offset : k;
+      output_seqstart_q[i] = static_cast<int32_t>(q);
+      output_seqstart_k[i] = static_cast<int32_t>(k);
+      previous_q = q;
+      previous_k = k;
+    }
+
+    for (int32_t i = 0; i < batch_size; ++i) {
+      const int64_t max_seqlen = max_key_offset - output_seqstart_k[i];
+      int64_t seqlen = static_cast<int64_t>(input_seqlen_k[i]);
+      seqlen = seqlen < 0 ? 0 : seqlen;
+      seqlen = seqlen > max_seqlen ? max_seqlen : seqlen;
+      output_seqlen_k[i] = static_cast<int32_t>(seqlen);
+    }
+  }
+
   if (!ParseEnvironmentVariableWithDefault<bool>(kValidateSeqLensEnvVar, false)) {
     return Status::OK();
   }
@@ -562,6 +605,7 @@ Status EfficientAttention(
   p.scale = scale;
   p.use_smooth_softmax = false;
 
+  IAllocatorUniquePtr<int32_t> sanitized_mask;
   if (data.mask_index != nullptr) {
     ORT_RETURN_IF_ERROR(ValidateMask1DKeySeqLenStartValues(
         stream,
@@ -569,6 +613,16 @@ Status EfficientAttention(
         parameters.batch_size,
         parameters.sequence_length,
         parameters.total_sequence_length));
+
+    const size_t mask_elements = static_cast<size_t>(3) * static_cast<size_t>(parameters.batch_size) + 2;
+    sanitized_mask = IAllocator::MakeUniquePtr<int32_t>(data.allocator, mask_elements, false, stream);
+    SanitizeMask1DKeySeqLenStartValues<<<1, 1, 0, stream>>>(
+        reinterpret_cast<const int32_t*>(data.mask_index),
+        sanitized_mask.get(),
+        parameters.batch_size,
+        parameters.sequence_length,
+        parameters.total_sequence_length);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
   }
 
   if (nullptr == data.mask_index) {
@@ -576,7 +630,7 @@ Status EfficientAttention(
     p.seqstart_q_ptr = nullptr;
     p.seqstart_k_ptr = nullptr;
   } else {
-    p.seqlen_k_ptr = reinterpret_cast<const int32_t*>(data.mask_index);
+    p.seqlen_k_ptr = sanitized_mask.get();
     p.seqstart_q_ptr = p.seqlen_k_ptr + parameters.batch_size;
     p.seqstart_k_ptr = p.seqlen_k_ptr + 2 * parameters.batch_size + 1;
   }
