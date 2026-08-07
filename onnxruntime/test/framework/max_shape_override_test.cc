@@ -5,6 +5,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/framework/max_shape_inference.h"
 #include "core/framework/max_shape_override.h"
+#include "core/framework/node_shape_resolver.h"
 #include "core/framework/workspace_requirement.h"
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
@@ -115,6 +116,22 @@ TEST(MaxShapeOverride, ErrorNonNumericDimension) {
   EXPECT_FALSE(status.IsOK());
 }
 
+TEST(MaxShapeOverride, ErrorEmptyDimension) {
+  for (const std::string_view config : {"input_ids:[8,]", "input_ids:[,8]", "input_ids:[8,,16]"}) {
+    SCOPED_TRACE(config);
+    MaxShapeOverrideMap result;
+    EXPECT_FALSE(ParseMaxShapeOverride(config, result).IsOK());
+  }
+}
+
+TEST(MaxShapeOverride, ErrorEmptyEntry) {
+  for (const std::string_view config : {";input_ids:[8]", "input_ids:[8];;", "input_ids:[8];"}) {
+    SCOPED_TRACE(config);
+    MaxShapeOverrideMap result;
+    EXPECT_FALSE(ParseMaxShapeOverride(config, result).IsOK());
+  }
+}
+
 namespace {
 
 std::unique_ptr<Model> MakeDynamicIdentityModel() {
@@ -177,6 +194,26 @@ TEST(MaxShapeOverride, InferPropagatesGraphInputShapeWithoutMutatingGraph) {
   EXPECT_EQ((*output_shape)[1], 4);
   EXPECT_FALSE(canonical_input->Shape()->dim(0).has_dim_value());
   EXPECT_FALSE(identity.OutputDefs()[0]->Shape()->dim(0).has_dim_value());
+}
+
+TEST(MaxShapeOverride, ResolveNodeInputShapesAcceptsStaticZeroExtent) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 18}};
+  Model model("zero_extent", true, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>{}, DefaultLoggingManager().DefaultLogger());
+  ModelTestBuilder builder(model.MainGraph());
+  NodeArg* input = builder.MakeInput<float>(std::vector<int64_t>{0, 4}, "input");
+  NodeArg* output = builder.MakeOutput<float>(std::nullopt);
+  builder.AddNode("Identity", {input}, {output});
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  MaxShapeInferenceResult inferred_shapes;
+  const Node& identity = *model.MainGraph().Nodes().begin();
+  const auto resolved = ResolveNodeInputShapes(identity, &model.MainGraph(), inferred_shapes);
+  ASSERT_TRUE(resolved.has_value());
+  ASSERT_EQ(resolved->size(), 1u);
+  EXPECT_EQ((*resolved)[0], TensorShape({0, 4}));
 }
 
 TEST(MaxShapeOverride, InferRejectsUnknownInput) {

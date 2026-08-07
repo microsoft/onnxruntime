@@ -91,6 +91,28 @@ Status ValidateMaxShapeOverrides(const Graph& graph,
   return Status::OK();
 }
 
+template <typename TCallable>
+Status ConvertShadowInferenceExceptionsToStatus(TCallable&& callable) {
+  Status status;
+  ORT_TRY {
+    status = callable();
+  }
+  ORT_CATCH(const OnnxRuntimeException& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(ex.Category(), ex.Code(),
+                      "max_shape_override: shadow inference failed: " + std::string{ex.what()});
+    });
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "max_shape_override: shadow inference failed: ", ex.what());
+    });
+  }
+
+  return status;
+}
+
 std::string GetSubgraphNodeKey(const Node& node) {
   if (!node.Name().empty()) {
     return "name:" + node.Name();
@@ -225,77 +247,64 @@ Status ParseMaxShapeOverride(std::string_view config_value, MaxShapeOverrideMap&
     return Status::OK();
   }
 
-  // Split by ';' to get individual entries
   size_t pos = 0;
   while (pos < config_value.size()) {
-    // Find next ';' delimiter (skip past the closing ']' first)
-    size_t bracket_close = config_value.find(']', pos);
-    if (bracket_close == std::string_view::npos) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "max_shape_override: missing closing ']' in entry starting at position ", pos);
+    const size_t entry_end = config_value.find(';', pos);
+    const size_t entry_length =
+        (entry_end == std::string_view::npos ? config_value.size() : entry_end) - pos;
+    const std::string_view entry = Trim(config_value.substr(pos, entry_length));
+    ORT_RETURN_IF(entry.empty(),
+                  "max_shape_override: empty entry at position ", pos);
+
+    const size_t colon = entry.find(':');
+    ORT_RETURN_IF(colon == std::string_view::npos,
+                  "max_shape_override: missing ':' in entry '", entry, "'");
+
+    const std::string_view name = Trim(entry.substr(0, colon));
+    ORT_RETURN_IF(name.empty(),
+                  "max_shape_override: empty name in entry '", entry, "'");
+
+    const std::string_view shape_str = Trim(entry.substr(colon + 1));
+    ORT_RETURN_IF(shape_str.size() < 2 || shape_str.front() != '[' || shape_str.back() != ']',
+                  "max_shape_override: shape must be enclosed in [] for '", name, "'");
+
+    const std::string_view dims_str = Trim(shape_str.substr(1, shape_str.size() - 2));
+    TensorShapeVector dims;
+    size_t dim_pos = 0;
+    while (dim_pos < dims_str.size()) {
+      const size_t comma = dims_str.find(',', dim_pos);
+      const size_t token_length =
+          (comma == std::string_view::npos ? dims_str.size() : comma) - dim_pos;
+      const std::string_view dim_token = Trim(dims_str.substr(dim_pos, token_length));
+      ORT_RETURN_IF(dim_token.empty(),
+                    "max_shape_override: empty dimension for input '", name, "'");
+
+      int64_t dim_value = 0;
+      const auto [ptr, ec] =
+          std::from_chars(dim_token.data(), dim_token.data() + dim_token.size(), dim_value);
+      ORT_RETURN_IF(ec != std::errc{} || ptr != dim_token.data() + dim_token.size(),
+                    "max_shape_override: invalid dimension '", dim_token,
+                    "' for input '", name, "'");
+      ORT_RETURN_IF(dim_value <= 0,
+                    "max_shape_override: dimensions must be positive, got ", dim_value,
+                    " for input '", name, "'");
+      dims.push_back(dim_value);
+
+      if (comma == std::string_view::npos) break;
+      dim_pos = comma + 1;
+      ORT_RETURN_IF(dim_pos == dims_str.size(),
+                    "max_shape_override: empty dimension for input '", name, "'");
     }
 
-    size_t entry_end = config_value.find(';', bracket_close);
-    std::string_view entry = Trim(config_value.substr(pos, (entry_end == std::string_view::npos ? config_value.size() : entry_end) - pos));
+    const auto [unused, inserted] = out.emplace(std::string{name}, TensorShape{dims});
+    ORT_UNUSED_PARAMETER(unused);
+    ORT_RETURN_IF(!inserted,
+                  "max_shape_override: duplicate entry for '", name, "'");
 
-    if (!entry.empty()) {
-      // Parse "name:[d0,d1,...]"
-      size_t colon = entry.find(':');
-      if (colon == std::string_view::npos) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "max_shape_override: missing ':' in entry '", entry, "'");
-      }
-
-      std::string_view name = Trim(entry.substr(0, colon));
-      if (name.empty()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "max_shape_override: empty name in entry '", entry, "'");
-      }
-
-      std::string_view shape_str = Trim(entry.substr(colon + 1));
-
-      // Expect [d0,d1,...]
-      if (shape_str.size() < 2 || shape_str.front() != '[' || shape_str.back() != ']') {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "max_shape_override: shape must be enclosed in [] for '", name, "'");
-      }
-
-      // Strip brackets
-      std::string_view dims_str = shape_str.substr(1, shape_str.size() - 2);
-
-      TensorShapeVector dims;
-      if (!dims_str.empty()) {
-        size_t dim_pos = 0;
-        while (dim_pos < dims_str.size()) {
-          size_t comma = dims_str.find(',', dim_pos);
-          std::string_view dim_token = Trim(dims_str.substr(dim_pos, (comma == std::string_view::npos ? dims_str.size() : comma) - dim_pos));
-
-          int64_t dim_value = 0;
-          auto [ptr, ec] = std::from_chars(dim_token.data(), dim_token.data() + dim_token.size(), dim_value);
-          if (ec != std::errc{} || ptr != dim_token.data() + dim_token.size()) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                   "max_shape_override: invalid dimension '", dim_token,
-                                   "' for input '", name, "'");
-          }
-          if (dim_value <= 0) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                   "max_shape_override: dimensions must be positive, got ", dim_value,
-                                   " for input '", name, "'");
-          }
-          dims.push_back(dim_value);
-
-          dim_pos = (comma == std::string_view::npos) ? dims_str.size() : comma + 1;
-        }
-      }
-
-      auto [it, inserted] = out.emplace(std::string(name), TensorShape(dims));
-      if (!inserted) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "max_shape_override: duplicate entry for '", name, "'");
-      }
-    }
-
-    pos = (entry_end == std::string_view::npos) ? config_value.size() : entry_end + 1;
+    if (entry_end == std::string_view::npos) break;
+    pos = entry_end + 1;
+    ORT_RETURN_IF(pos == config_value.size(),
+                  "max_shape_override: empty entry at position ", pos);
   }
 
   return Status::OK();
@@ -361,9 +370,13 @@ Status InferMaxShapes(const Graph& graph,
 
   ModelOptions model_options;
   model_options.strict_shape_type_inference = graph.StrictShapeTypeInference();
-  Model shadow_model{std::move(model_proto), graph.ModelPath().native(), &registries,
-                     graph.GetLogger(), model_options};
-  Graph& shadow_graph = shadow_model.MainGraph();
+  std::unique_ptr<Model> shadow_model;
+  ORT_RETURN_IF_ERROR(ConvertShadowInferenceExceptionsToStatus([&]() -> Status {
+    shadow_model = std::make_unique<Model>(
+        std::move(model_proto), graph.ModelPath().native(), &registries, graph.GetLogger(), model_options);
+    return Status::OK();
+  }));
+  Graph& shadow_graph = shadow_model->MainGraph();
 
   // GraphViewerToProto omits raw initializer payloads. Share converted OrtValues
   // and copy only initializers that still live in protobuf storage.
@@ -415,7 +428,8 @@ Status InferMaxShapes(const Graph& graph,
 
   // Resolve recursively, then associate concrete shadow shapes with their corresponding
   // source graph identities so partitioning can query main-graph and subgraph nodes.
-  ORT_RETURN_IF_ERROR(shadow_graph.Resolve());
+  ORT_RETURN_IF_ERROR(
+      ConvertShadowInferenceExceptionsToStatus([&]() -> Status { return shadow_graph.Resolve(); }));
   return CaptureGraphShapes(graph, shadow_graph, result);
 #endif
 }

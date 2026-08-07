@@ -46,7 +46,7 @@ inline std::optional<InlinedVector<TensorShape>> ResolveNodeInputShapes(
     dims.reserve(shape_proto->dim_size());
 
     for (const auto& dim : shape_proto->dim()) {
-      if (dim.has_dim_value() && dim.dim_value() > 0) {
+      if (dim.has_dim_value() && dim.dim_value() >= 0) {
         dims.push_back(dim.dim_value());
       } else {
         return std::nullopt;
