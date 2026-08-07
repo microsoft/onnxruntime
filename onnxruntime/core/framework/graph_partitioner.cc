@@ -381,6 +381,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     // capabilities.clear() destroys the pass-1 capabilities (and their costs) next.
     InlinedHashMap<NodeIndex, ResourceCount> pass1_node_costs;
     InlinedHashMap<NodeIndex, size_t> pass1_workspace_estimates;
+    InlinedHashMap<NodeIndex, WorkspaceEstimateSource> pass1_workspace_sources;
     if (params.resource_accountant != nullptr) {
       for (const auto& capability : capabilities) {
         const auto& sub_graph = *capability->sub_graph;
@@ -390,6 +391,8 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
             pass1_node_costs.insert_or_assign(node_index, sub_graph.GetNodeCost(i));
             pass1_workspace_estimates.insert_or_assign(
                 node_index, params.resource_accountant->GetPendingWorkspaceEstimate(node_index));
+            pass1_workspace_sources.insert_or_assign(
+                node_index, params.resource_accountant->GetPendingWorkspaceEstimateSource(node_index));
           }
         }
       }
@@ -488,7 +491,11 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
           params.resource_accountant->AddConsumedAmount(cost_it->second);
           auto workspace_it = pass1_workspace_estimates.find(node_index);
           if (workspace_it != pass1_workspace_estimates.end()) {
-            params.resource_accountant->AddCommittedWorkspaceEstimate(workspace_it->second);
+            auto source_it = pass1_workspace_sources.find(node_index);
+            const auto source = source_it == pass1_workspace_sources.end()
+                                    ? WorkspaceEstimateSource::kNone
+                                    : source_it->second;
+            params.resource_accountant->AddCommittedWorkspaceEstimate(workspace_it->second, source);
           }
         }
       }
@@ -1543,12 +1550,17 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
 
         const size_t total_estimate = std::get<size_t>(consumed);
         const size_t workspace_estimate = accountant->GetCommittedWorkspaceEstimate();
+        const auto source_counts = accountant->GetWorkspaceEstimateSourceCounts();
         const size_t non_workspace_estimate =
             total_estimate >= workspace_estimate ? total_estimate - workspace_estimate : 0;
         LOGS(logger, INFO) << "Resource estimation for EP '" << ep_type << "': "
                            << "non-workspace memory: " << non_workspace_estimate << " bytes, "
                            << "workspace memory: " << workspace_estimate << " bytes, "
-                           << "total estimated memory: " << total_estimate << " bytes";
+                           << "total estimated memory: " << total_estimate << " bytes, "
+                           << "workspace sources: fallback=" << source_counts.fallback
+                           << ", profile=" << source_counts.profile
+                           << ", estimator=" << source_counts.estimator
+                           << ", profile+estimator=" << source_counts.profile_and_estimator;
       }
     }
 
