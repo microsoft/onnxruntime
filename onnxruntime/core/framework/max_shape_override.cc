@@ -265,8 +265,7 @@ Status InferMaxShapes(const Graph& graph,
 
 #if defined(ORT_MINIMAL_BUILD)
   ORT_UNUSED_PARAMETER(graph);
-  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                         "session.max_shape_override is not supported in a minimal build");
+  return Status::OK();
 #else
   // Serialize into a disposable model so normal shape inference cannot make the
   // executable graph appear statically shaped to optimizers or runtime validation.

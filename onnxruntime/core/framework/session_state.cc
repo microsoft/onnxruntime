@@ -1418,9 +1418,14 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   const std::string max_shape_config = sess_options_.config_options.GetConfigOrDefault(
       kOrtSessionOptionsMaxShapeOverride, "");
   if (!max_shape_config.empty()) {
+#if defined(ORT_MINIMAL_BUILD)
+    LOGS(logger_, WARNING)
+        << "session.max_shape_override is not supported in a minimal build and will be ignored.";
+#else
     MaxShapeOverrideMap input_overrides;
     ORT_RETURN_IF_ERROR(ParseMaxShapeOverride(max_shape_config, input_overrides));
     ORT_RETURN_IF_ERROR(InferMaxShapes(graph_, input_overrides, max_shape_inference_result));
+#endif
   }
 
   return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, sess_options_,
@@ -1775,29 +1780,28 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   }
 
   // Level-2 workspace declaration: after kernels are created and PrePack'd, call
-  // DeclareWorkspaceRequirements() on each kernel with resolved input shapes.
+  // DeclareWorkspaceRequirements() on each kernel whose input shapes can be resolved.
+  // Static graph shapes remain usable when no max-shape inference result is available.
   // This collects workspace slot requirements for future offset planning.
-  {
-    for (const auto& node : graph_viewer_->Nodes()) {
-      auto* kernel = GetMutableKernel(node.Index());
-      if (kernel == nullptr) continue;
+  for (const auto& node : graph_viewer_->Nodes()) {
+    auto* kernel = GetMutableKernel(node.Index());
+    if (kernel == nullptr) continue;
 
-      auto resolved = ResolveNodeInputShapes(node, &graph_, max_shape_inference_result);
-      if (!resolved.has_value()) continue;
+    auto resolved = ResolveNodeInputShapes(node, &graph_, max_shape_inference_result);
+    if (!resolved.has_value()) continue;
 
-      InlinedVector<WorkspaceRequirement> requirements;
-      ORT_RETURN_IF_ERROR(kernel->DeclareWorkspaceRequirements(
-          gsl::make_span(resolved->data(), resolved->size()), requirements));
+    InlinedVector<WorkspaceRequirement> requirements;
+    ORT_RETURN_IF_ERROR(kernel->DeclareWorkspaceRequirements(
+        gsl::make_span(resolved->data(), resolved->size()), requirements));
 
-      if (!requirements.empty()) {
-        LOGS(logger_, VERBOSE) << "Level-2 workspace: node '" << node.Name()
-                               << "' declared " << requirements.size() << " workspace slot(s)";
-        // TODO: Store requirements in WorkspacePattern for offset planning.
-        // For now, log the declarations so we can verify the wiring works.
-        for (const auto& req : requirements) {
-          LOGS(logger_, VERBOSE) << "  slot_id=" << req.slot_id
-                                 << " size=" << req.size_bytes << " bytes";
-        }
+    if (!requirements.empty()) {
+      LOGS(logger_, VERBOSE) << "Level-2 workspace: node '" << node.Name()
+                             << "' declared " << requirements.size() << " workspace slot(s)";
+      // TODO: Store requirements in WorkspacePattern for offset planning.
+      // For now, log the declarations so we can verify the wiring works.
+      for (const auto& req : requirements) {
+        LOGS(logger_, VERBOSE) << "  slot_id=" << req.slot_id
+                               << " size=" << req.size_bytes << " bytes";
       }
     }
   }

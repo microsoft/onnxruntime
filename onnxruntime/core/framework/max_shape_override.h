@@ -13,12 +13,14 @@
 
 namespace onnxruntime {
 
-/// Maximum input shapes supplied by the user for estimation.
+/// Input shape overrides supplied by the user for estimation.
 using MaxShapeOverrideMap = InlinedHashMap<std::string, TensorShape>;
 
 /// Fully concrete shapes inferred in a disposable shadow graph for workspace estimation.
 /// Shapes are grouped by source Graph identity so equal NodeArg names in nested graphs
-/// remain distinct. The executable graph is never modified.
+/// remain distinct. The executable graph is never modified. Inferred downstream shapes
+/// are estimation hints and are not guaranteed upper bounds because operator shape
+/// transformations are not necessarily monotonic.
 class MaxShapeInferenceResult {
  public:
   /// graph_identity must be the address of the source Graph passed to InferMaxShapes.
