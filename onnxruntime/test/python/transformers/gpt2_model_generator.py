@@ -8,10 +8,10 @@ import math
 
 import numpy
 from bert_model_generator import float_tensor, reverse_if
-from onnxruntime._onnx_shim.onnx import TensorProto, helper
 from packaging import version
 
 from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 
 def create_gpt2_attention(hidden_size=64, num_heads=4, max_seq_len=32, switch_add_inputs=False):

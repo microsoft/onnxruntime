@@ -10,11 +10,11 @@ import numpy
 import torch
 from bert_padding import pad_input, unpad_input
 from einops import rearrange, repeat
-from onnxruntime._onnx_shim.onnx import TensorProto, helper
 from parameterized import parameterized
 from test_gqa import attention_ref, has_flash_attention
 
 from onnxruntime import InferenceSession, SessionOptions
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 torch.manual_seed(0)
 

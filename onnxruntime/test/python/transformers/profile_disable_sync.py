@@ -38,9 +38,9 @@ import os
 import sys
 
 import numpy as np
-from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper, save
 
 import onnxruntime as ort
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper, save
 
 try:
     import nvtx  # type: ignore

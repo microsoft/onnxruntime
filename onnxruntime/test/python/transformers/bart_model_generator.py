@@ -12,9 +12,9 @@ FusionBartAttention pass can be exercised without a real model checkpoint.
 """
 
 import numpy as np
-from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
 
 from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
 
 
 def create_bart_attention_sdpa(hidden_size: int = 16, num_heads: int = 4, with_mask: bool = True) -> onnx.ModelProto:

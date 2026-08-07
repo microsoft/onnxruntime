@@ -9,9 +9,9 @@ import math
 import unittest
 
 import numpy as np
-from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 from onnxruntime import InferenceSession, SessionOptions
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 # Whether to run the full matrix of tests or a subset for CI.
 pipeline_mode = True

@@ -22,9 +22,9 @@ import tempfile
 import time
 
 import numpy as np
-from onnxruntime._onnx_shim.onnx import TensorProto, helper, save_model
 
 import onnxruntime as ort
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, save_model
 
 # Optional NVTX support for nsys range markers
 try:

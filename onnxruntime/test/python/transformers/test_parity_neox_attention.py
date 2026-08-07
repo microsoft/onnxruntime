@@ -15,8 +15,9 @@ import unittest
 import numpy as np
 import pytest
 import torch
-from onnxruntime._onnx_shim.onnx import TensorProto, helper
 from torch import nn
+
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 np.random.seed(0)
 torch.manual_seed(0)

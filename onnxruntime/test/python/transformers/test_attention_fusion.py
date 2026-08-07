@@ -14,11 +14,11 @@ from bert_model_generator import create_bert_attention, create_bert_attention_pr
 from dit_model_generator import create_dit_attention, create_dit_attention_no_k_transpose
 from gpt2_model_generator import create_gpt2_attention, create_gpt2_attention_no_past
 from model_loader import get_test_data_path
-from onnxruntime._onnx_shim.onnx import numpy_helper
 from parity_utilities import find_transformers_source
 from qwen3_model_generator import create_qwen3_decoder_layer
 
 from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import numpy_helper
 
 if find_transformers_source():
     from fusion_options import FusionOptions
