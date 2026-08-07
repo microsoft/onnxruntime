@@ -49,35 +49,44 @@ TEST(BeamSearchParametersTest, SetSubgraphParametersUsesSubgraphSizeWhenAttribut
   EXPECT_EQ(parameters.num_heads, 2);
 }
 
-TEST(BeamSearchParametersTest, SetSubgraphParametersRejectsNegativeWhisperBeginningTimestampTokenId) {
+TEST(BeamSearchParametersTest, RejectsNegativeWhisperBeginningTimestampTokenId) {
   contrib::transformers::BeamSearchParameters parameters;
-  parameters.vocab_size = -1;
+  parameters.vocab_size = 128;
   parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
   parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
   parameters.beginning_timestamp_token_id = -1;
 
-  EXPECT_THROW(parameters.SetSubgraphParameters(128, 2, 4, 6), OnnxRuntimeException);
+  EXPECT_THROW(parameters.ValidateWhisperTimestampTokenId(), OnnxRuntimeException);
 }
 
-TEST(BeamSearchParametersTest, SetSubgraphParametersRejectsWhisperBeginningTimestampTokenIdEqualToVocabSize) {
+TEST(BeamSearchParametersTest, RejectsZeroWhisperBeginningTimestampTokenId) {
   contrib::transformers::BeamSearchParameters parameters;
-  parameters.vocab_size = -1;
+  parameters.vocab_size = 128;
+  parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
+  parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
+  parameters.beginning_timestamp_token_id = 0;
+
+  EXPECT_THROW(parameters.ValidateWhisperTimestampTokenId(), OnnxRuntimeException);
+}
+
+TEST(BeamSearchParametersTest, RejectsWhisperBeginningTimestampTokenIdEqualToVocabSize) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = 128;
   parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
   parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
   parameters.beginning_timestamp_token_id = 128;
 
-  EXPECT_THROW(parameters.SetSubgraphParameters(128, 2, 4, 6), OnnxRuntimeException);
+  EXPECT_THROW(parameters.ValidateWhisperTimestampTokenId(), OnnxRuntimeException);
 }
 
-TEST(BeamSearchParametersTest, SetSubgraphParametersAcceptsValidWhisperBeginningTimestampTokenId) {
+TEST(BeamSearchParametersTest, AcceptsValidWhisperBeginningTimestampTokenId) {
   contrib::transformers::BeamSearchParameters parameters;
-  parameters.vocab_size = -1;
+  parameters.vocab_size = 128;
   parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
   parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
   parameters.beginning_timestamp_token_id = 1;
 
-  EXPECT_NO_THROW(parameters.SetSubgraphParameters(128, 2, 4, 6));
-  EXPECT_EQ(parameters.vocab_size, 128);
+  EXPECT_NO_THROW(parameters.ValidateWhisperTimestampTokenId());
 }
 
 void RunGptBeamSearchFp32() {
