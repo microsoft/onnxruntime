@@ -747,14 +747,15 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   }
 
   const uint64_t max_storage_buffer_binding_size = context.DeviceLimits().maxStorageBufferBindingSize;
+  const uint64_t q_padded_bytes = static_cast<uint64_t>(parameters.batch_size) *
+                                  static_cast<uint64_t>(max_seqlen_q) *
+                                  static_cast<uint64_t>(parameters.hidden_size) * sizeof(MLFloat16);
+  const bool use_direct_paged_decode = max_seqlen_q < 32;
   const uint64_t kv_padded_bytes = static_cast<uint64_t>(parameters.batch_size) *
                                    static_cast<uint64_t>(parameters.kv_num_heads) *
                                    static_cast<uint64_t>(max_kv_len) *
                                    static_cast<uint64_t>(parameters.head_size) * sizeof(MLFloat16);
-  const uint64_t q_padded_bytes = static_cast<uint64_t>(parameters.batch_size) *
-                                  static_cast<uint64_t>(max_seqlen_q) *
-                                  static_cast<uint64_t>(parameters.hidden_size) * sizeof(MLFloat16);
-  if (kv_padded_bytes > max_storage_buffer_binding_size) {
+  if (!use_direct_paged_decode && kv_padded_bytes > max_storage_buffer_binding_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "PagedAttention (WebGPU): k_padded/v_padded scratch requires ",
                            kv_padded_bytes, " bytes, exceeding maxStorageBufferBindingSize of ",
@@ -806,16 +807,8 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   Tensor seqlens_q_gpu = context.CreateGPUTensor(int32_type, TensorShape({batch_size_i64}));
   ORT_RETURN_IF_ERROR(context.CopyTensor(seqlens_q_cpu, seqlens_q_gpu));
 
-  Tensor k_padded = context.CreateGPUTensor(
-      dtype, TensorShape({batch_size_i64,
-                          static_cast<int64_t>(parameters.kv_num_heads),
-                          static_cast<int64_t>(max_kv_len),
-                          static_cast<int64_t>(parameters.head_size)}));
-  Tensor v_padded = context.CreateGPUTensor(
-      dtype, TensorShape({batch_size_i64,
-                          static_cast<int64_t>(parameters.kv_num_heads),
-                          static_cast<int64_t>(max_kv_len),
-                          static_cast<int64_t>(parameters.head_size)}));
+    Tensor k_padded;
+    Tensor v_padded;
   Tensor q_padded = context.CreateGPUTensor(
       dtype, TensorShape({batch_size_i64,
                           static_cast<int64_t>(max_seqlen_q),
@@ -827,12 +820,25 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                           static_cast<int64_t>(parameters.num_heads),
                           static_cast<int64_t>(parameters.head_size)}));
 
-  // Gather paged K/V into padded BNSH. The gather reads from the just-scattered
-  // key_cache_out / value_cache_out so it sees new tokens + past cache.
-  ORT_RETURN_IF_ERROR(RunGatherKV(context, parameters, max_kv_len,
-                                  key_cache_out, value_cache_out,
-                                  cumulative_seqlens_q, past_seqlens,
-                                  block_table, &k_padded, &v_padded));
+  if (!use_direct_paged_decode) {
+    k_padded = context.CreateGPUTensor(
+        dtype, TensorShape({batch_size_i64,
+                            static_cast<int64_t>(parameters.kv_num_heads),
+                            static_cast<int64_t>(max_kv_len),
+                            static_cast<int64_t>(parameters.head_size)}));
+    v_padded = context.CreateGPUTensor(
+        dtype, TensorShape({batch_size_i64,
+                            static_cast<int64_t>(parameters.kv_num_heads),
+                            static_cast<int64_t>(max_kv_len),
+                            static_cast<int64_t>(parameters.head_size)}));
+
+    // Gather paged K/V into padded BNSH for the prefill path that still uses
+    // the original dense FlashAttention shader.
+    ORT_RETURN_IF_ERROR(RunGatherKV(context, parameters, max_kv_len,
+                                    key_cache_out, value_cache_out,
+                                    cumulative_seqlens_q, past_seqlens,
+                                    block_table, &k_padded, &v_padded));
+  }
 
   ORT_RETURN_IF_ERROR(RunUnpackQuery(context, parameters, max_seqlen_q,
                                      query_for_fa, cumulative_seqlens_q, &q_padded));
@@ -868,11 +874,14 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
       &q_padded,
       /*K=*/nullptr, /*V=*/nullptr, /*attention_bias=*/nullptr,
       &output_padded,
-      /*past_key=*/&k_padded, /*present_key=*/nullptr,
-      /*past_value=*/&v_padded, /*present_value=*/nullptr,
+      /*past_key=*/use_direct_paged_decode ? key_cache_out : &k_padded, /*present_key=*/nullptr,
+      /*past_value=*/use_direct_paged_decode ? value_cache_out : &v_padded, /*present_value=*/nullptr,
       fa_params, context, &seqlen_k_gpu,
       /*cos_cache=*/nullptr, /*sin_cache=*/nullptr, /*head_sink=*/nullptr,
-      /*total_seqlen=*/nullptr, /*seqlens_q=*/&seqlens_q_gpu));
+      /*total_seqlen=*/nullptr, /*seqlens_q=*/&seqlens_q_gpu,
+      use_direct_paged_decode ? block_table : nullptr,
+      use_direct_paged_decode ? static_cast<uint32_t>(parameters.block_size) : 0u,
+      use_direct_paged_decode ? static_cast<uint32_t>(parameters.max_num_blocks_per_seq) : 0u));
 
   ORT_RETURN_IF_ERROR(RunRepackOutput(context, parameters, &output_padded,
                                       cumulative_seqlens_q, output));
