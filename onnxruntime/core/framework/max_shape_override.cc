@@ -45,6 +45,20 @@ std::string_view Trim(std::string_view s) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
+std::string GetSubgraphNodeKey(const Node& node) {
+  if (!node.Name().empty()) {
+    return "name:" + node.Name();
+  }
+
+  for (const NodeArg* output : node.OutputDefs()) {
+    if (output != nullptr && output->Exists() && !output->Name().empty()) {
+      return "output:" + output->Name();
+    }
+  }
+
+  return {};
+}
+
 Status CaptureGraphShapes(const Graph& source_graph,
                           const Graph& shadow_graph,
                           MaxShapeInferenceResult& result) {
@@ -73,21 +87,40 @@ Status CaptureGraphShapes(const Graph& source_graph,
   }
 
   const GraphViewer source_viewer{source_graph};
-  const auto& source_order = source_viewer.GetNodesInTopologicalOrder();
-  const auto& shadow_order = shadow_viewer.GetNodesInTopologicalOrder();
-  ORT_RETURN_IF(source_order.size() != shadow_order.size(),
+  ORT_RETURN_IF(source_viewer.NumberOfNodes() != shadow_viewer.NumberOfNodes(),
                 "max_shape_override: shadow graph topology does not match source graph");
 
-  for (size_t i = 0; i < source_order.size(); ++i) {
-    const Node* source_node = source_viewer.GetNode(source_order[i]);
-    const Node* shadow_node = shadow_viewer.GetNode(shadow_order[i]);
-    ORT_RETURN_IF(source_node == nullptr || shadow_node == nullptr ||
-                      source_node->OpType() != shadow_node->OpType() ||
-                      source_node->Domain() != shadow_node->Domain(),
-                  "max_shape_override: shadow graph node does not match source graph");
+  // Ordinary NodeArgs are already matched by name above. Node matching is needed only
+  // to associate each source control-flow subgraph with its shadow counterpart.
+  InlinedHashMap<std::string, const Node*> shadow_subgraph_nodes;
+  for (const Node& shadow_node : shadow_viewer.Nodes()) {
+    if (shadow_node.GetAttributeNameToSubgraphMap().empty()) continue;
 
-    const auto source_subgraphs = source_node->GetAttributeNameToSubgraphMap();
-    const auto shadow_subgraphs = shadow_node->GetAttributeNameToSubgraphMap();
+    std::string key = GetSubgraphNodeKey(shadow_node);
+    ORT_RETURN_IF(key.empty(),
+                  "max_shape_override: cannot identify unnamed shadow node with subgraphs");
+    const auto [unused, inserted] = shadow_subgraph_nodes.emplace(std::move(key), &shadow_node);
+    ORT_UNUSED_PARAMETER(unused);
+    ORT_RETURN_IF(!inserted,
+                  "max_shape_override: duplicate shadow node identity for subgraph matching");
+  }
+
+  for (const Node& source_node : source_viewer.Nodes()) {
+    const auto& source_subgraphs = source_node.GetAttributeNameToSubgraphMap();
+    if (source_subgraphs.empty()) continue;
+
+    const std::string key = GetSubgraphNodeKey(source_node);
+    ORT_RETURN_IF(key.empty(),
+                  "max_shape_override: cannot identify unnamed source node with subgraphs");
+    const auto shadow_node_it = shadow_subgraph_nodes.find(key);
+    ORT_RETURN_IF(shadow_node_it == shadow_subgraph_nodes.end(),
+                  "max_shape_override: shadow graph is missing source node '", key, "'");
+    const Node& shadow_node = *shadow_node_it->second;
+    ORT_RETURN_IF(source_node.OpType() != shadow_node.OpType() ||
+                      source_node.Domain() != shadow_node.Domain(),
+                  "max_shape_override: shadow graph node '", key, "' does not match source graph");
+
+    const auto& shadow_subgraphs = shadow_node.GetAttributeNameToSubgraphMap();
     ORT_RETURN_IF(source_subgraphs.size() != shadow_subgraphs.size(),
                   "max_shape_override: shadow graph subgraphs do not match source graph");
     for (const auto& [attribute_name, source_subgraph] : source_subgraphs) {
@@ -97,8 +130,12 @@ Status CaptureGraphShapes(const Graph& source_graph,
                     attribute_name, "'");
       ORT_RETURN_IF_ERROR(CaptureGraphShapes(*source_subgraph, *shadow_it->second, result));
     }
+
+    shadow_subgraph_nodes.erase(shadow_node_it);
   }
 
+  ORT_RETURN_IF(!shadow_subgraph_nodes.empty(),
+                "max_shape_override: shadow graph contains unmatched nodes with subgraphs");
   return Status::OK();
 }
 

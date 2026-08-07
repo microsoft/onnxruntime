@@ -133,6 +133,21 @@ std::unique_ptr<Model> MakeDynamicIdentityModel() {
   return model;
 }
 
+ONNX_NAMESPACE::GraphProto MakeIdentitySubgraph(std::string_view graph_name,
+                                                const NodeArg& input,
+                                                std::string_view output_name) {
+  Model branch_model(std::string{graph_name}, false, DefaultLoggingManager().DefaultLogger());
+  Graph& graph = branch_model.MainGraph();
+  NodeArg& branch_input = graph.GetOrCreateNodeArg(input.Name(), input.TypeAsProto());
+  graph.AddOuterScopeNodeArg(input.Name());
+  NodeArg& branch_output = graph.GetOrCreateNodeArg(std::string{output_name}, input.TypeAsProto());
+  graph.AddNode(std::string{graph_name} + "_identity", "Identity", "",
+                {&branch_input}, {&branch_output});
+  graph.SetOutputs({&branch_output});
+  ORT_THROW_IF_ERROR(graph.Resolve());
+  return graph.ToGraphProto();
+}
+
 }  // namespace
 
 TEST(MaxShapeOverride, InferPropagatesGraphInputShapeWithoutMutatingGraph) {
@@ -182,6 +197,52 @@ TEST(MaxShapeOverride, InferRejectsStaticDimensionConflict) {
   const auto status = InferMaxShapes(model->MainGraph(), overrides, result);
   EXPECT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("is static"));
+}
+
+TEST(MaxShapeOverride, InferMatchesParallelControlFlowSubgraphsByStableIdentity) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 18}};
+  auto model = std::make_unique<Model>(
+      "parallel_control_flow", true, ModelMetaData(), PathString(),
+      IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+      std::vector<ONNX_NAMESPACE::FunctionProto>{}, DefaultLoggingManager().DefaultLogger());
+
+  ModelTestBuilder builder(model->MainGraph());
+  NodeArg* input_a = builder.MakeInput<float>(std::vector<int64_t>{-1, 4}, "input_a");
+  NodeArg* input_b = builder.MakeInput<float>(std::vector<int64_t>{-1, 2}, "input_b");
+  NodeArg* condition_a = builder.MakeInput<bool>(std::vector<int64_t>{}, "condition_a");
+  NodeArg* condition_b = builder.MakeInput<bool>(std::vector<int64_t>{}, "condition_b");
+  NodeArg* output_a = builder.MakeOutput<float>(std::nullopt);
+  NodeArg* output_b = builder.MakeOutput<float>(std::nullopt);
+
+  Node& if_a = model->MainGraph().AddNode("if_a", "If", "", {condition_a}, {output_a});
+  if_a.AddAttribute("then_branch", MakeIdentitySubgraph("if_a_then", *input_a, "if_a_then_output"));
+  if_a.AddAttribute("else_branch", MakeIdentitySubgraph("if_a_else", *input_a, "if_a_else_output"));
+
+  Node& if_b = model->MainGraph().AddNode("if_b", "If", "", {condition_b}, {output_b});
+  if_b.AddAttribute("then_branch", MakeIdentitySubgraph("if_b_then", *input_b, "if_b_then_output"));
+  if_b.AddAttribute("else_branch", MakeIdentitySubgraph("if_b_else", *input_b, "if_b_else_output"));
+
+  model->MainGraph().SetInputs({input_a, input_b, condition_a, condition_b});
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(model->MainGraph().Resolve());
+
+  MaxShapeOverrideMap overrides;
+  overrides.emplace("input_a", TensorShape({8, 4}));
+  overrides.emplace("input_b", TensorShape({16, 2}));
+  MaxShapeInferenceResult result;
+  ASSERT_STATUS_OK(InferMaxShapes(model->MainGraph(), overrides, result));
+
+  const Graph* if_a_then = if_a.GetGraphAttribute("then_branch");
+  const Graph* if_b_then = if_b.GetGraphAttribute("then_branch");
+  ASSERT_NE(if_a_then, nullptr);
+  ASSERT_NE(if_b_then, nullptr);
+
+  const TensorShape* shape_a = result.GetShape(if_a_then, "if_a_then_output");
+  const TensorShape* shape_b = result.GetShape(if_b_then, "if_b_then_output");
+  ASSERT_NE(shape_a, nullptr);
+  ASSERT_NE(shape_b, nullptr);
+  EXPECT_EQ(*shape_a, TensorShape({8, 4}));
+  EXPECT_EQ(*shape_b, TensorShape({16, 2}));
 }
 
 // ============================================================================
