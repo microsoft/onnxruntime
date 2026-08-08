@@ -1077,6 +1077,10 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
       endif()
       foreach(_ort_bundled_dep sqlite3_bundled zlib_bundled)
         if(TARGET ${_ort_bundled_dep})
+          if(APPLE AND CMAKE_OSX_ARCHITECTURES)
+            set_target_properties(${_ort_bundled_dep} PROPERTIES
+              OSX_ARCHITECTURES "${CMAKE_OSX_ARCHITECTURES}")
+          endif()
           get_target_property(_ort_bundled_inc
             ${_ort_bundled_dep} INTERFACE_INCLUDE_DIRECTORIES)
           if(_ort_bundled_inc)
