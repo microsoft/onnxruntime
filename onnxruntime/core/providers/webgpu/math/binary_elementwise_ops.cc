@@ -435,8 +435,7 @@ WEBGPU_BINARY_IMPL(Add, "a + b")
 // NOTE: int64 arithmetic in the WebGPU shader operates on the low 32 bits only (i32 element type).
 // Values outside the int32 range [-2^31, 2^31-1] will produce incorrect results.
 // This matches the same limitation documented in Range/Sub and is acceptable for token-position workloads.
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateAddVersionedKernelInfo(bool enable_int64) {
+KernelCreateInfo CreateAddVersionedKernelInfo(int start_version, int end_version, bool enable_int64) {
   const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
   KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<Add>(info);
@@ -445,15 +444,14 @@ KernelCreateInfo CreateAddVersionedKernelInfo(bool enable_int64) {
   return {KernelDefBuilder()
               .SetName("Add")
               .SetDomain(kOnnxDomain)
-              .SinceVersion(StartVersion, EndVersion)
+              .SinceVersion(start_version, end_version)
               .Provider(kWebGpuExecutionProvider)
               .TypeConstraint("T", type_constraints)
               .Build(),
           kernel_create_fn};
 }
 
-template <int SinceVersion>
-KernelCreateInfo CreateAddKernelInfo(bool enable_int64) {
+KernelCreateInfo CreateAddKernelInfo(int since_version, bool enable_int64) {
   const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
   KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<Add>(info);
@@ -462,16 +460,12 @@ KernelCreateInfo CreateAddKernelInfo(bool enable_int64) {
   return {KernelDefBuilder()
               .SetName("Add")
               .SetDomain(kOnnxDomain)
-              .SinceVersion(SinceVersion)
+              .SinceVersion(since_version)
               .Provider(kWebGpuExecutionProvider)
               .TypeConstraint("T", type_constraints)
               .Build(),
           kernel_create_fn};
 }
-
-template KernelCreateInfo CreateAddVersionedKernelInfo<7, 12>(bool);
-template KernelCreateInfo CreateAddVersionedKernelInfo<13, 13>(bool);
-template KernelCreateInfo CreateAddKernelInfo<14>(bool);
 
 WEBGPU_BINARY_IMPL(Div, "a / b")
 WEBGPU_BINARY_VERSIONED_KERNEL(Div, 7, 12, Div, WebGpuSupportedNumberTypes())
@@ -488,8 +482,7 @@ WEBGPU_BINARY_IMPL(Sub, "a - b")
 // NOTE: int64 arithmetic in the WebGPU shader operates on the low 32 bits only (i32 element type).
 // Values outside the int32 range [-2^31, 2^31-1] will produce incorrect results.
 // This matches the same limitation documented in Range and is acceptable for token-position workloads.
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateSubVersionedKernelInfo(bool enable_int64) {
+KernelCreateInfo CreateSubVersionedKernelInfo(int start_version, int end_version, bool enable_int64) {
   const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
   KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<Sub>(info);
@@ -498,15 +491,14 @@ KernelCreateInfo CreateSubVersionedKernelInfo(bool enable_int64) {
   return {KernelDefBuilder()
               .SetName("Sub")
               .SetDomain(kOnnxDomain)
-              .SinceVersion(StartVersion, EndVersion)
+              .SinceVersion(start_version, end_version)
               .Provider(kWebGpuExecutionProvider)
               .TypeConstraint("T", type_constraints)
               .Build(),
           kernel_create_fn};
 }
 
-template <int SinceVersion>
-KernelCreateInfo CreateSubKernelInfo(bool enable_int64) {
+KernelCreateInfo CreateSubKernelInfo(int since_version, bool enable_int64) {
   const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
   KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<Sub>(info);
@@ -515,16 +507,12 @@ KernelCreateInfo CreateSubKernelInfo(bool enable_int64) {
   return {KernelDefBuilder()
               .SetName("Sub")
               .SetDomain(kOnnxDomain)
-              .SinceVersion(SinceVersion)
+              .SinceVersion(since_version)
               .Provider(kWebGpuExecutionProvider)
               .TypeConstraint("T", type_constraints)
               .Build(),
           kernel_create_fn};
 }
-
-template KernelCreateInfo CreateSubVersionedKernelInfo<7, 12>(bool);
-template KernelCreateInfo CreateSubVersionedKernelInfo<13, 13>(bool);
-template KernelCreateInfo CreateSubKernelInfo<14>(bool);
 
 // ONNX Max/Min (opset 12+) propagate NaN: if either operand is NaN the result is NaN.
 // The WGSL `max`/`min` builtins do not guarantee this, so wrap them so that a NaN operand is
@@ -619,8 +607,7 @@ WEBGPU_BINARY_IMPL(Equal, "vec4<u32>(vec4<input_a_element_t>(a) == vec4<input_b_
 
 // NOTE: int64 comparison in the WebGPU shader uses i32 element type (low 32 bits only).
 // Values outside the int32 range will produce incorrect results.
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateEqualVersionedKernelInfo(bool enable_int64) {
+KernelCreateInfo CreateEqualVersionedKernelInfo(int start_version, int end_version, bool enable_int64) {
   const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
   KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<Equal>(info);
@@ -629,15 +616,14 @@ KernelCreateInfo CreateEqualVersionedKernelInfo(bool enable_int64) {
   return {KernelDefBuilder()
               .SetName("Equal")
               .SetDomain(kOnnxDomain)
-              .SinceVersion(StartVersion, EndVersion)
+              .SinceVersion(start_version, end_version)
               .Provider(kWebGpuExecutionProvider)
               .TypeConstraint("T", type_constraints)
               .Build(),
           kernel_create_fn};
 }
 
-template <int SinceVersion>
-KernelCreateInfo CreateEqualKernelInfo(bool enable_int64) {
+KernelCreateInfo CreateEqualKernelInfo(int since_version, bool enable_int64) {
   const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
   KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<Equal>(info);
@@ -646,17 +632,12 @@ KernelCreateInfo CreateEqualKernelInfo(bool enable_int64) {
   return {KernelDefBuilder()
               .SetName("Equal")
               .SetDomain(kOnnxDomain)
-              .SinceVersion(SinceVersion)
+              .SinceVersion(since_version)
               .Provider(kWebGpuExecutionProvider)
               .TypeConstraint("T", type_constraints)
               .Build(),
           kernel_create_fn};
 }
-
-template KernelCreateInfo CreateEqualVersionedKernelInfo<7, 10>(bool);
-template KernelCreateInfo CreateEqualVersionedKernelInfo<11, 12>(bool);
-template KernelCreateInfo CreateEqualVersionedKernelInfo<13, 18>(bool);
-template KernelCreateInfo CreateEqualKernelInfo<19>(bool);
 
 WEBGPU_BINARY_IMPL(Greater, "vec4<u32>(vec4<input_a_element_t>(a) > vec4<input_b_element_t>(b))")
 WEBGPU_BINARY_VERSIONED_KERNEL(Greater, 7, 8, Greater, WebGpuSupportedNumberTypes())
