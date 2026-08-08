@@ -1080,7 +1080,8 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
         if(TARGET ${_ort_apple_dep})
           if(APPLE AND _ort_requested_apple_architectures)
             set_target_properties(${_ort_apple_dep} PROPERTIES
-              OSX_ARCHITECTURES "${_ort_requested_apple_architectures}")
+              OSX_ARCHITECTURES "${_ort_requested_apple_architectures}"
+              XCODE_ATTRIBUTE_ARCHS "${_ort_requested_apple_architectures}")
           endif()
           get_target_property(_ort_apple_inc
             ${_ort_apple_dep} INTERFACE_INCLUDE_DIRECTORIES)
