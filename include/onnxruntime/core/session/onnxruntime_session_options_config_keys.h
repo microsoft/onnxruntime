@@ -495,6 +495,14 @@ static const char* const kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16 = "mlas
 // - "1": Use LUT based GEMM when available.
 static const char* const kOrtSessionOptionsMlasLutGemm = "mlas.use_lut_gemm";
 
+// Force eligible accuracy-level-4 MatMulNBits nodes to use CompFp32 for the entire session.
+// This currently applies to x86/x64 float-input, 4-bit, block-size-32 CPU kernels. Use a dedicated
+// throughput-oriented session when enabling this option so every batch uses the same numerical path.
+// Option values:
+// - "0": Use the compute type selected by accuracy_level for all shapes. [DEFAULT]
+// - "1": Use CompFp32 instead of CompInt8 for eligible accuracy-level-4 nodes.
+static const char* const kOrtSessionOptionsMlasQNBitForceFp32 = "mlas.qnbit.force_fp32";
+
 // Use KleidiAI kernels in MLAS if available.
 // Option values:
 // - "0": Use KleidiAI kernels when available. [DEFAULT]
