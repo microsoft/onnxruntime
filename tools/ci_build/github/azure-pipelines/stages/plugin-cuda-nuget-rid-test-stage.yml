@@ -61,49 +61,52 @@ stages:
       artifact: $(CudaPluginNuGetArtifactName)
       displayName: 'Download NuGet packages'
 
-    - pwsh: |
-        $ErrorActionPreference = 'Stop'
-        $packageId = '${{ parameters.package_id }}'
-        $packageExpected = '${{ parameters.package_expected }}' -eq 'true'
-        $artifactDir = "$(Pipeline.Workspace)/build/$(CudaPluginNuGetArtifactName)"
-        $nupkg = Get-ChildItem "$artifactDir/$packageId.*.nupkg" | Select-Object -First 1
-
-        if (-not $nupkg) {
-          if ($packageExpected) {
-            throw "$packageId was expected but not found under $artifactDir"
-          }
-          Write-Host "##vso[task.logissue type=warning]$packageId was not produced by this packaging run; skipping its test."
-          Write-Host "##vso[task.setvariable variable=CudaPluginNuGetPackageAvailable]false"
-          exit 0
-        }
-
-        $localFeedDir = "$(Build.BinariesDirectory)/local_feed"
-        New-Item -ItemType Directory -Path $localFeedDir -Force | Out-Null
-        Copy-Item $nupkg.FullName $localFeedDir -Force
-
-        if ($nupkg.BaseName -notmatch ('^' + [regex]::Escape($packageId) + '\.(\d.*)$')) {
-          throw "Could not extract version from .nupkg filename: $($nupkg.Name)"
-        }
-
-        $packageVersion = $Matches[1]
-        $minOrtVersionFile = "$(Build.SourcesDirectory)/plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION"
-        $minOrtVersion = (Get-Content $minOrtVersionFile -Raw).Trim()
-        $nugetConfig = "$(Build.SourcesDirectory)/plugin-ep-cuda/csharp/test/CudaEpNuGetTest/nuget.config"
-
-        Set-Content -Path $nugetConfig -Encoding UTF8 -Value @"
-        <?xml version="1.0" encoding="utf-8"?>
-        <configuration>
-          <packageSources>
-            <add key="local" value="$localFeedDir" />
-          </packageSources>
-        </configuration>
-        "@
-
-        Write-Host "Testing $packageId $packageVersion on ${{ parameters.os }}-${{ parameters.arch }}"
-        Write-Host "##vso[task.setvariable variable=CudaPluginNuGetPackageAvailable]true"
-        Write-Host "##vso[task.setvariable variable=OrtCudaPackageVersion]$packageVersion"
-        Write-Host "##vso[task.setvariable variable=OrtCoreTestVersion]$minOrtVersion"
+    - task: PowerShell@2
       displayName: 'Prepare RID-specific NuGet package'
+      inputs:
+        targetType: inline
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $packageId = '${{ parameters.package_id }}'
+          $packageExpected = '${{ parameters.package_expected }}' -eq 'true'
+          $artifactDir = "$(Pipeline.Workspace)/build/$(CudaPluginNuGetArtifactName)"
+          $nupkg = Get-ChildItem "$artifactDir/$packageId.*.nupkg" | Select-Object -First 1
+
+          if (-not $nupkg) {
+            if ($packageExpected) {
+              throw "$packageId was expected but not found under $artifactDir"
+            }
+            Write-Host "##vso[task.logissue type=warning]$packageId was not produced by this packaging run; skipping its test."
+            Write-Host "##vso[task.setvariable variable=CudaPluginNuGetPackageAvailable]false"
+            exit 0
+          }
+
+          $localFeedDir = "$(Build.BinariesDirectory)/local_feed"
+          New-Item -ItemType Directory -Path $localFeedDir -Force | Out-Null
+          Copy-Item $nupkg.FullName $localFeedDir -Force
+
+          if ($nupkg.BaseName -notmatch ('^' + [regex]::Escape($packageId) + '\.(\d.*)$')) {
+            throw "Could not extract version from .nupkg filename: $($nupkg.Name)"
+          }
+
+          $packageVersion = $Matches[1]
+          $minOrtVersionFile = "$(Build.SourcesDirectory)/plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION"
+          $minOrtVersion = (Get-Content $minOrtVersionFile -Raw).Trim()
+          $nugetConfig = "$(Build.SourcesDirectory)/plugin-ep-cuda/csharp/test/CudaEpNuGetTest/nuget.config"
+
+          Set-Content -Path $nugetConfig -Encoding UTF8 -Value @"
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <add key="local" value="$localFeedDir" />
+            </packageSources>
+          </configuration>
+          "@
+
+          Write-Host "Testing $packageId $packageVersion on ${{ parameters.os }}-${{ parameters.arch }}"
+          Write-Host "##vso[task.setvariable variable=CudaPluginNuGetPackageAvailable]true"
+          Write-Host "##vso[task.setvariable variable=OrtCudaPackageVersion]$packageVersion"
+          Write-Host "##vso[task.setvariable variable=OrtCoreTestVersion]$minOrtVersion"
 
     - task: UseDotNet@2
       displayName: 'Use .NET 8 SDK'
@@ -115,12 +118,15 @@ stages:
     - task: NuGetAuthenticate@1
       condition: eq(variables['CudaPluginNuGetPackageAvailable'], 'true')
 
-    - pwsh: |
-        $ErrorActionPreference = 'Stop'
-        dotnet run --project "$(CudaTestProject)" --configuration Release `
-          -p:OrtCudaPackageId=${{ parameters.package_id }} `
-          -p:OrtCudaPackageVersion=$(OrtCudaPackageVersion) `
-          -p:OrtCoreTestVersion=$(OrtCoreTestVersion) `
-          -- --validate-package-assets ${{ parameters.rid }}
+    - task: PowerShell@2
       displayName: 'Restore and validate RID-specific native asset'
       condition: eq(variables['CudaPluginNuGetPackageAvailable'], 'true')
+      inputs:
+        targetType: inline
+        script: |
+          $ErrorActionPreference = 'Stop'
+          dotnet run --project "$(CudaTestProject)" --configuration Release `
+            -p:OrtCudaPackageId=${{ parameters.package_id }} `
+            -p:OrtCudaPackageVersion=$(OrtCudaPackageVersion) `
+            -p:OrtCoreTestVersion=$(OrtCoreTestVersion) `
+            -- --validate-package-assets ${{ parameters.rid }}

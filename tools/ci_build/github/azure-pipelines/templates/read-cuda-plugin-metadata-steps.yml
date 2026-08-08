@@ -7,7 +7,6 @@ steps:
   displayName: 'Read CUDA plugin metadata'
   inputs:
     targetType: inline
-    pwsh: true
     script: |
       $ErrorActionPreference = 'Stop'
 
@@ -42,7 +41,12 @@ steps:
       )
 
       foreach ($property in $requiredProperties) {
-        if (-not $metadata.PSObject.Properties.Name.Contains($property) -or [string]::IsNullOrWhiteSpace($metadata.$property)) {
+        if (-not $metadata.PSObject.Properties.Name.Contains($property)) {
+          throw "CUDA plugin metadata is missing required property '$property'."
+        }
+
+        $value = $metadata.$property
+        if ($null -eq $value -or ($value -is [string] -and [string]::IsNullOrWhiteSpace($value))) {
           throw "CUDA plugin metadata is missing required property '$property'."
         }
       }
