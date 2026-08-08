@@ -9,10 +9,12 @@ import numpy as np
 
 try:
     from onnxruntime._onnx_shim import onnx
-    from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
 except ImportError:
     import onnx
-    from onnx import TensorProto, helper, numpy_helper
+
+TensorProto = onnx.TensorProto
+helper = onnx.helper
+numpy_helper = onnx.numpy_helper
 
 
 def parse_arguments():
