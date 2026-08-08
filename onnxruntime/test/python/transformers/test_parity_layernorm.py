@@ -7,10 +7,11 @@
 import os
 import unittest
 
-import onnx
 import torch
 from parity_utilities import export_onnx, find_transformers_source, optimize_onnx, parse_arguments, run_parity
 from torch import nn
+
+from onnxruntime._onnx_shim import onnx
 
 if find_transformers_source():
     from onnx_model import OnnxModel

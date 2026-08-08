@@ -7,9 +7,10 @@
 import math
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper
 from packaging import version
+
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 
 def float_tensor(name: str, shape: list[int], random=False):

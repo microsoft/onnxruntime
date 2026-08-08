@@ -9,7 +9,6 @@ import tempfile
 from pathlib import Path
 
 import numpy
-import onnx
 import torch
 from onnx_model import OnnxModel
 from past_helper import PastKeyValuesHelper
@@ -19,6 +18,7 @@ from torch_onnx_export_helper import torch_onnx_export
 from transformers import MT5Config, T5Config
 
 from onnxruntime import InferenceSession
+from onnxruntime._onnx_shim import onnx
 
 logger = logging.getLogger(__name__)
 

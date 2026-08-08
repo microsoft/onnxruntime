@@ -41,10 +41,10 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import numpy
-import onnx
-from onnx import helper, numpy_helper
 
 import onnxruntime
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import helper, numpy_helper
 
 from .calibrate import CalibraterBase, CalibrationDataReader
 from .onnx_model import ONNXModel

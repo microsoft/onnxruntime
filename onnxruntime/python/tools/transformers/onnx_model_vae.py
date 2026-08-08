@@ -7,8 +7,9 @@ from logging import getLogger
 
 from fusion_attention_vae import FusionAttentionVae
 from fusion_options import FusionOptions
-from onnx import ModelProto
 from onnx_model_unet import UnetOnnxModel
+
+from onnxruntime._onnx_shim.onnx import ModelProto
 
 logger = getLogger(__name__)
 

@@ -70,6 +70,12 @@ struct EtwRegistrationManager final {
 }  // namespace logging
 }  // namespace onnxruntime
 
+// Under onnx-light, ONNX_NAMESPACE resolves to onnx-light's own namespace, which already
+// defines native (non-wrapper) versions of these ONNX proto message types. The wrapper
+// structs below (which proxy every call through g_host->X__method(...)) would conflict
+// with (and are unnecessary given) those native definitions, so they are only compiled
+// when building against the real protobuf-based onnx package.
+#ifndef ORT_USE_ONNX_LIGHT
 namespace ONNX_NAMESPACE {
 
 struct int64s final {
@@ -501,6 +507,7 @@ struct OpSchema final {
   PROVIDER_DISALLOW_ALL(OpSchema)
 };
 }  // namespace ONNX_NAMESPACE
+#endif  // !ORT_USE_ONNX_LIGHT
 
 namespace onnxruntime {
 

@@ -13,17 +13,17 @@ from enum import Enum
 from pathlib import Path
 
 import numpy
-import onnx
 from ml_dtypes import float8_e4m3fn, int4, uint4
-from onnx import ModelProto, TensorProto, external_data_helper
-from onnx import onnx_pb as onnx_proto
-from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
-from onnx.reference import ReferenceEvaluator
 
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import ModelProto, TensorProto, external_data_helper
+from onnxruntime._onnx_shim.onnx import onnx_pb as onnx_proto
+from onnxruntime._onnx_shim.onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
+from onnxruntime._onnx_shim.onnx.reference import ReferenceEvaluator
 
 try:
-    from onnx.reference.op_run import to_array_extended
+    from onnxruntime._onnx_shim.onnx.reference.op_run import to_array_extended
 except ImportError:
     # old version of onnx.
     to_array_extended = None

@@ -12,8 +12,9 @@ from pathlib import Path
 
 import numpy as np
 from bert_test_data import fake_input_ids_data, fake_input_mask_data, output_test_data
-from onnx import ModelProto, TensorProto
 from onnx_model import OnnxModel
+
+from onnxruntime._onnx_shim.onnx import ModelProto, TensorProto
 
 
 def parse_arguments():

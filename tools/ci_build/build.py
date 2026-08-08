@@ -452,6 +452,7 @@ def generate_build_tree(
         "-DPython_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_VCPKG=" + ("ON" if args.use_vcpkg else "OFF"),
         "-Donnxruntime_USE_MIMALLOC=" + ("ON" if args.use_mimalloc else "OFF"),
+        "-Donnxruntime_USE_ONNX_LIGHT=" + ("ON" if args.use_onnx_light or args.onnx_light_source_dir else "OFF"),
         "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
         "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
         "-Donnxruntime_BUILD_JAVA=" + ("ON" if args.build_java else "OFF"),
@@ -542,6 +543,8 @@ def generate_build_tree(
         "-Donnxruntime_DISABLE_STRING_TYPE=" + ("ON" if disable_string_type else "OFF"),
         "-Donnxruntime_CUDA_MINIMAL=" + ("ON" if args.enable_cuda_minimal_build else "OFF"),
     ]
+    if args.onnx_light_source_dir:
+        cmake_args.append("-Donnxruntime_ONNX_LIGHT_SOURCE_DIR=" + os.path.abspath(args.onnx_light_source_dir))
     if args.minimal_build is not None:
         add_default_definition(cmake_extra_defines, "ONNX_MINIMAL_BUILD", "ON")
     if args.rv64:
@@ -969,8 +972,7 @@ def generate_build_tree(
         if args.ios:
             cmake_args += [
                 "-DCMAKE_SYSTEM_NAME=iOS",
-                "-DCMAKE_TOOLCHAIN_FILE="
-                + (args.ios_toolchain_file if args.ios_toolchain_file else "../cmake/onnxruntime_ios.toolchain.cmake"),
+                "-DCMAKE_TOOLCHAIN_FILE=" + (args.ios_toolchain_file or "../cmake/onnxruntime_ios.toolchain.cmake"),
             ]
         # for catalyst build, we need to manually specify cflags for target e.g. x86_64-apple-ios14.0-macabi, etc.
         # https://forums.developer.apple.com/forums/thread/122571
@@ -990,22 +992,13 @@ def generate_build_tree(
             cmake_args += [
                 "-DCMAKE_SYSTEM_NAME=visionOS",
                 "-DCMAKE_TOOLCHAIN_FILE="
-                + (
-                    args.visionos_toolchain_file
-                    if args.visionos_toolchain_file
-                    else "../cmake/onnxruntime_visionos.toolchain.cmake"
-                ),
+                + (args.visionos_toolchain_file or "../cmake/onnxruntime_visionos.toolchain.cmake"),
                 "-Donnxruntime_ENABLE_CPUINFO=OFF",
             ]
         if args.tvos:
             cmake_args += [
                 "-DCMAKE_SYSTEM_NAME=tvOS",
-                "-DCMAKE_TOOLCHAIN_FILE="
-                + (
-                    args.tvos_toolchain_file
-                    if args.tvos_toolchain_file
-                    else "../cmake/onnxruntime_tvos.toolchain.cmake"
-                ),
+                "-DCMAKE_TOOLCHAIN_FILE=" + (args.tvos_toolchain_file or "../cmake/onnxruntime_tvos.toolchain.cmake"),
             ]
 
     if args.build_wasm:
@@ -1437,8 +1430,8 @@ def setup_cuda_vars(args):
     cudnn_home = ""
 
     if args.use_cuda:
-        cuda_home = args.cuda_home if args.cuda_home else os.getenv("CUDA_HOME")
-        cudnn_home = args.cudnn_home if args.cudnn_home else os.getenv("CUDNN_HOME")
+        cuda_home = args.cuda_home or os.getenv("CUDA_HOME")
+        cudnn_home = args.cudnn_home or os.getenv("CUDNN_HOME")
 
         cuda_home_valid = cuda_home is not None and os.path.exists(cuda_home)
         cudnn_home_valid = cudnn_home is not None and os.path.exists(cudnn_home)
@@ -1456,7 +1449,7 @@ def setup_cann_vars(args):
     cann_home = ""
 
     if args.use_cann:
-        cann_home = args.cann_home if args.cann_home else os.getenv("ASCEND_HOME_PATH")
+        cann_home = args.cann_home or os.getenv("ASCEND_HOME_PATH")
 
         cann_home_valid = cann_home is not None and os.path.exists(cann_home)
 
@@ -1472,7 +1465,7 @@ def setup_cann_vars(args):
 def setup_tensorrt_vars(args):
     tensorrt_home = ""
     if args.use_tensorrt:
-        tensorrt_home = args.tensorrt_home if args.tensorrt_home else os.getenv("TENSORRT_HOME")
+        tensorrt_home = args.tensorrt_home or os.getenv("TENSORRT_HOME")
         tensorrt_home_valid = tensorrt_home is not None and os.path.exists(tensorrt_home)
         if not tensorrt_home_valid:
             raise BuildError(

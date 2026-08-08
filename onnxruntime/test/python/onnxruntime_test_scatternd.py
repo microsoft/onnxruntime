@@ -6,12 +6,12 @@ import unittest
 import warnings
 
 import numpy as np
-import onnx.helper as oh
-from onnx import TensorProto, load
-from onnx.numpy_helper import from_array
-from onnx.reference import ReferenceEvaluator
 
 import onnxruntime
+from onnxruntime._onnx_shim.onnx import TensorProto, load
+from onnxruntime._onnx_shim.onnx import helper as oh
+from onnxruntime._onnx_shim.onnx.numpy_helper import from_array
+from onnxruntime._onnx_shim.onnx.reference import ReferenceEvaluator
 
 
 def has_cuda():

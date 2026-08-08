@@ -687,8 +687,24 @@ struct ProviderHostImpl : ProviderHost {
   int TensorProto__data_location(const ONNX_NAMESPACE::TensorProto* p) override { return p->data_location(); }
   void TensorProto__set_data_location(ONNX_NAMESPACE::TensorProto* p, ONNX_NAMESPACE::TensorProto_DataLocation data_location) override { return p->set_data_location(data_location); }
   bool TensorProto__has_raw_data(const ONNX_NAMESPACE::TensorProto* p) override { return p->has_raw_data(); }
-  const std::string& TensorProto__raw_data(const ONNX_NAMESPACE::TensorProto* p) override { return p->raw_data(); }
-  std::string* TensorProto__mutable_raw_data(ONNX_NAMESPACE::TensorProto* p) override { return p->mutable_raw_data(); }
+  const std::string& TensorProto__raw_data(const ONNX_NAMESPACE::TensorProto* p) override {
+#if defined(ORT_USE_ONNX_LIGHT)
+    (void)p;  // unused in onnx-light path
+    ORT_NOT_IMPLEMENTED("TensorProto__raw_data is not supported with onnx-light");
+#else
+    return p->raw_data();
+#endif
+  }
+  std::string* TensorProto__mutable_raw_data(ONNX_NAMESPACE::TensorProto* p) override {
+#if defined(ORT_USE_ONNX_LIGHT)
+    (void)p;  // unused in onnx-light path
+    // onnx-light mutable_raw_data() returns ByteSpan*; not directly usable as std::string*.
+    // Provider bridge callers should not rely on this in onnx-light builds.
+    ORT_NOT_IMPLEMENTED("TensorProto__mutable_raw_data is not supported with onnx-light");
+#else
+    return p->mutable_raw_data();
+#endif
+  }
 
   bool TensorProto__has_data_type(const ONNX_NAMESPACE::TensorProto* p) override { return p->has_data_type(); }
   int32_t TensorProto__data_type(const ONNX_NAMESPACE::TensorProto* p) override { return p->data_type(); }

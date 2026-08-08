@@ -7,11 +7,12 @@
 import os
 import unittest
 
-import onnx
 import torch
 from parameterized import parameterized
 from parity_utilities import find_transformers_source
 from transformers import EncoderDecoderCache
+
+from onnxruntime._onnx_shim import onnx
 
 if find_transformers_source():
     from fusion_options import FusionOptions

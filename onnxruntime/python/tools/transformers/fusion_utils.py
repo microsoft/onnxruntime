@@ -6,8 +6,9 @@ from logging import getLogger
 
 import numpy
 from numpy import array_equal, ndarray
-from onnx import NodeProto, TensorProto, helper, numpy_helper
 from onnx_model import OnnxModel
+
+from onnxruntime._onnx_shim.onnx import NodeProto, TensorProto, helper, numpy_helper
 
 logger = getLogger(__name__)
 

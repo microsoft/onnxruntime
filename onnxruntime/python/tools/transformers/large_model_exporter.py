@@ -14,10 +14,11 @@ import os
 import tempfile
 from pathlib import Path
 
-import onnx
 import torch
 import transformers
 from torch import nn
+
+from onnxruntime._onnx_shim import onnx
 
 
 def disable_huggingface_init():

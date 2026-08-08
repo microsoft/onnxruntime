@@ -12,9 +12,9 @@ import unittest
 from contextlib import contextmanager
 
 import numpy as np
-from onnx import ModelProto, TensorProto, helper, numpy_helper
 
 import onnxruntime as ort
+from onnxruntime._onnx_shim.onnx import ModelProto, TensorProto, helper, numpy_helper
 from onnxruntime.capi import _pybind_state as _pybind
 from onnxruntime.quantization.cuda_quantizer import _pack_weights_for_cuda_mixed_gemm
 

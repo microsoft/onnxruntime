@@ -11,9 +11,9 @@ import torch
 from autoep_helper import AutoEpTestCase
 from helper import get_name
 from numpy.testing import assert_almost_equal
-from onnx import TensorProto, helper
 
 import onnxruntime as onnxrt
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 from onnxruntime.capi._pybind_state import OrtDevice as C_OrtDevice
 from onnxruntime.capi._pybind_state import OrtValue as C_OrtValue
 from onnxruntime.capi._pybind_state import OrtValueVector, SessionIOBinding

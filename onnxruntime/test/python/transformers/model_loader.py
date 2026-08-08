@@ -6,8 +6,9 @@
 
 import os
 
-from onnx import ModelProto, TensorProto, external_data_helper, load_model, numpy_helper
 from parity_utilities import find_transformers_source
+
+from onnxruntime._onnx_shim.onnx import ModelProto, TensorProto, external_data_helper, load_model, numpy_helper
 
 if find_transformers_source():
     from fusion_utils import NumpyHelper

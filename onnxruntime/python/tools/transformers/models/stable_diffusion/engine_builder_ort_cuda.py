@@ -7,13 +7,13 @@ import gc
 import logging
 import os
 
-import onnx
 import torch
 from diffusion_models import PipelineInfo
 from engine_builder import EngineBuilder, EngineType
 from packaging import version
 
 import onnxruntime as ort
+from onnxruntime._onnx_shim import onnx
 from onnxruntime.transformers.io_binding_helper import CudaSession, GpuBindingManager
 from onnxruntime.transformers.onnx_model import OnnxModel
 

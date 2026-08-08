@@ -136,7 +136,7 @@ Status JsonConfigParser::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPACE::Mo
 
       auto status = Status::OK();
       ORT_TRY {
-        const auto& val = metadata_field.value();
+        const std::string& val = metadata_field.value();
         LOGS(logger_, INFO) << "ORT config json from the model: " << val;
 
         parsed_json_ = json::parse(val);

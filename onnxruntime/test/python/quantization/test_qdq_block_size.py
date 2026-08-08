@@ -13,12 +13,9 @@ import tempfile
 import unittest
 
 import numpy as np
-import onnx
-import onnx.helper
-import onnx.numpy_helper
-import onnx.shape_inference
 from op_test_utils import TestDataFeeds
 
+from onnxruntime._onnx_shim import onnx
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 from onnxruntime.quantization.quant_utils import compute_scale_zp_blocked, quantize_onnx_initializer
 

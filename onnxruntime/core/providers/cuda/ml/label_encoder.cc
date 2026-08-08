@@ -17,7 +17,7 @@ namespace onnxruntime {
 namespace cuda {
 
 #ifndef BUILD_CUDA_EP_AS_PLUGIN
-#ifdef SHARED_PROVIDER
+#if defined(SHARED_PROVIDER) && !defined(ORT_USE_ONNX_LIGHT)
 using TensorProtoHolder = decltype(ONNX_NAMESPACE::TensorProto::Create());
 
 static TensorProtoHolder CreateTensorProtoHolder() {

@@ -7,9 +7,9 @@ import math
 
 import numpy
 import torch
-from onnx import TensorProto, helper
 
 from onnxruntime import InferenceSession
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 from onnxruntime.transformers.io_binding_helper import CudaSession
 
 # --- Quantization Helpers (from test_gqa.py) ---

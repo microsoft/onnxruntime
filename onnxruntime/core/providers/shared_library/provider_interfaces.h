@@ -19,11 +19,17 @@
   void operator=(const TypeName&) = delete; \
   static void operator delete(void*) = delete;
 
+#ifdef ORT_USE_ONNX_LIGHT
+#include "onnx_lib/common/onnx_pb.h"
+#endif
+
 namespace ONNX_NAMESPACE {
 using namespace onnxruntime;
 
+#ifndef ORT_USE_ONNX_LIGHT
 enum AttributeProto_AttributeType : int;
 enum OperatorStatus : int;
+#endif
 
 // String pointer as unique TypeProto identifier.
 using DataType = const std::string*;

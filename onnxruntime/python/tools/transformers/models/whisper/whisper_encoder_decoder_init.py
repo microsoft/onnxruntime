@@ -11,10 +11,8 @@ from itertools import chain
 from pathlib import Path
 
 import numpy as np
-import onnx
 import torch
 from float16 import convert_float_to_float16
-from onnx import ModelProto, ValueInfoProto
 from onnx_model import OnnxModel
 from transformers import WhisperConfig
 from whisper_decoder import WhisperDecoder
@@ -27,6 +25,8 @@ from whisper_inputs import (
 )
 
 from onnxruntime import InferenceSession
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import ModelProto, ValueInfoProto
 
 logger = logging.getLogger(__name__)
 

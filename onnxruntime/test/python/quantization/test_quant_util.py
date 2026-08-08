@@ -10,10 +10,10 @@ import unittest
 from pathlib import Path
 
 import numpy
-import onnx
 from ml_dtypes import int4, uint4
-from onnx import TensorProto, helper, numpy_helper
 
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
 from onnxruntime.quantization.quant_utils import (
     QuantType,
     compute_scale_zp,

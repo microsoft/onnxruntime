@@ -6,8 +6,9 @@ from logging import getLogger
 
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
-from onnx import helper
 from onnx_model import OnnxModel
+
+from onnxruntime._onnx_shim.onnx import helper
 
 logger = getLogger(__name__)
 

@@ -8,11 +8,11 @@ import sys
 import unittest
 from collections.abc import Sequence
 
-import onnx
 from autoep_helper import AutoEpTestCase
 from helper import get_name, get_shared_library_filename_for_platform
 
 import onnxruntime as onnxrt
+from onnxruntime._onnx_shim import onnx
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail, ModelRequiresCompilation
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.

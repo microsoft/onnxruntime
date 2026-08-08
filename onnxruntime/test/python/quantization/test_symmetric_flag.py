@@ -10,10 +10,10 @@ import tempfile
 import unittest
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper, numpy_helper
 
 from onnxruntime import quantization
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
 from onnxruntime.quantization.quant_utils import snap_zero_point_to_uint8
 
 

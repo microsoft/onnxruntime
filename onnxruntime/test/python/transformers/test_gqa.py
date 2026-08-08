@@ -36,12 +36,12 @@ from gqa_test_helper import (
     dequantize_tensor,
     quantize_tensor_with_scale,
 )
-from onnx import TensorProto, helper
 from packaging import version
 from parameterized import parameterized
 
 from onnxruntime import InferenceSession, SessionOptions, get_build_info
 from onnxruntime import __version__ as ort_version
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 # Set seed for reproducibility
 torch.manual_seed(0)

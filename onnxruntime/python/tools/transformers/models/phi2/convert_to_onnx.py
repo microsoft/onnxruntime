@@ -10,7 +10,6 @@ import os
 import warnings
 from pathlib import Path
 
-import onnx
 import torch
 from benchmark_helper import Precision
 from fusion_options import AttentionOpType
@@ -19,6 +18,7 @@ from packaging import version
 from transformers import AutoConfig, AutoModelForCausalLM
 
 from onnxruntime import __version__ as ort_version
+from onnxruntime._onnx_shim import onnx
 
 if version.parse(ort_version) < version.parse("1.22.0"):
     from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer as MatMulNBitsQuantizer
@@ -181,7 +181,7 @@ class ConvertPhi2ToONNX:
     def convert_to_use_cuda_graph(self, in_onnx_path: str, out_onnx_path: str):
         onnx_model = OnnxModel(onnx.load(in_onnx_path, load_external_data=True))
 
-        from onnx import TensorProto, helper  # noqa: PLC0415
+        from onnxruntime._onnx_shim.onnx import TensorProto, helper  # noqa: PLC0415
 
         graph = onnx_model.graph()
         new_inputs = []

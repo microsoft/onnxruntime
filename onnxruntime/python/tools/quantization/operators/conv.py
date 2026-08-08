@@ -1,6 +1,7 @@
 import numpy as np
-import onnx
-from onnx import onnx_pb as onnx_proto
+
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import onnx_pb as onnx_proto
 
 from ..quant_utils import (
     TENSOR_NAME_QUANT_SUFFIX,

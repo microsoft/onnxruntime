@@ -11,9 +11,9 @@ import tempfile
 import unittest
 
 import numpy as np
-import onnx
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count
 
+from onnxruntime._onnx_shim import onnx
 from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, get_qdq_config, quantize
 from onnxruntime.quantization.quant_utils import get_opset_version
 

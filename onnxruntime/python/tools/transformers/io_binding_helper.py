@@ -6,9 +6,9 @@ from typing import Any
 
 import numpy
 import torch
-from onnx import TensorProto
 
 from onnxruntime import InferenceSession, RunOptions
+from onnxruntime._onnx_shim.onnx import TensorProto
 
 # Type alias
 ShapeDict = Mapping[str, tuple | list[int]]

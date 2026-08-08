@@ -1,5 +1,4 @@
-import onnx
-import onnx.helper
+from onnxruntime._onnx_shim import onnx
 
 from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase

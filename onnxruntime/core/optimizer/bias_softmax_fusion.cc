@@ -20,7 +20,7 @@ namespace {
 
 // helper to check dimensions match on concrete or symbolic value
 bool operator==(const ONNX_NAMESPACE::TensorShapeProto_Dimension& lhs, int value) {
-  return utils::HasDimValue(lhs) && lhs.dim_value() == value;
+  return onnxruntime::utils::HasDimValue(lhs) && lhs.dim_value() == value;
 }
 
 bool operator!=(const ONNX_NAMESPACE::TensorShapeProto_Dimension& lhs, int value) {
@@ -126,7 +126,7 @@ bool TrySelectInputAndBiasWithAlignment(Node& add_node, Node& softmax_node, Node
   auto& softmax_attr = softmax_node.GetAttributes();
   if (softmax_attr.find("axis") != softmax_attr.end()) {
     auto& axis_attr = softmax_attr.at("axis");
-    axis = utils::HasInt(axis_attr) ? (int)axis_attr.i() : axis;
+    axis = onnxruntime::utils::HasInt(axis_attr) ? (int)axis_attr.i() : axis;
   }
 
   int N1 = input1->Shape()->dim_size();

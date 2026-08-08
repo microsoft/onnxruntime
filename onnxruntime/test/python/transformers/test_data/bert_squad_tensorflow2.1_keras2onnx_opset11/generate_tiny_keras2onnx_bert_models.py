@@ -31,12 +31,11 @@ import timeit
 from pathlib import Path
 
 import numpy as np
-import onnx
-import onnx.utils
-from onnx import ModelProto, TensorProto, numpy_helper
 from onnxruntime_tools.transformers.onnx_model import OnnxModel
 
 import onnxruntime
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import ModelProto, TensorProto, numpy_helper
 
 DICT_SIZE = 20
 SEQ_LEN = 7

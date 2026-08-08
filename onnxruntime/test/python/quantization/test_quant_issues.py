@@ -77,11 +77,11 @@ class TestQuantIssues(unittest.TestCase):
         # because the referenced external-data file no longer existed.
         # PR #23322 fixed this by deep-copying the proto before saving.
         import numpy as np  # noqa: PLC0415
-        import onnx.helper as oh  # noqa: PLC0415
-        import onnx.numpy_helper as onp  # noqa: PLC0415
-        from onnx import TensorProto  # noqa: PLC0415
 
         import onnxruntime.quantization as oq  # noqa: PLC0415
+        from onnxruntime._onnx_shim.onnx import TensorProto  # noqa: PLC0415
+        from onnxruntime._onnx_shim.onnx import helper as oh  # noqa: PLC0415
+        from onnxruntime._onnx_shim.onnx import numpy_helper as onp  # noqa: PLC0415
 
         # Build a minimal Add model: output = input + weight.
         # Weight shape [32, 32] float32 => 4096 bytes, which is above the
@@ -134,9 +134,9 @@ class TestQuantIssues(unittest.TestCase):
         """
         try:
             import numpy as np  # noqa: PLC0415
-            import onnx  # noqa: PLC0415
-            from onnx import TensorProto, helper, numpy_helper  # noqa: PLC0415
 
+            from onnxruntime._onnx_shim import onnx  # noqa: PLC0415
+            from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper  # noqa: PLC0415
             from onnxruntime.quantization import QuantType, quantize_dynamic  # noqa: PLC0415
         except ImportError as exc:
             raise unittest.SkipTest(f"Required import missing: {exc}") from exc

@@ -34,7 +34,9 @@
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
+#if !defined(ORT_USE_ONNX_LIGHT)
 using google::protobuf::RepeatedPtrField;
+#endif
 
 static constexpr int protobuf_block_size_in_bytes = 4 * 1024 * 1024;
 
@@ -68,8 +70,10 @@ inline Ort::Value CreateTensorWithDataAsOrtValue(const Ort::MemoryInfo&,
   return tensor_value;
 }
 
-template <typename key_type, typename value_type>
-Ort::Value PbMapToOrtValue(const google::protobuf::Map<key_type, value_type>& map) {
+template <typename MapT>
+Ort::Value PbMapToOrtValue(const MapT& map) {
+  using key_type = typename MapT::key_type;
+  using value_type = typename MapT::mapped_type;
   auto info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
   Ort::AllocatorWithDefaultOptions allocator;
   const size_t ele_count = map.size();
@@ -89,13 +93,13 @@ Ort::Value PbMapToOrtValue(const google::protobuf::Map<key_type, value_type>& ma
   return Ort::Value::CreateMap(ort_keys, ort_values);
 }
 
-template <typename T>
-Ort::Value VectorProtoToOrtValue(const RepeatedPtrField<T>& input) {
+template <typename Container>
+Ort::Value VectorProtoToOrtValue(const Container& input) {
   auto info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
   Ort::AllocatorWithDefaultOptions allocator;
   std::vector<Ort::Value> seq;
   seq.reserve(input.size());
-  for (const T& v : input) {
+  for (const auto& v : input) {
     // create key tensor
     const auto& map = v.v();
     size_t ele_count = map.size();

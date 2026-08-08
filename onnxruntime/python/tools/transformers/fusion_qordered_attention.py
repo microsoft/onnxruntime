@@ -9,8 +9,9 @@ import numpy as np
 from fusion_attention import AttentionMask
 from fusion_base import Fusion
 from fusion_utils import FusionUtils, NumpyHelper
-from onnx import NodeProto, helper
 from onnx_model import OnnxModel
+
+from onnxruntime._onnx_shim.onnx import NodeProto, helper
 
 logger = getLogger(__name__)
 

@@ -23,7 +23,6 @@ import tempfile
 import warnings
 from pathlib import Path
 
-import onnx
 from fusion_options import FusionOptions
 from onnx_model_clip import ClipOnnxModel
 from onnx_model_mmdit import MmditOnnxModel
@@ -34,6 +33,7 @@ from optimizer import optimize_by_onnxruntime, optimize_model
 from packaging import version
 
 import onnxruntime
+from onnxruntime._onnx_shim import onnx
 
 logger = logging.getLogger(__name__)
 

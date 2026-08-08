@@ -5,9 +5,9 @@ import unittest
 
 import numpy as np
 import torch
-from onnx import TensorProto, checker, helper
 
 import onnxruntime
+from onnxruntime._onnx_shim.onnx import TensorProto, checker, helper
 
 onnxruntime.preload_dlls()
 

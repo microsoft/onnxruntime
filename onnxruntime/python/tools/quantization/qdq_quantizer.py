@@ -11,9 +11,10 @@ from enum import Enum
 from typing import Any
 
 import numpy as np
-import onnx
-from onnx import TensorProto
-from onnx import onnx_pb as onnx_proto
+
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto
+from onnxruntime._onnx_shim.onnx import onnx_pb as onnx_proto
 
 from .base_quantizer import BaseQuantizer, QuantizationParams
 from .calibrate import TensorData

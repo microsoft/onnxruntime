@@ -14,7 +14,6 @@ import time
 from pathlib import Path
 
 import numpy
-import onnx
 import torch
 from benchmark_helper import Precision
 from float16 import float_to_float16_max_diff
@@ -24,6 +23,8 @@ from onnx_model import OnnxModel
 from optimizer import optimize_model
 from torch_onnx_export_helper import torch_onnx_export
 from transformers import GPT2Config, GPT2LMHeadModel, GPT2Model, TFGPT2Model
+
+from onnxruntime._onnx_shim import onnx
 
 logger = logging.getLogger(__name__)
 

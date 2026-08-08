@@ -1349,7 +1349,7 @@ Graph::Graph(const Model& owning_model,
 
     // Remove sparse_initializers from protobuf to save memory as they are converted to dense now
     graph_proto_->mutable_sparse_initializer()->Clear();
-#if GOOGLE_PROTOBUF_VERSION < 5026000
+#if !defined(ORT_USE_ONNX_LIGHT) && GOOGLE_PROTOBUF_VERSION < 5026000
     const int sparse_num_cleared = graph_proto_->sparse_initializer().ClearedCount();
     for (int i = 0; i < sparse_num_cleared; ++i) {
       delete graph_proto_->mutable_sparse_initializer()->ReleaseCleared();
@@ -3506,7 +3506,7 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
         } else {
           for (int i = 0; i < p_existing_shape->dim_size(); ++i) {
             auto& d = p_existing_shape->dim(i);
-            if (utils::HasDimValue(d) && (d.dim_value() != tensor_proto->dims(i))) {
+            if (utils::HasDimValue(d) && (d.dim_value() != static_cast<int64_t>(tensor_proto->dims(i)))) {
               invalid = true;
               break;
             }
@@ -4508,7 +4508,7 @@ void Graph::CleanAllInitializedTensors() noexcept {
   // and can be reused. Need to explicitly release the cleared objects and free the
   // memory.
   graph_proto_->mutable_initializer()->Clear();
-#if GOOGLE_PROTOBUF_VERSION < 5026000
+#if !defined(ORT_USE_ONNX_LIGHT) && GOOGLE_PROTOBUF_VERSION < 5026000
   const int num_cleared = graph_proto_->initializer().ClearedCount();
   for (int i = 0; i < num_cleared; i++) {
     delete graph_proto_->mutable_initializer()->ReleaseCleared();

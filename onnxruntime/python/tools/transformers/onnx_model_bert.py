@@ -29,8 +29,9 @@ from fusion_shape import FusionShape
 from fusion_simplified_layernorm import FusionSimplifiedLayerNormalization, FusionSkipSimplifiedLayerNormalization
 from fusion_skiplayernorm import FusionBiasSkipLayerNormalization, FusionSkipLayerNormalization
 from fusion_utils import FusionUtils
-from onnx import ModelProto, TensorProto, helper, numpy_helper
 from onnx_model import OnnxModel
+
+from onnxruntime._onnx_shim.onnx import ModelProto, TensorProto, helper, numpy_helper
 
 logger = getLogger(__name__)
 

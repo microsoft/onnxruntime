@@ -5,9 +5,10 @@
 
 import logging
 
-import onnx
-from onnx import numpy_helper
 from onnx_model_bert_tf import BertOnnxModelTF
+
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import numpy_helper
 
 logger = logging.getLogger(__name__)
 

@@ -1526,7 +1526,7 @@ class TestInferenceSession(unittest.TestCase):
         input passes through as a model output. Reproduces the dangling-pointer
         corruption described in https://github.com/microsoft/onnxruntime/issues/21922
         """
-        import onnx  # noqa: PLC0415
+        from onnxruntime._onnx_shim import onnx  # noqa: PLC0415
 
         # Build a model where 'input_0' is both a graph input and a graph output,
         # plus a computed output (input_0 + 10).
@@ -2207,7 +2207,7 @@ class TestInferenceSession(unittest.TestCase):
         # directly (ortvalue_from_numpy rejects non-numeric arrays), so we
         # obtain one by running a tiny Constant model whose only output is a
         # string tensor.
-        from onnx import TensorProto, helper  # noqa: PLC0415
+        from onnxruntime._onnx_shim.onnx import TensorProto, helper  # noqa: PLC0415
 
         const_node = helper.make_node(
             "Constant",
@@ -2335,7 +2335,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def test_tree_ensemble_logistic(self):
         try:
-            import onnx  # noqa: PLC0415
+            from onnxruntime._onnx_shim import onnx  # noqa: PLC0415
         except ImportError:
             # onnx is not installed on ARM build.
             self.skipTest("onnx is not installed")

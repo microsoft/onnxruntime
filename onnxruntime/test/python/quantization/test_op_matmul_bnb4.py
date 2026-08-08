@@ -10,10 +10,10 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count
 
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 from onnxruntime.quantization import quant_utils
 
 quant_maps = {

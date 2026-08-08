@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import onnx
+
+from onnxruntime._onnx_shim import onnx
 
 from ...calibrate import CalibrationDataReader, CalibrationMethod
 from ...quant_utils import QuantType

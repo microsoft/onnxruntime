@@ -8,7 +8,6 @@ import os
 import tempfile
 import unittest
 
-import onnx
 from conformer_model_generator import (
     create_conformer_attention,
     create_conformer_attention_no_add_kv,
@@ -16,6 +15,8 @@ from conformer_model_generator import (
     create_conformer_attention_simple_bias,
 )
 from parity_utilities import find_transformers_source
+
+from onnxruntime._onnx_shim import onnx
 
 if find_transformers_source():
     from fusion_options import FusionOptions

@@ -155,6 +155,8 @@ option(onnxruntime_GCOV_COVERAGE "Compile with options necessary to run code cov
 option(onnxruntime_DONT_VECTORIZE "Do not vectorize operations in Eigen" OFF)
 
 option(onnxruntime_USE_FULL_PROTOBUF "Link to libprotobuf instead of libprotobuf-lite when this option is ON" OFF)
+option(onnxruntime_USE_ONNX_LIGHT "Replace the upstream onnx dependency with onnx-light (drop-in onnx/onnx_proto targets, no protobuf codegen)." OFF)
+set(onnxruntime_ONNX_LIGHT_SOURCE_DIR "" CACHE PATH "Path to a local onnx-light source tree (overrides the pinned archive when onnxruntime_USE_ONNX_LIGHT is ON).")
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump debug information about node inputs and outputs when executing the model." OFF)
 option(onnxruntime_DUMP_TENSOR "Dump tensor inside kernel." OFF)
 cmake_dependent_option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB "Build dump debug information about node inputs and outputs with support for sql database." OFF "onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS" OFF)
@@ -1149,6 +1151,17 @@ function(onnxruntime_set_compile_flags target_name)
     endif()
 
     set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
+    if (onnxruntime_USE_ONNX_LIGHT)
+      # onnx-light headers trigger -Wreorder and -Wsign-compare warnings.
+      # Some ORT code has narrowing conversions (size_t -> int64_t) that only
+      # surface when onnx-light field types differ from protobuf. Suppress them.
+      # onnx-light's optional-field wrapper types (e.g. TensorShapeProto::Dimension's
+      # OptionalString) also trigger GCC's -Wmaybe-uninitialized false positive on some
+      # GCC versions (e.g. 13.x) when a local instance is default-constructed and
+      # conditionally populated before use; the existing "GCC < 13" workaround below
+      # doesn't cover this, so suppress it here too.
+      target_compile_options(${target_name} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder;-Wno-sign-compare;-Wno-narrowing;-Wno-switch;-Wno-maybe-uninitialized>")
+    endif()
     if (onnxruntime_USE_CUDA)
       # Suppress a "conversion_function_not_usable" warning in gsl/span
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe \"--diag_suppress=conversion_function_not_usable\">")
@@ -1906,6 +1919,31 @@ else()
   set(PROJECT_CONFIG_CONTENT "@PACKAGE_INIT@\n")
 
   if (NOT onnxruntime_BUILD_SHARED_LIB)
+  if(onnxruntime_USE_ONNX_LIGHT)
+    # onnx-light targets are exported directly in onnxruntimeTargets; the
+    # consumer only needs the non-onnx/non-protobuf find_dependency calls.
+    string(APPEND PROJECT_CONFIG_CONTENT
+        "include(CMakeFindDependencyMacro)\n\
+        find_dependency(absl)\n\
+        find_dependency(date)\n\
+        find_dependency(Eigen3)\n\
+        find_dependency(nlohmann_json)\n\
+        find_dependency(re2)\n\
+        find_dependency(flatbuffers)\n\
+        find_dependency(cpuinfo)\n\
+        find_dependency(Boost COMPONENTS mp11)\n\
+        find_dependency(Microsoft.GSL 4.0)\n\
+        if(NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL \"Android\")\n\
+        find_dependency(Iconv)\n\
+        endif()\n\
+        if(WIN32)\n\
+        find_dependency(wil)\n\
+        endif()\n\
+        find_path(safeint_SOURCE_DIR NAMES \"SafeInt.hpp\" REQUIRED)\n\
+        add_library(safeint_interface IMPORTED INTERFACE)\n\
+        target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})\n\
+        ")
+  else()
   string(APPEND PROJECT_CONFIG_CONTENT
         "include(CMakeFindDependencyMacro)\n\
         find_dependency(absl)\n\
@@ -1929,6 +1967,7 @@ else()
         add_library(safeint_interface IMPORTED INTERFACE)\n\
         target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})\n\
         ")
+  endif()
     if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND onnxruntime_USE_VCPKG)
       string(APPEND PROJECT_CONFIG_CONTENT
         "find_dependency(MSTelemetry CONFIG)\n\

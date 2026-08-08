@@ -412,7 +412,7 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& init
       ORT_RETURN_IF_ERROR(GetSizeInBytesFromFbsTensor(fbs_tensor, num_bytes));
 
       // pre-allocate so we can write directly to the string buffer
-      std::string& raw_data = *initializer.mutable_raw_data();
+      auto& raw_data = *initializer.mutable_raw_data();
       raw_data.resize(num_bytes);
       auto output_buffer = gsl::make_span<uint8_t>(reinterpret_cast<uint8_t*>(raw_data.data()), num_bytes);
 

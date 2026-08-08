@@ -10,9 +10,9 @@ from time import perf_counter
 
 import numpy
 import torch
-from onnx import TensorProto, helper
 
 from onnxruntime import InferenceSession
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 from onnxruntime.transformers.io_binding_helper import CudaSession
 
 torch.manual_seed(0)

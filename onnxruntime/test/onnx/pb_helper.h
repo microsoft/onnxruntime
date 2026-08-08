@@ -38,17 +38,54 @@
 #pragma GCC diagnostic ignored "-Wshorten-64-to-32"
 #endif
 #endif
-#include <google/protobuf/message_lite.h>
+#if defined(ORT_USE_ONNX_LIGHT)
+#include <onnx_proto/google_protobuf_compat.h>
+#include <onnx_lib/common/onnx_pb.h>
+#include <onnx_lib/onnx-data.pb.h>
+#include <cstdint>
+#include <onnx_proto/tml.h>
+namespace onnxruntime {
+namespace proto {
+using ONNX_LIGHT_NAMESPACE::proto::MapInt64ToDouble;
+using ONNX_LIGHT_NAMESPACE::proto::MapInt64ToFloat;
+using ONNX_LIGHT_NAMESPACE::proto::MapInt64ToInt64;
+using ONNX_LIGHT_NAMESPACE::proto::MapInt64ToString;
+using ONNX_LIGHT_NAMESPACE::proto::MapStringToDouble;
+using ONNX_LIGHT_NAMESPACE::proto::MapStringToFloat;
+using ONNX_LIGHT_NAMESPACE::proto::MapStringToInt64;
+using ONNX_LIGHT_NAMESPACE::proto::MapStringToString;
+using ONNX_LIGHT_NAMESPACE::proto::TraditionalMLData;
+using ONNX_LIGHT_NAMESPACE::proto::VectorMapInt64ToFloat;
+using ONNX_LIGHT_NAMESPACE::proto::VectorMapStringToFloat;
+}  // namespace proto
+}  // namespace onnxruntime
+#else
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <onnx/onnx_pb.h>
 #include <onnx/onnx-data.pb.h>
+#include <google/protobuf/message_lite.h>
 #include "tml.pb.h"
+#endif
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
 namespace onnxruntime {
-bool ParseDelimitedFromCodedStream(google::protobuf::MessageLite* message,
+template <typename Msg>
+bool ParseDelimitedFromCodedStream(Msg* message,
                                    google::protobuf::io::CodedInputStream* input,
-                                   bool* clean_eof);
+                                   bool* clean_eof) {
+  if (clean_eof != nullptr) *clean_eof = false;
+  int start = input->CurrentPosition();
+
+  uint32_t size;
+  if (!input->ReadVarint32(&size)) {
+    if (clean_eof != nullptr) *clean_eof = input->CurrentPosition() == start;
+    return false;
+  }
+
+  std::string buf(static_cast<size_t>(size), '\0');
+  if (!input->ReadRaw(buf.data(), static_cast<int>(size))) return false;
+  return message->ParseFromArray(buf.data(), static_cast<int>(size));
 }
+}  // namespace onnxruntime

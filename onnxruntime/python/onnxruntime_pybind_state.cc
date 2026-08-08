@@ -2753,7 +2753,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
               if (utils::HasDimValue(shape->dim(i))) {
                 arr[i] = py::cast(shape->dim(i).dim_value());
               } else if (utils::HasDimParam(shape->dim(i))) {
-                arr[i] = py::cast(shape->dim(i).dim_param());
+                // Explicitly go through std::string: with onnx-light, dim_param() returns
+                // utils::OptionalString, and py::cast() deduces its argument's declared type
+                // (rather than following the type's implicit conversion operator), so pybind11
+                // would otherwise look for (and fail to find) a type_caster<OptionalString>.
+                arr[i] = py::cast(static_cast<const std::string &>(shape->dim(i).dim_param()));
               } else {
                 arr[i] = py::none();
               }

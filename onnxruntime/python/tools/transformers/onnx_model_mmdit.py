@@ -10,8 +10,9 @@ from fusion_mha_dit import FusionMultiHeadAttentionDiT
 from fusion_mha_mmdit import FusionMultiHeadAttentionMMDit
 from fusion_options import FusionOptions
 from import_utils import is_installed
-from onnx import ModelProto
 from onnx_model_bert import BertOnnxModel
+
+from onnxruntime._onnx_shim.onnx import ModelProto
 
 logger = logging.getLogger(__name__)
 

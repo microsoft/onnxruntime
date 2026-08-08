@@ -17,10 +17,10 @@ from enum import Enum
 from pathlib import Path
 
 import numpy as np
-import onnx
-from onnx import ModelProto, TensorProto, helper, numpy_helper
 
 import onnxruntime
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import ModelProto, TensorProto, helper, numpy_helper
 
 from .quant_utils import apply_plot, load_model_with_shape_infer, smooth_distribution
 

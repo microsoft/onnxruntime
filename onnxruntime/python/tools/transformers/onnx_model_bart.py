@@ -8,9 +8,10 @@ from fusion_attention import AttentionMask
 from fusion_bart_attention import FusionBartAttention
 from fusion_options import FusionOptions
 from fusion_reshape import FusionReshape
-from onnx import numpy_helper
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
+
+from onnxruntime._onnx_shim.onnx import numpy_helper
 
 logger = logging.getLogger(__name__)
 

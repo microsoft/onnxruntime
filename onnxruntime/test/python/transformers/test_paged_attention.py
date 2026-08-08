@@ -17,11 +17,11 @@ import unittest
 import numpy
 import torch
 from einops import rearrange, repeat
-from onnx import TensorProto, helper
 from packaging import version
 from parameterized import parameterized
 
 from onnxruntime import InferenceSession, OrtValue, SessionOptions, get_available_providers
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 torch.manual_seed(0)
 

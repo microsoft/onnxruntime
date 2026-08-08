@@ -19,6 +19,7 @@
 
 #include "core/common/path_utils.h"
 #include "core/framework/tensorprotoutils.h"
+#include <google/protobuf/io/zero_copy_stream_impl.h>
 #include "core/platform/env.h"
 #include "core/platform/env_var_utils.h"
 
@@ -173,8 +174,9 @@ void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, cons
   int output_fd;
   ORT_THROW_IF_ERROR(Env::Default().FileOpenWr(file_path_str, output_fd));
   try {
+    google::protobuf::io::FileOutputStream output(output_fd);
     ORT_ENFORCE(
-        tensor_proto.SerializeToFileDescriptor(output_fd),
+        tensor_proto.SerializeToZeroCopyStream(&output) && output.Flush(),
         "Failed to write tensor to file - tensor: ", tensor_name, ", file: ", ToUTF8String(file_path_str));
   } catch (...) {
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(output_fd));

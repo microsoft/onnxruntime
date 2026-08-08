@@ -185,7 +185,7 @@ template <typename EnabledOutputTypeList = ConstantOfShapeDefaultOutputTypes>
 class ConstantOfShapeBase : public ConstantOfShapeCore {
  protected:
   ConstantOfShapeBase(const OpKernelInfo& info) {
-#ifndef SHARED_PROVIDER
+#if !defined(SHARED_PROVIDER) || defined(ORT_USE_ONNX_LIGHT)
     ONNX_NAMESPACE::TensorProto t_proto;
     auto* t_proto_p = &t_proto;
 #else

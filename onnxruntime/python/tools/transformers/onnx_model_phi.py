@@ -11,8 +11,9 @@ from fusion_base import Fusion
 from fusion_options import AttentionOpType, FusionOptions
 from fusion_skiplayernorm import FusionBiasSkipLayerNormalization, FusionSkipLayerNormalization
 from fusion_utils import NumpyHelper
-from onnx import ModelProto, NodeProto, TensorProto, helper, numpy_helper
 from onnx_model import OnnxModel
+
+from onnxruntime._onnx_shim.onnx import ModelProto, NodeProto, TensorProto, helper, numpy_helper
 
 logger = getLogger(__name__)
 

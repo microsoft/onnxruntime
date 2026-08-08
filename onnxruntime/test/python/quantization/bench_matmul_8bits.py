@@ -14,9 +14,9 @@ import statistics
 from datetime import datetime
 
 import torch
-from onnx import TensorProto, helper
 
 from onnxruntime import InferenceSession, SessionOptions, get_available_providers
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 from onnxruntime.transformers.io_binding_helper import CudaSession
 
 
