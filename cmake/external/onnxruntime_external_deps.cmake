@@ -1070,6 +1070,16 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
           SQLITE_DEFAULT_FOREIGN_KEYS=0
         )
       endif()
+      foreach(_ort_bundled_dep sqlite3_bundled zlib_bundled)
+        if(TARGET ${_ort_bundled_dep})
+          get_target_property(_ort_bundled_inc
+            ${_ort_bundled_dep} INTERFACE_INCLUDE_DIRECTORIES)
+          if(_ort_bundled_inc)
+            set_target_properties(${_ort_bundled_dep} PROPERTIES
+              INTERFACE_INCLUDE_DIRECTORIES "$<BUILD_INTERFACE:${_ort_bundled_inc}>")
+          endif()
+        endif()
+      endforeach()
       # ORT enables -ffast-math globally, which conflicts with
       # std::numeric_limits<double>::infinity() in the 1DS SDK's bundled nlohmann/json.hpp.
       # Also suppress warnings in the 1DS SDK code that ORT treats as errors.
