@@ -156,10 +156,9 @@ using PyCallback = std::function<void(std::vector<py::object>, py::object user_d
 // never released during static destruction / module unload, which can run after the Python
 // interpreter has been finalized (a DECREF at that point can crash).  The reference is
 // intentionally leaked at process shutdown, mirroring how the global OrtEnv (ort_env) is
-// handled.  All INCREF/DECREF on this pointer happen while the GIL is held.  Protected by
-// g_logging_mutex.
-static PyObject* g_user_logging_callback = nullptr;
-static std::mutex g_logging_mutex;
+// handled.  All INCREF/DECREF on this pointer happen while the GIL is held.  The atomic
+// pointer provides the lock-free presence check used by logging threads.
+static std::atomic<PyObject*> g_user_logging_callback{nullptr};
 
 // A logging sink that can dynamically switch between a Python callable and the platform
 // default sink (e.g., stderr on Linux/macOS, OutputDebugString on Windows).
@@ -180,32 +179,38 @@ class PythonCallbackSink : public onnxruntime::logging::ISink {
   void SetCallback(py::object callback) {
     // The caller (the Python-exposed set_default_logger_callback) already holds the GIL, so
     // it is safe to mutate Python refcounts here.  Steal the reference out of the py::object
-    // so ownership transfers to the global, swap it under the mutex, then release the old
+    // so ownership transfers to the global, swap it atomically, then release the old
     // reference while the GIL is still held.
     PyObject* new_ref = callback.release().ptr();
-    PyObject* old_ref = nullptr;
-    {
-      std::lock_guard<std::mutex> lock(g_logging_mutex);
-      old_ref = g_user_logging_callback;
-      g_user_logging_callback = new_ref;
-    }
+    PyObject* old_ref = g_user_logging_callback.exchange(new_ref, std::memory_order_relaxed);
     Py_XDECREF(old_ref);
+  }
+
+  void SendProfileEvent(profiling::EventRecord& event_record) const override {
+    platform_sink_->SendProfileEvent(event_record);
   }
 
   void SendImpl(const onnxruntime::logging::Timestamp& timestamp, const std::string& logger_id,
                 const onnxruntime::logging::Capture& message) override {
     // Cheap pre-check: comparing the stored raw pointer against nullptr / Py_None does not
-    // touch Python refcounts, so it is safe to do under the mutex alone without the GIL.  This
+    // touch Python refcounts, so it is safe to do without the GIL.  This
     // lets us avoid acquiring the GIL on the common path where no Python callback is installed.
     // A null pointer is treated the same as Py_None (no callback installed).
-    bool has_callback;
-    {
-      std::lock_guard<std::mutex> lock(g_logging_mutex);
-      has_callback = g_user_logging_callback != nullptr && g_user_logging_callback != Py_None;
+    if (!Py_IsInitialized()) {
+      platform_sink_->Send(timestamp, logger_id, message);
+      return;
     }
-    if (!has_callback) {
-      // No Python callback installed: delegate to the platform sink (outside the lock to
-      // avoid holding it during potentially blocking I/O).
+
+    static thread_local bool in_callback = false;
+    if (in_callback) {
+      platform_sink_->Send(timestamp, logger_id, message);
+      return;
+    }
+
+    const auto has_callback = [](PyObject* callback) {
+      return callback != nullptr && callback != Py_None;
+    };
+    if (!has_callback(g_user_logging_callback.load(std::memory_order_relaxed))) {
       platform_sink_->Send(timestamp, logger_id, message);
       return;
     }
@@ -220,36 +225,33 @@ class PythonCallbackSink : public onnxruntime::logging::ISink {
     // (Py_INCREF) and destroying the local copy (Py_DECREF) must both happen while the GIL is
     // held, otherwise we would mutate Python refcounts from a non-Python worker thread
     // (undefined behavior).  py::gil_scoped_acquire is reentrant, so this is safe even when the
-    // current thread already holds the GIL.  The refcount-free pre-check above runs under the
-    // mutex alone; whenever both locks are held the order is GIL -> g_logging_mutex (SetCallback
-    // uses the same order), so there is no deadlock.
+    // current thread already holds the GIL.  The callback is reloaded after acquiring the GIL
+    // so that its reference can be safely borrowed while the Python thread cannot replace it.
     py::gil_scoped_acquire acquire;
 
-    // Re-read the callback under the lock now that the GIL is held.  It may have been cleared
-    // between the pre-check and here; if so, fall back to the platform sink.  reinterpret_borrow
-    // performs the Py_INCREF while the GIL is held.
+    // Re-read the callback now that the GIL is held. It may have been cleared between the
+    // pre-check and here; if so, fall back to the platform sink. reinterpret_borrow performs
+    // the Py_INCREF while the GIL is held.
     py::object cb;
-    {
-      std::lock_guard<std::mutex> lock(g_logging_mutex);
-      if (g_user_logging_callback != nullptr && g_user_logging_callback != Py_None) {
-        cb = py::reinterpret_borrow<py::object>(g_user_logging_callback);
-      }
+    PyObject* callback = g_user_logging_callback.load(std::memory_order_relaxed);
+    if (has_callback(callback)) {
+      cb = py::reinterpret_borrow<py::object>(callback);
     }
     if (!cb) {
       platform_sink_->Send(timestamp, logger_id, message);
       return;
     }
 
+    in_callback = true;
     try {
       cb(severity, category, logger_id, code_location, msg);
-    } catch (const py::error_already_set&) {
-      // If the Python callback raises, fall back to the platform sink so ORT log messages are
-      // not silently lost.  Avoid recursive calls to the logger here.
+    } catch (const py::error_already_set& error) {
+      const_cast<py::error_already_set&>(error).discard_as_unraisable(cb);
       platform_sink_->Send(timestamp, logger_id, message);
     } catch (...) {
-      // Any other C++ exception: best effort, ignore and delegate to platform sink.
       platform_sink_->Send(timestamp, logger_id, message);
     }
+    in_callback = false;
   }
 
  private:
@@ -265,8 +267,8 @@ static PythonCallbackSink* g_python_callback_sink = nullptr;
 // pointer to it in g_python_callback_sink so that set_default_logger_callback() can update
 // the Python callable later.  ("Register" here refers to storing that pointer for future
 // updates, not to any logging-system registration.)
-std::unique_ptr<onnxruntime::logging::ISink> CreateAndRegisterPythonCallbackSink(
-    std::unique_ptr<onnxruntime::logging::ISink> platform_sink) {
+std::unique_ptr<onnxruntime::logging::ISink> CreatePythonCallbackSink() {
+  auto platform_sink = MakePlatformDefaultLogSink();
   auto sink = std::make_unique<PythonCallbackSink>(std::move(platform_sink));
   g_python_callback_sink = sink.get();
   // Initialize the global callback to Py_None so the "no callback installed" fast path in
@@ -274,9 +276,8 @@ std::unique_ptr<onnxruntime::logging::ISink> CreateAndRegisterPythonCallbackSink
   // which is treated the same as Py_None.  This runs at module import time while the GIL is
   // held, so touching Python objects / refcounts here is safe.
   {
-    std::lock_guard<std::mutex> lock(g_logging_mutex);
     Py_INCREF(Py_None);
-    g_user_logging_callback = Py_None;
+    g_user_logging_callback.store(Py_None, std::memory_order_relaxed);
   }
   return sink;
 }
@@ -297,21 +298,6 @@ std::unique_ptr<onnxruntime::logging::ISink> CreateAndRegisterPythonCallbackSink
 //      logging.cc) to nullptr, allowing a new Default-type manager to be constructed.  If that
 //      implementation detail ever changes, this sequence will need to be revisited.
 //   3. Construct and install a new LoggingManager backed by the PythonCallbackSink.
-void InstallPythonCallbackLoggingSink(OrtEnv& ort_env) {
-  using namespace onnxruntime::logging;
-  auto python_sink = CreateAndRegisterPythonCallbackSink(MakePlatformDefaultLogSink());
-  constexpr auto kDefaultSeverity = Severity::kWARNING;
-  auto etw_severity = OverrideLevelWithEtw(kDefaultSeverity);
-  auto combined_sink = EnhanceSinkWithEtw(std::move(python_sink), kDefaultSeverity, etw_severity);
-  std::string logger_id{"Default"};
-  ort_env.SetLoggingManager(nullptr);  // Destroys the old Default-type LoggingManager.
-  ort_env.SetLoggingManager(std::make_unique<LoggingManager>(
-      std::move(combined_sink),
-      std::min(kDefaultSeverity, etw_severity),
-      false,
-      LoggingManager::InstanceType::Default,
-      &logger_id));
-}
 
 struct AsyncResource {
   std::vector<OrtValue> feeds;
@@ -3028,6 +3014,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                                const std::vector<std::string>& provider_types = {},
                                const ProviderOptionsVector& provider_options = {},
                                const std::unordered_set<std::string>& disabled_optimizer_names = {}) {
+            py::gil_scoped_release release;
             // If the user did not explicitly specify providers when creating InferenceSession and the SessionOptions
             // has provider information (i.e., either explicit EPs or an EP selection policy), then use the information
             // in the session options to initialize the session.

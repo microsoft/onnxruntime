@@ -271,6 +271,8 @@ class TestInferenceSession(unittest.TestCase):
     def test_set_default_logger_callback(self):
         # Verify that set_default_logger_callback is exposed in the onnxruntime namespace.
         self.assertTrue(callable(onnxrt.set_default_logger_callback))
+        self.addCleanup(onnxrt.set_default_logger_severity, 2)
+        self.addCleanup(onnxrt.set_default_logger_callback, None)
 
         # Setting a Python callable should succeed.
         messages = []
@@ -283,7 +285,7 @@ class TestInferenceSession(unittest.TestCase):
         # Running inference while the callback is active should not crash.
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
-        # mul_1.onnx has a single input "X" and output "Y" (Y = X * [[1,2],[3,4],[5,6]]).
+        # mul_1.onnx squares its input.
         (res,) = sess.run(["Y"], {"X": x})
         np.testing.assert_allclose(res, x * x)
 
