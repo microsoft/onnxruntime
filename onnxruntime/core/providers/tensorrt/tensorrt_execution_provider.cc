@@ -2393,7 +2393,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log_);
         auto trt_builder = GetBuilder(trt_logger);
         auto network_flags = 0;
-#if NV_TENSORRT_VERSION >= 11
+#if NV_TENSORRT_MAJOR >= 11
         network_flags |= 0;
 #elif NV_TENSORRT_MAJOR > 8
         network_flags |= (fp16_enable_ || int8_enable_ || bf16_enable_) ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
@@ -3150,7 +3150,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log_);
   auto trt_builder = GetBuilder(trt_logger);
   auto network_flags = 0;
-#if NV_TENSORRT_VERSION >= 11
+#if NV_TENSORRT_MAJOR >= 11
   network_flags |= 0;
 #elif NV_TENSORRT_MAJOR > 8
   network_flags |= (fp16_enable_ || int8_enable_ || bf16_enable_) ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
