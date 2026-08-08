@@ -143,13 +143,13 @@ __global__ void LightningIndexerReduceKernel(const LightningIndexerParams p,
   __syncthreads();
 
   const int c = blockIdx.x * blockDim.x + threadIdx.x;
-  if (c >= p.capacity) return;
-  const float* e = score + token * p.num_heads * p.capacity + c;
+  if (c >= p.score_capacity) return;
+  const float* e = score + token * p.num_heads * p.score_capacity + c;
   float acc = 0.0f;
   for (int h = 0; h < p.num_heads; ++h) {
-    acc += fmaxf(e[static_cast<int64_t>(h) * p.capacity], 0.0f) * s_w[h];
+    acc += fmaxf(e[static_cast<int64_t>(h) * p.score_capacity], 0.0f) * s_w[h];
   }
-  keys[token * p.capacity + c] = FloatToKey(acc);
+  keys[token * p.score_capacity + c] = FloatToKey(acc);
 }
 
 // Keep the `topk` best-scoring rows a query is allowed to see.
@@ -176,8 +176,10 @@ __global__ void LightningIndexerSelectKernel(const LightningIndexerParams p,
   const int64_t token = static_cast<int64_t>(b) * p.seq_len + s;
   int64_t* out = selection + token * p.topk;
 
-  int64_t visible = (past_lens[b] + s + 1) / p.ratio;
-  if (visible > p.capacity) visible = p.capacity;
+  int64_t visible = LightningIndexerVisibleRows(past_lens[b], s, p.ratio);
+  // `score_capacity` is the launcher's upper bound over every query in this step, so this
+  // clamp only ever binds when the bound is exact.
+  if (visible > p.score_capacity) visible = p.score_capacity;
   const int n_vis = static_cast<int>(visible);
 
   if (n_vis <= p.topk) {
@@ -187,7 +189,7 @@ __global__ void LightningIndexerSelectKernel(const LightningIndexerParams p,
     return;
   }
 
-  const uint32_t* key = keys + token * p.capacity;
+  const uint32_t* key = keys + token * p.score_capacity;
 
   // Narrow one byte at a time onto the k-th largest key.
   uint32_t prefix = 0;
@@ -275,18 +277,21 @@ Status LaunchLightningIndexer(cudaStream_t stream, cublasHandle_t cublas,
           p, reinterpret_cast<const CudaT*>(query), cos_table, sin_table, query_scratch);
 
   // score[b, s, h, c] = sum_d q[b, s, h, d] * cache[b, c, d]. Both operands sit on the FP4
-  // grid with a power-of-two scale, so every product is exact even under TF32.
+  // grid with a power-of-two scale, so every product is exact even under TF32.  Only the
+  // first `score_capacity` cache rows are scored; the rest cannot reach any query's
+  // selection, and on a long-context export they are the overwhelming majority.
   const float one = 1.0f;
   const float zero = 0.0f;
   const int rows_per_batch = p.seq_len * p.num_heads;
   CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
-      cublas, CUBLAS_OP_T, CUBLAS_OP_N, p.capacity, rows_per_batch, p.head_dim, &one,
+      cublas, CUBLAS_OP_T, CUBLAS_OP_N, p.score_capacity, rows_per_batch, p.head_dim, &one,
       cache_scratch, p.head_dim, static_cast<int64_t>(p.capacity) * p.head_dim,
       query_scratch, p.head_dim, static_cast<int64_t>(rows_per_batch) * p.head_dim, &zero,
-      score_scratch, p.capacity, static_cast<int64_t>(rows_per_batch) * p.capacity,
+      score_scratch, p.score_capacity,
+      static_cast<int64_t>(rows_per_batch) * p.score_capacity,
       p.batch, prop, use_tf32));
 
-  const int score_blocks = (p.capacity + kThreads - 1) / kThreads;
+  const int score_blocks = (p.score_capacity + kThreads - 1) / kThreads;
   LightningIndexerReduceKernel<CudaT>
       <<<dim3(score_blocks, p.seq_len, p.batch), kThreads, p.num_heads * sizeof(float),
          stream>>>(p, score_scratch, reinterpret_cast<const CudaT*>(weights), key_scratch);

@@ -3,7 +3,10 @@
 
 #include "contrib_ops/cuda/math/lightning_indexer.h"
 
+#include <algorithm>
+
 #include "contrib_ops/cuda/math/lightning_indexer_impl.h"
+#include "core/common/inlined_containers.h"
 #include "core/providers/cuda/cuda_common.h"
 
 using namespace onnxruntime::cuda;
@@ -11,6 +14,63 @@ using namespace onnxruntime::cuda;
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+namespace {
+
+// Smallest scoring extent worth clamping to.  Below this the GEMM is small either way, and
+// a floor keeps cuBLAS from re-picking a kernel for every slightly different `m`.
+constexpr int64_t kMinScoreRows = 256;
+
+// Narrow the scoring GEMM to the cache rows this step can actually reach.
+//
+// `capacity` is `max_seq_len / ratio`, fixed at export time, while the rows that hold live
+// data grow with the sequence.  On a 256K-capable export serving a 4K prompt fewer than 1%
+// of them are live, and the select kernel throws the rest away, so scoring them is pure
+// loss -- and it is the single largest kernel in prefill.
+//
+// The bound has to reach the host because cuBLAS takes `m` there, and `past_lens` lives on
+// the device.  One synchronised copy per node buys back two orders of magnitude of GEMM, so
+// the trade is heavily favourable, but it is only legal outside graph capture: a captured
+// launch would freeze whatever bound held at capture time and then replay it against a
+// longer sequence.  While capturing, leave the full capacity in place.  A step that is
+// replayed from a captured graph therefore keeps the unclamped cost -- on DeepSeek-V4-Flash
+// that is batch-1 speculative decode, while prefill and batch-8 decode both execute the
+// kernel and do get the clamp.
+Status ClampScoreCapacity(OpKernelContext* context, const Tensor& past_lens,
+                          LightningIndexerParams& params) {
+  cudaStream_t stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
+  cudaStreamCaptureStatus capture = cudaStreamCaptureStatusNone;
+  CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture));
+  if (capture != cudaStreamCaptureStatusNone) {
+    return Status::OK();
+  }
+
+  const int batch = params.batch;
+  InlinedVector<int64_t> lens(static_cast<size_t>(batch));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(lens.data(), past_lens.Data<int64_t>(),
+                                       sizeof(int64_t) * batch, cudaMemcpyDeviceToHost,
+                                       stream));
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+
+  int64_t longest = 0;
+  for (int b = 0; b < batch; ++b) {
+    longest = std::max(longest, lens[b]);
+  }
+  // The last query of the step sees the most, and one spare row keeps the bound safe
+  // against any rounding in the select kernel's own arithmetic.
+  int64_t needed =
+      LightningIndexerVisibleRows(longest, params.seq_len - 1, params.ratio) + 1;
+
+  // Round up to a power of two so that a prefill, whose bound creeps up by a few rows on
+  // every chunk, presents cuBLAS with a handful of distinct `m` values rather than one per
+  // chunk.  Costs at most 2x the minimum work and never exceeds the capacity.
+  int64_t rounded = kMinScoreRows;
+  while (rounded < needed) rounded <<= 1;
+
+  params.score_capacity = static_cast<int>(std::clamp<int64_t>(rounded, 1, params.capacity));
+  return Status::OK();
+}
+
+}  // namespace
 
 #define REGISTER_KERNEL_TYPED(T)                                        \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
@@ -129,11 +189,14 @@ Status LightningIndexer<T>::ComputeInternal(OpKernelContext* context) const {
   params.nope_dim = static_cast<int>(head_dim_ - rope_head_dim_);
   params.num_rows = static_cast<int>(num_rows);
   params.capacity = static_cast<int>(capacity);
+  params.score_capacity = static_cast<int>(capacity);
   params.ratio = static_cast<int>(ratio_);
   params.topk = static_cast<int>(topk_);
   params.max_seq_len = static_cast<int>(max_seq_len_);
   params.scale = scale_;
   params.rotate_fp4 = rotate_fp4_;
+
+  ORT_RETURN_IF_ERROR(ClampScoreCapacity(context, *past_lens, params));
 
   auto query_scratch = GetScratchBuffer<float>(
       static_cast<size_t>(LightningIndexerQueryElems(params)), context->GetComputeStream());

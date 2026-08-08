@@ -24,6 +24,12 @@ struct LightningIndexerParams {
   int nope_dim;       // HD - rd
   int num_rows;       // J, candidate rows the compressor produced this step
   int capacity;       // C, rows in the dense indexer cache
+  // Rows of that cache any query in this step can actually see, so the scoring GEMM and
+  // everything downstream of it stop there.  The select kernel discards rows above a
+  // query's own `visible` anyway, so this only removes work, never an input.  Equal to
+  // `capacity` whenever the bound is unknown -- notably while a CUDA graph is being
+  // captured, since a replay would otherwise reuse a bound taken at capture time.
+  int score_capacity;
   int ratio;          // tokens per compressed row
   int topk;           // k, the width of the selection
   int max_seq_len;    // L, the logical offset that marks a compressed row
@@ -38,11 +44,29 @@ inline int64_t LightningIndexerQueryElems(const LightningIndexerParams& p) {
 inline int64_t LightningIndexerCacheElems(const LightningIndexerParams& p) {
   return static_cast<int64_t>(p.batch) * p.capacity * p.head_dim;
 }
+// Sized by `capacity` rather than `score_capacity` on purpose: only a prefix is ever
+// touched, but the buffers have to be allocated at their largest so that a step which
+// declines to clamp -- graph capture -- finds them already resident.  Allocating inside
+// stream capture is illegal, and sizing these to the live rows would leave the full-size
+// request to happen for the first time during the capturing run.
 inline int64_t LightningIndexerScoreElems(const LightningIndexerParams& p) {
   return static_cast<int64_t>(p.batch) * p.seq_len * p.num_heads * p.capacity;
 }
 inline int64_t LightningIndexerKeyElems(const LightningIndexerParams& p) {
   return static_cast<int64_t>(p.batch) * p.seq_len * p.capacity;
+}
+
+// Rows of the cache a query at offset `s` of this step is allowed to see.  The launcher
+// needs the largest of these on the host to size the GEMM; the select kernel applies the
+// exact per-query value.
+#if defined(__CUDACC__)
+__host__ __device__ __forceinline__
+#else
+inline
+#endif
+    int64_t
+    LightningIndexerVisibleRows(int64_t past_len, int64_t s, int64_t ratio) {
+  return (past_len + s + 1) / ratio;
 }
 
 // Shared floats the query kernel needs: the row, a copy of its rotary slice, and one scale
