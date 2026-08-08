@@ -970,6 +970,11 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     set(MATSDK_CURL_TLS_BACKEND MBEDTLS CACHE STRING "Use mbedTLS for 1DS curl" FORCE)
     set(MATSDK_SQLITE_PROVIDER VENDORED CACHE STRING "Use bundled 1DS SQLite" FORCE)
     set(MATSDK_ZLIB_PROVIDER VENDORED CACHE STRING "Use bundled 1DS zlib" FORCE)
+    # The pinned stable SDK selects its vendored sqlite3/zlib through this legacy flag, which ORT's
+    # patch also honors. Without it the patched Apple fallback links the system sqlite3/z names, and
+    # iOS consumers fail to link because there is no SQLite3 framework in the iOS SDK.
+    set(MATSDK_BUNDLE_VENDORED_DEPS ON)
+    set(MATSDK_BUNDLE_VENDORED_DEPS ON CACHE BOOL "Build the 1DS SDK's vendored sqlite3 and zlib" FORCE)
     # BUILD_SHARED_LIBS is a global that ORT's own targets read after this block, and the SDK selects
     # mat's library type from it (lib/CMakeLists.txt). Save it, force static for the SDK, restore below.
     set(BUILD_SHARED_LIBS_SAVED "${BUILD_SHARED_LIBS}")
