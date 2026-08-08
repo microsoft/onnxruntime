@@ -1929,18 +1929,27 @@ else()
         add_library(safeint_interface IMPORTED INTERFACE)\n\
         target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})\n\
         ")
-    if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND onnxruntime_USE_VCPKG)
+    if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE)
       string(APPEND PROJECT_CONFIG_CONTENT
         "find_dependency(MSTelemetry CONFIG)\n\
         ")
     endif()
-    if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND NOT APPLE AND NOT onnxruntime_USE_VCPKG AND NOT onnxruntime_BUILD_SHARED_LIB)
-      # FetchContent static non-Apple telemetry ships mat plus bundled sqlite3/zlib archives in this
-      # package, but mat still links system libcurl and pthreads; the consumer must re-find them.
-      string(APPEND PROJECT_CONFIG_CONTENT
-        "find_dependency(CURL)\n\
-        find_dependency(Threads)\n\
-        ")
+    if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND NOT APPLE
+       AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
+       AND NOT onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE
+       AND NOT onnxruntime_BUILD_SHARED_LIB)
+      if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        # The embedded curl archive uses the platform Threads target for its resolver.
+        string(APPEND PROJECT_CONFIG_CONTENT
+          "find_dependency(Threads)\n\
+          ")
+      else()
+        # Preserve the legacy dependency graph for any explicitly enabled non-Linux Unix target.
+        string(APPEND PROJECT_CONFIG_CONTENT
+          "find_dependency(CURL)\n\
+          find_dependency(Threads)\n\
+          ")
+      endif()
     endif()
   endif()
 
