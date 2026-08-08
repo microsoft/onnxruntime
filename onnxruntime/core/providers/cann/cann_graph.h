@@ -8,6 +8,9 @@
 #include <utility>
 #include <iomanip>
 #include <string>
+#include <exception>
+#include <future>
+#include <thread>
 
 #include "core/providers/cann/cann_common.h"
 #include "core/providers/cann/cann_inc.h"
@@ -16,6 +19,21 @@
 
 namespace onnxruntime {
 namespace cann {
+
+struct GeState {
+  GeState()
+      : future_init(promise_init.get_future().share()), ex_ptr_init(nullptr), future_final(promise_final.get_future()), ex_ptr_final(nullptr) {}
+
+  std::thread thread;
+
+  std::promise<void> promise_init;
+  std::shared_future<void> future_init;
+  std::exception_ptr ex_ptr_init;
+
+  std::promise<void> promise_final;
+  std::future<void> future_final;
+  std::exception_ptr ex_ptr_final;
+};
 
 struct CannModelPreparation {
   explicit CannModelPreparation(uint32_t modelID) {
