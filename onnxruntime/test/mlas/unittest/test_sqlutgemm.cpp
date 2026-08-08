@@ -378,6 +378,11 @@ class SQLutGemmShortExecuteTest : public MlasTestFixture<MlasSQLutGemmTest<BlkBi
 
         count += RegisterSingleTest(1, 128, 128, with_threadpool, symmetric);
         count += RegisterSingleTest(1, 1024, 1024, with_threadpool, symmetric);
+
+        // Test N values that require bm=128 (N not divisible by 128 but divisible by 64)
+        count += RegisterSingleTest(1, 192, 1024, with_threadpool, symmetric);
+        count += RegisterSingleTest(1, 192, 64, with_threadpool, symmetric);
+        count += RegisterSingleTest(1, 64, 64, with_threadpool, symmetric);
       }
     }
     return count;
