@@ -318,11 +318,11 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     # Platform-specific system libraries required only for the Apple static-package path.
     if(APPLE AND NOT onnxruntime_BUILD_SHARED_LIB)
       if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-        # iOS links the bundled sqlite3/zlib archives (shipped below); only the frameworks the SDK's
-        # Apple PAL needs are added here.
+        # The static framework must carry SQLite for the telemetry archive's unresolved symbols.
         target_link_libraries(onnxruntime_common PRIVATE
           "-framework CoreFoundation"
           "-framework Security"
+          sqlite3
         )
       else()
         target_link_libraries(onnxruntime_common PRIVATE
