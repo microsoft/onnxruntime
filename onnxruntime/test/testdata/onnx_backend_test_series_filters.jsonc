@@ -320,7 +320,8 @@
         "^test_ai_onnx_ml_tree_ensemble_single_tree_cpu",
         "^test_ai_onnx_ml_tree_ensemble_set_membership_cuda",
         "^test_ai_onnx_ml_tree_ensemble_single_tree_cuda",
-        // ORT Cast(21) implementation doesn't support int4 yet
+        // ORT's sess.run() does not support ml_dtypes (int4/uint4); the Cast implementation itself works (but the test
+        // would need to use OrtValue API, or the ORT Python API needs to support ml_dtypes).
         "^test_cast_INT4_to_FLOAT_cpu",
         "^test_cast_INT4_to_INT8_cpu",
         "^test_cast_UINT4_to_FLOAT_cpu",
