@@ -1,0 +1,71 @@
+name: Go Binding CI
+
+on:
+  push:
+    branches: [main, 'rel-*']
+    paths:
+      - 'go/**'
+      - 'cmake/**'
+      - 'onnxruntime/**'
+      - 'include/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'go/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        go-version: ['1.25', '1.26']
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go ${{ matrix.go-version }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache ONNX Runtime build
+        id: cache-ort
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/Linux/Release/libonnxruntime.so
+            build/Linux/Release/libonnxruntime_providers_shared.so
+          key: ort-${{ runner.os }}-${{ hashFiles('cmake/**', 'onnxruntime/**', 'include/**') }}
+
+      - name: Build ONNX Runtime
+        if: steps.cache-ort.outputs.cache-hit != 'true'
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          python3 tools/ci_build/build.py --config Release --build --parallel --skip_tests --allow_running_as_root
+
+      - name: Unit tests
+        working-directory: go
+        run: |
+          go vet ./...
+          go test -v -count=1 -run 'Test[^S]' ./...
+          go test -v -count=1 ./internal/cstrings/
+
+      - name: E2E test (SqueezeNet)
+        working-directory: go
+        env:
+          ORT_LIB_PATH: ${{ github.workspace }}/build/Linux/Release/libonnxruntime.so
+          ORT_TEST_MODEL: testdata/squeezenet.onnx
+          LD_LIBRARY_PATH: ${{ github.workspace }}/build/Linux/Release
+        run: |
+          go test -v -run TestSqueezeNet -count=1 .
