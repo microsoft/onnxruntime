@@ -14,6 +14,8 @@ Abstract:
 
 --*/
 
+#include <algorithm>
+#include <cmath>
 #include <vector>
 #include <random>
 
@@ -22,6 +24,25 @@ Abstract:
 #include "core/mlas/lib/halfgemm.h"
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
+
+namespace {
+
+constexpr float kFp16Max = 65504.0f;               // largest finite fp16 magnitude
+constexpr float kFp16MinNormal = 6.103515625e-5f;  // 2^-14, smallest normal fp16 magnitude
+
+MLAS_FORCEINLINE
+bool FloatEqual(MLAS_FP16 v0, MLAS_FP16 v1, float rtol, float atol) {
+  float f0 = v0.ToFloat(), f1 = v1.ToFloat();
+  if (std::isinf(f0) || std::isinf(f1)) {
+    return f0 == f1;
+  }
+  if (std::isnan(f0) || std::isnan(f1)) {
+    return std::isnan(f0) && std::isnan(f1);
+  }
+  return std::abs(f0 - f1) <= std::abs(f1 * rtol) + atol;
+}
+
+}  // namespace
 
 class MlasNeonHGemmPackBTest : public MlasTestBase {
  private:
@@ -237,12 +258,6 @@ class MlasNeonHGemmTransposedBTest : public MlasTestBase {
     }
   }
 
-  MLAS_FORCEINLINE
-  bool FloatEqual(MLAS_FP16 v0, MLAS_FP16 v1, float rtol, float atol) {
-    float f0 = v0.ToFloat(), f1 = v1.ToFloat();
-    return std::abs(f0 - f1) <= std::abs(f1 * rtol) + atol;
-  }
-
   template <size_t M, size_t N>
   MLAS_FORCEINLINE void Check(const MLAS_FP16* C, const MLAS_FP16* ref, size_t ldc) {
     for (size_t i = 0; i < M; ++i) {
@@ -287,6 +302,31 @@ class MlasNeonHGemmTransposedBTest : public MlasTestBase {
     Check<M, N>(C, ref, ldc);
   }
 
+  template <size_t M, size_t K, size_t N>
+  void TestHGemmFixed(float a_value, float b_value, float c_value, MLAS_FP16 alpha, MLAS_FP16 beta) {
+    auto FillA = [a_value](MLAS_FP16* buffer, size_t count) {
+      std::fill_n(buffer, count, MLAS_FP16(a_value));
+    };
+    auto FillB = [b_value](MLAS_FP16* buffer, size_t count) {
+      std::fill_n(buffer, count, MLAS_FP16(b_value));
+    };
+    auto FillC = [c_value](MLAS_FP16* buffer, size_t count) {
+      std::fill_n(buffer, count, MLAS_FP16(c_value));
+    };
+
+    const size_t lda = ((K + 7) & ~7);
+    const size_t ldb = ((K + 7) & ~7) + 8;
+    const size_t ldc = ((N + 7) & ~7);
+    const auto* A = A_.GetFilledBuffer(M * lda, FillA);
+    const auto* B = B_.GetFilledBuffer(ldb * N, FillB);
+    auto* C = C_.GetFilledBuffer(M * ldc, FillC);
+    auto* ref = ref_.GetBuffer(M * ldc, true);
+    Copy<M, N>(C, ref, ldc);
+    hgemm_neon::HGemm_TransposedB_Kernel(A, B, C, M, N, K, lda, ldb, ldc, alpha.val, beta.val);
+    HGemm<M, K, N>(A, B, ref, alpha, beta, lda, ldb, ldc);
+    Check<M, N>(C, ref, ldc);
+  }
+
  public:
   MlasNeonHGemmTransposedBTest()
       : seed_(1928375), gen_(seed_), distrib_(-1.f, 1.f) {
@@ -308,6 +348,18 @@ class MlasNeonHGemmTransposedBTest : public MlasTestBase {
     TestHGemm<1, 32, 33>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
     TestHGemm<1, 78, 263>(MLAS_FP16(0.5f), MLAS_FP16(0.0f));
     TestHGemm<2, 267, 79>(MLAS_FP16(1.5f), MLAS_FP16(1.0f));
+
+    // extreme value coverage
+    TestHGemmFixed<2, 1, 1>(kFp16Max, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<1, 1, 17>(240.0f, 240.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<2, 17, 15>(250.0f, 250.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<1, 33, 31>(-250.0f, 250.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<1, 78, 263>(1.0f, 1.0f, 0.0f, MLAS_FP16(1000.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<2, 31, 32>(1.0f, 1.0f, 0.0f, MLAS_FP16(1000.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<1, 32, 33>(1e-4f, 1e-4f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<2, 267, 79>(kFp16MinNormal, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<2, 1, 1>(240.0f, 240.0f, 60000.0f, MLAS_FP16(1.0f), MLAS_FP16(1.0f));
+    TestHGemmFixed<2, 1, 1>(100.0f, 50.0f, 60000.0f, MLAS_FP16(1.0f), MLAS_FP16(1.0f));
   }
 };
 
@@ -334,12 +386,6 @@ class MlasNeonHGemmBTest : public MlasTestBase {
         C[m * ldc + n] = MLAS_FP16(accu * alphaf + C[m * ldc + n].ToFloat() * betaf);
       }
     }
-  }
-
-  MLAS_FORCEINLINE
-  bool FloatEqual(MLAS_FP16 v0, MLAS_FP16 v1, float rtol, float atol) {
-    float f0 = v0.ToFloat(), f1 = v1.ToFloat();
-    return std::abs(f0 - f1) <= std::abs(f1 * rtol) + atol;
   }
 
   template <size_t M, size_t N>
@@ -386,6 +432,31 @@ class MlasNeonHGemmBTest : public MlasTestBase {
     Check<M, N>(C, ref, ldc);
   }
 
+  template <size_t M, size_t K, size_t N>
+  void TestHGemmFixed(float a_value, float b_value, float c_value, MLAS_FP16 alpha, MLAS_FP16 beta) {
+    auto FillA = [a_value](MLAS_FP16* buffer, size_t count) {
+      std::fill_n(buffer, count, MLAS_FP16(a_value));
+    };
+    auto FillB = [b_value](MLAS_FP16* buffer, size_t count) {
+      std::fill_n(buffer, count, MLAS_FP16(b_value));
+    };
+    auto FillC = [c_value](MLAS_FP16* buffer, size_t count) {
+      std::fill_n(buffer, count, MLAS_FP16(c_value));
+    };
+
+    const size_t lda = ((K + 7) & ~7);
+    const size_t ldb = ((N + 7) & ~7) + 8;
+    const size_t ldc = ((N + 7) & ~7);
+    const auto* A = A_.GetFilledBuffer(M * lda, FillA);
+    const auto* B = B_.GetFilledBuffer(K * ldb, FillB);
+    auto* C = C_.GetFilledBuffer(M * ldc, FillC);
+    auto* ref = ref_.GetBuffer(M * ldc, true);
+    Copy<M, N>(C, ref, ldc);
+    hgemm_neon::HGemm_B_Kernel(A, B, C, M, N, K, lda, ldb, ldc, alpha.val, beta.val);
+    HGemm<M, K, N>(A, B, ref, alpha, beta, lda, ldb, ldc);
+    Check<M, N>(C, ref, ldc);
+  }
+
  public:
   MlasNeonHGemmBTest()
       : seed_(172387), gen_(seed_), distrib_(-1.f, 1.f) {
@@ -422,6 +493,18 @@ class MlasNeonHGemmBTest : public MlasTestBase {
     TestHGemm<2, 63, 63>(MLAS_FP16(1.f), MLAS_FP16(0.0f));
     TestHGemm<2, 65, 63>(MLAS_FP16(1.f), MLAS_FP16(0.0f));
     TestHGemm<2, 63, 65>(MLAS_FP16(1.f), MLAS_FP16(0.0f));
+
+    // extreme value coverage
+    TestHGemmFixed<2, 1, 1>(kFp16Max, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<1, 1, 17>(240.0f, 240.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<2, 17, 15>(250.0f, 250.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<1, 33, 31>(-250.0f, 250.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<1, 78, 263>(1.0f, 1.0f, 0.0f, MLAS_FP16(1000.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<2, 31, 32>(1.0f, 1.0f, 0.0f, MLAS_FP16(1000.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<1, 32, 33>(1e-4f, 1e-4f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<2, 267, 79>(kFp16MinNormal, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<2, 1, 1>(240.0f, 240.0f, 60000.0f, MLAS_FP16(1.0f), MLAS_FP16(1.0f));
+    TestHGemmFixed<2, 1, 1>(100.0f, 50.0f, 60000.0f, MLAS_FP16(1.0f), MLAS_FP16(1.0f));
   }
 };
 
@@ -487,12 +570,6 @@ class MlasNeonHGemmPackedBTest : public MlasTestBase {
     }
   }
 
-  MLAS_FORCEINLINE
-  bool FloatEqual(MLAS_FP16 v0, MLAS_FP16 v1, float rtol, float atol) {
-    float f0 = v0.ToFloat(), f1 = v1.ToFloat();
-    return std::abs(f0 - f1) <= std::abs(f1 * rtol) + atol;
-  }
-
   template <size_t M, size_t K, size_t N>
   MLAS_FORCEINLINE void Check(const MLAS_FP16* C, const MLAS_FP16* ref, const size_t ldc) {
     for (size_t i = 0; i < M; ++i) {
@@ -536,6 +613,30 @@ class MlasNeonHGemmPackedBTest : public MlasTestBase {
     Check<M, K, N>(C, ref, ldc);
   }
 
+  template <size_t M, size_t K, size_t N>
+  void TestHGemmFixed(float a_value, float b_value, float c_value, MLAS_FP16 alpha, MLAS_FP16 beta) {
+    auto FillA = [a_value](MLAS_FP16* buffer, size_t count) {
+      std::fill_n(buffer, count, MLAS_FP16(a_value));
+    };
+    auto FillB = [b_value](MLAS_FP16* buffer, size_t count) {
+      std::fill_n(buffer, count, MLAS_FP16(b_value));
+    };
+    auto FillC = [c_value](MLAS_FP16* buffer, size_t count) {
+      std::fill_n(buffer, count, MLAS_FP16(c_value));
+    };
+
+    const size_t lda = ((K + 7) & ~7) + 8;
+    const size_t ldc = ((N + 7) & ~7);
+    const auto* A = A_.GetFilledBuffer(M * lda, FillA);
+    const auto* B = B_.GetFilledBuffer(K * ((N + 7) & ~7), FillB);
+    auto* C = C_.GetFilledBuffer(M * ldc, FillC);
+    auto* ref = ref_.GetBuffer(M * ldc, true);
+    Copy<M, K, N>(C, ref, ldc);
+    hgemm_neon::HGemm_PackedB_Kernel(A, B, C, M, N, K, lda, ldc, alpha.val, beta.val);
+    HGemm<M, K, N>(A, B, ref, alpha, beta, lda, ldc);
+    Check<M, K, N>(C, ref, ldc);
+  }
+
  public:
   MlasNeonHGemmPackedBTest()
       : seed_(1928372), gen_(), distrib_(-1.f, 1.f) {
@@ -557,6 +658,18 @@ class MlasNeonHGemmPackedBTest : public MlasTestBase {
     TestHGemm<1, 32, 33>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
     TestHGemm<1, 78, 263>(MLAS_FP16(0.5f), MLAS_FP16(0.0f));
     TestHGemm<2, 267, 79>(MLAS_FP16(1.5f), MLAS_FP16(1.0f));
+
+    // extreme value coverage
+    TestHGemmFixed<2, 1, 1>(kFp16Max, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<1, 1, 17>(240.0f, 240.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<2, 17, 15>(250.0f, 250.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<1, 33, 31>(-250.0f, 250.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<1, 78, 263>(1.0f, 1.0f, 0.0f, MLAS_FP16(1000.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<2, 31, 32>(1.0f, 1.0f, 0.0f, MLAS_FP16(1000.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<1, 32, 33>(1e-4f, 1e-4f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<2, 267, 79>(kFp16MinNormal, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<2, 1, 1>(240.0f, 240.0f, 60000.0f, MLAS_FP16(1.0f), MLAS_FP16(1.0f));
+    TestHGemmFixed<2, 1, 1>(100.0f, 50.0f, 60000.0f, MLAS_FP16(1.0f), MLAS_FP16(1.0f));
   }
 };
 
@@ -582,12 +695,6 @@ class MlasNeonHGemmTest : public MlasTestBase {
         C[i * ldc + j] = MLAS_FP16(accu * alphaf + C[i * ldc + j].ToFloat() * betaf);
       }
     }
-  }
-
-  MLAS_FORCEINLINE
-  bool FloatEqual(MLAS_FP16 v0, MLAS_FP16 v1, float rtol, float atol) {
-    float f0 = v0.ToFloat(), f1 = v1.ToFloat();
-    return std::abs(f0 - f1) <= std::abs(f1 * rtol) + atol;
   }
 
   template <size_t M, size_t K, size_t N>
@@ -633,6 +740,32 @@ class MlasNeonHGemmTest : public MlasTestBase {
     Check<M, K, N>(C, ref, ldc);
   }
 
+  template <size_t M, size_t K, size_t N, bool transA, bool transB>
+  void TestHGemmFixed(float a_value, float b_value, float c_value, MLAS_FP16 alpha, MLAS_FP16 beta) {
+    auto FillA = [a_value](MLAS_FP16* buffer, size_t count) {
+      std::fill_n(buffer, count, MLAS_FP16(a_value));
+    };
+    auto FillB = [b_value](MLAS_FP16* buffer, size_t count) {
+      std::fill_n(buffer, count, MLAS_FP16(b_value));
+    };
+    auto FillC = [c_value](MLAS_FP16* buffer, size_t count) {
+      std::fill_n(buffer, count, MLAS_FP16(c_value));
+    };
+
+    const size_t lda = transA ? (M + 15) & (~15) : (K + 15) & (~15);
+    const size_t ldb = transB ? (K + 7) & (~7) : (N + 15) & (~15);
+    const size_t ldc = (N + 7) & (~7);
+    const auto* A = A_.GetFilledBuffer(transA ? lda * K : M * lda, FillA);
+    const auto* B = B_.GetFilledBuffer(transB ? ldb * N : K * ldb, FillB);
+    auto* C = C_.GetFilledBuffer(M * ldc, FillC);
+    auto* ref = ref_.GetBuffer(M * ldc, true);
+    Copy<M, K, N>(C, ref, ldc);
+    MlasGemm(transA ? CblasTrans : CblasNoTrans, transB ? CblasTrans : CblasNoTrans,
+             M, N, K, A, lda, B, ldb, C, ldc, alpha.val, beta.val, nullptr);
+    HGemm<M, K, N, transA, transB>(A, B, ref, alpha, beta, lda, ldb, ldc);
+    Check<M, K, N>(C, ref, ldc);
+  }
+
  public:
   MlasNeonHGemmTest()
       : seed_(192837), gen_(seed_), distrib_(-0.25f, 0.25f) {
@@ -665,6 +798,18 @@ class MlasNeonHGemmTest : public MlasTestBase {
     TestHGemm<127, 513, 1023, false, false>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
     TestHGemm<129, 511, 1025, false, false>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
     TestHGemm<129, 513, 1025, false, false>(MLAS_FP16(0.5f), MLAS_FP16(0.5f));
+
+    // extreme value coverage
+    TestHGemmFixed<2, 1, 1, false, true>(kFp16Max, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<1, 128, 512, false, true>(250.0f, 250.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<2, 511, 1025, false, true>(1.0f, 1.0f, 0.0f, MLAS_FP16(1000.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<2, 511, 1025, false, true>(1.0f, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<1, 127, 512, false, true>(1e-4f, 1e-4f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<129, 511, 1025, false, true>(kFp16Max, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<2, 128, 513, false, false>(250.0f, 250.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<129, 511, 1025, false, false>(1.0f, 1.0f, 0.0f, MLAS_FP16(1000.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<1, 127, 512, false, false>(1e-4f, 1e-4f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemmFixed<127, 513, 1023, false, false>(1.0f, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
   }
 };
 
