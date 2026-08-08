@@ -34,6 +34,20 @@ def get_platform_frameworks(framework_info, platforms):
     return frameworks
 
 
+def get_platform_libraries(framework_info, platforms):
+    libraries = ""
+    for platform in platforms:
+        if platform not in framework_info:
+            continue
+        platform_libraries = framework_info[platform].get("SYSTEM_LIBRARIES", "")
+        if libraries:
+            if platform_libraries != libraries:
+                raise ValueError(f"Inconsistent SYSTEM_LIBRARIES for {platform}: {platform_libraries!r}")
+        else:
+            libraries = platform_libraries
+    return libraries
+
+
 def get_pod_config_file():
     """
     Gets the pod configuration file path.
@@ -80,6 +94,8 @@ def assemble_c_pod_package(
     (ios_deployment_target, macos_deployment_target, weak_framework) = get_podspec_values(framework_info)
     ios_frameworks = get_platform_frameworks(framework_info, ("iphonesimulator", "iphoneos"))
     macos_frameworks = get_platform_frameworks(framework_info, ("macosx",))
+    ios_libraries = get_platform_libraries(framework_info, ("iphonesimulator", "iphoneos"))
+    macos_libraries = get_platform_libraries(framework_info, ("macosx",))
 
     # generate the podspec file from the template
     variable_substitutions = {
@@ -87,8 +103,10 @@ def assemble_c_pod_package(
         # By default, we build both "iphoneos" and "iphonesimulator" architectures, and the deployment target should be the same between these two.
         "IOS_DEPLOYMENT_TARGET": ios_deployment_target,
         "IOS_SYSTEM_FRAMEWORKS": ios_frameworks,
+        "IOS_SYSTEM_LIBRARIES": ios_libraries,
         "MACOSX_DEPLOYMENT_TARGET": macos_deployment_target,
         "MACOS_SYSTEM_FRAMEWORKS": macos_frameworks,
+        "MACOS_SYSTEM_LIBRARIES": macos_libraries,
         "LICENSE_FILE": "LICENSE",
         "NAME": pod_name,
         "ORT_C_FRAMEWORK": framework_dir.name,
