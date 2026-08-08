@@ -944,6 +944,7 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
       include(external/telemetry_linux_http.cmake)
     endif()
+    set(_ort_requested_apple_architectures "${CMAKE_OSX_ARCHITECTURES}")
 
     # Android always uses this path, including vcpkg-based AAR builds. The vcpkg port selects
     # HttpClient_Curl on Android, while the platform identity and transport used by the AAR require
@@ -1077,9 +1078,9 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
       endif()
       foreach(_ort_apple_dep mat sqlite3_bundled zlib_bundled)
         if(TARGET ${_ort_apple_dep})
-          if(APPLE AND CMAKE_OSX_ARCHITECTURES)
+          if(APPLE AND _ort_requested_apple_architectures)
             set_target_properties(${_ort_apple_dep} PROPERTIES
-              OSX_ARCHITECTURES "${CMAKE_OSX_ARCHITECTURES}")
+              OSX_ARCHITECTURES "${_ort_requested_apple_architectures}")
           endif()
           get_target_property(_ort_apple_inc
             ${_ort_apple_dep} INTERFACE_INCLUDE_DIRECTORIES)
