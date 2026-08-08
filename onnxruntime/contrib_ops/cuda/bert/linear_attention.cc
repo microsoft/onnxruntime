@@ -6,6 +6,7 @@
 #include "contrib_ops/cpu/bert/linear_attention_helper.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
+#include "core/platform/env_var_utils.h"
 
 #include <limits>
 
@@ -53,6 +54,10 @@ LinearAttention<T>::LinearAttention(const OpKernelInfo& info) : CudaKernel(info)
   // per token costs d_k*d_v per token per layer -- ~88 GB for a 2.8k prefill on a 30-layer model.
   // A window caps both the allocation and the write traffic; 0 keeps the plain 4D single state.
   ORT_THROW_IF_ERROR(linear_attention_helper::ParseStateWindow(info, state_window_));
+
+  decode_seq_threshold_ =
+      ParseEnvironmentVariableWithDefault<int>("ORT_LINEAR_ATTENTION_COL_SEQ_THRESHOLD", 16);
+  row_split_ = ParseEnvironmentVariableWithDefault<int>("ORT_LINEAR_ATTENTION_ROW_SPLIT", 8);
 }
 
 template <typename T>
@@ -232,6 +237,8 @@ Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
       needs_beta,
       beta_per_head,
       needs_retrieval,
+      decode_seq_threshold_,
+      row_split_,
       GetDeviceProp().multiProcessorCount,
       GetDeviceProp().maxThreadsPerBlock,
       state_slots);

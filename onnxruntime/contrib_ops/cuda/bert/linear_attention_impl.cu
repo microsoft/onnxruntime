@@ -1282,6 +1282,8 @@ Status LaunchLinearAttentionKernel(
     bool needs_beta,
     bool beta_per_head,
     bool needs_retrieval,
+    int decode_seq_threshold,
+    int row_split,
     int multiprocessor_count,
     int max_threads_per_block,
     int state_window) {
@@ -1299,10 +1301,6 @@ Status LaunchLinearAttentionKernel(
   // (DK in {64,128,256});
   // everything else falls through to the recurrent kernels below.
   // ---------------------------------------------------------------------------
-  // This cutoff keeps short decode/continuation runs on the column-parallel kernels.
-  static const int kDecodeSeqThreshold =
-      ParseEnvironmentVariableWithDefault<int>("ORT_LINEAR_ATTENTION_COL_SEQ_THRESHOLD", 16);
-
   // Prefill is *also* routed to the column-parallel kernels whenever the recurrent grid would
   // leave the GPU idle. The recurrent kernels launch exactly batch_size * kv_num_heads blocks, so
   // a single-sequence hybrid model with 32 KV heads occupies 32 of 132 SMs on H200 while walking
@@ -1314,14 +1312,15 @@ Status LaunchLinearAttentionKernel(
   //
   // Once batch_size * kv_num_heads already fills the machine the recurrent kernels keep their
   // shared-memory state amortization, so the split is only applied below that point.
-  const bool recurrent_grid_underfills_gpu = batch_size * kv_num_heads < multiprocessor_count;
+  const bool recurrent_grid_underfills_gpu =
+      static_cast<int64_t>(batch_size) * kv_num_heads < multiprocessor_count;
   // Only the v2 (column-per-thread) kernel below has been validated at prefill lengths, so the
   // occupancy-based override is limited to the shapes it accepts; everything else keeps the
   // original seq_len cutoff.
   const bool prefill_column_split =
       recurrent_grid_underfills_gpu && d_k <= 128 && (d_v % kColsPerBlock) == 0;
 
-  if ((seq_len <= kDecodeSeqThreshold || prefill_column_split) &&
+  if ((seq_len <= decode_seq_threshold || prefill_column_split) &&
       (d_k == 64 || d_k == 128 || d_k == 256)) {
     // v2 (column-per-thread, coalesced row-major state) is the default for
     // DK <= 128. It requires d_v % kColsPerBlock == 0; otherwise fall back
@@ -1336,9 +1335,6 @@ Status LaunchLinearAttentionKernel(
 
       // v3 splits the DK axis across `row_split` threads so the launch has
       // row_split warps per block instead of one; see the kernel comment.
-      static const int kRowSplit =
-          ParseEnvironmentVariableWithDefault<int>("ORT_LINEAR_ATTENTION_ROW_SPLIT", 8);
-
       auto launch_col_split = [&](auto dk_tag, auto rs_tag) -> Status {
         constexpr int DK = decltype(dk_tag)::value;
         constexpr int RS = decltype(rs_tag)::value;
@@ -1353,9 +1349,9 @@ Status LaunchLinearAttentionKernel(
 
       auto launch_col = [&](auto dk_tag) -> Status {
         constexpr int DK = decltype(dk_tag)::value;
-        if (kRowSplit > 1 && (DK % kRowSplit) == 0 &&
-            kColsPerBlock * kRowSplit <= max_threads_per_block) {
-          switch (kRowSplit) {
+        if (row_split > 1 && (DK % row_split) == 0 &&
+            kColsPerBlock * row_split <= max_threads_per_block) {
+          switch (row_split) {
             case 2:
               return launch_col_split(dk_tag, std::integral_constant<int, 2>{});
             case 4:
@@ -1484,18 +1480,18 @@ Status LaunchLinearAttentionKernel(
 template Status LaunchLinearAttentionKernel<float>(
     cudaStream_t, const float*, const float*, const float*,
     const float*, const float*, float*, const float*, float*,
-    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int);
+  int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int, int, int);
 
 template Status LaunchLinearAttentionKernel<half>(
     cudaStream_t, const half*, const half*, const half*,
     const half*, const half*, half*, const half*, half*,
-    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int);
+  int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int, int, int);
 
 #if __CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__)
 template Status LaunchLinearAttentionKernel<__nv_bfloat16>(
     cudaStream_t, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*,
     const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
-    int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int);
+  int, int, int, int, int, int, int, float, bool, bool, bool, bool, bool, int, int, int, int, int);
 #endif
 
 }  // namespace cuda

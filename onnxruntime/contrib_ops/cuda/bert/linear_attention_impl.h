@@ -37,6 +37,8 @@ Status LaunchLinearAttentionKernel(
     bool needs_beta,
     bool beta_per_head,
     bool needs_retrieval,
+    int decode_seq_threshold,
+    int row_split,
     int multiprocessor_count,
     int max_threads_per_block,
     // Axis-0 extent W of past_state / present_state (>= 1). The window axis leads the batch axis
