@@ -1075,17 +1075,17 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
           SQLITE_DEFAULT_FOREIGN_KEYS=0
         )
       endif()
-      foreach(_ort_bundled_dep sqlite3_bundled zlib_bundled)
-        if(TARGET ${_ort_bundled_dep})
+      foreach(_ort_apple_dep mat sqlite3_bundled zlib_bundled)
+        if(TARGET ${_ort_apple_dep})
           if(APPLE AND CMAKE_OSX_ARCHITECTURES)
-            set_target_properties(${_ort_bundled_dep} PROPERTIES
+            set_target_properties(${_ort_apple_dep} PROPERTIES
               OSX_ARCHITECTURES "${CMAKE_OSX_ARCHITECTURES}")
           endif()
-          get_target_property(_ort_bundled_inc
-            ${_ort_bundled_dep} INTERFACE_INCLUDE_DIRECTORIES)
-          if(_ort_bundled_inc)
-            set_target_properties(${_ort_bundled_dep} PROPERTIES
-              INTERFACE_INCLUDE_DIRECTORIES "$<BUILD_INTERFACE:${_ort_bundled_inc}>")
+          get_target_property(_ort_apple_inc
+            ${_ort_apple_dep} INTERFACE_INCLUDE_DIRECTORIES)
+          if(_ort_apple_inc)
+            set_target_properties(${_ort_apple_dep} PROPERTIES
+              INTERFACE_INCLUDE_DIRECTORIES "$<BUILD_INTERFACE:${_ort_apple_inc}>")
           endif()
         endif()
       endforeach()
