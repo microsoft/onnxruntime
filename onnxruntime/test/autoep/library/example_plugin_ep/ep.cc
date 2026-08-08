@@ -19,6 +19,7 @@
 #include "ep_stream_support.h"
 
 extern std::atomic<uint64_t> g_sync_count;
+extern std::atomic<const OrtHardwareDevice*> g_fused_node_hardware_device;
 
 const FloatInitializer* MulKernel::TryGetSavedInitializer(const std::string& name) const {
   auto iter = float_initializers.find(name);
@@ -339,6 +340,11 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
       // session configuration entry in onnxruntime_session_options_config_keys.h for more information about generating
       // weightless EPContext models.
       node_fusion_options.drop_constant_initializers = ep->CopiesConstantInitializers();
+
+      // Optionally attach a per-subgraph hardware device (set by tests via ExampleEpTestHooks_SetFusedNodeHardwareDevice).
+      // ORT surfaces this through EpAssignedSubgraph_GetHardwareDevices. nullptr by default (no-op for normal runs).
+      node_fusion_options.fused_node_hardware_device = g_fused_node_hardware_device.load();
+
       RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(
           graph_support_info,
           reinterpret_cast<const OrtNode* const*>(supported_nodes.data()),

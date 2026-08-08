@@ -7521,6 +7521,35 @@ struct OrtApi {
    */
   ORT_API2_STATUS(KernelContext_GetSyncStream, _In_ const OrtKernelContext* context,
                   _Outptr_result_maybenull_ OrtSyncStream** out);
+
+  /** \brief Get the hardware device(s) that run the subgraph assigned to an execution provider.
+   *
+   * Returns the hardware device(s) on which the assigned subgraph runs. The returned array typically
+   * contains zero or one device. The device is resolved, in order of preference, from:
+   *   1. the per-subgraph device declared by a plugin execution provider via
+   *      OrtNodeFusionOptions::fused_node_hardware_device;
+   *   2. otherwise the first OrtEpDevice the execution provider was registered with.
+   *
+   * If ONNX Runtime cannot reliably determine the device (e.g., an execution provider added by name
+   * that exposes no OrtEpDevice, or one that does not declare a per-subgraph device), `*num_hardware_devices`
+   * is set to 0. ONNX Runtime intentionally does not guess from the execution provider's OrtDevice,
+   * because some NPU execution providers register a CPU OrtDevice for input placement.
+   *
+   * Read hardware device attributes with OrtApi::HardwareDevice_Type, HardwareDevice_VendorId,
+   * HardwareDevice_DeviceId, and HardwareDevice_Vendor.
+   *
+   * \param[in] ep_subgraph The OrtEpAssignedSubgraph instance.
+   * \param[out] devices Set to the internal array of OrtHardwareDevice pointers. Do not free. The array
+   *                     and the devices are owned by ONNX Runtime and remain valid for the lifetime of
+   *                     the OrtEpAssignedSubgraph.
+   * \param[out] num_hardware_devices Set to the number of hardware devices in the array (may be 0).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.29.
+   */
+  ORT_API2_STATUS(EpAssignedSubgraph_GetHardwareDevices, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                  _Outptr_result_maybenull_ const OrtHardwareDevice* const** devices, _Out_ size_t* num_hardware_devices);
 };
 
 /*
