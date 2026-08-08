@@ -2776,6 +2776,21 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
         }
       }
 
+      // ONNX shape inference cannot read file-backed external data. Materialize
+      // the initializer into a temporary TensorProto while keeping the graph's
+      // original initializer external for runtime mmap.
+      if (utils::HasExternalDataInFile(*initializer)) {
+        std::vector<uint8_t> raw_data;
+        ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*initializer, graph_.ModelPath(), raw_data));
+
+        auto temp_tensor_proto = std::make_unique<TensorProto>(*initializer);
+        temp_tensor_proto->clear_external_data();
+        temp_tensor_proto->clear_data_location();
+        temp_tensor_proto->set_raw_data(raw_data.data(), raw_data.size());
+        temp_tensor_protos_.push_back(std::move(temp_tensor_proto));
+        return temp_tensor_protos_.back().get();
+      }
+
       return initializer;
     }
 
