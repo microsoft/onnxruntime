@@ -2497,7 +2497,7 @@ def main():
                     is_extended_minimal_build_or_higher=is_extended_minimal_build_or_higher,
                 )
 
-        cmake_extra_args = []
+        cmake_extra_args = list(args.cmake_extra_args)
         path_to_protoc_exe = None
         if args.path_to_protoc_exe:
             path_to_protoc_exe = Path(args.path_to_protoc_exe)
@@ -2514,16 +2514,16 @@ def main():
                         "environment for the target processor (e.g. Cross "
                         "Tools Command Prompt for VS)"
                     )
-                cmake_extra_args = ["-G", args.cmake_generator]
+                cmake_extra_args += ["-G", args.cmake_generator]
             elif args.arm or args.arm64 or args.arm64ec:
                 if args.arm:
-                    cmake_extra_args = ["-A", "ARM"]
+                    cmake_extra_args += ["-A", "ARM"]
                 elif args.arm64:
-                    cmake_extra_args = ["-A", "ARM64"]
+                    cmake_extra_args += ["-A", "ARM64"]
                     if args.buildasx:
                         cmake_extra_args += ["-D", "BUILD_AS_ARM64X=ARM64"]
                 elif args.arm64ec:
-                    cmake_extra_args = ["-A", "ARM64EC"]
+                    cmake_extra_args += ["-A", "ARM64EC"]
                     if args.buildasx:
                         cmake_extra_args += ["-D", "BUILD_AS_ARM64X=ARM64EC"]
                 cmake_extra_args += ["-G", args.cmake_generator]
@@ -2557,7 +2557,7 @@ def main():
                     toolset += ",cuda=" + args.cuda_home
                 if args.windows_sdk_version:
                     target_arch += ",version=" + args.windows_sdk_version
-                cmake_extra_args = ["-A", target_arch, "-T", toolset, "-G", args.cmake_generator]
+                cmake_extra_args += ["-A", target_arch, "-T", toolset, "-G", args.cmake_generator]
             if args.enable_wcos:
                 cmake_extra_defines.append("CMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake")
 
