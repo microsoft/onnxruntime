@@ -20,9 +20,17 @@ Pod::Spec.new do |spec|
     if !ios_system_frameworks.empty?
         spec.ios.frameworks     = ios_system_frameworks
     end
+    ios_system_libraries       = [ @IOS_SYSTEM_LIBRARIES@ ]
+    if !ios_system_libraries.empty?
+        spec.ios.libraries       = ios_system_libraries
+    end
     macos_system_frameworks     = [ @MACOS_SYSTEM_FRAMEWORKS@ ]
     if !macos_system_frameworks.empty?
         spec.osx.frameworks     = macos_system_frameworks
+    end
+    macos_system_libraries     = [ @MACOS_SYSTEM_LIBRARIES@ ]
+    if !macos_system_libraries.empty?
+        spec.osx.libraries       = macos_system_libraries
     end
     spec.source_files           = "@ORT_C_HEADERS_DIR@/*.h"
     spec.preserve_paths         = [ "@LICENSE_FILE@" ]

@@ -124,10 +124,12 @@ if(onnxruntime_BUILD_SHARED_LIB)
     if(onnxruntime_USE_TELEMETRY)
       if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
         set(APPLE_SYSTEM_FRAMEWORKS
-          "\\\"CoreFoundation\\\", \\\"Foundation\\\", \\\"Network\\\", \\\"Security\\\", \\\"SystemConfiguration\\\", \\\"UIKit\\\", \\\"SQLite3\\\"")
+          "\\\"CoreFoundation\\\", \\\"Foundation\\\", \\\"Network\\\", \\\"Security\\\", \\\"SystemConfiguration\\\", \\\"UIKit\\\"")
+        set(APPLE_SYSTEM_LIBRARIES "\\\"sqlite3\\\"")
       else()
         set(APPLE_SYSTEM_FRAMEWORKS
           "\\\"CoreFoundation\\\", \\\"Foundation\\\", \\\"IOKit\\\", \\\"Network\\\", \\\"Security\\\", \\\"SystemConfiguration\\\"")
+        set(APPLE_SYSTEM_LIBRARIES "")
       endif()
     endif()
 
