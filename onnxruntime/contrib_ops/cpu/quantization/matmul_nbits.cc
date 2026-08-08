@@ -166,7 +166,7 @@ class MatMulNBits final : public OpKernel {
   // True once PrePack(InputIndex::B) has folded the scales and (constant) zero points into packed_b_,
   // leaving the CompInt8 buffer fully packed and compute-ready. Pre-packed weight sharing
   // content-hashes the buffer right after the B PrePack returns, so everything that affects the
-  // packed bytes (in particular the block sum / BZpCorr, which depend on the zero points) must be
+  // packed bytes (in particular the block sum or other zero-point-derived metadata) must be
   // folded in by then. Once set, the later scales/zero_point PrePack calls must not pack again: the
   // CompInt8 packing is single-shot, and the buffer may by then be one shared from another session.
   bool packed_b_finalized_{false};
@@ -489,7 +489,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       // Fold the scales and (constant) zero points into packed_b_ now, during the B PrePack, instead
       // of deferring them to the later scales/zero_points PrePack calls. Pre-packed weight sharing
       // content-hashes this buffer immediately after the B PrePack returns; the CompInt8 block sum
-      // (and the KleidiAI BZpCorr) is a function of the zero points, so they must already be folded
+      // and other packed metadata depend on the zero points, so they must already be folded
       // in for the hash to reflect them. Otherwise two initializers with identical B and scales but
       // different zero points would hash equal and the second would wrongly adopt the first's buffer
       // and silently compute wrong results. scales and zero_points are constant initializers, so they
@@ -592,9 +592,9 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       // buffer. The quantized weight B (which carries the folded-in scales) is shared on its own.
       is_packed = false;
 
-      // BZpCorr was already folded into packed_b_ during the B PrePack (so the sharing content hash
-      // captures the zero points), so re-folding it here must be skipped: the packing is single-shot
-      // and packed_b_ may now be a buffer shared from another session.
+      // Zero points were already folded into packed_b_ during the B PrePack (so the sharing content
+      // hash captures them), so re-folding them here must be skipped: packing is single-shot and
+      // packed_b_ may now be a buffer shared from another session.
       if (has_zp_input_ && nbits_ == 4 && !packed_b_finalized_) {
         const Tensor* zp_tensor = nullptr;
         OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zp_tensor);
@@ -633,7 +633,6 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
           }
         }
 
-        // BZpCorr was already computed during B packing in Step 1 (if applicable).
         scales_are_packed_ = true;
 
         // The scales were folded into the packed B buffer during the B PrePack, so there is no
@@ -764,8 +763,8 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
     // Convert the constant fp16 scales to fp32 up front so they (and the zero points) can be folded
     // into packed_b_ during this B PrePack, mirroring the primary float PrePack above. Pre-packed
     // weight sharing content-hashes the buffer right after this B PrePack returns, so for CompInt8
-    // everything that affects the packed bytes (the scales, and the block sum / KleidiAI BZpCorr that
-    // depend on the zero points) must be folded in by now.
+    // everything that affects the packed bytes (the scales and any zero-point-derived metadata) must
+    // be folded in by now.
     if (scales && effective_compute_type == SQNBIT_CompInt8) {
       auto sptr = scales->Data<MLFloat16>();
       auto scales_size = static_cast<size_t>(scales->Shape().Size());
@@ -804,7 +803,7 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
                                 &mlas_backend_kernel_selector_config_);
 
     // Fold the scales and (constant) zero points into packed_b_ now (see the primary PrePack above):
-    // the CompInt8 block sum and the KleidiAI BZpCorr depend on the zero points, so they must be
+    // the CompInt8 block sum and other packed metadata depend on the zero points, so they must be
     // folded in before the sharing content hash is taken. Otherwise two initializers with identical B
     // and scales but different zero points would hash equal and the second would wrongly adopt the
     // first's buffer. The B pack above only partially populates the buffer, so issue one more pack

@@ -5,9 +5,9 @@
 //
 
 
-#include "mlasi.h"
+#include "../mlasi.h"
 
-#include "kleidiai/mlasi_kleidiai.h"
+#include "mlasi_kleidiai.h"
 
 #include "kai_ukernel_interface.h"
 
@@ -69,7 +69,7 @@
 //
 // These macros exist solely to reduce boilerplate when constructing the various `Kai*Kernel` info
 // structs in this file. The names are field-name sequence based as per the typedef interface.h files.
-// 
+//
 // Pass the ukernel "stem" (the suffix shared by all exported functions), e.g.
 //   matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa
 //
@@ -315,7 +315,7 @@ const KaiF32SgemmKernel sgemm_gemm_sme2 =
 
 const KaiDynamicQGemmKernel qgemm_gemm_sme =
     KAI_WRAP_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa);
-    
+
 const KaiDynamicQGemmKernel qgemm_gemm_sme2 =
     KAI_WRAP_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa);
 
