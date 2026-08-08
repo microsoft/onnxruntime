@@ -1,5 +1,14 @@
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
+@@ -25,2 +25,8 @@
+ if(APPLE)
++  if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT BUILD_IOS)
++    set(BUILD_IOS ON)
++    set(IOS_PLAT "${CMAKE_OSX_SYSROOT}")
++    set(IOS_ARCH "${CMAKE_OSX_ARCHITECTURES}")
++    set(IOS_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}")
++  endif()
+   message(STATUS "BUILD_IOS:              ${BUILD_IOS}")
 @@ -363,7 +363,9 @@
     AND NOT BUILD_APPLE_HTTP)
    set(MATSDK_NEEDS_CURL ON)
