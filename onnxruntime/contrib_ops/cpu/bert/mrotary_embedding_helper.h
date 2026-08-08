@@ -39,8 +39,8 @@ struct MRotaryParameters {
   int seq_stride;            // Sequence stride
   int batch_stride;          // Batch stride
   bool transposed;           // Whether the input tensor has been transposed into (batch, num_heads, seq_len, hidden)
-  int mrope_section[3];       // section sizes for T, H, W (sum == rotary_embedding_dim / 2)
-  MRopeLayout mrope_layout;   // how the 3 sections are combined
+  int mrope_section[3];      // section sizes for T, H, W (sum == rotary_embedding_dim / 2)
+  MRopeLayout mrope_layout;  // how the 3 sections are combined
 };
 
 // Computes, for every index in [0, half_rotary_embedding_dim), which of the
@@ -96,7 +96,8 @@ Status CheckInputs(const T* input,
   if (position_ids_dims.size() != 3 || position_ids_dims[0] != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "MRotaryEmbedding: 'position_ids' is expected to have shape "
-                           "(3, batch_size, sequence_length), got ", position_ids_dims.size(), " dimensions",
+                           "(3, batch_size, sequence_length), got ",
+                           position_ids_dims.size(), " dimensions",
                            position_ids_dims.empty() ? "" : " with dim[0]=",
                            position_ids_dims.empty() ? 0 : position_ids_dims[0]);
   }
