@@ -38,7 +38,7 @@ c) BUILD_CONFIG=${OPTARG};;
 esac
 done
 
-BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--use_binskim_compliant_compile_flags" "--build_wheel" "--use_telemetry" "--use_vcpkg" "--use_vcpkg_ms_internal_asset_cache")
+BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--use_binskim_compliant_compile_flags" "--build_wheel" "--use_telemetry" "--use_vcpkg" "--use_vcpkg_ms_internal_asset_cache")
 
 if [ "$BUILD_CONFIG" != "Debug" ]; then
     BUILD_ARGS+=("--enable_lto")
@@ -51,8 +51,12 @@ fi
 
 ARCH=$(uname -m)
 
-
-
+if [ "$ARCH" == "aarch64" ] && [ "$BUILD_DEVICE" == "GPU" ]; then
+  # Each CUDA compiler process handles all requested architectures and can use several GB.
+  BUILD_ARGS+=("--parallel" "4")
+else
+  BUILD_ARGS+=("--parallel")
+fi
 
 echo "EXTRA_ARG:"
 echo "$EXTRA_ARG"
