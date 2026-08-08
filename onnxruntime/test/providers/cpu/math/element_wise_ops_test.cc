@@ -24,6 +24,7 @@
 // onnxruntime_provider_test in every build configuration, e.g. the plugin build). See issue #28969.
 #include "core/providers/webgpu/math/binary_elementwise_broadcast_utils.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #endif
 
 namespace onnxruntime {
@@ -2550,6 +2551,238 @@ TEST(MathOpTest, Max_12_Float16_Nan_WebGpu) {
   execution_providers.push_back(std::move(webgpu_ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+
+#if defined(USE_WEBGPU)
+// int64 support on the WebGPU EP is gated behind the enableInt64 provider option, so it is not
+// exercised by the generic Max_12_Int64/Min_12_Int64 tests (which run with int64 disabled and fall
+// back to CPU). The tests below build a WebGPU EP with int64 enabled and disable CPU-EP fallback so
+// the node must run on the WebGPU kernel. They mirror the path coverage of the Add int64 tests
+// (element-wise, size divisible by 4, scalar operand, broadcast) and add the variadic (>2 input)
+// fold that is unique to Min/Max.
+namespace {
+// Builds a WebGPU EP with int64 enabled; returns nullptr if the EP is unavailable in this build.
+std::unique_ptr<IExecutionProvider> MakeWebGpuInt64Provider() {
+  ConfigOptions provider_options{};
+  EXPECT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  return WebGpuExecutionProviderWithOptions(provider_options);
+}
+
+// Runs the tester on `provider`, forcing the node onto the WebGPU kernel (no CPU-EP fallback).
+void RunWebGpuNoCpuFallback(OpTester& test, std::unique_ptr<IExecutionProvider> provider) {
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(so)
+      .ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+}  // namespace
+
+// Element-wise, size not divisible by 4: exercises the int64 OOB lane guards. The values cover the
+// edges of the supported range -- -1 (0xFFFFFFFFFFFFFFFF), INT32_MIN, INT32_MAX -- so both the
+// all-ones negative and the range boundaries are checked.
+TEST(MathOpTest, Max_12_Int64_WebGpu) {
+  auto provider = MakeWebGpuInt64Provider();
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+  OpTester test("Max", 12);
+  test.AddInput<int64_t>("data_0", {3}, {-1LL, -2147483648LL, 2147483647LL});  // -1 (0xFF..FF), INT32_MIN, INT32_MAX
+  test.AddInput<int64_t>("data_1", {3}, {5, 7, -100});
+  test.AddOutput<int64_t>("max", {3}, {5, 7, 2147483647LL});
+  RunWebGpuNoCpuFallback(test, std::move(provider));
+}
+
+// Size divisible by 4: full vec4 assembly with no lane truncation.
+TEST(MathOpTest, Max_12_Int64_WebGpu_SizeDiv4) {
+  auto provider = MakeWebGpuInt64Provider();
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+  OpTester test("Max", 12);
+  test.AddInput<int64_t>("data_0", {8}, {10, 20, 30, 40, 50, 60, 70, 80});
+  test.AddInput<int64_t>("data_1", {8}, {1, 2, 3, 4, 500, 6, 7, 800});
+  test.AddOutput<int64_t>("max", {8}, {10, 20, 30, 40, 500, 60, 70, 800});
+  RunWebGpuNoCpuFallback(test, std::move(provider));
+}
+
+// Scalar RHS: exercises the is_rhs_scalar_ int64 path.
+TEST(MathOpTest, Max_12_Int64_WebGpu_ScalarRhs) {
+  auto provider = MakeWebGpuInt64Provider();
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+  OpTester test("Max", 12);
+  test.AddInput<int64_t>("data_0", {5}, {10, -5, 30, 40, 50});
+  test.AddInput<int64_t>("data_1", {1}, {7});
+  test.AddOutput<int64_t>("max", {5}, {10, 7, 30, 40, 50});
+  RunWebGpuNoCpuFallback(test, std::move(provider));
+}
+
+// Shape broadcast: A [1,3] against B [3,1] -> [3,3].
+TEST(MathOpTest, Max_12_Int64_WebGpu_Broadcast) {
+  auto provider = MakeWebGpuInt64Provider();
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+  OpTester test("Max", 12);
+  test.AddInput<int64_t>("data_0", {1, 3}, {10, 20, 30});
+  test.AddInput<int64_t>("data_1", {3, 1}, {1, -2, 300});
+  test.AddOutput<int64_t>("max", {3, 3},
+                          {10, 20, 30,
+                           10, 20, 30,
+                           300, 300, 300});
+  RunWebGpuNoCpuFallback(test, std::move(provider));
+}
+
+// Variadic 3-input fold (unique to Min/Max): allocates an int64 intermediate GPU tensor.
+TEST(MathOpTest, Max_12_Int64_WebGpu_Variadic) {
+  auto provider = MakeWebGpuInt64Provider();
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+  OpTester test("Max", 12);
+  test.AddInput<int64_t>("data_0", {1, 3}, {1, 2, 3});
+  test.AddInput<int64_t>("data_1", {1, 3}, {10, 0, 5});
+  test.AddInput<int64_t>("data_2", {1, 3}, {-1, -2, 4});
+  test.AddOutput<int64_t>("max", {1, 3}, {10, 2, 5});
+  RunWebGpuNoCpuFallback(test, std::move(provider));
+}
+
+// Element-wise, size not divisible by 4: same edge values as the Max case -- -1 (all ones),
+// INT32_MIN, INT32_MAX -- verifying the min side of full-width negative/sign handling.
+TEST(MathOpTest, Min_12_Int64_WebGpu) {
+  auto provider = MakeWebGpuInt64Provider();
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+  OpTester test("Min", 12);
+  test.AddInput<int64_t>("data_0", {3}, {-1LL, -2147483648LL, 2147483647LL});  // -1 (0xFF..FF), INT32_MIN, INT32_MAX
+  test.AddInput<int64_t>("data_1", {3}, {5, 7, -100});
+  test.AddOutput<int64_t>("min", {3}, {-1LL, -2147483648LL, -100});
+  RunWebGpuNoCpuFallback(test, std::move(provider));
+}
+
+// Scalar LHS: exercises the is_lhs_scalar_ int64 path.
+TEST(MathOpTest, Min_12_Int64_WebGpu_ScalarLhs) {
+  auto provider = MakeWebGpuInt64Provider();
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+  OpTester test("Min", 12);
+  test.AddInput<int64_t>("data_0", {1}, {100});
+  test.AddInput<int64_t>("data_1", {5}, {1, 2, 3, 4, 5});
+  test.AddOutput<int64_t>("min", {5}, {1, 2, 3, 4, 5});
+  RunWebGpuNoCpuFallback(test, std::move(provider));
+}
+
+// Shape broadcast: A [1,3] against B [3,1] -> [3,3].
+TEST(MathOpTest, Min_12_Int64_WebGpu_Broadcast) {
+  auto provider = MakeWebGpuInt64Provider();
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+  OpTester test("Min", 12);
+  test.AddInput<int64_t>("data_0", {1, 3}, {10, 20, 30});
+  test.AddInput<int64_t>("data_1", {3, 1}, {1, -2, 300});
+  test.AddOutput<int64_t>("min", {3, 3},
+                          {1, 1, 1,
+                           -2, -2, -2,
+                           10, 20, 30});
+  RunWebGpuNoCpuFallback(test, std::move(provider));
+}
+
+// Variadic 3-input fold (unique to Min/Max): allocates an int64 intermediate GPU tensor.
+TEST(MathOpTest, Min_12_Int64_WebGpu_Variadic) {
+  auto provider = MakeWebGpuInt64Provider();
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+  OpTester test("Min", 12);
+  test.AddInput<int64_t>("data_0", {1, 3}, {1, 2, 3});
+  test.AddInput<int64_t>("data_1", {1, 3}, {10, 0, 5});
+  test.AddInput<int64_t>("data_2", {1, 3}, {-1, -2, 4});
+  test.AddOutput<int64_t>("min", {1, 3}, {-1, -2, 3});
+  RunWebGpuNoCpuFallback(test, std::move(provider));
+}
+
+// The ops below share the same int64-capable registration path as Add/Sub/Max/Min. One element-wise
+// case each (size not divisible by 4, so the int64 lane guards are exercised) is enough to confirm
+// the int64 kernel is selected; the shader paths themselves are covered by the Max/Min cases above.
+// Values stay within the int32 range (the documented low-32-bit limitation) and include the all-ones
+// -1 pattern.
+TEST(MathOpTest, Mul_Int64_WebGpu) {
+  auto provider = MakeWebGpuInt64Provider();
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+  OpTester test("Mul", 14);
+  test.AddInput<int64_t>("A", {3}, {-1LL, 100, 7});
+  test.AddInput<int64_t>("B", {3}, {5, 3, -2});
+  test.AddOutput<int64_t>("C", {3}, {-5, 300, -14});
+  RunWebGpuNoCpuFallback(test, std::move(provider));
+}
+
+TEST(MathOpTest, Div_Int64_WebGpu) {
+  auto provider = MakeWebGpuInt64Provider();
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+  OpTester test("Div", 14);
+  test.AddInput<int64_t>("A", {3}, {-1LL, 100, -20});
+  test.AddInput<int64_t>("B", {3}, {1, 5, 4});
+  test.AddOutput<int64_t>("C", {3}, {-1, 20, -5});  // integer division truncates toward zero
+  RunWebGpuNoCpuFallback(test, std::move(provider));
+}
+
+// Comparison ops take int64 inputs and produce a bool output (T = int64 constraint only).
+TEST(MathOpTest, Greater_Int64_WebGpu) {
+  auto provider = MakeWebGpuInt64Provider();
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+  OpTester test("Greater", 13);
+  test.AddInput<int64_t>("A", {3}, {5, -1LL, 2147483647LL});
+  test.AddInput<int64_t>("B", {3}, {3, 0, -100});
+  test.AddOutput<bool>("C", {3}, {true, false, true});
+  RunWebGpuNoCpuFallback(test, std::move(provider));
+}
+
+TEST(MathOpTest, Less_Int64_WebGpu) {
+  auto provider = MakeWebGpuInt64Provider();
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+  OpTester test("Less", 13);
+  test.AddInput<int64_t>("A", {3}, {5, -1LL, 100});
+  test.AddInput<int64_t>("B", {3}, {3, 0, 200});
+  test.AddOutput<bool>("C", {3}, {false, true, true});
+  RunWebGpuNoCpuFallback(test, std::move(provider));
+}
+
+TEST(MathOpTest, GreaterOrEqual_Int64_WebGpu) {
+  auto provider = MakeWebGpuInt64Provider();
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+  OpTester test("GreaterOrEqual", 16);
+  test.AddInput<int64_t>("A", {3}, {5, 5, -1LL});
+  test.AddInput<int64_t>("B", {3}, {5, 3, 0});
+  test.AddOutput<bool>("C", {3}, {true, true, false});
+  RunWebGpuNoCpuFallback(test, std::move(provider));
+}
+
+TEST(MathOpTest, LessOrEqual_Int64_WebGpu) {
+  auto provider = MakeWebGpuInt64Provider();
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+  OpTester test("LessOrEqual", 16);
+  test.AddInput<int64_t>("A", {3}, {5, 5, -1LL});
+  test.AddInput<int64_t>("B", {3}, {5, 3, 0});
+  test.AddOutput<bool>("C", {3}, {true, false, true});
+  RunWebGpuNoCpuFallback(test, std::move(provider));
+}
+#endif  // USE_WEBGPU
 
 TEST(MathOpTest, Max_6) {
   OpTester test("Max", 6);
