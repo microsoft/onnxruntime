@@ -1198,7 +1198,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* GroupQueryAttention_ver1_doc = R"DOC(
 Group Query Self/Cross Attention with KV Cache Quantization Support.
 
-This operator implements causal grouped-query attention with past state (KV cache) support.
+This operator implements grouped-query attention with past state (KV cache) support.
 It also supports optional float8, int8 or int4 quantization for the KV cache to reduce memory footprint.
 
 **Cache Format:**
@@ -1224,6 +1224,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .SetDoc(GroupQueryAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads for q", AttributeProto::INT)
         .Attr("kv_num_heads", "Number of attention heads for k and v", AttributeProto::INT)
+        .Attr("causal",
+              "Whether to apply a causal mask. Default value is 1. Set to 0 for bidirectional attention.",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
         .Attr("scale",
               "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
               AttributeProto::FLOAT,
