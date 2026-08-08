@@ -122,7 +122,8 @@ static Status RunMRotaryEmbedding(concurrency::ThreadPool* tp, const MRotaryPara
       const T* stream_sin[3];
       for (int stream = 0; stream < 3; ++stream) {
         stream_positions[stream] = position_ids[static_cast<std::ptrdiff_t>(stream) * stream_stride + bs_index];
-        const std::ptrdiff_t cache_offset = stream_positions[stream] * half_rotary_emb_dim;
+        const std::ptrdiff_t cache_offset = static_cast<std::ptrdiff_t>(stream_positions[stream]) *
+                                            half_rotary_emb_dim;
         stream_cos[stream] = cos_cache + cache_offset;
         stream_sin[stream] = sin_cache + cache_offset;
       }
