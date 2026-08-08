@@ -75,3 +75,30 @@
    elseif(PAL_IMPLEMENTATION STREQUAL "WIN32")
      # Windows legacy: vendored sqlite/zlib headers are included via
      # include_directories in the PAL section above; link only ${LIBS}
+
+--- a/lib/pal/posix/sysinfo_utils_mac.mm
++++ b/lib/pal/posix/sysinfo_utils_mac.mm
+@@ -8,6 +8,7 @@
+ #include <unistd.h>
+ #include <uuid/uuid.h>
+ #include <vector>
++#include <TargetConditionals.h>
+ #import <Foundation/Foundation.h>
+ 
+ #define EMPTY_GUID "00000000-0000-0000-0000-000000000000"
+@@ -37,6 +38,9 @@
+ 
+ std::string GetDeviceId()
+ {
++#if !TARGET_OS_OSX
++    return {EMPTY_GUID};
++#else
+     uuid_t uuidBytes;
+     const struct timespec spec = {1, 0};
+     int hostUUIDResult = gethostuuid(uuidBytes, &spec);
+@@ -49,4 +53,5 @@
+     }
+ 
+     return {EMPTY_GUID};
++#endif
+ }
