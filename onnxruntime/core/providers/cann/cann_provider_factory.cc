@@ -79,9 +79,13 @@ struct CANN_Provider : Provider {
     info.enable_cann_subgraph = params->enable_cann_subgraph != 0;
     info.dump_graphs = params->dump_graphs != 0;
     info.dump_om_model = params->dump_om_model != 0;
-    info.precision_mode = params->precision_mode;
+    info.precision_mode_v2 = params->precision_mode_v2;
     info.op_select_impl_mode = params->op_select_impl_mode;
     info.optypelist_for_implmode = params->optypelist_for_implmode;
+    info.input_format = params->input_format;
+    info.dynamic_batch_size = params->dynamic_batch_size;
+    info.dynamic_image_size = params->dynamic_image_size;
+    info.dynamic_dims = params->dynamic_dims;
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
 
     return std::make_shared<CANNProviderFactory>(info);
@@ -98,9 +102,13 @@ struct CANN_Provider : Provider {
     cann_options.enable_cann_subgraph = internal_options.enable_cann_subgraph;
     cann_options.dump_graphs = internal_options.dump_graphs;
     cann_options.dump_om_model = internal_options.dump_om_model;
-    cann_options.precision_mode = internal_options.precision_mode;
+    cann_options.precision_mode_v2 = internal_options.precision_mode_v2;
     cann_options.op_select_impl_mode = internal_options.op_select_impl_mode;
     cann_options.optypelist_for_implmode = internal_options.optypelist_for_implmode;
+    cann_options.input_format = internal_options.input_format;
+    cann_options.dynamic_batch_size = internal_options.dynamic_batch_size;
+    cann_options.dynamic_image_size = internal_options.dynamic_image_size;
+    cann_options.dynamic_dims = internal_options.dynamic_dims;
     cann_options.default_memory_arena_cfg = internal_options.default_memory_arena_cfg;
   }
 

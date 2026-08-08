@@ -23,9 +23,13 @@ constexpr const char* kEnableCannGraph = "enable_cann_graph";
 constexpr const char* kEnableCannSubGraph = "enable_cann_subgraph";
 constexpr const char* kDumpGraphs = "dump_graphs";
 constexpr const char* kDumpOmModel = "dump_om_model";
-constexpr const char* kPrecisionMode = "precision_mode";
+constexpr const char* kPrecisionMode_V2 = "precision_mode_v2";
 constexpr const char* kOpSelectImplMode = "op_select_impl_mode";
 constexpr const char* kOpTypeListForImplMode = "optypelist_for_implmode";
+constexpr const char* kInputFormat = "input_format";
+constexpr const char* kDynamicBatchSize = "dynamic_batch_size";
+constexpr const char* kDynamicImageSize = "dynamic_image_size";
+constexpr const char* kDynamicDims = "dynamic_dims";
 }  // namespace provider_option_names
 }  // namespace cann
 
@@ -62,9 +66,13 @@ CANNExecutionProviderInfo CANNExecutionProviderInfo::FromProviderOptions(const P
           .AddAssignmentToReference(cann::provider_option_names::kEnableCannSubGraph, info.enable_cann_subgraph)
           .AddAssignmentToReference(cann::provider_option_names::kDumpGraphs, info.dump_graphs)
           .AddAssignmentToReference(cann::provider_option_names::kDumpOmModel, info.dump_om_model)
-          .AddAssignmentToReference(cann::provider_option_names::kPrecisionMode, info.precision_mode)
+          .AddAssignmentToReference(cann::provider_option_names::kPrecisionMode_V2, info.precision_mode_v2)
           .AddAssignmentToReference(cann::provider_option_names::kOpSelectImplMode, info.op_select_impl_mode)
           .AddAssignmentToReference(cann::provider_option_names::kOpTypeListForImplMode, info.optypelist_for_implmode)
+          .AddAssignmentToReference(cann::provider_option_names::kInputFormat, info.input_format)
+          .AddAssignmentToReference(cann::provider_option_names::kDynamicBatchSize, info.dynamic_batch_size)
+          .AddAssignmentToReference(cann::provider_option_names::kDynamicImageSize, info.dynamic_image_size)
+          .AddAssignmentToReference(cann::provider_option_names::kDynamicDims, info.dynamic_dims)
           .Parse(options));
   return info;
 }
@@ -79,9 +87,13 @@ ProviderOptions CANNExecutionProviderInfo::ToProviderOptions(const CANNExecution
       {cann::provider_option_names::kEnableCannSubGraph, MakeStringWithClassicLocale(info.enable_cann_subgraph)},
       {cann::provider_option_names::kDumpGraphs, MakeStringWithClassicLocale(info.dump_graphs)},
       {cann::provider_option_names::kDumpOmModel, MakeStringWithClassicLocale(info.dump_om_model)},
-      {cann::provider_option_names::kPrecisionMode, MakeStringWithClassicLocale(info.precision_mode)},
+      {cann::provider_option_names::kPrecisionMode_V2, MakeStringWithClassicLocale(info.precision_mode_v2)},
       {cann::provider_option_names::kOpSelectImplMode, MakeStringWithClassicLocale(info.op_select_impl_mode)},
-      {cann::provider_option_names::kOpTypeListForImplMode, MakeStringWithClassicLocale(info.optypelist_for_implmode)}};
+      {cann::provider_option_names::kOpTypeListForImplMode, MakeStringWithClassicLocale(info.optypelist_for_implmode)},
+      {cann::provider_option_names::kInputFormat, MakeStringWithClassicLocale(info.input_format)},
+      {cann::provider_option_names::kDynamicBatchSize, MakeStringWithClassicLocale(info.dynamic_batch_size)},
+      {cann::provider_option_names::kDynamicImageSize, MakeStringWithClassicLocale(info.dynamic_image_size)},
+      {cann::provider_option_names::kDynamicDims, MakeStringWithClassicLocale(info.dynamic_dims)}};
   return options;
 }
 
@@ -95,9 +107,13 @@ ProviderOptions CANNExecutionProviderInfo::ToProviderOptions(const OrtCANNProvid
       {cann::provider_option_names::kEnableCannSubGraph, MakeStringWithClassicLocale(info.enable_cann_subgraph)},
       {cann::provider_option_names::kDumpGraphs, MakeStringWithClassicLocale(info.dump_graphs)},
       {cann::provider_option_names::kDumpOmModel, MakeStringWithClassicLocale(info.dump_om_model)},
-      {cann::provider_option_names::kPrecisionMode, MakeStringWithClassicLocale(info.precision_mode)},
+      {cann::provider_option_names::kPrecisionMode_V2, MakeStringWithClassicLocale(info.precision_mode_v2)},
       {cann::provider_option_names::kOpSelectImplMode, MakeStringWithClassicLocale(info.op_select_impl_mode)},
-      {cann::provider_option_names::kOpTypeListForImplMode, MakeStringWithClassicLocale(info.optypelist_for_implmode)}};
+      {cann::provider_option_names::kOpTypeListForImplMode, MakeStringWithClassicLocale(info.optypelist_for_implmode)},
+      {cann::provider_option_names::kInputFormat, MakeStringWithClassicLocale(info.input_format)},
+      {cann::provider_option_names::kDynamicBatchSize, MakeStringWithClassicLocale(info.dynamic_batch_size)},
+      {cann::provider_option_names::kDynamicImageSize, MakeStringWithClassicLocale(info.dynamic_image_size)},
+      {cann::provider_option_names::kDynamicDims, MakeStringWithClassicLocale(info.dynamic_dims)}};
   return options;
 }
 }  // namespace onnxruntime
