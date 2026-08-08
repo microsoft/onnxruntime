@@ -642,6 +642,79 @@ class TestFusion(unittest.TestCase):
                 err_msg=f"sin_cache mismatch at position {pos}",
             )
 
+    def test_qwen3_rotary_embedding_fusion_position_ids_format0(self):
+        """Test that on-the-fly RoPE fusion emits a format-0 position_ids.
+
+        In a real Qwen3 export the traced position_ids is cache_position broadcast over the
+        batch axis (shape (1, sequence_length)), which the RotaryEmbedding kernel rejects for
+        batch_size > 1. The fusion must reduce it to a scalar/1-element (format 0) tensor so the
+        node works for any batch size. Regression test for the invalid position_ids shape issue.
+        """
+        hidden_size = 64
+        num_heads = 8
+        num_kv_heads = 2
+
+        model = create_qwen3_decoder_layer(
+            hidden_size=hidden_size,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            include_rope=True,
+        )
+
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "qwen3_decoder_rope_pos_format0.onnx")
+        onnx.save(model, model_path)
+
+        options = FusionOptions("qwen3")
+        optimized_model = optimize_model(
+            model_path,
+            model_type="qwen3",
+            num_heads=num_heads,
+            hidden_size=hidden_size,
+            optimization_options=options,
+        )
+
+        os.remove(model_path)
+
+        nodes = optimized_model.model.graph.node
+        rope_nodes = [n for n in nodes if n.op_type == "RotaryEmbedding"]
+        self.assertEqual(len(rope_nodes), 2, f"Expected 2 RotaryEmbedding (Q + K), got {len(rope_nodes)}")
+
+        output_to_node = {output: node for node in nodes for output in node.output}
+
+        # Every RotaryEmbedding node's position_ids (input index 1) must be produced by the
+        # format-0 reduction (Reshape flatten -> Slice first element) rather than the raw
+        # (1, sequence_length) / (batch, sequence_length) tensor the kernel rejects.
+        for rope_node in rope_nodes:
+            position_ids_name = rope_node.input[1]
+            slice_node = output_to_node.get(position_ids_name)
+            self.assertIsNotNone(
+                slice_node,
+                f"position_ids '{position_ids_name}' for {rope_node.name} has no producing node",
+            )
+            self.assertEqual(
+                slice_node.op_type,
+                "Slice",
+                f"position_ids for {rope_node.name} should be produced by the format-0 Slice, got {slice_node.op_type}",
+            )
+            # Slice takes the first element: starts=[0], ends=[1], axes=[0].
+            starts = optimized_model.get_initializer(slice_node.input[1])
+            ends = optimized_model.get_initializer(slice_node.input[2])
+            self.assertIsNotNone(starts, "format-0 Slice starts must be a constant initializer")
+            self.assertIsNotNone(ends, "format-0 Slice ends must be a constant initializer")
+            self.assertEqual(list(numpy_helper.to_array(starts)), [0], "format-0 Slice must start at 0")
+            self.assertEqual(list(numpy_helper.to_array(ends)), [1], "format-0 Slice must take one element")
+            flatten_node = output_to_node.get(slice_node.input[0])
+            self.assertIsNotNone(flatten_node, "format-0 Slice input must be produced by the flatten Reshape")
+            self.assertEqual(flatten_node.op_type, "Reshape", "format-0 position_ids must be flattened by Reshape")
+            flatten_shape = optimized_model.get_initializer(flatten_node.input[1])
+            self.assertIsNotNone(flatten_shape, "format-0 flatten Reshape shape must be a constant initializer")
+            self.assertEqual(
+                list(numpy_helper.to_array(flatten_shape)),
+                [-1],
+                "format-0 position_ids must be flattened to 1D before slicing",
+            )
+
     def test_dit_attention_fusion(self):
         """Test DiT attention fusion for F5-TTS-style pattern (FP32, with K pre-transpose)."""
         model = create_dit_attention(
