@@ -24,6 +24,7 @@
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/plugin_ep_stream.h"
+#include "core/framework/random_seed.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/tensorprotoutils.h"
@@ -4920,6 +4921,8 @@ static constexpr OrtApi ort_api_1_to_29 = {
     &OrtApis::GetExperimentalFunction,
     &OrtApis::KernelContext_GetSyncStream,
     // End of Version 28 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::SetSeed,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -4997,6 +5000,13 @@ ORT_API(const char*, OrtApis::GetVersionString) {
 
 ORT_API(const char*, OrtApis::GetBuildInfoString) {
   return ORT_BUILD_INFO;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SetSeed, _In_ int64_t seed) {
+  API_IMPL_BEGIN
+  utils::SetRandomSeed(seed);
+  return nullptr;
+  API_IMPL_END
 }
 
 const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION {
