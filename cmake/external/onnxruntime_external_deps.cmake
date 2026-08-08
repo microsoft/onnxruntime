@@ -961,6 +961,9 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     set(BUILD_SWIFT_WRAPPER OFF CACHE BOOL "Disable 1DS Swift wrapper" FORCE)
     set(BUILD_JNI_WRAPPER OFF CACHE BOOL "Disable 1DS JNI wrapper" FORCE)
     set(BUILD_PACKAGE OFF CACHE BOOL "Disable 1DS package generation" FORCE)
+    if(APPLE)
+      set(BUILD_APPLE_HTTP ON CACHE BOOL "Build the 1DS Apple HTTP client" FORCE)
+    endif()
     # ORT supplies CURL::libcurl on Linux through its pinned static mbedTLS
     # transport. On Apple/Android the SDK selects the native transport.
     set(MATSDK_CURL_PROVIDER SYSTEM CACHE STRING "Use ORT's selected 1DS curl target" FORCE)
