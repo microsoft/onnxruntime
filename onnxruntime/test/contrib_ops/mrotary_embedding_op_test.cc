@@ -46,7 +46,7 @@ void RunMRotaryEmbeddingTest(const std::vector<int64_t>& input_shape,
     test.AddAttribute<int64_t>("mrope_layout", mrope_layout);
     test.AddAttribute<int64_t>("interleaved", interleaved);
     test.AddAttribute<float>("scale", scale);
-    test.AddAttribute<int64_t>("mrope_section", mrope_section);
+    test.AddAttribute<std::vector<int64_t>>("mrope_section", mrope_section);
 
     if (tensor_type == TensorType::kFloat) {
       test.AddInput<float>("input", input_shape, input_data);
