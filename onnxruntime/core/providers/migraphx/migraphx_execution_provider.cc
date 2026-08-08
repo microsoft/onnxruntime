@@ -377,6 +377,17 @@ std::vector<int> toVector(const ONNX_NAMESPACE::int64s& nums) {
 static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, const Node* node) {
   std::vector<NodeIndex> input_nodes;
   const auto& optype = node->OpType();
+
+  if (optype == "If" || optype == "Loop") {
+    for (const auto& entry : node->GetAttributeWithBlocks()) {
+      const auto& subgraph = entry.second;
+      for (const auto& sub_node : subgraph.Nodes()) {
+        if (sub_node.Domain() == kMSDomain || sub_node.OpType().rfind("MGXKernel_", 0) == 0) {
+          return true;
+        }
+      }
+    }
+  }
   if (optype == "ArgMax" || optype == "ArgMin") {
     const auto& attributes = node->GetAttributes();
     // we do not support select_last_index = 1 for now
@@ -665,6 +676,10 @@ static bool IsNodeSupported(const std::set<std::string>& op_set,
   const auto& node = graph_viewer.GetNode(node_idx);
   const auto& optype = node->OpType();
   const auto& domain = node->Domain();
+
+  if (domain == kMSDomain || optype.rfind("MGXKernel_", 0) == 0) {
+    return false;
+  }
 
   // Three types of checking:
   // 1. Check input and output data types are supported.
