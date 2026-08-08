@@ -201,6 +201,12 @@
       list(APPEND onnxruntime_DELAYLOAD_FLAGS "/DELAYLOAD:user32.dll")
     endif()
 
+    if (NOT onnxruntime_USE_EXTERNAL_DAWN)
+      # The WebGPU EP configures the bundled Dawn instance with a custom dawn::platform::Platform.
+      # Propagate dawn_platform because onnxruntime_providers_webgpu is a static library in this build.
+      target_link_libraries(onnxruntime_providers_webgpu PUBLIC dawn::dawn_platform)
+    endif()
+
     if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
       target_link_libraries(onnxruntime_providers_webgpu PUBLIC dawn::webgpu_dawn)
 

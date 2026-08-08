@@ -812,6 +812,9 @@ if (onnxruntime_USE_WEBGPU)
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_parallel_build_fix.patch &&
 
+          # Allow embedders to reuse Dawn's default worker pool with a custom maximum thread count.
+          ${Patch_EXECUTABLE} --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_worker_task_pool_thread_count.patch &&
+
           # Remove the test folder to speed up potential file scan operations (70k+ files not needed for build).
           # Using <SOURCE_DIR> token ensures the correct absolute path regardless of working directory.
           ${CMAKE_COMMAND} -E rm -rf <SOURCE_DIR>/test)
