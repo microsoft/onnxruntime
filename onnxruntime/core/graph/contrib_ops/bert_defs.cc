@@ -2477,9 +2477,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "after position (seq_len - W + j), so slot W-1 is always the state after the last "
               "position (identical to the W = 0 tensor) and is the slot past_state is read from. "
               "The window axis leads the batch axis so that each slot is one contiguous "
-              "(batch_size, channels, k_1 - 1) block. Slots below max(0, W - seq_len) are not "
-              "written. A window lets a speculative decoder roll the state back to an accepted "
-              "prefix without replaying the forward.",
+              "(batch_size, channels, k_1 - 1) block. Slots below max(0, W - seq_len) hold no "
+              "position from this call and are filled with zeros. A window lets a speculative "
+              "decoder roll the state back to an accepted prefix without replaying the forward. "
+              "Valid range is [0, 8].",
               AttributeProto::INT,
               static_cast<int64_t>(0))
         .Input(0,
@@ -2522,6 +2523,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateElemTypeFromInputToOutput(ctx, 0, 1);
 
+          const int64_t state_window = getAttribute(ctx, "state_window", 0);
+          if (state_window < 0 || state_window > kMaxStateWindow) {
+            fail_shape_inference("CausalConvWithState: state_window must be in [0, ", kMaxStateWindow,
+                                 "], got ", state_window);
+          }
+
           // Output 0: same shape as input (batch_size, channels, ...)
           propagateShapeFromInputToOutput(ctx, 0, 0);
 
@@ -2543,10 +2550,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             // the last W positions (slot W-1 == the W = 0 tensor). The window axis leads the batch
             // axis so a slot is one contiguous (batch_size, channels, ...) block. W = 0 keeps the
             // legacy (batch_size, channels, ...) shape for backward compatibility.
-            const int64_t window = getAttribute(ctx, "state_window", 0);
             TensorShapeProto state_shape;
-            if (window > 0) {
-              state_shape.add_dim()->set_dim_value(window);
+            if (state_window > 0) {
+              state_shape.add_dim()->set_dim_value(state_window);
             }
             *state_shape.add_dim() = input_shape.dim(0);  // batch_size
             *state_shape.add_dim() = input_shape.dim(1);  // channels
@@ -2616,8 +2622,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "(T - W + j), so slot W-1 is always the state after the last token (identical to the "
               "W = 0 tensor) and is the slot past_state is read from. The window axis leads the "
               "batch axis so that each slot is one contiguous (B, H_kv, d_k, d_v) block. Slots "
-              "below max(0, W - T) are not written. A window lets a speculative decoder roll the "
-              "state back to an accepted prefix without replaying the forward.",
+              "below max(0, W - T) hold no token from this call and are filled with zeros. A "
+              "window lets a speculative decoder roll the state back to an accepted prefix "
+              "without replaying the forward. Valid range is [0, 8].",
               AttributeProto::INT,
               static_cast<int64_t>(0))
         .Input(0,
@@ -2676,6 +2683,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateElemTypeFromInputToOutput(ctx, 0, 1);
 
+          const int64_t state_window = getAttribute(ctx, "state_window", 0);
+          if (state_window < 0 || state_window > kMaxStateWindow) {
+            fail_shape_inference("LinearAttention: state_window must be in [0, ", kMaxStateWindow,
+                                 "], got ", state_window);
+          }
+
           // Read required attributes
           auto* q_num_heads_attr = ctx.getAttribute("q_num_heads");
           auto* kv_num_heads_attr = ctx.getAttribute("kv_num_heads");
@@ -2717,10 +2730,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               // Already validated in Output 0 block above; skip if shapes are invalid.
               return;
             }
-            const int64_t window = getAttribute(ctx, "state_window", 0);
             TensorShapeProto state_shape;
-            if (window > 0) {
-              state_shape.add_dim()->set_dim_value(window);  // W
+            if (state_window > 0) {
+              state_shape.add_dim()->set_dim_value(state_window);  // W
             }
             *state_shape.add_dim() = query_shape.dim(0);         // B
             state_shape.add_dim()->set_dim_value(kv_num_heads);  // H_kv
