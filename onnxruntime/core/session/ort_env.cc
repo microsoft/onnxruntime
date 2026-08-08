@@ -63,7 +63,9 @@ OrtEnvPtr OrtEnv::GetOrCreateInstance(const OrtEnv::LoggingManagerConstructionIn
     std::string name = lm_info.logid;
 
     std::unique_ptr<ISink> sink = nullptr;
-    if (lm_info.logging_function) {
+    if (lm_info.sink_factory) {
+      sink = lm_info.sink_factory();
+    } else if (lm_info.logging_function) {
       sink = std::make_unique<UserLoggingSink>(lm_info.logging_function, lm_info.logger_param);
 
     } else {
