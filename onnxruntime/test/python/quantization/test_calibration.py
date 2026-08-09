@@ -12,10 +12,10 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper, numpy_helper
 
 import onnxruntime
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
 from onnxruntime.quantization import quantize_static
 from onnxruntime.quantization.calibrate import (
     CalibrationDataReader,

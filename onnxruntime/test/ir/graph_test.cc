@@ -138,7 +138,7 @@ static bool RegisterCustomSchemas() {
       .Output(2, "y_zero_point", "Output zero point. It's a scalar, which means a per-tensor/layer quantization.", "T2")
       .TypeConstraint("T1", {"tensor(float)"}, "Constrain 'x' to float tensor.")
       .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain 'y_zero_point' and 'y' to 8-bit unsigned integer tensor.")
-      .FunctionBody((const std::vector<NodeProto>&)([]() {
+      .FunctionBody(([&]() {
         auto nodes = ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes({// nodes: {outputs, op, inputs, attributes}
                                                                      ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Q_Min", 0.f),
                                                                      ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Q_Max", 255.f),
@@ -241,7 +241,7 @@ static void ConstructSparseTensor(const std::string& name,
   m_values.set_name(name);
   m_values.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   *m_values.mutable_dims()->Add() = static_cast<int64_t>(values.size());
-  std::string& raw_data = *m_values.mutable_raw_data();
+  auto& raw_data = *m_values.mutable_raw_data();
   raw_data.resize(values.size() * sizeof(float));
   auto dest_span = gsl::make_span<float>(reinterpret_cast<float*>(&raw_data[0]), values.size());
   std::copy(values.cbegin(), values.cend(), dest_span.begin());

@@ -29,9 +29,9 @@ from unittest.mock import patch
 
 import numpy
 import torch
-from onnx import TensorProto
 from parameterized import parameterized
 
+from onnxruntime._onnx_shim.onnx import TensorProto
 from test_onnx_attention.common import (
     AttentionConfig,
     atol,

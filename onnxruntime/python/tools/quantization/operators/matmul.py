@@ -1,7 +1,7 @@
 import itertools
 import logging
 
-import onnx
+from onnxruntime._onnx_shim import onnx
 
 from ..quant_utils import (
     FLOAT8_TYPES,

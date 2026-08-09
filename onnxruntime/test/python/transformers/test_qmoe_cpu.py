@@ -33,14 +33,14 @@ import numpy
 import torch
 import torch.nn.functional as F
 from env_var_helper import scoped_env_var
-from onnx import helper
 from parameterized import parameterized
 from torch import nn
 
 import onnxruntime
+from onnxruntime._onnx_shim.onnx import helper
 
 try:
-    from onnx import TensorProto
+    from onnxruntime._onnx_shim.onnx import TensorProto
 
     has_onnx = True
 except ImportError:

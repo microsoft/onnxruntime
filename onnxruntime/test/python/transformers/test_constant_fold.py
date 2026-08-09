@@ -6,10 +6,11 @@
 import os
 import unittest
 
-import onnx
 from bert_model_generator import float_tensor
-from onnx import TensorProto, helper, numpy_helper
 from parity_utilities import find_transformers_source
+
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
 
 if find_transformers_source():
     from fusion_options import FusionOptions

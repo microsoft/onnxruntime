@@ -13,7 +13,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-import onnx
+from onnxruntime._onnx_shim import onnx
 
 from .calibrate import (
     CalibrationDataReader,

@@ -2,8 +2,9 @@ import logging
 
 from fusion_base import Fusion
 from fusion_skiplayernorm import FusionSkipLayerNormalization
-from onnx import helper
 from onnx_model import OnnxModel
+
+from onnxruntime._onnx_shim.onnx import helper
 
 logger = logging.getLogger(__name__)
 

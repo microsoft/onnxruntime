@@ -9,9 +9,9 @@ import math
 import unittest
 
 import numpy as np
-import onnx
 
 import onnxruntime
+from onnxruntime._onnx_shim import onnx
 from onnxruntime.quantization.execution_providers.qnn.fusion_lpnorm import FusionLpNormalization
 from onnxruntime.quantization.fusions import FusionGelu, FusionLayerNormalization
 from onnxruntime.quantization.onnx_model import ONNXModel

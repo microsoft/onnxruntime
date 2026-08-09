@@ -10,7 +10,11 @@
 #include "test/util/include/telemetry_test_environment.h"
 
 // onnx dependencies
+#if defined(ORT_USE_ONNX_LIGHT)
+#include "onnx_lib/common/onnx_pb.h"
+#else
 #include "onnx/onnx_pb.h"
+#endif
 #include <algorithm>
 #include <fstream>
 

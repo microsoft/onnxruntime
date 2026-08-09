@@ -9,8 +9,7 @@ import tempfile
 import unittest
 import urllib.request
 
-import onnx
-
+from onnxruntime._onnx_shim import onnx
 from onnxruntime.quantization import quantize_dynamic
 
 

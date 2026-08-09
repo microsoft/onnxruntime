@@ -6,8 +6,9 @@ from logging import getLogger
 
 import numpy as np
 from fusion_gpt_attention import FusionGptAttentionPastBase
-from onnx import helper
 from onnx_model import OnnxModel
+
+from onnxruntime._onnx_shim.onnx import helper
 
 logger = getLogger(__name__)
 

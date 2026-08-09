@@ -4,12 +4,11 @@ flatbuffers
 jinja2
 markupsafe
 numpy
-onnx
+-r requirements-onnx.txt  # onnx variant; swap to requirements-onnx-light.txt for USE_ONNX_LIGHT
 onnxmltools
 packaging
 pandas
 parameterized>=0.8.1
-protobuf>=4.25.8
 pydocstyle[toml]
 pytest
 pytest-cov

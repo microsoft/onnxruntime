@@ -48,8 +48,17 @@
 #include "core/providers/providers.h"
 #include "core/common/path_string.h"
 
+#ifdef ORT_USE_ONNX_LIGHT
+// onnx-light already defines these enum/struct declarations (as real types,
+// not forward declarations) via provider_interfaces.h's onnx_lib/common/onnx_pb.h
+// include. Re-declaring them here would conflict (duplicate enum/type
+// definitions) since ONNX_NAMESPACE resolves to the same onnx_light namespace.
+#include "onnx_lib/common/onnx_pb.h"
+#endif
+
 namespace ONNX_NAMESPACE {
 
+#ifndef ORT_USE_ONNX_LIGHT
 // These are exact duplicates of the real protobuf types, defined here since we can't include the protobuf headers
 enum AttributeProto_AttributeType : int {
   AttributeProto_AttributeType_UNDEFINED = 0,
@@ -122,6 +131,7 @@ enum OperatorStatus : int {
   EXPERIMENTAL = 0,
   STABLE = 1
 };
+#endif  // !ORT_USE_ONNX_LIGHT
 
 // onnx Protobuf types (All of these are direct mappings to the onnx types except for the Repeated*Field ones which map to a Repeated*Field type)
 struct int64s;    // RepeatedField
@@ -136,13 +146,20 @@ struct StringStringEntryProtos;  // RepeatedPtrField
 struct OperatorSetIdProto;
 struct TensorProto;
 struct TensorProtos;  // RepeatedPtrField
+#ifndef ORT_USE_ONNX_LIGHT
+// Under onnx-light these are `using` type aliases (e.g. TensorShapeProto::Dimension),
+// not standalone struct types, so they can't be forward-declared as `struct` here;
+// onnx-light's own headers (already included above) provide them instead.
 struct TensorShapeProto_Dimension;
+#endif
 struct TensorShapeProto_Dimensions;  // RepeatedPtrField
 struct TensorShapeProto;
+#ifndef ORT_USE_ONNX_LIGHT
 struct TypeProto_Optional;
 struct TypeProto_Tensor;
 struct TypeProto_SparseTensor;
 struct TypeProto_Sequence;
+#endif
 struct TypeProto;
 struct ValueInfoProto;
 struct ValueInfoProtos;  // RepeatedPtrField

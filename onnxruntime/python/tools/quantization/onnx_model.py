@@ -4,10 +4,10 @@
 # --------------------------------------------------------------------------
 from pathlib import Path
 
-import onnx
-import onnx.helper as onnx_helper
-import onnx.numpy_helper as onnx_numpy_helper
-from onnx.onnx_pb import ModelProto
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import helper as onnx_helper
+from onnxruntime._onnx_shim.onnx import numpy_helper as onnx_numpy_helper
+from onnxruntime._onnx_shim.onnx.onnx_pb import ModelProto
 
 from .quant_utils import attribute_to_kwarg, find_by_name
 

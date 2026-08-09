@@ -4,12 +4,13 @@
 # --------------------------------------------------------------------------
 import logging
 
-import onnx
 from fusion_gpt_attention import FusionGptAttention
 from fusion_gpt_attention_megatron import FusionGptAttentionMegatron
 from fusion_gpt_attention_no_past import FusionGptAttentionNoPast
 from fusion_rotary_attention import FusionRotaryAttention
 from onnx_model_bert import BertOnnxModel
+
+from onnxruntime._onnx_shim import onnx
 
 logger = logging.getLogger(__name__)
 

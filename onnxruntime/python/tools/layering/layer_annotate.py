@@ -5,7 +5,7 @@ import argparse
 import logging
 import pathlib
 
-import onnx
+from onnxruntime._onnx_shim import onnx
 
 
 def get_logger(name, level=logging.DEBUG):

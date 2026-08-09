@@ -54,10 +54,10 @@ import warnings
 
 import numpy
 import torch
-from onnx import TensorProto, helper
 from parameterized import parameterized
 
 from onnxruntime import InferenceSession, OrtValue, SessionOptions, get_available_providers
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 # #################################################################################################
 #  Helper Functions

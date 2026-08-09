@@ -14,7 +14,8 @@ DiT models (F5-TTS, etc.) use an attention pattern where:
 """
 
 import numpy as np
-from onnx import TensorProto, helper, numpy_helper
+
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
 
 
 def _float_tensor(name, shape, random=False):

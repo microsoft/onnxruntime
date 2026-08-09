@@ -17,12 +17,13 @@ import json
 import logging
 import os
 
-import onnx
 import scipy.stats
 from benchmark_helper import get_ort_environment_variables, setup_logger
 from convert_to_onnx import main
 from gpt2_helper import PRETRAINED_GPT2_MODELS, Gpt2Helper
 from onnx_model import OnnxModel
+
+from onnxruntime._onnx_shim import onnx
 
 logger = logging.getLogger("")
 

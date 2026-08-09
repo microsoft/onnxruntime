@@ -385,6 +385,15 @@
     endif()
 
     onnxruntime_add_include_to_target(${target} onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers)
+    if (onnxruntime_USE_ONNX_LIGHT)
+      # Under onnx-light, the shared-provider wrapper types in provider_wrappedtypes.h are
+      # disabled and ORT code calls onnx-light's native proto/helper classes directly (not
+      # through the g_host indirection layer), so their actual compiled definitions (e.g.
+      # onnx_light_helpers::MakeStringInternalElement, used by ONNX_NAMESPACE message
+      # classes' DebugString()/ShortDebugString() helpers) must be linked into this shared
+      # library, not just made visible via include directories.
+      target_link_libraries(${target} PRIVATE onnx_proto)
+    endif()
     if (onnxruntime_ENABLE_TRAINING_OPS)
       onnxruntime_add_include_to_target(${target} onnxruntime_training)
       if (onnxruntime_ENABLE_TRAINING)

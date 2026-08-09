@@ -13,7 +13,6 @@ import sys
 import time
 
 import numpy as np
-import onnx
 import psutil
 import torch
 from benchmark_helper import measure_memory, setup_logger
@@ -32,6 +31,7 @@ from tqdm import trange
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 import onnxruntime as ort
+from onnxruntime._onnx_shim import onnx
 
 logger = logging.getLogger(__name__)
 

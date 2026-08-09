@@ -5,10 +5,10 @@ import unittest
 
 import numpy as np
 from helper import get_name
-from onnx import load
 
 import onnxruntime.backend as backend
 from onnxruntime import datasets
+from onnxruntime._onnx_shim.onnx import load
 from onnxruntime.backend.backend import OnnxRuntimeBackend as ort_backend
 
 

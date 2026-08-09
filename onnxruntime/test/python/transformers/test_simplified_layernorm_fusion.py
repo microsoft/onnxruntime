@@ -7,9 +7,10 @@ import os
 import unittest
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper
 from parity_utilities import find_transformers_source
+
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 if find_transformers_source():
     from fusion_options import FusionOptions

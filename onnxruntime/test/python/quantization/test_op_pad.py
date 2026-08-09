@@ -12,8 +12,6 @@ import tempfile
 import unittest
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper
 from op_test_utils import (
     TestDataFeeds,
     check_model_correctness,
@@ -22,6 +20,8 @@ from op_test_utils import (
     get_tensor_consumers_and_producers,
 )
 
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
 

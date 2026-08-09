@@ -10,7 +10,8 @@ import argparse
 from pathlib import Path
 
 import numpy as np
-from onnx import load_model, numpy_helper, onnx_pb, save_model
+
+from onnxruntime._onnx_shim.onnx import load_model, numpy_helper, onnx_pb, save_model
 
 # An experimental small value for differentiating shape data and weights.
 # The tensor data with larger size can't be shape data.

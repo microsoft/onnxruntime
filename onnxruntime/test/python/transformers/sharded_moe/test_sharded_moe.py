@@ -6,9 +6,9 @@
 import unittest
 
 import numpy as np
-from onnx import TensorProto, helper
 
 import onnxruntime
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 try:
     from mpi4py import MPI

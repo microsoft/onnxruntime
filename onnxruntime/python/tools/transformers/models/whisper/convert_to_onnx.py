@@ -10,13 +10,13 @@ import os
 import re
 import warnings
 
-import onnx
 import torch
 from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger
 from whisper_chain import chain_model
 from whisper_encoder import WhisperEncoder
 from whisper_helper import PRETRAINED_WHISPER_MODELS, WhisperHelper
 
+from onnxruntime._onnx_shim import onnx
 from onnxruntime.quantization.matmul_nbits_quantizer import (
     KQuantWeightOnlyQuantConfig,
     MatMulNBitsQuantizer,

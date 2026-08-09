@@ -19,9 +19,9 @@ import os
 import time
 
 import numpy as np
-from onnx import TensorProto, helper
 
 from onnxruntime import InferenceSession, SessionOptions
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 
 def create_quantized_gqa_graph(

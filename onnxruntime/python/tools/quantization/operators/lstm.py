@@ -1,6 +1,7 @@
 import numpy
-import onnx
-from onnx import onnx_pb as onnx_proto
+
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import onnx_pb as onnx_proto
 
 from ..quant_utils import QuantType, attribute_to_kwarg, ms_domain  # noqa: F401
 from .base_operator import QuantOperatorBase

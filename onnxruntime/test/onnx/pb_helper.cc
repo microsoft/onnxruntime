@@ -29,31 +29,3 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "pb_helper.h"
-
-namespace onnxruntime {
-bool ParseDelimitedFromCodedStream(google::protobuf::MessageLite* message,
-                                   google::protobuf::io::CodedInputStream* input,
-                                   bool* clean_eof) {
-  if (clean_eof != NULL) *clean_eof = false;
-  int start = input->CurrentPosition();
-
-  // Read the size.
-  google::protobuf::uint32 size;
-  if (!input->ReadVarint32(&size)) {
-    if (clean_eof != NULL) *clean_eof = input->CurrentPosition() == start;
-    return false;
-  }
-
-  // Tell the stream not to read beyond that size.
-  google::protobuf::io::CodedInputStream::Limit limit = input->PushLimit(size);
-
-  // Parse the message.
-  if (!message->MergeFromCodedStream(input)) return false;
-  if (!input->ConsumedEntireMessage()) return false;
-
-  // Release the limit.
-  input->PopLimit(limit);
-
-  return true;
-}
-}  // namespace onnxruntime

@@ -8,8 +8,9 @@ from logging import getLogger
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
 from numpy import ndarray
-from onnx import NodeProto, TensorProto
 from onnx_model import OnnxModel
+
+from onnxruntime._onnx_shim.onnx import NodeProto, TensorProto
 
 logger = getLogger(__name__)
 

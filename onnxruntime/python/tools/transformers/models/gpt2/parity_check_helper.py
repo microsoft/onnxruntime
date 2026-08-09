@@ -15,7 +15,8 @@ import numpy
 import torch
 from benchmark_helper import create_onnxruntime_session
 from gpt2_helper import Gpt2Helper
-from onnx import TensorProto, numpy_helper
+
+from onnxruntime._onnx_shim.onnx import TensorProto, numpy_helper
 
 NON_ZERO_VALUE = str(1)
 ZERO_VALUE = str(0)

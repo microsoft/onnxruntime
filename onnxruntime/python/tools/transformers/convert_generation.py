@@ -49,11 +49,9 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import onnx
 import torch
 from benchmark_helper import Precision, setup_logger
 from fusion_utils import NumpyHelper
-from onnx import GraphProto, ModelProto, TensorProto
 from onnx_model import OnnxModel
 from transformers import (
     GPT2Config,
@@ -72,6 +70,8 @@ from onnxruntime import (
     SessionOptions,
     get_available_providers,
 )
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import GraphProto, ModelProto, TensorProto
 from onnxruntime.transformers.models.gpt2.convert_to_onnx import (
     main as convert_gpt2_to_onnx,
 )

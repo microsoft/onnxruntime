@@ -6,9 +6,10 @@
 import logging
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper, numpy_helper
 from onnx_model_bert import BertOnnxModel
+
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
 
 logger = logging.getLogger(__name__)
 

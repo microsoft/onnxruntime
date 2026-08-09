@@ -8,9 +8,13 @@
 #include "core/common/status.h"
 #include "core/session/onnxruntime_c_api.h"
 
+#ifdef ORT_USE_ONNX_LIGHT
+#include "onnx_lib/common/onnx_pb.h"
+#else
 namespace onnx {
 class TensorProto;
 }
+#endif
 
 namespace Ort {
 struct Value;

@@ -1,7 +1,8 @@
 import logging
 
 import numpy as np  # noqa: F401
-import onnx
+
+from onnxruntime._onnx_shim import onnx
 
 from ..quant_utils import (
     TENSOR_NAME_QUANT_SUFFIX,

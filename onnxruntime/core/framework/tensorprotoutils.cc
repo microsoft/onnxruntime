@@ -315,7 +315,8 @@ bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto) {
     // Retrieve the external data info
     for (const auto& entry : ten_proto.external_data()) {
       if (entry.key() == "location") {
-        PathString location = ToWideString(entry.value());
+        const std::string& entry_value = entry.value();
+        PathString location = ToWideString(entry_value);
         return ((location == kTensorProtoLittleEndianMemoryAddressTag) || (location == kTensorProtoNativeEndianMemoryAddressTag));
       }
     }
@@ -354,7 +355,7 @@ Status TensorProtoWithExternalDataToTensorProto(
     std::string* data = reinterpret_cast<std::string*>(external_data_info->GetOffset());
     for (size_t i = 0, lim = narrow<size_t>(tensor_shape.Size()); i < lim; ++i) {
       // set in raw data
-      result.add_string_data(*data);
+      result.add_string_data(*data); /* data is std::string* from ExternalDataInfo::GetOffset() */
       ++data;
     }
   } else {
@@ -1897,7 +1898,7 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
   void* raw_data = nullptr;
   SafeInt<size_t> raw_data_len = 0;
   if (utils::HasRawData(tensor_proto)) {
-    raw_data = const_cast<char*>(tensor_proto.raw_data().data());
+    raw_data = const_cast<char*>(reinterpret_cast<const char*>(tensor_proto.raw_data().data()));
     // TODO The line above has const-correctness issues. Below is a possible fix which copies the tensor_proto data
     //      into a writeable buffer. However, it requires extra memory which may exceed the limit for certain tests.
     // auto buffer = std::make_unique<char[]>(tensor_proto.raw_data().size());
@@ -2600,8 +2601,8 @@ inline void CopyElement<uint8_t>(void* dst, const void* src, int64_t dst_index, 
   reinterpret_cast<uint8_t*>(dst)[dst_index] = reinterpret_cast<const uint8_t*>(src)[src_index];
 }
 
-template <typename T>
-static void SetIndices(gsl::span<int64_t> gathered_indices, std::string& raw_indices, TensorProto& indices) {
+template <typename T, typename RawBuffer>
+static void SetIndices(gsl::span<int64_t> gathered_indices, RawBuffer& raw_indices, TensorProto& indices) {
   raw_indices.resize(gathered_indices.size() * sizeof(T));
   auto* ind_dest = reinterpret_cast<T*>(raw_indices.data());
   size_t dest_index = 0;

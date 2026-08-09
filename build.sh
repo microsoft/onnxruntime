@@ -22,7 +22,7 @@ fi
 # Only request it for native builds so that `./build.sh --build_wasm` keeps working without
 # the user having to override the wrapper's default.
 TELEMETRY_ARG="--use_telemetry"
-if [[ "$*" == *"--build_wasm"* ]]; then
+if [[ "$*" == *"--build_wasm"* ]] || [[ "$*" == *"--use_onnx_light"* ]]; then
     TELEMETRY_ARG=""
 fi
 

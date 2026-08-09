@@ -6,9 +6,10 @@
 
 
 import numpy as np
-import onnx
 from bert_model_generator import float_tensor
-from onnx import TensorProto, helper, numpy_helper
+
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
 
 # Minimum non-zero value used for the QK attention bias initializer in test models.
 # A zero bias would be eliminated by ORT's basic constant folding (it removes Add(x, 0)

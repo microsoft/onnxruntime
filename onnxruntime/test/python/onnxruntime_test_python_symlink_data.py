@@ -8,9 +8,9 @@ import tempfile
 import unittest
 
 import numpy as np
-from onnx import TensorProto, helper, save
 
 import onnxruntime as ort
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, save
 
 
 class TestSymLinkOnnxModelExternalData(unittest.TestCase):

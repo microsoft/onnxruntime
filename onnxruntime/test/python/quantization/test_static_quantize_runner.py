@@ -12,8 +12,8 @@ import unittest
 from unittest import mock
 
 import numpy as np
-import onnx
 
+from onnxruntime._onnx_shim import onnx
 from onnxruntime.quantization import static_quantize_runner
 
 

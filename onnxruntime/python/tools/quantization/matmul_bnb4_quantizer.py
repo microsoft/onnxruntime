@@ -10,9 +10,9 @@ import os
 
 import numpy as np
 import numpy.typing as npt
-import onnx
-from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 from onnxruntime.capi._pybind_state import quantize_matmul_bnb4
 
 from .onnx_model import ONNXModel

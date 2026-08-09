@@ -731,6 +731,9 @@ add_custom_command(
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
   COMMAND ${CMAKE_COMMAND} -E copy
+      ${ONNXRUNTIME_ROOT}/_onnx_shim.py
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/requirements.txt
       $<TARGET_FILE_DIR:${build_output_target}>
   COMMAND ${CMAKE_COMMAND} -E copy

@@ -5,7 +5,7 @@
 # --------------------------------------------------------------------------
 from __future__ import annotations
 
-import onnx
+from onnxruntime._onnx_shim import onnx
 
 from ...fusions import Fusion
 from ...onnx_model import ONNXModel

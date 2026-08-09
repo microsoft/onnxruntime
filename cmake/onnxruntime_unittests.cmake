@@ -966,7 +966,8 @@ if(NOT IOS)
             onnxruntime_test_utils onnx onnx_proto re2::re2 flatbuffers::flatbuffers Boost::mp11 safeint_interface Eigen3::Eigen)
 
     add_dependencies(onnx_test_runner_common onnx_test_data_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
-    target_include_directories(onnx_test_runner_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
+    target_include_directories(onnx_test_runner_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
+      $<TARGET_PROPERTY:onnx_test_data_proto,INTERFACE_INCLUDE_DIRECTORIES>)
 
     set_target_properties(onnx_test_runner_common PROPERTIES FOLDER "ONNXRuntimeTest")
     set(onnx_test_runner_common_lib onnx_test_runner_common)
@@ -1312,22 +1313,33 @@ endif()
 
 set(test_data_target onnxruntime_test_all)
 
-onnxruntime_add_static_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
-add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
-#onnx_proto target should mark this definition as public, instead of private
-target_compile_definitions(onnx_test_data_proto PRIVATE "-DONNX_API=")
-onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto ${PROTOBUF_LIB})
-if (MSVC)
-    # Cutlass code has an issue with the following:
-    # warning C4100: 'magic': unreferenced formal parameter
-    target_compile_options(onnx_test_data_proto PRIVATE "/wd4100")
+if(onnxruntime_USE_ONNX_LIGHT)
+  # onnx-light build: the tml implementation lives in onnx-light
+  # (onnx_light/onnx_proto/tml.h, header-only). This INTERFACE library
+  # provides include paths and compile definitions to consumers.
+  add_library(onnx_test_data_proto INTERFACE)
+  add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  target_compile_definitions(onnx_test_data_proto INTERFACE "-DONNX_API=")
+  target_link_libraries(onnx_test_data_proto INTERFACE onnx_proto onnx)
+  target_include_directories(onnx_test_data_proto INTERFACE ${TEST_SRC_DIR}/proto)
+else()
+  onnxruntime_add_static_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
+  add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  #onnx_proto target should mark this definition as public, instead of private
+  target_compile_definitions(onnx_test_data_proto PRIVATE "-DONNX_API=")
+  onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto ${PROTOBUF_LIB})
+  if (MSVC)
+      # Cutlass code has an issue with the following:
+      # warning C4100: 'magic': unreferenced formal parameter
+      target_compile_options(onnx_test_data_proto PRIVATE "/wd4100")
+  endif()
+  target_include_directories(onnx_test_data_proto PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+  set_target_properties(onnx_test_data_proto PROPERTIES FOLDER "ONNXRuntimeTest")
+  if(NOT DEFINED onnx_SOURCE_DIR)
+    find_path(onnx_SOURCE_DIR NAMES "onnx/onnx-ml.proto3" "onnx/onnx-ml.proto" REQUIRED)
+  endif()
+  onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS ${onnx_SOURCE_DIR} TARGET onnx_test_data_proto)
 endif()
-target_include_directories(onnx_test_data_proto PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-set_target_properties(onnx_test_data_proto PROPERTIES FOLDER "ONNXRuntimeTest")
-if(NOT DEFINED onnx_SOURCE_DIR)
-  find_path(onnx_SOURCE_DIR NAMES "onnx/onnx-ml.proto3" "onnx/onnx-ml.proto" REQUIRED)
-endif()
-onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS ${onnx_SOURCE_DIR} TARGET onnx_test_data_proto)
 
 #
 # onnxruntime_ir_graph test data

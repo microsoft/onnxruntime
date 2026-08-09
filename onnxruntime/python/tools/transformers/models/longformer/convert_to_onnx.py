@@ -38,13 +38,14 @@ from pathlib import Path
 import torch
 import transformers
 from longformer_helper import PRETRAINED_LONGFORMER_MODELS
-from onnx import load_model
 from onnx_model_bert import BertOnnxModel
 from packaging import version
 from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import parse_args
 from torch_onnx_export_helper import torch_onnx_export
 from transformers import LongformerModel, LongformerSelfAttention
+
+from onnxruntime._onnx_shim.onnx import load_model
 
 # Supports format 0 or 1
 weight_bias_format = 0

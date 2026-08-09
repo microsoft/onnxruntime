@@ -6,8 +6,8 @@ import os
 import numpy
 
 # -*- coding: UTF-8 -*-
-import onnx
-from onnx import AttributeProto, GraphProto, TensorProto, helper, numpy_helper  # noqa: F401
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import GraphProto, TensorProto, helper, numpy_helper  # noqa: F401
 
 if os.path.exists(
     os.path.join(

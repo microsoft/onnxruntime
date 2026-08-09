@@ -221,7 +221,7 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
     if (found_subgraph_usage || consumer_node_to_input_ports_map.size() == 0) {
       continue;
     }
-    const std::string data_store_key = MakeString(tensor_proto->data_type(),
+    const std::string data_store_key = MakeString(static_cast<int>(tensor_proto->data_type()),
                                                   "_", origin_initializer_node_arg->Shape()->dim_size(),
                                                   "_", num_elements);
 

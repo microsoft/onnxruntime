@@ -7,8 +7,7 @@ import sys
 import tempfile
 import unittest
 
-import onnx
-
+from onnxruntime._onnx_shim import onnx
 from onnxruntime.capi.onnxruntime_pybind11_state import (
     OrtCompiledModelCompatibility,
     OrtDeviceEpIncompatibilityReason,

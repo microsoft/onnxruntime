@@ -11,8 +11,8 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-import onnx
 
+from onnxruntime._onnx_shim import onnx
 from onnxruntime.quantization.shape_inference import quant_pre_process
 
 

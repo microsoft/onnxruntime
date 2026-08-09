@@ -323,7 +323,7 @@ def create_decoder_attention_graph(
     has_layer_state,
     has_key_padding_mask,
 ):
-    from onnx import TensorProto, helper  # noqa: PLC0415
+    from onnxruntime._onnx_shim.onnx import TensorProto, helper  # noqa: PLC0415
 
     S, B, NH = query.size()  # noqa: N806
     S2 = key.size()[0]  # noqa: N806

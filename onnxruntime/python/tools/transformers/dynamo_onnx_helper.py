@@ -7,9 +7,10 @@ from logging import getLogger
 from typing import Any
 
 import numpy as np
-import onnx
-from onnx import helper
 from onnx_model import OnnxModel
+
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import helper
 
 logger = getLogger(__name__)
 

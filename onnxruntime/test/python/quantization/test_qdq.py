@@ -12,8 +12,6 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper, numpy_helper
 from op_test_utils import (
     TestDataFeeds,
     check_model_correctness,
@@ -24,6 +22,8 @@ from op_test_utils import (
 )
 
 import onnxruntime as ort
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
 from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantType, quantize_static, write_calibration_table
 from onnxruntime.quantization.calibrate import CalibrationMethod, TensorData, TensorsData
 from onnxruntime.quantization.quant_utils import quantize_nparray

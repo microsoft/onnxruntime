@@ -6,9 +6,9 @@
 import logging
 
 import numpy as np
-import onnx
-import onnx.numpy_helper
-from onnx import onnx_pb as onnx_proto
+
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import onnx_pb as onnx_proto
 
 from .base_quantizer import BaseQuantizer, QuantizationParams
 from .calibrate import TensorData

@@ -9,7 +9,7 @@ from collections import OrderedDict
 from pprint import pprint
 from typing import Any
 
-import onnx
+from onnxruntime._onnx_shim import onnx
 
 TuningResults = dict[str, Any]
 

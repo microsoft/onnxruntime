@@ -22,9 +22,9 @@ import argparse
 import time
 
 import numpy as np
-from onnx import TensorProto, helper, numpy_helper
 
 import onnxruntime as ort
+from onnxruntime._onnx_shim.onnx import TensorProto, helper, numpy_helper
 
 
 def create_matmul_nbits_model(

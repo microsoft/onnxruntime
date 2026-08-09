@@ -11,8 +11,6 @@ from importlib.util import find_spec
 from pathlib import Path
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper
 from op_test_utils import (
     StridedDataReader,
     check_model_correctness,
@@ -22,6 +20,8 @@ from op_test_utils import (
 )
 
 import onnxruntime as ort
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 from onnxruntime.quantization import QuantType, StaticQuantConfig, quantize, quantize_static
 
 
